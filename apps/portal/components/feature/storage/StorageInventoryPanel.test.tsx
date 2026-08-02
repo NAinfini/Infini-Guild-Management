@@ -28,7 +28,7 @@ const storage: Storage = {
   name: "Vault",
   description: null,
   created_at: "2026-07-28T00:00:00.000Z",
-  categories: [],
+  categories: [{ id: "category-1", name: "Materials" }],
 };
 
 const item: StorageItem = {
@@ -99,6 +99,17 @@ describe("StorageInventoryPanel pagination", () => {
 
     expect(hookMocks.useStorageItems).toHaveBeenLastCalledWith(expect.objectContaining({
       stock: "empty",
+    }));
+  });
+
+  it("uses the category rail as inventory navigation", async () => {
+    const user = userEvent.setup();
+    renderPanel();
+
+    await user.click(screen.getByRole("button", { name: "Materials" }));
+
+    expect(hookMocks.useStorageItems).toHaveBeenLastCalledWith(expect.objectContaining({
+      categoryId: "category-1",
     }));
   });
 });

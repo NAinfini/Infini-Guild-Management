@@ -1,5 +1,6 @@
 import type { Editor } from "@tiptap/react";
 import { ActionIcon, Menu, Tooltip } from "@mantine/core";
+import type { Ref } from "react";
 import {
   AlignCenterIcon,
   AlignLeftIcon,
@@ -48,9 +49,20 @@ type TipTapEditorToolbarProps = {
   onInsertImage: () => void;
   onInsertVideo: () => void;
   onToggleFindReplace: () => void;
+  linkTriggerRef?: Ref<HTMLButtonElement>;
+  videoTriggerRef?: Ref<HTMLButtonElement>;
 };
 
-export function TipTapEditorToolbar({ editor, labels, onInsertLink, onInsertImage, onInsertVideo, onToggleFindReplace }: TipTapEditorToolbarProps) {
+export function TipTapEditorToolbar({
+  editor,
+  labels,
+  onInsertLink,
+  onInsertImage,
+  onInsertVideo,
+  onToggleFindReplace,
+  linkTriggerRef,
+  videoTriggerRef,
+}: TipTapEditorToolbarProps) {
   return (
     <div
       className="infini-tiptap-toolbar"
@@ -132,7 +144,7 @@ export function TipTapEditorToolbar({ editor, labels, onInsertLink, onInsertImag
         <Tooltip label={labels.alignRight} {...TOOLTIP_PROPS}><ActionIcon aria-label={labels.alignRight} size="sm" variant="default" onClick={() => editor.chain().focus().setTextAlign("right").run()}><AlignRightIcon size={16} /></ActionIcon></Tooltip>
       </div>
       <div className="infini-tiptap-toolbar__group">
-        <Tooltip label={labels.link} {...TOOLTIP_PROPS}><ActionIcon aria-label={labels.link} size="sm" variant="default" onClick={onInsertLink}><LinkIcon size={16} /></ActionIcon></Tooltip>
+        <Tooltip label={labels.link} {...TOOLTIP_PROPS}><ActionIcon ref={linkTriggerRef} aria-label={labels.link} size="sm" variant="default" onClick={onInsertLink}><LinkIcon size={16} /></ActionIcon></Tooltip>
         <Tooltip label={labels.unlink} {...TOOLTIP_PROPS}><ActionIcon aria-label={labels.unlink} size="sm" variant="default" onClick={() => editor.chain().focus().unsetLink().run()}><LinkOffIcon size={16} /></ActionIcon></Tooltip>
         <Tooltip label={labels.h1} {...TOOLTIP_PROPS}><ActionIcon aria-label={labels.h1} size="sm" variant="default" onClick={() => editor.chain().focus().toggleHeading({ level: 1 }).run()}><H1Icon size={16} /></ActionIcon></Tooltip>
         <Tooltip label={labels.h2} {...TOOLTIP_PROPS}><ActionIcon aria-label={labels.h2} size="sm" variant="default" onClick={() => editor.chain().focus().toggleHeading({ level: 2 }).run()}><H2Icon size={16} /></ActionIcon></Tooltip>
@@ -148,7 +160,7 @@ export function TipTapEditorToolbar({ editor, labels, onInsertLink, onInsertImag
       <div className="infini-tiptap-toolbar__group">
         <Tooltip label={labels.divider} {...TOOLTIP_PROPS}><ActionIcon aria-label={labels.divider} size="sm" variant="default" onClick={() => editor.chain().focus().setHorizontalRule().run()}><SeparatorHorizontalIcon size={16} /></ActionIcon></Tooltip>
         <Tooltip label={labels.image} {...TOOLTIP_PROPS}><ActionIcon aria-label={labels.image} size="sm" variant="default" onClick={onInsertImage}><PhotoIcon size={16} /></ActionIcon></Tooltip>
-        <Tooltip label={labels.embedVideo} {...TOOLTIP_PROPS}><ActionIcon aria-label={labels.embedVideo} size="sm" variant="default" onClick={onInsertVideo}><PlayerPlayIcon size={16} /></ActionIcon></Tooltip>
+        <Tooltip label={labels.embedVideo} {...TOOLTIP_PROPS}><ActionIcon ref={videoTriggerRef} aria-label={labels.embedVideo} size="sm" variant="default" onClick={onInsertVideo}><PlayerPlayIcon size={16} /></ActionIcon></Tooltip>
         <Tooltip label={labels.details} {...TOOLTIP_PROPS}><ActionIcon aria-label={labels.details} size="sm" variant="default" onClick={() => (editor.commands as unknown as { setDetails: () => void }).setDetails()}><LayoutListIcon size={16} /></ActionIcon></Tooltip>
         <Menu withinPortal position="bottom-end">
           <Tooltip label={labels.table} {...TOOLTIP_PROPS}>

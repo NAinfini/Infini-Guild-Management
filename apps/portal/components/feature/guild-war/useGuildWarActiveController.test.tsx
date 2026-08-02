@@ -1,12 +1,11 @@
 import type { GuildWarActiveResponse } from "@guild/shared";
 import { act, renderHook } from "@testing-library/react";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { GuildWarService } from "../../../services/GuildWarService";
 import { useGuildWarActiveController } from "./useGuildWarActiveController";
 
 const mocks = vi.hoisted(() => ({
   confirm: vi.fn(),
-  notifySuccess: vi.fn(),
 }));
 
 vi.mock("react-i18next", () => ({
@@ -21,10 +20,6 @@ vi.mock("@portal/hooks/useConfirmDialog", () => ({
 
 vi.mock("../../../hooks/useBeforeUnloadPrompt", () => ({
   useBeforeUnloadPrompt: vi.fn(),
-}));
-
-vi.mock("../../../utils/notifications", () => ({
-  notifySuccess: mocks.notifySuccess,
 }));
 
 const activeData = {
@@ -63,32 +58,28 @@ function renderController(
 
 describe("useGuildWarActiveController", () => {
   beforeEach(() => {
+    vi.useFakeTimers();
     mocks.confirm.mockReset();
-    mocks.notifySuccess.mockReset();
   });
 
-  it("saves dirty team metadata with the active ETag and blocks duplicate submissions", async () => {
-    let resolveSave: ((value: { ok: true }) => void) | undefined;
-    const persistTeamSnapshot = vi.fn(
-      () => new Promise<{ ok: true }>((resolve) => {
-        resolveSave = resolve;
-      }),
-    );
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it("auto-saves dirty team metadata with the active ETag after a short debounce", async () => {
+    const persistTeamSnapshot = vi.fn().mockResolvedValue({ ok: true });
     const { result } = renderController(persistTeamSnapshot);
 
     act(() => {
       result.current.setTeamDraftNames({ "team-1": "Alpha Prime" });
     });
     expect(result.current.isTeamsDirty).toBe(true);
+    expect(persistTeamSnapshot).not.toHaveBeenCalled();
 
-    let firstSave!: Promise<boolean>;
-    let duplicateSave!: Promise<boolean>;
-    act(() => {
-      firstSave = result.current.handleSaveTeams();
-      duplicateSave = result.current.handleSaveTeams();
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(500);
     });
 
-    await expect(duplicateSave).resolves.toBe(false);
     expect(persistTeamSnapshot).toHaveBeenCalledTimes(1);
     expect(persistTeamSnapshot).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -97,12 +88,6 @@ describe("useGuildWarActiveController", () => {
         etag: '"active-etag"',
       }),
     );
-
-    await act(async () => {
-      resolveSave?.({ ok: true });
-      await expect(firstSave).resolves.toBe(true);
-    });
-    expect(mocks.notifySuccess).toHaveBeenCalledWith("message.teamsSaved");
     expect(result.current.saveTeamsPending).toBe(false);
   });
 
@@ -125,7 +110,7 @@ describe("useGuildWarActiveController", () => {
     });
   });
 
-  it("reports a localized save failure and releases the pending guard", async () => {
+  it("reports an automatic save failure and releases the pending guard", async () => {
     const error = new Error("conflict");
     const persistTeamSnapshot = vi.fn().mockRejectedValue(error);
     const showError = vi.fn();
@@ -136,7 +121,7 @@ describe("useGuildWarActiveController", () => {
     });
 
     await act(async () => {
-      await expect(result.current.handleSaveTeams()).resolves.toBe(false);
+      await vi.advanceTimersByTimeAsync(500);
     });
     expect(showError).toHaveBeenCalledWith(error, "message.teamsSaveFailed");
     expect(result.current.saveTeamsPending).toBe(false);

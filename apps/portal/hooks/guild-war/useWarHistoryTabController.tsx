@@ -1,5 +1,4 @@
-import { Checkbox, Badge, Group, HoverCard, Text, ThemeIcon } from "@mantine/core";
-import { useDisclosure } from "@mantine/hooks";
+import { Badge, Group, HoverCard, Text, ThemeIcon } from "@mantine/core";
 import { activeGame } from "@guild/shared/games";
 import { CircleCheckIcon, AlertTriangleIcon } from "@portal/components/icons";
 import { MetricGridInput } from "@portal/components/shared/MetricGridInput";
@@ -54,14 +53,12 @@ type UseWarHistoryTabControllerParams = {
   historyRows: HistorySummaryRow[];
   historyPage: number;
   historyPerPage: number;
-  historyColumns: ColumnDef<HistorySummaryRow, unknown>[];
   historyDetail: HistoryDetailData | null;
   canManage: boolean;
   saveMemberStatsPending: boolean;
   onSelectHistoryId: (historyId: string) => void;
   onSaveMemberStats: (updates: HistoryMemberStatsUpdate[]) => Promise<void>;
   onDeleteHistory: (historyId: string) => void;
-  onBulkDeleteHistory: (ids: string[]) => void;
 };
 
 export function useWarHistoryTabController({
@@ -69,24 +66,28 @@ export function useWarHistoryTabController({
   historySearch,
   onHistorySearchChange,
   historyRows,
-  historyColumns,
   historyDetail,
   canManage,
   saveMemberStatsPending,
   onSelectHistoryId,
   onSaveMemberStats,
   onDeleteHistory,
-  onBulkDeleteHistory,
 }: UseWarHistoryTabControllerParams) {
   const { t } = useTranslation("guild-war");
   const confirm = useConfirmDialog();
-  const [detailModalOpen, detailModalHandlers] = useDisclosure(false);
+  // The detail panel is always mounted on desktop. `activeHistoryId` is the row
+  // it shows; `mobileView` only decides which of the two panes the single-column
+  // layout reveals, so returning to the list on mobile never clears the selection
+  // (and therefore never fights the auto-select effect below).
+  const [activeHistoryId, setActiveHistoryId] = useState<string | null>(null);
+  const [mobileView, setMobileView] = useState<"list" | "detail">("list");
   const [highlightRowId, setHighlightRowId] = useState<string | null>(null);
-  const [summarySorting, setSummarySorting] = useState<SortingState>([]);
   const [detailSorting, setDetailSorting] = useState<SortingState>([]);
   const [memberStatsBaseline, setMemberStatsBaseline] = useState<Record<string, MemberStatDraft>>({});
   const [memberStatsDraft, setMemberStatsDraft] = useState<Record<string, MemberStatDraft>>({});
-  const [selectedHistoryIds, setSelectedHistoryIds] = useState<Set<string>>(new Set());
+  /* 成员数据默认只读。原先九列输入框长期挂在表里，光看不改的时候整张表都是输入框，
+     既读不清也很容易误改。改成显式进入编辑态，保存即退出。 */
+  const [isEditingMemberStats, setIsEditingMemberStats] = useState(false);
 
   useEffect(() => {
     if (!initialSearch) {
@@ -101,9 +102,26 @@ export function useWarHistoryTabController({
     return undefined;
   }, [initialSearch, historyRows]);
 
+  // Auto-select so the detail pane is populated the moment the tab opens, and
+  // re-select when the active row disappears (deletion, filtering, paging).
+  useEffect(() => {
+    if (historyRows.length === 0) {
+      if (activeHistoryId !== null) {
+        setActiveHistoryId(null);
+      }
+      return;
+    }
+    if (activeHistoryId && historyRows.some((row) => row.id === activeHistoryId)) {
+      return;
+    }
+    const firstRow = historyRows[0]!;
+    setActiveHistoryId(firstRow.id);
+    onSelectHistoryId(firstRow.id);
+  }, [activeHistoryId, historyRows, onSelectHistoryId]);
+
   const historyDetailId = historyDetail?.id ?? null;
   useEffect(() => {
-    if (!detailModalOpen || !historyDetail) {
+    if (!historyDetail) {
       return;
     }
 
@@ -114,7 +132,9 @@ export function useWarHistoryTabController({
       nextDraft[userId] = { ...draft };
     }
     setMemberStatsDraft(nextDraft);
-  }, [detailModalOpen, historyDetail, historyDetailId]);
+    /* 换了一条战史就回到只读态，否则会带着上一条的编辑态进入新记录。 */
+    setIsEditingMemberStats(false);
+  }, [historyDetail, historyDetailId]);
 
   const filteredHistoryRows = historyRows;
 
@@ -131,16 +151,23 @@ export function useWarHistoryTabController({
         continue;
       }
 
-      const payload: Partial<Record<EditableMetricKey, number>> = {};
-      for (const key of EDITABLE_METRIC_KEYS) {
-        if (draft[key] !== baseline[key]) {
-          payload[key] = draft[key];
-        }
+      const changed = EDITABLE_METRIC_KEYS.some((key) => draft[key] !== baseline[key]);
+      if (!changed) {
+        continue;
       }
 
-      if (Object.keys(payload).length > 0) {
-        updates.push({ userId: row.user_id, payload });
+      /*
+       * 送整份草稿，不是只送改动的那几项。
+       * member-stats 接口对 stats 是整列覆盖（batchUpdateMemberStats 直接
+       * `UPDATE war_team_members SET stats = ?`），只送差异的话，这次没碰过的指标
+       * 会连同旧值一起被覆盖掉——改一个击杀数，死亡、助攻、伤害全部清空。
+       * 草稿本身由 createMemberDraft 按全部可编辑指标建立，送出去就是完整的一份。
+       */
+      const payload: Partial<Record<EditableMetricKey, number>> = {};
+      for (const key of EDITABLE_METRIC_KEYS) {
+        payload[key] = draft[key];
       }
+      updates.push({ userId: row.user_id, payload });
     }
 
     return updates;
@@ -161,7 +188,9 @@ export function useWarHistoryTabController({
     });
   }, [confirm, hasUnsavedMemberChanges, t]);
 
-  const requestCloseDetailModal = useCallback(async () => {
+  // Mobile-only: reveal the list pane again. The selection is deliberately kept
+  // so returning to the detail does not lose the reader's place.
+  const showMobileList = useCallback(async () => {
     if (saveMemberStatsPending) {
       return;
     }
@@ -169,21 +198,44 @@ export function useWarHistoryTabController({
     if (!confirmed) {
       return;
     }
-    detailModalHandlers.close();
-    setMemberStatsBaseline({});
-    setMemberStatsDraft({});
-  }, [confirmDiscardUnsavedChanges, detailModalHandlers, saveMemberStatsPending]);
+    setMobileView("list");
+  }, [confirmDiscardUnsavedChanges, saveMemberStatsPending]);
 
-  const handleSaveMemberStats = useCallback(async () => {
-    if (!canManage || pendingMemberStatUpdates.length === 0) {
+  const beginEditMemberStats = useCallback(() => {
+    if (!canManage) {
       return;
     }
-    await onSaveMemberStats(pendingMemberStatUpdates);
-    const nextBaseline: Record<string, MemberStatDraft> = {};
-    for (const [userId, draft] of Object.entries(memberStatsDraft)) {
-      nextBaseline[userId] = { ...draft };
+    setIsEditingMemberStats(true);
+  }, [canManage]);
+
+  /* 退出编辑态时把草稿退回基线，避免下次进来还留着上次没保存的数字。 */
+  const cancelEditMemberStats = useCallback(async () => {
+    const confirmed = await confirmDiscardUnsavedChanges();
+    if (!confirmed) {
+      return;
     }
-    setMemberStatsBaseline(nextBaseline);
+    const restored: Record<string, MemberStatDraft> = {};
+    for (const [userId, draft] of Object.entries(memberStatsBaseline)) {
+      restored[userId] = { ...draft };
+    }
+    setMemberStatsDraft(restored);
+    setIsEditingMemberStats(false);
+  }, [confirmDiscardUnsavedChanges, memberStatsBaseline]);
+
+  const handleSaveMemberStats = useCallback(async () => {
+    if (!canManage) {
+      return;
+    }
+    /* 没改任何东西时不发请求，但仍然退出编辑态——「保存」就是退出的那个动作。 */
+    if (pendingMemberStatUpdates.length > 0) {
+      await onSaveMemberStats(pendingMemberStatUpdates);
+      const nextBaseline: Record<string, MemberStatDraft> = {};
+      for (const [userId, draft] of Object.entries(memberStatsDraft)) {
+        nextBaseline[userId] = { ...draft };
+      }
+      setMemberStatsBaseline(nextBaseline);
+    }
+    setIsEditingMemberStats(false);
   }, [canManage, memberStatsDraft, onSaveMemberStats, pendingMemberStatUpdates]);
 
   const handleDeleteHistory = useCallback(async () => {
@@ -199,58 +251,12 @@ export function useWarHistoryTabController({
     });
     if (confirmed) {
       onDeleteHistory(historyDetail.id);
-      detailModalHandlers.close();
+      // Drop the selection so the auto-select effect promotes the next record.
+      setActiveHistoryId(null);
       setMemberStatsBaseline({});
       setMemberStatsDraft({});
     }
-  }, [canManage, confirm, detailModalHandlers, historyDetail, onDeleteHistory, t]);
-
-  const handleBulkDelete = useCallback(async () => {
-    if (!canManage || selectedHistoryIds.size === 0) {
-      return;
-    }
-    const confirmed = await confirm({
-      title: t("history.bulkDeleteConfirmTitle"),
-      description: t("history.bulkDeleteConfirmDescription", { count: selectedHistoryIds.size }),
-      confirmLabel: t("common:action.delete"),
-      cancelLabel: t("common:action.cancel"),
-      intent: "danger",
-    });
-    if (confirmed) {
-      onBulkDeleteHistory(Array.from(selectedHistoryIds));
-      setSelectedHistoryIds(new Set());
-    }
-  }, [canManage, confirm, onBulkDeleteHistory, selectedHistoryIds, t]);
-
-  const toggleHistorySelection = useCallback((id: string) => {
-    setSelectedHistoryIds((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) {
-        next.delete(id);
-      } else {
-        next.add(id);
-      }
-      return next;
-    });
-  }, []);
-
-  const allFilteredSelected = filteredHistoryRows.length > 0
-    && filteredHistoryRows.every((row) => selectedHistoryIds.has(row.id));
-  const someFilteredSelected = filteredHistoryRows.some((row) => selectedHistoryIds.has(row.id));
-
-  const toggleSelectAll = useCallback(() => {
-    setSelectedHistoryIds((current) => {
-      const next = new Set(current);
-      for (const row of filteredHistoryRows) {
-        if (allFilteredSelected) {
-          next.delete(row.id);
-        } else {
-          next.add(row.id);
-        }
-      }
-      return next;
-    });
-  }, [allFilteredSelected, filteredHistoryRows]);
+  }, [canManage, confirm, historyDetail, onDeleteHistory, t]);
 
   const updateDraftMetric = useCallback((userId: string, key: EditableMetricKey, value: string | number) => {
     const nextValue = toDraftMetricValue(value);
@@ -294,55 +300,9 @@ export function useWarHistoryTabController({
       return;
     }
     onSelectHistoryId(historyId);
-    detailModalHandlers.open();
-  }, [confirmDiscardUnsavedChanges, detailModalHandlers, onSelectHistoryId]);
-
-  const summaryColumnsWithSelect = useMemo<ColumnDef<HistorySummaryRow, unknown>[]>(() => {
-    if (!canManage) {
-      return historyColumns;
-    }
-    const checkboxColumn: ColumnDef<HistorySummaryRow, unknown> = {
-      id: "_select",
-      size: 40,
-      enableSorting: false,
-      header: () => (
-        <Checkbox
-          size="xs"
-          checked={allFilteredSelected}
-          indeterminate={someFilteredSelected && !allFilteredSelected}
-          onChange={toggleSelectAll}
-          onClick={(event) => event.stopPropagation()}
-        />
-      ),
-      cell: ({ row }) => (
-        <Checkbox
-          size="xs"
-          checked={selectedHistoryIds.has(row.original.id)}
-          onChange={() => toggleHistorySelection(row.original.id)}
-          onClick={(event) => event.stopPropagation()}
-        />
-      ),
-    };
-    return [checkboxColumn, ...historyColumns];
-  }, [
-    allFilteredSelected,
-    canManage,
-    historyColumns,
-    selectedHistoryIds,
-    someFilteredSelected,
-    toggleHistorySelection,
-    toggleSelectAll,
-  ]);
-
-  const summaryTable = useReactTable({
-    data: filteredHistoryRows,
-    columns: summaryColumnsWithSelect,
-    state: { sorting: summarySorting },
-    onSortingChange: setSummarySorting,
-    getCoreRowModel: getCoreRowModel(),
-    getSortedRowModel: getSortedRowModel(),
-    getRowId: (row) => row.id,
-  });
+    setActiveHistoryId(historyId);
+    setMobileView("detail");
+  }, [confirmDiscardUnsavedChanges, onSelectHistoryId]);
 
   const detailColumns = useMemo<ColumnDef<HistoryMemberStat, unknown>[]>(() => [
     {
@@ -362,7 +322,8 @@ export function useWarHistoryTabController({
       id: metricKey,
       accessorFn: (row) => row.stats?.[metricKey] ?? 0,
       cell: ({ row, table }) => {
-        if (!canManage) {
+        /* 只读态一律显示纯数字：没有权限，或者有权限但还没点「编辑」。 */
+        if (!canManage || !isEditingMemberStats) {
           return row.original.stats?.[metricKey] ?? "-";
         }
 
@@ -454,7 +415,7 @@ export function useWarHistoryTabController({
         );
       },
     },
-  ], [canManage, t, updateDraftMetric]);
+  ], [canManage, isEditingMemberStats, t, updateDraftMetric]);
 
   const detailTable = useReactTable({
     data: detailRows,
@@ -469,20 +430,19 @@ export function useWarHistoryTabController({
   return {
     historySearch,
     setHistorySearch: onHistorySearchChange,
-    detailModalOpen,
+    activeHistoryId,
+    mobileView,
     filteredHistoryRows,
-    selectedHistoryIds,
-    summaryTable,
     detailTable,
     highlightRowId,
     hasUnsavedMemberChanges,
+    isEditingMemberStats,
+    beginEditMemberStats,
+    cancelEditMemberStats,
     handleSelectHistoryId,
-    handleBulkDelete,
-    toggleHistorySelection,
-    toggleSelectAll,
     handleSaveMemberStats,
     handleDeleteHistory,
-    requestCloseDetailModal,
+    showMobileList,
   };
 }
 

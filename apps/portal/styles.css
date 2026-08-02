@@ -13,7 +13,12 @@ html, body {
   overflow: hidden;
 }
 
-body {
+/*
+ * Mantine's base stylesheet is loaded by the async bootstrap chunk after this
+ * entry stylesheet. This descendant selector intentionally outranks its `body`
+ * reset so the document never settles on Mantine's unrelated gray.
+ */
+html body {
   background: var(--surface-sunken);
   color: var(--text-primary);
   font-family: var(--font-body);
@@ -46,7 +51,7 @@ body::-webkit-scrollbar-thumb:hover {
 }
 
 /* ── Focus ring ── */
-:focus-visible {
+html:not([data-input-modality="pointer"]) :focus-visible {
   outline: none;
   box-shadow:
     0 0 0 2px var(--surface-base),
@@ -130,7 +135,7 @@ body::-webkit-scrollbar-thumb:hover {
   background: color-mix(in srgb, var(--status-danger) 6%, var(--surface-base));
   color: var(--status-danger);
   padding: 24px;
-  font-family: Inter, system-ui, sans-serif;
+  font-family: var(--font-body);
   text-align: center;
 }
 
@@ -195,7 +200,9 @@ body::-webkit-scrollbar-thumb:hover {
 .unsaved-changes-affix {
   --unsaved-affix-inline: var(--space-xl);
   --unsaved-affix-bottom: var(--space-lg);
-  width: min(520px, calc(100vw - var(--sidebar-width) - var(--space-3xl)));
+  /* 里面只有一个徽章加一个按钮，撑死 260px。原先写死 520px，右下角就永远摆着
+     一个大半是空白的框。改成按内容宽度，上限只用来兜住超长的按钮文案。 */
+  max-width: min(520px, calc(100vw - var(--sidebar-width) - var(--space-3xl)));
 }
 
 .unsaved-changes-affix__surface {
@@ -212,7 +219,9 @@ body::-webkit-scrollbar-thumb:hover {
     --unsaved-affix-bottom: calc(
       var(--bottom-nav-height) + var(--space-md) + env(safe-area-inset-bottom)
     );
+    /* 窄屏是通栏的底部条，宽度由屏幕决定，不受桌面那条上限约束。 */
     width: calc(100vw - (2 * var(--space-md)));
+    max-width: none;
   }
 }
 

@@ -79,8 +79,8 @@
     box-shadow var(--motion-state);
 }
 
-.input:focus,
-.input:focus-within {
+:global(html:not([data-input-modality="pointer"])) .input:focus-visible,
+:global(html:not([data-input-modality="pointer"])) .input:has(:focus-visible) {
   border-color: var(--brand-fill);
   box-shadow:
     0 0 0 2px var(--surface-base),

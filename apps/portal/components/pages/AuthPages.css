@@ -81,6 +81,10 @@
   padding-bottom: 0.75rem;
 }
 
+.login-page__password-input {
+  padding-inline-end: calc(var(--control-hit-area) + var(--space-xl) + var(--space-md));
+}
+
 .login-page__password-actions {
   position: absolute;
   z-index: 1;
@@ -98,8 +102,8 @@
 
 .login-page__eye-btn {
   display: inline-grid;
-  width: 2rem;
-  height: 2rem;
+  width: var(--control-hit-area);
+  height: var(--control-hit-area);
   place-items: center;
   border: 0;
   border-radius: var(--radius-control);
@@ -154,6 +158,24 @@
   display: inline-flex;
   gap: var(--space-xs);
   align-items: center;
+}
+
+.login-page__back-button {
+  padding: 0;
+  border: 0;
+  color: var(--brand-text);
+  background: transparent;
+  cursor: pointer;
+  font: inherit;
+}
+
+.login-page__back-button:hover {
+  text-decoration: underline;
+}
+
+.login-page__back-button:focus-visible {
+  outline: 2px solid var(--brand-fill);
+  outline-offset: 2px;
 }
 
 @media (max-width: 40rem) {

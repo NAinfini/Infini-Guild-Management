@@ -4,6 +4,7 @@ export const AUDIT_ENTITY_TYPES = [
   "audit_archive_export",
   "audit_log_export",
   "badge",
+  "class_catalog",
   "event",
   "event_participant",
   "event_poll_vote",

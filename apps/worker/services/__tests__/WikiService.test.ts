@@ -22,6 +22,9 @@ function createDeps(rawDb: D1Database = createRawDb().rawDb) {
     media: {} as R2Bucket,
     rawDb,
     writeAuditLog: vi.fn().mockResolvedValue(undefined),
+    buildAuditLogStatements: vi.fn((input: { action: string }) => (
+      [{ audit: input.action } as unknown as D1PreparedStatement]
+    )),
     publishEntityChanged: vi.fn().mockResolvedValue(undefined),
   };
 }
@@ -292,6 +295,113 @@ describe("WikiService", () => {
       expect(result.ok).toBe(false);
       expect(batchMock).not.toHaveBeenCalled();
       expect(runMock).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("batchUpdateCategories", () => {
+    const CATEGORY_ROWS = [
+      { id: "root", name: "Root", slug: "root", sortOrder: 0, parentId: null, createdAt: "2024-01-01T00:00:00.000Z", updatedAt: "2024-01-01T00:00:00.000Z" },
+      { id: "guides", name: "Guides", slug: "guides", sortOrder: 1, parentId: null, createdAt: "2024-01-01T00:00:00.000Z", updatedAt: "2024-01-01T00:00:00.000Z" },
+      { id: "combat", name: "Combat", slug: "combat", sortOrder: 2, parentId: "guides", createdAt: "2024-01-01T00:00:00.000Z", updatedAt: "2024-01-01T00:00:00.000Z" },
+    ];
+
+    /* select().from() 直接可 await（整表读），再 .orderBy() 才是 listCategories 那一条。 */
+    function createCategoryDb(rows = CATEGORY_ROWS) {
+      const fromMock = vi.fn(() => ({
+        then: (onFulfilled: (v: unknown[]) => unknown) => Promise.resolve(rows).then(onFulfilled),
+        orderBy: vi.fn().mockResolvedValue(rows),
+      }));
+      return { select: vi.fn(() => ({ from: fromMock })) };
+    }
+
+    /* 把 prepare/bind 的入参原样留下来，好断言到底发了哪几条 UPDATE。 */
+    function createRecordingRawDb() {
+      const batchMock = vi.fn().mockResolvedValue([]);
+      const prepareMock = vi.fn((sql: string) => ({
+        bind: (...bindings: unknown[]) => ({ sql, bindings }),
+      }));
+      return {
+        rawDb: { prepare: prepareMock, batch: batchMock } as unknown as D1Database,
+        batchMock,
+      };
+    }
+
+    it("writes every category update plus one batch_update audit row in a single D1 batch", async () => {
+      const { rawDb, batchMock } = createRecordingRawDb();
+      const deps = createDeps(rawDb);
+      const service = new WikiService(createCategoryDb() as never, deps);
+
+      const result = await service.batchUpdateCategories("u1", [
+        { id: "guides", name: "Guides & Tips" },
+        { id: "combat", sort_order: 5, parent_id: null },
+      ]);
+
+      expect(result.ok).toBe(true);
+      expect(batchMock).toHaveBeenCalledTimes(1);
+
+      const statements = batchMock.mock.calls[0]?.[0] as Array<{ sql?: string; bindings?: unknown[]; audit?: string }>;
+      expect(statements).toHaveLength(3);
+      expect(statements[0]?.sql).toMatch(/^UPDATE wiki_categories SET name = \?, updated_at = \? WHERE id = \?$/);
+      expect(statements[0]?.bindings?.at(0)).toBe("Guides & Tips");
+      expect(statements[0]?.bindings?.at(-1)).toBe("guides");
+      expect(statements[1]?.sql).toMatch(/^UPDATE wiki_categories SET parent_id = \?, sort_order = \?, updated_at = \? WHERE id = \?$/);
+      expect(statements[1]?.bindings?.slice(0, 2)).toEqual([null, 5]);
+      /* 审计条目和 UPDATE 在同一个 batch 里——不是事后补写的。 */
+      expect(statements[2]?.audit).toBe("batch_update");
+      expect(deps.buildAuditLogStatements).toHaveBeenCalledWith(
+        expect.objectContaining({ entityType: "wiki_category", action: "batch_update", entityId: "batch" }),
+      );
+    });
+
+    it("rejects the whole batch when it would nest two levels deep, even though each row alone is legal", async () => {
+      const { rawDb, batchMock } = createRecordingRawDb();
+      const deps = createDeps(rawDb);
+      const service = new WikiService(createCategoryDb() as never, deps);
+
+      // guides 目前是顶层、combat 挂在它下面。这一批把 guides 也挂到 root 下面：
+      // 单看 guides 这一行合法（root 没有父级），但落库后 combat 就成了第三层。
+      const result = await service.batchUpdateCategories("u1", [{ id: "guides", parent_id: "root" }]);
+
+      expect(result.ok).toBe(false);
+      if (!result.ok) expect(result.code).toBe("VALIDATION_ERROR");
+      expect(batchMock).not.toHaveBeenCalled();
+    });
+
+    it("rejects the whole batch when any id is unknown", async () => {
+      const { rawDb, batchMock } = createRecordingRawDb();
+      const deps = createDeps(rawDb);
+      const service = new WikiService(createCategoryDb() as never, deps);
+
+      const result = await service.batchUpdateCategories("u1", [
+        { id: "guides", sort_order: 9 },
+        { id: "ghost", sort_order: 10 },
+      ]);
+
+      expect(result.ok).toBe(false);
+      if (!result.ok) expect(result.code).toBe("NOT_FOUND");
+      expect(batchMock).not.toHaveBeenCalled();
+    });
+
+    it("rejects a category that would become its own parent", async () => {
+      const { rawDb, batchMock } = createRecordingRawDb();
+      const service = new WikiService(createCategoryDb() as never, createDeps(rawDb));
+
+      const result = await service.batchUpdateCategories("u1", [{ id: "guides", parent_id: "guides" }]);
+
+      expect(result.ok).toBe(false);
+      if (!result.ok) expect(result.code).toBe("VALIDATION_ERROR");
+      expect(batchMock).not.toHaveBeenCalled();
+    });
+
+    it("rejects a parent that does not exist", async () => {
+      const { rawDb, batchMock } = createRecordingRawDb();
+      const service = new WikiService(createCategoryDb() as never, createDeps(rawDb));
+
+      const result = await service.batchUpdateCategories("u1", [{ id: "root", parent_id: "ghost" }]);
+
+      expect(result.ok).toBe(false);
+      if (!result.ok) expect(result.code).toBe("NOT_FOUND");
+      expect(batchMock).not.toHaveBeenCalled();
     });
   });
 });

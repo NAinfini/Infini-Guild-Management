@@ -1,7 +1,7 @@
 import { registerSchema } from "@guild/shared";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useMutation, useQuery } from "@tanstack/react-query";
-import { useNavigate, useParams } from "@tanstack/react-router";
+import { Link, useNavigate, useParams } from "@tanstack/react-router";
 import { ArrowLeftIcon, EyeIcon, EyeOffIcon, KeyboardIcon } from "@portal/components/icons";
 import { Alert, Anchor, Button, Loader, Paper, Stack, Text, TextInput, Title } from "@mantine/core";
 import { useDebouncedValue, useDisclosure } from "@mantine/hooks";
@@ -222,8 +222,9 @@ export function RegisterPage() {
               <Button onClick={submitInviteCode}>{t("button.continue")}</Button>
               <div className="login-page__back-link">
                 <Anchor
+                  component={Link}
+                  to="/login"
                   underline="hover"
-                  onClick={() => void navigate({ to: "/login" })}
                   className="login-page__back-anchor"
                 >
                   <ArrowLeftIcon size={14} />
@@ -239,22 +240,26 @@ export function RegisterPage() {
             <Stack align="center" gap="md">
               <Alert color="red" title={t("inviteInvalid")} w="100%" />
               <div className="login-page__back-link">
-                <Anchor
-                  underline="hover"
-                  onClick={() => {
-                    // A code typed here can just be retyped; one that came from
-                    // an invite link is part of the URL, so leave the page.
-                    if (params.inviteCode) {
-                      void navigate({ to: "/login" });
-                      return;
-                    }
-                    setTypedInviteCode("");
-                  }}
-                  className="login-page__back-anchor"
-                >
-                  <ArrowLeftIcon size={14} />
-                  {params.inviteCode ? t("button.backToLogin") : t("button.retryInviteCode")}
-                </Anchor>
+                {params.inviteCode ? (
+                  <Anchor
+                    component={Link}
+                    to="/login"
+                    underline="hover"
+                    className="login-page__back-anchor"
+                  >
+                    <ArrowLeftIcon size={14} />
+                    {t("button.backToLogin")}
+                  </Anchor>
+                ) : (
+                  <button
+                    type="button"
+                    className="login-page__back-anchor login-page__back-button"
+                    onClick={() => setTypedInviteCode("")}
+                  >
+                    <ArrowLeftIcon size={14} />
+                    {t("button.retryInviteCode")}
+                  </button>
+                )}
               </div>
             </Stack>
           ) : (
@@ -301,7 +306,7 @@ export function RegisterPage() {
                       value={passwordValue}
                       onChange={(event: React.ChangeEvent<HTMLInputElement>) => setValue("password", event.currentTarget.value)}
                       error={passwordError}
-                      classNames={{ root: "login-floating-root", input: "login-floating-input", label: "login-floating-label" }}
+                      classNames={{ root: "login-floating-root", input: "login-floating-input login-page__password-input", label: "login-floating-label" }}
                       autoComplete="new-password"
                     />
                     <div className="login-page__password-actions">
@@ -312,8 +317,8 @@ export function RegisterPage() {
                         type="button"
                         className="login-page__eye-btn"
                         onClick={showPasswordHandlers.toggle}
-                        tabIndex={-1}
                         aria-label={showPassword ? t("aria.hidePassword") : t("aria.showPassword")}
+                        aria-pressed={showPassword}
                       >
                         {showPassword ? <EyeOffIcon size={18} /> : <EyeIcon size={18} />}
                       </button>
@@ -332,7 +337,7 @@ export function RegisterPage() {
                       value={confirmPasswordValue}
                       onChange={(event: React.ChangeEvent<HTMLInputElement>) => setValue("confirmPassword", event.currentTarget.value)}
                       error={confirmPasswordError}
-                      classNames={{ root: "login-floating-root", input: "login-floating-input", label: "login-floating-label" }}
+                      classNames={{ root: "login-floating-root", input: "login-floating-input login-page__password-input", label: "login-floating-label" }}
                       autoComplete="new-password"
                     />
                     <div className="login-page__password-actions">
@@ -343,8 +348,8 @@ export function RegisterPage() {
                         type="button"
                         className="login-page__eye-btn"
                         onClick={showConfirmPasswordHandlers.toggle}
-                        tabIndex={-1}
-                        aria-label={showConfirmPassword ? t("aria.hidePassword") : t("aria.showPassword")}
+                        aria-label={showConfirmPassword ? t("aria.hideConfirmPassword") : t("aria.showConfirmPassword")}
+                        aria-pressed={showConfirmPassword}
                       >
                         {showConfirmPassword ? <EyeOffIcon size={18} /> : <EyeIcon size={18} />}
                       </button>
@@ -357,8 +362,9 @@ export function RegisterPage() {
 
                   <div className="login-page__back-link">
                     <Anchor
+                      component={Link}
+                      to="/login"
                       underline="hover"
-                      onClick={() => void navigate({ to: "/login" })}
                       className="login-page__back-anchor"
                     >
                       <ArrowLeftIcon size={14} />

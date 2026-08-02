@@ -6,8 +6,8 @@
 }
 
 /*
- * Type accent rail. It spans the whole card and paints only its left 4px so the
- * card's own border-radius clips the rail's ends: a plain 4px-wide box would
+ * Type accent rail. It spans the whole card and paints only its left 3px so the
+ * card's own border-radius clips the rail's ends: a plain 3px-wide box would
  * keep its square corners and stick out past the rounded card edge, which is
  * visible because `.event-card` turns clipping off (see `overflow: visible`).
  */
@@ -27,7 +27,7 @@
      守卫绑定——现在由 event-colors.test.ts 里的一条断言把两边钉在一起：
      往游戏配置加一个事件类型且这里漏加对应规则会直接测红，而不是让
      --event-card-accent 静默解析不出来（the final colour review I3）。 */
-  width: 4px;
+  width: 3px;
   right: auto;
   background: var(--event-card-accent);
   border-radius: var(--radius-surface) 0 0 var(--radius-surface);
@@ -89,10 +89,9 @@
   align-items: center;
   justify-content: space-between;
   gap: 10px;
-  padding: 11px 14px 9px 18px;
-  border-bottom: 1px solid color-mix(in srgb, var(--text-primary) 7%, transparent);
-  border-radius: calc(var(--radius-surface) - 1px) calc(var(--radius-surface) - 1px) 0 0;
-  background: color-mix(in srgb, var(--surface-base) 72%, transparent);
+  padding: var(--space-md) var(--space-md) 0 var(--space-lg);
+  border-radius: var(--radius-surface) var(--radius-surface) 0 0;
+  background: transparent;
 }
 
 .event-card__header-left {
@@ -114,7 +113,7 @@
 .event-card__header--poll,
 .event-card__header--raffle,
 .event-card__header--other {
-  background: color-mix(in srgb, var(--surface-base) 72%, transparent);
+  background: transparent;
 }
 
 .event-card__type-badge {
@@ -129,7 +128,7 @@
   align-items: center;
   gap: 4px;
   padding: 2px 8px;
-  border-radius: 999px;
+  border-radius: var(--shape-pill);
   font-size: 11px;
   font-weight: 700;
   font-variant-numeric: tabular-nums;
@@ -140,14 +139,9 @@
 }
 
 .event-card__menu-btn {
-  all: unset;
-  display: flex;
-  align-items: center;
-  justify-content: center;
   width: var(--control-icon-size-regular);
   height: var(--control-icon-size-regular);
-  border-radius: 6px;
-  cursor: pointer;
+  border-radius: var(--radius-control);
   color: color-mix(in srgb, var(--text-primary) 65%, transparent);
   flex-shrink: 0;
   transition: color 150ms ease, background 150ms ease;
@@ -159,7 +153,7 @@
 }
 
 .event-card__body {
-  padding: 12px 14px 14px 18px;
+  padding: var(--space-sm) var(--space-md) var(--space-md) var(--space-lg);
 }
 
 .event-card__title-row {
@@ -187,6 +181,7 @@
   overflow: hidden;
   line-height: 1.28;
   min-width: 0;
+  margin: 0;
 }
 
 .event-card__status-rail {
@@ -255,10 +250,7 @@
   align-items: flex-start;
   justify-content: space-between;
   gap: 8px;
-  padding: 8px 8px 10px;
-  border: 1px solid color-mix(in srgb, var(--text-primary) 7%, transparent);
-  border-radius: 8px;
-  background: color-mix(in srgb, var(--text-primary) 3%, transparent);
+  padding: var(--space-xs) 0;
 }
 
 .event-card__raffle-winners {
@@ -269,7 +261,7 @@
   gap: 8px;
   padding: 10px 8px 10px;
   border: 1px solid color-mix(in srgb, var(--mantine-color-pink-5) 22%, transparent);
-  border-radius: 8px;
+  border-radius: var(--radius-control);
   background: color-mix(in srgb, var(--mantine-color-pink-5) 6%, transparent);
 }
 
@@ -354,8 +346,8 @@
   width: var(--event-card-avatar-size);
   height: var(--event-card-avatar-size);
   flex: 0 0 var(--event-card-avatar-size);
-  border-radius: 999px;
-  font-size: clamp(10px, calc(var(--event-card-avatar-size) * 0.34), 12px);
+  border-radius: var(--shape-pill);
+  font-size: var(--text-micro);
   background: color-mix(in srgb, var(--text-primary) 6%, transparent);
 }
 

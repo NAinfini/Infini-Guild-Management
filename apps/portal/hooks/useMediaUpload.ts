@@ -14,10 +14,13 @@ type UploadFunction<TResult> = (files: File[], context: UploadContext) => Promis
 type UseMediaUploadOptions = {
   maxFiles?: number;
   maxFileSizeBytes?: number;
+  /*
+   * 转码不是可选项：image 一定转 WebP，audio 一定转 Opus，raw 一律原样上传。
+   * 原来这里还有 convertImagesToWebp / convertAudioToOpus 两个开关，没有任何
+   * 调用方传过 false——留着只是给「悄悄关掉转码」开了个口子。
+   */
   mediaType?: "image" | "audio" | "raw";
-  convertImagesToWebp?: boolean;
   imageWebpQuality?: number;
-  convertAudioToOpus?: boolean;
 };
 
 type UseMediaUploadState<TResult> = {
@@ -43,16 +46,14 @@ export function useMediaUpload<TResult>(
 ): UseMediaUploadState<TResult> {
   const maxFiles = options.maxFiles ?? 10;
   const mediaType = options.mediaType ?? "raw";
-  const convertImagesToWebp = options.convertImagesToWebp ?? true;
   const imageWebpQuality = options.imageWebpQuality ?? DEFAULT_IMAGE_WEBP_QUALITY;
-  const convertAudioToOpusEnabled = options.convertAudioToOpus ?? true;
   const supportError = useMemo(() => {
-    if (mediaType !== "audio" || !convertAudioToOpusEnabled) {
+    if (mediaType !== "audio") {
       return null;
     }
     const support = getAudioConversionSupport();
     return support.supported ? null : support.reason;
-  }, [convertAudioToOpusEnabled, mediaType]);
+  }, [mediaType]);
 
   const [files, setFiles] = useState<File[]>([]);
   const [isUploading, setIsUploading] = useState(false);
@@ -112,21 +113,15 @@ export function useMediaUpload<TResult>(
         setConversionProgress(Math.min(100, Math.round(offset + percent * scale)));
       };
 
-      const enabled = mediaType === "image" ? convertImagesToWebp : convertAudioToOpusEnabled;
-      if (enabled) {
-        // Single shared dispatcher, so this hook cannot drift from the mutation layer.
-        converted.push(await convertFileForUpload(file, {
-          imageQuality: imageWebpQuality,
-          onProgress: updateProgress,
-        }));
-        continue;
-      }
-      converted.push(file);
-      updateProgress(100);
+      // Single shared dispatcher, so this hook cannot drift from the mutation layer.
+      converted.push(await convertFileForUpload(file, {
+        imageQuality: imageWebpQuality,
+        onProgress: updateProgress,
+      }));
     }
     setConversionProgress(100);
     return converted;
-  }, [convertAudioToOpusEnabled, convertImagesToWebp, files, imageWebpQuality, mediaType]);
+  }, [files, imageWebpQuality, mediaType]);
 
   const upload = useCallback(async () => {
     if (files.length === 0) {

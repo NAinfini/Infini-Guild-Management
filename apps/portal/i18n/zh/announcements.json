@@ -48,6 +48,7 @@
   "status.archived": "已归档",
   "status.saved": "已保存",
   "status.unsaved": "未保存",
+  "status.notReady": "未就绪 — 请填写标题和正文",
   "section.publishing": "发布设置",
   "section.schedule": "定时",
   "section.actions": "操作",

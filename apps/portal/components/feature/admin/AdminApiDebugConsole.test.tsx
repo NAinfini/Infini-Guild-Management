@@ -27,16 +27,18 @@ const successLog: DebugLogEntry = {
   ranAt: "2026-07-28T12:00:00.000Z",
 };
 
-function renderConsole(logs: DebugLogEntry[]) {
+function renderConsole(logs: DebugLogEntry[], open = true) {
+  const onToggle = vi.fn();
   render(
     <MantineProvider>
-      <AdminApiDebugConsole logs={logs} onClear={vi.fn()} />
+      <AdminApiDebugConsole logs={logs} onClear={vi.fn()} open={open} onToggle={onToggle} />
     </MantineProvider>,
   );
+  return { onToggle };
 }
 
 describe("AdminApiDebugConsole", () => {
-  it("keeps filters, rows, and the run-all action at 44px minimum targets", () => {
+  it("keeps filters, rows, and both console actions at 44px minimum targets", () => {
     const css = readFileSync(
       resolve(
         process.cwd(),
@@ -46,14 +48,27 @@ describe("AdminApiDebugConsole", () => {
     ).replace(/\/\*[\s\S]*?\*\//g, "");
     const filterRule = css.match(/\.api-debug__filter-btn\s*\{([^}]+)\}/)?.[1];
     const rowRule = css.match(/\.api-debug__row-main\s*\{([^}]+)\}/)?.[1];
-    const runAllRule = css.match(
-      /\.api-console__header\s+\.api-console__run-all\s*\{([^}]+)\}/,
+    /* 运行和停止两个按钮共用同一条规则；停止按钮的 44px 此前是 TSX 里的 h={44}。 */
+    const consoleActionRule = css.match(
+      /\.api-console__header\s+\.api-console__run-all,\s*\.api-console__header\s+\.api-console__stop\s*\{([^}]+)\}/,
     )?.[1];
 
     expect(filterRule).toMatch(/min-width:\s*44px/);
     expect(filterRule).toMatch(/min-height:\s*44px/);
     expect(rowRule).toMatch(/min-height:\s*44px/);
-    expect(runAllRule).toMatch(/min-height:\s*44px/);
+    expect(consoleActionRule).toMatch(/min-height:\s*44px/);
+  });
+
+  it("hides its body behind a disclosure that reports the collapsed state", async () => {
+    const user = userEvent.setup();
+    const { onToggle } = renderConsole([successLog], false);
+
+    const disclosure = screen.getByRole("button", { name: /status\.api\.debugTitle/ });
+    expect(disclosure).toHaveAttribute("aria-expanded", "false");
+    expect(screen.getByText("/api/health"), "折起时内容仍在 DOM 里，只是不可见").not.toBeVisible();
+
+    await user.click(disclosure);
+    expect(onToggle).toHaveBeenCalledOnce();
   });
 
   it("exposes log details through a keyboard-operable disclosure", async () => {

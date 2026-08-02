@@ -1,4 +1,4 @@
-import type { CreateStorageTransactionPayload, StorageItem, User } from "@guild/shared";
+import { LIMITS, type CreateStorageTransactionPayload, type StorageItem, type User } from "@guild/shared";
 import {
   Badge,
   Button,
@@ -37,7 +37,9 @@ type StorageTransactionModalProps = {
 };
 
 function toNumber(value: number | string): number {
-  return typeof value === "number" ? value : Number.parseInt(String(value), 10);
+  if (typeof value === "number") return value;
+  const normalized = String(value).trim();
+  return normalized ? Number(normalized) : Number.NaN;
 }
 
 export function StorageTransactionModal({
@@ -66,9 +68,9 @@ export function StorageTransactionModal({
   const [note, setNote] = useState("");
   const initializedSessionRef = useRef<string | null>(null);
 
-  const selectedItem = items.find((item) => item.id === itemId)
-    ?? selectedItemSnapshot
-    ?? initialItem;
+  const selectedItem = itemId
+    ? items.find((item) => item.id === itemId) ?? selectedItemSnapshot
+    : null;
   const selectedUser = users.find(({ user }) => user.id === recipientUserId)?.user ?? null;
   const itemOptions = useMemo(
     () => items.map((item) => ({ value: item.id, label: `${item.name} (${item.quantity})` })),
@@ -79,8 +81,9 @@ export function StorageTransactionModal({
     [users],
   );
   const numericQuantity = toNumber(quantity);
-  const hasValidQuantity = Number.isFinite(numericQuantity);
+  const hasValidQuantity = Number.isInteger(numericQuantity);
   const safeQuantity = hasValidQuantity ? numericQuantity : 0;
+  const withinQuantityLimit = safeQuantity <= LIMITS.content.storageTransactionQuantity.max;
   const currentStock = selectedItem?.quantity ?? 0;
   const projectedStock = type === "adjust"
     ? safeQuantity
@@ -91,8 +94,11 @@ export function StorageTransactionModal({
       ? safeQuantity
       : -safeQuantity;
   const isPositiveChange = stockDelta >= 0;
-  const requiresRecipient = type !== "adjust";
-  const effectiveRecipientId = canManageStock ? recipientUserId : defaultRecipientUserId ?? null;
+  const showsRecipient = type !== "adjust";
+  const requiresRecipient = type === "distribute";
+  const effectiveRecipientId = canManageStock
+    ? selectedUser?.id ?? null
+    : defaultRecipientUserId ?? null;
   const exceedsStock = type === "distribute" && safeQuantity > currentStock;
   const noChange = type === "adjust" && stockDelta === 0;
   const memberOperationAllowed = canManageStock
@@ -102,6 +108,7 @@ export function StorageTransactionModal({
     && (!requiresRecipient || Boolean(effectiveRecipientId))
     && hasValidQuantity
     && safeQuantity >= (type === "adjust" ? 0 : 1)
+    && withinQuantityLimit
     && !exceedsStock
     && !noChange
     && memberOperationAllowed;
@@ -114,6 +121,15 @@ export function StorageTransactionModal({
     : type === "distribute"
       ? t("action.withdraw")
       : t("tx.adjust");
+  const quantityError = !hasValidQuantity
+    ? t("validation.quantityInteger")
+    : !withinQuantityLimit
+      ? t("validation.quantityLimit")
+      : exceedsStock
+        ? t("validation.insufficientStock")
+        : noChange
+          ? t("validation.noStockChange")
+          : null;
 
   const sessionKey = opened
     ? `${initialItem?.id ?? "manual"}:${initialMode}:${canManageStock ? "manager" : "member"}`
@@ -127,30 +143,14 @@ export function StorageTransactionModal({
     if (initializedSessionRef.current === sessionKey) return;
     initializedSessionRef.current = sessionKey;
     const nextType = canManageStock ? initialMode : initialMode === "adjust" ? "intake" : initialMode;
-    const nextItem = initialItem ?? items[0] ?? null;
+    const nextItem = initialItem;
     setItemId(nextItem?.id ?? null);
     setSelectedItemSnapshot(nextItem);
-    setRecipientUserId(
-      users.some(({ user }) => user.id === defaultRecipientUserId)
-        ? defaultRecipientUserId ?? null
-        : users[0]?.user.id ?? defaultRecipientUserId ?? null,
-    );
+    setRecipientUserId(null);
     setType(nextType);
     setQuantity(nextType === "adjust" ? nextItem?.quantity ?? 0 : 1);
     setNote("");
-  }, [canManageStock, defaultRecipientUserId, initialItem, initialMode, items, sessionKey, users]);
-
-  useEffect(() => {
-    if (!opened || itemId || !items[0]) return;
-    setItemId(items[0].id);
-    setSelectedItemSnapshot(items[0]);
-    if (type === "adjust") setQuantity(items[0].quantity);
-  }, [itemId, items, opened, type]);
-
-  useEffect(() => {
-    if (!opened || recipientUserId || !users[0]) return;
-    setRecipientUserId(users[0].user.id);
-  }, [opened, recipientUserId, users]);
+  }, [canManageStock, initialItem, initialMode, sessionKey]);
 
   const handleTypeChange = (value: string) => {
     const nextType = value as TransactionMode;
@@ -188,8 +188,13 @@ export function StorageTransactionModal({
             ? `${actionTitle}: ${selectedItem.name}`
             : actionTitle
       }
-      size={canManageStock ? 440 : 340}
-      centered={!canManageStock}
+      size={canManageStock ? 520 : 420}
+      centered
+      styles={{
+        inner: { paddingInline: "var(--space-sm)" },
+        content: { maxWidth: "calc(100vw - 16px)" },
+        body: { minWidth: 0 },
+      }}
       classNames={{
         content: `storage-modal-content ${canManageStock ? "storage-admin-transaction-shell" : "storage-transaction-shell"}`,
         header: "storage-modal-header",
@@ -198,6 +203,7 @@ export function StorageTransactionModal({
     >
       <Stack
         gap="md"
+        style={{ minWidth: 0, maxWidth: "100%" }}
         className={`storage-transaction-modal ${canManageStock ? "storage-transaction-modal--admin" : "storage-transaction-modal--simple"} ${type === "adjust" ? "storage-transaction-modal--adjust" : ""}`}
       >
         {canManageStock ? (
@@ -205,6 +211,14 @@ export function StorageTransactionModal({
             <Text size="sm" fw={700}>{t("field.type")}</Text>
             <SegmentedControl
               fullWidth
+              styles={{
+                label: {
+                  minHeight: 44,
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                },
+              }}
               data={[
                 { value: "intake", label: t("tx.intake") },
                 { value: "distribute", label: t("tx.distribute") },
@@ -216,29 +230,39 @@ export function StorageTransactionModal({
           </div>
         ) : null}
 
-        <div className={`storage-transaction-modal__summary ${toneClass} ${type === "adjust" ? "storage-transaction-modal__summary--adjust" : ""}`}>
-          <div className="storage-transaction-modal__item-line">
-            <Text fw={900} lineClamp={1}>{selectedItem?.name ?? t("field.item")}</Text>
-            <Badge variant="light" color={toneColor}>
-              {stockDelta > 0 ? "+" : ""}{stockDelta}
-            </Badge>
-          </div>
-          <div className="storage-transaction-flow">
-            <div>
-              <Text size="xs" c="dimmed">{t("field.currentStock")}</Text>
-              <Text fw={900} className="storage-transaction-flow__value">{currentStock}</Text>
+        {selectedItem ? (
+          <div
+            className={`storage-transaction-modal__summary ${toneClass} ${type === "adjust" ? "storage-transaction-modal__summary--adjust" : ""}`}
+            style={{ minWidth: 0 }}
+          >
+            <div className="storage-transaction-modal__item-line">
+              <Text fw={900} lineClamp={1}>{selectedItem.name}</Text>
+              <Badge variant="light" color={toneColor}>
+                {stockDelta > 0 ? "+" : ""}{stockDelta}
+              </Badge>
             </div>
-            <span className={`storage-transaction-flow__arrow ${isPositiveChange ? "storage-transaction-flow__arrow--deposit" : "storage-transaction-flow__arrow--withdraw"}`}>
-              <ArrowRightIcon size={18} />
-            </span>
-            <div>
-              <Text size="xs" c="dimmed">{t("field.stockAfter")}</Text>
-              <Text fw={900} className="storage-transaction-flow__value">{projectedStock}</Text>
+            <div className="storage-transaction-flow">
+              <div>
+                <Text size="xs" c="dimmed">{t("field.currentStock")}</Text>
+                <Text fw={900} className="storage-transaction-flow__value">{currentStock}</Text>
+              </div>
+              <span className={`storage-transaction-flow__arrow ${isPositiveChange ? "storage-transaction-flow__arrow--deposit" : "storage-transaction-flow__arrow--withdraw"}`}>
+                <ArrowRightIcon size={18} />
+              </span>
+              <div>
+                <Text size="xs" c="dimmed">{t("field.stockAfter")}</Text>
+                <Text fw={900} className="storage-transaction-flow__value">{projectedStock}</Text>
+              </div>
             </div>
           </div>
-        </div>
+        ) : (
+          <Text size="sm" c="dimmed">{t("adminEntry.chooseItemHint")}</Text>
+        )}
 
-        <div className={`storage-admin-transaction-grid ${type === "adjust" ? "storage-admin-transaction-grid--adjust" : ""}`}>
+        <div
+          className={`storage-admin-transaction-grid ${type === "adjust" ? "storage-admin-transaction-grid--adjust" : ""}`}
+          style={{ minWidth: 0 }}
+        >
           {canManageStock ? (
             <Stack gap={6}>
               <Select
@@ -258,6 +282,7 @@ export function StorageTransactionModal({
                 searchValue={itemSearch}
                 onSearchChange={onItemSearchChange}
                 nothingFoundMessage={t("empty.noItems")}
+                styles={{ input: { minHeight: 44 } }}
               />
               {itemsHasMore ? (
                 <Button
@@ -265,29 +290,39 @@ export function StorageTransactionModal({
                   variant="subtle"
                   loading={itemsLoadingMore}
                   onClick={onLoadMoreItems}
+                  style={{ minHeight: 44 }}
                 >
                   {t("action.loadMore")}
                 </Button>
               ) : null}
             </Stack>
           ) : null}
-          {canManageStock && requiresRecipient ? (
+          {canManageStock && showsRecipient ? (
             <Select
-              label={t("field.member")}
+              label={type === "intake" ? t("field.memberOptional") : t("field.member")}
               data={userOptions}
               value={recipientUserId}
               onChange={setRecipientUserId}
               searchable
               nothingFoundMessage={t("empty.noUsers")}
+              styles={{ input: { minHeight: 44 } }}
             />
           ) : null}
           <NumberInput
-            hideControls
             label={type === "adjust" ? t("field.targetStock") : t("field.quantity")}
             min={type === "adjust" ? 0 : 1}
-            max={type === "distribute" ? selectedItem?.quantity : undefined}
+            max={
+              type === "distribute" && selectedItem
+                ? Math.min(
+                    selectedItem.quantity,
+                    LIMITS.content.storageTransactionQuantity.max,
+                  )
+                : LIMITS.content.storageTransactionQuantity.max
+            }
             value={quantity}
             onChange={setQuantity}
+            error={quantityError}
+            styles={{ input: { minHeight: 44 } }}
           />
         </div>
 
@@ -316,8 +351,16 @@ export function StorageTransactionModal({
           onChange={(event) => setNote(event.currentTarget.value)}
         />
         <Group justify="flex-end" className="storage-transaction-modal__actions">
-          <Button variant="default" onClick={onClose}>{t("common:action.cancel")}</Button>
-          <Button color={toneColor} onClick={handleSubmit} loading={isSaving} disabled={!canSubmit}>
+          <Button variant="default" onClick={onClose} style={{ minHeight: 44 }}>
+            {t("common:action.cancel")}
+          </Button>
+          <Button
+            color={toneColor}
+            onClick={handleSubmit}
+            loading={isSaving}
+            disabled={!canSubmit}
+            style={{ minHeight: 44 }}
+          >
             {canManageStock
               ? t("action.submit")
               : type === "intake"

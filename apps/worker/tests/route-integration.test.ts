@@ -437,10 +437,16 @@ describe("API request body limits", () => {
     expect(getApiRequestBodyLimit("/api/gallery/images")).toBe(32 * 1024 * 1024);
     expect(getApiRequestBodyLimit("/api/announcements/images/stage")).toBe(32 * 1024 * 1024);
     expect(getApiRequestBodyLimit("/api/events")).toBe(32 * 1024 * 1024);
-    expect(getApiRequestBodyLimit("/api/game-data")).toBe(32 * 1024 * 1024);
+    expect(getApiRequestBodyLimit("/api/classes/class-1/icon")).toBe(32 * 1024 * 1024);
     expect(getApiRequestBodyLimit("/api/users/user-1/media/avatar")).toBe(32 * 1024 * 1024);
     expect(getApiRequestBodyLimit("/api/auth/login")).toBe(1024 * 1024);
     expect(getApiRequestBodyLimit("/api/not-real/gallery/images")).toBe(1024 * 1024);
+  });
+
+  it("does not expose the removed game data API", async () => {
+    const res = await appRequest("/api/game-data");
+
+    expect(res.status).toBe(404);
   });
 });
 
@@ -518,7 +524,6 @@ describe("Guest read API access", () => {
       gallery: true,
       wiki: true,
       tools: true,
-      equipmentCalc: true,
       storage: true,
     });
 

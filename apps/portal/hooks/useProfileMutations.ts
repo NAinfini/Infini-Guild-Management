@@ -3,7 +3,7 @@ import { useNavigate } from "@tanstack/react-router";
 import { useTranslation } from "react-i18next";
 import { useAppError } from "./useAppError";
 import type { UseMediaUploadState } from "./useMediaUpload";
-import type { ProfileFormStateController } from "./useProfileFormState";
+import type { ProfileDraftSnapshot, ProfileFormStateController } from "./useProfileFormState";
 import { queryKeys } from "../api/query-keys";
 import { logout as requestLogout } from "../services/AuthService";
 import {
@@ -34,18 +34,31 @@ export function useProfileMutations({ form, imageUploader, audioUploader }: UseP
   const saveProfileMutation = useMutation({
     mutationFn: async () => {
       if (!user) throw new Error("Missing user session");
-      return updateMyProfile(user.id, {
-        bio: form.bio || null,
-        title_html: form.titleHtml || null,
+      /* 连同这次送出去的草稿快照一起回传：服务端会规范化字段（称号 HTML 要过
+         白名单清洗），acceptServerProfile 靠它区分「该校准」和「用户刚改过、
+         不能覆盖」的字段。 */
+      const submitted: ProfileDraftSnapshot = {
+        bio: form.bio,
+        titleHtml: form.titleHtml,
         power: form.power,
-        classes: form.classList,
-        video_urls: form.videoList,
-        images: form.imageList,
-        availability: form.availabilityData,
+        classList: form.classList,
+        videoList: form.videoList,
+        imageList: form.imageList,
+        availabilityData: form.availabilityData,
+      };
+      const profile = await updateMyProfile(user.id, {
+        bio: submitted.bio || null,
+        title_html: submitted.titleHtml || null,
+        power: submitted.power,
+        classes: submitted.classList,
+        video_urls: submitted.videoList,
+        images: submitted.imageList,
+        availability: submitted.availabilityData,
       });
+      return { profile, submitted };
     },
-    onSuccess: async (updatedProfile) => {
-      form.acceptServerProfile(updatedProfile);
+    onSuccess: async ({ profile: updatedProfile, submitted }) => {
+      form.acceptServerProfile(updatedProfile, submitted);
       setProfile(updatedProfile);
       await queryClient.invalidateQueries({ queryKey: queryKeys.myProfile.detail(user?.id) });
       await queryClient.invalidateQueries({ queryKey: queryKeys.users.all });

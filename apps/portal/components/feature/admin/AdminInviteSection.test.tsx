@@ -3,8 +3,18 @@ import type { InviteLink } from "@guild/shared";
 import { MantineProvider } from "@mantine/core";
 import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { AdminInviteSection } from "./AdminInviteSection";
+
+const responsive = vi.hoisted(() => ({ compact: false }));
+
+vi.mock("@mantine/hooks", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@mantine/hooks")>();
+  return {
+    ...actual,
+    useMediaQuery: () => responsive.compact,
+  };
+});
 
 vi.mock("react-i18next", () => ({
   useTranslation: () => ({
@@ -27,6 +37,15 @@ const revokedInvite: InviteLink = {
   expires_at: null,
   created_at: "2026-07-28T00:00:00.000Z",
   revoked_at: "2026-07-28T01:00:00.000Z",
+};
+
+const activeInvite: InviteLink = {
+  ...revokedInvite,
+  id: "invite-2",
+  code: "ACTIVE",
+  used_count: 2,
+  expires_at: "2026-08-28T00:00:00.000Z",
+  revoked_at: null,
 };
 
 function renderSection(
@@ -70,6 +89,10 @@ function getToolbarCreateButton() {
 }
 
 describe("AdminInviteSection", () => {
+  beforeEach(() => {
+    responsive.compact = false;
+  });
+
   it("shows invite status to administrators", () => {
     renderSection();
 
@@ -82,15 +105,22 @@ describe("AdminInviteSection", () => {
     renderSection();
 
     const copyButton = screen.getByRole("button", { name: "invite.copy" });
-    const revokeButton = screen.getByRole("button", { name: "invite.revoke" });
 
     expect(copyButton).toBeDisabled();
     expect(copyButton.parentElement).toHaveAttribute("data-disabled-tooltip-target");
-    expect(revokeButton).toBeDisabled();
-    expect(revokeButton.parentElement).toHaveAttribute("data-disabled-tooltip-target");
 
     await user.hover(copyButton.parentElement!);
     expect(await screen.findByText("invite.tooltip.revoked")).toBeInTheDocument();
+
+    // 撤销/删除收进了行尾的 ⋮ 菜单，置灰的撤销项同样要带上原因。
+    fireEvent.click(screen.getByRole("button", { name: "invite.table.actions" }));
+    /* hidden: true 的理由同 AvailabilityEditor.test.tsx：jsdom 没有布局，
+       floating-ui 的 hide 中间件会异步给已打开的浮层盖上 display: none。 */
+    const dropdown = await screen.findByRole("menu", { hidden: true });
+    const revokeItem = within(dropdown).getByText("invite.revoke").closest("button")!;
+
+    expect(revokeItem).toBeDisabled();
+    expect(revokeItem.parentElement).toHaveAttribute("data-disabled-tooltip-target");
   });
 
   it("resets the create form every time the modal opens", async () => {
@@ -150,5 +180,30 @@ describe("AdminInviteSection", () => {
     await user.click(screen.getByRole("button", { name: "invite.loadMore" }));
 
     expect(onLoadMoreInvites).toHaveBeenCalledOnce();
+  });
+
+  it("uses a complete, keyboard-reachable invite card at compact widths", () => {
+    responsive.compact = true;
+    renderSection({
+      inviteVisibility: "active",
+      inviteRows: [activeInvite],
+      isInviteInactive: () => false,
+    });
+
+    expect(screen.queryByRole("table")).not.toBeInTheDocument();
+    const card = screen.getByRole("article", { name: "invite.cardAria" });
+    expect(within(card).getByText("ACTIVE")).toBeInTheDocument();
+    expect(within(card).getByText("2/5")).toBeInTheDocument();
+    expect(within(card).getByText("invite.status.active")).toBeInTheDocument();
+    expect(within(card).getByText("invite.table.expires")).toBeInTheDocument();
+    expect(within(card).getByText("invite.table.created")).toBeInTheDocument();
+    expect(card.querySelectorAll("time")).toHaveLength(2);
+
+    const copyButton = within(card).getByRole("button", { name: "invite.copy" });
+    expect(copyButton).toBeEnabled();
+    expect(within(card).getByRole("button", { name: "invite.revoke" })).toBeEnabled();
+    expect(within(card).getByRole("button", { name: "invite.delete" })).toBeEnabled();
+    copyButton.focus();
+    expect(copyButton).toHaveFocus();
   });
 });

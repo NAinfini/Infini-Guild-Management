@@ -16,6 +16,8 @@ const controller = vi.hoisted(() => ({
   handleCloseEditor: vi.fn(),
   setSelectedId: vi.fn(async () => true),
   selectedId: "announcement-1" as string | null,
+  isCreating: false,
+  isPublishReady: true,
   rows: [],
   listQuery: { isError: false, isLoading: false },
   detailQuery: { isError: false, isLoading: false },
@@ -50,13 +52,18 @@ vi.mock("../feature/announcements/AnnouncementListCard", () => ({
   AnnouncementListCard: ({
     emptyText,
     onSelect,
+    selectedId,
   }: {
     emptyText: ReactNode;
     onSelect: (id: string) => void;
+    selectedId: string | null;
   }) => (
     <div data-testid="announcement-list">
       {emptyText}
       <button type="button" onClick={() => onSelect("announcement-2")}>open announcement</button>
+      {selectedId ? (
+        <button type="button" onClick={() => onSelect(selectedId)}>open selected announcement</button>
+      ) : null}
     </div>
   ),
 }));
@@ -76,7 +83,7 @@ vi.mock("react-i18next", () => ({
 }));
 
 function renderPage() {
-  render(
+  return render(
     <MantineProvider>
       <AnnouncementsPage />
     </MantineProvider>,
@@ -95,6 +102,9 @@ describe("AnnouncementsPage empty state", () => {
     controller.handleCloseEditor.mockReset();
     controller.setSelectedId.mockReset();
     controller.setSelectedId.mockResolvedValue(true);
+    controller.selectedId = "announcement-1";
+    controller.isCreating = false;
+    controller.detailQuery.isLoading = false;
     responsive.mobile = false;
   });
 
@@ -157,5 +167,26 @@ describe("AnnouncementsPage empty state", () => {
       expect(screen.getByTestId("announcement-list")).toBeInTheDocument();
     });
     expect(controller.handleCloseEditor).toHaveBeenCalledOnce();
+  });
+
+  it("opens a preselected announcement on the first mobile click without restarting selection", () => {
+    responsive.mobile = true;
+    controller.detailQuery.isLoading = true;
+    const page = renderPage();
+
+    fireEvent.click(screen.getByRole("button", { name: "open selected announcement" }));
+
+    expect(screen.getByTestId("announcement-detail")).toBeInTheDocument();
+    expect(screen.queryByTestId("announcement-list")).not.toBeInTheDocument();
+    expect(controller.setSelectedId).not.toHaveBeenCalled();
+
+    controller.detailQuery.isLoading = false;
+    page.rerender(
+      <MantineProvider>
+        <AnnouncementsPage />
+      </MantineProvider>,
+    );
+    expect(screen.getByTestId("announcement-detail")).toBeInTheDocument();
+    expect(screen.queryByTestId("announcement-list")).not.toBeInTheDocument();
   });
 });

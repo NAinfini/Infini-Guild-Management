@@ -4,18 +4,20 @@ import {
   Badge,
   Card,
   Group,
-  HoverCard,
+  Menu,
   Paper,
   Stack,
   Text,
   TextInput,
-  ThemeIcon,
+  Tooltip,
+  UnstyledButton,
 } from "@mantine/core";
 import {
   BoltIcon,
   ChevronDownIcon,
   ChevronUpIcon,
   CopyIcon,
+  DotsIcon,
   LockIcon,
   ShieldIcon,
   TrashIcon,
@@ -26,11 +28,16 @@ import {
 import { memo, useCallback, useMemo, useRef, useState } from "react";
 import type {
   CSSProperties,
-  MouseEvent,
   PointerEvent as ReactPointerEvent,
   ReactNode,
 } from "react";
 import { useTranslation } from "react-i18next";
+import { ClassIcon } from "@portal/components/shared/ClassIcon";
+import {
+  resolveClassCatalogItem,
+  type ResolvedClassCatalogItem,
+  useClassCatalogStore,
+} from "@portal/stores/class-catalog";
 
 export type DragMemberItem = {
   itemId: string;
@@ -63,13 +70,11 @@ type DraggableMemberCardProps = {
   domId: string;
   username: string;
   power: number;
-  class: string;
-  disabled: boolean;
-  selected: boolean;
+  classItem: ResolvedClassCatalogItem;
+  dragDisabled: boolean;
   isMatched: boolean;
   isAbsent: boolean;
   userId: string;
-  onSelectMember: (userId: string, event: MouseEvent<HTMLButtonElement>) => void;
   onOpenMember?: (userId: string) => void;
 };
 
@@ -78,26 +83,20 @@ const DraggableMemberCard = memo(function DraggableMemberCard({
   domId,
   username,
   power,
-  class: memberClass,
-  disabled,
-  selected,
+  classItem,
+  dragDisabled,
   isMatched,
   isAbsent,
   userId,
-  onSelectMember,
   onOpenMember,
 }: DraggableMemberCardProps) {
   const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
     id: itemId,
-    disabled,
+    disabled: dragDisabled,
   });
   const { t } = useTranslation("guild-war");
   const [holding, setHolding] = useState(false);
   const holdTimerRef = useRef<number | null>(null);
-
-  const handleSelect = useCallback((event: MouseEvent<HTMLButtonElement>) => {
-    onSelectMember(userId, event);
-  }, [onSelectMember, userId]);
 
   const handleOpen = useCallback(() => {
     onOpenMember?.(userId);
@@ -112,7 +111,7 @@ const DraggableMemberCard = memo(function DraggableMemberCard({
   }, []);
 
   const handlePointerDown = useCallback((event: ReactPointerEvent<HTMLButtonElement>) => {
-    if (disabled) {
+    if (dragDisabled) {
       return;
     }
     setHolding(true);
@@ -123,16 +122,16 @@ const DraggableMemberCard = memo(function DraggableMemberCard({
     if (dndHandler) {
       (dndHandler as (nextEvent: unknown) => void)(event);
     }
-  }, [disabled, listeners]);
+  }, [dragDisabled, listeners]);
 
   const style: CSSProperties = isDragging
     ? { opacity: 0, pointerEvents: "none" }
     : {};
+  const interactionDisabled = dragDisabled && !onOpenMember;
   const classNames = [
     "guild-war-member-card",
-    disabled ? "guild-war-member-card--disabled" : "",
-    selected ? "guild-war-member-card--selected" : "",
-    !selected && isMatched ? "guild-war-member-card--matched" : "",
+    interactionDisabled ? "guild-war-member-card--disabled" : "",
+    isMatched ? "guild-war-member-card--matched" : "",
     holding && !isDragging ? "guild-war-member-card--holding" : "",
   ]
     .filter(Boolean)
@@ -145,12 +144,14 @@ const DraggableMemberCard = memo(function DraggableMemberCard({
       ref={setNodeRef}
       style={style}
       className={classNames}
-      onClick={handleSelect}
-      onDoubleClick={onOpenMember ? handleOpen : undefined}
-      aria-label={t("active.aria.selectMember", { username })}
-      disabled={disabled}
-      {...attributes}
-      {...listeners}
+      onClick={onOpenMember ? handleOpen : undefined}
+      aria-label={t(
+        onOpenMember ? "active.aria.openMember" : "active.aria.dragMember",
+        { username },
+      )}
+      disabled={interactionDisabled}
+      {...(dragDisabled ? {} : attributes)}
+      {...(dragDisabled ? {} : listeners)}
       onPointerDown={handlePointerDown}
       onPointerUp={clearHold}
       onPointerCancel={clearHold}
@@ -167,24 +168,35 @@ const DraggableMemberCard = memo(function DraggableMemberCard({
           ) : null}
         </Group>
         <Group gap={8} wrap="nowrap">
-          <Text c="dimmed" size="xs">{memberClass}</Text>
-          <Text c="dimmed" size="xs">
-            <BoltIcon size={12} style={{ display: "inline-block", verticalAlign: "-1px" }} /> {power}
-          </Text>
+          <ClassIdentity item={classItem} />
+          <Group gap={4} wrap="nowrap">
+            <BoltIcon size={12} aria-hidden="true" />
+            <Text component="span" c="dimmed" size="xs">{power}</Text>
+          </Group>
         </Group>
       </Stack>
     </button>
   );
 });
 
+function ClassIdentity({ item }: { item: ResolvedClassCatalogItem }) {
+  return (
+    <span
+      className="guild-war-class-identity"
+      style={{ "--class-color": item.color } as CSSProperties}
+    >
+      <ClassIcon item={item} size={18} />
+      <span className="guild-war-class-identity__label">{item.label}</span>
+    </span>
+  );
+}
+
 type DroppableMemberColumnProps = {
   column: DragMemberColumn;
   canDrag: boolean;
   statusContent?: ReactNode;
-  selectedUserIds: Set<string>;
   activeSearch: string;
   toMemberDomId: (itemId: string) => string;
-  onSelectMember: (userId: string, event: MouseEvent<HTMLButtonElement>) => void;
   onOpenMember?: (userId: string) => void;
   onCopyTeamMentions?: (containerId: string) => void;
   onToggleLock?: (containerId: string) => void;
@@ -203,10 +215,8 @@ export function DroppableMemberColumn({
   column,
   canDrag,
   statusContent,
-  selectedUserIds,
   activeSearch,
   toMemberDomId,
-  onSelectMember,
   onOpenMember,
   onCopyTeamMentions,
   onToggleLock,
@@ -224,6 +234,7 @@ export function DroppableMemberColumn({
     id: `container:${column.containerId}`,
   });
   const { t } = useTranslation("guild-war");
+  const classCatalog = useClassCatalogStore((state) => state.items);
   const isPoolColumn = column.containerId === "pool";
   const isTeamColumn = !isPoolColumn;
   const [isEditingName, setIsEditingName] = useState(false);
@@ -237,11 +248,15 @@ export function DroppableMemberColumn({
     return [...column.members].sort((a, b) => {
       let cmp = 0;
       if (sortBy === "username") cmp = a.username.localeCompare(b.username);
-      else if (sortBy === "class") cmp = a.class.localeCompare(b.class);
+      else if (sortBy === "class") {
+        cmp = resolveClassCatalogItem(a.class, classCatalog).label.localeCompare(
+          resolveClassCatalogItem(b.class, classCatalog).label,
+        );
+      }
       else if (sortBy === "power") cmp = a.power - b.power;
       return sortDir === "asc" ? cmp : -cmp;
     });
-  }, [column.members, sortBy, sortDir]);
+  }, [classCatalog, column.members, sortBy, sortDir]);
 
   const toggleSort = (field: "username" | "class" | "power") => {
     if (sortBy === field) {
@@ -280,129 +295,131 @@ export function DroppableMemberColumn({
                   aria-label={t("active.aria.teamName", { teamName: column.title })}
                   styles={{ input: { fontWeight: 600, fontSize: 14, padding: "0 6px", height: 24, minHeight: 24 } }}
                 />
-              ) : (
-                <Text
-                  size="sm"
-                  fw={600}
-                  truncate
-                  style={isTeamColumn && onDraftNameChange ? { cursor: "text" } : undefined}
-                  onClick={isTeamColumn && onDraftNameChange ? () => setIsEditingName(true) : undefined}
+              ) : isTeamColumn && onDraftNameChange ? (
+                <UnstyledButton
+                  className="guild-war-team-name-trigger"
+                  onClick={() => setIsEditingName(true)}
+                  aria-label={t("active.aria.editTeamName", { teamName: column.title })}
                 >
+                  <Text size="sm" fw={600} truncate>
+                    {column.title}
+                  </Text>
+                </UnstyledButton>
+              ) : (
+                <Text size="sm" fw={600} truncate>
                   {column.title}
                 </Text>
               )}
               <Badge size="sm" variant="default">{column.members.length}</Badge>
               {column.locked ? (
-                <GuildWarColumnActionCard
-                  label={<Badge color="red" size="sm" style={{ cursor: "default" }}>{t("active.locked")}</Badge>}
-                  icon={<LockIcon size={16} />}
-                  iconColor="red"
-                  title={t("hovercard.lockedBadge.title")}
-                  description={t("hovercard.lockedBadge.desc")}
-                />
+                <Badge color="red" size="sm">{t("active.locked")}</Badge>
               ) : null}
             </Group>
             <Group
               gap={4}
               justify="flex-end"
-              wrap="wrap"
+              wrap="nowrap"
+              className="guild-war-column-actions"
             >
               {isTeamColumn && onToggleLock ? (
-                <GuildWarColumnActionCard
-                  label={(
-                    <ActionIcon
-                      size="sm"
-                      variant={isLocked ? "filled" : "subtle"}
-                      color={isLocked ? "red" : undefined}
-                      onClick={() => onToggleLock(column.containerId)}
-                      aria-label={isLocked ? t("active.teamSetup.locked") : t("active.teamSetup.open")}
-                    >
-                      {isLocked ? <LockIcon size={14} /> : <UnlockIcon size={14} />}
-                    </ActionIcon>
-                  )}
-                  icon={isLocked ? <LockIcon size={16} /> : <UnlockIcon size={16} />}
-                  iconColor={isLocked ? "red" : "green"}
-                  title={isLocked ? t("hovercard.lock.title") : t("hovercard.unlock.title")}
-                  description={isLocked ? t("hovercard.lock.desc") : t("hovercard.unlock.desc")}
-                />
-              ) : null}
-              {isTeamColumn && onMoveTeam ? (
-                <>
-                  <GuildWarColumnActionCard
-                    label={(
-                      <ActionIcon
-                        size="sm"
-                        variant="subtle"
-                        onClick={() => onMoveTeam(column.containerId, "up")}
-                        disabled={teamIndex === 0}
-                        aria-label={t("active.teamSetup.moveUp")}
-                      >
-                        <ChevronUpIcon size={14} />
-                      </ActionIcon>
-                    )}
-                    icon={<ChevronUpIcon size={16} />}
-                    title={t("hovercard.moveUp.title")}
-                    description={t("hovercard.moveUp.desc")}
-                  />
-                  <GuildWarColumnActionCard
-                    label={(
-                      <ActionIcon
-                        size="sm"
-                        variant="subtle"
-                        onClick={() => onMoveTeam(column.containerId, "down")}
-                        disabled={teamIndex === (teamCount ?? 1) - 1}
-                        aria-label={t("active.teamSetup.moveDown")}
-                      >
-                        <ChevronDownIcon size={14} />
-                      </ActionIcon>
-                    )}
-                    icon={<ChevronDownIcon size={16} />}
-                    title={t("hovercard.moveDown.title")}
-                    description={t("hovercard.moveDown.desc")}
-                  />
-                </>
+                <Tooltip label={isLocked ? t("hovercard.unlock.title") : t("hovercard.lock.title")}>
+                  <ActionIcon
+                    size={44}
+                    variant={isLocked ? "light" : "subtle"}
+                    color={isLocked ? "red" : undefined}
+                    onClick={() => onToggleLock(column.containerId)}
+                    aria-label={isLocked ? t("active.teamSetup.locked") : t("active.teamSetup.open")}
+                  >
+                    {isLocked ? <LockIcon size={16} /> : <UnlockIcon size={16} />}
+                  </ActionIcon>
+                </Tooltip>
               ) : null}
               {isTeamColumn && onCopyTeamMentions ? (
-                <GuildWarColumnActionCard
-                  label={(
-                    <ActionIcon size="sm" variant="subtle" onClick={() => onCopyTeamMentions(column.containerId)} aria-label={t("active.teamCopied")}>
-                      <CopyIcon size={14} />
-                    </ActionIcon>
-                  )}
-                  icon={<CopyIcon size={16} />}
-                  title={t("hovercard.copyTeam.title")}
-                  description={t("hovercard.copyTeam.desc")}
-                />
-              ) : null}
-              {isTeamColumn && onDeleteTeam ? (
-                <GuildWarColumnActionCard
-                  label={(
-                    <ActionIcon size="sm" variant="subtle" color="red" onClick={() => onDeleteTeam(column.containerId)} aria-label={t("menu.team.delete")}>
-                      <TrashIcon size={14} />
-                    </ActionIcon>
-                  )}
-                  icon={<TrashIcon size={16} />}
-                  iconColor="red"
-                  title={t("hovercard.deleteTeam.title")}
-                  description={t("hovercard.deleteTeam.desc")}
-                />
+                <Tooltip label={t("hovercard.copyTeam.title")}>
+                  <ActionIcon
+                    size={44}
+                    variant="subtle"
+                    onClick={() => onCopyTeamMentions(column.containerId)}
+                    aria-label={t("active.teamCopied")}
+                  >
+                    <CopyIcon size={16} />
+                  </ActionIcon>
+                </Tooltip>
               ) : null}
               {isPoolColumn && onAddToPool ? (
-                <GuildWarColumnActionCard
-                  label={(
-                    <ActionIcon size="sm" variant="subtle" onClick={onAddToPool} aria-label={t("active.addToPool")}>
-                      <UserPlusIcon size={14} />
-                    </ActionIcon>
-                  )}
-                  icon={<UserPlusIcon size={16} />}
-                  iconColor="teal"
-                  title={t("hovercard.addToPool.title")}
-                  description={t("hovercard.addToPool.desc")}
-                />
+                <Tooltip label={t("hovercard.addToPool.title")}>
+                  <ActionIcon size={44} variant="subtle" onClick={onAddToPool} aria-label={t("active.addToPool")}>
+                    <UserPlusIcon size={16} />
+                  </ActionIcon>
+                </Tooltip>
               ) : null}
-              <SortAction active={sortBy === "username"} onClick={() => toggleSort("username")} ariaLabel={t("active.sort.username")} icon={<UserIcon size={14} />} hoverIcon={<UserIcon size={16} />} title={t("hovercard.sortUsername.title")} description={t("hovercard.sortUsername.desc")} />
-              <SortAction active={sortBy === "class"} onClick={() => toggleSort("class")} ariaLabel={t("active.sort.class")} icon={<ShieldIcon size={14} />} hoverIcon={<ShieldIcon size={16} />} title={t("hovercard.sortClass.title")} description={t("hovercard.sortClass.desc")} />
-              <SortAction active={sortBy === "power"} onClick={() => toggleSort("power")} ariaLabel={t("active.sort.power")} icon={<BoltIcon size={14} />} hoverIcon={<BoltIcon size={16} />} iconColor="yellow" title={t("hovercard.sortPower.title")} description={t("hovercard.sortPower.desc")} />
+              <Menu position="bottom-end" withinPortal>
+                <Menu.Target>
+                  <Tooltip label={t("active.aria.columnActions")}>
+                    <ActionIcon
+                      size={44}
+                      variant="subtle"
+                      aria-label={t("active.aria.columnActions")}
+                    >
+                      <DotsIcon size={16} />
+                    </ActionIcon>
+                  </Tooltip>
+                </Menu.Target>
+                <Menu.Dropdown>
+                  <Menu.Item
+                    leftSection={<UserIcon size={14} />}
+                    rightSection={sortBy === "username" ? (sortDir === "asc" ? <ChevronUpIcon size={12} /> : <ChevronDownIcon size={12} />) : null}
+                    onClick={() => toggleSort("username")}
+                  >
+                    {t("active.sort.username")}
+                  </Menu.Item>
+                  <Menu.Item
+                    leftSection={<ShieldIcon size={14} />}
+                    rightSection={sortBy === "class" ? (sortDir === "asc" ? <ChevronUpIcon size={12} /> : <ChevronDownIcon size={12} />) : null}
+                    onClick={() => toggleSort("class")}
+                  >
+                    {t("active.sort.class")}
+                  </Menu.Item>
+                  <Menu.Item
+                    leftSection={<BoltIcon size={14} />}
+                    rightSection={sortBy === "power" ? (sortDir === "asc" ? <ChevronUpIcon size={12} /> : <ChevronDownIcon size={12} />) : null}
+                    onClick={() => toggleSort("power")}
+                  >
+                    {t("active.sort.power")}
+                  </Menu.Item>
+                  {isTeamColumn && onMoveTeam ? (
+                    <>
+                      <Menu.Divider />
+                      <Menu.Item
+                        leftSection={<ChevronUpIcon size={14} />}
+                        onClick={() => onMoveTeam(column.containerId, "up")}
+                        disabled={teamIndex === 0}
+                      >
+                        {t("active.teamSetup.moveUp")}
+                      </Menu.Item>
+                      <Menu.Item
+                        leftSection={<ChevronDownIcon size={14} />}
+                        onClick={() => onMoveTeam(column.containerId, "down")}
+                        disabled={teamIndex === (teamCount ?? 1) - 1}
+                      >
+                        {t("active.teamSetup.moveDown")}
+                      </Menu.Item>
+                    </>
+                  ) : null}
+                  {isTeamColumn && onDeleteTeam ? (
+                    <>
+                      <Menu.Divider />
+                      <Menu.Item
+                        color="red"
+                        leftSection={<TrashIcon size={14} />}
+                        onClick={() => onDeleteTeam(column.containerId)}
+                      >
+                        {t("menu.team.delete")}
+                      </Menu.Item>
+                    </>
+                  ) : null}
+                </Menu.Dropdown>
+              </Menu>
             </Group>
           </Group>
           {statusContent ? <div className="guild-war-column-header-status">{statusContent}</div> : null}
@@ -415,91 +432,22 @@ export function DroppableMemberColumn({
               domId={toMemberDomId(member.itemId)}
               username={member.username}
               power={member.power}
-              class={member.class}
+              classItem={resolveClassCatalogItem(member.class, classCatalog)}
               userId={member.userId}
-              disabled={!canDrag || column.locked}
-              selected={selectedUserIds.has(member.userId)}
+              dragDisabled={!canDrag || column.locked}
               isAbsent={absentUserIds?.has(member.userId) ?? false}
               isMatched={
                 activeSearch.trim().length > 0
-                && `${member.username} ${member.class} ${member.power}`.toLowerCase().includes(activeSearch.toLowerCase())
+                && `${member.username} ${member.class} ${resolveClassCatalogItem(member.class, classCatalog).label} ${member.power}`
+                  .toLowerCase()
+                  .includes(activeSearch.toLowerCase())
               }
-              onSelectMember={onSelectMember}
               onOpenMember={onOpenMember}
             />
           ))}
         </div>
       </div>
     </Paper>
-  );
-}
-
-type GuildWarColumnActionCardProps = {
-  label: ReactNode;
-  icon: ReactNode;
-  title: string;
-  description: string;
-  iconColor?: string;
-};
-
-function GuildWarColumnActionCard({
-  label,
-  icon,
-  title,
-  description,
-  iconColor = "blue",
-}: GuildWarColumnActionCardProps) {
-  return (
-    <HoverCard width={280} shadow="lg" withArrow arrowSize={10} openDelay={350} closeDelay={80} position="top">
-      <HoverCard.Target>{label}</HoverCard.Target>
-      <HoverCard.Dropdown p="sm" style={{ borderRadius: 10 }}>
-        <Group gap={10} wrap="nowrap" align="flex-start">
-          <ThemeIcon variant="light" color={iconColor} size="lg" radius="md" style={{ flexShrink: 0, marginTop: 2 }}>
-            {icon}
-          </ThemeIcon>
-          <div style={{ minWidth: 0 }}>
-            <Text size="sm" fw={700} lh={1.3} mb={4}>{title}</Text>
-            <Text size="xs" c="dimmed" lh={1.5}>{description}</Text>
-          </div>
-        </Group>
-      </HoverCard.Dropdown>
-    </HoverCard>
-  );
-}
-
-type SortActionProps = {
-  active: boolean;
-  onClick: () => void;
-  ariaLabel: string;
-  icon: ReactNode;
-  hoverIcon: ReactNode;
-  title: string;
-  description: string;
-  iconColor?: string;
-};
-
-function SortAction({
-  active,
-  onClick,
-  ariaLabel,
-  icon,
-  hoverIcon,
-  title,
-  description,
-  iconColor = "blue",
-}: SortActionProps) {
-  return (
-    <GuildWarColumnActionCard
-      label={(
-        <ActionIcon size="sm" variant={active ? "filled" : "subtle"} onClick={onClick} aria-label={ariaLabel}>
-          {icon}
-        </ActionIcon>
-      )}
-      icon={hoverIcon}
-      iconColor={iconColor}
-      title={title}
-      description={description}
-    />
   );
 }
 
@@ -527,15 +475,18 @@ type GuildWarDragOverlayCardProps = {
 };
 
 export function GuildWarDragOverlayCard({ activeDragItem }: GuildWarDragOverlayCardProps) {
+  const classCatalog = useClassCatalogStore((state) => state.items);
+  const classItem = resolveClassCatalogItem(activeDragItem.class, classCatalog);
   return (
     <Card withBorder p="sm">
       <Stack gap={2}>
         <Text size="sm" fw={500}>{activeDragItem.username}</Text>
         <Group gap={8} wrap="nowrap">
-          <Text c="dimmed" size="xs">{activeDragItem.class}</Text>
-          <Text c="dimmed" size="xs">
-            <BoltIcon size={12} style={{ display: "inline-block", verticalAlign: "-1px" }} /> {activeDragItem.power}
-          </Text>
+          <ClassIdentity item={classItem} />
+          <Group gap={4} wrap="nowrap">
+            <BoltIcon size={12} aria-hidden="true" />
+            <Text component="span" c="dimmed" size="xs">{activeDragItem.power}</Text>
+          </Group>
         </Group>
       </Stack>
     </Card>
@@ -547,11 +498,9 @@ type GuildWarDragBoardLayoutProps = {
   poolColumn?: DragMemberColumn;
   teamColumns: DragMemberColumn[];
   canDrag: boolean;
-  selectedUserIds: Set<string>;
   activeSearch: string;
   activeDragItem: ActiveDragItem | null;
   toMemberDomId: (itemId: string) => string;
-  onSelectMember: (userId: string, event: MouseEvent<HTMLButtonElement>) => void;
   onOpenMember?: (userId: string) => void;
   activePoolStatus?: ReactNode;
   teamStatusContentByContainerId?: Record<string, ReactNode>;
@@ -566,6 +515,7 @@ type GuildWarDragBoardLayoutProps = {
   onAddToPool?: () => void;
   onDraftNameChange?: (containerId: string, value: string) => void;
   absentUserIds?: Set<string>;
+  readinessContent?: ReactNode;
 };
 
 export function GuildWarDragBoardLayout({
@@ -573,11 +523,9 @@ export function GuildWarDragBoardLayout({
   poolColumn,
   teamColumns,
   canDrag,
-  selectedUserIds,
   activeSearch,
   activeDragItem,
   toMemberDomId,
-  onSelectMember,
   onOpenMember,
   activePoolStatus,
   teamStatusContentByContainerId,
@@ -592,6 +540,7 @@ export function GuildWarDragBoardLayout({
   onAddToPool,
   onDraftNameChange,
   absentUserIds,
+  readinessContent,
 }: GuildWarDragBoardLayoutProps) {
   return (
     <div className={`guild-war-dnd-split ${disabled ? "guild-war-dnd-split--disabled" : ""}`}>
@@ -602,10 +551,8 @@ export function GuildWarDragBoardLayout({
               column={poolColumn}
               canDrag={canDrag}
               statusContent={activePoolStatus}
-              selectedUserIds={selectedUserIds}
               activeSearch={activeSearch}
               toMemberDomId={toMemberDomId}
-              onSelectMember={onSelectMember}
               onOpenMember={onOpenMember}
               onAddToPool={onAddToPool}
               isDragActive={Boolean(activeDragItem)}
@@ -617,17 +564,15 @@ export function GuildWarDragBoardLayout({
       </div> : null}
 
       {view !== "pool" ? <div className="guild-war-dnd-teams-wrap">
-        <Stack gap={12} className="guild-war-dnd-teams">
+        <div className="guild-war-dnd-teams">
           {teamColumns.map((column) => (
             <DroppableMemberColumn
               key={column.containerId}
               column={column}
               canDrag={canDrag}
               statusContent={teamStatusContentByContainerId?.[column.containerId] ?? null}
-              selectedUserIds={selectedUserIds}
               activeSearch={activeSearch}
               toMemberDomId={toMemberDomId}
-              onSelectMember={onSelectMember}
               onOpenMember={onOpenMember}
               onCopyTeamMentions={onCopyTeamMentions}
               onToggleLock={onToggleLock}
@@ -641,8 +586,12 @@ export function GuildWarDragBoardLayout({
               absentUserIds={absentUserIds}
             />
           ))}
-        </Stack>
+        </div>
       </div> : null}
+
+      {view === "all" && readinessContent ? (
+        <div className="guild-war-dnd-readiness">{readinessContent}</div>
+      ) : null}
     </div>
   );
 }

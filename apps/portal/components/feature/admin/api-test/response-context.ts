@@ -94,6 +94,16 @@ export function captureContextFromResponse(
       next.createdStorageId = null;
       next.storageId = null;
     }
+    if (endpoint.path === "/api/classes/:id/icon") {
+      next.createdClassIconKey = null;
+    }
+    if (endpoint.path === "/api/classes/:id") {
+      next.createdClassId = null;
+      next.createdClassIconKey = null;
+    }
+    if (endpoint.path === "/api/users/:id/absences/:absenceId") {
+      next.createdAbsenceId = null;
+    }
     return next;
   }
 
@@ -122,6 +132,23 @@ export function captureContextFromResponse(
     const profileImageKey = firstImage ?? null;
     next.userImageKey = isProfileMediaKey(profileImageKey) ? profileImageKey : next.userImageKey;
     next.userAudioKey = readString(profile?.audio_key) ?? next.userAudioKey;
+    return next;
+  }
+
+  if (endpoint.path === "/api/classes") {
+    next.createdClassId = readString(payload.id) ?? next.createdClassId;
+    return next;
+  }
+
+  if (endpoint.path === "/api/classes/:id/icon") {
+    /* 上传返回整行；icon_key 就是这次新写进 R2 的对象键，
+       后面的 GET /api/classes/icon 靠它取图，清理也靠它删对象。 */
+    next.createdClassIconKey = readString(payload.icon_key) ?? next.createdClassIconKey;
+    return next;
+  }
+
+  if (endpoint.path === "/api/users/:id/absences" && endpoint.method === "POST") {
+    next.createdAbsenceId = readString(payload.id) ?? next.createdAbsenceId;
     return next;
   }
 
@@ -344,15 +371,6 @@ export function captureContextFromResponse(
     next.warHistoryId = id ?? next.warHistoryId;
     next.warEventId = readString(payload.event_id) ?? next.warEventId;
     next.createdWarHistoryId = id ?? next.createdWarHistoryId;
-    return next;
-  }
-
-  if (endpoint.path === "/api/game-data") {
-    const base = isRecord(payload.data) ? payload.data : null;
-    const firstClass = Array.isArray(base?.classes)
-      ? base.classes.find((item): item is string => typeof item === "string")
-      : null;
-    next.gameDataClassId = firstClass ?? next.gameDataClassId;
     return next;
   }
 

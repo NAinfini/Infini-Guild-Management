@@ -20,9 +20,9 @@ import { Details, DetailsContent, DetailsSummary } from "@tiptap/extension-detai
 import type { Content } from "@tiptap/core";
 import { EditorContent, useEditor, type Editor } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
-import { Alert, Button, Card, Group, Modal, Progress, Stack, Text } from "@mantine/core";
+import { Alert, Button, Card, Group, Modal, Progress, Stack, Text, VisuallyHidden } from "@mantine/core";
 import DOMPurify from "dompurify";
-import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { common, createLowlight } from "lowlight";
 import { Bilibili, isValidBilibiliUrl } from "./tiptap-ext-bilibili";
@@ -38,6 +38,15 @@ const lowlight = createLowlight(common);
 import "./tiptap-editor.css";
 
 type EditorMode = "json" | "html";
+
+type LightboxImage = {
+  src: string;
+  alt: string;
+};
+
+const LIGHTBOX_ZOOM_MIN = 1;
+const LIGHTBOX_ZOOM_MAX = 2.6;
+const LIGHTBOX_ZOOM_STEP = 0.2;
 
 // Re-exported from tiptap-meta for backward compatibility.
 export type TipTapEditorLabels = _TipTapEditorLabels;
@@ -83,6 +92,12 @@ const DEFAULT_LABELS: TipTapEditorLabels = {
   imageInserted: "Image inserted",
   imageUploadFailed: "Image upload failed",
   uploading: "Uploading...",
+  lightboxTitle: "Image preview",
+  lightboxPreview: "Preview image",
+  lightboxZoomOut: "Zoom out",
+  lightboxZoomReset: "Reset zoom",
+  lightboxZoomIn: "Zoom in",
+  lightboxZoomLevel: "Zoom {{percent}}%",
   youtube: "YouTube",
   bilibili: "Bilibili",
   videoUrl: "Video URL",
@@ -111,6 +126,7 @@ export type TipTapEditorProps = {
   mode?: EditorMode;
   readOnly?: boolean;
   editable?: boolean;
+  ariaLabel?: string;
   onImageUpload?: (file: File) => Promise<string>;
   /** Optional image converter. If omitted, the raw file is used as-is. */
   convertImage?: (file: File, onProgress?: (percent: number) => void) => Promise<File>;
@@ -209,6 +225,7 @@ export const TipTapEditor = forwardRef<HTMLDivElement, TipTapEditorProps>(
     mode = "json",
     readOnly = false,
     editable,
+    ariaLabel,
     onImageUpload,
     convertImage,
     onError,
@@ -223,8 +240,8 @@ export const TipTapEditor = forwardRef<HTMLDivElement, TipTapEditorProps>(
     const [slashOpen, setSlashOpen] = useState(false);
     const [isUploadingImage, setIsUploadingImage] = useState(false);
     const [imageUploadProgress, setImageUploadProgress] = useState(0);
-    const [lightboxImageSrc, setLightboxImageSrc] = useState<string | null>(null);
-    const [lightboxZoom, setLightboxZoom] = useState(1);
+    const [lightboxImage, setLightboxImage] = useState<LightboxImage | null>(null);
+    const [lightboxZoom, setLightboxZoom] = useState(LIGHTBOX_ZOOM_MIN);
     const [linkDialogOpen, setLinkDialogOpen] = useState(false);
     const [linkUrl, setLinkUrl] = useState("https://");
     const [linkSelection, setLinkSelection] = useState<{ from: number; to: number } | null>(null);
@@ -232,8 +249,42 @@ export const TipTapEditor = forwardRef<HTMLDivElement, TipTapEditorProps>(
     const [findReplaceOpen, setFindReplaceOpen] = useState(false);
     const [videoDialogOpen, setVideoDialogOpen] = useState(false);
     const [videoUrl, setVideoUrl] = useState("");
-    const linkDialogTitleId = useId();
     const fileInputRef = useRef<HTMLInputElement | null>(null);
+    const linkToolbarTriggerRef = useRef<HTMLButtonElement | null>(null);
+    const videoToolbarTriggerRef = useRef<HTMLButtonElement | null>(null);
+    const wasLinkDialogOpenRef = useRef(false);
+    const wasVideoDialogOpenRef = useRef(false);
+
+    useEffect(() => {
+      if (wasLinkDialogOpenRef.current && !linkDialogOpen) {
+        linkToolbarTriggerRef.current?.focus();
+      }
+      wasLinkDialogOpenRef.current = linkDialogOpen;
+    }, [linkDialogOpen]);
+
+    useEffect(() => {
+      if (wasVideoDialogOpenRef.current && !videoDialogOpen) {
+        videoToolbarTriggerRef.current?.focus();
+      }
+      wasVideoDialogOpenRef.current = videoDialogOpen;
+    }, [videoDialogOpen]);
+
+    const openLightbox = useCallback((image: HTMLImageElement): boolean => {
+      const source = image.currentSrc || image.src;
+      if (!source) return false;
+      const originalAlt = image.getAttribute("alt");
+      setLightboxImage({
+        src: source,
+        alt: originalAlt?.trim() ? originalAlt : labels.lightboxPreview,
+      });
+      setLightboxZoom(LIGHTBOX_ZOOM_MIN);
+      return true;
+    }, [labels.lightboxPreview]);
+
+    const closeLightbox = useCallback(() => {
+      setLightboxImage(null);
+      setLightboxZoom(LIGHTBOX_ZOOM_MIN);
+    }, []);
 
     const uploadImageAndInsert = useCallback(async (editor: Editor, file: File): Promise<void> => {
       try {
@@ -300,6 +351,13 @@ export const TipTapEditor = forwardRef<HTMLDivElement, TipTapEditorProps>(
         // min-height made published announcements look like an empty textarea.
         attributes: {
           class: effectiveReadOnly ? "infini-tiptap-surface infini-tiptap-surface--readonly" : "infini-tiptap-surface",
+          ...(!effectiveReadOnly
+            ? {
+              role: "textbox",
+              "aria-multiline": "true",
+              ...(ariaLabel ? { "aria-label": ariaLabel } : {}),
+            }
+            : {}),
         },
         handleDOMEvents: {
           contextmenu: (_view: unknown, event: Event) => {
@@ -330,11 +388,7 @@ export const TipTapEditor = forwardRef<HTMLDivElement, TipTapEditorProps>(
           if (!effectiveReadOnly) return false;
           const target = event.target;
           if (!(target instanceof HTMLImageElement)) return false;
-          const source = target.currentSrc || target.src;
-          if (!source) return false;
-          setLightboxImageSrc(source);
-          setLightboxZoom(1);
-          return true;
+          return openLightbox(target);
         },
         handleKeyDown: (_view: unknown, event: KeyboardEvent) => {
           if (effectiveReadOnly) return false;
@@ -370,6 +424,52 @@ export const TipTapEditor = forwardRef<HTMLDivElement, TipTapEditorProps>(
       const incoming = typeof nextContent === "string" ? nextContent : "";
       if (editor.getHTML() !== incoming) editor.commands.setContent(incoming, { emitUpdate: false });
     }, [editor, mode, value]);
+
+    useEffect(() => {
+      if (!editor || editor.isDestroyed) return;
+
+      const syncReadOnlyImages = () => {
+        const images = editor.view.dom.querySelectorAll("img");
+        for (const image of images) {
+          if (effectiveReadOnly) {
+            const originalAlt = image.getAttribute("alt");
+            image.tabIndex = 0;
+            image.setAttribute("role", "button");
+            image.setAttribute("aria-haspopup", "dialog");
+            image.setAttribute(
+              "aria-label",
+              originalAlt?.trim() ? originalAlt : labels.lightboxPreview,
+            );
+            image.setAttribute("data-tiptap-lightbox-trigger", "true");
+          } else if (image.getAttribute("data-tiptap-lightbox-trigger") === "true") {
+            image.removeAttribute("tabindex");
+            image.removeAttribute("role");
+            image.removeAttribute("aria-haspopup");
+            image.removeAttribute("aria-label");
+            image.removeAttribute("data-tiptap-lightbox-trigger");
+          }
+        }
+      };
+
+      syncReadOnlyImages();
+      editor.on("update", syncReadOnlyImages);
+      const handleReadOnlyImageKeyDown = (event: KeyboardEvent) => {
+        const target = event.target;
+        if (
+          effectiveReadOnly
+          && (event.key === "Enter" || event.key === " ")
+          && target instanceof HTMLImageElement
+        ) {
+          event.preventDefault();
+          openLightbox(target);
+        }
+      };
+      editor.view.dom.addEventListener("keydown", handleReadOnlyImageKeyDown);
+      return () => {
+        editor.off("update", syncReadOnlyImages);
+        editor.view.dom.removeEventListener("keydown", handleReadOnlyImageKeyDown);
+      };
+    }, [editor, effectiveReadOnly, labels.lightboxPreview, openLightbox, value]);
 
     const slashCommands = useMemo<SlashCommand[]>(
       () => [
@@ -431,6 +531,11 @@ export const TipTapEditor = forwardRef<HTMLDivElement, TipTapEditorProps>(
     };
 
     const charCount = editor.storage.characterCount as { characters: () => number; words: () => number };
+    const lightboxZoomPercent = Math.round(lightboxZoom * 100);
+    const lightboxZoomAnnouncement = labels.lightboxZoomLevel.replace(
+      "{{percent}}",
+      String(lightboxZoomPercent),
+    );
 
     return (
       <Stack ref={ref} gap={8} w="100%" {...rest}>
@@ -442,6 +547,8 @@ export const TipTapEditor = forwardRef<HTMLDivElement, TipTapEditorProps>(
             onInsertImage={() => fileInputRef.current?.click()}
             onInsertVideo={() => setVideoDialogOpen(true)}
             onToggleFindReplace={() => setFindReplaceOpen((v) => !v)}
+            linkTriggerRef={linkToolbarTriggerRef}
+            videoTriggerRef={videoToolbarTriggerRef}
           />
         ) : null}
 
@@ -513,7 +620,6 @@ export const TipTapEditor = forwardRef<HTMLDivElement, TipTapEditorProps>(
         {linkDialogOpen ? (
           <TipTapEditorLinkDialog
             labels={labels}
-            titleId={linkDialogTitleId}
             url={linkUrl}
             onUrlChange={setLinkUrl}
             onClose={closeLinkDialog}
@@ -522,27 +628,78 @@ export const TipTapEditor = forwardRef<HTMLDivElement, TipTapEditorProps>(
           />
         ) : null}
 
-        <Modal opened={Boolean(lightboxImageSrc)} onClose={() => setLightboxImageSrc(null)} size={960} keepMounted={false}>
-          {lightboxImageSrc ? (
-            <Stack gap={8} w="100%">
-              <Group gap={8}>
-                <Button variant="default" onClick={() => setLightboxZoom((v) => Math.max(1, Number((v - 0.2).toFixed(2))))}>-</Button>
-                <Button variant="default" onClick={() => setLightboxZoom(1)}>100%</Button>
-                <Button variant="default" onClick={() => setLightboxZoom((v) => Math.min(2.6, Number((v + 0.2).toFixed(2))))}>+</Button>
+        <Modal
+          opened={Boolean(lightboxImage)}
+          onClose={closeLightbox}
+          title={labels.lightboxTitle}
+          closeButtonProps={{ "aria-label": labels.close }}
+          size={960}
+          keepMounted={false}
+        >
+          {lightboxImage ? (
+            <Stack gap={8} w="100%" className="infini-tiptap-lightbox">
+              <Group gap={8} wrap="wrap" className="infini-tiptap-lightbox-controls">
+                <Button
+                  variant="default"
+                  aria-label={labels.lightboxZoomOut}
+                  disabled={lightboxZoom <= LIGHTBOX_ZOOM_MIN}
+                  onClick={() => {
+                    setLightboxZoom((zoom) => Math.max(
+                      LIGHTBOX_ZOOM_MIN,
+                      Number((zoom - LIGHTBOX_ZOOM_STEP).toFixed(2)),
+                    ));
+                  }}
+                >
+                  -
+                </Button>
+                <Button
+                  variant="default"
+                  aria-label={labels.lightboxZoomReset}
+                  disabled={lightboxZoom === LIGHTBOX_ZOOM_MIN}
+                  onClick={() => setLightboxZoom(LIGHTBOX_ZOOM_MIN)}
+                >
+                  {lightboxZoomPercent}%
+                </Button>
+                <Button
+                  variant="default"
+                  aria-label={labels.lightboxZoomIn}
+                  disabled={lightboxZoom >= LIGHTBOX_ZOOM_MAX}
+                  onClick={() => {
+                    setLightboxZoom((zoom) => Math.min(
+                      LIGHTBOX_ZOOM_MAX,
+                      Number((zoom + LIGHTBOX_ZOOM_STEP).toFixed(2)),
+                    ));
+                  }}
+                >
+                  +
+                </Button>
               </Group>
+              <VisuallyHidden aria-live="polite">
+                {lightboxZoomAnnouncement}
+              </VisuallyHidden>
               <div
                 className="infini-tiptap-lightbox-viewport"
-                style={{ cursor: lightboxZoom > 1 ? "zoom-out" : "zoom-in" }}
+                style={{ cursor: lightboxZoom > LIGHTBOX_ZOOM_MIN ? "zoom-out" : "zoom-in" }}
                 onWheel={(event) => {
                   event.preventDefault();
                   const direction = event.deltaY < 0 ? 0.12 : -0.12;
-                  setLightboxZoom((v) => Math.min(2.6, Math.max(1, Number((v + direction).toFixed(2)))));
+                  setLightboxZoom((zoom) => Math.min(
+                    LIGHTBOX_ZOOM_MAX,
+                    Math.max(
+                      LIGHTBOX_ZOOM_MIN,
+                      Number((zoom + direction).toFixed(2)),
+                    ),
+                  ));
                 }}
-                onDoubleClick={() => setLightboxZoom((v) => (v > 1 ? 1 : 2.2))}
+                onDoubleClick={() => {
+                  setLightboxZoom((zoom) => (
+                    zoom > LIGHTBOX_ZOOM_MIN ? LIGHTBOX_ZOOM_MIN : 2.2
+                  ));
+                }}
               >
                 <img
-                  src={lightboxImageSrc}
-                  alt="Enlarged preview"
+                  src={lightboxImage.src}
+                  alt={lightboxImage.alt}
                   loading="lazy"
                   decoding="async"
                   className="infini-tiptap-lightbox-image"
@@ -565,20 +722,45 @@ export const TipTapEditor = forwardRef<HTMLDivElement, TipTapEditorProps>(
           />
         ) : null}
 
-        <Modal opened={videoDialogOpen} onClose={() => setVideoDialogOpen(false)} title={labels.embedVideo} size="sm" keepMounted={false}>
+        <Modal
+          opened={videoDialogOpen}
+          onClose={() => setVideoDialogOpen(false)}
+          title={labels.embedVideo}
+          size="sm"
+          keepMounted={false}
+          closeOnEscape={false}
+          returnFocus={false}
+          closeButtonProps={{
+            "aria-label": labels.close,
+            mod: { "data-mantine-stop-propagation": true },
+          }}
+          onKeyDown={(event) => {
+            if (event.key !== "Escape" || event.nativeEvent.isComposing) return;
+            event.preventDefault();
+            event.stopPropagation();
+            setVideoDialogOpen(false);
+          }}
+        >
           <Stack gap={12}>
             <Text size="sm" c="dimmed">{labels.youtube} / {labels.bilibili}</Text>
             <input
               className="infini-tiptap-link-dialog__input"
               placeholder={labels.videoUrl}
               aria-label={labels.videoUrl}
+              data-mantine-stop-propagation="true"
               value={videoUrl}
               onChange={(e) => setVideoUrl(e.target.value)}
               onKeyDown={(e) => { if (e.key === "Enter") insertVideo(); }}
               autoFocus
             />
             <Group justify="flex-end">
-              <Button size="sm" onClick={insertVideo}>{labels.embedVideo}</Button>
+              <Button
+                size="sm"
+                data-mantine-stop-propagation="true"
+                onClick={insertVideo}
+              >
+                {labels.embedVideo}
+              </Button>
             </Group>
           </Stack>
         </Modal>

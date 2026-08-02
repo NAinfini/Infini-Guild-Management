@@ -60,7 +60,6 @@ export function useAdminMemberMediaController({
       maxFiles: PROFILE_IMAGE_MAX,
       maxFileSizeBytes: PROFILE_IMAGE_MAX_BYTES,
       mediaType: "image",
-      convertImagesToWebp: true,
       imageWebpQuality: 0.8,
     },
   );

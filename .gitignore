@@ -12,6 +12,9 @@ coverage/
 test-results/
 playwright-report/
 blob-report/
+# e2e 的一次性运行状态：会话 cookie 和本次 run id，绝不能进仓库
+apps/portal/e2e/.state/
+apps/portal/e2e/.artifacts/
 .cache/
 .eslintcache
 *.tsbuildinfo

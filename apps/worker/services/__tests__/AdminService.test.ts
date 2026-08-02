@@ -29,7 +29,6 @@ function siteConfigRow(analyticsSettingsJson: string) {
       gallery: true,
       wiki: true,
       tools: true,
-      equipmentCalc: true,
       storage: true,
     }),
     mediaPolicyJson: JSON.stringify({
@@ -561,5 +560,114 @@ describe("AdminService.createMember reserved system-test username", () => {
     const result = await service.createMember("admin-1", "SystemTest_Hijack");
 
     expect(result).toMatchObject({ ok: false, code: "VALIDATION_ERROR" });
+  });
+});
+
+describe("AdminService.getStatus", () => {
+  const REQUIRED_TABLES = ["users", "member_profiles", "roles", "role_permissions", "site_config"];
+
+  /**
+   * 按表名给出每张表探针的结果：返回值即 first() 的行为，抛出的 Error 即真故障。
+   * 同时把执行过的 SQL 收集下来，供「不许再碰 sqlite_master」的断言使用。
+   */
+  function createStatusService(
+    tableBehaviour: (table: string) => unknown,
+    mediaHead: () => unknown = () => null,
+  ): { service: AdminService; sql: string[] } {
+    const sql: string[] = [];
+    const rawDb = {
+      batch: vi.fn(),
+      prepare: (query: string) => {
+        sql.push(query);
+        const table = /FROM "([^"]+)"/.exec(query)?.[1] ?? "";
+        return { first: async () => tableBehaviour(table) };
+      },
+    };
+    const service = new AdminService({
+      db: {} as never,
+      media: { get: vi.fn(), put: vi.fn(), head: async () => mediaHead() } as never,
+      rawDb: rawDb as never,
+      writeAuditLog: vi.fn(),
+      writeAuditLogDurable: vi.fn(),
+      createPasswordHash: vi.fn(),
+      generateId: () => "id-1",
+      generateInviteCode: () => "invite-1",
+      generateTemporaryPassword: () => "temporary-password",
+      now: () => new Date("2026-05-18T00:00:00.000Z"),
+      envSiteName: "Env Guild",
+      envSiteLogoUrl: "/env-logo.webp",
+    });
+    return { service, sql };
+  }
+
+  /*
+   * 这条是对根因的回归锁：探针曾经读 sqlite_master 拿表清单，而 D1 禁止读它，
+   * 于是线上恒定报 db: error。只要有人把这个查询改回去，这里立刻红。
+   */
+  it("probes each required table directly instead of reading sqlite_master", async () => {
+    const { service, sql } = createStatusService(() => ({ 1: 1 }));
+
+    const result = await service.getStatus();
+
+    expect(result).toMatchObject({ ok: true });
+    expect(sql.some((q) => /sqlite_master/i.test(q))).toBe(false);
+    for (const table of REQUIRED_TABLES) {
+      expect(sql).toContain(`SELECT 1 FROM "${table}" LIMIT 1`);
+    }
+    expect(result.ok && result.data).toMatchObject({
+      db: "ok",
+      r2: "ok",
+      r2_reason: null,
+      db_checks: Object.fromEntries(REQUIRED_TABLES.map((t) => [t, "ok"])),
+    });
+  });
+
+  it("reports a genuinely absent table as missing", async () => {
+    const { service } = createStatusService((table) => {
+      if (table === "site_config") throw new Error("D1_ERROR: no such table: site_config");
+      return { 1: 1 };
+    });
+
+    const result = await service.getStatus();
+
+    expect(result.ok && result.data.db).toBe("error");
+    expect(result.ok && result.data.db_checks.site_config).toBe("missing");
+    expect(result.ok && result.data.db_checks.users).toBe("ok");
+  });
+
+  // 真故障必须带着原因浮上来，而不是被压成一句没有信息量的 "error"。
+  it("surfaces the real reason when a probe fails for any other cause", async () => {
+    const { service } = createStatusService((table) => {
+      if (table === "roles") throw new Error("D1_ERROR: Network connection lost");
+      return { 1: 1 };
+    });
+
+    const result = await service.getStatus();
+
+    expect(result.ok && result.data.db).toBe("error");
+    expect(result.ok && result.data.db_checks.roles).toBe("error: D1_ERROR: Network connection lost");
+  });
+
+  it("surfaces the real reason when the R2 probe fails", async () => {
+    const { service } = createStatusService(() => ({ 1: 1 }), () => {
+      throw new Error("R2 bucket unreachable");
+    });
+
+    const result = await service.getStatus();
+
+    expect(result.ok && result.data.r2).toBe("error");
+    expect(result.ok && result.data.r2_reason).toBe("R2 bucket unreachable");
+    // R2 掉线不该把 D1 的结论一起拖下水。
+    expect(result.ok && result.data.db).toBe("ok");
+  });
+
+  // head() 对不存在的对象返回 null 而不抛，这不是故障。
+  it("treats a missing healthcheck object as healthy", async () => {
+    const { service } = createStatusService(() => ({ 1: 1 }), () => null);
+
+    const result = await service.getStatus();
+
+    expect(result.ok && result.data.r2).toBe("ok");
+    expect(result.ok && result.data.r2_reason).toBeNull();
   });
 });

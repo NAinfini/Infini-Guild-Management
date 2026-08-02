@@ -2,6 +2,7 @@ import { ALLOWED_IMAGE_TYPES, storageItemsListQuerySchema, type Permission } fro
 import type { Context } from "hono";
 import { Hono } from "hono";
 import type { Bindings } from "../index";
+import { validateUploadBytes } from "../services/media";
 import { StorageService } from "../services/StorageService";
 import { buildError, collectFiles, getDb, handleResult, parseJsonBody, requireSessionUser, safeFormData, serveR2Object, throwError } from "./_shared";
 import { withMedia } from "./service-factory";
@@ -151,7 +152,15 @@ storageRoutes.post("/items/:id/images", async (c) => {
     if (!ALLOWED_IMAGE_TYPES.includes(file.type as typeof ALLOWED_IMAGE_TYPES[number])) return buildError(c, "VALIDATION_ERROR", `Invalid file type: ${file.name}`);
     if (file.size > maxImageBytes) return buildError(c, "VALIDATION_ERROR", `File too large: ${file.name}`);
   }
-  const fileData = await Promise.all(files.map(async (file) => ({ data: await file.arrayBuffer(), contentType: file.type || "application/octet-stream", name: file.name })));
+  /* 声明的 Content-Type 是客户端说了算的，必须再对一遍字节头，和图库那条路径一致。 */
+  const allowedTypes = new Set<string>(ALLOWED_IMAGE_TYPES);
+  const fileData: Array<{ data: ArrayBuffer; contentType: string; name: string }> = [];
+  for (const file of files) {
+    const data = await file.arrayBuffer();
+    const validation = validateUploadBytes(data, file.type || "application/octet-stream", allowedTypes);
+    if (!validation.ok) return buildError(c, "VALIDATION_ERROR", validation.message);
+    fileData.push({ data, contentType: validation.contentType, name: file.name });
+  }
   return handleResult(c, await getService(c).uploadImages(user.id, c.req.param("id"), fileData), 201);
 });
 

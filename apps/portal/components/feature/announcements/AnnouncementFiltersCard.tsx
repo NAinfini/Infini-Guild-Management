@@ -65,7 +65,7 @@ export function AnnouncementFiltersCard({
             onClick={() => onPinnedFilterChange(!pinnedFilter)}
             color="portal-brand"
             variant={pinnedFilter ? "light" : "default"}
-            size="sm"
+            size="lg"
             aria-label={t("filter.pinned")}
           >
             <PinIcon size={16} />

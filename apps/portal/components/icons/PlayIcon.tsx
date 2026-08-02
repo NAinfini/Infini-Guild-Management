@@ -16,7 +16,8 @@ interface PlayIconProps extends HTMLAttributes<HTMLDivElement> {
 
 const PATH_VARIANTS: Variants = {
   normal: { scale: 1, transition: { duration: 0.3 } },
-  animate: { scale: [1, 1.15, 1], transition: { duration: 0.4, type: "spring", stiffness: 200, damping: 12 } },
+  // 多关键帧不能配 spring，见 ShieldIcon 的说明。
+  animate: { scale: [1, 1.15, 1], transition: { duration: 0.4, ease: "easeInOut" } },
 };
 
 const PlayIcon = forwardRef<PlayIconHandle, PlayIconProps>(

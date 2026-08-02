@@ -19,21 +19,28 @@ import { useEffectivePermissions } from "./useEffectivePermissions";
 import { useLoadWarningToast } from "./useLoadWarningToast";
 import { useAdminData } from "./data/useAdminData";
 import { useSiteConfigMutations } from "./useSiteConfigMutations";
+import { resolveClassCatalogItem, useClassCatalogStore } from "../stores/class-catalog";
 
 export const BATCH_SELECTION_LIMIT = 50;
 
-const ADMIN_TABS = ["member", "invite", "audit", "roles", "siteConfig", "badges", "gameData", "status"] as const;
+const ADMIN_TABS = ["member", "invite", "audit", "roles", "siteConfig", "classes", "badges", "status"] as const;
 export type AdminTab = (typeof ADMIN_TABS)[number];
 
 function isAdminTab(value: string): value is AdminTab {
   return ADMIN_TABS.includes(value as AdminTab);
 }
 
-const BadgeCell = Badge as ComponentType<{ color: string }>;
+const BadgeCell = Badge as ComponentType<{
+  color: string;
+  variant?: string;
+  size?: string;
+  className?: string;
+}>;
 
 export function useAdminPageController() {
   const { t } = useTranslation("admin");
   const user = useAuthStore((state) => state.user);
+  const classCatalog = useClassCatalogStore((state) => state.items);
   const { viewingAs, isModerator, canManage: canManagePermission } = useEffectivePermissions();
   const { showError } = useAppError();
   const { member: memberSearchParam, tab: tabSearchParam } = useSearch({ strict: false }) as { member?: string; tab?: string };
@@ -67,8 +74,8 @@ export function useAdminPageController() {
     canManageRoles: canManagePermission(["admin.roles.manage"]),
     canViewStatus: canManagePermission(["admin.status.view"]),
     canManageBadges: canManagePermission(["admin.badges.manage"]),
-    canManageGameData: canManagePermission(["admin.gameData.manage"]),
     canManageSiteConfig: canManagePermission(["admin.siteConfig.manage"]),
+    canManageClasses: canManagePermission(["admin.classes.manage"]),
   }), [canManagePermission, user]);
 
   const {
@@ -146,24 +153,24 @@ export function useAdminPageController() {
   const canManageBadges = rolesLoaded
     ? permissions.canManageBadges
     : canManagePermission(["admin.badges.manage"]);
-  const canManageGameData = rolesLoaded
-    ? permissions.canManageGameData
-    : canManagePermission(["admin.gameData.manage"]);
   const canManageSiteConfig = rolesLoaded
     ? permissions.canManageSiteConfig
     : canManagePermission(["admin.siteConfig.manage"]);
+  const canManageClasses = rolesLoaded
+    ? permissions.canManageClasses
+    : canManagePermission(["admin.classes.manage"]);
   const tabAccess = useMemo<Record<AdminTab, boolean>>(() => ({
     member: canViewUsers,
     invite: canViewInvites,
     audit: canViewAudit,
     roles: canViewRoles,
     siteConfig: canManageSiteConfig,
+    classes: canManageClasses,
     badges: canManageBadges,
-    gameData: canManageGameData,
     status: canViewStatus,
   }), [
     canManageBadges,
-    canManageGameData,
+    canManageClasses,
     canManageSiteConfig,
     canViewAudit,
     canViewInvites,
@@ -213,10 +220,13 @@ export function useAdminPageController() {
         row.user.username.toLowerCase().includes(q) ||
         (row.profile.notes ?? "").toLowerCase().includes(q) ||
         row.user.role.toLowerCase().includes(q) ||
-        row.profile.classes.some((cls) => cls.toLowerCase().includes(q))
+        row.profile.classes.some((cls) =>
+          cls.toLowerCase().includes(q)
+          || resolveClassCatalogItem(cls, classCatalog).label.toLowerCase().includes(q)
+        )
       );
     });
-  }, [userRowsRaw, memberSearch]);
+  }, [classCatalog, userRowsRaw, memberSearch]);
 
   const rolesWithExternal = useMemo((): AdminRole[] => {
     const apiRoles = rolesQuery.data ?? [];
@@ -250,12 +260,17 @@ export function useAdminPageController() {
       header: t("member.table.class"),
       id: "class",
       accessorFn: (row) => row.profile.classes[0] ?? "",
-      cell: ({ row }) => row.original.profile.classes[0] ?? "-",
+      cell: ({ row }) => {
+        const classId = row.original.profile.classes[0];
+        return classId ? resolveClassCatalogItem(classId, classCatalog).label : "-";
+      },
     },
     {
       header: t("member.table.power"),
       id: "power",
       accessorFn: (row) => row.profile.power,
+      /* 数值列右对齐 + 千分位，位数对齐才能一眼比大小。 */
+      cell: ({ row }) => row.original.profile.power.toLocaleString(),
     },
     {
       header: t("member.table.notes"),
@@ -271,18 +286,33 @@ export function useAdminPageController() {
         const roleId = row.original.user.role;
         const roleDef = rolesQuery.data?.find((r) => r.id === roleId);
         const color = roleDef?.color ?? "blue";
-        return createElement(BadgeCell, { color }, t(`role.${roleId}`));
+        /* filled 的实心胶囊每行都在喊；身份是背景信息，用 light 就够。
+           颜色是管理员在角色页自己填的任意 hex（内置 moderator 就是 #756047 这种深棕），
+           拿它当文字色一定会撞出读不清的组合，所以只让它管背景，文字锁在语义色上。 */
+        return createElement(
+          BadgeCell,
+          { color, variant: "light", size: "sm", className: "admin-cell-role" },
+          t(`role.${roleId}`),
+        );
       },
     },
     {
       header: t("member.table.active"),
       id: "active",
       accessorFn: (row) => row.user.is_active,
-      cell: ({ row }) => row.original.user.is_active
-        ? createElement(BadgeCell, { color: "green" }, t("member.status.active"))
-        : createElement(BadgeCell, { color: "red" }, t("member.status.inactive")),
+      /* 绝大多数行都是「启用」。给每一行都套一个饱和绿胶囊，等于把噪声铺满整张表，
+         真正需要注意的「停用」反而淹了。改成小圆点 + 文字，颜色只留给异常。 */
+      cell: ({ row }) => {
+        const active = row.original.user.is_active;
+        return createElement(
+          "span",
+          { className: `admin-cell-status admin-cell-status--${active ? "active" : "inactive"}` },
+          createElement("span", { className: "admin-cell-status__dot" }),
+          active ? t("member.status.active") : t("member.status.inactive"),
+        );
+      },
     },
-  ], [t, isAdmin, rolesQuery.data]);
+  ], [classCatalog, t, isAdmin, rolesQuery.data]);
 
   const handleCopyConfigSummary = useCallback(() => {
     const data = statusQuery.data;

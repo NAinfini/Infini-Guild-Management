@@ -11,12 +11,14 @@ import {
 import { useNavigate, useSearch } from "@tanstack/react-router";
 import { format, isValid, parseISO } from "date-fns";
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { flushSync } from "react-dom";
 import { useDisclosure } from "@mantine/hooks";
 import { useDebouncedSearch } from "./useDebouncedSearch";
 import { useTranslation } from "react-i18next";
 import { useAppError } from "./useAppError";
 import { useBeforeUnloadPrompt } from "./useBeforeUnloadPrompt";
 import { useExternalView } from "./useExternalView";
+import { extractTipTapText } from "../utils/tiptap-text";
 import {
   archiveAnnouncement,
   createAnnouncement,
@@ -168,6 +170,20 @@ export function useAnnouncementsController() {
     });
   }, [navigate]);
 
+  /**
+   * 退出创建态并把草稿清空。
+   * 必须同步落地：调用方紧接着就要导航，而未保存改动拦截器读的是已提交的 state，
+   * 异步的 setState 会让它读到「还在创建、草稿是脏的」，凭空多问一句。
+   */
+  const discardCreateDraft = useCallback(() => {
+    flushSync(() => {
+      isCreatingHandlers.close();
+      setImageStagingToken(null);
+      setTitle("");
+      setBodyJson(TIPTAP_DEFAULT_JSON);
+    });
+  }, [isCreatingHandlers]);
+
   const listQuery = useInfiniteQuery({
     queryKey: queryKeys.announcements.list(pinnedFilter ? "pinned" : "all", statusFilter ?? "all", debouncedSearch),
     queryFn: ({ pageParam }) =>
@@ -202,8 +218,14 @@ export function useAnnouncementsController() {
     onSuccess: async (data) => {
       notifySuccess(t("message.created"));
       await queryClient.invalidateQueries({ queryKey: queryKeys.announcements.all });
-      isCreatingHandlers.close();
-      setImageStagingToken(null);
+      /*
+       * 先把创建态的草稿清干净再跳转。跳转要经过未保存改动拦截器（useBeforeUnloadPrompt），
+       * 草稿还在的话，用户刚点完「发布」就会被问「有未保存的改动，确定离开吗」；
+       * 选 Stay 更糟——公告已经建出来了，地址栏却停在 ?selection=none，选中的是空。
+       * flushSync 是为了让拦截器在这次跳转被评估之前就看到已经不脏的状态，
+       * 否则 setState 还没落地，拦截器读到的仍是旧值。
+       */
+      discardCreateDraft();
       setAnnouncementSelection({ kind: "selected", id: data.id });
     },
     onError: (error) => {
@@ -413,6 +435,10 @@ export function useAnnouncementsController() {
     }
     return false;
   }, [archived, bodyJson, canEdit, draftEnabled, isCreating, pinned, publishAt, scheduleEnabled, selected, title]);
+  const isPublishReady = useMemo(
+    () => title.trim().length > 0 && extractTipTapText(bodyJson).trim().length > 0,
+    [bodyJson, title],
+  );
 
   useBeforeUnloadPrompt(isDirty);
 
@@ -452,6 +478,8 @@ export function useAnnouncementsController() {
   }, []);
 
   const handleFinish = (mode: AnnouncementFinishMode) => {
+    if (!isPublishReady) return;
+
     if (isCreating) {
       if (mode === "archived") return;
 
@@ -492,8 +520,9 @@ export function useAnnouncementsController() {
 
   const handleCloseEditor = () => {
     if (isCreating) {
-      isCreatingHandlers.close();
-      setImageStagingToken(null);
+      // 同 createMutation：取消同样要先把草稿清干净，否则这一跳会被未保存拦截器再问一次，
+      // 而「取消」本身就是用户在明确表示要丢掉它。
+      discardCreateDraft();
       const firstId = rows[0]?.id;
       setAnnouncementSelection(
         firstId ? { kind: "selected", id: firstId } : { kind: "none" },
@@ -572,6 +601,7 @@ export function useAnnouncementsController() {
     savePending: updateMutation.isPending,
     deletePending: deleteMutation.isPending,
     isDirty,
+    isPublishReady,
     resetFilters,
     handleCreateByStatus,
     handleFinish,

@@ -1,11 +1,8 @@
 // @vitest-environment jsdom
 import { MantineProvider } from "@mantine/core";
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { render, screen } from "@testing-library/react";
+import { describe, expect, it, vi } from "vitest";
 import { ToolsPage } from "./ToolsPage";
-import { fetchGameData } from "@portal/services/GameDataService";
-import type { GameDataBaseInput } from "@guild/shared/schemas/equipment-calc";
 
 vi.mock("react-i18next", () => ({
   useTranslation: () => ({
@@ -21,51 +18,32 @@ vi.mock("../../utils/notifications", () => ({
   notifySuccess: vi.fn(),
 }));
 
-vi.mock("@portal/services/GameDataService", () => ({
-  fetchGameData: vi.fn(),
-}));
-
 function renderToolsPage() {
-  const queryClient = new QueryClient({
-    defaultOptions: {
-      queries: { retry: false },
-    },
-  });
-
   render(
-    <QueryClientProvider client={queryClient}>
-      <MantineProvider>
-        <ToolsPage />
-      </MantineProvider>
-    </QueryClientProvider>,
+    <MantineProvider>
+      <ToolsPage />
+    </MantineProvider>,
   );
 }
 
 describe("ToolsPage", () => {
-  beforeEach(() => {
-    // ToolsPage only reads `version`; the rest of the payload is irrelevant here.
-    vi.mocked(fetchGameData).mockResolvedValue({
-      data: {} as GameDataBaseInput,
-      version: "workbook-2026-06-27-7d9f97f8",
-      schemaVersion: 1,
-    });
-  });
-
-  it("opens the title sandbox in a workspace editor layout", async () => {
+  it("lists the dice roller", () => {
     renderToolsPage();
 
-    fireEvent.click(screen.getByRole("button", { name: /sandbox\.title/i }));
-
-    await waitFor(() => expect(document.querySelector(".sandbox__topbar")).not.toBeNull());
-    expect(document.querySelector(".sandbox__workspace")).not.toBeNull();
-    expect(document.querySelector(".sandbox__panel--controls")).not.toBeNull();
-    expect(document.querySelector(".sandbox__panel--output")).not.toBeNull();
+    expect(screen.getByRole("button", { name: /dice\.title/i })).toBeInTheDocument();
   });
 
-  it("shows the equipment calculator data version on the tool card", async () => {
+  it("does not render the removed equipment calculator", () => {
     renderToolsPage();
 
-    expect(await screen.findByText("equipCalc.versionLabel")).toBeInTheDocument();
-    expect(screen.getByText("workbook-2026-06-27-7d9f97f8")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /equipCalc\.title/i })).not.toBeInTheDocument();
+  });
+
+  // 称号沙盒搬到了资料页（在那里编辑称号才是它真正的用途），工具页不该再有入口。
+  // 弹窗自身的布局断言见 feature/profile/TitleSandboxModal.test.tsx。
+  it("does not render the title sandbox that moved to the profile page", () => {
+    renderToolsPage();
+
+    expect(screen.queryByRole("button", { name: /sandbox\.title/i })).not.toBeInTheDocument();
   });
 });

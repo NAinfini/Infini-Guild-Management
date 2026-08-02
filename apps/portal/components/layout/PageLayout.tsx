@@ -1,5 +1,6 @@
 import { Container, Group, Stack, Title } from "@mantine/core";
 import type { CSSProperties, ReactElement, ReactNode } from "react";
+import { useTranslation } from "react-i18next";
 import "./PageLayout.css";
 
 type PageLayoutProps = {
@@ -43,6 +44,7 @@ function PageLayoutRoot({
   children,
   className,
 }: PageLayoutProps) {
+  const { t } = useTranslation("common");
   const hasHeader = Boolean(actions || breadcrumbs);
 
   return (
@@ -61,7 +63,7 @@ function PageLayoutRoot({
           wrap="wrap"
         >
           {breadcrumbs ? (
-            <nav className="page-layout__breadcrumbs" aria-label="Breadcrumb">
+            <nav className="page-layout__breadcrumbs" aria-label={t("nav.breadcrumbs")}>
               {breadcrumbs}
             </nav>
           ) : null}

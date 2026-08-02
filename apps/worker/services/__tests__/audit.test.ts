@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { writeAuditLog, writeAuditLogDurable } from "../audit";
+import { buildAuditLogStatements, writeAuditLog, writeAuditLogDurable } from "../audit";
 
 const dbMock = vi.hoisted(() => ({
   values: vi.fn().mockResolvedValue(undefined),
@@ -15,6 +15,7 @@ function createContext(headers: Record<string, string> = {}) {
     { meta: { changes: 1 } },
     { meta: { changes: 1 } },
   ]);
+  dbMock.prepare.mockClear();
   return {
     c: {
       env: { DB: dbMock },
@@ -30,6 +31,26 @@ vi.mock("drizzle-orm/d1", () => ({
 }));
 
 describe("audit log system-test filtering", () => {
+  it("builds a guarded durable statement without executing it", () => {
+    const { c } = createContext();
+
+    const statements = buildAuditLogStatements(c as never, {
+      entityType: "class_catalog",
+      action: "update",
+      actorId: "admin-1",
+      entityId: "warden",
+    }, {
+      sql: "EXISTS (SELECT 1 FROM class_catalog WHERE id = ?)",
+      bindings: ["warden"],
+    });
+
+    expect(statements).toHaveLength(1);
+    expect(dbMock.batch).not.toHaveBeenCalled();
+    expect(dbMock.prepare).toHaveBeenCalledWith(expect.stringMatching(
+      /INSERT INTO audit_log[\s\S]*WHERE EXISTS \(SELECT 1 FROM class_catalog WHERE id = \?\)/,
+    ));
+  });
+
   it("does not let client-controlled system-test headers suppress audit writes", async () => {
     const { c } = createContext({
       "X-System-Test": "admin-console-api",

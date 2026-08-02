@@ -1,6 +1,15 @@
 import { describe, expect, it, vi } from "vitest";
 import { EventService, parseAttachments } from "../EventService";
 
+/**
+ * 造一张字节头真实的 PNG。
+ *
+ * 上传路径会按魔数复核声明的类型，随便塞几个字节再标成 image/png 是过不去的。
+ */
+function pngFile(name: string): File {
+  return new File([new Uint8Array([0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A])], name, { type: "image/png" });
+}
+
 const stubTemplateDeps = {
   getTemplateById: vi.fn().mockResolvedValue(null),
   materializeRecurringSeries: vi.fn().mockResolvedValue(undefined),
@@ -90,7 +99,7 @@ describe("worker EventService", () => {
         attachments: [],
         auto_archive: true,
       },
-      [new File(["image"], "poster.png", { type: "image/png" })],
+      [pngFile("poster.png")],
     );
 
     expect(insertValues).toHaveBeenCalledWith(
@@ -144,7 +153,7 @@ describe("worker EventService", () => {
         start_at: "2026-03-20T19:00:00.000Z",
         attachments: [],
       },
-      [new File(["image"], "new.png", { type: "image/png" })],
+      [pngFile("new.png")],
     )).rejects.toBe(failure);
 
     expect(media.delete).toHaveBeenCalledWith("events/evt-create-failure/images/new.png");
@@ -229,7 +238,7 @@ describe("worker EventService", () => {
       createEventRow({
         attachments: JSON.stringify(["events/existing.png"]),
       }),
-      [new File(["image"], "new.png", { type: "image/png" })],
+      [pngFile("new.png")],
     );
 
     expect((result as { ok: true; data: { attachments: string[] } }).data.attachments).toEqual(["events/existing.png", "events/evt-1/images/new.png"]);
@@ -268,7 +277,7 @@ describe("worker EventService", () => {
       "mod-1",
       "evt-1",
       createEventRow({ attachments: JSON.stringify(["events/existing.png"]) }),
-      [new File(["image"], "new.png", { type: "image/png" })],
+      [pngFile("new.png")],
     )).rejects.toBe(failure);
 
     expect(media.delete).toHaveBeenCalledWith("events/evt-1/images/new.png");
@@ -299,8 +308,8 @@ describe("worker EventService", () => {
       "evt-1",
       createEventRow(),
       [
-        new File(["one"], "one.png", { type: "image/png" }),
-        new File(["two"], "two.png", { type: "image/png" }),
+        pngFile("one.png"),
+        pngFile("two.png"),
       ],
     )).rejects.toBe(failure);
 

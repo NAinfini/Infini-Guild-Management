@@ -1,10 +1,9 @@
 {
   "title": "Tools",
   "subtitle": "Theme Sandbox",
+  "page.readOnlyHint": "External view is read-only. Interactive controls are disabled.",
   "sandbox.title": "HTML Title Sandbox",
-  "sandbox.description": "Generate styled HTML with color picker and typography controls",
   "sandbox.placeholder": "Enter title text",
-  "sandbox.readOnlyHint": "External view is read-only. Interactive controls are disabled.",
   "sandbox.section.titleText": "TITLE TEXT",
   "sandbox.section.color": "COLOR",
   "sandbox.section.typography": "TYPOGRAPHY",
@@ -21,6 +20,7 @@
   "sandbox.button.underline": "Underline",
   "sandbox.button.strike": "Strike",
   "sandbox.manualOverridePlaceholder": "Paste custom HTML to override generated markup...",
+  "sandbox.applyToProfile": "Apply to my title",
   "sandbox.aria.titleInput": "Title text preview input",
   "sandbox.aria.hueSlider": "Hue slider",
   "sandbox.aria.saturationLightnessPicker": "Saturation lightness picker",
@@ -57,9 +57,5 @@
   "dice.total": "Total",
   "dice.history": "History",
   "dice.clearHistory": "Clear",
-  "dice.noHistory": "No rolls yet. Hit Roll!",
-  "dice.result": "{{count}}d{{sides}} → {{results}} = {{total}}",
-  "equipCalc.title": "Equipment Calculator",
-  "equipCalc.description": "Plan and optimize your gear builds",
-  "equipCalc.versionLabel": "Data version"
+  "dice.noHistory": "No rolls yet. Hit Roll!"
 }

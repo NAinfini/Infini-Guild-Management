@@ -1,6 +1,7 @@
 import {
   KeyboardSensor,
-  PointerSensor,
+  MouseSensor,
+  TouchSensor,
   useSensor,
   useSensors,
 } from "@dnd-kit/core";
@@ -33,12 +34,53 @@ import { GuildWarHistoryTabWrapper } from "./guild-war/GuildWarHistoryTabWrapper
 import { GuildWarAnalyticsTabWrapper } from "./guild-war/GuildWarAnalyticsTabWrapper";
 import "./GuildWarPage.css";
 
+export type GuildWarTab = "active" | "history" | "analytics";
+
+type GuildWarRouteSearch = {
+  tab?: GuildWarTab;
+  warName?: string;
+  [key: string]: unknown;
+};
+
+type GuildWarTabResolution = {
+  activeTab: GuildWarTab;
+  replacementTab: GuildWarTab | null;
+};
+
+export function resolveGuildWarTab(
+  search: Pick<GuildWarRouteSearch, "tab" | "warName">,
+  isExternalView: boolean,
+): GuildWarTabResolution {
+  const firstVisibleTab: GuildWarTab = isExternalView ? "history" : "active";
+  const visibleTabs: GuildWarTab[] = isExternalView
+    ? ["history", "analytics"]
+    : ["active", "history", "analytics"];
+  const requestedTab = search.tab
+    ?? (search.warName ? "history" : firstVisibleTab);
+  const activeTab = visibleTabs.includes(requestedTab)
+    ? requestedTab
+    : firstVisibleTab;
+
+  return {
+    activeTab,
+    replacementTab: search.tab && search.tab !== activeTab ? activeTab : null,
+  };
+}
+
+export function buildGuildWarTabSearch(
+  previous: GuildWarRouteSearch,
+  tab: GuildWarTab,
+): GuildWarRouteSearch {
+  return {
+    ...previous,
+    tab: tab === "active" ? undefined : tab,
+    ...(tab === "active" ? { warName: undefined } : {}),
+  };
+}
+
 export function GuildWarPage() {
   const { t } = useTranslation("guild-war");
-  const guildWarSearch = useSearch({ strict: false }) as {
-    tab?: "active" | "history" | "analytics";
-    warName?: string;
-  };
+  const guildWarSearch = useSearch({ strict: false }) as GuildWarRouteSearch;
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const { theme: currentTheme } = useTheme();
@@ -56,6 +98,7 @@ export function GuildWarPage() {
   const { canManage: canManagePermission } = useEffectivePermissions();
   const isModerator = canManagePermission(["guildwar.teams.edit"]);
   const canManageActive = isModerator && !isExternalView;
+  const canCreateWarEvent = canManagePermission(["events.create"]) && !isExternalView;
   const { showError } = useAppError();
   const chartThemeName = useMemo(() => `guild-${currentTheme}`, [currentTheme]);
   const chartThemeConfig = useMemo(() => buildEChartsTheme(currentTheme), [currentTheme]);
@@ -117,21 +160,40 @@ export function GuildWarPage() {
     setHistoryPage(1);
   }, [guildWarSearch.warName, setHistoryPage]);
 
-  const activeTab = useMemo(() => {
-    if (guildWarSearch.tab) {
-      return guildWarSearch.tab;
+  const tabResolution = useMemo(
+    () => resolveGuildWarTab(guildWarSearch, isExternalView),
+    [guildWarSearch, isExternalView],
+  );
+  const activeTab = tabResolution.activeTab;
+  const setGuildWarTab = useCallback((tab: GuildWarTab) => {
+    void navigate({
+      to: "/guild-war",
+      search: (previous) => buildGuildWarTabSearch(previous as GuildWarRouteSearch, tab),
+      replace: true,
+      viewTransition: false,
+    });
+  }, [navigate]);
+
+  useEffect(() => {
+    if (tabResolution.replacementTab) {
+      setGuildWarTab(tabResolution.replacementTab);
     }
-    if (guildWarSearch.warName) {
-      return "history";
-    }
-    return isExternalView ? "history" : "active";
-  }, [guildWarSearch.tab, guildWarSearch.warName, isExternalView]);
+  }, [setGuildWarTab, tabResolution.replacementTab]);
+
+  const openEventsPage = useCallback(() => {
+    void navigate({ to: "/events", viewTransition: false });
+  }, [navigate]);
 
   const sensors = useSensors(
-    useSensor(PointerSensor, {
+    useSensor(MouseSensor, {
       activationConstraint: {
-        delay: 150,
-        tolerance: 5,
+        distance: 5,
+      },
+    }),
+    useSensor(TouchSensor, {
+      activationConstraint: {
+        delay: 180,
+        tolerance: 8,
       },
     }),
     useSensor(KeyboardSensor),
@@ -140,6 +202,9 @@ export function GuildWarPage() {
   const {
     warEventsQuery,
     concludedEventIdsQuery,
+    activeEligibilityReady,
+    eligibleWarEvents,
+    activeSelectedEventId,
     selectedEventDetailQuery,
     activeQuery,
     historyQuery,
@@ -155,7 +220,7 @@ export function GuildWarPage() {
   });
 
   const activeController = useGuildWarActiveController({
-    selectedEventId,
+    selectedEventId: activeSelectedEventId,
     activeData: activeQuery.data,
     guildWarService,
     showError,
@@ -168,7 +233,7 @@ export function GuildWarPage() {
   });
 
   const guildWarMutations = useGuildWarMutations({
-    selectedEventId,
+    selectedEventId: activeSelectedEventId,
     selectedHistoryId: selectedHistoryId ?? "",
     historyDateFrom,
     historyDateTo,
@@ -183,28 +248,27 @@ export function GuildWarPage() {
     activeData: activeQuery.data,
     usersData: usersQuery.data?.data,
     canManageActive,
-    selectedEventId,
+    selectedEventId: activeSelectedEventId,
     activeController,
     roleTagMutation: guildWarMutations.roleTagMutation,
     guildWarService,
     showError,
   });
 
-  const concludedEventIdSet = useMemo(
-    () => new Set(concludedEventIdsQuery.data?.data ?? []),
-    [concludedEventIdsQuery.data],
-  );
-
   useEffect(() => {
-    if (selectedEventId) {
-      return;
+    if (!activeEligibilityReady) return;
+    if (activeSelectedEventId) return;
+    const nextEventId = eligibleWarEvents[0]?.id;
+    if (selectedEventId !== nextEventId) {
+      setSelectedEventId(nextEventId);
     }
-    const events = warEventsQuery.data?.data ?? [];
-    const active = events.find((e) => !concludedEventIdSet.has(e.id));
-    if (active) {
-      setSelectedEventId(active.id);
-    }
-  }, [selectedEventId, setSelectedEventId, warEventsQuery.data, concludedEventIdSet]);
+  }, [
+    activeEligibilityReady,
+    activeSelectedEventId,
+    eligibleWarEvents,
+    selectedEventId,
+    setSelectedEventId,
+  ]);
 
   useEffect(() => {
     if (selectedHistoryId) {
@@ -235,6 +299,7 @@ export function GuildWarPage() {
 
   useLoadWarningToast(
     warEventsQuery.isError ||
+      concludedEventIdsQuery.isError ||
       selectedEventDetailQuery.isError ||
       activeQuery.isError ||
       historyQuery.isError ||
@@ -250,13 +315,7 @@ export function GuildWarPage() {
         className="guild-war-page__tabs"
         onChange={(nextTab) => {
           if (!nextTab) return;
-          const tab = nextTab as "active" | "history" | "analytics";
-          void navigate({
-            to: "/guild-war",
-            search: (previous) => ({ ...previous, tab: tab === "active" ? undefined : tab }),
-            replace: true,
-            viewTransition: false,
-          });
+          setGuildWarTab(nextTab as GuildWarTab);
         }}
       >
         <Tabs.List>
@@ -267,14 +326,17 @@ export function GuildWarPage() {
         {!isExternalView ? (
           <Tabs.Panel value="active" pt="md">
             <GuildWarActiveTab
-              selectedEventId={selectedEventId}
+              selectedEventId={activeSelectedEventId}
               setSelectedEventId={setSelectedEventId}
               canManageActive={canManageActive}
               activeController={activeController}
               guildWarDrag={guildWarDrag}
               guildWarHistory={guildWarHistory}
-              warEventsQuery={warEventsQuery}
-              concludedEventIdSet={concludedEventIdSet}
+              eligibleWarEvents={eligibleWarEvents}
+              activeEligibilityReady={activeEligibilityReady}
+              canCreateWarEvent={canCreateWarEvent}
+              onCreateWarEvent={openEventsPage}
+              onViewHistory={() => setGuildWarTab("history")}
               activeQuery={activeQuery}
               sensors={sensors}
               concludeWarDisabled={concludeWarDisabled}

@@ -93,34 +93,31 @@ export function EventCardsView({
   const [detailModalEvent, setDetailModalEvent] = useState<Event | null>(null);
   const detailModalMembers = detailModalEvent ? (eventMembersMap.get(detailModalEvent.id) ?? []) : [];
   const now = new Date();
+  const filtersApplied =
+    hasAnyFilter ?? Boolean(eventType || archivedOnly || pinnedOnly || lockedOnly);
 
   if (events.length === 0) {
     return (
       <Paper withBorder radius="md" p="md">
-        <div>
-          <EmptyState
+        <EmptyState
           title={cardsEmptyDescription}
           actions={
-            <Group gap={8}>
-              <Button onClick={onResetFilters} disabled={hasAnyFilter === undefined ? !eventType && !archivedOnly && !pinnedOnly && !lockedOnly : !hasAnyFilter}>
+            filtersApplied ? (
+              <Button onClick={onResetFilters}>
                 {t("card.resetFilters")}
               </Button>
-              {canManage ? (
-                <Button onClick={onCreateEvent}>
-                  {t("button.create")}
-                </Button>
-              ) : null}
-            </Group>
+            ) : canManage ? (
+              <Button onClick={onCreateEvent}>{t("button.create")}</Button>
+            ) : null
           }
-          />
-        </div>
+        />
       </Paper>
     );
   }
 
   return (
     <>
-      <SimpleGrid cols={{ base: 1, sm: 2, md: 3, lg: 4 }} spacing={12}>
+      <SimpleGrid cols={{ base: 1, sm: 2, lg: 3, xl: 4 }} spacing={12}>
         {events.map((event) => (
           <EventCard
             key={event.id}

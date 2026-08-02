@@ -217,13 +217,18 @@ export function CmdKSearch({ asIcon = false }: { asIcon?: boolean }) {
   return (
     <>
       {asIcon ? (
-        <ActionIcon variant="subtle" onClick={openSearch} aria-label={t("cmdk.aria.openSearch")}>
+        <ActionIcon
+          variant="subtle"
+          className="app-header-icon-btn"
+          onClick={openSearch}
+          aria-label={t("cmdk.aria.openSearch")}
+        >
           <SearchOutlined />
         </ActionIcon>
       ) : (
         /* Search is a utility, not the page's primary action — a gold fill here
            competed with the real primary button on every single page. */
-        <Button variant="default" onClick={openSearch} size="xs" aria-label={t("cmdk.aria.openSearch")} rightSection={
+        <Button variant="default" onClick={openSearch} size="xs" aria-label={t("cmdk.searchButton")} rightSection={
           <Group gap={2} wrap="nowrap">
             <Kbd size="xs">{isMac ? "Cmd" : "Ctrl"}</Kbd>
             <Kbd size="xs">K</Kbd>
@@ -239,7 +244,7 @@ export function CmdKSearch({ asIcon = false }: { asIcon?: boolean }) {
         onClose={closeSearch}
         size="640px"
         withCloseButton
-        classNames={{ body: styles.modalBody }}
+        classNames={{ body: styles.modalBody, title: styles.modalTitle }}
       >
         <Stack gap="sm">
           <TextInput

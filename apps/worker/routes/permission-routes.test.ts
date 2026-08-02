@@ -25,7 +25,10 @@ vi.mock("../middleware/rbac", () => ({
   getRequestUser: mocks.getRequestUser,
 }));
 
-vi.mock("../services/audit", () => ({ writeAuditLog: vi.fn() }));
+vi.mock("../services/audit", () => ({
+  buildAuditLogStatements: vi.fn(() => []),
+  writeAuditLog: vi.fn(),
+}));
 vi.mock("../services/push", () => ({
   publishAnnouncementPublished: vi.fn(),
   publishEntityChanged: vi.fn(),
@@ -399,5 +402,30 @@ describe("site config permission mapping", () => {
 
     expect(uploadResult.status).toBe(401);
     expect(mocks.requirePermission).toHaveBeenLastCalledWith(expect.anything(), "admin.siteConfig.manage", { freshPermissions: true });
+  });
+});
+
+describe("class catalog permission mapping", () => {
+  it("requires a fresh admin.classes.manage check for every catalog mutation", async () => {
+    const { classRoutes } = await import("./classes");
+    const mutations = [
+      { path: "/", method: "POST" },
+      { path: "/class-1", method: "PATCH" },
+      { path: "/class-1/icon", method: "POST" },
+      { path: "/class-1/icon", method: "DELETE" },
+      { path: "/class-1", method: "DELETE" },
+    ] as const;
+
+    for (const mutation of mutations) {
+      mocks.requirePermission.mockRejectedValueOnce(new HTTPException(401));
+      const result = await classRoutes.request(mutation.path, { method: mutation.method });
+
+      expect(result.status).toBe(401);
+      expect(mocks.requirePermission).toHaveBeenLastCalledWith(
+        expect.anything(),
+        "admin.classes.manage",
+        { freshPermissions: true },
+      );
+    }
   });
 });

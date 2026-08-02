@@ -49,8 +49,7 @@ const labels = {
   noCategories: "empty.noCategories",
   selectStructure: "manageStorage.selectStructure",
   changeSelection: "manageStorage.changeSelection",
-  stepSelect: "manageStorage.stepSelect",
-  stepEdit: "manageStorage.stepEdit",
+  mobileHint: "manageStorage.mobileHint",
 };
 
 const callbacks = {
@@ -143,13 +142,12 @@ describe("StorageStructureManager create drafts", () => {
     );
   });
 
-  it("uses a select then edit flow on mobile", async () => {
+  it("keeps structure selection accessible from a left drawer on mobile", async () => {
     responsive.mobile = true;
     const user = userEvent.setup();
     renderModal();
 
-    expect(screen.getByText(labels.stepSelect)).toBeInTheDocument();
-    expect(screen.getByText(labels.stepEdit)).toBeInTheDocument();
+    expect(screen.getByText(labels.mobileHint)).toBeInTheDocument();
 
     await user.click(screen.getByRole("button", { name: labels.changeSelection }));
     await waitFor(() => {

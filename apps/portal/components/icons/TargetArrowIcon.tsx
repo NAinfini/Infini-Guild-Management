@@ -19,7 +19,8 @@ const ARROW_VARIANTS: Variants = {
   animate: {
     translateX: [3, -1, 0],
     translateY: [-3, 1, 0],
-    transition: { duration: 0.5, type: "spring", stiffness: 200, damping: 12 },
+    // 多关键帧不能配 spring，见 ShieldIcon 的说明。
+    transition: { duration: 0.5, ease: "easeInOut" },
   },
 };
 

@@ -1,5 +1,4 @@
 import type { MemberProfile, User, UserBadge } from "@guild/shared";
-import { CLASS_NAMES } from "@guild/shared";
 import { activeGame } from "@guild/shared/games";
 import { useQuery } from "@tanstack/react-query";
 import { useLocalStorage } from "@mantine/hooks";
@@ -10,6 +9,7 @@ import { useEffectivePermissions } from "./useEffectivePermissions";
 import { queryKeys } from "../api/query-keys";
 import { fetchAllUsersListWithOptions } from "../services/UserService";
 import { useAuthStore } from "../stores/auth";
+import { resolveClassCatalogItem, useClassCatalogStore } from "../stores/class-catalog";
 import { resolveProfileMediaUrl } from "../utils/media";
 import { playAudio, stopAudio, setAudioVolume, setAudioMuted, isAudioPlaying, getAudioSrc } from "../utils/audio-player";
 
@@ -35,7 +35,8 @@ function readStoredClassFilter(): string[] {
     if (!Array.isArray(list)) return [];
     return list
       .filter((value): value is string => typeof value === "string")
-      .filter((value) => CLASS_NAMES.includes(value as (typeof CLASS_NAMES)[number]));
+      .map((value) => value.trim())
+      .filter((value) => value.length > 0 && value.length <= 128);
   } catch {
     return [];
   }
@@ -58,6 +59,7 @@ function readStoredSortMode(): RosterSortMode {
 export function useRosterPageController() {
   const isExternalView = useExternalView();
   const sessionUser = useAuthStore((state) => state.user);
+  const classCatalog = useClassCatalogStore((state) => state.items);
   const { canManage: canManagePermission } = useEffectivePermissions();
   const { search, setSearch, debouncedSearch: debouncedSearchRaw } = useDebouncedSearch();
   const debouncedSearch = debouncedSearchRaw.trim().toLowerCase();
@@ -118,6 +120,14 @@ export function useRosterPageController() {
   }, [classFilter, sortMode]);
 
   const rows = usersQuery.data?.data ?? [];
+  const loadedClassIds = useMemo(
+    () => [...new Set(
+      rows.flatMap((entry) => entry.profile.classes)
+        .map((id) => id.trim())
+        .filter(Boolean),
+    )],
+    [rows],
+  );
 
   const sortedRows = useMemo(() => {
     const displayRows = isExternalView
@@ -139,10 +149,14 @@ export function useRosterPageController() {
 
     return [...filteredRows].sort((left, right) => {
       if (sortMode === "username") return left.user.username.localeCompare(right.user.username);
-      if (sortMode === "class") return (left.profile.classes[0] ?? "").localeCompare(right.profile.classes[0] ?? "");
+      if (sortMode === "class") {
+        return resolveClassCatalogItem(left.profile.classes[0], classCatalog).label.localeCompare(
+          resolveClassCatalogItem(right.profile.classes[0], classCatalog).label,
+        );
+      }
       return right.profile.power - left.profile.power;
     });
-  }, [rows, isExternalView, debouncedSearch, classFilter, sortMode]);
+  }, [classCatalog, rows, isExternalView, debouncedSearch, classFilter, sortMode]);
 
   const playHoverAudio = (entry: { user: User; profile: MemberProfile }) => {
     if (audioMuted) return;
@@ -214,6 +228,7 @@ export function useRosterPageController() {
     setAudioVolumeState,
     selected,
     usersQuery,
+    loadedClassIds,
     sortedRows,
     playHoverAudio,
     stopHoverAudio,

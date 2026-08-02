@@ -4,7 +4,6 @@ import { createElement, useCallback, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { notifySuccess, notifyWarning, notifyError } from "../utils/notifications";
 import type { MemberDetailFormState } from "../types/admin";
-import type { ClassName } from "@guild/shared";
 import {
   adminUpdateProfile,
   batchDeactivateAdminUsers,
@@ -235,7 +234,7 @@ export function useAdminMutations({
     }) => {
       await adminUpdateProfile(userId, {
         power: form.power,
-        classes: form.classes as ClassName[],
+        classes: form.classes,
         title_html: form.titleHtml || null,
         bio: form.bio || null,
         notes: form.notes || null,

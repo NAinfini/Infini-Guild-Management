@@ -119,7 +119,11 @@ export function EventsFiltersCard({
   );
   const actions = (
         canManage && onCreateEvent ? (
-          <Button onClick={onCreateEvent} size="sm">
+          <Button
+            onClick={onCreateEvent}
+            size="sm"
+            style={isMobile ? { minHeight: 44, flexShrink: 0 } : undefined}
+          >
             {t("button.create")}
           </Button>
         ) : null
@@ -131,6 +135,7 @@ export function EventsFiltersCard({
         <Stack gap={0}>
           <Group gap="xs" wrap="nowrap" align="center">
             <Box style={{ flex: 1, minWidth: 0 }}>{primary}</Box>
+            {actions}
             <ActionIcon
               variant={filtersOpen ? "filled" : "default"}
               size="lg"
@@ -146,7 +151,6 @@ export function EventsFiltersCard({
                 {filters}
               </Group>
               {viewControls}
-              {actions}
             </Stack>
           </Collapse>
         </Stack>

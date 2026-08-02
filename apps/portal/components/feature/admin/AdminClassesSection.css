@@ -1,0 +1,190 @@
+/*
+ * 这一页原先是「顶部 hero + 满屏卡片网格 + 760px 弹窗编辑器」三件套：hero 里的标题、
+ * 说明、计数和新建按钮各占一行，编辑要开弹窗，弹窗又把卡片全盖住。现在和角色、徽章
+ * 一样并到 AdminPage.css 的 .admin-md 主从台，hero（含 __eyebrow）、卡片
+ * （__card / __card-accent / __card-copy / __color-dot）整套删除。
+ * 剩下的都是编辑器内部的东西，原样搬进右栏。
+ */
+
+/* 清单行外壳：手柄 + .admin-md__item。手柄是独立按钮，不能嵌进那个按钮里。 */
+.admin-classes__row {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  min-inline-size: 0;
+}
+
+.admin-classes__grip {
+  display: grid;
+  place-items: center;
+  flex: 0 0 auto;
+  inline-size: 26px;
+  /* 44px 触控靶面，和 .admin-md__item 同一档。 */
+  min-block-size: 44px;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-control);
+  background: transparent;
+  color: var(--text-muted);
+  cursor: grab;
+  touch-action: none;
+}
+
+.admin-classes__grip:hover {
+  color: var(--text-primary);
+  background: var(--surface-raised);
+}
+
+.admin-classes__grip:focus-visible {
+  outline: 2px solid var(--brand-fill);
+  outline-offset: 1px;
+}
+
+.admin-classes__grip:disabled {
+  cursor: default;
+  opacity: 0.4;
+}
+
+.admin-classes__editor {
+  display: grid;
+  grid-template-columns: 180px minmax(0, 1fr);
+  gap: var(--space-xl);
+}
+
+.admin-classes__preview-panel {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  align-self: start;
+  gap: var(--space-sm);
+  padding: var(--space-lg);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-surface);
+  background:
+    linear-gradient(160deg, color-mix(in srgb, var(--brand-fill) 10%, transparent), transparent 55%),
+    var(--surface-sunken);
+}
+
+.admin-classes__preview-icon {
+  display: grid;
+  place-items: center;
+  width: 88px;
+  height: 88px;
+  margin-block: var(--space-md) var(--space-sm);
+}
+
+.admin-classes__local-preview {
+  width: 72px;
+  height: 72px;
+  padding: 3px;
+  border: 1px solid var(--border-strong);
+  border-radius: 50%;
+  background: var(--surface-raised);
+  object-fit: contain;
+}
+
+.admin-classes__form-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(120px, 0.45fr);
+  gap: var(--space-sm);
+}
+
+/* 标签后面挂一个问号，说明收进 Tooltip。原先那三行常驻说明比输入框本身还高。 */
+.admin-classes__label-hint {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-xs);
+}
+
+.admin-classes__hint-dot {
+  display: inline-flex;
+  color: var(--text-muted);
+  cursor: help;
+}
+
+.admin-classes__hint-dot:hover,
+.admin-classes__hint-dot:focus-visible {
+  color: var(--text-primary);
+}
+
+.admin-classes__icon-grid {
+  display: grid;
+  grid-template-columns: repeat(9, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.admin-classes__icon-option {
+  display: grid;
+  place-items: center;
+  aspect-ratio: 1;
+  min-width: 0;
+  padding: 0;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-control);
+  background: var(--surface-sunken);
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition:
+    color var(--motion-state),
+    border-color var(--motion-state),
+    background-color var(--motion-state),
+    transform var(--motion-state);
+}
+
+.admin-classes__icon-option:hover {
+  color: var(--text-primary);
+  border-color: var(--border-strong);
+  transform: translateY(-1px);
+}
+
+.admin-classes__icon-option--selected {
+  color: var(--brand-text);
+  border-color: var(--brand-fill);
+  background: color-mix(in srgb, var(--brand-fill) 15%, var(--surface-raised));
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--brand-fill) 32%, transparent);
+}
+
+.admin-classes__upload-box {
+  padding: var(--space-md);
+  border: 1px dashed var(--border-strong);
+  border-radius: var(--radius-control);
+  background: var(--surface-sunken);
+}
+
+@media (max-width: 47.99em) {
+  .admin-classes__editor {
+    grid-template-columns: 1fr;
+  }
+
+  .admin-classes__preview-panel {
+    display: grid;
+    grid-template-columns: auto 1fr;
+    justify-items: start;
+    text-align: start;
+  }
+
+  .admin-classes__preview-panel > :first-child {
+    grid-column: 1 / -1;
+  }
+
+  .admin-classes__preview-icon {
+    grid-row: span 2;
+    width: 76px;
+    height: 76px;
+    margin: 0;
+  }
+
+  .admin-classes__form-row {
+    grid-template-columns: 1fr;
+  }
+
+  .admin-classes__icon-grid {
+    grid-template-columns: repeat(6, minmax(0, 1fr));
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .admin-classes__icon-option {
+    transition: none;
+  }
+}

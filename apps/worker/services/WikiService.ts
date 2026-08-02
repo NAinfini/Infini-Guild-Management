@@ -4,7 +4,11 @@ import {
   wikiRevisionListItemSchema,
   wikiRevisionSchema,
 } from "@guild/shared";
-import type { WriteAuditLogInput as AuditLogInput } from "./audit";
+import type { BatchUpdateWikiCategoryItem } from "@guild/shared";
+import type {
+  AuditLogStatementCondition,
+  WriteAuditLogInput as AuditLogInput,
+} from "./audit";
 import type { PushEntityType, PushHint } from "@guild/shared/constants/push-hints";
 import { and, asc, desc, eq, inArray, isNotNull, isNull, lte, or, sql, type SQL } from "drizzle-orm";
 import type { DrizzleD1Database } from "drizzle-orm/d1";
@@ -30,6 +34,10 @@ export type WikiServiceDeps = {
   media: R2Bucket;
   rawDb: D1Database;
   writeAuditLog: (input: AuditLogInput) => Promise<void>;
+  buildAuditLogStatements: (
+    input: AuditLogInput,
+    condition?: AuditLogStatementCondition,
+  ) => D1PreparedStatement[];
   publishEntityChanged: (input: EntityChangedInput) => Promise<void>;
 };
 
@@ -252,6 +260,82 @@ export class WikiService {
     await this.deps.writeAuditLog({ entityType: "wiki_category", action: "update", actorId, entityId: categoryId, diffTitle: updated.name, detailText: diff ? JSON.stringify(diff) : null });
     await this.deps.publishEntityChanged({ entityType: "wiki", entityId: categoryId, hint: "category_updated" });
     return ok(toCategoryPayload(updated));
+  }
+
+  /**
+   * 一次提交多行分类改动（改名 / 换父级 / 换顺序），全部落在同一个 D1 batch 里。
+   *
+   * 逐行 PATCH 的问题不是慢，是没有原子性：第三行失败时，前两行已经落库，
+   * 客户端既回滚不了，也无从知道停在了哪一行。这里要么整批生效，要么整批不生效，
+   * 返回的永远是落库之后的完整目录。
+   */
+  async batchUpdateCategories(
+    actorId: string,
+    updates: BatchUpdateWikiCategoryItem[],
+  ): Promise<ServiceResult<unknown[]>> {
+    const rows = await this.db.select(CATEGORY_COLS).from(wikiCategories);
+    const byId = new Map(rows.map((row) => [row.id, row]));
+
+    const missing = updates.filter((update) => !byId.has(update.id)).map((update) => update.id);
+    if (missing.length > 0) return err("NOT_FOUND", `Wiki category not found: ${missing.join(", ")}`);
+
+    /* 父子关系要拿**整批落库之后**的状态来判，不能逐行拿当前库里的状态判：
+       同一次提交里可以既把 A 挂到 B 下面、又把 B 挂到 C 下面，分开看每一步都合法，
+       合起来却是两层嵌套。 */
+    const projectedParent = new Map(rows.map((row) => [row.id, row.parentId]));
+    for (const update of updates) {
+      if (update.parent_id !== undefined) projectedParent.set(update.id, update.parent_id);
+    }
+
+    const touched = new Set(updates.map((update) => update.id));
+    for (const [id, parentId] of projectedParent) {
+      /* 只判这一批碰过的行，以及被挂到这一批某一行下面的行。库里原有的数据不该因为
+         别处的一次保存被连坐判违规——那种脏数据要单独暴露，不是在这里拦。 */
+      if (!parentId || (!touched.has(id) && !touched.has(parentId))) continue;
+      if (parentId === id) return err("VALIDATION_ERROR", "Category cannot be its own parent");
+      if (!projectedParent.has(parentId)) return err("NOT_FOUND", "Parent category not found");
+      /* 父级自己还有父级 = 两层。这一条同时覆盖了「有子分类的分类不能再被挂到别人下面」：
+         那种情况下正是它的子分类在这里撞上「父级还有父级」。 */
+      if (projectedParent.get(parentId)) {
+        return err("VALIDATION_ERROR", "Category nesting supports only one level");
+      }
+    }
+
+    const updatedAt = new Date().toISOString();
+    const diffs: Record<string, unknown> = {};
+    const statements = updates.map((update) => {
+      const assignments: string[] = [];
+      const bindings: unknown[] = [];
+      if (update.name !== undefined) { assignments.push("name = ?"); bindings.push(update.name); }
+      if (update.parent_id !== undefined) { assignments.push("parent_id = ?"); bindings.push(update.parent_id); }
+      if (update.sort_order !== undefined) { assignments.push("sort_order = ?"); bindings.push(update.sort_order); }
+      assignments.push("updated_at = ?");
+      bindings.push(updatedAt);
+
+      const diff = buildCategoryDiff(byId.get(update.id)!, update);
+      if (diff) diffs[update.id] = diff;
+
+      return this.deps.rawDb
+        .prepare(`UPDATE wiki_categories SET ${assignments.join(", ")} WHERE id = ?`)
+        .bind(...bindings, update.id);
+    });
+
+    await this.deps.rawDb.batch([
+      ...statements,
+      /* entityId 用 "batch"：这次改的是一批分类，不是某一行。与 ClassCatalogService、
+         GalleryService 的批量审计写法一致。 */
+      ...this.deps.buildAuditLogStatements({
+        entityType: "wiki_category",
+        action: "batch_update",
+        actorId,
+        entityId: "batch",
+        diffTitle: `${updates.length} categories updated`,
+        detailText: JSON.stringify(diffs),
+      }),
+    ]);
+
+    await this.deps.publishEntityChanged({ entityType: "wiki", entityId: "batch", hint: "category_updated" });
+    return this.listCategories();
   }
 
   async deleteCategory(actorId: string, categoryId: string): Promise<ServiceResult<{ ok: true }>> {

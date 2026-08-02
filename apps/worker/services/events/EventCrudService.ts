@@ -1,4 +1,5 @@
 import {
+  ALLOWED_IMAGE_TYPES,
   DEFAULT_SITE_MEDIA_POLICY,
   createEventSchema,
   eventSchema,
@@ -28,6 +29,7 @@ import {
 import { eventPublicVisibilityFilter, isEventPubliclyVisible } from "./event-visibility";
 import { buildReplaceMediaRefsStatements, replaceMediaRefs, deleteMediaRefs, extractAttachmentKeys } from "../media-references";
 import { rethrowAfterUploadFailure } from "../media-upload-compensation";
+import { validateUploadBytes } from "../media";
 
 export { toParticipantPayload, type EventParticipantRow } from "./EventParticipantService";
 export { toRaffleWinnerPayload, type RaffleWinnerRow } from "./EventPollRaffleService";
@@ -476,6 +478,34 @@ export class EventCrudService {
     return null;
   }
 
+  /**
+   * 把待上传的图读进内存并全部校验完再返回。
+   *
+   * 校验必须在写 R2 之前一次做完：写一半才发现第三张不合法的话，前两张已经落桶，
+   * 只能靠 catch 里的补偿删除去擦，而校验失败走的是正常 return，压根不进 catch。
+   * 类型这里对齐全站白名单，并按字节头复核一次——只看 Content-Type 的话
+   * image/svg+xml 之类的东西照样能进来。
+   */
+  private async readValidatedImages(
+    files: File[],
+    maxBytes: number,
+  ): Promise<Array<{ data: ArrayBuffer; contentType: string }> | ServiceErr> {
+    const allowedTypes = new Set<string>(ALLOWED_IMAGE_TYPES);
+    const prepared: Array<{ data: ArrayBuffer; contentType: string }> = [];
+    for (const file of files) {
+      if (file.size > maxBytes) {
+        return err("VALIDATION_ERROR", `File too large: ${file.name}`);
+      }
+      const data = await file.arrayBuffer();
+      const validation = validateUploadBytes(data, file.type || "application/octet-stream", allowedTypes);
+      if (!validation.ok) {
+        return err("VALIDATION_ERROR", `Invalid file type: ${file.name}`);
+      }
+      prepared.push({ data, contentType: validation.contentType });
+    }
+    return prepared;
+  }
+
   private async storeImages(eventId: string, files: File[], existingAttachmentCount: number): Promise<string[] | ServiceErr> {
     if (files.length === 0) {
       return [];
@@ -486,24 +516,19 @@ export class EventCrudService {
     }
 
     const mediaPolicy = await (this.deps.getMediaPolicy?.() ?? Promise.resolve(DEFAULT_SITE_MEDIA_POLICY));
-    const maxEventImageBytes = mediaPolicy.max_file_size_bytes.event_image;
-    for (const file of files) {
-      if (!file.type.startsWith("image/")) {
-        return err("VALIDATION_ERROR", `Invalid file type: ${file.name}`);
-      }
-      if (file.size > maxEventImageBytes) {
-        return err("VALIDATION_ERROR", `File too large: ${file.name}`);
-      }
+    const prepared = await this.readValidatedImages(files, mediaPolicy.max_file_size_bytes.event_image);
+    if (!Array.isArray(prepared)) {
+      return prepared;
     }
 
     const keys: string[] = [];
     try {
-      for (const file of files) {
+      for (const image of prepared) {
         const key = this.deps.createImageKey?.(eventId) ?? `events/${eventId}/images/${Date.now()}_${nanoid()}`;
         keys.push(key);
-        await this.media.put(key, await file.arrayBuffer(), {
+        await this.media.put(key, image.data, {
           httpMetadata: {
-            contentType: file.type || "application/octet-stream",
+            contentType: image.contentType,
           },
         });
       }

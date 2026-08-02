@@ -1,8 +1,8 @@
 import { z } from "zod";
 import { LIMITS } from "../config/limits";
-import { CLASS_NAMES } from "../constants/classes";
 import { PERMISSIONS } from "../constants/roles";
 import { isAllowedVideoUrl } from "../utils/video";
+import { classIdSchema } from "./class-catalog";
 
 const L = LIMITS.content;
 const permissionKeySchema = z.enum(PERMISSIONS);
@@ -32,7 +32,12 @@ export const memberProfileSchema = z.object({
   id: z.string(),
   user_id: z.string(),
   power: z.number().min(0),
-  classes: z.array(z.enum(CLASS_NAMES)),
+  classes: z
+    .array(classIdSchema)
+    .max(20)
+    .refine((values) => new Set(values).size === values.length, {
+      message: "Classes must be unique",
+    }),
   title_html: z.string().max(L.profileTitleHtml.max).nullable(),
   bio: z.string().max(L.profileBio.max).nullable(),
   avatar_key: z.string().nullable(),

@@ -16,7 +16,8 @@ interface PlayerPlayIconProps extends HTMLAttributes<HTMLDivElement> {
 
 const SVG_VARIANTS: Variants = {
   normal: { scale: 1, transition: { duration: 0.3 } },
-  animate: { scale: [1, 0.85, 1.1, 1], transition: { duration: 0.4, type: "spring", stiffness: 200, damping: 12 } },
+  // 多关键帧不能配 spring，见 ShieldIcon 的说明。
+  animate: { scale: [1, 0.85, 1.1, 1], transition: { duration: 0.4, ease: "easeInOut" } },
 };
 
 const PlayerPlayIcon = forwardRef<PlayerPlayIconHandle, PlayerPlayIconProps>(

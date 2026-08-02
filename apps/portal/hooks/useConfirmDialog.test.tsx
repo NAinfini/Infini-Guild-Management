@@ -95,7 +95,9 @@ describe("useConfirmDialog", () => {
     renderWithProvider(<MenuConfirmationProbe />);
 
     const menuTrigger = screen.getByRole("button", { name: "Event actions" });
-    await user.click(screen.getByRole("menuitem", { name: "Archive" }));
+    /* hidden: true 的理由同 AvailabilityEditor.test.tsx：jsdom 没有布局，
+       floating-ui 的 hide 中间件会异步给已打开的浮层盖上 display: none。 */
+    await user.click(screen.getByRole("menuitem", { name: "Archive", hidden: true }));
 
     const dialog = await screen.findByRole("dialog", { name: "Archive entry?" });
     await user.click(within(dialog).getByRole("button", { name: "Cancel" }));

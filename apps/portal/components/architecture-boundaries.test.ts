@@ -265,7 +265,7 @@ describe("portal architecture boundaries", () => {
   it("does not reference deleted implementation-note or superseded plan files", () => {
     const portalRoot = resolve(repoRoot, "apps/portal");
     const deletedPlanReference =
-      /task-[0-9][^\s)]*\.md|final-review\.md|docs[\\/]plans[\\/]2026-05-21-equipment-calculator-design\.md/;
+      /task-[0-9][^\s)]*\.md|final-review\.md/;
     const offenders = [
       ...listSourceFiles(portalRoot, true),
       ...listStyleFiles(portalRoot),

@@ -25,7 +25,15 @@ export function extractSystemTestArtifacts(method: string, path: string, body: u
   if (/^\/api\/auth\/register\/[^/]+$/.test(path)) return artifacts("user", [string(record(json?.user)?.id), string(json?.user_id)]);
   if (path === "/api/admin/users") return artifacts("user", [string(json?.user_id), string(record(json?.user)?.id)]);
   if (path === "/api/admin/roles") return artifacts("role", [id]);
-  if (path === "/api/events") return artifacts("event", [id]);
+  /* 创建活动可以是 multipart：附件在这一个请求里就写进了 R2。
+     只登记活动行的话，行被删掉后那些对象要等孤儿清扫 cron 才会消失，
+     期间站点指纹对不上——附件键就在返回体的 attachments 上，一并登记。 */
+  if (path === "/api/events") {
+    return [
+      ...artifacts("event", [id]),
+      ...artifacts("r2_key", Array.isArray(json?.attachments) ? json.attachments.map(string) : []),
+    ];
+  }
   if (path === "/api/events/templates") return artifacts("event_template", [id]);
   if (path === "/api/announcements") return artifacts("announcement", [id]);
   if (path === "/api/gallery/videos") return artifacts("gallery_item", [id]);
@@ -34,6 +42,11 @@ export function extractSystemTestArtifacts(method: string, path: string, body: u
   if (path === "/api/wiki/categories") return artifacts("wiki_category", [id]);
   if (path === "/api/wiki/articles") return artifacts("wiki_article", [id]);
   if (path === "/api/badges") return artifacts("badge", [id]);
+  if (path === "/api/classes") return artifacts("class_catalog", [id]);
+  /* 上传图标只改 class_catalog 的指针，行本身已由 POST /api/classes 登记；
+     真正新增的是 R2 对象，它的键就在返回体的 icon_key 上。 */
+  if (/^\/api\/classes\/[^/]+\/icon$/.test(path)) return artifacts("r2_key", [string(json?.icon_key)]);
+  if (/^\/api\/users\/[^/]+\/absences$/.test(path)) return artifacts("member_absence", [id]);
   if (path === "/api/storage/storages") return artifacts("storage", [id]);
   if (/^\/api\/storage\/storages\/[^/]+\/categories$/.test(path)) return artifacts("storage_category", [id]);
   if (path === "/api/storage/items") return artifacts("storage_item", [id]);
@@ -77,12 +90,21 @@ export async function systemTestTrackingMiddleware(c: Context, next: Next): Prom
   const service = new SystemTestService(c.env as Bindings);
   const sessionUser = await getRequestUser(c);
   const run = runId ? await service.beginRequest(runId) : null;
-  if (
-    !run
-    || !runId
-    || (sessionUser ? run.actorId !== sessionUser.id : !isAnonymousSystemTestPath(c.req.method, c.req.path))
-  ) {
-    if (run && runId) await service.endRequest(runId);
+  if (!run || !runId) {
+    return c.json({ error_code: "FORBIDDEN", message: "A valid active system-test run is required", request_id: c.get("requestId") }, 403);
+  }
+  /*
+   * 除了发起人本人，本次运行创建出来的账号也算数。
+   * 改密码 / 改用户名这类只允许操作自己的接口，用发起人的会话根本走不通，
+   * 而这些接口又会写审计行——不认这类会话的话，行就挂在一个没登记的
+   * 用户身上，清理阶段 deleteRegisteredUsers 会直接抛错。
+   * 这类账号本来就会在清理时被硬删，所以放行的范围没有扩大到运行之外。
+   */
+  const actorAllowed = sessionUser
+    ? run.actorId === sessionUser.id || await service.isRunArtifact(runId, "user", sessionUser.id)
+    : isAnonymousSystemTestPath(c.req.method, c.req.path);
+  if (!actorAllowed) {
+    await service.endRequest(runId);
     return c.json({ error_code: "FORBIDDEN", message: "A valid active system-test run is required", request_id: c.get("requestId") }, 403);
   }
   const validRunId = runId;

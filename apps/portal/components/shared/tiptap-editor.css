@@ -2,6 +2,8 @@
   display: flex;
   gap: var(--control-icon-size-compact);
   flex-wrap: wrap;
+  min-width: 0;
+  max-width: 100%;
   overflow: visible;
   padding-block: 4px;
   position: sticky;
@@ -14,8 +16,17 @@
   display: inline-flex;
   align-items: center;
   gap: var(--control-icon-size-compact);
+  max-width: 100%;
+  flex-wrap: wrap;
   padding-right: 6px;
   border-right: 1px solid color-mix(in srgb, var(--text-primary) 10%, transparent);
+}
+
+.infini-tiptap-toolbar .mantine-ActionIcon-root {
+  width: var(--control-hit-area);
+  min-width: var(--control-hit-area);
+  height: var(--control-hit-area);
+  min-height: var(--control-hit-area);
 }
 
 .infini-tiptap-toolbar__group:last-child {
@@ -77,7 +88,7 @@
   padding: 0;
 }
 
-.infini-tiptap-surface:focus {
+html:not([data-input-modality="pointer"]) .infini-tiptap-surface:focus-visible {
   border-color: var(--brand-fill);
   box-shadow: 0 0 0 2px color-mix(in srgb, var(--brand-fill) 24%, transparent);
 }
@@ -150,6 +161,7 @@
 .infini-tiptap-surface blockquote {
   margin: 8px 0;
   padding-left: 10px;
+  /* impeccable-disable-next-line side-tab: semantic blockquote convention */
   border-left: 3px solid color-mix(in srgb, var(--text-primary) 24%, transparent);
   color: color-mix(in srgb, var(--text-primary) 65%, transparent);
 }
@@ -237,39 +249,19 @@
    LITERAL_COLOUR_EXEMPTIONS["apps/portal/components/shared/tiptap-editor.css"]，
    理由：浮层需要在任意底色上都压出同等强度的固定遮罩，不能随主题变化。 */
 .infini-tiptap-link-dialog-backdrop {
-  position: fixed;
-  inset: 0;
-  z-index: var(--z-modal);
-  display: grid;
-  place-items: center;
-  padding: 16px;
   background: rgba(15, 23, 42, 0.48);
 }
 
 .infini-tiptap-link-dialog {
-  width: min(420px, 100%);
+  width: 100%;
   display: flex;
   flex-direction: column;
-  gap: 12px;
-  padding: 16px;
-  border: 1px solid color-mix(in srgb, var(--text-primary) 14%, transparent);
-  border-radius: 8px;
-  background: var(--surface-base);
-  /* mode-independent literal: 投影本身与遮罩同理，深浅两模式都需要压暗身后内容
-     而不是随模式反色；没有 L3 阴影档正好对应这个尺寸/强度组合，保留字面量。 */
-  box-shadow: 0 18px 50px rgba(15, 23, 42, 0.24);
-}
-
-.infini-tiptap-link-dialog__header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
   gap: 12px;
 }
 
 .infini-tiptap-link-dialog__input {
   width: 100%;
-  min-height: 38px;
+  min-height: var(--control-height-regular);
   padding: 8px 10px;
   border: 1px solid color-mix(in srgb, var(--text-primary) 16%, transparent);
   border-radius: 8px;
@@ -278,19 +270,42 @@
   font: inherit;
 }
 
-.infini-tiptap-link-dialog__input:focus {
+html:not([data-input-modality="pointer"]) .infini-tiptap-link-dialog__input:focus-visible {
   border-color: var(--brand-fill);
   outline: none;
   box-shadow: 0 0 0 2px color-mix(in srgb, var(--brand-fill) 20%, transparent);
 }
 
+.infini-tiptap-lightbox {
+  min-width: 0;
+  max-width: 100%;
+}
+
+.infini-tiptap-lightbox-controls {
+  width: 100%;
+  min-width: 0;
+  flex-wrap: wrap;
+}
+
+.infini-tiptap-lightbox-controls .mantine-Button-root {
+  min-width: 44px;
+  min-height: 44px;
+}
+
 .infini-tiptap-lightbox-viewport {
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
   overflow: auto;
   max-height: 78vh;
+  overscroll-behavior: contain;
 }
 
 .infini-tiptap-lightbox-image {
+  display: block;
   width: 100%;
+  max-width: 100%;
+  height: auto;
   max-height: 78vh;
   object-fit: contain;
   transform-origin: center center;
@@ -527,6 +542,7 @@
 @media (max-width: 768px) {
   .infini-tiptap-layout {
     flex-direction: column;
+    align-items: stretch;
   }
   .infini-tiptap-toc {
     position: static;

@@ -16,7 +16,8 @@ interface RowInsertBottomIconProps extends HTMLAttributes<HTMLDivElement> {
 
 const PLUS_VARIANTS: Variants = {
   normal: { scale: 1, opacity: 1, translateY: 0, transition: { duration: 0.3, ease: "easeOut" } },
-  animate: { scale: [0, 1.2, 1], opacity: [0, 1, 1], translateY: [4, 0], transition: { duration: 0.4, type: "spring", stiffness: 200, damping: 15 } },
+  // 多关键帧不能配 spring，见 ShieldIcon 的说明。
+  animate: { scale: [0, 1.2, 1], opacity: [0, 1, 1], translateY: [4, 0], transition: { duration: 0.4, ease: "easeInOut" } },
 };
 
 const RowInsertBottomIcon = forwardRef<RowInsertBottomIconHandle, RowInsertBottomIconProps>(

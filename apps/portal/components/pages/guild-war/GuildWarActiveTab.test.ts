@@ -16,7 +16,7 @@ describe("resolveGuildWarAbsenceWindow", () => {
     });
   });
 
-  it("keeps a complete non-drag mobile assignment flow", () => {
+  it("uses direct drag-and-drop at every breakpoint without duplicate save actions", () => {
     const board = readFileSync(
       resolve(process.cwd(), "apps/portal/components/feature/guild-war/GuildWarDragBoard.tsx"),
       "utf8",
@@ -26,11 +26,11 @@ describe("resolveGuildWarAbsenceWindow", () => {
       "utf8",
     );
 
-    expect(board).toContain('value: "pool"');
-    expect(board).toContain('value: "teams"');
-    expect(board).toContain('value: "status"');
-    expect(board).toContain("onMoveSelected(mobileTarget)");
-    expect(board).toContain("onRemoveSelected");
-    expect(activeTab).toContain('handleMoveSelectedTo("remove")');
+    expect(board).toContain("<GuildWarDragBoardLayout");
+    expect(board).not.toContain("SegmentedControl");
+    expect(board).not.toContain("selectedMovePanel");
+    expect(board).not.toContain("onMoveSelected");
+    expect(activeTab).not.toContain("onMoveSelected");
+    expect(activeTab).not.toContain("onSaveTeams=");
   });
 });

@@ -126,6 +126,7 @@ export function EventsPage() {
   const filtering = useEventsFiltering({
     currentUserId: user?.id,
   });
+  const routeDetailEvent = filtering.focusedEvent;
   const {
     editorOpen,
     editorMode,
@@ -253,7 +254,10 @@ export function EventsPage() {
     notifySuccess(t("message.mentionsCopied"));
   };
 
-  const hasLoadError = filtering.eventsQuery.isError || filtering.usersQuery.isError;
+  const hasLoadError =
+    filtering.eventsQuery.isError
+    || filtering.usersQuery.isError
+    || filtering.focusedEventQuery.isError;
   useLoadWarningToast(hasLoadError, t("common:loadErrorRetry"));
 
   return (
@@ -409,14 +413,23 @@ export function EventsPage() {
 
       {/* Month view detail modal */}
       <EventDetailModal
-        event={monthDetailEvent}
-        members={monthDetailEvent ? (filtering.eventMembersMap.get(monthDetailEvent.id) ?? []) : []}
+        event={routeDetailEvent ?? monthDetailEvent}
+        members={
+          routeDetailEvent ?? monthDetailEvent
+            ? (filtering.eventMembersMap.get((routeDetailEvent ?? monthDetailEvent)!.id) ?? [])
+            : []
+        }
         allUsers={asMemberEntries(filtering.usersQuery.data?.data ?? [])}
         canManage={canManage}
         currentUserId={user?.id ?? undefined}
         joinPending={mutations.joinPending}
         leavePending={mutations.leavePending}
-        onClose={() => setMonthDetailEvent(null)}
+        onClose={() => {
+          if (filtering.focusEventId) {
+            filtering.clearFocusedEvent();
+          }
+          setMonthDetailEvent(null);
+        }}
         onJoin={(eventId) => { void mutations.handleJoin(eventId); }}
         onLeave={mutations.handleLeave}
         onAddParticipant={mutations.addParticipant}

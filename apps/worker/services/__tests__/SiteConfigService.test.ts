@@ -11,10 +11,9 @@ const SEEDED_SITE_ROW = {
     announcements: true,
     events: true,
     guildWar: true,
-    gallery: true,
+    gallery: false,
     wiki: true,
     tools: true,
-    equipmentCalc: false,
     storage: true,
   }),
   mediaPolicyJson: JSON.stringify({
@@ -118,7 +117,7 @@ describe("SiteConfigService", () => {
     expect(result.data).toMatchObject({
       site_name: "D1 Guild",
       site_logo_url: "/d1-logo.webp",
-      features: expect.objectContaining({ equipmentCalc: false, storage: true }),
+      features: expect.objectContaining({ gallery: false, storage: true }),
       media_policy: expect.objectContaining({
         max_file_size_bytes: expect.objectContaining({ gallery_image: 10485760 }),
       }),
@@ -137,8 +136,8 @@ describe("SiteConfigService", () => {
 
     expect(result.ok).toBe(true);
     if (!result.ok) return;
-    // equipmentCalc was false in the stored row; the default is true.
-    expect(result.data.features.equipmentCalc).toBe(true);
+    // gallery was false in the stored row; the default is true.
+    expect(result.data.features.gallery).toBe(true);
     expect(consoleError).toHaveBeenCalledTimes(1);
     expect(consoleError.mock.calls[0]?.[0]).toContain("feature_flags_json");
     consoleError.mockRestore();

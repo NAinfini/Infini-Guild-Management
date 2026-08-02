@@ -1,10 +1,5 @@
 import { useMemo } from "react";
-import { useTranslation } from "react-i18next";
 import { format } from "date-fns";
-import { Badge } from "@mantine/core";
-import type { ColumnDef } from "@tanstack/react-table";
-import { resolveResultTagColor } from "@portal/utils/guild-war";
-import type { HistorySummaryRow } from "../../types/guild-war";
 
 function formatDateTime(iso: string): string {
   const date = new Date(iso);
@@ -34,50 +29,6 @@ type UseGuildWarHistoryParams = {
 export function useGuildWarHistory({
   historyDetailData,
 }: UseGuildWarHistoryParams) {
-  const { t } = useTranslation("guild-war");
-
-  const historyColumns: ColumnDef<HistorySummaryRow, unknown>[] = [
-    {
-      header: t("history.table.name"),
-      id: "war_name",
-      accessorKey: "war_name",
-    },
-    {
-      header: t("history.table.enemy"),
-      id: "enemy_name",
-      accessorKey: "enemy_name",
-      cell: ({ getValue }) => {
-        const v = getValue();
-        return typeof v === "string" && v ? v : "-";
-      },
-    },
-    {
-      header: t("history.table.result"),
-      id: "result",
-      accessorKey: "result",
-      cell: ({ getValue }) => {
-        const v = getValue();
-        const label = typeof v === "string" && v ? v : "-";
-        return <Badge color={resolveResultTagColor(v as string | null)} variant="light">{label}</Badge>;
-      },
-    },
-    {
-      header: t("history.table.kills"),
-      id: "kills",
-      enableSorting: false,
-      cell: ({ row }) => `${row.original.own_stats?.kills ?? 0} / ${row.original.enemy_stats?.kills ?? 0}`,
-    },
-    {
-      header: t("history.table.date"),
-      id: "created_at",
-      accessorKey: "created_at",
-      cell: ({ getValue }) => {
-        const v = getValue();
-        return typeof v === "string" ? formatDateTime(v) : "-";
-      },
-    },
-  ];
-
   const historyMvp = useMemo(() => {
     const stats = historyDetailData?.member_stats ?? [];
     if (stats.length === 0) {
@@ -121,7 +72,6 @@ export function useGuildWarHistory({
   }, [historyDetailData?.teams, historyTeamSizeBaseline]);
 
   return {
-    historyColumns,
     historyMvp,
     historyMissingSlotsByUserId,
     formatDateTime,

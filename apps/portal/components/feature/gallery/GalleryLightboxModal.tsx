@@ -1,5 +1,5 @@
 import { ChevronLeftIcon, ChevronRightIcon, XIcon } from "@portal/components/icons";
-import { Group, Text } from "@mantine/core";
+import { Group, Modal, Text } from "@mantine/core";
 import { useTranslation } from "react-i18next";
 import type { GalleryItem } from "./shared";
 
@@ -36,13 +36,30 @@ export function GalleryLightboxModal({
 }: GalleryLightboxModalProps) {
   const { t } = useTranslation("gallery");
 
-  if (!open || !item) return null;
-
   return (
-    <div className="gallery-lb-overlay" onClick={onClose}>
-      <div className="gallery-lb" onClick={(e) => e.stopPropagation()}>
+    <Modal.Root
+      opened={open && item !== null}
+      onClose={onClose}
+      fullScreen
+      padding={0}
+      transitionProps={{ transition: "fade", duration: 180 }}
+    >
+      <Modal.Overlay className="gallery-lb-overlay" />
+      <Modal.Content
+        aria-label={t("modal.lightbox.title")}
+        className="gallery-lb-content"
+      >
+        <Modal.Body className="gallery-lb-body">
+          {item ? (
+            <div className="gallery-lb">
         {/* Close button */}
-        <button type="button" className="gallery-lb__close" onClick={onClose} aria-label={t("common:close")}>
+        <button
+          type="button"
+          className="gallery-lb__close"
+          onClick={onClose}
+          aria-label={t("common:action.close")}
+          data-autofocus
+        >
           <XIcon size={20} />
         </button>
 
@@ -112,7 +129,10 @@ export function GalleryLightboxModal({
             </Text>
           </Group>
         </div>
-      </div>
-    </div>
+            </div>
+          ) : null}
+        </Modal.Body>
+      </Modal.Content>
+    </Modal.Root>
   );
 }

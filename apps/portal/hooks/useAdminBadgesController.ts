@@ -50,7 +50,8 @@ export function useAdminBadgesController(enabled: boolean) {
   const [editingBadgeId, setEditingBadgeId] = useState<string | null>(null);
   const [isCreating, setIsCreating] = useState(false);
   const [form, setForm] = useState<BadgeForm>(EMPTY_BADGE_FORM);
-  const [assignModalOpen, setAssignModalOpen] = useState(false);
+  /* 加人从弹窗改成详情里就地展开的面板，命名跟着改，免得读代码时以为还有个 Modal。 */
+  const [assignPanelOpen, setAssignPanelOpen] = useState(false);
   const [assignSearch, setAssignSearch] = useState("");
   const [pendingAssignIds, setPendingAssignIds] = useState<string[]>([]);
 
@@ -120,7 +121,7 @@ export function useAdminBadgesController(enabled: boolean) {
     mutationFn: (vars: { badgeId: string; userIds: string[] }) => assignBadge(vars.badgeId, vars.userIds),
     onSuccess: async (data) => {
       notifySuccess(t("badges.message.assigned", { count: data.assigned }));
-      setAssignModalOpen(false);
+      setAssignPanelOpen(false);
       setPendingAssignIds([]);
       await invalidateBadges();
     },
@@ -167,10 +168,10 @@ export function useAdminBadgesController(enabled: boolean) {
     setForm(EMPTY_BADGE_FORM);
   };
 
-  const openAssignModal = () => {
+  const openAssignPanel = () => {
     setPendingAssignIds([]);
     setAssignSearch("");
-    setAssignModalOpen(true);
+    setAssignPanelOpen(true);
   };
 
   const togglePendingAssign = (userId: string) => {
@@ -186,8 +187,8 @@ export function useAdminBadgesController(enabled: boolean) {
     isCreating,
     form,
     setForm,
-    assignModalOpen,
-    setAssignModalOpen,
+    assignPanelOpen,
+    setAssignPanelOpen,
     assignSearch,
     setAssignSearch,
     pendingAssignIds,
@@ -214,7 +215,7 @@ export function useAdminBadgesController(enabled: boolean) {
     startEdit,
     selectBadge,
     cancelEdit,
-    openAssignModal,
+    openAssignPanel,
     togglePendingAssign,
     formValid,
     createBadge: () => createMutation.mutate(toCreateBadgePayload(form)),

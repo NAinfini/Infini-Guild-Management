@@ -14,6 +14,7 @@ import {
   Textarea,
 } from "@mantine/core";
 import { CalendarRepeatIcon, PlayerPauseIcon, PlayerPlayIcon, SaveIcon, PlusIcon, TrashIcon, XIcon } from "@portal/components/icons";
+import { NativeDateTimeInput } from "@portal/components/shared/NativeDateTimeInput";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { notifyError } from "../../../utils/notifications";
@@ -139,6 +140,7 @@ export function RecurringTemplateFormModal({
 
   const isPaused = mode === "edit" && (template?.paused ?? false);
   const locale = i18n?.language ?? "en";
+  const isSaveDisabled = !title.trim() || !startTime || !eventType;
 
   return (
     <Modal
@@ -214,8 +216,12 @@ export function RecurringTemplateFormModal({
               <Stack gap={12} className="rtf-section">
                 <div>
                   <Text size="sm" fw={500} mb={4}>{t("recurring.field.visibilityOffset")}</Text>
+                  {/* 三个框只靠 suffix 区分，共用上面那行标题——标题不是它们任何一个的
+                      无障碍名，读屏和自动化都只能听到「一个数字输入框」乘以三。
+                      各自补一个带单位的 aria-label，可见外观不变。 */}
                   <Group gap={8} wrap="nowrap">
                     <NumberInput
+                      aria-label={t("recurring.field.visibilityOffsetUnit", { unit: t("recurring.field.durationUnit.days") })}
                       value={visibilityOffsetDays}
                       onChange={(value) =>
                         setFormState((current) => ({
@@ -229,6 +235,7 @@ export function RecurringTemplateFormModal({
                       style={{ flex: 1 }}
                     />
                     <NumberInput
+                      aria-label={t("recurring.field.visibilityOffsetUnit", { unit: t("recurring.field.durationUnit.hours") })}
                       value={visibilityOffsetHours}
                       onChange={(value) =>
                         setFormState((current) => ({
@@ -243,6 +250,7 @@ export function RecurringTemplateFormModal({
                       style={{ flex: 1 }}
                     />
                     <NumberInput
+                      aria-label={t("recurring.field.visibilityOffsetUnit", { unit: t("recurring.field.durationUnit.minutes") })}
                       value={visibilityOffsetMinutes}
                       onChange={(value) =>
                         setFormState((current) => ({
@@ -307,7 +315,7 @@ export function RecurringTemplateFormModal({
                 <span className="rtf-divider__label">{t("recurring.section.scheduleAndRecurrence")}</span>
               </div>
               <Stack gap={14} className="rtf-section">
-                <TextInput
+                <NativeDateTimeInput
                   label={t("recurring.field.startTime")}
                   type="time"
                   value={startTime}
@@ -331,6 +339,7 @@ export function RecurringTemplateFormModal({
                     style={{ flex: 1 }}
                   />
                   <Select
+                    aria-label={t("recurring.field.durationUnitLabel")}
                     value={durationUnit}
                     onChange={(value) =>
                       value &&
@@ -361,8 +370,10 @@ export function RecurringTemplateFormModal({
                 <div className="rtf-recurrence-divider" />
 
                 <div className="rtf-interval-row">
+                  {/* 可见的「每」只是一个 span，不是任何控件的标签；两个控件都得自报名字。 */}
                   <span className="rtf-interval-label">{t("field.interval")}</span>
                   <TextInput
+                    aria-label={t("field.interval")}
                     type="number"
                     value={recurrenceInterval}
                     onChange={(event) => {
@@ -376,6 +387,7 @@ export function RecurringTemplateFormModal({
                     min={1}
                   />
                   <Select
+                    aria-label={t("recurring.field.frequency")}
                     value={recurrenceFreq}
                     onChange={(value) =>
                       value &&
@@ -403,6 +415,8 @@ export function RecurringTemplateFormModal({
                           <button
                             key={key}
                             type="button"
+                            // 选中与否此前只体现在 class 上：读屏听不出来，测试也只能去比 class。
+                            aria-pressed={isSelected}
                             className={`rtf-weekday-btn${isSelected ? " rtf-weekday-btn--selected" : ""}`}
                             onClick={() => {
                               if (isSelected) {
@@ -457,8 +471,8 @@ export function RecurringTemplateFormModal({
                       <Radio value="never" label={t("recurrence.endNever")} />
                       <Group gap={8} align="center">
                         <Radio value="date" label={`${t("recurrence.endDate")}:`} />
-                        <TextInput
-                          type="date"
+                        <NativeDateTimeInput
+                          aria-label={t("recurrence.endDate")}
                           value={recurrenceEndDate}
                           onChange={(event) => {
                             const val = event.currentTarget.value;
@@ -474,6 +488,7 @@ export function RecurringTemplateFormModal({
                       <Group gap={8} align="center">
                         <Radio value="count" label={t("recurrence.endAfterLabel")} />
                         <TextInput
+                          aria-label={t("recurring.field.endAfterCount")}
                           type="number"
                           value={recurrenceEndCount}
                           onChange={(event) => {
@@ -535,7 +550,12 @@ export function RecurringTemplateFormModal({
             <Button variant="default" onClick={onCancel} leftSection={<XIcon size={16} />}>
               {t("button.cancel")}
             </Button>
-            <Button onClick={handleSave} loading={confirmLoading} leftSection={mode === "create" ? <PlusIcon size={16} /> : <SaveIcon size={16} />}>
+            <Button
+              onClick={handleSave}
+              loading={confirmLoading}
+              disabled={isSaveDisabled}
+              leftSection={mode === "create" ? <PlusIcon size={16} /> : <SaveIcon size={16} />}
+            >
               {mode === "create" ? t("recurring.create") : t("button.save")}
             </Button>
           </Group>

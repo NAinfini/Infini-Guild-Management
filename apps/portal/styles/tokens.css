@@ -136,10 +136,10 @@
 
   /* ── 旧品牌辅色（Task 4 迁入，Task 9 批 1 收口 D 节）──
    * 装饰性渐变（登录页光晕、侧栏描边、活动卡强调）在消费的暖色。
-   * --palette-bronze-warm：没有语义对应物、不随模式变化，但仍有 2 处组件层
-   * 消费（EquipmentCalcModal.css .ecm__stats__card--intent、MyProfilePage.css
-   * .profile-preview-stat-icon--video）。组件层不许直接引用 L1（守卫 rule 6），
-   * 故本任务在 semantic.css 开了 L2 名字 --brand-secondary，两处消费者已改指
+   * --palette-bronze-warm：没有语义对应物、不随模式变化，但仍有 1 处组件层
+   * 消费（MyProfilePage.css .profile-preview-stat-icon--video）。组件层不许直接
+   * 引用 L1（守卫 rule 6），故本任务在 semantic.css 开了 L2 名字
+   * --brand-secondary，消费者已改指
    * 过去；本值的唯一消费处从旧名转发块换成了 --brand-secondary。
    * （复审 M6：--palette-copper-warm 此前留在这里，注释自己写着「此名现无
    * 消费者」——它是 styles.css 旧名转发块 --color-accent 曾经的唯一消费处，

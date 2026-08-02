@@ -48,6 +48,7 @@
   "status.archived": "Archived",
   "status.saved": "Saved",
   "status.unsaved": "Unsaved",
+  "status.notReady": "Not ready — add a title and content",
   "section.publishing": "Publishing",
   "section.schedule": "Schedule",
   "section.actions": "Actions",

@@ -26,6 +26,15 @@ const BASE_URL = (process.env.TEST_BASE_URL ?? "http://127.0.0.1:8787").replace(
 
 type Json = Record<string, unknown>;
 
+/**
+ * 造一张字节头真实的 PNG。
+ *
+ * 上传路径会按魔数复核声明的类型，随便塞几个字节再标成 image/png 是过不去的。
+ */
+function pngFile(name: string): File {
+  return new File([new Uint8Array([0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A])], name, { type: "image/png" });
+}
+
 async function api(
   path: string,
   options: { method?: string; body?: Json | FormData; cookie?: string; headers?: Record<string, string> } = {},
@@ -551,9 +560,7 @@ describe("Audit Logging", () => {
 
 describe("Image Attachments", () => {
   it("POST /api/events/:id/images — upload within limit", async () => {
-    // Create a small test blob to act as an image
-    const blob = new Blob(["fake-image-data"], { type: "image/png" });
-    const file = new File([blob], "test.png", { type: "image/png" });
+    const file = pngFile("test.png");
     const form = new FormData();
     form.append("files", file);
     form.append("captions", "Test caption");
@@ -571,9 +578,7 @@ describe("Image Attachments", () => {
     // Upload 6 files (limit is 5)
     const form = new FormData();
     for (let i = 0; i < 6; i++) {
-      const blob = new Blob([`fake-image-${i}`], { type: "image/png" });
-      const file = new File([blob], `test-${i}.png`, { type: "image/png" });
-      form.append("files", file);
+      form.append("files", pngFile(`test-${i}.png`));
     }
 
     const { status } = await api(`/api/events/${createdEventId}/images`, {

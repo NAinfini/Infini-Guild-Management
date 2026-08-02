@@ -6,7 +6,6 @@ import {
   useCallback,
   useMemo,
   type Dispatch,
-  type MouseEvent,
   type ReactNode,
   type SetStateAction,
 } from "react";
@@ -29,10 +28,6 @@ type MovePayload = {
 };
 
 type ActiveControllerState = {
-  selectedDragUserIds: string[];
-  setSelectedDragUserIds: Dispatch<SetStateAction<string[]>>;
-  selectionAnchorUserId: string | null;
-  setSelectionAnchorUserId: Dispatch<SetStateAction<string | null>>;
   activeDragItemId: string | null;
   setActiveDragItemId: Dispatch<SetStateAction<string | null>>;
   teamDraftNames: Record<string, string>;
@@ -99,10 +94,6 @@ export function useGuildWarDragController({
   const queryClient = useQueryClient();
 
   const {
-    selectedDragUserIds,
-    setSelectedDragUserIds,
-    selectionAnchorUserId,
-    setSelectionAnchorUserId,
     activeDragItemId,
     setActiveDragItemId,
     teamDraftNames,
@@ -143,8 +134,6 @@ export function useGuildWarDragController({
     memberContainerMap,
     dragItemMap,
     pool,
-    draggableUserOrder,
-    draggableUserOrderIndexMap,
   } = dragData;
 
   const search = useGuildWarSearch({
@@ -156,7 +145,6 @@ export function useGuildWarDragController({
   });
 
   const activeDragItem = activeDragItemId ? dragItemMap.get(activeDragItemId) ?? null : null;
-  const selectedDragUserIdSet = useMemo(() => new Set(selectedDragUserIds), [selectedDragUserIds]);
   const activeDetail = activeDetailUserId ? activeMemberDetailByUserId.get(activeDetailUserId) ?? null : null;
 
   // --- Move ---
@@ -241,62 +229,11 @@ export function useGuildWarDragController({
     [activeData?.etag, applyMove, selectedEventId],
   );
 
-  const handleMoveSelectedTo = useCallback(async (targetContainer: string) => {
-    if (!canManageActive || !selectedEventId || selectedDragUserIds.length === 0) return false;
-    if (lockedTeamIds.has(targetContainer)) {
-      notifyWarning(t("message.targetTeamLocked"));
-      return false;
-    }
-
-    const moves = selectedDragUserIds.flatMap((userId) => {
-      const from = memberContainerMap.get(`member:${userId}`);
-      if (!from || from === targetContainer) return [];
-      return [{ userId, from, to: targetContainer }];
-    });
-    if (moves.length === 0) return false;
-
-    if (targetContainer === "remove") {
-      const confirmed = await confirm({
-        title: t("active.removeConfirm.title"),
-        description: moves.length === 1
-          ? t("active.removeConfirm.descSingle", {
-              username: resolveUsername(moves[0]?.userId ?? ""),
-            })
-          : t("active.removeConfirm.descMulti", { count: moves.length }),
-        confirmLabel: t("active.removeConfirm.confirm"),
-        cancelLabel: t("common:action.cancel"),
-        intent: "danger",
-      });
-      if (!confirmed) return false;
-    }
-
-    handleBatchMove(moves);
-    setSelectedDragUserIds([]);
-    return true;
-  }, [
-    canManageActive,
-    confirm,
-    handleBatchMove,
-    lockedTeamIds,
-    memberContainerMap,
-    resolveUsername,
-    selectedDragUserIds,
-    selectedEventId,
-    setSelectedDragUserIds,
-    t,
-  ]);
-
   const handleCopyTeamMentions = (containerId: string) => {
     const column = dragColumns.find((c) => c.containerId === containerId);
     if (!column) return;
     void copyPlainText(column.members.map((m) => `@${m.username}`).join(" "));
     notifySuccess(t("active.teamCopied"));
-  };
-
-  const handleTeamSelectAll = (containerId: string) => {
-    const team = teamById.get(containerId);
-    if (!team) return;
-    setSelectedDragUserIds(team.members.map((m) => m.user_id));
   };
 
   const handleTeamClear = (containerId: string) => {
@@ -436,47 +373,11 @@ export function useGuildWarDragController({
     setActiveDetailUserId(userId);
   };
 
-  // --- Selection ---
-
-  const handleSelectMember = (userId: string, event: MouseEvent<HTMLButtonElement>) => {
-    if (!canManageActive) return;
-    if (event.shiftKey) {
-      setSelectedDragUserIds((current) => {
-        const anchor = selectionAnchorUserId ?? current[current.length - 1] ?? userId;
-        const anchorIndex = draggableUserOrderIndexMap.get(anchor);
-        const targetIndex = draggableUserOrderIndexMap.get(userId);
-        if (anchorIndex === undefined || targetIndex === undefined) {
-          return event.metaKey || event.ctrlKey ? Array.from(new Set([...current, userId])) : [userId];
-        }
-        const rangeUserIds = draggableUserOrder.slice(
-          Math.min(anchorIndex, targetIndex),
-          Math.max(anchorIndex, targetIndex) + 1,
-        );
-        return event.metaKey || event.ctrlKey ? Array.from(new Set([...current, ...rangeUserIds])) : rangeUserIds;
-      });
-      setSelectionAnchorUserId(userId);
-      return;
-    }
-    if (event.metaKey || event.ctrlKey) {
-      setSelectedDragUserIds((current) =>
-        current.includes(userId) ? current.filter((id) => id !== userId) : [...current, userId],
-      );
-      setSelectionAnchorUserId(userId);
-      return;
-    }
-    setSelectedDragUserIds([userId]);
-    setSelectionAnchorUserId(userId);
-  };
-
   // --- Drag Events ---
 
   const handleDragStart = (event: DragStartEvent) => {
     const nextActiveId = String(event.active.id);
     setActiveDragItemId(nextActiveId);
-    const activeUserId = parseUserIdFromDragId(nextActiveId);
-    if (activeUserId && !selectedDragUserIdSet.has(activeUserId)) {
-      setSelectedDragUserIds([activeUserId]);
-    }
   };
 
   const handleDragCancel = () => {
@@ -498,58 +399,38 @@ export function useGuildWarDragController({
       return;
     }
 
-    const movingUserIds = selectedDragUserIdSet.has(userId) ? selectedDragUserIds : [userId];
-    const uniqueUserIds = Array.from(new Set(movingUserIds));
-
     if (targetContainer === "remove") {
-      const payloads = uniqueUserIds.map((uid) => ({
+      const payload = {
         event_id: selectedEventId,
-        user_id: uid,
+        user_id: userId,
         to: "remove" as const,
-        from: memberContainerMap.get(`member:${uid}`) ?? sourceContainer,
+        from: sourceContainer,
         etag: activeData?.etag ?? undefined,
-      }));
+      };
       void (async () => {
         const confirmed = await confirm({
           title: t("active.removeConfirm.title"),
-          description: uniqueUserIds.length === 1
-            ? t("active.removeConfirm.descSingle", {
-                username: resolveUsername(uniqueUserIds[0] ?? ""),
-              })
-            : t("active.removeConfirm.descMulti", {
-                count: uniqueUserIds.length,
-              }),
+          description: t("active.removeConfirm.descSingle", {
+            username: resolveUsername(userId),
+          }),
           confirmLabel: t("active.removeConfirm.confirm"),
           cancelLabel: t("common:action.cancel"),
           intent: "danger",
         });
         if (confirmed) {
-          applyMove(payloads);
+          applyMove([payload]);
         }
       })();
       return;
     }
 
-    if (uniqueUserIds.length <= 1) {
-      applyMove([{
-        event_id: selectedEventId,
-        user_id: userId,
-        to: targetContainer,
-        from: sourceContainer,
-        etag: activeData?.etag ?? undefined,
-      }]);
-      return;
-    }
-
-    applyMove(
-      uniqueUserIds.map((uid) => ({
-        event_id: selectedEventId,
-        user_id: uid,
-        to: targetContainer,
-        from: memberContainerMap.get(`member:${uid}`),
-        etag: activeData?.etag ?? undefined,
-      })),
-    );
+    applyMove([{
+      event_id: selectedEventId,
+      user_id: userId,
+      to: targetContainer,
+      from: sourceContainer,
+      etag: activeData?.etag ?? undefined,
+    }]);
   };
 
   // --- Team Status Panels (component-based, no longer JSX in hook) ---
@@ -607,7 +488,6 @@ export function useGuildWarDragController({
     teamDraftNames,
     activeDetail,
     activeDragItem,
-    selectedDragUserIdSet,
     matchedItemIds: search.matchedItemIds,
     activeMatchIndex: search.activeMatchIndex,
     dragColumns,
@@ -616,10 +496,8 @@ export function useGuildWarDragController({
     toMemberDomId: search.toMemberDomId,
     memberContainerMap,
     handleCopyTeamMentions,
-    handleTeamSelectAll,
     handleTeamClear,
     handleTeamDuplicate,
-    handleMoveSelectedTo,
     handleTeamSwap,
     handleAddTeam,
     handleDeleteTeam,
@@ -629,7 +507,6 @@ export function useGuildWarDragController({
     handleRemoveCaptain,
     handleViewHistory,
     handleManageTags,
-    handleSelectMember,
     handleDragStart,
     handleDragCancel,
     handleDragEnd,

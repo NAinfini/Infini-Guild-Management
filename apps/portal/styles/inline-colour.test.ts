@@ -115,7 +115,7 @@ const BARE_HEX_EXEMPTIONS: Record<string, BareHexExemption[]> = {
       values: ["#fef08a", "#bbf7d0", "#bfdbfe", "#fecdd3", "#e9d5ff", "#fed7aa"],
     },
   ],
-  "apps/portal/components/feature/tools/TitleSandboxModal.tsx": [
+  "apps/portal/components/feature/profile/TitleSandboxModal.tsx": [
     {
       source: "PRESET_COLORS",
       reason: "沙盒工具的文字色预设：选中值经 rgbaColor 拼进生成的 HTML 片段（`color: rgba(...)`），用户复制这段 HTML 到站外使用，不是站内主题。",
@@ -125,6 +125,13 @@ const BARE_HEX_EXEMPTIONS: Record<string, BareHexExemption[]> = {
       source: "useState(\"#1f6feb\")（取色器 color 状态的初值，与 PRESET_COLORS[0] 同值）",
       reason: "同上：是同一个沙盒文字色状态的初值，最终同样拼进生成的 HTML 片段。",
       values: ["#1f6feb"],
+    },
+  ],
+  "apps/portal/components/feature/admin/AdminClassesSection.tsx": [
+    {
+      source: "COLOR_SWATCHES",
+      reason: "职业颜色预设：选中值写进 GameClass.color 落库，再由 ClassIcon / MemberCard 以 --class-color 注入，与 --class-color 本身同一类（管理员配置的数据色，不随主题变化）。",
+      values: ["#61B8AA", "#6EA8FE", "#A78BFA", "#E27676", "#D6A85F", "#E18BB6", "#75B86B", "#8594A8"],
     },
   ],
   "apps/portal/components/feature/admin/AdminBadgesSection.tsx": [
@@ -186,7 +193,7 @@ describe(".tsx carries no bare hex outside the class-1 exemption table", () => {
     expect(bareHexOffenders("some/file.tsx", 'style={{ color: "#123456" }}')).toEqual([]);
     expect(
       bareHexOffenders(
-        "apps/portal/components/feature/tools/TitleSandboxModal.tsx",
+        "apps/portal/components/feature/profile/TitleSandboxModal.tsx",
         'const PRESET_COLORS = ["#1f6feb", "#16a34a", "#f59e0b", "#dc2626", "#7c3aed", "#ec4899", "#0891b2", "#334155"];',
       ),
     ).toEqual([]);
@@ -257,7 +264,6 @@ const INLINE_SPACING_EXEMPTIONS: Record<string, string[]> = {
   /* Local compound-layout geometry that cannot be replaced by one global token. */
   "apps/portal/components/feature/admin/AdminStatusTab.tsx": ["gap:6"],
   "apps/portal/components/feature/profile/ProfileProfileTab.tsx": ["gap:2", "marginTop:6"],
-  "apps/portal/components/shared/AvailabilityGridEditor.tsx": ["paddingRight:6", "paddingTop:2"],
   "apps/portal/components/shared/ImageGridEditor.tsx": ["padding:0", "margin:0"],
   "apps/portal/components/shared/DataTableAdapter.tsx": ["gap:4"],
 

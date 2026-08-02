@@ -61,6 +61,13 @@ export function DiceRollerModal({ opened, onClose }: DiceRollerModalProps) {
   }, []);
 
   const diceTotal = useMemo(() => diceResults.reduce((sum, value) => sum + value, 0), [diceResults]);
+  const hasRolled = diceResults.length > 0;
+  /* 没投过时也把骰位摆出来。原先结果区是投掷后才出现的，打开弹窗看到的是
+     两个输入框、一颗孤零零的按钮，再加一段空的历史——整个弹窗中间是空的，
+     而且第一次投掷会把下面的内容整体顶下去。 */
+  const stageFaces: Array<number | null> = hasRolled
+    ? diceResults
+    : Array.from({ length: Math.max(1, Math.min(diceCount, 20)) }, () => null);
 
   return (
     <Modal title={t("dice.title")} opened={opened} onClose={onClose} size={560}>
@@ -86,6 +93,31 @@ export function DiceRollerModal({ opened, onClose }: DiceRollerModalProps) {
           />
         </div>
 
+        <div
+          className={`dice__stage${isRolling ? " dice__stage--rolling" : ""}`}
+          aria-live="polite"
+        >
+          <div className="dice__notation">{diceCount}d{diceSides}</div>
+          <div className="dice__results-dice">
+            {stageFaces.map((value, index) => (
+              <div
+                key={index}
+                className={
+                  `dice__die${isRolling ? " dice__die--spinning" : ""}`
+                  + (value === null ? " dice__die--empty" : "")
+                }
+              >
+                {value ?? "·"}
+              </div>
+            ))}
+          </div>
+          {/* 总计常驻。原先只有多颗骰子且投掷结束时才出现，每次投掷都让弹窗抖一下高度。 */}
+          <div className="dice__total">
+            <Text size="sm" c="dimmed">{t("dice.total")}</Text>
+            <Text className="dice__total-value">{hasRolled && !isRolling ? diceTotal : "—"}</Text>
+          </div>
+        </div>
+
         <button
           type="button"
           className={`dice__roll-btn${isRolling ? " dice__roll-btn--rolling" : ""}`}
@@ -95,24 +127,6 @@ export function DiceRollerModal({ opened, onClose }: DiceRollerModalProps) {
           <DiceFiveFilledIcon size={20} className={isRolling ? "dice__icon-spin" : ""} />
           <span>{isRolling ? t("dice.rolling") : t("dice.roll")}</span>
         </button>
-
-        {diceResults.length > 0 && (
-          <div className={`dice__results${isRolling ? " dice__results--rolling" : ""}`}>
-            <div className="dice__results-dice">
-              {diceResults.map((value, index) => (
-                <div key={index} className={`dice__die${isRolling ? " dice__die--spinning" : ""}`}>
-                  {value}
-                </div>
-              ))}
-            </div>
-            {!isRolling && diceCount > 1 && (
-              <div className="dice__total">
-                <Text size="sm" c="dimmed">{t("dice.total")}</Text>
-                <Text size="xl" fw={700}>{diceTotal}</Text>
-              </div>
-            )}
-          </div>
-        )}
 
         <div className="dice__history-section">
           <Group justify="space-between" align="center">
@@ -129,19 +143,19 @@ export function DiceRollerModal({ opened, onClose }: DiceRollerModalProps) {
             )}
           </Group>
           {diceHistory.length === 0 ? (
-            <Text size="sm" c="dimmed" ta="center" py={20}>{t("dice.noHistory")}</Text>
+            <div className="dice__history-empty">
+              <Text size="sm" c="dimmed">{t("dice.noHistory")}</Text>
+            </div>
           ) : (
             <div className="dice__history-list">
               {diceHistory.map((entry) => (
                 <div key={entry.timestamp} className="dice__history-item">
-                  <Text size="xs" c="dimmed">
-                    {t("dice.result", {
-                      count: entry.count,
-                      sides: entry.sides,
-                      results: entry.results.join(", "),
-                      total: entry.total,
-                    })}
-                  </Text>
+                  {/* 原先整行是一句 {{count}}d{{sides}} → … = … 的插值字符串：
+                      灰字挤成一行读不出重点，而且 count 是 i18next 的复数保留参数。
+                      拆成骰式／点数／总计三段，各自对齐。 */}
+                  <span className="dice__history-notation">{entry.count}d{entry.sides}</span>
+                  <span className="dice__history-rolls">{entry.results.join(" · ")}</span>
+                  <span className="dice__history-total">{entry.total}</span>
                 </div>
               ))}
             </div>

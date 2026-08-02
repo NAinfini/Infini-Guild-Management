@@ -23,14 +23,18 @@ vi.mock("@portal/components/effects", () => ({
   NumberTicker: ({ value }: { value: number }) => <span>{value}</span>,
 }));
 
-function eventRow(id: string, pinned: boolean): DashboardUpcomingEventRow {
+function eventRow(
+  id: string,
+  pinned: boolean,
+  startAt = "2026-08-01T20:00:00.000Z",
+): DashboardUpcomingEventRow {
   return {
     item: {
       id,
       title: `Event ${id}`,
       description: null,
       type: "social",
-      start_at: "2026-08-01T20:00:00.000Z",
+      start_at: startAt,
       end_at: null,
       capacity: null,
       pinned,
@@ -70,5 +74,32 @@ describe("UpcomingEventsCard", () => {
     expect(screen.getAllByText(/^Event /)).toHaveLength(6);
     fireEvent.click(screen.getByRole("button", { name: "View all 8" }));
     expect(onViewAll).toHaveBeenCalledTimes(1);
+  });
+
+  it("orders featured and ordinary rows as one chronological list", () => {
+    render(
+      <MantineProvider>
+        <UpcomingEventsCard
+          upcomingEventsCount={4}
+          featuredRows={[
+            eventRow("featured-late", true, "2026-08-03T20:00:00.000Z"),
+            eventRow("featured-latest", true, "2026-08-04T20:00:00.000Z"),
+          ]}
+          rows={[
+            eventRow("regular-first", false, "2026-07-31T20:00:00.000Z"),
+            eventRow("regular-second", false, "2026-08-01T20:00:00.000Z"),
+          ]}
+          onOpenEvent={vi.fn()}
+          onViewAll={vi.fn()}
+        />
+      </MantineProvider>,
+    );
+
+    expect(screen.getAllByText(/^Event /).map((node) => node.textContent)).toEqual([
+      "Event regular-first",
+      "Event regular-second",
+      "Event featured-late",
+      "Event featured-latest",
+    ]);
   });
 });

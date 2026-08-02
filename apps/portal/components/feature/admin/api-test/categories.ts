@@ -15,9 +15,6 @@ export function buildApiCategories(t: (key: string) => string): CategoryDef[] {
         { label: t("status.api.ep.dashboardEvents"), method: "GET", path: "/api/dashboard/events" },
         { label: t("status.api.ep.dashboardWars"), method: "GET", path: "/api/dashboard/wars" },
         { label: t("status.api.ep.globalSearch"), method: "GET", path: "/api/search?q=systemtest&limit=5" },
-        { label: t("status.api.ep.gameData"), method: "GET", path: "/api/game-data" },
-        // Must follow /api/game-data — it supplies the class id.
-        { label: t("status.api.ep.gameDataRotation"), method: "GET", path: "/api/game-data/rotations/:classId" },
       ],
     },
     {
@@ -31,6 +28,7 @@ export function buildApiCategories(t: (key: string) => string): CategoryDef[] {
         { label: t("status.api.ep.verifyInvite"), method: "GET", path: "/api/auth/verify-invite/:code" },
         { label: t("status.api.ep.register"), method: "POST", path: "/api/auth/register/:inviteCode" },
         { label: t("status.api.ep.login"), method: "POST", path: "/api/auth/login" },
+        { label: t("status.api.ep.logout"), method: "POST", path: "/api/auth/logout" },
       ],
     },
     {
@@ -42,7 +40,11 @@ export function buildApiCategories(t: (key: string) => string): CategoryDef[] {
         { label: t("status.api.ep.absenceWindow"), method: "GET", path: "/api/users/absences?from=2026-01-01&to=2026-01-31" },
         { label: t("status.api.ep.getUserById"), method: "GET", path: "/api/users/:id" },
         { label: t("status.api.ep.userAbsences"), method: "GET", path: "/api/users/:id/absences" },
+        { label: t("status.api.ep.createAbsence"), method: "POST", path: "/api/users/:id/absences" },
+        { label: t("status.api.ep.deleteAbsence"), method: "DELETE", path: "/api/users/:id/absences/:absenceId" },
         { label: t("status.api.ep.updateProfile"), method: "PATCH", path: "/api/users/:id/profile" },
+        { label: t("status.api.ep.changePassword"), method: "POST", path: "/api/users/:id/change-password" },
+        { label: t("status.api.ep.changeUsername"), method: "POST", path: "/api/users/:id/change-username" },
         { label: t("status.api.ep.uploadImage"), method: "POST", path: "/api/users/:id/media/images" },
         { label: t("status.api.ep.getUserImage"), method: "GET", path: "/api/users/image" },
         { label: t("status.api.ep.deleteImage"), method: "DELETE", path: "/api/users/:id/media/images" },
@@ -147,6 +149,7 @@ export function buildApiCategories(t: (key: string) => string): CategoryDef[] {
         { label: t("status.api.ep.updateArticle"), method: "PATCH", path: "/api/wiki/articles/:id" },
         { label: t("status.api.ep.articleRevisions"), method: "GET", path: "/api/wiki/articles/:id/revisions" },
         { label: t("status.api.ep.articleRevision"), method: "GET", path: "/api/wiki/articles/:id/revisions/1" },
+        { label: t("status.api.ep.restoreArticleRevision"), method: "POST", path: "/api/wiki/articles/:id/revisions/1/restore" },
         { label: t("status.api.ep.uploadArticleImages"), method: "POST", path: "/api/wiki/articles/:id/images" },
         { label: t("status.api.ep.getWikiImage"), method: "GET", path: "/api/wiki/image" },
         { label: t("status.api.ep.archiveArticle"), method: "DELETE", path: "/api/wiki/articles/:id" },
@@ -195,6 +198,19 @@ export function buildApiCategories(t: (key: string) => string): CategoryDef[] {
       ],
     },
     {
+      key: "classes",
+      label: t("status.api.cat.classes"),
+      endpoints: [
+        { label: t("status.api.ep.listClasses"), method: "GET", path: "/api/classes" },
+        { label: t("status.api.ep.createClass"), method: "POST", path: "/api/classes" },
+        { label: t("status.api.ep.updateClass"), method: "PATCH", path: "/api/classes/:id" },
+        { label: t("status.api.ep.uploadClassIcon"), method: "POST", path: "/api/classes/:id/icon" },
+        { label: t("status.api.ep.getClassIcon"), method: "GET", path: "/api/classes/icon" },
+        { label: t("status.api.ep.deleteClassIcon"), method: "DELETE", path: "/api/classes/:id/icon" },
+        { label: t("status.api.ep.deleteClass"), method: "DELETE", path: "/api/classes/:id" },
+      ],
+    },
+    {
       key: "adminInvites",
       label: t("status.api.cat.adminInvites"),
       endpoints: [
@@ -214,14 +230,6 @@ export function buildApiCategories(t: (key: string) => string): CategoryDef[] {
         { label: t("status.api.ep.archiveMonths"), method: "GET", path: "/api/admin/audit-archive/months" },
         { label: t("status.api.ep.archiveDownload"), method: "GET", path: "/api/admin/audit-archive/download" },
         { label: t("status.api.ep.archiveDownloadFile"), method: "GET", path: "/api/admin/audit-archive/download/file" },
-      ],
-    },
-    {
-      key: "adminGameData",
-      label: t("status.api.cat.adminGameData"),
-      endpoints: [
-        { label: t("status.api.ep.gameDataVersions"), method: "GET", path: "/api/game-data/versions" },
-        { label: t("status.api.ep.gameDataFull"), method: "GET", path: "/api/game-data/full" },
       ],
     },
     {
@@ -255,6 +263,9 @@ export function buildApiCategories(t: (key: string) => string): CategoryDef[] {
       label: t("status.api.cat.adminSiteConfig"),
       endpoints: [
         { label: t("status.api.ep.adminSiteConfig"), method: "GET", path: "/api/admin/site-config" },
+        { label: t("status.api.ep.updateSiteConfig"), method: "PATCH", path: "/api/admin/site-config" },
+        { label: t("status.api.ep.uploadSiteLogo"), method: "POST", path: "/api/admin/site-config/logo" },
+        { label: t("status.api.ep.siteLogo"), method: "GET", path: "/api/site-config/logo" },
       ],
     },
     {
@@ -311,7 +322,10 @@ function publicEndpoint(): EndpointPermissionRequirement {
 function permissionRequirementForEndpoint(endpoint: EndpointDef): EndpointPermissionRequirement {
   const key = `${endpoint.method} ${endpoint.path}`;
   if (key === "GET /api/admin/status") return requiresAll("admin.status.view");
-  if (key === "GET /api/admin/site-config") return requiresAll("admin.siteConfig.manage");
+  if (endpoint.path.startsWith("/api/admin/site-config")) return requiresAll("admin.siteConfig.manage");
+  /* GET /api/classes 和 GET /api/classes/icon 本身是公开读，但它们在这里只作为
+     创建-上传-删除链条的一环运行，没有管理权限时整条链都跑不起来。 */
+  if (endpoint.path.startsWith("/api/classes")) return requiresAll("admin.classes.manage");
   if (endpoint.path.startsWith("/api/admin/error-log")) return requiresAll("admin.status.view");
   if (key === "GET /api/admin/analytics-settings") return requiresAll("admin.analytics.view");
   if (key === "PATCH /api/admin/analytics-settings") return requiresAll("admin.analytics.manage");
@@ -322,7 +336,6 @@ function permissionRequirementForEndpoint(endpoint: EndpointDef): EndpointPermis
   if (endpoint.path.startsWith("/api/admin/audit-log") || endpoint.path.startsWith("/api/admin/audit-archive")) {
     return endpoint.path.includes("export") || endpoint.path.includes("download") ? requiresAll("admin.audit.export") : requiresAll("admin.audit.view");
   }
-  if (endpoint.path.startsWith("/api/game-data/versions") || endpoint.path.startsWith("/api/game-data/full")) return requiresAll("admin.gameData.manage");
   if (endpoint.path.startsWith("/api/wiki/articles") && endpoint.path.includes("/revisions")) return requiresAll("wiki.articles.edit");
   if (endpoint.path.startsWith("/api/admin/users")) {
     if (endpoint.path.includes("role")) return requiresAll("admin.users.edit", "admin.users.role", "admin.users.delete");

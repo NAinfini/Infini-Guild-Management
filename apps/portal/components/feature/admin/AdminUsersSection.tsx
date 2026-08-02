@@ -3,14 +3,17 @@ import {
   ActionIcon,
   Alert,
   Badge,
+  Button,
   Group,
   Menu,
   Paper,
+  SegmentedControl,
   Skeleton,
   Progress,
   Stack,
   Text,
   TextInput,
+  UnstyledButton,
 } from "@mantine/core";
 import { CopyIcon, EyeIcon, KeyIcon, LockOpenIcon, PlayIcon, PlayerPauseIcon, SearchIcon, TrashIcon, UserPlusIcon } from "@portal/components/icons";
 import { IconDotsVertical } from "@tabler/icons-react";
@@ -26,10 +29,14 @@ import {
 import { DataTableAdapter } from "@portal/components/shared/DataTableAdapter";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useClipboard } from "@mantine/hooks";
-import type { MouseEvent as ReactMouseEvent } from "react";
+import type {
+  KeyboardEvent as ReactKeyboardEvent,
+  MouseEvent as ReactMouseEvent,
+} from "react";
 import { useTranslation } from "react-i18next";
 import { DataTablePagination } from "../../shared/DataTablePagination";
 import type { UsersListResponse } from "../../../services/UserService";
+import { resolveClassCatalogItem, useClassCatalogStore } from "../../../stores/class-catalog";
 
 export type AdminUserRow = UsersListResponse["data"][number];
 
@@ -111,19 +118,44 @@ export function AdminUsersSection({
 }: AdminUsersSectionProps) {
   const { t } = useTranslation("admin");
   const { t: tc } = useTranslation("common");
+  const classCatalog = useClassCatalogStore((state) => state.items);
   const clipboard = useClipboard();
   const loadErrorMessage = tc("loadError");
   const [sorting, setSorting] = useState<SortingState>([]);
   const [pagination, setPagination] = useState<PaginationState>({ pageIndex: 0, pageSize: 20 });
   const [selectionAnchorId, setSelectionAnchorId] = useState<string | null>(null);
   const [actionMenu, setActionMenu] = useState<ActionMenuContext | null>(null);
+  const [statusFilter, setStatusFilter] = useState<"all" | "active" | "inactive">("all");
 
   const selectedIdSet = useMemo(() => new Set(selectedUserIds), [selectedUserIds]);
   const usersById = useMemo(() => new Map(userRows.map((row) => [row.user.id, row])), [userRows]);
 
+  /* userRows 已经在 controller 里按搜索词过滤过，全部成员都在内存里，所以
+     启用/停用这一层纯粹是视图筛选，不用再发请求。 */
+  const memberStats = useMemo(() => {
+    let active = 0;
+    let admins = 0;
+    for (const row of userRows) {
+      if (row.user.is_active) active += 1;
+      if (row.user.role === "admin") admins += 1;
+    }
+    return { total: userRows.length, active, inactive: userRows.length - active, admins };
+  }, [userRows]);
+
+  const visibleRows = useMemo(() => {
+    if (statusFilter === "all") return userRows;
+    const wantActive = statusFilter === "active";
+    return userRows.filter((row) => row.user.is_active === wantActive);
+  }, [userRows, statusFilter]);
+
+  /* 换筛选之后行数会变少，停在原来的页码上会看到一片空白。 */
+  useEffect(() => {
+    setPagination((previous) => (previous.pageIndex === 0 ? previous : { ...previous, pageIndex: 0 }));
+  }, [statusFilter]);
+
   const openActionMenu = useCallback((
     userId: string,
-    event: ReactMouseEvent<HTMLElement>,
+    event: ReactMouseEvent<HTMLElement> | ReactKeyboardEvent<HTMLElement>,
   ) => {
     if (!isAdmin) {
       return;
@@ -135,7 +167,7 @@ export function AdminUsersSection({
       ? selectedUserIds
       : [userId];
     const targetRect = event.currentTarget.getBoundingClientRect();
-    const openedFromContextMenu = event.type === "contextmenu";
+    const openedFromContextMenu = event.type === "contextmenu" && "clientX" in event;
 
     if (!selectedIdSet.has(userId)) {
       onSelectionChange([userId]);
@@ -188,7 +220,7 @@ export function AdminUsersSection({
   }, [userColumns, isAdmin, openActionMenu, t]);
 
   const table = useReactTable({
-    data: userRows,
+    data: visibleRows,
     columns: allColumns,
     state: { sorting, pagination },
     onSortingChange: setSorting,
@@ -255,6 +287,36 @@ export function AdminUsersSection({
     setSelectionAnchorId(userId);
   };
 
+  const handleRowKeyDown = (
+    userId: string,
+    event: ReactKeyboardEvent<HTMLTableRowElement>,
+  ) => {
+    if (event.key === "Enter") {
+      event.preventDefault();
+      onOpenMemberDetail(userId);
+      return;
+    }
+
+    if (event.key === " ") {
+      event.preventDefault();
+      const withModifier = event.ctrlKey || event.metaKey;
+      if (withModifier) {
+        const nextSet = new Set(selectedUserIds);
+        if (nextSet.has(userId)) nextSet.delete(userId);
+        else nextSet.add(userId);
+        onSelectionChange(Array.from(nextSet));
+      } else {
+        onSelectionChange([userId]);
+      }
+      setSelectionAnchorId(userId);
+      return;
+    }
+
+    if (event.key === "ContextMenu" || (event.key === "F10" && event.shiftKey)) {
+      openActionMenu(userId, event);
+    }
+  };
+
   const contextUserIds = actionMenu?.userIds ?? [];
   const contextRows = contextUserIds
     .map((userId) => usersById.get(userId))
@@ -268,7 +330,9 @@ export function AdminUsersSection({
     const lines = contextRows.map((row) =>
       [
         row.user.username,
-        row.profile.classes.join(", "),
+        row.profile.classes
+          .map((id) => resolveClassCatalogItem(id, classCatalog).label)
+          .join(", "),
         String(row.profile.power),
         row.user.role,
         row.user.is_active ? t("member.status.active") : t("member.status.inactive"),
@@ -428,44 +492,156 @@ export function AdminUsersSection({
       {!usersLoading && !usersError ? (
         <>
           {isAdmin ? (
-            <Group gap={8} wrap="wrap" align="center">
-              <TextInput
-                value={memberSearch}
-                onChange={(event) => onMemberSearchChange(event.currentTarget.value)}
-                placeholder={t("member.search.placeholder")}
-                leftSection={<SearchIcon size={14} />}
-                style={{ flex: 1 }} miw={200} maw={360}
-                size="sm"
-              />
-              <Text c="dimmed" size="sm">
-                {t("member.selectionHint")}
-              </Text>
-              <Text c="dimmed" size="sm">
-                {t("member.selected", { count: selectedUserIds.length })} / {batchSelectionLimit}
-              </Text>
-              {isBatchPending || batchProgress > 0 ? (
-                <Progress value={batchProgress} animated={isBatchPending} color={isBatchPending ? "blue" : "green"} style={{ width: "100%" }} />
-              ) : null}
-            </Group>
+            <>
+              <div className="admin-toolbar">
+                <TextInput
+                  className="admin-toolbar__search"
+                  value={memberSearch}
+                  onChange={(event) => onMemberSearchChange(event.currentTarget.value)}
+                  placeholder={t("member.search.placeholder")}
+                  leftSection={<SearchIcon size={14} />}
+                  size="sm"
+                />
+                <SegmentedControl
+                  size="xs"
+                  value={statusFilter}
+                  onChange={(value) => setStatusFilter(value as "all" | "active" | "inactive")}
+                  data={[
+                    { value: "all", label: t("member.filter.all") },
+                    { value: "active", label: t("member.status.active") },
+                    { value: "inactive", label: t("member.status.inactive") },
+                  ]}
+                />
+                <div className="admin-toolbar__spacer" />
+                <Button size="sm" leftSection={<UserPlusIcon size={14} />} onClick={onOpenCreateMember}>
+                  {t("member.create.button")}
+                </Button>
+              </div>
+
+              <div className="admin-stats">
+                <div className="admin-stat">
+                  <div className="admin-stat__value">{memberStats.total}</div>
+                  <div className="admin-stat__label">{t("member.stat.total")}</div>
+                </div>
+                <div className="admin-stat">
+                  <div className="admin-stat__value admin-stat__value--ok">{memberStats.active}</div>
+                  <div className="admin-stat__label">{t("member.stat.active")}</div>
+                </div>
+                <div className="admin-stat">
+                  <div className={`admin-stat__value${memberStats.inactive > 0 ? " admin-stat__value--warn" : ""}`}>
+                    {memberStats.inactive}
+                  </div>
+                  <div className="admin-stat__label">{t("member.stat.inactive")}</div>
+                </div>
+                <div className="admin-stat">
+                  <div className="admin-stat__value">{memberStats.admins}</div>
+                  <div className="admin-stat__label">{t("member.stat.admins")}</div>
+                </div>
+              </div>
+
+            </>
           ) : null}
 
-          <Paper withBorder radius="md" className="admin-member-table-desktop">
-            <Stack gap="sm" p="md">
+          <Paper withBorder radius="md" className="admin-member-table-desktop admin-table-card">
+            <>
               <DataTableAdapter
+                className="admin-table"
                 table={table}
                 highlightOnHover
+                striped={false}
+                withTableBorder={false}
+                withColumnBorders={false}
                 virtualize
                 maxHeight="65vh"
                 onRowDoubleClick={(row) => onOpenMemberDetail(row.original.user.id)}
                 onRowClick={(row, event) => handleRowClick(row.original.user.id, event)}
                 onRowContextMenu={(row, event) => openActionMenu(row.original.user.id, event)}
+                onRowKeyDown={(row, event) => handleRowKeyDown(row.original.user.id, event)}
+                rowAriaLabel={(row) => t("member.aria.row", { username: row.original.user.username })}
+                rowAriaSelected={(row) => selectedIdSet.has(row.original.user.id)}
                 rowClassName={(row) =>
                   selectedIdSet.has(row.original.user.id) ? "admin-member-row-selected" : undefined
                 }
               />
-              <DataTablePagination table={table} />
-            </Stack>
+              <div className="admin-table-card__footer">
+                <DataTablePagination table={table} />
+              </div>
+            </>
           </Paper>
+
+          {isAdmin ? (
+            <>
+              {/* 批量操作原先只能靠右键，唯一线索是一句灰字提示。选中即摆出来。
+                  放在表格下方并吸底：出现时不再把表格整体往下推。 */}
+              {selectedUserIds.length > 0 ? (
+                <div className="admin-selbar">
+                  <span className="admin-selbar__count">
+                    {t("member.selected", { count: selectedUserIds.length })} / {batchSelectionLimit}
+                  </span>
+                  <Menu withinPortal position="bottom-start" shadow="md" width={200}>
+                    <Menu.Target>
+                      <Button size="compact-sm" variant="default" disabled={batchRolePending}>
+                        {t("member.context.changeRole")}
+                      </Button>
+                    </Menu.Target>
+                    <Menu.Dropdown>
+                      {roles
+                        .slice()
+                        .sort((a, b) => a.level - b.level)
+                        .map((role) => (
+                          <Menu.Item
+                            key={role.id}
+                            disabled={role.id === "admin" || batchRolePending}
+                            onClick={() => onBatchRole(selectedUserIds, role.id)}
+                          >
+                            {role.name}
+                          </Menu.Item>
+                        ))}
+                    </Menu.Dropdown>
+                  </Menu>
+                  <Button
+                    size="compact-sm"
+                    variant="default"
+                    disabled={batchActivatePending}
+                    onClick={() => onBatchActivate(selectedUserIds)}
+                  >
+                    {t("member.reactivate")}
+                  </Button>
+                  <Button
+                    size="compact-sm"
+                    variant="default"
+                    disabled={batchDeactivatePending}
+                    onClick={() => onBatchDeactivate(selectedUserIds)}
+                  >
+                    {t("member.deactivate")}
+                  </Button>
+                  <Button
+                    size="compact-sm"
+                    variant="default"
+                    color="red"
+                    disabled={batchDeletePending}
+                    onClick={() => onBatchDelete(selectedUserIds)}
+                  >
+                    {t("member.context.batchDelete")}
+                  </Button>
+                  <div className="admin-toolbar__spacer" />
+                  <Button size="compact-sm" variant="subtle" onClick={() => onSelectionChange([])}>
+                    {t("member.batch.clear")}
+                  </Button>
+                  {isBatchPending || batchProgress > 0 ? (
+                    <Progress
+                      className="admin-selbar__progress"
+                      size="xs"
+                      value={batchProgress}
+                      animated={isBatchPending}
+                    />
+                  ) : null}
+                </div>
+              ) : (
+                <Text c="dimmed" size="xs">{t("member.selectionHint")}</Text>
+              )}
+            </>
+          ) : null}
 
           <div className="admin-member-cards-mobile">
             {table.getRowModel().rows.map((row) => {
@@ -479,9 +655,13 @@ export function AdminUsersSection({
                   radius="md"
                   className={`admin-member-card${selectedIdSet.has(u.id) ? " admin-member-card--selected" : ""}`}
                 >
-                  <div style={{ padding: "0.8rem 1rem" }} onClick={() => onOpenMemberDetail(u.id)}>
-                    <Group justify="space-between" wrap="nowrap" gap={8}>
-                      <div style={{ minWidth: 0, flex: 1 }}>
+                  <Group justify="space-between" wrap="nowrap" gap={8} style={{ padding: "0.8rem 1rem" }}>
+                    <UnstyledButton
+                      type="button"
+                      style={{ minWidth: 0, flex: 1, textAlign: "start" }}
+                      onClick={() => onOpenMemberDetail(u.id)}
+                      aria-label={t("member.action.openDetailAria", { username: u.username })}
+                    >
                         <Text fw={600} size="sm" truncate>{u.username}</Text>
                         <Group gap={6} mt={2}>
                           <Badge size="xs" color={roleDef?.color ?? "gray"}>{u.role}</Badge>
@@ -489,24 +669,27 @@ export function AdminUsersSection({
                             ? <Badge size="xs" color="green">{t("member.status.active")}</Badge>
                             : <Badge size="xs" color="red">{t("member.status.inactive")}</Badge>
                           }
-                          {p.classes[0] ? <Text size="xs" c="dimmed">{p.classes[0]}</Text> : null}
+                          {p.classes[0] ? (
+                            <Text size="xs" c="dimmed">
+                              {resolveClassCatalogItem(p.classes[0], classCatalog).label}
+                            </Text>
+                          ) : null}
                         </Group>
-                      </div>
-                      {isAdmin ? (
-                        <ActionIcon
-                          variant="subtle"
-                          color="gray"
-                          size="sm"
-                          onClick={(e) => {
-                            openActionMenu(u.id, e);
-                          }}
-                          aria-label={t("member.action.menu")}
-                        >
-                          <IconDotsVertical size={16} />
-                        </ActionIcon>
-                      ) : null}
-                    </Group>
-                  </div>
+                    </UnstyledButton>
+                    {isAdmin ? (
+                      <ActionIcon
+                        variant="subtle"
+                        color="gray"
+                        size={44}
+                        onClick={(e) => {
+                          openActionMenu(u.id, e);
+                        }}
+                        aria-label={t("member.action.menu")}
+                      >
+                        <IconDotsVertical size={16} />
+                      </ActionIcon>
+                    ) : null}
+                  </Group>
                 </Paper>
               );
             })}

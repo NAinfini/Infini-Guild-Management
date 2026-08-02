@@ -40,6 +40,7 @@
     "apps/portal/**/*.ts",
     "apps/portal/**/*.tsx",
     "apps/portal/vite.config.ts",
+    "playwright.config.ts",
     "apps/worker/**/*.ts",
     "apps/worker/drizzle.config.ts"
   ]

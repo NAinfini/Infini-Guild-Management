@@ -1,8 +1,16 @@
 import { readFileSync } from "node:fs";
+import { DatabaseSync } from "node:sqlite";
 import { BUILTIN_ROLES, PERMISSIONS } from "@guild/shared";
 import { getTableConfig } from "drizzle-orm/sqlite-core";
 import { describe, expect, it } from "vitest";
-import { inviteLinks, storageItems, systemTestArtifacts, systemTestRuns, warHistory } from "../schema";
+import {
+  classCatalog,
+  inviteLinks,
+  storageItems,
+  systemTestArtifacts,
+  systemTestRuns,
+  warHistory,
+} from "../schema";
 
 const schemaSql = readFileSync("apps/worker/db/migrations/0000_core_schema.sql", "utf8");
 
@@ -36,6 +44,71 @@ describe("core schema guild-war invariants", () => {
     expect(schemaSql).not.toContain(
       "CREATE INDEX IF NOT EXISTS idx_war_history_event_id",
     );
+  });
+});
+
+describe("core schema class-catalog invariants", () => {
+  it("enforces case-insensitive labels in Drizzle and baseline SQL", () => {
+    const labelIndex = getTableConfig(classCatalog).indexes
+      .find((index) => index.config.name === "ux_class_catalog_label_nocase");
+
+    expect(labelIndex?.config.unique).toBe(true);
+    expect(schemaSql).toContain(
+      "CREATE UNIQUE INDEX IF NOT EXISTS ux_class_catalog_label_nocase",
+    );
+    expect(schemaSql).toContain("ON class_catalog(label COLLATE NOCASE)");
+  });
+
+  it("keeps all catalog checks named and synchronized", () => {
+    const checks = getTableConfig(classCatalog).checks.map((constraint) => constraint.name);
+
+    expect(checks).toEqual(expect.arrayContaining([
+      "class_catalog_color_hex",
+      "class_catalog_icon_type_valid",
+      "class_catalog_sort_order_nonnegative",
+      "class_catalog_icon_key_consistent",
+    ]));
+    for (const name of checks) {
+      expect(schemaSql).toContain(`CONSTRAINT ${name} CHECK`);
+    }
+  });
+
+  it("executes the baseline catalog DDL and rejects invalid or duplicate rows", () => {
+    const tableSql = schemaSql.match(
+      /CREATE TABLE IF NOT EXISTS class_catalog \([\s\S]*?\n\);/,
+    )?.[0];
+    const sortIndexSql = schemaSql.match(
+      /CREATE INDEX IF NOT EXISTS idx_class_catalog_sort[\s\S]*?;/,
+    )?.[0];
+    const labelIndexSql = schemaSql.match(
+      /CREATE UNIQUE INDEX IF NOT EXISTS ux_class_catalog_label_nocase[\s\S]*?;/,
+    )?.[0];
+    expect(tableSql).toBeTruthy();
+    expect(sortIndexSql).toBeTruthy();
+    expect(labelIndexSql).toBeTruthy();
+
+    const sqlite = new DatabaseSync(":memory:");
+    try {
+      sqlite.exec(`${tableSql}\n${sortIndexSql}\n${labelIndexSql}`);
+      const insert = sqlite.prepare(
+        `INSERT INTO class_catalog
+          (id, label, color, icon_type, vector_icon, icon_key, sort_order)
+         VALUES (?, ?, ?, ?, ?, ?, ?)`,
+      );
+      insert.run("warden", "Warden", "#61B8AA", "vector", "shield", null, 10);
+
+      expect(() => {
+        insert.run("warden-2", "warden", "#112233", "vector", "shield", null, 20);
+      }).toThrow(/UNIQUE constraint failed/i);
+      expect(() => {
+        insert.run("bad-color", "Bad Color", "#GGGGGG", "vector", "shield", null, 20);
+      }).toThrow(/class_catalog_color_hex/i);
+      expect(() => {
+        insert.run("bad-key", "Bad Key", "#112233", "vector", "shield", "orphan.webp", 20);
+      }).toThrow(/class_catalog_icon_key_consistent/i);
+    } finally {
+      sqlite.close();
+    }
   });
 });
 

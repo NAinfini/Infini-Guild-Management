@@ -78,15 +78,13 @@ export function GalleryGrid({
       <div className="gallery-masonry" role="list" aria-label={t("aria.galleryLoading")}>
         {Array.from({ length: 8 }).map((_, i) => (
           <div key={i} role="listitem" className="gallery-masonry__item">
-            <Paper withBorder radius="md">
-              <div>
-                <div className="gallery-card__inner">
-                  <Skeleton height={200} radius={8} />
-                  <Stack gap={4} mt={8}>
-                    <Skeleton height={12} width="70%" />
-                    <Skeleton height={10} width="40%" />
-                  </Stack>
-                </div>
+            <Paper withBorder radius="md" className="gallery-card">
+              <div className="gallery-card__inner">
+                <Skeleton height={200} radius={8} />
+                <Stack gap={4} mt={8}>
+                  <Skeleton height={12} width="70%" />
+                  <Skeleton height={10} width="40%" />
+                </Stack>
               </div>
             </Paper>
           </div>
@@ -98,8 +96,7 @@ export function GalleryGrid({
   if (isError && rows.length === 0) {
     return (
       <Paper withBorder radius="md" p="var(--card-padding)">
-        <div>
-          <EmptyState
+        <EmptyState
             status="error"
             title={errorTitle}
             description={errorDescription}
@@ -108,8 +105,7 @@ export function GalleryGrid({
                 {retryLabel}
               </Button>
             }
-          />
-        </div>
+        />
       </Paper>
     );
   }
@@ -117,8 +113,7 @@ export function GalleryGrid({
   if (rows.length === 0) {
     return (
       <Paper withBorder radius="md" p="var(--card-padding)">
-        <div>
-          <EmptyState
+        <EmptyState
             title={emptyTitle}
             description={emptyDescription}
             actions={
@@ -130,8 +125,7 @@ export function GalleryGrid({
                 <Button onClick={onAddMedia}>{addMediaLabel}</Button>
               ) : undefined
             }
-          />
-        </div>
+        />
       </Paper>
     );
   }
@@ -189,8 +183,8 @@ export function GalleryGrid({
                     <Tooltip label={actionDeleteLabel} withArrow>
                       <ActionIcon
                         color="red"
-                        variant="filled"
-                        size="sm"
+                        variant="light"
+                        size="lg"
                         aria-label={actionDeleteLabel}
                         onClick={(e: React.MouseEvent) => {
                           e.stopPropagation();

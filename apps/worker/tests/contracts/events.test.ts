@@ -103,7 +103,11 @@ describe("event contracts", () => {
         start_at: new Date(Date.now() + 8 * 24 * 60 * 60 * 1000).toISOString(),
       }),
     );
-    formData.append("files", new File([new Blob(["image"], { type: "image/png" })], "poster.png", { type: "image/png" }));
+    /* 字节头必须是真的：上传路径会按魔数复核声明的 Content-Type。 */
+    formData.append(
+      "files",
+      new File([new Uint8Array([0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A])], "poster.png", { type: "image/png" }),
+    );
 
     const { status, payload } = await api("/api/events", {
       method: "POST",

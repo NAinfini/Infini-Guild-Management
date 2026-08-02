@@ -9,6 +9,7 @@ import {
   NotificationOutlined,
   PictureOutlined,
   SettingOutlined,
+  ShieldOutlined,
   TeamOutlined,
   ThunderboltOutlined,
   ToolOutlined,
@@ -143,7 +144,8 @@ export const PORTAL_ROUTES: readonly PortalRouteMetadata[] = [
     to: "/admin",
     labelKey: "nav.admin",
     group: "administration",
-    icon: SettingOutlined,
+    /* 和「设置」共用齿轮时，折叠成图标轨道后两项完全分不出来。 */
+    icon: ShieldOutlined,
     contentWidth: "workbench",
     requiresSession: true,
     requiresModerator: true,

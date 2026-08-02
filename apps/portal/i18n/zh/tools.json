@@ -1,10 +1,9 @@
 {
   "title": "工具",
   "subtitle": "主题沙盒",
+  "page.readOnlyHint": "外部查看模式为只读，交互控件已禁用。",
   "sandbox.title": "HTML 头衔沙盒",
-  "sandbox.description": "使用取色器与排版控制生成样式化 HTML",
   "sandbox.placeholder": "输入头衔文本",
-  "sandbox.readOnlyHint": "外部查看模式为只读，交互控件已禁用。",
   "sandbox.section.titleText": "标题文本",
   "sandbox.section.color": "颜色",
   "sandbox.section.typography": "排版",
@@ -21,6 +20,7 @@
   "sandbox.button.underline": "下划线",
   "sandbox.button.strike": "删除线",
   "sandbox.manualOverridePlaceholder": "粘贴自定义 HTML 以覆盖自动生成内容...",
+  "sandbox.applyToProfile": "应用到我的称号",
   "sandbox.aria.titleInput": "标题文本预览输入框",
   "sandbox.aria.hueSlider": "色相滑块",
   "sandbox.aria.saturationLightnessPicker": "饱和度与亮度选择器",
@@ -57,9 +57,5 @@
   "dice.total": "总计",
   "dice.history": "历史记录",
   "dice.clearHistory": "清空",
-  "dice.noHistory": "暂无记录，点击投掷！",
-  "dice.result": "{{count}}d{{sides}} → {{results}} = {{total}}",
-  "equipCalc.title": "装备计算器",
-  "equipCalc.description": "规划和优化你的装备搭配",
-  "equipCalc.versionLabel": "数据版本"
+  "dice.noHistory": "暂无记录，点击投掷！"
 }

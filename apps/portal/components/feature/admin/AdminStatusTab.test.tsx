@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import { MantineProvider } from "@mantine/core";
 import { render, screen } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -138,7 +139,26 @@ describe("AdminStatusTab", () => {
     expect(screen.getByText(/\d+ endpoints/)).toBeInTheDocument();
   });
 
-  it("renders degraded system health and populated health logs", () => {
+  it("keeps the health log, API console and debug console collapsed until asked", async () => {
+    const user = userEvent.setup();
+    renderStatusTab();
+
+    const disclosures = screen.getAllByRole("button", { expanded: false });
+    const labels = disclosures.map((node) => node.textContent);
+    expect(labels.some((text) => text?.includes("status.healthLogs.title"))).toBe(true);
+    expect(labels.some((text) => text?.includes("status.section.apiTests"))).toBe(true);
+    expect(labels.some((text) => text?.includes("status.api.debugTitle"))).toBe(true);
+
+    /* 健康面板不折叠：这一页最常做的事就是扫一眼四个服务，它必须一进来就在。 */
+    expect(screen.getByText("D1")).toBeVisible();
+
+    const healthLogs = disclosures.find((node) => node.textContent?.includes("status.healthLogs.title"));
+    await user.click(healthLogs!);
+    expect(healthLogs).toHaveAttribute("aria-expanded", "true");
+  });
+
+  it("renders degraded system health and populated health logs", async () => {
+    const user = userEvent.setup();
     renderStatusTab({
       statusLatencyMs: 450,
       statusData: { db: "ok", r2: "error", ws: "degraded", crons: "error" },
@@ -157,6 +177,10 @@ describe("AdminStatusTab", () => {
     expect(screen.getByText("status.degraded")).toBeInTheDocument();
     expect(screen.getAllByText("ERROR")).toHaveLength(2);
     expect(screen.getByText("DEGRADED")).toBeInTheDocument();
+
+    /* 日志表默认折起（Mantine Collapse 收拢后是 display:none），
+       role 查询查不到隐藏节点——先真的展开，再断言表头。 */
+    await user.click(screen.getByRole("button", { name: /status\.healthLogs\.title/ }));
     expect(screen.getByRole("columnheader", { name: "audit.table.time" })).toBeInTheDocument();
     expect(screen.getByRole("columnheader", { name: "DB" })).toBeInTheDocument();
     expect(screen.getByRole("columnheader", { name: "R2" })).toBeInTheDocument();

@@ -20,6 +20,7 @@ export const LIMITS = {
     configurableQuotaMax: 100,
     maxFileSize: {
       siteLogo: 2 * 1024 * 1024,
+      classIcon: 512 * 1024,
       profileImage: 5 * 1024 * 1024,
       profileAudio: 20 * 1024 * 1024,
       announcementImage: 5 * 1024 * 1024,
@@ -39,6 +40,9 @@ export const LIMITS = {
     announcementTitle: { min: 1, max: 200 },
     announcementBody: { min: 1, max: 500000 },
     wikiCategoryName: { min: 1, max: 120 },
+    /* 一次批量改分类最多能带多少行。分类编辑器一次提交的是所有改动过的行，
+       所以这同时也是分类目录的规模上限——超过这个数就该分页而不是整屏编辑。 */
+    wikiCategoryBatch: { min: 1, max: 200 },
     wikiArticleTitle: { min: 1, max: 200 },
     wikiArticleBody: { min: 1, max: 500000 },
     profileBio: { max: 2000 },
@@ -62,6 +66,11 @@ export const LIMITS = {
     warEnemyName: { max: 200 },
     warNotes: { max: 2000 },
     roleName: { min: 1, max: 80 },
+    classLabel: { min: 1, max: 80 },
+    classesPerProfile: { max: 20 },
+    /* 一次重排请求里最多能带多少个职业 id。重排的请求体必须是完整目录，
+       所以这同时也是职业目录的规模上限——超过这个数就该分页而不是整表重排。 */
+    classCatalogSize: { max: 200 },
   },
   pagination: {
     admin: 50,

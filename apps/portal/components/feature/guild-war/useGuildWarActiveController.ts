@@ -4,7 +4,8 @@ import { useTranslation } from "react-i18next";
 import { useConfirmDialog } from "@portal/hooks/useConfirmDialog";
 import { useBeforeUnloadPrompt } from "../../../hooks/useBeforeUnloadPrompt";
 import type { GuildWarService } from "../../../services/GuildWarService";
-import { notifySuccess } from "../../../utils/notifications";
+
+const AUTO_SAVE_DELAY_MS = 350;
 
 type UseGuildWarActiveControllerParams = {
   selectedEventId: string | undefined;
@@ -21,8 +22,6 @@ export function useGuildWarActiveController({
 }: UseGuildWarActiveControllerParams) {
   const { t } = useTranslation("guild-war");
   const confirm = useConfirmDialog();
-  const [selectedDragUserIds, setSelectedDragUserIds] = useState<string[]>([]);
-  const [selectionAnchorUserId, setSelectionAnchorUserId] = useState<string | null>(null);
   const [activeDragItemId, setActiveDragItemId] = useState<string | null>(null);
   const [teamDraftNames, setTeamDraftNames] = useState<Record<string, string>>({});
   const [teamDraftNotes, setTeamDraftNotes] = useState<Record<string, string>>({});
@@ -33,8 +32,6 @@ export function useGuildWarActiveController({
   const [activeDetailUserId, setActiveDetailUserId] = useState<string | null>(null);
 
   useEffect(() => {
-    setSelectedDragUserIds([]);
-    setSelectionAnchorUserId(null);
     setSearchJumpIndex(0);
     setTeamDraftNames({});
     setTeamDraftNotes({});
@@ -113,7 +110,6 @@ export function useGuildWarActiveController({
         teamDraftLocks,
         etag: activeData?.etag ?? undefined,
       });
-      notifySuccess(t("message.teamsSaved"));
       return true;
     } catch (error) {
       showError(error, t("message.teamsSaveFailed"));
@@ -137,6 +133,18 @@ export function useGuildWarActiveController({
     teamOrder,
   ]);
 
+  useEffect(() => {
+    if (!selectedEventId || !isTeamsDirty || saveTeamsInFlightRef.current) {
+      return;
+    }
+
+    const timer = window.setTimeout(() => {
+      void handleSaveTeams();
+    }, AUTO_SAVE_DELAY_MS);
+
+    return () => window.clearTimeout(timer);
+  }, [handleSaveTeams, isTeamsDirty, selectedEventId]);
+
   const confirmDiscardTeamsChanges = useCallback(async () => {
     if (!isTeamsDirty) return true;
     if (saveTeamsInFlightRef.current) return false;
@@ -150,10 +158,6 @@ export function useGuildWarActiveController({
   }, [confirm, isTeamsDirty, t]);
 
   return {
-    selectedDragUserIds,
-    setSelectedDragUserIds,
-    selectionAnchorUserId,
-    setSelectionAnchorUserId,
     activeDragItemId,
     setActiveDragItemId,
     teamDraftNames,
@@ -173,7 +177,6 @@ export function useGuildWarActiveController({
     moveTeamOrder,
     isTeamsDirty,
     saveTeamsPending,
-    handleSaveTeams,
     confirmDiscardTeamsChanges,
   };
 }

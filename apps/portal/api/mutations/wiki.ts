@@ -1,8 +1,10 @@
 import {
+  batchUpdateWikiCategoriesSchema,
   createWikiArticleSchema,
   createWikiCategorySchema,
   updateWikiArticleSchema,
-  updateWikiCategorySchema,
+  wikiCategorySchema,
+  type BatchUpdateWikiCategoryItem,
   type WikiArticle,
   type WikiCategory,
 } from "@guild/shared";
@@ -11,7 +13,6 @@ import { apiRequest } from "../client";
 import { convertFilesForUpload } from "@guild/shared/utils/media";
 
 export type CreateWikiCategoryPayload = z.input<typeof createWikiCategorySchema>;
-export type UpdateWikiCategoryPayload = z.input<typeof updateWikiCategorySchema>;
 export type CreateWikiArticlePayload = z.input<typeof createWikiArticleSchema>;
 export type UpdateWikiArticlePayload = z.input<typeof updateWikiArticleSchema>;
 
@@ -23,12 +24,19 @@ export function createWikiCategory(payload: CreateWikiCategoryPayload): Promise<
   });
 }
 
-export function updateWikiCategory(id: string, payload: UpdateWikiCategoryPayload): Promise<WikiCategory> {
-  const bodyJson = updateWikiCategorySchema.parse(payload);
-  return apiRequest<WikiCategory>(`/api/wiki/categories/${id}`, {
+/**
+ * 一次提交多行分类改动，服务端整批落库或整批不落库，返回落库之后的完整目录。
+ * 任何一行不合法（父级不存在、两层嵌套、id 不存在）都会整批回退——不要在这里
+ * 剔掉出问题的那一行再重发，那会把冲突吞掉，用户看到的顺序就不是库里的顺序。
+ */
+export async function batchUpdateWikiCategories(
+  updates: BatchUpdateWikiCategoryItem[],
+): Promise<WikiCategory[]> {
+  const bodyJson = batchUpdateWikiCategoriesSchema.parse({ updates });
+  return wikiCategorySchema.array().parse(await apiRequest("/api/wiki/categories/batch", {
     method: "PATCH",
     bodyJson,
-  });
+  }));
 }
 
 export function deleteWikiCategory(id: string): Promise<{ ok: true }> {

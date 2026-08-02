@@ -49,7 +49,7 @@ export function useAdminData(options: UseAdminDataOptions) {
   const rolesQuery = useQuery({
     queryKey: queryKeys.admin.roles(),
     queryFn: fetchRoles,
-    enabled: isModerator,
+    enabled: effectivePermissions?.canViewRoles ?? isModerator,
     staleTime: Infinity,
   });
 

@@ -17,7 +17,7 @@
 
 /* ── Dashboard card padding ── */
 .dashboard-card > div:last-child {
-  padding: 20px;
+  padding: var(--space-md);
 }
 
 /*
@@ -31,9 +31,13 @@
 
 .dashboard-card-title {
   margin: 0;
+}
+
+.dashboard-card-title__text.dashboard-card-title__text {
+  margin: 0;
   font-size: var(--text-card);
   font-weight: var(--fw-strong);
-  letter-spacing: -0.01em;
+  line-height: var(--lh-tight);
 }
 
 .dashboard-card-title-icon {
@@ -44,37 +48,59 @@
   opacity: 0.85;
 }
 
-.dashboard-stats-circle {
-  margin: 0;
+.dashboard-kpi-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  margin: var(--space-md) 0 0;
 }
 
-.dashboard-stats-circle-center {
-  display: inline-flex;
+.dashboard-kpi-grid > * {
+  min-width: 0;
+}
+
+.dashboard-kpi-grid > * + * {
+  border-inline-start: 1px solid var(--border-subtle);
+}
+
+.dashboard-kpi {
+  display: flex;
+  min-height: 88px;
+  flex-direction: column;
   align-items: center;
   justify-content: center;
-  width: 100%;
-  height: 100%;
+  gap: var(--space-xs);
+  /* <dl> 自带外边距，这里靠 grid 的分隔线对齐，必须清掉。 */
+  margin: 0;
+  padding-inline: var(--space-md);
   text-align: center;
 }
 
-.dashboard-stats-circle-value {
-  display: inline-flex;
-  align-items: baseline;
-  justify-content: center;
-  gap: 1px;
-  font-size: 15px;
-  font-weight: 600;
+.dashboard-kpi__label {
+  color: var(--text-muted);
+  font-size: var(--text-meta);
+  font-weight: var(--fw-medium);
+  line-height: var(--lh-normal);
 }
 
-.dashboard-stats-circle-subvalue {
-  font-size: 12px;
-  font-weight: 500;
+.dashboard-kpi__value {
+  display: flex;
+  align-items: center;
+  margin: 0;
+  color: var(--text-primary);
+  font-size: var(--text-page);
+  font-weight: var(--fw-strong);
+  line-height: var(--lh-tight);
 }
 
-.dashboard-stats-circle-label {
-  font-size: 12px;
-  text-align: center;
-  line-height: 1.2;
+.dashboard-kpi__subvalue {
+  color: var(--text-secondary);
+  font-family: var(--font-body);
+  font-size: var(--text-body);
+  font-weight: var(--fw-medium);
+}
+
+.dashboard-card .empty-state {
+  padding: var(--space-lg) var(--space-md);
 }
 
 /* ── Signup Day Boxes (8-box grid: yesterday + today + 6 future) ── */
@@ -122,7 +148,7 @@
 }
 
 .signup-box-label {
-  font-size: 10px;
+  font-size: var(--text-micro);
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.04em;
@@ -203,7 +229,7 @@
 
 .signup-box-event-time {
   flex-shrink: 0;
-  font-size: 10px;
+  font-size: var(--text-micro);
   color: color-mix(in srgb, var(--text-primary) 65%, transparent);
   line-height: 1;
   font-variant-numeric: tabular-nums;
@@ -247,13 +273,9 @@
   box-shadow: none;
 }
 
-/* 与模式无关的字面黑：图标本身吃 currentColor（随 --text-primary 反色），这层
-   投影只是给它加一圈固定的暗晕做描边，让图标在任意背景上都读得清楚——跟
-   media-gallery.css 的缩略图播放图标投影同一个理由，不随主题变化。 */
 .war-nav-btn svg {
   stroke: currentColor;
   color: currentColor;
-  filter: drop-shadow(0 0 1px rgba(0, 0, 0, 0.35));
 }
 
 .war-nav-btn.war-nav-btn:hover:not(:disabled) {
@@ -320,11 +342,9 @@
   transition: opacity var(--transition-normal);
 }
 
-/* 与模式无关的字面黑，理由同上方 .war-nav-btn svg 的图标描边投影。 */
 .war-share-btn svg {
   stroke: currentColor;
   color: currentColor;
-  filter: drop-shadow(0 0 1px rgba(0, 0, 0, 0.35));
 }
 
 .war-share-btn.war-share-btn:hover {
@@ -458,7 +478,7 @@
 
 .war-compare-bar-fill--own {
   background: color-mix(in srgb, var(--domain-war) 60%, var(--surface-base));
-  border-radius: 4px 0 0 4px;
+  border-radius: var(--radius-control) 0 0 var(--radius-control);
 }
 
 .war-compare-bar-fill--own.war-compare-bar-fill--winning {
@@ -467,7 +487,7 @@
 
 .war-compare-bar-fill--enemy {
   background: color-mix(in srgb, var(--status-danger) 45%, var(--surface-base));
-  border-radius: 0 4px 4px 0;
+  border-radius: 0 var(--radius-control) var(--radius-control) 0;
 }
 
 .war-compare-bar-fill--enemy.war-compare-bar-fill--winning {
@@ -525,7 +545,7 @@
 
 .war-mvp-chip-label.war-mvp-chip-label {
   line-height: 1.2;
-  font-size: 10px;
+  font-size: var(--text-micro);
   text-transform: uppercase;
   letter-spacing: 0.04em;
 }
@@ -558,20 +578,25 @@
    onMouseLeave direct style mutation, task-8 批 B). The hover handlers only
    ever toggled between two fixed states, so :hover replaces them outright. */
 .upcoming-event-row {
-  padding: 14px;
-  background: color-mix(in srgb, var(--surface-base) 97%, var(--text-primary));
-  border-radius: 12px;
-  border: 1px solid var(--border-subtle);
-  transition: border-color 160ms ease, box-shadow 160ms ease;
+  padding: var(--space-sm) 0;
+  border-bottom: 1px solid var(--border-subtle);
 }
 
-.upcoming-event-row:hover {
-  border-color: var(--border-strong);
-  box-shadow: var(--edge-top);
+.upcoming-event-row:last-child {
+  border-bottom: 0;
 }
 
 .upcoming-event-row__title {
   overflow-wrap: anywhere;
+}
+
+.upcoming-event-row__capacity {
+  min-width: 40px;
+  color: var(--text-secondary);
+  font-size: var(--text-meta);
+  font-variant-numeric: tabular-nums;
+  font-weight: var(--fw-medium);
+  text-align: center;
 }
 
 .upcoming-event-row .mantine-Badge-root {
@@ -587,6 +612,17 @@
 @media (max-width: 1023px) {
   .upcoming-event-row__avatars {
     display: none;
+  }
+}
+
+@media (max-width: 479px) {
+  .dashboard-kpi {
+    min-height: 80px;
+    padding-inline: var(--space-sm);
+  }
+
+  .dashboard-kpi__value {
+    font-size: var(--text-section);
   }
 }
 

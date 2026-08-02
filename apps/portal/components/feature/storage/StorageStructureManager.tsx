@@ -62,8 +62,7 @@ export function StorageStructureManager({
     noCategories: t("empty.noCategories"),
     selectStructure: t("manageStorage.selectStructure"),
     changeSelection: t("manageStorage.changeSelection"),
-    stepSelect: t("manageStorage.stepSelect"),
-    stepEdit: t("manageStorage.stepEdit"),
+    mobileHint: t("manageStorage.mobileHint"),
   };
   const isMobile = useMediaQuery("(max-width: 53.74em)");
   const [editName, setEditName] = useState("");
@@ -220,10 +219,7 @@ export function StorageStructureManager({
         {isMobile ? (
           <>
             <Stack gap="sm" className="storage-management-mobile-flow">
-              <Group gap="xs">
-                <Badge variant="filled">{labels.stepSelect}</Badge>
-                <Badge variant="light">{labels.stepEdit}</Badge>
-              </Group>
+              <Text size="sm" c="dimmed">{labels.mobileHint}</Text>
               <div className="storage-management-mobile-flow__selection">
                 <span>
                   <Text size="xs" c="dimmed">{labels.selectStructure}</Text>
@@ -238,8 +234,8 @@ export function StorageStructureManager({
               opened={treeOpened}
               onClose={() => setTreeOpened(false)}
               title={labels.selectStructure}
-              position="bottom"
-              size="85dvh"
+              position="left"
+              size={340}
             >
               {treePanel}
             </Drawer>

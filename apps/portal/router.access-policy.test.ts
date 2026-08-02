@@ -69,4 +69,16 @@ describe("portal route access policy", () => {
     expect(manageRoute).toContain('"admin.storage.manage"');
     expect(manageRoute).toContain('throw redirect({ to: "/storage" })');
   });
+
+  it("accepts every profile workspace in the profile route search schema", () => {
+    const source = routerSource();
+    const profileSearchSchema = source.slice(
+      source.indexOf("const PROFILE_SEARCH_SCHEMA"),
+      source.indexOf("const ANNOUNCEMENTS_SEARCH_SCHEMA"),
+    );
+
+    expect(profileSearchSchema).toContain(
+      'z.enum(["profile", "media", "availability", "account"])',
+    );
+  });
 });

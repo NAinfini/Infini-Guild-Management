@@ -1,5 +1,26 @@
-import { Group, HoverCard, Text, ThemeIcon, UnstyledButton } from "@mantine/core";
-import { ArrowBackUpIcon, ArrowForwardUpIcon, ChevronDownIcon, ChevronUpIcon } from "@portal/components/icons";
+import { ActionIcon, Button, Text, Tooltip } from "@mantine/core";
+import { ArrowBackUpIcon, ArrowForwardUpIcon } from "@portal/components/icons";
+import { EmptyState } from "@portal/components/shared/EmptyState";
+
+type AnalyticsChartEmptyState = {
+  title: string;
+  description: string;
+  actionLabel?: string;
+  onAction?: () => void;
+};
+
+/**
+ * The header used to read "Mode / Chart", which described nothing — the reader
+ * had to look back at the filters to know what was plotted. It now carries the
+ * query itself: the mode as kicker, the subject/metric/scope as the title, and
+ * `note` for a processing step that silently rewrites every number on screen
+ * (normalization), so an active one can never go unnoticed.
+ */
+type AnalyticsChartHeading = {
+  kicker: string;
+  title: string;
+  note?: string;
+};
 
 type GuildWarAnalyticsChartPanelProps = {
   ReactEChartsCore: typeof import("echarts-for-react/esm/core").default;
@@ -12,7 +33,9 @@ type GuildWarAnalyticsChartPanelProps = {
   selectedMetrics: string[];
   expanded: boolean;
   onToggleExpanded: () => void;
+  heading: AnalyticsChartHeading;
   t: (key: string) => string;
+  emptyState?: AnalyticsChartEmptyState;
 };
 
 export function GuildWarAnalyticsChartPanel({
@@ -26,7 +49,9 @@ export function GuildWarAnalyticsChartPanel({
   selectedMetrics,
   expanded,
   onToggleExpanded,
+  heading,
   t,
+  emptyState,
 }: GuildWarAnalyticsChartPanelProps) {
   const option = mode === "radar" && radarOption ? radarOption : chartOption;
   const keyPrefix = mode === "radar" ? "radar" : "chart";
@@ -34,37 +59,68 @@ export function GuildWarAnalyticsChartPanel({
 
   return (
     <div className="gwa-main">
-      <div className="gwa-chart">
-        <HoverCard width={280} shadow="lg" withArrow arrowSize={10} openDelay={350} closeDelay={80} position="top">
-          <HoverCard.Target>
-            <UnstyledButton
-              onClick={onToggleExpanded}
-              className="gwa-chart__expand"
-              aria-label={expanded ? t("analytics.aria.collapseChart") : t("analytics.aria.expandChart")}
+      <section className="gwa-chart">
+        <div className="gwa-chart__header">
+          <div className="gwa-chart__heading">
+            <Text size="xs" c="dimmed" fw={600}>{heading.kicker}</Text>
+            <Text fw={700}>{heading.title}</Text>
+            {heading.note ? (
+              <Text size="xs" fw={600} c="var(--status-warning)" className="gwa-chart__note">
+                {heading.note}
+              </Text>
+            ) : null}
+          </div>
+          {!emptyState ? (
+            <Tooltip
+              label={expanded ? t("hovercard.collapseChart.title") : t("hovercard.expandChart.title")}
             >
-              {expanded ? <ArrowBackUpIcon size={14} /> : <ArrowForwardUpIcon size={14} />}
-            </UnstyledButton>
-          </HoverCard.Target>
-          <HoverCard.Dropdown p="sm" style={{ borderRadius: 10 }}>
-            <Group gap={10} wrap="nowrap" align="flex-start">
-              <ThemeIcon variant="light" color="gray" size="lg" radius="md" style={{ flexShrink: 0, marginTop: 2 }}>
-                {expanded ? <ChevronUpIcon size={16} /> : <ChevronDownIcon size={16} />}
-              </ThemeIcon>
-              <div style={{ minWidth: 0 }}>
-                <Text size="sm" fw={700} lh={1.3} mb={4}>{expanded ? t("hovercard.collapseChart.title") : t("hovercard.expandChart.title")}</Text>
-                <Text size="xs" c="dimmed" lh={1.5}>{expanded ? t("hovercard.collapseChart.desc") : t("hovercard.expandChart.desc")}</Text>
-              </div>
-            </Group>
-          </HoverCard.Dropdown>
-        </HoverCard>
-        <ReactEChartsCore
-          key={`${keyPrefix}-${selectedUsers.join(",")}-${selectedMetrics.join(",")}`}
-          echarts={echarts}
-          theme={themeName}
-          option={option}
-          style={{ width: "100%", height }}
-        />
-      </div>
+              <ActionIcon
+                onClick={onToggleExpanded}
+                className="gwa-chart__expand"
+                variant="subtle"
+                size="lg"
+                aria-label={expanded ? t("analytics.aria.collapseChart") : t("analytics.aria.expandChart")}
+              >
+                {expanded ? <ArrowBackUpIcon size={16} /> : <ArrowForwardUpIcon size={16} />}
+              </ActionIcon>
+            </Tooltip>
+          ) : null}
+        </div>
+        {emptyState ? (
+          <div className="gwa-chart__empty" style={{ minHeight: height }}>
+            <EmptyState
+              title={emptyState.title}
+              description={emptyState.description}
+              actions={
+                emptyState.actionLabel && emptyState.onAction ? (
+                  <Button variant="light" onClick={emptyState.onAction}>
+                    {emptyState.actionLabel}
+                  </Button>
+                ) : undefined
+              }
+            />
+          </div>
+        ) : (
+          <ReactEChartsCore
+            key={`${keyPrefix}-${selectedUsers.join(",")}-${selectedMetrics.join(",")}`}
+            echarts={echarts}
+            theme={themeName}
+            option={option}
+            /*
+             * Every mode and every toggle builds a completely different option —
+             * different series count, axes and value formatter. echarts-for-react
+             * defaults to notMerge=false, which merges series by index and keeps
+             * whatever the previous option had: the war mode's 敌方/差额 series
+             * leaked into the rankings chart, and the teams mode's raw totals
+             * survived into contribution mode where the new "{v}%" formatter
+             * rendered 522000 damage as "522000%". Each option must replace the
+             * previous one outright.
+             */
+            notMerge
+            style={{ width: "100%", height }}
+          />
+        )}
+      </section>
     </div>
   );
 }

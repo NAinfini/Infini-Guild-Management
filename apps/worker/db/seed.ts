@@ -1,10 +1,11 @@
 import { sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/d1";
 import { nanoid } from "nanoid";
-import { PERMISSIONS } from "@guild/shared";
+import { DEFAULT_CLASS_CATALOG, PERMISSIONS } from "@guild/shared";
 import {
   announcements,
   auditLog,
+  classCatalog,
   eventPollOptions,
   eventPolls,
   eventPollVotes,
@@ -34,10 +35,8 @@ import {
   warTeams,
   wikiArticles,
   wikiCategories,
-  gameData,
   siteConfig,
 } from "./schema";
-import seedGameData from "@guild/shared/calculator/seed-data.json";
 import type { Bindings } from "../index";
 import { createPasswordHash } from "../services/auth";
 
@@ -63,7 +62,7 @@ export const SEED_CLEAR_TABLES = [
   "war_history",
   "recurring_templates",
   "events",
-  "game_data",
+  "class_catalog",
   "audit_log",
   "error_log",
   "gallery_items",
@@ -222,6 +221,22 @@ export async function seedDatabase(env: Bindings): Promise<void> {
   }
   await batchInsert(db, rolePermissions, rolePermissionRows, 15, { ignoreConflicts: true });
 
+  await batchInsert(
+    db,
+    classCatalog,
+    DEFAULT_CLASS_CATALOG.map((item) => ({
+      id: item.id,
+      label: item.label,
+      color: item.color,
+      iconType: "vector",
+      vectorIcon: item.vector_icon,
+      iconKey: null,
+      sortOrder: item.sort_order,
+    })),
+    10,
+    { ignoreConflicts: true },
+  );
+
   // ════════════════════════════════════════════
   // ── Users ──
   // ════════════════════════════════════════════
@@ -267,7 +282,6 @@ export async function seedDatabase(env: Bindings): Promise<void> {
       gallery: true,
       wiki: true,
       tools: true,
-      equipmentCalc: true,
       storage: true,
     }),
     mediaPolicyJson: JSON.stringify({
@@ -1265,6 +1279,87 @@ export async function seedDatabase(env: Bindings): Promise<void> {
   }
 
   // ════════════════════════════════════════════
+  // ── Active Guild War board (event-scoped) ──
+  // ════════════════════════════════════════════
+  // war_teams / war_pool_members carry two mutually exclusive foreign keys:
+  // war_history_id (a concluded war, read by the History tab) and event_id
+  // (a war still being planned, read by the Active tab). The loop above only
+  // fills the history side, so seed an event-scoped board too — otherwise the
+  // Active tab always starts empty.
+
+  const activeWarEventId = eventRows[2]!.id; // [2] guild_war - active future war #1
+
+  const activeWarTeams: Array<{ name: string; notes: string | null; locked: boolean; members: Array<{ userId: string; roleTag: string }> }> = [
+    {
+      name: "Alpha Team",
+      notes: "主推线，优先塔压制",
+      locked: false,
+      members: [
+        { userId: memberIds[0]!, roleTag: "core" },
+        { userId: memberIds[1]!, roleTag: "flex" },
+        { userId: memberIds[2]!, roleTag: "core" },
+        { userId: memberIds[3]!, roleTag: "flex" },
+      ],
+    },
+    {
+      name: "Bravo Team",
+      notes: "守塔与支援",
+      locked: false,
+      members: [
+        { userId: memberIds[4]!, roleTag: "core" },
+        { userId: memberIds[5]!, roleTag: "flex" },
+        { userId: moderatorIds[0]!, roleTag: "core" },
+      ],
+    },
+    {
+      name: "Charlie Team",
+      notes: null,
+      locked: true,
+      members: [],
+    },
+  ];
+
+  const activeWarTeamRows: Array<typeof warTeams.$inferInsert> = [];
+  const activeWarTeamMemberRows: Array<typeof warTeamMembers.$inferInsert> = [];
+
+  activeWarTeams.forEach((team, teamIndex) => {
+    const teamId = nanoid();
+    activeWarTeamRows.push({
+      id: teamId,
+      warHistoryId: null,
+      eventId: activeWarEventId,
+      teamName: team.name,
+      sortOrder: teamIndex,
+      notes: team.notes,
+      isLocked: team.locked,
+    });
+    team.members.forEach((member, memberIndex) => {
+      activeWarTeamMemberRows.push({
+        id: nanoid(),
+        warTeamId: teamId,
+        userId: member.userId,
+        roleTag: member.roleTag,
+        sortOrder: memberIndex,
+        stats: null,
+        note: null,
+      });
+    });
+  });
+
+  await batchInsert(db, warTeams, activeWarTeamRows, 4);
+  await batchInsert(db, warTeamMembers, activeWarTeamMemberRows, 4);
+
+  const activeWarPoolRows: Array<typeof warPoolMembers.$inferInsert> = memberIds
+    .slice(6, 12)
+    .map((userId) => ({
+      id: nanoid(),
+      warHistoryId: null,
+      eventId: activeWarEventId,
+      userId,
+    }));
+  await batchInsert(db, warPoolMembers, activeWarPoolRows, 4);
+
+  // ════════════════════════════════════════════
   // ── Wiki ──
   // ════════════════════════════════════════════
 
@@ -1635,6 +1730,9 @@ export async function seedDatabase(env: Bindings): Promise<void> {
           wikiArticles: articleRows.length,
           galleryItems: galleryItemRows.length,
           warHistory: warHistoryRows.length,
+          activeWarTeams: activeWarTeamRows.length,
+          activeWarAssigned: activeWarTeamMemberRows.length,
+          activeWarPool: activeWarPoolRows.length,
           badges: badgeRows.length,
           badgeAssignments: badgeAssignmentRows.length,
         },
@@ -1788,13 +1886,4 @@ export async function seedDatabase(env: Bindings): Promise<void> {
   await batchInsert(db, storageTransactions, storageTransactionRows, 8);
   // NOTE: no storage_item_images rows — mock R2 has no objects, keys would dangle.
 
-  // ════════════════════════════════════════════
-  // ── Game Data ──
-  // ════════════════════════════════════════════
-
-  await db.insert(gameData).values({
-    data: JSON.stringify(seedGameData),
-    version: seedGameData.version,
-    uploadedBy: adminId,
-  });
 }

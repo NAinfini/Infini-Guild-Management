@@ -17,6 +17,7 @@ import {
 import { useEffect, useMemo, useState, type KeyboardEvent } from "react";
 import { useTranslation } from "react-i18next";
 import { getParticipantActionDisabledReasonKey } from "./participant-action";
+import { resolveClassCatalogItem, useClassCatalogStore } from "@portal/stores/class-catalog";
 import "./EventDetailModal.css";
 
 export type MemberEntry = { user: User; profile: MemberProfile };
@@ -81,10 +82,20 @@ export function EventDetailModal({
 }: EventDetailModalProps) {
   const { t, i18n } = useTranslation("events");
   const { t: tc } = useTranslation("common");
+  const classCatalog = useClassCatalogStore((state) => state.items);
   const confirm = useConfirmDialog();
   const mediaLabels = useMemo(() => buildMediaGalleryLabels(tc), [tc]);
   const [selectedOptionIds, setSelectedOptionIds] = useState<string[]>([]);
   const [localHasVoted, setLocalHasVoted] = useState(false);
+  /*
+   * 加人下拉的搜索词必须自己拿着。
+   * 这个 Select 的 value 恒为 null——它不是一个选值控件，而是「选一个人就把他加进去」的动作触发器。
+   * 但 value 一旦受控，Mantine 就不再在选中后回填搜索框（Select.mjs:205 的 !controlled 分支被跳过），
+   * 而 value 又永远是 null，那条「value === null 就清空」的 effect（Select.mjs:154）也只在挂载时跑过一次。
+   * 结果是：搜谁加谁之后，输入框里还留着刚才敲的名字，而这个人已经从候选里被过滤掉了，
+   * 再点开就是一句 Nothing found——想连着加第二个人，得先手动把字删干净。
+   */
+  const [addMemberSearch, setAddMemberSearch] = useState("");
   const isJoined = currentUserId ? members.some((entry) => entry.user.id === currentUserId) : false;
   const isFull = event?.capacity != null ? members.length >= event.capacity : false;
   const hasEnded = Boolean(event?.end_at && new Date(event.end_at) <= new Date());
@@ -118,6 +129,7 @@ export function EventDetailModal({
     const serverHasVoted = event.poll?.has_voted ?? false;
     setSelectedOptionIds(event.poll?.options.filter((option) => option.voted_by_me).map((option) => option.id) ?? []);
     setLocalHasVoted(serverHasVoted);
+    setAddMemberSearch("");
   }, [event]);
 
   const togglePollOption = (optionId: string, disabled: boolean) => {
@@ -274,7 +286,7 @@ export function EventDetailModal({
                                   <Text size="xs" fw={900} className="event-detail-modal__poll-percent">{percent}%</Text>
                                 </Group>
                               </div>
-                              <Progress value={percent} color="teal" size="md" className="event-detail-modal__poll-progress" />
+                              <Progress value={percent} color="portal-brand" size="md" className="event-detail-modal__poll-progress" />
                               {option.voter_ids.length > 0 ? (
                                 <div className="event-detail-modal__poll-voters">
                                   {visibleVoters.map((entry) => (
@@ -311,7 +323,7 @@ export function EventDetailModal({
                       {/* Voting is an authenticated interaction. Guests can read poll results but get no vote action. */}
                       {onVotePoll ? (
                         <Button
-                          color="teal"
+                          color="portal-brand"
                           size="sm"
                           loading={votePending}
                           disabled={event === null || !event.poll.can_vote || hasEnded || Boolean(event.archived_at) || selectedOptionIds.length === 0}
@@ -431,10 +443,13 @@ export function EventDetailModal({
                       clearable
                       mb={12}
                       value={null}
+                      searchValue={addMemberSearch}
+                      onSearchChange={setAddMemberSearch}
                       onChange={(userId) => {
                         if (userId) {
                           onAddParticipant(event.id, userId);
                         }
+                        setAddMemberSearch("");
                       }}
                       disabled={event === null}
                       data={allUsers
@@ -456,7 +471,11 @@ export function EventDetailModal({
                             <div className="event-detail-modal__member-info">
                               <Text size="sm" fw={700}>{entry.user.username}</Text>
                               <Group gap={6}>
-                                <Text size="xs" c="dimmed">{entry.profile.classes[0] ?? "-"}</Text>
+                                <Text size="xs" c="dimmed">
+                                  {entry.profile.classes[0]
+                                    ? resolveClassCatalogItem(entry.profile.classes[0], classCatalog).label
+                                    : "-"}
+                                </Text>
                                 <Text size="xs" c="dimmed">-</Text>
                                 <Text size="xs" c="dimmed">{t("detail.power", { value: entry.profile.power ?? "-" })}</Text>
                               </Group>

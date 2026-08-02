@@ -60,8 +60,15 @@ function clampQuality(value: number): number {
   return value;
 }
 
-type ImageConversionOptions = {
+export type ImageConversionOptions = {
   quality?: number;
+  /**
+   * Always emit WebP even when the encoded file is larger. Intended for media
+   * slots whose server contract deliberately accepts WebP only.
+   */
+  forceWebP?: boolean;
+  /** Resize proportionally so neither edge exceeds this number of pixels. */
+  maxDimension?: number;
 };
 
 type AudioContextLikeCtor = new (contextOptions?: AudioContextOptions) => AudioContext;
@@ -155,7 +162,12 @@ export async function convertImageToWebP(
     throw new Error("Image conversion requires an image file");
   }
 
-  if (file.type === "image/webp") {
+  const forceWebP = options.forceWebP ?? false;
+  const maxDimension = options.maxDimension === undefined
+    ? null
+    : Math.max(1, Math.floor(options.maxDimension));
+
+  if (file.type === "image/webp" && maxDimension === null) {
     onProgress?.(100);
     return file;
   }
@@ -165,7 +177,7 @@ export async function convertImageToWebP(
    * so re-encoding an animated GIF silently throws the animation away. Leaving
    * it alone costs some R2 space but never destroys the image.
    */
-  if (file.type === "image/gif") {
+  if (file.type === "image/gif" && !forceWebP) {
     onProgress?.(100);
     return file;
   }
@@ -173,13 +185,29 @@ export async function convertImageToWebP(
   onProgress?.(10);
   const bitmap = await createImageBitmap(file);
   onProgress?.(35);
-  const canvas = createCanvas(bitmap.width, bitmap.height);
+  const scale = maxDimension === null
+    ? 1
+    : Math.min(1, maxDimension / Math.max(bitmap.width, bitmap.height));
+  const targetWidth = Math.max(1, Math.round(bitmap.width * scale));
+  const targetHeight = Math.max(1, Math.round(bitmap.height * scale));
+
+  if (
+    file.type === "image/webp"
+    && targetWidth === bitmap.width
+    && targetHeight === bitmap.height
+  ) {
+    bitmap.close();
+    onProgress?.(100);
+    return file;
+  }
+
+  const canvas = createCanvas(targetWidth, targetHeight);
   const context = canvas.getContext("2d");
   if (!context) {
     throw new Error("Unable to create canvas context for image conversion");
   }
 
-  context.drawImage(bitmap, 0, 0, bitmap.width, bitmap.height);
+  context.drawImage(bitmap, 0, 0, targetWidth, targetHeight);
   bitmap.close();
   onProgress?.(70);
 
@@ -201,7 +229,7 @@ export async function convertImageToWebP(
    * PNG with few colours. The whole point is to save R2 space, so keep whichever
    * is actually smaller rather than assuming WebP always wins.
    */
-  if (blob.size >= file.size) {
+  if (!forceWebP && blob.size >= file.size) {
     onProgress?.(100);
     return file;
   }

@@ -25,8 +25,8 @@
 .gallery-dropzone input[type="file"] { width: 100%; }
 
 /* ── Masonry grid ── */
-.gallery-masonry { column-count: 2; column-gap: 12px; }
-.gallery-masonry__item { break-inside: avoid; margin-bottom: 12px; }
+.gallery-masonry { column-count: 1; column-gap: var(--space-md); }
+.gallery-masonry__item { break-inside: avoid; margin-bottom: var(--space-md); }
 
 /* ── Gallery card ── */
 .gallery-card .gallery-preview-button {
@@ -50,6 +50,11 @@
 
 .gallery-preview-button:hover .gallery-preview-img {
   transform: scale(1.03);
+}
+
+.gallery-preview-button:focus-visible {
+  outline: 2px solid var(--brand-fill);
+  outline-offset: -3px;
 }
 
 /* mode-independent literal: the video-thumb placeholder background is a fixed
@@ -117,15 +122,21 @@
    buttons, caption bar) sits on this same fixed-dark backdrop and follows the
    same rationale. */
 .gallery-lb-overlay {
-  position: fixed;
-  inset: 0;
-  z-index: 1000;
   background: rgba(0, 0, 0, 0.92);
   backdrop-filter: blur(12px);
-  display: flex;
-  align-items: center;
-  justify-content: center;
   animation: gallery-lb-fade-in 180ms ease;
+}
+
+/* 灯箱只靠上面那层遮罩画底色：内容层自己不画表面，正文铺满且不留内边距。
+   两条都是覆盖 Mantine Modal 的默认值，靠样式表顺序生效（组件 CSS 在
+   @mantine/core/styles.css 之后加载，同特异度后来者胜）。 */
+.gallery-lb-content {
+  background: transparent;
+}
+
+.gallery-lb-body {
+  height: 100%;
+  padding: 0;
 }
 
 .gallery-lb {
@@ -145,8 +156,8 @@
   top: 16px;
   right: 16px;
   z-index: 10;
-  width: var(--control-icon-size-large);
-  height: var(--control-icon-size-large);
+  width: var(--control-hit-area);
+  height: var(--control-hit-area);
   border-radius: 50%;
   border: none;
   background: rgba(255, 255, 255, 0.1);
@@ -219,7 +230,7 @@
   object-fit: contain;
   transform-origin: center center;
   transition: transform 120ms ease;
-  border-radius: 4px;
+  border-radius: var(--radius-control);
   user-select: none;
 }
 
@@ -228,7 +239,7 @@
   max-width: 960px;
   height: calc(100vh - 140px);
   border: none;
-  border-radius: 8px;
+  border-radius: var(--radius-surface);
 }
 
 .gallery-lb__info {
@@ -251,15 +262,15 @@
 }
 
 .gallery-lb__uploader {
-  color: rgba(255, 255, 255, 0.6);
+  color: rgba(255, 255, 255, 0.72);
 }
 
 .gallery-lb__date {
-  color: rgba(255, 255, 255, 0.4);
+  color: rgba(255, 255, 255, 0.72);
 }
 
 .gallery-lb__count {
-  color: rgba(255, 255, 255, 0.5);
+  color: rgba(255, 255, 255, 0.72);
 }
 
 .gallery-object-placeholder {
@@ -269,7 +280,7 @@
   display: grid; gap: 8px; place-items: center; padding: 12px; text-align: center;
 }
 
-@media (min-width: 576px) { .gallery-masonry { column-count: 3; } }
+@media (min-width: 480px) { .gallery-masonry { column-count: 2; } }
 @media (max-width: 767px) {
   .gallery-video-url-input, .gallery-video-caption-input { width: 100%; }
   .gallery-dropzone { min-width: 0; width: 100%; }
@@ -299,8 +310,15 @@
   .gallery-lb__nav--prev { left: 8px; }
   .gallery-lb__nav--next { right: 8px; }
 }
-@media (min-width: 992px) { .gallery-masonry { column-count: 4; } }
-@media (min-width: 1200px) { .gallery-masonry { column-count: 5; } }
+@media (min-width: 768px) { .gallery-masonry { column-count: 3; } }
+@media (min-width: 1100px) { .gallery-masonry { column-count: 4; } }
+@media (min-width: 1440px) { .gallery-masonry { column-count: 5; } }
+
+@media (hover: none) {
+  .gallery-preview-uploader {
+    opacity: 1;
+  }
+}
 @keyframes gallery-lb-fade-in {
   from { opacity: 0; }
   to { opacity: 1; }

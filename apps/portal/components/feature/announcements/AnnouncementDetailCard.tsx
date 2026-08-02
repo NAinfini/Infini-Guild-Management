@@ -24,6 +24,7 @@ import { ArchiveIcon, CalendarTimeIcon, ChevronDownIcon, NoteIcon, PinIcon, Send
 import { notifyError } from "../../../utils/notifications";
 import { PencilOutlined } from "@portal/utils/icons";
 import { EmptyState } from "../../shared/EmptyState";
+import { NativeDateTimeInput } from "../../shared/NativeDateTimeInput";
 import { buildTipTapEditorLabels } from "@portal/components/shared/tiptap-meta";
 
 const LazyTipTapEditor = lazy(() =>
@@ -76,6 +77,7 @@ type AnnouncementDetailCardProps = {
   onArchivedChange: (value: boolean) => void;
   onImageUpload: (file: File) => Promise<string>;
   isDirty: boolean;
+  isPublishReady: boolean;
   emptyTitle: ReactNode;
 };
 
@@ -106,6 +108,7 @@ export function AnnouncementDetailCard({
   onArchivedChange,
   onImageUpload,
   isDirty,
+  isPublishReady,
   emptyTitle,
 }: AnnouncementDetailCardProps) {
   const { t } = useTranslation("announcements");
@@ -125,6 +128,8 @@ export function AnnouncementDetailCard({
   }, [isCreateMode]);
 
   const validateAndFinish = (mode: StatusMode) => {
+    if (!isPublishReady) return;
+
     if (mode === "scheduled" && publishAt) {
       const scheduledDate = new Date(publishAt.replace(" ", "T"));
       if (!Number.isNaN(scheduledDate.getTime()) && scheduledDate <= new Date()) {
@@ -168,13 +173,19 @@ export function AnnouncementDetailCard({
             {canEdit && (selectedId && selected || isCreateMode) ? (
               editing ? (
                 <Group gap={8}>
-                  {isDirty ? <Badge color="orange">{t("status.unsaved")}</Badge> : <Badge color="green">{t("status.saved")}</Badge>}
+                  {!isPublishReady ? (
+                    <Badge color="gray">{t("status.notReady")}</Badge>
+                  ) : isDirty ? (
+                    <Badge color="orange">{t("status.unsaved")}</Badge>
+                  ) : (
+                    <Badge color="green">{t("status.saved")}</Badge>
+                  )}
                   <Button.Group>
                     <Button
                       size="sm"
                       color="portal-brand"
                       onClick={() => validateAndFinish("none")}
-                      disabled={savePending}
+                      disabled={savePending || !isPublishReady}
                       leftSection={<SendIcon size={14} />}
                     >
                       {t("action.publish")}
@@ -184,7 +195,7 @@ export function AnnouncementDetailCard({
                         <Button
                           size="sm"
                           color="portal-brand"
-                          disabled={savePending}
+                          disabled={savePending || !isPublishReady}
                           px={8}
                         >
                           <ChevronDownIcon size={14} />
@@ -290,6 +301,8 @@ export function AnnouncementDetailCard({
                       value={bodyJson}
                       onChange={onBodyJsonChange}
                       placeholder={t("field.body")}
+                      /* 正文是 contenteditable 的 role="textbox"，不给名字读屏只会念「文本框」。 */
+                      ariaLabel={t("field.body")}
                       editable={true}
                       onImageUpload={onImageUpload}
                       labels={editorLabels}
@@ -349,7 +362,7 @@ export function AnnouncementDetailCard({
                   <Stack gap={8}>
                     <div>
                       <Text size="xs" c="dimmed">{t("field.publishAt")}</Text>
-                      <TextInput
+                      <NativeDateTimeInput
                         type="datetime-local"
                         value={toDateTimeLocalValue(publishAt) || undefined}
                         onChange={(event) => onPublishAtChange(fromDateTimeLocalValue(event.currentTarget.value))}

@@ -44,6 +44,12 @@ vi.mock("motion/react", async () => {
   };
 });
 
+vi.mock("./ClassIcon", () => ({
+  ClassIcon: ({ item }: { item: { label: string } }) => (
+    <span className="class-icon" data-class-label={item.label} />
+  ),
+}));
+
 const now = "2026-07-29T12:00:00.000Z";
 const noPermissions = Object.fromEntries(
   PERMISSIONS.map((permission) => [permission, false]),
@@ -96,6 +102,21 @@ describe("MemberCard protected runtime interaction", () => {
 
     await keyboard.keyboard("{Enter}");
     expect(onClick).toHaveBeenCalledTimes(1);
+  });
+
+  it("renders the member class label, color, and curated icon on the full card", () => {
+    const { container } = render(
+      <MemberCard
+        user={user}
+        profile={{ ...profile, classes: ["鸣金虹"] }}
+      />,
+    );
+
+    expect(screen.getByText("鸣金虹")).toBeInTheDocument();
+    expect(container.querySelector(".member-card__class-chip .class-icon")).not.toBeNull();
+    expect(container.querySelector(".member-card__class-chip")).toHaveStyle({
+      "--class-color": "#6EA8FE",
+    });
   });
 
   it("keeps the mouse spring response but ignores touch pointers", () => {

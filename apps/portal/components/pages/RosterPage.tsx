@@ -66,6 +66,7 @@ export function RosterPage() {
         search={controller.search}
         onSearchChange={controller.setSearch}
         classFilter={classFilter}
+        loadedClassIds={controller.loadedClassIds}
         onClassFilterChange={controller.setClassFilter}
         sortMode={sortMode}
         onSortModeChange={controller.setSortMode}

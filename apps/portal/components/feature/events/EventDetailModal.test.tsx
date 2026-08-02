@@ -340,6 +340,51 @@ describe("EventDetailModal", () => {
     expect(screen.queryByRole("button", { name: /poll\.update/i })).not.toBeInTheDocument();
   });
 
+  it("clears the add-member search after adding someone, so the next person is reachable", async () => {
+    const user = userEvent.setup();
+    const onAddParticipant = vi.fn();
+    const candidates = [
+      { user: { id: "user-1", username: "member-1", is_active: true, deleted_at: null }, profile: { classes: [], power: 1 } },
+      { user: { id: "user-2", username: "member-2", is_active: true, deleted_at: null }, profile: { classes: [], power: 1 } },
+    ];
+
+    render(
+      <MantineProvider>
+        <EventDetailModal
+          event={{
+            id: "event-1",
+            title: "Guild social",
+            type: "social",
+            start_at: "2099-06-12T16:00:00.000Z",
+            end_at: "2099-06-12T18:00:00.000Z",
+            description: null,
+            capacity: 10,
+            attachments: [],
+          } as never}
+          members={[]}
+          allUsers={candidates as never}
+          canManage
+          onClose={() => {}}
+          onAddParticipant={onAddParticipant}
+          onRemoveParticipant={() => {}}
+        />
+      </MantineProvider>,
+    );
+
+    const picker = screen.getByPlaceholderText("detail.addMemberPlaceholder");
+    await user.click(picker);
+    await user.type(picker, "member-1");
+    // 下拉挂在 Modal 的 portal 里，jsdom 下整棵树带 aria-hidden，按角色取必须放开 hidden。
+    await user.click(await screen.findByRole("option", { name: "member-1", hidden: true }));
+
+    expect(onAddParticipant).toHaveBeenCalledWith("event-1", "user-1");
+    /*
+     * 搜索词留在框里，下一个人就搜不出来了：他被 members 过滤掉之后候选表里只剩别人，
+     * 而过滤词还卡在上一个名字上，点开只有一句 Nothing found。
+     */
+    expect(picker).toHaveValue("");
+  });
+
   it("confirms member removal through the Mantine modal manager", async () => {
     const user = userEvent.setup();
     const onRemoveParticipant = vi.fn();
@@ -379,10 +424,10 @@ describe("EventDetailModal", () => {
     expect(removeButton).toHaveAttribute("data-variant", "light");
     await user.click(removeButton);
 
-    expect(screen.getAllByRole("dialog")).toHaveLength(2);
     const confirmation = await screen.findByRole("dialog", {
       name: "detail.confirm.removeMember.title",
     });
+    expect(screen.getAllByRole("dialog")).toHaveLength(2);
     expect(onRemoveParticipant).not.toHaveBeenCalled();
 
     await user.click(within(confirmation).getByRole("button", { name: "button.cancel" }));

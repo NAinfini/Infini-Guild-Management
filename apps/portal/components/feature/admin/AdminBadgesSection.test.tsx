@@ -39,8 +39,8 @@ function createController(
     isCreating: false,
     form: EMPTY_BADGE_FORM,
     setForm: vi.fn(),
-    assignModalOpen: false,
-    setAssignModalOpen: vi.fn(),
+    assignPanelOpen: false,
+    setAssignPanelOpen: vi.fn(),
     assignSearch: "",
     setAssignSearch: vi.fn(),
     pendingAssignIds: [],
@@ -63,7 +63,7 @@ function createController(
     startEdit: vi.fn(),
     selectBadge: vi.fn(),
     cancelEdit: vi.fn(),
-    openAssignModal: vi.fn(),
+    openAssignPanel: vi.fn(),
     togglePendingAssign: vi.fn(),
     formValid: false,
     createBadge: vi.fn(),
@@ -86,23 +86,40 @@ function renderBadges(controller: AdminBadgesController) {
 }
 
 describe("AdminBadgesSection", () => {
-  it("keeps the color controls at real 44px touch targets", () => {
+  /*
+   * 原来这条守的是 .admin-badge-color-picker / .admin-badge-swatch 两个手搓控件的
+   * 44px。取色改用 Mantine ColorInput 之后这两个 class 不存在了，色板尺寸由
+   * Mantine 的 --cp-swatch-size 决定，我们无从在 CSS 里断言——这是一处有意的放宽，
+   * 已在交付说明里单独点出。清单项这一个仍然是本页最主要的点击目标，继续守住。
+   */
+  it("keeps the master list rows at real 44px touch targets", () => {
     const css = readFileSync(
-      resolve(
-        process.cwd(),
-        "apps/portal/components/feature/admin/AdminBadgesSection.css",
-      ),
+      resolve(process.cwd(), "apps/portal/components/pages/AdminPage.css"),
       "utf8",
     ).replace(/\/\*[\s\S]*?\*\//g, "");
-    const pickerRule = css.match(/\.admin-badge-color-picker\s*\{([^}]+)\}/)?.[1];
-    const swatchRule = css.match(/\.admin-badge-swatch\s*\{([^}]+)\}/)?.[1];
-    const itemRule = css.match(/\.admin-badge-item\s*\{([^}]+)\}/)?.[1];
+    const itemRule = css.match(/\.admin-md__item\s*\{([^}]+)\}/)?.[1];
 
-    expect(pickerRule).toMatch(/width:\s*44px/);
-    expect(pickerRule).toMatch(/height:\s*44px/);
-    expect(swatchRule).toMatch(/width:\s*44px/);
-    expect(swatchRule).toMatch(/height:\s*44px/);
-    expect(itemRule).toMatch(/min-height:\s*44px/);
+    expect(itemRule).toMatch(/min-block-size:\s*44px/);
+  });
+
+  it("folds member assignment into the detail pane instead of a modal", async () => {
+    const user = userEvent.setup();
+    const openAssignPanel = vi.fn();
+    renderBadges(createController({
+      selectedBadgeId: badge.id,
+      badges: [badge],
+      selectedBadge: badge,
+      openAssignPanel,
+    }));
+
+    const toggle = screen.getByRole("button", { name: "badges.action.manageMembership" });
+    expect(toggle).toHaveAttribute("aria-expanded", "false");
+    // 面板此刻是收起的，但仍在 DOM 里（Collapse 不卸载），所以断言可见性而非存在性。
+    expect(screen.getByText("badges.assignTitle")).not.toBeVisible();
+
+    await user.click(toggle);
+
+    expect(openAssignPanel).toHaveBeenCalledOnce();
   });
 
   it("does not misreport a failed badge query as an empty collection", async () => {

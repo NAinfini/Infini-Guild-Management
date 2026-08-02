@@ -25,7 +25,7 @@ export type MediaGalleryLabels = {
   thumbnailImage: string;
   seekVideo: string;
   playVideoAria: string;
-  openItemAria: string;
+  openItemAria: (index: number) => string;
 };
 
 const DEFAULT_LABELS: MediaGalleryLabels = {
@@ -46,10 +46,12 @@ const DEFAULT_LABELS: MediaGalleryLabels = {
   thumbnailImage: "Image",
   seekVideo: "Seek video",
   playVideoAria: "Play video",
-  openItemAria: "Open item",
+  openItemAria: (index) => `Open item ${index}`,
 };
 
-export function buildMediaGalleryLabels(t: (key: string) => string): MediaGalleryLabels {
+export function buildMediaGalleryLabels(
+  t: (key: string, options?: { index?: number }) => string,
+): MediaGalleryLabels {
   return {
     noMedia: t("media.noMedia"),
     imageLoadFailed: t("media.imageLoadFailed"),
@@ -68,7 +70,7 @@ export function buildMediaGalleryLabels(t: (key: string) => string): MediaGaller
     thumbnailImage: t("media.thumbnailImage"),
     seekVideo: t("media.aria.seekVideo"),
     playVideoAria: t("media.aria.playVideo"),
-    openItemAria: t("media.aria.openItem"),
+    openItemAria: (index) => t("media.aria.openItem", { index }),
   };
 }
 
@@ -329,7 +331,7 @@ export const MediaGallery = forwardRef<HTMLDivElement, MediaGalleryProps>(
                   type="button"
                   className={`infini-media-gallery-thumb${index === activeIndex ? " infini-media-gallery-thumb-active" : ""}`}
                   onClick={() => { setActiveIndex(index); (embla as { scrollTo?: (index: number) => void })?.scrollTo?.(index); }}
-                  aria-label={`${labels.openItemAria} ${index + 1}`}
+                  aria-label={labels.openItemAria(index + 1)}
                   aria-pressed={index === activeIndex}
                 >
                   {item.type === "image" && isRenderableUrl(item.source) && !brokenImages.has(index) ? (

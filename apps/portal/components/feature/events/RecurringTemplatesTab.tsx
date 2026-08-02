@@ -21,6 +21,7 @@ import {
   Text,
   TextInput,
   ThemeIcon,
+  UnstyledButton,
 } from "@mantine/core";
 import { useCallback, useMemo, useState } from "react";
 import { useDisclosure, useMediaQuery } from "@mantine/hooks";
@@ -296,10 +297,23 @@ export function RecurringTemplatesTab({
                 radius="md"
                 /* Dimming the whole row dragged every label to ~2.3:1. The
                    "paused" badge already says it, so the row stays readable. */
-                onClick={canManage ? () => handleEdit(template) : undefined}
-                style={{ cursor: canManage ? "pointer" : undefined }}
+                style={{ position: "relative" }}
               >
-                <div style={{ padding: "12px 16px" }}>
+                {canManage ? (
+                  <UnstyledButton
+                    type="button"
+                    aria-label={t("recurring.editAria", { title: template.title })}
+                    onClick={() => handleEdit(template)}
+                    style={{
+                      position: "absolute",
+                      inset: 0,
+                      zIndex: 1,
+                      borderRadius: "inherit",
+                      cursor: "pointer",
+                    }}
+                  />
+                ) : null}
+                <div style={{ padding: "12px 16px", position: "relative", zIndex: 2, pointerEvents: "none" }}>
                   <Group justify="space-between" align="center" wrap="nowrap">
                     <Group gap={12} align="center" wrap="nowrap" style={{ flex: 1, minWidth: 0 }}>
                       <div className="recurring-template-icon-wrap">
@@ -321,15 +335,20 @@ export function RecurringTemplatesTab({
                           )}
                           <HoverCard width={280} shadow="lg" withArrow arrowSize={10} openDelay={350} closeDelay={80} position="top">
                             <HoverCard.Target>
-                              <Badge
-                                size="xs"
-                                variant="light"
-                                color={isPaused ? "gray" : "green"}
-                                style={{ flexShrink: 0 }}
-                                data-animate-icon-trigger
+                              <UnstyledButton
+                                type="button"
+                                aria-label={isPaused ? t("recurring.status.paused") : t("recurring.status.active")}
+                                style={{ flexShrink: 0, pointerEvents: "auto" }}
                               >
-                                {isPaused ? t("recurring.status.paused") : t("recurring.status.active")}
-                              </Badge>
+                                <Badge
+                                  size="xs"
+                                  variant="light"
+                                  color={isPaused ? "gray" : "green"}
+                                  data-animate-icon-trigger
+                                >
+                                  {isPaused ? t("recurring.status.paused") : t("recurring.status.active")}
+                                </Badge>
+                              </UnstyledButton>
                             </HoverCard.Target>
                             <HoverCard.Dropdown p="sm" style={{ borderRadius: 10 }}>
                               <Group gap={10} wrap="nowrap" align="flex-start">
@@ -390,7 +409,7 @@ export function RecurringTemplatesTab({
                       {template.last_generated_date && (
                         <HoverCard width={280} shadow="lg" withArrow arrowSize={10} openDelay={350} closeDelay={80} position="top">
                           <HoverCard.Target>
-                            <Text size="xs" c="dimmed" style={{ whiteSpace: "nowrap" }}>
+                            <Text size="xs" c="dimmed" style={{ whiteSpace: "nowrap", pointerEvents: "auto" }}>
                               {t("recurring.generated", { count: template.generation_count })}
                             </Text>
                           </HoverCard.Target>

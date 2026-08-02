@@ -1,16 +1,16 @@
 import type { Event } from "@guild/shared";
 import { activeGame } from "@guild/shared/games";
-import { NumberTicker } from "@portal/components/effects";
-import { Badge, Button, Group, Paper, RingProgress, Stack, Text } from "@mantine/core";
+import { Badge, Button, Group, Paper, Stack, Text } from "@mantine/core";
 import { MemberRoleAvatar } from "../shared/MemberRoleAvatar";
 import { ArrowRightIcon, CalendarEventIcon, ClockIcon, FriendsIcon, SwordsIcon, TargetArrowIcon } from "@portal/components/icons";
-import { memo } from "react";
+import { memo, useMemo } from "react";
 import { useTranslation } from "react-i18next";
 import { CalendarEventOutlined } from "../../utils/icons";
 import { EmptyState } from "../shared/EmptyState";
 import {
   cardHeading,
   eventTypeTagColor,
+  orderDashboardUpcomingRows,
   type DashboardUpcomingEventRow,
 } from "./shared";
 
@@ -47,6 +47,10 @@ export const UpcomingEventsCard = memo(function UpcomingEventsCard({
   const { t, i18n } = useTranslation("dashboard");
   const safeUpcomingCount = Math.max(0, upcomingEventsCount);
   const hasAnyRows = featuredRows.length > 0 || rows.length > 0;
+  const orderedRows = useMemo(
+    () => orderDashboardUpcomingRows([...featuredRows, ...rows]),
+    [featuredRows, rows],
+  );
 
   return (
     <Paper withBorder radius="md" className="dashboard-card">
@@ -58,7 +62,7 @@ export const UpcomingEventsCard = memo(function UpcomingEventsCard({
         {safeUpcomingCount > 0 ? (
           <Group gap={6} wrap="nowrap">
             <Badge size="sm" variant="light" color="gray" style={{ flexShrink: 0 }}>
-              <NumberTicker value={safeUpcomingCount} /> {t("card.upcomingEvents.unit")}
+              {safeUpcomingCount} {t("card.upcomingEvents.unit")}
             </Badge>
             <Button size="xs" variant="subtle" onClick={onViewAll}>
               {t("card.upcomingEvents.viewAll", { count: safeUpcomingCount })}
@@ -70,10 +74,9 @@ export const UpcomingEventsCard = memo(function UpcomingEventsCard({
           <EmptyState title={t("empty")} />
         ) : (
           <Stack gap={8} mt={12}>
-            {[...featuredRows, ...rows].map((item) => {
+            {orderedRows.map((item) => {
               const signedUpCount = item.members.length;
               const capacity = item.item.capacity ?? 0;
-              const percentage = capacity > 0 ? Math.round((signedUpCount / capacity) * 100) : 0;
               const startDate = new Date(item.item.start_at);
               const month = startDate.toLocaleString(i18n.language, { month: "short" }).toUpperCase();
               const day = startDate.getDate();
@@ -123,17 +126,15 @@ export const UpcomingEventsCard = memo(function UpcomingEventsCard({
                         </Text>
                       ) : null}
                     </Group>
-                    <Stack gap={2} align="center">
-                      <RingProgress
-                        size={36}
-                        thickness={4}
-                        roundCaps
-                        sections={[{ value: percentage, color: "var(--domain-event)" }]}
-                      />
-                      <Text size="10px" ta="center" fw={600} c="dimmed">
-                        {capacity > 0 ? `${signedUpCount}/${capacity}` : "∞"}
-                      </Text>
-                    </Stack>
+                    <Text
+                      className="upcoming-event-row__capacity"
+                      aria-label={t("card.upcomingEvents.capacity", {
+                        current: signedUpCount,
+                        capacity: capacity > 0 ? capacity : "∞",
+                      })}
+                    >
+                      {capacity > 0 ? `${signedUpCount}/${capacity}` : "∞"}
+                    </Text>
                     <Button
                       size="xs"
                       variant="subtle"

@@ -49,6 +49,12 @@ const labels: TipTapEditorLabels = {
   imageInserted: "Image inserted",
   imageUploadFailed: "Image upload failed",
   uploading: "Uploading...",
+  lightboxTitle: "Image preview",
+  lightboxPreview: "Preview image",
+  lightboxZoomOut: "Zoom out",
+  lightboxZoomReset: "Reset zoom",
+  lightboxZoomIn: "Zoom in",
+  lightboxZoomLevel: "Zoom {{percent}}%",
   youtube: "YouTube",
   bilibili: "Bilibili",
   videoUrl: "Video URL",
@@ -197,5 +203,21 @@ describe("TipTapEditorToolbar", () => {
 
     expect(toolbarRule).toContain("overflow: visible");
     expect(toolbarRule).not.toContain("overflow-x: auto");
+  });
+
+  it("keeps toolbar actions touch-sized while allowing groups to wrap without overflow", () => {
+    const css = readFileSync(resolve(process.cwd(), "apps/portal/components/shared/tiptap-editor.css"), "utf8");
+    const actionRule = css.match(
+      /\.infini-tiptap-toolbar \.mantine-ActionIcon-root\s*\{([^}]*)\}/,
+    )?.[1] ?? "";
+    const groupRule = css.match(/\.infini-tiptap-toolbar__group\s*\{([^}]*)\}/)?.[1] ?? "";
+    const toolbarRule = css.match(/\.infini-tiptap-toolbar\s*\{([^}]*)\}/)?.[1] ?? "";
+
+    expect(actionRule).toContain("width: var(--control-hit-area)");
+    expect(actionRule).toContain("height: var(--control-hit-area)");
+    expect(groupRule).toContain("max-width: 100%");
+    expect(groupRule).toContain("flex-wrap: wrap");
+    expect(toolbarRule).toContain("max-width: 100%");
+    expect(toolbarRule).toContain("min-width: 0");
   });
 });

@@ -18,4 +18,15 @@ describe("EventsPage navigation architecture", () => {
     expect(source).not.toContain("createTemplateRequested");
     expect(source).not.toContain("setCreateTemplateRequested");
   });
+
+  it("derives the detail modal from eventId and clears that URL state on close", () => {
+    const source = readFileSync(
+      resolve(process.cwd(), "apps/portal/components/pages/EventsPage.tsx"),
+      "utf8",
+    );
+
+    expect(source).toContain("filtering.focusedEvent");
+    expect(source).toContain("filtering.clearFocusedEvent");
+    expect(source).toContain("event={routeDetailEvent ?? monthDetailEvent}");
+  });
 });

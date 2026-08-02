@@ -32,7 +32,7 @@ export function UserProfileDropdown({ user, onLogout, compact = false }: UserPro
         <UnstyledButton
           type="button"
           className={`app-profile-trigger ${compact ? "app-profile-trigger--compact" : ""}`}
-          aria-label={t("profile.menu.aria.open")}
+          aria-label={`${user.username}: ${t("profile.menu.aria.open")}`}
         >
           <Group gap={8} wrap="nowrap" align="center">
             <Avatar size={32} radius="xl" className="app-profile-avatar" src={profile?.avatar_key ? resolveProfileMediaUrl(profile.avatar_key) : undefined}>

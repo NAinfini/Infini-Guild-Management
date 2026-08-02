@@ -43,8 +43,12 @@ This project follows the structure of [Keep a Changelog](https://keepachangelog.
 - TipTap upgraded to v3 for rich text editing.
 - Admin Site Config now exposes the independent equipment calculator feature switch.
 - Admin-configured media file limits are capped below the request-wide upload ceiling to prevent impossible settings.
+- Every upload path now transcodes on the client through one shared dispatcher: images to WebP, audio to Opus. The site logo was the last path still sending the original bytes.
+- Storage item images, wiki article images, event attachments, and announcement article images are now validated server-side against the shared image allow-list and their magic bytes, matching the gallery path. Event attachments previously accepted anything declaring an `image/*` type, including SVG; announcement article images trusted the declared `Content-Type` outright, unlike the staging path next to them.
 
 ### Removed
+
+- `useMediaUpload`'s `convertImagesToWebp` and `convertAudioToOpus` options. No call site ever set them to `false`; they only offered a way to silently disable transcoding.
 
 - Legacy AIVectorMemory configuration and related Claude hook files.
 - Older planning and audit notes were consolidated under `docs/` and `.trellis/` task tracking.

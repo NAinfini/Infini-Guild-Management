@@ -500,52 +500,115 @@ export function useGuildWarAnalyticsComputed({
     const firstSeries = analyticsTeamSeries[0];
 
     if (analyticsShowContribution) {
-      // Contribution mode: show each player as % of team total per war
+      /*
+       * Contribution mode: one stack per team, so each war shows Alpha and
+       * Bravo side by side and each bar fills to 100% on its own.
+       *
+       * Previously every member landed in a single shared stack and the
+       * percentage was their share of the *whole selected roster*. With two
+       * teams selected that halved every number, the bars carried no team
+       * dimension at all, and the legend was one undifferentiated member list.
+       */
       const warNames = firstSeries ? firstSeries.points.map((p) => p.warName) : [];
       const primaryMetric = analyticsSelectedMetrics[0] ?? "damage";
-      const teamTotalsPerWar = analyticsTimeline.map((war) => {
-        let total = 0;
-        for (const team of war.teams) {
-          if (analyticsSelectedTeams.length > 0 && !analyticsSelectedTeams.includes(team.team_name)) continue;
-          for (const m of team.members) total += getNormalizedMetricValue(war.id, m, primaryMetric);
-        }
-        return total;
-      });
-      const playerContribSeries: Array<{ type: string; name: string; stack: string; data: number[] }> = [];
-      const contributedUsers = new Set<string>();
+      const isSelectedTeam = (teamName: string) =>
+        analyticsSelectedTeams.length === 0 || analyticsSelectedTeams.includes(teamName);
+
+      const teamNames: string[] = [];
       for (const war of analyticsTimeline) {
         for (const team of war.teams) {
-          if (analyticsSelectedTeams.length > 0 && !analyticsSelectedTeams.includes(team.team_name)) continue;
-          for (const m of team.members) contributedUsers.add(m.user_id);
+          if (isSelectedTeam(team.team_name) && !teamNames.includes(team.team_name)) {
+            teamNames.push(team.team_name);
+          }
         }
       }
-      const topUsers = Array.from(contributedUsers).slice(0, 15);
-      for (const userId of topUsers) {
-        const data = analyticsTimeline.map((war, warIdx) => {
-          const total = teamTotalsPerWar[warIdx] ?? 0;
-          if (total === 0) return 0;
-          let playerVal = 0;
+
+      // The legend is now teams × members, so the cap is per team. The cut-off
+      // members are still charted as one named band — the old code took an
+      // arbitrary 15 in Set order and silently dropped the rest, which left the
+      // stacks short of 100% with nothing on screen saying so.
+      const NAMED_PER_TEAM = 12;
+      const contributionSeries: Array<{
+        type: string;
+        name: string;
+        stack: string;
+        data: number[];
+      }> = [];
+
+      for (const teamName of teamNames) {
+        const totalsPerWar = analyticsTimeline.map((war) => {
+          let total = 0;
           for (const team of war.teams) {
-            if (analyticsSelectedTeams.length > 0 && !analyticsSelectedTeams.includes(team.team_name)) continue;
-            const member = team.members.find((m) => m.user_id === userId);
-            if (member) playerVal += getNormalizedMetricValue(war.id, member, primaryMetric);
+            if (team.team_name !== teamName) continue;
+            for (const m of team.members) total += getNormalizedMetricValue(war.id, m, primaryMetric);
           }
-          return Number((playerVal / total * 100).toFixed(1));
+          return total;
         });
-        playerContribSeries.push({
-          type: "bar",
-          name: analyticsUserIdToUsername.get(userId) ?? userId,
-          stack: "contribution",
-          data,
-        });
+
+        const teamUserIds = new Set<string>();
+        for (const war of analyticsTimeline) {
+          for (const team of war.teams) {
+            if (team.team_name !== teamName) continue;
+            for (const m of team.members) teamUserIds.add(m.user_id);
+          }
+        }
+
+        const byUser = Array.from(teamUserIds)
+          .map((userId) => {
+            const data = analyticsTimeline.map((war, warIdx) => {
+              const total = totalsPerWar[warIdx] ?? 0;
+              if (total === 0) return 0;
+              let value = 0;
+              for (const team of war.teams) {
+                if (team.team_name !== teamName) continue;
+                const member = team.members.find((m) => m.user_id === userId);
+                if (member) value += getNormalizedMetricValue(war.id, member, primaryMetric);
+              }
+              return Number(((value / total) * 100).toFixed(1));
+            });
+            return { userId, data, share: data.reduce((sum, value) => sum + value, 0) };
+          })
+          .sort((a, b) => b.share - a.share);
+
+        for (const entry of byUser.slice(0, NAMED_PER_TEAM)) {
+          contributionSeries.push({
+            type: "bar",
+            stack: teamName,
+            // The team prefix is what makes the legend readable: the same
+            // person can appear under two teams across the selected wars.
+            name: `${teamName} · ${analyticsUserIdToUsername.get(entry.userId) ?? entry.userId}`,
+            data: entry.data,
+          });
+        }
+        const remainder = byUser.slice(NAMED_PER_TEAM);
+        if (remainder.length > 0) {
+          contributionSeries.push({
+            type: "bar",
+            stack: teamName,
+            name: `${teamName} · ${t("analytics.contribution.others", { count: remainder.length })}`,
+            data: analyticsTimeline.map((_, warIdx) =>
+              Number(
+                remainder
+                  .reduce((sum, entry) => sum + (entry.data[warIdx] ?? 0), 0)
+                  .toFixed(1),
+              ),
+            ),
+          });
+        }
       }
+
       return {
         color: chartPalette,
-        tooltip: { trigger: "axis", valueFormatter: (v: number) => `${v}%` },
+        /*
+         * An axis tooltip would now list every member of every team for that
+         * war — dozens of rows. Item trigger answers what the hovered segment
+         * actually asks: which team, which member, what share.
+         */
+        tooltip: { trigger: "item", valueFormatter: (v: number) => `${v}%` },
         legend: { type: "scroll" },
         xAxis: { type: "category", data: warNames, axisLabel: { rotate: 18 } },
         yAxis: { type: "value", max: 100, axisLabel: { formatter: "{value}%" } },
-        series: playerContribSeries,
+        series: contributionSeries,
       };
     }
 

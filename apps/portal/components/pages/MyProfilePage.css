@@ -1,49 +1,571 @@
-.my-profile-preview-rail {
+/* 每屏「左编辑 / 右预览」。预览栏不是全局共用的一张卡：主页屏给名册卡，
+   时间屏给本周可见度，账号屏没有预览。 */
+/* 编辑栏封顶 880px。1fr 在 2000px 的屏上把每个输入框拉到 1500px 宽——一个战力
+   数字横跨整个屏幕，读者的眼睛要从标签走到值走一整行。880 是「两列字段各
+   ~420px」的宽度，和预览里的比例一致；剩下的空间留白，不摊给表单。 */
+.my-profile-split {
+  display: grid;
+  grid-template-columns: minmax(0, 880px) 300px;
+  justify-content: center;
+  gap: var(--space-lg);
+  align-items: start;
   min-width: 0;
+}
+
+.my-profile-split__editor {
+  display: grid;
+  gap: var(--space-md);
+  min-width: 0;
+}
+
+.my-profile-split__rail {
+  position: sticky;
+  top: var(--space-md);
+  display: grid;
+  gap: var(--space-sm);
+  min-width: 0;
+}
+
+/* 账号屏没有预览栏。它不跟着撑满，而是和另外两屏的编辑列同宽同起点——三屏
+   之间切换时，卡片的左边缘不应该跳来跳去。 */
+.my-profile-account {
+  max-inline-size: 1196px;
+  margin-inline: auto;
+}
+
+.profile-account {
+  display: grid;
+  gap: var(--space-md);
+}
+
+/* 两张卡等宽并排：改密码和改用户名是同一层级的两件事，竖着排会让下面那张
+   看起来像上面那张的后续步骤。 */
+.profile-account__cards {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-md);
+  align-items: start;
+}
+
+.profile-account__exit {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-md);
+  flex-wrap: wrap;
+  padding: var(--card-padding);
+  border: 1px solid color-mix(in srgb, var(--status-danger) 30%, transparent);
+  border-radius: var(--radius-surface);
+  background: color-mix(in srgb, var(--status-danger) 6%, transparent);
+}
+
+@media (max-width: 767px) {
+  .profile-account__cards {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+/* 页签沿用全站那套下划线：主题里 .tabsTab 统一写死了 padding-inline: 0、
+   底边 2px、选中态背景透明（ThemeProvider.module.css）。在这一页改成胶囊，
+   要么得逐条覆盖那些规则，要么就得到一排没有内边距、选中也不变色的方块——
+   而且这一页会变成全站唯一一处不一样的页签。 */
+/* 和下面的 880+300 对齐：页签比内容宽或窄，切屏时整页会左右晃。 */
+.my-profile-tabbar {
+  display: flex;
+  align-items: center;
+  gap: var(--space-md);
+  flex-wrap: wrap;
+  max-inline-size: 1196px;
+  margin-inline: auto;
+}
+
+.my-profile-tabbar__hint {
+  margin-inline-start: auto;
 }
 
 .my-profile-page__tabs .mantine-Tabs-list {
   border-bottom-color: var(--border-subtle);
+  flex: 1 1 auto;
 }
 
-.my-profile-page__tabs .mantine-Tabs-tab {
-  border-radius: 0;
-  font-weight: 600;
+.my-profile-tab-label {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-xs);
 }
 
-/* 称号预览。此前是裸的一个 div 直接落在表单流里，读不出它是「上面那一栏的
-   渲染结果」还是又一个字段。给它一个明确的容器。 */
-.profile-title-preview {
-  margin-top: var(--space-sm);
-  padding: var(--space-md);
-  border: 1px dashed var(--border-subtle);
-  border-radius: var(--radius-control);
+/* 切走之后还能看到哪一屏有未保存改动。 */
+.my-profile-tab-label__dot {
+  inline-size: 7px;
+  block-size: 7px;
+  border-radius: 50%;
+  background: var(--status-warning);
+}
+
+.profile-rail__label {
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+/* ── 名册卡实时预览 ── */
+
+.profile-live-preview {
+  display: grid;
+  gap: var(--space-sm);
+  min-width: 0;
+}
+
+/* 名片本体。骨架照 Discord 的侧写卡：横幅 → 压上来的圆头像 → 名字 → 称号 →
+   职业 → 战力/媒体 → 自述 → 语音条。 */
+.pcard {
+  /* 横幅底色。组件按主职业色内联覆盖这一个变量；这里声明的是「没有职业」时的
+     取值。必须是一条独立声明，不能写成 var() 的第二参数兜底——守卫 rule 1
+     不许任何 var() 兜底。 */
+  --pcard-accent: var(--brand-fill);
+  min-inline-size: 0;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-overlay);
+  background: var(--surface-base);
+  overflow: hidden;
+  transition: border-color var(--transition-smooth);
+}
+
+.pcard:hover {
+  border-color: var(--border-strong);
+}
+
+/* --pcard-accent 由组件按主职业色内联注入；没有职业时退回品牌色。 */
+.pcard__banner {
+  position: relative;
+  block-size: 64px;
+  background: linear-gradient(
+    160deg,
+    var(--pcard-accent) 0%,
+    color-mix(in srgb, var(--pcard-accent) 28%, var(--surface-sunken)) 100%
+  );
+}
+
+.pcard__banner-img {
+  inline-size: 100%;
+  block-size: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.pcard__avatar {
+  position: absolute;
+  inset-inline-start: var(--space-md);
+  inset-block-end: -24px;
+  inline-size: 60px;
+  block-size: 60px;
+  border-radius: 50%;
+  overflow: hidden;
+  display: grid;
+  place-items: center;
+  /* 3px 卡底色描边：头像压在横幅上，没有这圈隔离，深色头像会和横幅糊成一块。 */
+  border: 3px solid var(--surface-base);
+  background: var(--surface-raised);
+  font-size: 26px;
+  font-weight: var(--fw-strong);
+  color: var(--text-muted);
+}
+
+.pcard__avatar img {
+  inline-size: 100%;
+  block-size: 100%;
+  object-fit: cover;
+}
+
+.pcard__dot {
+  position: absolute;
+  inset-inline-start: 56px;
+  inset-block-end: -20px;
+  inline-size: 14px;
+  block-size: 14px;
+  border-radius: 50%;
+  border: 3px solid var(--surface-base);
+}
+
+.pcard__dot--active { background: var(--status-success); }
+.pcard__dot--inactive { background: color-mix(in srgb, var(--text-primary) 35%, transparent); }
+.pcard__dot--vacation { background: var(--status-danger); }
+
+/* 上内边距要让开头像露出来的那 24px。 */
+.pcard__body {
+  padding: calc(24px + var(--space-md)) var(--space-md) var(--space-md);
+}
+
+.pcard__name {
+  font-size: var(--text-body);
+  font-weight: var(--fw-strong);
+  line-height: 1.25;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pcard__title {
+  margin-block-start: 2px;
+  font-size: var(--text-meta);
+  line-height: 1.35;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pcard__title--empty {
+  color: var(--text-muted);
+}
+
+.pcard__classes {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-xs);
+  margin-block-start: var(--space-sm);
+}
+
+.pcard__class {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px 2px 5px;
+  border-radius: var(--shape-pill);
+  font-size: var(--text-micro);
+  line-height: 1.5;
+  border: 1px solid var(--border-subtle);
   background: var(--surface-sunken);
 }
 
-/* 「称号 + 前往生成器」这一行标签。原先三条内联 style 写在 TSX 里。 */
-.profile-field-label {
-  line-height: var(--lh-normal);
+.pcard__stats {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-sm);
+  margin-block-start: var(--space-sm);
+  font-size: var(--text-micro);
+  color: var(--text-muted);
 }
 
-.profile-field-label__link {
-  cursor: pointer;
-  white-space: nowrap;
+.pcard__power b {
+  color: var(--text-secondary);
+  font-weight: var(--fw-medium);
+}
+
+/* 用 --brand-* 而不是 --accent-*：个人主色 token 按守卫 rule 7 只允许出现在
+   AppShell / SettingsPage / MemberCard 三处身份表面。 */
+.pcard__pill {
   display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 1px 7px;
+  border-radius: var(--shape-pill);
+  border: 1px solid color-mix(in srgb, var(--brand-fill) 30%, transparent);
+  background: color-mix(in srgb, var(--brand-fill) 14%, transparent);
+  color: var(--brand-text);
+}
+
+.pcard__bio {
+  margin: var(--space-sm) 0 0;
+  padding-block-start: var(--space-sm);
+  border-block-start: 1px solid var(--border-subtle);
+  font-size: var(--text-meta);
+  color: var(--text-secondary);
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+
+/* 语音签名，对应 Discord 那块「在语音频道中」。没上传语音时整块不渲染。 */
+.pcard__audio {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+  margin: 0 var(--space-md) var(--space-md);
+  padding: var(--space-sm) var(--space-md);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-surface);
+  background: var(--surface-sunken);
+}
+
+.pcard__play {
+  flex: 0 0 auto;
+  inline-size: 28px;
+  block-size: 28px;
+  border: 0;
+  border-radius: 50%;
+  cursor: pointer;
+  display: grid;
+  place-items: center;
+  background: var(--brand-fill);
+  color: var(--brand-on-fill);
+}
+
+.pcard__audio-label {
+  flex: 1 1 auto;
+  min-inline-size: 0;
+  font-size: var(--text-meta);
+  color: var(--text-secondary);
+}
+
+.pcard__audio-time {
+  font-size: var(--text-micro);
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+/* ── 空值点名 ── */
+
+/* 一行，不是一块告示牌：它只报「哪几栏空着」，撑成带标题的警告卡会比它下面
+   真正要填的表单还显眼。 */
+.profile-gaps {
+  display: flex;
+  align-items: center;
+  gap: var(--space-xs);
+  padding: var(--space-xs) var(--space-sm);
+  border: 1px solid color-mix(in srgb, var(--status-warning) 35%, transparent);
+  border-radius: var(--radius-control);
+  background: color-mix(in srgb, var(--status-warning) 7%, transparent);
+}
+
+.profile-gaps__icon {
+  flex: 0 0 auto;
+  color: var(--status-warning);
+}
+
+/* ── 本周可见度 ── */
+
+.profile-week {
+  display: grid;
+  gap: var(--space-sm);
+  padding: var(--card-padding);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-surface);
+  background: var(--surface-raised);
+  min-width: 0;
+}
+
+.profile-week__total {
+  display: grid;
+  gap: 2px;
+}
+
+/* 热力图：7 行 × 12 格（两小时一格），和编辑器里的 7×24 网格同构。
+   之前那版是七条长度条——条形只答得出「哪天久」，答不出「几点」，而
+   「几点在线」才是别人排团时要看的东西。 */
+.profile-week__map {
+  display: grid;
+  gap: 3px;
+}
+
+.profile-week__ticks,
+.profile-week__day-row {
+  display: grid;
+  grid-template-columns: 1.6rem repeat(12, minmax(0, 1fr));
   align-items: center;
   gap: 2px;
 }
 
-.my-profile-sortable-row {
-  opacity: 1;
-  background: transparent;
-  border-radius: var(--radius-control);
-  padding: 2px 4px;
+.profile-week__ticks {
+  font-size: var(--text-micro);
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+  /* 第一列是星期名的位置，刻度从第二列起算。 */
+  padding-inline-start: 0;
 }
 
-.my-profile-sortable-row--dragging {
+.profile-week__tick {
+  grid-row: 1;
+}
+
+.profile-week__day {
+  font-size: var(--text-micro);
+  color: var(--text-muted);
+}
+
+.profile-week__cells {
+  grid-column: 2 / -1;
+  display: grid;
+  grid-template-columns: repeat(12, minmax(0, 1fr));
+  gap: 2px;
+}
+
+.profile-week__cell {
+  block-size: 12px;
+  border-radius: 2px;
+  background: var(--surface-sunken);
+}
+
+.profile-week__cell[data-on] {
+  background: var(--brand-fill);
+}
+
+/* ── 身份卡字段网格 ── */
+
+/* 战力和称号并排，职业和简介各占满一行。竖着堆四栏时，战力那一行右边有
+   1200px 是空的，而下面的简介本来就该宽。 */
+.profile-identity {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-md);
+  align-items: start;
+}
+
+.profile-identity__wide {
+  grid-column: 1 / -1;
+  min-inline-size: 0;
+}
+
+@media (max-width: 767px) {
+  .profile-identity {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+/* ── 职业 ── */
+
+.profile-class {
+  display: grid;
+  gap: var(--space-xs);
+}
+
+.profile-class__label {
+  color: var(--text-primary);
+}
+
+/* 每个职业一整行时，三个职业就吃掉半屏高度，而每行真正有字的部分不到 200px。
+   改成可换行的胶囊：拖动、主职业、删除都还在，但一行能放下三四个。 */
+.profile-class__pills {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-xs);
+}
+
+/* 胶囊里的三个控件（拖柄、图标、删除）尺寸写死在这里，不吃 ActionIcon 的
+   尺寸档：那套档位是给独立按钮用的，最小一档也比一枚胶囊该有的高度还高，
+   套进来整枚胶囊会被撑到跟输入框一样高。点击热区由主题的 ::before 负责，
+   是绝对定位的，不受这里的尺寸影响。 */
+.profile-class__pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-block-size: 26px;
+  padding-inline: 6px 6px;
+  border: 1px solid var(--border-subtle);
+  border-radius: 999px;
+  background: var(--surface-sunken);
+}
+
+.profile-class__pill .mantine-ActionIcon-root {
+  --ai-size: 16px;
+  inline-size: 16px;
+  min-inline-size: 16px;
+  min-block-size: 16px;
+}
+
+/* 虚线＝这里还没有东西，点了才有；和它左边那些实线胶囊（已经选好的职业）
+   一眼就分得开。 */
+.profile-class__add {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  min-block-size: 26px;
+  padding-inline: 10px;
+  /* line-height: 1 —— 「＋」字形的行框比字号高出一截，跟着行高走会把整行内容
+     顶得偏上，看起来就是加号没对齐。 */
+  line-height: 1;
+  font-size: var(--text-meta);
+  color: var(--text-secondary);
+  border: 1px dashed var(--border-subtle);
+  border-radius: 999px;
+  background: transparent;
+  cursor: pointer;
+}
+
+.profile-class__add:hover {
+  color: var(--text-primary);
+  border-color: var(--brand-fill);
+}
+
+/* 第一个＝主职业，名册卡只用它上色，所以它必须看得出来和后面的不同。 */
+.profile-class__pill--primary {
+  border-color: color-mix(in srgb, var(--brand-fill) 55%, transparent);
+  background: color-mix(in srgb, var(--brand-fill) 13%, transparent);
+}
+
+.profile-class__pill-label {
+  white-space: nowrap;
+}
+
+.profile-class__pill--dragging {
   opacity: 0.7;
-  background: color-mix(in srgb, var(--brand-fill) 10%, transparent);
+}
+
+/* ── 称号 ── */
+
+.profile-title {
+  display: grid;
+  gap: var(--space-xs);
+}
+
+.profile-title__label {
+  color: var(--text-primary);
+}
+
+.profile-title__row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-xs);
+}
+
+.profile-title__input {
+  flex: 1 1 auto;
+  min-inline-size: 0;
+}
+
+/* 虚线边：带样式的称号只能看不能改，它和左边的战力输入框同宽同高，用实线就
+   读成「又一个可以打字的框」。 */
+.profile-title__render {
+  flex: 1 1 auto;
+  min-inline-size: 0;
+  min-block-size: 36px;
+  display: flex;
+  align-items: center;
+  padding: var(--space-xs) var(--space-sm);
+  border: 1px dashed var(--border-subtle);
+  border-radius: var(--radius-control);
+  background: var(--surface-sunken);
+  overflow-wrap: anywhere;
+}
+
+/* ── 媒体切换 ── */
+
+/* 在 SectionHeader 的 trailing 槽里，那个槽默认是给一行小字的。 */
+.profile-media__switch {
+  font-size: var(--text-meta);
+}
+
+.profile-media__body {
+  margin-block-start: var(--space-md);
+  min-width: 0;
+}
+
+@media (max-width: 1199px) {
+  /* 预览栏折到编辑区下面，而不是继续压缩：280px 以下名册卡就不再是名册里
+     那个比例，预览也就不成立了。 */
+  .my-profile-split {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .my-profile-split__rail {
+    position: static;
+  }
+
+  /* 折行之后预览栏有整屏那么宽，名片再吃满就成了一张横躺的巨卡。收回原来那个
+     量级，并且靠左——居中会让它孤零零地飘在一大片空白中间。 */
+  .pcard {
+    max-inline-size: 300px;
+  }
 }
 
 @media (max-width: 991px) {
@@ -53,84 +575,147 @@
   }
 }
 
-/* ── Profile Preview Card ── (moved out of style={{}}, task-8 批 B) */
+/* ── 一周在线时间编辑器 ──
+   原来是 7×48 的拖涂网格（.availability-grid__*），改成每天一行时段条之后整块
+   样式跟着换掉了。留在这个页面文件里：编辑器只有资料页在用。 */
 
-.profile-preview-avatar {
-  border: 2px solid var(--border-subtle);
+.availability-presets {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-sm);
 }
 
-.profile-preview-stats-row {
-  background: var(--brand-tint);
-  border-radius: var(--radius-control);
-  padding: 12px 8px;
-}
-
-.profile-preview-divider {
-  width: 1px;
-  height: 36px;
-  background: var(--border-subtle);
-}
-
-.profile-preview-stat-icon--image {
-  color: var(--brand-fill);
-}
-
-/* 旧品牌辅色（古铜色），随 the semantic-colour contract D 节迁到 L2 --brand-secondary。
-   同 EquipmentCalcModal.css 的 .ecm__stats__card--intent 一处。 */
-.profile-preview-stat-icon--video {
-  color: var(--brand-secondary);
-}
-
-/* ── Availability Grid Editor ── (moved out of style={{}}, task-8 批 B).
-   --mantine-color-body / --mantine-color-dimmed / --mantine-color-default-border
-   are Mantine's own dynamic vars, exempt from the token-resolution guard
-   (theme-tokens.test.ts RUNTIME_INJECTED_VARS), same as the file's existing
-   uses of --mantine-color-*. */
-
-.availability-grid__corner {
-  position: sticky;
-  left: 0;
-  z-index: 2;
-  background: var(--mantine-color-body);
-}
-
-.availability-grid__hour-label {
-  font-size: 0.7rem;
-  color: var(--mantine-color-dimmed);
-  text-align: right;
-  vertical-align: top;
-  position: sticky;
-  left: 0;
-  z-index: 1;
-  background: var(--mantine-color-body);
-  line-height: 1;
-}
-
-.availability-grid__cell {
-  background: transparent;
+/* 预设是「往里加」的动作，不是当前状态，所以做成中性描边而不是选中态填色。 */
+.availability-preset {
+  padding: var(--space-xs) var(--space-sm);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--shape-pill);
+  background: var(--surface-sunken);
+  color: var(--text-secondary);
+  font-size: var(--text-micro);
   cursor: pointer;
-  transition: background 0.05s;
+  transition: border-color var(--transition-smooth), color var(--transition-smooth);
 }
 
-/* Runtime-toggled active state (a slot is on/off): switches a class instead of
-   string-concatenating a colour, per the inline-style migration brief Step 3.4. */
-.availability-grid__cell--active {
-  background: var(--brand-fill);
+.availability-preset:hover {
+  border-color: var(--border-strong);
+  color: var(--text-primary);
 }
 
-.availability-grid__cell--top {
-  border-top: 1px solid var(--mantine-color-default-border);
-  border-left: 1px solid var(--mantine-color-default-border);
-  border-right: 1px solid var(--mantine-color-default-border);
+.availability-days {
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-control);
+  overflow: hidden;
 }
 
-.availability-grid__cell--bottom {
-  border-left: 1px solid var(--mantine-color-default-border);
-  border-right: 1px solid var(--mantine-color-default-border);
+.availability-day {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+  padding: var(--space-sm) var(--space-md);
+  border-block-end: 1px solid var(--border-subtle);
 }
 
-.availability-grid__cell--bottom-edge {
-  border-bottom: 1px solid var(--mantine-color-default-border);
+.availability-day:last-child {
+  border-block-end: none;
+}
+
+/* 固定宽度，七行的时段条才会左对齐成一列——否则「周一」和「周三」长度不同，
+   每行的起点都错开一点。 */
+.availability-day__name {
+  flex: 0 0 auto;
+  inline-size: 48px;
+  font-size: var(--text-sm);
+  font-weight: var(--fw-medium);
+  color: var(--text-secondary);
+}
+
+.availability-day__blocks {
+  flex: 1 1 auto;
+  min-inline-size: 0;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-xs);
+}
+
+.availability-day__empty {
+  font-size: var(--text-micro);
+  color: var(--text-muted);
+}
+
+.availability-block {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-xs);
+  padding-inline: var(--space-sm);
+  padding-block: 2px;
+  border-radius: var(--shape-pill);
+  background: color-mix(in srgb, var(--brand-fill) 16%, transparent);
+  color: var(--brand-text);
+  font-size: var(--text-micro);
+  font-variant-numeric: tabular-nums;
+}
+
+.availability-day__add {
+  display: grid;
+  place-items: center;
+  inline-size: 24px;
+  block-size: 24px;
+  border: 1px dashed var(--border-subtle);
+  border-radius: 50%;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: border-color var(--transition-smooth), color var(--transition-smooth);
+}
+
+.availability-day__add:hover {
+  border-color: var(--border-strong);
+  color: var(--text-primary);
+}
+
+/* 菜单按钮。原先是无边框的 11px 灰字，标签末尾的「…」被读成「文字没显示全」，
+   而不是「点开还有内容」。给它按钮的外形，文字提到正文档位。 */
+.availability-day__copy {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-xs);
+  white-space: nowrap;
+  padding-inline: var(--space-sm);
+  padding-block: 3px;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-control);
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: var(--text-meta);
+  cursor: pointer;
+  transition: border-color var(--transition-smooth), color var(--transition-smooth);
+}
+
+.availability-day__copy:hover:not(:disabled) {
+  border-color: var(--border-strong);
+  color: var(--text-primary);
+}
+
+.availability-day__copy:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+@media (max-width: 575px) {
+  /* 窄屏上一行三段（星期 / 时段 / 复制到）挤不下，复制到换行占满一行。 */
+  .availability-day {
+    flex-wrap: wrap;
+  }
+
+  .availability-day__copy {
+    inline-size: 100%;
+    justify-content: center;
+  }
 }
 
 /* ── Profile Media Tab ── (moved out of style={{}}, task-8 批 B) */
@@ -139,8 +724,69 @@
   border: 2px solid var(--border-subtle);
 }
 
+/* 语音那一条。原先和视频列表共用一条 --brand-tint 的底：品牌绿本来是用来标
+   「选中/激活」的，铺在一条静态列表行上，看着像这一条被选中了。改成和相册
+   缩略图同一种下沉方块。 */
 .profile-media-chip-row {
-  padding: 4px 8px;
+  padding: var(--space-xs) var(--space-sm);
+  border: 1px solid var(--border-subtle);
   border-radius: var(--radius-control);
-  background: var(--brand-tint);
+  background: var(--surface-sunken);
 }
+
+/* ── 视频列表 ── */
+
+.profile-video-row {
+  padding: var(--space-xs);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-control);
+  background: var(--surface-sunken);
+}
+
+.profile-video-row__thumb {
+  flex: 0 0 auto;
+  display: grid;
+  place-items: center;
+  inline-size: 88px;
+  block-size: 50px;
+  overflow: hidden;
+  border-radius: var(--radius-control);
+  background: var(--surface-raised);
+  color: var(--text-muted);
+}
+
+.profile-video-row__thumb img {
+  inline-size: 100%;
+  block-size: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.profile-video-row__meta {
+  flex: 1 1 auto;
+  min-inline-size: 0;
+  display: grid;
+  gap: 2px;
+}
+
+.profile-video-row__host {
+  font-size: var(--text-sm);
+  font-weight: var(--fw-medium);
+  color: var(--text-primary);
+}
+
+/* 链接单行截断：它是「确认粘对了没」用的，不是正文。完整值在 title 里。 */
+.profile-video-row__url {
+  font-size: var(--text-micro);
+  color: var(--text-muted);
+  text-decoration: none;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.profile-video-row__url:hover {
+  color: var(--text-secondary);
+  text-decoration: underline;
+}
+

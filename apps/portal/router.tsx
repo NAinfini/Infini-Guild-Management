@@ -39,15 +39,33 @@ const LOGIN_SEARCH_SCHEMA = z.object({
 
 const GUILD_WAR_SEARCH_SCHEMA = z.object({
   tab: z.enum(["active", "history", "analytics"]).optional(),
-  warName: z.string().optional(),
+  /*
+   * TanStack 默认的搜索参数解析会先拿 JSON.parse 试一遍，所以 ?warName=2026 到这里
+   * 已经是 number 了，z.string() 会直接把整条路由打进错误边界。战名是用户随便填的，
+   * 纯数字完全合法（仪表盘的「上一场战」卡片就照原样带过来）。
+   * 用 coerce 收口：.optional() 会在 coerce 之前短路掉 undefined，不会变出 "undefined"。
+   */
+  warName: z.coerce.string().optional(),
 });
 
 const PROFILE_SEARCH_SCHEMA = z.object({
-  tab: z.enum(["profile", "availability", "account"]).optional(),
+  /*
+   * "profile" and "media" merged into the home tab and are no longer emitted,
+   * but they stay in the enum: validateSearch throws on an unlisted value, so
+   * dropping them would turn every existing bookmark into a hard route error
+   * instead of the redirect MyProfilePage already performs.
+   */
+  tab: z.enum(["profile", "media", "availability", "account"]).optional(),
 });
 
 const ANNOUNCEMENTS_SEARCH_SCHEMA = z.object({
-  announcementId: z.string().trim().min(1).optional(),
+  /*
+   * 同 warName 的坑：TanStack 解析搜索参数时先拿 JSON.parse 试一遍，
+   * ?announcementId=12345 到这里已经是 number，z.string() 会把整条路由打进错误边界。
+   * 地址栏是用户能随便改的入口，改错一个参数该是「查不到这条公告」，不是整页崩掉。
+   * coerce 收口；.optional() 在 coerce 之前短路 undefined，不会变出 "undefined"。
+   */
+  announcementId: z.coerce.string().trim().min(1).optional(),
   selection: z.literal("none").optional(),
 }).passthrough();
 
@@ -65,7 +83,6 @@ const STORAGE_MANAGE_SEARCH_SCHEMA = STORAGE_SEARCH_SCHEMA.extend({
 
 export function isRouteFeatureEnabled(feature: keyof FeatureFlags): boolean {
   const features = useSiteConfigStore.getState().features;
-  if (feature === "equipmentCalc") return features.tools && features.equipmentCalc;
   return features[feature];
 }
 
@@ -502,7 +519,7 @@ const wikiSlugRoute = createRoute({
 
 const ADMIN_SEARCH_SCHEMA = z.object({
   member: z.string().optional(),
-  tab: z.enum(["member", "invite", "audit", "roles", "siteConfig", "badges", "status", "gameData"]).optional(),
+  tab: z.enum(["member", "invite", "audit", "roles", "siteConfig", "classes", "badges", "status"]).optional(),
 });
 
 const adminRoute = createRoute({

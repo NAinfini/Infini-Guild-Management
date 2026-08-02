@@ -6,7 +6,13 @@ import {
   useReactTable,
 } from "@tanstack/react-table";
 import { useVirtualizer } from "@tanstack/react-virtual";
-import { useRef, type CSSProperties, type MouseEvent as ReactMouseEvent, type ReactNode } from "react";
+import {
+  useRef,
+  type CSSProperties,
+  type KeyboardEvent as ReactKeyboardEvent,
+  type MouseEvent as ReactMouseEvent,
+  type ReactNode,
+} from "react";
 
 type DataTableAdapterProps<T> = {
   table: ReturnType<typeof useReactTable<T>>;
@@ -17,6 +23,9 @@ type DataTableAdapterProps<T> = {
   onRowClick?: (row: Row<T>, event: ReactMouseEvent<HTMLTableRowElement>) => void;
   onRowDoubleClick?: (row: Row<T>, event: ReactMouseEvent<HTMLTableRowElement>) => void;
   onRowContextMenu?: (row: Row<T>, event: ReactMouseEvent<HTMLTableRowElement>) => void;
+  onRowKeyDown?: (row: Row<T>, event: ReactKeyboardEvent<HTMLTableRowElement>) => void;
+  rowAriaLabel?: (row: Row<T>) => string | undefined;
+  rowAriaSelected?: (row: Row<T>) => boolean | undefined;
   rowClassName?: (row: Row<T>) => string | undefined;
   rowStyle?: (row: Row<T>) => CSSProperties | undefined;
   emptyContent?: ReactNode;
@@ -44,6 +53,9 @@ export function DataTableAdapter<T>({
   onRowClick,
   onRowDoubleClick,
   onRowContextMenu,
+  onRowKeyDown,
+  rowAriaLabel,
+  rowAriaSelected,
   rowClassName,
   rowStyle,
   emptyContent,
@@ -55,6 +67,9 @@ export function DataTableAdapter<T>({
 }: DataTableAdapterProps<T>) {
   const rows = table.getRowModel().rows;
   const scrollRef = useRef<HTMLDivElement>(null);
+  const rowsAreInteractive = Boolean(
+    onRowClick || onRowDoubleClick || onRowContextMenu || onRowKeyDown,
+  );
 
   const virtualizer = useVirtualizer({
     count: virtualize ? rows.length : 0,
@@ -110,6 +125,8 @@ export function DataTableAdapter<T>({
                   <Table.Th
                     key={header.id}
                     colSpan={header.colSpan}
+                    /* 让样式表能按列定位（例如把数值列右对齐），不必依赖 nth-child。 */
+                    data-column-id={header.column.id}
                     aria-sort={
                       sorted === "asc"
                         ? "ascending"
@@ -158,6 +175,10 @@ export function DataTableAdapter<T>({
                     onClick={onRowClick ? (event) => onRowClick(row, event) : undefined}
                     onDoubleClick={onRowDoubleClick ? (event) => onRowDoubleClick(row, event) : undefined}
                     onContextMenu={onRowContextMenu ? (event) => onRowContextMenu(row, event) : undefined}
+                    onKeyDown={onRowKeyDown ? (event) => onRowKeyDown(row, event) : undefined}
+                    tabIndex={rowsAreInteractive ? 0 : undefined}
+                    aria-label={rowAriaLabel?.(row)}
+                    aria-selected={rowAriaSelected?.(row)}
                     style={{
                       ...(onRowClick || onRowContextMenu ? { cursor: "pointer" } : {}),
                       ...rowStyle?.(row),
@@ -165,7 +186,7 @@ export function DataTableAdapter<T>({
                     className={rowClassName?.(row)}
                   >
                     {row.getVisibleCells().map((cell) => (
-                      <Table.Td key={cell.id}>
+                      <Table.Td key={cell.id} data-column-id={cell.column.id}>
                         {flexRender(cell.column.columnDef.cell, cell.getContext())}
                       </Table.Td>
                     ))}
@@ -185,6 +206,10 @@ export function DataTableAdapter<T>({
                 onClick={onRowClick ? (event) => onRowClick(row, event) : undefined}
                 onDoubleClick={onRowDoubleClick ? (event) => onRowDoubleClick(row, event) : undefined}
                 onContextMenu={onRowContextMenu ? (event) => onRowContextMenu(row, event) : undefined}
+                onKeyDown={onRowKeyDown ? (event) => onRowKeyDown(row, event) : undefined}
+                tabIndex={rowsAreInteractive ? 0 : undefined}
+                aria-label={rowAriaLabel?.(row)}
+                aria-selected={rowAriaSelected?.(row)}
                 style={{
                   ...(onRowClick || onRowContextMenu ? { cursor: "pointer" } : {}),
                   ...rowStyle?.(row),
@@ -192,7 +217,7 @@ export function DataTableAdapter<T>({
                 className={rowClassName?.(row)}
               >
                 {row.getVisibleCells().map((cell) => (
-                  <Table.Td key={cell.id}>
+                  <Table.Td key={cell.id} data-column-id={cell.column.id}>
                     {flexRender(cell.column.columnDef.cell, cell.getContext())}
                   </Table.Td>
                 ))}

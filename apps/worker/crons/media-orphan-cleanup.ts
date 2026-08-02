@@ -17,7 +17,7 @@ const SOFT_DELETE_RETENTION_DAYS = 7;
 const GRACE_HOURS = 48;
 
 /** Prefixes scanned for orphaned media objects. */
-const CLEANUP_PREFIXES = ["gallery/images/", "events/", "announcement/", "wiki/"] as const;
+const CLEANUP_PREFIXES = ["gallery/images/", "events/", "announcement/", "wiki/", "class-icons/"] as const;
 
 /** Maximum keys per R2 bulk-delete call. */
 const R2_DELETE_CHUNK = 1000;
@@ -109,6 +109,17 @@ async function runBackfill(db: D1Database): Promise<void> {
     if (keys.length > 0) {
       await replaceMediaRefs(db, "wiki_article", row.id, keys);
       totalRefs += keys.length;
+    }
+  }
+
+  // class_catalog: one custom icon per class
+  const classRows = await db
+    .prepare("SELECT id, icon_key FROM class_catalog WHERE icon_key IS NOT NULL")
+    .all<{ id: string; icon_key: string }>();
+  for (const row of classRows.results ?? []) {
+    if (row.icon_key) {
+      await replaceMediaRefs(db, "class_icon", row.id, [row.icon_key]);
+      totalRefs++;
     }
   }
 

@@ -120,32 +120,11 @@
   opacity: 1;
 }
 
-.member-card--blue:hover {
+.member-card--compact:hover {
   box-shadow:
-    0 12px 32px color-mix(in srgb, var(--accent-fill) 22%, transparent),
-    inset 0 0 20px color-mix(in srgb, var(--accent-fill) 4%, transparent);
-  border-color: color-mix(in srgb, var(--accent-fill) 35%, transparent);
-}
-
-.member-card--green:hover {
-  box-shadow:
-    0 12px 32px color-mix(in srgb, var(--status-success) 22%, transparent),
-    inset 0 0 20px color-mix(in srgb, var(--status-success) 4%, transparent);
-  border-color: color-mix(in srgb, var(--status-success) 35%, transparent);
-}
-
-.member-card--purple:hover {
-  box-shadow:
-    0 12px 32px color-mix(in srgb, var(--accent-fill) 24%, transparent),
-    inset 0 0 20px color-mix(in srgb, var(--accent-fill) 5%, transparent);
-  border-color: color-mix(in srgb, var(--accent-fill) 40%, transparent);
-}
-
-.member-card--dark-red:hover {
-  box-shadow:
-    0 12px 32px color-mix(in srgb, var(--status-danger) 20%, transparent),
-    inset 0 0 20px color-mix(in srgb, var(--status-danger) 4%, transparent);
-  border-color: color-mix(in srgb, var(--status-danger) 30%, transparent);
+    0 12px 32px color-mix(in srgb, var(--class-color) 22%, transparent),
+    inset 0 0 20px color-mix(in srgb, var(--class-color) 4%, transparent);
+  border-color: color-mix(in srgb, var(--class-color) 35%, transparent);
 }
 
 .member-card__avatar-wrap {
@@ -229,6 +208,47 @@
   display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 1; overflow: hidden;
 }
 
+.member-card__class-row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+  margin-top: var(--space-xs);
+}
+
+.member-card__class-chip,
+.member-card__compact-class {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+  border: 1px solid color-mix(in srgb, var(--class-color) 30%, var(--border-subtle));
+  border-radius: var(--radius-control);
+  background: color-mix(in srgb, var(--class-color) 9%, transparent);
+  color: color-mix(in srgb, var(--class-color) 52%, var(--text-primary));
+}
+
+.member-card__class-chip {
+  max-width: calc(50% - 12px);
+  padding: 2px 6px 2px 4px;
+  font-size: var(--text-meta);
+  font-weight: var(--fw-medium);
+  line-height: 1.2;
+}
+
+.member-card__class-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.member-card__class-overflow {
+  flex: 0 0 auto;
+  color: var(--text-secondary);
+  font-size: var(--text-meta);
+  font-weight: var(--fw-strong);
+}
+
 .member-card__badge {
   display: inline-flex;
   align-items: center;
@@ -256,65 +276,77 @@
 .member-card--compact {
   min-height: 96px; padding: 10px 12px;
   display: grid; align-content: center; gap: 4px;
+  background: color-mix(in srgb, var(--class-color) 8%, var(--surface-base));
+  border-color: color-mix(in srgb, var(--class-color) 24%, transparent);
 }
 
 .member-card__compact-username { font-size: 15px; font-weight: 600; line-height: 1.25; }
 
+.member-card__compact-class {
+  width: fit-content;
+  max-width: 100%;
+  padding: 2px 6px 2px 4px;
+}
+
 .member-card__compact-meta {
   font-size: 12px; font-weight: 600; line-height: 1.2;
   color: color-mix(in srgb, var(--text-primary) 65%, transparent);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
-.member-card--blue {
-  background: color-mix(in srgb, var(--accent-fill) 8%, var(--surface-base));
-  border-color: color-mix(in srgb, var(--accent-fill) 24%, transparent);
+/* ── Member class markers attached to participant avatars ── */
+
+.member-role-avatar {
+  position: relative;
+  display: inline-flex;
+  flex: 0 0 auto;
+  line-height: 0;
 }
 
-.member-card--green {
-  background: color-mix(in srgb, var(--status-success) 8%, var(--surface-base));
-  border-color: color-mix(in srgb, var(--status-success) 24%, transparent);
-}
-
-.member-card--purple {
-  background: color-mix(in srgb, var(--accent-fill) 10%, var(--surface-base));
-  border-color: color-mix(in srgb, var(--accent-fill) 30%, transparent);
-}
-
-.member-card--dark-red {
-  background: color-mix(in srgb, var(--status-danger) 8%, var(--surface-base));
-  border-color: color-mix(in srgb, var(--status-danger) 24%, transparent);
-}
-
-/* ── Member Role Avatar ── (moved out of style={{}}, task-8 批 B)
-   --role-color is the active game's per-role hex (activeGame.roles[].color,
-   e.g. apps/shared/games/definitions/yan-yun.ts), a data blob that changes
-   with the active game config rather than a fixed enum this token system
-   owns — same reasoning as --badge-color, registered in
-   theme-tokens.test.ts RUNTIME_INJECTED_VARS. */
-
-.member-role-avatar__role-circle {
-  border-radius: 50%;
+.member-role-avatar__roles {
+  position: absolute;
+  right: -4px;
+  bottom: -4px;
   display: flex;
+  flex-direction: row;
+  align-items: center;
+  isolation: isolate;
+  pointer-events: none;
+}
+
+.member-role-avatar__role-circle,
+.member-role-avatar__overflow {
+  flex: 0 0 auto;
+  border: 2px solid var(--surface-raised);
+  box-shadow: 0 1px 4px color-mix(in srgb, var(--text-primary) 18%, transparent);
+}
+
+.member-role-avatar__roles > * + * {
+  margin-inline-start: -5px;
+}
+
+.member-role-avatar__overflow {
+  z-index: 1;
+  display: inline-flex;
   align-items: center;
   justify-content: center;
-  border: 2px solid var(--surface-base);
-  /* 与模式无关的字面黑：这圈投影是给下面任意色号的 --role-color 描一圈固定
-     轮廓，理由同上面 --role-color 本身注释——数据色，不随 [data-theme] 变化，
-     换成 --edge-top 会让投影强度随主题波动，反而跟框住的固定数据色不一致。 */
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.25);
-  background: var(--role-color);
+  border-radius: 50%;
+  background: var(--surface-raised);
+  color: var(--text-secondary);
+  font-size: var(--text-micro);
+  font-weight: var(--fw-strong);
+  line-height: 1;
 }
 
-/* Icon sits on top of the arbitrary --role-color fill, so it needs the
-   same on-saturated-fill treatment as status badges rather than a bare
-   white literal (rule 2 forbids bare colour literals here anyway, not just
-   bare hex — see theme-tokens.test.ts rule 2). */
-.member-role-avatar__role-icon {
-  color: var(--status-on-fill);
+.member-role-avatar__popover {
+  padding: var(--space-sm);
 }
 
-.member-role-avatar__class-icon {
-  color: var(--role-color);
+.member-role-avatar__power-icon {
+  display: inline-block;
+  vertical-align: -2px;
 }
 
 /* 倾斜与缩放的关闭不在这里——那两个是 JS 写的内联 transform，CSS 覆盖不到，

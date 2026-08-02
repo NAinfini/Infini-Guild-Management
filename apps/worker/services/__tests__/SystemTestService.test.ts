@@ -288,6 +288,10 @@ describe("SystemTestService exact compensation", () => {
       storageMarker: "storage-batch-0000000000000000000000000000000000000000000000000000000000000000",
       error: "00000000-0000-4000-8000-000000000030",
       session: "00000000-0000-4000-8000-000000000031",
+      classCatalog: "00000000-0000-4000-8000-000000000033",
+      absence: "00000000-0000-4000-8000-000000000034",
+      // 挂在既有成员身上的请假：users 的级联带不走它，只能靠显式登记。
+      absenceOnExistingMember: "00000000-0000-4000-8000-000000000035",
     };
     const roleId = "systemtest_role_cleanup";
     const username = "systemtest_cleanup_user";
@@ -298,6 +302,7 @@ describe("SystemTestService exact compensation", () => {
       "gallery/cleanup/gallery.png",
       "wiki/cleanup/wiki.png",
       "storage/cleanup/storage.png",
+      "classes/cleanup/icon.png",
     ] as const;
 
     try {
@@ -343,6 +348,12 @@ describe("SystemTestService exact compensation", () => {
       insert("INSERT INTO audit_log (id, entity_type, action, actor_id, entity_id) VALUES (?, 'event', 'create', ?, ?)", ids.audit, ids.user, ids.event);
       insert("INSERT INTO audit_log (id, entity_type, action, actor_id, entity_id) VALUES (?, 'storage_transaction', 'intake', 'admin-1', ?)", ids.storageMarker, ids.storageMarker);
       insert("INSERT INTO error_log (id, source, message) VALUES (?, 'request', 'test error')", ids.error);
+      insert(
+        "INSERT INTO class_catalog (id, label, color, icon_type, vector_icon, icon_key) VALUES (?, 'System test class', '#AABBCC', 'image', 'sword', ?)",
+        ids.classCatalog, mediaKeys[6],
+      );
+      insert("INSERT INTO member_absences (id, user_id, start_date, end_date) VALUES (?, ?, '2099-01-01', '2099-01-03')", ids.absence, ids.user);
+      insert("INSERT INTO member_absences (id, user_id, start_date, end_date) VALUES (?, 'admin-1', '2099-02-01', '2099-02-03')", ids.absenceOnExistingMember);
       const mediaReferences: Array<[string, string, string]> = [
         ["member_profile", ids.user, mediaKeys[0]],
         ["event", ids.event, mediaKeys[1]],
@@ -350,6 +361,7 @@ describe("SystemTestService exact compensation", () => {
         ["gallery", ids.gallery, mediaKeys[3]],
         ["wiki_article", ids.wikiArticle, mediaKeys[4]],
         ["storage_item", ids.storageItem, mediaKeys[5]],
+        ["class_icon", ids.classCatalog, mediaKeys[6]],
       ];
       for (const [entityType, entityId, mediaKey] of mediaReferences) {
         insert("INSERT INTO media_references (media_key, entity_type, entity_id) VALUES (?, ?, ?)", mediaKey, entityType, entityId);
@@ -365,6 +377,8 @@ describe("SystemTestService exact compensation", () => {
         ["storage_item", ids.storageItem], ["storage_item_image", ids.storageImage],
         ["audit_log", ids.audit], ["audit_log", ids.storageMarker],
         ["error_log", ids.error],
+        ["class_catalog", ids.classCatalog],
+        ["member_absence", ids.absence], ["member_absence", ids.absenceOnExistingMember],
         ...mediaKeys.map((key): [string, string] => ["r2_key", key]),
       ];
       for (const [type, key] of artifacts) {
@@ -420,6 +434,9 @@ describe("SystemTestService exact compensation", () => {
         ["audit_log", "id", ids.audit],
         ["audit_log", "id", ids.storageMarker],
         ["error_log", "id", ids.error],
+        ["class_catalog", "id", ids.classCatalog],
+        ["member_absences", "id", ids.absence],
+        ["member_absences", "id", ids.absenceOnExistingMember],
       ] as const;
       for (const [table, column, value] of residueQueries) {
         const row = sqlite.prepare(`SELECT COUNT(*) AS count FROM ${table} WHERE ${column} = ?`).get(value) as { count: number };

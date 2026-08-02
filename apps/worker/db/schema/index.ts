@@ -9,7 +9,7 @@ export * from "./gallery";
 export * from "./badges";
 export * from "./audit";
 export * from "./error-log";
-export * from "./game-data";
+export * from "./class-catalog";
 export * from "./media-references";
 export * from "./storage";
 export * from "./site-config";

@@ -1,4 +1,4 @@
-import { CLASS_NAMES, type AdminRole } from "@guild/shared";
+import type { AdminRole } from "@guild/shared";
 import { AbsenceManagerCard } from "../../shared/AbsenceManagerCard";
 import {
   Badge,
@@ -21,6 +21,7 @@ import type { AdminUserRow, MemberDetailFormState } from "@portal/types/admin";
 import type { ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import styles from "./AdminMemberDetailModal.module.css";
+import { buildClassOptions, useClassCatalogStore } from "@portal/stores/class-catalog";
 
 type AdminMemberDetailModalProps = {
   open: boolean;
@@ -55,6 +56,8 @@ export function AdminMemberDetailModal({
   roles,
 }: AdminMemberDetailModalProps) {
   const { t } = useTranslation("admin");
+  const classCatalog = useClassCatalogStore((state) => state.items);
+  const classOptions = buildClassOptions(classCatalog, form.classes);
 
   return (
     <Modal
@@ -137,7 +140,7 @@ export function AdminMemberDetailModal({
                         placeholder={t("detail.placeholder.classes")}
                         value={form.classes}
                         onChange={(value) => onFormChange({ classes: value })}
-                        data={CLASS_NAMES.map((name) => ({ value: name, label: name }))}
+                        data={classOptions}
                         searchable
                         clearable
                       />

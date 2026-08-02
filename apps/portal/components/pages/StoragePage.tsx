@@ -1,5 +1,12 @@
+/*
+ * THESIS: Storage is a quartermaster workbench, not a dashboard or a wall of cards.
+ * OWN-WORLD: Forged Material plates, an underline location rail, dense item rows, and one teal action hierarchy.
+ * STORY: Choose a location, narrow the catalog, inspect an item, then record a permitted stock movement.
+ * FIRST VIEWPORT: Locations lead, categories anchor the left rail, inventory owns the center, and admin tools stay contextual.
+ * FORM: Quartermaster Rail, approved concept A; passive detail uses a drawer and batch state stays pinned above inventory.
+ */
 import type { CreateStorageTransactionPayload, StorageItem } from "@guild/shared";
-import { Button, Group, Paper, Select, Skeleton, Stack } from "@mantine/core";
+import { ActionIcon, Button, Select, Skeleton, Stack, Tabs, Tooltip } from "@mantine/core";
 import { useQuery } from "@tanstack/react-query";
 import { Link, useNavigate, useSearch } from "@tanstack/react-router";
 import { PlusIcon, SettingsIcon } from "@portal/components/icons";
@@ -77,8 +84,12 @@ export function StoragePage() {
   } = useDebouncedSearch();
   const activeBatchDraft = activeStorage ? batchDrafts[activeStorage.id] : undefined;
   const detailState = activeModal?.type === "detail" ? activeModal : null;
-  const detailItemId = detailState?.item.id ?? null;
-  const detailItemQuery = useStorageItem(detailItemId);
+  const activeItemId = activeModal?.type === "detail"
+    ? activeModal.item.id
+    : activeModal?.type === "item-editor"
+      ? activeModal.item?.id ?? null
+      : null;
+  const activeItemQuery = useStorageItem(activeItemId);
   const mutations = useStorageMutations();
   const usersQuery = useQuery({
     queryKey: queryKeys.users.all,
@@ -86,7 +97,9 @@ export function StoragePage() {
     enabled: canManageStock,
     staleTime: 10 * 60_000,
   });
-  const editingItem = activeModal?.type === "item-editor" ? activeModal.item : null;
+  const editingItem = activeModal?.type === "item-editor"
+    ? activeItemQuery.data ?? activeModal.item
+    : null;
   const transactionState = activeModal?.type === "transaction" ? activeModal : null;
   const manualEntryOpen = Boolean(
     canManageStock
@@ -178,20 +191,7 @@ export function StoragePage() {
   };
 
   return (
-    <PageLayout
-      className="storage-page"
-      actions={canManageStructure ? (
-        <Button
-          component={Link}
-          to="/storage/manage"
-          search={(activeStorage ? { storageId: activeStorage.id } : {}) as never}
-          variant="default"
-          leftSection={<SettingsIcon size={16} />}
-        >
-          {t("action.manageStructure")}
-        </Button>
-      ) : undefined}
-    >
+    <PageLayout className="storage-page">
       <Stack gap="md">
         {treeQuery.isLoading ? (
           <Skeleton height={220} radius="md" className="storage-loading" />
@@ -208,11 +208,33 @@ export function StoragePage() {
         ) : null}
         {!treeQuery.isLoading && activeStorage ? (
           <Stack gap="md">
-            <Paper withBorder p="sm" className="storage-page__selector">
-              <Group justify="space-between" align="end" wrap="wrap">
+            <section className="storage-location-rail" aria-label={t("field.storage")}>
+              <div className="storage-location-rail__switcher">
+                <Tabs
+                  className="storage-location-tabs"
+                  value={activeStorage.id}
+                  onChange={(nextStorageId) => {
+                    if (!nextStorageId || nextStorageId === activeStorage.id) return;
+                    void navigate({
+                      to: "/storage",
+                      search: { storageId: nextStorageId },
+                      replace: true,
+                      viewTransition: false,
+                    });
+                  }}
+                >
+                  <Tabs.List>
+                    {storages.map((storage) => (
+                      <Tabs.Tab key={storage.id} value={storage.id}>
+                        {storage.name}
+                      </Tabs.Tab>
+                    ))}
+                  </Tabs.List>
+                </Tabs>
+
                 <Select
-                  label={t("field.storage")}
-                  className="storage-page__selector-control"
+                  aria-label={t("field.storage")}
+                  className="storage-location-select"
                   data={storages.map((storage) => ({ value: storage.id, label: storage.name }))}
                   value={activeStorage.id}
                   onChange={(nextStorageId) => {
@@ -225,91 +247,116 @@ export function StoragePage() {
                     });
                   }}
                 />
-              </Group>
-            </Paper>
-            <div className={`storage-inventory-layout ${activeBatchDraft ? "storage-inventory-layout--batch" : ""}`}>
-              <StorageInventoryPanel
-                      key={activeStorage.id}
-                      storage={activeStorage}
-                      canManageItems={canManageItems}
-                      canManageStock={canManageStock}
-                      hasAnyItems={inventoryProbeQuery.items.length > 0}
-                      batchDraft={activeBatchDraft}
-                      onStartBatch={() => {
-                        if (activeBatchDraft) {
-                          document.getElementById("storage-batch-panel")?.scrollIntoView({
-                            block: "end",
-                          });
-                          return;
-                        }
-                        const defaultRecipientId = canManageStock
-                          ? usersQuery.data?.data[0]?.user.id ?? user?.id ?? null
-                          : user?.id ?? null;
-                        setBatchDrafts((current) => ({
-                          ...current,
-                          [activeStorage.id]: createBatchDraft(defaultRecipientId),
-                        }));
-                      }}
-                      onBatchQuantityChange={(item, quantity) => {
-                        updateActiveBatch((draft) => {
-                          const quantities = { ...draft.quantities };
-                          const itemSnapshots = { ...draft.itemSnapshots };
-                          if (quantity > 0) {
-                            quantities[item.id] = quantity;
-                            itemSnapshots[item.id] = item;
-                          } else {
-                            delete quantities[item.id];
-                            delete itemSnapshots[item.id];
-                          }
-                          return refreshBatchKey(draft, { quantities, itemSnapshots });
-                        });
-                      }}
-                      onOpenItem={(item) => setActiveModal({ type: "detail", item })}
-                      onEditItem={(item) => setActiveModal({ type: "item-editor", item })}
-                      onOpenTransaction={(item, mode) => {
-                        if (!item) setManualItemSearch("");
-                        setActiveModal({ type: "transaction", item, mode });
-                      }}
+
+                {canManageStructure ? (
+                  <Tooltip label={t("action.manageStructure")} position="bottom">
+                    <ActionIcon
+                      aria-label={t("action.manageStructure")}
+                      className="storage-location-rail__manage"
+                      component={Link}
+                      to="/storage/manage"
+                      search={{ storageId: activeStorage.id } as never}
+                      variant="subtle"
+                      size={44}
+                    >
+                      <SettingsIcon size={18} />
+                    </ActionIcon>
+                  </Tooltip>
+                ) : null}
+              </div>
+            </section>
+
+            {activeBatchDraft ? (
+              <StorageBatchPanel
+                draft={activeBatchDraft}
+                users={usersQuery.data?.data ?? []}
+                currentUsername={user?.username}
+                canManageStock={canManageStock}
+                isSaving={mutations.createBatchTransactionMutation.isPending}
+                onTypeChange={(type) => { void handleBatchTypeChange(type); }}
+                onRecipientChange={(recipientUserId) => {
+                  updateActiveBatch((draft) => refreshBatchKey(draft, { recipientUserId }));
+                }}
+                onNoteChange={(note) => {
+                  updateActiveBatch((draft) => refreshBatchKey(draft, { note }));
+                }}
+                onQuantityChange={(itemId, quantity) => {
+                  updateActiveBatch((draft) => {
+                    const quantities = { ...draft.quantities };
+                    if (quantity > 0) {
+                      quantities[itemId] = quantity;
+                    } else {
+                      delete quantities[itemId];
+                    }
+                    return refreshBatchKey(draft, { quantities });
+                  });
+                }}
+                onClear={() => { void handleClearBatch(); }}
+                onClose={() => { void handleCloseBatch(); }}
+                onSubmit={handleSubmitBatch}
               />
-              {activeBatchDraft ? (
-                <StorageBatchPanel
-                        draft={activeBatchDraft}
-                        users={usersQuery.data?.data ?? []}
-                        currentUsername={user?.username}
-                        canManageStock={canManageStock}
-                        isSaving={mutations.createBatchTransactionMutation.isPending}
-                        onTypeChange={(type) => { void handleBatchTypeChange(type); }}
-                        onRecipientChange={(recipientUserId) => {
-                          updateActiveBatch((draft) => refreshBatchKey(draft, { recipientUserId }));
-                        }}
-                        onNoteChange={(note) => {
-                          updateActiveBatch((draft) => refreshBatchKey(draft, { note }));
-                        }}
-                        onQuantityChange={(itemId, quantity) => {
-                          updateActiveBatch((draft) => {
-                            const quantities = { ...draft.quantities };
-                            if (quantity > 0) {
-                              quantities[itemId] = quantity;
-                            } else {
-                              delete quantities[itemId];
-                            }
-                            return refreshBatchKey(draft, { quantities });
-                          });
-                        }}
-                        onClear={() => { void handleClearBatch(); }}
-                        onClose={() => { void handleCloseBatch(); }}
-                        onSubmit={handleSubmitBatch}
-                />
-              ) : null}
-            </div>
+            ) : null}
+
+            <StorageInventoryPanel
+              key={activeStorage.id}
+              storage={activeStorage}
+              canManageItems={canManageItems}
+              canManageStock={canManageStock}
+              hasAnyItems={inventoryProbeQuery.items.length > 0}
+              batchDraft={activeBatchDraft}
+              onStartBatch={() => {
+                if (activeBatchDraft) {
+                  document.getElementById("storage-batch-panel")?.scrollIntoView({
+                    block: "start",
+                  });
+                  return;
+                }
+                /*
+                 * 管理员必须自己选领取人：这条记录决定这批货算在谁头上。
+                 * 之前默认填成员列表的第一个人，管理员忘记改就会把整批货
+                 * 静默记到一个无关的人身上——默认值在这里等于伪造凭据。
+                 * 普通成员没有选择权（面板上是只读徽章），领取人就是本人。
+                 */
+                const defaultRecipientId = canManageStock ? null : user?.id ?? null;
+                setBatchDrafts((current) => ({
+                  ...current,
+                  [activeStorage.id]: createBatchDraft(defaultRecipientId),
+                }));
+              }}
+              onBatchQuantityChange={(item, quantity) => {
+                updateActiveBatch((draft) => {
+                  const quantities = { ...draft.quantities };
+                  const itemSnapshots = { ...draft.itemSnapshots };
+                  if (quantity > 0) {
+                    quantities[item.id] = quantity;
+                    itemSnapshots[item.id] = item;
+                  } else {
+                    delete quantities[item.id];
+                    delete itemSnapshots[item.id];
+                  }
+                  return refreshBatchKey(draft, { quantities, itemSnapshots });
+                });
+              }}
+              onOpenItem={(item) => setActiveModal({ type: "detail", item })}
+              onEditItem={(item) => setActiveModal({ type: "item-editor", item })}
+              onOpenTransaction={(item, mode) => {
+                if (!item) setManualItemSearch("");
+                setActiveModal({ type: "transaction", item, mode });
+              }}
+            />
           </Stack>
         ) : null}
       </Stack>
 
       <StorageItemDetailModal
         opened={activeModal?.type === "detail"}
-        item={detailItemQuery.data ?? detailState?.item ?? null}
+        item={activeItemQuery.data ?? detailState?.item ?? null}
+        canEditItem={canManageItems}
+        canManageStock={canManageStock}
         onClose={() => setActiveModal(null)}
+        onDeposit={(item) => setActiveModal({ type: "transaction", item, mode: "intake" })}
+        onWithdraw={(item) => setActiveModal({ type: "transaction", item, mode: "distribute" })}
+        onEdit={(item) => setActiveModal({ type: "item-editor", item })}
       />
       <StorageItemEditorModal
         opened={activeModal?.type === "item-editor"}
@@ -321,7 +368,20 @@ export function StoragePage() {
         isUploading={mutations.uploadImagesMutation.isPending}
         onClose={() => setActiveModal(null)}
         onCreateItem={(payload) => {
-          mutations.createItemMutation.mutate(payload, { onSuccess: () => setActiveModal(null) });
+          mutations.createItemMutation.mutate(payload, {
+            onSuccess: (createdItem) => {
+              /*
+               * 新建成功后抽屉留在编辑态，让用户接着传图。
+               * 但必须先确认它还开着：请求飞行期间用户完全可能已经点了取消，
+               * 无条件 setActiveModal 会把关掉的抽屉又弹回来，挡住整页。
+               */
+              setActiveModal((current) => (
+                current?.type === "item-editor"
+                  ? { type: "item-editor", item: createdItem }
+                  : current
+              ));
+            },
+          });
         }}
         onUpdateItem={(id, payload) => mutations.updateItemMutation.mutate({ id, payload })}
         onDeleteItem={(id) => {

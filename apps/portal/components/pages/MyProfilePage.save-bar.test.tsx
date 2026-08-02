@@ -47,7 +47,7 @@ describe("MyProfilePage save flow", () => {
     expect(classEditorSource).toContain("setActivatorNodeRef");
   });
 
-  it("only enables saving when the page has unsaved changes", () => {
+  it("only renders the save affix while changes are dirty or saving", () => {
     const onSave = vi.fn();
     const { rerender } = render(
       <MantineProvider>
@@ -55,7 +55,7 @@ describe("MyProfilePage save flow", () => {
       </MantineProvider>,
     );
 
-    expect(screen.getByRole("button", { name: "action.saveProfile" })).toBeDisabled();
+    expect(screen.queryByRole("button", { name: "action.saveProfile" })).not.toBeInTheDocument();
 
     rerender(
       <MantineProvider>
@@ -64,5 +64,28 @@ describe("MyProfilePage save flow", () => {
     );
 
     expect(screen.getByRole("button", { name: "action.saveProfile" })).toBeEnabled();
+
+    rerender(
+      <MantineProvider>
+        <UnsavedChangesAffix isDirty={false} saving onSave={onSave} />
+      </MantineProvider>,
+    );
+
+    expect(screen.getByText("status.saving")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "action.saveProfile" })).toBeDisabled();
+  });
+
+  it("positions the mobile save affix above the bottom navigation", () => {
+    const stylesSource = readFileSync(
+      resolve(process.cwd(), "apps/portal/styles.css"),
+      "utf8",
+    ).replace(/\r\n/g, "\n");
+    const mobileAffixStyles = stylesSource.slice(
+      stylesSource.indexOf("@media (max-width: 767px)"),
+      stylesSource.indexOf("@media (max-width: 767px)") + 500,
+    );
+
+    expect(mobileAffixStyles).toContain("var(--bottom-nav-height)");
+    expect(mobileAffixStyles).toContain("env(safe-area-inset-bottom)");
   });
 });

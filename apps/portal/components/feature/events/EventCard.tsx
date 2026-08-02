@@ -100,7 +100,15 @@ function EventStatusIndicator({ children, color, icon, title, description }: Eve
   return (
     <HoverCard width={280} shadow="lg" withArrow arrowSize={10} openDelay={350} closeDelay={80} position="top">
       <HoverCard.Target>
-        <span className="event-card__status-icon" data-animate-icon-trigger>{children}</span>
+        <span
+          className="event-card__status-icon"
+          data-animate-icon-trigger
+          role="img"
+          aria-label={title}
+          tabIndex={0}
+        >
+          {children}
+        </span>
       </HoverCard.Target>
       <HoverCard.Dropdown p="sm" style={{ borderRadius: 10 }}>
         <Group gap={10} wrap="nowrap" align="flex-start">
@@ -386,7 +394,9 @@ export function EventCard({
               className="event-card__title-btn"
               onClick={() => onOpenDetail(event)}
             >
-              <Text fw={700} size="md" className="event-card__title">{event.title}</Text>
+              <Text component="h2" fw={700} size="md" className="event-card__title">
+                {event.title}
+              </Text>
             </UnstyledButton>
             <div className="event-card__status-rail">{statusIndicators}</div>
           </div>
@@ -452,7 +462,7 @@ export function EventCard({
                 }}
                 color={isJoined ? "red" : "portal-brand"}
                 variant={isJoined ? "light" : "filled"}
-                size="xs"
+                size="sm"
                 disabled={participantActionDisabled}
                 leftSection={isJoined ? <UserMinusIcon size={14} /> : <UserPlusIcon size={14} />}
               >

@@ -1,6 +1,6 @@
 import type { Event } from "@guild/shared";
 import { EVENT_TYPE_COLORS, UNKNOWN_EVENT_TYPE_COLOR } from "@portal/utils/event-colors";
-import { Group, Text } from "@mantine/core";
+import { Group, Title } from "@mantine/core";
 import { format } from "date-fns";
 import type { ReactNode } from "react";
 
@@ -21,11 +21,23 @@ export function cardHeading(text: string, icon?: ReactNode) {
   return (
     <Group gap={8} align="center" wrap="nowrap" className="dashboard-card-title">
       {icon ? <span className="dashboard-card-title-icon">{icon}</span> : null}
-      <Text fw={700} style={{ fontSize: 16, letterSpacing: "-0.01em" }}>
+      <Title order={2} className="dashboard-card-title__text">
         {text}
-      </Text>
+      </Title>
     </Group>
   );
+}
+
+export function orderDashboardUpcomingRows<
+  T extends { item: Pick<Event, "id" | "start_at" | "pinned"> },
+>(rows: T[]): T[] {
+  return [...rows].sort((left, right) => {
+    const leftTime = new Date(left.item.start_at).getTime();
+    const rightTime = new Date(right.item.start_at).getTime();
+    if (leftTime !== rightTime) return leftTime - rightTime;
+    if (left.item.pinned !== right.item.pinned) return left.item.pinned ? -1 : 1;
+    return left.item.id.localeCompare(right.item.id);
+  });
 }
 
 export type DashboardMember = {

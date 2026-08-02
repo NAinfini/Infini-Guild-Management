@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import { MantineProvider } from "@mantine/core";
 import { render, screen } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { PERMISSIONS, type Event, type MemberProfile, type Permission, type User } from "@guild/shared";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
@@ -136,6 +137,87 @@ function renderCardsView(
 }
 
 describe("EventCardsView", () => {
+  it("uses semantic headings for event titles", () => {
+    renderCardsView();
+
+    expect(
+      screen.getByRole("heading", { level: 2, name: "Weekly Mission Alpha" }),
+    ).toBeInTheDocument();
+  });
+
+  it("offers one context-aware next action in an empty result", async () => {
+    const onResetFilters = vi.fn();
+    const onCreateEvent = vi.fn();
+    const baseEmptyProps = {
+      events: [],
+      cardsEmptyDescription: "No matching events",
+      canInteract: false,
+      currentUserId: null,
+      archivedOnly: false,
+      pinnedOnly: false,
+      lockedOnly: false,
+      focusedEventId: null,
+      eventFlags: new Map<string, "NEW" | "UPDATED">(),
+      eventMembersMap: new Map(),
+      allUsers: [],
+      joinPending: false,
+      leavePending: false,
+      onResetFilters,
+      onCreateEvent,
+      onJoinEvent: vi.fn(),
+      onLeaveEvent: vi.fn(),
+      onCopyMentions: vi.fn(),
+      onEditEvent: vi.fn(),
+      onDuplicateEvent: vi.fn(),
+      onTogglePinEvent: vi.fn(),
+      onToggleLockEvent: vi.fn(),
+      onArchiveEvent: vi.fn(),
+      onUnarchiveEvent: vi.fn(),
+      onDeleteEvent: vi.fn(),
+      onAddParticipant: vi.fn(),
+      onRemoveParticipant: vi.fn(),
+    };
+    const { rerender } = render(
+      <MantineProvider>
+        <EventCardsView
+          {...baseEmptyProps}
+          canManage
+          eventType="social"
+          hasAnyFilter
+        />
+      </MantineProvider>,
+    );
+
+    expect(screen.getAllByRole("button")).toHaveLength(1);
+    await userEvent.click(screen.getByRole("button", { name: "card.resetFilters" }));
+    expect(onResetFilters).toHaveBeenCalledOnce();
+
+    rerender(
+      <MantineProvider>
+        <EventCardsView
+          {...baseEmptyProps}
+          canManage
+          eventType={undefined}
+          hasAnyFilter={false}
+        />
+      </MantineProvider>,
+    );
+
+    expect(screen.getAllByRole("button")).toHaveLength(1);
+    await userEvent.click(screen.getByRole("button", { name: "button.create" }));
+    expect(onCreateEvent).toHaveBeenCalledOnce();
+  });
+
+  it("gives status explanations a keyboard-focusable accessible name", () => {
+    renderCardsView(1, {
+      eventOverrides: { pinned: true },
+    });
+
+    expect(
+      screen.getByRole("img", { name: "tooltip.pinned.title" }),
+    ).toHaveAttribute("tabindex", "0");
+  });
+
   it("prioritizes actionable signup-disabled reasons", () => {
     const base = {
       isArchived: false,

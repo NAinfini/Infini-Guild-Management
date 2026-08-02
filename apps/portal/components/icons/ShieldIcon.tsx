@@ -16,7 +16,10 @@ interface ShieldIconProps extends HTMLAttributes<HTMLDivElement> {
 
 const SVG_VARIANTS: Variants = {
   normal: { scale: 1, transition: { duration: 0.3 } },
-  animate: { scale: [1, 1.12, 1], transition: { duration: 0.5, type: "spring", stiffness: 180, damping: 14 } },
+  // 关键帧超过两个就不能用 spring：motion 只支持两帧的弹簧，多一帧直接抛
+  // "Only two keyframes currently supported with spring and inertia animations"，
+  // 一 hover 就是一个未捕获错误。缓动写法见 TextSizeIcon。
+  animate: { scale: [1, 1.12, 1], transition: { duration: 0.5, ease: "easeInOut" } },
 };
 
 const ShieldIcon = forwardRef<ShieldIconHandle, ShieldIconProps>(

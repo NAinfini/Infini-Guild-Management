@@ -1,4 +1,3 @@
-import { Stack } from "@mantine/core";
 import type { ReactNode } from "react";
 import type { WarHistoryTabController } from "@portal/hooks/guild-war/useWarHistoryTabController";
 import type {
@@ -44,7 +43,6 @@ type WarHistoryTabProps = {
   historyMvp: HistoryMvpSummary | null;
   saveMemberStatsPending: boolean;
   deleteHistoryPending: boolean;
-  bulkDeleteHistoryPending: boolean;
   historyDetailTitle: string;
   loadErrorMessage: string;
   chartThemeName: string;
@@ -87,7 +85,6 @@ export function WarHistoryTab({
   historyMvp,
   saveMemberStatsPending,
   deleteHistoryPending,
-  bulkDeleteHistoryPending,
   historyDetailTitle,
   loadErrorMessage,
   chartThemeName,
@@ -99,69 +96,73 @@ export function WarHistoryTab({
   controller,
 }: WarHistoryTabProps) {
   return (
-    <Stack gap={12} style={{ width: "100%", alignItems: "stretch" }}>
+    <div className="war-history-shell">
       {heading}
 
-      <WarHistoryTable
-        historyDateFrom={historyDateFrom}
-        historyDateTo={historyDateTo}
-        onHistoryDateFromChange={onHistoryDateFromChange}
-        onHistoryDateToChange={onHistoryDateToChange}
-        onClearDates={onClearDates}
-        historySearch={controller.historySearch}
-        onHistorySearchChange={controller.setHistorySearch}
-        historyLoading={historyLoading}
-        historyError={historyError}
-        loadErrorMessage={loadErrorMessage}
-        filteredHistoryRows={controller.filteredHistoryRows}
-        historyRows={historyRows}
-        historyTotal={historyTotal}
-        canManage={canManage}
-        selectedHistoryIds={controller.selectedHistoryIds}
-        summaryTable={controller.summaryTable}
-        highlightRowId={controller.highlightRowId}
-        onRowClick={controller.handleSelectHistoryId}
-        historyTotalPages={historyTotalPages}
-        historyPage={historyPage}
-        historyPerPage={historyPerPage}
-        onHistoryPageChange={onHistoryPageChange}
-        onHistoryPerPageChange={onHistoryPerPageChange}
-        bulkDeleteHistoryPending={bulkDeleteHistoryPending}
-        onBulkDelete={controller.handleBulkDelete}
-      />
+      {/* Both panes are always mounted. `--mobile-*` only decides which one the
+          single-column layout reveals below 992px. */}
+      <div className={`war-history-workspace war-history-workspace--mobile-${controller.mobileView}`}>
+        <div className="war-history-master">
+          <WarHistoryTable
+            historyDateFrom={historyDateFrom}
+            historyDateTo={historyDateTo}
+            onHistoryDateFromChange={onHistoryDateFromChange}
+            onHistoryDateToChange={onHistoryDateToChange}
+            onClearDates={onClearDates}
+            historySearch={controller.historySearch}
+            onHistorySearchChange={controller.setHistorySearch}
+            historyLoading={historyLoading}
+            historyError={historyError}
+            loadErrorMessage={loadErrorMessage}
+            filteredHistoryRows={controller.filteredHistoryRows}
+            historyRows={historyRows}
+            historyTotal={historyTotal}
+            activeHistoryId={controller.activeHistoryId}
+            highlightRowId={controller.highlightRowId}
+            onRowClick={controller.handleSelectHistoryId}
+            historyTotalPages={historyTotalPages}
+            historyPage={historyPage}
+            historyPerPage={historyPerPage}
+            onHistoryPageChange={onHistoryPageChange}
+            onHistoryPerPageChange={onHistoryPerPageChange}
+          />
+        </div>
 
-      <WarHistoryDetail
-        opened={controller.detailModalOpen}
-        onClose={() => { void controller.requestCloseDetailModal(); }}
-        historyDetail={historyDetail}
-        historyDetailTitle={historyDetailTitle}
-        historyDetailLoading={historyDetailLoading}
-        historyDetailError={historyDetailError}
-        loadErrorMessage={loadErrorMessage}
-        historyMvp={historyMvp}
-        historyViewMode={historyViewMode}
-        historyChartMetric={historyChartMetric}
-        detailTable={controller.detailTable}
-        canManage={canManage}
-        hasUnsavedMemberChanges={controller.hasUnsavedMemberChanges}
-        saveMemberStatsPending={saveMemberStatsPending}
-        deleteHistoryPending={deleteHistoryPending}
-        exportPending={exportPending}
-        exportCsvLabel={exportCsvLabel}
-        exportJsonLabel={exportJsonLabel}
-        historyRows={historyRows}
-        onSaveMemberStats={controller.handleSaveMemberStats}
-        onDeleteHistory={controller.handleDeleteHistory}
-        onExport={onExport}
-        onHistoryViewModeChange={onHistoryViewModeChange}
-        onHistoryChartMetricChange={onHistoryChartMetricChange}
-        chartThemeName={chartThemeName}
-        chartThemeConfig={chartThemeConfig}
-        chartPalette={chartPalette}
-        hashToPaletteColor={hashToPaletteColor}
-        getMetricLabel={getMetricLabel}
-        metricValueOrNullFromWarMember={metricValueOrNullFromWarMember}
-      />
-    </Stack>
+        <WarHistoryDetail
+          onBackToList={() => { void controller.showMobileList(); }}
+          historyDetail={historyDetail}
+          historyDetailTitle={historyDetailTitle}
+          historyDetailLoading={historyDetailLoading}
+          historyDetailError={historyDetailError}
+          loadErrorMessage={loadErrorMessage}
+          historyMvp={historyMvp}
+          historyViewMode={historyViewMode}
+          historyChartMetric={historyChartMetric}
+          detailTable={controller.detailTable}
+          canManage={canManage}
+          hasUnsavedMemberChanges={controller.hasUnsavedMemberChanges}
+          isEditingMemberStats={controller.isEditingMemberStats}
+          onBeginEditMemberStats={controller.beginEditMemberStats}
+          onCancelEditMemberStats={() => { void controller.cancelEditMemberStats(); }}
+          saveMemberStatsPending={saveMemberStatsPending}
+          deleteHistoryPending={deleteHistoryPending}
+          exportPending={exportPending}
+          exportCsvLabel={exportCsvLabel}
+          exportJsonLabel={exportJsonLabel}
+          historyRows={historyRows}
+          onSaveMemberStats={controller.handleSaveMemberStats}
+          onDeleteHistory={controller.handleDeleteHistory}
+          onExport={onExport}
+          onHistoryViewModeChange={onHistoryViewModeChange}
+          onHistoryChartMetricChange={onHistoryChartMetricChange}
+          chartThemeName={chartThemeName}
+          chartThemeConfig={chartThemeConfig}
+          chartPalette={chartPalette}
+          hashToPaletteColor={hashToPaletteColor}
+          getMetricLabel={getMetricLabel}
+          metricValueOrNullFromWarMember={metricValueOrNullFromWarMember}
+        />
+      </div>
+    </div>
   );
 }

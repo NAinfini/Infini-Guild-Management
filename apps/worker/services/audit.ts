@@ -27,6 +27,73 @@ export type WriteAuditLogInput = {
   detailText?: string | null;
 };
 
+export type AuditLogStatementCondition = {
+  sql: string;
+  bindings: readonly unknown[];
+};
+
+/**
+ * Builds durable audit statements for callers that already own an atomic D1
+ * batch. The condition is internal SQL supplied by the service, never request
+ * input. No statement is executed here.
+ */
+export function buildAuditLogStatements(
+  c: Context,
+  input: WriteAuditLogInput,
+  condition?: AuditLogStatementCondition,
+): D1PreparedStatement[] {
+  const env = c.env as Bindings;
+  const id = nanoid();
+  const runId = getSystemTestRunId(c);
+  const conditions: string[] = [];
+  const conditionBindings: unknown[] = [];
+
+  if (runId) {
+    conditions.push(
+      "EXISTS (SELECT 1 FROM system_test_runs WHERE id = ? AND status = 'running')",
+    );
+    conditionBindings.push(runId);
+  }
+  if (condition) {
+    conditions.push(condition.sql);
+    conditionBindings.push(...condition.bindings);
+  }
+
+  const values = [
+    id,
+    input.entityType,
+    input.action,
+    input.actorId,
+    input.entityId,
+    input.diffTitle ?? null,
+    input.detailText ?? null,
+  ];
+  const auditStatement = conditions.length > 0
+    ? env.DB.prepare(
+        `INSERT INTO audit_log (id, entity_type, action, actor_id, entity_id, diff_title, detail_text)
+         SELECT ?, ?, ?, ?, ?, ?, ?
+         WHERE ${conditions.join(" AND ")}`,
+      ).bind(...values, ...conditionBindings)
+    : env.DB.prepare(
+        `INSERT INTO audit_log (id, entity_type, action, actor_id, entity_id, diff_title, detail_text)
+         VALUES (?, ?, ?, ?, ?, ?, ?)`,
+      ).bind(...values);
+
+  if (!runId) return [auditStatement];
+
+  return [
+    auditStatement,
+    env.DB.prepare(
+      `INSERT INTO system_test_artifacts (run_id, artifact_type, artifact_key)
+       SELECT ?, 'audit_log', ?
+       WHERE EXISTS (SELECT 1 FROM audit_log WHERE id = ?)
+         AND EXISTS (SELECT 1 FROM system_test_runs WHERE id = ? AND status = 'running')
+       ON CONFLICT(run_id, artifact_type, artifact_key)
+       DO UPDATE SET artifact_key = excluded.artifact_key`,
+    ).bind(runId, id, id, runId),
+  ];
+}
+
 async function writeSystemTestAudit(
   env: Bindings,
   runId: string,

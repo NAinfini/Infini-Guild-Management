@@ -103,6 +103,68 @@ describe("system-test request lease", () => {
   });
 });
 
+describe("system-test actor boundary", () => {
+  /**
+   * 改密码 / 改用户名只允许操作自己，发起人的会话走不到那条路径，
+   * 只能用本次运行新建的账号登录后再调。这类账号在清理阶段会被硬删，
+   * 所以放行；其它任何会话用户都必须挡掉，否则无关成员写出的审计行
+   * 会被算进这次运行。
+   */
+  function appWith(sessionUserId: string, registeredUserIds: readonly string[]) {
+    const statements: string[] = [];
+    const DB = {
+      prepare: (sql: string) => ({
+        bind: (...bindings: unknown[]) => {
+          statements.push(sql);
+          return {
+            first: async () => {
+              if (sql.startsWith("UPDATE system_test_runs SET active_requests = active_requests + 1")) {
+                return { actor_id: "admin-1" };
+              }
+              if (sql.startsWith("SELECT run_id FROM system_test_artifacts")) {
+                return bindings[1] === "user" && registeredUserIds.includes(bindings[2] as string)
+                  ? { run_id: bindings[0] }
+                  : undefined;
+              }
+              return undefined;
+            },
+            run: async () => ({ meta: { changes: 1 } }),
+          };
+        },
+      }),
+      batch: async (batch: unknown[]) => batch.map(() => ({ meta: { changes: 1 } })),
+    };
+    const app = new Hono();
+    app.use("*", async (c, next) => {
+      c.set("user" as never, { id: sessionUserId } as never);
+      c.set("requestId" as never, "request-actor" as never);
+      await next();
+    });
+    app.use("*", systemTestTrackingMiddleware);
+    app.post("/api/users/:id/change-password", (c) => c.json({ ok: true }));
+    const request = () => app.request("/api/users/someone/change-password", {
+      method: "POST",
+      headers: { "X-System-Test": "admin-console-api", "X-System-Test-Run-Id": "run-1" },
+    }, { DB, MEDIA: { delete: async () => undefined } });
+    return { request, statements };
+  }
+
+  it("accepts a session user this run created", async () => {
+    const { request, statements } = appWith("throwaway-1", ["throwaway-1"]);
+    const response = await request();
+    expect(response.status).toBe(200);
+    expect(statements.findIndex((sql) => sql.includes("active_requests + 1")))
+      .toBeLessThan(statements.findIndex((sql) => sql.includes("active_requests - 1")));
+  });
+
+  it("rejects a session user this run did not create, and releases the lease", async () => {
+    const { request, statements } = appWith("member-9", ["throwaway-1"]);
+    const response = await request();
+    expect(response.status).toBe(403);
+    expect(statements.some((sql) => sql.includes("active_requests - 1"))).toBe(true);
+  });
+});
+
 describe("system-test response extractor", () => {
   it.each([
     ["/api/admin/invite-links", { id: "invite-1" }, { type: "invite_link", key: "invite-1" }],
@@ -121,6 +183,8 @@ describe("system-test response extractor", () => {
     ["/api/storage/storages", { id: "storage-1" }, { type: "storage", key: "storage-1" }],
     ["/api/storage/storages/storage-1/categories", { id: "storage-category-1" }, { type: "storage_category", key: "storage-category-1" }],
     ["/api/storage/items", { id: "storage-item-1" }, { type: "storage_item", key: "storage-item-1" }],
+    ["/api/classes", { id: "class-1" }, { type: "class_catalog", key: "class-1" }],
+    ["/api/users/user-1/absences", { id: "absence-1" }, { type: "member_absence", key: "absence-1" }],
   ])("registers the exact root returned by %s", (path, body, expected) => {
     expect(extractSystemTestArtifacts("POST", path, body)).toContainEqual(expected);
   });
@@ -173,6 +237,24 @@ describe("system-test response extractor", () => {
       { type: "r2_key", key: "gallery/gallery-1/a.png" },
       { type: "r2_key", key: "gallery/gallery-2/b.png" },
     ]));
+  });
+
+  it("registers attachments uploaded inside the create-event request itself", () => {
+    /*
+     * 多部分创建活动时，附件在同一个请求里就落进了 R2。只登记活动行的话，
+     * 清理删掉行、连带删掉 media_references，R2 对象却要等孤儿清扫 cron，
+     * 中间这段时间站点指纹就是对不上的——那正是「有残留」该被判红的形态。
+     */
+    expect(
+      extractSystemTestArtifacts("POST", "/api/events", {
+        id: "event-1",
+        attachments: ["event/event-1/images/a.webp", "event/event-1/images/b.webp"],
+      }),
+    ).toEqual([
+      { type: "event", key: "event-1" },
+      { type: "r2_key", key: "event/event-1/images/a.webp" },
+      { type: "r2_key", key: "event/event-1/images/b.webp" },
+    ]);
   });
 
   it("uses only explicit creation paths and never infers artifacts from marker text", () => {

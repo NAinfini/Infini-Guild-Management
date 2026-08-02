@@ -1,7 +1,7 @@
 import { Alert, Badge, Group, HoverCard, RingProgress, Skeleton, Stack, Text, ThemeIcon } from "@mantine/core";
 import { CircleCheckIcon, AlertTriangleIcon, DatabaseIcon, CloudIcon, WifiIcon, ClockIcon } from "@portal/components/icons";
 import { useTranslation } from "react-i18next";
-import { latencyBand, type LatencyBand } from "../../../utils/latency-thresholds";
+import { latencyBand, latencyScalePercent, type LatencyBand } from "../../../utils/latency-thresholds";
 import "./AdminSystemSection.css";
 
 type StatusData = {
@@ -60,10 +60,6 @@ export const LATENCY_BAND_COLOR_VAR: Record<LatencyBand, string> = {
 // 无数据落到 Mantine 自己的灰色阶，深浅色模式下不受语义层控制。
 // 该段的 value 恒为 0、几乎不可见，但仍按 token 体系统一。
 const LATENCY_NO_DATA_COLOR_VAR = "var(--text-muted)";
-
-function latencyPercent(ms: number): number {
-  return Math.min(100, (ms / 500) * 100);
-}
 
 export function AdminSystemSection({
   statusLoading,
@@ -139,7 +135,7 @@ export function AdminSystemSection({
           thickness={5}
           roundCaps
           sections={[{
-            value: statusLatencyMs != null ? latencyPercent(statusLatencyMs) : 0,
+            value: statusLatencyMs != null ? latencyScalePercent(statusLatencyMs) : 0,
             color: statusLatencyMs != null ? LATENCY_BAND_COLOR_VAR[latencyBand(statusLatencyMs)] : LATENCY_NO_DATA_COLOR_VAR,
           }]}
           label={

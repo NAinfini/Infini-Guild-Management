@@ -47,7 +47,6 @@ The Drizzle schema is split by domain:
 | `apps/worker/db/schema/wiki.ts` | wiki categories and articles |
 | `apps/worker/db/schema/gallery.ts` | gallery items |
 | `apps/worker/db/schema/audit.ts` | audit log |
-| `apps/worker/db/schema/game-data.ts` | equipment calculator game-data versions |
 
 `apps/worker/db/schema/index.ts` exports the schema modules used by worker code.
 
@@ -63,8 +62,7 @@ When the project switches from v1 baseline editing to production migration track
 2. Generate a new migration with `pnpm db:generate`.
 3. Review generated SQL for destructive operations before applying it.
 4. Apply the migration to local D1 with `pnpm db:mock:init`.
-5. Apply staging before production.
-6. Back up production data and prepare a tested recovery migration before destructive changes.
-7. Keep Drizzle schema, SQL migrations, seed data, and shared Zod schemas in sync.
+5. Back up production data and prepare a tested recovery migration before destructive changes.
+6. Keep Drizzle schema, SQL migrations, seed data, and shared Zod schemas in sync.
 
 Until that switch happens, treat `0000_core_schema.sql` as the rebuildable baseline.

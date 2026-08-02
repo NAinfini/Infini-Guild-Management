@@ -16,7 +16,8 @@ interface RingsIconProps extends HTMLAttributes<HTMLDivElement> {
 
 const SVG_VARIANTS: Variants = {
   normal: { rotate: 0, transition: { duration: 0.3, ease: "easeOut" } },
-  animate: { rotate: [0, 8, -5, 0], transition: { duration: 0.5, type: "spring", stiffness: 200, damping: 14 } },
+  // 多关键帧不能配 spring，见 ShieldIcon 的说明。
+  animate: { rotate: [0, 8, -5, 0], transition: { duration: 0.5, ease: "easeInOut" } },
 };
 
 const RingsIcon = forwardRef<RingsIconHandle, RingsIconProps>(

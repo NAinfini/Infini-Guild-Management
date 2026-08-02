@@ -1,5 +1,4 @@
-import type { ClassName, MemberProfile, User, UserBadge } from "@guild/shared";
-import { CLASS_COLOR_GROUP, CLASS_NAMES } from "@guild/shared";
+import type { MemberProfile, User, UserBadge } from "@guild/shared";
 import { IconPhoto, IconVideo } from "@tabler/icons-react";
 import DOMPurify from "dompurify";
 import { motion, useReducedMotion, useSpring } from "motion/react";
@@ -7,6 +6,8 @@ import { memo, useMemo, useState, type PointerEvent as ReactPointerEvent } from 
 import { useTranslation } from "react-i18next";
 import { parseAvailabilityRanges } from "../../utils/availability";
 import { sanitizeTitleHtml } from "../../utils/sanitize";
+import { resolveClassCatalogItem, useClassCatalogStore } from "../../stores/class-catalog";
+import { ClassIcon } from "./ClassIcon";
 import "./MemberCard.css";
 
 /*
@@ -62,18 +63,9 @@ type MemberCardProps = {
 
 type MemberStatus = "active" | "inactive" | "vacation";
 
-function isClassName(value: string): value is ClassName {
-  return (CLASS_NAMES as readonly string[]).includes(value);
-}
-
-function resolveClassGroup(className: string | null): string {
-  if (!className || !isClassName(className)) {
-    return "blue";
-  }
-  return CLASS_COLOR_GROUP[className] ?? "blue";
-}
-
-function getMemberStatus(user: User, profile: MemberProfile): MemberStatus {
+/* 导出给资料页的名片预览用：那张卡的排版和这里不一样，但「在线 / 离线 / 休假」
+   必须是同一套判定，否则同一个人在两处显示成两种状态。 */
+export function getMemberStatus(user: User, profile: MemberProfile): MemberStatus {
   if (!user.is_active) {
     return "inactive";
   }
@@ -117,8 +109,13 @@ export const MemberCard = memo(function MemberCard({
   resolveMediaUrl = defaultMediaResolver,
 }: MemberCardProps) {
   const { t } = useTranslation("common");
+  const classCatalog = useClassCatalogStore((state) => state.items);
   const primaryClass = profile.classes[0] ?? null;
-  const classGroup = resolveClassGroup(primaryClass);
+  const primaryClassItem = resolveClassCatalogItem(primaryClass, classCatalog);
+  const visibleClassItems = profile.classes
+    .slice(0, 2)
+    .map((classId) => resolveClassCatalogItem(classId, classCatalog));
+  const remainingClassCount = Math.max(0, profile.classes.length - visibleClassItems.length);
   const status = getMemberStatus(user, profile);
   const avatarKey = profile.avatar_key ?? null;
   const avatarSrc = avatarKey ? resolveMediaUrl(avatarKey) : null;
@@ -170,13 +167,20 @@ export const MemberCard = memo(function MemberCard({
     return (
       <button
         type="button"
-        className={`member-card member-card--compact member-card--${classGroup}${selected ? " member-card--selected" : ""}`}
+        className={`member-card member-card--compact${selected ? " member-card--selected" : ""}`}
+        style={{ "--class-color": primaryClassItem.color } as React.CSSProperties}
         onClick={onClick}
         onDoubleClick={onDoubleClick}
         aria-label={t("a11y.select", { name: user.username })}
       >
         <span className="member-card__compact-username">{user.username}</span>
-        <span className="member-card__compact-meta">{primaryClass ?? "-"}</span>
+        <span
+          className="member-card__compact-class"
+          style={{ "--class-color": primaryClassItem.color } as React.CSSProperties}
+        >
+          <ClassIcon item={primaryClassItem} size={16} framed={false} />
+          <span className="member-card__compact-meta">{primaryClassItem.label}</span>
+        </span>
         <span className="member-card__compact-meta">{t("member.power")} {profile.power}</span>
       </button>
     );
@@ -222,6 +226,23 @@ export const MemberCard = memo(function MemberCard({
         <div className="member-card__content">
           <span className="member-card__username">{user.username}</span>
           <div className="member-card__title" dangerouslySetInnerHTML={{ __html: titleHtml || "&nbsp;" }} />
+          {visibleClassItems.length > 0 ? (
+            <div className="member-card__class-row">
+              {visibleClassItems.map((item) => (
+                <span
+                  key={item.id}
+                  className="member-card__class-chip"
+                  style={{ "--class-color": item.color } as React.CSSProperties}
+                >
+                  <ClassIcon item={item} size={16} framed={false} />
+                  <span className="member-card__class-label">{item.label}</span>
+                </span>
+              ))}
+              {remainingClassCount > 0 ? (
+                <span className="member-card__class-overflow">+{remainingClassCount}</span>
+              ) : null}
+            </div>
+          ) : null}
         </div>
 
         {/* A "0" count says nothing and, on a roster where most profiles carry no

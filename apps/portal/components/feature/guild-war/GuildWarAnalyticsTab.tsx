@@ -51,6 +51,7 @@ import type {
 } from "@portal/types/guild-war";
 import type { EChartsThemeConfig } from "../../../theme/echarts";
 import type { GuildWarAnalyticsController } from "../../../hooks/guild-war/useGuildWarAnalytics";
+import { ANALYTICS_SELECTION_HARD_CAP } from "../../../services/GuildWarService";
 import { GuildWarAnalyticsChartPanel } from "./GuildWarAnalyticsChartPanel";
 import { GuildWarAnalyticsListBox, UserListBoxItem } from "./GuildWarAnalyticsListBox";
 
@@ -94,6 +95,42 @@ const ANALYTICS_METRIC_OPTIONS: Array<{
   { value: "kda", labelKey: "analytics.metric.kda", Icon: TrophyIcon },
 ];
 
+type ConsoleFieldId = "source" | "subject" | "metric";
+
+/**
+ * A collapsed selector that shows what is currently chosen and opens on demand.
+ *
+ * Three permanently open list boxes stacked the console ~1700px tall and put
+ * four nested scrollbars on screen at once. Collapsed, the whole query reads as
+ * a handful of rows, and only the one being edited owns an inner scroll area.
+ */
+function ConsoleField({
+  label,
+  summary,
+  open,
+  onToggle,
+  children,
+}: {
+  label: string;
+  summary: string;
+  open: boolean;
+  onToggle: () => void;
+  children: React.ReactNode;
+}) {
+  return (
+    <div className="gwa-sidebar__section gwa-field">
+      <UnstyledButton className="gwa-field__head" onClick={onToggle} aria-expanded={open}>
+        <span className="gwa-field__label">{label}</span>
+        <span className="gwa-field__summary">{summary}</span>
+        {open ? <ChevronUpIcon size={14} /> : <ChevronDownIcon size={14} />}
+      </UnstyledButton>
+      <Collapse in={open}>
+        <div className="gwa-field__body">{children}</div>
+      </Collapse>
+    </div>
+  );
+}
+
 export function GuildWarAnalyticsTab({
   analytics,
   chartThemeName,
@@ -103,8 +140,15 @@ export function GuildWarAnalyticsTab({
 }: GuildWarAnalyticsTabProps) {
   const { t } = useTranslation("guild-war");
   const [normExpanded, setNormExpanded] = useState(false);
-  const [tableExpanded, setTableExpanded] = useState(false);
+  // The table is the artefact people copy out to chat, so it stays open by
+  // default; the toggle is for reclaiming height, not for finding it.
+  const [tableExpanded, setTableExpanded] = useState(true);
   const [chartExpanded, setChartExpanded] = useState(false);
+  // Accordion: at most one selector is open, so the console keeps a fixed,
+  // short height no matter how many wars or members exist.
+  const [openField, setOpenField] = useState<ConsoleFieldId | null>(null);
+  const toggleField = (id: ConsoleFieldId) =>
+    setOpenField((current) => (current === id ? null : id));
 
   useEffect(() => {
     echarts.registerTheme(chartThemeName, chartThemeConfig);
@@ -116,12 +160,88 @@ export function GuildWarAnalyticsTab({
     Icon: opt.Icon,
   }));
 
+  const warStatLabelKey = WAR_STAT_OPTIONS.find(
+    (option) => option.value === analytics.analyticsWarStat,
+  )?.labelKey;
+
+  // Describe the query the chart is actually answering: which subject, which
+  // metric, over how many wars. Empty fragments drop out rather than rendering
+  // a dangling separator.
+  const chartSubject =
+    analytics.analyticsMode === "player" || analytics.analyticsMode === "radar"
+      ? t("analytics.chart.subject.members", {
+          count: analytics.analyticsSelectedUsers.length,
+        })
+      : analytics.analyticsMode === "teams"
+        ? t("analytics.chart.subject.teams", {
+            count: analytics.analyticsSelectedTeams.length,
+          })
+        : analytics.analyticsMode === "rankings"
+          ? t("analytics.chart.subject.rankings", { count: analytics.analyticsTopN })
+          : t("analytics.chart.subject.wars");
+  const chartMetric =
+    analytics.analyticsMode === "wars"
+      ? (warStatLabelKey ? t(warStatLabelKey) : "")
+      : metricOptions
+          .filter((option) => analytics.analyticsSelectedMetrics.includes(option.value))
+          .map((option) => option.label)
+          .join(" / ");
+  const chartHeading = {
+    kicker: t(`analytics.toolbar.mode.${analytics.analyticsMode}`),
+    title: [
+      chartSubject,
+      chartMetric,
+      t("analytics.chart.scope", { count: analytics.analyticsWarIds.length }),
+    ]
+      .filter((part) => part.length > 0)
+      .join(" · "),
+    note:
+      analytics.analyticsNormEnabled && analytics.analyticsMode !== "wars"
+        ? t("analytics.chart.normNote", { minutes: analytics.referenceDuration })
+        : undefined,
+  };
+
   const isLoading =
     analytics.analyticsQuery.isLoading || analytics.analyticsDetailsQuery.isLoading;
   const isFetching =
     analytics.analyticsQuery.isFetching || analytics.analyticsDetailsQuery.isFetching;
   const isError =
     analytics.analyticsQuery.isError || analytics.analyticsDetailsQuery.isError;
+  const analyticsEmptyReason =
+    analytics.analyticsWarIds.length === 0
+      ? "war"
+      : (analytics.analyticsMode === "player" || analytics.analyticsMode === "radar")
+          && analytics.analyticsSelectedUsers.length === 0
+        ? "member"
+        : analytics.analyticsMode !== "wars"
+            && analytics.analyticsSelectedMetrics.length === 0
+          ? "metric"
+          : null;
+  const suggestedWarId = analytics.analyticsWarOptions[0]?.value;
+  const suggestedUserId = analytics.analyticsSelectableUserIds[0];
+  const suggestedMetric = ANALYTICS_METRIC_OPTIONS[0]?.value;
+  const emptyState = analyticsEmptyReason
+    ? {
+        title: t("analytics.empty.title"),
+        description: t(`analytics.empty.${analyticsEmptyReason}.description`),
+        actionLabel:
+          analyticsEmptyReason === "war" && suggestedWarId
+            ? t("analytics.empty.war.action")
+            : analyticsEmptyReason === "member" && suggestedUserId
+              ? t("analytics.empty.member.action")
+              : analyticsEmptyReason === "metric" && suggestedMetric
+                ? t("analytics.empty.metric.action")
+                : undefined,
+        onAction:
+          analyticsEmptyReason === "war" && suggestedWarId
+            ? () => analytics.setAnalyticsSelectedWarIds([suggestedWarId])
+            : analyticsEmptyReason === "member" && suggestedUserId
+              ? () => analytics.applyAnalyticsSelection([suggestedUserId])
+              : analyticsEmptyReason === "metric" && suggestedMetric
+                ? () => analytics.setAnalyticsSelectedMetrics([suggestedMetric])
+                : undefined,
+      }
+    : undefined;
 
   return (
     <Stack gap={12} className="gwa-layout">
@@ -129,33 +249,37 @@ export function GuildWarAnalyticsTab({
       <div className="gwa-toolbar">
         <div className="gwa-toolbar__item">
           <div className="gwa-toolbar__label">{t("analytics.toolbar.mode")}</div>
-          <SegmentedControl
-            value={analytics.analyticsMode}
-            onChange={(value) => analytics.setAnalyticsMode(value as AnalyticsMode)}
-            data={[
-              { label: t("analytics.toolbar.mode.player"), value: "player" },
-              { label: t("analytics.toolbar.mode.rankings"), value: "rankings" },
-              { label: t("analytics.toolbar.mode.teams"), value: "teams" },
-              { label: t("analytics.toolbar.mode.radar"), value: "radar" },
-              { label: t("analytics.toolbar.mode.wars"), value: "wars" },
-            ]}
-          />
+          <div className="gwa-toolbar__control-scroll">
+            <SegmentedControl
+              value={analytics.analyticsMode}
+              onChange={(value) => analytics.setAnalyticsMode(value as AnalyticsMode)}
+              data={[
+                { label: t("analytics.toolbar.mode.player"), value: "player" },
+                { label: t("analytics.toolbar.mode.rankings"), value: "rankings" },
+                { label: t("analytics.toolbar.mode.teams"), value: "teams" },
+                { label: t("analytics.toolbar.mode.radar"), value: "radar" },
+                { label: t("analytics.toolbar.mode.wars"), value: "wars" },
+              ]}
+            />
+          </div>
         </div>
 
         <div className="gwa-toolbar__item">
           <div className="gwa-toolbar__label">{t("analytics.toolbar.datePreset")}</div>
-          <SegmentedControl
-            value={analytics.analyticsDatePreset}
-            onChange={(value) =>
-              analytics.handleAnalyticsDatePresetChange(value as AnalyticsDatePreset)
-            }
-            data={[
-              { label: t("analytics.toolbar.datePreset.last5"), value: "5" },
-              { label: t("analytics.toolbar.datePreset.last10"), value: "10" },
-              { label: t("analytics.toolbar.datePreset.last20"), value: "20" },
-              { label: t("analytics.toolbar.datePreset.all"), value: "all" },
-            ]}
-          />
+          <div className="gwa-toolbar__control-scroll">
+            <SegmentedControl
+              value={analytics.analyticsDatePreset}
+              onChange={(value) =>
+                analytics.handleAnalyticsDatePresetChange(value as AnalyticsDatePreset)
+              }
+              data={[
+                { label: t("analytics.toolbar.datePreset.last5"), value: "5" },
+                { label: t("analytics.toolbar.datePreset.last10"), value: "10" },
+                { label: t("analytics.toolbar.datePreset.last20"), value: "20" },
+                { label: t("analytics.toolbar.datePreset.all"), value: "all" },
+              ]}
+            />
+          </div>
         </div>
       </div>
 
@@ -192,38 +316,60 @@ export function GuildWarAnalyticsTab({
       {!isLoading && !isError ? (
         <>
           <div
-            className="gwa-content"
-            style={isFetching ? { opacity: 0.6, pointerEvents: "none", transition: "opacity 0.15s ease" } : { transition: "opacity 0.15s ease" }}
+            className={`gwa-content${isFetching ? " gwa-content--fetching" : ""}${chartExpanded ? " gwa-content--expanded" : ""}`}
           >
-            {/* ── Left sidebar: data selectors ── */}
+            {/*
+              * ── Console ──
+              * Every control lives on one rail in a fixed order: data source →
+              * subject → metric → processing → normalization. Switching mode
+              * only swaps the subject/processing slots, so the sections that do
+              * survive never move — the split left/right sidebars used to make
+              * a single query cost three trips across the screen.
+              */}
             {!chartExpanded ? (
-              <div className="gwa-sidebar gwa-sidebar--left">
-                {/* War selection */}
-                <div className="gwa-sidebar__section">
-                  <div className="gwa-toolbar__label">{t("analytics.toolbar.warSet")}</div>
+              <div className="gwa-console">
+                <div className="gwa-console__head">
+                  <Text size="xs" fw={700}>{t("analytics.console.title")}</Text>
+                </div>
+
+                {/* Source */}
+                <ConsoleField
+                  label={t("analytics.toolbar.warSet")}
+                  summary={t("analytics.chart.scope", {
+                    count: analytics.analyticsWarIds.length,
+                  })}
+                  open={openField === "source"}
+                  onToggle={() => toggleField("source")}
+                >
                   <GuildWarAnalyticsListBox
                     items={analytics.analyticsWarOptions}
                     selected={analytics.analyticsSelectedWarIds}
                     onChange={analytics.setAnalyticsSelectedWarIds}
                     searchable
                     searchPlaceholder={t("analytics.toolbar.selectWars")}
+                    ariaLabel={t("analytics.aria.selectWars")}
                   />
-                </div>
+                </ConsoleField>
 
-                {/* Player/Radar member selector */}
+                {/* Subject — the only slot that changes with the mode */}
                 {analytics.analyticsMode === "player" || analytics.analyticsMode === "radar" ? (
-                  <div className="gwa-sidebar__section">
-                    <div className="gwa-toolbar__label">{t("analytics.selectMembers")}</div>
+                  <ConsoleField
+                    label={t("analytics.console.section.members")}
+                    summary={chartSubject}
+                    open={openField === "subject"}
+                    onToggle={() => toggleField("subject")}
+                  >
                     <GuildWarAnalyticsListBox
                       items={analytics.analyticsSelectableUserIds.map((userId) => ({
                         value: userId,
                         label: analytics.analyticsUserIdToUsername.get(userId) ?? userId,
                       }))}
                       selected={analytics.analyticsSelectedUsers}
-                      onChange={(values) => analytics.applyAnalyticsSelection(values.slice(0, 5))}
-                      maxSelect={5}
+                      onChange={analytics.applyAnalyticsSelection}
+                      maxSelect={ANALYTICS_SELECTION_HARD_CAP}
                       searchable
                       searchPlaceholder={t("analytics.selectMembers")}
+                      ariaLabel={t("analytics.aria.selectMembers")}
                       renderItem={(item, checked) => <UserListBoxItem item={item} checked={checked} />}
                     />
                     {analytics.analyticsSelectedUsers.length >= analytics.selectionSoftCap ? (
@@ -233,13 +379,16 @@ export function GuildWarAnalyticsTab({
                         })}
                       </Text>
                     ) : null}
-                  </div>
+                  </ConsoleField>
                 ) : null}
 
-                {/* Teams selector */}
                 {analytics.analyticsMode === "teams" ? (
-                  <div className="gwa-sidebar__section">
-                    <div className="gwa-toolbar__label">{t("analytics.selectTeams")}</div>
+                  <ConsoleField
+                    label={t("analytics.console.section.teams")}
+                    summary={chartSubject}
+                    open={openField === "subject"}
+                    onToggle={() => toggleField("subject")}
+                  >
                     <GuildWarAnalyticsListBox
                       items={analytics.analyticsTeamOptions.map((team) => ({
                         value: team,
@@ -249,31 +398,33 @@ export function GuildWarAnalyticsTab({
                       onChange={(values) => analytics.setAnalyticsSelectedTeams(values)}
                       searchable
                       searchPlaceholder={t("analytics.selectTeams")}
+                      ariaLabel={t("analytics.aria.selectTeams")}
                     />
-                  </div>
+                  </ConsoleField>
                 ) : null}
 
-                {/* Rankings controls */}
                 {analytics.analyticsMode === "rankings" ? (
-                  <>
-                    <div className="gwa-sidebar__section">
-                      <div className="gwa-toolbar__label">{t("analytics.aggregation.total")}</div>
-                      <Select
-                        value={analytics.analyticsAggregation}
-                        aria-label={t("analytics.aria.selectAggregation")}
-                        onChange={(value) =>
-                          value &&
-                          analytics.setAnalyticsAggregation(value as AnalyticsAggregation)
-                        }
-                        data={[
-                          { value: "total", label: t("analytics.aggregation.total") },
-                          { value: "average", label: t("analytics.aggregation.average") },
-                          { value: "best", label: t("analytics.aggregation.best") },
-                          { value: "median", label: t("analytics.aggregation.median") },
-                        ]}
-                      />
-                    </div>
-                    <div className="gwa-sidebar__section gwa-sidebar__section--row">
+                  <ConsoleField
+                    label={t("analytics.console.section.rankings")}
+                    summary={chartSubject}
+                    open={openField === "subject"}
+                    onToggle={() => toggleField("subject")}
+                  >
+                    <Select
+                      value={analytics.analyticsAggregation}
+                      aria-label={t("analytics.aria.selectAggregation")}
+                      onChange={(value) =>
+                        value &&
+                        analytics.setAnalyticsAggregation(value as AnalyticsAggregation)
+                      }
+                      data={[
+                        { value: "total", label: t("analytics.aggregation.total") },
+                        { value: "average", label: t("analytics.aggregation.average") },
+                        { value: "best", label: t("analytics.aggregation.best") },
+                        { value: "median", label: t("analytics.aggregation.median") },
+                      ]}
+                    />
+                    <Group gap={8} grow wrap="nowrap">
                       <NumberInput
                         hideControls
                         min={1}
@@ -284,7 +435,6 @@ export function GuildWarAnalyticsTab({
                         }
                         aria-label={t("analytics.aria.topN")}
                         label={t("analytics.topN")}
-                        style={{ flex: 1 }}
                       />
                       <NumberInput
                         hideControls
@@ -298,46 +448,33 @@ export function GuildWarAnalyticsTab({
                         }
                         aria-label={t("analytics.aria.minParticipation")}
                         label={t("analytics.minParticipation")}
-                        style={{ flex: 1 }}
                       />
-                    </div>
-                  </>
+                    </Group>
+                  </ConsoleField>
                 ) : null}
-              </div>
-            ) : null}
 
-            {/* ── Center: Chart ── */}
-            <GuildWarAnalyticsChartPanel
-              ReactEChartsCore={ReactEChartsCore}
-              echarts={echarts}
-              themeName={chartThemeName}
-              chartOption={analytics.analyticsChartOption}
-              radarOption={analytics.analyticsRadarOption}
-              mode={analytics.analyticsMode}
-              selectedUsers={analytics.analyticsSelectedUsers}
-              selectedMetrics={analytics.analyticsSelectedMetrics}
-              expanded={chartExpanded}
-              onToggleExpanded={() => setChartExpanded(!chartExpanded)}
-              t={t}
-            />
-
-            {/* ── Right sidebar: metrics + options + data table ── */}
-            {!chartExpanded ? (
-              <div className="gwa-sidebar gwa-sidebar--right">
-                {/* Metric selector (member metrics) / war objective selector */}
+                {/* Metric */}
                 {analytics.analyticsMode === "wars" ? (
-                  <div className="gwa-sidebar__section">
-                    <div className="gwa-toolbar__label">{t("analytics.warStat.title")}</div>
+                  <ConsoleField
+                    label={t("analytics.warStat.title")}
+                    summary={chartMetric}
+                    open={openField === "metric"}
+                    onToggle={() => toggleField("metric")}
+                  >
                     <Select
                       value={analytics.analyticsWarStat}
                       aria-label={t("analytics.warStat.title")}
                       onChange={(value) => value && analytics.setAnalyticsWarStat(value)}
                       data={WAR_STAT_OPTIONS.map((opt) => ({ value: opt.value, label: t(opt.labelKey) }))}
                     />
-                  </div>
+                  </ConsoleField>
                 ) : (
-                  <div className="gwa-sidebar__section">
-                    <div className="gwa-toolbar__label">{t("analytics.metrics.title")}</div>
+                  <ConsoleField
+                    label={t("analytics.console.section.metric")}
+                    summary={chartMetric}
+                    open={openField === "metric"}
+                    onToggle={() => toggleField("metric")}
+                  >
                     <GuildWarAnalyticsListBox
                       items={metricOptions}
                       selected={analytics.analyticsSelectedMetrics}
@@ -347,13 +484,15 @@ export function GuildWarAnalyticsTab({
                         )
                       }
                       maxSelect={5}
+                      ariaLabel={t("analytics.aria.selectMetrics")}
                     />
-                  </div>
+                  </ConsoleField>
                 )}
 
-                {/* Player options */}
+                {/* Processing */}
                 {analytics.analyticsMode === "player" ? (
                   <div className="gwa-sidebar__section">
+                    <div className="gwa-toolbar__label">{t("analytics.console.processing")}</div>
                     <Switch
                       checked={analytics.analyticsOnlyParticipated}
                       onChange={(event) =>
@@ -373,9 +512,9 @@ export function GuildWarAnalyticsTab({
                   </div>
                 ) : null}
 
-                {/* Teams aggregation */}
                 {analytics.analyticsMode === "teams" ? (
                   <div className="gwa-sidebar__section">
+                    <div className="gwa-toolbar__label">{t("analytics.console.processing")}</div>
                     <SegmentedControl
                       value={analytics.analyticsTeamAggregation}
                       onChange={(value) =>
@@ -397,25 +536,35 @@ export function GuildWarAnalyticsTab({
                   </div>
                 ) : null}
 
-                {/* Normalization — not applicable to war-level own/enemy raw comparison */}
+                {/*
+                  * Normalization rewrites every number on screen, so it gets its
+                  * own accented block at a fixed spot instead of hiding as one
+                  * more collapsed row — and the chart header repeats the state.
+                  * Not applicable to the war-level own/enemy raw comparison.
+                  */}
                 {analytics.analyticsMode !== "wars" ? (
-                  <div className="gwa-sidebar__section">
-                    <UnstyledButton
-                      onClick={() => setNormExpanded(!normExpanded)}
-                      className="gwa-norm-toggle"
-                    >
-                      <AdjustmentsIcon size={14} />
-                      <Text size="xs" fw={500}>{t("analytics.normalization")}</Text>
+                  <div
+                    className={`gwa-sidebar__section gwa-norm${
+                      analytics.analyticsNormEnabled ? " gwa-norm--active" : ""
+                    }`}
+                  >
+                    <div className="gwa-norm-toggle">
+                      <UnstyledButton
+                        onClick={() => setNormExpanded(!normExpanded)}
+                        className="gwa-norm-toggle__expand"
+                        aria-expanded={normExpanded && analytics.analyticsNormEnabled}
+                      >
+                        <AdjustmentsIcon size={14} />
+                        <Text size="xs" fw={500}>{t("analytics.normalization")}</Text>
+                      </UnstyledButton>
                       <Switch
                         checked={analytics.analyticsNormEnabled}
-                        onChange={(e) => {
-                          e.stopPropagation();
-                          analytics.setAnalyticsNormEnabled(e.currentTarget.checked);
-                        }}
+                        onChange={(event) => analytics.setAnalyticsNormEnabled(event.currentTarget.checked)}
                         size="xs"
+                        aria-label={t("analytics.normalization.enable")}
                         styles={{ track: { cursor: "pointer" } }}
                       />
-                    </UnstyledButton>
+                    </div>
                     <Collapse in={normExpanded && analytics.analyticsNormEnabled}>
                       <div className="gwa-norm-panel">
                         <Text size="xs" c="dimmed" mb={8}>
@@ -482,105 +631,125 @@ export function GuildWarAnalyticsTab({
                     </Collapse>
                   </div>
                 ) : null}
-
               </div>
             ) : null}
-          </div>
 
-          {/* Data table — full width below chart */}
-          <div className="gwa-table-section">
-            {/*
-              * The header bar used to be one big UnstyledButton wrapping the heatmap
-              * Switch and the CSV button — a <button> inside a <button>, which is
-              * invalid HTML. Only the expand affordance is a button now; the controls
-              * on the right are siblings, so they no longer need stopPropagation.
-              */}
-            <div className="gwa-table-toggle">
-              <UnstyledButton
-                onClick={() => setTableExpanded(!tableExpanded)}
-                className="gwa-table-toggle__expand"
-                aria-expanded={tableExpanded}
-              >
+            {/* ── Workspace: chart above, data table permanently below it ── */}
+            <div className="gwa-workspace">
+              <GuildWarAnalyticsChartPanel
+                ReactEChartsCore={ReactEChartsCore}
+                echarts={echarts}
+                themeName={chartThemeName}
+                chartOption={analytics.analyticsChartOption}
+                radarOption={analytics.analyticsRadarOption}
+                mode={analytics.analyticsMode}
+                selectedUsers={analytics.analyticsSelectedUsers}
+                selectedMetrics={analytics.analyticsSelectedMetrics}
+                expanded={chartExpanded}
+                onToggleExpanded={() => setChartExpanded(!chartExpanded)}
+                heading={chartHeading}
+                t={t}
+                emptyState={emptyState}
+              />
+
+            {/* Data table — kept open: it is the artefact people copy out */}
+            <div className="gwa-table-section">
+              {/*
+                * The header bar used to be one big UnstyledButton wrapping the heatmap
+                * Switch and the CSV button — a <button> inside a <button>, which is
+                * invalid HTML. Only the expand affordance is a button now; the controls
+                * on the right are siblings, so they no longer need stopPropagation.
+                */}
+              <div className="gwa-table-toggle">
+                <UnstyledButton
+                  onClick={() => setTableExpanded(!tableExpanded)}
+                  className="gwa-table-toggle__expand"
+                  aria-expanded={tableExpanded}
+                >
+                  <Group gap={6}>
+                    {tableExpanded ? <ChevronUpIcon size={14} /> : <ChevronDownIcon size={14} />}
+                    <Text size="xs" fw={500}>
+                      {t("analytics.table.title", { count: analytics.analyticsTableRows.length })}
+                    </Text>
+                  </Group>
+                </UnstyledButton>
                 <Group gap={6}>
-                  {tableExpanded ? <ChevronUpIcon size={14} /> : <ChevronDownIcon size={14} />}
-                  <Text size="xs" fw={500}>
-                    {t("analytics.table.title", { count: analytics.analyticsTableRows.length })}
-                  </Text>
+                  <Switch
+                    checked={analytics.analyticsHeatmapEnabled}
+                    onChange={(e) => analytics.setAnalyticsHeatmapEnabled(e.currentTarget.checked)}
+                    size="xs"
+                    label={t("analytics.heatmap")}
+                    styles={{ label: { fontSize: 11, cursor: "pointer" } }}
+                  />
+                  <HoverCard width={280} shadow="lg" withArrow arrowSize={10} openDelay={350} closeDelay={80} position="top">
+                    <HoverCard.Target>
+                      <UnstyledButton
+                        onClick={() => analytics.copyAnalyticsCsv()}
+                        className="gwa-table-action"
+                        aria-label={t("analytics.aria.copyCsv")}
+                      >
+                        <CopyIcon size={13} />
+                        <Text size="xs">CSV</Text>
+                      </UnstyledButton>
+                    </HoverCard.Target>
+                    <HoverCard.Dropdown p="sm" style={{ borderRadius: 10 }}>
+                      <Group gap={10} wrap="nowrap" align="flex-start">
+                        <ThemeIcon variant="light" color="gray" size="lg" radius="md" style={{ flexShrink: 0, marginTop: 2 }}>
+                          <CopyIcon size={16} />
+                        </ThemeIcon>
+                        <div style={{ minWidth: 0 }}>
+                          <Text size="sm" fw={700} lh={1.3} mb={4}>{t("hovercard.copyCsv.title")}</Text>
+                          <Text size="xs" c="dimmed" lh={1.5}>{t("hovercard.copyCsv.desc")}</Text>
+                        </div>
+                      </Group>
+                    </HoverCard.Dropdown>
+                  </HoverCard>
                 </Group>
-              </UnstyledButton>
-              <Group gap={6}>
-                <Switch
-                  checked={analytics.analyticsHeatmapEnabled}
-                  onChange={(e) => analytics.setAnalyticsHeatmapEnabled(e.currentTarget.checked)}
-                  size="xs"
-                  label={t("analytics.heatmap")}
-                  styles={{ label: { fontSize: 11, cursor: "pointer" } }}
-                />
-                <HoverCard width={280} shadow="lg" withArrow arrowSize={10} openDelay={350} closeDelay={80} position="top">
-                  <HoverCard.Target>
-                    <UnstyledButton
-                      onClick={() => analytics.copyAnalyticsCsv()}
-                      className="gwa-table-action"
-                      aria-label={t("analytics.aria.copyCsv")}
-                    >
-                      <CopyIcon size={13} />
-                      <Text size="xs">CSV</Text>
-                    </UnstyledButton>
-                  </HoverCard.Target>
-                  <HoverCard.Dropdown p="sm" style={{ borderRadius: 10 }}>
-                    <Group gap={10} wrap="nowrap" align="flex-start">
-                      <ThemeIcon variant="light" color="gray" size="lg" radius="md" style={{ flexShrink: 0, marginTop: 2 }}>
-                        <CopyIcon size={16} />
-                      </ThemeIcon>
-                      <div style={{ minWidth: 0 }}>
-                        <Text size="sm" fw={700} lh={1.3} mb={4}>{t("hovercard.copyCsv.title")}</Text>
-                        <Text size="xs" c="dimmed" lh={1.5}>{t("hovercard.copyCsv.desc")}</Text>
-                      </div>
-                    </Group>
-                  </HoverCard.Dropdown>
-                </HoverCard>
-              </Group>
-            </div>
-            <Collapse in={tableExpanded}>
-              <div className="gwa-table-wrap">
-                <Table striped={!analytics.analyticsHeatmapEnabled} highlightOnHover withTableBorder>
-                  <Table.Thead>
-                    <Table.Tr>
-                      {analytics.analyticsTableColumns.map((col) => (
-                        <Table.Th key={col.key}>{col.title}</Table.Th>
-                      ))}
-                    </Table.Tr>
-                  </Table.Thead>
-                  <Table.Tbody>
-                    {(analytics.analyticsTableRows as Array<Record<string, unknown>>)
-                      .slice(0, 20)
-                      .map((row, rowIdx) => (
-                        <Table.Tr key={String(row.key ?? rowIdx)}>
-                          {analytics.analyticsTableColumns.map((col) => {
-                            const colKey = col.dataIndex ?? col.key;
-                            const val = row[colKey];
-                            const heatmapRange = analytics.analyticsHeatmapEnabled
-                              ? analytics.analyticsTableHeatmapRanges.get(colKey)
-                              : undefined;
-                            let cellStyle: React.CSSProperties | undefined;
-                            if (heatmapRange && typeof val === "number") {
-                              const ratio = (val - heatmapRange.min) / (heatmapRange.max - heatmapRange.min);
-                              cellStyle = {
-                                background: `color-mix(in srgb, var(--domain-war) ${Math.round(ratio * 35)}%, transparent)`,
-                              };
-                            }
-                            return (
-                              <Table.Td key={col.key} style={cellStyle}>
-                                {val === null || val === undefined ? "—" : String(val)}
-                              </Table.Td>
-                            );
-                          })}
-                        </Table.Tr>
-                      ))}
-                  </Table.Tbody>
-                </Table>
               </div>
-            </Collapse>
+              <Collapse in={tableExpanded}>
+                <div className="gwa-table-wrap">
+                  <Table striped={!analytics.analyticsHeatmapEnabled} highlightOnHover withTableBorder>
+                    <Table.Thead>
+                      <Table.Tr>
+                        {analytics.analyticsTableColumns.map((col) => (
+                          <Table.Th key={col.key}>{col.title}</Table.Th>
+                        ))}
+                      </Table.Tr>
+                    </Table.Thead>
+                    <Table.Tbody>
+                      {(analytics.analyticsTableRows as Array<Record<string, unknown>>)
+                        .map((row, rowIdx) => (
+                          <Table.Tr key={String(row.key ?? rowIdx)}>
+                            {analytics.analyticsTableColumns.map((col) => {
+                              const colKey = col.dataIndex ?? col.key;
+                              const val = row[colKey];
+                              const heatmapRange = analytics.analyticsHeatmapEnabled
+                                ? analytics.analyticsTableHeatmapRanges.get(colKey)
+                                : undefined;
+                              let cellStyle: React.CSSProperties | undefined;
+                              if (heatmapRange && typeof val === "number") {
+                                const range = heatmapRange.max - heatmapRange.min;
+                                const ratio = range > 0
+                                  ? (val - heatmapRange.min) / range
+                                  : 0.5;
+                                cellStyle = {
+                                  background: `color-mix(in srgb, var(--domain-war) ${Math.round(ratio * 35)}%, transparent)`,
+                                };
+                              }
+                              return (
+                                <Table.Td key={col.key} style={cellStyle}>
+                                  {val === null || val === undefined ? "-" : String(val)}
+                                </Table.Td>
+                              );
+                            })}
+                          </Table.Tr>
+                        ))}
+                    </Table.Tbody>
+                  </Table>
+                </div>
+              </Collapse>
+            </div>
+            </div>
           </div>
         </>
       ) : null}

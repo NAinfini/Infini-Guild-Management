@@ -47,7 +47,7 @@ describe("clearAllData", () => {
       "war_history",
       "recurring_templates",
       "events",
-      "game_data",
+      "class_catalog",
       "audit_log",
       "error_log",
       "gallery_items",

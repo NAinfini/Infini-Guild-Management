@@ -33,6 +33,12 @@ const {
   SESSION_MODE_COOKIE_NAME,
 } = await import("../auth");
 
+/* resolveSession 会用 MAX_ABSOLUTE_SESSION_MS（90 天）判定会话是否超过绝对寿命。
+   原先这里写死 "2026-05-01"，到 2026-07-30 就跨过 90 天，三个用例集体走进
+   删除分支，报 db.delete is not a function——失败原因和用例本身毫无关系。
+   固定成「相对现在一天前」，日期再往后走也不会触发绝对过期。 */
+const RECENT_SESSION_CREATED_AT = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+
 function createContext() {
   const values = new Map<string, unknown>();
   return {
@@ -60,7 +66,7 @@ describe("resolveSession", () => {
       {
         sessionId: "sess-1",
         expiresAt: "2099-01-01T00:00:00.000Z",
-        sessionCreatedAt: "2026-05-01T00:00:00.000Z",
+        sessionCreatedAt: RECENT_SESSION_CREATED_AT,
         userId: "admin-1",
         roleId: "admin",
         isActive: true,
@@ -89,7 +95,7 @@ describe("resolveSession", () => {
       {
         sessionId: "sess-1",
         expiresAt: "2099-01-01T00:00:00.000Z",
-        sessionCreatedAt: "2026-05-01T00:00:00.000Z",
+        sessionCreatedAt: RECENT_SESSION_CREATED_AT,
         userId: "admin-1",
         roleId: "admin",
         isActive: true,
@@ -120,7 +126,7 @@ describe("resolveSession", () => {
       {
         sessionId: "sess-1",
         expiresAt: "2099-01-01T00:00:00.000Z",
-        sessionCreatedAt: "2026-05-01T00:00:00.000Z",
+        sessionCreatedAt: RECENT_SESSION_CREATED_AT,
         userId: "mod-1",
         roleId: "moderator",
         isActive: true,

@@ -1,0 +1,87 @@
+/* ── 系统状态页签的外壳 ────────────────────────────
+   健康面板和健康日志两张卡片，加上这一页三处折叠区共用的开合把手。
+   卡片走和后台其余表面一样的 --surface-base / --border-subtle / --radius-surface，
+   不再用 Mantine <Paper> + style={{ padding }} 各写一份内联版式。 */
+
+.admin-status-card {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  overflow: hidden;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-surface);
+  background: var(--surface-base);
+}
+
+.admin-status-card__head {
+  display: flex;
+  gap: var(--space-sm);
+  align-items: center;
+  justify-content: space-between;
+  min-width: 0;
+  padding: var(--space-sm) var(--space-md);
+  border-bottom: 1px solid var(--border-subtle);
+  background: var(--surface-sunken);
+}
+
+.admin-status-card__body {
+  min-width: 0;
+  padding: var(--card-padding);
+}
+
+/* 44px 触控靶面，此前是 TSX 里的 h={44}。 */
+.admin-status-card__action {
+  min-height: 44px;
+}
+
+/* ── 折叠把手 ──────────────────────────────────
+   chevron + 标题（+ 计数徽章）。状态只挂在 aria-expanded 上，
+   和这一页早就有的 .api-cat__toggle 是同一套把手，不另起一种。 */
+.admin-status-toggle {
+  display: flex;
+  gap: var(--space-xs);
+  align-items: center;
+  min-width: 0;
+  /* 默认只占自己那点宽：两台控制台的表头里，把手右边紧挨着统计数字和筛选钮，
+     让它撑满会把那些东西一路推到操作按钮跟前。 */
+  flex: 0 0 auto;
+  min-height: 44px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+/* 健康日志的表头里只有这一个把手，那就整行都可点——标题旁边的空白也算靶面。 */
+.admin-status-card__head .admin-status-toggle {
+  flex: 1;
+}
+
+.admin-status-toggle:focus-visible {
+  outline: 2px solid var(--brand-fill);
+  outline-offset: 2px;
+}
+
+.admin-status-toggle__chevron {
+  display: grid;
+  width: 16px;
+  height: 16px;
+  place-items: center;
+  flex: 0 0 auto;
+  color: var(--text-secondary);
+  transition: transform var(--transition-normal), color var(--transition-normal);
+}
+
+.admin-status-toggle__chevron--open {
+  transform: rotate(90deg);
+  color: var(--brand-text);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .admin-status-toggle__chevron {
+    transition: none;
+  }
+}

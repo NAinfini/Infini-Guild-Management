@@ -184,6 +184,11 @@
 .health-log-latency-bar {
   height: 4px;
   border-radius: 2px;
+  /* 长度由 AdminStatusTab.tsx 按 latencyScalePercent() 算；这两条是版式约束，
+     不是数据：4px 保证 0ms 也看得出这里有一根条，40px 是这一列容得下的上限。
+     它们原本写在那个 style={{}} 里，和百分比宽度混在一起。 */
+  min-width: 4px;
+  max-width: 40px;
 }
 
 /* AdminStatusTab.tsx's latency column, moved out of style={{}} (task-8 批 B).

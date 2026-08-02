@@ -2,6 +2,16 @@ import { describe, expect, it } from "vitest";
 import { adminUpdateProfileSchema, memberProfileSchema, updateProfileSchema } from "./user";
 
 describe("updateProfileSchema", () => {
+  it("accepts dynamic and legacy class IDs while rejecting duplicates", () => {
+    expect(updateProfileSchema.safeParse({
+      classes: ["new-catalog-id", "历史职业"],
+    }).success).toBe(true);
+
+    expect(updateProfileSchema.safeParse({
+      classes: ["same", "same"],
+    }).success).toBe(false);
+  });
+
   it("does not accept media keys owned by the upload endpoints", () => {
     const parsed = updateProfileSchema.parse({
       bio: "hi",

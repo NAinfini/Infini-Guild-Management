@@ -64,6 +64,28 @@ CREATE TABLE IF NOT EXISTS member_profile_classes (
   PRIMARY KEY (user_id, class)
 );
 
+CREATE TABLE IF NOT EXISTS class_catalog (
+  id TEXT PRIMARY KEY NOT NULL,
+  label TEXT NOT NULL,
+  color TEXT NOT NULL CONSTRAINT class_catalog_color_hex CHECK (
+    length(color) = 7
+    AND substr(color, 1, 1) = '#'
+    AND substr(color, 2) NOT GLOB '*[^0-9A-Fa-f]*'
+  ),
+  icon_type TEXT NOT NULL DEFAULT 'vector'
+    CONSTRAINT class_catalog_icon_type_valid CHECK (icon_type IN ('vector', 'image')),
+  vector_icon TEXT NOT NULL,
+  icon_key TEXT,
+  sort_order INTEGER NOT NULL DEFAULT 0
+    CONSTRAINT class_catalog_sort_order_nonnegative CHECK (sort_order >= 0),
+  created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+  updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+  CONSTRAINT class_catalog_icon_key_consistent CHECK (
+    (icon_type = 'vector' AND icon_key IS NULL) OR
+    (icon_type = 'image' AND icon_key IS NOT NULL)
+  )
+);
+
 CREATE TABLE IF NOT EXISTS events (
   id TEXT PRIMARY KEY NOT NULL,
   type TEXT NOT NULL CHECK (type IN ('weekly_mission', 'guild_war', 'social', 'poll', 'raffle', 'other')),
@@ -324,6 +346,10 @@ CREATE INDEX IF NOT EXISTS idx_users_role_active
 -- member profile classes
 CREATE INDEX IF NOT EXISTS idx_member_profile_classes_class_user
   ON member_profile_classes(class, user_id);
+CREATE INDEX IF NOT EXISTS idx_class_catalog_sort
+  ON class_catalog(sort_order, id);
+CREATE UNIQUE INDEX IF NOT EXISTS ux_class_catalog_label_nocase
+  ON class_catalog(label COLLATE NOCASE);
 
 -- roles
 CREATE INDEX IF NOT EXISTS idx_roles_level
@@ -518,7 +544,7 @@ INSERT OR IGNORE INTO site_config (
     'default',
     'Infini 公会',
     '/guild-logo.webp',
-    '{"announcements":true,"events":true,"guildWar":true,"gallery":true,"wiki":true,"tools":true,"equipmentCalc":true,"storage":true}',
+    '{"announcements":true,"events":true,"guildWar":true,"gallery":true,"wiki":true,"tools":true,"storage":true}',
     '{"max_file_size_bytes":{"site_logo":2097152,"profile_image":5242880,"profile_audio":20971520,"announcement_image":5242880,"wiki_image":5242880,"event_image":5242880,"gallery_image":10485760,"storage_image":5242880},"quotas":{"profile":10,"announcement":10,"gallery":20,"wiki":10}}',
     '{"images_per_item":5}',
     '{"max_span_days":366,"max_entries_per_user":20}',
@@ -554,6 +580,7 @@ INSERT OR IGNORE INTO role_permissions (role_id, permission, granted) VALUES
   ('admin', 'admin.analytics.view', 1),
   ('admin', 'admin.analytics.manage', 1),
   ('admin', 'admin.siteConfig.manage', 1),
+  ('admin', 'admin.classes.manage', 1),
   ('admin', 'guildwar.teams.edit', 1),
 
   ('admin', 'guildwar.history.edit', 1),
@@ -575,7 +602,6 @@ INSERT OR IGNORE INTO role_permissions (role_id, permission, granted) VALUES
   ('admin', 'wiki.articles.delete', 1),
   ('admin', 'wiki.categories.manage', 1),
   ('admin', 'admin.badges.manage', 1),
-  ('admin', 'admin.gameData.manage', 1),
   ('admin', 'admin.storage.structure', 1),
   ('admin', 'admin.storage.items', 1),
   ('admin', 'admin.storage.stock', 1),
@@ -597,6 +623,7 @@ INSERT OR IGNORE INTO role_permissions (role_id, permission, granted) VALUES
   ('moderator', 'admin.analytics.view', 1),
   ('moderator', 'admin.analytics.manage', 0),
   ('moderator', 'admin.siteConfig.manage', 0),
+  ('moderator', 'admin.classes.manage', 0),
   ('moderator', 'guildwar.teams.edit', 1),
 
   ('moderator', 'guildwar.history.edit', 1),
@@ -618,7 +645,6 @@ INSERT OR IGNORE INTO role_permissions (role_id, permission, granted) VALUES
   ('moderator', 'wiki.articles.delete', 1),
   ('moderator', 'wiki.categories.manage', 1),
   ('moderator', 'admin.badges.manage', 0),
-  ('moderator', 'admin.gameData.manage', 0),
   ('moderator', 'admin.storage.structure', 0),
   ('moderator', 'admin.storage.items', 0),
   ('moderator', 'admin.storage.stock', 0),
@@ -640,6 +666,7 @@ INSERT OR IGNORE INTO role_permissions (role_id, permission, granted) VALUES
   ('member', 'admin.analytics.view', 0),
   ('member', 'admin.analytics.manage', 0),
   ('member', 'admin.siteConfig.manage', 0),
+  ('member', 'admin.classes.manage', 0),
   ('member', 'guildwar.teams.edit', 0),
 
   ('member', 'guildwar.history.edit', 0),
@@ -661,24 +688,24 @@ INSERT OR IGNORE INTO role_permissions (role_id, permission, granted) VALUES
   ('member', 'wiki.articles.delete', 0),
   ('member', 'wiki.categories.manage', 0),
   ('member', 'admin.badges.manage', 0),
-  ('member', 'admin.gameData.manage', 0),
   ('member', 'admin.storage.structure', 0),
   ('member', 'admin.storage.items', 0),
   ('member', 'admin.storage.stock', 0),
   ('member', 'admin.storage.manage', 0);
 
--- ===== GAME DATA (Equipment Calculator) =====
-
-CREATE TABLE IF NOT EXISTS game_data (
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
-  data TEXT NOT NULL,
-  version TEXT NOT NULL,
-  uploaded_by TEXT NOT NULL REFERENCES users(id),
-  created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
-);
-
-CREATE INDEX IF NOT EXISTS idx_game_data_created_at ON game_data(created_at);
-
+INSERT OR IGNORE INTO class_catalog
+  (id, label, color, icon_type, vector_icon, icon_key, sort_order)
+VALUES
+  ('鸣金虹', '鸣金虹', '#6EA8FE', 'vector', 'sword', NULL, 0),
+  ('鸣金影', '鸣金影', '#79A7F2', 'vector', 'target-arrow', NULL, 10),
+  ('牵丝玉', '牵丝玉', '#58C7A6', 'vector', 'sparkles', NULL, 20),
+  ('牵丝霖', '牵丝霖', '#54C39B', 'vector', 'heartbeat', NULL, 30),
+  ('牵丝翊', '牵丝翊', '#62BEA7', 'vector', 'pendant', NULL, 40),
+  ('破竹风', '破竹风', '#A78BFA', 'vector', 'bolt', NULL, 50),
+  ('破竹尘', '破竹尘', '#9B8AE8', 'vector', 'shield', NULL, 60),
+  ('破竹鸢', '破竹鸢', '#B18CF1', 'vector', 'target', NULL, 70),
+  ('裂石威', '裂石威', '#E27676', 'vector', 'shield', NULL, 80),
+  ('裂石钧', '裂石钧', '#DB7770', 'vector', 'hammer', NULL, 90);
 
 -- ===== MEDIA REFERENCES (orphan-cleanup reference counting) =====
 -- One row per (R2 key, referencing entity) pair. Maintained on entity write

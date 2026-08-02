@@ -1,4 +1,4 @@
-import { ActionIcon, Badge, Group, HoverCard, Text, ThemeIcon } from "@mantine/core";
+import { ActionIcon, Badge, Collapse, Group, HoverCard, Text, ThemeIcon } from "@mantine/core";
 import { useClipboard } from "@mantine/hooks";
 import { ChevronRightIcon, ClipboardIcon, TrashIcon } from "@portal/components/icons";
 import { useCallback, useEffect, useId, useRef, useState } from "react";
@@ -109,9 +109,14 @@ function DebugRow({ entry }: { entry: DebugLogEntry }) {
 export function AdminApiDebugConsole({
   logs,
   onClear,
+  open,
+  onToggle,
 }: {
   logs: DebugLogEntry[];
   onClear: () => void;
+  /** 折叠状态由 AdminStatusTab 持有：开跑时它要把这台控制台一并摊开。 */
+  open: boolean;
+  onToggle: () => void;
 }) {
   const { t } = useTranslation("admin");
   const clipboard = useClipboard();
@@ -143,10 +148,18 @@ export function AdminApiDebugConsole({
     <div className="api-debug">
       <div className="api-debug__header">
         <div className="api-debug__header-left">
-          <Group gap={8} wrap="nowrap">
+          <button
+            type="button"
+            className="admin-status-toggle"
+            aria-expanded={open}
+            onClick={onToggle}
+          >
+            <span className={`admin-status-toggle__chevron${open ? " admin-status-toggle__chevron--open" : ""}`}>
+              <ChevronRightIcon size={14} />
+            </span>
             <Text fw={700} size="sm">{t("status.api.debugTitle")}</Text>
             <Badge size="xs" variant="default">{logs.length}</Badge>
-          </Group>
+          </button>
 
           {logs.length > 0 ? (
             <div className="api-debug__filters">
@@ -228,19 +241,21 @@ export function AdminApiDebugConsole({
         </div>
       </div>
 
-      <div className="api-debug__body" ref={bodyRef}>
-        {filteredLogs.length === 0 ? (
-          <div className="api-debug__empty">
-            {logs.length === 0
-              ? t("status.api.debugEmpty")
-              : t(filter === "errors" ? "status.api.noErrors" : "status.api.noSlow")}
-          </div>
-        ) : (
-          filteredLogs.map((entry) => (
-            <DebugRow key={entry.id} entry={entry} />
-          ))
-        )}
-      </div>
+      <Collapse in={open}>
+        <div className="api-debug__body" ref={bodyRef}>
+          {filteredLogs.length === 0 ? (
+            <div className="api-debug__empty">
+              {logs.length === 0
+                ? t("status.api.debugEmpty")
+                : t(filter === "errors" ? "status.api.noErrors" : "status.api.noSlow")}
+            </div>
+          ) : (
+            filteredLogs.map((entry) => (
+              <DebugRow key={entry.id} entry={entry} />
+            ))
+          )}
+        </div>
+      </Collapse>
     </div>
   );
 }

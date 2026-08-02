@@ -1,7 +1,6 @@
 import type { WarHistory } from "@guild/shared";
-import { NumberTicker } from "@portal/components/effects";
 import { SectionHeader } from "../shared/SectionHeader";
-import { ActionIcon, Avatar, Paper, Stack, Text } from "@mantine/core";
+import { ActionIcon, Avatar, Button, Paper, Stack, Text } from "@mantine/core";
 import { memo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import {
@@ -31,6 +30,7 @@ type LastWarCardProps = {
   warMvps: DashboardLastWarMvp[];
   isExternalView: boolean;
   onOpenHistory: (warName: string) => void;
+  onViewHistory: () => void;
 };
 
 const RESULT_COLOR: Record<string, string> = {
@@ -71,13 +71,19 @@ function MvpChip({ entry, icon }: { entry: DashboardLastWarMvpEntry; icon: React
         </div>
       </div>
       <Text size="sm" fw={700} className="war-mvp-chip-value">
-        <NumberTicker value={entry.value} />
+        {entry.value}
       </Text>
     </div>
   );
 }
 
-export const LastWarCard = memo(function LastWarCard({ recentWars, warMvps, isExternalView, onOpenHistory }: LastWarCardProps) {
+export const LastWarCard = memo(function LastWarCard({
+  recentWars,
+  warMvps,
+  isExternalView,
+  onOpenHistory,
+  onViewHistory,
+}: LastWarCardProps) {
   const { t } = useTranslation("dashboard");
   const [index, setIndex] = useState(0);
 
@@ -199,7 +205,14 @@ export const LastWarCard = memo(function LastWarCard({ recentWars, warMvps, isEx
           ) : null}
         </div>
         ) : (
-          <EmptyState title={t("empty")} />
+          <EmptyState
+            title={t("empty")}
+            actions={(
+              <Button variant="default" onClick={onViewHistory}>
+                {t("card.lastWar.viewHistory")}
+              </Button>
+            )}
+          />
         )}
       </div>
     </Paper>

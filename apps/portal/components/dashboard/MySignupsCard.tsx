@@ -1,5 +1,5 @@
 import type { Event } from "@guild/shared";
-import { HoverCard, ThemeIcon, Text, Badge, Group, Paper } from "@mantine/core";
+import { Badge, Button, Group, HoverCard, Paper, Text, ThemeIcon } from "@mantine/core";
 import { CalendarEventIcon } from "@portal/components/icons";
 import { memo, useMemo } from "react";
 import { useTranslation } from "react-i18next";
@@ -11,6 +11,7 @@ type MySignupsCardProps = {
   mySignupEvents: DashboardMySignupEvent[];
   now: Date;
   onOpenEvent: (event: Pick<Event, "id" | "title">) => void;
+  onBrowseEvents: () => void;
 };
 
 function isSameDay(a: Date, b: Date): boolean {
@@ -22,7 +23,12 @@ function formatTime(dateStr: string): string {
   return d.toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit", hour12: false });
 }
 
-export const MySignupsCard = memo(function MySignupsCard({ mySignupEvents, now, onOpenEvent }: MySignupsCardProps) {
+export const MySignupsCard = memo(function MySignupsCard({
+  mySignupEvents,
+  now,
+  onOpenEvent,
+  onBrowseEvents,
+}: MySignupsCardProps) {
   const { t, i18n } = useTranslation("dashboard");
 
   const days = useMemo(() => {
@@ -54,7 +60,14 @@ export const MySignupsCard = memo(function MySignupsCard({ mySignupEvents, now, 
       {/* With no signups the strip was eight identical boxes of "—" taking a full
           card of vertical space and saying nothing. */}
       {mySignupEvents.length === 0 ? (
-        <EmptyState title={t("card.mySignups.empty")} />
+        <EmptyState
+          title={t("card.mySignups.empty")}
+          actions={(
+            <Button variant="default" onClick={onBrowseEvents}>
+              {t("card.mySignups.browseEvents")}
+            </Button>
+          )}
+        />
       ) : (
       <div className="signup-boxes">
         {days.map((day) => {

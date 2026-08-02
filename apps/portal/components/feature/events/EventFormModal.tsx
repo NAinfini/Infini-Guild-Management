@@ -5,6 +5,7 @@ import {
   Modal,
   NumberInput,
   Select,
+  SimpleGrid,
   Stack,
   Switch,
   Text,
@@ -16,6 +17,7 @@ import { XIcon, PlusIcon, SaveIcon } from "@portal/components/icons";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { ImageGridEditor } from "@portal/components/shared/ImageGridEditor";
+import { NativeDateTimeInput } from "@portal/components/shared/NativeDateTimeInput";
 import type { ImageGridEditorItem } from "@portal/types/media";
 
 const WEEKDAY_KEYS = ["weekday.sun", "weekday.mon", "weekday.tue", "weekday.wed", "weekday.thu", "weekday.fri", "weekday.sat"] as const;
@@ -145,21 +147,21 @@ export function EventFormModal({
         />
 
         {/* ── Date & Time ── */}
-        <Group grow wrap="wrap">
-          <TextInput
+        <SimpleGrid cols={{ base: 1, sm: 2 }} spacing="sm">
+          <NativeDateTimeInput
             label={t("field.start")}
             type="datetime-local"
             value={startAt}
             onChange={(event) => onStartAtChange(event.currentTarget.value)}
           />
-          <TextInput
+          <NativeDateTimeInput
             label={t("field.end")}
             type="datetime-local"
             value={endAt}
             onChange={(event) => onEndAtChange(event.currentTarget.value)}
             error={dateError}
           />
-        </Group>
+        </SimpleGrid>
 
         {isPoll ? (
           <Stack gap={10}>

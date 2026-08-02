@@ -18,6 +18,7 @@ const serviceMocks = vi.hoisted(() => ({
   fetchEventDetail: vi.fn(),
   fetchEventsList: vi.fn(),
   fetchGuildWarActive: vi.fn(),
+  fetchGuildWarConcludedEventIds: vi.fn(),
   fetchGuildWarHistory: vi.fn(),
   fetchGuildWarHistoryDetail: vi.fn(),
   fetchRoles: vi.fn(),
@@ -34,6 +35,7 @@ vi.mock("../../services/EventService", () => ({
 
 vi.mock("../../services/GuildWarService", () => ({
   fetchGuildWarActive: serviceMocks.fetchGuildWarActive,
+  fetchGuildWarConcludedEventIds: serviceMocks.fetchGuildWarConcludedEventIds,
   fetchGuildWarHistory: serviceMocks.fetchGuildWarHistory,
   fetchGuildWarHistoryDetail: serviceMocks.fetchGuildWarHistoryDetail,
 }));
@@ -116,7 +118,10 @@ describe("portal data hooks", () => {
   });
 
   it("loads guild war queries through the service layer", async () => {
-    serviceMocks.fetchEventsList.mockResolvedValueOnce({ data: [] });
+    serviceMocks.fetchEventsList.mockResolvedValueOnce({
+      data: [{ id: "event-1", archived_at: null }],
+    });
+    serviceMocks.fetchGuildWarConcludedEventIds.mockResolvedValueOnce({ data: [] });
     serviceMocks.fetchEventDetail.mockResolvedValueOnce({ id: "event-1", title: "Guild War", participants: [], attachments: [] });
     serviceMocks.fetchGuildWarActive.mockResolvedValueOnce({ teams: [], pool: [], etag: "etag-1" });
     serviceMocks.fetchGuildWarHistory.mockResolvedValueOnce({ data: [] });
@@ -148,7 +153,9 @@ describe("portal data hooks", () => {
       page: 1,
       limit: 100,
       type: "guild_war",
+      archived: false,
     });
+    expect(serviceMocks.fetchGuildWarConcludedEventIds).toHaveBeenCalled();
     expect(serviceMocks.fetchEventDetail).toHaveBeenCalledWith("event-1");
     expect(serviceMocks.fetchGuildWarActive).toHaveBeenCalledWith("event-1");
     expect(serviceMocks.fetchGuildWarHistory).toHaveBeenCalledWith({
@@ -184,7 +191,6 @@ describe("portal data hooks", () => {
           "admin.audit.export": true,
           "admin.audit.view": true,
           "admin.badges.manage": true,
-          "admin.gameData.manage": true,
           "admin.invite.view": true,
           "admin.roles.manage": true,
           "admin.roles.view": true,
@@ -317,8 +323,8 @@ describe("portal data hooks", () => {
       canManageRoles: true,
       canViewStatus: true,
       canManageBadges: true,
-      canManageGameData: true,
       canManageSiteConfig: true,
+      canManageClasses: false,
     });
   });
 
@@ -371,8 +377,8 @@ describe("portal data hooks", () => {
       canManageRoles: false,
       canViewStatus: true,
       canManageBadges: false,
-      canManageGameData: false,
       canManageSiteConfig: false,
+      canManageClasses: false,
     });
   });
 
@@ -424,12 +430,12 @@ describe("portal data hooks", () => {
       canManageRoles: false,
       canViewStatus: false,
       canManageBadges: false,
-      canManageGameData: false,
       canManageSiteConfig: false,
+      canManageClasses: false,
     });
   });
 
-  it("starts admin section queries from effective permissions before role configuration finishes loading", async () => {
+  it("starts permitted admin section queries without loading inaccessible role configuration", async () => {
     serviceMocks.fetchRoles.mockImplementationOnce(() => new Promise(() => undefined));
     serviceMocks.fetchAdminSiteConfig.mockResolvedValueOnce({ site: {} });
 
@@ -457,7 +463,7 @@ describe("portal data hooks", () => {
             canManageRoles: false,
             canViewStatus: false,
             canManageBadges: false,
-            canManageGameData: false,
+            canManageClasses: false,
             canManageSiteConfig: true,
           },
         }),
@@ -468,7 +474,8 @@ describe("portal data hooks", () => {
       expect(result.current.siteConfigQuery.isSuccess).toBe(true);
     });
 
-    expect(result.current.rolesQuery.isLoading).toBe(true);
+    expect(result.current.rolesQuery.isLoading).toBe(false);
+    expect(serviceMocks.fetchRoles).not.toHaveBeenCalled();
     expect(serviceMocks.fetchAllUsersListWithOptions).not.toHaveBeenCalled();
     expect(serviceMocks.fetchAdminSiteConfig).toHaveBeenCalled();
     expect(serviceMocks.fetchAdminInviteLinks).not.toHaveBeenCalled();

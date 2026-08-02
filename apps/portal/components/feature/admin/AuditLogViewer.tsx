@@ -223,6 +223,7 @@ const ENTITY_COLOR_MAP = {
   recurring_template: "grape",
   gallery: "grape",
   gallery_item: "grape",
+  class_catalog: "grape",
   member_absence: "orange",
   member_badge: "grape",
   badge: "grape",

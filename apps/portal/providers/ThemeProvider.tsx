@@ -41,6 +41,21 @@ const inputClassNames = {
   input: classes.input,
 };
 
+const KEYBOARD_FOCUS_KEYS = new Set([
+  "Tab",
+  "Enter",
+  " ",
+  "Escape",
+  "ArrowUp",
+  "ArrowDown",
+  "ArrowLeft",
+  "ArrowRight",
+  "Home",
+  "End",
+  "PageUp",
+  "PageDown",
+]);
+
 const portalTheme = createTheme({
   primaryColor: "portal-brand",
   autoContrast: true,
@@ -252,6 +267,29 @@ export function PortalThemeProvider({ children }: { children: ReactNode }) {
     document.documentElement.dataset.theme = theme;
     document.documentElement.dataset.accent = accent;
   }, [theme, accent]);
+
+  useEffect(() => {
+    const root = document.documentElement;
+    const setPointerModality = () => {
+      root.dataset.inputModality = "pointer";
+    };
+    const setKeyboardModality = (event: KeyboardEvent) => {
+      if (event.metaKey || event.ctrlKey || event.altKey) return;
+      const target = event.target;
+      const isTextEntry = target instanceof HTMLElement
+        && target.matches("input, textarea, [contenteditable='true']");
+      if (KEYBOARD_FOCUS_KEYS.has(event.key) || !isTextEntry) {
+        root.dataset.inputModality = "keyboard";
+      }
+    };
+
+    window.addEventListener("pointerdown", setPointerModality, true);
+    window.addEventListener("keydown", setKeyboardModality, true);
+    return () => {
+      window.removeEventListener("pointerdown", setPointerModality, true);
+      window.removeEventListener("keydown", setKeyboardModality, true);
+    };
+  }, []);
 
   const contextValue = useMemo(
     () => ({ theme, setTheme, toggleTheme, accent, setAccent }),

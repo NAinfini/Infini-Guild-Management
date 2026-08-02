@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import type { AdminRole, Permission, User } from "@guild/shared";
 import { MantineProvider } from "@mantine/core";
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { AdminRolesSection } from "./AdminRolesSection";
 
@@ -47,7 +47,7 @@ const roles: AdminRole[] = [{
   permissions,
 }];
 
-function renderRolesSection() {
+function renderRolesSection(onCreateRole = vi.fn()) {
   render(
     <MantineProvider>
       <AdminRolesSection
@@ -57,7 +57,7 @@ function renderRolesSection() {
         createRolePending={false}
         updateRolePending={false}
         deleteRolePending={false}
-        onCreateRole={vi.fn()}
+        onCreateRole={onCreateRole}
         onUpdateRole={vi.fn()}
         onDeleteRole={vi.fn()}
       />
@@ -81,5 +81,35 @@ describe("AdminRolesSection storage permissions", () => {
 
     expect(screen.getByText("roles.category.adminSystem")).toBeInTheDocument();
     expect(screen.getByText("admin.siteConfig.manage")).toBeInTheDocument();
+  });
+
+  it("opens a focused, cancellable form and creates only after a valid name is submitted", async () => {
+    const onCreateRole = vi.fn().mockResolvedValue(true);
+    renderRolesSection(onCreateRole);
+
+    fireEvent.click(screen.getByRole("button", { name: "roles.create" }));
+
+    expect(onCreateRole).not.toHaveBeenCalled();
+    const dialog = await screen.findByRole("dialog", { name: "roles.createTitle" });
+    const nameInput = within(dialog).getByRole("textbox", { name: /roles\.field\.name/ });
+    await waitFor(() => expect(nameInput).toHaveFocus());
+    expect(within(dialog).getByRole("button", { name: "roles.create" })).toBeDisabled();
+
+    fireEvent.change(nameInput, { target: { value: "Raid Lead" } });
+    fireEvent.click(within(dialog).getByRole("button", { name: "roles.create" }));
+
+    await waitFor(() => expect(onCreateRole).toHaveBeenCalledWith(
+      expect.objectContaining({ name: "Raid Lead", level: 100 }),
+    ));
+    await waitFor(() => expect(screen.queryByRole("dialog", { name: "roles.createTitle" })).not.toBeInTheDocument());
+
+    fireEvent.click(screen.getByRole("button", { name: "roles.create" }));
+    fireEvent.click(within(await screen.findByRole("dialog", { name: "roles.createTitle" }))
+      .getByRole("button", { name: "roles.cancel" }));
+
+    expect(onCreateRole).toHaveBeenCalledTimes(1);
+    await waitFor(() =>
+      expect(screen.queryByRole("dialog", { name: "roles.createTitle" })).not.toBeInTheDocument(),
+    );
   });
 });

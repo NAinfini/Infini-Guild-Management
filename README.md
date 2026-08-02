@@ -37,8 +37,9 @@ The deployment model is also simple: the React portal is built into static asset
 | Guild war | War history, team builder, member stats, templates, and analytics |
 | Wiki | Categories and rich text articles for guild knowledge |
 | Gallery | Cloud-backed media uploads with captions |
+| Media | Uploads are transcoded in the browser before they leave the page — images to WebP, audio to Opus |
 | Admin console | Roles, permissions, invite links, audit logs, and system status |
-| Tools | Title styling, dice roller, and the in-progress equipment calculator |
+| Tools | Title styling and dice roller |
 | Search | `Cmd+K` / `Ctrl+K` command search across portal content |
 | Realtime | WebSocket updates through Cloudflare Durable Objects |
 | Localization | English and Chinese translations |
@@ -59,7 +60,7 @@ The shared package is the contract layer. Backend routes validate with shared Zo
 
 | Layer | Stack |
 | --- | --- |
-| Frontend | React 19, Vite 8, TanStack Router, TanStack Query, Mantine 8, Tailwind CSS 4, Zustand 5 |
+| Frontend | React 19, Vite 8, TanStack Router, TanStack Query, Mantine 8, Zustand 5, plain CSS with custom properties |
 | Rich content and charts | TipTap 3, ECharts 6 |
 | Backend | Hono on Cloudflare Workers, Drizzle ORM, Cloudflare D1 |
 | Storage | Cloudflare R2 for media and audit archives |
@@ -235,7 +236,6 @@ export const DEFAULT_FEATURE_FLAGS: FeatureFlags = {
   gallery: true,
   wiki: true,
   tools: true,
-  equipmentCalc: true,
   storage: true,
 };
 ```
@@ -259,7 +259,7 @@ The repository does not create a default production password. Use `pnpm setup:ad
 
 | Variable | Description |
 | --- | --- |
-| `ENVIRONMENT` | `development`, `staging`, or `production` |
+| `ENVIRONMENT` | `development` or `production` |
 | `PORTAL_ORIGIN` | Optional allowed origin for a separately hosted portal; leave empty for same-origin hosting |
 | `SIGNING_SECRET` | HMAC secret for audit archive download tokens |
 | `SITE_NAME` | Guild name shown in the UI |
@@ -285,7 +285,6 @@ All API routes live under `/api/`. Authentication uses HTTP-only session cookies
 | `/api/wiki` | Wiki categories and articles |
 | `/api/gallery` | Gallery items and media uploads |
 | `/api/admin` | Users, roles, invites, audit logs, and status |
-| `/api/game-data` | Equipment calculator game data and admin-managed versions |
 | `/ws` | WebSocket endpoint backed by a Durable Object |
 
 Roles are ordered as `admin` > `moderator` > `member`. Custom roles are supported through the admin console.
@@ -301,6 +300,7 @@ Rate limits are applied by route group: auth, mutations, uploads, and API reads 
 - Rich text HTML is sanitized before display.
 - Login errors are generic to avoid username enumeration.
 - Security headers include HSTS, CSP, `X-Frame-Options: DENY`, and `nosniff`.
+- Uploads are validated server-side against an image allow-list (JPEG, PNG, GIF, WebP, AVIF) and their magic bytes; SVG is never accepted, and the stored content type comes from the detected bytes rather than the client's header.
 
 Report vulnerabilities privately according to [SECURITY.md](./SECURITY.md).
 

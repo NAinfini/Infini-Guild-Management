@@ -36,9 +36,27 @@ function normalizeOptionalString(value: string | null | undefined): string | und
   return normalized ? normalized : undefined;
 }
 
+/*
+ * TanStack Router 是用 JSON 解析查询串的：?search=20260731 到这里已经是 number，
+ * ?search=true 已经是 boolean。用 z.string() 直接校验会抛错，而 validateSearch 抛错
+ * 等于整页错误边界——用户搜一串纯数字，刷新或把链接发给别人就是白屏。
+ * 标量一律按文本还原，其余类型（对象、数组）当成没填。
+ */
+function parseTextSearchValue(value: unknown): string | undefined {
+  if (typeof value === "string") return value;
+  if (typeof value === "number" && Number.isFinite(value)) return String(value);
+  if (typeof value === "boolean") return String(value);
+  return undefined;
+}
+
 export const EVENTS_ROUTE_SEARCH_SCHEMA = z.object({
-  search: z.string().optional(),
-  type: z.enum(EVENT_TYPES).optional(),
+  search: z.preprocess(parseTextSearchValue, z.string().optional()),
+  // 其余枚举字段都用 preprocess 把不认识的值当成没填；type 也必须一致，
+  // 否则手改成 ?type=1 就是一次整页崩溃，而不是一个被忽略的筛选条件。
+  type: z.preprocess(
+    (val) => (typeof val === "string" && (EVENT_TYPES as readonly string[]).includes(val) ? val : undefined),
+    z.enum(EVENT_TYPES).optional(),
+  ),
   status: z.preprocess(
     (val) => (typeof val === "string" && (EVENT_STATUS_FILTERS as readonly string[]).includes(val) ? val : undefined),
     z.enum(EVENT_STATUS_FILTERS).optional(),
@@ -53,7 +71,7 @@ export const EVENTS_ROUTE_SEARCH_SCHEMA = z.object({
     (val) => (typeof val === "string" && (EVENT_WORKBENCH_VIEW_MODES as readonly string[]).includes(val) ? val : undefined),
     z.enum(EVENT_WORKBENCH_VIEW_MODES).optional(),
   ),
-  eventId: z.string().optional(),
+  eventId: z.preprocess(parseTextSearchValue, z.string().optional()),
 });
 
 export function sanitizeEventsRouteSearch(search: EventsRouteSearch): EventsRouteSearch {
@@ -74,8 +92,14 @@ export function sanitizeEventsRouteSearch(search: EventsRouteSearch): EventsRout
 
 export function buildEventWorkbenchSearch(event: { id: string; title?: string | null }): EventsRouteSearch {
   return sanitizeEventsRouteSearch({
-    search: event.title ?? undefined,
     eventId: event.id,
     view: "cards",
+  });
+}
+
+export function clearEventWorkbenchFocus(search: EventsRouteSearch): EventsRouteSearch {
+  return sanitizeEventsRouteSearch({
+    ...search,
+    eventId: undefined,
   });
 }

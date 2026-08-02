@@ -81,7 +81,10 @@ describe("StorageBatchPanel", () => {
     const user = userEvent.setup();
     const props = renderPanel();
 
-    expect(screen.getByText("Crystal")).toBeInTheDocument();
+    expect(screen.queryByText("Crystal")).not.toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "action.reviewBatch" }));
+
+    expect(await screen.findByText("Crystal")).toBeInTheDocument();
     expect(screen.getByText("Ore")).toBeInTheDocument();
 
     await user.click(screen.getByRole("button", { name: "action.removeBatchItem:Crystal" }));
@@ -111,7 +114,8 @@ describe("StorageBatchPanel", () => {
       </MantineProvider>,
     );
 
-    await user.click(screen.getByRole("button", { name: "action.submitBatch" }));
+    await user.click(screen.getByRole("button", { name: "action.reviewBatch" }));
+    await user.click(await screen.findByRole("button", { name: "action.submitBatch" }));
     expect(submit).toHaveBeenCalledTimes(1);
 
     rerender(
@@ -133,6 +137,6 @@ describe("StorageBatchPanel", () => {
       </MantineProvider>,
     );
 
-    expect(screen.getByRole("button", { name: "action.submitBatch" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "action.reviewBatch" })).toBeDisabled();
   });
 });

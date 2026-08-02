@@ -162,13 +162,29 @@
 }
 
 .app-sider--collapsed .app-nav-groups {
-  padding-inline: var(--space-md);
+  padding-inline: var(--space-sm);
+}
+
+/* 折叠后分隔线原先横贯整条轨道，比它分隔的图标宽一倍多，看着像轨道被切断。 */
+.app-sider--collapsed .app-nav-group-divider {
+  width: var(--control-height-regular);
+  margin-inline: auto;
 }
 
 .app-sider--collapsed .app-nav-item {
   display: flex;
   justify-content: center;
+  /* 折叠态收成方块，和分隔线、底部按钮共用同一条中轴。
+     原先仍是整条轨道宽的长条，一个 20px 图标躺在左边，右边空一大片。 */
+  width: var(--control-height-regular);
+  margin-inline: auto;
   padding-inline: 0;
+}
+
+/* label 传了 undefined，但 Mantine 仍会渲染一个空的 body 并让它 flex 撑满，
+   把图标顶到左边。这才是图标没对齐中轴的根因，不是 justify-content 没生效。 */
+.app-sider--collapsed .app-nav-item .mantine-NavLink-body {
+  display: none;
 }
 
 .app-sider--collapsed .app-nav-item .mantine-NavLink-section {
@@ -176,8 +192,8 @@
 }
 
 .app-sider--collapsed .app-nav-item[data-active]::before {
-  top: var(--space-md);
-  bottom: var(--space-md);
+  top: var(--space-sm);
+  bottom: var(--space-sm);
 }
 
 .app-viewing-as {
@@ -236,6 +252,11 @@
 }
 
 .app-header-icon-btn {
+  width: var(--control-hit-area);
+  min-width: var(--control-hit-area);
+  height: var(--control-hit-area);
+  min-height: var(--control-hit-area);
+  flex: 0 0 var(--control-hit-area);
   color: var(--text-secondary);
 }
 
@@ -311,7 +332,7 @@
 }
 
 .app-profile-trigger {
-  min-height: 40px;
+  min-height: 44px;
   padding: 3px var(--space-sm) 3px 3px;
   border: 1px solid var(--border-subtle);
   border-radius: var(--shape-pill);

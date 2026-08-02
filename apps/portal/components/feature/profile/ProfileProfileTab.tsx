@@ -1,11 +1,11 @@
 import type { DragEndEvent } from "@dnd-kit/core";
 import { SectionHeader } from "../../shared/SectionHeader";
-import { Grid, Group, NumberInput, Paper, Stack, Text, TextInput, Textarea } from "@mantine/core";
-import { ExternalLinkIcon } from "@portal/components/icons";
-import { useMemo } from "react";
-import DOMPurify from "dompurify";
+import { ActionIcon, NumberInput, Paper, Text, TextInput, Textarea, Tooltip } from "@mantine/core";
+import { PaletteIcon, TrashIcon } from "@portal/components/icons";
+import { sanitizeTitleHtml } from "@portal/utils/sanitize";
+import { useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Link } from "@tanstack/react-router";
+import { TitleSandboxModal } from "./TitleSandboxModal";
 import { ProfileClassEditor } from "./ProfileClassEditor";
 
 type ProfileProfileTabProps = {
@@ -18,15 +18,18 @@ type ProfileProfileTabProps = {
   bio: string;
   onPowerChange: (value: number) => void;
   onClassDraftChange: (value: string) => void;
-  onAddClass: () => void;
+  onAddClass: (value: string) => void;
   onClassDragEnd: (event: DragEndEvent) => void;
   onRemoveClass: (index: number) => void;
   onBioChange: (value: string) => void;
 };
 
 /**
- * 资料标签页：只剩「基本信息」与「关于」两组文本字段。头像/图片/视频/音频
- * 已迁到 ProfileMediaTab，这里不再需要 height:100% 去和媒体那半栏对齐。
+ * 身份卡：战力、职业、称号、简介。
+ *
+ * 称号原先是一个裸的 HTML 文本框，要求成员自己去工具页生成、复制、粘贴一段
+ * `<span style="…">`，中间任何一步出错都要靠肉眼比对标签。现在这里只显示渲染
+ * 结果，编辑走同一个称号沙盒（工具页用的就是它），存下来的仍是同一份 HTML。
  */
 export function ProfileProfileTab({
   power,
@@ -44,79 +47,117 @@ export function ProfileProfileTab({
   onBioChange,
 }: ProfileProfileTabProps) {
   const { t } = useTranslation("profile");
+  const [titleEditorOpen, setTitleEditorOpen] = useState(false);
 
+  // sanitizeTitleHtml is MemberCard's sanitizer: the preview here and the card
+  // in the rail must not disagree about what survives.
   const safeTitleHtml = useMemo(
-    () => (titleHtml ? DOMPurify.sanitize(titleHtml) : ""),
+    () => (titleHtml ? sanitizeTitleHtml(titleHtml) : ""),
     [titleHtml],
   );
 
+  /*
+   * 「有没有标签」决定这一栏是输入框还是预览框。大多数人的称号就是几个字，
+   * 那种情况下逼他们去开一个样式器再回来才能改一个错别字，是把工具当门槛。
+   */
+  const isStyled = /<[a-z][\s\S]*>/i.test(titleHtml);
+
   return (
-    <Grid gutter="md">
-      <Grid.Col span={{ base: 12, md: 6 }}>
-        <Paper withBorder radius="md" p="var(--card-padding)">
-          <div>
-            <SectionHeader title={t("section.basicInfo")} />
-          <NumberInput
-            label={t("field.power")}
-            value={power}
-            decimalScale={2}
-            hideControls
-            onChange={(value) => { if (typeof value === "number") onPowerChange(value); }}
-          />
+    <Paper withBorder radius="md" p="var(--card-padding)">
+      <SectionHeader title={t("section.identity")} />
 
-          <Stack gap={0} mt="lg">
-            <ProfileClassEditor
-              classDraft={classDraft}
-              classOptions={classOptions}
-              classList={classList}
-              onClassDraftChange={onClassDraftChange}
-              onAddClass={onAddClass}
-              onClassDragEnd={onClassDragEnd}
-              onRemoveClass={onRemoveClass}
-            />
-            </Stack>
-          </div>
-        </Paper>
-      </Grid.Col>
+      <div className="profile-identity">
+        <NumberInput
+          label={t("field.power")}
+          value={power}
+          decimalScale={2}
+          hideControls
+          onChange={(value) => { if (typeof value === "number") onPowerChange(value); }}
+        />
 
-      <Grid.Col span={{ base: 12, md: 6 }}>
-        <Paper withBorder radius="md" p="var(--card-padding)">
-          <div>
-            <SectionHeader title={t("section.about")} />
-          <TextInput
-            label={
-              <Group gap={8} align="center" wrap="nowrap" className="profile-field-label">
-                <span>{t("field.titleHtml")}</span>
-                <Text component={Link} to="/tools" size="xs" c="dimmed" td="underline" className="profile-field-label__link">
-                  {t("action.titleGenerator")}<ExternalLinkIcon size={12} />
-                </Text>
-              </Group>
-            }
-            value={titleHtml}
-            onChange={(event) => onTitleHtmlChange(event.currentTarget.value)}
-            placeholder={t("field.titleHtml")}
-          />
-          {/* 预览原先是裸的一个 div，直接落在表单流里，看不出是「渲染结果」
-              还是又一个字段。给它一个明确的框。 */}
-          {titleHtml ? (
-            <div className="profile-title-preview">
-              <Text c="dimmed" size="xs" mb={6}>{t("field.titlePreview")}</Text>
-              <div dangerouslySetInnerHTML={{ __html: safeTitleHtml }} />
-            </div>
-          ) : null}
-          <Textarea
-            label={t("field.bio")}
-            value={bio}
-            onChange={(event) => onBioChange(event.currentTarget.value)}
-            minRows={4}
-            autosize
-            maxRows={10}
-            placeholder={t("field.bio")}
-            mt="md"
-            />
+        <div className="profile-title">
+          <Text component="span" size="sm" fw={600} className="profile-title__label">
+            {t("field.title")}
+          </Text>
+          <div className="profile-title__row">
+            {isStyled ? (
+              /*
+               * 带样式的称号只能预览，不能当文本改：输入框里放的会是一串
+               * `<span style="…">`，改一个字要在标签之间数位置，而这正是这次要
+               * 去掉的东西。清空按钮只在这一支出现——纯文本用退格就能清掉。
+               */
+              <div className="profile-title__render">
+                <div dangerouslySetInnerHTML={{ __html: safeTitleHtml }} />
+              </div>
+            ) : (
+              <TextInput
+                className="profile-title__input"
+                value={titleHtml}
+                placeholder={t("field.titleEmpty")}
+                aria-label={t("field.title")}
+                onChange={(event) => onTitleHtmlChange(event.currentTarget.value)}
+              />
+            )}
+            <Tooltip label={titleHtml ? t("action.editTitle") : t("action.createTitle")} withArrow>
+              <ActionIcon
+                variant="default"
+                size={36}
+                aria-label={titleHtml ? t("action.editTitle") : t("action.createTitle")}
+                onClick={() => setTitleEditorOpen(true)}
+              >
+                <PaletteIcon size={16} />
+              </ActionIcon>
+            </Tooltip>
+            {isStyled ? (
+              <Tooltip label={t("action.clearTitle")} withArrow>
+                <ActionIcon
+                  variant="subtle"
+                  color="red"
+                  size={36}
+                  aria-label={t("action.clearTitle")}
+                  onClick={() => onTitleHtmlChange("")}
+                >
+                  <TrashIcon size={16} />
+                </ActionIcon>
+              </Tooltip>
+            ) : null}
           </div>
-        </Paper>
-      </Grid.Col>
-    </Grid>
+        </div>
+
+        <div className="profile-identity__wide">
+          <ProfileClassEditor
+            classDraft={classDraft}
+            classOptions={classOptions}
+            classList={classList}
+            onClassDraftChange={onClassDraftChange}
+            onAddClass={onAddClass}
+            onClassDragEnd={onClassDragEnd}
+            onRemoveClass={onRemoveClass}
+          />
+        </div>
+
+        <Textarea
+          className="profile-identity__wide"
+          label={t("field.bio")}
+          value={bio}
+          onChange={(event) => onBioChange(event.currentTarget.value)}
+          minRows={3}
+          autosize
+          maxRows={10}
+          placeholder={t("field.bioPlaceholder")}
+        />
+      </div>
+
+      {/* Mounted only while open: the sandbox seeds its editor from initialHtml
+          as initial state, so a permanently mounted copy would go stale. */}
+      {titleEditorOpen ? (
+        <TitleSandboxModal
+          opened
+          onClose={() => setTitleEditorOpen(false)}
+          initialHtml={titleHtml}
+          onApply={onTitleHtmlChange}
+        />
+      ) : null}
+    </Paper>
   );
 }

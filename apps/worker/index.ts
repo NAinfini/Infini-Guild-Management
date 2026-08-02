@@ -27,7 +27,7 @@ import { siteConfigRoutes } from "./routes/site-config";
 import { usersRoutes } from "./routes/users";
 import { wikiRoutes } from "./routes/wiki";
 import { badgeRoutes } from "./routes/badges";
-import { gameDataRoutes } from "./routes/game-data";
+import { classRoutes } from "./routes/classes";
 import { systemTestTrackingMiddleware } from "./middleware/system-test-tracking";
 
 export type Bindings = {
@@ -107,7 +107,7 @@ function isUploadPath(path: string): boolean {
     path === "/api/events" ||
     path === "/api/gallery/images" ||
     path === "/api/announcements/images/stage" ||
-    path === "/api/game-data" ||
+    /^\/api\/classes\/[^/]+\/icon$/.test(path) ||
     path === "/api/admin/site-config/logo" ||
     /^\/api\/users\/[^/]+\/media\/(?:images|avatar|audio)$/.test(path) ||
     /^\/api\/(?:announcements|events)\/[^/]+\/images$/.test(path) ||
@@ -254,6 +254,44 @@ app.post("/api/dev/reseed", async (c) => {
   await seedDatabase(c.env);
   return c.json({ ok: true, message: "Database cleared and reseeded" });
 });
+/*
+ * e2e 的清理断言基准。列表接口只能看到它们愿意暴露的东西——
+ * 靠它们判断「清干净了」等于用抽样冒充证据。这里直接读每张表的行数
+ * 和 R2 的对象数，跑前跑后逐项比对，任何一条残留都对不上。
+ * 与 seed/reseed 同一个 development 门禁，生产环境返回 404。
+ */
+app.get("/api/dev/table-counts", async (c) => {
+  const blocked = rejectNonDev(c);
+  if (blocked) return blocked;
+  const env = c.env as Bindings;
+  const counts: Record<string, number> = {};
+  try {
+    /* D1 不允许读 sqlite_master（SQLITE_AUTH），所以表清单取自 seed 自己维护的那份。
+       它同时也是 clearAllData 的清单——用同一份列表，就不会出现
+       「能被重种清掉、却不在残留检查视野里」的表。 */
+    const { SEED_CLEAR_TABLES } = await import("./db/seed");
+
+    for (const name of SEED_CLEAR_TABLES) {
+      // name 来自代码里的常量数组，不是请求输入，拼接不引入注入面。
+      const row = await env.DB.prepare(`SELECT COUNT(*) AS total FROM "${name}"`).first<{ total: number }>();
+      counts[`table:${name}`] = row?.total ?? 0;
+    }
+
+    let mediaObjects = 0;
+    let cursor: string | undefined;
+    do {
+      const page = await env.MEDIA.list(cursor ? { cursor, limit: 1000 } : { limit: 1000 });
+      mediaObjects += page.objects.length;
+      cursor = page.truncated ? page.cursor : undefined;
+    } while (cursor);
+    counts["r2:media"] = mediaObjects;
+  } catch (error) {
+    // 这是给 e2e 用的诊断端点：把真实原因原样抬出来，别让它变成一句 Internal server error。
+    return c.json({ error_code: "SERVER_ERROR", message: error instanceof Error ? error.stack ?? error.message : String(error) }, 500);
+  }
+
+  return c.json({ counts });
+});
 app.get("/ws", async (c) => {
   if (c.req.header("Upgrade") !== "websocket") {
     return c.text("Expected websocket", 426);
@@ -290,7 +328,7 @@ app.route("/api/guild-war", guildWarRoutes);
 app.route("/api/wiki", wikiRoutes);
 app.route("/api/gallery", galleryRoutes);
 app.route("/api/badges", badgeRoutes);
-app.route("/api/game-data", gameDataRoutes);
+app.route("/api/classes", classRoutes);
 app.route("/api/storage", storageRoutes);
 app.route("/api/site-config", siteConfigRoutes);
 app.route("/api/admin", adminRoutes);

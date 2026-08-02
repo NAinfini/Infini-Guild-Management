@@ -8,8 +8,8 @@ const ADMIN_ACCESS_PERMISSIONS: Permission[] = [
   "admin.status.view",
   "admin.roles.view",
   "admin.siteConfig.manage",
+  "admin.classes.manage",
   "admin.badges.manage",
-  "admin.gameData.manage",
   "admin.storage.structure",
   "admin.storage.items",
   "admin.storage.stock",
@@ -26,8 +26,8 @@ export type AdminCapabilities = {
   canManageRoles: boolean;
   canViewStatus: boolean;
   canManageBadges: boolean;
-  canManageGameData: boolean;
   canManageSiteConfig: boolean;
+  canManageClasses: boolean;
 };
 
 function hasAnyPermission(
@@ -76,12 +76,12 @@ export function canManageBadges(roles: AdminRole[], roleId: string): boolean {
   return hasAnyPermission(roles, roleId, ["admin.badges.manage"]);
 }
 
-export function canManageGameData(roles: AdminRole[], roleId: string): boolean {
-  return hasAnyPermission(roles, roleId, ["admin.gameData.manage"]);
-}
-
 export function canManageSiteConfig(roles: AdminRole[], roleId: string): boolean {
   return hasAnyPermission(roles, roleId, ["admin.siteConfig.manage"]);
+}
+
+export function canManageClasses(roles: AdminRole[], roleId: string): boolean {
+  return hasAnyPermission(roles, roleId, ["admin.classes.manage"]);
 }
 
 export function getAdminCapabilities(roles: AdminRole[], roleId: string): AdminCapabilities {
@@ -95,8 +95,8 @@ export function getAdminCapabilities(roles: AdminRole[], roleId: string): AdminC
     canManageRoles: canManageRoles(roles, roleId),
     canViewStatus: canViewStatus(roles, roleId),
     canManageBadges: canManageBadges(roles, roleId),
-    canManageGameData: canManageGameData(roles, roleId),
     canManageSiteConfig: canManageSiteConfig(roles, roleId),
+    canManageClasses: canManageClasses(roles, roleId),
   };
 }
 

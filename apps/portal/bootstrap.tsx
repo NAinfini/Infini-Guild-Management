@@ -12,6 +12,8 @@ import { PortalThemeProvider } from "./providers/ThemeProvider";
 import { dismissSplash } from "./splash";
 import { AppRouter } from "./router";
 import { useSiteConfigStore } from "./stores/site-config";
+import { fetchClassCatalog } from "./api/queries/classes";
+import { useClassCatalogStore } from "./stores/class-catalog";
 
 type BootstrapSiteConfig = {
   site_name: string;
@@ -73,13 +75,21 @@ async function loadSiteConfig(): Promise<void> {
   }
 }
 
+async function loadClassCatalog(): Promise<void> {
+  const items = await fetchClassCatalog();
+  useClassCatalogStore.getState().setItems(items);
+}
+
 export async function mountApp(root: Root): Promise<void> {
   await i18nReady;
-  try {
-    await loadSiteConfig();
-  } catch (error: unknown) {
-    console.error("[bootstrap] Failed to load site config", error);
-  }
+  await Promise.all([
+    loadSiteConfig().catch((error: unknown) => {
+      console.error("[bootstrap] Failed to load site config", error);
+    }),
+    loadClassCatalog().catch((error: unknown) => {
+      console.error("[bootstrap] Failed to load class catalog", error);
+    }),
+  ]);
   root.render(
     <StrictMode>
       <ErrorBoundary>

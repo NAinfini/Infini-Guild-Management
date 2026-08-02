@@ -17,6 +17,8 @@ export const MIGRATED: string[] = [
   "apps/portal/styles.css",
   "apps/portal/providers/ThemeProvider.module.css",
   "apps/portal/components/layout/AppShell.css",
+  "apps/portal/components/layout/CmdKSearch.module.css",
+  "apps/portal/components/layout/NotificationPopover.module.css",
   "apps/portal/components/layout/PageLayout.css",
   "apps/portal/components/pages/GuildWarPage.css",
   "apps/portal/components/pages/StoragePage.css",
@@ -32,7 +34,6 @@ export const MIGRATED: string[] = [
   "apps/portal/components/pages/SettingsPage.css",
   "apps/portal/components/pages/WikiPage.css",
   /* Task 7 批 A（the token-layer contract D 节）。 */
-  "apps/portal/components/equipment-calc/EquipmentCalcModal.css",
   "apps/portal/components/feature/admin/AdminApiTest.css",
   /* Task 7 批 B（the token-layer contract D 节）。 */
   "apps/portal/components/shared/tiptap-editor.css",
@@ -41,16 +42,25 @@ export const MIGRATED: string[] = [
   "apps/portal/components/feature/admin/AuditLogViewer.css",
   /* Task 7 批 C（the token-layer contract D 节）。 */
   "apps/portal/components/feature/events/EventDetailModal.css",
-  "apps/portal/components/feature/admin/AdminGameDataSection.css",
   "apps/portal/components/feature/admin/AdminSystemSection.css",
   "apps/portal/components/shared/MemberCard.css",
   "apps/portal/components/feature/admin/AdminBadgesSection.css",
+  "apps/portal/components/feature/admin/AdminClassesSection.css",
   "apps/portal/components/shared/media-gallery.css",
   "apps/portal/components/feature/events/EventMonthView.css",
   "apps/portal/components/shared/ProfileModal.module.css",
   "apps/portal/components/feature/admin/AdminMemberDetailModal.module.css",
   /* 本次返工新增的共享件，从建立起就只用 L2/L3 变量。 */
   "apps/portal/components/shared/SectionHeader.css",
+  "apps/portal/components/shared/ClassIcon.css",
+  "apps/portal/components/shared/ImageGridEditor.css",
+  /* 称号沙盒从工具页搬到资料页时，样式跟着组件一起从 ToolsPage.css 拆了出来，
+     内容是原样搬运，没有引入新的字面值。 */
+  "apps/portal/components/feature/profile/TitleSandboxModal.css",
+  /* 后台状态页签的外壳（Batch 4）。从建立起就只用 L2/L3 变量：
+     卡片走 --surface-base / --border-subtle / --radius-surface，
+     把手走 --text-secondary / --brand-text / --transition-normal。 */
+  "apps/portal/components/feature/admin/AdminStatusTab.css",
 ];
 
 /** 唯一允许出现 hex 的文件。 */
@@ -117,19 +127,17 @@ const RUNTIME_INJECTED_VARS: string[] = [
    * Task 7 批 C 在 MemberCard.css / AdminBadgesSection.css 里去掉了这个变量的
    * var() 兜底（rule 1 不允许兜底），暴露出它是运行期注入而非 CSS 定义。 */
   "--badge-color",
-  /* --role-color：当前游戏配置的每个 role 的十六进制色号（activeGame.roles[].color，
-   * 例如 apps/shared/games/definitions/yan-yun.ts），换一个游戏配置文件这个值就会变，
-   * 不是本 token 系统固定枚举，运行期由 MemberRoleAvatar.tsx 无条件内联写入
-   * （cfg.color 来自游戏配置，不会是 undefined），推理同 --badge-color。
-   * Task 8 批 B 在 MemberCard.css 里去掉了这个变量的 var() 兜底。 */
-  "--role-color",
+  /* --class-color：管理员在职业目录中配置的任意十六进制色号。ClassIcon、
+   * MemberCard 与职业管理预览都在同一元素上无条件注入该值。 */
+  "--class-color",
   /* --swatch-color：色板/取色按钮各自的色号，来自 TipTapEditorToolbar.tsx /
    * TipTapEditorContextMenu.tsx 的 TEXT_COLORS / HIGHLIGHT_COLORS、
    * AdminBadgesSection.tsx 的 COLOR_PRESETS，以及 TitleSandboxModal.tsx 的
    * recentColors（localStorage 持久化的用户历史取色，等同 class-1 数据），
    * 不在本任务范围内改名/改值，运行期由这四个文件的色板/色点按钮无条件
    * 内联写入。Task 8 批 B 在 tiptap-editor.css / AdminBadgesSection.css /
-   * ToolsPage.css 里去掉了这个变量的 var() 兜底。 */
+   * ToolsPage.css 里去掉了这个变量的 var() 兜底（沙盒那份后来随
+   * TitleSandboxModal 一起搬到了 TitleSandboxModal.css）。 */
   "--swatch-color",
   /* --signup-dot-color：MySignupsCard.tsx 按事件类型拼出的 Mantine 色号字符串
    * （`var(--mantine-color-X-5, var(--accent-fill))`，X 来自 eventTypeTagColor()），
@@ -169,25 +177,11 @@ type LiteralColourExemption = {
  * 不依赖去解析注释文本。
  */
 const LITERAL_COLOUR_EXEMPTIONS: Record<string, LiteralColourExemption[]> = {
-  "apps/portal/components/feature/admin/AdminGameDataSection.css": [
-    {
-      source: ".admin-game-data__textarea 的内凹阴影（周围有注释）",
-      reason: "文本域内凹阴影的黑色晕影，与模式无关的字面黑。",
-      values: ["rgba(0, 0, 0, 0.06)"],
-    },
-  ],
   "apps/portal/components/feature/events/EventCardsView.css": [
     {
       source: ".event-card__raffle-winners-badge",
       reason: "徽章底色/文字已固定吃 --mantine-color-pink-5 / --mantine-color-white，不随 [data-theme] 变化，投影延续同一条设计决定保持固定，避免固定配色配一圈会变化的阴影。",
       values: ["rgba(0, 0, 0, 0.2)"],
-    },
-  ],
-  "apps/portal/components/pages/DashboardPage.css": [
-    {
-      source: ".war-nav-btn svg / .war-share-btn svg 的图标描边投影",
-      reason: "图标本身吃 currentColor 随主题反色，这层投影只是加一圈固定暗晕保证图标在任意背景上可辨识，理由同 media-gallery.css 的缩略图播放图标投影。两处选择器各贡献一次。",
-      values: ["rgba(0, 0, 0, 0.35)", "rgba(0, 0, 0, 0.35)"],
     },
   ],
   "apps/portal/components/pages/GalleryPage.css": [
@@ -218,29 +212,15 @@ const LITERAL_COLOUR_EXEMPTIONS: Record<string, LiteralColourExemption[]> = {
     },
     {
       source: ".gallery-lb__caption / __uploader / __date / __count（已有注释，task-8 批 B）",
-      reason: "灯箱信息条文字，与 .gallery-lb__close/.gallery-lb__nav 同一先例：遮罩恒为近黑，文字保持固定白色透明度而非表面/文字 token。",
-      values: ["rgba(255, 255, 255, 0.95)", "rgba(255, 255, 255, 0.6)", "rgba(255, 255, 255, 0.4)", "rgba(255, 255, 255, 0.5)"],
+      reason: "灯箱信息条文字，与 .gallery-lb__close/.gallery-lb__nav 同一先例：遮罩恒为近黑，文字保持固定白色透明度而非表面/文字 token。次要三行（uploader/date/count）统一到同一档透明度。",
+      values: ["rgba(255, 255, 255, 0.95)", "rgba(255, 255, 255, 0.72)", "rgba(255, 255, 255, 0.72)", "rgba(255, 255, 255, 0.72)"],
     },
   ],
-  "apps/portal/components/pages/GuildWarPage.css": [
-    {
-      source: ".war-history-compare-bar-fill--own / --enemy",
-      reason: "往已经随主题变化的 --accent-fill / --status-danger 里固定混 26% 真白，做出一档更浅的「淡色版」——要的是「往真白提亮同一个比例」，不是把颜色带向某个表面 token（那是 --accent-tint 在深色模式的做法，效果不同）。两个选择器各贡献一次。",
-      values: ["white", "white"],
-    },
-  ],
-  "apps/portal/components/pages/ToolsPage.css": [
+  "apps/portal/components/feature/profile/TitleSandboxModal.css": [
     {
       source: ".sandbox__recent-dot",
       reason: "给下面任意色号的 --swatch-color 描一圈固定轮廓，理由同 --swatch-color 本身（用户数据色，不随主题变化）。",
       values: ["rgba(0, 0, 0, 0.1)"],
-    },
-  ],
-  "apps/portal/components/shared/MemberCard.css": [
-    {
-      source: ".member-role-avatar__role-circle",
-      reason: "给下面任意色号的 --role-color 描一圈固定投影，理由同 --role-color 本身（当前游戏配置的数据色，不随主题变化）。",
-      values: ["rgba(0, 0, 0, 0.25)"],
     },
   ],
   "apps/portal/components/shared/media-gallery.css": [
@@ -260,11 +240,6 @@ const LITERAL_COLOUR_EXEMPTIONS: Record<string, LiteralColourExemption[]> = {
       source: ".infini-tiptap-link-dialog-backdrop（已有注释）",
       reason: "浮层对话框背后的全屏遮罩。复审 I-7：这不是纯黑，是特意选的一个冷色调（slate-900，rgb(15, 23, 42)）遮罩，深浅两模式都用同一个值、不随 [data-theme] 反色。",
       values: ["rgba(15, 23, 42, 0.48)"],
-    },
-    {
-      source: ".infini-tiptap-link-dialog 的投影（已有注释）",
-      reason: "投影与上面的遮罩同一个冷色调（slate-900），不是纯黑，深浅两模式都固定不随 [data-theme] 变化。",
-      values: ["rgba(15, 23, 42, 0.24)"],
     },
     {
       source: ".infini-tiptap-context-menu / __context-submenu / __find-replace 的投影（已有注释，理由同上）",
@@ -1029,5 +1004,13 @@ describe("display font delivery", () => {
     );
     expect(numberTicker).toContain('"portal-kpi-value"');
     expect(numberTicker).not.toContain("fontVariantNumeric");
+  });
+
+  it("keeps the document body on the app field when Mantine base styles load later", () => {
+    const entry = readFileSync(resolve(repoRoot, ENTRY_FILE), "utf8");
+
+    expect(entry).toMatch(
+      /html\s+body\s*\{[\s\S]*?background:\s*var\(--surface-sunken\)/,
+    );
   });
 });

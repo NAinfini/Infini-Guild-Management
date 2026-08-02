@@ -114,7 +114,10 @@ describe("useAnnouncementsController", () => {
     });
     act(() => {
       result.current.setTitle("Maintenance");
-      result.current.setBodyJson('{"type":"doc","content":[{"type":"paragraph"}]}');
+      result.current.setBodyJson('{"type":"doc","content":[{"type":"paragraph","content":[{"type":"text","text":"Planned work"}]}]}');
+    });
+    await waitFor(() => expect(result.current.isPublishReady).toBe(true));
+    act(() => {
       result.current.handleFinish("none");
     });
 
@@ -160,7 +163,7 @@ describe("useAnnouncementsController", () => {
     });
     act(() => {
       result.current.setTitle("Maintenance");
-      result.current.setBodyJson('{"type":"doc","content":[]}');
+      result.current.setBodyJson('{"type":"doc","content":[{"type":"paragraph","content":[{"type":"text","text":"Planned work"}]}]}');
     });
     act(() => {
       result.current.handleFinish("draft");
@@ -191,6 +194,27 @@ describe("useAnnouncementsController", () => {
     expect(serviceMocks.createAnnouncement).not.toHaveBeenCalled();
     expect(serviceMocks.updateAnnouncement).not.toHaveBeenCalled();
     expect(serviceMocks.archiveAnnouncement).not.toHaveBeenCalled();
+  });
+
+  it("does not publish a new announcement until required content is present", async () => {
+    const { result } = renderHook(() => useAnnouncementsController(), { wrapper: createWrapper() });
+
+    act(() => {
+      result.current.handleCreateByStatus();
+    });
+    await waitFor(() => expect(result.current.isCreating).toBe(true));
+
+    expect(result.current.isPublishReady).toBe(false);
+    act(() => {
+      result.current.handleFinish("none");
+    });
+    expect(serviceMocks.createAnnouncement).not.toHaveBeenCalled();
+
+    act(() => {
+      result.current.setTitle("Maintenance");
+      result.current.setBodyJson('{"type":"doc","content":[{"type":"paragraph","content":[{"type":"text","text":"Planned work"}]}]}');
+    });
+    await waitFor(() => expect(result.current.isPublishReady).toBe(true));
   });
 
   it("keeps the announcement detail empty after deleting the selected announcement", async () => {

@@ -33,4 +33,22 @@ describe("MemberRoleAvatar accessibility", () => {
 
     expect(screen.queryByRole("button")).not.toBeInTheDocument();
   });
+
+  it("keeps class roles as attached avatar badges", () => {
+    const { container } = render(
+      <MantineProvider>
+        <MemberRoleAvatar
+          user={{ username: "Aster" }}
+          profile={{
+            ...profile,
+            classes: ["牵丝霖", "鸣金虹"],
+          }}
+          withTooltip={false}
+        />
+      </MantineProvider>,
+    );
+
+    expect(container.querySelector(".member-role-avatar__roles")).toBeInTheDocument();
+    expect(container.querySelectorAll(".member-role-avatar__role-circle")).toHaveLength(2);
+  });
 });

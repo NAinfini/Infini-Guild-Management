@@ -4,6 +4,9 @@ export const SYSTEM_TEST_ARTIFACT_TYPES = [
   "user", "invite_link", "role", "event", "event_template", "announcement",
   "gallery_item", "war_history", "wiki_category", "wiki_article", "badge",
   "storage", "storage_category", "storage_item", "storage_item_image", "audit_log", "error_log", "r2_key",
+  // member_absences 会随 users 级联删除，但请假也可以挂在既有成员身上；
+  // class_catalog 没有任何入向外键，删不掉就是永久残留。两者都必须显式登记。
+  "class_catalog", "member_absence",
 ] as const;
 export type SystemTestArtifactType = (typeof SYSTEM_TEST_ARTIFACT_TYPES)[number];
 export type SystemTestArtifact = { type: SystemTestArtifactType; key: string };
@@ -54,6 +57,21 @@ export class SystemTestService {
     await this.env.DB.prepare(
       "UPDATE system_test_runs SET active_requests = CASE WHEN active_requests > 0 THEN active_requests - 1 ELSE 0 END, updated_at = ? WHERE id = ?",
     ).bind(now(), runId).run();
+  }
+
+  /**
+   * 这次运行自己登记过的产物吗？
+   *
+   * 目前只有一个用处：判断某个会话用户是不是本次运行创建出来的账号。
+   * 这类账号在清理阶段会被硬删，所以让它挂本次运行的头是安全的；
+   * 反过来，没登记过的用户一律不认——不可能借此把无关成员的动作
+   * 记到这次运行的账上。
+   */
+  async isRunArtifact(runId: string, type: SystemTestArtifactType, key: string): Promise<boolean> {
+    const row = await this.env.DB.prepare(
+      "SELECT run_id FROM system_test_artifacts WHERE run_id = ? AND artifact_type = ? AND artifact_key = ?",
+    ).bind(runId, type, key).first<{ run_id: string }>();
+    return Boolean(row);
   }
 
   async isRunOwnedBy(runId: string, actorId: string): Promise<boolean> {
@@ -126,6 +144,7 @@ export class SystemTestService {
     await deleteById("invite_links", "invite_link");
     await deleteById("audit_log", "audit_log");
     await deleteById("error_log", "error_log");
+    await deleteById("member_absences", "member_absence");
     for (const userId of byType.get("user") ?? []) {
       const user = await this.env.DB.prepare("SELECT username FROM users WHERE id = ?").bind(userId).first<{ username: string }>();
       if (user) await this.env.DB.batch([
@@ -134,6 +153,7 @@ export class SystemTestService {
       ]);
     }
     await deleteById("roles", "role");
+    await deleteById("class_catalog", "class_catalog");
     for (const key of byType.get("r2_key") ?? []) {
       await this.env.DB.prepare("DELETE FROM media_references WHERE media_key = ?").bind(key).run();
       await this.env.MEDIA.delete(key);
@@ -319,8 +339,22 @@ export class SystemTestService {
     await deleteById("invite_links", keys("invite_link"));
     await deleteById("audit_log", keys("audit_log"));
     await deleteById("error_log", keys("error_log"));
+    // 请假必须先于成员删除：既有成员身上的请假不会被 users 的级联带走。
+    await deleteById("member_absences", keys("member_absence"));
 
-    for (const userId of keys("user")) {
+    await this.deleteRegisteredUsers(runId, keys("user"));
+    await deleteById("roles", keys("role"));
+    // class_catalog 没有入向外键，member_profile_classes 存的是纯文本类名。
+    await deleteById("class_catalog", keys("class_catalog"));
+
+    for (const r2Key of keys("r2_key")) {
+      await this.env.DB.prepare("DELETE FROM media_references WHERE media_key = ?").bind(r2Key).run();
+      await this.env.MEDIA.delete(r2Key);
+    }
+  }
+
+  private async deleteRegisteredUsers(runId: string, userIds: readonly string[]): Promise<void> {
+    for (const userId of userIds) {
       const user = await this.env.DB.prepare("SELECT username FROM users WHERE id = ?").bind(userId).first<{ username: string }>();
       if (!user) continue;
       const unregisteredAudit = await this.env.DB.prepare(
@@ -331,12 +365,6 @@ export class SystemTestService {
         this.env.DB.prepare("DELETE FROM login_failures WHERE username = ?").bind(user.username),
         this.env.DB.prepare("DELETE FROM users WHERE id = ?").bind(userId),
       ]);
-    }
-    await deleteById("roles", keys("role"));
-
-    for (const r2Key of keys("r2_key")) {
-      await this.env.DB.prepare("DELETE FROM media_references WHERE media_key = ?").bind(r2Key).run();
-      await this.env.MEDIA.delete(r2Key);
     }
   }
 }

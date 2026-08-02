@@ -10,6 +10,7 @@ import {
   ColorSwatch,
   Group,
   HoverCard,
+  Modal,
   NumberInput,
   Skeleton,
   ScrollArea,
@@ -29,6 +30,7 @@ import {
   EyeIcon,
   GalleryThumbnailsIcon,
   LockIcon,
+  PaletteIcon,
   PencilIcon,
   PlusIcon,
   SaveIcon,
@@ -107,7 +109,13 @@ const PERMISSION_CATEGORIES: PermissionCategory[] = [
   },
   {
     labelKey: "roles.category.adminSystem",
-    permissions: ["admin.status.view", "admin.roles.view", "admin.roles.manage", "admin.siteConfig.manage"],
+    permissions: [
+      "admin.status.view",
+      "admin.roles.view",
+      "admin.roles.manage",
+      "admin.siteConfig.manage",
+      "admin.classes.manage",
+    ],
   },
   {
     labelKey: "roles.category.storage",
@@ -158,6 +166,7 @@ const PERM_META: Record<string, PermMeta> = {
   "admin.roles.view":      { icon: <EyeIcon size={PERM_ICON_SIZE} />,              color: "gray" },
   "admin.roles.manage":    { icon: <ShieldIcon size={PERM_ICON_SIZE} />,             color: "red", danger: true },
   "admin.siteConfig.manage": { icon: <SettingsIcon size={PERM_ICON_SIZE} />,         color: "teal" },
+  "admin.classes.manage":    { icon: <PaletteIcon size={PERM_ICON_SIZE} />,          color: "teal" },
   "admin.analytics.view":  { icon: <EyeIcon size={PERM_ICON_SIZE} />,              color: "gray" },
   "admin.analytics.manage":{ icon: <SettingsIcon size={PERM_ICON_SIZE} />,           color: "teal" },
   "guildwar.teams.edit":   { icon: <SwordsIcon size={PERM_ICON_SIZE} />,             color: "orange" },
@@ -263,8 +272,12 @@ export function AdminRolesSection({
   const loadErrorMessage = tc("loadError");
   const [selectedRoleId, setSelectedRoleId] = useState<string | null>(null);
   const [drafts, setDrafts] = useState<Record<string, RoleDraft>>({});
+  const [createModalOpened, setCreateModalOpened] = useState(false);
+  const [createRoleName, setCreateRoleName] = useState("");
 
   const emptyPermissions = useMemo(() => buildEmptyPermissions(), []);
+  const normalizedCreateRoleName = createRoleName.trim();
+  const createRoleNameValid = normalizedCreateRoleName.length > 0 && normalizedCreateRoleName.length <= 80;
 
   useEffect(() => {
     const next: Record<string, RoleDraft> = {};
@@ -289,15 +302,24 @@ export function AdminRolesSection({
   const selectedDraft = selectedRoleId ? drafts[selectedRoleId] : undefined;
   const isDirty = selectedRole && selectedDraft ? isRoleDraftDirty(selectedRole, selectedDraft) : false;
 
-  const handleCreateRole = async () => {
-    const name = `Role-${Math.random().toString(36).slice(2, 6)}`;
+  const openCreateRoleModal = () => {
+    setCreateRoleName("");
+    setCreateModalOpened(true);
+  };
 
-    await onCreateRole({
-      name,
+  const handleCreateRole = async () => {
+    if (!createRoleNameValid) return;
+
+    const created = await onCreateRole({
+      name: normalizedCreateRoleName,
       level: 100,
       color: null,
       permissions: emptyPermissions,
     });
+    if (created) {
+      setCreateModalOpened(false);
+      setCreateRoleName("");
+    }
   };
 
   const handleDeleteRole = async (role: AdminRole) => {
@@ -354,17 +376,17 @@ export function AdminRolesSection({
       {rolesError ? <Alert color="red" title={loadErrorMessage} /> : null}
 
       {!rolesLoading && !rolesError ? (
-        <div className="admin-roles-layout">
+        <div className="admin-md">
           {/* ── Left panel: role list ── */}
-          <div className="admin-roles-sidebar">
-            <div className="admin-roles-sidebar-header">
+          <div className="admin-md__master">
+            <div className="admin-md__master-head">
               <Group gap={8} justify="space-between" wrap="nowrap">
                 <Text fw={700} size="sm">{t("roles.listTitle")}</Text>
                 <ActionIcon
                   size="sm"
                   variant="filled"
                   color="portal-brand"
-                  onClick={() => { void handleCreateRole(); }}
+                  onClick={openCreateRoleModal}
                   loading={createRolePending}
                   aria-label={t("roles.create")}
                 >
@@ -373,8 +395,8 @@ export function AdminRolesSection({
               </Group>
             </div>
 
-            <ScrollArea className="admin-roles-sidebar-scroll" type="auto" scrollbarSize={6} style={{ flex: 1, minHeight: 0, overflow: "hidden" }}>
-              <Stack gap={4} p={8}>
+            <ScrollArea className="admin-md__list" type="auto" scrollbarSize={6}>
+              <Stack gap={2} p={6}>
                 {roles.map((role) => {
                   const isSelected = role.id === selectedRoleId;
                   const roleDraft = drafts[role.id];
@@ -383,43 +405,46 @@ export function AdminRolesSection({
                   return (
                     <UnstyledButton
                       key={role.id}
-                      className={`admin-roles-sidebar-item ${isSelected ? "admin-roles-sidebar-item--active" : ""}`}
+                      className={`admin-md__item ${isSelected ? "admin-md__item--active" : ""}`}
                       onClick={() => setSelectedRoleId(role.id)}
                     >
-                      <Group gap={8} wrap="nowrap" justify="space-between">
-                        <Group gap={8} wrap="nowrap" style={{ minWidth: 0 }}>
-                          {role.color ? (
-                            <ColorSwatch color={normalizeColor(role.color)} size={14} />
-                          ) : (
-                            <ColorSwatch color="transparent" size={14} />
-                          )}
-                          <Text size="sm" fw={isSelected ? 700 : 500} truncate>
-                            {t(`role.${role.id}`, { defaultValue: role.name })}
-                          </Text>
-                        </Group>
-                        <Group gap={4} wrap="nowrap">
-                          {dirty ? (
-                            <Badge size="xs" variant="light" color="orange">*</Badge>
-                          ) : null}
-                          {role.is_builtin ? (
-                            <Badge size="xs" variant="light" color="gray">{t("roles.builtin")}</Badge>
-                          ) : (
-                            <ActionIcon
-                              size="xs"
-                              variant="subtle"
-                              color="red"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                void handleDeleteRole(role);
-                              }}
-                              loading={deleteRolePending}
-                              aria-label={t("roles.delete")}
-                            >
-                              <XIcon size={12} />
-                            </ActionIcon>
-                          )}
-                        </Group>
-                      </Group>
+                      {/*
+                        * 左右分组由 .admin-md__item-main / __item-meta 承担：名字那一组让位，
+                        * 状态那一组不收缩。两边都可收缩时，浏览器会按基准宽度成比例压缩，
+                        * 「*」这种一个字符的徽标会被压到零宽——DOM 里在，量出来是隐藏。
+                        */}
+                      <span className="admin-md__item-main">
+                        {role.color ? (
+                          <ColorSwatch color={normalizeColor(role.color)} size={14} />
+                        ) : (
+                          <ColorSwatch color="transparent" size={14} />
+                        )}
+                        <Text size="sm" fw={isSelected ? 700 : 500} truncate>
+                          {t(`role.${role.id}`, { defaultValue: role.name })}
+                        </Text>
+                      </span>
+                      <span className="admin-md__item-meta">
+                        {dirty ? (
+                          <Badge size="xs" variant="light" color="orange">*</Badge>
+                        ) : null}
+                        {role.is_builtin ? (
+                          <Badge size="xs" variant="light" color="gray">{t("roles.builtin")}</Badge>
+                        ) : (
+                          <ActionIcon
+                            size="xs"
+                            variant="subtle"
+                            color="red"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              void handleDeleteRole(role);
+                            }}
+                            loading={deleteRolePending}
+                            aria-label={t("roles.delete")}
+                          >
+                            <XIcon size={12} />
+                          </ActionIcon>
+                        )}
+                      </span>
                     </UnstyledButton>
                   );
                 })}
@@ -428,11 +453,11 @@ export function AdminRolesSection({
           </div>
 
           {/* ── Right panel: permissions ── */}
-          <div className="admin-roles-detail">
+          <div className="admin-md__detail">
             {selectedRole && selectedDraft ? (
-              <Stack gap={16}>
+              <>
                 {/* Role header */}
-                <div className="admin-roles-detail-header">
+                <div className="admin-md__detail-head">
                   <Group justify="space-between" align="flex-end" wrap="wrap">
                     <Group gap={10} align="flex-end" wrap="wrap" style={{ minWidth: 0, flex: 1 }}>
                       <TextInput
@@ -507,10 +532,10 @@ export function AdminRolesSection({
                 </div>
 
                 {/* Permission categories */}
-                <ScrollArea type="auto" scrollbarSize={6} style={{ flex: 1 }}>
-                  <Stack gap={20}>
+                <ScrollArea className="admin-md__detail-body" type="auto" scrollbarSize={6}>
+                  <Stack gap={20} className="admin-md__detail-pad">
                     {PERMISSION_CATEGORIES.map((category) => (
-                      <div key={category.labelKey} className="admin-roles-perm-category">
+                      <div key={category.labelKey}>
                         <SectionHeader title={t(category.labelKey)} />
                         <div className="admin-roles-perm-grid">
                           {category.permissions.map((permission) => {
@@ -599,15 +624,62 @@ export function AdminRolesSection({
                     ))}
                   </Stack>
                 </ScrollArea>
-              </Stack>
+              </>
             ) : (
-              <div className="admin-roles-detail-empty">
+              <div className="admin-md__empty">
                 <Text c="dimmed">{t("roles.selectHint")}</Text>
               </div>
             )}
           </div>
         </div>
       ) : null}
+
+      <Modal
+        opened={createModalOpened}
+        onClose={() => setCreateModalOpened(false)}
+        title={t("roles.createTitle")}
+        centered
+        returnFocus
+      >
+        <form
+          onSubmit={(event) => {
+            event.preventDefault();
+            void handleCreateRole();
+          }}
+        >
+          <Stack gap="md">
+            <Text size="sm" c="dimmed">{t("roles.createDescription")}</Text>
+            <TextInput
+              required
+              data-autofocus
+              label={t("roles.field.name")}
+              description={t("roles.validation.nameRequired")}
+              value={createRoleName}
+              onChange={(event) => setCreateRoleName(event.currentTarget.value)}
+              maxLength={80}
+              error={createRoleName.length > 0 && !createRoleNameValid
+                ? t("roles.validation.nameRequired")
+                : undefined}
+            />
+            <Group justify="flex-end">
+              <Button
+                type="button"
+                variant="default"
+                onClick={() => setCreateModalOpened(false)}
+              >
+                {t("roles.cancel")}
+              </Button>
+              <Button
+                type="submit"
+                loading={createRolePending}
+                disabled={!createRoleNameValid}
+              >
+                {t("roles.create")}
+              </Button>
+            </Group>
+          </Stack>
+        </form>
+      </Modal>
     </Stack>
   );
 }

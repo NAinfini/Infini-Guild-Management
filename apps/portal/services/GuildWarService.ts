@@ -1,7 +1,6 @@
 import type { QueryClient } from "@tanstack/react-query";
 import {
   batchUpdateGuildWarMemberStats,
-  batchDeleteGuildWarHistory,
   concludeGuildWar,
   deleteGuildWarHistory,
   moveGuildWarMember,
@@ -24,7 +23,6 @@ import {
 } from "../api/queries/guild-war";
 
 export {
-  batchDeleteGuildWarHistory,
   batchUpdateGuildWarMemberStats,
   concludeGuildWar,
   deleteGuildWarHistory,
@@ -46,7 +44,7 @@ export const usersQueryKeys = queryKeys.users;
 export const absenceQueryKeys = queryKeys.absences;
 
 export const ANALYTICS_SELECTION_SOFT_CAP = 10;
-const ANALYTICS_SELECTION_HARD_CAP = 20;
+export const ANALYTICS_SELECTION_HARD_CAP = 20;
 
 type GuildWarTeam = GuildWarActiveResponse["teams"][number];
 type GuildWarPoolMember = GuildWarActiveResponse["pool"][number];

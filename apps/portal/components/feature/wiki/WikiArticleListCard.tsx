@@ -1,5 +1,5 @@
 import type { WikiArticle } from "@guild/shared";
-import { ActionIcon, Alert, Button, Group, HoverCard, MultiSelect, Paper, Skeleton, Stack, Text, ThemeIcon, Tooltip } from "@mantine/core";
+import { ActionIcon, Alert, Button, Group, HoverCard, Paper, Skeleton, Stack, Text, ThemeIcon, Tooltip } from "@mantine/core";
 import { ArchiveIcon, PencilIcon, PinIcon, PlusIcon } from "@portal/components/icons";
 import { format } from "date-fns";
 import type { ReactNode } from "react";
@@ -20,8 +20,6 @@ type WikiArticleListCardProps = {
   onCreateArticle: () => void;
   onOpenCategoryEditor: () => void;
   categoryOptions: Array<{ value: string; label: string }>;
-  selectedCategoryIds: string[];
-  onCategoryFilterChange: (values: string[]) => void;
   hasActiveFilters: boolean;
   resetFiltersLabel: ReactNode;
   onResetFilters: () => void;
@@ -45,8 +43,6 @@ export function WikiArticleListCard({
   onCreateArticle,
   onOpenCategoryEditor,
   categoryOptions,
-  selectedCategoryIds,
-  onCategoryFilterChange,
   hasActiveFilters,
   resetFiltersLabel,
   onResetFilters,
@@ -73,14 +69,14 @@ export function WikiArticleListCard({
               <Group gap={6}>
                 {canCreateArticle ? (
                   <Tooltip label={createLabel} withArrow>
-                    <ActionIcon size="sm" onClick={onCreateArticle} aria-label={t("articleEditor.create")}>
+                    <ActionIcon size={44} onClick={onCreateArticle} aria-label={t("articleEditor.create")}>
                       <PlusIcon size={16} />
                     </ActionIcon>
                   </Tooltip>
                 ) : null}
                 {canManageCategories ? (
                   <Tooltip label={t("editor.editCategories")} withArrow>
-                    <ActionIcon size="sm" variant="default" onClick={onOpenCategoryEditor} aria-label={t("editor.editCategories")}>
+                    <ActionIcon size={44} variant="default" onClick={onOpenCategoryEditor} aria-label={t("editor.editCategories")}>
                       <PencilIcon size={16} />
                     </ActionIcon>
                   </Tooltip>
@@ -88,15 +84,6 @@ export function WikiArticleListCard({
               </Group>
             ) : null}
           </Group>
-          <MultiSelect
-            clearable
-            searchable
-            placeholder={t("filter.allCategories")}
-            aria-label={t("filter.categories")}
-            value={selectedCategoryIds}
-            onChange={onCategoryFilterChange}
-            data={categoryOptions}
-          />
           {isLoading ? (
             <Stack gap={8}>
               {Array.from({ length: 6 }).map((_, index) => (

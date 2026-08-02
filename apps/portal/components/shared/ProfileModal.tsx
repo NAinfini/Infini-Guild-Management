@@ -5,6 +5,8 @@ import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from "react"
 import { useTranslation } from "react-i18next";
 import { MediaGallery, buildMediaGalleryLabels } from "@portal/components/shared/MediaGallery";
 import { sanitizeTitleHtml } from "../../utils/sanitize";
+import { resolveClassCatalogItem, useClassCatalogStore } from "../../stores/class-catalog";
+import { ClassIcon } from "./ClassIcon";
 import styles from "./ProfileModal.module.css";
 
 type ProfileModalProps = {
@@ -33,6 +35,7 @@ export function ProfileModal({
   resolveMediaUrl = defaultMediaResolver,
 }: ProfileModalProps) {
   const { t, i18n } = useTranslation("common");
+  const classCatalog = useClassCatalogStore((state) => state.items);
   const mediaLabels = useMemo(() => buildMediaGalleryLabels(t), [t]);
   const [avatarLoaded, setAvatarLoaded] = useState(false);
   const [avatarError, setAvatarError] = useState(false);
@@ -43,6 +46,10 @@ export function ProfileModal({
   );
   const avatarUrl = profile?.avatar_key ? resolveMediaUrl(profile.avatar_key) : null;
   const activeTime = user?.updated_at ? new Date(user.updated_at).toLocaleString(i18n.language) : "-";
+  const classItems = useMemo(
+    () => (profile?.classes ?? []).map((id) => resolveClassCatalogItem(id, classCatalog)),
+    [classCatalog, profile?.classes],
+  );
 
   useEffect(() => {
     setAvatarLoaded(false);
@@ -170,7 +177,16 @@ export function ProfileModal({
                 </div>
                 <div className={styles.field}>
                   <span className={styles.fieldLabel}>{t("profile.field.class")}</span>
-                  <Text>{profile.classes.join(", ") || "-"}</Text>
+                  {classItems.length > 0 ? (
+                    <Group gap={8} wrap="wrap">
+                      {classItems.map((item) => (
+                        <Group key={item.id} gap={4} wrap="nowrap">
+                          <ClassIcon item={item} size={20} />
+                          <Text size="sm">{item.label}</Text>
+                        </Group>
+                      ))}
+                    </Group>
+                  ) : <Text>-</Text>}
                 </div>
                 <div className={styles.field}>
                   <span className={styles.fieldLabel}>{t("profile.field.bio")}</span>

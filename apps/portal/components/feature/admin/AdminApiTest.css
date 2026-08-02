@@ -1,13 +1,14 @@
 /* ── API Test Console — Ops Dashboard ── */
 
+/* 控制台外壳收敛到和后台其余表面一样的一档：--surface-base + --border-subtle。
+   原先是 color-mix 自调的一层「比底色深一点」的面和一条 8% 墨色的边——
+   和左边的健康卡片放在同一屏里，两块本该同级的面看起来是两种材质。 */
 .api-console {
   display: flex;
   flex-direction: column;
   border-radius: var(--radius-surface);
-  border: 1px solid color-mix(in srgb, var(--text-primary) 8%, transparent);
-  /* --surface-base 混入一点 --text-primary，深浅两模式各自往「更深/更浅一点」
-     偏，不需要额外的 .dark 分支（the token-layer contract E 节）。 */
-  background: color-mix(in srgb, var(--surface-base) 97%, var(--text-primary));
+  border: 1px solid var(--border-subtle);
+  background: var(--surface-base);
   overflow: hidden;
 }
 
@@ -17,19 +18,18 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 12px;
-  padding: 12px 18px;
-  border-bottom: 1px solid color-mix(in srgb, var(--text-primary) 6%, transparent);
-  background: color-mix(in srgb, var(--text-primary) 2%, transparent);
+  gap: var(--space-sm);
+  padding: var(--space-sm) var(--space-md);
+  border-bottom: 1px solid var(--border-subtle);
+  background: var(--surface-sunken);
 }
 
-/* 去掉感叹号优先级，先去掉跑一遍确认：选择器 .api-console__header button 是
-   「类 + 元素」(0,1,1)。@mantine/core/styles.css 里的组件基础规则一律落在
-   单个哈希类上（如 .m_8fb7ebe7 { ... }），没有嵌套选择器，特异性顶多
-   (0,1,0)，(0,1,1) 稳赢，不必靠源码顺序或感叹号优先级。12px 恰好落在
-   --space-md / --text-meta 上，直接替换；5px、6px 不在标度上，保留字面量，
-   不强行吸附（the token-layer contract L 节）。 */
-.api-console__header button {
+/* 只收敛 Mantine 按钮的尺寸；折叠把手是本文件外的 .admin-status-toggle，
+   不能被这条压到（原选择器 `.api-console__header button` 会一并命中它）。
+   .mantine-Button-root 是 (0,2,0)，稳过 @mantine/core 单哈希类的 (0,1,0)，
+   不必靠源码顺序或感叹号优先级。5px、6px 不在标度上，保留字面量
+   （the token-layer contract L 节）。 */
+.api-console__header .mantine-Button-root {
   padding: 5px var(--space-md);
   font-size: var(--text-meta);
   border-radius: 6px;
@@ -38,8 +38,10 @@
 .api-console__header-left {
   display: flex;
   align-items: center;
-  gap: 14px;
+  gap: var(--space-md);
   flex-wrap: wrap;
+  min-width: 0;
+  flex: 1;
 }
 
 .api-console__header-actions {
@@ -49,30 +51,31 @@
   flex-shrink: 0;
 }
 
-.api-console__header .api-console__run-all {
+/* 44px 触控靶面。停止按钮此前是 TSX 里的 h={44}。 */
+.api-console__header .api-console__run-all,
+.api-console__header .api-console__stop {
   min-height: 44px;
 }
 
 .api-console__stats {
   display: flex;
   align-items: center;
-  gap: 14px;
+  gap: var(--space-md);
 }
 
 .api-console__stat {
   display: flex;
   align-items: center;
   gap: 5px;
-  font-size: 11.5px;
-  font-weight: 600;
+  font-size: var(--text-meta);
+  font-weight: var(--fw-medium);
   letter-spacing: 0.02em;
-  color: color-mix(in srgb, var(--text-primary) 65%, transparent);
+  color: var(--text-secondary);
 }
 
 .api-console__stat-value {
   font-variant-numeric: tabular-nums;
-  font-weight: 800;
-  font-size: 12.5px;
+  font-weight: var(--fw-strong);
   color: var(--text-primary);
 }
 
@@ -415,8 +418,8 @@
 
 .api-debug {
   border-radius: var(--radius-surface);
-  border: 1px solid color-mix(in srgb, var(--text-primary) 8%, transparent);
-  background: color-mix(in srgb, var(--surface-base) 97%, var(--text-primary));
+  border: 1px solid var(--border-subtle);
+  background: var(--surface-base);
   overflow: hidden;
 }
 
@@ -424,16 +427,18 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 12px;
-  padding: 10px 16px;
-  border-bottom: 1px solid color-mix(in srgb, var(--text-primary) 6%, transparent);
-  background: color-mix(in srgb, var(--text-primary) 2%, transparent);
+  gap: var(--space-sm);
+  padding: var(--space-xs) var(--space-md);
+  border-bottom: 1px solid var(--border-subtle);
+  background: var(--surface-sunken);
 }
 
 .api-debug__header-left {
   display: flex;
   align-items: center;
   gap: 10px;
+  min-width: 0;
+  flex: 1;
 }
 
 .api-debug__header-right {

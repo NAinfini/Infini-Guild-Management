@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import type { Storage, StorageItem } from "@guild/shared";
 import { MantineProvider } from "@mantine/core";
-import { render, screen, waitFor } from "@testing-library/react";
+import { act, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type { ReactNode } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -9,6 +9,7 @@ import { StoragePage } from "./StoragePage";
 
 const storageState = vi.hoisted(() => ({
   canManageStructure: true,
+  canManageItems: false,
   canManageStock: false,
   search: {} as Record<string, unknown>,
   storages: [] as Storage[],
@@ -23,6 +24,8 @@ const storageHooks = vi.hoisted(() => ({
 
 const mutationMocks = vi.hoisted(() => ({
   createBatchTransaction: vi.fn(),
+  createItem: vi.fn(),
+  uploadImages: vi.fn(),
 }));
 
 const mutation = () => ({
@@ -50,6 +53,7 @@ vi.mock("../../hooks/useEffectivePermissions", () => ({
   useEffectivePermissions: () => ({
     canManage: (permissions: string[]) =>
       (storageState.canManageStructure && permissions.includes("admin.storage.structure"))
+      || (storageState.canManageItems && permissions.includes("admin.storage.items"))
       || (storageState.canManageStock && permissions.includes("admin.storage.stock")),
   }),
 }));
@@ -72,10 +76,16 @@ vi.mock("../../hooks/useStorageMutations", () => ({
     createCategoryMutation: mutation(),
     updateCategoryMutation: mutation(),
     deleteCategoryMutation: mutation(),
-    createItemMutation: mutation(),
+    createItemMutation: {
+      isPending: false,
+      mutate: mutationMocks.createItem,
+    },
     updateItemMutation: mutation(),
     deleteItemMutation: mutation(),
-    uploadImagesMutation: mutation(),
+    uploadImagesMutation: {
+      isPending: false,
+      mutate: mutationMocks.uploadImages,
+    },
     deleteImageMutation: mutation(),
     createTransactionMutation: mutation(),
     createBatchTransactionMutation: {
@@ -114,7 +124,52 @@ vi.mock("../feature/storage/StorageItemDetailModal", () => ({
 }));
 
 vi.mock("../feature/storage/StorageItemEditorModal", () => ({
-  StorageItemEditorModal: () => null,
+  StorageItemEditorModal: ({
+    opened,
+    item: currentItem,
+    onCreateItem,
+    onUploadImages,
+  }: {
+    opened: boolean;
+    item: StorageItem | null;
+    onCreateItem: (payload: {
+      storage_id: string;
+      category_id: null;
+      name: string;
+      description: null;
+      allow_member_deposit: boolean;
+      allow_member_withdraw: boolean;
+    }) => void;
+    onUploadImages: (itemId: string, files: File[]) => void;
+  }) => opened
+    ? (
+        <div>
+          <div data-testid="storage-editor-item">{currentItem?.id ?? "new"}</div>
+          {!currentItem ? (
+            <button
+              type="button"
+              onClick={() => onCreateItem({
+                storage_id: "storage-1",
+                category_id: null,
+                name: "Crystal",
+                description: null,
+                allow_member_deposit: false,
+                allow_member_withdraw: false,
+              })}
+            >
+              editor-create
+            </button>
+          ) : (
+            <button
+              type="button"
+              onClick={() => onUploadImages(currentItem.id, [new File(["image"], "item.png", { type: "image/png" })])}
+            >
+              editor-upload
+            </button>
+          )}
+        </div>
+      )
+    : null,
 }));
 
 vi.mock("../feature/storage/StorageTransactionModal", () => ({
@@ -193,6 +248,7 @@ function renderPage() {
 describe("StoragePage recovery and filter isolation", () => {
   beforeEach(() => {
     storageState.canManageStructure = true;
+    storageState.canManageItems = false;
     storageState.canManageStock = false;
     storageState.search = {};
     storageState.storages = [];
@@ -201,6 +257,8 @@ describe("StoragePage recovery and filter isolation", () => {
     storageHooks.fetchNextPage.mockReset();
     storageHooks.useStorageItems.mockReset();
     mutationMocks.createBatchTransaction.mockReset();
+    mutationMocks.createItem.mockReset();
+    mutationMocks.uploadImages.mockReset();
     storageHooks.useStorageItems.mockImplementation((options: {
       search?: string;
       enabled?: boolean;
@@ -286,7 +344,8 @@ describe("StoragePage recovery and filter isolation", () => {
 
     await user.click(screen.getByRole("button", { name: "action.startBatch" }));
     await user.click(screen.getByRole("button", { name: "add-item-1" }));
-    await user.click(screen.getByRole("button", { name: "action.submitBatch" }));
+    await user.click(screen.getByRole("button", { name: "action.reviewBatch" }));
+    await user.click(await screen.findByRole("button", { name: "action.submitBatch" }));
 
     expect(mutationMocks.createBatchTransaction).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -300,19 +359,36 @@ describe("StoragePage recovery and filter isolation", () => {
     );
   });
 
-  it("reveals the batch summary when the active batch button is pressed again", async () => {
+  it("keeps the active batch controls visible above the inventory", async () => {
     const user = userEvent.setup();
-    const scrollIntoView = vi.fn();
-    Object.defineProperty(HTMLElement.prototype, "scrollIntoView", {
-      configurable: true,
-      value: scrollIntoView,
-    });
     storageState.storages = [storages[0]!];
     renderPage();
 
     await user.click(screen.getByRole("button", { name: "action.startBatch" }));
-    await user.click(screen.getByRole("button", { name: "batch.pendingItems" }));
 
-    expect(scrollIntoView).toHaveBeenCalledWith({ block: "end" });
+    expect(screen.getByText("batch.title")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "action.reviewBatch" })).toBeInTheDocument();
+  });
+
+  it("keeps a newly created item open so an admin can upload images immediately", async () => {
+    const user = userEvent.setup();
+    storageState.storages = [storages[0]!];
+    storageState.canManageItems = true;
+    renderPage();
+
+    await user.click(screen.getByRole("button", { name: "action.createItem" }));
+    await user.click(screen.getByRole("button", { name: "editor-create" }));
+
+    const createOptions = mutationMocks.createItem.mock.calls[0]?.[1] as {
+      onSuccess: (createdItem: StorageItem) => void;
+    };
+    act(() => createOptions.onSuccess(item));
+
+    expect(screen.getByTestId("storage-editor-item")).toHaveTextContent(item.id);
+    await user.click(screen.getByRole("button", { name: "editor-upload" }));
+    expect(mutationMocks.uploadImages).toHaveBeenCalledWith({
+      itemId: item.id,
+      files: [expect.any(File)],
+    });
   });
 });

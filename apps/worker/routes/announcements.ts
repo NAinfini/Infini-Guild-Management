@@ -120,9 +120,15 @@ announcementsRoutes.post("/:id/images", async (c) => {
   if (files.length > mediaPolicy.quotas.announcement) {
     return buildError(c, "VALIDATION_ERROR", `Maximum ${mediaPolicy.quotas.announcement} announcement images per upload`);
   }
+  /* 和 /images/stage 同一档：声明的 Content-Type 只作初筛，最终以字节头为准。 */
+  const allowedTypes = new Set<string>(ALLOWED_IMAGE_TYPES);
+  const fileData: Array<{ data: ArrayBuffer; contentType: string }> = [];
   for (const file of files) {
-    if (!ALLOWED_IMAGE_TYPES.includes(file.type as typeof ALLOWED_IMAGE_TYPES[number])) return buildError(c, "VALIDATION_ERROR", `Invalid file type: ${file.name}`);
     if (file.size > mediaPolicy.max_file_size_bytes.announcement_image) return buildError(c, "VALIDATION_ERROR", `File too large: ${file.name}`);
+    const data = await file.arrayBuffer();
+    const validation = validateUploadBytes(data, file.type || "application/octet-stream", allowedTypes);
+    if (!validation.ok) return buildError(c, "VALIDATION_ERROR", `Invalid file type: ${file.name}`);
+    fileData.push({ data, contentType: validation.contentType });
   }
   if (!await hasMediaQuotaCapacity(
     c,
@@ -133,7 +139,6 @@ announcementsRoutes.post("/:id/images", async (c) => {
     return buildError(c, "VALIDATION_ERROR", `Announcement image quota is ${mediaPolicy.quotas.announcement}`);
   }
 
-  const fileData = await Promise.all(files.map(async (f) => ({ data: await f.arrayBuffer(), contentType: f.type || "application/octet-stream" })));
   const result = await getService(c).uploadImages(sessionUser.id, c.req.param("id"), fileData);
   return handleResult(c, result);
 });

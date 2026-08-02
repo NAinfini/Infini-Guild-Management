@@ -1,4 +1,4 @@
-import { Button, Grid, Group, Loader, Stack } from "@mantine/core";
+import { Button, Group, Loader, Stack } from "@mantine/core";
 import { useMediaQuery } from "@mantine/hooks";
 import { ArrowLeftIcon } from "@portal/components/icons";
 import { useState } from "react";
@@ -36,6 +36,10 @@ export function AnnouncementsPage() {
     />
   );
   const openAnnouncement = async (id: string | null) => {
+    if (id !== null && id === controller.selectedId && !controller.isCreating) {
+      setShowMobileDetail(true);
+      return;
+    }
     const selected = await controller.setSelectedId(id);
     if (selected !== false) {
       setShowMobileDetail(true);
@@ -105,6 +109,7 @@ export function AnnouncementsPage() {
       onArchivedChange={controller.setArchived}
       onImageUpload={controller.handleUploadAnnouncementImages}
       isDirty={controller.isDirty}
+      isPublishReady={controller.isPublishReady}
       emptyTitle={t("common:message.noData")}
     />
   );
@@ -144,10 +149,10 @@ export function AnnouncementsPage() {
           ) : listCard}
         </Stack>
       ) : (
-        <Grid gutter={{ base: 12, md: 16 }} align="stretch" className="announcements-page-grid">
-          <Grid.Col span={{ base: 12, md: 5, lg: 4 }}>{listCard}</Grid.Col>
-          <Grid.Col span={{ base: 12, md: 7, lg: 8 }}>{detailCard}</Grid.Col>
-        </Grid>
+        <div className="announcements-page-grid">
+          <div className="announcements-page-column">{listCard}</div>
+          <div className="announcements-page-column">{detailCard}</div>
+        </div>
       )}
 
       {controller.isBusy ? <Loader size="sm" /> : null}

@@ -1,7 +1,7 @@
 import { loginSchema } from "@guild/shared";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useMutation } from "@tanstack/react-query";
-import { useNavigate, useSearch } from "@tanstack/react-router";
+import { Link, useNavigate, useSearch } from "@tanstack/react-router";
 import {
   Anchor,
   Button,
@@ -203,7 +203,7 @@ export function LoginPage() {
                     setValue("password", event.currentTarget.value);
                   }}
                   error={passwordError}
-                  classNames={{ root: "login-floating-root", input: "login-floating-input", label: "login-floating-label" }}
+                  classNames={{ root: "login-floating-root", input: "login-floating-input login-page__password-input", label: "login-floating-label" }}
                   autoComplete="current-password"
                 />
                 <div className="login-page__password-actions">
@@ -214,8 +214,8 @@ export function LoginPage() {
                     type="button"
                     className="login-page__eye-btn"
                     onClick={showPasswordHandlers.toggle}
-                    tabIndex={-1}
                     aria-label={showPassword ? t("aria.hidePassword") : t("aria.showPassword")}
+                    aria-pressed={showPassword}
                   >
                     {showPassword ? <EyeOffIcon size={18} /> : <EyeIcon size={18} />}
                   </button>
@@ -230,8 +230,9 @@ export function LoginPage() {
 
               <div className="login-page__back-link">
                 <Anchor
+                  component={Link}
+                  to="/"
                   underline="hover"
-                  onClick={() => void navigate({ to: "/" })}
                   className="login-page__back-anchor"
                 >
                   <ArrowLeftIcon size={14} />
@@ -242,7 +243,7 @@ export function LoginPage() {
               <div style={{ textAlign: "center" }}>
                 <Text size="sm" c="dimmed">
                   {t("button.haveInviteCode")}{" "}
-                  <Anchor underline="hover" onClick={() => void navigate({ to: "/register" })}>
+                  <Anchor component={Link} to="/register" underline="hover">
                     {t("button.registerHere")}
                   </Anchor>
                 </Text>

@@ -24,6 +24,7 @@ export function DataTablePagination<T>({
         <Text size="sm">{t("pagination.perPage")}</Text>
         <Select
           size="xs"
+          aria-label={t("pagination.perPage")}
           data={pageSizeOptions.map((n) => ({ value: String(n), label: String(n) }))}
           value={String(table.getState().pagination.pageSize)}
           onChange={(val) => { if (val) table.setPageSize(Number(val)); }}
@@ -39,6 +40,18 @@ export function DataTablePagination<T>({
         siblings={1}
         boundaries={1}
         aria-label={t("pagination.page")}
+        getItemProps={(page) => ({
+          "aria-label": t("pagination.goToPage", { page }),
+        })}
+        getControlProps={(control) => ({
+          "aria-label": control === "first"
+            ? t("pagination.first")
+            : control === "previous"
+              ? t("pagination.prev")
+              : control === "next"
+                ? t("pagination.next")
+                : t("pagination.last"),
+        })}
       />
     </Group>
   );

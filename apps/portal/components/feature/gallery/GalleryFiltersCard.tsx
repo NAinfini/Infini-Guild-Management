@@ -1,6 +1,7 @@
 import { ActionIcon, Box, Button, Collapse, Flex, Group, HoverCard, Paper, SegmentedControl, Select, Stack, Text, TextInput, ThemeIcon } from "@mantine/core";
 import { useDisclosure, useMediaQuery } from "@mantine/hooks";
 import { CalendarOffIcon } from "@portal/components/icons";
+import { NativeDateTimeInput } from "@portal/components/shared/NativeDateTimeInput";
 import { IconAdjustmentsHorizontal } from "@tabler/icons-react";
 import { useTranslation } from "react-i18next";
 import { useConfirmDialog } from "@portal/hooks/useConfirmDialog";
@@ -99,15 +100,13 @@ export function GalleryFiltersCard({
             ]}
           />
           <Group gap={4} wrap="nowrap">
-            <TextInput
-              type="date"
+            <NativeDateTimeInput
               value={dateFrom}
               onChange={(event) => onDateFromChange(event.currentTarget.value)}
               style={{ width: 150 }}
               aria-label={t("aria.dateFrom")}
             />
-            <TextInput
-              type="date"
+            <NativeDateTimeInput
               value={dateTo}
               onChange={(event) => onDateToChange(event.currentTarget.value)}
               style={{ width: 150 }}

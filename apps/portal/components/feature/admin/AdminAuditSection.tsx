@@ -1,5 +1,8 @@
 import type { AuditLogEntry } from "@guild/shared";
-import { Button, Group, Paper, Stack, TextInput } from "@mantine/core";
+import { Button, Group, Menu, SegmentedControl, Stack, Text, TextInput } from "@mantine/core";
+import { ArrowDownIcon, SearchIcon, XIcon } from "@portal/components/icons";
+import { NativeDateTimeInput } from "@portal/components/shared/NativeDateTimeInput";
+import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useAuthStore } from "../../../stores/auth";
 import { formatDateTime, maskIdentifier } from "../../../utils/admin";
@@ -67,53 +70,119 @@ export function AdminAuditSection({
         canViewStatus(rolesData, user.role)),
   );
   const loadErrorMessage = tc("loadError");
+  /* 无从得知当前这对日期是哪个预设产生的，所以默认如实显示成「自定义」，
+     用户点了预设才切过去。 */
+  const [range, setRange] = useState<"1d" | "7d" | "1m" | "custom">("custom");
+
+  const applyPreset = (value: string) => {
+    if (value === "custom") {
+      setRange("custom");
+      return;
+    }
+    const preset = value as "1d" | "7d" | "1m";
+    setRange(preset);
+    onSetDatePreset(preset);
+  };
+
+  const hasFilters = Boolean(auditSearch || auditDateFrom || auditDateTo);
 
   return (
     <Stack gap={12}>
-      <Paper withBorder radius="md">
-        <div style={{ padding: "var(--card-padding)" }}>
-          <Group wrap="wrap" gap={8}>
-            <TextInput
-              placeholder={t("audit.search")}
-              style={{ width: 200 }}
-              aria-label={t("audit.aria.search")}
-              value={auditSearch}
-              onChange={(event) => onAuditSearchChange(event.currentTarget.value)}
-            />
-            <TextInput
-              type="date"
+      {/* 原先八个控件挤在一个 wrap 的 Group 里，宽度 200/170/170/compact×3/auto×2，
+          换行之后参差不齐。收成：搜索（伸展）→ 时间范围 → ——— → 导出。 */}
+      <div className="admin-toolbar">
+        <TextInput
+          className="admin-toolbar__search"
+          size="sm"
+          leftSection={<SearchIcon size={14} />}
+          placeholder={t("audit.search")}
+          aria-label={t("audit.aria.search")}
+          value={auditSearch}
+          onChange={(event) => onAuditSearchChange(event.currentTarget.value)}
+        />
+        <SegmentedControl
+          size="xs"
+          value={range}
+          onChange={applyPreset}
+          data={[
+            { value: "1d", label: t("audit.lastDay") },
+            { value: "7d", label: t("audit.last7Days") },
+            { value: "1m", label: t("audit.lastMonth") },
+            { value: "custom", label: t("audit.range.custom") },
+          ]}
+        />
+        {range === "custom" ? (
+          <Group gap={6} wrap="nowrap">
+            <NativeDateTimeInput
+              size="sm"
+              w={150}
               value={auditDateFrom}
               onChange={(event) => onAuditDateFromChange(event.currentTarget.value)}
               aria-label={t("audit.aria.dateFrom")}
-              style={{ width: 170 }}
             />
-            <TextInput
-              type="date"
+            <NativeDateTimeInput
+              size="sm"
+              w={150}
               value={auditDateTo}
               onChange={(event) => onAuditDateToChange(event.currentTarget.value)}
               aria-label={t("audit.aria.dateTo")}
-              style={{ width: 170 }}
             />
-            <Button variant="default" size="compact-sm" onClick={() => onSetDatePreset("1d")}>{t("audit.lastDay")}</Button>
-            <Button variant="default" size="compact-sm" onClick={() => onSetDatePreset("7d")}>{t("audit.last7Days")}</Button>
-            <Button variant="default" size="compact-sm" onClick={() => onSetDatePreset("1m")}>{t("audit.lastMonth")}</Button>
-            <Button
-              variant="default"
-              onClick={onDownloadFilteredCsv}
-              loading={exportAuditLogPending}
-            >
-              {t("audit.downloadFilteredCsv")}
-            </Button>
-            <Button
-              variant="default"
-              onClick={onDownloadFilteredJson}
-              loading={exportAuditLogPending}
-            >
-              {t("audit.downloadFilteredJson")}
-            </Button>
           </Group>
+        ) : null}
+        <div className="admin-toolbar__spacer" />
+        {/* 导出是低频动作，两个同级按钮原先吃掉工具条近一半宽度。 */}
+        <Menu withinPortal position="bottom-end" shadow="md" width={180}>
+          <Menu.Target>
+            <Button
+              size="sm"
+              variant="default"
+              loading={exportAuditLogPending}
+              leftSection={<ArrowDownIcon size={14} />}
+            >
+              {t("audit.export")}
+            </Button>
+          </Menu.Target>
+          <Menu.Dropdown>
+            <Menu.Item onClick={onDownloadFilteredCsv}>{t("audit.downloadFilteredCsv")}</Menu.Item>
+            <Menu.Item onClick={onDownloadFilteredJson}>{t("audit.downloadFilteredJson")}</Menu.Item>
+          </Menu.Dropdown>
+        </Menu>
+      </div>
+
+      {/* 设了筛选之后原先没有任何回执，只能靠盯着两个日期框回想筛掉了什么。 */}
+      {hasFilters ? (
+        <div className="admin-filter-summary">
+          <Text size="xs" c="dimmed">{t("audit.filter.active")}</Text>
+          {auditSearch ? (
+            <button
+              type="button"
+              className="admin-filter-chip"
+              onClick={() => onAuditSearchChange("")}
+            >
+              {t("audit.filter.searchChip", { value: auditSearch })}
+              <XIcon size={12} />
+            </button>
+          ) : null}
+          {auditDateFrom || auditDateTo ? (
+            <button
+              type="button"
+              className="admin-filter-chip"
+              onClick={() => {
+                onAuditDateFromChange("");
+                onAuditDateToChange("");
+                setRange("custom");
+              }}
+            >
+              {t("audit.filter.dateRange", {
+                from: auditDateFrom || "…",
+                to: auditDateTo || "…",
+              })}
+              <XIcon size={12} />
+            </button>
+          ) : null}
+          <Text size="xs" c="dimmed">{t("audit.filter.total", { total: auditTotal })}</Text>
         </div>
-      </Paper>
+      ) : null}
 
       <AuditLogViewer
         auditLoading={auditLoading}

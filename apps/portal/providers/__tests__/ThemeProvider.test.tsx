@@ -24,6 +24,7 @@ describe("PortalThemeProvider", () => {
     usePreferencesStore.getState().resetPreferences();
     document.documentElement.removeAttribute("data-theme");
     document.documentElement.removeAttribute("data-accent");
+    document.documentElement.removeAttribute("data-input-modality");
     document.documentElement.className = "";
   });
 
@@ -77,6 +78,16 @@ describe("PortalThemeProvider", () => {
 
     expect(usePreferencesStore.getState().accent).toBe("violet");
     expect(document.documentElement.dataset.accent).toBe("violet");
+  });
+
+  it("tracks pointer and keyboard focus modality on the document", () => {
+    render(<PortalThemeProvider><Probe /></PortalThemeProvider>);
+
+    fireEvent.pointerDown(document.body);
+    expect(document.documentElement.dataset.inputModality).toBe("pointer");
+
+    fireEvent.keyDown(document.body, { key: "Tab" });
+    expect(document.documentElement.dataset.inputModality).toBe("keyboard");
   });
 
   it("gives modal close buttons a translated accessible name", () => {

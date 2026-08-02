@@ -23,6 +23,7 @@ import {
   type DashboardLastWarMvp,
   type DashboardMember,
   type DashboardUpcomingEventRow,
+  orderDashboardUpcomingRows,
 } from "../dashboard/shared";
 import { ActiveMembersCard } from "../dashboard/ActiveMembersCard";
 import { LastWarCard } from "../dashboard/LastWarCard";
@@ -82,15 +83,7 @@ function buildUpcomingEventRow(
   };
 }
 
-export function orderDashboardUpcomingRows<T extends { item: Pick<Event, "id" | "start_at" | "pinned"> }>(rows: T[]): T[] {
-  return [...rows].sort((left, right) => {
-    const leftTime = new Date(left.item.start_at).getTime();
-    const rightTime = new Date(right.item.start_at).getTime();
-    if (leftTime !== rightTime) return leftTime - rightTime;
-    if (left.item.pinned !== right.item.pinned) return left.item.pinned ? -1 : 1;
-    return left.item.id.localeCompare(right.item.id);
-  });
-}
+export { orderDashboardUpcomingRows } from "../dashboard/shared";
 
 export function DashboardPage() {
   const { t } = useTranslation("dashboard");
@@ -213,7 +206,12 @@ export function DashboardPage() {
           <Stack gap={16}>
             {!isExternalView && (
               <Skeleton visible={eventsQuery.isLoading} radius={8}>
-                <MySignupsCard mySignupEvents={mySignupEvents} now={now} onOpenEvent={openEventDetail} />
+                <MySignupsCard
+                  mySignupEvents={mySignupEvents}
+                  now={now}
+                  onOpenEvent={openEventDetail}
+                  onBrowseEvents={openAllEvents}
+                />
               </Skeleton>
             )}
 
@@ -250,6 +248,12 @@ export function DashboardPage() {
                   void navigate({
                     to: "/guild-war",
                     search: { tab: "history", warName },
+                  });
+                }}
+                onViewHistory={() => {
+                  void navigate({
+                    to: "/guild-war",
+                    search: { tab: "history" },
                   });
                 }}
               />

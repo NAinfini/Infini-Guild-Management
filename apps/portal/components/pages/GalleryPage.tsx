@@ -201,15 +201,17 @@ export function GalleryPage() {
 
       <div ref={loadMoreRef} style={{ height: 1 }} />
       {c.galleryQuery.hasNextPage ? (
-        <Button
-          fullWidth
-          onClick={() => {
-            void c.galleryQuery.fetchNextPage();
-          }}
-          loading={c.galleryQuery.isFetchingNextPage}
-        >
-          {t("loadMore")}
-        </Button>
+        <Group justify="center">
+          <Button
+            variant="default"
+            onClick={() => {
+              void c.galleryQuery.fetchNextPage();
+            }}
+            loading={c.galleryQuery.isFetchingNextPage}
+          >
+            {t("loadMore")}
+          </Button>
+        </Group>
       ) : null}
       </Stack>
 

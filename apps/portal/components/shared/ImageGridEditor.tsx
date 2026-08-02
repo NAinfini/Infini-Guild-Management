@@ -9,8 +9,27 @@ import {
   type ReactNode,
 } from "react";
 import type { ImageGridEditorItem } from "@portal/types/media";
+import { useTranslation } from "react-i18next";
+import "./ImageGridEditor.css";
 
 export type { ImageGridEditorItem };
+
+/*
+ * 添加位要和它左边那排缩略图是同一种方块，只是空着。Mantine 的 variant="default"
+ * 给的是控件灰（--mantine-color-default），深色下比图片底色亮一档，结果这一格比
+ * 七张真图还抢眼——加号是最不重要的那一格。
+ *
+ * 走内联变量而不是 CSS class：Mantine 把变体色解析成 --button-* 写在元素的
+ * style 属性上，样式表里的同名声明永远盖不过它。同 ProfileAccountTab 的
+ * LOGOUT_BUTTON_VARS 先例。
+ */
+const ADD_TILE_VARS = {
+  "--button-bg": "var(--surface-sunken)",
+  "--button-bd": "1px dashed var(--border-subtle)",
+  "--button-color": "var(--text-muted)",
+  "--button-hover": "var(--surface-raised)",
+  "--button-hover-color": "var(--text-primary)",
+} as CSSProperties;
 
 export interface ImageGridEditorProps {
   items: ImageGridEditorItem[];
@@ -46,6 +65,7 @@ function DraggableImageCell({
   imageSize,
   borderRadius,
   onDelete,
+  deleteLabel,
   disabled,
   motionAllowed,
 }: {
@@ -53,6 +73,7 @@ function DraggableImageCell({
   imageSize: number;
   borderRadius: number;
   onDelete?: (item: ImageGridEditorItem) => void;
+  deleteLabel: string;
   disabled: boolean;
   motionAllowed: boolean;
 }) {
@@ -139,18 +160,31 @@ function DraggableImageCell({
       {onDelete && !disabled ? (
         <ActionIcon
           type="button"
-          aria-label={`Delete ${item.alt ?? item.id}`}
+          aria-label={deleteLabel}
           color="red"
-          variant="filled"
+          variant="transparent"
           radius="xl"
-          size={20}
+          size={44}
           style={{ position: "absolute", top: -6, right: -6, zIndex: 10 }}
           onClick={(e) => {
             e.stopPropagation();
             onDelete(item);
           }}
         >
-          ×
+          <span
+            aria-hidden="true"
+            className="image-grid-editor__delete-glyph"
+            style={{
+              display: "inline-grid",
+              placeItems: "center",
+              width: 20,
+              height: 20,
+              borderRadius: "50%",
+              lineHeight: 1,
+            }}
+          >
+            ×
+          </span>
         </ActionIcon>
       ) : null}
     </Reorder.Item>
@@ -185,6 +219,7 @@ export const ImageGridEditor = forwardRef<HTMLDivElement, ImageGridEditorProps>(
     },
     ref,
   ) {
+    const { t } = useTranslation("common");
     const motionAllowed = useMotionAllowed();
     const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -253,6 +288,7 @@ export const ImageGridEditor = forwardRef<HTMLDivElement, ImageGridEditorProps>(
                 imageSize={imageSize}
                 borderRadius={borderRadius}
                 onDelete={onDelete}
+                deleteLabel={t("media.aria.deleteItem", { name: item.alt ?? item.id })}
                 disabled={disabled}
                 motionAllowed={motionAllowed}
               />
@@ -265,18 +301,25 @@ export const ImageGridEditor = forwardRef<HTMLDivElement, ImageGridEditorProps>(
             <Button
               type="button"
               variant="default"
-              color="gray"
-              aria-label={typeof uploadLabel === "string" ? uploadLabel : "Add images"}
+              aria-label={typeof uploadLabel === "string" ? uploadLabel : t("media.aria.addImages")}
               onClick={() => fileInputRef.current?.click()}
               w={imageSize}
               h={imageSize}
               p={4}
               radius={borderRadius}
-              style={{ borderStyle: "dashed", fontSize: Math.max(10, imageSize * 0.14) }}
+              style={{ ...ADD_TILE_VARS, fontSize: Math.max(10, imageSize * 0.14) }}
               styles={{
-                inner: { height: "100%" },
+                /*
+                 * 两个轴都显式居中。Button 的 label 在 column 方向下只保证交叉轴
+                 * （横向）居中，主轴留给默认值，加号和计数那一组就贴在方块上沿。
+                 */
+                inner: { height: "100%", width: "100%" },
                 label: {
                   flexDirection: "column",
+                  justifyContent: "center",
+                  alignItems: "center",
+                  height: "100%",
+                  width: "100%",
                   whiteSpace: "normal",
                   lineHeight: 1.2,
                 },
@@ -284,7 +327,16 @@ export const ImageGridEditor = forwardRef<HTMLDivElement, ImageGridEditorProps>(
             >
               {uploadLabel ?? (
                 <>
-                  <span style={{ fontSize: Math.max(18, imageSize * 0.3), lineHeight: 1 }}>+</span>
+                  {/* 加号的行框比字号高，跟着行高走会整体偏上；这里按字形高度对齐。 */}
+                  <span
+                    style={{
+                      fontSize: Math.max(18, imageSize * 0.3),
+                      lineHeight: 1,
+                      display: "block",
+                    }}
+                  >
+                    +
+                  </span>
                   <span>{items.length}/{maxImages}</span>
                 </>
               )}

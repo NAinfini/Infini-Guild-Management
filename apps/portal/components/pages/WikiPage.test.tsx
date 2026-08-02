@@ -2,6 +2,8 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { MantineProvider } from "@mantine/core";
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import type { ReactNode } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { WikiPage } from "./WikiPage";
@@ -291,6 +293,25 @@ describe("WikiPage", () => {
     expect(screen.queryByText("Page Two")).not.toBeInTheDocument();
   });
 
+  it("keeps the category combobox in the page toolbar instead of the article list card", async () => {
+    renderWikiPage();
+
+    const categoryFilter = await screen.findByLabelText("filter.categories", {
+      selector: "input",
+    });
+    const toolbar = document.querySelector(".wiki-page-toolbar");
+    const articleListCard = document.querySelector(".wiki-article-list-card");
+
+    expect(toolbar).not.toBeNull();
+    expect(articleListCard).not.toBeNull();
+    expect(within(toolbar as HTMLElement).getByLabelText("filter.categories", {
+      selector: "input",
+    })).toBe(categoryFilter);
+    expect(within(articleListCard as HTMLElement).queryByLabelText("filter.categories", {
+      selector: "input",
+    })).not.toBeInTheDocument();
+  });
+
   it("asks before closing a dirty category editor", async () => {
     categoryEditorState.isDirty = true;
     categoryEditorMock.mockImplementation(() => ({
@@ -392,5 +413,70 @@ describe("WikiPage", () => {
     expect(within(emptyState as HTMLElement).queryByRole("button", {
       name: "articleEditor.create",
     })).not.toBeInTheDocument();
+  });
+
+  it("keeps article-list header actions at 44px without enlarging their icons", async () => {
+    renderWikiPage();
+
+    const createButton = await screen.findByRole("button", {
+      name: "articleEditor.create",
+    });
+    const categoriesButton = screen.getByRole("button", {
+      name: "editor.editCategories",
+    });
+
+    for (const button of [createButton, categoriesButton]) {
+      expect(button.getAttribute("style")).toContain(
+        "--ai-size: calc(2.75rem * var(--mantine-scale))",
+      );
+      expect(button.querySelector("svg")).toHaveAttribute("width", "16");
+      expect(button.querySelector("svg")).toHaveAttribute("height", "16");
+    }
+  });
+
+  it("keeps the shell title as the only h1 and exposes the article title as h2", async () => {
+    render(
+      <>
+        <h1>Wiki</h1>
+        <WikiPage />
+      </>,
+      { wrapper: createWrapper() },
+    );
+
+    fireEvent.click(await screen.findByText("Kept Article"));
+    const articleHeadings = await screen.findAllByRole("heading", {
+      level: 2,
+      name: "Deleted Article",
+    });
+    expect(articleHeadings.some((heading) =>
+      heading.classList.contains("wiki-article-reader-title"),
+    )).toBe(true);
+    expect(screen.getAllByRole("heading", { level: 1 })).toHaveLength(1);
+    expect(screen.getByRole("heading", { level: 1, name: "Wiki" })).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "editor.editWiki" }));
+    expect(await screen.findByRole("heading", {
+      level: 2,
+      name: "articleEditor.title",
+    })).toHaveClass("wiki-article-editor-title");
+    expect(screen.getAllByRole("heading", { level: 1 })).toHaveLength(1);
+
+    const titleField = screen.getByRole("textbox", { name: "aria.articleTitle" });
+    expect(titleField.closest(".mantine-Group-root")).toHaveStyle("--group-wrap: wrap");
+  });
+
+  it("keeps the narrow wiki editor comfortably tall and long headings wrap-safe", () => {
+    const css = readFileSync(resolve(process.cwd(), "apps/portal/components/pages/WikiPage.css"), "utf8");
+    const titleRule = css.match(
+      /\.wiki-article-reader-title,\s*\.wiki-article-editor-title\s*\{([^}]*)\}/,
+    )?.[1] ?? "";
+    const narrowEditorRule = css.match(
+      /@media \(max-width: 767px\)[\s\S]*?\.wiki-article-editor-card \.infini-tiptap-surface\s*\{([^}]*)\}/,
+    )?.[1] ?? "";
+
+    expect(titleRule).toContain("overflow-wrap: anywhere");
+    expect(titleRule).toContain("min-width: 0");
+    expect(narrowEditorRule).toContain("min-height: clamp(");
+    expect(narrowEditorRule).not.toContain("overflow");
   });
 });

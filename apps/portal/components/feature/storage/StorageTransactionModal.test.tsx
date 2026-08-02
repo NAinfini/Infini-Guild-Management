@@ -91,16 +91,75 @@ describe("StorageTransactionModal", () => {
   it("lets a stock manager submit a distribution for a selected member", async () => {
     const user = userEvent.setup();
     const onSubmit = renderModal({ canManageStock: true, mode: "distribute" });
+    const submit = screen.getByRole("button", { name: "action.submit" });
 
     expect(screen.getByText("tx.adjust")).toBeInTheDocument();
     expect(screen.getByRole("textbox", { name: "field.item" })).toBeInTheDocument();
     expect(screen.getByRole("textbox", { name: "field.member" })).toBeInTheDocument();
+    expect(submit).toBeDisabled();
 
-    await user.click(screen.getByRole("button", { name: "action.submit" }));
+    await user.click(screen.getByRole("textbox", { name: "field.member" }));
+    await user.keyboard("{ArrowDown}{Enter}");
+    await user.click(submit);
 
     expect(onSubmit).toHaveBeenCalledWith(item.id, {
       type: "distribute",
       quantity: 1,
+      recipient_user_id: member.id,
+      note: null,
+    });
+  });
+
+  it("lets a stock manager record intake without attributing it to a member", async () => {
+    const user = userEvent.setup();
+    const onSubmit = renderModal({ canManageStock: true, mode: "intake" });
+    const submit = screen.getByRole("button", { name: "action.submit" });
+
+    expect(screen.getByRole("textbox", { name: "field.memberOptional" })).toHaveValue("");
+    expect(submit).toBeEnabled();
+
+    await user.click(submit);
+
+    expect(onSubmit).toHaveBeenCalledWith(item.id, {
+      type: "intake",
+      quantity: 1,
+      recipient_user_id: null,
+      note: null,
+    });
+  });
+
+  it("requires explicit valid choices for a manual manager entry", async () => {
+    const user = userEvent.setup();
+    const onSubmit = renderModal({
+      canManageStock: true,
+      mode: "distribute",
+      initialItem: null,
+    });
+    const itemSelect = screen.getByRole("textbox", { name: "field.item" });
+    const memberSelect = screen.getByRole("textbox", { name: "field.member" });
+    const quantityInput = screen.getByRole("textbox", { name: "field.quantity" });
+    const submit = screen.getByRole("button", { name: "action.submit" });
+
+    expect(itemSelect).toHaveValue("");
+    expect(memberSelect).toHaveValue("");
+    expect(submit).toBeDisabled();
+
+    await user.click(itemSelect);
+    await user.keyboard("{ArrowDown}{Enter}");
+    expect(submit).toBeDisabled();
+
+    await user.click(memberSelect);
+    await user.keyboard("{ArrowDown}{Enter}");
+    await user.clear(quantityInput);
+    expect(submit).toBeDisabled();
+
+    await user.type(quantityInput, "2");
+    expect(submit).toBeEnabled();
+    await user.click(submit);
+
+    expect(onSubmit).toHaveBeenCalledWith(item.id, {
+      type: "distribute",
+      quantity: 2,
       recipient_user_id: member.id,
       note: null,
     });
@@ -155,6 +214,10 @@ describe("StorageTransactionModal", () => {
         <StorageTransactionModal {...commonProps} items={[item]} />
       </MantineProvider>,
     );
+    await user.click(screen.getByRole("textbox", { name: "field.item" }));
+    await user.keyboard("{ArrowDown}{Enter}");
+    await user.click(screen.getByRole("textbox", { name: "field.memberOptional" }));
+    await user.keyboard("{ArrowDown}{Enter}");
     const quantityInput = screen.getByRole("textbox", { name: "field.quantity" });
     await user.clear(quantityInput);
     await user.type(quantityInput, "5");
@@ -178,5 +241,34 @@ describe("StorageTransactionModal", () => {
 
     expect(screen.getByText("Crystal")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "action.submit" })).toBeEnabled();
+  });
+
+  it("keeps the manager modal inside a 390px viewport", () => {
+    const { container } = render(
+      <MantineProvider>
+        <StorageTransactionModal
+          opened
+          items={[item]}
+          users={[{ user: member }]}
+          initialItem={null}
+          initialMode="intake"
+          canManageStock
+          defaultRecipientUserId={member.id}
+          isSaving={false}
+          onClose={vi.fn()}
+          onSubmit={vi.fn()}
+        />
+      </MantineProvider>,
+    );
+
+    expect(container.ownerDocument.querySelector(".storage-modal-content")).toHaveStyle({
+      maxWidth: "calc(100vw - 16px)",
+    });
+    expect(screen.getByRole("textbox", { name: "field.item" })).toHaveStyle({
+      minHeight: "44px",
+    });
+    expect(screen.getByRole("button", { name: "action.submit" })).toHaveStyle({
+      minHeight: "44px",
+    });
   });
 });

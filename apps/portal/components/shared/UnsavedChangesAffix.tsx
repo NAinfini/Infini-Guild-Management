@@ -16,6 +16,10 @@ export function UnsavedChangesAffix({
   label,
 }: UnsavedChangesAffixProps) {
   const { t } = useTranslation("profile");
+  if (!isDirty && !saving) {
+    return null;
+  }
+
   return (
     <Affix
       className="unsaved-changes-affix"
@@ -31,14 +35,15 @@ export function UnsavedChangesAffix({
         className="unsaved-changes-affix__surface"
         data-dirty={isDirty || undefined}
       >
-        <Group justify="flex-end" gap="sm" wrap="nowrap">
-          <Badge color={isDirty ? "yellow" : "green"} variant="light">
-            {isDirty ? t("status.unsavedChanges") : t("status.saved")}
+        {/* 桌面按内容宽度，窄屏通栏；两端对齐让通栏时也不会全挤在右边。 */}
+        <Group justify="space-between" gap="sm" wrap="nowrap">
+          <Badge color={saving ? "blue" : "yellow"} variant="light">
+            {saving ? t("status.saving") : t("status.unsavedChanges")}
           </Badge>
           <Button
             onClick={onSave}
             loading={saving}
-            disabled={!isDirty}
+            disabled={!isDirty || saving}
             leftSection={<SaveIcon size={16} />}
           >
             {label ?? t("action.saveProfile")}

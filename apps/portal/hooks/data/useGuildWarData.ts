@@ -1,4 +1,5 @@
 import { keepPreviousData, useQuery } from "@tanstack/react-query";
+import { useMemo } from "react";
 import {
   fetchEventDetail,
   fetchEventsList,
@@ -31,6 +32,7 @@ export function useGuildWarData(options: UseGuildWarDataOptions) {
         page: 1,
         limit: 100,
         type: "guild_war",
+        archived: false,
       }),
     staleTime: 10 * 60_000,
   });
@@ -41,17 +43,34 @@ export function useGuildWarData(options: UseGuildWarDataOptions) {
     staleTime: 10 * 60_000,
   });
 
+  const activeEligibilityReady = warEventsQuery.isSuccess && concludedEventIdsQuery.isSuccess;
+  const eligibleWarEvents = useMemo(() => {
+    if (!activeEligibilityReady) return [];
+    const concludedIds = new Set(concludedEventIdsQuery.data?.data ?? []);
+    return (warEventsQuery.data?.data ?? []).filter(
+      (event) => event.archived_at === null && !concludedIds.has(event.id),
+    );
+  }, [
+    activeEligibilityReady,
+    concludedEventIdsQuery.data,
+    warEventsQuery.data,
+  ]);
+  const activeSelectedEventId = selectedEventId
+    && eligibleWarEvents.some((event) => event.id === selectedEventId)
+    ? selectedEventId
+    : undefined;
+
   const selectedEventDetailQuery = useQuery({
-    queryKey: queryKeys.guildWar.eventDetail(selectedEventId ?? null),
-    enabled: Boolean(selectedEventId),
-    queryFn: () => fetchEventDetail(selectedEventId as string),
+    queryKey: queryKeys.guildWar.eventDetail(activeSelectedEventId ?? null),
+    enabled: Boolean(activeSelectedEventId),
+    queryFn: () => fetchEventDetail(activeSelectedEventId as string),
     staleTime: 10 * 60_000,
   });
 
   const activeQuery = useQuery({
-    queryKey: queryKeys.guildWar.active(selectedEventId ?? null),
-    queryFn: () => fetchGuildWarActive(selectedEventId),
-    enabled: Boolean(selectedEventId),
+    queryKey: queryKeys.guildWar.active(activeSelectedEventId ?? null),
+    queryFn: () => fetchGuildWarActive(activeSelectedEventId),
+    enabled: Boolean(activeSelectedEventId),
     staleTime: 10 * 60_000,
   });
 
@@ -85,6 +104,9 @@ export function useGuildWarData(options: UseGuildWarDataOptions) {
   return {
     warEventsQuery,
     concludedEventIdsQuery,
+    activeEligibilityReady,
+    eligibleWarEvents,
+    activeSelectedEventId,
     selectedEventDetailQuery,
     activeQuery,
     historyQuery,

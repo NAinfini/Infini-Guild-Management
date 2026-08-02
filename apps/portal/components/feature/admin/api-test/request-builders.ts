@@ -9,6 +9,11 @@ export function toIso(hoursFromNow: number): string {
   return new Date(Date.now() + hoursFromNow * 60 * 60 * 1000).toISOString();
 }
 
+/** YYYY-MM-DD，请假接口只收日期不收时刻。 */
+export function isoDate(daysFromNow: number): string {
+  return new Date(Date.now() + daysFromNow * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+}
+
 export function createTinyPngFile(): File {
   // Minimal valid 1x1 red PNG (68 bytes)
   const bytes = new Uint8Array([
@@ -105,6 +110,31 @@ export function resolveEndpointPath(endpoint: EndpointDef, context: TestRunConte
     const next = replacePathParam(path, ":id", userId);
     if (!next) {
       return { path, missing: "user id" };
+    }
+    path = next;
+  }
+
+  if (path.includes(":absenceId")) {
+    const next = replacePathParam(path, ":absenceId", context.createdAbsenceId);
+    if (!next) {
+      return { path, missing: "created absence id (run the absence create first)" };
+    }
+    path = next;
+  }
+
+  if (endpoint.path === "/api/classes/icon") {
+    if (!context.createdClassIconKey) {
+      return { path, missing: "class icon key (run the class icon upload first)" };
+    }
+    return { path: `/api/classes/icon?key=${encodeURIComponent(context.createdClassIconKey)}`, missing: null };
+  }
+
+  if (path.includes("/api/classes/:id")) {
+    /* 只允许操作本次跑出来的职业。既有职业被成员档案按名字引用，
+       改名或删除都会把线上数据打散，而且没有任何回滚路径。 */
+    const next = replacePathParam(path, ":id", context.createdClassId);
+    if (!next) {
+      return { path, missing: "created class id" };
     }
     path = next;
   }
@@ -256,14 +286,6 @@ export function resolveEndpointPath(endpoint: EndpointDef, context: TestRunConte
       return { path, missing: "storage image key (run storage image upload first)" };
     }
     return { path: `/api/storage/image?key=${encodeURIComponent(context.storageImageKey)}`, missing: null };
-  }
-
-  if (path.includes("/api/game-data/rotations/:classId")) {
-    const next = replacePathParam(path, ":classId", context.gameDataClassId);
-    if (!next) {
-      return { path, missing: "game data class id (run game data first)" };
-    }
-    path = next;
   }
 
   if (path.includes("/api/wiki/categories/:id")) {
@@ -434,6 +456,52 @@ export function prepareEndpointRequest(endpoint: EndpointDef, context: TestRunCo
   switch (`${endpoint.method} ${endpoint.path}`) {
     case "PATCH /api/admin/analytics-settings":
       return skipEndpoint(path, "Skipping global analytics settings mutation to avoid touching existing database state", true);
+
+    /*
+     * 下面这五个端点被登记进目录只是为了让覆盖情况可见，它们永远不会真的发出去。
+     * 每一条都会改动跑测试这个人自己或整站的状态，而且没有任何回滚路径——
+     * 不是「暂时不测」，是「测了就没法还原」。
+     */
+    case "POST /api/auth/logout":
+      return skipEndpoint(path, "Skipping logout because it would terminate the admin session running this console", true);
+
+    case "PATCH /api/admin/site-config":
+      return skipEndpoint(path, "Skipping global site config mutation: it has no per-run cleanup path", true);
+
+    case "POST /api/admin/site-config/logo":
+      return skipEndpoint(path, "Skipping site logo upload because it replaces the live logo for every visitor", true);
+
+    case "POST /api/users/:id/change-password":
+      return skipEndpoint(path, "Skipping password change: the endpoint is self-only, so it would change the running admin's own password", true);
+
+    case "POST /api/users/:id/change-username":
+      return skipEndpoint(path, "Skipping username change: the endpoint is self-only and rejects the reserved systemtest prefix", true);
+
+    case "POST /api/classes":
+      return buildJsonRequest(path, {
+        label: `[systemtest] API Class ${nowId.slice(0, 24)}`,
+        color: "#B8922F",
+        vector_icon: "sword",
+      });
+
+    case "PATCH /api/classes/:id":
+      return buildJsonRequest(path, {
+        label: `[systemtest] API Class Updated ${nowId.slice(0, 16)}`,
+        vector_icon: "shield",
+      });
+
+    case "POST /api/classes/:id/icon":
+      return buildFormRequest(path, [["file", createTinyPngFile()]]);
+
+    case "POST /api/users/:id/absences":
+      return buildJsonRequest(path, {
+        start_date: isoDate(30),
+        end_date: isoDate(32),
+        note: "[systemtest] API absence",
+      });
+
+    case "POST /api/wiki/articles/:id/revisions/1/restore":
+      return buildJsonRequest(path, {});
 
     case "POST /api/auth/register/:inviteCode":
       {

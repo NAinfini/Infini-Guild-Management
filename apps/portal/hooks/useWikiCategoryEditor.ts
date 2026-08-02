@@ -1,4 +1,4 @@
-import type { WikiCategory } from "@guild/shared";
+import type { BatchUpdateWikiCategoryItem, WikiCategory } from "@guild/shared";
 import { arrayMove } from "@dnd-kit/sortable";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useMemo, useState } from "react";
@@ -7,10 +7,9 @@ import type { WikiCategoryDraft } from "../types/wiki";
 import { useAppError } from "./useAppError";
 import { notifySuccess } from "../utils/notifications";
 import {
+  batchUpdateWikiCategories,
   createWikiCategory,
   deleteWikiCategory,
-  type UpdateWikiCategoryPayload,
-  updateWikiCategory,
 } from "../services/WikiService";
 import { queryKeys } from "../api/query-keys";
 
@@ -86,44 +85,49 @@ export function useWikiCategoryEditor({ categories }: UseWikiCategoryEditorParam
 
   const saveCategoryDraftsMutation = useMutation({
     mutationFn: async (drafts: WikiCategoryDraft[]) => {
-      const patches = drafts
+      const updates = drafts
         .map((draft) => {
           const current = categoriesById.get(draft.id);
           if (!current) {
             return null;
           }
 
-          const payload: UpdateWikiCategoryPayload = {};
+          const update: BatchUpdateWikiCategoryItem = { id: draft.id };
           const nextName = draft.name.trim();
           if (nextName && nextName !== current.name) {
-            payload.name = nextName;
+            update.name = nextName;
           }
           const nextParent = draft.parent_id || null;
           if (nextParent !== current.parent_id) {
-            payload.parent_id = nextParent;
+            update.parent_id = nextParent;
           }
           if (draft.sort_order !== current.sort_order) {
-            payload.sort_order = draft.sort_order;
+            update.sort_order = draft.sort_order;
           }
 
-          return Object.keys(payload).length > 0 ? { id: draft.id, payload } : null;
+          return Object.keys(update).length > 1 ? update : null;
         })
-        .filter((item): item is { id: string; payload: UpdateWikiCategoryPayload } => item !== null);
+        .filter((item): item is BatchUpdateWikiCategoryItem => item !== null);
 
-      for (const patch of patches) {
-        await updateWikiCategory(patch.id, patch.payload);
+      /* 一行都没改就不发请求：批量接口的 updates 至少要有一项，空数组会被判 400。 */
+      if (updates.length === 0) {
+        return null;
       }
 
-      return patches.length;
+      return batchUpdateWikiCategories(updates);
     },
-    onSuccess: async (changedCount) => {
-      if (changedCount > 0) {
-        notifySuccess(t("message.categorySaved"));
+    onSuccess: (categories) => {
+      if (!categories) {
+        return;
       }
-      await queryClient.invalidateQueries({ queryKey: queryKeys.wiki.categories() });
+      notifySuccess(t("message.categorySaved"));
+      /* 服务端回的就是落库之后的完整目录，直接写进缓存；不再多发一次 GET。 */
+      queryClient.setQueryData(queryKeys.wiki.categories(), categories);
     },
-    onError: (error) => {
+    onError: async (error) => {
       showError(error, t("message.categorySaveFailed"));
+      /* 整批都没落库，但本地草稿还停在用户改过的样子。重新拉一次，让界面回到库里的真实顺序。 */
+      await queryClient.invalidateQueries({ queryKey: queryKeys.wiki.categories() });
     },
   });
 
@@ -178,7 +182,9 @@ export function useWikiCategoryEditor({ categories }: UseWikiCategoryEditorParam
   };
 
   const saveCategoryDrafts = () => {
-    void saveCategoryDraftsMutation.mutateAsync(categoryDrafts);
+    /* 用 mutate 而不是 mutateAsync：调用方不消费这个 promise，mutateAsync 失败时
+       会变成一个没人接的 rejection，错误只能靠 onError 弹出来，堆栈却被吞了。 */
+    saveCategoryDraftsMutation.mutate(categoryDrafts);
   };
 
   const resetCategoryDrafts = () => {

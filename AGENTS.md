@@ -28,6 +28,8 @@ pnpm db:mock:rebuild  # Reset local D1 (drop + apply migrations)
 pnpm db:mock:init     # Apply migrations only (keep data)
 pnpm db:mock:seed     # Reseed local D1 through the running dev worker
 pnpm db:mock:status   # Show local table list
+pnpm test             # Vitest (unit + component)
+pnpm test:e2e         # Build the SPA, then run Playwright
 ```
 
 ## Monorepo Structure
@@ -66,9 +68,11 @@ apps/
 | `schemas/wiki.ts` | `wikiCategorySchema`, `wikiArticleSchema`, `createWikiArticleSchema`, `updateWikiArticleSchema` |
 | `schemas/gallery.ts` | `galleryItemSchema`, `createGalleryItemSchema` |
 | `schemas/admin.ts` | `inviteLinkSchema`, `auditLogSchema`, `batchRoleChangeSchema` |
+| `schemas/class-catalog.ts` | Flat class catalog CRUD contracts, colors, and vector icon allowlist |
 | `types/` | TypeScript types inferred from Zod schemas |
 | `constants/roles.ts` | Role definitions (admin, moderator, member) |
 | `constants/classes.ts` | Character class constants |
+| `constants/class-icons.ts` | Dynamic class defaults and curated vector icon IDs |
 | `constants/event-types.ts` | Event type categories |
 | `constants/media.ts` | File size limits, image quotas |
 | `constants/errors.ts` | Error codes and HTTP status mappings |
@@ -88,6 +92,7 @@ apps/
 | `routes/wiki.ts` | Wiki categories, articles, versioning, search |
 | `routes/gallery.ts` | Gallery CRUD, filtering |
 | `routes/admin.ts` | Invite links, role management, audit logs |
+| `routes/classes.ts` | Public class catalog reads and permission-gated catalog/icon management |
 | **middleware/** | |
 | `middleware/session.ts` | `sessionMiddleware` |
 | `middleware/rbac.ts` | `requirePermission()` — permission-based access control |
@@ -238,6 +243,7 @@ Drizzle schema is modular — each domain is a separate file in `apps/worker/db/
 | `gallery.ts` | `gallery_items` | Gallery |
 | `audit.ts` | `audit_log` | Audit Log |
 | `system-test.ts` | `system_test_runs`, `system_test_artifacts` | Admin system-test registry |
+| `class-catalog.ts` | `class_catalog` | Flat class labels, colors, vector fallbacks, and custom icon keys |
 
 SQL migrations are in `apps/worker/db/migrations/`. The core schema is `0000_core_schema.sql`.
 
@@ -288,6 +294,7 @@ Defined in `wrangler.jsonc`:
 | `/api/wiki` | Session | Categories, articles, versioning |
 | `/api/gallery` | Session | Media upload and listing |
 | `/api/admin` | Admin | User management, invite links, audit log |
+| `/api/classes` | Public read / permission-gated write | Class catalog CRUD and WebP class icons |
 | `/ws` | Session | WebSocket upgrade (Durable Object) |
 | `/api/health` | Public | Health check |
 
@@ -319,6 +326,86 @@ Defined in `wrangler.jsonc`:
 3. Add navigation entry in `AppShell.tsx` sidebar
 4. Add i18n keys in `apps/portal/i18n/en/` and `zh/`
 5. If data-driven, add query hooks in `apps/portal/hooks/data/`
+
+### Add a new media upload path
+
+Every upload in this app goes through the same two-sided contract. Both sides
+are mandatory — neither one alone is sufficient.
+
+**Client (browser) — always transcode before sending.**
+
+1. Call `convertFileForUpload()` from `apps/shared/utils/media.ts`. It is the
+   single dispatcher: `image/*` → WebP, `audio/*` → Opus, everything else is
+   passed through untouched.
+2. Do not add an option to skip it. Two such switches existed on
+   `useMediaUpload` and were removed precisely because they let a call site
+   silently disable transcoding.
+3. Two deliberate pass-throughs live inside `convertImageToWebP` and are
+   documented there: the re-encoded WebP is discarded when it comes out larger
+   than the original, and animated GIFs are sent untouched (a canvas re-encode
+   would flatten them to one frame). Non-WebP objects therefore still exist in
+   R2 by design.
+
+**Server (worker) — never trust the declared type.**
+
+1. Reject on `ALLOWED_IMAGE_TYPES` (from `@guild/shared`), not on
+   `type.startsWith("image/")` — the latter admits `image/svg+xml`.
+2. Then call `validateUploadBytes(buffer, declaredType, allowedTypes)` from
+   `apps/worker/services/media.ts` and store `validation.contentType`, never
+   the client's `file.type`.
+3. Validate **every** file before the first `R2.put`. Validating inside the put
+   loop leaves already-written objects behind, because a validation failure
+   returns normally and never reaches the compensation `catch`.
+
+Reference implementation: `apps/worker/routes/gallery.ts`. The same shape is in
+`routes/storage.ts`, `routes/wiki.ts` and
+`services/events/EventCrudService.ts#readValidatedImages`.
+
+Tests that upload must supply real magic bytes — a `File(["image"], …,
+{type: "image/png"})` is now rejected, correctly.
+
+### Write or run an end-to-end test
+
+Playwright specs live in `apps/portal/e2e/specs/{guest,member,admin}/`, one
+directory per Playwright project (per session role).
+
+**What the browser talks to.** There is no Vite dev server in the loop. The
+Worker serves the built SPA itself through its `ASSETS` binding
+(`wrangler.jsonc` → `assets.directory: ../portal/dist`,
+`not_found_handling: single-page-application`, `run_worker_first: true`), and
+rewrites `{{SITE_NAME}}` in `index.html` at `apps/worker/index.ts:343`. Site and
+API are therefore the same origin. That is both faster (a page load fetches a
+dozen hashed chunks instead of hundreds of unbundled modules, and no `/api`
+request goes through a proxy) and closer to production, since the artefact under
+test is the artefact that ships.
+
+The cost is that `apps/portal/dist` must be current. `pnpm test:e2e` builds
+first; `globalSetup` independently compares source mtimes against the bundle
+(`support/build-freshness.ts`) and aborts with the command to run rather than
+letting a stale bundle produce a green run.
+
+**Parallelism.** `E2E_SLOTS` (default 4) wrangler instances run side by side,
+each with its own port (`8787 + slot`) and its own `--persist-to` directory, so
+each Playwright worker owns a private D1 and R2. Tests never share mutable
+state across slots. `fullyParallel` stays off, so the distribution unit is the
+spec file and per-file module state remains safe. Set `E2E_SLOTS=1` to fall back
+to a single serial instance.
+
+**Assertion helpers** (`support/test.ts`):
+
+- `flow.click(control, {method, path})` — the control must fire that request and
+  the server must accept it. `flow.act(action, …)` is the same for non-click
+  interactions.
+- `flow.clickWithoutApi(control)` — the control must be purely local. It waits
+  for the page's own traffic to go quiet first, then records requests *sent*
+  during the window (not responses received, which would blame the control for
+  something already in flight).
+- A control whose request is debounced needs an explicit
+  `page.waitForResponse` keyed on the query string — a pending timer is
+  invisible to both helpers.
+
+Every spec must clean up what it creates; `globalTeardown` diffs per-table row
+counts and R2 object counts against the baseline and fails the run on any drift.
 
 ### Add a new scheduled job
 

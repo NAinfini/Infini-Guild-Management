@@ -157,8 +157,7 @@
    * [data-accent] 变化，只是历史遗留的第二品牌色，用来把某一类目跟当前选中的
    * accent 区分开（不是「危险 / 警告」这类状态色，纯粹是另一条视觉分类线）。
    * 组件层不许直接引用 L1 的 --palette-*（守卫 rule 6），这里给它一个 L2 名字。
-   * 消费者：EquipmentCalcModal.css（.ecm__stats__card--intent）、
-   * MyProfilePage.css（.profile-preview-stat-icon--video）。
+   * 消费者：MyProfilePage.css（.profile-preview-stat-icon--video）。
    * 复审 T-1：此前这是紧挨着上面那块的第二个 :root，两块之间只隔一段注释，
    * 合并成一块。 */
   --brand-secondary: var(--palette-bronze-warm);

@@ -125,10 +125,9 @@ function validateBinding(bindings, bindingName, requiredFields, label, errors) {
 
 export function validateWorkerConfig(config, environment) {
   const errors = [];
-  const supportedEnvironments = new Set(["production", "staging"]);
 
-  if (!supportedEnvironments.has(environment)) {
-    return [`--env must be "production" or "staging"; received "${environment || "missing"}".`];
+  if (environment !== "production") {
+    return [`--env must be "production"; received "${environment || "missing"}".`];
   }
 
   const environmentMap = isObject(config.env) ? config.env : {};

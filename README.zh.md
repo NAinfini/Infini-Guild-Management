@@ -37,6 +37,7 @@ Infini Guild Management 是一个面向游戏公会的全栈管理门户。它�
 | 公会战 | 战史、分队工具、成员数据、模板和分析 |
 | 百科 | 分类和富文本文章，用于沉淀公会资料 |
 | 相册 | 基于云存储的媒体上传和说明文字 |
+| 媒体 | 上传前在浏览器里就完成转码：图片转 WebP，音频转 Opus |
 | 管理后台 | 角色、权限、邀请链接、审计日志和系统状态 |
 | 工具 | 头衔样式工具、骰子工具，以及开发中的装备毕业率计算器 |
 | 搜索 | `Cmd+K` / `Ctrl+K` 搜索门户内容 |
@@ -59,7 +60,7 @@ apps/
 
 | 层 | 技术 |
 | --- | --- |
-| 前端 | React 19、Vite 8、TanStack Router、TanStack Query、Mantine 8、Tailwind CSS 4、Zustand 5 |
+| 前端 | React 19、Vite 8、TanStack Router、TanStack Query、Mantine 8、Zustand 5、原生 CSS + 自定义属性 |
 | 富文本和图表 | TipTap 3、ECharts 6 |
 | 后端 | Cloudflare Workers 上的 Hono、Drizzle ORM、Cloudflare D1 |
 | 存储 | Cloudflare R2，用于媒体和审计归档 |
@@ -259,7 +260,7 @@ pnpm deploy:production
 
 | 变量 | 说明 |
 | --- | --- |
-| `ENVIRONMENT` | `development`、`staging` 或 `production` |
+| `ENVIRONMENT` | `development` 或 `production` |
 | `PORTAL_ORIGIN` | 单独托管前端时允许的来源；同域部署请留空 |
 | `SIGNING_SECRET` | 审计归档下载 token 的 HMAC 密钥 |
 | `SITE_NAME` | UI 中显示的公会名称 |
@@ -301,6 +302,7 @@ pnpm deploy:production
 - 富文本 HTML 展示前会经过清洗。
 - 登录失败返回通用错误，避免用户名枚举。
 - 安全响应头包括 HSTS、CSP、`X-Frame-Options: DENY` 和 `nosniff`。
+- 上传在服务端按图片白名单（JPEG、PNG、GIF、WebP、AVIF）加魔数双重校验；SVG 一律不收，落库的 content type 取自实际字节而非客户端声明的请求头。
 
 发现安全漏洞时，请按 [SECURITY.md](./SECURITY.md) 私下报告。
 

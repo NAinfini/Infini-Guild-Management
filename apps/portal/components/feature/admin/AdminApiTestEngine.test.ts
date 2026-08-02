@@ -859,10 +859,6 @@ describe("AdminApiTestEngine request preparation", () => {
       "DELETE /api/storage/items/:id",
       "DELETE /api/storage/storages/:storageId/categories/:id",
       "DELETE /api/storage/storages/:id",
-      "GET /api/game-data",
-      "GET /api/game-data/rotations/:classId",
-      "GET /api/game-data/full",
-      "GET /api/game-data/versions",
     ];
 
     expect(expectedRoutes.filter((route) => !endpointKeys.has(route))).toEqual([]);
@@ -1214,8 +1210,6 @@ describe("AdminApiTestEngine request preparation", () => {
       .flatMap((category) => category.endpoints.map((endpoint) => `${endpoint.method} ${endpoint.path}`));
 
     expect(endpointKeys).toEqual(expect.arrayContaining([
-      "GET /api/game-data",
-      "GET /api/game-data/versions",
       "GET /api/admin/site-config",
       "GET /api/users/absences?from=2026-01-01&to=2026-01-31",
       "GET /api/users/:id/absences",
@@ -1243,7 +1237,35 @@ describe("AdminApiTestEngine request preparation", () => {
     ]));
     expect(visibleWithoutSiteConfigPermission).not.toContain("GET /api/admin/site-config");
     expect(visibleWithSiteConfigPermission).toContain("GET /api/admin/site-config");
-    expect(endpointKeys).not.toContain("PATCH /api/admin/site-config");
+  });
+
+  /*
+   * 站点配置的写接口现在登记进目录，只是为了让覆盖情况可见——它们必须永远发不出去。
+   * 沿用 PATCH /api/admin/analytics-settings 已有的做法：列进目录 + 准备阶段无条件跳过，
+   * 而不是把端点从目录里藏掉。「藏掉」看着安全，实际上是把覆盖缺口伪装成覆盖完整。
+   */
+  it("never sends the mutations that would change the running admin or the whole site", () => {
+    const alwaysSkipped = [
+      { label: "Logout", method: "POST" as const, path: "/api/auth/logout" },
+      { label: "Update Site Config", method: "PATCH" as const, path: "/api/admin/site-config" },
+      { label: "Upload Site Logo", method: "POST" as const, path: "/api/admin/site-config/logo" },
+      { label: "Change Password", method: "POST" as const, path: "/api/users/:id/change-password" },
+      { label: "Change Username", method: "POST" as const, path: "/api/users/:id/change-username" },
+    ];
+    const endpointKeys = buildApiCategories((key) => key)
+      .flatMap((category) => category.endpoints.map((endpoint) => `${endpoint.method} ${endpoint.path}`));
+    /* 给足一次性成员 id，让 :id 能解析出来——否则跳过的理由会是「缺 id」，
+       测不到「就算 id 齐了也照样不发」这个真正要守的性质。 */
+    const ready = contextWith({ adminCreatedUserId: "disposable-user" });
+
+    for (const endpoint of alwaysSkipped) {
+      const key = `${endpoint.method} ${endpoint.path}`;
+      expect(endpointKeys, key).toContain(key);
+      const prepared = prepareEndpointRequest(endpoint, ready);
+      expect(prepared.skipReason, key).toBeTruthy();
+      expect(prepared.optionalSkip, key).toBe(true);
+      expect(prepared.body, key).toBeUndefined();
+    }
   });
 
   it("prepares additional production read endpoints without mutating existing database state", () => {

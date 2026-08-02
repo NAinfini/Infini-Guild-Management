@@ -1,7 +1,9 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
+  ClassIconUploadValidationError,
   captureUploadValidation,
   detectContentTypeFromBytes,
+  storeClassIcon,
   validateMagicBytes,
   validateUploadBytes,
 } from "../media";
@@ -88,5 +90,55 @@ describe("media magic-byte validation", () => {
     await expect(captureUploadValidation(async () => {
       throw new Error("R2 unavailable");
     })).rejects.toThrow("R2 unavailable");
+  });
+});
+
+describe("class icon storage", () => {
+  const validWebP = () => new File([
+    new Uint8Array([
+      0x52, 0x49, 0x46, 0x46, 0x24, 0x00, 0x00, 0x00,
+      0x57, 0x45, 0x42, 0x50,
+    ]),
+  ], "class.webp", { type: "image/webp" });
+
+  it("stores only validated WebP bytes under the isolated class icon prefix", async () => {
+    const put = vi.fn().mockResolvedValue(undefined);
+    const context = { env: { MEDIA: { put } } };
+
+    const key = await storeClassIcon(
+      context as never,
+      "storm/caller",
+      validWebP(),
+    );
+
+    expect(key).toMatch(/^class-icons\/storm%2Fcaller\/.+\.webp$/);
+    expect(put).toHaveBeenCalledWith(
+      key,
+      expect.any(ArrayBuffer),
+      { httpMetadata: { contentType: "image/webp" } },
+    );
+  });
+
+  it("rejects a non-WebP declaration before writing to R2", async () => {
+    const put = vi.fn();
+    const context = { env: { MEDIA: { put } } };
+    const png = new File([new Uint8Array([0x89, 0x50, 0x4E, 0x47])], "class.png", {
+      type: "image/png",
+    });
+
+    await expect(storeClassIcon(context as never, "storm", png)).rejects.toBeInstanceOf(
+      ClassIconUploadValidationError,
+    );
+    expect(put).not.toHaveBeenCalled();
+  });
+
+  it("does not classify an R2 outage as a file validation failure", async () => {
+    const storageError = new Error("R2 unavailable");
+    const put = vi.fn().mockRejectedValue(storageError);
+    const context = { env: { MEDIA: { put } } };
+
+    await expect(storeClassIcon(context as never, "storm", validWebP())).rejects.toBe(
+      storageError,
+    );
   });
 });

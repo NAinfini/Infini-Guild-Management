@@ -1,20 +1,55 @@
 import {
   Alert,
+  Button,
   Card,
   Group,
-  Select,
   Skeleton,
   Stack,
   Tabs,
+  Text,
 } from "@mantine/core";
 import { useNavigate, useSearch } from "@tanstack/react-router";
 import { useMediaQuery } from "@mantine/hooks";
-import { Suspense, lazy } from "react";
+import { Fragment, Suspense, lazy } from "react";
+import type { ComponentType, ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { useAdminPageController } from "../../hooks/useAdminPageController";
 import { PageLayout } from "../layout/PageLayout";
 import { ErrorBoundary } from "@portal/components/effects";
+import {
+  FileSearchIcon,
+  HeartbeatIcon,
+  LinkIcon,
+  SettingsIcon,
+  ShieldIcon,
+  SwordIcon,
+  TrophyIcon,
+  UsersIcon,
+} from "@portal/components/icons";
 import "./AdminPage.css";
+
+type TabValue =
+  | "member" | "invite" | "audit" | "roles"
+  | "siteConfig" | "classes" | "badges" | "status";
+
+const TAB_ICONS: Record<TabValue, ComponentType<{ size?: number }>> = {
+  member: UsersIcon,
+  invite: LinkIcon,
+  audit: FileSearchIcon,
+  roles: ShieldIcon,
+  siteConfig: SettingsIcon,
+  classes: SwordIcon,
+  badges: TrophyIcon,
+  status: HeartbeatIcon,
+};
+
+/* 导航按职责分三组，和三种版式一一对应：人员=列表台，配置=主从，运维=设置面。
+   八项平铺成一列时没有任何分层，管理员得逐条读标签才能找到要去的地方。 */
+const NAV_GROUPS: Array<{ id: "people" | "config" | "ops"; values: TabValue[] }> = [
+  { id: "people", values: ["member", "invite", "audit"] },
+  { id: "config", values: ["roles", "siteConfig", "classes", "badges"] },
+  { id: "ops", values: ["status"] },
+];
 
 const LazyAdminStatusTab = lazy(() =>
   import("../feature/admin/AdminStatusTab").then((mod) => ({ default: mod.AdminStatusTab })),
@@ -34,8 +69,8 @@ const LazyAdminRolesSection = lazy(() =>
 const LazyAdminBadgesSection = lazy(() =>
   import("../feature/admin/AdminBadgesSection").then((mod) => ({ default: mod.AdminBadgesSection })),
 );
-const LazyAdminGameDataSection = lazy(() =>
-  import("../feature/admin/AdminGameDataSection").then((mod) => ({ default: mod.AdminGameDataSection })),
+const LazyAdminClassesSection = lazy(() =>
+  import("../feature/admin/AdminClassesSection").then((mod) => ({ default: mod.AdminClassesSection })),
 );
 const LazyAdminSiteConfigSection = lazy(() =>
   import("../feature/admin/AdminSiteConfigSection").then((mod) => ({ default: mod.AdminSiteConfigSection })),
@@ -52,7 +87,7 @@ const LazyCreateMemberModal = lazy(() =>
 
 export function AdminPage() {
   const { t } = useTranslation("admin");
-  const isMobile = useMediaQuery("(max-width: 47.99em)");
+  const isCompactNavigation = useMediaQuery("(max-width: 79.99em)");
   const navigate = useNavigate();
   const search = useSearch({ strict: false }) as { tab?: string };
   const {
@@ -147,20 +182,36 @@ export function AdminPage() {
     return <Alert color="red" title={t("forbidden")} />;
   }
 
-  const tabs = [
+  const tabs = ([
     { value: "member", label: t("tab.member"), visible: tabAccess.member },
     { value: "invite", label: t("tab.invite"), visible: tabAccess.invite },
     { value: "audit", label: t("tab.audit"), visible: tabAccess.audit },
     { value: "roles", label: t("tab.roles"), visible: tabAccess.roles },
     { value: "siteConfig", label: t("tab.siteConfig"), visible: tabAccess.siteConfig },
+    { value: "classes", label: t("tab.classes"), visible: tabAccess.classes },
     { value: "badges", label: t("tab.badges"), visible: tabAccess.badges },
-    { value: "gameData", label: t("tab.gameData"), visible: tabAccess.gameData },
     { value: "status", label: t("tab.status"), visible: tabAccess.status },
-  ].filter((tab) => tab.visible);
+  ] as Array<{ value: TabValue; label: string; visible: boolean }>).filter((tab) => tab.visible);
+
+  if (tabs.length === 0) {
+    return (
+      <PageLayout className="admin-page">
+        <Alert color="orange" title={t("noAccessibleTabs.title")}>
+          <Stack gap="sm" align="flex-start">
+            <Text size="sm">{t("noAccessibleTabs.description")}</Text>
+            <Button variant="default" onClick={() => void navigate({ to: "/" })}>
+              {t("noAccessibleTabs.back")}
+            </Button>
+          </Stack>
+        </Alert>
+      </PageLayout>
+    );
+  }
+
   const activeTab = tabs.some((tab) => tab.value === search.tab) ? search.tab! : (tabs[0]?.value ?? "member");
   const setActiveTab = (nextTab: string | null) => {
     if (!nextTab) return;
-    const tab = nextTab as "member" | "invite" | "audit" | "roles" | "siteConfig" | "badges" | "gameData" | "status";
+    const tab = nextTab as TabValue;
     void navigate({
       to: "/admin",
       search: (previous) => ({ ...previous, tab: tab === "member" ? undefined : tab }),
@@ -169,31 +220,81 @@ export function AdminPage() {
     });
   };
 
+  /* usersQuery 走的是 fetchAllUsersListWithOptions，会把所有分页取全，所以这里的
+     长度就是成员总数，不是当前页的行数。 */
+  const memberCount = usersQuery.data ? userRowsRaw.length : null;
+  const inviteStats = inviteStatsQuery.data ?? null;
+  const roleCount = rolesQuery.data?.length ?? null;
+  /* 四项服务全 ok 才算正常；拿不到数据时如实显示「检查中」，不默认成绿色。 */
+  const healthState: "ok" | "degraded" | "checking" | null = !tabAccess.status
+    ? null
+    : statusQuery.data
+      ? ([statusQuery.data.db, statusQuery.data.r2, statusQuery.data.ws, statusQuery.data.crons]
+          .every((value) => value === "ok") ? "ok" : "degraded")
+      : "checking";
+
+  const navCounts: Partial<Record<TabValue, ReactNode>> = {
+    member: memberCount === null ? null : (
+      <span className="admin-page__nav-count">{memberCount}</span>
+    ),
+    /* 过期的邀请码是唯一需要管理员动手清理的，用它决定徽章要不要转黄。 */
+    invite: inviteStats === null ? null : (
+      <span className={`admin-page__nav-count${inviteStats.expired > 0 ? " admin-page__nav-count--warn" : ""}`}>
+        {inviteStats.active}
+      </span>
+    ),
+    roles: roleCount === null ? null : (
+      <span className="admin-page__nav-count">{roleCount}</span>
+    ),
+    /* 页签上这颗点是健康状态的唯一载体，必须带可读标签，不能 aria-hidden。 */
+    status: healthState === null ? null : (
+      <span
+        className={`admin-page__nav-dot admin-page__nav-dot--${healthState}`}
+        role="img"
+        aria-label={t(`header.health.${healthState}`)}
+      />
+    ),
+  };
+
   return (
     <PageLayout className="admin-page">
-        {isMobile ? (
-          <Select
-            className="admin-page__mobile-domain-select"
-            label={t("navigation.section")}
-            data={tabs}
-            value={activeTab}
-            onChange={setActiveTab}
-            allowDeselect={false}
-            searchable={tabs.length > 6}
-          />
-        ) : null}
         <Tabs
           value={activeTab}
           keepMounted={false}
-          orientation="vertical"
-          className="admin-page__workspace"
+          orientation={isCompactNavigation ? "horizontal" : "vertical"}
+          className={`admin-page__workspace${isCompactNavigation ? " admin-page__workspace--compact" : ""}`}
           onChange={setActiveTab}
         >
-          {!isMobile ? (
-            <Tabs.List className="admin-page__domain-nav">
-              {tabs.map((tab) => <Tabs.Tab key={tab.value} value={tab.value}>{tab.label}</Tabs.Tab>)}
+            <Tabs.List
+              className="admin-page__domain-nav"
+              aria-label={t("navigation.section")}
+            >
+              {NAV_GROUPS.map((group) => {
+                const groupTabs = tabs.filter((tab) => group.values.includes(tab.value));
+                if (groupTabs.length === 0) return null;
+                return (
+                  <Fragment key={group.id}>
+                    {/* 分组标题不是可聚焦项，对读屏隐藏，避免混进 tablist 的遍历序列。 */}
+                    <span className="admin-page__nav-group" aria-hidden="true">
+                      {t(`nav.group.${group.id}`)}
+                    </span>
+                    {groupTabs.map((tab) => {
+                      const Icon = TAB_ICONS[tab.value];
+                      return (
+                        <Tabs.Tab
+                          key={tab.value}
+                          value={tab.value}
+                          leftSection={<Icon size={16} />}
+                          rightSection={navCounts[tab.value] ?? undefined}
+                        >
+                          {tab.label}
+                        </Tabs.Tab>
+                      );
+                    })}
+                  </Fragment>
+                );
+              })}
             </Tabs.List>
-          ) : null}
 
         {tabAccess.member ? (
         <Tabs.Panel value="member" className="admin-page__panel">
@@ -355,6 +456,16 @@ export function AdminPage() {
           </Tabs.Panel>
         ) : null}
 
+        {tabAccess.classes ? (
+          <Tabs.Panel value="classes" className="admin-page__panel">
+            <ErrorBoundary>
+              <Suspense fallback={suspenseFallback}>
+                <LazyAdminClassesSection />
+              </Suspense>
+            </ErrorBoundary>
+          </Tabs.Panel>
+        ) : null}
+
         {tabAccess.badges ? (
           <Tabs.Panel value="badges" className="admin-page__panel">
             <ErrorBoundary>
@@ -363,16 +474,6 @@ export function AdminPage() {
                 userRows={userRowsRaw}
                 controller={badgesController}
               />
-            </Suspense>
-            </ErrorBoundary>
-          </Tabs.Panel>
-        ) : null}
-
-        {tabAccess.gameData ? (
-          <Tabs.Panel value="gameData" className="admin-page__panel">
-            <ErrorBoundary>
-            <Suspense fallback={suspenseFallback}>
-              <LazyAdminGameDataSection />
             </Suspense>
             </ErrorBoundary>
           </Tabs.Panel>

@@ -32,16 +32,19 @@ function file(name: string, type: string, size: number): File {
 }
 
 /** Canvas that encodes to a blob of exactly `encodedSize` bytes. */
-function stubImageEnvironment(encodedSize: number) {
-  stub("createImageBitmap", vi.fn(async () => ({ width: 4, height: 4, close: vi.fn() })));
+function stubImageEnvironment(encodedSize: number, width = 4, height = 4) {
+  const drawImage = vi.fn();
+  const canvas = {
+    width: 0,
+    height: 0,
+    getContext: () => ({ drawImage }),
+    toBlob: (cb: (blob: Blob) => void) => cb(new Blob([new Uint8Array(encodedSize)], { type: "image/webp" })),
+  };
+  stub("createImageBitmap", vi.fn(async () => ({ width, height, close: vi.fn() })));
   stub("document", {
-    createElement: () => ({
-      width: 0,
-      height: 0,
-      getContext: () => ({ drawImage: vi.fn() }),
-      toBlob: (cb: (blob: Blob) => void) => cb(new Blob([new Uint8Array(encodedSize)], { type: "image/webp" })),
-    }),
+    createElement: () => canvas,
   });
+  return { canvas, drawImage };
 }
 
 /** MediaRecorder that only advertises the container types in `supported`. */
@@ -133,6 +136,38 @@ describe("image conversion", () => {
     expect(result).not.toBe(png);
     expect(result.name).toBe("photo.webp");
     expect(result.type).toBe("image/webp");
+  });
+
+  it("forces a WebP result for a class icon even when the encoding is larger", async () => {
+    stubImageEnvironment(2_000);
+    const png = file("class.png", "image/png", 1_000);
+
+    const result = await convertImageToWebP(png, undefined, { forceWebP: true });
+
+    expect(result).not.toBe(png);
+    expect(result.name).toBe("class.webp");
+    expect(result.type).toBe("image/webp");
+  });
+
+  it("resizes a forced class icon proportionally to the configured maximum", async () => {
+    const { canvas, drawImage } = stubImageEnvironment(400, 1_200, 600);
+    const png = file("wide.png", "image/png", 5_000);
+
+    await convertImageToWebP(png, undefined, { forceWebP: true, maxDimension: 512 });
+
+    expect(canvas.width).toBe(512);
+    expect(canvas.height).toBe(256);
+    expect(drawImage).toHaveBeenCalledWith(expect.anything(), 0, 0, 512, 256);
+  });
+
+  it("allows the forced class-icon flow to flatten an explicitly chosen GIF", async () => {
+    stubImageEnvironment(400);
+    const gif = file("class.gif", "image/gif", 5_000);
+
+    const result = await convertImageToWebP(gif, undefined, { forceWebP: true });
+
+    expect(result.type).toBe("image/webp");
+    expect(g.createImageBitmap).toHaveBeenCalledOnce();
   });
 
   it("refuses a non-image outright rather than producing junk", async () => {

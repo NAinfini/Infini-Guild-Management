@@ -19,6 +19,7 @@ import { escapeLikePattern, usernameEquals } from "./helpers";
 import { clearLoginFailures } from "./login-lockout";
 import type { MediaLike } from "./AdminAuditService";
 import { SiteConfigService } from "./SiteConfigService";
+import { logger } from "../utils/logger";
 
 export type { MediaLike } from "./AdminAuditService";
 
@@ -28,6 +29,43 @@ export type AnalyticsSettings = {
   reference_duration_minutes: number;
   modifier_weights: Record<string, number>;
 };
+
+export type AdminStatusReport = {
+  db: string;
+  r2: string;
+  ws: string;
+  crons: string;
+  /** 每张必需表一条：`ok`、`missing`，或 `error: <真实原因>`。 */
+  db_checks: Record<string, string>;
+  /** R2 探针的真实失败原因；正常时为 null。 */
+  r2_reason: string | null;
+};
+
+const STATUS_REQUIRED_TABLES = ["users", "member_profiles", "roles", "role_permissions", "site_config"] as const;
+
+/*
+ * 逐表探活。
+ * 原先这里读 sqlite_master 拿表清单，但 D1 不允许读它（SQLITE_AUTH，见 index.ts
+ * /api/dev/table-counts 处的同一条说明）——于是那个 catch 每次都命中，线上永远
+ * 报 db: error、五张表全是 "error"，且没有任何原因被记下来：一个把真故障和
+ * 「探针本身用错了 API」压成同一句话的兜底。改成直接查表本身，D1 与本地
+ * miniflare 都支持；表不存在与真故障分开报，真故障连原因一起抬出来。
+ * 表名来自本模块的常量数组，不是请求输入，拼接不引入注入面。
+ */
+async function probeTable(rawDb: D1Database, table: string): Promise<string> {
+  try {
+    await rawDb.prepare(`SELECT 1 FROM "${table}" LIMIT 1`).first();
+    return "ok";
+  } catch (error) {
+    const reason = error instanceof Error ? error.message : String(error);
+    if (/no such table/i.test(reason)) {
+      logger.error("Admin status: required table is missing", { table });
+      return "missing";
+    }
+    logger.error("Admin status: table probe failed", { table, reason });
+    return `error: ${reason}`;
+  }
+}
 
 export type InviteVisibility = "active" | "expired" | "revoked";
 
@@ -594,36 +632,39 @@ export class AdminService {
     return ok(undefined);
   }
 
-  async getStatus(): Promise<ServiceResult<{ db: string; r2: string; ws: string; crons: string; db_checks: Record<string, string> }>> {
-    let dbStatus = "ok";
+  async getStatus(): Promise<ServiceResult<AdminStatusReport>> {
     let r2Status = "ok";
+    let r2Reason: string | null = null;
     const dbChecks: Record<string, string> = {};
-    const requiredTables = ["users", "member_profiles", "roles", "role_permissions", "site_config"] as const;
 
     const dbCheck = (async () => {
-      try {
-        const rows = await this.deps.rawDb
-          .prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name IN ('users', 'member_profiles', 'roles', 'role_permissions', 'site_config')")
-          .all<{ name: string }>();
-        const found = new Set(rows.results.map((r) => r.name));
-        for (const table of requiredTables) dbChecks[table] = found.has(table) ? "ok" : "missing";
-        if (requiredTables.some((t) => dbChecks[t] !== "ok")) dbStatus = "error";
-      } catch {
-        dbStatus = "error";
-        for (const table of requiredTables) dbChecks[table] = "error";
-      }
+      const probes = await Promise.all(
+        STATUS_REQUIRED_TABLES.map(async (table) => [table, await probeTable(this.deps.rawDb, table)] as const),
+      );
+      for (const [table, verdict] of probes) dbChecks[table] = verdict;
     })();
 
     const r2Check = (async () => {
       try {
+        // head() 对不存在的对象返回 null，不抛；抛出来的只会是绑定层/网络层的真故障。
         await this.deps.media.head("__healthcheck__");
-      } catch {
+      } catch (error) {
         r2Status = "error";
+        r2Reason = error instanceof Error ? error.message : String(error);
+        logger.error("Admin status: R2 health probe failed", { reason: r2Reason });
       }
     })();
 
     await Promise.all([dbCheck, r2Check]);
-    return ok({ db: dbStatus, r2: r2Status, ws: this.deps.ws ? "ok" : "missing", crons: "ok", db_checks: dbChecks });
+    const dbStatus = STATUS_REQUIRED_TABLES.every((t) => dbChecks[t] === "ok") ? "ok" : "error";
+    return ok({
+      db: dbStatus,
+      r2: r2Status,
+      ws: this.deps.ws ? "ok" : "missing",
+      crons: "ok",
+      db_checks: dbChecks,
+      r2_reason: r2Reason,
+    });
   }
 
   async getAnalyticsSettings(): Promise<ServiceResult<AnalyticsSettings>> {

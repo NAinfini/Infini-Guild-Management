@@ -47,6 +47,7 @@ function renderCreateEditor() {
         onArchivedChange={() => {}}
         onImageUpload={async () => ""}
         isDirty={false}
+        isPublishReady={false}
         emptyTitle="No announcement"
       />
     </MantineProvider>,
@@ -66,5 +67,13 @@ describe("AnnouncementDetailCard", () => {
 
     expect(screen.queryByText("section.schedule")).not.toBeInTheDocument();
     expect(screen.getByText("field.publishAt")).toBeInTheDocument();
+  });
+
+  it("marks a blank announcement as not ready and disables publishing", () => {
+    renderCreateEditor();
+
+    expect(screen.getByText("status.notReady")).toBeInTheDocument();
+    expect(screen.queryByText("status.saved")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "action.publish" })).toBeDisabled();
   });
 });

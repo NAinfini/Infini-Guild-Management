@@ -1,5 +1,6 @@
 import {
   ALLOWED_IMAGE_TYPES,
+  batchUpdateWikiCategoriesSchema,
   createWikiArticleSchema,
   createWikiCategorySchema,
   updateWikiCategorySchema,
@@ -8,6 +9,8 @@ import {
 import type { Context } from "hono";
 import { Hono } from "hono";
 import { requirePermission } from "../middleware/rbac";
+import { buildAuditLogStatements } from "../services/audit";
+import { validateUploadBytes } from "../services/media";
 import { WikiService } from "../services/WikiService";
 import { buildError, collectFiles, getDb, handleResult, parseBoolean, parseJsonBody, parsePage, safeFormData, serveR2Object } from "./_shared";
 import { hasMediaQuotaCapacity, withMedia } from "./service-factory";
@@ -15,7 +18,10 @@ import { hasMediaQuotaCapacity, withMedia } from "./service-factory";
 export const wikiRoutes = new Hono();
 
 function getService(c: Context): WikiService {
-  return new WikiService(getDb(c), withMedia(c));
+  return new WikiService(getDb(c), {
+    ...withMedia(c),
+    buildAuditLogStatements: (input, condition) => buildAuditLogStatements(c, input, condition),
+  });
 }
 
 async function requireWikiArticlesCreate(c: Context) { return requirePermission(c, "wiki.articles.create"); }
@@ -45,6 +51,16 @@ wikiRoutes.post("/categories", async (c) => {
   const result = await getService(c).createCategory(sessionUser.id, parsed.data);
   if (!result.ok) return buildError(c, result.code, result.message, result.details);
   return c.json(result.data, 201);
+});
+
+/* 必须排在 `/categories/:id` 之前：Hono 按注册顺序匹配，否则 "batch" 会被当成一个分类 id。 */
+wikiRoutes.patch("/categories/batch", async (c) => {
+  const sessionUser = await requireWikiCategoriesManage(c);
+  const body = await parseJsonBody(c);
+  const parsed = batchUpdateWikiCategoriesSchema.safeParse(body);
+  if (!parsed.success) return buildError(c, "VALIDATION_ERROR", "Invalid wiki category batch payload", parsed.error.flatten());
+  const result = await getService(c).batchUpdateCategories(sessionUser.id, parsed.data.updates);
+  return handleResult(c, result);
 });
 
 wikiRoutes.patch("/categories/:id", async (c) => {
@@ -174,7 +190,15 @@ wikiRoutes.post("/articles/:id/images", async (c) => {
     return buildError(c, "VALIDATION_ERROR", `Wiki image quota is ${mediaPolicy.quotas.wiki}`);
   }
 
-  const fileData = await Promise.all(files.map(async (f) => ({ data: await f.arrayBuffer(), contentType: f.type || "application/octet-stream" })));
+  /* 声明的 Content-Type 是客户端说了算的，必须再对一遍字节头，和图库那条路径一致。 */
+  const allowedTypes = new Set<string>(ALLOWED_IMAGE_TYPES);
+  const fileData: Array<{ data: ArrayBuffer; contentType: string }> = [];
+  for (const file of files) {
+    const data = await file.arrayBuffer();
+    const validation = validateUploadBytes(data, file.type || "application/octet-stream", allowedTypes);
+    if (!validation.ok) return buildError(c, "VALIDATION_ERROR", validation.message);
+    fileData.push({ data, contentType: validation.contentType });
+  }
   const result = await getService(c).uploadArticleImages(sessionUser.id, c.req.param("id"), fileData);
   return handleResult(c, result);
 });

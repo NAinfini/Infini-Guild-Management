@@ -26,6 +26,7 @@
 
 .section-header__title {
   flex: 0 0 auto;
+  margin: 0;
   font-size: var(--text-meta);
   font-weight: var(--fw-strong);
   line-height: var(--lh-tight);

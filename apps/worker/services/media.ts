@@ -1,5 +1,6 @@
 import type { Context } from "hono";
 import type { Bindings } from "../index";
+import { LIMITS } from "@guild/shared/config/limits";
 import { err, ok, type ServiceResult } from "./result";
 
 const MAGIC_BYTES: Record<string, { offset: number; bytes: number[] }[]> = {
@@ -18,6 +19,10 @@ const MAGIC_BYTES: Record<string, { offset: number; bytes: number[] }[]> = {
 export type UploadByteValidationResult =
   | { ok: true; contentType: string }
   | { ok: false; message: string };
+
+export class ClassIconUploadValidationError extends Error {
+  override readonly name = "ClassIconUploadValidationError";
+}
 
 const UPLOAD_VALIDATION_ERROR_PREFIXES = [
   "File bytes do not match declared type:",
@@ -129,6 +134,29 @@ export async function storeSiteLogo(c: Context, file: File): Promise<string> {
   const buffer = await file.arrayBuffer();
   const validation = validateUploadBytes(buffer, normalizeContentType(file, "application/octet-stream"), new Set(["image/jpeg", "image/png", "image/gif", "image/webp", "image/avif"]));
   if (!validation.ok) throw new Error(validation.message);
+  await getMediaBucket(c).put(key, buffer, {
+    httpMetadata: { contentType: validation.contentType },
+  });
+  return key;
+}
+
+export async function storeClassIcon(c: Context, classId: string, file: File): Promise<string> {
+  if (file.size > LIMITS.media.maxFileSize.classIcon) {
+    throw new ClassIconUploadValidationError(
+      `Class icon exceeds ${LIMITS.media.maxFileSize.classIcon} byte limit`,
+    );
+  }
+  if (file.type !== "image/webp") {
+    throw new ClassIconUploadValidationError(
+      "Class icons must be converted to WebP before upload",
+    );
+  }
+
+  const buffer = await file.arrayBuffer();
+  const validation = validateUploadBytes(buffer, file.type, new Set(["image/webp"]));
+  if (!validation.ok) throw new ClassIconUploadValidationError(validation.message);
+
+  const key = `class-icons/${encodeURIComponent(classId)}/${crypto.randomUUID()}.webp`;
   await getMediaBucket(c).put(key, buffer, {
     httpMetadata: { contentType: validation.contentType },
   });

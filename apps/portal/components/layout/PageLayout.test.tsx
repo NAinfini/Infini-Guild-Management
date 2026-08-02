@@ -1,8 +1,16 @@
 // @vitest-environment jsdom
 import { MantineProvider } from "@mantine/core";
 import { render, screen } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { PageLayout } from "./PageLayout";
+
+vi.mock("react-i18next", () => ({
+  useTranslation: () => ({
+    t: (key: string) => ({
+      "nav.breadcrumbs": "Localized breadcrumb navigation",
+    })[key] ?? key,
+  }),
+}));
 
 describe("PageLayout", () => {
   it("does not reserve a page-header row for ordinary content", () => {
@@ -33,7 +41,7 @@ describe("PageLayout", () => {
     expect(screen.queryByRole("heading", { level: 1 })).not.toBeInTheDocument();
     expect(container.querySelector("header")).not.toBeInTheDocument();
     expect(container.querySelector(".page-layout__action-row")).not.toBeNull();
-    expect(screen.getByRole("navigation", { name: "Breadcrumb" })).toContainElement(
+    expect(screen.getByRole("navigation", { name: "Localized breadcrumb navigation" })).toContainElement(
       screen.getByRole("link", { name: "Dashboard" }),
     );
     expect(screen.getByRole("button", { name: "Create event" })).toBeInTheDocument();

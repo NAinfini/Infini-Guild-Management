@@ -108,7 +108,9 @@ export function WikiArticleEditorCard({
       <Paper withBorder className="wiki-article-editor-card">
         <div style={{ padding: "var(--card-padding)" }}>
           <Stack gap={10}>
-            <Text fw={600}>{t("articleEditor.title")}</Text>
+            <Text component="h2" fw={600} className="wiki-article-editor-title">
+              {t("articleEditor.title")}
+            </Text>
             <EmptyState title={emptyTitle} />
           </Stack>
         </div>
@@ -121,9 +123,11 @@ export function WikiArticleEditorCard({
       <div style={{ padding: "var(--card-padding)" }}>
         <Stack gap={12}>
           <Group justify="space-between" align="start">
-            <Text fw={600}>{t("articleEditor.title")}</Text>
+            <Text component="h2" fw={600} className="wiki-article-editor-title">
+              {t("articleEditor.title")}
+            </Text>
             {canEdit ? (
-              <Group gap={8} wrap="wrap">
+              <Group gap={8} wrap="wrap" className="wiki-article-editor-actions">
                 {selectedArticle ? (
                   <>
                     <Tooltip label={pinLabel} withArrow>
@@ -132,7 +136,7 @@ export function WikiArticleEditorCard({
                         onClick={onTogglePinnedIntent}
                         color="portal-brand"
                         variant={pinnedPressed ? "light" : "default"}
-                        size="sm"
+                        size="lg"
                         disabled={isSaving}
                         aria-label={pinLabel}
                       >
@@ -145,25 +149,15 @@ export function WikiArticleEditorCard({
                         onClick={() => onToggleArchiveIntent()}
                         color="portal-brand"
                         variant={(selectedArticle?.archived_at ? archiveIntent !== "unarchive" : archiveIntent === "archive") ? "light" : "default"}
-                        size="sm"
+                        size="lg"
                         disabled={isSaving}
                         aria-label={archiveLabel}
                       >
                         <ArchiveIcon size={16} />
                       </ActionIcon>
                     </Tooltip>
-                    <ActionIcon
-                      color="red"
-                      variant="filled"
-                      size="sm"
-                      onClick={onDeleteArticle}
-                      disabled={isSaving}
-                      aria-label={t("common:action.delete")}
-                    >
-                      <TrashIcon size={16} />
-                    </ActionIcon>
                     <Button
-                      size="sm"
+                      size="md"
                       leftSection={<SaveIcon size={16} />}
                       onClick={() => {
                         if (!articleTitle.trim()) {
@@ -180,7 +174,7 @@ export function WikiArticleEditorCard({
                 ) : null}
                 {canEdit && isCreatingArticle ? (
                   <Button
-                    size="sm"
+                    size="md"
                     leftSection={<PlusIcon size={16} />}
                     onClick={onCreateArticle}
                     disabled={!canCreateArticle || isCreating}
@@ -190,13 +184,28 @@ export function WikiArticleEditorCard({
                 ) : null}
                 <Button
                   variant="default"
-                  size="sm"
+                  size="md"
                   leftSection={<XIcon size={16} />}
                   onClick={onExitEditor}
                   disabled={isSaving}
                 >
                   {t("editor.exit")}
                 </Button>
+                {selectedArticle ? (
+                  <Tooltip label={t("common:action.delete")} withArrow>
+                    <ActionIcon
+                      color="red"
+                      variant="light"
+                      size="lg"
+                      className="wiki-article-editor-actions__danger"
+                      onClick={onDeleteArticle}
+                      disabled={isSaving}
+                      aria-label={t("common:action.delete")}
+                    >
+                      <TrashIcon size={16} />
+                    </ActionIcon>
+                  </Tooltip>
+                ) : null}
               </Group>
             ) : null}
           </Group>
@@ -212,7 +221,7 @@ export function WikiArticleEditorCard({
 
           {!isLoading && !isError ? (
             <Stack gap={12}>
-              <Group gap={12} wrap="nowrap" align="flex-end" grow>
+              <Group gap={12} wrap="wrap" align="flex-end" grow>
                 <TextInput
                   label={t("articleEditor.titleField")}
                   value={articleTitle}
@@ -220,7 +229,7 @@ export function WikiArticleEditorCard({
                   onChange={(event) => onArticleTitleChange(event.currentTarget.value)}
                   placeholder={t("articleEditor.titleField")}
                   aria-label={t("aria.articleTitle")}
-                  style={{ flex: 1 }}
+                  style={{ flex: "1 1 16rem", minWidth: 0 }}
                 />
                 <Select
                   w={200}
@@ -231,7 +240,7 @@ export function WikiArticleEditorCard({
                   placeholder={t("articleEditor.category")}
                   aria-label={t("aria.articleCategory")}
                   onChange={(value) => onArticleCategoryChange(value ?? "")}
-                  style={{ flex: 0, minWidth: 200 }}
+                  style={{ flex: "0 1 12.5rem", minWidth: 0, maxWidth: "100%" }}
                 />
               </Group>
               <Text fw={600} size="sm">
@@ -242,6 +251,7 @@ export function WikiArticleEditorCard({
                 onChange={onArticleBodyChange}
                 placeholder={t("articleEditor.body")}
                 editable={canEdit}
+                ariaLabel={t("articleEditor.body")}
                 onImageUpload={onImageUpload}
                 labels={editorLabels}
               />

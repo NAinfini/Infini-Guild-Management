@@ -196,8 +196,8 @@ async function assertConfigReady(environment, configPath) {
 
 export async function runCreateAdmin(argv = process.argv.slice(2)) {
   const options = parseArguments(argv);
-  if (!["production", "staging"].includes(options.environment)) {
-    throw new Error("Use --env=production or --env=staging. This command never writes to an unspecified database.");
+  if (options.environment !== "production") {
+    throw new Error("Use --env=production. This command never writes to an unspecified database.");
   }
 
   await assertConfigReady(options.environment, options.configPath);

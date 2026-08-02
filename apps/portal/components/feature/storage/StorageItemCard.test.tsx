@@ -2,6 +2,7 @@
 import type { StorageItem } from "@guild/shared";
 import { MantineProvider } from "@mantine/core";
 import { render, screen } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import type { ComponentProps } from "react";
 import { describe, expect, it, vi } from "vitest";
 import { StorageItemCard } from "./StorageItemCard";
@@ -43,6 +44,7 @@ function renderCard(
       <StorageItemCard
         item={item}
         canEditItems={permissions.canEditItems}
+        canManageStock={permissions.canAdjustStock}
         batch={batch}
         onOpen={vi.fn()}
         onDeposit={vi.fn()}
@@ -54,6 +56,33 @@ function renderCard(
 }
 
 describe("StorageItemCard permissions", () => {
+  it("opens an item without an image by pointer and keyboard", async () => {
+    const user = userEvent.setup();
+    const onOpen = vi.fn();
+
+    render(
+      <MantineProvider>
+        <StorageItemCard
+          item={item}
+          canEditItems={false}
+          canManageStock={false}
+          onOpen={onOpen}
+          onDeposit={vi.fn()}
+          onWithdraw={vi.fn()}
+          onEdit={vi.fn()}
+        />
+      </MantineProvider>,
+    );
+
+    const trigger = screen.getByRole("button", { name: "Crystal" });
+    await user.click(trigger);
+    trigger.focus();
+    await user.keyboard("{Enter}");
+
+    expect(onOpen).toHaveBeenNthCalledWith(1, item);
+    expect(onOpen).toHaveBeenNthCalledWith(2, item);
+  });
+
   it("separates item editing controls from stock transaction controls", () => {
     renderCard({ canEditItems: false, canAdjustStock: true });
 
@@ -68,6 +97,29 @@ describe("StorageItemCard permissions", () => {
     expect(screen.getByRole("button", { name: "Deposit" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Withdraw" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Edit" })).toBeInTheDocument();
+  });
+
+  it("keeps direct stock actions available to managers for a managed-only item", () => {
+    render(
+      <MantineProvider>
+        <StorageItemCard
+          item={{
+            ...item,
+            allow_member_deposit: false,
+            allow_member_withdraw: false,
+          }}
+          canEditItems
+          canManageStock
+          onOpen={vi.fn()}
+          onDeposit={vi.fn()}
+          onWithdraw={vi.fn()}
+          onEdit={vi.fn()}
+        />
+      </MantineProvider>,
+    );
+
+    expect(screen.getByRole("button", { name: "Deposit" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Withdraw" })).toBeInTheDocument();
   });
 
   it("adjusts an eligible item inside batch mode", () => {

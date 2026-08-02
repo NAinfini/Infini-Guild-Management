@@ -18,13 +18,13 @@ jobs:
     name: Quality Gates
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
-      - uses: pnpm/action-setup@f40ffcd9367d9f12939873eb1018b921a783ffaa # v4
-        with:
-          version: 11.17.0
+      # pnpm 版本不在这里写死：package.json 的 packageManager 字段已经钉了 11.17.0，
+      # 这个 action 会自己去读。写两遍就会漂，漂了它直接报错。
+      - uses: pnpm/action-setup@0ebf47130e4866e96fce0953f49152a61190b271 # v6.0.9
 
-      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: 24
           cache: pnpm
@@ -40,3 +40,15 @@ jobs:
       - run: pnpm lint
 
       - run: pnpm test
+
+      - run: pnpm build
+
+      # wrangler.jsonc 是 gitignore 掉的（带部署身份），CI 里必须先从 example 生成一份，
+      # 否则 build:worker 找不到配置。setup:local 是幂等的，本地已有文件时不会覆盖。
+      - run: pnpm setup:local
+
+      # dry-run 不联网部署，只做打包 + 绑定校验：能抓到 compatibility_date、
+      # Durable Object 迁移、assets 目录这类只有真正打包才会暴露的问题。
+      - run: pnpm build:worker
+        env:
+          WRANGLER_SEND_METRICS: 'false'

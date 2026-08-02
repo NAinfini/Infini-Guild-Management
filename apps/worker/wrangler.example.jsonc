@@ -5,7 +5,7 @@
     "@guild/shared": "../shared/index.ts",
     "@guild/shared/*": "../shared/*"
   },
-  "compatibility_date": "2025-01-01",
+  "compatibility_date": "2026-07-01",
   "secrets": {
     "required": ["SIGNING_SECRET"]
   },
@@ -96,49 +96,6 @@
           "binding": "DB",
           "database_name": "YOUR_D1_DATABASE_NAME",
           "database_id": "YOUR_D1_DATABASE_ID",
-          "migrations_dir": "db/migrations"
-        }
-      ],
-      "durable_objects": {
-        "bindings": [
-          {
-            "name": "WS",
-            "class_name": "WebSocketDO"
-          }
-        ]
-      }
-    },
-
-    // ── Staging environment ────────────────────────────────────────────
-    // Deploy with: pnpm deploy:staging
-    "staging": {
-      "workers_dev": true,
-      "secrets": {
-        "required": ["SIGNING_SECRET"]
-      },
-      "assets": {
-        "directory": "../portal/dist",
-        "not_found_handling": "single-page-application",
-        "binding": "ASSETS",
-        "run_worker_first": true
-      },
-      "vars": {
-        "ENVIRONMENT": "staging",
-        "PORTAL_ORIGIN": "",
-        "SITE_NAME": "My Guild Staging",
-        "SITE_LOGO_URL": "/guild-logo.webp"
-      },
-      "r2_buckets": [
-        {
-          "binding": "MEDIA",
-          "bucket_name": "YOUR_STAGING_R2_BUCKET_NAME"
-        }
-      ],
-      "d1_databases": [
-        {
-          "binding": "DB",
-          "database_name": "YOUR_STAGING_D1_DATABASE_NAME",
-          "database_id": "YOUR_STAGING_D1_DATABASE_ID",
           "migrations_dir": "db/migrations"
         }
       ],

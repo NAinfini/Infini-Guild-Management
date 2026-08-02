@@ -23,3 +23,18 @@ export function latencyBand(ms: number): LatencyBand {
   if (ms < LATENCY_BAD_THRESHOLD_MS) return "warn";
   return "bad";
 }
+
+/**
+ * 延迟条 / 延迟环画到满格对应的毫秒数：500ms 及以上一律满格。
+ *
+ * 这个 500 此前在 `AdminSystemSection.tsx` 的 latencyPercent() 和
+ * `AdminStatusTab.tsx` 的 barWidth 里各写了一遍，是同一条标尺的两份拷贝——
+ * 改一处不改另一处，环和条就会对同一个数字画出不同的长度。
+ * 和上面两个阈值一样收敛到这里。
+ */
+export const LATENCY_FULL_SCALE_MS = 500;
+
+/** 把毫秒换算成 0-100 的长度百分比，超过满格刻度就停在 100。 */
+export function latencyScalePercent(ms: number): number {
+  return Math.min(100, (ms / LATENCY_FULL_SCALE_MS) * 100);
+}
