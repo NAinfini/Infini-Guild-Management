@@ -17,6 +17,12 @@
   display: inline-flex;
   position: relative;
   border-radius: 50%;
+  /*
+   * 垫一层不透明的卡片色。没头像的人用的是 Mantine Avatar 的 light 变体，底色本身
+   * 半透明，叠在一起时后面那张脸会从前面这张里透出来。这一层让那点半透明压在卡片
+   * 表面上，而不是压在上一个头像上——观感不变，只是不再穿帮。
+   */
+  background: var(--surface-raised);
   /* 描边把叠在一起的头像彼此分开；用卡片自己的表面色，看着像“挖”出来的一圈。 */
   box-shadow: 0 0 0 2px var(--surface-raised);
   transition: transform var(--transition-fast);
