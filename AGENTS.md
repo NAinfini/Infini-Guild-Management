@@ -392,9 +392,19 @@ distribution unit is the spec file and per-file module state remains safe. Set
 `E2E_SLOTS=1` to fall back to a single serial instance; set `E2E_PORT_BASE` (and
 `E2E_INSPECTOR_PORT_BASE`, default 9329) to move off a busy port range.
 
-**Rate-limit quota.** Each test presents its own `X-Forwarded-For`, so the server
+**Rate-limit quota.** Each test presents its own client address so the server
 treats it as an independent client with its own quota (120 reads/min, 80
-writes/min). The id must be unique across the whole run, not just within a worker
+writes/min). **Send it as both `CF-Connecting-IP` and `X-Forwarded-For`** —
+`X-Forwarded-For` alone is not enough. Miniflare's entry worker fills in
+`CF-Connecting-IP` from the TCP peer when the request does not already carry one,
+and the server reads that header first, so every test collapses into one bucket
+keyed on 127.0.0.1. That does not reproduce on Windows, so it stayed green locally
+and cost a full CI run: 19 unrelated tests each reporting their own feature
+failure, all of them 429s from a quota someone else had spent. `config.ts`'s
+`clientIdentityHeaders` is the single place that builds these headers, and
+`globalSetup` now asserts the isolation before any test runs.
+
+The id must be unique across the whole run, not just within a worker
 process: Playwright starts a fresh worker process after every failure and between
 projects, and a plain module-level counter restarts at zero there, handing live
 ids back out. Two tests then share one bucket, the second gets 429, that failure

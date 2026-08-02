@@ -14,6 +14,7 @@ import {
   type E2eRunStateFile,
 } from "./support/config";
 import {
+  assertRateLimitIsolation,
   createSystemTestRun,
   login,
   newApiContext,
@@ -35,6 +36,8 @@ import {
 async function prepareSlot(slot: number): Promise<E2eRunState> {
   const origin = originForSlot(slot);
   await waitForPortal(origin);
+  /* 配额分桶是整套用例的前置条件，不成立就别往下跑（理由见这个函数的说明）。 */
+  await assertRateLimitIsolation(origin, slot);
 
   const bootstrap = await newApiContext(undefined, origin);
   await reseed(bootstrap);

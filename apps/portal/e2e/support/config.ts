@@ -66,10 +66,9 @@ export const MEMBER_PASSWORD = process.env.E2E_MEMBER_PASSWORD ?? "member1234";
  * 跑到中段必然被 429 打断——那不是被测功能坏了，是测试自己把配额撑爆，
  * 而且失败会散落在各条用例上，看起来像一堆随机 flake。
  *
- * 所以每条用例带一个独立的 X-Forwarded-For，让服务端把它们当成互不相干的客户端。
+ * 所以每条用例带一个独立的客户端地址，让服务端把它们当成互不相干的客户端。
  * 两点必须讲清楚：
- *   1. 这只在本地开发环境成立。线上取的是 Cloudflare 覆写的 CF-Connecting-IP，
- *      优先级高于这个头（apps/worker/middleware/rate-limit.ts:33），伪造不了。
+ *   1. 这只在本地开发环境成立。线上这个头由 Cloudflare 在边缘覆写，伪造不了。
  *   2. 这等于让常规用例绕开限流，所以限流本身必须由专门的用例去测，
  *      不能指望它在别处「顺带被覆盖到」。
  */
@@ -80,6 +79,43 @@ export function e2eClientAddress(index: number): string {
 
 /** globalSetup / globalTeardown 自用的固定地址，和用例的配额分开。 */
 export const SETUP_CLIENT_ADDRESS = "10.41.0.1";
+
+/**
+ * 客户端身份头。**两个头都要写，只写 X-Forwarded-For 在 CI 上不管用。**
+ *
+ * 服务端是先看 CF-Connecting-IP、取不到才看 X-Forwarded-For
+ * （apps/worker/middleware/rate-limit.ts:33）。而 miniflare 的入口 worker 会在
+ * 请求进到我们的 worker 之前替我们补上前者：
+ * node_modules/miniflare/dist/src/workers/core/entry.worker.js 的 getUserRequest 里
+ * `clientIp && !request.headers.get("CF-Connecting-IP")`，值取自 TCP 对端地址。
+ * 补进去的永远是 127.0.0.1，于是所有用例在服务端眼里成了同一个客户端，
+ * 挤进同一个限流桶——我们精心分配的那些地址一个都没被用上。
+ *
+ * 观测到的事实（CI run 30730516221）：
+ *   - 十几条各自独立的游客用例，读配额读数是 3、6、8、14、17、22、29、35、40、43、45、49
+ *     一路往上累加，而不是每条各自 3–6；到分钟窗口才归零；
+ *   - 同一条用例的浏览器和回读通道明明是两个地址，读数却始终只差 1–4
+ *     （本地是 page 50 / api 3）；
+ *   - trace 里每个 429 的请求头都带着**各不相同**的 X-Forwarded-For。
+ * 三条合起来只有一个解释：服务端根本没按这个头分桶。19 条失败全是这么来的。
+ *
+ * Windows 上不复现——直接拿同一条 wrangler dev 命令探过，只带 X-Forwarded-For
+ * 时两个地址各自计数，互不影响。所以本地怎么跑都是绿的，一上 Linux 就炸。
+ * 具体是 clientIp 在两个平台上形态不同还是别的原因，没有继续追：
+ * 无论哪种，把头显式写死都能让两边行为一致，这比依赖它才是问题。
+ *
+ * miniflare 补头的条件是「请求里还没有这个头才补」，所以我们自己写一个进去，
+ * 它就不会覆盖。X-Forwarded-For 一并保留：服务端的回退分支读它，
+ * 少写一个等于把那条路径也悄悄改掉了。
+ *
+ * 这不放宽线上的限流：线上这个头由 Cloudflare 在边缘覆写，客户端伪造不了。
+ */
+export function clientIdentityHeaders(address: string): Record<string, string> {
+  return {
+    "CF-Connecting-IP": address,
+    "X-Forwarded-For": address,
+  };
+}
 
 const supportDir = import.meta.dirname;
 

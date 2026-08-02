@@ -5,6 +5,7 @@ import {
   SYSTEM_TEST_RUN_ID_HEADER,
 } from "@guild/shared/config/system-test";
 import {
+  clientIdentityHeaders,
   FINGERPRINT_IGNORED_KEYS,
   PORTAL_ORIGIN,
   SETUP_CLIENT_ADDRESS,
@@ -41,8 +42,65 @@ export async function newApiContext(
     baseURL: origin,
     storageState: storageStatePath,
     // 固定地址：让 setup/teardown 的配额和用例的配额互不牵连。
-    extraHTTPHeaders: { ...mutationHeaders(origin), "X-Forwarded-For": SETUP_CLIENT_ADDRESS },
+    extraHTTPHeaders: { ...mutationHeaders(origin), ...clientIdentityHeaders(SETUP_CLIENT_ADDRESS) },
   });
+}
+
+/**
+ * 前置条件：服务端必须真的按客户端地址分限流桶。
+ *
+ * 整套 e2e 的配额安排都压在这一条上（见 config.ts 的 clientIdentityHeaders）。
+ * 它一旦不成立，表现出来的不是「限流没生效」，而是一整轮里几十条互不相干的用例
+ * 各自报着自己的功能失败——真正的原因（大家挤在同一个桶里，配额被别人用光了）
+ * 不会出现在任何一条报错里。CI 上已经这么烧过一轮 19 条。
+ *
+ * 所以在这里当场验一次：同一个地址连发两次，读数必须递减（证明真的在计数）；
+ * 换一个地址再发一次，读数必须比前一个地址的第二次高（证明换了桶）。
+ * 不成立就带着诊断当场停，不进入用例。
+ */
+export async function assertRateLimitIsolation(origin: string, slot: number): Promise<void> {
+  const remainingFor = async (address: string): Promise<number> => {
+    const api = await request.newContext({
+      baseURL: origin,
+      extraHTTPHeaders: clientIdentityHeaders(address),
+    });
+    try {
+      const response = await api.get("/api/auth/me");
+      const headers = response.headers();
+      const remaining = Number(headers["x-ratelimit-remaining"]);
+      if (headers["x-ratelimit-scope"] !== "read" || !Number.isFinite(remaining)) {
+        throw new Error(
+          `${origin} 没有按预期回限流头：scope=${headers["x-ratelimit-scope"]} remaining=${headers["x-ratelimit-remaining"]}`,
+        );
+      }
+      return remaining;
+    } finally {
+      await api.dispose();
+    }
+  };
+
+  /* 地址按槽位错开，免得并发准备的几个槽位互相干扰。 */
+  const first = `10.40.${slot}.1`;
+  const second = `10.40.${slot}.2`;
+  const firstA = await remainingFor(first);
+  const firstB = await remainingFor(first);
+  const other = await remainingFor(second);
+
+  if (firstB >= firstA) {
+    throw new Error(
+      `${origin} 的限流没有在计数：同一个地址连发两次，剩余额度是 ${firstA} → ${firstB}`,
+    );
+  }
+  if (other <= firstB) {
+    throw new Error(
+      [
+        `${origin} 没有按客户端地址分限流桶：`,
+        `地址 ${first} 用掉两次后剩 ${firstB}，换成 ${second} 的第一次却只剩 ${other}——两者共用一个桶。`,
+        "所有用例都会挤进同一份配额，跑到中段一律 429，报出来却是各自的功能失败。",
+        "先查 apps/portal/e2e/support/config.ts 的 clientIdentityHeaders 说明。",
+      ].join("\n"),
+    );
+  }
 }
 
 async function expectOk(

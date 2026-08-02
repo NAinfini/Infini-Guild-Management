@@ -12,6 +12,7 @@ import {
 } from "@playwright/test";
 import { MUTATION_HEADERS, systemTestHeaders } from "./api";
 import {
+  clientIdentityHeaders,
   e2eClientAddress,
   PORTAL_ORIGIN,
   RUN_STATE_FILE,
@@ -191,7 +192,7 @@ function matches(response: Response, expected: ApiExpectation): boolean {
 /** 身份头：客户端地址 + 需要时的系统测试运行头。自己新开上下文的用例也得装齐。 */
 export function identityHeaders(clientAddress: string, trackArtifacts: boolean): Record<string, string> {
   return {
-    "X-Forwarded-For": clientAddress,
+    ...clientIdentityHeaders(clientAddress),
     ...(trackArtifacts ? systemTestHeaders(slotRunState().runId) : {}),
   };
 }
@@ -336,9 +337,9 @@ export const test = base.extend<E2eOptions & Fixtures>({
    * 浏览器那一半真的超了照样会 429、照样看得见。
    * 限流本身仍由专门的用例覆盖（见 config.ts 的说明）。
    *
-   * 注意这不是 CI 上那批读配额 429 的解法：本地单条用例的读峰值只有 50–55/120，
-   * 拆不拆都离 120 很远，而 CI 上同一批用例被观测到只剩 1–6 次余量。
-   * 这个差值目前没有解释，要靠 CI 上的 E2E_QUOTA_TRACE 量出来。
+   * 注意这不是 CI 上那批读配额 429 的解法。那一批的成因是服务端压根没按地址分桶
+   * （见 config.ts 的 clientIdentityHeaders），拆几个号都没用。本地单条用例的读峰值
+   * 只有 50–55/120，离 120 一直很远。
    */
   apiClientAddress: async ({}, use, testInfo) => {
     await use(allocateClientAddress(testInfo.workerIndex));
