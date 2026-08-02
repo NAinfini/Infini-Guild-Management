@@ -254,8 +254,14 @@ describe("StorageTransactionModal", () => {
    *
    * 窄屏下真的没被挤出视口，得靠能设视口的 Playwright 去证——目前三个 project
    * 都是 Desktop Chrome，这块覆盖是空的。
+   *
+   * 控件高度这一半改成反向断言：原先每个控件都写死 minHeight: 44，把
+   * --control-height-regular 顶掉了（细指针 36px / 粗指针 44px），桌面上这个弹窗
+   * 因此比站内其他地方高一档，而且调令牌对它无效。现在守的是「没有行内高度」，
+   * 也就是这些控件确实吃令牌；44px 触控靶面由 scale.css 里
+   * @media (pointer: coarse) 那一档负责，不在组件里重复。
    */
-  it("declares a viewport-bounded max width and touch-sized controls", () => {
+  it("declares a viewport-bounded max width and leaves control height to the token", () => {
     const { container } = render(
       <MantineProvider>
         <StorageTransactionModal
@@ -276,11 +282,12 @@ describe("StorageTransactionModal", () => {
     const content = container.ownerDocument.querySelector<HTMLElement>(".storage-modal-content");
     expect(content).toBeInTheDocument();
     expect(content?.style.maxWidth).toBe("calc(100vw - 16px)");
-    expect(screen.getByRole("combobox", { name: "field.item" })).toHaveStyle({
-      minHeight: "44px",
-    });
-    expect(screen.getByRole("button", { name: "action.submit" })).toHaveStyle({
-      minHeight: "44px",
-    });
+    expect(screen.getByRole("combobox", { name: "field.item" }).style.minHeight).toBe("");
+    expect(screen.getByRole("button", { name: "action.submit" }).style.minHeight).toBe("");
+    // 分段控件没有可桥接的高度变量，仍要显式给——但必须是令牌，不是字面量 44。
+    expect(
+      container.ownerDocument.querySelector<HTMLElement>(".mantine-SegmentedControl-label")?.style
+        .minHeight,
+    ).toBe("var(--control-height-regular)");
   });
 });

@@ -211,9 +211,16 @@ export function StorageTransactionModal({
             <Text size="sm" fw={700}>{t("field.type")}</Text>
             <SegmentedControl
               fullWidth
+              /*
+               * SegmentedControl 没有像 Button/Input 那样的高度变量可以在
+               * ThemeProvider 里桥接，所以这一处仍要显式给高度——但取值走令牌，
+               * 别再写死 44：细指针下 --control-height-regular 是 36px，粗指针下
+               * 才回到 44px。写死 44 的结果是桌面上这排分段控件比同一个弹窗里
+               * 的输入框和按钮高出 8px。
+               */
               styles={{
                 label: {
-                  minHeight: 44,
+                  minHeight: "var(--control-height-regular)",
                   display: "flex",
                   alignItems: "center",
                   justifyContent: "center",
@@ -282,7 +289,6 @@ export function StorageTransactionModal({
                 searchValue={itemSearch}
                 onSearchChange={onItemSearchChange}
                 nothingFoundMessage={t("empty.noItems")}
-                styles={{ input: { minHeight: 44 } }}
               />
               {itemsHasMore ? (
                 <Button
@@ -290,7 +296,6 @@ export function StorageTransactionModal({
                   variant="subtle"
                   loading={itemsLoadingMore}
                   onClick={onLoadMoreItems}
-                  style={{ minHeight: 44 }}
                 >
                   {t("action.loadMore")}
                 </Button>
@@ -305,7 +310,6 @@ export function StorageTransactionModal({
               onChange={setRecipientUserId}
               searchable
               nothingFoundMessage={t("empty.noUsers")}
-              styles={{ input: { minHeight: 44 } }}
             />
           ) : null}
           <NumberInput
@@ -322,7 +326,6 @@ export function StorageTransactionModal({
             value={quantity}
             onChange={setQuantity}
             error={quantityError}
-            styles={{ input: { minHeight: 44 } }}
           />
         </div>
 
@@ -350,8 +353,15 @@ export function StorageTransactionModal({
           value={note}
           onChange={(event) => setNote(event.currentTarget.value)}
         />
+        {/*
+          * 这几个控件（Select / NumberInput / Button）的高度由 ThemeProvider 桥接到
+          * --control-height-regular：细指针 36px，粗指针整档回到 44px。原先每处都写死
+          * minHeight: 44 覆盖掉它，于是桌面上这个弹窗里的控件比站内其他地方高 8px，
+          * 而且改令牌对它们无效。删掉覆盖即回到令牌，触屏上的 44px 靶面由
+          * @media (pointer: coarse) 那一档保证，不需要在组件里重复一遍。
+          */}
         <Group justify="flex-end" className="storage-transaction-modal__actions">
-          <Button variant="default" onClick={onClose} style={{ minHeight: 44 }}>
+          <Button variant="default" onClick={onClose}>
             {t("common:action.cancel")}
           </Button>
           <Button
@@ -359,7 +369,6 @@ export function StorageTransactionModal({
             onClick={handleSubmit}
             loading={isSaving}
             disabled={!canSubmit}
-            style={{ minHeight: 44 }}
           >
             {canManageStock
               ? t("action.submit")

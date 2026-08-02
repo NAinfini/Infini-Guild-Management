@@ -65,10 +65,9 @@
   }
 }
 
-/* 页签沿用全站那套下划线：主题里 .tabsTab 统一写死了 padding-inline: 0、
-   底边 2px、选中态背景透明（ThemeProvider.module.css）。在这一页改成胶囊，
-   要么得逐条覆盖那些规则，要么就得到一排没有内边距、选中也不变色的方块——
-   而且这一页会变成全站唯一一处不一样的页签。 */
+/* 页签沿用全站那套下划线：主题里 .tabsTab 统一给了内边距、2px 底边和透明的
+   选中态背景（ThemeProvider.module.css）。在这一页改成胶囊，就得逐条覆盖那些
+   规则，而且这一页会变成全站唯一一处不一样的页签。 */
 /* 和下面的 880+300 对齐：页签比内容宽或窄，切屏时整页会左右晃。 */
 .my-profile-tabbar {
   display: flex;
@@ -83,8 +82,8 @@
   margin-inline-start: auto;
 }
 
+/* 只留 flex：底边颜色主题的 .tabsList 已经给了同一个值。 */
 .my-profile-page__tabs .mantine-Tabs-list {
-  border-bottom-color: var(--border-subtle);
   flex: 1 1 auto;
 }
 

@@ -13,14 +13,8 @@
   width: 100%;
 }
 
-.guild-war-page__tabs .mantine-Tabs-list {
-  border-bottom-color: var(--border-subtle);
-}
-
-.guild-war-page__tabs .mantine-Tabs-tab {
-  border-radius: 0;
-  font-weight: 600;
-}
+/* 这里原先重写了底边颜色、圆角和字重，三条都跟主题的 .tabsList / .tabsTab 同值
+   （字重那条还是写死的 600，而不是 --fw-medium）。删掉，页签样式只有主题一处。 */
 
 /* Active war command bar */
 

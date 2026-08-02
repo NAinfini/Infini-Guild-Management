@@ -98,11 +98,10 @@ html:not([data-input-modality="pointer"]) .storage-batch-drawer .mantine-Textare
   scrollbar-width: thin;
 }
 
+/* 只留「不参与换行」这一条：高度、内边距、字重现在都由主题的 .tabsTab 给，
+   这里再写一遍就是三份同值的重复。 */
 .storage-location-tabs .mantine-Tabs-tab {
-  min-height: var(--control-height-regular);
   flex: 0 0 auto;
-  padding-inline: var(--space-lg);
-  font-weight: var(--fw-medium);
 }
 
 .storage-location-select {

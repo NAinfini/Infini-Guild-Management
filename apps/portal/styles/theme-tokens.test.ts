@@ -517,9 +517,18 @@ describe("control sizing scale (Task 1)", () => {
     expect(themeStyles).toContain("--button-height-xs: var(--control-height-compact)");
     expect(themeStyles).toContain("--button-height-sm: var(--control-height-regular)");
     expect(themeStyles).toContain("--input-height-sm: var(--control-height-regular)");
+    /* xs 档三种控件必须指向同一个标度值。输入框那条原先指的是 regular，等于
+     * size="xs" 写了跟没写一样，而同排的 xs 按钮和图标按钮都已经是 compact——
+     * 查找替换栏、分页器、表格单元格里就是这么错位的。 */
+    expect(themeStyles).toContain("--input-height-xs: var(--control-height-compact)");
+    expect(themeStyles).toContain("--ai-size-input-xs: var(--control-height-compact)");
     expect(themeStyles).toContain("--ai-size-sm: var(--control-icon-size-compact)");
     expect(themeStyles).toContain("--ai-size-md: var(--control-icon-size-regular)");
     expect(themeStyles).toMatch(/\.tabsTab[\s\S]*?min-height:\s*var\(--control-height-regular\)/);
+    /* 页签的横向内边距原先是 0，选中条只有文字那么宽；只有仓库位置栏自己补了
+     * padding-inline，也就是全站唯一看着像页签的一处。收进主题之后这条守的是
+     * 别再退回 0，否则各页面又会各写各的。 */
+    expect(themeStyles).toMatch(/\.tabsTab[\s\S]*?padding-inline:\s*var\(--space-lg\)/);
   });
 
   it("uses a transparent pseudo-element for controls smaller than the hit-area token", () => {
