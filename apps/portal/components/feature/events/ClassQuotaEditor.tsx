@@ -53,7 +53,7 @@ export function ClassQuotaEditor({ value, onChange, disabled = false }: ClassQuo
   const atMax = value.length >= MAX_QUOTAS;
 
   return (
-    <Stack gap={8}>
+    <Stack gap={8} className="quota-editor">
       <Text size="sm" fw={500}>{t("quota.editor.label")}</Text>
 
       {value.map((quota, index) => (

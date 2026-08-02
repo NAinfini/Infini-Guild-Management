@@ -3,7 +3,14 @@
  *
  * 四样东西各占一格并且列宽固定，配额一多，四列上下对齐，扫一眼就知道哪一格缺人。
  * 以前职业是折行铺在名称下面的第二排，行高随职业数变，两格配额之间根本对不齐。
+ *
+ * 断点走容器查询而不是媒体查询：这个编辑器住在活动表单的右栏里，栏宽比视口窄得多，
+ * 按视口判断的话桌面上永远是宽版四列，而它实际只有四百来像素，图标会被切掉。
  */
+.quota-editor {
+  container-type: inline-size;
+}
+
 .quota-editor__row {
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) 96px auto;
@@ -104,10 +111,10 @@
 }
 
 /*
- * 窄屏一行摆不下四格：名称独占一行，职业和人数并排，删除跟着人数走。
+ * 窄的时候一行摆不下四格：名称独占一行，职业和人数并排，删除跟着人数走。
  * 不收成一列——那样一格配额要占四行，五格就是二十行。
  */
-@media (max-width: 620px) {
+@container (max-width: 620px) {
   .quota-editor__row {
     grid-template-columns: minmax(0, 1fr) 96px auto;
   }

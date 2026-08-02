@@ -20,6 +20,7 @@ import { ClassQuotaEditor } from "./ClassQuotaEditor";
 import { ImageGridEditor } from "@portal/components/shared/ImageGridEditor";
 import { NativeDateTimeInput } from "@portal/components/shared/NativeDateTimeInput";
 import type { ImageGridEditorItem } from "@portal/types/media";
+import "./EventFormModal.css";
 
 const WEEKDAY_KEYS = ["weekday.sun", "weekday.mon", "weekday.tue", "weekday.wed", "weekday.thu", "weekday.fri", "weekday.sat"] as const;
 
@@ -113,9 +114,25 @@ export function EventFormModal({
   const pollError = isPoll && pollOptionCount < 2 ? t("poll.field.optionsInvalid") : undefined;
   const raffleWinnerCountNum = Number.parseInt(winnerCount, 10);
   const raffleError = isRaffle && (!Number.isFinite(raffleWinnerCountNum) || raffleWinnerCountNum < 1);
-  const isSaveDisabled = !title.trim() || !eventType || Boolean(dateError)
-    || (isPoll && (!endAt || Boolean(pollError)))
-    || (isRaffle && (!endAt || raffleError));
+  /*
+   * 保存禁用有五个分支，以前它们全挤在一个布尔里：按钮灰着，而缺的那一项可能在另一栏、
+   * 甚至在还没展开的类型块里，人只能一格格找。这里把同一组条件按顺序摊开，页脚直接说
+   * 卡在哪一条——条件本身一个没变，只是把结论写出来了。
+   */
+  const blockingReasonKey = !title.trim()
+    ? "form.missing.title"
+    : !eventType
+      ? "form.missing.type"
+      : dateError
+        ? "field.endBeforeStart"
+        : (isPoll || isRaffle) && !endAt
+          ? "form.missing.endAt"
+          : isPoll && pollError
+            ? "poll.field.optionsInvalid"
+            : isRaffle && raffleError
+              ? "raffle.field.winnerCountInvalid"
+              : null;
+  const isSaveDisabled = blockingReasonKey !== null;
 
   return (
     <Modal
@@ -125,182 +142,196 @@ export function EventFormModal({
       closeOnClickOutside={false}
       closeOnEscape
       centered
-      size="lg"
+      size="min(920px, calc(100vw - 32px))"
     >
-      <Stack gap={16}>
-        {/* ── Title ── */}
-        <TextInput
-          label={t("field.title")}
-          value={title}
-          onChange={(event) => {
-            setTitleTouched(true);
-            onTitleChange(event.currentTarget.value);
-          }}
-          onBlur={() => setTitleTouched(true)}
-          placeholder={t("field.title")}
-          error={titleError}
-          data-autofocus
-        />
-
-        {/* ── Type ── */}
-        <Select
-          label={t("filter.type")}
-          value={eventType || null}
-          onChange={(value) => value && onEventTypeChange(value as (typeof EVENT_TYPES)[number])}
-          data={EVENT_TYPES.map((value) => ({ value, label: t(`common:eventType.${value}`) }))}
-          placeholder={t("field.selectType")}
-        />
-
-        {/* ── Date & Time ── */}
-        <SimpleGrid cols={{ base: 1, sm: 2 }} spacing="sm">
-          <NativeDateTimeInput
-            label={t("field.start")}
-            type="datetime-local"
-            value={startAt}
-            onChange={(event) => onStartAtChange(event.currentTarget.value)}
+      {/*
+        * 左栏是所有活动都要填的，右栏只放当前类型独有的那一块。
+        * 以前它们串成一列，选了投票就在日期底下长出一段选项、选了抽奖又换成另一段，
+        * 同一个表单会随类型上下窜；分栏之后类型只影响右边这一格。
+        */}
+      <div className="event-form__layout">
+        <Stack gap={16} className="event-form__column">
+          <TextInput
+            label={t("field.title")}
+            value={title}
+            onChange={(event) => {
+              setTitleTouched(true);
+              onTitleChange(event.currentTarget.value);
+            }}
+            onBlur={() => setTitleTouched(true)}
+            placeholder={t("field.title")}
+            error={titleError}
+            data-autofocus
           />
-          <NativeDateTimeInput
-            label={t("field.end")}
-            type="datetime-local"
-            value={endAt}
-            onChange={(event) => onEndAtChange(event.currentTarget.value)}
-            error={dateError}
-          />
-        </SimpleGrid>
 
-        {isPoll ? (
-          <Stack gap={10}>
-            <Text size="sm" fw={600}>{t("poll.field.options")}</Text>
-            {pollOptions.map((option, index) => (
-              <Group key={index} gap={8} wrap="nowrap">
-                <TextInput
-                  value={option}
-                  onChange={(event) => {
-                    const next = [...pollOptions];
-                    next[index] = event.currentTarget.value;
-                    onPollOptionsChange?.(next);
-                  }}
-                  placeholder={t("poll.field.optionPlaceholder", { index: index + 1 })}
-                  error={index === pollOptions.length - 1 ? pollError : undefined}
-                  style={{ flex: 1 }}
-                />
-                <ActionIcon
-                  variant="subtle"
-                  color="red"
-                  aria-label={t("poll.field.removeOption")}
-                  disabled={pollOptions.length <= 2}
-                  onClick={() => onPollOptionsChange?.(pollOptions.filter((_, optionIndex) => optionIndex !== index))}
-                >
-                  <XIcon size={16} />
-                </ActionIcon>
-              </Group>
-            ))}
-            <Button
-              variant="light"
-              size="xs"
-              leftSection={<PlusIcon size={14} />}
-              disabled={pollOptions.length >= 10}
-              onClick={() => onPollOptionsChange?.([...pollOptions, ""])}
-            >
-              {t("poll.field.addOption")}
-            </Button>
-            <Select
-              label={t("poll.field.resultsVisibility")}
-              value={pollResultsVisibility}
-              onChange={(value) => value && onPollResultsVisibilityChange?.(value as "always" | "after_vote" | "after_close")}
-              data={[
-                { value: "always", label: t("poll.visibility.always") },
-                { value: "after_vote", label: t("poll.visibility.afterVote") },
-                { value: "after_close", label: t("poll.visibility.afterClose") },
-              ]}
+          <Select
+            label={t("filter.type")}
+            value={eventType || null}
+            onChange={(value) => value && onEventTypeChange(value as (typeof EVENT_TYPES)[number])}
+            data={EVENT_TYPES.map((value) => ({ value, label: t(`common:eventType.${value}`) }))}
+            placeholder={t("field.selectType")}
+          />
+
+          <SimpleGrid cols={{ base: 1, sm: 2 }} spacing="sm">
+            <NativeDateTimeInput
+              label={t("field.start")}
+              type="datetime-local"
+              value={startAt}
+              onChange={(event) => onStartAtChange(event.currentTarget.value)}
             />
-            <Switch
-              checked={pollShowVoterNames}
-              onChange={(event) => onPollShowVoterNamesChange?.(event.currentTarget.checked)}
-              label={t("poll.field.showVoterNames")}
+            <NativeDateTimeInput
+              label={t("field.end")}
+              type="datetime-local"
+              value={endAt}
+              onChange={(event) => onEndAtChange(event.currentTarget.value)}
+              error={dateError}
+            />
+          </SimpleGrid>
+
+          <Textarea
+            label={t("field.description")}
+            value={description}
+            onChange={(event) => onDescriptionChange(event.currentTarget.value)}
+            minRows={3}
+            placeholder={t("field.description")}
+          />
+
+          <Switch
+            checked={autoArchive}
+            onChange={(event) => onAutoArchiveChange(event.currentTarget.checked)}
+            label={t("field.autoArchive")}
+            description={t("field.autoArchiveHint")}
+          />
+
+          <Stack gap={6}>
+            <Text size="sm" fw={500}>{t("field.attachmentsCount", { current: attachmentItems.length, max: 5 })}</Text>
+            <ImageGridEditor
+              items={attachmentItems}
+              onReorder={onAttachmentsChange}
+              onDelete={canManage ? onAttachmentDelete : undefined}
+              onFilesSelected={canManage ? onFilesSelected : undefined}
+              maxImages={5}
+              disabled={!canManage}
             />
           </Stack>
-        ) : isRaffle ? (
-          <Group grow wrap="wrap">
-            <NumberInput
-              label={t("raffle.field.winnerCount")}
-              min={1}
-              value={winnerCount === "" ? "" : raffleWinnerCountNum}
-              onChange={(value) => onWinnerCountChange?.(String(value))}
-              placeholder="1"
-              styles={{ controls: { display: "none" } }}
-            />
-            <TextInput
-              label={t("field.capacity")}
-              type="number"
-              min={1}
-              max={9999}
-              value={capacity}
-              onChange={(event) => onCapacityChange(event.currentTarget.value)}
-              placeholder={t("field.unlimited")}
-            />
-          </Group>
-        ) : (
-          <TextInput
-            label={t("field.capacity")}
-            type="number"
-            min={1}
-            max={9999}
-            value={capacity}
-            onChange={(event) => onCapacityChange(event.currentTarget.value)}
-            placeholder={t("field.unlimited")}
-            maw={200}
-          />
-        )}
 
-        {/* ── Class quotas ── 投票和抽奖没有阵容可言，服务端也拒收它们的配额。 */}
-        {!isPoll && !isRaffle ? (
-          <ClassQuotaEditor value={classQuotas} onChange={onClassQuotasChange} disabled={!canManage} />
-        ) : null}
-
-        {/* ── Description ── */}
-        <Textarea
-          label={t("field.description")}
-          value={description}
-          onChange={(event) => onDescriptionChange(event.currentTarget.value)}
-          minRows={3}
-          placeholder={t("field.description")}
-        />
-
-        <Switch
-          checked={autoArchive}
-          onChange={(event) => onAutoArchiveChange(event.currentTarget.checked)}
-          label={t("field.autoArchive")}
-          description={t("field.autoArchiveHint")}
-        />
-
-        {/* ── Attachments ── */}
-        <Stack gap={6}>
-          <Text size="sm" fw={500}>{t("field.attachmentsCount", { current: attachmentItems.length, max: 5 })}</Text>
-          <ImageGridEditor
-            items={attachmentItems}
-            onReorder={onAttachmentsChange}
-            onDelete={canManage ? onAttachmentDelete : undefined}
-            onFilesSelected={canManage ? onFilesSelected : undefined}
-            maxImages={5}
-            disabled={!canManage}
-          />
+          {/* 排期参考跟着开始时间走，所以留在左栏，压在日期那一组下面。 */}
+          {availabilityMaxCount > 0 ? (
+            <Text c="dimmed" size="xs">
+              {t("availability.label")}{" "}
+              {Array.from(availabilityDaysWithAny)
+                .sort((left, right) => left - right)
+                .map((day) => t(WEEKDAY_KEYS[day] ?? "weekday.sun"))
+                .join(", ") || t("availability.none")}{" "}
+              · {t("availability.peak")} {availabilityMaxCount}/{availabilityMemberCount} {t("availability.members")}
+            </Text>
+          ) : null}
         </Stack>
 
-        {/* ── Availability hint ── */}
-        {availabilityMaxCount > 0 ? (
-          <Text c="dimmed" size="xs">
-            {t("availability.label")}{" "}
-            {Array.from(availabilityDaysWithAny)
-              .sort((left, right) => left - right)
-              .map((day) => t(WEEKDAY_KEYS[day] ?? "weekday.sun"))
-              .join(", ") || t("availability.none")}{" "}
-            · {t("availability.peak")} {availabilityMaxCount}/{availabilityMemberCount} {t("availability.members")}
+        <section className="event-form__column event-form__type-block">
+          <Text size="sm" fw={800}>
+            {eventType ? t(`common:eventType.${eventType}`) : t("field.selectType")}
           </Text>
-        ) : null}
 
-        {/* ── Actions ── */}
-        <Group justify="flex-end" mt={4}>
+          {!eventType ? (
+            <Text size="xs" c="dimmed">{t("form.typeHint")}</Text>
+          ) : isPoll ? (
+            <Stack gap={10}>
+              <Text size="sm" fw={600}>{t("poll.field.options")}</Text>
+              {pollOptions.map((option, index) => (
+                <Group key={index} gap={8} wrap="nowrap">
+                  <TextInput
+                    value={option}
+                    onChange={(event) => {
+                      const next = [...pollOptions];
+                      next[index] = event.currentTarget.value;
+                      onPollOptionsChange?.(next);
+                    }}
+                    placeholder={t("poll.field.optionPlaceholder", { index: index + 1 })}
+                    error={index === pollOptions.length - 1 ? pollError : undefined}
+                    flex={1}
+                  />
+                  <ActionIcon
+                    variant="subtle"
+                    color="red"
+                    aria-label={t("poll.field.removeOption")}
+                    disabled={pollOptions.length <= 2}
+                    onClick={() => onPollOptionsChange?.(pollOptions.filter((_, optionIndex) => optionIndex !== index))}
+                  >
+                    <XIcon size={16} />
+                  </ActionIcon>
+                </Group>
+              ))}
+              <Button
+                variant="light"
+                size="xs"
+                leftSection={<PlusIcon size={14} />}
+                disabled={pollOptions.length >= 10}
+                onClick={() => onPollOptionsChange?.([...pollOptions, ""])}
+              >
+                {t("poll.field.addOption")}
+              </Button>
+              <Select
+                label={t("poll.field.resultsVisibility")}
+                value={pollResultsVisibility}
+                onChange={(value) => value && onPollResultsVisibilityChange?.(value as "always" | "after_vote" | "after_close")}
+                data={[
+                  { value: "always", label: t("poll.visibility.always") },
+                  { value: "after_vote", label: t("poll.visibility.afterVote") },
+                  { value: "after_close", label: t("poll.visibility.afterClose") },
+                ]}
+              />
+              <Switch
+                checked={pollShowVoterNames}
+                onChange={(event) => onPollShowVoterNamesChange?.(event.currentTarget.checked)}
+                label={t("poll.field.showVoterNames")}
+              />
+            </Stack>
+          ) : isRaffle ? (
+            <Stack gap={10}>
+              <NumberInput
+                label={t("raffle.field.winnerCount")}
+                min={1}
+                value={winnerCount === "" ? "" : raffleWinnerCountNum}
+                onChange={(value) => onWinnerCountChange?.(String(value))}
+                placeholder="1"
+                styles={{ controls: { display: "none" } }}
+              />
+              <TextInput
+                label={t("field.capacity")}
+                type="number"
+                min={1}
+                max={9999}
+                value={capacity}
+                onChange={(event) => onCapacityChange(event.currentTarget.value)}
+                placeholder={t("field.unlimited")}
+              />
+            </Stack>
+          ) : (
+            <Stack gap={16}>
+              <TextInput
+                label={t("field.capacity")}
+                type="number"
+                min={1}
+                max={9999}
+                value={capacity}
+                onChange={(event) => onCapacityChange(event.currentTarget.value)}
+                placeholder={t("field.unlimited")}
+                maw={200}
+              />
+              {/* 投票和抽奖没有阵容可言，服务端也拒收它们的配额。 */}
+              <ClassQuotaEditor value={classQuotas} onChange={onClassQuotasChange} disabled={!canManage} />
+            </Stack>
+          )}
+        </section>
+      </div>
+
+      <Group justify="space-between" gap={12} wrap="nowrap" className="event-form__actions">
+        {/* 按钮灰着不说原因，人就得回去一格格找。缺的那一条直接写在这儿。 */}
+        <Text size="xs" c="dimmed" className="event-form__blocked" aria-live="polite">
+          {blockingReasonKey ? t("form.blockedBy", { reason: t(blockingReasonKey) }) : ""}
+        </Text>
+        <Group gap={8} wrap="nowrap">
           <Button variant="default" onClick={onCancel} leftSection={<XIcon size={16} />}>
             {t("button.cancel")}
           </Button>
@@ -308,7 +339,7 @@ export function EventFormModal({
             {mode === "create" ? t("button.create") : t("button.save")}
           </Button>
         </Group>
-      </Stack>
+      </Group>
     </Modal>
   );
 }

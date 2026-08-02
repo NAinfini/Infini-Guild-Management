@@ -64,6 +64,7 @@ export const MIGRATED: string[] = [
   /* 职业配额筹码行，活动卡和活动详情弹窗共用。三档配色全部走 --status-* 语义色。 */
   "apps/portal/components/feature/events/EventClassQuotaChips.css",
   "apps/portal/components/feature/events/ClassQuotaEditor.css",
+  "apps/portal/components/feature/events/EventFormModal.css",
   /* 叠放头像组，活动卡和仪表盘活动条共用。走 --surface-raised / --text-primary。 */
   "apps/portal/components/shared/MemberAvatarStack.css",
   /* 后台职业标签页的编辑器内部。选中态与 AdminClassesSection.css 的图标格同一套
