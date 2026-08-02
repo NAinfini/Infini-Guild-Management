@@ -146,7 +146,6 @@
   "quota.group.unassigned": "无配额职业（{{count}}）",
   "quota.group.empty": "还没有人",
   "quota.editor.label": "职业配额",
-  "quota.editor.hint": "这个活动每个职业需要几个人。成员能看到还缺什么，但不会因此报不上名——硬上限只有人数上限一个。",
   "quota.editor.classLabel": "职业",
   "quota.editor.requiredLabel": "需要",
   "quota.editor.add": "添加职业",

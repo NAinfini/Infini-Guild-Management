@@ -38,10 +38,7 @@ export function ClassQuotaEditor({ value, onChange, disabled = false }: ClassQuo
 
   return (
     <Stack gap={8}>
-      <div>
-        <Text size="sm" fw={500}>{t("quota.editor.label")}</Text>
-        <Text size="xs" c="dimmed">{t("quota.editor.hint")}</Text>
-      </div>
+      <Text size="sm" fw={500}>{t("quota.editor.label")}</Text>
 
       {value.map((quota, index) => {
         const item = resolveClassCatalogItem(quota.class_id, catalog);
