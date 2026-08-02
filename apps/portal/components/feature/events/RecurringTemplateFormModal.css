@@ -15,51 +15,16 @@
 }
 
 /*
- * 左栏自己滚，弹窗整体基本不滚——右栏那张产物卡就一直钉在眼前，改一个字段立刻能看见
- * 它变成什么样。改用 sticky 的话会被 Mantine 那个不透明的 sticky 标题栏盖住，
- * 而标题栏的高度会随标题折行变，没有不靠魔法数字的偏移量可写（详情弹窗同一处取舍）。
+ * 两栏都由弹窗自己滚，不再给单独一栏限高。
  *
- * 150px 是标题栏、页脚按钮行和它们的间距之和的保守估计；估多了只是左栏早一点开始滚，
- * 估少了由弹窗自己的 overflow-y: auto 兜底，两头都不会裁掉内容。
+ * 以前两段表单都在左栏，左栏必须自己滚才不会把弹窗撑破，代价是一个靠估算的 150px
+ * 魔法数字。现在两栏内容量相当，谁也不用单独开滚动条。
  */
-.rtf-col--form {
-  max-height: calc(90dvh - 150px);
-  overflow-y: auto;
-  padding-right: 4px;
-}
 
 @media (max-width: 680px) {
   .rtf-columns {
     grid-template-columns: 1fr;
   }
-
-  /* 单栏之后再限高就是两层滚动条套着，交给弹窗自己滚。 */
-  .rtf-col--form {
-    max-height: none;
-    overflow-y: visible;
-    padding-right: 0;
-  }
-}
-
-/* ── Product preview ── */
-
-.rtf-preview {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-  min-width: 0;
-}
-
-/* 分段线自带下边距，这里已经有 gap 了，两个加起来就空得没道理。 */
-.rtf-preview > .rtf-divider {
-  margin-bottom: 0;
-}
-
-.rtf-preview__empty {
-  padding: 14px 16px;
-  border: 1px dashed var(--border-subtle);
-  border-radius: var(--radius-control);
-  text-align: center;
 }
 
 .rtf-section {

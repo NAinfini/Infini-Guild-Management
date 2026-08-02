@@ -13,41 +13,47 @@ import {
 } from "./RecurringTemplateFormModal.helpers";
 
 /*
- * 模板表单的左栏，分两段。
+ * 模板表单的两段：生成什么，什么时候生成。
  *
  * 以前是「活动信息／选项／时间与重复」三段散在两栏里：容量在右栏的时间段落里，
  * 自动归档在左栏的选项段落里，可见提前量也在左栏——同样是在描述那张将要被生成的
- * 活动长什么样，却隔着一整栏。现在只问两件事：生成什么，什么时候生成。
- * 字段一个没删，只是各归各位。
+ * 活动长什么样，却隔着一整栏。现在只问两件事，字段一个没删，只是各归各位。
+ *
+ * 这两段各占一栏（见 RecurringTemplateFormModal）：挤在同一栏时那一栏有十几个控件
+ * 要自己滚，隔壁只放一张预览卡，看着就是一边塞满一边空着。
  */
 type FormFieldsProps = {
   formState: RecurringTemplateFormState;
   setFormState: Dispatch<SetStateAction<RecurringTemplateFormState>>;
 };
 
-export function RecurringTemplateFormFields({ formState, setFormState }: FormFieldsProps) {
+export function RecurringTemplateProducesFields({ formState, setFormState }: FormFieldsProps) {
   const { t } = useTranslation("events");
 
   return (
-    <>
-      <div>
-        <div className="rtf-divider">
-          <span className="rtf-divider__label">{t("recurring.section.produces")}</span>
-        </div>
-        <Stack gap={12} className="rtf-section">
-          <ProducesFields formState={formState} setFormState={setFormState} />
-        </Stack>
+    <div>
+      <div className="rtf-divider">
+        <span className="rtf-divider__label">{t("recurring.section.produces")}</span>
       </div>
+      <Stack gap={12} className="rtf-section">
+        <ProducesFields formState={formState} setFormState={setFormState} />
+      </Stack>
+    </div>
+  );
+}
 
-      <div>
-        <div className="rtf-divider">
-          <span className="rtf-divider__label">{t("recurring.section.timing")}</span>
-        </div>
-        <Stack gap={14} className="rtf-section">
-          <TimingFields formState={formState} setFormState={setFormState} />
-        </Stack>
+export function RecurringTemplateTimingFields({ formState, setFormState }: FormFieldsProps) {
+  const { t } = useTranslation("events");
+
+  return (
+    <div>
+      <div className="rtf-divider">
+        <span className="rtf-divider__label">{t("recurring.section.timing")}</span>
       </div>
-    </>
+      <Stack gap={14} className="rtf-section">
+        <TimingFields formState={formState} setFormState={setFormState} />
+      </Stack>
+    </div>
   );
 }
 

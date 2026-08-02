@@ -4,8 +4,11 @@ import { PlayerPauseIcon, PlayerPlayIcon, SaveIcon, PlusIcon, TrashIcon, XIcon }
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { notifyError } from "../../../utils/notifications";
-import { RecurringTemplateFormFields } from "./RecurringTemplateFormFields";
-import { RecurringTemplatePreview } from "./RecurringTemplatePreview";
+import {
+  RecurringTemplateProducesFields,
+  RecurringTemplateTimingFields,
+} from "./RecurringTemplateFormFields";
+import { RecurringTemplateLifecycle } from "./RecurringTemplatePreview";
 import {
   buildFormState,
   computeNextLifecyclePreview,
@@ -32,12 +35,12 @@ type RecurringTemplateFormModalProps = {
 };
 
 /*
- * 周期模板编辑器。左栏填「生成什么 / 什么时候生成」，右栏钉着这个模板下一次生成的
- * 那张活动卡和它的三个时间点。
+ * 周期模板编辑器。两栏各管一个问题：左边「生成什么」，右边「什么时候生成」，
+ * 时间那一栏底下跟着这一轮的三个时间点。
  *
- * 右栏那张卡是真卡（EventCardView），不是另画的一份示意图：模板本身看不见摸不着，
- * 只有它的产物才是用户最后要面对的东西。以前唯一的反馈是三行日期，「我配的这个东西
- * 会长成什么样」得先存下来去活动页看。
+ * 以前两段表单都堆在左栏里自己滚，右栏整栏留给一张按表单实时拼出来的活动卡——
+ * 十几个控件挤一边，另一边一张卡。那张卡已经拿掉（理由见 RecurringTemplatePreview），
+ * 剩下的两段一栏一段，谁也不用单独开滚动条。
  */
 export function RecurringTemplateFormModal({
   open,
@@ -137,11 +140,12 @@ export function RecurringTemplateFormModal({
     >
       <Stack gap={20}>
         <div className="rtf-columns">
-          <div className="rtf-col rtf-col--form">
-            <RecurringTemplateFormFields formState={formState} setFormState={setFormState} />
+          <div className="rtf-col">
+            <RecurringTemplateProducesFields formState={formState} setFormState={setFormState} />
           </div>
           <div className="rtf-col">
-            <RecurringTemplatePreview formState={formState} lifecycle={lifecycle} locale={locale} />
+            <RecurringTemplateTimingFields formState={formState} setFormState={setFormState} />
+            <RecurringTemplateLifecycle lifecycle={lifecycle} locale={locale} />
           </div>
         </div>
 
