@@ -45,6 +45,7 @@ function event(id: string, archivedAt: string | null): Event {
     created_by: "admin-1",
     updated_by: null,
     attachments: [],
+    class_quotas: [],
     series_id: null,
     instance_date: null,
     poll: null,

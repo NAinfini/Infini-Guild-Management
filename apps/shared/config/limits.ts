@@ -36,6 +36,9 @@ export const LIMITS = {
     eventTitle: { min: 1, max: 200 },
     eventDescription: { max: 5000 },
     eventAttachments: { max: 5 },
+    /* 一个活动最多能给几个职业设配额。跟 classesPerProfile 取同一个数：一个人身上
+       最多挂 20 个职业，配额再多也没有能对上的人。 */
+    eventClassQuotas: { max: 20 },
     eventParticipantsBatch: { max: 100 },
     announcementTitle: { min: 1, max: 200 },
     announcementBody: { min: 1, max: 500000 },

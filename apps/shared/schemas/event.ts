@@ -16,6 +16,17 @@ const recurrenceRuleSchema = z.object({
 const eventAttachmentsSchema = z.array(z.string().min(1)).max(L.eventAttachments.max);
 const pollResultsVisibilitySchema = z.enum(POLL_RESULTS_VISIBILITIES);
 
+/*
+ * 每个职业需要几个人。配额只是可视化信号，服务端不会拿它拦报名——报名的硬上限
+ * 只有 capacity 一个。required 不设与 capacity 的联动校验：配额是 capacity 的子集，
+ * 两者独立，管理员完全可以先配好职业需求再决定放多少人。
+ */
+export const eventClassQuotaSchema = z.object({
+  class_id: z.string().min(1),
+  required: z.number().int().positive(),
+});
+const eventClassQuotasSchema = z.array(eventClassQuotaSchema).max(L.eventClassQuotas.max);
+
 const eventPollOptionSchema = z.object({
   id: z.string(),
   label: z.string(),
@@ -66,6 +77,7 @@ export const eventSchema = z.object({
   created_by: z.string(),
   updated_by: z.string().nullable(),
   attachments: eventAttachmentsSchema.default([]),
+  class_quotas: eventClassQuotasSchema.default([]),
   series_id: z.string().nullable(),
   instance_date: z.string().nullable(),
   poll: eventPollSchema.nullable().optional(),
@@ -83,10 +95,36 @@ const eventMutationSchema = z.object({
   end_at: z.string().datetime().optional(),
   capacity: z.number().int().positive().optional(),
   attachments: eventAttachmentsSchema.optional(),
+  class_quotas: eventClassQuotasSchema.optional(),
   auto_archive: z.boolean().optional(),
   poll: pollSettingsSchema.optional(),
   winner_count: z.number().int().positive().optional(),
 });
+
+/*
+ * 配额自己的规则，活动和周期模板共用一份：模板生成出来的活动会原样继承配额，
+ * 两边校验若不一致，模板就能种下一批活动侧拒收的数据。
+ * 投票的「参与者」是投票人，抽奖的是抽签池，两者都不是一支队伍——职业配额在这两种
+ * 类型下没有含义，宁可报错也不要静默丢弃。
+ */
+function refineClassQuotas(
+  value: { type?: string; class_quotas?: { class_id: string; required: number }[] },
+  ctx: z.RefinementCtx,
+): void {
+  if (!value.class_quotas || value.class_quotas.length === 0) {
+    return;
+  }
+  if (value.type === "poll" || value.type === "raffle") {
+    ctx.addIssue({ code: "custom", path: ["class_quotas"], message: `${value.type} events do not use class quotas` });
+  }
+  const seen = new Set<string>();
+  value.class_quotas.forEach((quota, index) => {
+    if (seen.has(quota.class_id)) {
+      ctx.addIssue({ code: "custom", path: ["class_quotas", index, "class_id"], message: "Duplicate class quota" });
+    }
+    seen.add(quota.class_id);
+  });
+}
 
 function refineEventRules(
   value: {
@@ -96,10 +134,12 @@ function refineEventRules(
     poll?: unknown;
     capacity?: unknown;
     winner_count?: unknown;
+    class_quotas?: { class_id: string; required: number }[];
   },
   ctx: z.RefinementCtx,
   isUpdate: boolean,
 ): void {
+  refineClassQuotas(value, ctx);
   if (value.start_at && value.end_at && value.end_at <= value.start_at) {
     ctx.addIssue({ code: "custom", path: ["end_at"], message: "end_at must be after start_at" });
   }
@@ -161,6 +201,7 @@ export const recurringTemplateSchema = z.object({
   visibility_offset_minutes: z.number().int(),
   auto_archive: z.boolean(),
   attachments: eventAttachmentsSchema.default([]),
+  class_quotas: eventClassQuotasSchema.default([]),
   paused: z.boolean(),
   created_by: z.string(),
   last_generated_date: z.string().nullable(),
@@ -169,7 +210,7 @@ export const recurringTemplateSchema = z.object({
   updated_at: z.string(),
 });
 
-export const createTemplateSchema = z.object({
+const templateMutationSchema = z.object({
   type: z.enum(EVENT_TYPES),
   title: z.string().min(L.eventTitle.min).max(L.eventTitle.max),
   description: z.string().max(L.eventDescription.max).optional(),
@@ -181,6 +222,9 @@ export const createTemplateSchema = z.object({
   recurrence_rule: recurrenceRuleSchema,
   visibility_offset_minutes: z.number().int().min(0).optional(),
   auto_archive: z.boolean().optional(),
+  class_quotas: eventClassQuotasSchema.optional(),
 });
 
-export const updateTemplateSchema = createTemplateSchema.partial();
+export const createTemplateSchema = templateMutationSchema.superRefine(refineClassQuotas);
+
+export const updateTemplateSchema = templateMutationSchema.partial().superRefine(refineClassQuotas);

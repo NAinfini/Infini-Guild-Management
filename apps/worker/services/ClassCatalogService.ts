@@ -400,16 +400,25 @@ export class ClassCatalogService {
       sql: "EXISTS (SELECT 1 FROM class_catalog WHERE id = ?)",
       bindings: [id],
     });
-    const deleteIndex = auditStatements.length + 1;
-    const results = await this.deps.rawDb.batch([
+    const statements = [
       ...auditStatements,
       this.deps.rawDb.prepare(
         "DELETE FROM media_references WHERE entity_type = 'class_icon' AND entity_id = ?",
       ).bind(id),
+      /*
+       * 两张职业配额表都对 class_catalog 建了外键并级联，但本服务从不假定 D1 在执行
+       * 外键约束，所以显式删一遍。漏了的话残留的配额行会挂在一个已经不存在的职业上，
+       * 活动那边就会渲染出一格永远配不齐的需求。
+       */
+      this.deps.rawDb.prepare("DELETE FROM event_class_quotas WHERE class_id = ?").bind(id),
+      this.deps.rawDb.prepare("DELETE FROM recurring_template_class_quotas WHERE class_id = ?").bind(id),
       this.deps.rawDb.prepare(
         "DELETE FROM class_catalog WHERE id = ? RETURNING icon_key",
       ).bind(id),
-    ]);
+    ];
+    // 索引跟着数组末尾走，别再手算偏移量——中间插一条语句就会错位。
+    const deleteIndex = statements.length - 1;
+    const results = await this.deps.rawDb.batch(statements);
 
     if (!didChange(results[deleteIndex])) {
       return err("NOT_FOUND", "Class not found");

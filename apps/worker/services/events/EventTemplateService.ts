@@ -3,9 +3,19 @@ import type { WriteAuditLogInput as AuditLogInput } from "../audit";
 import { asc, eq } from "drizzle-orm";
 import { nanoid } from "nanoid";
 import { recurringTemplates } from "../../db/schema";
-import { ok, type ServiceResult } from "../result";
+import { err, ok, type ServiceErr, type ServiceResult } from "../result";
 import { diffRecurrenceRule, parseAttachments, parseRecurrenceRule, type DatabaseLike, type RawDbLike } from "./EventCrudService";
 import { replaceMediaRefs, deleteMediaRefs, extractAttachmentKeys } from "../media-references";
+import {
+  buildDeleteClassQuotaStatements,
+  buildReplaceClassQuotaStatements,
+  findUnknownClassIds,
+  loadClassQuotas,
+  loadClassQuotasFor,
+  typeSupportsClassQuotas,
+  TEMPLATE_CLASS_QUOTA_TABLE,
+  type ClassQuotaRow,
+} from "./event-class-quotas";
 
 export type TemplateRow = {
   id: string;
@@ -25,6 +35,8 @@ export type TemplateRow = {
   generationCount: number;
   createdAt: string;
   updatedAt: string;
+  /* 存在另一张表里，只有显式读过配额的路径才会带上；缺省当空数组处理。 */
+  classQuotas?: ClassQuotaRow[];
 };
 
 type CreateTemplateInput = {
@@ -38,6 +50,7 @@ type CreateTemplateInput = {
   visibility_offset_minutes?: number | null;
   auto_archive?: boolean;
   attachments?: string[];
+  class_quotas?: ClassQuotaRow[];
 };
 
 type UpdateTemplateInput = {
@@ -51,6 +64,7 @@ type UpdateTemplateInput = {
   visibility_offset_minutes?: number | null;
   auto_archive?: boolean;
   attachments?: string[];
+  class_quotas?: ClassQuotaRow[];
 };
 
 export type TemplateServiceDeps = {
@@ -95,6 +109,7 @@ export function toTemplatePayload(row: TemplateRow) {
     visibility_offset_minutes: row.visibilityOffsetMinutes,
     auto_archive: row.autoArchive,
     attachments: parseAttachments(row.attachments),
+    class_quotas: row.classQuotas ?? [],
     paused: row.paused,
     created_by: row.createdBy,
     last_generated_date: row.lastGeneratedDate,
@@ -120,6 +135,10 @@ export class EventTemplateService {
   }
 
   async createTemplate(actorId: string, data: CreateTemplateInput): Promise<ServiceResult<TemplateRow>> {
+    const quotas = data.class_quotas ?? [];
+    const quotaErr = await this.validateClassQuotas(data.type, quotas);
+    if (quotaErr) return quotaErr;
+
     const templateId = this.deps.createId?.() ?? nanoid();
     const recurrenceRuleJson = JSON.stringify(data.recurrence_rule);
 
@@ -141,8 +160,18 @@ export class EventTemplateService {
       generationCount: 0,
     });
 
+    if (quotas.length > 0) {
+      await this.rawDb.batch(
+        buildReplaceClassQuotaStatements(this.rawDb, TEMPLATE_CLASS_QUOTA_TABLE, templateId, quotas),
+      );
+    }
+
     const created = await this.deps.getTemplateById(templateId);
     if (!created) throw new Error("Failed to load created template");
+    // 回读而不是回显请求体：落库后的顺序按职业目录排，跟后续 GET 保持一致。
+    created.classQuotas = quotas.length > 0
+      ? await loadClassQuotasFor(this.rawDb, TEMPLATE_CLASS_QUOTA_TABLE, templateId)
+      : [];
 
     await replaceMediaRefs(this.rawDb as unknown as D1Database, "recurring_template", templateId, extractAttachmentKeys(created.attachments));
 
@@ -159,6 +188,10 @@ export class EventTemplateService {
   }
 
   async updateTemplate(actorId: string, templateId: string, existing: TemplateRow, data: UpdateTemplateInput): Promise<ServiceResult<TemplateRow>> {
+    const effectiveType = data.type ?? existing.type;
+    const quotaErr = await this.validateClassQuotas(effectiveType, data.class_quotas ?? []);
+    if (quotaErr) return quotaErr;
+
     const patch: Record<string, unknown> = { updatedAt: this.now() };
     if (data.type !== undefined) patch.type = data.type;
     if (data.title !== undefined) patch.title = data.title;
@@ -187,10 +220,34 @@ export class EventTemplateService {
       patch.generationCount = 0;
     }
 
+    /*
+     * 跟活动侧同一套规则：改成投票／抽奖就清空配额，否则按请求整组替换。旧值只在
+     * 真要动配额时才读，用来写审计日志的 from。
+     */
+    const quotaWrite = !typeSupportsClassQuotas(effectiveType)
+      ? "clear"
+      : data.class_quotas !== undefined
+        ? "replace"
+        : "keep";
+    const previousQuotas = quotaWrite === "keep"
+      ? null
+      : await loadClassQuotasFor(this.rawDb, TEMPLATE_CLASS_QUOTA_TABLE, templateId);
+
     await this.db.update(recurringTemplates).set(patch).where(eq(recurringTemplates.id, templateId));
+
+    if (quotaWrite === "clear") {
+      await this.rawDb.batch(buildDeleteClassQuotaStatements(this.rawDb, TEMPLATE_CLASS_QUOTA_TABLE, templateId));
+    } else if (quotaWrite === "replace") {
+      await this.rawDb.batch(
+        buildReplaceClassQuotaStatements(this.rawDb, TEMPLATE_CLASS_QUOTA_TABLE, templateId, data.class_quotas!),
+      );
+    }
 
     const updated = await this.deps.getTemplateById(templateId);
     if (!updated) throw new Error("Failed to load updated template");
+    updated.classQuotas = typeSupportsClassQuotas(updated.type)
+      ? await loadClassQuotasFor(this.rawDb, TEMPLATE_CLASS_QUOTA_TABLE, templateId)
+      : [];
 
     await replaceMediaRefs(this.rawDb as unknown as D1Database, "recurring_template", templateId, extractAttachmentKeys(updated.attachments));
 
@@ -200,7 +257,7 @@ export class EventTemplateService {
       actorId,
       entityId: templateId,
       diffTitle: updated.title,
-      detailText: JSON.stringify(this.buildTemplateUpdateDiff(existing, data)),
+      detailText: JSON.stringify(this.buildTemplateUpdateDiff(existing, data, previousQuotas, updated.classQuotas)),
     });
 
     if (scheduleChanged) {
@@ -260,6 +317,7 @@ export class EventTemplateService {
     await this.rawDb.batch([
       ...systemTestStatements,
       this.rawDb.prepare("UPDATE events SET series_id = NULL WHERE series_id = ?1").bind(templateId),
+      ...buildDeleteClassQuotaStatements(this.rawDb, TEMPLATE_CLASS_QUOTA_TABLE, templateId),
       this.rawDb.prepare("DELETE FROM recurring_templates WHERE id = ?1").bind(templateId),
     ]);
 
@@ -280,11 +338,46 @@ export class EventTemplateService {
       .from(recurringTemplates)
       .orderBy(asc(recurringTemplates.createdAt), asc(recurringTemplates.id))) as TemplateRow[];
 
+    const quotaMap = await loadClassQuotas(
+      this.rawDb,
+      TEMPLATE_CLASS_QUOTA_TABLE,
+      rows.filter((row) => typeSupportsClassQuotas(row.type)).map((row) => row.id),
+    );
+    for (const row of rows) {
+      row.classQuotas = quotaMap.get(row.id) ?? [];
+    }
+
     return rows.map(toTemplatePayload);
   }
 
-  private buildTemplateUpdateDiff(existing: TemplateRow, data: UpdateTemplateInput): Record<string, { from: unknown; to: unknown }> {
+  /**
+   * 配额自身的服务层校验。zod 已经查过重复项和类型限制，这里再挡一次是因为
+   * 「职业存不存在」只有拿到数据库才知道。
+   */
+  private async validateClassQuotas(type: string, quotas: readonly ClassQuotaRow[]): Promise<ServiceErr | null> {
+    if (quotas.length === 0) {
+      return null;
+    }
+    if (!typeSupportsClassQuotas(type)) {
+      return err("VALIDATION_ERROR", `${type} templates do not use class quotas`);
+    }
+    const unknown = await findUnknownClassIds(this.rawDb, quotas);
+    if (unknown.length > 0) {
+      return err("VALIDATION_ERROR", `Unknown class id: ${unknown.join(", ")}`);
+    }
+    return null;
+  }
+
+  private buildTemplateUpdateDiff(
+    existing: TemplateRow,
+    data: UpdateTemplateInput,
+    previousQuotas: ClassQuotaRow[] | null,
+    nextQuotas: ClassQuotaRow[],
+  ): Record<string, { from: unknown; to: unknown }> {
     const diff: Record<string, { from: unknown; to: unknown }> = {};
+    if (previousQuotas !== null && JSON.stringify(previousQuotas) !== JSON.stringify(nextQuotas)) {
+      diff.class_quotas = { from: previousQuotas, to: nextQuotas };
+    }
     if (data.type !== undefined && data.type !== existing.type)
       diff.type = { from: existing.type, to: data.type };
     if (data.title !== undefined && data.title !== existing.title)

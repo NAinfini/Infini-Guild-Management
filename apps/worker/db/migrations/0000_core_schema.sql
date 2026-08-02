@@ -131,6 +131,20 @@ CREATE TABLE IF NOT EXISTS recurring_templates (
   updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
 );
 
+CREATE TABLE IF NOT EXISTS event_class_quotas (
+  event_id TEXT NOT NULL REFERENCES events(id) ON DELETE CASCADE,
+  class_id TEXT NOT NULL REFERENCES class_catalog(id) ON DELETE CASCADE,
+  required INTEGER NOT NULL CONSTRAINT event_class_quotas_required_positive CHECK (required > 0),
+  PRIMARY KEY (event_id, class_id)
+);
+
+CREATE TABLE IF NOT EXISTS recurring_template_class_quotas (
+  template_id TEXT NOT NULL REFERENCES recurring_templates(id) ON DELETE CASCADE,
+  class_id TEXT NOT NULL REFERENCES class_catalog(id) ON DELETE CASCADE,
+  required INTEGER NOT NULL CONSTRAINT recurring_template_class_quotas_required_positive CHECK (required > 0),
+  PRIMARY KEY (template_id, class_id)
+);
+
 CREATE TABLE IF NOT EXISTS event_participants (
   id TEXT PRIMARY KEY NOT NULL,
   event_id TEXT NOT NULL,
@@ -382,6 +396,12 @@ CREATE INDEX IF NOT EXISTS idx_events_created_by
 -- recurring_templates
 CREATE INDEX IF NOT EXISTS idx_recurring_templates_active
   ON recurring_templates(paused, created_at, id);
+
+-- class quotas (查「删掉这个职业会影响哪些活动」走 class_id 这一路)
+CREATE INDEX IF NOT EXISTS idx_event_class_quotas_class
+  ON event_class_quotas(class_id);
+CREATE INDEX IF NOT EXISTS idx_recurring_template_class_quotas_class
+  ON recurring_template_class_quotas(class_id);
 
 -- event_participants
 CREATE UNIQUE INDEX IF NOT EXISTS ux_event_participants_event_user

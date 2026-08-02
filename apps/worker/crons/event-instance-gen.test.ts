@@ -67,6 +67,7 @@ describe("event instance generation horizon", () => {
     await runEventInstanceGenerationCron({
       DB: {
         prepare: () => ({ bind: () => ({ first: async () => ({ id: "tpl-1" }) }) }),
+        batch: async (statements: unknown[]) => statements.map(() => ({ meta: { changes: 1 } })),
       },
     } as never);
 
@@ -77,6 +78,67 @@ describe("event instance generation horizon", () => {
     for (const val of insertedValues) {
       expect(val).not.toHaveProperty("visibleAt");
     }
+  });
+
+  it("copies template class quotas onto every newly generated instance", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-05-04T09:30:00.000Z"));
+    const insertedValues: Array<{ id?: string }> = [];
+    const templates = [
+      {
+        id: "tpl-quota",
+        type: "guild_war",
+        title: "Quota Run",
+        description: null,
+        startTime: "10:00",
+        durationMinutes: 60,
+        capacity: 20,
+        createdBy: "user-1",
+        recurrenceRule: JSON.stringify({ frequency: "daily", interval: 1, endAfter: 1 }),
+        attachments: "[]",
+        lastGeneratedDate: null,
+        generationCount: 0,
+        visibilityOffsetMinutes: 60,
+        autoArchive: false,
+        createdAt: "2026-05-03T10:00:00.000Z",
+      },
+    ];
+    const db = {
+      select: vi.fn(() => ({ from: vi.fn(() => ({ where: vi.fn().mockResolvedValue(templates) })) })),
+      insert: vi.fn(() => ({
+        values: vi.fn((values: { id?: string }) => {
+          insertedValues.push(values);
+          return { onConflictDoNothing: vi.fn().mockReturnValue({}) };
+        }),
+      })),
+      update: vi.fn(() => ({ set: vi.fn(() => ({ where: vi.fn().mockResolvedValue(undefined) })) })),
+      batch: vi.fn().mockImplementation((statements: unknown[]) =>
+        Promise.resolve(statements.map(() => ({ meta: { changes: 1 } }))),
+      ),
+    };
+    drizzleMock.mockReturnValue(db);
+    const prepared: Array<{ sql: string; bindings: unknown[] }> = [];
+    const rawDb = {
+      prepare: (sql: string) => ({
+        bind: (...bindings: unknown[]) => {
+          const statement = { sql, bindings };
+          prepared.push(statement);
+          return { ...statement, first: async () => ({ id: "tpl-quota" }) };
+        },
+      }),
+      batch: async (statements: unknown[]) => statements.map(() => ({ meta: { changes: 1 } })),
+    };
+
+    await runEventInstanceGenerationCron({ DB: rawDb } as never);
+
+    const createdIds = insertedValues.map((value) => value.id).filter((id): id is string => typeof id === "string");
+    expect(createdIds).not.toHaveLength(0);
+    const copyStatements = prepared.filter((statement) => statement.sql.includes("INSERT INTO event_class_quotas"));
+    // 每个新生成的活动都要复制一次，绑定的是它自己的 id 加模板 id。
+    expect(copyStatements.map((statement) => statement.bindings)).toEqual(
+      createdIds.map((id) => [id, "tpl-quota"]),
+    );
+    expect(copyStatements[0]?.sql).toContain("FROM recurring_template_class_quotas WHERE template_id = ?2");
   });
 
   it("writes media references for generated instances with attachments", async () => {

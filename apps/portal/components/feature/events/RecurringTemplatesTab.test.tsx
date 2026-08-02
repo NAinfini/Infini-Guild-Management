@@ -31,6 +31,7 @@ function buildTemplate(overrides: Partial<RecurringTemplate>): RecurringTemplate
     visibility_offset_minutes: 0,
     auto_archive: false,
     attachments: [],
+    class_quotas: [],
     paused: false,
     created_by: "user-1",
     last_generated_date: null,

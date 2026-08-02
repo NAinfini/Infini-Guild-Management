@@ -42,10 +42,12 @@ describe("EventTemplateService system-test cleanup registration", () => {
     await service.deleteTemplate("admin-1", template.id, template);
 
     const firstBatch = rawDb.batch.mock.calls[0]?.[0] as Array<{ sql: string; bindings: unknown[] }>;
-    expect(firstBatch).toHaveLength(4);
+    expect(firstBatch).toHaveLength(5);
     expect(firstBatch[0]?.sql).toContain("SELECT id FROM system_test_runs");
     expect(firstBatch[1]?.sql).toContain("SELECT ?1, 'event', id FROM events");
     expect(firstBatch[2]?.sql).toContain("UPDATE events SET series_id = NULL");
-    expect(firstBatch[3]?.sql).toContain("DELETE FROM recurring_templates");
+    // 配额行必须跟模板同批删掉，靠外键级联的话本地 D1 关掉外键就会留下孤儿行。
+    expect(firstBatch[3]?.sql).toContain("DELETE FROM recurring_template_class_quotas");
+    expect(firstBatch[4]?.sql).toContain("DELETE FROM recurring_templates");
   });
 });
