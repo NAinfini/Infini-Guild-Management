@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { Modal } from "@mantine/core";
+import { Button, Modal } from "@mantine/core";
 import { fireEvent, render, screen } from "@testing-library/react";
 import { beforeEach, describe, expect, it } from "vitest";
 import i18n from "../../i18n";
@@ -102,5 +102,24 @@ describe("PortalThemeProvider", () => {
     expect(
       screen.getByRole("button", { name: i18n.t("common:action.close") }),
     ).toBeInTheDocument();
+  });
+
+  it("pins brand filled buttons to the calibrated fill/ink pairs", () => {
+    /* 静止态必须是 --brand-fill + --brand-on-fill，hover 态必须是
+     * --brand-fill-hover + --brand-on-fill-hover。少钉 --button-bg 的话填色会退回
+     * Mantine 的 primaryShade（6 档 = --brand-fill-hover），静止态就变成 900 墨压
+     * 600 填色，实测 3.50 不过 AA——theme-tokens.test.ts:704 那条反向断言正是它。 */
+    render(
+      <PortalThemeProvider>
+        <Button color="portal-brand" variant="filled">Join</Button>
+      </PortalThemeProvider>,
+    );
+
+    const style = screen.getByRole("button", { name: "Join" }).getAttribute("style") ?? "";
+
+    expect(style).toContain("--button-bg: var(--brand-fill)");
+    expect(style).toContain("--button-hover: var(--brand-fill-hover)");
+    expect(style).toContain("--button-color: var(--brand-on-fill)");
+    expect(style).toContain("--portal-button-hover-color: var(--brand-on-fill-hover)");
   });
 });

@@ -123,12 +123,33 @@ const portalTheme = createTheme({
         radius: "sm",
         classNames: { root: classes.buttonRoot },
       },
+      /*
+       * 品牌填色按钮的四个色值全部自己钉死，不走 Mantine 的色阶推导。
+       *
+       * 不钉的话，填色来自 --mantine-color-portal-brand-filled，而 Mantine 取的是
+       * primaryShade（浅色 6 档、深色 8 档，见 @mantine/core 的
+       * MantineCssVariables/get-css-color-variables.mjs），hover 态取 7 档。上面
+       * colors["portal-brand"] 是语义映射不是亮度阶梯，6 档正好是
+       * --brand-fill-hover、7 档是 --brand-text——于是按钮**静止状态**就已经踩在
+       * hover 档的填色上，而 --brand-on-fill 这支墨只按 --brand-fill 校准过。
+       * 实测 04342C 压在 23907D 上只有 3.50，不过 AA；theme-tokens.test.ts:704
+       * 那条反向断言早就把「900 墨压在 600 填色上不过 AA」这个事实钉住了，只是没人
+       * 拦住 Mantine 在静止态就凑出这一对。后果是 14px 的 leftSection 图标（描边
+       * 折算下来才 1.17px）在静止时几乎看不见，一 hover 换成纯黑才显形。
+       *
+       * 钉死之后两个状态各自用设计系统已经校验过的那一对：
+       *   静止：--brand-on-fill 压 --brand-fill（theme-tokens.test.ts:699 断言过 AA）
+       *   hover：--brand-on-fill-hover 压 --brand-fill-hover（同文件 :714 断言过 AA）
+       * 要改这四个值，先去看那两条断言。
+       */
       vars: (_theme, props) => {
         const usesBrand = props.color === undefined || props.color === "portal-brand";
         const usesFilledVariant = props.variant === undefined || props.variant === "filled";
         return {
           root: usesBrand && usesFilledVariant
             ? {
+              "--button-bg": "var(--brand-fill)",
+              "--button-hover": "var(--brand-fill-hover)",
               "--button-color": "var(--brand-on-fill)",
               "--portal-button-hover-color": "var(--brand-on-fill-hover)",
             }
