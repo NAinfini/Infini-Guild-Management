@@ -1,6 +1,6 @@
 import type { Event, MemberProfile, User } from "@guild/shared";
-import { Button, Group, Stack, Text } from "@mantine/core";
-import { UserMinusIcon } from "@portal/components/icons";
+import { Badge, Button, Group, Stack, Text, Tooltip } from "@mantine/core";
+import { ReplaceIcon, UserMinusIcon } from "@portal/components/icons";
 import { ClassIcon } from "@portal/components/shared/ClassIcon";
 import { MemberRoleAvatar } from "@portal/components/shared/MemberRoleAvatar";
 import { resolveClassCatalogItem, useClassCatalogStore } from "@portal/stores/class-catalog";
@@ -22,7 +22,8 @@ type EventDetailMemberRosterProps = {
  * 活动详情弹窗里的报名名单。
  *
  * 有配额时按配额分组，没配额时保持原来那份平铺名单——分组只在真有配额时接管。
- * 分组本身的规则见 class-quota-view.ts：分组人数必须跟筹码上的分子一致。
+ * 分组本身的规则见 class-quota-view.ts：每组的人就是算法分进这一格的人，人数跟筹码上
+ * 的分子同源。
  */
 export function EventDetailMemberRoster({
   event,
@@ -48,7 +49,7 @@ export function EventDetailMemberRoster({
    * 想知道一个人能打什么还得把鼠标停上去。改成图标＋名字成对排在原来那一行，
    * 而且是全部职业按 profile.classes 的顺序排，摇摆位一眼就能看出来。
    */
-  const renderRow = (entry: MemberEntry) => {
+  const renderRow = (entry: MemberEntry & { swing?: boolean }) => {
     const classItems = [...new Set(entry.profile.classes.filter(Boolean))].map((id) =>
       resolveClassCatalogItem(id, classCatalog),
     );
@@ -62,7 +63,17 @@ export function EventDetailMemberRoster({
           withClassCircles={false}
         />
         <div className="event-detail-modal__member-info">
-          <Text size="sm" fw={700}>{entry.user.username}</Text>
+          <Group gap={6} wrap="nowrap">
+            <Text size="sm" fw={700}>{entry.user.username}</Text>
+            {/* 摇摆位就坐在被分到的那一格里，标记说明他随时能挪到别的格子去补。 */}
+            {entry.swing ? (
+              <Tooltip label={t("quota.group.swingHint")}>
+                <Badge size="xs" variant="light" leftSection={<ReplaceIcon size={10} />}>
+                  {t("quota.group.swingBadge")}
+                </Badge>
+              </Tooltip>
+            ) : null}
+          </Group>
           <Group gap={6}>
             {classItems.length === 0 ? <Text size="xs" c="dimmed">-</Text> : null}
             {classItems.map((item) => (
@@ -128,12 +139,12 @@ export function EventDetailMemberRoster({
                           className="quota-status-text"
                           data-quota-status={group.slot.status}
                         >
-                          {group.slot.dedicated}/{group.slot.required}
+                          {group.slot.matched}/{group.slot.required}
                         </Text>
                       </>
                     ) : (
                       <Text size="xs" fw={800} c="dimmed">
-                        {t(group.kind === "flexible" ? "quota.group.flexible" : "quota.group.unassigned", {
+                        {t(group.kind === "benched" ? "quota.group.benched" : "quota.group.unassigned", {
                           count: group.members.length,
                         })}
                       </Text>

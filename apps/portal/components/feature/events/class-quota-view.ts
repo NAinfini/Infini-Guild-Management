@@ -52,66 +52,86 @@ export function toClassQuotaInputs(
   ));
 }
 
+/** swing 表示这个人同时够格进两格及以上，只是这次被排在了当前这一组。 */
+export type ClassQuotaRosterMember = MemberEntry & { swing: boolean };
+
 export type ClassQuotaMemberGroup =
-  | { kind: "quota"; slot: ClassQuotaSlot; members: MemberEntry[] }
-  | { kind: "flexible" | "unassigned"; members: MemberEntry[] };
+  | { kind: "quota"; slot: ClassQuotaSlot; members: ClassQuotaRosterMember[] }
+  | { kind: "benched" | "unassigned"; members: ClassQuotaRosterMember[] };
 
 /**
  * 把名单按配额分组，供活动详情弹窗使用。
  *
- * 分组规则跟 summariseClassQuotas 的计数规则必须是同一条，否则弹窗里数出来的人头
- * 会跟筹码上的分子对不上：只沾一个配额职业的人进那一格（就是筹码的分子），沾两个
- * 及以上的人进「摇摆位」，一个都不沾的人进「无配额职业」。
+ * 分组直接用算法给出的分配结果（slot.member_ids），所以每组的人数**就是**筹码上的
+ * 分子——两边同源，不可能对不上。这也是唯一能做到这一点的分法：摇摆位坐哪一格是分配
+ * 算出来的，展示层自己按职业重新归组只会得出另一套答案。
  *
- * 空组也保留——「这一格一个人都没有」正是最需要被看见的情况。摇摆位和无配额两组
- * 为空时不返回，它们没有「应有几人」的期望值，空着不说明任何事。
+ * 摇摆位不再单列一组。单列的话，一个能打治疗也能打坦克的人会从两组里同时消失，
+ * 「治疗这一组现在都有谁」这个问题反而答不上来。他现在就坐在被分到的那一格里，
+ * 挂个 swing 标记说明他随时可以挪走。
+ *
+ * benched 是够格但没排上的人（格子已经满了），unassigned 是一格都不沾的人。
+ * 空组保留——「这一格一个人都没有」正是最需要被看见的情况；后两组为空时不返回，
+ * 它们没有「应有几人」的期望值，空着不说明任何事。
  */
 export function groupMembersByClassQuota(
   summary: ClassQuotaSummary,
   members: readonly MemberEntry[],
 ): ClassQuotaMemberGroup[] {
-  /* 一个职业可以同时属于好几个标签，所以这里是「职业 → 它够得着的所有格子」。 */
-  const slotIndexesByClassId = new Map<string, number[]>();
-  summary.slots.forEach((slot, index) => {
-    for (const classId of slot.class_ids) {
-      const bucket = slotIndexesByClassId.get(classId);
-      if (bucket) {
-        bucket.push(index);
-      } else {
-        slotIndexesByClassId.set(classId, [index]);
-      }
-    }
-  });
-  const buckets: MemberEntry[][] = summary.slots.map(() => []);
-  const flexible: MemberEntry[] = [];
-  const unassigned: MemberEntry[] = [];
+  const byUserId = new Map(members.map((member) => [member.user.id, member]));
+  const swingUserIds = findSwingUserIds(summary, members);
+  const decorate = (userId: string): ClassQuotaRosterMember[] => {
+    const member = byUserId.get(userId);
+    return member ? [{ ...member, swing: swingUserIds.has(userId) }] : [];
+  };
 
-  for (const member of members) {
-    const indices = new Set<number>();
-    for (const classId of member.profile.classes) {
-      for (const index of slotIndexesByClassId.get(classId) ?? []) {
-        indices.add(index);
-      }
-    }
-    if (indices.size === 0) {
-      unassigned.push(member);
-    } else if (indices.size === 1) {
-      buckets[[...indices][0]!]!.push(member);
-    } else {
-      flexible.push(member);
-    }
-  }
-
-  const groups: ClassQuotaMemberGroup[] = summary.slots.map((slot, index) => ({
+  const groups: ClassQuotaMemberGroup[] = summary.slots.map((slot) => ({
     kind: "quota" as const,
     slot,
-    members: buckets[index]!,
+    members: slot.member_ids.flatMap(decorate),
   }));
-  if (flexible.length > 0) {
-    groups.push({ kind: "flexible", members: flexible });
+  const benched = summary.benched.flatMap(decorate);
+  if (benched.length > 0) {
+    groups.push({ kind: "benched", members: benched });
   }
+  const unassigned = summary.unassigned.flatMap(decorate);
   if (unassigned.length > 0) {
     groups.push({ kind: "unassigned", members: unassigned });
   }
   return groups;
+}
+
+/**
+ * 谁是摇摆位。summary 只给了摇摆位的**数量**，标记要挂到具体的人身上，只能在这里
+ * 按同一条规则再判一次：够格进两格及以上就是摇摆位。
+ */
+function findSwingUserIds(
+  summary: ClassQuotaSummary,
+  members: readonly MemberEntry[],
+): Set<string> {
+  /* 一个职业可以同时属于好几个标签，所以这里是「职业 → 它够得着的所有格子」。 */
+  const slotKeysByClassId = new Map<string, string[]>();
+  for (const slot of summary.slots) {
+    for (const classId of slot.class_ids) {
+      const bucket = slotKeysByClassId.get(classId);
+      if (bucket) {
+        bucket.push(slot.key);
+      } else {
+        slotKeysByClassId.set(classId, [slot.key]);
+      }
+    }
+  }
+  const swing = new Set<string>();
+  for (const member of members) {
+    const keys = new Set<string>();
+    for (const classId of member.profile.classes) {
+      for (const key of slotKeysByClassId.get(classId) ?? []) {
+        keys.add(key);
+      }
+    }
+    if (keys.size > 1) {
+      swing.add(member.user.id);
+    }
+  }
+  return swing;
 }

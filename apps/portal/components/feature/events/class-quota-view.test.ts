@@ -49,24 +49,40 @@ describe("groupMembersByClassQuota", () => {
     // 每个配额组的人数必须等于筹码上的分子，否则弹窗里数出来的人跟卡片对不上。
     for (const group of groups) {
       if (group.kind === "quota") {
-        expect(group.members).toHaveLength(group.slot.dedicated);
+        expect(group.members).toHaveLength(group.slot.matched);
       }
     }
     expect(groups.map((group) => (group.kind === "quota" ? group.slot.key : group.kind)))
-      .toEqual(["healer", "tank", "flexible", "unassigned"]);
+      .toEqual(["healer", "tank", "benched", "unassigned"]);
     // 两种治疗职业都进同一格，这正是标签存在的理由。
     expect(groups[0]!.members.map((entry) => entry.user.id)).toEqual(["white-mage", "droid"]);
+    /* 两格都满了，摇摆位没排上——他进「没排上」，不是凭空消失。 */
     expect(groups[2]!.members.map((entry) => entry.user.id)).toEqual(["swing"]);
+    expect(groups[2]!.members[0]!.swing).toBe(true);
     expect(groups[3]!.members.map((entry) => entry.user.id)).toEqual(["dps"]);
   });
 
-  it("keeps an empty quota group but drops the empty flex and no-quota groups", () => {
+  it("seats a swing member in the group they were assigned to and marks them", () => {
+    /* 摇摆位不再单列一组：单列的话「治疗这一格现在都有谁」就答不上来了。 */
+    const members = [member("swing", ["droid", "tank"])];
+    const summary = summarise(members);
+
+    const groups = groupMembersByClassQuota(summary, members);
+
+    expect(groups.map((group) => (group.kind === "quota" ? group.slot.key : group.kind)))
+      .toEqual(["healer", "tank"]);
+    expect(groups[0]!.members.map((entry) => entry.user.id)).toEqual(["swing"]);
+    expect(groups[0]!.members[0]!.swing).toBe(true);
+    expect(groups[1]!.members).toEqual([]);
+  });
+
+  it("keeps an empty quota group but drops the empty benched and no-quota groups", () => {
     const members = [member("solo-tank", ["tank"])];
     const summary = summarise(members);
 
     const groups = groupMembersByClassQuota(summary, members);
 
-    // healer 一个人都没有恰恰是最该被看见的，留着；摇摆位和无配额为空则不说明任何事。
+    // healer 一个人都没有恰恰是最该被看见的，留着；没排上和无配额为空则不说明任何事。
     expect(groups).toHaveLength(2);
     expect(groups[0]).toMatchObject({ kind: "quota", members: [] });
     expect(groups[1]).toMatchObject({ kind: "quota" });

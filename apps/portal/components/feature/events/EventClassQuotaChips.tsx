@@ -17,8 +17,13 @@ import "./EventClassQuotaChips.css";
  * 只分红绿两档的话，「摇摆位到底补不补得上」这个计算就白算了：所有没占满的格子
  * 都会一律标红，管理员根本分不出哪一格是真缺人。
  *
- * 分子是「专属」人数而不是「能胜任」人数：摇摆位同时挂在好几格上，要是每格都算
- * 进分子，几个分子加起来会超过实到人数。摇摆位单独由行尾那个筹码报数。
+ * 分子是「这次分配实际坐进这一格的人数」（matched），不是专属人数，也不是能胜任的
+ * 人数。能胜任会重复计数——摇摆位同时挂在好几格上，几个分子加起来会超过实到人数；
+ * 专属则在一格认一组职业之后大面积掉到 0，一套完全配得齐的阵容会显示成
+ * `0/2 0/2 1/3`，看着像全线告急。matched 每人只坐一格，加起来正好是排上的人数，
+ * 读起来就是「这一格现在有几个人」，也跟下面名单里那一组的人数对得上。
+ * 代价是它依赖具体分配：新人报名可能让摇摆位挪窝，旁边格子的数字跟着跳。颜色不受
+ * 影响——三档判定用的是严谨的缺口集合，跟摇摆位坐哪一格无关。
  *
  * 一格是一个职业标签，可能装着好几个职业，所以筹码上摆的是这一格接受的全部职业图标，
  * 名字只在提示里出现——卡片上塞不下「治疗」两个字加一串图标。
@@ -45,6 +50,7 @@ export function EventClassQuotaChips({ summary, event, className }: EventClassQu
             key={slot.key}
             label={t(`quota.status.${slot.status}`, {
               label,
+              matched: slot.matched,
               dedicated: slot.dedicated,
               required: slot.required,
               eligible: slot.eligible,
@@ -60,7 +66,7 @@ export function EventClassQuotaChips({ summary, event, className }: EventClassQu
                 />
               ))}
               <span className="quota-chips__count">
-                {slot.dedicated}/{slot.required}
+                {slot.matched}/{slot.required}
               </span>
             </span>
           </Tooltip>
