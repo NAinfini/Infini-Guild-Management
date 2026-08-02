@@ -86,37 +86,33 @@ export function fromClassQuotaInputs(
   });
 }
 
-/** swing 表示这个人同时够格进两格及以上，只是这次被排在了当前这一组。 */
-export type ClassQuotaRosterMember = MemberEntry & { swing: boolean };
-
 export type ClassQuotaMemberGroup =
-  | { kind: "quota"; slot: ClassQuotaSlot; members: ClassQuotaRosterMember[] }
-  | { kind: "benched" | "unassigned"; members: ClassQuotaRosterMember[] };
+  | { kind: "quota"; slot: ClassQuotaSlot; members: MemberEntry[] }
+  | { kind: "other"; members: MemberEntry[] };
 
 /**
  * 把名单按配额分组，供活动详情弹窗使用。
  *
  * 分组直接用算法给出的分配结果（slot.member_ids），所以每组的人数**就是**筹码上的
- * 分子——两边同源，不可能对不上。这也是唯一能做到这一点的分法：摇摆位坐哪一格是分配
+ * 分子——两边同源，不可能对不上。这也是唯一能做到这一点的分法：兼职的人坐哪一格是分配
  * 算出来的，展示层自己按职业重新归组只会得出另一套答案。
  *
- * 摇摆位不再单列一组。单列的话，一个能打治疗也能打坦克的人会从两组里同时消失，
- * 「治疗这一组现在都有谁」这个问题反而答不上来。他现在就坐在被分到的那一格里，
- * 挂个 swing 标记说明他随时可以挪走。
+ * 兼职（符合多个配额）的人不单列一组。单列的话，一个能打治疗也能打坦克的人会从两组里
+ * 同时消失，「治疗这一组现在都有谁」这个问题反而答不上来。他就坐在被分到的那一格里。
  *
- * benched 是够格但没排上的人（格子已经满了），unassigned 是一格都不沾的人。
- * 空组保留——「这一格一个人都没有」正是最需要被看见的情况；后两组为空时不返回，
- * 它们没有「应有几人」的期望值，空着不说明任何事。
+ * 没坐进任何一格的人合成「其他」一组：够格但格子满了的（benched）和一格都不沾的
+ * （unassigned）在名单上要做的事完全一样——看一眼谁还在，所以不分两栏。
+ * 空的配额组保留——「这一格一个人都没有」正是最需要被看见的情况；「其他」为空时不返回，
+ * 它没有「应有几人」的期望值，空着不说明任何事。
  */
 export function groupMembersByClassQuota(
   summary: ClassQuotaSummary,
   members: readonly MemberEntry[],
 ): ClassQuotaMemberGroup[] {
   const byUserId = new Map(members.map((member) => [member.user.id, member]));
-  const swingUserIds = findSwingUserIds(summary, members);
-  const decorate = (userId: string): ClassQuotaRosterMember[] => {
+  const decorate = (userId: string): MemberEntry[] => {
     const member = byUserId.get(userId);
-    return member ? [{ ...member, swing: swingUserIds.has(userId) }] : [];
+    return member ? [member] : [];
   };
 
   const groups: ClassQuotaMemberGroup[] = summary.slots.map((slot) => ({
@@ -124,48 +120,9 @@ export function groupMembersByClassQuota(
     slot,
     members: slot.member_ids.flatMap(decorate),
   }));
-  const benched = summary.benched.flatMap(decorate);
-  if (benched.length > 0) {
-    groups.push({ kind: "benched", members: benched });
-  }
-  const unassigned = summary.unassigned.flatMap(decorate);
-  if (unassigned.length > 0) {
-    groups.push({ kind: "unassigned", members: unassigned });
+  const other = [...summary.benched, ...summary.unassigned].flatMap(decorate);
+  if (other.length > 0) {
+    groups.push({ kind: "other", members: other });
   }
   return groups;
-}
-
-/**
- * 谁是摇摆位。summary 只给了摇摆位的**数量**，标记要挂到具体的人身上，只能在这里
- * 按同一条规则再判一次：够格进两格及以上就是摇摆位。
- */
-function findSwingUserIds(
-  summary: ClassQuotaSummary,
-  members: readonly MemberEntry[],
-): Set<string> {
-  /* 一个职业可以同时属于好几个标签，所以这里是「职业 → 它够得着的所有格子」。 */
-  const slotKeysByClassId = new Map<string, string[]>();
-  for (const slot of summary.slots) {
-    for (const classId of slot.class_ids) {
-      const bucket = slotKeysByClassId.get(classId);
-      if (bucket) {
-        bucket.push(slot.key);
-      } else {
-        slotKeysByClassId.set(classId, [slot.key]);
-      }
-    }
-  }
-  const swing = new Set<string>();
-  for (const member of members) {
-    const keys = new Set<string>();
-    for (const classId of member.profile.classes) {
-      for (const key of slotKeysByClassId.get(classId) ?? []) {
-        keys.add(key);
-      }
-    }
-    if (keys.size > 1) {
-      swing.add(member.user.id);
-    }
-  }
-  return swing;
 }

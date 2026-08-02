@@ -1,6 +1,6 @@
 import type { Event, MemberProfile, User } from "@guild/shared";
-import { Badge, Button, Group, Stack, Text, Tooltip } from "@mantine/core";
-import { ReplaceIcon, UserMinusIcon } from "@portal/components/icons";
+import { Button, Group, Stack, Text } from "@mantine/core";
+import { UserMinusIcon } from "@portal/components/icons";
 import { ClassIcon } from "@portal/components/shared/ClassIcon";
 import { MemberRoleAvatar } from "@portal/components/shared/MemberRoleAvatar";
 import { resolveClassCatalogItem, useClassCatalogStore } from "@portal/stores/class-catalog";
@@ -47,9 +47,9 @@ export function EventDetailMemberRoster({
   /*
    * 职业不再挂在头像右下角那一圈小图标上：那里三个圈叠着，图标看不清、名字根本没有，
    * 想知道一个人能打什么还得把鼠标停上去。改成图标＋名字成对排在原来那一行，
-   * 而且是全部职业按 profile.classes 的顺序排，摇摆位一眼就能看出来。
+   * 而且是全部职业按 profile.classes 的顺序排——他还能顶哪一格，看这一行就够了。
    */
-  const renderRow = (entry: MemberEntry & { swing?: boolean }) => {
+  const renderRow = (entry: MemberEntry) => {
     const classItems = [...new Set(entry.profile.classes.filter(Boolean))].map((id) =>
       resolveClassCatalogItem(id, classCatalog),
     );
@@ -63,17 +63,7 @@ export function EventDetailMemberRoster({
           withClassCircles={false}
         />
         <div className="event-detail-modal__member-info">
-          <Group gap={6} wrap="nowrap">
-            <Text size="sm" fw={700}>{entry.user.username}</Text>
-            {/* 摇摆位就坐在被分到的那一格里，标记说明他随时能挪到别的格子去补。 */}
-            {entry.swing ? (
-              <Tooltip label={t("quota.group.swingHint")}>
-                <Badge size="xs" variant="light" leftSection={<ReplaceIcon size={10} />}>
-                  {t("quota.group.swingBadge")}
-                </Badge>
-              </Tooltip>
-            ) : null}
-          </Group>
+          <Text size="sm" fw={700}>{entry.user.username}</Text>
           <Group gap={6}>
             {classItems.length === 0 ? <Text size="xs" c="dimmed">-</Text> : null}
             {classItems.map((item) => (
@@ -144,9 +134,7 @@ export function EventDetailMemberRoster({
                       </>
                     ) : (
                       <Text size="xs" fw={800} c="dimmed">
-                        {t(group.kind === "benched" ? "quota.group.benched" : "quota.group.unassigned", {
-                          count: group.members.length,
-                        })}
+                        {t("quota.group.other", { count: group.members.length })}
                       </Text>
                     )}
                   </Group>

@@ -53,17 +53,15 @@ describe("groupMembersByClassQuota", () => {
       }
     }
     expect(groups.map((group) => (group.kind === "quota" ? group.slot.key : group.kind)))
-      .toEqual(["healer", "tank", "benched", "unassigned"]);
+      .toEqual(["healer", "tank", "other"]);
     // 两种治疗职业都进同一格，这正是标签存在的理由。
     expect(groups[0]!.members.map((entry) => entry.user.id)).toEqual(["white-mage", "droid"]);
-    /* 两格都满了，摇摆位没排上——他进「没排上」，不是凭空消失。 */
-    expect(groups[2]!.members.map((entry) => entry.user.id)).toEqual(["swing"]);
-    expect(groups[2]!.members[0]!.swing).toBe(true);
-    expect(groups[3]!.members.map((entry) => entry.user.id)).toEqual(["dps"]);
+    /* 格子满了没排上的、和一格都不沾的，合在「其他」里——都不是凭空消失。 */
+    expect(groups[2]!.members.map((entry) => entry.user.id)).toEqual(["swing", "dps"]);
   });
 
-  it("seats a swing member in the group they were assigned to and marks them", () => {
-    /* 摇摆位不再单列一组：单列的话「治疗这一格现在都有谁」就答不上来了。 */
+  it("seats a member eligible for several groups in the one they were assigned to", () => {
+    /* 兼职的人不再单列一组：单列的话「治疗这一格现在都有谁」就答不上来了。 */
     const members = [member("swing", ["droid", "tank"])];
     const summary = summarise(members);
 
@@ -72,23 +70,22 @@ describe("groupMembersByClassQuota", () => {
     expect(groups.map((group) => (group.kind === "quota" ? group.slot.key : group.kind)))
       .toEqual(["healer", "tank"]);
     expect(groups[0]!.members.map((entry) => entry.user.id)).toEqual(["swing"]);
-    expect(groups[0]!.members[0]!.swing).toBe(true);
     expect(groups[1]!.members).toEqual([]);
   });
 
-  it("keeps an empty quota group but drops the empty benched and no-quota groups", () => {
+  it("keeps an empty quota group but drops the empty other group", () => {
     const members = [member("solo-tank", ["tank"])];
     const summary = summarise(members);
 
     const groups = groupMembersByClassQuota(summary, members);
 
-    // healer 一个人都没有恰恰是最该被看见的，留着；没排上和无配额为空则不说明任何事。
+    // healer 一个人都没有恰恰是最该被看见的，留着；「其他」为空则不说明任何事。
     expect(groups).toHaveLength(2);
     expect(groups[0]).toMatchObject({ kind: "quota", members: [] });
     expect(groups[1]).toMatchObject({ kind: "quota" });
   });
 
-  it("counts a member holding a duplicate class id once, not as a swing slot", () => {
+  it("counts a member holding a duplicate class id once, not as a shared member", () => {
     const members = [member("dupe", ["droid", "droid"])];
     const summary = summarise(members);
 
@@ -100,8 +97,8 @@ describe("groupMembersByClassQuota", () => {
     expect(groups[0]!.members.map((entry) => entry.user.id)).toEqual(["dupe"]);
   });
 
-  it("does not call a member a swing slot when both their classes sit in the same group", () => {
-    /* 两种治疗都会打，但只有治疗那一格收得下他——摇摆位说的是「够得着好几格」，
+  it("does not count a member as shared when both their classes sit in the same group", () => {
+    /* 两种治疗都会打，但只有治疗那一格收得下他——兼职说的是「够得着好几格」，
        不是「会好几个职业」。 */
     const members = [member("both-healers", ["white-mage", "droid"])];
     const summary = summarise(members);
