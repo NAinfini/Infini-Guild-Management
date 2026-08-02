@@ -17,10 +17,7 @@ import {
 import { useEffect, useMemo, useState, type KeyboardEvent } from "react";
 import { useTranslation } from "react-i18next";
 import { getParticipantActionDisabledReasonKey } from "./participant-action";
-import { resolveClassCatalogItem, useClassCatalogStore } from "@portal/stores/class-catalog";
-import { ClassIcon } from "@portal/components/shared/ClassIcon";
-import { EventClassQuotaChips } from "./EventClassQuotaChips";
-import { groupMembersByClassQuota, summariseEventClassQuotas } from "./class-quota-view";
+import { EventDetailMemberRoster } from "./EventDetailMemberRoster";
 import "./EventDetailModal.css";
 
 export type MemberEntry = { user: User; profile: MemberProfile };
@@ -85,7 +82,6 @@ export function EventDetailModal({
 }: EventDetailModalProps) {
   const { t, i18n } = useTranslation("events");
   const { t: tc } = useTranslation("common");
-  const classCatalog = useClassCatalogStore((state) => state.items);
   const confirm = useConfirmDialog();
   const mediaLabels = useMemo(() => buildMediaGalleryLabels(tc), [tc]);
   const [selectedOptionIds, setSelectedOptionIds] = useState<string[]>([]);
@@ -125,15 +121,6 @@ export function EventDetailModal({
       : t("button.join");
   const pollTotalVotes = event?.poll?.options.reduce((total, option) => total + option.vote_count, 0) ?? 0;
 
-  const quotaSummary = useMemo(
-    () => (event ? summariseEventClassQuotas(event, members) : null),
-    [event, members],
-  );
-  /* 没配额时保持原来那份平铺名单，分组只在真有配额时接管。 */
-  const quotaGroups = useMemo(
-    () => (quotaSummary ? groupMembersByClassQuota(quotaSummary, members) : null),
-    [quotaSummary, members],
-  );
 
   useEffect(() => {
     if (!event) {
@@ -198,37 +185,6 @@ export function EventDetailModal({
       onRemoveParticipant(eventId, userId);
     }
   };
-
-  /* 名单行既出现在平铺名单里，也出现在每个配额分组里，行本身两处完全一样。 */
-  const renderMemberRow = (entry: MemberEntry) => (
-    <Group key={entry.user.id} gap={10} className="event-detail-modal__member-row" wrap="nowrap">
-      <MemberRoleAvatar user={entry.user} profile={entry.profile} size={40} withTooltip={false} />
-      <div className="event-detail-modal__member-info">
-        <Text size="sm" fw={700}>{entry.user.username}</Text>
-        <Group gap={6}>
-          <Text size="xs" c="dimmed">
-            {entry.profile.classes[0]
-              ? resolveClassCatalogItem(entry.profile.classes[0], classCatalog).label
-              : "-"}
-          </Text>
-          <Text size="xs" c="dimmed">-</Text>
-          <Text size="xs" c="dimmed">{t("detail.power", { value: entry.profile.power ?? "-" })}</Text>
-        </Group>
-      </div>
-      {canManage ? (
-        <Button
-          color="red"
-          variant="light"
-          size="sm"
-          leftSection={<UserMinusIcon size={14} />}
-          onClick={() => void handleRemoveParticipant(entry.user.id, entry.user.username)}
-          disabled={event === null}
-        >
-          {t("detail.removeMember")}
-        </Button>
-      ) : null}
-    </Group>
-  );
 
   const handlePollOptionKeyDown = (optionId: string, disabled: boolean, keyEvent: KeyboardEvent<HTMLDivElement>) => {
     if (keyEvent.key !== "Enter" && keyEvent.key !== " ") {
@@ -504,58 +460,12 @@ export function EventDetailModal({
                     />
                   ) : null}
 
-                  {quotaSummary ? (
-                    <EventClassQuotaChips summary={quotaSummary} className="event-detail-modal__quota-row" />
-                  ) : null}
-
-                  {members.length === 0 ? (
-                    <Text c="dimmed" size="sm">{t("detail.noMembers")}</Text>
-                  ) : quotaGroups ? (
-                    <div className="event-detail-modal__member-list">
-                      <Stack gap={16}>
-                        {quotaGroups.map((group) => {
-                          const item = group.kind === "quota"
-                            ? resolveClassCatalogItem(group.slot.class_id, classCatalog)
-                            : null;
-                          return (
-                            <div key={group.kind === "quota" ? group.slot.class_id : group.kind}>
-                              <Group gap={6} mb={8} wrap="nowrap">
-                                {group.kind === "quota" && item ? (
-                                  <>
-                                    <ClassIcon item={item} size={18} framed={false} />
-                                    <Text size="xs" fw={800}>{item.label}</Text>
-                                    <Text
-                                      size="xs"
-                                      fw={800}
-                                      className="quota-status-text"
-                                      data-quota-status={group.slot.status}
-                                    >
-                                      {group.slot.dedicated}/{group.slot.required}
-                                    </Text>
-                                  </>
-                                ) : (
-                                  <Text size="xs" fw={800} c="dimmed">
-                                    {t(group.kind === "flexible" ? "quota.group.flexible" : "quota.group.unassigned", {
-                                      count: group.members.length,
-                                    })}
-                                  </Text>
-                                )}
-                              </Group>
-                              {group.members.length === 0 ? (
-                                <Text size="xs" c="dimmed">{t("quota.group.empty")}</Text>
-                              ) : (
-                                <Stack gap={8}>{group.members.map(renderMemberRow)}</Stack>
-                              )}
-                            </div>
-                          );
-                        })}
-                      </Stack>
-                    </div>
-                  ) : (
-                    <div className="event-detail-modal__member-list">
-                      <Stack gap={8}>{members.map(renderMemberRow)}</Stack>
-                    </div>
-                  )}
+                  <EventDetailMemberRoster
+                    event={event}
+                    members={members}
+                    canManage={canManage}
+                    onRemoveMember={(userId, username) => void handleRemoveParticipant(userId, username)}
+                  />
                 </section>
               ) : null}
             </Stack>
