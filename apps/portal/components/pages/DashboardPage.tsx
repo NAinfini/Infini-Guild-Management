@@ -201,7 +201,7 @@ export function DashboardPage() {
           )}
         />
       ) : (
-        <Grid gutter={{ base: 12, md: 16 }} align="flex-start">
+        <Grid gap={{ base: 12, md: 16 }} align="flex-start">
         {eventsEnabled ? <Grid.Col span={{ base: 12, xl: "auto" }}>
           <Stack gap={16}>
             {!isExternalView && (

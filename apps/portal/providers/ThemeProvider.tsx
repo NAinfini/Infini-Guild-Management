@@ -28,6 +28,7 @@ import {
   TextInput,
   Textarea,
   Tooltip,
+  v8CssVariablesResolver,
 } from "@mantine/core";
 import { useReducedMotion } from "@mantine/hooks";
 import { ModalsProvider } from "@mantine/modals";
@@ -347,7 +348,35 @@ export function PortalThemeProvider({ children }: { children: ReactNode }) {
 
   return (
     <ThemeContext.Provider value={contextValue}>
-      <MantineProvider theme={mantineTheme} forceColorScheme={theme}>
+      {/*
+        * cssVariablesResolver 必须显式钉在 v8 这一版，不是为了怀旧，是因为
+        * Mantine 9 的新公式在这套主题上前提不成立。
+        *
+        * 9 把 --mantine-color-{c}-light 从「主色调透明度」改成了取色阶端点：
+        * 亮色模式取第 1 档，暗色模式取 darken(第 9 档, 50%)
+        * （@mantine/core 的 esm/core/MantineProvider/MantineCssVariables/
+        * get-css-color-variables.mjs）。这假设十档是一条从浅到深的亮度阶梯。
+        *
+        * 而本主题的 portal-brand 十档是语义映射，不是亮度阶梯（见上面 colors）：
+        * 第 0/1 档是 --brand-tint，第 9 档是 --brand-on-fill——**填色之上的前景色**。
+        * 套用 9 的公式，暗色模式下每个 variant="light" 的底色会变成
+        * darken(--brand-on-fill, 50%)。在浏览器里实测过这组值（十六进制一律
+        * 省去井号写，否则会被 inline-colour 那条裸 hex 守卫算成硬编码颜色）：
+        *   --brand-on-fill = 04342C，算出来是 021A16 的不透明块，
+        *   而页面底色是 1C1C22——底色比页面还黑，等于反过来了；
+        *   v8 那条是 color-mix(in srgb, 23907D, transparent 85%)，
+        *   一层透明色调，才是这套主题要的东西。
+        * 语法合法，语义是错的。全站有 94 处 variant="light"，外加
+        * GalleryPage.css 和 WikiPage.css 两处直接吃 --mantine-color-*-light
+        * 当背景。styles.css 只覆写了 -light-color（文字色），底色没覆写。
+        *
+        * v8CssVariablesResolver 是 Mantine 8 默认解析器的原样保留，用的是
+        * alpha(主色, 10%/15%)——只依赖「主色」这一个前提，对语义映射同样成立。
+        *
+        * 要撤掉这行，得先把 colors["portal-brand"] 改成真正的亮度阶梯，
+        * 否则撤掉的不是旧观感，是正确性。
+        */}
+      <MantineProvider theme={mantineTheme} forceColorScheme={theme} cssVariablesResolver={v8CssVariablesResolver}>
         <Notifications position="top-right" />
         <ModalsProvider>
           {children}

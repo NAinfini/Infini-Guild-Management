@@ -210,7 +210,7 @@ export function EventDetailModal({
       }}
     >
       {event ? (
-        <Grid gutter={16} className="event-detail-modal__grid">
+        <Grid gap={16} className="event-detail-modal__grid">
           <Grid.Col span={event.attachments && event.attachments.length > 0 ? { base: 12, md: 5 } : 12}>
             <Stack gap={14}>
               <SimpleGrid cols={{ base: 1, sm: 2 }} spacing={10}>

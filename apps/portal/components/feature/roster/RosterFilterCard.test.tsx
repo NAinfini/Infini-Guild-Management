@@ -74,7 +74,7 @@ describe("RosterFilterCard", () => {
       </MantineProvider>,
     );
 
-    await user.click(screen.getByRole("textbox", { name: "filter.class.aria" }));
+    await user.click(screen.getByRole("combobox", { name: "filter.class.aria" }));
 
     expect(await screen.findByText("retired-class")).toBeInTheDocument();
   });

@@ -124,7 +124,7 @@ function ConsoleField({
         <span className="gwa-field__summary">{summary}</span>
         {open ? <ChevronUpIcon size={14} /> : <ChevronDownIcon size={14} />}
       </UnstyledButton>
-      <Collapse in={open}>
+      <Collapse expanded={open}>
         <div className="gwa-field__body">{children}</div>
       </Collapse>
     </div>
@@ -565,7 +565,7 @@ export function GuildWarAnalyticsTab({
                         styles={{ track: { cursor: "pointer" } }}
                       />
                     </div>
-                    <Collapse in={normExpanded && analytics.analyticsNormEnabled}>
+                    <Collapse expanded={normExpanded && analytics.analyticsNormEnabled}>
                       <div className="gwa-norm-panel">
                         <Text size="xs" c="dimmed" mb={8}>
                           {t("analytics.normalization.refDuration", {
@@ -706,7 +706,7 @@ export function GuildWarAnalyticsTab({
                   </HoverCard>
                 </Group>
               </div>
-              <Collapse in={tableExpanded}>
+              <Collapse expanded={tableExpanded}>
                 <div className="gwa-table-wrap">
                   <Table striped={!analytics.analyticsHeatmapEnabled} highlightOnHover withTableBorder>
                     <Table.Thead>

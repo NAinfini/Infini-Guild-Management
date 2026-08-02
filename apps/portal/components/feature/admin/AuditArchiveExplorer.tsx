@@ -69,7 +69,7 @@ export function AuditArchiveExplorer({
           </Button>
         </Group>
 
-        <Collapse in={opened}>
+        <Collapse expanded={opened}>
           <Stack gap={12} pt="xs">
             {monthsLoading ? <Skeleton height={36} /> : null}
             {monthsError ? <Alert color="red" title={tc("loadError")} /> : null}

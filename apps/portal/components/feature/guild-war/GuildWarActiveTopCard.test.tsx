@@ -47,7 +47,7 @@ describe("GuildWarActiveTopCard", () => {
       </MantineProvider>,
     );
 
-    expect(screen.getByRole("textbox", { name: "active.aria.selectEvent" })).toBeDisabled();
+    expect(screen.getByRole("combobox", { name: "active.aria.selectEvent" })).toBeDisabled();
   });
 
   it("aligns the search and event selectors in one filter grid", () => {

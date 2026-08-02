@@ -94,7 +94,7 @@ describe("StorageInventoryPanel pagination", () => {
     const user = userEvent.setup();
     renderPanel();
 
-    await user.click(screen.getByRole("textbox", { name: "field.stock" }));
+    await user.click(screen.getByRole("combobox", { name: "field.stock" }));
     fireEvent.click(screen.getByText("filter.empty"));
 
     expect(hookMocks.useStorageItems).toHaveBeenLastCalledWith(expect.objectContaining({

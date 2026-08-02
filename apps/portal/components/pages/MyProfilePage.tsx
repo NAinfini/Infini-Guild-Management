@@ -127,7 +127,7 @@ export function MyProfilePage() {
   return (
     <PageLayout className="my-profile-page">
       {profileQuery.isLoading ? (
-        <Grid gutter="md">
+        <Grid gap="md">
           <Grid.Col span={{ base: 12, lg: 8 }}>
             <Stack gap={12}>
               <Skeleton height={36} width="50%" radius={8} />

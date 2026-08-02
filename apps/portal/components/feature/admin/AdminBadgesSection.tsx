@@ -316,7 +316,7 @@ export function AdminBadgesSection({ userRows, controller }: AdminBadgesSectionP
                   </Button>
                 </Group>
 
-                <Collapse in={assignPanelOpen}>
+                <Collapse expanded={assignPanelOpen}>
                   <div className="admin-badge-assign">
                     <Stack gap={10}>
                       <div>

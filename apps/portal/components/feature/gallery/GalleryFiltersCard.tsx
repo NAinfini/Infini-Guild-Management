@@ -170,7 +170,7 @@ export function GalleryFiltersCard({
               <IconAdjustmentsHorizontal size={18} />
             </ActionIcon>
           </Group>
-          <Collapse in={filtersOpen}>
+          <Collapse expanded={filtersOpen}>
             <Stack gap="sm" pt="sm">
               <Group gap="xs" wrap="wrap">
                 {filters}

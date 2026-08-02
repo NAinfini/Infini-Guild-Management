@@ -75,8 +75,8 @@ describe("StorageTransactionModal", () => {
     expect(screen.getByRole("textbox", { name: "field.quantity" })).toBeInTheDocument();
     expect(screen.getByRole("textbox", { name: "field.note" })).toBeInTheDocument();
     expect(screen.queryByText("tx.adjust")).not.toBeInTheDocument();
-    expect(screen.queryByRole("textbox", { name: "field.item" })).not.toBeInTheDocument();
-    expect(screen.queryByRole("textbox", { name: "field.member" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("combobox", { name: "field.item" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("combobox", { name: "field.member" })).not.toBeInTheDocument();
 
     await user.click(screen.getByRole("button", { name: "action.submitDeposit" }));
 
@@ -94,11 +94,11 @@ describe("StorageTransactionModal", () => {
     const submit = screen.getByRole("button", { name: "action.submit" });
 
     expect(screen.getByText("tx.adjust")).toBeInTheDocument();
-    expect(screen.getByRole("textbox", { name: "field.item" })).toBeInTheDocument();
-    expect(screen.getByRole("textbox", { name: "field.member" })).toBeInTheDocument();
+    expect(screen.getByRole("combobox", { name: "field.item" })).toBeInTheDocument();
+    expect(screen.getByRole("combobox", { name: "field.member" })).toBeInTheDocument();
     expect(submit).toBeDisabled();
 
-    await user.click(screen.getByRole("textbox", { name: "field.member" }));
+    await user.click(screen.getByRole("combobox", { name: "field.member" }));
     await user.keyboard("{ArrowDown}{Enter}");
     await user.click(submit);
 
@@ -115,7 +115,7 @@ describe("StorageTransactionModal", () => {
     const onSubmit = renderModal({ canManageStock: true, mode: "intake" });
     const submit = screen.getByRole("button", { name: "action.submit" });
 
-    expect(screen.getByRole("textbox", { name: "field.memberOptional" })).toHaveValue("");
+    expect(screen.getByRole("combobox", { name: "field.memberOptional" })).toHaveValue("");
     expect(submit).toBeEnabled();
 
     await user.click(submit);
@@ -135,8 +135,8 @@ describe("StorageTransactionModal", () => {
       mode: "distribute",
       initialItem: null,
     });
-    const itemSelect = screen.getByRole("textbox", { name: "field.item" });
-    const memberSelect = screen.getByRole("textbox", { name: "field.member" });
+    const itemSelect = screen.getByRole("combobox", { name: "field.item" });
+    const memberSelect = screen.getByRole("combobox", { name: "field.member" });
     const quantityInput = screen.getByRole("textbox", { name: "field.quantity" });
     const submit = screen.getByRole("button", { name: "action.submit" });
 
@@ -214,9 +214,9 @@ describe("StorageTransactionModal", () => {
         <StorageTransactionModal {...commonProps} items={[item]} />
       </MantineProvider>,
     );
-    await user.click(screen.getByRole("textbox", { name: "field.item" }));
+    await user.click(screen.getByRole("combobox", { name: "field.item" }));
     await user.keyboard("{ArrowDown}{Enter}");
-    await user.click(screen.getByRole("textbox", { name: "field.memberOptional" }));
+    await user.click(screen.getByRole("combobox", { name: "field.memberOptional" }));
     await user.keyboard("{ArrowDown}{Enter}");
     const quantityInput = screen.getByRole("textbox", { name: "field.quantity" });
     await user.clear(quantityInput);
@@ -276,7 +276,7 @@ describe("StorageTransactionModal", () => {
     const content = container.ownerDocument.querySelector<HTMLElement>(".storage-modal-content");
     expect(content).toBeInTheDocument();
     expect(content?.style.maxWidth).toBe("calc(100vw - 16px)");
-    expect(screen.getByRole("textbox", { name: "field.item" })).toHaveStyle({
+    expect(screen.getByRole("combobox", { name: "field.item" })).toHaveStyle({
       minHeight: "44px",
     });
     expect(screen.getByRole("button", { name: "action.submit" })).toHaveStyle({

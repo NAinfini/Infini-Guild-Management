@@ -89,7 +89,7 @@ export function AnnouncementFiltersCard({
               <IconAdjustmentsHorizontal size={18} />
             </ActionIcon>
           </Group>
-          <Collapse in={filtersOpen}>
+          <Collapse expanded={filtersOpen}>
             <Group gap="xs" wrap="wrap" pt="sm">
               {filters}
             </Group>

@@ -178,7 +178,7 @@ export function AdminStatusTab({
             <Badge size="xs" variant="default">{statusHealthLogs.length}</Badge>
           </SectionToggle>
         </div>
-        <Collapse in={healthLogsOpen}>
+        <Collapse expanded={healthLogsOpen}>
           <div className="admin-status-card__body">
             <ScrollArea h={200} scrollbarSize={6} type="always">
               {statusHealthLogs.length === 0 ? (
@@ -291,7 +291,7 @@ export function AdminStatusTab({
           />
         </div>
 
-        <Collapse in={apiConsoleOpen}>
+        <Collapse expanded={apiConsoleOpen}>
           <div className="api-cat-list">
             {visibleApiCategories.map((cat) => (
               <ApiTestCategory

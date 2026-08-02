@@ -152,7 +152,7 @@ export function RosterFilterCard({
                 {renderedCount}/{totalCount}
               </Text>
             </Group>
-            <Collapse in={filtersOpen}>
+            <Collapse expanded={filtersOpen}>
               <Group wrap="wrap" gap={6} mt={6} className="roster-filter-controls">
                 <MultiSelect
                   className="roster-class-select"

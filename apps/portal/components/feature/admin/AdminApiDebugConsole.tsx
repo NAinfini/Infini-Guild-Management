@@ -241,7 +241,7 @@ export function AdminApiDebugConsole({
         </div>
       </div>
 
-      <Collapse in={open}>
+      <Collapse expanded={open}>
         <div className="api-debug__body" ref={bodyRef}>
           {filteredLogs.length === 0 ? (
             <div className="api-debug__empty">

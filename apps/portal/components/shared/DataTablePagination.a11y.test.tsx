@@ -43,7 +43,7 @@ describe("DataTablePagination accessibility", () => {
       </MantineProvider>,
     );
 
-    expect(screen.getByRole("textbox", { name: "Per page" })).toBeInTheDocument();
+    expect(screen.getByRole("combobox", { name: "Per page" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Go to page 2" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Next page" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Last page" })).toBeInTheDocument();

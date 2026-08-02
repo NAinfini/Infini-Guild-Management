@@ -130,7 +130,7 @@ describe("AdminPage responsive and permission states", () => {
 
       expect(screen.getByRole("tablist")).toHaveAttribute("aria-orientation", "horizontal");
       expect(screen.getByRole("tab", { name: /tab\.status/ })).toBeInTheDocument();
-      expect(screen.queryByRole("textbox", { name: "navigation.section" })).not.toBeInTheDocument();
+      expect(screen.queryByRole("combobox", { name: "navigation.section" })).not.toBeInTheDocument();
       expect(responsive.queries).toContain("(max-width: 79.99em)");
     },
   );
@@ -140,7 +140,7 @@ describe("AdminPage responsive and permission states", () => {
 
     expect(screen.getByRole("tablist")).toHaveAttribute("aria-orientation", "vertical");
     expect(screen.getByRole("tab", { name: /tab\.status/ })).toBeInTheDocument();
-    expect(screen.queryByRole("textbox", { name: "navigation.section" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("combobox", { name: "navigation.section" })).not.toBeInTheDocument();
   });
 
   it("shows a permission explanation and dashboard path when no tab is available", () => {
