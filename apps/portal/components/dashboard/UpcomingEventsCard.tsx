@@ -6,7 +6,7 @@ import { ArrowRightIcon, CalendarEventIcon, ClockIcon, FriendsIcon, SwordsIcon, 
 import { memo, useMemo } from "react";
 import { useTranslation } from "react-i18next";
 import { CalendarEventOutlined } from "../../utils/icons";
-import { EventClassQuotaChips } from "../feature/events/EventClassQuotaChips";
+import { EventQuotaBar } from "../feature/events/EventQuotaBar";
 import { EmptyState } from "../shared/EmptyState";
 import {
   cardHeading,
@@ -116,7 +116,7 @@ export const UpcomingEventsCard = memo(function UpcomingEventsCard({
                         {/* 「还缺什么职业」跟活动卡上是同一行筹码：面板是大多数人每天
                             唯一会看的一页，缺人只在活动页显示等于没人看得见。 */}
                         {item.quotaSummary ? (
-                          <EventClassQuotaChips summary={item.quotaSummary} event={item.item} />
+                          <EventQuotaBar summary={item.quotaSummary} event={item.item} />
                         ) : null}
                       </Group>
                     </Stack>

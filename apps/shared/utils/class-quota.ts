@@ -4,8 +4,8 @@
  * 活动可以设若干个「格子」，每格写明需要几个人、以及哪些职业算数。一格可以只认一个
  * 职业，也可以认一组——「需要 2 个治疗，牵丝霖和破竹风都行」就是后者。报名时不要求
  * 成员声明自己以哪个职业出场：一个同时挂着坦克和治疗标签的人，两格都算得上，但两格
- * 都没锁定。这种人叫「摇摆位」。于是「还差几个」不是逐格相减能算出来的：摇摆位到底
- * 补哪一格，取决于整体怎么分配。
+ * 都没锁定。这种人叫「兼职」，只够格一格的叫「专职」。于是「还差几个」不是逐格相减能
+ * 算出来的：兼职的人到底补哪一格，取决于整体怎么分配。
  *
  * 正确的模型是二分图最大匹配（格子侧带容量，即 b-matching）：
  *   报名者 —可胜任→ 格子
@@ -13,20 +13,26 @@
  * 不受分配顺序影响。
  *
  * 单个格子的颜色不能只看它自己：
- *   - dedicated >= required  →「已配齐」。专属的人只能进这一格，谁也抢不走。
+ *   - dedicated >= required  →「已配齐」。专职的人只能进这一格，谁也抢不走。
  *   - 在缺口集合里          →「真缺人」。这一组格子共同争抢同一批人，加起来不够，
  *                              必然有人补不上。
- *   - 其余                  →「摇摆位能补」。专属不够，但整体分配得开。
+ *   - 其余                  →「兼职能补」。专职不够，但整体分配得开。
  *
  * 缺口集合用残量图可达性求出：从任何一个没填满的格子出发，沿「某个报名者能胜任
  * 这一格、但眼下占着另一格」的边回溯，走到的格子都属于同一个争抢组。可以证明该
  * 集合里的格子都不存在「还没被分配、又能胜任它」的人——否则最大匹配还能再加一。
  *
- * 分子用 matched 而不是 dedicated。格子认一组职业之后，绝大多数人会同时够格进好几格，
- * dedicated 会大面积掉到 0——一套完全配得齐的阵容会显示成 `0/2 0/2 1/3`，看着像全线
- * 告急。matched 是这次分配实际坐进来的人数，恒 >= dedicated，读起来才是「这一格现在
- * 有几个人」。代价是它依赖具体分配：摇摆位坐哪一格不唯一，新人报名可能让旁边格子的
- * 数字跳动。颜色仍由上面那套严谨判定给出，不受此影响。
+ * 单个格子有几个人，这件事本身没有唯一答案。最大匹配的**总数**是唯一的，怎么分到各格
+ * 不是：两个人都能坦能奶、坦 2 奶 2 时，(2,0)(1,1)(0,2) 全是最大匹配。所以对外给的
+ * 不是一个数，是一段区间：
+ *   floor   = min(required, dedicated) —— 任何排法下这一格都至少有这么多人。专属的人
+ *             没有别的去处，最大匹配下他们必然坐这儿，否则还能再多匹配一个。
+ *   ceiling = min(required, eligible)  —— 这一格最多坐得下几个人。
+ * 两个都是直接数出来的，不跑匹配，也不随报名顺序抖动。floor == ceiling 时展示层写一个
+ * 数，不同才写区间。
+ *
+ * matched 保留，但只描述 member_ids 那一份具体名单有多长，不再当展示分子——它是多解里
+ * 的任意一个，印在卡片上就是把随机结果说成事实。
  */
 
 export type ClassQuotaRequirement = {
@@ -49,12 +55,16 @@ export type ClassQuotaSlot = {
   key: string;
   class_ids: readonly string[];
   required: number;
-  /** 这次分配实际坐进这一格的人数，也就是筹码上显示的分子。 */
+  /** 这次分配实际坐进这一格的人数。只用来描述 member_ids 这一份名单，不作展示分子。 */
   matched: number;
   /** 只有这一格收得下的报名者数量。颜色判定用，不再当分子。 */
   dedicated: number;
-  /** 够格进这一格的报名者总数，含摇摆位。 */
+  /** 够格进这一格的报名者总数，含兼职。 */
   eligible: number;
+  /** 保底：任何一种排法下这一格都至少有这么多人 = min(required, dedicated)。 */
+  floor: number;
+  /** 上限：这一格最多坐得下这么多人 = min(required, eligible)。 */
+  ceiling: number;
   status: ClassQuotaStatus;
   /** 实际坐进这一格的报名者 id，顺序同传入的报名名单。 */
   member_ids: string[];
@@ -234,6 +244,8 @@ export function summariseClassQuotas(
     matched: occupants[index]!.length,
     dedicated: dedicated[index]!,
     eligible: eligibleCount[index]!,
+    floor: Math.min(quota.required, dedicated[index]!),
+    ceiling: Math.min(quota.required, eligibleCount[index]!),
     status: dedicated[index]! >= quota.required
       ? "filled"
       : deficient.has(index)

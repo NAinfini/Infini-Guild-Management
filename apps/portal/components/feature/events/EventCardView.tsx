@@ -20,7 +20,7 @@ import {
 import React from "react";
 import { useTranslation } from "react-i18next";
 import { MemberAvatarStack } from "@portal/components/shared/MemberAvatarStack";
-import { EventClassQuotaChips } from "./EventClassQuotaChips";
+import { EventQuotaBar } from "./EventQuotaBar";
 import { summariseEventClassQuotas } from "./class-quota-view";
 
 // Icons are not carried in the game config (config stores string identifiers like
@@ -296,7 +296,7 @@ export function EventCardView({
             <MemberAvatarStack members={members} />
           </div>
 
-          {quotaSummary ? <EventClassQuotaChips summary={quotaSummary} event={event} /> : null}
+          {quotaSummary ? <EventQuotaBar summary={quotaSummary} event={event} /> : null}
         </Stack>
       </div>
 

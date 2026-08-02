@@ -6,7 +6,7 @@ import { MemberRoleAvatar } from "@portal/components/shared/MemberRoleAvatar";
 import { resolveClassCatalogItem, useClassCatalogStore } from "@portal/stores/class-catalog";
 import { useMemo } from "react";
 import { useTranslation } from "react-i18next";
-import { EventClassQuotaChips } from "./EventClassQuotaChips";
+import { EventQuotaBar } from "./EventQuotaBar";
 import { groupMembersByClassQuota, summariseEventClassQuotas } from "./class-quota-view";
 
 type MemberEntry = { user: User; profile: MemberProfile };
@@ -94,7 +94,7 @@ export function EventDetailMemberRoster({
   return (
     <>
       {quotaSummary ? (
-        <EventClassQuotaChips
+        <EventQuotaBar
           summary={quotaSummary}
           event={event}
           className="event-detail-modal__quota-row"

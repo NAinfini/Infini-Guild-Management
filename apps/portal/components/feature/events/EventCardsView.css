@@ -89,8 +89,9 @@
   gap: 6px;
   padding: 6px var(--space-sm) 6px var(--space-md);
   border-radius: var(--radius-surface) var(--radius-surface) 0 0;
+  /* 全站材质渐变统一 160deg，由 architecture-boundaries 守着，色带不能自成一套。 */
   background: linear-gradient(
-    180deg,
+    160deg,
     color-mix(in srgb, var(--event-card-accent) 16%, transparent),
     color-mix(in srgb, var(--event-card-accent) 4%, transparent)
   );

@@ -1,0 +1,107 @@
+/* 职业配额条。活动卡、活动详情弹窗和仪表盘共用同一套外观，所以样式跟着组件走，
+   不挂在任何一个页面的 CSS 文件里。 */
+.quota-bar {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+
+/* 段与段之间留 2px 的缝，靠 gap 而不是描边——描边会把 10px 的条吃掉四成。 */
+.quota-bar__track,
+.quota-bar__labels {
+  display: flex;
+  gap: 2px;
+  min-width: 0;
+}
+
+.quota-bar__track {
+  height: 10px;
+}
+
+/*
+ * flex-basis 必须归零：flex-grow 分的是「剩余空间」，留着 auto 基准的话段宽会
+ * 掺进内容宽度，就不再正比于 required 了。标签行用同一套比例，两行才对得齐。
+ */
+.quota-bar__segment,
+.quota-bar__label {
+  flex-basis: 0;
+  flex-shrink: 1;
+  min-width: 0;
+}
+
+.quota-bar__segment {
+  display: flex;
+  overflow: hidden;
+  border-radius: 3px;
+  /* 底色就是「够格的人不够，这一截永远填不满」。 */
+  background: var(--border-strong);
+}
+
+.quota-bar__floor,
+.quota-bar__reach {
+  flex-basis: 0;
+  flex-shrink: 1;
+  min-width: 0;
+}
+
+/* 实心＝专职保底，任何排法下都在。 */
+.quota-bar__floor {
+  background: var(--quota-bar-color);
+}
+
+/* 半透明＝这一格还能坐下几个，但得靠兼职的人过来，不是已经到手的人。 */
+.quota-bar__reach {
+  background: color-mix(in srgb, var(--quota-bar-color) 30%, transparent);
+}
+
+.quota-bar__label {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  overflow: hidden;
+  font-size: var(--text-micro);
+  font-weight: 700;
+  line-height: 1.4;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  color: var(--quota-bar-color);
+}
+
+/* 段窄的时候先截名字，数字不参与收缩——只剩名字就看不出缺没缺了。 */
+.quota-bar__name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.quota-bar__count {
+  flex-shrink: 0;
+}
+
+/* 三档配色是这条横条存在的全部意义：绿=专职已占满，黄=兼职补得上，红=这一组人不够。
+   只分红绿两档的话，「兼职补不补得上」这个计算就白算了——所有没占满的格子都会一律
+   标红，管理员分不出哪一格才是真缺人。活动详情弹窗的分组标题也挂在同一套映射上，
+   三档颜色在整个功能里只写这一处。 */
+.quota-bar__segment[data-quota-status="filled"],
+.quota-bar__label[data-quota-status="filled"],
+.quota-status-text[data-quota-status="filled"] {
+  --quota-bar-color: var(--status-success);
+}
+
+.quota-bar__segment[data-quota-status="flex"],
+.quota-bar__label[data-quota-status="flex"],
+.quota-status-text[data-quota-status="flex"] {
+  --quota-bar-color: var(--status-warning);
+}
+
+.quota-bar__segment[data-quota-status="short"],
+.quota-bar__label[data-quota-status="short"],
+.quota-status-text[data-quota-status="short"] {
+  --quota-bar-color: var(--status-danger);
+}
+
+.quota-status-text {
+  font-variant-numeric: tabular-nums;
+  color: var(--quota-bar-color);
+}

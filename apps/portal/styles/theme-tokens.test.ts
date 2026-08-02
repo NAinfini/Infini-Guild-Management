@@ -62,7 +62,7 @@ export const MIGRATED: string[] = [
      把手走 --text-secondary / --brand-text / --transition-normal。 */
   "apps/portal/components/feature/admin/AdminStatusTab.css",
   /* 职业配额筹码行，活动卡和活动详情弹窗共用。三档配色全部走 --status-* 语义色。 */
-  "apps/portal/components/feature/events/EventClassQuotaChips.css",
+  "apps/portal/components/feature/events/EventQuotaBar.css",
   "apps/portal/components/feature/events/ClassQuotaEditor.css",
   "apps/portal/components/feature/events/EventFormModal.css",
   /* 叠放头像组，活动卡和仪表盘活动条共用。走 --surface-raised / --text-primary。 */

@@ -171,4 +171,32 @@ describe("summariseClassQuotas", () => {
     expect(summary.unassigned).toEqual([]);
     expect(summary.shortfall).toBe(0);
   });
+
+  it("reports a floor and a ceiling that do not depend on which arrangement won", () => {
+    /*
+     * 两个人都能坦能奶，坦 2 奶 2：(2,0)(1,1)(0,2) 全是最大匹配，matched 落在哪一种
+     * 全看增广顺序。floor/ceiling 不看分配——专职 0 人所以保底 0，两人都够格所以上限 2。
+     * 展示层印的是这两个数，才不会把随机结果说成事实。
+     */
+    const summary = summariseClassQuotas(
+      [group("tank", ["裂石威"], 2), group("healer", ["牵丝霖"], 2)],
+      [member("a", "裂石威", "牵丝霖"), member("b", "裂石威", "牵丝霖")],
+    );
+
+    expect(summary.slots.map((slot) => [slot.floor, slot.ceiling])).toEqual([[0, 2], [0, 2]]);
+    // 整体只填得满 2 格，两格在抢同一批人，所以都是 short——保底/上限不参与颜色判定。
+    expect(summary.matchedTotal).toBe(2);
+    expect(summary.slots.map((slot) => slot.status)).toEqual(["short", "short"]);
+  });
+
+  it("caps the floor and the ceiling at required so a surplus never overshoots the bar", () => {
+    // 三个专职挤一个 2 人的格子：保底和上限都封在 2，条上画不出 150%。
+    const summary = summariseClassQuotas(
+      [group("healer", ["牵丝霖"], 2)],
+      [member("a", "牵丝霖"), member("b", "牵丝霖"), member("c", "牵丝霖")],
+    );
+
+    expect(summary.slots[0]).toMatchObject({ dedicated: 3, eligible: 3, floor: 2, ceiling: 2 });
+    expect(summary.slots[0]?.status).toBe("filled");
+  });
 });
