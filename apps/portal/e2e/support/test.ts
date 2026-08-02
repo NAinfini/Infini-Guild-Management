@@ -230,15 +230,16 @@ export function createFlow(page: Page): Flow {
    * 等不静下来也不吞——直接往下走，让下面的断言把那串请求原样报出来（页面在轮询
    * 本身就是缺陷，藏起来只会更难查）。
    */
-  let apiInFlight = 0;
+  /* 记的是在飞的请求本身而不是个数：awaitApi 要凭它认出「这一发是上一步的，不是这次操作的」。 */
+  const apiInFlight = new Set<Request>();
   let lastApiSettledAt = 0;
   const isApiUrl = (url: string): boolean => pathOf(url).startsWith("/api/");
   page.on("request", (request) => {
-    if (isApiUrl(request.url())) apiInFlight += 1;
+    if (isApiUrl(request.url())) apiInFlight.add(request);
   });
   const releaseRequest = (request: Request): void => {
     if (!isApiUrl(request.url())) return;
-    apiInFlight = Math.max(0, apiInFlight - 1);
+    apiInFlight.delete(request);
     lastApiSettledAt = Date.now();
   };
   page.on("requestfinished", releaseRequest);
@@ -248,14 +249,29 @@ export function createFlow(page: Page): Flow {
     const deadline = Date.now() + timeoutMs;
     for (;;) {
       const quietFor = Date.now() - lastApiSettledAt;
-      if (apiInFlight === 0 && quietFor >= quietMs) return;
+      if (apiInFlight.size === 0 && quietFor >= quietMs) return;
       if (Date.now() >= deadline) return;
-      await page.waitForTimeout(apiInFlight > 0 ? 50 : quietMs - quietFor);
+      await page.waitForTimeout(apiInFlight.size > 0 ? 50 : quietMs - quietFor);
     }
   }
 
   async function awaitApi(action: () => Promise<void>, expected: ApiExpectation): Promise<unknown> {
-    const waiter = page.waitForResponse((response) => matches(response, expected));
+    /*
+     * 只认这次操作之后才发出去的那一发。
+     *
+     * ApiExpectation.path 是正则，一条正则常常同时匹配上一步还没落地的请求
+     * （进页面的列表请求和搜索的列表请求走的是同一个路径）。不排除它们的话，
+     * 谁先回来就算谁：断言「这次点击发出了预期请求」实际退化成
+     * 「网络上恰好有一发形状对得上的请求」——绿得不对，而真正属于这次点击的那一发
+     * 顺延给了下一个等待者，被算成下一个控件的账。
+     *
+     * 这类错位只在时序变化时才暴露，本地一直是绿的：wiki-history 的「切档」等到的是
+     * 上一次点击的迟到响应，wiki-filters 的置顶开关抓到的是搜索那一发
+     * （URL 里根本没有 pinned 参数，断言当场读出 null）。两条都只在 CI 上挂。
+     */
+    const stale = new Set(apiInFlight);
+    const waiter = page.waitForResponse((response) =>
+      !stale.has(response.request()) && matches(response, expected));
     await action();
     const response = await waiter;
     const label = `${expected.method} ${pathOf(response.url())}`;
