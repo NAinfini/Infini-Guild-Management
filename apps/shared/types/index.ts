@@ -1,7 +1,7 @@
 import type { z } from "zod";
 import type { PushEntityType, PushHint } from "../constants/push-hints";
 import type { userSchema, memberProfileSchema } from "../schemas/user";
-import type { eventSchema, eventParticipantSchema, eventPollSchema, eventRaffleWinnerSchema, recurringTemplateSchema } from "../schemas/event";
+import type { eventSchema, eventClassQuotaSchema, eventParticipantSchema, eventPollSchema, eventRaffleWinnerSchema, recurringTemplateSchema } from "../schemas/event";
 import type { announcementSchema } from "../schemas/announcement";
 import type {
   guildWarActiveResponseSchema,
@@ -24,6 +24,7 @@ export type User = z.infer<typeof userSchema>;
 export type MemberProfile = z.infer<typeof memberProfileSchema>;
 export type Event = z.infer<typeof eventSchema>;
 export type EventParticipant = z.infer<typeof eventParticipantSchema>;
+export type EventClassQuota = z.infer<typeof eventClassQuotaSchema>;
 export type EventPoll = z.infer<typeof eventPollSchema>;
 export type EventRaffleWinner = z.infer<typeof eventRaffleWinnerSchema>;
 export type RecurringTemplate = z.infer<typeof recurringTemplateSchema>;

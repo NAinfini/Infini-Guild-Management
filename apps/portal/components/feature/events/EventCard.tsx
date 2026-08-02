@@ -440,7 +440,7 @@ export function EventCard({
             >
               <span
                 className="event-card__capacity-bar-fill"
-                style={{ width: `${Math.round(capacityRatio * 100)}%` }}
+                style={{ "--event-card-capacity-ratio": capacityRatio } as React.CSSProperties}
               />
             </div>
           ) : null}

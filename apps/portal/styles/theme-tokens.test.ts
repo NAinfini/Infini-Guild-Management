@@ -117,11 +117,15 @@ const RUNTIME_INJECTED_VARS: string[] = [
    * 这个变量的 var() 兜底（rule 1 不允许兜底），暴露出它并不落在
    * --mantine-color- 前缀下，需要单独列出处。 */
   "--mantine-font-family-monospace",
-  /* EventCardAvatarStrip.tsx:71，在 .event-card__avatar-grid 根元素的 style
-   * 上无条件内联写入（avatarSize 用 ?? AVATAR_MAX_SIZE 兜底，不会是
-   * undefined）。Task 7 批 B 在 EventCardsView.css 里去掉了这个变量的 var()
-   * 兜底（rule 1 不允许兜底），暴露出它是运行期注入而非 CSS 定义。 */
+  /* EventCardAvatarStrip.tsx，在 .event-card__avatar-grid 根元素的 style 上
+   * 无条件内联写入（AVATAR_SIZE 是常量，不会是 undefined）。Task 7 批 B 在
+   * EventCardsView.css 里去掉了这个变量的 var() 兜底（rule 1 不允许兜底），
+   * 暴露出它是运行期注入而非 CSS 定义。 */
   "--event-card-avatar-size",
+  /* EventCard.tsx，容量进度条的填充比例，在 .event-card__capacity-bar-fill 的
+   * style 上内联写入。进度条本身只在 capacityRatio !== null 时渲染，所以有这个
+   * 元素就一定有这个值。用比例而不是宽度是因为 width 是布局属性，动它会重排。 */
+  "--event-card-capacity-ratio",
   /* --badge-color：管理员自选的任意色号，运行期由内联 style 无条件写入
    * （MemberCard.tsx:24 的 MemberBadge；AdminBadgesSection.tsx:102/194/231
    * 的表单预览、侧栏列表徽章、详情大徽章）。三处消费值都经

@@ -1,4 +1,4 @@
-import { EVENT_TYPES, type Event } from "@guild/shared";
+import { EVENT_TYPES, type Event, type EventClassQuota } from "@guild/shared";
 import { useConfirmDialog } from "@portal/hooks/useConfirmDialog";
 import { useCallback, useState } from "react";
 import { useDisclosure } from "@mantine/hooks";
@@ -21,6 +21,7 @@ type EditorSnapshot = {
   pollResultsVisibility: "always" | "after_vote" | "after_close";
   pollShowVoterNames: boolean;
   winnerCount: string;
+  classQuotas: EventClassQuota[];
   attachmentSnapshot: string;
 };
 
@@ -72,6 +73,7 @@ export function useEventsEditorController({ attachmentSnapshot }: UseEventsEdito
   const [editorPollResultsVisibility, setEditorPollResultsVisibility] = useState<"always" | "after_vote" | "after_close">("after_vote");
   const [editorPollShowVoterNames, setEditorPollShowVoterNames] = useState(false);
   const [editorWinnerCount, setEditorWinnerCount] = useState("");
+  const [editorClassQuotas, setEditorClassQuotas] = useState<EventClassQuota[]>([]);
   const [editorBaseline, setEditorBaseline] = useState<string | null>(null);
 
   const editorStartIso = toIso(editorStartAt);
@@ -93,6 +95,7 @@ export function useEventsEditorController({ attachmentSnapshot }: UseEventsEdito
     pollResultsVisibility: editorPollResultsVisibility,
     pollShowVoterNames: editorPollShowVoterNames,
     winnerCount: editorWinnerCount,
+    classQuotas: editorClassQuotas,
     attachmentSnapshot,
   });
   const isEditorDirty = editorOpen && editorBaseline !== null && editorTouched && editorCurrentSnapshot !== editorBaseline;
@@ -157,6 +160,11 @@ export function useEventsEditorController({ attachmentSnapshot }: UseEventsEdito
     setEditorWinnerCount(value);
   }, []);
 
+  const handleEditorClassQuotasChange = useCallback((value: EventClassQuota[]) => {
+    setEditorTouched(true);
+    setEditorClassQuotas(value);
+  }, []);
+
   const openCreateEditor = useCallback((initialDateKey?: string) => {
     const now = new Date();
     const fallbackStart = new Date(now.getTime() + 60 * 60_000);
@@ -185,6 +193,7 @@ export function useEventsEditorController({ attachmentSnapshot }: UseEventsEdito
     setEditorPollResultsVisibility("after_vote");
     setEditorPollShowVoterNames(false);
     setEditorWinnerCount("");
+    setEditorClassQuotas([]);
     setEditorBaseline(
       buildEditorSnapshot({
         mode: "create",
@@ -202,6 +211,7 @@ export function useEventsEditorController({ attachmentSnapshot }: UseEventsEdito
         pollResultsVisibility: "after_vote",
         pollShowVoterNames: false,
         winnerCount: "",
+        classQuotas: [],
         attachmentSnapshot: "[]",
       }),
     );
@@ -230,6 +240,9 @@ export function useEventsEditorController({ attachmentSnapshot }: UseEventsEdito
     setEditorPollShowVoterNames(event.poll?.show_voter_names ?? false);
     const winnerCountStr = event.winner_count != null ? String(event.winner_count) : "";
     setEditorWinnerCount(winnerCountStr);
+    /* 服务端已经按目录顺序排好，这里原样接住——顺序变化也算改动，不该被悄悄抹平。 */
+    const classQuotas = event.class_quotas.map((quota) => ({ ...quota }));
+    setEditorClassQuotas(classQuotas);
     setEditorBaseline(
       buildEditorSnapshot({
         mode: "edit",
@@ -247,6 +260,7 @@ export function useEventsEditorController({ attachmentSnapshot }: UseEventsEdito
         pollResultsVisibility: event.poll?.results_visibility ?? "after_vote",
         pollShowVoterNames: event.poll?.show_voter_names ?? false,
         winnerCount: winnerCountStr,
+        classQuotas,
         attachmentSnapshot: initialAttachmentSnapshot ?? "[]",
       }),
     );
@@ -294,6 +308,7 @@ export function useEventsEditorController({ attachmentSnapshot }: UseEventsEdito
     editorPollResultsVisibility,
     editorPollShowVoterNames,
     editorWinnerCount,
+    editorClassQuotas,
     editorStartIso,
     editorEndIso,
     isEditorDirty,
@@ -311,6 +326,7 @@ export function useEventsEditorController({ attachmentSnapshot }: UseEventsEdito
     setEditorPollResultsVisibility: handleEditorPollResultsVisibilityChange,
     setEditorPollShowVoterNames: handleEditorPollShowVoterNamesChange,
     setEditorWinnerCount: handleEditorWinnerCountChange,
+    setEditorClassQuotas: handleEditorClassQuotasChange,
     openCreateEditor,
     openEditEditor,
     closeEditor,

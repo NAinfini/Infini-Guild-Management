@@ -137,6 +137,8 @@ function EventEditHarness({
         onDescriptionChange={() => {}}
         autoArchive={false}
         onAutoArchiveChange={() => {}}
+        classQuotas={[]}
+        onClassQuotasChange={() => {}}
         attachmentItems={attachmentItems}
         onAttachmentsChange={setAttachmentItems}
         onFilesSelected={(files) => {

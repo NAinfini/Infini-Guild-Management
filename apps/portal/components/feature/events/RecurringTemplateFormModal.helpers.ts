@@ -1,4 +1,4 @@
-import { EVENT_TYPES, type RecurringTemplate } from "@guild/shared";
+import { EVENT_TYPES, type EventClassQuota, type RecurringTemplate } from "@guild/shared";
 import { computeNextOccurrence, localWeekdayToUtc, utcWeekdayToLocal } from "@guild/shared/utils/recurrence";
 
 export { localWeekdayToUtc, utcWeekdayToLocal };
@@ -25,6 +25,7 @@ export type RecurringTemplateFormPayload = {
   };
   visibility_offset_minutes?: number;
   auto_archive?: boolean;
+  class_quotas: EventClassQuota[];
 };
 
 export type RecurringTemplateFormState = {
@@ -35,6 +36,7 @@ export type RecurringTemplateFormState = {
   durationValue: number;
   durationUnit: DurationUnit;
   capacity: string;
+  classQuotas: EventClassQuota[];
   visibilityOffsetDays: number | "";
   visibilityOffsetHours: number | "";
   visibilityOffsetMinutes: number | "";
@@ -114,6 +116,7 @@ export function buildFormState(template: RecurringTemplate | null): RecurringTem
     durationValue: duration.value,
     durationUnit: duration.unit,
     capacity: template?.capacity === null ? "" : String(template?.capacity ?? ""),
+    classQuotas: (template?.class_quotas ?? []).map((quota) => ({ ...quota })),
     recurrenceFreq: template?.recurrence_rule?.frequency ?? "weekly",
     recurrenceInterval: String(template?.recurrence_rule?.interval ?? 1),
     recurrenceDays: localDays,

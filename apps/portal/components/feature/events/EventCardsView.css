@@ -254,12 +254,17 @@
   background: color-mix(in srgb, var(--text-primary) 8%, transparent);
 }
 
+/* 用 scaleX 而不是 width：宽度是布局属性，动它会让浏览器每帧重排整张卡片。
+   组件把比例写进 --event-card-capacity-ratio，这里横向缩放整条。 */
 .event-card__capacity-bar-fill {
   display: block;
+  width: 100%;
   height: 100%;
   border-radius: inherit;
   background: var(--event-card-accent);
-  transition: width var(--transition-normal);
+  transform: scaleX(var(--event-card-capacity-ratio));
+  transform-origin: left center;
+  transition: transform var(--transition-normal);
 }
 
 /* 满员转绿，跟筹码行的「已配齐」用同一个语义色，两处说的是同一件事：不用再拉人了。 */

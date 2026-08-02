@@ -108,6 +108,8 @@ function EventCreationHarness({
         onDescriptionChange={setDescription}
         autoArchive={autoArchive}
         onAutoArchiveChange={setAutoArchive}
+        classQuotas={[]}
+        onClassQuotasChange={() => {}}
         attachmentItems={attachmentItems}
         onAttachmentsChange={setAttachmentItems}
         onFilesSelected={(files) => {

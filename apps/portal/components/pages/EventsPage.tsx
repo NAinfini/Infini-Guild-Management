@@ -136,6 +136,7 @@ export function EventsPage() {
     editorPollResultsVisibility,
     editorPollShowVoterNames,
     editorWinnerCount,
+    editorClassQuotas,
     editorStartIso,
     editorEndIso,
     setEditorType,
@@ -149,6 +150,7 @@ export function EventsPage() {
     setEditorPollResultsVisibility,
     setEditorPollShowVoterNames,
     setEditorWinnerCount,
+    setEditorClassQuotas,
     markEditorTouched,
     openCreateEditor: openCreateEditorBase,
     openEditEditor: openEditEditorBase,
@@ -228,6 +230,7 @@ export function EventsPage() {
       pollResultsVisibility: editorPollResultsVisibility,
       pollShowVoterNames: editorPollShowVoterNames,
       winnerCount: editorWinnerCount,
+      classQuotas: editorClassQuotas,
     });
   };
 
@@ -379,6 +382,8 @@ export function EventsPage() {
             onPollShowVoterNamesChange={setEditorPollShowVoterNames}
             winnerCount={editorWinnerCount}
             onWinnerCountChange={setEditorWinnerCount}
+            classQuotas={editorClassQuotas}
+            onClassQuotasChange={setEditorClassQuotas}
             attachmentItems={attachmentItems}
             onAttachmentsChange={handleAttachmentItemsChange}
             onFilesSelected={handleFilesSelected}

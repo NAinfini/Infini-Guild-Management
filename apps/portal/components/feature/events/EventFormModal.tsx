@@ -1,4 +1,4 @@
-import { EVENT_TYPES } from "@guild/shared";
+import { EVENT_TYPES, type EventClassQuota } from "@guild/shared";
 import {
   Button,
   Group,
@@ -16,6 +16,7 @@ import {
 import { XIcon, PlusIcon, SaveIcon } from "@portal/components/icons";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
+import { ClassQuotaEditor } from "./ClassQuotaEditor";
 import { ImageGridEditor } from "@portal/components/shared/ImageGridEditor";
 import { NativeDateTimeInput } from "@portal/components/shared/NativeDateTimeInput";
 import type { ImageGridEditorItem } from "@portal/types/media";
@@ -48,6 +49,8 @@ type EventFormModalProps = {
   onPollShowVoterNamesChange?: (value: boolean) => void;
   winnerCount?: string;
   onWinnerCountChange?: (value: string) => void;
+  classQuotas: EventClassQuota[];
+  onClassQuotasChange: (value: EventClassQuota[]) => void;
   attachmentItems: ImageGridEditorItem[];
   onAttachmentsChange: (items: ImageGridEditorItem[]) => void;
   onFilesSelected: (files: File[]) => void;
@@ -86,6 +89,8 @@ export function EventFormModal({
   onPollShowVoterNamesChange,
   winnerCount = "",
   onWinnerCountChange,
+  classQuotas,
+  onClassQuotasChange,
   attachmentItems,
   onAttachmentsChange,
   onFilesSelected,
@@ -247,6 +252,11 @@ export function EventFormModal({
             maw={200}
           />
         )}
+
+        {/* ── Class quotas ── 投票和抽奖没有阵容可言，服务端也拒收它们的配额。 */}
+        {!isPoll && !isRaffle ? (
+          <ClassQuotaEditor value={classQuotas} onChange={onClassQuotasChange} disabled={!canManage} />
+        ) : null}
 
         {/* ── Description ── */}
         <Textarea

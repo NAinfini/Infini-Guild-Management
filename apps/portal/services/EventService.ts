@@ -1,4 +1,4 @@
-import type { Event } from "@guild/shared";
+import type { Event, EventClassQuota } from "@guild/shared";
 import type { QueryClient } from "@tanstack/react-query";
 import {
   addEventParticipant,
@@ -96,6 +96,7 @@ export type EventSaveInput = {
   pollResultsVisibility?: "always" | "after_vote" | "after_close";
   pollShowVoterNames?: boolean;
   winnerCount?: string;
+  classQuotas?: EventClassQuota[];
   attachmentItems: AttachmentItem[];
 };
 
@@ -217,6 +218,14 @@ export class EventService {
       ? Number.parseInt(input.winnerCount ?? "", 10) || undefined
       : undefined;
 
+    /*
+     * 投票和抽奖必须发空数组，不能把编辑器里残留的配额带过去：服务端对这两种类型
+     * 收到非空配额会整个请求拒收。表单在类型切成投票/抽奖时只是把控件藏了，状态还在。
+     */
+    const classQuotas = input.eventType === "poll" || input.eventType === "raffle"
+      ? []
+      : input.classQuotas ?? [];
+
     return {
       type: input.eventType,
       title,
@@ -234,6 +243,7 @@ export class EventService {
           }
         : undefined,
       winner_count: winnerCount,
+      class_quotas: classQuotas,
     };
   }
 

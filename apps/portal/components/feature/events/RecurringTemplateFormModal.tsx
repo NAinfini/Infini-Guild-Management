@@ -15,6 +15,7 @@ import {
 } from "@mantine/core";
 import { CalendarRepeatIcon, PlayerPauseIcon, PlayerPlayIcon, SaveIcon, PlusIcon, TrashIcon, XIcon } from "@portal/components/icons";
 import { NativeDateTimeInput } from "@portal/components/shared/NativeDateTimeInput";
+import { ClassQuotaEditor } from "./ClassQuotaEditor";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { notifyError } from "../../../utils/notifications";
@@ -74,6 +75,7 @@ export function RecurringTemplateFormModal({
     durationValue,
     durationUnit,
     capacity,
+    classQuotas,
     recurrenceFreq,
     recurrenceInterval,
     recurrenceDays,
@@ -125,9 +127,11 @@ export function RecurringTemplateFormModal({
       },
       visibility_offset_minutes: totalOffsetMinutes > 0 ? totalOffsetMinutes : undefined,
       auto_archive: autoArchive,
+      /* 切成投票/抽奖时控件只是藏了，状态还在；这两种类型带着配额会被服务端整个拒收。 */
+      class_quotas: eventType === "poll" || eventType === "raffle" ? [] : classQuotas,
     });
   }, [
-    startTime, durationValue, durationUnit, title, description, eventType, capacity,
+    startTime, durationValue, durationUnit, title, description, eventType, capacity, classQuotas,
     recurrenceFreq, recurrenceInterval, recurrenceDays, recurrenceMonthDay,
     recurrenceEndMode, recurrenceEndDate, recurrenceEndCount,
     visibilityOffsetDays, visibilityOffsetHours, visibilityOffsetMinutes, autoArchive, onSave, t,
@@ -366,6 +370,14 @@ export function RecurringTemplateFormModal({
                   placeholder={t("field.unlimited")}
                   style={{ maxWidth: 160 }}
                 />
+
+                {/* 投票和抽奖没有阵容可言，服务端也拒收它们的配额。 */}
+                {eventType !== "poll" && eventType !== "raffle" ? (
+                  <ClassQuotaEditor
+                    value={classQuotas}
+                    onChange={(next) => setFormState((current) => ({ ...current, classQuotas: next }))}
+                  />
+                ) : null}
 
                 <div className="rtf-recurrence-divider" />
 
