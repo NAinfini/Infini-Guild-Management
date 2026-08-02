@@ -276,51 +276,6 @@
   padding: var(--space-xs) 0;
 }
 
-/* 职业配额筹码行。放在头像下面：先看见来了谁，再看见还缺什么。 */
-.event-card__quota-row {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 4px;
-}
-
-.event-card__quota-chip {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  padding: 2px 7px 2px 4px;
-  border-radius: var(--shape-pill);
-  font-size: var(--text-micro);
-  font-weight: 700;
-  line-height: 1;
-  font-variant-numeric: tabular-nums;
-  white-space: nowrap;
-  border: 1px solid color-mix(in srgb, var(--quota-chip-color) 30%, transparent);
-  background: color-mix(in srgb, var(--quota-chip-color) 12%, transparent);
-  color: var(--quota-chip-color);
-}
-
-/* 三档配色就是这一行的全部意义：绿=专属已占满，琥珀=摇摆位补得上，红=这一组人不够。
-   只分红绿的话「摇摆位补不补得上」这个计算就白算了——所有没占满的格子都会一律
-   标红，管理员分不出哪一格才是真缺人。 */
-.event-card__quota-chip[data-quota-status="filled"] {
-  --quota-chip-color: var(--status-success);
-}
-
-.event-card__quota-chip[data-quota-status="flex"] {
-  --quota-chip-color: var(--status-warning);
-}
-
-.event-card__quota-chip[data-quota-status="short"] {
-  --quota-chip-color: var(--status-danger);
-}
-
-/* 摇摆位筹码报的是人数，不是某一格的缺口，所以走中性色，不参与三档配色。 */
-.event-card__quota-chip[data-quota-status="swing"] {
-  --quota-chip-color: var(--text-secondary);
-  padding-left: 5px;
-}
-
 .event-card__raffle-winners {
   position: relative;
   display: flex;

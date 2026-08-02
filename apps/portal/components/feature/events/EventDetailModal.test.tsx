@@ -93,6 +93,7 @@ describe("EventDetailModal", () => {
             description: null,
             capacity: null,
             attachments: [attachmentKey],
+            class_quotas: [],
           } as never}
           members={[]}
           allUsers={[]}
@@ -120,6 +121,7 @@ describe("EventDetailModal", () => {
       description: "Should not linger after close",
       capacity: null,
       attachments: [],
+      class_quotas: [],
     } as never;
 
     const { rerender } = render(
@@ -171,6 +173,7 @@ describe("EventDetailModal", () => {
             signup_locked: true,
             archived_at: "2026-03-12T18:00:00.000Z",
             attachments: [],
+            class_quotas: [],
           } as never}
           members={[]}
           allUsers={[]}
@@ -219,6 +222,7 @@ describe("EventDetailModal", () => {
             capacity: 10,
             archived_at: null,
             attachments: [],
+            class_quotas: [],
             ...eventOverrides,
           } as never}
           members={[member] as never}
@@ -252,6 +256,7 @@ describe("EventDetailModal", () => {
             description: null,
             capacity: null,
             attachments: [],
+            class_quotas: [],
             poll: {
               results_visibility: "after_vote",
               show_voter_names: false,
@@ -313,6 +318,7 @@ describe("EventDetailModal", () => {
             description: null,
             capacity: null,
             attachments: [],
+            class_quotas: [],
             poll: {
               results_visibility: "after_vote",
               show_voter_names: false,
@@ -360,6 +366,7 @@ describe("EventDetailModal", () => {
             description: null,
             capacity: 10,
             attachments: [],
+            class_quotas: [],
           } as never}
           members={[]}
           allUsers={candidates as never}
@@ -402,6 +409,7 @@ describe("EventDetailModal", () => {
               description: null,
               capacity: 10,
               attachments: [],
+              class_quotas: [],
             } as never}
             members={[
               {

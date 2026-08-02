@@ -249,6 +249,11 @@
   min-height: 38px;
 }
 
+/* 筹码行放在名单上方：先看整体缺什么，再往下逐格看是谁。 */
+.event-detail-modal__quota-row {
+  margin-bottom: var(--space-md);
+}
+
 .event-detail-modal__member-list {
   max-height: 360px;
   overflow-y: auto;

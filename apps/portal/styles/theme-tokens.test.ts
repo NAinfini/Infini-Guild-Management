@@ -61,6 +61,8 @@ export const MIGRATED: string[] = [
      卡片走 --surface-base / --border-subtle / --radius-surface，
      把手走 --text-secondary / --brand-text / --transition-normal。 */
   "apps/portal/components/feature/admin/AdminStatusTab.css",
+  /* 职业配额筹码行，活动卡和活动详情弹窗共用。三档配色全部走 --status-* 语义色。 */
+  "apps/portal/components/feature/events/EventClassQuotaChips.css",
 ];
 
 /** 唯一允许出现 hex 的文件。 */

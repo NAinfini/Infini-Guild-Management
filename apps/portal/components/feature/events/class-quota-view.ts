@@ -1,5 +1,5 @@
 import type { Event, MemberProfile, User } from "@guild/shared";
-import { summariseClassQuotas, type ClassQuotaSummary } from "@guild/shared/utils/class-quota";
+import { summariseClassQuotas, type ClassQuotaSlot, type ClassQuotaSummary } from "@guild/shared/utils/class-quota";
 
 type MemberEntry = { user: User; profile: MemberProfile };
 
@@ -21,4 +21,58 @@ export function summariseEventClassQuotas(
     event.class_quotas,
     members.map((member) => ({ user_id: member.user.id, class_ids: member.profile.classes })),
   );
+}
+
+export type ClassQuotaMemberGroup =
+  | { kind: "quota"; slot: ClassQuotaSlot; members: MemberEntry[] }
+  | { kind: "flexible" | "unassigned"; members: MemberEntry[] };
+
+/**
+ * 把名单按配额分组，供活动详情弹窗使用。
+ *
+ * 分组规则跟 summariseClassQuotas 的计数规则必须是同一条，否则弹窗里数出来的人头
+ * 会跟筹码上的分子对不上：只沾一个配额职业的人进那一格（就是筹码的分子），沾两个
+ * 及以上的人进「摇摆位」，一个都不沾的人进「无配额职业」。
+ *
+ * 空组也保留——「这一格一个人都没有」正是最需要被看见的情况。摇摆位和无配额两组
+ * 为空时不返回，它们没有「应有几人」的期望值，空着不说明任何事。
+ */
+export function groupMembersByClassQuota(
+  summary: ClassQuotaSummary,
+  members: readonly MemberEntry[],
+): ClassQuotaMemberGroup[] {
+  const slotIndexById = new Map(summary.slots.map((slot, index) => [slot.class_id, index]));
+  const buckets: MemberEntry[][] = summary.slots.map(() => []);
+  const flexible: MemberEntry[] = [];
+  const unassigned: MemberEntry[] = [];
+
+  for (const member of members) {
+    const indices = new Set<number>();
+    for (const classId of member.profile.classes) {
+      const index = slotIndexById.get(classId);
+      if (index !== undefined) {
+        indices.add(index);
+      }
+    }
+    if (indices.size === 0) {
+      unassigned.push(member);
+    } else if (indices.size === 1) {
+      buckets[[...indices][0]!]!.push(member);
+    } else {
+      flexible.push(member);
+    }
+  }
+
+  const groups: ClassQuotaMemberGroup[] = summary.slots.map((slot, index) => ({
+    kind: "quota" as const,
+    slot,
+    members: buckets[index]!,
+  }));
+  if (flexible.length > 0) {
+    groups.push({ kind: "flexible", members: flexible });
+  }
+  if (unassigned.length > 0) {
+    groups.push({ kind: "unassigned", members: unassigned });
+  }
+  return groups;
 }

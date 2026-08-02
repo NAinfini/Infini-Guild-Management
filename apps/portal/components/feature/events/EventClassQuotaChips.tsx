@@ -4,6 +4,7 @@ import { ReplaceIcon } from "@portal/components/icons";
 import { ClassIcon } from "@portal/components/shared/ClassIcon";
 import { resolveClassCatalogItem, useClassCatalogStore } from "@portal/stores/class-catalog";
 import { useTranslation } from "react-i18next";
+import "./EventClassQuotaChips.css";
 
 /*
  * 活动卡上的职业配额筹码行。
@@ -20,14 +21,16 @@ import { useTranslation } from "react-i18next";
  */
 type EventClassQuotaChipsProps = {
   summary: ClassQuotaSummary;
+  /** 额外的类名，让调用方处理自己的外边距，不必把布局塞进筹码行本身。 */
+  className?: string;
 };
 
-export function EventClassQuotaChips({ summary }: EventClassQuotaChipsProps) {
+export function EventClassQuotaChips({ summary, className }: EventClassQuotaChipsProps) {
   const { t } = useTranslation("events");
   const catalog = useClassCatalogStore((state) => state.items);
 
   return (
-    <div className="event-card__quota-row">
+    <div className={className ? `quota-chips ${className}` : "quota-chips"}>
       {summary.slots.map((slot) => {
         const item = resolveClassCatalogItem(slot.class_id, catalog);
         return (
@@ -40,9 +43,9 @@ export function EventClassQuotaChips({ summary }: EventClassQuotaChipsProps) {
               eligible: slot.eligible,
             })}
           >
-            <span className="event-card__quota-chip" data-quota-status={slot.status}>
+            <span className="quota-chips__chip" data-quota-status={slot.status}>
               <ClassIcon item={item} size={16} framed={false} />
-              <span className="event-card__quota-count">
+              <span className="quota-chips__count">
                 {slot.dedicated}/{slot.required}
               </span>
             </span>
@@ -52,9 +55,9 @@ export function EventClassQuotaChips({ summary }: EventClassQuotaChipsProps) {
       {/* 一个摇摆位都没有时这个筹码没有信息量，直接不渲染。 */}
       {summary.flexible > 0 ? (
         <Tooltip label={t("quota.flexible.hint", { count: summary.flexible })}>
-          <span className="event-card__quota-chip" data-quota-status="swing">
+          <span className="quota-chips__chip" data-quota-status="swing">
             <ReplaceIcon size={13} />
-            <span className="event-card__quota-count">{summary.flexible}</span>
+            <span className="quota-chips__count">{summary.flexible}</span>
           </span>
         </Tooltip>
       ) : null}
