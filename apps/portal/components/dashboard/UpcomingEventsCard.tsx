@@ -1,7 +1,7 @@
 import type { Event } from "@guild/shared";
 import { activeGame } from "@guild/shared/games";
 import { Badge, Button, Group, Paper, Stack, Text } from "@mantine/core";
-import { MemberRoleAvatar } from "../shared/MemberRoleAvatar";
+import { MemberAvatarStack } from "../shared/MemberAvatarStack";
 import { ArrowRightIcon, CalendarEventIcon, ClockIcon, FriendsIcon, SwordsIcon, TargetArrowIcon } from "@portal/components/icons";
 import { memo, useMemo } from "react";
 import { useTranslation } from "react-i18next";
@@ -114,18 +114,11 @@ export const UpcomingEventsCard = memo(function UpcomingEventsCard({
                         </Group>
                       </Group>
                     </Stack>
-                      {/* Ten 48px avatars ate the row and truncated the event title to
-                          "Weekly Missio…". Six smaller ones leave the title readable. */}
-                      <Group gap={4} wrap="nowrap" className="upcoming-event-row__avatars" style={{ flexShrink: 0 }}>
-                        {item.members.slice(0, 6).map((member) => (
-                          <MemberRoleAvatar key={member.user.id} user={member.user} profile={member.profile} size={36} />
-                        ))}
-                      {item.members.length > 6 ? (
-                        <Text size="xs" c="dimmed" fw={600}>
-                          +{item.members.length - 6}
-                        </Text>
-                      ) : null}
-                    </Group>
+                    {/* 跟活动卡用同一摞头像：叠着放、不挂职业圈，不再让一排头像把标题挤成
+                        "Weekly Missio…"。 */}
+                    <div className="upcoming-event-row__avatars">
+                      <MemberAvatarStack members={item.members} />
+                    </div>
                     <Text
                       className="upcoming-event-row__capacity"
                       aria-label={t("card.upcomingEvents.capacity", {

@@ -63,6 +63,8 @@ export const MIGRATED: string[] = [
   "apps/portal/components/feature/admin/AdminStatusTab.css",
   /* 职业配额筹码行，活动卡和活动详情弹窗共用。三档配色全部走 --status-* 语义色。 */
   "apps/portal/components/feature/events/EventClassQuotaChips.css",
+  /* 叠放头像组，活动卡和仪表盘活动条共用。走 --surface-raised / --text-primary。 */
+  "apps/portal/components/shared/MemberAvatarStack.css",
 ];
 
 /** 唯一允许出现 hex 的文件。 */
@@ -117,11 +119,10 @@ const RUNTIME_INJECTED_VARS: string[] = [
    * 这个变量的 var() 兜底（rule 1 不允许兜底），暴露出它并不落在
    * --mantine-color- 前缀下，需要单独列出处。 */
   "--mantine-font-family-monospace",
-  /* EventCardAvatarStrip.tsx，在 .event-card__avatar-grid 根元素的 style 上
-   * 无条件内联写入（AVATAR_SIZE 是常量，不会是 undefined）。Task 7 批 B 在
-   * EventCardsView.css 里去掉了这个变量的 var() 兜底（rule 1 不允许兜底），
-   * 暴露出它是运行期注入而非 CSS 定义。 */
-  "--event-card-avatar-size",
+  /* MemberAvatarStack.tsx，在 .member-avatar-stack 根元素的 style 上无条件内联
+   * 写入（AVATAR_SIZE 是常量，不会是 undefined）。Task 7 批 B 去掉了这个变量的
+   * var() 兜底（rule 1 不允许兜底），暴露出它是运行期注入而非 CSS 定义。 */
+  "--member-avatar-stack-size",
   /* EventCard.tsx，容量进度条的填充比例，在 .event-card__capacity-bar-fill 的
    * style 上内联写入。进度条本身只在 capacityRatio !== null 时渲染，所以有这个
    * 元素就一定有这个值。用比例而不是宽度是因为 width 是布局属性，动它会重排。 */

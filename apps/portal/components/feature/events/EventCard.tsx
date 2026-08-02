@@ -42,7 +42,7 @@ import {
 } from "@portal/components/icons";
 import React from "react";
 import { useTranslation } from "react-i18next";
-import { EventCardAvatarStrip } from "./EventCardAvatarStrip";
+import { MemberAvatarStack } from "@portal/components/shared/MemberAvatarStack";
 import { EventClassQuotaChips } from "./EventClassQuotaChips";
 import { summariseEventClassQuotas } from "./class-quota-view";
 import { getParticipantActionDisabledReasonKey } from "./participant-action";
@@ -451,13 +451,13 @@ export function EventCard({
                 <span>{t("raffle.detail.winnersLabel")}</span>
               </div>
               <div className="event-card__members-left">
-                <EventCardAvatarStrip members={members} />
+                <MemberAvatarStack members={members} />
               </div>
             </div>
           ) : (
             <div className="event-card__members-bar">
               <div className="event-card__members-left">
-                <EventCardAvatarStrip members={members} />
+                <MemberAvatarStack members={members} />
               </div>
             </div>
           )}

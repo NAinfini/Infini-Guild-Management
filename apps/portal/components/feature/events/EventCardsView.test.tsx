@@ -298,30 +298,30 @@ describe("EventCardsView", () => {
     renderCardsView(15);
 
     expect(screen.getAllByTestId("member-avatar")).toHaveLength(5);
-    expect(document.querySelector(".event-card__avatar-overflow")?.textContent).toBe("+10");
+    expect(document.querySelector(".member-avatar-stack__overflow")?.textContent).toBe("+10");
   });
 
   it("renders an empty member placeholder when nobody has signed up", () => {
     renderCardsView(0);
 
     expect(screen.queryByTestId("member-avatar")).not.toBeInTheDocument();
-    expect(document.querySelector(".event-card__avatar-placeholder")).not.toBeNull();
+    expect(document.querySelector(".member-avatar-stack__placeholder")).not.toBeNull();
   });
 
   it("keeps event card avatars on one row", () => {
-    const css = readFileSync(resolve(process.cwd(), "apps/portal/components/feature/events/EventCardsView.css"), "utf8");
-    const avatarGridRule = css.match(/\.event-card__avatar-grid\s*\{[^}]*\}/)?.[0] ?? "";
+    const css = readFileSync(resolve(process.cwd(), "apps/portal/components/shared/MemberAvatarStack.css"), "utf8");
+    const stackRule = css.match(/\.member-avatar-stack\s*\{[^}]*\}/)?.[0] ?? "";
 
-    expect(avatarGridRule).toContain("display: flex");
-    expect(avatarGridRule).toContain("flex-wrap: nowrap");
-    expect(avatarGridRule).not.toContain("grid-template-columns");
+    expect(stackRule).toContain("display: flex");
+    expect(stackRule).toContain("flex-wrap: nowrap");
+    expect(stackRule).not.toContain("grid-template-columns");
   });
 
   it("allows event card avatar badges to render outside the avatar circle", () => {
-    const css = readFileSync(resolve(process.cwd(), "apps/portal/components/feature/events/EventCardsView.css"), "utf8");
-    const avatarGridRule = css.match(/\.event-card__avatar-grid\s*\{[^}]*\}/)?.[0] ?? "";
+    const css = readFileSync(resolve(process.cwd(), "apps/portal/components/shared/MemberAvatarStack.css"), "utf8");
+    const stackRule = css.match(/\.member-avatar-stack\s*\{[^}]*\}/)?.[0] ?? "";
 
-    expect(avatarGridRule).toContain("overflow: visible");
+    expect(stackRule).toContain("overflow: visible");
   });
 
   it("disables leaving an archived event from the card", () => {

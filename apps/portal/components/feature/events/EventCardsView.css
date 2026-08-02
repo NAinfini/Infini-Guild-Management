@@ -327,68 +327,6 @@
   flex: 1;
 }
 
-.event-card__avatar-grid {
-  display: flex;
-  align-items: center;
-  flex-wrap: nowrap;
-  gap: 0;
-  justify-content: flex-start;
-  width: 100%;
-  min-width: 0;
-  overflow: visible;
-}
-
-/* 头像一张压一张，像一摞牌。负边距吃掉三分之一个头像的宽度，五个人只占三个多
-   头像的地方，卡片下半部分因此空出来给配额筹码行。 */
-.event-card__avatar-slot {
-  display: inline-flex;
-  position: relative;
-  border-radius: 50%;
-  /* 描边把叠在一起的头像彼此分开；用卡片自己的表面色，看着像“挖”出来的一圈。 */
-  box-shadow: 0 0 0 2px var(--surface-raised);
-  transition: transform var(--transition-fast);
-}
-
-.event-card__avatar-slot + .event-card__avatar-slot {
-  margin-left: calc(var(--event-card-avatar-size) * -0.34);
-}
-
-/* 悬停时提到最前面并抬起一点，才能看清被压住的那半张脸。z-index 要盖过
-   .event-card__avatar-slot 上内联写的那个层号（最大 5）。 */
-.event-card__avatar-slot:hover {
-  z-index: 10;
-  transform: translateY(-2px);
-}
-
-/* --event-card-avatar-size 的兜底也是死代码：EventCardAvatarStrip.tsx
-   在渲染这些子元素的父级 .event-card__avatar-grid 上无条件内联写入这个
-   变量（AVATAR_SIZE 是常量，不会是 undefined），去掉 CSS 侧兜底不改变
-   任何行为（rule 1）。 */
-.event-card__avatar-placeholder {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: var(--event-card-avatar-size);
-  height: var(--event-card-avatar-size);
-  flex: 0 0 var(--event-card-avatar-size);
-  border-radius: 50%;
-  color: color-mix(in srgb, var(--text-primary) 65%, transparent);
-  background: color-mix(in srgb, var(--text-primary) 6%, transparent);
-  border: 1px dashed color-mix(in srgb, var(--text-primary) 18%, transparent);
-}
-
-.event-card__avatar-overflow {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: var(--event-card-avatar-size);
-  height: var(--event-card-avatar-size);
-  flex: 0 0 var(--event-card-avatar-size);
-  border-radius: var(--shape-pill);
-  font-size: var(--text-micro);
-  background: color-mix(in srgb, var(--text-primary) 6%, transparent);
-}
-
 .event-card__header-actions {
   display: flex;
   align-items: center;
