@@ -25,9 +25,10 @@ vi.mock("react-i18next", () => ({
   }),
 }));
 
+const STAMPS = { sort_order: 0, created_at: "2026-08-01T00:00:00.000Z", updated_at: "2026-08-01T00:00:00.000Z" };
 const CATALOG = [
-  { id: "white-mage", label: "White Mage", icon_type: "vector" as const, vector_icon: "heart" as const, icon_key: null, color: "#61B8AA" },
-  { id: "droid", label: "Droid", icon_type: "vector" as const, vector_icon: "sword" as const, icon_key: null, color: "#6EA8FE" },
+  { id: "white-mage", label: "White Mage", icon_type: "vector" as const, vector_icon: "heart" as const, icon_key: null, color: "#61B8AA", ...STAMPS },
+  { id: "droid", label: "Droid", icon_type: "vector" as const, vector_icon: "sword" as const, icon_key: null, color: "#6EA8FE", ...STAMPS, sort_order: 10 },
 ];
 
 const HEALER_TAG = {

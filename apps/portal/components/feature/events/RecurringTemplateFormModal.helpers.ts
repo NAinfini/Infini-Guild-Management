@@ -1,5 +1,6 @@
 import { EVENT_TYPES, type EventClassQuotaInput, type RecurringTemplate } from "@guild/shared";
 import { computeNextOccurrence, localWeekdayToUtc, utcWeekdayToLocal } from "@guild/shared/utils/recurrence";
+import { toClassQuotaInputs } from "./class-quota-view";
 
 export { localWeekdayToUtc, utcWeekdayToLocal };
 
@@ -116,11 +117,7 @@ export function buildFormState(template: RecurringTemplate | null): RecurringTem
     durationValue: duration.value,
     durationUnit: duration.unit,
     capacity: template?.capacity === null ? "" : String(template?.capacity ?? ""),
-    /* 只留提交需要的两个字段，标签的名字和成员归标签自己管。 */
-    classQuotas: (template?.class_quotas ?? []).map((quota) => ({
-      tag_id: quota.tag_id,
-      required: quota.required,
-    })),
+    classQuotas: toClassQuotaInputs(template?.class_quotas ?? []),
     recurrenceFreq: template?.recurrence_rule?.frequency ?? "weekly",
     recurrenceInterval: String(template?.recurrence_rule?.interval ?? 1),
     recurrenceDays: localDays,

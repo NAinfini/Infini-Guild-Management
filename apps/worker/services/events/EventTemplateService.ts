@@ -9,7 +9,7 @@ import { replaceMediaRefs, deleteMediaRefs, extractAttachmentKeys } from "../med
 import {
   buildDeleteClassQuotaStatements,
   buildReplaceClassQuotaStatements,
-  findUnknownTagIds,
+  findBrokenQuotaReferences,
   loadClassQuotas,
   loadClassQuotasFor,
   typeSupportsClassQuotas,
@@ -140,7 +140,7 @@ export class EventTemplateService {
     const quotaErr = await this.validateClassQuotas(data.type, quotas);
     if (quotaErr) return quotaErr;
 
-    const templateId = this.deps.createId?.() ?? nanoid();
+    const templateId = this.createId();
     const recurrenceRuleJson = JSON.stringify(data.recurrence_rule);
 
     await this.db.insert(recurringTemplates).values({
@@ -163,7 +163,7 @@ export class EventTemplateService {
 
     if (quotas.length > 0) {
       await this.rawDb.batch(
-        buildReplaceClassQuotaStatements(this.rawDb, TEMPLATE_CLASS_QUOTA_TABLE, templateId, quotas),
+        buildReplaceClassQuotaStatements(this.rawDb, TEMPLATE_CLASS_QUOTA_TABLE, templateId, quotas, () => this.createId()),
       );
     }
 
@@ -240,7 +240,7 @@ export class EventTemplateService {
       await this.rawDb.batch(buildDeleteClassQuotaStatements(this.rawDb, TEMPLATE_CLASS_QUOTA_TABLE, templateId));
     } else if (quotaWrite === "replace") {
       await this.rawDb.batch(
-        buildReplaceClassQuotaStatements(this.rawDb, TEMPLATE_CLASS_QUOTA_TABLE, templateId, data.class_quotas!),
+        buildReplaceClassQuotaStatements(this.rawDb, TEMPLATE_CLASS_QUOTA_TABLE, templateId, data.class_quotas!, () => this.createId()),
       );
     }
 
@@ -362,11 +362,12 @@ export class EventTemplateService {
     if (!typeSupportsClassQuotas(type)) {
       return err("VALIDATION_ERROR", `${type} templates do not use class quotas`);
     }
-    const unknown = await findUnknownTagIds(this.rawDb, quotas);
-    if (unknown.length > 0) {
-      return err("VALIDATION_ERROR", `Unknown class tag id: ${unknown.join(", ")}`);
-    }
-    return null;
+    const broken = await findBrokenQuotaReferences(this.rawDb, quotas);
+    return broken ? err("VALIDATION_ERROR", broken) : null;
+  }
+
+  private createId(): string {
+    return this.deps.createId?.() ?? nanoid();
   }
 
   private buildTemplateUpdateDiff(

@@ -20,14 +20,14 @@ const L = LIMITS.content;
  */
 export const classTagIdSchema = z.string().trim().min(1).max(128);
 
-const classTagLabelSchema = z
+export const classTagLabelSchema = z
   .string()
   .trim()
   .min(L.classTagLabel.min)
   .max(L.classTagLabel.max);
 
 /* 同一个职业在一个标签里出现两次一定是调用方出了错。去重会把这个错吞掉，报错不会。 */
-const classTagMembersSchema = z
+export const classTagMembersSchema = z
   .array(classIdSchema)
   .max(L.classesPerTag.max)
   .refine((ids) => new Set(ids).size === ids.length, {

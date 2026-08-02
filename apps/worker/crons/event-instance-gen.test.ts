@@ -138,7 +138,10 @@ describe("event instance generation horizon", () => {
     expect(copyStatements.map((statement) => statement.bindings)).toEqual(
       createdIds.map((id) => [id, "tpl-quota"]),
     );
-    expect(copyStatements[0]?.sql).toContain("SELECT ?1, tag_id, required FROM recurring_template_class_quotas WHERE template_id = ?2");
+    /* 复制的只是「指着目录标签」的那些格。模板私有的一次性组走另一条路——它必须按活动
+       各造一份，不能让活动指着模板那一行，否则删模板会把已生成活动的配额一起带走。 */
+    expect(copyStatements[0]?.sql).toContain("SELECT ?1, q.tag_id, q.required FROM recurring_template_class_quotas q");
+    expect(copyStatements[0]?.sql).toContain("t.owner_kind IS NOT NULL");
   });
 
   it("writes media references for generated instances with attachments", async () => {

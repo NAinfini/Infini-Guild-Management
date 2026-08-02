@@ -4,6 +4,7 @@ import { useCallback, useState } from "react";
 import { useDisclosure } from "@mantine/hooks";
 import { useTranslation } from "react-i18next";
 import { useBeforeUnloadPrompt } from "../../../hooks/useBeforeUnloadPrompt";
+import { toClassQuotaInputs } from "./class-quota-view";
 
 type EditorSnapshot = {
   mode: "create" | "edit";
@@ -240,12 +241,8 @@ export function useEventsEditorController({ attachmentSnapshot }: UseEventsEdito
     setEditorPollShowVoterNames(event.poll?.show_voter_names ?? false);
     const winnerCountStr = event.winner_count != null ? String(event.winner_count) : "";
     setEditorWinnerCount(winnerCountStr);
-    /* 服务端已经按标签顺序排好，这里原样接住——顺序变化也算改动，不该被悄悄抹平。
-       只留提交需要的两个字段：标签的名字和成员归标签自己管，表单里存一份就会跟目录漂。 */
-    const classQuotas = event.class_quotas.map((quota) => ({
-      tag_id: quota.tag_id,
-      required: quota.required,
-    }));
+    /* 服务端已经按标签顺序排好，这里原样接住——顺序变化也算改动，不该被悄悄抹平。 */
+    const classQuotas = toClassQuotaInputs(event.class_quotas);
     setEditorClassQuotas(classQuotas);
     setEditorBaseline(
       buildEditorSnapshot({

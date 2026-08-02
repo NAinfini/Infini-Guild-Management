@@ -1,4 +1,4 @@
-import type { Event, MemberProfile, User } from "@guild/shared";
+import type { Event, EventClassQuotaInput, MemberProfile, User } from "@guild/shared";
 import { summariseClassQuotas, type ClassQuotaSlot, type ClassQuotaSummary } from "@guild/shared/utils/class-quota";
 
 type MemberEntry = { user: User; profile: MemberProfile };
@@ -32,6 +32,24 @@ export function summariseEventClassQuotas(
     })),
     members.map((member) => ({ user_id: member.user.id, class_ids: member.profile.classes })),
   );
+}
+
+/**
+ * 把读回来的配额折成表单要提交的写法。
+ *
+ * 目录标签只留 tag_id 和数量：名字和成员归标签自己管，表单里存一份就会跟目录漂。
+ * 一次性组反过来必须把名字和成员整个带上——它的 tag_id 指的是一行**属于这个活动的**
+ * 私有标签，每次保存都整组重建，把旧 id 回传给服务端会被当成不存在的标签直接 400
+ * （见 worker 的 findUnknownTagIds）。所以它在表单里是「一份内容」，不是「一个引用」。
+ */
+export function toClassQuotaInputs(
+  quotas: Event["class_quotas"],
+): EventClassQuotaInput[] {
+  return quotas.map((quota) => (
+    quota.one_time
+      ? { tag: { label: quota.label ?? "", class_ids: [...quota.class_ids] }, required: quota.required }
+      : { tag_id: quota.tag_id, required: quota.required }
+  ));
 }
 
 export type ClassQuotaMemberGroup =

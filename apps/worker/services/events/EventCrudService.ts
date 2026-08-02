@@ -30,7 +30,7 @@ import { eventPublicVisibilityFilter, isEventPubliclyVisible } from "./event-vis
 import {
   buildDeleteClassQuotaStatements,
   buildReplaceClassQuotaStatements,
-  findUnknownTagIds,
+  findBrokenQuotaReferences,
   loadClassQuotas,
   loadClassQuotasFor,
   typeSupportsClassQuotas,
@@ -224,7 +224,7 @@ export class EventCrudService {
     const quotaErr = await this.validateClassQuotas(data.type, quotas);
     if (quotaErr) return quotaErr;
 
-    const eventId = this.deps.createId?.() ?? nanoid();
+    const eventId = this.createId();
     const imageResult = await this.storeImages(eventId, files, 0);
     if ("ok" in imageResult && !imageResult.ok) return imageResult;
     const uploadedAttachments = imageResult as string[];
@@ -260,7 +260,7 @@ export class EventCrudService {
 
       if (quotas.length > 0) {
         await this.rawDb.batch(
-          buildReplaceClassQuotaStatements(this.rawDb, EVENT_CLASS_QUOTA_TABLE, eventId, quotas),
+          buildReplaceClassQuotaStatements(this.rawDb, EVENT_CLASS_QUOTA_TABLE, eventId, quotas, () => this.createId()),
         );
       }
 
@@ -383,7 +383,7 @@ export class EventCrudService {
       await this.rawDb.batch(buildDeleteClassQuotaStatements(this.rawDb, EVENT_CLASS_QUOTA_TABLE, eventId));
     } else if (quotaWrite === "replace") {
       await this.rawDb.batch(
-        buildReplaceClassQuotaStatements(this.rawDb, EVENT_CLASS_QUOTA_TABLE, eventId, data.class_quotas!),
+        buildReplaceClassQuotaStatements(this.rawDb, EVENT_CLASS_QUOTA_TABLE, eventId, data.class_quotas!, () => this.createId()),
       );
     }
 
@@ -558,11 +558,12 @@ export class EventCrudService {
     if (!typeSupportsClassQuotas(type)) {
       return err("VALIDATION_ERROR", `${type} events do not use class quotas`);
     }
-    const unknown = await findUnknownTagIds(this.rawDb, quotas);
-    if (unknown.length > 0) {
-      return err("VALIDATION_ERROR", `Unknown class tag id: ${unknown.join(", ")}`);
-    }
-    return null;
+    const broken = await findBrokenQuotaReferences(this.rawDb, quotas);
+    return broken ? err("VALIDATION_ERROR", broken) : null;
+  }
+
+  private createId(): string {
+    return this.deps.createId?.() ?? nanoid();
   }
 
   private validateDateRange(startAt: string | null | undefined, endAt: string | null | undefined): ServiceErr | null {

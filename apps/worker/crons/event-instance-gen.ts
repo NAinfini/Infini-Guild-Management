@@ -6,6 +6,8 @@ import { events, recurringTemplates } from "../db/schema";
 import type { Bindings } from "../index";
 import { logger } from "../utils/logger";
 import { replaceMediaRefs, extractAttachmentKeys } from "../services/media-references";
+import { buildCloneTemplateQuotaStatements } from "../services/events/event-class-quotas";
+import type { RawDbLike } from "../services/events/EventCrudService";
 import { SystemTestService } from "../services/SystemTestService";
 
 type RecurrenceRule = {
@@ -299,19 +301,13 @@ export async function runEventInstanceGenerationCron(
         throw error;
       }
     }
-    /*
-     * 模板的职业配额要跟着复制到新生成的这批活动上，否则周期活动永远是空配额。
-     * 用 INSERT ... SELECT 而不是先读进内存再写：模板没配额时它就是条 0 行的空语句，
-     * 省掉一次「有没有配额」的探测查询。只覆盖本轮真正插进去的活动，已存在的实例
-     * 不回改——跟标题、人数上限一样，模板改动只影响之后生成的活动。
-     */
+    /* 模板的职业配额要跟着复制到新生成的这批活动上，否则周期活动永远是空配额。
+       目录标签直接指过去，模板私有的一次性组按活动各造一份，理由见 helper 的注释。 */
     if (insertedEventIds.length > 0) {
-      await env.DB.batch(insertedEventIds.map((eventId) =>
-        env.DB.prepare(
-          `INSERT INTO event_class_quotas (event_id, tag_id, required)
-           SELECT ?1, tag_id, required FROM recurring_template_class_quotas WHERE template_id = ?2`,
-        ).bind(eventId, template.id),
-      ));
+      const rawDb = env.DB as never as RawDbLike;
+      await rawDb.batch(
+        await buildCloneTemplateQuotaStatements(rawDb, template.id, insertedEventIds, () => nanoid()),
+      );
     }
 
     await Promise.all(mediaRefPromises);

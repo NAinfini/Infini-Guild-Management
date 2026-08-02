@@ -2,6 +2,7 @@ import { z } from "zod";
 import { LIMITS } from "../config/limits";
 import { EVENT_TYPES } from "../constants/event-types";
 import { RECURRENCE_FREQUENCIES, POLL_RESULTS_VISIBILITIES } from "../constants/events";
+import { classTagLabelSchema, classTagMembersSchema } from "./class-tag";
 
 const L = LIMITS.content;
 
@@ -34,15 +35,37 @@ export const eventClassQuotaSchema = z.object({
   label: z.string().nullable(),
   class_ids: z.array(z.string().min(1)),
   required: z.number().int().positive(),
+  /*
+   * 这一格用的是活动自己的一次性组，还是目录里的公用标签。
+   * 编辑器靠它决定回传哪一种写法：一次性组每次保存都是重建，把它的 tag_id 当公用标签
+   * 回传会指向一个下一秒就被删掉的行，所以服务端干脆不认这种 id（见
+   * findUnknownTagIds），这一位就是让客户端不至于撞上那道墙。
+   */
+  one_time: z.boolean(),
 });
 const eventClassQuotasSchema = z.array(eventClassQuotaSchema).max(L.eventClassQuotas.max);
 
-/** 写入时只需要指着哪个标签——名字和成员归标签自己管，不在活动这边复制一份。 */
-export const eventClassQuotaInputSchema = z.object({
-  tag_id: z.string().min(1),
-  required: z.number().int().positive(),
-});
+/*
+ * 写入时一格有两种写法：
+ *   { tag_id } —— 指着职业目录里的公用标签，名字和成员归标签自己管。
+ *   { tag }    —— 就地造一个一次性组，只服务这一个活动／模板，不进目录、不占用名字。
+ * 一次性组没有值得保留的身份：每次保存都整组重建（跟配额行本身一样是整组替换），所以
+ * 它没有 id 这一说，客户端也不必替它记住什么。
+ */
+export const eventClassQuotaInputSchema = z.union([
+  z.object({
+    tag_id: z.string().min(1),
+    required: z.number().int().positive(),
+  }).strict(),
+  z.object({
+    tag: z.object({ label: classTagLabelSchema, class_ids: classTagMembersSchema }).strict(),
+    required: z.number().int().positive(),
+  }).strict(),
+]);
 const eventClassQuotaInputsSchema = z.array(eventClassQuotaInputSchema).max(L.eventClassQuotas.max);
+
+/** superRefine 拿到的是解析后的联合，两个分支只有一个字段在，所以两个都是可选的。 */
+type ClassQuotaInputLike = { tag_id?: string; required: number };
 
 const eventPollOptionSchema = z.object({
   id: z.string(),
@@ -125,7 +148,7 @@ const eventMutationSchema = z.object({
  * 类型下没有含义，宁可报错也不要静默丢弃。
  */
 function refineClassQuotas(
-  value: { type?: string; class_quotas?: { tag_id: string; required: number }[] },
+  value: { type?: string; class_quotas?: ClassQuotaInputLike[] },
   ctx: z.RefinementCtx,
 ): void {
   if (!value.class_quotas || value.class_quotas.length === 0) {
@@ -134,9 +157,12 @@ function refineClassQuotas(
   if (value.type === "poll" || value.type === "raffle") {
     ctx.addIssue({ code: "custom", path: ["class_quotas"], message: `${value.type} events do not use class quotas` });
   }
-  /* 同一个标签占两格没有意义，两格加起来就是一格。重叠的**不同**标签是允许的。 */
+  /* 同一个标签占两格没有意义，两格加起来就是一格。重叠的**不同**标签是允许的。
+     一次性组不参与这条：它们每个都是新造的，天生不会重复，两个同名的一次性组是
+     管理员的自由（名字冲突的唯一索引只管目录标签）。 */
   const seen = new Set<string>();
   value.class_quotas.forEach((quota, index) => {
+    if (quota.tag_id === undefined) return;
     if (seen.has(quota.tag_id)) {
       ctx.addIssue({ code: "custom", path: ["class_quotas", index, "tag_id"], message: "Duplicate class quota" });
     }
@@ -152,7 +178,7 @@ function refineEventRules(
     poll?: unknown;
     capacity?: unknown;
     winner_count?: unknown;
-    class_quotas?: { tag_id: string; required: number }[];
+    class_quotas?: ClassQuotaInputLike[];
   },
   ctx: z.RefinementCtx,
   isUpdate: boolean,
