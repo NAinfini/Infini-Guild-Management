@@ -18,7 +18,14 @@ export function summariseEventClassQuotas(
     return null;
   }
   return summariseClassQuotas(
-    event.class_quotas,
+    /* 眼下每个配额行还是「一格＝一职业」，所以格子的 key 直接用职业 id、可收职业
+       就它自己一个。等配额行改成能指向职业标签之后，这里换成解析标签成员即可，
+       算法侧不用再动。 */
+    event.class_quotas.map((quota) => ({
+      key: quota.class_id,
+      class_ids: [quota.class_id],
+      required: quota.required,
+    })),
     members.map((member) => ({ user_id: member.user.id, class_ids: member.profile.classes })),
   );
 }
@@ -41,7 +48,12 @@ export function groupMembersByClassQuota(
   summary: ClassQuotaSummary,
   members: readonly MemberEntry[],
 ): ClassQuotaMemberGroup[] {
-  const slotIndexById = new Map(summary.slots.map((slot, index) => [slot.class_id, index]));
+  const slotIndexByClassId = new Map<string, number>();
+  summary.slots.forEach((slot, index) => {
+    for (const classId of slot.class_ids) {
+      slotIndexByClassId.set(classId, index);
+    }
+  });
   const buckets: MemberEntry[][] = summary.slots.map(() => []);
   const flexible: MemberEntry[] = [];
   const unassigned: MemberEntry[] = [];
@@ -49,7 +61,7 @@ export function groupMembersByClassQuota(
   for (const member of members) {
     const indices = new Set<number>();
     for (const classId of member.profile.classes) {
-      const index = slotIndexById.get(classId);
+      const index = slotIndexByClassId.get(classId);
       if (index !== undefined) {
         indices.add(index);
       }

@@ -1,6 +1,5 @@
 import { describe, expect, it } from "vitest";
 import type { Event, MemberProfile, User } from "@guild/shared";
-import { summariseClassQuotas } from "@guild/shared/utils/class-quota";
 import { groupMembersByClassQuota, summariseEventClassQuotas } from "./class-quota-view";
 
 function member(id: string, classes: string[]): { user: User; profile: MemberProfile } {
@@ -19,10 +18,20 @@ describe("summariseEventClassQuotas", () => {
 });
 
 describe("groupMembersByClassQuota", () => {
-  const quotas = [
-    { class_id: "healer", required: 2 },
-    { class_id: "tank", required: 1 },
-  ];
+  const event = {
+    class_quotas: [
+      { class_id: "healer", required: 2 },
+      { class_id: "tank", required: 1 },
+    ],
+  } as unknown as Pick<Event, "class_quotas">;
+
+  /* 走 summariseEventClassQuotas 而不是直接调算法：配额行到格子的映射本身就是这个
+     文件的职责，绕过去测就漏掉了它。 */
+  function summarise(members: { user: User; profile: MemberProfile }[]) {
+    const summary = summariseEventClassQuotas(event, members);
+    if (!summary) throw new Error("fixture has quotas, so the summary must not be null");
+    return summary;
+  }
 
   it("splits members the same way the chips count them, so the numerators match the group sizes", () => {
     const members = [
@@ -31,10 +40,7 @@ describe("groupMembersByClassQuota", () => {
       member("swing", ["healer", "tank"]),
       member("dps", ["dps"]),
     ];
-    const summary = summariseClassQuotas(quotas, members.map((entry) => ({
-      user_id: entry.user.id,
-      class_ids: entry.profile.classes,
-    })));
+    const summary = summarise(members);
 
     const groups = groupMembersByClassQuota(summary, members);
 
@@ -44,7 +50,7 @@ describe("groupMembersByClassQuota", () => {
         expect(group.members).toHaveLength(group.slot.dedicated);
       }
     }
-    expect(groups.map((group) => (group.kind === "quota" ? group.slot.class_id : group.kind)))
+    expect(groups.map((group) => (group.kind === "quota" ? group.slot.key : group.kind)))
       .toEqual(["healer", "tank", "flexible", "unassigned"]);
     expect(groups[2]!.members.map((entry) => entry.user.id)).toEqual(["swing"]);
     expect(groups[3]!.members.map((entry) => entry.user.id)).toEqual(["dps"]);
@@ -52,10 +58,7 @@ describe("groupMembersByClassQuota", () => {
 
   it("keeps an empty quota group but drops the empty flex and no-quota groups", () => {
     const members = [member("solo-tank", ["tank"])];
-    const summary = summariseClassQuotas(quotas, members.map((entry) => ({
-      user_id: entry.user.id,
-      class_ids: entry.profile.classes,
-    })));
+    const summary = summarise(members);
 
     const groups = groupMembersByClassQuota(summary, members);
 
@@ -67,15 +70,12 @@ describe("groupMembersByClassQuota", () => {
 
   it("counts a member holding a duplicate class id once, not as a swing slot", () => {
     const members = [member("dupe", ["healer", "healer"])];
-    const summary = summariseClassQuotas(quotas, members.map((entry) => ({
-      user_id: entry.user.id,
-      class_ids: entry.profile.classes,
-    })));
+    const summary = summarise(members);
 
     const groups = groupMembersByClassQuota(summary, members);
 
     expect(summary.flexible).toBe(0);
-    expect(groups.map((group) => (group.kind === "quota" ? group.slot.class_id : group.kind)))
+    expect(groups.map((group) => (group.kind === "quota" ? group.slot.key : group.kind)))
       .toEqual(["healer", "tank"]);
     expect(groups[0]!.members.map((entry) => entry.user.id)).toEqual(["dupe"]);
   });

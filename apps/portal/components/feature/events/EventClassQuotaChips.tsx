@@ -32,10 +32,10 @@ export function EventClassQuotaChips({ summary, className }: EventClassQuotaChip
   return (
     <div className={className ? `quota-chips ${className}` : "quota-chips"}>
       {summary.slots.map((slot) => {
-        const item = resolveClassCatalogItem(slot.class_id, catalog);
+        const item = resolveClassCatalogItem(slot.key, catalog);
         return (
           <Tooltip
-            key={slot.class_id}
+            key={slot.key}
             label={t(`quota.status.${slot.status}`, {
               label: item.label,
               dedicated: slot.dedicated,

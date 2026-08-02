@@ -39,34 +39,52 @@ export function EventDetailMemberRoster({
     [quotaSummary, members],
   );
 
-  const renderRow = (entry: MemberEntry) => (
-    <Group key={entry.user.id} gap={10} className="event-detail-modal__member-row" wrap="nowrap">
-      <MemberRoleAvatar user={entry.user} profile={entry.profile} size={40} withTooltip={false} />
-      <div className="event-detail-modal__member-info">
-        <Text size="sm" fw={700}>{entry.user.username}</Text>
-        <Group gap={6}>
-          <Text size="xs" c="dimmed">
-            {entry.profile.classes[0]
-              ? resolveClassCatalogItem(entry.profile.classes[0], classCatalog).label
-              : "-"}
-          </Text>
-          <Text size="xs" c="dimmed">-</Text>
-          <Text size="xs" c="dimmed">{t("detail.power", { value: entry.profile.power ?? "-" })}</Text>
-        </Group>
-      </div>
-      {canManage ? (
-        <Button
-          color="red"
-          variant="light"
-          size="sm"
-          leftSection={<UserMinusIcon size={14} />}
-          onClick={() => onRemoveMember(entry.user.id, entry.user.username)}
-        >
-          {t("detail.removeMember")}
-        </Button>
-      ) : null}
-    </Group>
-  );
+  /*
+   * 职业不再挂在头像右下角那一圈小图标上：那里三个圈叠着，图标看不清、名字根本没有，
+   * 想知道一个人能打什么还得把鼠标停上去。改成图标＋名字成对排在原来那一行，
+   * 而且是全部职业按 profile.classes 的顺序排，摇摆位一眼就能看出来。
+   */
+  const renderRow = (entry: MemberEntry) => {
+    const classItems = [...new Set(entry.profile.classes.filter(Boolean))].map((id) =>
+      resolveClassCatalogItem(id, classCatalog),
+    );
+    return (
+      <Group key={entry.user.id} gap={10} className="event-detail-modal__member-row" wrap="nowrap">
+        <MemberRoleAvatar
+          user={entry.user}
+          profile={entry.profile}
+          size={40}
+          withTooltip={false}
+          withClassCircles={false}
+        />
+        <div className="event-detail-modal__member-info">
+          <Text size="sm" fw={700}>{entry.user.username}</Text>
+          <Group gap={6}>
+            {classItems.length === 0 ? <Text size="xs" c="dimmed">-</Text> : null}
+            {classItems.map((item) => (
+              <Group key={item.id} gap={4} wrap="nowrap">
+                <ClassIcon item={item} size={14} framed={false} />
+                <Text size="xs" c="dimmed">{item.label}</Text>
+              </Group>
+            ))}
+            <Text size="xs" c="dimmed">-</Text>
+            <Text size="xs" c="dimmed">{t("detail.power", { value: entry.profile.power ?? "-" })}</Text>
+          </Group>
+        </div>
+        {canManage ? (
+          <Button
+            color="red"
+            variant="light"
+            size="sm"
+            leftSection={<UserMinusIcon size={14} />}
+            onClick={() => onRemoveMember(entry.user.id, entry.user.username)}
+          >
+            {t("detail.removeMember")}
+          </Button>
+        ) : null}
+      </Group>
+    );
+  };
 
   return (
     <>
@@ -81,10 +99,10 @@ export function EventDetailMemberRoster({
           <Stack gap={16}>
             {quotaGroups.map((group) => {
               const item = group.kind === "quota"
-                ? resolveClassCatalogItem(group.slot.class_id, classCatalog)
+                ? resolveClassCatalogItem(group.slot.key, classCatalog)
                 : null;
               return (
-                <div key={group.kind === "quota" ? group.slot.class_id : group.kind}>
+                <div key={group.kind === "quota" ? group.slot.key : group.kind}>
                   <Group gap={6} mb={8} wrap="nowrap">
                     {group.kind === "quota" && item ? (
                       <>
