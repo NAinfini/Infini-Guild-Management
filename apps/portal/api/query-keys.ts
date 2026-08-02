@@ -136,6 +136,12 @@ export const queryKeys = {
     all: ["classes"] as const,
     list: () => [...queryKeys.classes.all, "list"] as const,
   },
+  /* 标签自成一族。改标签成员不动职业目录，所以它不挂在 classes 下面；反过来删职业会
+     把它从所有标签里带走，那一处要显式把这一族也作废掉。 */
+  classTags: {
+    all: ["class-tags"] as const,
+    list: () => [...queryKeys.classTags.all, "list"] as const,
+  },
   cmdk: {
     all: ["cmdk"] as const,
     search: (query: string) => [...queryKeys.cmdk.all, "search", query] as const,

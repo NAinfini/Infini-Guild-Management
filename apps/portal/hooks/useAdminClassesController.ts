@@ -132,6 +132,9 @@ export function useAdminClassesController() {
     mutationFn: deleteClassCatalogItem,
     onSuccess: async () => {
       await refresh();
+      /* 删职业会把它从所有标签里一起摘掉（class_tag_members 级联），标签那份缓存里
+         还留着它，不作废的话标签编辑器会继续显示一个已经不存在的职业。 */
+      await queryClient.invalidateQueries({ queryKey: queryKeys.classTags.all });
       /* 删除只能从右栏的编辑器里发起，删完必须把编辑器收掉：否则草稿还指着一个
          已经不存在的 id，右栏会停在一张改了也存不回去的表上。 */
       setOpened(false);

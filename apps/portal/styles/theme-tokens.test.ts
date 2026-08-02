@@ -65,6 +65,9 @@ export const MIGRATED: string[] = [
   "apps/portal/components/feature/events/EventClassQuotaChips.css",
   /* 叠放头像组，活动卡和仪表盘活动条共用。走 --surface-raised / --text-primary。 */
   "apps/portal/components/shared/MemberAvatarStack.css",
+  /* 后台职业标签页的编辑器内部。选中态与 AdminClassesSection.css 的图标格同一套
+     --brand-fill / --surface-raised 写法。 */
+  "apps/portal/components/feature/admin/AdminClassTagsSection.css",
 ];
 
 /** 唯一允许出现 hex 的文件。 */

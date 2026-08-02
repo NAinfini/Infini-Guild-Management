@@ -9,6 +9,7 @@ import { and, asc, eq, inArray, isNull, max } from "drizzle-orm";
 import type { DrizzleD1Database } from "drizzle-orm/d1";
 import { classCatalog, classTagMembers, classTags } from "../db/schema/class-catalog";
 import type { AuditLogStatementCondition, WriteAuditLogInput } from "./audit";
+import { loadClassTagUsage } from "./class-tag-usage";
 import { err, ok, type ServiceResult } from "./result";
 
 type DrizzleDb = DrizzleD1Database<Record<string, never>>;
@@ -60,15 +61,16 @@ export class ClassTagService {
       .from(classTags)
       .where(isNull(classTags.ownerKind))
       .orderBy(asc(classTags.sortOrder), asc(classTags.id));
-    const members = await this.loadMembers(rows.map((row) => row.id));
-    return ok(rows.map((row) => serializeRow(row, members.get(row.id) ?? [])));
+    const ids = rows.map((row) => row.id);
+    const [members, usage] = await Promise.all([this.loadMembers(ids), loadClassTagUsage(this.db, ids)]);
+    return ok(rows.map((row) => serializeRow(row, members.get(row.id) ?? [], usage.get(row.id) ?? 0)));
   }
 
   async get(id: string): Promise<ServiceResult<ClassTag>> {
     const row = await this.findRow(id);
     if (!row) return err("NOT_FOUND", "Class tag not found");
-    const members = await this.loadMembers([id]);
-    return ok(serializeRow(row, members.get(id) ?? []));
+    const [members, usage] = await Promise.all([this.loadMembers([id]), loadClassTagUsage(this.db, [id])]);
+    return ok(serializeRow(row, members.get(id) ?? [], usage.get(id) ?? 0));
   }
 
   async create(input: CreateClassTagInput, actorId: string): Promise<ServiceResult<ClassTag>> {
@@ -280,12 +282,13 @@ function buildTagAssignments(input: UpdateClassTagInput) {
   return { assignments, bindings };
 }
 
-function serializeRow(row: TagRow, classIds: string[]): ClassTag {
+function serializeRow(row: TagRow, classIds: string[], usageCount: number): ClassTag {
   return classTagSchema.parse({
     id: row.id,
     label: row.label,
     class_ids: classIds,
     sort_order: row.sortOrder,
+    usage_count: usageCount,
     created_at: row.createdAt,
     updated_at: row.updatedAt,
   });

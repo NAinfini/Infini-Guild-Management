@@ -39,6 +39,9 @@ export const classTagSchema = z.object({
   label: classTagLabelSchema,
   class_ids: classTagMembersSchema,
   sort_order: z.number().int().min(0).max(100_000),
+  /* 有多少个活动／模板的配额指着这个标签。删标签会连带删掉那些配额格，删除确认必须
+     把这个数说出来，否则管理员是在盲删。必填而不是可选：漏算会显示成 0，等于骗人。 */
+  usage_count: z.number().int().min(0),
   created_at: z.string(),
   updated_at: z.string(),
 });

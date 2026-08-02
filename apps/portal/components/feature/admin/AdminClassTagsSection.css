@@ -1,0 +1,78 @@
+/* 职业标签页。主从台本身来自 AdminPage.css 的 .admin-md，这里只有编辑器内部的东西。 */
+
+.admin-class-tags__form-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(120px, 0.45fr);
+  gap: var(--space-sm);
+  align-items: start;
+}
+
+/* 职业按钮排成网格而不是一行 Chip：目录动辄十几个职业，一行排下来会折成好几段，
+   看不出「一共有哪些可选」。auto-fill 让它跟着右栏宽度自己决定几列。 */
+.admin-class-tags__member-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(9rem, 1fr));
+  gap: 6px;
+}
+
+.admin-class-tags__member {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+  /* 44px 触控靶面，和 .admin-md__item 同一档。 */
+  min-block-size: 44px;
+  min-inline-size: 0;
+  padding: var(--space-xs) var(--space-sm);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-control);
+  background: var(--surface-sunken);
+  color: var(--text-secondary);
+  font: inherit;
+  text-align: start;
+  cursor: pointer;
+  transition:
+    color var(--motion-state),
+    border-color var(--motion-state),
+    background-color var(--motion-state);
+}
+
+.admin-class-tags__member:hover:not(:disabled) {
+  color: var(--text-primary);
+  border-color: var(--border-strong);
+}
+
+.admin-class-tags__member:focus-visible {
+  outline: 2px solid var(--brand-fill);
+  outline-offset: 1px;
+}
+
+.admin-class-tags__member:disabled {
+  cursor: default;
+  opacity: 0.45;
+}
+
+.admin-class-tags__member--selected {
+  color: var(--brand-text);
+  border-color: var(--brand-fill);
+  background: color-mix(in srgb, var(--brand-fill) 15%, var(--surface-raised));
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--brand-fill) 32%, transparent);
+}
+
+.admin-class-tags__member-label {
+  min-inline-size: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+@media (max-width: 47.99em) {
+  .admin-class-tags__form-row {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .admin-class-tags__member {
+    transition: none;
+  }
+}

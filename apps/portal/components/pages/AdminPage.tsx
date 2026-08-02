@@ -69,8 +69,8 @@ const LazyAdminRolesSection = lazy(() =>
 const LazyAdminBadgesSection = lazy(() =>
   import("../feature/admin/AdminBadgesSection").then((mod) => ({ default: mod.AdminBadgesSection })),
 );
-const LazyAdminClassesSection = lazy(() =>
-  import("../feature/admin/AdminClassesSection").then((mod) => ({ default: mod.AdminClassesSection })),
+const LazyAdminClassesPanel = lazy(() =>
+  import("../feature/admin/AdminClassesPanel").then((mod) => ({ default: mod.AdminClassesPanel })),
 );
 const LazyAdminSiteConfigSection = lazy(() =>
   import("../feature/admin/AdminSiteConfigSection").then((mod) => ({ default: mod.AdminSiteConfigSection })),
@@ -460,7 +460,7 @@ export function AdminPage() {
           <Tabs.Panel value="classes" className="admin-page__panel">
             <ErrorBoundary>
               <Suspense fallback={suspenseFallback}>
-                <LazyAdminClassesSection />
+                <LazyAdminClassesPanel />
               </Suspense>
             </ErrorBoundary>
           </Tabs.Panel>
