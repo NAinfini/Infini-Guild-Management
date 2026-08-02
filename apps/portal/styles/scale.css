@@ -94,10 +94,29 @@
    * 它已经在标度里，且 19.2 本来就是「1.2rem 顺手一写」的产物，不是设计过的值。 */
   --card-padding: var(--space-lg);
 
-  /* 控件标度。文本控件统一为 32 / 44 / 52；图标控件保留 22 / 28 / 40
-   * 的视觉密度，由独立的 44px 透明命中区补足触控面积。 */
+  /* 控件标度。文本控件统一为 32 / 36 / 52；图标控件保留 22 / 28 / 40
+   * 的视觉密度，由独立的 44px 透明命中区补足触控面积。
+   *
+   * regular 这一档原先是 44px——那是 iOS 的触控靶面尺寸，被直接当成了视觉
+   * 高度。图标控件那一半本来就做对了（视觉小 + 单独的 --control-hit-area），
+   * 文本控件这一半漏了这个拆分，于是全站 200 个 <Button> 里有 184 个是 44px，
+   * 比 Mantine 原生 sm（36px）高出一档，在标题旁这类紧凑位置明显过重。
+   *
+   * 现在按指针精度分档：细指针取 36px（回到 Mantine 原生 sm），粗指针整档
+   * 回到 44px。用 @media (pointer: coarse) 而不是站点自己的
+   * data-input-modality——后者是「上一次输入用的是什么」，会在同一台设备上
+   * 来回翻，拿它控尺寸会让控件在鼠标和触摸之间跳动；pointer 媒体特性问的是
+   * 主输入设备的精度，是个稳定值，才是该管尺寸的那一个。
+   *
+   * 无障碍上不亏：WCAG 2.2 AA 的最小靶面是 24×24 CSS px，36px 有余量；
+   * 44×44 属于 AAA / Apple HIG 那一档，在粗指针设备上原样保留。
+   *
+   * 这一档不只喂按钮：输入框 xs/sm/md、标签页 .tabsTab、ActionIcon 的 input
+   * 档，以及 AppShell / PageLayout / GuildWarPage / RosterPage / StoragePage /
+   * ToolsPage / tiptap-editor 里 14 条手写规则都吃它。一起收才不会让同一行里
+   * 的按钮和输入框错位——这是共用一个令牌的目的，不是副作用。 */
   --control-height-compact: 32px;
-  --control-height-regular: 44px;
+  --control-height-regular: 36px;
   --control-height-large: 52px;
   --control-icon-size-compact: 22px;
   --control-icon-size-regular: 28px;
@@ -116,6 +135,14 @@
   --font-body: "Inter", system-ui, sans-serif;
   --font-display: "Saira Semi Condensed", var(--font-body);
   --font-code: "JetBrains Mono", "Fira Code", monospace;
+}
+
+/* 粗指针（触屏、手写笔、遥控器）没有像素级精度，regular 这一档整体回到
+ * 44px 触控靶面。理由与取值见上面 --control-height-regular 的说明。 */
+@media (pointer: coarse) {
+  :root {
+    --control-height-regular: 44px;
+  }
 }
 
 html[data-locale="zh"] {

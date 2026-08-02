@@ -493,12 +493,24 @@ describe("control sizing scale (Task 1)", () => {
 
   it("defines compact, regular, large, icon, and 44px hit-area tokens", () => {
     expect(scale).toMatch(/--control-height-compact:\s*32px\b/);
-    expect(scale).toMatch(/--control-height-regular:\s*44px\b/);
+    expect(scale).toMatch(/--control-height-regular:\s*36px\b/);
     expect(scale).toMatch(/--control-height-large:\s*52px\b/);
     expect(scale).toMatch(/--control-icon-size-compact:\s*22px\b/);
     expect(scale).toMatch(/--control-icon-size-regular:\s*28px\b/);
     expect(scale).toMatch(/--control-icon-size-large:\s*40px\b/);
     expect(scale).toMatch(/--control-hit-area:\s*44px\b/);
+  });
+
+  /*
+   * regular 这一档在细指针下是 36px，靶面靠粗指针的整档回退补回来。这条回退
+   * 一旦被顺手删掉，触屏上所有按钮、输入框和标签页会一起缩到 36px，而且不会
+   * 有任何用例报警——36px 本身在 WCAG AA 里是合法的，坏掉的是 AAA 那一档，
+   * 只有在真机上才摸得出来。所以它需要一条自己的断言，而不是一条注释。
+   */
+  it("restores the 44px touch target on coarse pointers", () => {
+    const coarseBlock = scale.match(/@media \(pointer: coarse\)\s*\{[\s\S]*?\n\}/);
+    expect(coarseBlock).not.toBeNull();
+    expect(coarseBlock?.[0]).toMatch(/--control-height-regular:\s*44px\b/);
   });
 
   it("bridges Mantine Button, Input, ActionIcon, and Tabs onto the scale", () => {
