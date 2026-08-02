@@ -104,6 +104,15 @@ export function createRateLimitMiddleware(options: RateLimitOptions = {}) {
     const remaining = Math.max(0, maxRequests - activeBucket.count);
     const resetInSeconds = Math.max(0, Math.ceil((activeBucket.resetAt - nowMs) / 1000));
 
+    /*
+     * Scope names which quota this is. One request passes through several
+     * limiters (IP, username, mutation, upload), each writing these headers in
+     * turn, so without it the numbers a client reads belong to an unidentified
+     * bucket and a 429 says only "too many requests" — not too many of what.
+     * That ambiguity is expensive: it is the difference between "back off on
+     * logins" and "back off on everything".
+     */
+    c.header("X-RateLimit-Scope", keyPrefix);
     c.header("X-RateLimit-Limit", String(maxRequests));
     c.header("X-RateLimit-Remaining", String(remaining));
     c.header("X-RateLimit-Reset", String(Math.floor(activeBucket.resetAt / 1000)));
@@ -120,6 +129,7 @@ export function createRateLimitMiddleware(options: RateLimitOptions = {}) {
         request_id: requestId,
         details: {
           retry_after_seconds: resetInSeconds,
+          scope: keyPrefix,
         },
       };
       c.res = c.json(body, ERROR_STATUS.RATE_LIMITED as 429);

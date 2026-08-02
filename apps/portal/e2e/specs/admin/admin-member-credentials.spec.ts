@@ -30,7 +30,12 @@ let trackArtifactsFlag: boolean;
  *   - 同一条用例里的对照组必须换地址，否则 10 次登录会先撞上 IP 限流，
  *     429 就分不清是「账号被锁」还是「请求太密」；
  *   - 跨用例也不能复用，限流窗口是一整分钟，上一条用例花掉的配额会算到下一条头上。
+ *
+ * 号段按 workerIndex 切，理由和 support/test.ts 里的 clientAddress 完全一样：
+ * 模块级计数器的生命周期是 worker 进程，Playwright 一有失败就换进程、计数器归零，
+ * 于是刚被花光配额的地址会重新发给下一条用例，429 冒充成「账号被锁」。
  */
+const PROBE_IDS_PER_WORKER = 2;
 let probeCounter = 0;
 let probeAddress: string;
 let controlAddress: string;
@@ -89,11 +94,17 @@ async function openRowMenu(page: Page, username: string): Promise<void> {
   await expect(page.locator("[data-admin-user-action-menu]")).toBeVisible();
 }
 
-test.beforeEach(async ({ context, trackArtifacts }) => {
+test.beforeEach(async ({ context, trackArtifacts }, testInfo) => {
   trackArtifactsFlag = trackArtifacts;
   probeCounter += 1;
-  probeAddress = `10.43.${probeCounter}.1`;
-  controlAddress = `10.43.${probeCounter}.2`;
+  const probeId = testInfo.workerIndex * PROBE_IDS_PER_WORKER + probeCounter;
+  if (probeCounter > PROBE_IDS_PER_WORKER || probeId > 254) {
+    throw new Error(
+      `登录探针地址号段用尽（worker ${testInfo.workerIndex} 的第 ${probeCounter} 条）：第三段只有 254 个可用值`,
+    );
+  }
+  probeAddress = `10.43.${probeId}.1`;
+  controlAddress = `10.43.${probeId}.2`;
   /* 重置密码的产出物只进剪贴板，没有这个权限这条用例验不到终点。 */
   await context.grantPermissions(["clipboard-read", "clipboard-write"]);
 });

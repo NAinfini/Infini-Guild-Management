@@ -401,8 +401,21 @@ ids back out. Two tests then share one bucket, the second gets 429, that failure
 starts another worker, and one failure snowballs into a screenful of unrelated
 429s — visible only where something already failed. `support/test.ts` therefore
 partitions the id space by `workerIndex` and throws rather than letting a segment
-overlap. Run with `E2E_QUOTA_TRACE=1` to print each test's peak consumption per
-bucket (`used/limit`); measure before assuming a 429 means a real defect.
+overlap.
+
+A test draws two ids, not one: the browser and the `api` readback channel each get
+their own. The readback channel is the test's instrument, not the user being
+simulated. Sharing one id also corrupted the measurement — both channels read the
+same `X-RateLimit-Remaining`, so the readback line reported the browser's spend as
+its own. Splitting them does not relax the limit; both channels still get 120
+reads/min and a browser that really exceeds it still gets a 429.
+
+Run with `E2E_QUOTA_TRACE=1` to print each test's peak consumption per channel and
+bucket (`page 50/120  api 3/120`); measure before assuming a 429 means a real
+defect. It is on in CI as a temporary instrument: local peaks sit at 50–55/120,
+while CI has been observed at 1–6 remaining on the same specs, and that gap is
+still unexplained. See the comment on `E2E_QUOTA_TRACE` in
+`.github/workflows/ci.yml` for what removes it.
 
 **`wrangler` is pinned to 4.113.0 on purpose. Do not bump it without running the
 full e2e suite.** 4.118.0 resolves `miniflare` to `5.x-alpha`, whose

@@ -76,6 +76,17 @@ function categoryEditorTitle(page: Page): Locator {
   return page.getByText("Category Editor", { exact: true });
 }
 
+/*
+ * 关闭按钮只在主内容区里找。
+ * Mantine 的通知条自带一个 aria-label="Close" 的关闭按钮，渲染在主内容区之外的
+ * portal 里。页面上只要还挂着一条没自动消失的提示，页面级的
+ * getByRole("button", { name: "Close" }) 就同时命中两个，直接 strict mode violation——
+ * 报出来像是「点不到关闭按钮」，成因却是「上一步弹的提示还没散」。
+ */
+function closeEditorButton(page: Page): Locator {
+  return page.locator("#main-content").getByRole("button", { name: "Close", exact: true });
+}
+
 async function openCategoryEditor(page: Page): Promise<void> {
   await page.locator(".wiki-article-list-card")
     .getByRole("button", { name: "Edit Categories", exact: true }).click();
@@ -158,7 +169,7 @@ async function dragRow(page: Page, handle: Locator, target: Locator): Promise<vo
 
 test("打开与关闭：铅笔进、Close 出，没改动时不问也不写", async ({ page }) => {
   await openCategoryEditor(page);
-  await clickWithoutWrite(page, page.getByRole("button", { name: "Close", exact: true }));
+  await clickWithoutWrite(page, closeEditorButton(page));
   await expectNoDialog(page);
   await expect(categoryEditorTitle(page)).toHaveCount(0);
 });
@@ -358,7 +369,7 @@ test("关闭：有未保存草稿时先问，取消留下，确认丢弃", async
   const rowB = await draftRowIndex(page, categoryB.name);
   await draftNames(page).nth(rowB).fill(`${SYSTEM_TEST_CONTENT_MARKER} Dirty ${stamp}`);
 
-  await page.getByRole("button", { name: "Close", exact: true }).click();
+  await closeEditorButton(page).click();
   const dialog = await confirmDialog(page, "Discard unsaved category changes?");
   await dialog.getByRole("button", { name: "Cancel", exact: true }).click();
   await expectNoDialog(page);
@@ -367,7 +378,7 @@ test("关闭：有未保存草稿时先问，取消留下，确认丢弃", async
     "取消之后必须还留在编辑器里",
   ).toBeVisible();
 
-  await page.getByRole("button", { name: "Close", exact: true }).click();
+  await closeEditorButton(page).click();
   await (await confirmDialog(page, "Discard unsaved category changes?"))
     .getByRole("button", { name: "Discard", exact: true }).click();
   await expect(categoryEditorTitle(page)).toHaveCount(0);

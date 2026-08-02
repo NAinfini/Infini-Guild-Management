@@ -58,8 +58,10 @@ type Fixtures = {
   flow: Flow;
   /** 与页面同会话的服务端回读通道：UI 显示对不等于数据对。 */
   api: APIRequestContext;
-  /** 本条用例在服务端眼里的客户端地址：限流按它分桶，见 config.ts 的说明。 */
+  /** 浏览器在服务端眼里的客户端地址：限流按它分桶，见 config.ts 的说明。 */
   clientAddress: string;
+  /** 回读通道的客户端地址：和浏览器分开计配额，理由见下面 fixture 的说明。 */
+  apiClientAddress: string;
   /** 页面级失败守卫：未捕获异常和 5xx 一律判定为缺陷，不允许被吞掉。 */
   failOnPageDefects: void;
   /** 把客户端地址（以及需要时的系统测试运行头）装到浏览器上下文上。 */
@@ -99,9 +101,45 @@ function withNetworkRetries(context: APIRequestContext): APIRequestContext {
   });
 }
 
+/*
+ * 配额取证的收集点，只有 E2E_QUOTA_TRACE 打开时才不是 null（见 quotaTrace fixture）。
+ * 浏览器和 api 回读通道现在各占一个客户端号，但两边都要量：
+ * 只量浏览器那一半，就看不出回读通道自己有没有把它那一份配额烧穿。
+ */
+let quotaWorst: Map<string, number> | null = null;
+
+/* 分「浏览器」和「回读通道」两路记，是为了看清一条用例的配额到底花在哪一边。 */
+function recordQuota(headers: Record<string, string>, source: "page" | "api"): void {
+  if (!quotaWorst) return;
+  const limit = headers["x-ratelimit-limit"];
+  const remaining = Number(headers["x-ratelimit-remaining"]);
+  if (!limit || !Number.isFinite(remaining)) return;
+  const key = `${source}:${limit}`;
+  quotaWorst.set(key, Math.min(quotaWorst.get(key) ?? Number.POSITIVE_INFINITY, remaining));
+}
+
+function withQuotaTrace(context: APIRequestContext): APIRequestContext {
+  if (!process.env.E2E_QUOTA_TRACE) return context;
+  return new Proxy(context, {
+    get(target, property, receiver) {
+      const value = Reflect.get(target, property, receiver) as unknown;
+      if (typeof value !== "function") return value;
+      if (typeof property !== "string" || !RETRYABLE_METHODS.has(property)) {
+        return value.bind(target);
+      }
+      return async (...args: unknown[]) => {
+        const response = await (value as (...a: unknown[]) => Promise<APIResponse>).call(target, ...args);
+        recordQuota(response.headers(), "api");
+        return response;
+      };
+    },
+  });
+}
+
 let cachedRunState: E2eRunStateFile | null = null;
 /*
- * 每条用例一个号，这个号必须在**整轮**里唯一，而不只是在一个进程里唯一。
+ * 客户端号：一条用例最多领两个（浏览器一个、api 回读通道一个），
+ * 而且这些号必须在**整轮**里唯一，不能只在一个进程里唯一。
  *
  * 模块级自增计数器的生命周期是进程，不是槽位：Playwright 只要有用例失败、
  * 或者切到下一个 project，就会换一个新的 worker 进程接着跑同一个槽位，
@@ -115,6 +153,17 @@ let cachedRunState: E2eRunStateFile | null = null;
  */
 const CLIENT_IDS_PER_WORKER = 300;
 let clientCounter = 0;
+
+/** 领一个整轮唯一的客户端地址。号段一旦溢出就当场报错，不允许静默回到互撞。 */
+function allocateClientAddress(workerIndex: number): string {
+  clientCounter += 1;
+  if (clientCounter > CLIENT_IDS_PER_WORKER) {
+    throw new Error(
+      `单个 worker 进程用掉了超过 ${CLIENT_IDS_PER_WORKER} 个客户端号，号段会和别的进程重叠；请调大 CLIENT_IDS_PER_WORKER`,
+    );
+  }
+  return e2eClientAddress(workerIndex * CLIENT_IDS_PER_WORKER + clientCounter);
+}
 
 function runState(): E2eRunStateFile {
   cachedRunState ??= JSON.parse(readFileSync(RUN_STATE_FILE, "utf8")) as E2eRunStateFile;
@@ -270,24 +319,38 @@ export const test = base.extend<E2eOptions & Fixtures>({
   },
 
   clientAddress: async ({}, use, testInfo) => {
-    clientCounter += 1;
-    if (clientCounter > CLIENT_IDS_PER_WORKER) {
-      /* 号段一旦溢出就会和下一个进程的号段重叠，退回到本来要修的那个 bug。
-         宁可当场报错，也不要静默地又开始互撞。 */
-      throw new Error(
-        `单个 worker 进程用掉了超过 ${CLIENT_IDS_PER_WORKER} 个客户端号，号段会和别的进程重叠；请调大 CLIENT_IDS_PER_WORKER`,
-      );
-    }
-    await use(e2eClientAddress(testInfo.workerIndex * CLIENT_IDS_PER_WORKER + clientCounter));
+    await use(allocateClientAddress(testInfo.workerIndex));
   },
 
-  api: async ({ trackArtifacts, clientAddress, storageState }, use) => {
+  /*
+   * 回读通道自己占一个客户端号，不和浏览器共用。
+   *
+   * 共用时两边的请求算进同一个 120 次/分钟的读桶，而回读通道并不是被模拟的那个
+   * 用户——它是用例的量具，用来绕开界面直接问服务端「到底落库了没有」。
+   * 把量具的流量记到被测用户头上，得到的既不是真实用户的用量，也不是一个能用的预算。
+   * 更直接的代价是取证本身失真：共用一个桶时，两边读到的
+   * X-RateLimit-Remaining 讲的是同一个数，api 那一行看着像「回读通道烧了 55 次」，
+   * 其实里头 54 次是浏览器烧的。拆开之后每一行才只讲自己那一份。
+   *
+   * 这不是放宽限流：拆开之后两个通道各自仍受 120 次/分钟约束，
+   * 浏览器那一半真的超了照样会 429、照样看得见。
+   * 限流本身仍由专门的用例覆盖（见 config.ts 的说明）。
+   *
+   * 注意这不是 CI 上那批读配额 429 的解法：本地单条用例的读峰值只有 50–55/120，
+   * 拆不拆都离 120 很远，而 CI 上同一批用例被观测到只剩 1–6 次余量。
+   * 这个差值目前没有解释，要靠 CI 上的 E2E_QUOTA_TRACE 量出来。
+   */
+  apiClientAddress: async ({}, use, testInfo) => {
+    await use(allocateClientAddress(testInfo.workerIndex));
+  },
+
+  api: async ({ trackArtifacts, apiClientAddress, storageState }, use) => {
     const context = await request.newContext({
       baseURL: PORTAL_ORIGIN,
       storageState: storageState as string | undefined,
-      extraHTTPHeaders: { ...MUTATION_HEADERS, ...identityHeaders(clientAddress, trackArtifacts) },
+      extraHTTPHeaders: { ...MUTATION_HEADERS, ...identityHeaders(apiClientAddress, trackArtifacts) },
     });
-    await use(withNetworkRetries(context));
+    await use(withQuotaTrace(withNetworkRetries(context)));
     await context.dispose();
   },
 
@@ -309,8 +372,11 @@ export const test = base.extend<E2eOptions & Fixtures>({
    * 服务端把每条用例当成一个独立客户端（见 config.ts 的说明），配额是
    * 120 次读/分钟。用例驱动界面的速度远超真人，「一条用例会不会把自己的
    * 配额点爆」不能靠推测，只能量。X-RateLimit-Remaining 是服务端自己报的
-   * 剩余额度，浏览器和 api 回读通道共用同一个桶，所以页面响应上读到的
-   * 最小值就是这条用例离撞线还有多远。
+   * 剩余额度。
+   *
+   * 输出按「来源 已用/上限」分开报，因为浏览器和回读通道是两个客户端号、两个桶
+   * （见 apiClientAddress fixture）。两路都要记：只量浏览器那一半，
+   * 就看不出回读通道有没有把它自己那一份烧穿。
    */
   quotaTrace: [async ({ page }, use, testInfo) => {
     if (!process.env.E2E_QUOTA_TRACE) {
@@ -319,18 +385,24 @@ export const test = base.extend<E2eOptions & Fixtures>({
     }
     /* 按桶分开：limit=120 是读、80 是写、20 是上传、15 是查重名、5 是登录/改凭据。
        混在一起看只会看到最后一个响应属于哪个桶，得不出任何结论。 */
-    const worst = new Map<string, number>();
+    quotaWorst = new Map<string, number>();
     const record = (response: Response): void => {
       if (!pathOf(response.url()).startsWith("/api/")) return;
-      const limit = response.headers()["x-ratelimit-limit"];
-      const remaining = Number(response.headers()["x-ratelimit-remaining"]);
-      if (!limit || !Number.isFinite(remaining)) return;
-      worst.set(limit, Math.min(worst.get(limit) ?? Number.POSITIVE_INFINITY, remaining));
+      recordQuota(response.headers(), "page");
     };
     page.on("response", record);
     await use();
     page.off("response", record);
-    const report = [...worst.entries()].map(([limit, left]) => `${Number(limit) - left}/${limit}`).join(" ");
+    /* 键是 `${来源}:${上限}`，打成「page 40/120」这种形状：分子是烧掉的量，
+       分母是这个桶的上限，前缀说明这一半花在浏览器还是回读通道上。 */
+    const report = [...quotaWorst.entries()]
+      .map(([key, left]) => {
+        const [source, limit] = key.split(":");
+        return `${source} ${Number(limit) - left}/${limit}`;
+      })
+      .sort()
+      .join("  ");
+    quotaWorst = null;
     console.log(`[quota] ${report || "none"} :: ${testInfo.titlePath.at(-1)}`);
   }, { auto: true }],
 });

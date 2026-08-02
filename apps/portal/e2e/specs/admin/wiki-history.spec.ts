@@ -186,7 +186,16 @@ test("比较档：最老的一版没有上一版可比，中间版本切档后�
   ).toHaveAttribute("data-disabled", "true");
 
   await flow.click(revisionRow(page, 2), REVISION_DETAIL);
-  await flow.click(compareSegment(page, "Compare to previous"), REVISION_DETAIL);
+  /*
+   * 切档不发请求：要比的上一版是 r1，上面那次点击已经把它取回来并留在查询缓存里，
+   * 这一档只是换个对照对象重算差异。
+   *
+   * 原来这里写的是 flow.click(..., REVISION_DETAIL)，要求它必须发一发请求。
+   * 它在本地一直是绿的，但绿得不对：REVISION_DETAIL 匹配任意 /revisions/<数字>，
+   * 等到的其实是上一行那次点击迟到的响应，被算到了这个控件头上。CI 上时序一挪，
+   * 这里没有请求可等，就挂成一条 45 秒超时——看着像页面卡住，实际是断言写错了。
+   */
+  await flow.clickWithoutApi(compareSegment(page, "Compare to previous"));
 
   await expect(modal(page), "比的是 r1 → r2，r1 的正文要在").toContainText(v1);
   await expect(modal(page), "r2 的正文要在").toContainText(v2);
