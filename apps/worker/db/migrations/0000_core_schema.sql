@@ -89,17 +89,31 @@ CREATE TABLE IF NOT EXISTS class_catalog (
 -- 职业标签：给一组职业起个名字（「治疗」＝牵丝霖＋破竹风），活动配额可以指着标签
 -- 说「这一格要 2 个」。标签成员不设任何限制——一个职业可进多个标签，标签之间可以
 -- 重叠，空标签也允许。
+-- owner_kind 为 NULL 的是目录标签：管理员维护，全站的活动都能选。带 owner 的是某个
+-- 活动或模板自己造的一次性标签，只在那一行里出现，跟着它一起删。两者共用这张表和
+-- class_tag_members，是为了让「标签成员」只有一条路径——删职业、解析成员、配额匹配
+-- 都只需要认识这一套。代价是列目录标签的地方必须记得过滤 owner_kind IS NULL。
 CREATE TABLE IF NOT EXISTS class_tags (
   id TEXT PRIMARY KEY NOT NULL,
   label TEXT NOT NULL,
   sort_order INTEGER NOT NULL DEFAULT 0
     CONSTRAINT class_tags_sort_order_nonnegative CHECK (sort_order >= 0),
+  owner_kind TEXT,
+  owner_id TEXT,
   created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
-  updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
+  updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+  CONSTRAINT class_tags_owner_consistent CHECK (
+    (owner_kind IS NULL AND owner_id IS NULL) OR
+    (owner_kind IN ('event', 'recurring_template') AND owner_id IS NOT NULL)
+  )
 );
 
-CREATE UNIQUE INDEX IF NOT EXISTS ux_class_tags_label_nocase ON class_tags (label COLLATE NOCASE);
+-- 重名只在目录标签之间禁止。一次性标签叫什么是那个活动自己的事，两个活动各造一个
+-- 叫「临时治疗」的组不该互相打架。
+CREATE UNIQUE INDEX IF NOT EXISTS ux_class_tags_label_nocase
+  ON class_tags (label COLLATE NOCASE) WHERE owner_kind IS NULL;
 CREATE INDEX IF NOT EXISTS idx_class_tags_sort ON class_tags (sort_order, id);
+CREATE INDEX IF NOT EXISTS idx_class_tags_owner ON class_tags (owner_kind, owner_id);
 
 CREATE TABLE IF NOT EXISTS class_tag_members (
   tag_id TEXT NOT NULL REFERENCES class_tags(id) ON DELETE CASCADE,
@@ -155,18 +169,20 @@ CREATE TABLE IF NOT EXISTS recurring_templates (
   updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
 );
 
+-- 一格配额指向一个职业标签，而不是单个职业：「需要 2 个治疗，牵丝霖破竹风都行」。
+-- 只要一个职业的旧写法就是一个只装了它自己的标签。
 CREATE TABLE IF NOT EXISTS event_class_quotas (
   event_id TEXT NOT NULL REFERENCES events(id) ON DELETE CASCADE,
-  class_id TEXT NOT NULL REFERENCES class_catalog(id) ON DELETE CASCADE,
+  tag_id TEXT NOT NULL REFERENCES class_tags(id) ON DELETE CASCADE,
   required INTEGER NOT NULL CONSTRAINT event_class_quotas_required_positive CHECK (required > 0),
-  PRIMARY KEY (event_id, class_id)
+  PRIMARY KEY (event_id, tag_id)
 );
 
 CREATE TABLE IF NOT EXISTS recurring_template_class_quotas (
   template_id TEXT NOT NULL REFERENCES recurring_templates(id) ON DELETE CASCADE,
-  class_id TEXT NOT NULL REFERENCES class_catalog(id) ON DELETE CASCADE,
+  tag_id TEXT NOT NULL REFERENCES class_tags(id) ON DELETE CASCADE,
   required INTEGER NOT NULL CONSTRAINT recurring_template_class_quotas_required_positive CHECK (required > 0),
-  PRIMARY KEY (template_id, class_id)
+  PRIMARY KEY (template_id, tag_id)
 );
 
 CREATE TABLE IF NOT EXISTS event_participants (
@@ -421,11 +437,11 @@ CREATE INDEX IF NOT EXISTS idx_events_created_by
 CREATE INDEX IF NOT EXISTS idx_recurring_templates_active
   ON recurring_templates(paused, created_at, id);
 
--- class quotas (查「删掉这个职业会影响哪些活动」走 class_id 这一路)
-CREATE INDEX IF NOT EXISTS idx_event_class_quotas_class
-  ON event_class_quotas(class_id);
-CREATE INDEX IF NOT EXISTS idx_recurring_template_class_quotas_class
-  ON recurring_template_class_quotas(class_id);
+-- class quotas (查「删掉这个标签会影响哪些活动」走 tag_id 这一路)
+CREATE INDEX IF NOT EXISTS idx_event_class_quotas_tag
+  ON event_class_quotas(tag_id);
+CREATE INDEX IF NOT EXISTS idx_recurring_template_class_quotas_tag
+  ON recurring_template_class_quotas(tag_id);
 
 -- event_participants
 CREATE UNIQUE INDEX IF NOT EXISTS ux_event_participants_event_user

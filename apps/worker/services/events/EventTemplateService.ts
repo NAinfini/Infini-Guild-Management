@@ -9,11 +9,12 @@ import { replaceMediaRefs, deleteMediaRefs, extractAttachmentKeys } from "../med
 import {
   buildDeleteClassQuotaStatements,
   buildReplaceClassQuotaStatements,
-  findUnknownClassIds,
+  findUnknownTagIds,
   loadClassQuotas,
   loadClassQuotasFor,
   typeSupportsClassQuotas,
   TEMPLATE_CLASS_QUOTA_TABLE,
+  type ClassQuotaInput,
   type ClassQuotaRow,
 } from "./event-class-quotas";
 
@@ -50,7 +51,7 @@ type CreateTemplateInput = {
   visibility_offset_minutes?: number | null;
   auto_archive?: boolean;
   attachments?: string[];
-  class_quotas?: ClassQuotaRow[];
+  class_quotas?: ClassQuotaInput[];
 };
 
 type UpdateTemplateInput = {
@@ -64,7 +65,7 @@ type UpdateTemplateInput = {
   visibility_offset_minutes?: number | null;
   auto_archive?: boolean;
   attachments?: string[];
-  class_quotas?: ClassQuotaRow[];
+  class_quotas?: ClassQuotaInput[];
 };
 
 export type TemplateServiceDeps = {
@@ -352,18 +353,18 @@ export class EventTemplateService {
 
   /**
    * 配额自身的服务层校验。zod 已经查过重复项和类型限制，这里再挡一次是因为
-   * 「职业存不存在」只有拿到数据库才知道。
+   * 「标签存不存在」只有拿到数据库才知道。
    */
-  private async validateClassQuotas(type: string, quotas: readonly ClassQuotaRow[]): Promise<ServiceErr | null> {
+  private async validateClassQuotas(type: string, quotas: readonly ClassQuotaInput[]): Promise<ServiceErr | null> {
     if (quotas.length === 0) {
       return null;
     }
     if (!typeSupportsClassQuotas(type)) {
       return err("VALIDATION_ERROR", `${type} templates do not use class quotas`);
     }
-    const unknown = await findUnknownClassIds(this.rawDb, quotas);
+    const unknown = await findUnknownTagIds(this.rawDb, quotas);
     if (unknown.length > 0) {
-      return err("VALIDATION_ERROR", `Unknown class id: ${unknown.join(", ")}`);
+      return err("VALIDATION_ERROR", `Unknown class tag id: ${unknown.join(", ")}`);
     }
     return null;
   }

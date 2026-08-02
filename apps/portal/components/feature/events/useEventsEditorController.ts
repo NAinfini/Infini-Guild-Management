@@ -1,4 +1,4 @@
-import { EVENT_TYPES, type Event, type EventClassQuota } from "@guild/shared";
+import { EVENT_TYPES, type Event, type EventClassQuotaInput } from "@guild/shared";
 import { useConfirmDialog } from "@portal/hooks/useConfirmDialog";
 import { useCallback, useState } from "react";
 import { useDisclosure } from "@mantine/hooks";
@@ -21,7 +21,7 @@ type EditorSnapshot = {
   pollResultsVisibility: "always" | "after_vote" | "after_close";
   pollShowVoterNames: boolean;
   winnerCount: string;
-  classQuotas: EventClassQuota[];
+  classQuotas: EventClassQuotaInput[];
   attachmentSnapshot: string;
 };
 
@@ -73,7 +73,7 @@ export function useEventsEditorController({ attachmentSnapshot }: UseEventsEdito
   const [editorPollResultsVisibility, setEditorPollResultsVisibility] = useState<"always" | "after_vote" | "after_close">("after_vote");
   const [editorPollShowVoterNames, setEditorPollShowVoterNames] = useState(false);
   const [editorWinnerCount, setEditorWinnerCount] = useState("");
-  const [editorClassQuotas, setEditorClassQuotas] = useState<EventClassQuota[]>([]);
+  const [editorClassQuotas, setEditorClassQuotas] = useState<EventClassQuotaInput[]>([]);
   const [editorBaseline, setEditorBaseline] = useState<string | null>(null);
 
   const editorStartIso = toIso(editorStartAt);
@@ -160,7 +160,7 @@ export function useEventsEditorController({ attachmentSnapshot }: UseEventsEdito
     setEditorWinnerCount(value);
   }, []);
 
-  const handleEditorClassQuotasChange = useCallback((value: EventClassQuota[]) => {
+  const handleEditorClassQuotasChange = useCallback((value: EventClassQuotaInput[]) => {
     setEditorTouched(true);
     setEditorClassQuotas(value);
   }, []);
@@ -240,8 +240,12 @@ export function useEventsEditorController({ attachmentSnapshot }: UseEventsEdito
     setEditorPollShowVoterNames(event.poll?.show_voter_names ?? false);
     const winnerCountStr = event.winner_count != null ? String(event.winner_count) : "";
     setEditorWinnerCount(winnerCountStr);
-    /* 服务端已经按目录顺序排好，这里原样接住——顺序变化也算改动，不该被悄悄抹平。 */
-    const classQuotas = event.class_quotas.map((quota) => ({ ...quota }));
+    /* 服务端已经按标签顺序排好，这里原样接住——顺序变化也算改动，不该被悄悄抹平。
+       只留提交需要的两个字段：标签的名字和成员归标签自己管，表单里存一份就会跟目录漂。 */
+    const classQuotas = event.class_quotas.map((quota) => ({
+      tag_id: quota.tag_id,
+      required: quota.required,
+    }));
     setEditorClassQuotas(classQuotas);
     setEditorBaseline(
       buildEditorSnapshot({

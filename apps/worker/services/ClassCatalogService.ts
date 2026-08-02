@@ -406,14 +406,12 @@ export class ClassCatalogService {
         "DELETE FROM media_references WHERE entity_type = 'class_icon' AND entity_id = ?",
       ).bind(id),
       /*
-       * 两张职业配额表都对 class_catalog 建了外键并级联，但本服务从不假定 D1 在执行
-       * 外键约束，所以显式删一遍。漏了的话残留的配额行会挂在一个已经不存在的职业上，
-       * 活动那边就会渲染出一格永远配不齐的需求。
+       * class_tag_members 对 class_catalog 建了外键并级联，但本服务从不假定 D1 在执行
+       * 外键约束，所以显式删一遍。漏了的话标签会指着一个已经不存在的职业，指向该标签
+       * 的配额格子就多出一个永远填不上的名额。
+       *
+       * 配额表这里不用管：一格配额指的是标签而不是职业，标签还在，只是少了一个成员。
        */
-      this.deps.rawDb.prepare("DELETE FROM event_class_quotas WHERE class_id = ?").bind(id),
-      this.deps.rawDb.prepare("DELETE FROM recurring_template_class_quotas WHERE class_id = ?").bind(id),
-      /* 同理：职业还可能被装在若干个职业标签里。不摘掉的话标签会指着一个已经不存在
-         的职业，指向该标签的配额格子就多出一个永远填不上的名额。 */
       this.deps.rawDb.prepare("DELETE FROM class_tag_members WHERE class_id = ?").bind(id),
       this.deps.rawDb.prepare(
         "DELETE FROM class_catalog WHERE id = ? RETURNING icon_key",

@@ -1,4 +1,4 @@
-import { EVENT_TYPES, type EventClassQuota } from "@guild/shared";
+import { EVENT_TYPES, type EventClassQuotaInput } from "@guild/shared";
 import {
   Button,
   Group,
@@ -49,8 +49,8 @@ type EventFormModalProps = {
   onPollShowVoterNamesChange?: (value: boolean) => void;
   winnerCount?: string;
   onWinnerCountChange?: (value: string) => void;
-  classQuotas: EventClassQuota[];
-  onClassQuotasChange: (value: EventClassQuota[]) => void;
+  classQuotas: EventClassQuotaInput[];
+  onClassQuotasChange: (value: EventClassQuotaInput[]) => void;
   attachmentItems: ImageGridEditorItem[];
   onAttachmentsChange: (items: ImageGridEditorItem[]) => void;
   onFilesSelected: (files: File[]) => void;

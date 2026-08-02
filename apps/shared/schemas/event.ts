@@ -17,15 +17,32 @@ const eventAttachmentsSchema = z.array(z.string().min(1)).max(L.eventAttachments
 const pollResultsVisibilitySchema = z.enum(POLL_RESULTS_VISIBILITIES);
 
 /*
- * 每个职业需要几个人。配额只是可视化信号，服务端不会拿它拦报名——报名的硬上限
- * 只有 capacity 一个。required 不设与 capacity 的联动校验：配额是 capacity 的子集，
- * 两者独立，管理员完全可以先配好职业需求再决定放多少人。
+ * 每一格配额指向一个职业标签，说的是「这一格要 N 个人，标签里的职业都算数」。只要
+ * 一个职业的旧写法就是一个只装了它自己的标签。
+ *
+ * 配额只是可视化信号，服务端不会拿它拦报名——报名的硬上限只有 capacity 一个。
+ * required 不设与 capacity 的联动校验：配额是 capacity 的子集，两者独立，管理员完全
+ * 可以先配好职业需求再决定放多少人。
  */
 export const eventClassQuotaSchema = z.object({
-  class_id: z.string().min(1),
+  tag_id: z.string().min(1),
+  /*
+   * 标签的名字和成员随活动一起返回，卡片画筹码不用再单独请求一次标签表。
+   * label 允许为空是给悬空配额留的口子：标签被删干净了、配额行却还在，这时把它照原样
+   * 露出来（展示层显示成未知标签），而不是 JOIN 一滤了事——那是 bug，得看得见。
+   */
+  label: z.string().nullable(),
+  class_ids: z.array(z.string().min(1)),
   required: z.number().int().positive(),
 });
 const eventClassQuotasSchema = z.array(eventClassQuotaSchema).max(L.eventClassQuotas.max);
+
+/** 写入时只需要指着哪个标签——名字和成员归标签自己管，不在活动这边复制一份。 */
+export const eventClassQuotaInputSchema = z.object({
+  tag_id: z.string().min(1),
+  required: z.number().int().positive(),
+});
+const eventClassQuotaInputsSchema = z.array(eventClassQuotaInputSchema).max(L.eventClassQuotas.max);
 
 const eventPollOptionSchema = z.object({
   id: z.string(),
@@ -95,7 +112,7 @@ const eventMutationSchema = z.object({
   end_at: z.string().datetime().optional(),
   capacity: z.number().int().positive().optional(),
   attachments: eventAttachmentsSchema.optional(),
-  class_quotas: eventClassQuotasSchema.optional(),
+  class_quotas: eventClassQuotaInputsSchema.optional(),
   auto_archive: z.boolean().optional(),
   poll: pollSettingsSchema.optional(),
   winner_count: z.number().int().positive().optional(),
@@ -108,7 +125,7 @@ const eventMutationSchema = z.object({
  * 类型下没有含义，宁可报错也不要静默丢弃。
  */
 function refineClassQuotas(
-  value: { type?: string; class_quotas?: { class_id: string; required: number }[] },
+  value: { type?: string; class_quotas?: { tag_id: string; required: number }[] },
   ctx: z.RefinementCtx,
 ): void {
   if (!value.class_quotas || value.class_quotas.length === 0) {
@@ -117,12 +134,13 @@ function refineClassQuotas(
   if (value.type === "poll" || value.type === "raffle") {
     ctx.addIssue({ code: "custom", path: ["class_quotas"], message: `${value.type} events do not use class quotas` });
   }
+  /* 同一个标签占两格没有意义，两格加起来就是一格。重叠的**不同**标签是允许的。 */
   const seen = new Set<string>();
   value.class_quotas.forEach((quota, index) => {
-    if (seen.has(quota.class_id)) {
-      ctx.addIssue({ code: "custom", path: ["class_quotas", index, "class_id"], message: "Duplicate class quota" });
+    if (seen.has(quota.tag_id)) {
+      ctx.addIssue({ code: "custom", path: ["class_quotas", index, "tag_id"], message: "Duplicate class quota" });
     }
-    seen.add(quota.class_id);
+    seen.add(quota.tag_id);
   });
 }
 
@@ -134,7 +152,7 @@ function refineEventRules(
     poll?: unknown;
     capacity?: unknown;
     winner_count?: unknown;
-    class_quotas?: { class_id: string; required: number }[];
+    class_quotas?: { tag_id: string; required: number }[];
   },
   ctx: z.RefinementCtx,
   isUpdate: boolean,
@@ -222,7 +240,7 @@ const templateMutationSchema = z.object({
   recurrence_rule: recurrenceRuleSchema,
   visibility_offset_minutes: z.number().int().min(0).optional(),
   auto_archive: z.boolean().optional(),
-  class_quotas: eventClassQuotasSchema.optional(),
+  class_quotas: eventClassQuotaInputsSchema.optional(),
 });
 
 export const createTemplateSchema = templateMutationSchema.superRefine(refineClassQuotas);

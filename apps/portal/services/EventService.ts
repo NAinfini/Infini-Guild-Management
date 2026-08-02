@@ -1,4 +1,4 @@
-import type { Event, EventClassQuota } from "@guild/shared";
+import type { Event, EventClassQuotaInput } from "@guild/shared";
 import type { QueryClient } from "@tanstack/react-query";
 import {
   addEventParticipant,
@@ -96,7 +96,7 @@ export type EventSaveInput = {
   pollResultsVisibility?: "always" | "after_vote" | "after_close";
   pollShowVoterNames?: boolean;
   winnerCount?: string;
-  classQuotas?: EventClassQuota[];
+  classQuotas?: EventClassQuotaInput[];
   attachmentItems: AttachmentItem[];
 };
 

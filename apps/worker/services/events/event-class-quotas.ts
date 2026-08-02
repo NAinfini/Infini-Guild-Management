@@ -1,7 +1,14 @@
 import { LIMITS } from "@guild/shared";
 import type { RawDbLike } from "./EventCrudService";
 
-export type ClassQuotaRow = { class_id: string; required: number };
+/** 写进库里的一格：只有标签 id 和人数。 */
+export type ClassQuotaInput = { tag_id: string; required: number };
+
+/** 读回来的一格：连带标签的名字和成员，展示层不用再单独查一次标签表。 */
+export type ClassQuotaRow = ClassQuotaInput & {
+  label: string | null;
+  class_ids: string[];
+};
 
 /*
  * 配额表有两张——活动一张、周期模板一张——形状完全一致，只有父表那一列名字不同。
@@ -35,33 +42,33 @@ function readRows<T>(result: { results?: unknown[] } | unknown[] | undefined): T
 }
 
 /**
- * 找出目录里不存在的职业 id。
+ * 找出不存在的职业标签 id。
  *
- * 两张配额表都对 class_catalog 建了外键，但本仓库不假定 D1 真的在执行外键约束
+ * 两张配额表都对 class_tags 建了外键，但本仓库不假定 D1 真的在执行外键约束
  * （ClassCatalogService 至今仍手写级联删除），所以写入前显式查一次。查不到就报错，
- * 不静默丢弃——管理员传了个不存在的职业，配额少一格是他必须知道的事。
+ * 不静默丢弃——管理员传了个不存在的标签，配额少一格是他必须知道的事。
  */
-export async function findUnknownClassIds(
+export async function findUnknownTagIds(
   rawDb: RawDbLike,
-  quotas: readonly ClassQuotaRow[],
+  quotas: readonly ClassQuotaInput[],
 ): Promise<string[]> {
-  const wanted = [...new Set(quotas.map((quota) => quota.class_id))];
+  const wanted = [...new Set(quotas.map((quota) => quota.tag_id))];
   if (wanted.length === 0) {
     return [];
   }
   const result = await rawDb
-    .prepare(`SELECT id FROM class_catalog WHERE id IN (${placeholders(wanted.length)})`)
+    .prepare(`SELECT id FROM class_tags WHERE id IN (${placeholders(wanted.length)})`)
     .bind(...wanted)
     .all?.();
   const known = new Set(readRows<{ id: string }>(result).map((row) => row.id));
-  return wanted.filter((classId) => !known.has(classId));
+  return wanted.filter((tagId) => !known.has(tagId));
 }
 
 /** 配额条数上限，和 zod 一致；服务层再挡一次，因为模板生成走的是复制而不是校验。 */
 export const MAX_CLASS_QUOTAS = LIMITS.content.eventClassQuotas.max;
 
 /**
- * 整组替换某一行的配额。先删后插，没有增量比对——配额行只有 (parent, class) 和
+ * 整组替换某一行的配额。先删后插，没有增量比对——配额行只有 (parent, tag) 和
  * required 三个字段，逐条 diff 换不来任何东西，反而多出几种中间状态。
  * 返回语句而不是直接执行，好让调用方塞进它自己那个 batch 里，跟父行的写入同生共死。
  */
@@ -69,14 +76,14 @@ export function buildReplaceClassQuotaStatements(
   rawDb: RawDbLike,
   spec: ClassQuotaTable,
   parentId: string,
-  quotas: readonly ClassQuotaRow[],
+  quotas: readonly ClassQuotaInput[],
 ): BoundStatement[] {
   return [
     ...buildDeleteClassQuotaStatements(rawDb, spec, parentId),
     ...quotas.slice(0, MAX_CLASS_QUOTAS).map((quota) =>
       rawDb
-        .prepare(`INSERT INTO ${spec.table} (${spec.parentColumn}, class_id, required) VALUES (?1, ?2, ?3)`)
-        .bind(parentId, quota.class_id, quota.required),
+        .prepare(`INSERT INTO ${spec.table} (${spec.parentColumn}, tag_id, required) VALUES (?1, ?2, ?3)`)
+        .bind(parentId, quota.tag_id, quota.required),
     ),
   ];
 }
@@ -95,18 +102,18 @@ export async function replaceClassQuotas(
   rawDb: RawDbLike,
   spec: ClassQuotaTable,
   parentId: string,
-  quotas: readonly ClassQuotaRow[],
+  quotas: readonly ClassQuotaInput[],
 ): Promise<void> {
   await rawDb.batch(buildReplaceClassQuotaStatements(rawDb, spec, parentId, quotas));
 }
 
 /**
- * 按父行 id 批量读回配额，顺序跟职业目录一致——筹码行的排列必须稳定，否则同一个
+ * 按父行 id 批量读回配额，顺序跟标签目录一致——筹码行的排列必须稳定，否则同一个
  * 活动在两次请求里筹码会换位置。
  *
- * 这里用 LEFT JOIN 而不是 INNER JOIN：目录条目被删时配额行应该跟着走（外键级联加
- * ClassCatalogService 里的显式删除），真出现了对不上目录的配额行，那是 bug，要让它
- * 露出来而不是被 JOIN 悄悄滤掉。这类行排在最后。
+ * 这里用 LEFT JOIN 而不是 INNER JOIN：标签被删时配额行应该跟着走（外键级联加
+ * ClassTagService 里的显式删除），真出现了对不上标签表的配额行，那是 bug，要让它
+ * 露出来而不是被 JOIN 悄悄滤掉——这类行 label 为 null、成员为空，排在最后。
  */
 export async function loadClassQuotas(
   rawDb: RawDbLike,
@@ -119,19 +126,58 @@ export async function loadClassQuotas(
   }
   const result = await rawDb
     .prepare(
-      `SELECT q.${spec.parentColumn} AS parent_id, q.class_id AS class_id, q.required AS required
+      `SELECT q.${spec.parentColumn} AS parent_id, q.tag_id AS tag_id, q.required AS required,
+              t.label AS label
        FROM ${spec.table} q
-       LEFT JOIN class_catalog c ON c.id = q.class_id
+       LEFT JOIN class_tags t ON t.id = q.tag_id
        WHERE q.${spec.parentColumn} IN (${placeholders(parentIds.length)})
-       ORDER BY c.sort_order IS NULL, c.sort_order, q.class_id`,
+       ORDER BY t.sort_order IS NULL, t.sort_order, q.tag_id`,
     )
     .bind(...parentIds)
     .all?.();
 
-  for (const row of readRows<{ parent_id: string; class_id: string; required: number }>(result)) {
+  const rows = readRows<{ parent_id: string; tag_id: string; required: number; label: string | null }>(result);
+  const members = await loadTagMembers(rawDb, [...new Set(rows.map((row) => row.tag_id))]);
+  for (const row of rows) {
     const list = map.get(row.parent_id) ?? [];
-    list.push({ class_id: row.class_id, required: Number(row.required) });
+    list.push({
+      tag_id: row.tag_id,
+      label: row.label ?? null,
+      class_ids: members.get(row.tag_id) ?? [],
+      required: Number(row.required),
+    });
     map.set(row.parent_id, list);
+  }
+  return map;
+}
+
+/**
+ * 标签成员单独查一次，而不是跟上面那条 JOIN 在一起：一格配额对应多个职业，JOIN 上去
+ * 会把配额行按成员数量乘出来，还得在内存里再折叠回去。成员顺序跟职业目录一致。
+ */
+async function loadTagMembers(
+  rawDb: RawDbLike,
+  tagIds: readonly string[],
+): Promise<Map<string, string[]>> {
+  const map = new Map<string, string[]>();
+  if (tagIds.length === 0) {
+    return map;
+  }
+  const result = await rawDb
+    .prepare(
+      `SELECT m.tag_id AS tag_id, m.class_id AS class_id
+       FROM class_tag_members m
+       JOIN class_catalog c ON c.id = m.class_id
+       WHERE m.tag_id IN (${placeholders(tagIds.length)})
+       ORDER BY c.sort_order, m.class_id`,
+    )
+    .bind(...tagIds)
+    .all?.();
+
+  for (const row of readRows<{ tag_id: string; class_id: string }>(result)) {
+    const list = map.get(row.tag_id) ?? [];
+    list.push(row.class_id);
+    map.set(row.tag_id, list);
   }
   return map;
 }

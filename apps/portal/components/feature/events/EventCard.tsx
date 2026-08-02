@@ -462,7 +462,7 @@ export function EventCard({
             </div>
           )}
 
-          {quotaSummary ? <EventClassQuotaChips summary={quotaSummary} /> : null}
+          {quotaSummary ? <EventClassQuotaChips summary={quotaSummary} event={event} /> : null}
 
           {/* ── Footer: Sign-up button ── */}
           {canInteract && !isPoll ? (

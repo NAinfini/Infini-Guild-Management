@@ -308,8 +308,8 @@ export async function runEventInstanceGenerationCron(
     if (insertedEventIds.length > 0) {
       await env.DB.batch(insertedEventIds.map((eventId) =>
         env.DB.prepare(
-          `INSERT INTO event_class_quotas (event_id, class_id, required)
-           SELECT ?1, class_id, required FROM recurring_template_class_quotas WHERE template_id = ?2`,
+          `INSERT INTO event_class_quotas (event_id, tag_id, required)
+           SELECT ?1, tag_id, required FROM recurring_template_class_quotas WHERE template_id = ?2`,
         ).bind(eventId, template.id),
       ));
     }

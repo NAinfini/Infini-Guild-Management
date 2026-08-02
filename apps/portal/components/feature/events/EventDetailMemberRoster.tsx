@@ -34,6 +34,10 @@ export function EventDetailMemberRoster({
   const classCatalog = useClassCatalogStore((state) => state.items);
 
   const quotaSummary = useMemo(() => summariseEventClassQuotas(event, members), [event, members]);
+  const labelByTagId = useMemo(
+    () => new Map(event.class_quotas.map((quota) => [quota.tag_id, quota.label])),
+    [event],
+  );
   const quotaGroups = useMemo(
     () => (quotaSummary ? groupMembersByClassQuota(quotaSummary, members) : null),
     [quotaSummary, members],
@@ -89,7 +93,11 @@ export function EventDetailMemberRoster({
   return (
     <>
       {quotaSummary ? (
-        <EventClassQuotaChips summary={quotaSummary} className="event-detail-modal__quota-row" />
+        <EventClassQuotaChips
+          summary={quotaSummary}
+          event={event}
+          className="event-detail-modal__quota-row"
+        />
       ) : null}
 
       {members.length === 0 ? (
@@ -98,16 +106,22 @@ export function EventDetailMemberRoster({
         <div className="event-detail-modal__member-list">
           <Stack gap={16}>
             {quotaGroups.map((group) => {
-              const item = group.kind === "quota"
-                ? resolveClassCatalogItem(group.slot.key, classCatalog)
-                : null;
               return (
                 <div key={group.kind === "quota" ? group.slot.key : group.kind}>
                   <Group gap={6} mb={8} wrap="nowrap">
-                    {group.kind === "quota" && item ? (
+                    {group.kind === "quota" ? (
                       <>
-                        <ClassIcon item={item} size={18} framed={false} />
-                        <Text size="xs" fw={800}>{item.label}</Text>
+                        {group.slot.class_ids.map((classId) => (
+                          <ClassIcon
+                            key={classId}
+                            item={resolveClassCatalogItem(classId, classCatalog)}
+                            size={18}
+                            framed={false}
+                          />
+                        ))}
+                        <Text size="xs" fw={800}>
+                          {labelByTagId.get(group.slot.key) ?? t("quota.editor.unknownTag")}
+                        </Text>
                         <Text
                           size="xs"
                           fw={800}

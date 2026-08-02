@@ -5,7 +5,7 @@ import {
   type CreateClassTagInput,
   type UpdateClassTagInput,
 } from "@guild/shared";
-import { asc, eq, inArray, max } from "drizzle-orm";
+import { and, asc, eq, inArray, isNull, max } from "drizzle-orm";
 import type { DrizzleD1Database } from "drizzle-orm/d1";
 import { classCatalog, classTagMembers, classTags } from "../db/schema/class-catalog";
 import type { AuditLogStatementCondition, WriteAuditLogInput } from "./audit";
@@ -35,7 +35,11 @@ function isLabelUniqueConflict(error: unknown): boolean {
 }
 
 /*
- * 职业标签的读写。
+ * 目录职业标签的读写。
+ *
+ * class_tags 这张表同时装着两种标签：owner_kind 为 NULL 的目录标签（管理员维护、全站
+ * 可选），和某个活动／模板自己造的一次性标签。本服务只管前者，所以每条查询都得带上
+ * owner_kind IS NULL——这是共用一张表换来的代价，漏一处就会把别人的临时组列进目录。
  *
  * 成员关系整组替换，不做增量比对：一条成员行只有 (tag, class) 两个字段，逐条 diff 换
  * 不来任何东西，反而多出几种中间状态。跟活动配额那边是同一个取舍。
@@ -54,6 +58,7 @@ export class ClassTagService {
     const rows = await this.db
       .select()
       .from(classTags)
+      .where(isNull(classTags.ownerKind))
       .orderBy(asc(classTags.sortOrder), asc(classTags.id));
     const members = await this.loadMembers(rows.map((row) => row.id));
     return ok(rows.map((row) => serializeRow(row, members.get(row.id) ?? [])));
@@ -80,7 +85,10 @@ export class ClassTagService {
     }
 
     const maxSortRow = (
-      await this.db.select({ value: max(classTags.sortOrder) }).from(classTags)
+      await this.db
+        .select({ value: max(classTags.sortOrder) })
+        .from(classTags)
+        .where(isNull(classTags.ownerKind))
     )[0];
     const id = this.deps.generateId();
     const sortOrder = input.sort_order ?? Number(maxSortRow?.value ?? -10) + 10;
@@ -167,8 +175,14 @@ export class ClassTagService {
         entityId: id,
         diffTitle: existing.label,
       }),
-      /* class_tag_members 对 class_tags 建了外键并级联，但本仓库从不假定 D1 真的在
-         执行外键约束（ClassCatalogService 至今仍手写级联删除），所以显式删一遍。 */
+      /* class_tag_members 和两张配额表都对 class_tags 建了外键并级联，但本仓库从不假定
+         D1 真的在执行外键约束（ClassCatalogService 至今仍手写级联删除），所以显式删一
+         遍。配额行漏了的话会指着一个不存在的标签，那一格就永远配不齐。
+
+         删标签会连带删掉正在用它的活动配额，这跟删职业一样是有损的，界面上要先讲清楚
+         有多少活动在用。 */
+      this.deps.rawDb.prepare("DELETE FROM event_class_quotas WHERE tag_id = ?").bind(id),
+      this.deps.rawDb.prepare("DELETE FROM recurring_template_class_quotas WHERE tag_id = ?").bind(id),
       this.deps.rawDb.prepare("DELETE FROM class_tag_members WHERE tag_id = ?").bind(id),
       this.deps.rawDb.prepare("DELETE FROM class_tags WHERE id = ?").bind(id),
     ]);
@@ -223,15 +237,26 @@ export class ClassTagService {
   }
 
   private async findRow(id: string): Promise<TagRow | undefined> {
-    return (await this.db.select().from(classTags).where(eq(classTags.id, id)).limit(1))[0];
+    return (
+      await this.db
+        .select()
+        .from(classTags)
+        .where(and(eq(classTags.id, id), isNull(classTags.ownerKind)))
+        .limit(1)
+    )[0];
   }
 
   private async countTags(): Promise<number> {
-    return (await this.db.select({ id: classTags.id }).from(classTags)).length;
+    return (
+      await this.db.select({ id: classTags.id }).from(classTags).where(isNull(classTags.ownerKind))
+    ).length;
   }
 
   private async labelExists(label: string, excludeId?: string): Promise<boolean> {
-    const rows = await this.db.select({ id: classTags.id, label: classTags.label }).from(classTags);
+    const rows = await this.db
+      .select({ id: classTags.id, label: classTags.label })
+      .from(classTags)
+      .where(isNull(classTags.ownerKind));
     const wanted = label.trim().toLowerCase();
     return rows.some((row) => row.id !== excludeId && row.label.trim().toLowerCase() === wanted);
   }

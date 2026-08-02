@@ -18,10 +18,11 @@ describe("summariseEventClassQuotas", () => {
 });
 
 describe("groupMembersByClassQuota", () => {
+  /* 治疗这一格收两种职业，坦克那一格只收一种——一格一职业只是标签里刚好只有一个成员。 */
   const event = {
     class_quotas: [
-      { class_id: "healer", required: 2 },
-      { class_id: "tank", required: 1 },
+      { tag_id: "healer", label: "治疗", class_ids: ["white-mage", "droid"], required: 2 },
+      { tag_id: "tank", label: "坦克", class_ids: ["tank"], required: 1 },
     ],
   } as unknown as Pick<Event, "class_quotas">;
 
@@ -35,9 +36,10 @@ describe("groupMembersByClassQuota", () => {
 
   it("splits members the same way the chips count them, so the numerators match the group sizes", () => {
     const members = [
-      member("solo-healer", ["healer"]),
+      member("white-mage", ["white-mage"]),
+      member("droid", ["droid"]),
       member("solo-tank", ["tank"]),
-      member("swing", ["healer", "tank"]),
+      member("swing", ["droid", "tank"]),
       member("dps", ["dps"]),
     ];
     const summary = summarise(members);
@@ -52,6 +54,8 @@ describe("groupMembersByClassQuota", () => {
     }
     expect(groups.map((group) => (group.kind === "quota" ? group.slot.key : group.kind)))
       .toEqual(["healer", "tank", "flexible", "unassigned"]);
+    // 两种治疗职业都进同一格，这正是标签存在的理由。
+    expect(groups[0]!.members.map((entry) => entry.user.id)).toEqual(["white-mage", "droid"]);
     expect(groups[2]!.members.map((entry) => entry.user.id)).toEqual(["swing"]);
     expect(groups[3]!.members.map((entry) => entry.user.id)).toEqual(["dps"]);
   });
@@ -69,7 +73,7 @@ describe("groupMembersByClassQuota", () => {
   });
 
   it("counts a member holding a duplicate class id once, not as a swing slot", () => {
-    const members = [member("dupe", ["healer", "healer"])];
+    const members = [member("dupe", ["droid", "droid"])];
     const summary = summarise(members);
 
     const groups = groupMembersByClassQuota(summary, members);
@@ -78,5 +82,19 @@ describe("groupMembersByClassQuota", () => {
     expect(groups.map((group) => (group.kind === "quota" ? group.slot.key : group.kind)))
       .toEqual(["healer", "tank"]);
     expect(groups[0]!.members.map((entry) => entry.user.id)).toEqual(["dupe"]);
+  });
+
+  it("does not call a member a swing slot when both their classes sit in the same group", () => {
+    /* 两种治疗都会打，但只有治疗那一格收得下他——摇摆位说的是「够得着好几格」，
+       不是「会好几个职业」。 */
+    const members = [member("both-healers", ["white-mage", "droid"])];
+    const summary = summarise(members);
+
+    const groups = groupMembersByClassQuota(summary, members);
+
+    expect(summary.flexible).toBe(0);
+    expect(groups.map((group) => (group.kind === "quota" ? group.slot.key : group.kind)))
+      .toEqual(["healer", "tank"]);
+    expect(groups[0]!.members.map((entry) => entry.user.id)).toEqual(["both-healers"]);
   });
 });

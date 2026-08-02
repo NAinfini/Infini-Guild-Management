@@ -1,4 +1,5 @@
 import { Tooltip } from "@mantine/core";
+import type { Event } from "@guild/shared";
 import type { ClassQuotaSummary } from "@guild/shared/utils/class-quota";
 import { ReplaceIcon } from "@portal/components/icons";
 import { ClassIcon } from "@portal/components/shared/ClassIcon";
@@ -18,33 +19,46 @@ import "./EventClassQuotaChips.css";
  *
  * 分子是「专属」人数而不是「能胜任」人数：摇摆位同时挂在好几格上，要是每格都算
  * 进分子，几个分子加起来会超过实到人数。摇摆位单独由行尾那个筹码报数。
+ *
+ * 一格是一个职业标签，可能装着好几个职业，所以筹码上摆的是这一格接受的全部职业图标，
+ * 名字只在提示里出现——卡片上塞不下「治疗」两个字加一串图标。
  */
 type EventClassQuotaChipsProps = {
   summary: ClassQuotaSummary;
+  /** 标签名字随活动一起返回，筹码不自己查标签表，避免两处解析对不上。 */
+  event: Pick<Event, "class_quotas">;
   /** 额外的类名，让调用方处理自己的外边距，不必把布局塞进筹码行本身。 */
   className?: string;
 };
 
-export function EventClassQuotaChips({ summary, className }: EventClassQuotaChipsProps) {
+export function EventClassQuotaChips({ summary, event, className }: EventClassQuotaChipsProps) {
   const { t } = useTranslation("events");
   const catalog = useClassCatalogStore((state) => state.items);
+  const labelByTagId = new Map(event.class_quotas.map((quota) => [quota.tag_id, quota.label]));
 
   return (
     <div className={className ? `quota-chips ${className}` : "quota-chips"}>
       {summary.slots.map((slot) => {
-        const item = resolveClassCatalogItem(slot.key, catalog);
+        const label = labelByTagId.get(slot.key) ?? t("quota.editor.unknownTag");
         return (
           <Tooltip
             key={slot.key}
             label={t(`quota.status.${slot.status}`, {
-              label: item.label,
+              label,
               dedicated: slot.dedicated,
               required: slot.required,
               eligible: slot.eligible,
             })}
           >
             <span className="quota-chips__chip" data-quota-status={slot.status}>
-              <ClassIcon item={item} size={16} framed={false} />
+              {slot.class_ids.map((classId) => (
+                <ClassIcon
+                  key={classId}
+                  item={resolveClassCatalogItem(classId, catalog)}
+                  size={16}
+                  framed={false}
+                />
+              ))}
               <span className="quota-chips__count">
                 {slot.dedicated}/{slot.required}
               </span>

@@ -138,7 +138,7 @@ describe("event instance generation horizon", () => {
     expect(copyStatements.map((statement) => statement.bindings)).toEqual(
       createdIds.map((id) => [id, "tpl-quota"]),
     );
-    expect(copyStatements[0]?.sql).toContain("FROM recurring_template_class_quotas WHERE template_id = ?2");
+    expect(copyStatements[0]?.sql).toContain("SELECT ?1, tag_id, required FROM recurring_template_class_quotas WHERE template_id = ?2");
   });
 
   it("writes media references for generated instances with attachments", async () => {

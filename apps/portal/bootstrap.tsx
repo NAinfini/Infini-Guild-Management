@@ -13,7 +13,9 @@ import { dismissSplash } from "./splash";
 import { AppRouter } from "./router";
 import { useSiteConfigStore } from "./stores/site-config";
 import { fetchClassCatalog } from "./api/queries/classes";
+import { fetchClassTags } from "./api/queries/class-tags";
 import { useClassCatalogStore } from "./stores/class-catalog";
+import { useClassTagStore } from "./stores/class-tag";
 
 type BootstrapSiteConfig = {
   site_name: string;
@@ -80,6 +82,11 @@ async function loadClassCatalog(): Promise<void> {
   useClassCatalogStore.getState().setItems(items);
 }
 
+async function loadClassTags(): Promise<void> {
+  const tags = await fetchClassTags();
+  useClassTagStore.getState().setTags(tags);
+}
+
 export async function mountApp(root: Root): Promise<void> {
   await i18nReady;
   await Promise.all([
@@ -88,6 +95,9 @@ export async function mountApp(root: Root): Promise<void> {
     }),
     loadClassCatalog().catch((error: unknown) => {
       console.error("[bootstrap] Failed to load class catalog", error);
+    }),
+    loadClassTags().catch((error: unknown) => {
+      console.error("[bootstrap] Failed to load class tags", error);
     }),
   ]);
   root.render(

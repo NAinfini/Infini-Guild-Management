@@ -1,11 +1,11 @@
 // Domain: Events, Signups & Recurring Templates
 // Tables: events, recurring_templates, event_class_quotas, recurring_template_class_quotas, event_participants, event_polls, event_poll_options, event_poll_votes, event_raffle_winners
-// Dependencies: auth.users, class-catalog.class_catalog
+// Dependencies: auth.users, class-catalog.class_tags
 import { check, index, integer, primaryKey, sqliteTable, text, uniqueIndex } from "drizzle-orm/sqlite-core";
 import { sql } from "drizzle-orm";
 import { activeGame } from "@guild/shared/games";
 import { users } from "./auth";
-import { classCatalog } from "./class-catalog";
+import { classTags } from "./class-catalog";
 import { nowUtc } from "./shared";
 
 const EVENT_TYPE_IDS = activeGame.eventTypes.map((e) => e.id) as [string, ...string[]];
@@ -72,20 +72,23 @@ export const recurringTemplates = sqliteTable(
 );
 
 /*
- * 每个活动／模板需要几个某职业。存成两张关联表而不是活动行上的一列 JSON：职业目录
- * 是可以删条目的，JSON 里的 id 删完就成了悬空引用，而外键能让它跟着一起走。
+ * 每个活动／模板需要几个某类人。存成两张关联表而不是活动行上的一列 JSON：标签是可以
+ * 删的，JSON 里的 id 删完就成了悬空引用，而外键能让它跟着一起走。
+ *
+ * 一格指向一个职业标签而不是单个职业，这样才写得出「要 2 个治疗，哪种都行」。只要一
+ * 个职业的旧写法就是一个只装了它自己的标签。
  * required 只是筹划期的信号，报名不受它限制——硬上限只有 events.capacity。
  */
 export const eventClassQuotas = sqliteTable(
   "event_class_quotas",
   {
     eventId: text("event_id").notNull().references(() => events.id, { onDelete: "cascade" }),
-    classId: text("class_id").notNull().references(() => classCatalog.id, { onDelete: "cascade" }),
+    tagId: text("tag_id").notNull().references(() => classTags.id, { onDelete: "cascade" }),
     required: integer("required").notNull(),
   },
   (table) => [
-    primaryKey({ columns: [table.eventId, table.classId] }),
-    index("idx_event_class_quotas_class").on(table.classId),
+    primaryKey({ columns: [table.eventId, table.tagId] }),
+    index("idx_event_class_quotas_tag").on(table.tagId),
     check("event_class_quotas_required_positive", sql`${table.required} > 0`),
   ],
 );
@@ -94,12 +97,12 @@ export const recurringTemplateClassQuotas = sqliteTable(
   "recurring_template_class_quotas",
   {
     templateId: text("template_id").notNull().references(() => recurringTemplates.id, { onDelete: "cascade" }),
-    classId: text("class_id").notNull().references(() => classCatalog.id, { onDelete: "cascade" }),
+    tagId: text("tag_id").notNull().references(() => classTags.id, { onDelete: "cascade" }),
     required: integer("required").notNull(),
   },
   (table) => [
-    primaryKey({ columns: [table.templateId, table.classId] }),
-    index("idx_recurring_template_class_quotas_class").on(table.classId),
+    primaryKey({ columns: [table.templateId, table.tagId] }),
+    index("idx_recurring_template_class_quotas_tag").on(table.tagId),
     check("recurring_template_class_quotas_required_positive", sql`${table.required} > 0`),
   ],
 );
