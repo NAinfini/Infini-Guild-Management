@@ -86,7 +86,7 @@
     "i18next": "^26.3.6",
     "lowlight": "^3.3.0",
     "motion": "^12.43.0",
-    "nanoid": "^5.1.9",
+    "nanoid": "^6.0.0",
     "react": "^19.2.8",
     "react-dom": "^19.2.8",
     "react-hook-form": "^7.83.0",
