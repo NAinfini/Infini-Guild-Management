@@ -154,8 +154,8 @@ test("新建模板：必填项不齐就存不了，填齐之后每个字段都�
     "只该剩周二一个被选中",
   ).toHaveText(["Tue"]);
 
-  // 结束条件：重复 5 次后停。
-  await toggleInput(modal, "After").check();
+  // 结束条件：重复 5 次后停。先选结束方式，次数框才会出现。
+  await selectOption(modal, "Ends", "After a number of times");
   await field(modal, "End after occurrences").fill("5");
 
   // 提前创建：开始前 1 天 2 小时 30 分。

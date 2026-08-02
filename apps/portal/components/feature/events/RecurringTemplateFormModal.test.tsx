@@ -33,6 +33,8 @@ vi.mock("react-i18next", () => ({
       };
       return labels[key] ?? key;
     },
+    // 右栏那张产物卡走的是真的 EventCardView，它按 i18n.language 格式化日期。
+    i18n: { language: "en" },
   }),
 }));
 

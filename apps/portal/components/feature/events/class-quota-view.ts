@@ -1,4 +1,4 @@
-import type { Event, EventClassQuotaInput, MemberProfile, User } from "@guild/shared";
+import type { ClassTag, Event, EventClassQuotaInput, MemberProfile, User } from "@guild/shared";
 import { summariseClassQuotas, type ClassQuotaSlot, type ClassQuotaSummary } from "@guild/shared/utils/class-quota";
 
 type MemberEntry = { user: User; profile: MemberProfile };
@@ -50,6 +50,40 @@ export function toClassQuotaInputs(
       ? { tag: { label: quota.label ?? "", class_ids: [...quota.class_ids] }, required: quota.required }
       : { tag_id: quota.tag_id, required: quota.required }
   ));
+}
+
+/**
+ * toClassQuotaInputs 的逆向：把表单里的配额还原成活动上的配额，供预览用。
+ *
+ * 目录标签在表单里只剩一个 tag_id，而筹码要画图标、要写名字，两样都得从标签表补回来。
+ * 补不回来的标签**保留**成一格空的：它在编辑器那一行已经显示成「未知标签」了，预览
+ * 里再悄悄少一格，只会让人以为自己配少了。一次性组自带内容，直接搬。
+ *
+ * tag_id 在这里只当分组的键用——预览不落库，不会被当成真的标签引用回传服务端。
+ */
+export function fromClassQuotaInputs(
+  inputs: readonly EventClassQuotaInput[],
+  tags: readonly ClassTag[],
+): Event["class_quotas"] {
+  return inputs.map((input, index) => {
+    if ("tag_id" in input) {
+      const tag = tags.find((entry) => entry.id === input.tag_id);
+      return {
+        tag_id: input.tag_id,
+        label: tag?.label ?? null,
+        class_ids: tag ? [...tag.class_ids] : [],
+        required: input.required,
+        one_time: false,
+      };
+    }
+    return {
+      tag_id: `one-time-${index}`,
+      label: input.tag.label,
+      class_ids: [...input.tag.class_ids],
+      required: input.required,
+      one_time: true,
+    };
+  });
 }
 
 /** swing 表示这个人同时够格进两格及以上，只是这次被排在了当前这一组。 */
