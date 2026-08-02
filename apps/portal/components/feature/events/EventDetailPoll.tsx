@@ -77,11 +77,19 @@ export function EventDetailPoll({
     const hiddenVoterCount = Math.max(0, voterEntries.length - visibleVoters.length);
     return (
       <div className="event-detail-modal__poll-voters">
+        {/*
+         * 一排光头像，名字和职业交给悬停卡（跟活动卡上那一排是同一个组件、同一张卡）。
+         * 名字原来写在头像旁边，一个选项十个人就是十枚长条，占掉的宽度比选项本身还多；
+         * 而投票这件事只需要认出「谁投的」，认脸就够了。
+         */}
         {visibleVoters.map((entry) => (
-          <div key={entry.user.id} className="event-detail-modal__poll-voter-chip">
-            <MemberRoleAvatar user={entry.user} profile={entry.profile} size={28} />
-            <Text size="xs" fw={700} truncate>{entry.user.username}</Text>
-          </div>
+          <MemberRoleAvatar
+            key={entry.user.id}
+            user={entry.user}
+            profile={entry.profile}
+            size={28}
+            withClassCircles={false}
+          />
         ))}
         {hiddenVoterCount > 0 ? (
           <Text size="xs" fw={700} c="dimmed" className="event-detail-modal__poll-voter-overflow">

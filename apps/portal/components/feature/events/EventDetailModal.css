@@ -110,7 +110,12 @@
   font-variant-numeric: tabular-nums;
 }
 
-.event-detail-modal__section--members > .mantine-Group-root:first-child svg {
+/*
+ * 只染标题那一组的图标。原来选的是整条后代，标题行右边的报名按钮也在同一个 Group 里，
+ * 它的图标被一并染成品牌绿——压在同样是品牌绿的按钮填充上就等于没画，只有悬停时填充
+ * 变深才隐约看得见。按钮里的图标应该跟着按钮自己的文字色走。
+ */
+.event-detail-modal__section--members > .mantine-Group-root:first-child > .mantine-Group-root svg {
   color: var(--brand-text);
 }
 
@@ -162,6 +167,8 @@
   gap: 8px;
   width: 100%;
   min-width: 0;
+  /* 勾选圈 22px ＋ 它跟标题之间的 9px：进度条和投票人都从标题这一列起排。 */
+  --poll-label-indent: 31px;
 }
 
 .event-detail-modal__poll-result-top {
@@ -209,8 +216,10 @@
   white-space: nowrap;
 }
 
+/* 条子原来从勾选圈底下起画，比它上面的标题和下面的投票人都宽出一截，看着像溢出了。 */
 .event-detail-modal__poll-progress {
-  width: 100%;
+  width: auto;
+  margin-left: var(--poll-label-indent);
   --progress-radius: 999px;
 }
 
@@ -232,23 +241,7 @@
   flex-wrap: wrap;
   gap: 6px;
   min-height: 32px;
-  padding-left: 28px;
-}
-
-.event-detail-modal__poll-voter-chip {
-  display: inline-flex;
-  align-items: center;
-  gap: 7px;
-  max-width: 176px;
-  min-height: 32px;
-  padding: 2px 9px 2px 4px;
-  border: 1px solid color-mix(in srgb, var(--text-primary) 7%, transparent);
-  border-radius: var(--shape-pill);
-  background: color-mix(in srgb, var(--surface-base) 88%, transparent);
-}
-
-.event-detail-modal__poll-voter-chip .mantine-Text-root {
-  min-width: 0;
+  padding-left: var(--poll-label-indent);
 }
 
 .event-detail-modal__poll-voter-overflow,
@@ -264,7 +257,7 @@
 
 .event-detail-modal__poll-empty-voters {
   width: fit-content;
-  margin-left: 28px;
+  margin-left: var(--poll-label-indent);
   min-height: 26px;
   padding: 0 9px;
 }
@@ -283,8 +276,9 @@
 }
 
 /* 筹码行放在名单上方：先看整体缺什么，再往下逐格看是谁。 */
-.event-detail-modal__quota-row {
-  margin-bottom: var(--space-md);
+/* Tooltip 要挂在能收 ref 的元素上，ClassIcon 自己不转发。 */
+.event-detail-modal__group-class {
+  display: inline-flex;
 }
 
 /* 名单不再自己开一条滚动条：它所在的右栏已经是滚动容器，套两层滚动很难用。 */

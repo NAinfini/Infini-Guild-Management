@@ -33,8 +33,11 @@ vi.mock("@portal/components/shared/MediaGallery", () => ({
 }));
 
 vi.mock("@portal/components/shared/MemberRoleAvatar", () => ({
+  /* 真组件把名字放在 UnstyledButton 的 aria-label 上，悬停卡里才有可见的名字。 */
   MemberRoleAvatar: ({ user }: { user: { username: string } }) => (
-    <div data-testid="poll-voter-avatar">{user.username.slice(0, 1).toUpperCase()}</div>
+    <div data-testid="poll-voter-avatar" aria-label={user.username}>
+      {user.username.slice(0, 1).toUpperCase()}
+    </div>
   ),
 }));
 
@@ -56,7 +59,7 @@ describe("EventDetailModal", () => {
     );
   });
 
-  it("shows signup progress in details when the event has no class quotas", () => {
+  it("leaves the head count to the section title instead of repeating it above the roster", () => {
     render(
       <MantineProvider>
         <EventDetailModal
@@ -81,9 +84,9 @@ describe("EventDetailModal", () => {
       </MantineProvider>,
     );
 
-    const progress = screen.getByRole("progressbar", { name: "quota.generic.label" });
-    expect(progress).toHaveAttribute("aria-valuenow", "0");
-    expect(progress).toHaveAttribute("aria-valuemax", "10");
+    expect(screen.queryByRole("progressbar")).not.toBeInTheDocument();
+    expect(document.querySelector(".quota-bar")).not.toBeInTheDocument();
+    expect(screen.getByText("detail.membersWithCap")).toBeInTheDocument();
   });
 
   it("does not show a fallback title while the detail modal is closing", () => {
@@ -323,8 +326,10 @@ describe("EventDetailModal", () => {
     expect(document.querySelectorAll(".event-detail-modal__poll-voters")).toHaveLength(1);
     expect(screen.getByText("poll.detail.noVotes")).toBeInTheDocument();
     expect(screen.getAllByTestId("poll-voter-avatar")).toHaveLength(2);
-    expect(screen.getByText("member-1")).toBeInTheDocument();
-    expect(screen.getByText("member-2")).toBeInTheDocument();
+    /* 投票人只画头像，名字交给悬停卡——名字不再作为可见文本排在头像旁边。 */
+    expect(screen.getByLabelText("member-1")).toBeInTheDocument();
+    expect(screen.getByLabelText("member-2")).toBeInTheDocument();
+    expect(document.querySelector(".event-detail-modal__poll-voter-chip")).not.toBeInTheDocument();
     expect(screen.getByRole("checkbox", { name: /Raid/i })).toHaveAttribute("aria-checked", "true");
     expect(screen.getByRole("checkbox", { name: /Dungeon/i })).toHaveAttribute("aria-checked", "false");
     await user.click(screen.getByRole("checkbox", { name: /Dungeon/i }));

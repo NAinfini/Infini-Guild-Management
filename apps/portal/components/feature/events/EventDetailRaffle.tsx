@@ -1,9 +1,9 @@
 import type { Event, MemberProfile, User } from "@guild/shared";
 import { Button, Group, Stack, Text } from "@mantine/core";
 import { GiftIcon } from "@portal/components/icons";
-import { MemberRoleAvatar } from "@portal/components/shared/MemberRoleAvatar";
 import { useConfirmDialog } from "@portal/hooks/useConfirmDialog";
 import { useTranslation } from "react-i18next";
+import { EventMemberIdentity } from "./EventMemberIdentity";
 
 type MemberEntry = { user: User; profile: MemberProfile };
 
@@ -81,12 +81,15 @@ export function EventDetailRaffle({
           {winners.map((winner) => {
             const entry = allUsers.find((candidate) => candidate.user.id === winner.user_id);
             return (
-              <Group key={winner.id} gap={10} wrap="nowrap">
+              /* 跟下面报名名单同一种行：同一个弹窗里同一批人不该有两种长相。 */
+              <Group
+                key={winner.id}
+                gap={10}
+                className="event-detail-modal__member-row"
+                wrap="nowrap"
+              >
                 {entry ? (
-                  <>
-                    <MemberRoleAvatar user={entry.user} profile={entry.profile} size={36} withTooltip={false} />
-                    <Text size="sm" fw={700}>{entry.user.username}</Text>
-                  </>
+                  <EventMemberIdentity entry={entry} />
                 ) : (
                   <Text size="sm" c="dimmed">{winner.user_id}</Text>
                 )}
