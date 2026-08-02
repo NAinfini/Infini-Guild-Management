@@ -6,6 +6,9 @@ import {
   announcements,
   auditLog,
   classCatalog,
+  classTagMembers,
+  classTags,
+  eventClassQuotas,
   eventPollOptions,
   eventPolls,
   eventPollVotes,
@@ -21,6 +24,7 @@ import {
   memberProfiles,
   rolePermissions,
   roles,
+  recurringTemplateClassQuotas,
   recurringTemplates,
   sessions,
   storageCategories,
@@ -60,8 +64,13 @@ export const SEED_CLEAR_TABLES = [
   "war_pool_members",
   "war_teams",
   "war_history",
+  /* 配额行先走，它们指着活动／模板和标签；然后才轮得到标签和职业目录。 */
+  "recurring_template_class_quotas",
+  "event_class_quotas",
   "recurring_templates",
   "events",
+  "class_tag_members",
+  "class_tags",
   "class_catalog",
   "audit_log",
   "error_log",
@@ -236,6 +245,31 @@ export async function seedDatabase(env: Bindings): Promise<void> {
     10,
     { ignoreConflicts: true },
   );
+
+  /*
+   * 职业标签：给一组职业起个名字，活动配额就指着它说「这一格要 N 个，组里的职业都算」。
+   * 刻意让三个标签互相重叠——破竹风既在输出里也在治疗里——否则摇摆位一个都不会出现，
+   * 筹码的三档配色和名单里的「摇摆」标记在种子数据上根本看不出来。
+   */
+  const classTagRows: Array<typeof classTags.$inferInsert> = [
+    { id: "tag-tank", label: "坦克", sortOrder: 0 },
+    { id: "tag-healer", label: "治疗", sortOrder: 10 },
+    { id: "tag-dps", label: "输出", sortOrder: 20 },
+  ];
+  const classTagMemberRows: Array<typeof classTagMembers.$inferInsert> = [
+    { tagId: "tag-tank", classId: "裂石威" },
+    { tagId: "tag-tank", classId: "破竹尘" },
+    { tagId: "tag-healer", classId: "牵丝霖" },
+    { tagId: "tag-healer", classId: "牵丝翊" },
+    { tagId: "tag-healer", classId: "破竹风" },
+    { tagId: "tag-dps", classId: "鸣金虹" },
+    { tagId: "tag-dps", classId: "鸣金影" },
+    { tagId: "tag-dps", classId: "破竹鸢" },
+    { tagId: "tag-dps", classId: "破竹风" },
+    { tagId: "tag-dps", classId: "裂石钧" },
+  ];
+  await batchInsert(db, classTags, classTagRows, 10, { ignoreConflicts: true });
+  await batchInsert(db, classTagMembers, classTagMemberRows, 10, { ignoreConflicts: true });
 
   // ════════════════════════════════════════════
   // ── Users ──
@@ -1091,6 +1125,47 @@ export async function seedDatabase(env: Bindings): Promise<void> {
     },
   ];
   await batchInsert(db, recurringTemplates, recurringTemplateRows, 4);
+
+  // ════════════════════════════════════════════
+  // ── Class Quotas ──
+  // ════════════════════════════════════════════
+
+  /*
+   * 三种情形各占一个活动，这样打开活动页就能同时看到筹码的三档颜色：
+   *   Guild War #1  —— 配得齐，靠摇摆位补上（琥珀）
+   *   Guild War #2  —— 要 3 个坦克，报名的人凑不出来（红）
+   *   Weekly Alpha  —— 一次性组，不进目录，只服务这一个活动
+   * required 只是筹划期的信号，报名不受它限制，所以数字可以大于实际报名人数。
+   */
+  const warOneId = eventRows[2]!.id!;
+  const warTwoId = eventRows[3]!.id!;
+  const weeklyAlphaId = eventRows[0]!.id!;
+  const oneTimeTagId = "tag-once-weekly-alpha";
+
+  await batchInsert(db, classTags, [
+    { id: oneTimeTagId, label: "能拉怪的", sortOrder: 0, ownerKind: "event", ownerId: weeklyAlphaId },
+  ], 5, { ignoreConflicts: true });
+  await batchInsert(db, classTagMembers, [
+    { tagId: oneTimeTagId, classId: "裂石威" },
+    { tagId: oneTimeTagId, classId: "破竹尘" },
+    { tagId: oneTimeTagId, classId: "破竹风" },
+  ], 5, { ignoreConflicts: true });
+
+  await batchInsert(db, eventClassQuotas, [
+    { eventId: warOneId, tagId: "tag-tank", required: 2 },
+    { eventId: warOneId, tagId: "tag-healer", required: 3 },
+    { eventId: warOneId, tagId: "tag-dps", required: 5 },
+    { eventId: warTwoId, tagId: "tag-tank", required: 3 },
+    { eventId: warTwoId, tagId: "tag-healer", required: 2 },
+    { eventId: weeklyAlphaId, tagId: oneTimeTagId, required: 2 },
+    { eventId: weeklyAlphaId, tagId: "tag-healer", required: 2 },
+  ], 8, { ignoreConflicts: true });
+
+  /* 模板也带一格，好让 cron 生成实例时那条复制路径在种子数据上跑得到。 */
+  await batchInsert(db, recurringTemplateClassQuotas, [
+    { templateId: recurringTemplateRows[0]!.id!, tagId: "tag-healer", required: 2 },
+    { templateId: recurringTemplateRows[0]!.id!, tagId: "tag-tank", required: 1 },
+  ], 5, { ignoreConflicts: true });
 
   // ════════════════════════════════════════════
   // ── Announcements ──

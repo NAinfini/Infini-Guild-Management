@@ -172,7 +172,24 @@
   box-shadow: 0 0 6px color-mix(in srgb, var(--status-danger) 40%, transparent);
 }
 
-.member-card__meta-row { margin-top: 4px; display: flex; flex-wrap: wrap; gap: 4px; align-items: center; }
+/*
+ * 徽章数量没有上限，挂满的人会把这一行撑到三四排，同一行卡片的高度就此参差不齐。
+ * 封到两排：22px 是一枚徽章的实际行高（11px 字 × 1.4 行距 + 1px 上下内边距 + 1px
+ * 上下描边），两排再加中间那道 4px 间距。
+ *
+ * 用滚动而不是 hidden：截断会让第三排的徽章彻底消失，卡片上看不出还有别的。滚动条
+ * 至少说明「下面还有」，也点得到。
+ */
+.member-card__meta-row {
+  margin-top: 4px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  align-items: center;
+  max-height: calc(22px * 2 + 4px);
+  overflow-y: auto;
+  scrollbar-width: thin;
+}
 
 .member-card__pill {
   display: inline-flex; align-items: center; gap: 3px;
