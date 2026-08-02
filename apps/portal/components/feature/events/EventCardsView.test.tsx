@@ -379,7 +379,9 @@ describe("EventCardsView", () => {
     expect(screen.queryByRole("checkbox", { name: /Raid/i })).not.toBeInTheDocument();
     expect(screen.queryByRole("checkbox", { name: /Dungeon/i })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /poll\.vote/i })).not.toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: /button\.join/i })).not.toBeInTheDocument();
+    /* 报名按钮在，但按不了——投票活动没有报名这回事，理由挂在按钮的 Tooltip 上。
+       整个页脚不渲染的话，同一排卡里投票卡会比别人矮一截。 */
+    expect(screen.getByRole("button", { name: /button\.join/i })).toBeDisabled();
     expect(onVotePoll).not.toHaveBeenCalled();
   });
 });

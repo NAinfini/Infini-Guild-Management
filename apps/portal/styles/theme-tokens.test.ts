@@ -128,10 +128,6 @@ const RUNTIME_INJECTED_VARS: string[] = [
    * 写入（AVATAR_SIZE 是常量，不会是 undefined）。Task 7 批 B 去掉了这个变量的
    * var() 兜底（rule 1 不允许兜底），暴露出它是运行期注入而非 CSS 定义。 */
   "--member-avatar-stack-size",
-  /* EventCard.tsx，容量进度条的填充比例，在 .event-card__capacity-bar-fill 的
-   * style 上内联写入。进度条本身只在 capacityRatio !== null 时渲染，所以有这个
-   * 元素就一定有这个值。用比例而不是宽度是因为 width 是布局属性，动它会重排。 */
-  "--event-card-capacity-ratio",
   /* --badge-color：管理员自选的任意色号，运行期由内联 style 无条件写入
    * （MemberCard.tsx:24 的 MemberBadge；AdminBadgesSection.tsx:102/194/231
    * 的表单预览、侧栏列表徽章、详情大徽章）。三处消费值都经

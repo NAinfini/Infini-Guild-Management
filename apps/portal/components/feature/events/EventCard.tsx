@@ -92,6 +92,7 @@ export function EventCard({
   const isJoined = currentUserId ? members.some((member) => member.user.id === currentUserId) : false;
   const isArchived = Boolean(event.archived_at);
   const participantActionDisabledReasonKey = getParticipantActionDisabledReasonKey({
+    isPoll,
     isArchived,
     hasEnded,
     signupLocked: event.signup_locked,
@@ -182,7 +183,13 @@ export function EventCard({
     </Menu>
   ) : null;
 
-  const footer = canInteract && !isPoll ? (
+  /*
+   * 页脚永远在（只要这个人有互动权限）。以前投票活动整个页脚都不渲染，同一排卡里
+   * 有的有底栏有的没有，高度和按钮位置全对不齐。投票活动的按钮是禁用的，禁用的理由
+   * 由 Tooltip 说清楚——「这一格里什么都没有」和「这里有个按钮但你现在按不了」
+   * 是两件事，后者才是实情。
+   */
+  const footer = canInteract ? (
     <div onClick={(clickEvent) => clickEvent.stopPropagation()}>
       <Tooltip label={t(participantActionDisabledReasonKey ?? (isJoined ? "button.leave" : "button.join"))}>
         <span data-disabled-tooltip-target>

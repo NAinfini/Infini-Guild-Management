@@ -144,16 +144,8 @@ export function EventCardView({
   const { t, i18n } = useTranslation("events");
   const joinedCount = members.length;
   const typeColor = EVENT_TYPE_COLORS[event.type] ?? UNKNOWN_EVENT_TYPE_COLOR;
-  const isFull = event.capacity !== null && joinedCount >= event.capacity;
   const raffleHasDrawn = event.type === "raffle" && (event.raffle_winners?.length ?? 0) > 0;
   const quotaSummary = summariseEventClassQuotas(event, members);
-  /*
-   * 进度条读的是容量，跟同一行右端那个 12/20 是同一个数——两处对不上的话，用户会以为
-   * 其中一个在骗人。没设容量就没有分母，画不出进度，整条不渲染。
-   */
-  const capacityRatio = event.capacity !== null && event.capacity > 0
-    ? Math.min(1, joinedCount / event.capacity)
-    : null;
 
   const statusIndicators = (
     <>
@@ -284,7 +276,7 @@ export function EventCardView({
             {event.description || t("card.noDescription")}
           </Text>
 
-          {/* ── 参与状况：谁来了、来了多少、还差多少，一行讲完 ── */}
+          {/* ── 参与状况：上一行是谁来了，下一行是缺什么、来了多少 ── */}
           <div className="event-card__members-bar">
             {raffleHasDrawn ? (
               <span className="event-card__winners-tag">
@@ -293,29 +285,23 @@ export function EventCardView({
               </span>
             ) : null}
             <MemberAvatarStack members={members} />
-            {capacityRatio !== null ? (
-              <div
-                className="event-card__capacity-bar"
-                data-full={isFull ? "true" : undefined}
-                role="progressbar"
-                aria-valuemin={0}
-                aria-valuemax={event.capacity ?? undefined}
-                aria-valuenow={joinedCount}
-                aria-label={t("card.capacityProgress", { joined: joinedCount, capacity: event.capacity })}
-              >
-                <span
-                  className="event-card__capacity-bar-fill"
-                  style={{ "--event-card-capacity-ratio": capacityRatio } as React.CSSProperties}
-                />
-              </div>
-            ) : null}
+          </div>
+
+          {/*
+           * 人数跟配额筹码同一行：两边讲的是同一件事（还缺不缺人），而且这一行**永远**
+           * 渲染——没配额的卡也有人数，行数才不会随配额有无变化。以前配额行是条件渲染，
+           * 同一排卡里有的三行有的两行，页脚按钮跟着高低不齐。
+           *
+           * 容量进度条撤了：同一行右端已经有 10/20，进度条是把同一个数再画一遍，
+           * 而且它占的横向空间正是筹码要用的。
+           */}
+          <div className="event-card__tally">
+            {quotaSummary ? <EventClassQuotaChips summary={quotaSummary} event={event} /> : null}
             <div className="event-card__capacity">
               <UsersIcon size={13} />
               <span>{joinedCount}/{event.capacity ?? "∞"}</span>
             </div>
           </div>
-
-          {quotaSummary ? <EventClassQuotaChips summary={quotaSummary} event={event} /> : null}
         </Stack>
       </div>
 

@@ -1,4 +1,14 @@
+/*
+ * 卡片是纵向三段（色带 / 正文 / 页脚），必须显式排成一列。
+ *
+ * SimpleGrid 默认 align-items: stretch，同一行里的卡都被拉到最高那张的高度。
+ * 卡片原本是块级流，多出来的高度就堆在最后一个子元素**下面**——也就是页脚按钮
+ * 底下那块凭空多出来的空白，而且每张卡多多少还不一样（有配额筹码行的那张最高，
+ * 旁边少一行的就多空一截）。正文吃掉这份富余，页脚才会贴着卡片下沿。
+ */
 .event-card {
+  display: flex;
+  flex-direction: column;
   overflow: visible;
   position: relative;
   border-radius: var(--radius-surface);
@@ -222,43 +232,27 @@
   color: color-mix(in srgb, var(--text-primary) 68%, transparent);
 }
 
-/* 容量进度条。读的是同一行右端那个 12/20，配额筹码是另一回事——配额是容量的子集，
-   两条信息各占一行，不合并。没设容量时组件根本不渲染这一条。 */
-.event-card__capacity-bar {
-  position: relative;
-  flex: 1;
-  min-width: 24px;
-  height: 4px;
-  border-radius: var(--shape-pill);
-  overflow: hidden;
-  background: color-mix(in srgb, var(--text-primary) 8%, transparent);
-}
-
-/* 用 scaleX 而不是 width：宽度是布局属性，动它会让浏览器每帧重排整张卡片。
-   组件把比例写进 --event-card-capacity-ratio，这里横向缩放整条。 */
-.event-card__capacity-bar-fill {
-  display: block;
-  width: 100%;
-  height: 100%;
-  border-radius: inherit;
-  background: var(--event-card-accent);
-  transform: scaleX(var(--event-card-capacity-ratio));
-  transform-origin: left center;
-  transition: transform var(--transition-normal);
-}
-
-/* 满员转绿，跟筹码行的「已配齐」用同一个语义色，两处说的是同一件事：不用再拉人了。 */
-.event-card__capacity-bar[data-full="true"] .event-card__capacity-bar-fill {
-  background: var(--status-success);
-}
-
-/* 参与状况一行讲完：谁来了（头像）、来了多少（进度）、还差多少（数字）。
-   三样以前分三行，卡片下半截全是细横条。 */
+/* 谁来了。 */
 .event-card__members-bar {
   display: flex;
   align-items: center;
   gap: 8px;
   padding: var(--space-xs) 0;
+}
+
+/* 缺什么（配额筹码）＋来了多少（人数），同一行，永远渲染——见 EventCardView 里
+   这一段的注释：行数一旦随配额有无变化，同一排卡的页脚就高低不齐。 */
+.event-card__tally {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  min-width: 0;
+}
+
+/* 人数靠右：左边留给筹码，筹码多到折行时它跟在最后一行末尾。 */
+.event-card__tally .event-card__capacity {
+  margin-left: auto;
 }
 
 /* 中奖者标记。以前是一个带浮动徽章的描边盒子，单独占一行；现在缩成参与行左端的
