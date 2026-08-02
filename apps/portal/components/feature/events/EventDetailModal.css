@@ -1,6 +1,12 @@
+/*
+ * Mantine 给 Modal content 的是 overflow-y: auto；这里原本写 overflow: hidden 把它盖掉了，
+ * 内容一旦超过 max-height 就被裁掉而且滚不到。圆角本来就由 header 自己的
+ * border-start-*-radius 收，不需要靠 hidden 裁，所以直接还成 auto——
+ * 它同时是下面两栏各自滚动的兜底：万一标题折行把 header 撑高，多出来的那点由弹窗自己滚。
+ */
 .event-detail-modal__content {
   border-radius: var(--radius-overlay);
-  overflow: hidden;
+  overflow-y: auto;
 }
 
 .event-detail-modal__header {
@@ -18,8 +24,35 @@
   padding: 16px 20px 20px;
 }
 
-.event-detail-modal__grid {
+/*
+ * 左栏资料、右栏参与。两栏各自滚动、弹窗整体基本不滚，读左边说明的时候右边名单一直在眼前。
+ * 上限取 Mantine 给 content 的 max-height（100dvh - 5dvh*2）减去 header 的 60px 和
+ * body 的上下内边距；估多估少都不会丢东西，content 的 auto 会把差额接住。
+ */
+.event-detail-modal__layout {
+  --detail-pane-max-height: calc(90dvh - 104px);
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: var(--space-md);
+  align-items: start;
   min-width: 0;
+}
+
+.event-detail-modal__layout[data-single] {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.event-detail-modal__pane {
+  display: grid;
+  align-content: start;
+  gap: 14px;
+  min-width: 0;
+  max-height: var(--detail-pane-max-height);
+  overflow-y: auto;
+}
+
+.event-detail-modal__member-action {
+  display: inline-flex;
 }
 
 .event-detail-modal__meta-card,
@@ -254,9 +287,8 @@
   margin-bottom: var(--space-md);
 }
 
+/* 名单不再自己开一条滚动条：它所在的右栏已经是滚动容器，套两层滚动很难用。 */
 .event-detail-modal__member-list {
-  max-height: 360px;
-  overflow-y: auto;
   padding-right: 4px;
 }
 
@@ -270,6 +302,25 @@
 .event-detail-modal__member-info {
   min-width: 0;
   flex: 1;
+}
+
+/*
+ * 窄屏收成一栏：两条独立滚动条上下叠着没法用，改成整个弹窗一起滚。
+ * 参与那一栏排到前面——手机上打开活动是为了报名，不是为了读说明。
+ */
+@media (max-width: 900px) {
+  .event-detail-modal__layout {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .event-detail-modal__pane {
+    max-height: none;
+    overflow-y: visible;
+  }
+
+  .event-detail-modal__pane--participation {
+    order: -1;
+  }
 }
 
 @media (max-width: 520px) {
