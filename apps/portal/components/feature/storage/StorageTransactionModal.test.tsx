@@ -243,7 +243,19 @@ describe("StorageTransactionModal", () => {
     expect(screen.getByRole("button", { name: "action.submit" })).toBeEnabled();
   });
 
-  it("keeps the manager modal inside a 390px viewport", () => {
+  /*
+   * 只验声明值，不验渲染结果——jsdom 的视口宽度写死 1024，resizeTo() 没实现，
+   * 覆写 window.innerWidth 也不参与 CSS 解算，窄屏在这里造不出来。
+   *
+   * 另外 max-width 不能再用 toHaveStyle 断言：jsdom 30 起 getComputedStyle 会
+   * 真的把 vw 算成像素（calc(100vw - 16px) → 1008px），而 toHaveStyle 读的正是
+   * 计算值，拿它跟字面量比必然不等。29 版原样返回字符串才让这条一直是绿的。
+   * min-height 是纯 px，不受影响，继续用 toHaveStyle。
+   *
+   * 窄屏下真的没被挤出视口，得靠能设视口的 Playwright 去证——目前三个 project
+   * 都是 Desktop Chrome，这块覆盖是空的。
+   */
+  it("declares a viewport-bounded max width and touch-sized controls", () => {
     const { container } = render(
       <MantineProvider>
         <StorageTransactionModal
@@ -261,9 +273,9 @@ describe("StorageTransactionModal", () => {
       </MantineProvider>,
     );
 
-    expect(container.ownerDocument.querySelector(".storage-modal-content")).toHaveStyle({
-      maxWidth: "calc(100vw - 16px)",
-    });
+    const content = container.ownerDocument.querySelector<HTMLElement>(".storage-modal-content");
+    expect(content).toBeInTheDocument();
+    expect(content?.style.maxWidth).toBe("calc(100vw - 16px)");
     expect(screen.getByRole("textbox", { name: "field.item" })).toHaveStyle({
       minHeight: "44px",
     });
