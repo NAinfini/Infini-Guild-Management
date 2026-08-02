@@ -6,34 +6,20 @@
 }
 
 /*
- * Type accent rail. It spans the whole card and paints only its left 3px so the
- * card's own border-radius clips the rail's ends: a plain 3px-wide box would
- * keep its square corners and stick out past the rounded card edge, which is
- * visible because `.event-card` turns clipping off (see `overflow: visible`).
+ * 类型色以前是卡片左缘一条 3px 的竖条，现在改由顶部色带承担（见
+ * .event-card__header）：色带同时容纳类型徽章、状态图标和管理按钮，一条竖条再加
+ * 一条色带就是同一件事说两遍。--event-card-accent 本身没动，只是换了个地方用。
+ *
+ * --event-card-accent 的兜底一直是死代码：下面的六条 :has() 规则
+ * （weekly_mission、guild_war、social、poll、raffle、other）覆盖了
+ * EventCardView.tsx 里 `type in EVENT_TYPE_COLORS ? type : "other"` 的全部分支，
+ * 没有第七种未匹配的情况。这个覆盖关系今天成立，但 CSS 侧类名硬编码、配置侧数据
+ * 驱动，两者原本无守卫绑定——现在由 event-colors.test.ts 里的一条断言把两边钉在
+ * 一起：往游戏配置加一个事件类型且这里漏加对应规则会直接测红，而不是让
+ * --event-card-accent 静默解析不出来（the final colour review I3）。
  */
-.event-card::before {
-  content: "";
-  position: absolute;
-  inset: 0;
-  border-radius: inherit;
-  z-index: 3;
-  opacity: 0.85;
-  pointer-events: none;
-  /* --event-card-accent 的兜底一直是死代码：下面的六条 :has() 规则
-     （weekly_mission、guild_war、social、poll、raffle、other）覆盖了
-     EventCardsView.tsx:54 `type in EVENT_TYPE_COLORS ? type : "other"` 的
-     全部分支，没有第七种未匹配的情况，去掉兜底不改变任何行为（rule 1）。
-     这个覆盖关系今天成立，但 CSS 侧类名硬编码、配置侧数据驱动，两者原本无
-     守卫绑定——现在由 event-colors.test.ts 里的一条断言把两边钉在一起：
-     往游戏配置加一个事件类型且这里漏加对应规则会直接测红，而不是让
-     --event-card-accent 静默解析不出来（the final colour review I3）。 */
-  width: 3px;
-  right: auto;
-  background: var(--event-card-accent);
-  border-radius: var(--radius-surface) 0 0 var(--radius-surface);
-}
 
-/* 竖条取色策略：weekly_mission 与下面的 social 两类刻意吃 --accent-fill /
+/* 色带取色策略：weekly_mission 与下面的 social 两类刻意吃 --accent-fill /
    --accent-fill-hover（主题强调色），不吃 utils/event-colors.ts 为徽章/标签
    派生的游戏配置色（yan-yun.ts 现在把这两类配成 cyan / grape）。这是本次
    改版引入的有意视觉分歧：同一张卡上竖条与徽章可能不同色，是否统一由后续
@@ -59,10 +45,9 @@
    success/warning/danger，也不是主色）——它们是活动类型的分类色，与站点
    可切换的强调色主题无关，所以不能收敛到 --accent-fill。utils/event-colors.ts
    派生自 apps/shared/games/definitions/yan-yun.ts，poll 的真实分类色就是
-   "teal"、raffle 就是 "pink"；下方 .event-card__raffle-winners-badge 的
-   徽章底色本来就在用 --mantine-color-pink-5，这里改用同一套 Mantine 色阶
-   变量以保持分类色与该文件既有写法一致，而不是新造一个 token
-   （the token-layer contract H 节）。 */
+   "teal"、raffle 就是 "pink"；下方 .event-card__winners-tag 的徽章底色本来就在用
+   --mantine-color-pink-5，这里改用同一套 Mantine 色阶变量以保持分类色与该文件
+   既有写法一致，而不是新造一个 token（the token-layer contract H 节）。 */
 .event-card:has(.event-card__header--poll) {
   --event-card-accent: var(--mantine-color-teal-5);
 }
@@ -84,36 +69,37 @@
   box-shadow: 0 0 0 2px color-mix(in srgb, var(--brand-fill) 52%, transparent);
 }
 
+/* 色带：类型徽章、状态图标、复制与管理菜单都住在这里，正文里一个管理件都没有。
+   底色取类型色的两档淡化，加一条同色分隔线，让色带读起来是卡片的一部分而不是
+   贴上去的一条。 */
 .event-card__header {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 10px;
-  padding: var(--space-md) var(--space-md) 0 var(--space-lg);
+  flex-wrap: nowrap;
+  gap: 6px;
+  padding: 6px var(--space-sm) 6px var(--space-md);
   border-radius: var(--radius-surface) var(--radius-surface) 0 0;
-  background: transparent;
+  background: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--event-card-accent) 16%, transparent),
+    color-mix(in srgb, var(--event-card-accent) 4%, transparent)
+  );
+  border-bottom: 1px solid color-mix(in srgb, var(--event-card-accent) 24%, transparent);
 }
 
 .event-card__header-left {
   display: flex;
   align-items: center;
   min-width: 0;
+  overflow: hidden;
 }
 
 .event-card__header-right {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 4px;
   flex-shrink: 0;
-}
-
-.event-card__header--weekly_mission,
-.event-card__header--guild_war,
-.event-card__header--social,
-.event-card__header--poll,
-.event-card__header--raffle,
-.event-card__header--other {
-  background: transparent;
+  margin-left: auto;
 }
 
 .event-card__type-badge {
@@ -153,22 +139,14 @@
 }
 
 .event-card__body {
-  padding: var(--space-sm) var(--space-md) var(--space-md) var(--space-lg);
-}
-
-.event-card__title-row {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 10px;
-  min-width: 0;
+  padding: var(--space-sm) var(--space-md);
 }
 
 /* The card is no longer a role="button", so the title carries the keyboard
    affordance. It has to shrink exactly like the plain <Text> it replaced. */
 .event-card__title-btn {
   display: block;
-  flex: 1 1 auto;
+  width: 100%;
   min-width: 0;
   text-align: left;
   color: inherit;
@@ -184,23 +162,23 @@
   margin: 0;
 }
 
+/* 单行、不换行、不折叠。以前它允许换行并限宽 86px，五个状态一起出现时会换到
+   第二行、把卡片顶高，一排卡的底边就参差不齐。现在它固定一行——最多五个同时出现
+   （周期＋置顶＋锁定＋归档＋新/更新，后两者互斥），20px 一个放得下。 */
 .event-card__status-rail {
   display: flex;
   align-items: center;
-  justify-content: flex-end;
-  gap: 4px;
-  flex-wrap: wrap;
+  gap: 2px;
+  flex-wrap: nowrap;
   flex-shrink: 0;
-  max-width: 86px;
-  min-height: 22px;
 }
 
 .event-card__status-icon {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 22px;
-  height: 22px;
+  width: 20px;
+  height: 20px;
   border-radius: 6px;
   color: color-mix(in srgb, var(--text-primary) 68%, transparent);
   background: color-mix(in srgb, var(--text-primary) 5%, transparent);
@@ -244,10 +222,12 @@
   color: color-mix(in srgb, var(--text-primary) 68%, transparent);
 }
 
-/* 容量进度条。读的是右上角那个 12/20，配额筹码是另一回事——配额是容量的子集，
+/* 容量进度条。读的是同一行右端那个 12/20，配额筹码是另一回事——配额是容量的子集，
    两条信息各占一行，不合并。没设容量时组件根本不渲染这一条。 */
 .event-card__capacity-bar {
   position: relative;
+  flex: 1;
+  min-width: 24px;
   height: 4px;
   border-radius: var(--shape-pill);
   overflow: hidden;
@@ -272,34 +252,22 @@
   background: var(--status-success);
 }
 
+/* 参与状况一行讲完：谁来了（头像）、来了多少（进度）、还差多少（数字）。
+   三样以前分三行，卡片下半截全是细横条。 */
 .event-card__members-bar {
-  position: relative;
   display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
+  align-items: center;
   gap: 8px;
   padding: var(--space-xs) 0;
 }
 
-.event-card__raffle-winners {
-  position: relative;
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 8px;
-  padding: 10px 8px 10px;
-  border: 1px solid color-mix(in srgb, var(--mantine-color-pink-5) 22%, transparent);
-  border-radius: var(--radius-control);
-  background: color-mix(in srgb, var(--mantine-color-pink-5) 6%, transparent);
-}
-
-.event-card__raffle-winners-badge {
-  position: absolute;
-  top: -11px;
-  left: -6px;
-  display: flex;
+/* 中奖者标记。以前是一个带浮动徽章的描边盒子，单独占一行；现在缩成参与行左端的
+   一枚筹码，行数不变。 */
+.event-card__winners-tag {
+  display: inline-flex;
   align-items: center;
   gap: 4px;
+  flex-shrink: 0;
   padding: 2px 8px 2px 5px;
   border-radius: 10px;
   background: var(--mantine-color-pink-5);
@@ -316,15 +284,6 @@
      分模式变化的 --edge-top——否则一个固定配色的徽章会带一圈会变化的阴影，
      视觉上反而不一致。 */
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
-  z-index: 1;
-}
-
-.event-card__members-left {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  min-width: 0;
-  flex: 1;
 }
 
 .event-card__header-actions {
@@ -333,10 +292,13 @@
   gap: 4px;
 }
 
+/* 页脚只放主操作按钮，右对齐，不满宽。「为什么按不了」由色带上的状态图标和按钮
+   自己的 Tooltip 讲，这里不再放第二份文字。 */
 .event-card__footer {
   display: flex;
   justify-content: flex-end;
-  padding-top: 2px;
+  padding: 8px var(--space-md);
+  border-top: 1px solid color-mix(in srgb, var(--text-primary) 8%, transparent);
 }
 
 .event-card__icon-muted {

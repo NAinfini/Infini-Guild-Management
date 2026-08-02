@@ -248,7 +248,7 @@ const INLINE_SPACING_EXEMPTIONS: Record<string, string[]> = {
   "apps/portal/components/feature/admin/AdminSiteConfigSection.tsx": ["marginTop:2"],
   "apps/portal/components/feature/admin/AdminSystemSection.tsx": ["marginTop:2", "marginTop:2"],
   "apps/portal/components/feature/announcements/AnnouncementListCard.tsx": ["marginTop:2"],
-  "apps/portal/components/feature/events/EventCard.tsx": ["marginTop:2"],
+  "apps/portal/components/feature/events/EventCardView.tsx": ["marginTop:2"],
   "apps/portal/components/feature/events/EventDetailModal.tsx": ["marginRight:4", "marginRight:4", "marginRight:4"],
   "apps/portal/components/feature/events/EventMonthView.tsx": ["marginTop:2"],
   "apps/portal/components/feature/events/RecurringTemplatesTab.tsx": ["marginTop:2", "marginTop:2"],
