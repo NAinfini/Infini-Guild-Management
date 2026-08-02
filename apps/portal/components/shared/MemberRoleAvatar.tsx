@@ -23,6 +23,12 @@ type MemberRoleAvatarProps = {
   };
   size?: number;
   withTooltip?: boolean;
+  /*
+   * 头像右下角那一圈职业图标。花名册要它——那里一个人就是一行，图标是主要信息。
+   * 活动卡不要：卡片已经用职业配额筹码在讲「缺什么职业」，每个头像再挂三个小圈
+   * 就是同一件事说两遍，而且头像本身要叠在一起，圈圈会互相压。
+   */
+  withClassCircles?: boolean;
 };
 
 export function MemberRoleAvatar({
@@ -30,6 +36,7 @@ export function MemberRoleAvatar({
   profile,
   size = 36,
   withTooltip = true,
+  withClassCircles = true,
 }: MemberRoleAvatarProps) {
   const catalog = useClassCatalogStore((state) => state.items);
   const classItems = getUniqueClassIds(profile.classes).map((id) =>
@@ -45,7 +52,7 @@ export function MemberRoleAvatar({
       <Avatar size={size} radius="xl" color="portal-brand" src={avatarSrc}>
         {user.username.slice(0, 1).toUpperCase()}
       </Avatar>
-      {visibleClassItems.length > 0 ? (
+      {withClassCircles && visibleClassItems.length > 0 ? (
         <div className="member-role-avatar__roles" aria-hidden="true">
           {hiddenCount > 0 ? (
             <span

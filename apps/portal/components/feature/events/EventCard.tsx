@@ -43,6 +43,8 @@ import {
 import React from "react";
 import { useTranslation } from "react-i18next";
 import { EventCardAvatarStrip } from "./EventCardAvatarStrip";
+import { EventClassQuotaChips } from "./EventClassQuotaChips";
+import { summariseEventClassQuotas } from "./class-quota-view";
 import { getParticipantActionDisabledReasonKey } from "./participant-action";
 
 // Icons are not carried in the game config (config stores string identifiers like
@@ -195,8 +197,14 @@ export function EventCard({
   const isJoined = currentUserId ? members.some((member) => member.user.id === currentUserId) : false;
   const isFocused = focusedEventId === event.id;
   const isArchived = Boolean(event.archived_at);
-  const visibleMembers = members;
-  const hiddenMembersCount = 0;
+  const quotaSummary = summariseEventClassQuotas(event, members);
+  /*
+   * 进度条读的是容量，跟右上角那个 12/20 是同一个数——两处对不上的话，用户会以为
+   * 其中一个在骗人。没设容量就没有分母，画不出进度，整条不渲染。
+   */
+  const capacityRatio = event.capacity !== null && event.capacity > 0
+    ? Math.min(1, joinedCount / event.capacity)
+    : null;
   const participantActionDisabledReasonKey = getParticipantActionDisabledReasonKey({
     isArchived,
     hasEnded,
@@ -420,6 +428,22 @@ export function EventCard({
           </Group>
 
           {/* ── Members ── */}
+          {capacityRatio !== null ? (
+            <div
+              className="event-card__capacity-bar"
+              data-full={isFull ? "true" : undefined}
+              role="progressbar"
+              aria-valuemin={0}
+              aria-valuemax={event.capacity ?? undefined}
+              aria-valuenow={joinedCount}
+              aria-label={t("card.capacityProgress", { joined: joinedCount, capacity: event.capacity })}
+            >
+              <span
+                className="event-card__capacity-bar-fill"
+                style={{ width: `${Math.round(capacityRatio * 100)}%` }}
+              />
+            </div>
+          ) : null}
           {raffleHasDrawn ? (
             <div className="event-card__raffle-winners">
               <div className="event-card__raffle-winners-badge">
@@ -427,24 +451,18 @@ export function EventCard({
                 <span>{t("raffle.detail.winnersLabel")}</span>
               </div>
               <div className="event-card__members-left">
-                <EventCardAvatarStrip
-                  members={members}
-                  visibleMembers={visibleMembers}
-                  hiddenMembersCount={hiddenMembersCount}
-                />
+                <EventCardAvatarStrip members={members} />
               </div>
             </div>
           ) : (
             <div className="event-card__members-bar">
               <div className="event-card__members-left">
-                <EventCardAvatarStrip
-                  members={members}
-                  visibleMembers={visibleMembers}
-                  hiddenMembersCount={hiddenMembersCount}
-                />
+                <EventCardAvatarStrip members={members} />
               </div>
             </div>
           )}
+
+          {quotaSummary ? <EventClassQuotaChips summary={quotaSummary} /> : null}
 
           {/* ── Footer: Sign-up button ── */}
           {canInteract && !isPoll ? (

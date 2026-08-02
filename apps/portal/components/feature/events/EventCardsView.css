@@ -244,6 +244,29 @@
   color: color-mix(in srgb, var(--text-primary) 68%, transparent);
 }
 
+/* 容量进度条。读的是右上角那个 12/20，配额筹码是另一回事——配额是容量的子集，
+   两条信息各占一行，不合并。没设容量时组件根本不渲染这一条。 */
+.event-card__capacity-bar {
+  position: relative;
+  height: 4px;
+  border-radius: var(--shape-pill);
+  overflow: hidden;
+  background: color-mix(in srgb, var(--text-primary) 8%, transparent);
+}
+
+.event-card__capacity-bar-fill {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--event-card-accent);
+  transition: width var(--transition-normal);
+}
+
+/* 满员转绿，跟筹码行的「已配齐」用同一个语义色，两处说的是同一件事：不用再拉人了。 */
+.event-card__capacity-bar[data-full="true"] .event-card__capacity-bar-fill {
+  background: var(--status-success);
+}
+
 .event-card__members-bar {
   position: relative;
   display: flex;
@@ -251,6 +274,51 @@
   justify-content: space-between;
   gap: 8px;
   padding: var(--space-xs) 0;
+}
+
+/* 职业配额筹码行。放在头像下面：先看见来了谁，再看见还缺什么。 */
+.event-card__quota-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+}
+
+.event-card__quota-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 7px 2px 4px;
+  border-radius: var(--shape-pill);
+  font-size: var(--text-micro);
+  font-weight: 700;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  border: 1px solid color-mix(in srgb, var(--quota-chip-color) 30%, transparent);
+  background: color-mix(in srgb, var(--quota-chip-color) 12%, transparent);
+  color: var(--quota-chip-color);
+}
+
+/* 三档配色就是这一行的全部意义：绿=专属已占满，琥珀=摇摆位补得上，红=这一组人不够。
+   只分红绿的话「摇摆位补不补得上」这个计算就白算了——所有没占满的格子都会一律
+   标红，管理员分不出哪一格才是真缺人。 */
+.event-card__quota-chip[data-quota-status="filled"] {
+  --quota-chip-color: var(--status-success);
+}
+
+.event-card__quota-chip[data-quota-status="flex"] {
+  --quota-chip-color: var(--status-warning);
+}
+
+.event-card__quota-chip[data-quota-status="short"] {
+  --quota-chip-color: var(--status-danger);
+}
+
+/* 摇摆位筹码报的是人数，不是某一格的缺口，所以走中性色，不参与三档配色。 */
+.event-card__quota-chip[data-quota-status="swing"] {
+  --quota-chip-color: var(--text-secondary);
+  padding-left: 5px;
 }
 
 .event-card__raffle-winners {
@@ -303,29 +371,39 @@
   display: flex;
   align-items: center;
   flex-wrap: nowrap;
-  gap: 2px;
+  gap: 0;
   justify-content: flex-start;
   width: 100%;
   min-width: 0;
   overflow: visible;
 }
 
-/* EventCardAvatarStrip.tsx's hidden measuring element, moved out of
-   style={{}} (task-8 批 B). border: none carries no colour, but the
-   COLOUR_PROPS guard matches the property name regardless of value. */
-.event-card__avatar-strip-sizer {
-  width: 100%;
-  height: 0;
-  overflow: hidden;
-  padding: 0;
-  margin: 0;
-  border: none;
+/* 头像一张压一张，像一摞牌。负边距吃掉三分之一个头像的宽度，五个人只占三个多
+   头像的地方，卡片下半部分因此空出来给配额筹码行。 */
+.event-card__avatar-slot {
+  display: inline-flex;
+  position: relative;
+  border-radius: 50%;
+  /* 描边把叠在一起的头像彼此分开；用卡片自己的表面色，看着像“挖”出来的一圈。 */
+  box-shadow: 0 0 0 2px var(--surface-raised);
+  transition: transform var(--transition-fast);
 }
 
-/* --event-card-avatar-size 的兜底也是死代码：EventCardAvatarStrip.tsx:71
-   在渲染这两个子元素的父级 .event-card__avatar-grid 上无条件内联写入这个
-   变量（avatarSize 用 ?? AVATAR_MAX_SIZE 兜底，不会是 undefined），去掉
-   CSS 侧兜底不改变任何行为（rule 1）。 */
+.event-card__avatar-slot + .event-card__avatar-slot {
+  margin-left: calc(var(--event-card-avatar-size) * -0.34);
+}
+
+/* 悬停时提到最前面并抬起一点，才能看清被压住的那半张脸。z-index 要盖过
+   .event-card__avatar-slot 上内联写的那个层号（最大 5）。 */
+.event-card__avatar-slot:hover {
+  z-index: 10;
+  transform: translateY(-2px);
+}
+
+/* --event-card-avatar-size 的兜底也是死代码：EventCardAvatarStrip.tsx
+   在渲染这些子元素的父级 .event-card__avatar-grid 上无条件内联写入这个
+   变量（AVATAR_SIZE 是常量，不会是 undefined），去掉 CSS 侧兜底不改变
+   任何行为（rule 1）。 */
 .event-card__avatar-placeholder {
   display: inline-flex;
   align-items: center;

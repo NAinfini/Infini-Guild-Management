@@ -41,6 +41,7 @@ function createEvent(overrides: Partial<Event> = {}): Event {
     created_by: "user-1",
     recurrence_rule: null,
     attachments: [],
+    class_quotas: [],
     series_id: null,
     is_series_parent: false,
     instance_date: null,
@@ -293,10 +294,11 @@ describe("EventCardsView", () => {
     expect(document.querySelector(".event-card__header-left .event-card__status-rail")).toBeNull();
   });
 
-  it("renders all member avatars when many are signed up (JSDOM has no layout, so all fit)", () => {
+  it("caps the avatar stack at five and counts the rest in a +N badge", () => {
     renderCardsView(15);
 
-    expect(screen.getAllByTestId("member-avatar").length).toBeGreaterThanOrEqual(1);
+    expect(screen.getAllByTestId("member-avatar")).toHaveLength(5);
+    expect(document.querySelector(".event-card__avatar-overflow")?.textContent).toBe("+10");
   });
 
   it("renders an empty member placeholder when nobody has signed up", () => {

@@ -2,86 +2,57 @@ import type { MemberProfile, User } from "@guild/shared";
 import { Text } from "@mantine/core";
 import { MemberRoleAvatar } from "@portal/components/shared/MemberRoleAvatar";
 import { UsersIcon } from "@portal/components/icons";
-import React, { useEffect, useRef, useState } from "react";
+import React from "react";
 
 type MemberEntry = { user: User; profile: MemberProfile };
 
-const AVATAR_MAX_SIZE = 36;
-const AVATAR_MIN_SIZE = 24;
-const AVATAR_GAP = 2;
-const OVERFLOW_BADGE_WIDTH = 28;
-
-function calculateLayout(containerWidth: number, totalMembers: number): { size: number; count: number } {
-  if (!Number.isFinite(containerWidth) || containerWidth <= 0 || totalMembers <= 0) {
-    return { size: AVATAR_MAX_SIZE, count: totalMembers };
-  }
-
-  for (let size = AVATAR_MAX_SIZE; size >= AVATAR_MIN_SIZE; size--) {
-    const slotWidth = size + AVATAR_GAP;
-    const allFit = totalMembers * slotWidth - AVATAR_GAP;
-    if (allFit <= containerWidth) {
-      return { size, count: totalMembers };
-    }
-  }
-
-  const slotWidth = AVATAR_MIN_SIZE + AVATAR_GAP;
-  const maxSlots = Math.max(1, Math.floor((containerWidth - OVERFLOW_BADGE_WIDTH) / slotWidth));
-  return { size: AVATAR_MIN_SIZE, count: Math.min(maxSlots, totalMembers) };
-}
+/*
+ * 卡片只露五个人，多的收进 "+N"。
+ *
+ * 以前这里按容器宽度算能塞几个、头像还会从 36px 缩到 24px，为的是把所有报名的人都
+ * 摆出来。现在「谁来了」不再由头像承担——缺什么职业由下面那行配额筹码讲，人数由右上
+ * 角的容量数字讲，头像只剩「有人来了」这一个作用。于是尺寸固定、数量固定，layout
+ * 不再依赖测量，ResizeObserver 也就没有存在的理由了。
+ */
+const MAX_VISIBLE_AVATARS = 5;
+const AVATAR_SIZE = 34;
 
 type EventCardAvatarStripProps = {
   members: MemberEntry[];
-  visibleMembers: MemberEntry[];
-  hiddenMembersCount: number;
 };
 
-export function EventCardAvatarStrip({ members, visibleMembers, hiddenMembersCount }: EventCardAvatarStripProps) {
-  const sizerRef = useRef<HTMLDivElement>(null);
-  const [layout, setLayout] = useState<{ size: number; count: number } | null>(null);
-
-  const totalCount = visibleMembers.length + hiddenMembersCount;
-
-  useEffect(() => {
-    const sizer = sizerRef.current;
-    if (!sizer) return;
-
-    const measure = () => {
-      setLayout(calculateLayout(sizer.offsetWidth, totalCount));
-    };
-
-    measure();
-
-    if (typeof ResizeObserver === "undefined") return;
-
-    const observer = new ResizeObserver(() => measure());
-    observer.observe(sizer);
-    return () => observer.disconnect();
-  }, [totalCount]);
-
-  const avatarSize = layout?.size ?? AVATAR_MAX_SIZE;
-  const showCount = layout !== null ? Math.min(layout.count, visibleMembers.length) : visibleMembers.length;
-  const displayMembers = visibleMembers.slice(0, showCount);
-  const overflowCount = totalCount - showCount;
+export function EventCardAvatarStrip({ members }: EventCardAvatarStripProps) {
+  const displayMembers = members.slice(0, MAX_VISIBLE_AVATARS);
+  const overflowCount = members.length - displayMembers.length;
 
   return (
-    <>
-      <div ref={sizerRef} className="event-card__avatar-strip-sizer" />
-      <div
-        className="event-card__avatar-grid"
-        style={{ "--event-card-avatar-size": `${avatarSize}px` } as React.CSSProperties}
-      >
-        {members.length === 0 ? (
-          <span className="event-card__avatar-placeholder" aria-hidden="true">
-            <UsersIcon size={Math.max(14, Math.round(avatarSize * 0.5))} />
-          </span>
-        ) : null}
-        {displayMembers.map((member) => (
-          <MemberRoleAvatar key={member.user.id} user={member.user} profile={member.profile} size={avatarSize} />
-        ))}
-        {overflowCount > 0 ? (
-          <Text size="xs" c="dimmed" fw={700} className="event-card__avatar-overflow">+{overflowCount}</Text>
-        ) : null}
-      </div>
-    </>
+    <div
+      className="event-card__avatar-grid"
+      style={{ "--event-card-avatar-size": `${AVATAR_SIZE}px` } as React.CSSProperties}
+    >
+      {members.length === 0 ? (
+        <span className="event-card__avatar-placeholder" aria-hidden="true">
+          <UsersIcon size={Math.round(AVATAR_SIZE * 0.5)} />
+        </span>
+      ) : null}
+      {displayMembers.map((member, index) => (
+        <span
+          key={member.user.id}
+          className="event-card__avatar-slot"
+          /* 越靠左越在前，叠出一摞牌的样子；悬停时那一个提到最前面（见 CSS）。 */
+          style={{ zIndex: MAX_VISIBLE_AVATARS - index }}
+        >
+          <MemberRoleAvatar
+            user={member.user}
+            profile={member.profile}
+            size={AVATAR_SIZE}
+            withClassCircles={false}
+          />
+        </span>
+      ))}
+      {overflowCount > 0 ? (
+        <Text size="xs" c="dimmed" fw={700} className="event-card__avatar-overflow">+{overflowCount}</Text>
+      ) : null}
+    </div>
   );
 }
