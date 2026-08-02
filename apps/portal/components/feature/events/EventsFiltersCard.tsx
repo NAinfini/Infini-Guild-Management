@@ -154,7 +154,13 @@ export function EventsFiltersCard({
         </Stack>
       ) : (
         <Flex gap="sm" align="center" wrap="wrap">
-          <Box style={{ flex: "1 1 180px", minWidth: 160 }}>{primary}</Box>
+          {/*
+            * maxWidth 是必需的：搜索框是这一行里唯一会伸的元素，不封顶的话宽屏下
+            * 它会把全部富余空间吃掉——1920 宽时长成一条一千多像素的输入框，而它要
+            * 装的只是一个活动名。封顶之后富余空间归 marginLeft:auto，右端主按钮
+            * 贴边，中间那几个筛选项保持左聚。窄屏仍可收缩到 160。
+            */}
+          <Box style={{ flex: "1 1 180px", minWidth: 160, maxWidth: 360 }}>{primary}</Box>
           <Group gap="xs" wrap="wrap">
             {filters}
           </Group>

@@ -280,7 +280,8 @@ export function RecurringTemplatesTab({
             <Flex gap="sm" align="center" wrap="wrap">
               {templates.length > 0 ? (
                 <>
-                  <Box style={{ flex: "1 1 180px", minWidth: 160 }}>{searchControl}</Box>
+                  {/* 封顶理由同 EventsFiltersCard：不封顶宽屏下搜索框会吃掉全部富余空间。 */}
+                  <Box style={{ flex: "1 1 180px", minWidth: 160, maxWidth: 360 }}>{searchControl}</Box>
                   <Group gap="xs" wrap="wrap">
                     {filterControls}
                   </Group>
