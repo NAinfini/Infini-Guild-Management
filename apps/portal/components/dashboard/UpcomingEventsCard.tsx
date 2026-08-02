@@ -115,8 +115,14 @@ export const UpcomingEventsCard = memo(function UpcomingEventsCard({
                         </Group>
                         {/* 「还缺什么职业」跟活动卡上是同一行筹码：面板是大多数人每天
                             唯一会看的一页，缺人只在活动页显示等于没人看得见。 */}
+                        {/* 面板这一行右边已经有容量数字了，没配额时再画一条报名进度是
+                            同一件事说两遍，所以这里只在真有配额时渲染。 */}
                         {item.quotaSummary ? (
-                          <EventQuotaBar summary={item.quotaSummary} event={item.item} />
+                          <EventQuotaBar
+                            summary={item.quotaSummary}
+                            event={item.item}
+                            participantCount={item.members.length}
+                          />
                         ) : null}
                       </Group>
                     </Stack>

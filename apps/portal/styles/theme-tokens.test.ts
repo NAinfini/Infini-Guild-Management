@@ -61,7 +61,7 @@ export const MIGRATED: string[] = [
      卡片走 --surface-base / --border-subtle / --radius-surface，
      把手走 --text-secondary / --brand-text / --transition-normal。 */
   "apps/portal/components/feature/admin/AdminStatusTab.css",
-  /* 职业配额筹码行，活动卡和活动详情弹窗共用。三档配色全部走 --status-* 语义色。 */
+  /* 职业配额条由绿色/红色表达够员与缺员，无配额报名进度走信息色，全部使用语义 token。 */
   "apps/portal/components/feature/events/EventQuotaBar.css",
   "apps/portal/components/feature/events/ClassQuotaEditor.css",
   "apps/portal/components/feature/events/EventFormModal.css",

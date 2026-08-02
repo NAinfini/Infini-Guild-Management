@@ -1,105 +1,172 @@
 import { Tooltip } from "@mantine/core";
 import type { Event } from "@guild/shared";
 import type { ClassQuotaSlot, ClassQuotaSummary } from "@guild/shared/utils/class-quota";
+import type { CSSProperties } from "react";
 import { useTranslation } from "react-i18next";
 import "./EventQuotaBar.css";
 
-/*
- * 活动卡与活动详情弹窗上的职业配额条。
- *
- * 一条横条按各组的 required 等比分段，所以整条的宽高跟配额组数无关——两组和六组占的
- * 位置一样大，卡片高度不会因为配额多而长高。这是它取代原来那排筹码的直接原因：筹码
- * 行的宽度随组数增长，多几组就换行，卡片跟着高一截。
- *
- * 每段里三截：
- *   实心   floor          任何排法下都跑不掉的人（专职）
- *   半透明 ceiling-floor  这一格最多还能坐下几个，得靠兼职的人过来
- *   空     required-ceil  够格的人本来就不够，怎么排都填不满
- * 空的那截是原来的筹码完全表达不了的信息：「还没报满」和「报满也填不满」是两回事。
- *
- * 颜色仍是三档，判定沿用算法给的 status（严谨的缺口集合），跟这里画的区间无关：
- *   绿 filled —— 专职就已经占满，谁也抢不走。
- *   黄 flex   —— 专职不够，但整体分配得开，凑得齐。
- *   红 short  —— 这一组格子在抢同一批人，加起来就是不够，必须去拉人。
- *
- * 组名和数字排在各自那一段的正下方，用同一组 flex 比例，所以标签和段永远对齐，也不会
- * 因为组多而折行。
- */
 type EventQuotaBarProps = {
-  summary: ClassQuotaSummary;
-  /** 标签名字随活动一起返回，这里不自己查标签表，避免两处解析对不上。 */
-  event: Pick<Event, "class_quotas">;
-  /** 额外的类名，让调用方处理自己的外边距，不必把布局塞进条本身。 */
+  /** null means this event has no role/tag requirements, so show signup progress instead. */
+  summary: ClassQuotaSummary | null;
+  event: Pick<Event, "class_quotas" | "capacity">;
+  participantCount: number;
   className?: string;
 };
 
-/*
- * 分子写 floor（保底），不写区间。
- *
- * 「1–2/2」看着像在问读的人「到底是 1 还是 2」，而这一格实际有几个人本来就没有唯一答案
- * ——两个人都能坦能奶时，坦克这一格可以是 0、1 或 2，取决于另一格怎么排。区间说的是实话，
- * 但它把一个二义性直接甩给了读的人。
- *
- * floor 是一句没有歧义的话：这么多人跑不掉，谁也抢不走。够不够得着 required 由颜色回答，
- * 「最多能到几」由条上那截半透明和提示回答。三者各说一件事，不互相打架。
- */
-function formatFloor(slot: ClassQuotaSlot): string {
-  return `${slot.floor}/${slot.required}`;
+type QuotaVisualState = "ready" | "short";
+
+function roleState(slot: ClassQuotaSlot): QuotaVisualState {
+  return slot.eligible >= slot.required ? "ready" : "short";
 }
 
-export function EventQuotaBar({ summary, event, className }: EventQuotaBarProps) {
+function progressWidth(current: number, maximum: number): string {
+  const safeMaximum = Math.max(maximum, 1);
+  const safeCurrent = Math.max(0, Math.min(current, safeMaximum));
+  return String(safeCurrent / safeMaximum * 100) + "%";
+}
+
+/**
+ * A role row describes availability only: everyone who can play that role counts once, including
+ * multi-role members. The lineup status above it uses maximum matching, so it alone answers
+ * whether those members can fill every seat at the same time without being counted twice.
+ */
+export function EventQuotaBar({ summary, event, participantCount, className }: EventQuotaBarProps) {
   const { t } = useTranslation("events");
   const labelByTagId = new Map(event.class_quotas.map((quota) => [quota.tag_id, quota.label]));
+  const rootClassName = className ? "quota-bar " + className : "quota-bar";
 
-  /* 解析不出名字的标签**保留**并显示成「未知标签」：悄悄少一段只会让人以为自己配少了。 */
+  if (!summary) {
+    const capacity = event.capacity;
+    const hasCapacity = capacity !== null;
+    const counter = hasCapacity
+      ? t("quota.generic.count", { current: participantCount, capacity })
+      : t("quota.generic.unlimitedCount", { current: participantCount });
+    const tooltip = hasCapacity
+      ? t("quota.generic.tooltip.capacity", { current: participantCount, capacity })
+      : t("quota.generic.tooltip.unlimited", { current: participantCount });
+
+    return (
+      <section className={rootClassName} aria-label={t("quota.generic.label")}>
+        <div className="quota-bar__overall" data-quota-state="neutral">
+          <div className="quota-bar__overall-primary">
+            <span className="quota-bar__state-dot" aria-hidden="true" />
+            <span className="quota-bar__overall-label">{t("quota.generic.label")}</span>
+          </div>
+          <span className="quota-bar__overall-count">{counter}</span>
+        </div>
+        <Tooltip label={tooltip}>
+          <div className="quota-bar__slots" role="list">
+            <div className="quota-bar__slot" data-quota-state="neutral" role="listitem">
+              <div className="quota-bar__slot-header">
+                <span className="quota-bar__role-name">{t("quota.generic.allMembers")}</span>
+                <span className="quota-bar__role-count">{counter}</span>
+              </div>
+              {hasCapacity ? (
+                <div
+                  className="quota-bar__progress"
+                  role="progressbar"
+                  aria-label={t("quota.generic.label")}
+                  aria-valuemin={0}
+                  aria-valuemax={capacity}
+                  aria-valuenow={Math.max(0, Math.min(participantCount, capacity))}
+                  aria-valuetext={tooltip}
+                >
+                  <span
+                    className="quota-bar__progress-fill"
+                    style={{ width: progressWidth(participantCount, capacity) }}
+                  />
+                </div>
+              ) : (
+                <div
+                  className="quota-bar__progress quota-bar__progress--unlimited"
+                  aria-hidden="true"
+                />
+              )}
+              <span className="quota-bar__slot-status">
+                {hasCapacity
+                  ? t("quota.generic.capacitySet", { capacity })
+                  : t("quota.generic.unlimited")}
+              </span>
+            </div>
+          </div>
+        </Tooltip>
+      </section>
+    );
+  }
+
   const labelFor = (slot: ClassQuotaSlot) =>
     labelByTagId.get(slot.key) ?? t("quota.editor.unknownTag");
-
-  const tooltipFor = (slot: ClassQuotaSlot) =>
-    t(`quota.status.${slot.status}`, {
-      label: labelFor(slot),
-      floor: slot.floor,
-      ceiling: slot.ceiling,
-      required: slot.required,
-      eligible: slot.eligible,
-    });
+  const lineupState: QuotaVisualState = summary.shortfall === 0 ? "ready" : "short";
+  const lineupTooltip = t("quota.lineup." + lineupState + "Hint", {
+    count: summary.shortfall,
+  });
+  const slotGridStyle = {
+    "--quota-slot-count": summary.slots.length,
+  } as CSSProperties;
 
   return (
-    <div className={className ? `quota-bar ${className}` : "quota-bar"}>
-      <div className="quota-bar__track">
-        {summary.slots.map((slot) => (
-          <Tooltip key={slot.key} label={tooltipFor(slot)}>
-            <div
-              className="quota-bar__segment"
-              data-quota-status={slot.status}
-              style={{ flexGrow: slot.required }}
-            >
-              <span className="quota-bar__floor" style={{ flexGrow: slot.floor }} />
-              <span className="quota-bar__reach" style={{ flexGrow: slot.ceiling - slot.floor }} />
-            </div>
-          </Tooltip>
-        ))}
-      </div>
+    <section className={rootClassName} aria-label={t("quota.lineup.label")}>
+      <Tooltip label={lineupTooltip}>
+        <div className="quota-bar__overall" data-quota-state={lineupState}>
+          <div className="quota-bar__overall-primary">
+            <span className="quota-bar__state-dot" aria-hidden="true" />
+            <span className="quota-bar__overall-label">
+              {t("quota.lineup." + lineupState, { count: summary.shortfall })}
+            </span>
+          </div>
+          <span className="quota-bar__overall-count">
+            {t("quota.lineup.count", {
+              matched: summary.matchedTotal,
+              required: summary.requiredTotal,
+            })}
+          </span>
+        </div>
+      </Tooltip>
 
-      <div className="quota-bar__labels">
-        {summary.slots.map((slot) => (
-          <Tooltip key={slot.key} label={tooltipFor(slot)}>
-            <div
-              className="quota-bar__label"
-              data-quota-status={slot.status}
-              style={{ flexGrow: slot.required }}
-            >
-              {/*
-                写标签名，不画职业图标。一格可以认好几个职业，摆一串图标既挤掉数字，
-                又答不上「这是哪一组」——「坦克」两个字才是人认得出来的东西。名字放不下
-                时省略号截断，数字不参与收缩：段再窄也得看得见缺没缺。
-              */}
-              <span className="quota-bar__name">{labelFor(slot)}</span>
-              <span className="quota-bar__count">{formatFloor(slot)}</span>
-            </div>
-          </Tooltip>
-        ))}
+      <div className="quota-bar__slots" role="list" style={slotGridStyle}>
+        {summary.slots.map((slot) => {
+          const state = roleState(slot);
+          const label = labelFor(slot);
+          const covered = Math.min(slot.eligible, slot.required);
+          const shortfall = Math.max(slot.required - slot.eligible, 0);
+          const tooltip = t("quota.role.tooltip." + state, {
+            label,
+            available: slot.eligible,
+            required: slot.required,
+            count: shortfall,
+          });
+
+          return (
+            <Tooltip key={slot.key} label={tooltip}>
+              <div className="quota-bar__slot" data-quota-state={state} role="listitem">
+                <div className="quota-bar__slot-header">
+                  <span className="quota-bar__role-name">{label}</span>
+                  <span className="quota-bar__role-count">{slot.eligible} / {slot.required}</span>
+                </div>
+                <div
+                  className="quota-bar__progress"
+                  role="progressbar"
+                  aria-label={label}
+                  aria-valuemin={0}
+                  aria-valuemax={slot.required}
+                  aria-valuenow={covered}
+                  aria-valuetext={tooltip}
+                >
+                  <span
+                    className="quota-bar__progress-fill"
+                    style={{ width: progressWidth(covered, slot.required) }}
+                  />
+                </div>
+                <span className="quota-bar__slot-status">
+                  {state === "ready"
+                    ? t("quota.role.ready")
+                    : t("quota.role.short", { count: shortfall })}
+                </span>
+              </div>
+            </Tooltip>
+          );
+        })}
       </div>
-    </div>
+    </section>
   );
 }

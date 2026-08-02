@@ -9,6 +9,13 @@
  */
 .quota-editor {
   container-type: inline-size;
+  /* 表单那一列的 Stack 只给 8px，标题跟上一格的输入框贴在一起，看着像同一组。 */
+  margin-top: var(--space-sm);
+}
+
+/* 标题跟第一行之间要比行与行之间宽，否则「职业配额」读起来像第一行的一部分。 */
+.quota-editor__label {
+  margin-bottom: var(--space-xs);
 }
 
 .quota-editor__row {
@@ -111,15 +118,16 @@
 }
 
 /*
- * 窄的时候一行摆不下四格：名称独占一行，职业和人数并排，删除跟着人数走。
- * 不收成一列——那样一格配额要占四行，五格就是二十行。
+ * 窄的时候压列宽，不折行：一格配额永远只占一行。
+ *
+ * 原来这里把名称顶到单独一行，结果表单右栏（四百来像素）里每格配额都是两行高，两格
+ * 配额之间的名称和职业列还是对不齐——正是四列布局想解决的问题。名称和职业两列都是
+ * minmax(0, 1fr)，挤不下时名称走省略号、职业条收成「图标 +N」，两者本来就为截断设计。
+ * 人数框留 72px：Mantine NumberInput 带上下箭头再窄就点不中了。
  */
 @container (max-width: 620px) {
   .quota-editor__row {
-    grid-template-columns: minmax(0, 1fr) 96px auto;
-  }
-
-  .quota-editor__name {
-    grid-column: 1 / -1;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) 72px auto;
+    gap: var(--space-xs);
   }
 }

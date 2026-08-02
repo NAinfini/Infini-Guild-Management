@@ -146,6 +146,14 @@ describe("EventCardsView", () => {
     ).toBeInTheDocument();
   });
 
+  it("shows signup progress on a card without class quotas", () => {
+    renderCardsView(3, { eventOverrides: { capacity: 10, class_quotas: [] } });
+
+    const progress = screen.getByRole("progressbar", { name: "quota.generic.label" });
+    expect(progress).toHaveAttribute("aria-valuenow", "3");
+    expect(progress).toHaveAttribute("aria-valuemax", "10");
+  });
+
   it("offers one context-aware next action in an empty result", async () => {
     const onResetFilters = vi.fn();
     const onCreateEvent = vi.fn();

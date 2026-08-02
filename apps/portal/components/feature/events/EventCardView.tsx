@@ -296,7 +296,9 @@ export function EventCardView({
             <MemberAvatarStack members={members} />
           </div>
 
-          {quotaSummary ? <EventQuotaBar summary={quotaSummary} event={event} /> : null}
+          {/* 没配额也画：那时它是一条报名进度，「这场还收不收人」跟「缺哪个职业」在
+              卡片上占同一个位置，不会因为活动类型不同而少一块。 */}
+          <EventQuotaBar summary={quotaSummary} event={event} participantCount={joinedCount} />
         </Stack>
       </div>
 

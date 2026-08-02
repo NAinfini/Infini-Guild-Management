@@ -12,7 +12,8 @@ import { groupMembersByClassQuota, summariseEventClassQuotas } from "./class-quo
 type MemberEntry = { user: User; profile: MemberProfile };
 
 type EventDetailMemberRosterProps = {
-  event: Pick<Event, "class_quotas">;
+  /* capacity 是给没配额时那条报名进度用的，配额条自己要读。 */
+  event: Pick<Event, "class_quotas" | "capacity">;
   members: MemberEntry[];
   canManage: boolean;
   onRemoveMember: (userId: string, username: string) => void;
@@ -93,13 +94,12 @@ export function EventDetailMemberRoster({
 
   return (
     <>
-      {quotaSummary ? (
-        <EventQuotaBar
-          summary={quotaSummary}
-          event={event}
-          className="event-detail-modal__quota-row"
-        />
-      ) : null}
+      <EventQuotaBar
+        summary={quotaSummary}
+        event={event}
+        participantCount={members.length}
+        className="event-detail-modal__quota-row"
+      />
 
       {members.length === 0 ? (
         <Text c="dimmed" size="sm">{t("detail.noMembers")}</Text>

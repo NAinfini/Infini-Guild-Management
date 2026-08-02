@@ -54,7 +54,7 @@ export function ClassQuotaEditor({ value, onChange, disabled = false }: ClassQuo
 
   return (
     <Stack gap={8} className="quota-editor">
-      <Text size="sm" fw={500}>{t("quota.editor.label")}</Text>
+      <Text size="sm" fw={500} className="quota-editor__label">{t("quota.editor.label")}</Text>
 
       {value.map((quota, index) => (
         <QuotaRow
@@ -177,6 +177,9 @@ function QuotaRow({
         min={1}
         max={999}
         clampBehavior="strict"
+        /* 上下箭头去掉：一行就这么宽，两个 12px 的箭头点不准，直接输数字反而快。
+           min/max/clampBehavior 还在，键盘上下键也还能用，能改的范围没变。 */
+        hideControls
         disabled={disabled}
         value={quota.required}
         onChange={(next) => {

@@ -56,6 +56,36 @@ describe("EventDetailModal", () => {
     );
   });
 
+  it("shows signup progress in details when the event has no class quotas", () => {
+    render(
+      <MantineProvider>
+        <EventDetailModal
+          event={{
+            id: "event-progress",
+            title: "Open Event",
+            type: "social",
+            start_at: "2099-03-12T16:00:00.000Z",
+            end_at: null,
+            description: null,
+            capacity: 10,
+            attachments: [],
+            class_quotas: [],
+          } as never}
+          members={[]}
+          allUsers={[]}
+          canManage={false}
+          onClose={() => {}}
+          onAddParticipant={() => {}}
+          onRemoveParticipant={() => {}}
+        />
+      </MantineProvider>,
+    );
+
+    const progress = screen.getByRole("progressbar", { name: "quota.generic.label" });
+    expect(progress).toHaveAttribute("aria-valuenow", "0");
+    expect(progress).toHaveAttribute("aria-valuemax", "10");
+  });
+
   it("does not show a fallback title while the detail modal is closing", () => {
     const source = readFileSync(resolve(process.cwd(), "apps/portal/components/feature/events/EventDetailModal.tsx"), "utf8");
 
