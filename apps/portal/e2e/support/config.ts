@@ -14,7 +14,15 @@ import { resolve } from "node:path";
  * 代价是 dist 必须是新的——global-setup 会显式比对时间戳，过期就当场报错，
  * 绝不允许拿旧产物跑出一片绿。
  */
-const PORT_BASE = Number(process.env.E2E_PORT_BASE ?? 8787);
+/*
+ * 槽位 0 的端口，其余槽位依次 +1。导出而不是留成模块私有：playwright.config.ts
+ * 起 wrangler 时要用同一个基准算 `--port`，各写各的就会出现「健康检查打 8887、
+ * 服务却起在 8787」这种只表现为 webServer 超时、看不出原因的错配。
+ */
+export const E2E_PORT_BASE = Number(process.env.E2E_PORT_BASE ?? 8787);
+
+/* inspector 端口单独一条：它和站点端口没有换算关系，挤在一起改会互相牵连。 */
+export const E2E_INSPECTOR_PORT_BASE = Number(process.env.E2E_INSPECTOR_PORT_BASE ?? 9329);
 
 /*
  * 并行槽位：每个 Playwright worker 进程对着**自己那一份** worker + D1 + R2。
@@ -30,7 +38,7 @@ const PORT_BASE = Number(process.env.E2E_PORT_BASE ?? 8787);
 export const E2E_SLOTS = Math.max(1, Number(process.env.E2E_SLOTS ?? 4));
 
 export function originForSlot(slot: number): string {
-  return `http://127.0.0.1:${PORT_BASE + slot}`;
+  return `http://127.0.0.1:${E2E_PORT_BASE + slot}`;
 }
 
 /**

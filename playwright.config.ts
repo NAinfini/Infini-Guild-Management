@@ -1,5 +1,11 @@
 import { defineConfig, devices } from "@playwright/test";
-import { E2E_SLOTS, originForSlot, type E2eOptions } from "./apps/portal/e2e/support/config";
+import {
+  E2E_INSPECTOR_PORT_BASE,
+  E2E_PORT_BASE,
+  E2E_SLOTS,
+  originForSlot,
+  type E2eOptions,
+} from "./apps/portal/e2e/support/config";
 
 /*
  * 站点和接口同一个源：worker 通过 ASSETS 绑定直接吐 apps/portal/dist，
@@ -88,7 +94,7 @@ export default defineConfig<E2eOptions>({
       ` --config apps/worker/wrangler.jsonc --persist-to apps/worker/.wrangler/e2e-${slot} && `,
       `wrangler dev --config apps/worker/wrangler.jsonc`,
       ` --persist-to apps/worker/.wrangler/e2e-${slot}`,
-      ` --port ${8787 + slot} --inspector-port ${9329 + slot}`,
+      ` --port ${E2E_PORT_BASE + slot} --inspector-port ${E2E_INSPECTOR_PORT_BASE + slot}`,
     ].join(""),
     url: `${originForSlot(slot)}/api/health`,
     reuseExistingServer: false,

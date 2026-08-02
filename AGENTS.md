@@ -385,11 +385,20 @@ first; `globalSetup` independently compares source mtimes against the bundle
 letting a stale bundle produce a green run.
 
 **Parallelism.** `E2E_SLOTS` (default 4) wrangler instances run side by side,
-each with its own port (`8787 + slot`) and its own `--persist-to` directory, so
-each Playwright worker owns a private D1 and R2. Tests never share mutable
-state across slots. `fullyParallel` stays off, so the distribution unit is the
-spec file and per-file module state remains safe. Set `E2E_SLOTS=1` to fall back
-to a single serial instance.
+each with its own port (`E2E_PORT_BASE + slot`, default base 8787) and its own
+`--persist-to` directory, so each Playwright worker owns a private D1 and R2.
+Tests never share mutable state across slots. `fullyParallel` stays off, so the
+distribution unit is the spec file and per-file module state remains safe. Set
+`E2E_SLOTS=1` to fall back to a single serial instance; set `E2E_PORT_BASE` (and
+`E2E_INSPECTOR_PORT_BASE`, default 9329) to move off a busy port range.
+
+**`wrangler` is pinned to 4.113.0 on purpose. Do not bump it without running the
+full e2e suite.** 4.118.0 resolves `miniflare` to `5.x-alpha`, whose
+ProxyController treats `Network connection lost.` as fatal and tears down the
+whole `wrangler dev` session. e2e produces that condition constantly — every
+navigation that aborts an in-flight fetch — so a random slot dies mid-run and
+every later spec on that slot fails with `ECONNREFUSED`. It looks like a dozen
+unrelated flaky specs; it is one dead server.
 
 **Assertion helpers** (`support/test.ts`):
 

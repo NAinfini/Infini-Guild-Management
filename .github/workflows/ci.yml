@@ -52,3 +52,51 @@ jobs:
       - run: pnpm build:worker
         env:
           WRANGLER_SEND_METRICS: 'false'
+
+  # 独立 job：e2e 十几分钟起步，串在 quality 后面会让「lint 挂了」这种一分钟就能
+  # 知道的结论也要等十几分钟。两个 job 并行，各报各的。
+  e2e:
+    name: End-to-End
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: pnpm/action-setup@0ebf47130e4866e96fce0953f49152a61190b271 # v6.0.9
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      # 只装 chromium：三个 project 用的都是 Desktop Chrome，把 firefox / webkit
+      # 一起拖下来是白花两分钟。
+      - run: pnpm exec playwright install --with-deps chromium
+
+      # 同 quality：wrangler.jsonc 不在仓库里，e2e 的 webServer 要拿它起 worker。
+      # 顺带生成 .dev.vars 里的 SIGNING_SECRET，没有它登不上，会话建不起来。
+      - run: pnpm setup:local
+
+      # test:e2e = pnpm build && playwright test。产物必须由这一步构建：
+      # globalSetup 会比对 dist 与源码的时间戳，旧产物直接报错而不是静默测上一版。
+      # D1 迁移和播种不用在这里做——webServer 每个槽位起服务前跑一次幂等迁移，
+      # globalSetup 再通过接口重新播种。
+      - run: pnpm test:e2e
+        env:
+          # 运行器是 4 vCPU，每个槽位要养一个 workerd 加一个 chromium。
+          # 开满 4 槽会互相抢核，把超时压成随机红灯——那种红比慢更贵。
+          E2E_SLOTS: '2'
+          WRANGLER_SEND_METRICS: 'false'
+
+      # 失败时把 trace 和截图带出来。retries 是 0，现场只有这一次。
+      - if: failure()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: playwright-failure-evidence
+          path: |
+            playwright-report/
+            apps/portal/e2e/.artifacts/
+          retention-days: 7
+          if-no-files-found: ignore

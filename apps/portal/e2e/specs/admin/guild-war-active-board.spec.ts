@@ -181,10 +181,30 @@ async function dragCardTo(page: Page, card: Locator, target: Locator): Promise<v
   /* 目标框要在拖拽开始之后再量：回收区平时是 display:none，拖起来才占位。
      而且必须先等它真的出现——按下之后立刻量，量到的是还没重渲染的那一帧，返回 null。 */
   await expect(target, "拖拽开始后目标应当可见").toBeVisible();
-  const to = await target.boundingBox();
-  expect(to, "拖拽目标不在视口里").toBeTruthy();
-  await page.mouse.move(to!.x + to!.width / 2, to!.y + to!.height / 2, { steps: 12 });
+
+  /*
+   * 分两段落点，不是重试，是因为第一段本身会改变排版：
+   * 回收区一出现就占位，把下面的列往上顶；拖拽浮层也会让列高变化。
+   * 第一段先把指针带到「量到的位置」，等排版因此稳定下来，第二段再重量一次落点。
+   * 只量一次就直接松手，正是这条用例偶发失败的成因——落点算的是上一帧的坐标。
+   */
+  await moveToCenterOf(page, target, 12);
+  await moveToCenterOf(page, target, 4);
+
+  /*
+   * 松手前必须让应用自己承认「我是当前落点」：dnd-kit 的 isOver 会给目标挂上
+   * `xxx--over`（GuildWarDragBoardSections.tsx:278 的列、:465 的回收区）。
+   * 少了这一步，指针打偏时会静默地投放到别处或原地落回，用例在后面某条断言上
+   * 报一个和成因毫无关系的错。这里失败就直接指向「没拖到目标上」。
+   */
+  await expect(target, "松手前目标必须已经是 dnd-kit 认定的落点").toHaveClass(/(^|\s)[\w-]+--over(\s|$)/);
   await page.mouse.up();
+}
+
+async function moveToCenterOf(page: Page, target: Locator, steps: number): Promise<void> {
+  const box = await target.boundingBox();
+  expect(box, "拖拽目标不在视口里").toBeTruthy();
+  await page.mouse.move(box!.x + box!.width / 2, box!.y + box!.height / 2, { steps });
 }
 
 test("加人进池：选完人确认后池子和服务端一起加一", async ({ page, flow, api }) => {
