@@ -392,6 +392,18 @@ distribution unit is the spec file and per-file module state remains safe. Set
 `E2E_SLOTS=1` to fall back to a single serial instance; set `E2E_PORT_BASE` (and
 `E2E_INSPECTOR_PORT_BASE`, default 9329) to move off a busy port range.
 
+**Rate-limit quota.** Each test presents its own `X-Forwarded-For`, so the server
+treats it as an independent client with its own quota (120 reads/min, 80
+writes/min). The id must be unique across the whole run, not just within a worker
+process: Playwright starts a fresh worker process after every failure and between
+projects, and a plain module-level counter restarts at zero there, handing live
+ids back out. Two tests then share one bucket, the second gets 429, that failure
+starts another worker, and one failure snowballs into a screenful of unrelated
+429s — visible only where something already failed. `support/test.ts` therefore
+partitions the id space by `workerIndex` and throws rather than letting a segment
+overlap. Run with `E2E_QUOTA_TRACE=1` to print each test's peak consumption per
+bucket (`used/limit`); measure before assuming a 429 means a real defect.
+
 **`wrangler` is pinned to 4.113.0 on purpose. Do not bump it without running the
 full e2e suite.** 4.118.0 resolves `miniflare` to `5.x-alpha`, whose
 ProxyController treats `Network connection lost.` as fatal and tears down the

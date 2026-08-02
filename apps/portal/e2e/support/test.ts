@@ -64,6 +64,8 @@ type Fixtures = {
   failOnPageDefects: void;
   /** 把客户端地址（以及需要时的系统测试运行头）装到浏览器上下文上。 */
   requestIdentity: void;
+  /** 取证开关：量这条用例烧掉多少读配额。默认关，见下面 fixture 的说明。 */
+  quotaTrace: void;
 };
 
 /*
@@ -99,9 +101,19 @@ function withNetworkRetries(context: APIRequestContext): APIRequestContext {
 
 let cachedRunState: E2eRunStateFile | null = null;
 /*
- * 每条用例一个号。同一个槽位里是串行的，自增就够；跨槽位不必协调——
- * 限流计数存在各自那个 worker 实例的 Cache API 里，本来就不共享。
+ * 每条用例一个号，这个号必须在**整轮**里唯一，而不只是在一个进程里唯一。
+ *
+ * 模块级自增计数器的生命周期是进程，不是槽位：Playwright 只要有用例失败、
+ * 或者切到下一个 project，就会换一个新的 worker 进程接着跑同一个槽位，
+ * 计数器随之归零。于是新进程里的用例重新领到 10.42.0.2、10.42.0.3……
+ * 和一分钟内刚跑过的用例挤进同一个限流桶。撞上就 429，429 造成失败，
+ * 失败又换进程、又归零——一次失败会滚成一串看不出关联的 429，
+ * 而且只在有失败的环境里出现（本地全绿时计数器从不归零，永远看不到）。
+ *
+ * workerIndex 是「整轮里的第几个 worker 进程」，单调递增且不重复
+ * （会复用的是 parallelIndex，那是槽位号），拿它给每个进程切一段互不相交的号段。
  */
+const CLIENT_IDS_PER_WORKER = 300;
 let clientCounter = 0;
 
 function runState(): E2eRunStateFile {
@@ -257,9 +269,16 @@ export const test = base.extend<E2eOptions & Fixtures>({
     await use(createFlow(page));
   },
 
-  clientAddress: async ({}, use) => {
+  clientAddress: async ({}, use, testInfo) => {
     clientCounter += 1;
-    await use(e2eClientAddress(clientCounter));
+    if (clientCounter > CLIENT_IDS_PER_WORKER) {
+      /* 号段一旦溢出就会和下一个进程的号段重叠，退回到本来要修的那个 bug。
+         宁可当场报错，也不要静默地又开始互撞。 */
+      throw new Error(
+        `单个 worker 进程用掉了超过 ${CLIENT_IDS_PER_WORKER} 个客户端号，号段会和别的进程重叠；请调大 CLIENT_IDS_PER_WORKER`,
+      );
+    }
+    await use(e2eClientAddress(testInfo.workerIndex * CLIENT_IDS_PER_WORKER + clientCounter));
   },
 
   api: async ({ trackArtifacts, clientAddress, storageState }, use) => {
@@ -282,6 +301,37 @@ export const test = base.extend<E2eOptions & Fixtures>({
     const assertClean = watchPageDefects(page);
     await use();
     assertClean();
+  }, { auto: true }],
+
+  /*
+   * E2E_QUOTA_TRACE=1 时打印每条用例烧掉的读配额，默认完全不接线。
+   *
+   * 服务端把每条用例当成一个独立客户端（见 config.ts 的说明），配额是
+   * 120 次读/分钟。用例驱动界面的速度远超真人，「一条用例会不会把自己的
+   * 配额点爆」不能靠推测，只能量。X-RateLimit-Remaining 是服务端自己报的
+   * 剩余额度，浏览器和 api 回读通道共用同一个桶，所以页面响应上读到的
+   * 最小值就是这条用例离撞线还有多远。
+   */
+  quotaTrace: [async ({ page }, use, testInfo) => {
+    if (!process.env.E2E_QUOTA_TRACE) {
+      await use();
+      return;
+    }
+    /* 按桶分开：limit=120 是读、80 是写、20 是上传、15 是查重名、5 是登录/改凭据。
+       混在一起看只会看到最后一个响应属于哪个桶，得不出任何结论。 */
+    const worst = new Map<string, number>();
+    const record = (response: Response): void => {
+      if (!pathOf(response.url()).startsWith("/api/")) return;
+      const limit = response.headers()["x-ratelimit-limit"];
+      const remaining = Number(response.headers()["x-ratelimit-remaining"]);
+      if (!limit || !Number.isFinite(remaining)) return;
+      worst.set(limit, Math.min(worst.get(limit) ?? Number.POSITIVE_INFINITY, remaining));
+    };
+    page.on("response", record);
+    await use();
+    page.off("response", record);
+    const report = [...worst.entries()].map(([limit, left]) => `${Number(limit) - left}/${limit}`).join(" ");
+    console.log(`[quota] ${report || "none"} :: ${testInfo.titlePath.at(-1)}`);
   }, { auto: true }],
 });
 

@@ -38,7 +38,12 @@ export default defineConfig<E2eOptions>({
   forbidOnly: Boolean(process.env.CI),
   timeout: 45_000,
   expect: { timeout: 10_000 },
-  reporter: process.env.CI ? [["github"], ["list"]] : [["list"]],
+  /* CI 上多接一个 html reporter：它把 trace、截图和错误上下文收进
+     playwright-report/，是失败后唯一能带出运行器的现场。open: never，
+     不然 CI 上会去尝试拉起浏览器。 */
+  reporter: process.env.CI
+    ? [["github"], ["list"], ["html", { open: "never" }]]
+    : [["list"]],
 
   use: {
     /* baseURL 和 storageState 由 support/test.ts 的 fixture 按槽位给，

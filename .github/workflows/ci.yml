@@ -91,12 +91,17 @@ jobs:
           WRANGLER_SEND_METRICS: 'false'
 
       # 失败时把 trace 和截图带出来。retries 是 0，现场只有这一次。
+      #
+      # html reporter 只在 CI 上接（playwright.config.ts），它会把 trace、截图和
+      # 错误上下文一起拷进 playwright-report/。之前只传 .artifacts/ 那个隐藏目录，
+      # 一个文件都没传上来，于是唯一一次现场就没了。
+      #
+      # if-no-files-found 必须是 error：这一步只在失败时跑，失败却拿不出现场，
+      # 本身就是要当场知道的问题，不能让它静默成功。
       - if: failure()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: playwright-failure-evidence
-          path: |
-            playwright-report/
-            apps/portal/e2e/.artifacts/
+          path: playwright-report/
           retention-days: 7
-          if-no-files-found: ignore
+          if-no-files-found: error
