@@ -1,0 +1,118 @@
+/*
+ * 一格配额 = 一行：名称、职业、人数、删除。
+ *
+ * 四样东西各占一格并且列宽固定，配额一多，四列上下对齐，扫一眼就知道哪一格缺人。
+ * 以前职业是折行铺在名称下面的第二排，行高随职业数变，两格配额之间根本对不齐。
+ */
+.quota-editor__row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) 96px auto;
+  align-items: center;
+  gap: var(--space-sm);
+}
+
+.quota-editor__name,
+.quota-editor__count {
+  min-width: 0;
+}
+
+/*
+ * 职业格：跟左右两边的输入框同高同圆角，但它自己不是输入框。
+ * 实线＋角标是能点的（一次性组），虚线是只读的（目录标签，只能去后台职业页改）。
+ */
+.quota-editor__cell {
+  display: flex;
+  align-items: center;
+  gap: var(--space-xs);
+  min-width: 0;
+  min-height: var(--control-height-regular);
+  padding: 0 var(--space-sm);
+  border-radius: var(--radius-control);
+  overflow: hidden;
+}
+
+.quota-editor__cell--picker {
+  justify-content: space-between;
+  width: 100%;
+  border: 1px solid var(--border-strong);
+  background: var(--surface-base);
+  cursor: pointer;
+}
+
+.quota-editor__cell--picker:hover:not(:disabled) {
+  border-color: var(--brand-fill);
+}
+
+.quota-editor__cell--picker:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+.quota-editor__cell--readonly {
+  border: 1px dashed var(--border-subtle);
+  background: color-mix(in srgb, var(--text-primary) 3%, transparent);
+}
+
+.quota-editor__caret {
+  flex-shrink: 0;
+  color: var(--text-muted);
+}
+
+.quota-editor__strip {
+  display: flex;
+  align-items: center;
+  flex-wrap: nowrap;
+  gap: var(--space-xs);
+  min-width: 0;
+}
+
+.quota-editor__strip-more {
+  flex-shrink: 0;
+  color: var(--text-muted);
+  font-size: 11px;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+}
+
+.quota-editor__strip-empty {
+  color: var(--text-muted);
+  font-size: 12px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.quota-editor__picker {
+  display: grid;
+  gap: var(--space-sm);
+}
+
+.quota-editor__picker-count {
+  font-variant-numeric: tabular-nums;
+}
+
+.quota-editor__picker-list {
+  display: grid;
+  gap: var(--space-md);
+  max-height: 280px;
+  overflow-y: auto;
+}
+
+.quota-editor__picker-section {
+  display: grid;
+  gap: var(--space-xs);
+}
+
+/*
+ * 窄屏一行摆不下四格：名称独占一行，职业和人数并排，删除跟着人数走。
+ * 不收成一列——那样一格配额要占四行，五格就是二十行。
+ */
+@media (max-width: 620px) {
+  .quota-editor__row {
+    grid-template-columns: minmax(0, 1fr) 96px auto;
+  }
+
+  .quota-editor__name {
+    grid-column: 1 / -1;
+  }
+}

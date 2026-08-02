@@ -2,18 +2,18 @@ import type { ClassTag, EventClassQuotaInput } from "@guild/shared";
 import { LIMITS } from "@guild/shared/config/limits";
 import { ActionIcon, Button, Group, NumberInput, Select, Stack, Text, TextInput } from "@mantine/core";
 import { PlusIcon, TrashIcon } from "@portal/components/icons";
-import { ClassIcon } from "@portal/components/shared/ClassIcon";
-import { resolveClassCatalogItem, useClassCatalogStore } from "@portal/stores/class-catalog";
+import { useClassCatalogStore } from "@portal/stores/class-catalog";
 import { useClassTagStore } from "@portal/stores/class-tag";
 import { useTranslation } from "react-i18next";
+import { ClassIconStrip } from "./ClassIconStrip";
+import { ClassPickerPopover } from "./ClassPickerPopover";
+import "./ClassQuotaEditor.css";
 
 const MAX_QUOTAS = LIMITS.content.eventClassQuotas.max;
-const MAX_MEMBERS = LIMITS.content.classesPerTag.max;
 const MAX_LABEL = LIMITS.content.classTagLabel.max;
 
 type Catalog = ReturnType<typeof useClassCatalogStore.getState>["items"];
 type CatalogQuota = Extract<EventClassQuotaInput, { tag_id: string }>;
-type OneTimeQuota = Extract<EventClassQuotaInput, { tag: unknown }>;
 
 function isCatalogQuota(quota: EventClassQuotaInput): quota is CatalogQuota {
   return "tag_id" in quota;
@@ -129,58 +129,73 @@ function QuotaRow({
     : quota.tag.label || t("quota.editor.oneTimeUnnamed");
 
   return (
-    <Stack gap={4}>
-      <Group gap={8} wrap="nowrap">
-        {isCatalogQuota(quota) ? (
-          <CatalogTagSelect
-            quota={quota}
-            label={label}
-            unusedTags={unusedTags}
-            disabled={disabled}
-            onChange={onChange}
-          />
-        ) : (
-          <TextInput
-            flex={1}
-            aria-label={t("quota.editor.oneTimeLabel")}
-            placeholder={t("quota.editor.oneTimePlaceholder")}
-            maxLength={MAX_LABEL}
-            disabled={disabled}
-            value={quota.tag.label}
-            onChange={(event) => onChange({ ...quota, tag: { ...quota.tag, label: event.currentTarget.value } })}
-          />
-        )}
-        <NumberInput
-          w={96}
-          aria-label={t("quota.editor.requiredLabel")}
-          min={1}
-          max={999}
-          clampBehavior="strict"
-          disabled={disabled}
-          value={quota.required}
-          onChange={(next) => {
-            const parsed = typeof next === "number" ? next : Number.parseInt(next, 10);
-            if (Number.isFinite(parsed) && parsed >= 1) {
-              onChange({ ...quota, required: Math.floor(parsed) });
-            }
-          }}
-        />
-        <ActionIcon
-          variant="subtle"
-          color="red"
-          disabled={disabled}
-          aria-label={t("quota.editor.remove", { label })}
-          onClick={onRemove}
-        >
-          <TrashIcon size={16} />
-        </ActionIcon>
-      </Group>
+    <div className="quota-editor__row">
       {isCatalogQuota(quota) ? (
-        <ClassTagMembers tag={tag} catalog={catalog} />
+        <CatalogTagSelect
+          quota={quota}
+          label={label}
+          unusedTags={unusedTags}
+          disabled={disabled}
+          onChange={onChange}
+        />
       ) : (
-        <OneTimeMembers quota={quota} catalog={catalog} disabled={disabled} onChange={onChange} />
+        <TextInput
+          className="quota-editor__name"
+          aria-label={t("quota.editor.oneTimeLabel")}
+          placeholder={t("quota.editor.oneTimePlaceholder")}
+          maxLength={MAX_LABEL}
+          disabled={disabled}
+          value={quota.tag.label}
+          onChange={(event) => onChange({ ...quota, tag: { ...quota.tag, label: event.currentTarget.value } })}
+        />
       )}
-    </Stack>
+      {isCatalogQuota(quota) ? (
+        /* 目录标签的职业只能在后台职业页改，这一格是只读的——虚线框就是「看，别点」。 */
+        <div
+          className="quota-editor__cell quota-editor__cell--readonly"
+          role="group"
+          aria-label={t("quota.editor.classes")}
+        >
+          <ClassIconStrip
+            classIds={tag?.class_ids ?? []}
+            catalog={catalog}
+            emptyLabel={t("quota.editor.emptyTag")}
+          />
+        </div>
+      ) : (
+        <ClassPickerPopover
+          classIds={quota.tag.class_ids}
+          catalog={catalog}
+          tags={tags}
+          disabled={disabled}
+          onChange={(classIds) => onChange({ ...quota, tag: { ...quota.tag, class_ids: classIds } })}
+        />
+      )}
+      <NumberInput
+        className="quota-editor__count"
+        aria-label={t("quota.editor.requiredLabel")}
+        min={1}
+        max={999}
+        clampBehavior="strict"
+        disabled={disabled}
+        value={quota.required}
+        onChange={(next) => {
+          const parsed = typeof next === "number" ? next : Number.parseInt(next, 10);
+          if (Number.isFinite(parsed) && parsed >= 1) {
+            onChange({ ...quota, required: Math.floor(parsed) });
+          }
+        }}
+      />
+      <ActionIcon
+        variant="subtle"
+        color="red"
+        disabled={disabled}
+        aria-label={t("quota.editor.remove", { label })}
+        onClick={onRemove}
+      >
+        <TrashIcon size={16} />
+      </ActionIcon>
+    </div>
   );
 }
 
@@ -200,7 +215,7 @@ function CatalogTagSelect({
   const { t } = useTranslation("events");
   return (
     <Select
-      flex={1}
+      className="quota-editor__name"
       aria-label={t("quota.editor.tagLabel")}
       value={quota.tag_id}
       /* 当前行自己的标签要留在选项里，否则这一行的 Select 会显示成空的。 */
@@ -216,69 +231,5 @@ function CatalogTagSelect({
         }
       }}
     />
-  );
-}
-
-/** 一格接受哪些职业，直接摆出图标——不然「治疗」到底包不包某个职业只能靠记。 */
-function ClassTagMembers({ tag, catalog }: { tag: ClassTag | undefined; catalog: Catalog }) {
-  const { t } = useTranslation("events");
-  if (!tag || tag.class_ids.length === 0) {
-    return <Text size="xs" c="dimmed">{t("quota.editor.emptyTag")}</Text>;
-  }
-  return (
-    <Group gap={4} wrap="wrap">
-      {tag.class_ids.map((classId) => {
-        const item = resolveClassCatalogItem(classId, catalog);
-        return <ClassIcon key={classId} item={item} size={18} label={item.label} />;
-      })}
-    </Group>
-  );
-}
-
-/**
- * 一次性组的成员就在这里勾。目录标签那边是只读的图标行，这里必须能改——一次性组没有
- * 别处可以维护它。
- *
- * 到达每组职业数上限后只禁用**没勾上**的那些，勾上的照样能取消，否则会把人锁死在上限上。
- */
-function OneTimeMembers({
-  quota,
-  catalog,
-  disabled,
-  onChange,
-}: {
-  quota: OneTimeQuota;
-  catalog: Catalog;
-  disabled: boolean;
-  onChange: (next: EventClassQuotaInput) => void;
-}) {
-  const selected = new Set(quota.tag.class_ids);
-  const atMax = selected.size >= MAX_MEMBERS;
-  const toggle = (classId: string) => {
-    const next = selected.has(classId)
-      ? quota.tag.class_ids.filter((entry) => entry !== classId)
-      : [...quota.tag.class_ids, classId];
-    onChange({ ...quota, tag: { ...quota.tag, class_ids: next } });
-  };
-
-  return (
-    <Group gap={4} wrap="wrap">
-      {catalog.map((item) => {
-        const isSelected = selected.has(item.id);
-        return (
-          <Button
-            key={item.id}
-            size="compact-xs"
-            variant={isSelected ? "filled" : "default"}
-            aria-pressed={isSelected}
-            disabled={disabled || (atMax && !isSelected)}
-            leftSection={<ClassIcon item={item} size={14} />}
-            onClick={() => toggle(item.id)}
-          >
-            {item.label}
-          </Button>
-        );
-      })}
-    </Group>
   );
 }
