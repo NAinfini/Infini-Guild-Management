@@ -10,7 +10,7 @@ import {
   useMemo,
   useState,
 } from "react";
-import { Card, Skeleton, Stack, Tabs } from "@mantine/core";
+import { Card, Skeleton, Stack } from "@mantine/core";
 import { useTranslation } from "react-i18next";
 import { notifySuccess, notifyWarning } from "../../utils/notifications";
 import {
@@ -25,7 +25,7 @@ import { useAttachmentService } from "../../services/AttachmentService";
 import { useAuthStore } from "../../stores/auth";
 import { useEffectivePermissions } from "../../hooks/useEffectivePermissions";
 import { buildMentionList } from "../../utils/copy";
-import { sanitizeEventsRouteSearch, type EventWorkbenchViewMode, type EventsRouteSearch } from "../../utils/event-navigation";
+import { resolveEventsViewMode, sanitizeEventsRouteSearch, type EventWorkbenchViewMode, type EventsRouteSearch } from "../../utils/event-navigation";
 import { useEventsEditorController } from "../feature/events/useEventsEditorController";
 import { useRecurringTemplatesController } from "../feature/events/useRecurringTemplatesController";
 import { PageLayout } from "../layout/PageLayout";
@@ -75,8 +75,14 @@ export function EventsPage() {
   const canManage = isModerator && !isExternalView;
   const canInteract = Boolean(user) && !isExternalView;
 
-  const viewMode = eventsRouteSearch.view ?? "cards";
-  const activeTab = eventsRouteSearch.tab === "recurring" && canManage ? "recurring" : "events";
+  /*
+   * 周期模板是 view 的第三档，不再是独立标签页。旧链接的 tab=recurring 由
+   * resolveEventsViewMode 统一折算，读写共用同一条规则。这里只兜权限：没有管理
+   * 权限时该档不渲染，手敲 ?view=recurring 也回落到卡片，而不是给一个空面板。
+   */
+  const requestedView = resolveEventsViewMode(eventsRouteSearch) ?? "cards";
+  const viewMode: EventWorkbenchViewMode =
+    requestedView === "recurring" && !canManage ? "cards" : requestedView;
   const [, setSelectedDate] = useState(() => new Date().toISOString().slice(0, 10));
   const [monthDetailEvent, setMonthDetailEvent] = useState<Event | null>(null);
   const [attachmentItems, setAttachmentItems] = useState<ImageGridEditorItem[]>([]);
@@ -95,20 +101,6 @@ export function EventsPage() {
     });
   }, [navigate]);
 
-  const setActiveTab = useCallback((value: string | null) => {
-    const tab = value === "recurring" && canManage ? "recurring" : "events";
-    void navigate({
-      to: "/events",
-      search: (prev) => sanitizeEventsRouteSearch({
-        ...(prev as EventsRouteSearch),
-        tab: tab === "events" ? undefined : tab,
-      }),
-      replace: true,
-      resetScroll: false,
-      viewTransition: false,
-    });
-  }, [canManage, navigate]);
-
   const attachmentService = useAttachmentService();
   const attachmentSnapshot = useMemo(() => buildAttachmentSnapshot(attachmentItems), [attachmentItems]);
   const eventService = useMemo(
@@ -120,7 +112,7 @@ export function EventsPage() {
     [attachmentService, queryClient],
   );
   const recurringTemplatesController = useRecurringTemplatesController({
-    enabled: canManage && activeTab === "recurring",
+    enabled: canManage && viewMode === "recurring",
     showError,
   });
   const filtering = useEventsFiltering({
@@ -262,14 +254,12 @@ export function EventsPage() {
 
   return (
     <PageLayout className="events-page">
-      <Tabs value={activeTab} onChange={setActiveTab} keepMounted={false} variant="default">
-        <Tabs.List>
-          <Tabs.Tab value="events">{t("tab.events")}</Tabs.Tab>
-          {canManage ? <Tabs.Tab value="recurring">{t("recurring.tab")}</Tabs.Tab> : null}
-        </Tabs.List>
-
-        <Tabs.Panel value="events" pt="sm">
-          <Stack gap={12}>
+      <Stack gap={12}>
+            {/*
+              * 模板档不渲染这张卡：那一档的视图切换器挂在 RecurringTemplatesTab
+              * 自己那条筛选栏上，两边都渲染就是上下并排的两条工具栏。
+              */}
+            {viewMode === "recurring" ? null : (
             <Suspense fallback={<Card><Stack gap={8} p="md"><Skeleton height={36} radius={8} /></Stack></Card>}>
               <LazyEventsFiltersCard
                 searchQuery={filtering.searchQuery}
@@ -288,9 +278,23 @@ export function EventsPage() {
                 onCreateEvent={() => openCreateEditor()}
               />
             </Suspense>
+            )}
 
             <Suspense fallback={<Card><Stack gap={8} p="md"><Skeleton height={200} radius={8} /></Stack></Card>}>
-              {viewMode === "cards" ? (
+              {viewMode === "recurring" ? (
+                <LazyRecurringTemplatesTab
+                  canManage={canManage}
+                  onViewModeChange={setViewMode}
+                  templates={recurringTemplatesController.templates}
+                  loading={recurringTemplatesController.loading}
+                  formSaving={recurringTemplatesController.formSaving}
+                  onCreateTemplate={recurringTemplatesController.createRecurringTemplate}
+                  onUpdateTemplate={recurringTemplatesController.updateRecurringTemplate}
+                  onPauseTemplate={recurringTemplatesController.pauseRecurringTemplate}
+                  onResumeTemplate={recurringTemplatesController.resumeRecurringTemplate}
+                  onDeleteTemplate={recurringTemplatesController.deleteRecurringTemplate}
+                />
+              ) : viewMode === "cards" ? (
                 <LazyEventCardsView
                   events={filtering.sortedEvents}
                   cardsEmptyDescription={filtering.cardsEmptyDescription}
@@ -345,27 +349,7 @@ export function EventsPage() {
                 />
               )}
             </Suspense>
-          </Stack>
-        </Tabs.Panel>
-
-        {canManage ? (
-          <Tabs.Panel value="recurring" pt="sm">
-            <Suspense fallback={<Card><Stack gap={8} p="md"><Skeleton height={200} radius={8} /></Stack></Card>}>
-              <LazyRecurringTemplatesTab
-                canManage={canManage}
-                templates={recurringTemplatesController.templates}
-                loading={recurringTemplatesController.loading}
-                formSaving={recurringTemplatesController.formSaving}
-                onCreateTemplate={recurringTemplatesController.createRecurringTemplate}
-                onUpdateTemplate={recurringTemplatesController.updateRecurringTemplate}
-                onPauseTemplate={recurringTemplatesController.pauseRecurringTemplate}
-                onResumeTemplate={recurringTemplatesController.resumeRecurringTemplate}
-                onDeleteTemplate={recurringTemplatesController.deleteRecurringTemplate}
-              />
-            </Suspense>
-          </Tabs.Panel>
-        ) : null}
-      </Tabs>
+      </Stack>
 
       {editorOpen ? (
         <Suspense fallback={<Card><Stack gap={8} p="md"><Skeleton height={120} radius={8} /></Stack></Card>}>

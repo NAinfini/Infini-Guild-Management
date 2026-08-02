@@ -31,6 +31,8 @@ import {
   RecurringTemplateFormModal,
   type RecurringTemplateFormPayload,
 } from "./RecurringTemplateFormModal";
+import { EventsViewSwitcher } from "./EventsViewSwitcher";
+import { type EventWorkbenchViewMode } from "../../../utils/event-navigation";
 
 const WEEKDAY_KEYS = ["weekday.sun", "weekday.mon", "weekday.tue", "weekday.wed", "weekday.thu", "weekday.fri", "weekday.sat"] as const;
 type TemplateStatusFilter = "all" | "active" | "paused";
@@ -66,6 +68,12 @@ function buildRecurrenceSummary(
 
 type RecurringTemplatesTabProps = {
   canManage: boolean;
+  /*
+   * 卡片 / 月 / 周期 的切换器由这条筛选栏承载：模板档不渲染 EventsFiltersCard，
+   * 否则页面上就是上下两条工具栏。必填而不是可选，是因为它是退出模板档的唯一入口，
+   * 漏传的结果是用户进得来出不去，而这种缺失在类型上必须能被发现。
+   */
+  onViewModeChange: (value: EventWorkbenchViewMode) => void;
   templates: RecurringTemplate[];
   loading: boolean;
   formSaving: boolean;
@@ -78,6 +86,7 @@ type RecurringTemplatesTabProps = {
 
 export function RecurringTemplatesTab({
   canManage,
+  onViewModeChange,
   templates,
   loading,
   formSaving,
@@ -166,9 +175,20 @@ export function RecurringTemplatesTab({
     [editingTemplate, formMode, onCreateTemplate, onUpdateTemplate],
   );
 
+  const viewSwitcher = (
+    <EventsViewSwitcher viewMode="recurring" canManage={canManage} onViewModeChange={onViewModeChange} />
+  );
+
+  /*
+   * 加载中也要留着切换器：模板列表可能拉很久，这段时间里它是唯一的退出路径，
+   * 一起换成骨架屏就等于把人锁在一屏骨架里。
+   */
   if (loading) {
     return (
-      <Stack gap={12} py={16}>
+      <Stack gap={12}>
+        <Paper withBorder radius="md" p="sm">
+          {viewSwitcher}
+        </Paper>
         {Array.from({ length: 3 }).map((_, i) => (
           <Skeleton key={i} height={80} radius={8} />
         ))}
@@ -214,49 +234,71 @@ export function RecurringTemplatesTab({
   return (
     <>
       <Stack gap={12}>
-        {templates.length > 0 ? (
-          <Paper withBorder radius="md" p="sm">
-            {isMobile ? (
-              <Stack gap="sm">
-                <Group gap="xs" wrap="nowrap" align="center">
-                  <Box style={{ flex: 1, minWidth: 0 }}>{searchControl}</Box>
-                  <ActionIcon
-                    variant={filtersOpen ? "filled" : "default"}
-                    size="lg"
-                    onClick={filterHandlers.toggle}
-                    aria-label={t("common:filter.toggle")}
-                  >
-                    <IconAdjustmentsHorizontal size={18} />
-                  </ActionIcon>
-                </Group>
-                <Collapse in={filtersOpen}>
-                  <Stack gap="sm">
-                    {filterControls}
+        {/*
+          * 这条工具栏跟活动档那条（EventsFiltersCard）保持同一套布局和顺序：
+          * 搜索 → 状态 → 类型 → 视图切换器 → 新建。两档来回切时控件不会跳位。
+          * 没有模板时只留切换器：筛一个空列表没有意义，但切换器是退出模板档的唯一
+          * 入口，跟着一起消失就是进得来出不去。
+          */}
+        <Paper withBorder radius="md" p="sm">
+          {isMobile ? (
+            <Stack gap={0}>
+              <Group gap="xs" wrap="nowrap" align="center">
+                {templates.length > 0 ? (
+                  <>
+                    <Box style={{ flex: 1, minWidth: 0 }}>{searchControl}</Box>
+                    {canManage ? (
+                      <Button size="sm" onClick={handleCreate} style={{ minHeight: 44, flexShrink: 0 }}>
+                        {t("recurring.create")}
+                      </Button>
+                    ) : null}
+                    <ActionIcon
+                      variant={filtersOpen ? "filled" : "default"}
+                      size="lg"
+                      onClick={filterHandlers.toggle}
+                      aria-label={t("common:filter.toggle")}
+                    >
+                      <IconAdjustmentsHorizontal size={18} />
+                    </ActionIcon>
+                  </>
+                ) : (
+                  <Box style={{ flex: 1, minWidth: 0 }}>{viewSwitcher}</Box>
+                )}
+              </Group>
+              {templates.length > 0 ? (
+                <Collapse expanded={filtersOpen}>
+                  <Stack gap="sm" pt="sm">
+                    <Group gap="xs" wrap="wrap">
+                      {filterControls}
+                    </Group>
+                    {viewSwitcher}
                   </Stack>
                 </Collapse>
-                {canManage ? (
-                  <Button size="sm" fullWidth onClick={handleCreate}>
-                    {t("recurring.create")}
-                  </Button>
-                ) : null}
-              </Stack>
-            ) : (
-              <Flex gap="sm" align="center" wrap="wrap">
-                <Box style={{ flex: "1 1 240px", minWidth: 220 }}>{searchControl}</Box>
-                <Group gap="xs" wrap="wrap">
-                  {filterControls}
-                </Group>
-                {canManage ? (
-                  <Box style={{ marginLeft: "auto" }}>
-                    <Button size="sm" onClick={handleCreate}>
-                      {t("recurring.create")}
-                    </Button>
-                  </Box>
-                ) : null}
-              </Flex>
-            )}
-          </Paper>
-        ) : null}
+              ) : null}
+            </Stack>
+          ) : (
+            <Flex gap="sm" align="center" wrap="wrap">
+              {templates.length > 0 ? (
+                <>
+                  <Box style={{ flex: "1 1 180px", minWidth: 160 }}>{searchControl}</Box>
+                  <Group gap="xs" wrap="wrap">
+                    {filterControls}
+                  </Group>
+                  {viewSwitcher}
+                  {canManage ? (
+                    <Box style={{ marginLeft: "auto" }}>
+                      <Button size="sm" onClick={handleCreate}>
+                        {t("recurring.create")}
+                      </Button>
+                    </Box>
+                  ) : null}
+                </>
+              ) : (
+                viewSwitcher
+              )}
+            </Flex>
+          )}
+        </Paper>
         {templates.length === 0 ? (
           <Paper withBorder radius="md">
             <div>

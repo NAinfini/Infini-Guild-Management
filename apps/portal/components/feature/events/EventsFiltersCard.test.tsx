@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { MantineProvider } from "@mantine/core";
-import { render, screen } from "@testing-library/react";
+import { cleanup, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { EventsFiltersCard } from "./EventsFiltersCard";
@@ -73,5 +73,20 @@ describe("EventsFiltersCard", () => {
     renderFilters();
 
     expect(screen.getByRole("button", { name: "button.create" })).toBeVisible();
+  });
+
+  /*
+   * 周期模板并进这个切换器之后，它同时是进入模板视图和退出模板视图的唯一入口，
+   * 顶部已经没有标签行兜底了。模板档本身的工具栏由 RecurringTemplatesTab 承载，
+   * 那一侧的守卫在 RecurringTemplatesTab.test.tsx。
+   */
+  it("offers the recurring view only to managers", () => {
+    renderFilters();
+    expect(screen.getByRole("radio", { name: "view.recurring" })).toBeInTheDocument();
+
+    cleanup();
+    renderFilters({ canManage: false });
+    // 无权限的人点进去只会看到空面板，所以档位本身就不该出现。
+    expect(screen.queryByRole("radio", { name: "view.recurring" })).not.toBeInTheDocument();
   });
 });

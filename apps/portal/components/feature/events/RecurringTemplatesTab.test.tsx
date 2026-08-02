@@ -42,6 +42,58 @@ function buildTemplate(overrides: Partial<RecurringTemplate>): RecurringTemplate
 }
 
 describe("RecurringTemplatesTab", () => {
+  /*
+   * 模板档不渲染 EventsFiltersCard，视图切换器改挂在这条工具栏上——这两条守的是
+   * 那次并栏本身：切换器必须跟模板筛选项同处一条，而且在一个模板都没有时也得在，
+   * 否则用户进得来出不去。
+   */
+  it("keeps the view switcher on the same toolbar row as the template filters", () => {
+    render(
+      <MantineProvider>
+        <RecurringTemplatesTab
+          canManage
+          onViewModeChange={vi.fn()}
+          templates={[buildTemplate({})]}
+          loading={false}
+          formSaving={false}
+          onCreateTemplate={vi.fn().mockResolvedValue(undefined)}
+          onUpdateTemplate={vi.fn().mockResolvedValue(undefined)}
+          onPauseTemplate={vi.fn().mockResolvedValue(undefined)}
+          onResumeTemplate={vi.fn().mockResolvedValue(undefined)}
+          onDeleteTemplate={vi.fn().mockResolvedValue(undefined)}
+        />
+      </MantineProvider>,
+    );
+
+    const switcher = screen.getByRole("radio", { name: "view.recurring" });
+    const search = screen.getByRole("textbox", { name: "recurring.filter.search" });
+    // 同一个 Paper 里 = 一条工具栏；拆成两个卡片就是回到上下两行那个样子。
+    expect(switcher.closest(".mantine-Paper-root")).toBe(search.closest(".mantine-Paper-root"));
+  });
+
+  it("keeps the view switcher when there is not a single template yet", () => {
+    render(
+      <MantineProvider>
+        <RecurringTemplatesTab
+          canManage
+          onViewModeChange={vi.fn()}
+          templates={[]}
+          loading={false}
+          formSaving={false}
+          onCreateTemplate={vi.fn().mockResolvedValue(undefined)}
+          onUpdateTemplate={vi.fn().mockResolvedValue(undefined)}
+          onPauseTemplate={vi.fn().mockResolvedValue(undefined)}
+          onResumeTemplate={vi.fn().mockResolvedValue(undefined)}
+          onDeleteTemplate={vi.fn().mockResolvedValue(undefined)}
+        />
+      </MantineProvider>,
+    );
+
+    expect(screen.getByRole("radio", { name: "view.cards" })).toBeInTheDocument();
+    // 空列表没什么可筛的，筛选项该一起收起来。
+    expect(screen.queryByRole("textbox", { name: "recurring.filter.search" })).not.toBeInTheDocument();
+  });
+
   it("opens its create form directly from the empty state", async () => {
     const user = userEvent.setup();
 
@@ -49,6 +101,7 @@ describe("RecurringTemplatesTab", () => {
       <MantineProvider>
         <RecurringTemplatesTab
           canManage
+          onViewModeChange={vi.fn()}
           templates={[]}
           loading={false}
           formSaving={false}
@@ -81,6 +134,7 @@ describe("RecurringTemplatesTab", () => {
       <MantineProvider>
         <RecurringTemplatesTab
           canManage
+          onViewModeChange={vi.fn()}
           templates={[activeTemplate, pausedTemplate]}
           loading={false}
           formSaving={false}
@@ -104,7 +158,7 @@ describe("RecurringTemplatesTab", () => {
     expect(screen.getByText("Beta Social")).toBeInTheDocument();
 
     await user.click(screen.getByRole("radio", { name: "recurring.filter.all" }));
-    await user.click(screen.getByRole("textbox", { name: "recurring.filter.type" }));
+    await user.click(screen.getByRole("combobox", { name: "recurring.filter.type" }));
     fireEvent.click(screen.getByRole("option", { name: "common:eventType.social", hidden: true }));
     expect(screen.queryByText("Alpha Run")).not.toBeInTheDocument();
     expect(screen.getByText("Beta Social")).toBeInTheDocument();
@@ -117,6 +171,7 @@ describe("RecurringTemplatesTab", () => {
       <MantineProvider>
         <RecurringTemplatesTab
           canManage
+          onViewModeChange={vi.fn()}
           templates={[buildTemplate({})]}
           loading={false}
           formSaving={false}

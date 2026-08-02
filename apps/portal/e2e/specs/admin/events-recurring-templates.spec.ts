@@ -85,9 +85,14 @@ async function createTemplate(api: APIRequestContext, extra: Record<string, unkn
   ) as ServerTemplate;
 }
 
+/*
+ * 周期模板已经从独立标签页并入 卡片/月/周期 这个视图切换器。这里刻意继续用旧的
+ * ?tab=recurring 进入：它同时是这条链路的入口和「旧链接仍然落到模板视图」的回归
+ * 守卫——真退回卡片视图的话，页面看上去完全正常，只有这条断言会响。
+ */
 async function openTab(page: Page): Promise<void> {
   await page.goto("/events?tab=recurring");
-  await expect(page.getByRole("tab", { name: "Recurring", exact: true })).toHaveAttribute("aria-selected", "true");
+  await expect(page.getByRole("radio", { name: "Recurring", exact: true })).toBeChecked();
 }
 
 /** 模板卡片。整张卡片被一个覆盖层按钮盖住，点它就是编辑。 */

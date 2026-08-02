@@ -1,7 +1,13 @@
 import { EVENT_TYPES } from "@guild/shared";
 import { z } from "zod";
 
-const EVENT_WORKBENCH_VIEW_MODES = ["cards", "month"] as const;
+const EVENT_WORKBENCH_VIEW_MODES = ["cards", "month", "recurring"] as const;
+/*
+ * 周期模板原先是页面顶层的第二个标签页（?tab=recurring），现在并入 view 这一档，
+ * 跟卡片、月视图共用同一个切换器。tab 只保留读取能力，用来把已经发出去的旧链接
+ * （包括 e2e 里的 /events?tab=recurring）翻译成新的 view 值——它不再被写回 URL，
+ * 见 sanitizeEventsRouteSearch。
+ */
 const EVENTS_TABS = ["events", "recurring"] as const;
 const EVENT_STATUS_FILTERS = ["active", "archived", "all"] as const;
 
@@ -74,6 +80,19 @@ export const EVENTS_ROUTE_SEARCH_SCHEMA = z.object({
   eventId: z.preprocess(parseTextSearchValue, z.string().optional()),
 });
 
+/*
+ * 把 URL 状态折算成当前视图。读路径（EventsPage 决定渲染哪一档）和写路径
+ * （sanitizeEventsRouteSearch 决定往 URL 里放什么）必须共用这一个函数：只在写
+ * 路径翻译 tab，页面读的仍是没翻译过的 view，旧链接会静默退回卡片视图——页面
+ * 看上去完全正常，只有到不了目的地这一点是错的。
+ *
+ * 显式的 view 优先于 tab，因为它是这套 UI 唯一会写出来的参数。
+ */
+export function resolveEventsViewMode(search: EventsRouteSearch): EventWorkbenchViewMode | undefined {
+  if (search.view) return search.view;
+  return search.tab === "recurring" ? "recurring" : undefined;
+}
+
 export function sanitizeEventsRouteSearch(search: EventsRouteSearch): EventsRouteSearch {
   const sanitized: EventsRouteSearch = {};
   const normalizedSearch = normalizeOptionalString(search.search);
@@ -84,8 +103,8 @@ export function sanitizeEventsRouteSearch(search: EventsRouteSearch): EventsRout
   if (search.status && search.status !== "active") sanitized.status = search.status;
   if (search.pinned) sanitized.pinned = true;
   if (search.locked) sanitized.locked = true;
-  if (search.tab && search.tab !== "events") sanitized.tab = search.tab;
-  if (search.view) sanitized.view = search.view;
+  const view = resolveEventsViewMode(search);
+  if (view) sanitized.view = view;
   if (normalizedEventId) sanitized.eventId = normalizedEventId;
   return sanitized;
 }

@@ -2,12 +2,16 @@
   width: 100%;
 }
 
-.events-filter-status {
-  min-width: 250px;
-}
-
+/*
+ * 状态段控件不再撑 min-width:250px，类型下拉从 200 收到 150。
+ * 原因是一条实测的换行：1280 宽下工具栏容器只有 978px，而「搜索 + 状态 + 类型 +
+ * 置顶/锁定 + 视图切换器 + 新建」按各自基准宽度要 1109px，差 131px；flex 换行后
+ * marginLeft:auto 把新建按钮单独顶到第二行。段控件本来就会按文案自适应，250 这个
+ * 下限是多出来的；类型下拉里最长的是「每周任务」，150 足够。
+ * 模板栏与活动栏共用同一组数值，两档来回切控件不会跳位。
+ */
 .events-filter-type {
-  width: 200px;
+  width: 150px;
 }
 
 /* ── Recurring Templates Tab ── (moved out of style={{}}, task-8 批 B) */
@@ -16,12 +20,8 @@
   width: 100%;
 }
 
-.recurring-template-filter-status {
-  min-width: 250px;
-}
-
 .recurring-template-filter-type {
-  width: 200px;
+  width: 150px;
 }
 
 .recurring-template-icon-wrap {

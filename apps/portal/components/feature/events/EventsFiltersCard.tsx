@@ -5,6 +5,7 @@ import { LockIcon, PinIcon, SearchIcon } from "@portal/components/icons";
 import { IconAdjustmentsHorizontal } from "@tabler/icons-react";
 import { useTranslation } from "react-i18next";
 import { type EventStatusFilter, type EventTypeFilter, type EventWorkbenchViewMode } from "../../../utils/event-navigation";
+import { EventsViewSwitcher } from "./EventsViewSwitcher";
 
 function isEventTypeFilter(value: string): value is EventTypeFilter {
   return EVENT_TYPES.includes(value as EventTypeFilter);
@@ -107,15 +108,7 @@ export function EventsFiltersCard({
         </>
   );
   const viewControls = (
-        <SegmentedControl
-          value={viewMode}
-          onChange={(value) => onViewModeChange(value as EventWorkbenchViewMode)}
-          data={[
-            { value: "cards", label: t("view.cards") },
-            { value: "month", label: t("view.calendar") },
-          ]}
-          className="events-filter-view"
-        />
+    <EventsViewSwitcher viewMode={viewMode} canManage={canManage} onViewModeChange={onViewModeChange} />
   );
   const actions = (
         canManage && onCreateEvent ? (
@@ -129,6 +122,11 @@ export function EventsFiltersCard({
         ) : null
   );
 
+  /*
+   * 模板档不会走到这里：那一档的切换器挂在 RecurringTemplatesTab 自己那条筛选栏上，
+   * EventsPage 直接不渲染这张卡。这里再渲染一次就是上下并排的两条工具栏，而且上面
+   * 那条筛的是活动、按了对模板不起作用。
+   */
   return (
     <Paper withBorder radius="md" p="sm">
       {isMobile ? (
@@ -145,7 +143,7 @@ export function EventsFiltersCard({
               <IconAdjustmentsHorizontal size={18} />
             </ActionIcon>
           </Group>
-          <Collapse in={filtersOpen}>
+          <Collapse expanded={filtersOpen}>
             <Stack gap="sm" pt="sm">
               <Group gap="xs" wrap="wrap">
                 {filters}
@@ -156,7 +154,7 @@ export function EventsFiltersCard({
         </Stack>
       ) : (
         <Flex gap="sm" align="center" wrap="wrap">
-          <Box style={{ flex: "1 1 240px", minWidth: 220 }}>{primary}</Box>
+          <Box style={{ flex: "1 1 180px", minWidth: 160 }}>{primary}</Box>
           <Group gap="xs" wrap="wrap">
             {filters}
           </Group>
