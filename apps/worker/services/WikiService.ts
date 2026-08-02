@@ -233,7 +233,12 @@ export class WikiService {
     const existing = await this.getCategoryById(categoryId);
     if (!existing) return err("NOT_FOUND", "Wiki category not found");
 
-    const patch: Partial<typeof wikiCategories.$inferInsert> = {};
+    /* updatedAt 无条件写，与下面 batchUpdateCategories 的写法一致（那边是
+       assignments.push("updated_at = ?")）。原先这条单行路径漏了它，于是同一个字段
+       改一行不动时间戳、改一批动——同一张表的 updated_at 取决于走了哪个接口，
+       任何按它排序或做增量同步的地方都会读到错的先后。
+       顺带兜住 patch 为空的情况：Drizzle 的 set({}) 会抛，现在至少有一个赋值。 */
+    const patch: Partial<typeof wikiCategories.$inferInsert> = { updatedAt: new Date().toISOString() };
     if (data.name !== undefined) patch.name = data.name;
     if (data.slug !== undefined) {
       const candidateSlug = slugify(data.slug);

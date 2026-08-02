@@ -71,16 +71,28 @@ function createCrudDb(articleRow: Record<string, unknown>) {
 
   const insertMock = vi.fn().mockReturnValue({ values: vi.fn().mockResolvedValue(undefined) });
   const updateWhereMock = vi.fn().mockResolvedValue(undefined);
-  const setMock = vi.fn(() => ({ where: updateWhereMock }));
+  // 形参不能省：省掉之后 vi.fn 把签名推成零参，mock.calls 就是 []，
+  // 断言里取 calls[0][0] 会被 TS 判成「长度 0 的元组没有下标 0」。
+  const setMock = vi.fn((_patch: Record<string, unknown>) => ({ where: updateWhereMock }));
   const updateMock = vi.fn(() => ({ set: setMock }));
   const deleteWhereMock = vi.fn().mockResolvedValue(undefined);
   const deleteMock = vi.fn(() => ({ where: deleteWhereMock }));
 
   return {
     db: { select: selectMock, insert: insertMock, update: updateMock, delete: deleteMock },
-    mocks: { selectMock, insertMock, updateMock, deleteMock, deleteWhereMock },
+    mocks: { selectMock, insertMock, updateMock, setMock, deleteMock, deleteWhereMock },
   };
 }
+
+const BASE_CATEGORY_ROW = {
+  id: "cat1",
+  name: "Guides",
+  slug: "guides",
+  sortOrder: 0,
+  parentId: null,
+  createdAt: "2024-01-01T00:00:00.000Z",
+  updatedAt: "2024-01-01T00:00:00.000Z",
+};
 
 describe("WikiService", () => {
   describe("listArticles", () => {
@@ -111,6 +123,40 @@ describe("WikiService", () => {
       const query = new SQLiteSyncDialect().sqlToQuery(whereSql);
       expect(query.sql).toMatch(/category_id"? in \(\?, \?\)/i);
       expect(query.params).toEqual(["cat1", "cat2"]);
+    });
+  });
+
+  describe("updateCategory", () => {
+    it("stamps updated_at on the single-row path, same as the batch path does", async () => {
+      /*
+       * 这条是照着一次真实的漏改立的：批量路径写 updated_at（batchUpdateCategories
+       * 里的 assignments.push("updated_at = ?")），单行路径不写。结果是同一个字段
+       * 改一行不动时间戳、改一批动——updated_at 的先后取决于走了哪个接口，任何按它
+       * 排序或做增量同步的地方都会读到错的顺序，而且两条路径单独看都「正常」。
+       */
+      const { rawDb } = createRawDb();
+      const { db, mocks } = createCrudDb(BASE_CATEGORY_ROW);
+      const service = new WikiService(db as never, createDeps(rawDb));
+
+      const before = new Date().toISOString();
+      await service.updateCategory("u1", "cat1", { name: "Renamed" });
+
+      const patch = mocks.setMock.mock.calls[0]?.[0];
+      expect(patch).toBeDefined();
+      expect(patch?.name).toBe("Renamed");
+      expect(patch?.updatedAt).toBeTypeOf("string");
+      expect(String(patch?.updatedAt) >= before).toBe(true);
+    });
+
+    it("still writes updated_at when the request changes no other field", async () => {
+      // 空 patch 会让 Drizzle 的 set({}) 抛错；无条件写 updatedAt 顺带兜住这一条。
+      const { rawDb } = createRawDb();
+      const { db, mocks } = createCrudDb(BASE_CATEGORY_ROW);
+      const service = new WikiService(db as never, createDeps(rawDb));
+
+      await service.updateCategory("u1", "cat1", {});
+
+      expect(Object.keys(mocks.setMock.mock.calls[0]?.[0] ?? {})).toEqual(["updatedAt"]);
     });
   });
 
