@@ -3,6 +3,11 @@ import { summariseClassQuotas, type ClassQuotaSlot, type ClassQuotaSummary } fro
 
 type MemberEntry = { user: User; profile: MemberProfile };
 
+/* 概览只用得上 id 和职业。仪表盘的报名人是从活动条的精简载荷拼出来的，没有完整的
+   User/MemberProfile，卡这么宽只会逼调用方造假数据填字段。分组那边要把整条成员原样
+   还给名单，所以它继续收完整的 MemberEntry。 */
+type QuotaMemberEntry = { user: Pick<User, "id">; profile: Pick<MemberProfile, "classes"> };
+
 /**
  * 把一个活动和它的报名名单折成配额概览。没配额就返回 null，让调用方整行不渲染
  * ——A-2 的筹码行「常驻」指的是配额存在时常驻，没配过配额的活动不该多出一条空占位。
@@ -12,7 +17,7 @@ type MemberEntry = { user: User; profile: MemberProfile };
  */
 export function summariseEventClassQuotas(
   event: Pick<Event, "class_quotas">,
-  members: readonly MemberEntry[],
+  members: readonly QuotaMemberEntry[],
 ): ClassQuotaSummary | null {
   if (event.class_quotas.length === 0) {
     return null;

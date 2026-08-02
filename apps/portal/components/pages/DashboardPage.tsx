@@ -25,6 +25,7 @@ import {
   type DashboardUpcomingEventRow,
   orderDashboardUpcomingRows,
 } from "../dashboard/shared";
+import { summariseEventClassQuotas } from "../feature/events/class-quota-view";
 import { ActiveMembersCard } from "../dashboard/ActiveMembersCard";
 import { LastWarCard } from "../dashboard/LastWarCard";
 import { MySignupsCard } from "../dashboard/MySignupsCard";
@@ -72,14 +73,17 @@ function buildUpcomingEventRow(
   const joined = Boolean(currentUserId && item.participants.some((participant) => participant.user_id === currentUserId));
   const capacityLabel = item.capacity === null ? `${participantCount}/∞` : `${participantCount}/${item.capacity}`;
 
+  const members = item.participants.map(participantToDashboardMember);
+
   return {
     item,
     startsSoon,
     hasConflict,
-    members: item.participants.map(participantToDashboardMember),
+    members,
     joined,
     capacityLabel,
     isFull: item.capacity !== null && participantCount >= item.capacity,
+    quotaSummary: summariseEventClassQuotas(item, members),
   };
 }
 

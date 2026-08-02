@@ -13,8 +13,15 @@ import {
 import { parseStringArray } from "../services/helpers";
 import { eventPublicVisibilityFilter } from "../services/events/event-visibility";
 import { toEventPayload, type EventRow } from "../services/EventService";
+import type { RawDbLike } from "../services/events/EventCrudService";
+import {
+  EVENT_CLASS_QUOTA_TABLE,
+  loadClassQuotas,
+  typeSupportsClassQuotas,
+} from "../services/events/event-class-quotas";
 import { toWarHistoryPayload } from "../services/GuildWarService";
 import type { SessionUser } from "../services/auth";
+import type { Bindings } from "../index";
 import { getRequestUser } from "../middleware/rbac";
 import { getDb } from "./_shared";
 import { getFeatureFlags } from "./service-factory";
@@ -75,7 +82,11 @@ async function loadMemberStats(db: DashboardDb) {
   };
 }
 
-async function loadUpcomingEvents(db: DashboardDb, viewer: SessionUser | null) {
+async function loadUpcomingEvents(
+  db: DashboardDb,
+  rawDb: RawDbLike,
+  viewer: SessionUser | null,
+) {
   const window = weekWindow();
   const eventVisibilityFilter = viewer?.permissions.has("events.edit")
     ? undefined
@@ -112,6 +123,13 @@ async function loadUpcomingEvents(db: DashboardDb, viewer: SessionUser | null) {
 
   const dashboardEventRows = [...featuredEventRows, ...upcomingEventRows];
   const eventIds = dashboardEventRows.map((row) => row.id);
+  /* 面板上的活动条也要能看出「还缺什么」，所以这里得跟活动列表一样把配额读出来。
+     投票和抽奖存不进配额，不必为它们白查一遍。 */
+  const quotasByEvent = await loadClassQuotas(
+    rawDb,
+    EVENT_CLASS_QUOTA_TABLE,
+    dashboardEventRows.filter((row) => typeSupportsClassQuotas(row.type)).map((row) => row.id),
+  );
   const participantRows = eventIds.length > 0
     ? await db
         .select({
@@ -149,7 +167,7 @@ async function loadUpcomingEvents(db: DashboardDb, viewer: SessionUser | null) {
   }
 
   const toDashboardEvent = (row: (typeof dashboardEventRows)[number]) => ({
-    ...toEventPayload(row as EventRow),
+    ...toEventPayload({ ...row, classQuotas: quotasByEvent.get(row.id) ?? [] } as EventRow),
     participants: participantsByEvent.get(row.id) ?? [],
   });
 
@@ -265,7 +283,7 @@ dashboardRoutes.get("/events", async (c) => {
   const viewer = c.req.query("external_view") === "true"
     ? null
     : await getRequestUser(c);
-  return c.json(await loadUpcomingEvents(getDb(c), viewer));
+  return c.json(await loadUpcomingEvents(getDb(c), (c.env as Bindings).DB as never, viewer));
 });
 
 dashboardRoutes.get("/wars", async (c) => {

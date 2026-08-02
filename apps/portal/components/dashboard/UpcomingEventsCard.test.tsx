@@ -38,6 +38,7 @@ function eventRow(
       end_at: null,
       capacity: null,
       pinned,
+      class_quotas: [] as DashboardUpcomingEventRow["item"]["class_quotas"],
     } as DashboardUpcomingEventRow["item"],
     startsSoon: false,
     hasConflict: false,
@@ -45,6 +46,7 @@ function eventRow(
     joined: false,
     capacityLabel: "0/∞",
     isFull: false,
+    quotaSummary: null,
   };
 }
 
