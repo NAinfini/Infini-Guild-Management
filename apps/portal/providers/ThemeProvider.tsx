@@ -151,7 +151,7 @@ const portalTheme = createTheme({
               "--button-bg": "var(--brand-fill)",
               "--button-hover": "var(--brand-fill-hover)",
               "--button-color": "var(--brand-on-fill)",
-              "--portal-button-hover-color": "var(--brand-on-fill-hover)",
+              "--button-hover-color": "var(--brand-on-fill-hover)",
             }
             : {},
         };

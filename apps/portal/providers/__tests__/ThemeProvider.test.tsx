@@ -120,6 +120,6 @@ describe("PortalThemeProvider", () => {
     expect(style).toContain("--button-bg: var(--brand-fill)");
     expect(style).toContain("--button-hover: var(--brand-fill-hover)");
     expect(style).toContain("--button-color: var(--brand-on-fill)");
-    expect(style).toContain("--portal-button-hover-color: var(--brand-on-fill-hover)");
+    expect(style).toContain("--button-hover-color: var(--brand-on-fill-hover)");
   });
 });

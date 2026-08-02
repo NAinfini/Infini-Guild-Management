@@ -1,5 +1,4 @@
 .buttonRoot {
-  --portal-button-hover-color: inherit;
   --button-height-xs: var(--control-height-compact);
   --button-height-sm: var(--control-height-regular);
   --button-height-md: var(--control-height-regular);
@@ -18,10 +17,10 @@
     transform var(--motion-state);
 }
 
-.buttonRoot:hover {
-  color: var(--portal-button-hover-color);
-}
-
+/* hover 字色不在这里管：Mantine 自己就有 --button-hover-color（缺省回落到
+   --button-color），品牌按钮由 ThemeProvider 直接写那一个变量。以前这里额外套了一层
+   --portal-button-hover-color，缺省值是 inherit，等于给**每一个**按钮的 hover 都盖上
+   「继承父级字色」——红色的移除按钮一悬停就变成周围正文的颜色。 */
 .buttonRoot:active:not(:disabled, [data-disabled]) {
   transform: translateY(1px);
 }
