@@ -224,6 +224,7 @@ const ENTITY_COLOR_MAP = {
   gallery: "grape",
   gallery_item: "grape",
   class_catalog: "grape",
+  class_tag: "grape",
   member_absence: "orange",
   member_badge: "grape",
   badge: "grape",

@@ -27,6 +27,7 @@ import { siteConfigRoutes } from "./routes/site-config";
 import { usersRoutes } from "./routes/users";
 import { wikiRoutes } from "./routes/wiki";
 import { badgeRoutes } from "./routes/badges";
+import { classTagRoutes } from "./routes/class-tags";
 import { classRoutes } from "./routes/classes";
 import { systemTestTrackingMiddleware } from "./middleware/system-test-tracking";
 
@@ -329,6 +330,9 @@ app.route("/api/wiki", wikiRoutes);
 app.route("/api/gallery", galleryRoutes);
 app.route("/api/badges", badgeRoutes);
 app.route("/api/classes", classRoutes);
+/* 单独挂一个前缀而不是塞进 /api/classes：那边已经有 /:id，"tags" 会被当成职业 id
+   吃掉，只能靠注册顺序绕开——一条以后随时会被踩坏的隐式约束。 */
+app.route("/api/class-tags", classTagRoutes);
 app.route("/api/storage", storageRoutes);
 app.route("/api/site-config", siteConfigRoutes);
 app.route("/api/admin", adminRoutes);

@@ -412,6 +412,9 @@ export class ClassCatalogService {
        */
       this.deps.rawDb.prepare("DELETE FROM event_class_quotas WHERE class_id = ?").bind(id),
       this.deps.rawDb.prepare("DELETE FROM recurring_template_class_quotas WHERE class_id = ?").bind(id),
+      /* 同理：职业还可能被装在若干个职业标签里。不摘掉的话标签会指着一个已经不存在
+         的职业，指向该标签的配额格子就多出一个永远填不上的名额。 */
+      this.deps.rawDb.prepare("DELETE FROM class_tag_members WHERE class_id = ?").bind(id),
       this.deps.rawDb.prepare(
         "DELETE FROM class_catalog WHERE id = ? RETURNING icon_key",
       ).bind(id),

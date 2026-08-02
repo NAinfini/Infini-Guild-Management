@@ -36,8 +36,10 @@ export const LIMITS = {
     eventTitle: { min: 1, max: 200 },
     eventDescription: { max: 5000 },
     eventAttachments: { max: 5 },
-    /* 一个活动最多能给几个职业设配额。跟 classesPerProfile 取同一个数：一个人身上
-       最多挂 20 个职业，配额再多也没有能对上的人。 */
+    /* 一个活动最多能设几格职业配额。原先这个数跟 classesPerProfile 绑在一起，理由是
+       「一个人最多挂 20 个职业，配额再多也没有能对上的人」——一格能指向一整个职业
+       标签之后这条推理就不成立了，格子数跟单人职业数再无关系。留在 20 是因为一支
+       队伍的编成位不会比这更多，超过就该拆活动而不是继续加格。 */
     eventClassQuotas: { max: 20 },
     eventParticipantsBatch: { max: 100 },
     announcementTitle: { min: 1, max: 200 },
@@ -71,6 +73,13 @@ export const LIMITS = {
     roleName: { min: 1, max: 80 },
     classLabel: { min: 1, max: 80 },
     classesPerProfile: { max: 20 },
+    classTagLabel: { min: 1, max: 80 },
+    /* 职业标签目录的规模上限。标签是「治疗」「坦克」这种角色词汇，是个小而稳定的
+       集合；真需要几十个说明它已经不是角色而是别的东西了。 */
+    classTags: { max: 50 },
+    /* 一个标签最多能装几个职业。跟 classCatalogSize 取同一个数——理论上管理员可以
+       把整个目录塞进一个标签，那是他的自由，不该由这里替他判断合不合理。 */
+    classesPerTag: { max: 200 },
     /* 一次重排请求里最多能带多少个职业 id。重排的请求体必须是完整目录，
        所以这同时也是职业目录的规模上限——超过这个数就该分页而不是整表重排。 */
     classCatalogSize: { max: 200 },

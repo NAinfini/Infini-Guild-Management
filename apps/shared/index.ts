@@ -12,6 +12,7 @@ export * from "./constants/errors";
 export * from "./schemas/auth";
 export * from "./schemas/user";
 export * from "./schemas/class-catalog";
+export * from "./schemas/class-tag";
 export * from "./schemas/absence";
 export * from "./schemas/event";
 export * from "./schemas/announcement";

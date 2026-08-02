@@ -86,6 +86,30 @@ CREATE TABLE IF NOT EXISTS class_catalog (
   )
 );
 
+-- 职业标签：给一组职业起个名字（「治疗」＝牵丝霖＋破竹风），活动配额可以指着标签
+-- 说「这一格要 2 个」。标签成员不设任何限制——一个职业可进多个标签，标签之间可以
+-- 重叠，空标签也允许。
+CREATE TABLE IF NOT EXISTS class_tags (
+  id TEXT PRIMARY KEY NOT NULL,
+  label TEXT NOT NULL,
+  sort_order INTEGER NOT NULL DEFAULT 0
+    CONSTRAINT class_tags_sort_order_nonnegative CHECK (sort_order >= 0),
+  created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+  updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS ux_class_tags_label_nocase ON class_tags (label COLLATE NOCASE);
+CREATE INDEX IF NOT EXISTS idx_class_tags_sort ON class_tags (sort_order, id);
+
+CREATE TABLE IF NOT EXISTS class_tag_members (
+  tag_id TEXT NOT NULL REFERENCES class_tags(id) ON DELETE CASCADE,
+  class_id TEXT NOT NULL REFERENCES class_catalog(id) ON DELETE CASCADE,
+  PRIMARY KEY (tag_id, class_id)
+);
+
+-- 删职业时要按 class_id 反查它进过哪些标签，这条索引是给那次删除用的。
+CREATE INDEX IF NOT EXISTS idx_class_tag_members_class ON class_tag_members (class_id);
+
 CREATE TABLE IF NOT EXISTS events (
   id TEXT PRIMARY KEY NOT NULL,
   type TEXT NOT NULL CHECK (type IN ('weekly_mission', 'guild_war', 'social', 'poll', 'raffle', 'other')),

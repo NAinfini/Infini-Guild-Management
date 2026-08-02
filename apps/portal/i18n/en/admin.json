@@ -454,6 +454,7 @@
   "audit.entityType.storage_item": "Storage Item",
   "audit.entityType.storage_transaction": "Storage Ledger",
   "audit.entityType.class_catalog": "Class Catalog",
+  "audit.entityType.class_tag": "Class Tag",
   "audit.action.create": "Created",
   "audit.action.adjust": "Adjusted",
   "audit.action.update": "Updated",

@@ -452,6 +452,7 @@
   "audit.entityType.storage_item": "仓库物品",
   "audit.entityType.storage_transaction": "仓库流水",
   "audit.entityType.class_catalog": "职业目录",
+  "audit.entityType.class_tag": "职业标签",
   "audit.action.create": "创建",
   "audit.action.adjust": "调整库存",
   "audit.action.update": "更新",
