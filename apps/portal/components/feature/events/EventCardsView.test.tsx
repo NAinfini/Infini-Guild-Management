@@ -272,7 +272,7 @@ describe("EventCardsView", () => {
     expect(getParticipantActionDisabledReasonKey(base)).toBeNull();
   });
 
-  it("shows player count as a capacity pill in the participation row", () => {
+  it("shows player count as a capacity pill in the header band", () => {
     renderCardsView();
 
     expect(screen.queryByText("90%")).not.toBeInTheDocument();

@@ -119,9 +119,11 @@
   min-height: 24px;
 }
 
+/* 人数住在色带右端，复制按钮左边。 */
 .event-card__capacity {
   display: flex;
   align-items: center;
+  flex-shrink: 0;
   gap: 4px;
   padding: 2px 8px;
   border-radius: var(--shape-pill);
@@ -148,7 +150,10 @@
   background: color-mix(in srgb, var(--text-primary) 10%, transparent);
 }
 
+/* 正文吃掉 SimpleGrid 拉伸出来的那点富余（见 .event-card 的注释），页脚才会贴着
+   卡片下沿而不是浮在半空、底下拖一条空白。 */
 .event-card__body {
+  flex: 1;
   padding: var(--space-sm) var(--space-md);
 }
 
@@ -238,21 +243,6 @@
   align-items: center;
   gap: 8px;
   padding: var(--space-xs) 0;
-}
-
-/* 缺什么（配额筹码）＋来了多少（人数），同一行，永远渲染——见 EventCardView 里
-   这一段的注释：行数一旦随配额有无变化，同一排卡的页脚就高低不齐。 */
-.event-card__tally {
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 6px;
-  min-width: 0;
-}
-
-/* 人数靠右：左边留给筹码，筹码多到折行时它跟在最后一行末尾。 */
-.event-card__tally .event-card__capacity {
-  margin-left: auto;
 }
 
 /* 中奖者标记。以前是一个带浮动徽章的描边盒子，单独占一行；现在缩成参与行左端的

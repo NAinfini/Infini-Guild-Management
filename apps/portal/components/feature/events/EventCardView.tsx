@@ -242,6 +242,15 @@ export function EventCardView({
         {/* 状态图标固定单行不换行——它一换行整张卡就变高，一排卡片的底边就参差不齐。 */}
         <div className="event-card__status-rail">{statusIndicators}</div>
         <div className="event-card__header-right">
+          {/*
+           * 人数上到色带来了。它在正文里跟配额筹码抢同一行的宽度：筹码一多就把人数挤到
+           * 第二行，那张卡就比旁边高一截。色带这一行的宽度是固定的（徽章、状态图标、
+           * 两个按钮都不随数据变宽），人数放这儿谁也挤不着谁。
+           */}
+          <div className="event-card__capacity">
+            <UsersIcon size={13} />
+            <span>{joinedCount}/{event.capacity ?? "∞"}</span>
+          </div>
           {headerActions}
           {menu}
         </div>
@@ -276,7 +285,7 @@ export function EventCardView({
             {event.description || t("card.noDescription")}
           </Text>
 
-          {/* ── 参与状况：上一行是谁来了，下一行是缺什么、来了多少 ── */}
+          {/* ── 参与状况：谁来了，还缺什么。来了多少在色带上。 ── */}
           <div className="event-card__members-bar">
             {raffleHasDrawn ? (
               <span className="event-card__winners-tag">
@@ -287,21 +296,7 @@ export function EventCardView({
             <MemberAvatarStack members={members} />
           </div>
 
-          {/*
-           * 人数跟配额筹码同一行：两边讲的是同一件事（还缺不缺人），而且这一行**永远**
-           * 渲染——没配额的卡也有人数，行数才不会随配额有无变化。以前配额行是条件渲染，
-           * 同一排卡里有的三行有的两行，页脚按钮跟着高低不齐。
-           *
-           * 容量进度条撤了：同一行右端已经有 10/20，进度条是把同一个数再画一遍，
-           * 而且它占的横向空间正是筹码要用的。
-           */}
-          <div className="event-card__tally">
-            {quotaSummary ? <EventClassQuotaChips summary={quotaSummary} event={event} /> : null}
-            <div className="event-card__capacity">
-              <UsersIcon size={13} />
-              <span>{joinedCount}/{event.capacity ?? "∞"}</span>
-            </div>
-          </div>
+          {quotaSummary ? <EventClassQuotaChips summary={quotaSummary} event={event} /> : null}
         </Stack>
       </div>
 
