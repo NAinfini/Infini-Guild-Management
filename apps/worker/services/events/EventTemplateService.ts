@@ -5,7 +5,7 @@ import { nanoid } from "nanoid";
 import { recurringTemplates } from "../../db/schema";
 import { err, ok, type ServiceErr, type ServiceResult } from "../result";
 import { diffRecurrenceRule, parseAttachments, parseRecurrenceRule, type DatabaseLike, type RawDbLike } from "./EventCrudService";
-import { replaceMediaRefs, deleteMediaRefs, extractAttachmentKeys } from "../media-references";
+import { buildReplaceMediaRefsStatements, extractAttachmentKeys } from "../media-references";
 import {
   buildDeleteClassQuotaStatements,
   buildReplaceClassQuotaStatements,
@@ -142,30 +142,31 @@ export class EventTemplateService {
 
     const templateId = this.createId();
     const recurrenceRuleJson = JSON.stringify(data.recurrence_rule);
-
-    await this.db.insert(recurringTemplates).values({
-      id: templateId,
-      type: data.type,
-      title: data.title,
-      description: data.description ?? null,
-      startTime: data.start_time,
-      durationMinutes: data.duration_minutes ?? null,
-      capacity: data.capacity ?? null,
-      recurrenceRule: recurrenceRuleJson,
-      visibilityOffsetMinutes: data.visibility_offset_minutes ?? 0,
-      autoArchive: data.auto_archive ?? false,
-      attachments: JSON.stringify(data.attachments ?? []),
-      paused: false,
-      createdBy: actorId,
-      lastGeneratedDate: null,
-      generationCount: 0,
-    });
-
-    if (quotas.length > 0) {
-      await this.rawDb.batch(
-        buildReplaceClassQuotaStatements(this.rawDb, TEMPLATE_CLASS_QUOTA_TABLE, templateId, quotas, () => this.createId()),
-      );
-    }
+    const attachments = JSON.stringify(data.attachments ?? []);
+    const now = this.now();
+    await this.rawDb.batch([
+      this.rawDb.prepare(`
+        INSERT INTO recurring_templates
+          (id, type, title, description, start_time, duration_minutes, capacity, recurrence_rule,
+           visibility_offset_minutes, auto_archive, attachments, paused, created_by,
+           last_generated_date, generation_count, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, NULL, 0, ?, ?)
+      `).bind(
+        templateId, data.type, data.title, data.description ?? null, data.start_time,
+        data.duration_minutes ?? null, data.capacity ?? null, recurrenceRuleJson,
+        data.visibility_offset_minutes ?? 0, data.auto_archive ?? false,
+        attachments, actorId, now, now,
+      ),
+      ...(quotas.length > 0
+        ? buildReplaceClassQuotaStatements(this.rawDb, TEMPLATE_CLASS_QUOTA_TABLE, templateId, quotas, () => this.createId())
+        : []),
+      ...buildReplaceMediaRefsStatements(
+        this.rawDb as unknown as D1Database,
+        "recurring_template",
+        templateId,
+        extractAttachmentKeys(attachments),
+      ),
+    ]);
 
     const created = await this.deps.getTemplateById(templateId);
     if (!created) throw new Error("Failed to load created template");
@@ -173,8 +174,6 @@ export class EventTemplateService {
     created.classQuotas = quotas.length > 0
       ? await loadClassQuotasFor(this.rawDb, TEMPLATE_CLASS_QUOTA_TABLE, templateId)
       : [];
-
-    await replaceMediaRefs(this.rawDb as unknown as D1Database, "recurring_template", templateId, extractAttachmentKeys(created.attachments));
 
     await this.deps.writeAuditLog({
       entityType: "recurring_template",
@@ -234,23 +233,46 @@ export class EventTemplateService {
       ? null
       : await loadClassQuotasFor(this.rawDb, TEMPLATE_CLASS_QUOTA_TABLE, templateId);
 
-    await this.db.update(recurringTemplates).set(patch).where(eq(recurringTemplates.id, templateId));
-
-    if (quotaWrite === "clear") {
-      await this.rawDb.batch(buildDeleteClassQuotaStatements(this.rawDb, TEMPLATE_CLASS_QUOTA_TABLE, templateId));
-    } else if (quotaWrite === "replace") {
-      await this.rawDb.batch(
-        buildReplaceClassQuotaStatements(this.rawDb, TEMPLATE_CLASS_QUOTA_TABLE, templateId, data.class_quotas!, () => this.createId()),
-      );
-    }
+    const assignments: string[] = [];
+    const bindings: unknown[] = [];
+    const add = (column: string, value: unknown) => {
+      assignments.push(`${column} = ?`);
+      bindings.push(value);
+    };
+    add("updated_at", patch.updatedAt);
+    if (patch.type !== undefined) add("type", patch.type);
+    if (patch.title !== undefined) add("title", patch.title);
+    if (patch.description !== undefined) add("description", patch.description);
+    if (patch.startTime !== undefined) add("start_time", patch.startTime);
+    if (patch.durationMinutes !== undefined) add("duration_minutes", patch.durationMinutes);
+    if (patch.capacity !== undefined) add("capacity", patch.capacity);
+    if (patch.recurrenceRule !== undefined) add("recurrence_rule", patch.recurrenceRule);
+    if (patch.visibilityOffsetMinutes !== undefined) add("visibility_offset_minutes", patch.visibilityOffsetMinutes);
+    if (patch.autoArchive !== undefined) add("auto_archive", patch.autoArchive);
+    if (patch.attachments !== undefined) add("attachments", patch.attachments);
+    if (patch.lastGeneratedDate !== undefined) add("last_generated_date", patch.lastGeneratedDate);
+    if (patch.generationCount !== undefined) add("generation_count", patch.generationCount);
+    const effectiveAttachments = typeof patch.attachments === "string" ? patch.attachments : existing.attachments;
+    await this.rawDb.batch([
+      this.rawDb.prepare(`UPDATE recurring_templates SET ${assignments.join(", ")} WHERE id = ?`).bind(...bindings, templateId),
+      ...(quotaWrite === "clear"
+        ? buildDeleteClassQuotaStatements(this.rawDb, TEMPLATE_CLASS_QUOTA_TABLE, templateId)
+        : quotaWrite === "replace"
+          ? buildReplaceClassQuotaStatements(this.rawDb, TEMPLATE_CLASS_QUOTA_TABLE, templateId, data.class_quotas!, () => this.createId())
+          : []),
+      ...buildReplaceMediaRefsStatements(
+        this.rawDb as unknown as D1Database,
+        "recurring_template",
+        templateId,
+        extractAttachmentKeys(effectiveAttachments),
+      ),
+    ]);
 
     const updated = await this.deps.getTemplateById(templateId);
     if (!updated) throw new Error("Failed to load updated template");
     updated.classQuotas = typeSupportsClassQuotas(updated.type)
       ? await loadClassQuotasFor(this.rawDb, TEMPLATE_CLASS_QUOTA_TABLE, templateId)
       : [];
-
-    await replaceMediaRefs(this.rawDb as unknown as D1Database, "recurring_template", templateId, extractAttachmentKeys(updated.attachments));
 
     await this.deps.writeAuditLog({
       entityType: "recurring_template",
@@ -319,10 +341,9 @@ export class EventTemplateService {
       ...systemTestStatements,
       this.rawDb.prepare("UPDATE events SET series_id = NULL WHERE series_id = ?1").bind(templateId),
       ...buildDeleteClassQuotaStatements(this.rawDb, TEMPLATE_CLASS_QUOTA_TABLE, templateId),
+      this.rawDb.prepare("DELETE FROM media_references WHERE entity_type = ?1 AND entity_id = ?2").bind("recurring_template", templateId),
       this.rawDb.prepare("DELETE FROM recurring_templates WHERE id = ?1").bind(templateId),
     ]);
-
-    await deleteMediaRefs(this.rawDb as unknown as D1Database, "recurring_template", templateId);
 
     await this.deps.writeAuditLog({
       entityType: "recurring_template",

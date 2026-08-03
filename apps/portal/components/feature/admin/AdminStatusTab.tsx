@@ -27,6 +27,7 @@ type StatusData = {
   r2: string;
   ws: string;
   crons: string;
+  system_tests_enabled?: boolean;
 };
 
 type StatusHealthLog = {
@@ -101,6 +102,7 @@ export function AdminStatusTab({
     stop,
   } = useAdminApiTestRunner(visibleApiCategories);
   const isRunning = runningAll || runningSet.size > 0;
+  const systemTestsEnabled = statusData?.system_tests_enabled === true;
 
   /*
    * 三块内容默认折起：这一页最常用的动作是「扫一眼四个服务是不是绿的」，
@@ -139,6 +141,19 @@ export function AdminStatusTab({
     else if (r.status !== null && r.status >= 200 && r.status < 400) passedEndpoints++;
     else failedEndpoints++;
   }
+
+  const renderHealthLogStatus = (value: string) => {
+    const state = value === "ok" ? "ok" : value === "configured" || value === "degraded" ? "warn" : "error";
+    const label = value === "ok" || value === "configured"
+      ? t(`status.value.${value}`)
+      : value.toUpperCase();
+    return (
+      <td>
+        <span className={`health-log-dot health-log-dot--${state}`} />
+        {label}
+      </td>
+    );
+  };
 
   return (
     <Stack gap={16}>
@@ -208,10 +223,10 @@ export function AdminStatusTab({
                           <td className="health-log-time">
                             {formatDateTime(row.at)}
                           </td>
-                          <td><span className={`health-log-dot health-log-dot--${row.db === "ok" ? "ok" : "error"}`} />{row.db}</td>
-                          <td><span className={`health-log-dot health-log-dot--${row.r2 === "ok" ? "ok" : "error"}`} />{row.r2}</td>
-                          <td><span className={`health-log-dot health-log-dot--${row.ws === "ok" ? "ok" : "warn"}`} />{row.ws}</td>
-                          <td><span className={`health-log-dot health-log-dot--${row.crons === "ok" ? "ok" : "error"}`} />{row.crons}</td>
+                          {renderHealthLogStatus(row.db)}
+                          {renderHealthLogStatus(row.r2)}
+                          {renderHealthLogStatus(row.ws)}
+                          {renderHealthLogStatus(row.crons)}
                           <td>
                             <span className="health-log-latency">
                               {/* 只有长度是数据驱动的；最小/最大宽度是版式约束，落在
@@ -234,6 +249,8 @@ export function AdminStatusTab({
         </Collapse>
       </section>
 
+      {systemTestsEnabled ? (
+        <>
       {/* ── API Test Console ────────────────────────── */}
       <div className="api-console">
         <div className="api-console__header">
@@ -313,6 +330,12 @@ export function AdminStatusTab({
         open={debugConsoleOpen}
         onToggle={() => setDebugConsoleOpen((open) => !open)}
       />
+        </>
+      ) : statusData ? (
+        <Alert color="yellow" title={t("status.api.disabledTitle")}>
+          {t("status.api.disabledDescription")}
+        </Alert>
+      ) : null}
     </Stack>
   );
 }

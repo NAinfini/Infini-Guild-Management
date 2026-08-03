@@ -136,6 +136,7 @@ export function WikiPage() {
             archiveIntent={controller.articleEditor.archiveIntent}
             isSaving={controller.articleEditor.isSaving}
             isCreating={controller.articleEditor.isCreating}
+            isDeleting={controller.articleEditor.isDeleting}
             canCreateArticle={controller.articleEditor.canCreateArticle}
             onArticleTitleChange={controller.articleEditor.setArticleTitle}
             onArticleBodyChange={controller.articleEditor.setArticleBody}

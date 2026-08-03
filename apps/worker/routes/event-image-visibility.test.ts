@@ -1,7 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
-  getEventById: vi.fn(),
   getRequestUser: vi.fn(),
   serveR2Object: vi.fn(),
 }));
@@ -9,16 +8,6 @@ const mocks = vi.hoisted(() => ({
 vi.mock("../middleware/rbac", () => ({
   getRequestUser: mocks.getRequestUser,
   requirePermission: vi.fn(),
-}));
-
-vi.mock("../services/EventService", () => ({
-  EventService: vi.fn(function EventServiceMock(this: { getEventById: typeof mocks.getEventById }) {
-    this.getEventById = mocks.getEventById;
-  }),
-  toEventPayload: vi.fn((value) => value),
-  toParticipantPayload: vi.fn((value) => value),
-  toRaffleWinnerPayload: vi.fn((value) => value),
-  toTemplatePayload: vi.fn((value) => value),
 }));
 
 vi.mock("./service-factory", () => ({
@@ -38,14 +27,40 @@ vi.mock("./_shared", async () => {
   };
 });
 
+const mediaKey = "events/event-1/images/image-key.png";
 const futureEvent = {
   id: "event-1",
   visibleAt: "9999-12-31T23:59:59.999Z",
+  attachments: [mediaKey],
 };
+const mediaReferences = new Set([`${mediaKey}\u0000event\u0000${futureEvent.id}`]);
+
+function createD1Fixture() {
+  return {
+    prepare: vi.fn((sql: string) => {
+      expect(sql).toContain("FROM media_references ref");
+      expect(sql).toContain("INNER JOIN events event");
+      expect(sql).toContain("json_each");
+      return {
+        bind: (key: string, entityId: string, canManage: number, checkedAt: string) => ({
+          first: async () => {
+            expect(key).toBe(mediaKey);
+            expect(entityId).toBe(futureEvent.id);
+            expect([0, 1]).toContain(canManage);
+            expect(Number.isNaN(Date.parse(checkedAt))).toBe(false);
+            const referenced = mediaReferences.has(`${key}\u0000event\u0000${entityId}`)
+              && futureEvent.attachments.includes(key);
+            const visible = canManage === 1 || futureEvent.visibleAt <= checkedAt;
+            return referenced && visible ? { present: 1 } : null;
+          },
+        }),
+      };
+    }),
+  };
+}
 
 describe("event image visibility", () => {
   beforeEach(() => {
-    mocks.getEventById.mockReset();
     mocks.getRequestUser.mockReset();
     mocks.serveR2Object.mockReset();
     mocks.serveR2Object.mockResolvedValue(new Response("image"));
@@ -54,12 +69,11 @@ describe("event image visibility", () => {
   it("does not serve images for future-visible events to guests", async () => {
     const { eventsRoutes } = await import("./events");
     mocks.getRequestUser.mockResolvedValueOnce(null);
-    mocks.getEventById.mockResolvedValueOnce(futureEvent);
 
     const response = await eventsRoutes.request(
-      "/image?key=events/event-1/images/image-key",
+      `/image?key=${mediaKey}`,
       { method: "GET" },
-      { DB: {}, MEDIA: {} },
+      { DB: createD1Fixture(), MEDIA: {} },
     );
 
     expect(response.status).toBe(404);
@@ -73,18 +87,17 @@ describe("event image visibility", () => {
       role: "moderator",
       permissions: new Set(["events.edit"]),
     });
-    mocks.getEventById.mockResolvedValueOnce(futureEvent);
 
     const response = await eventsRoutes.request(
-      "/image?key=events/event-1/images/image-key",
+      `/image?key=${mediaKey}`,
       { method: "GET" },
-      { DB: {}, MEDIA: {} },
+      { DB: createD1Fixture(), MEDIA: {} },
     );
 
     expect(response.status).toBe(200);
     expect(mocks.serveR2Object).toHaveBeenCalledWith(
       expect.anything(),
-      "events/event-1/images/image-key",
+      mediaKey,
       "Event image not found",
     );
   });

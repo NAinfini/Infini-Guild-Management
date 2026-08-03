@@ -3,6 +3,7 @@ import type { Context } from "hono";
 import { Hono } from "hono";
 import type { Bindings } from "../index";
 import { validateUploadBytes } from "../services/media";
+import { parseMediaKey } from "../services/media-keys";
 import { StorageService } from "../services/StorageService";
 import { buildError, collectFiles, getDb, handleResult, parseJsonBody, requireSessionUser, safeFormData, serveR2Object, throwError } from "./_shared";
 import { withMedia } from "./service-factory";
@@ -44,7 +45,21 @@ storageRoutes.get("/image", async (c) => {
   await requireSessionUser(c);
   const key = c.req.query("key");
   if (!key) return buildError(c, "VALIDATION_ERROR", "key query parameter required");
-  if (!key.startsWith("storage/items/")) return buildError(c, "FORBIDDEN", "Invalid storage media key");
+  const parsedKey = parseMediaKey(key);
+  if (parsedKey?.kind !== "storage_item_image" || !parsedKey.entityId || !parsedKey.contentType) {
+    return buildError(c, "FORBIDDEN", "Invalid storage media key");
+  }
+  const referenced = await (c.env as Bindings).DB.prepare(`
+    SELECT 1 AS present
+    FROM media_references ref
+    INNER JOIN storage_items item ON item.id = ref.entity_id
+    INNER JOIN storage_item_images image ON image.item_id = item.id AND image.r2_key = ref.media_key
+    WHERE ref.media_key = ?1
+      AND ref.entity_type = 'storage_item'
+      AND ref.entity_id = ?2
+    LIMIT 1
+  `).bind(key, parsedKey.entityId).first<{ present: number }>();
+  if (!referenced) return buildError(c, "NOT_FOUND", "Storage media not found");
   return serveR2Object(c, key, "Storage media not found");
 });
 

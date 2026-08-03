@@ -70,6 +70,47 @@ describe("useWikiCategoryEditor", () => {
   beforeEach(() => {
     for (const mock of Object.values(apiMocks)) mock.mockReset();
     showError.mockReset();
+    apiMocks.create.mockResolvedValue(undefined);
+    apiMocks.remove.mockResolvedValue(undefined);
+  });
+
+  it("preserves dirty fields and order when categories refetch", () => {
+    const { result, rerender } = createHarness();
+    act(() => result.current.setCategoryDraftName("guides", "Local guides"));
+    act(() => result.current.moveCategory("combat", { parentId: "", index: 0 }));
+
+    rerender({
+      categories: [
+        category({ id: "root", name: "Server root", sort_order: 0 }),
+        category({ id: "guides", name: "Guides", sort_order: 1 }),
+        category({ id: "combat", name: "Combat", sort_order: 2, parent_id: "guides" }),
+        category({ id: "new", name: "New", sort_order: 3 }),
+      ],
+    });
+
+    expect(result.current.categoryDrafts.map((draft) => draft.id)).toEqual([
+      "combat",
+      "root",
+      "guides",
+      "new",
+    ]);
+    expect(result.current.categoryDrafts.find((draft) => draft.id === "guides")?.name).toBe("Local guides");
+    expect(result.current.categoryDrafts.find((draft) => draft.id === "combat")?.parent_id).toBe("");
+  });
+
+  it("keeps existing drafts through create and delete refreshes", async () => {
+    const { result, rerender } = createHarness();
+    act(() => result.current.setCategoryDraftName("guides", "Unsaved guides"));
+
+    act(() => result.current.createCategory());
+    await waitFor(() => expect(apiMocks.create).toHaveBeenCalledOnce());
+    rerender({ categories: [...CATEGORIES, category({ id: "new", name: "New", sort_order: 3 })] });
+    expect(result.current.categoryDrafts.find((draft) => draft.id === "guides")?.name).toBe("Unsaved guides");
+
+    act(() => result.current.deleteCategory("root"));
+    await waitFor(() => expect(apiMocks.remove.mock.calls[0]?.[0]).toBe("root"));
+    rerender({ categories: [CATEGORIES[1]!, CATEGORIES[2]!, category({ id: "new", name: "New", sort_order: 3 })] });
+    expect(result.current.categoryDrafts.find((draft) => draft.id === "guides")?.name).toBe("Unsaved guides");
   });
 
   /* 这条盯的就是「N 次 PATCH」这个老写法：改两行只能发一个请求，中途失败不能留下半套。 */

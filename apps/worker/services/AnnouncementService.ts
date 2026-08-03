@@ -9,9 +9,10 @@ import { nanoid } from "nanoid";
 import { announcements } from "../db/schema";
 import { ok, err, type ServiceResult } from "./result";
 import { escapeLikePattern, likeEscaped } from "./helpers";
-import { buildReplaceMediaRefsStatements, replaceMediaRefs, deleteMediaRefs, extractAnnouncementImageNodeKeys } from "./media-references";
+import { buildReplaceMediaRefsStatements, extractAnnouncementImageNodeKeys } from "./media-references";
 import { rethrowAfterUploadFailure } from "./media-upload-compensation";
-import { verifyAnnouncementImageStagingToken } from "./announcement-image-staging";
+import { ANNOUNCEMENT_IMAGE_LEASE_TTL_SECONDS, verifyAnnouncementImageStagingToken } from "./announcement-image-staging";
+import { buildAnnouncementImageKey } from "./media-keys";
 
 // --- Types ---
 
@@ -100,6 +101,56 @@ export class AnnouncementService {
     return (await this.db.select(COLS).from(announcements).where(eq(announcements.id, id)).limit(1))[0] ?? null;
   }
 
+  private async classifyMediaKeys(
+    actorId: string,
+    announcementId: string,
+    keys: readonly string[],
+    nowIso: string,
+  ): Promise<{ valid: boolean; leasedKeys: string[] }> {
+    const leasedKeys: string[] = [];
+    for (const key of keys) {
+      const access = await this.deps.rawDb.prepare(`
+        SELECT
+          EXISTS(
+            SELECT 1 FROM media_references
+            WHERE media_key = ?1 AND entity_type = 'announcement' AND entity_id = ?2
+          ) AS referenced,
+          EXISTS(
+            SELECT 1 FROM media_upload_leases
+            WHERE media_key = ?1
+              AND owner_user_id = ?3
+              AND entity_type = 'announcement'
+              AND entity_id = ?2
+              AND expires_at > ?4
+          ) AS leased
+      `).bind(key, announcementId, actorId, nowIso).first<{ referenced: number; leased: number }>();
+      if (!access || (!access.referenced && !access.leased)) return { valid: false, leasedKeys: [] };
+      if (access.leased) leasedKeys.push(key);
+    }
+    return { valid: true, leasedKeys };
+  }
+
+  private buildLeaseConsumptionStatements(
+    actorId: string,
+    announcementId: string,
+    keys: readonly string[],
+    nowIso: string,
+    committedAt: string,
+  ) {
+    return keys.map((key) => this.deps.rawDb.prepare(`
+      DELETE FROM media_upload_leases
+      WHERE media_key = ?1
+        AND owner_user_id = ?2
+        AND entity_type = 'announcement'
+        AND entity_id = ?3
+        AND expires_at > ?4
+        AND EXISTS (
+          SELECT 1 FROM announcements
+          WHERE id = ?3 AND updated_at = ?5
+        )
+    `).bind(key, actorId, announcementId, nowIso, committedAt));
+  }
+
   // --- Public ---
 
   async list(opts: { canReadAll: boolean; page: number; limit: number; status?: string; pinned?: boolean; archived?: boolean; search?: string }): Promise<ServiceResult<{ data: unknown[]; total: number; page: number; limit: number; total_pages: number }>> {
@@ -150,27 +201,33 @@ export class AnnouncementService {
       : null;
     if (data.staging_token && !stagingPayload) return err("FORBIDDEN", "Invalid, expired, or unauthorized staging token");
     const announcementId = stagingPayload?.announcement_id ?? nanoid();
+    if (stagingPayload && await this.getById(announcementId)) return err("CONFLICT", "Announcement already exists");
+    const claimedKeys = extractAnnouncementImageNodeKeys(data.body_json, announcementId);
+    let leasedKeys: string[] = [];
     if (stagingPayload) {
-      if (await this.getById(announcementId)) return err("CONFLICT", "Announcement already exists");
-      const claimedKeys: string[] = [];
-      for (const key of extractAnnouncementImageNodeKeys(data.body_json, announcementId)) {
-        if (await this.deps.media.head(key)) claimedKeys.push(key);
+      for (const key of claimedKeys) {
+        if (!await this.deps.media.head(key)) {
+          return err("VALIDATION_ERROR", "Staged announcement image not found");
+        }
       }
-      await this.deps.rawDb.batch([
-        this.deps.rawDb.prepare(
-          "INSERT INTO announcements (id, title, body_json, pinned, status, publish_at, expires_at, archived_at, created_by, updated_by, created_at, updated_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, NULL, ?8, NULL, ?9, ?9)",
-        ).bind(announcementId, data.title, data.body_json, data.pinned ? 1 : 0, data.status, data.publish_at ?? null, data.expires_at ?? null, actorId, nowIso),
-        ...buildReplaceMediaRefsStatements(this.deps.rawDb, "announcement", announcementId, claimedKeys),
-      ]);
-    } else {
-      await this.db.insert(announcements).values({ id: announcementId, title: data.title, bodyJson: data.body_json, pinned: data.pinned, status: data.status, publishAt: data.publish_at ?? null, expiresAt: data.expires_at ?? null, archivedAt: null, createdBy: actorId, updatedAt: nowIso });
+      const access = await this.classifyMediaKeys(actorId, announcementId, claimedKeys, nowIso);
+      if (!access.valid) return err("FORBIDDEN", "Staged announcement image is expired or belongs to another user");
+      leasedKeys = access.leasedKeys;
+    } else if (claimedKeys.length > 0) {
+      const access = await this.classifyMediaKeys(actorId, announcementId, claimedKeys, nowIso);
+      if (!access.valid) return err("FORBIDDEN", "Announcement image is not available to this user");
+      leasedKeys = access.leasedKeys;
     }
+    await this.deps.rawDb.batch([
+      this.deps.rawDb.prepare(
+        "INSERT INTO announcements (id, title, body_json, pinned, status, publish_at, expires_at, archived_at, created_by, updated_by, created_at, updated_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, NULL, ?8, NULL, ?9, ?9)",
+      ).bind(announcementId, data.title, data.body_json, data.pinned ? 1 : 0, data.status, data.publish_at ?? null, data.expires_at ?? null, actorId, nowIso),
+      ...buildReplaceMediaRefsStatements(this.deps.rawDb, "announcement", announcementId, claimedKeys),
+      ...this.buildLeaseConsumptionStatements(actorId, announcementId, leasedKeys, nowIso, nowIso),
+    ]);
 
     const created = await this.getById(announcementId);
     if (!created) return err("SERVER_ERROR", "Failed to create announcement");
-    if (!stagingPayload) {
-      await replaceMediaRefs(this.deps.rawDb, "announcement", announcementId, extractAnnouncementImageNodeKeys(created.bodyJson, announcementId));
-    }
     await this.deps.writeAuditLog({ entityType: "announcement", action: "create", actorId, entityId: announcementId, diffTitle: created.title });
     await this.deps.publishEntityChanged({ entityType: "announcement", entityId: announcementId, hint: "announcement_created" });
     if (created.status === "published") {
@@ -206,22 +263,70 @@ export class AnnouncementService {
     if (data.expires_at !== undefined) patch.expiresAt = data.expires_at;
     if (data.archived_at !== undefined) patch.archivedAt = data.archived_at;
 
-    const updateWhere = conditionalEtag
-      ? and(eq(announcements.id, announcementId), eq(announcements.updatedAt, existing.updatedAt))
-      : eq(announcements.id, announcementId);
-    const updateQuery = this.db.update(announcements).set(patch).where(updateWhere);
-    if (conditionalEtag) {
-      const updatedRows = await updateQuery.returning({ id: announcements.id });
-      if (updatedRows.length === 0) return err("CONFLICT", "Announcement has been modified by another user");
+    if (data.body_json !== undefined) {
+      const assignments: string[] = ["updated_at = ?", "updated_by = ?"];
+      const values: Array<string | number | null> = [patch.updatedAt as string, actorId];
+      const add = (column: string, value: string | number | null) => {
+        assignments.push(`${column} = ?`);
+        values.push(value);
+      };
+      if (data.title !== undefined) add("title", data.title);
+      add("body_json", data.body_json);
+      if (data.pinned !== undefined) add("pinned", data.pinned ? 1 : 0);
+      if (data.status !== undefined) add("status", data.status);
+      if (data.publish_at !== undefined) add("publish_at", data.publish_at);
+      if (data.expires_at !== undefined) add("expires_at", data.expires_at);
+      if (data.archived_at !== undefined) add("archived_at", data.archived_at);
+      const where = conditionalEtag ? "id = ? AND updated_at = ?" : "id = ?";
+      const updateStatement = this.deps.rawDb
+        .prepare(`UPDATE announcements SET ${assignments.join(", ")} WHERE ${where}`)
+        .bind(...values, announcementId, ...(conditionalEtag ? [existing.updatedAt] : []));
+      const keys = extractAnnouncementImageNodeKeys(data.body_json, announcementId);
+      const access = await this.classifyMediaKeys(actorId, announcementId, keys, patch.updatedAt as string);
+      if (!access.valid) return err("FORBIDDEN", "Announcement image is expired or belongs to another user");
+      const refStatements = conditionalEtag
+        ? [
+            this.deps.rawDb.prepare(`
+              DELETE FROM media_references
+              WHERE entity_type = ?1 AND entity_id = ?2
+                AND EXISTS (SELECT 1 FROM announcements WHERE id = ?3 AND updated_at = ?4)
+            `).bind("announcement", announcementId, announcementId, patch.updatedAt),
+            ...keys.map((key) => this.deps.rawDb.prepare(`
+              INSERT OR IGNORE INTO media_references (media_key, entity_type, entity_id)
+              SELECT ?1, ?2, ?3
+              WHERE EXISTS (SELECT 1 FROM announcements WHERE id = ?4 AND updated_at = ?5)
+            `).bind(key, "announcement", announcementId, announcementId, patch.updatedAt)),
+          ]
+        : buildReplaceMediaRefsStatements(this.deps.rawDb, "announcement", announcementId, keys);
+      const results = await this.deps.rawDb.batch([
+        updateStatement,
+        ...refStatements,
+        ...this.buildLeaseConsumptionStatements(
+          actorId,
+          announcementId,
+          access.leasedKeys,
+          patch.updatedAt as string,
+          patch.updatedAt as string,
+        ),
+      ]);
+      if (conditionalEtag && Number(results[0]?.meta?.changes ?? 0) === 0) {
+        return err("CONFLICT", "Announcement has been modified by another user");
+      }
     } else {
-      await updateQuery;
+      const updateWhere = conditionalEtag
+        ? and(eq(announcements.id, announcementId), eq(announcements.updatedAt, existing.updatedAt))
+        : eq(announcements.id, announcementId);
+      const updateQuery = this.db.update(announcements).set(patch).where(updateWhere);
+      if (conditionalEtag) {
+        const updatedRows = await updateQuery.returning({ id: announcements.id });
+        if (updatedRows.length === 0) return err("CONFLICT", "Announcement has been modified by another user");
+      } else {
+        await updateQuery;
+      }
     }
     const updated = await this.getById(announcementId);
     if (!updated) return err("SERVER_ERROR", "Failed to load updated announcement");
 
-    if (data.body_json !== undefined) {
-      await replaceMediaRefs(this.deps.rawDb, "announcement", announcementId, extractAnnouncementImageNodeKeys(updated.bodyJson, announcementId));
-    }
     const announcementDiff = buildAnnouncementDiff(existing, data);
     await this.deps.writeAuditLog({ entityType: "announcement", action: "update", actorId, entityId: announcementId, diffTitle: updated.title, detailText: announcementDiff ? JSON.stringify(announcementDiff) : null });
     await this.deps.publishEntityChanged({ entityType: "announcement", entityId: announcementId, hint: "announcement_updated" });
@@ -244,8 +349,14 @@ export class AnnouncementService {
   async permanentDelete(actorId: string, announcementId: string): Promise<ServiceResult<{ ok: true }>> {
     const existing = await this.getById(announcementId);
     if (!existing) return err("NOT_FOUND", "Announcement not found");
-    await this.db.delete(announcements).where(eq(announcements.id, announcementId));
-    await deleteMediaRefs(this.deps.rawDb, "announcement", announcementId);
+    const mediaKeys = extractAnnouncementImageNodeKeys(existing.bodyJson, announcementId);
+    await this.deps.rawDb.batch([
+      this.deps.rawDb.prepare("DELETE FROM media_references WHERE entity_type = ?1 AND entity_id = ?2").bind("announcement", announcementId),
+      this.deps.rawDb.prepare("DELETE FROM announcements WHERE id = ?1").bind(announcementId),
+    ]);
+    if (this.deps.media.delete) {
+      await Promise.allSettled(mediaKeys.map((key) => this.deps.media.delete(key)));
+    }
     await this.deps.writeAuditLog({ entityType: "announcement", action: "delete", actorId, entityId: announcementId, diffTitle: existing.title });
     await this.deps.publishEntityChanged({ entityType: "announcement", entityId: announcementId, hint: "announcement_deleted" });
     return ok({ ok: true });
@@ -255,16 +366,21 @@ export class AnnouncementService {
     const existing = await this.getById(announcementId);
     if (!existing) return err("NOT_FOUND", "Announcement not found");
     const keys: string[] = [];
+    const createdAt = new Date();
+    const expiresAt = new Date(createdAt.getTime() + ANNOUNCEMENT_IMAGE_LEASE_TTL_SECONDS * 1000).toISOString();
     try {
       for (const file of files) {
-        // No media_references entry here: keys are added when the body_json referencing
-        // them is saved (replaceMediaRefs). Unsaved uploads are orphans caught by the
-        // media-orphan-cleanup cron's 48 h grace period.
-        const key = `announcement/${announcementId}/images/${Date.now()}_${nanoid()}`;
+        const key = buildAnnouncementImageKey(announcementId, file.contentType);
         keys.push(key);
         await this.deps.media.put(key, file.data, { httpMetadata: { contentType: file.contentType || "application/octet-stream" } });
       }
-      await this.deps.writeAuditLog({ entityType: "announcement", action: "upload_images", actorId, entityId: announcementId, diffTitle: existing.title ?? null, detailText: JSON.stringify({ keys }) });
+      if (keys.length > 0) {
+        await this.deps.rawDb.batch(keys.map((key) => this.deps.rawDb.prepare(`
+          INSERT INTO media_upload_leases
+            (media_key, owner_user_id, entity_type, entity_id, expires_at, created_at)
+          VALUES (?1, ?2, 'announcement', ?3, ?4, ?5)
+        `).bind(key, actorId, announcementId, expiresAt, createdAt.toISOString())));
+      }
     } catch (error) {
       await rethrowAfterUploadFailure(
         error,
@@ -272,6 +388,7 @@ export class AnnouncementService {
         keys,
       );
     }
+    await this.deps.writeAuditLog({ entityType: "announcement", action: "upload_images", actorId, entityId: announcementId, diffTitle: existing.title ?? null, detailText: JSON.stringify({ keys }) });
     return ok({ keys });
   }
 }

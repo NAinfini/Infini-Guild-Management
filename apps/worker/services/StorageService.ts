@@ -13,7 +13,6 @@ import { nanoid } from "nanoid";
 import { storageCategories, storageItemImages, storageItems, storages } from "../db/schema";
 import type { SessionUser } from "./auth";
 import type { WriteAuditLogInput } from "./audit";
-import { deleteMediaRefs } from "./media-references";
 import { err, ok, type ServiceResult } from "./result";
 import type { PushEntityType, PushHint } from "@guild/shared/constants/push-hints";
 import {
@@ -263,8 +262,24 @@ export class StorageService {
   async deleteItem(actorId: string, itemId: string): Promise<ServiceResult<{ ok: true }>> {
     const item = await this.getItemRow(itemId);
     if (!item) return err("NOT_FOUND", "Item not found");
-    await this.db.delete(storageItems).where(eq(storageItems.id, itemId));
-    await deleteMediaRefs(this.deps.rawDb, "storage_item", itemId);
+    const images = await this.getImages(itemId);
+    const ledgerEntry = await this.deps.rawDb
+      .prepare("SELECT 1 AS present FROM storage_transactions WHERE item_id = ?1 LIMIT 1")
+      .bind(itemId)
+      .first<{ present: number }>();
+    if (ledgerEntry) return err("CONFLICT", "Storage items with transaction history cannot be deleted");
+    try {
+      await this.deps.rawDb.batch([
+        this.deps.rawDb.prepare("DELETE FROM media_references WHERE entity_type = ?1 AND entity_id = ?2").bind("storage_item", itemId),
+        this.deps.rawDb.prepare("DELETE FROM storage_items WHERE id = ?1").bind(itemId),
+      ]);
+    } catch (error) {
+      if (isForeignKeyConstraintViolation(error)) {
+        return err("CONFLICT", "Storage items with transaction history cannot be deleted");
+      }
+      throw error;
+    }
+    await Promise.allSettled(images.map((image) => this.deps.media.delete(image.r2Key)));
     await this.deps.writeAuditLog({
       entityType: "storage_item",
       action: "delete",

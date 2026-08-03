@@ -1,6 +1,6 @@
 import { registerSchema } from "@guild/shared";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { useMutation, useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate, useParams } from "@tanstack/react-router";
 import { ArrowLeftIcon, EyeIcon, EyeOffIcon, KeyboardIcon } from "@portal/components/icons";
 import { Alert, Anchor, Button, Loader, Paper, Stack, Text, TextInput, Title } from "@mantine/core";
@@ -16,8 +16,8 @@ import {
   register as requestRegister,
   verifyInvite,
 } from "../../services/AuthService";
-import { useAuthStore } from "../../stores/auth";
 import { useSiteConfigStore } from "../../stores/site-config";
+import { transitionSession } from "../../session-transition";
 import "./AuthPages.css";
 
 type RegisterFormValues = z.infer<typeof registerSchema>;
@@ -86,7 +86,7 @@ export function RegisterPage() {
   const [inviteCodeDraft, setInviteCodeDraft] = useState("");
   const [inviteCodeError, setInviteCodeError] = useState<string | null>(null);
   const inviteCode = params.inviteCode ?? typedInviteCode;
-  const setSession = useAuthStore((state) => state.setSession);
+  const queryClient = useQueryClient();
   const siteName = useSiteConfigStore((s) => s.siteName);
   const siteLogoUrl = useSiteConfigStore((s) => s.siteLogoUrl);
 
@@ -132,7 +132,7 @@ export function RegisterPage() {
   const registerMutation = useMutation({
     mutationFn: (values: RegisterFormValues) => requestRegister(inviteCode, values),
     onSuccess: (session) => {
-      setSession(session.user, session.profile);
+      transitionSession(queryClient, session);
       void navigate({ to: "/" });
     },
     onError: (error) => {

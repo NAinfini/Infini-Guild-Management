@@ -67,11 +67,6 @@ export default defineConfig<E2eOptions>({
       use: { ...devices["Desktop Chrome"], role: "guest" },
     },
     {
-      name: "member",
-      testDir: "apps/portal/e2e/specs/member",
-      use: { ...devices["Desktop Chrome"], role: "member" },
-    },
-    {
       name: "admin",
       testDir: "apps/portal/e2e/specs/admin",
       use: { ...devices["Desktop Chrome"], role: "admin", trackArtifacts: true },
@@ -87,14 +82,15 @@ export default defineConfig<E2eOptions>({
    * `pnpm test:e2e` 在启动 Playwright 之前构建；直接敲 `playwright test` 时，
    * globalSetup 的时间戳比对会当场报错并告诉你去跑 `pnpm build`。
    *
-   * 每个槽位起服务前先跑一次 migrations apply：它是幂等的（已应用的会跳过），
-   * 所以不需要任何「这份库是不是旧了」的判断逻辑，新建目录和已有目录走同一条路。
+   * 每轮先精确删除各槽位自己的 e2e 状态，再由 migrations apply 从当前核心 schema
+   * 重建 D1；否则 0000_core_schema.sql 改过后，旧目录里的已应用迁移不会重跑，库会漂移。
    * reuseExistingServer 关掉：e2e 必须自己起自己的实例。复用别人留下的进程意味着
    * 复用别人留下的库，那是「上一轮的残留伪装成这一轮的数据」最常见的来源；
    * 端口被占就当场报错，比静默跑在错误的库上强。
    */
   webServer: Array.from({ length: E2E_SLOTS }, (_, slot) => ({
     command: [
+      `node scripts/reset-e2e-slot-state.mjs ${slot} && `,
       `wrangler d1 migrations apply guild-portal-db --local`,
       ` --config apps/worker/wrangler.jsonc --persist-to apps/worker/.wrangler/e2e-${slot} && `,
       `wrangler dev --config apps/worker/wrangler.jsonc`,

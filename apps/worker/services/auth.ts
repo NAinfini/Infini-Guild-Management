@@ -31,8 +31,9 @@ type ResolvedSession = {
   user: SessionUser;
 };
 
-// Cloudflare Workers caps PBKDF2 at 10,000 iterations (runtime limit).
-const PBKDF2_ITERATIONS = 10_000;
+const LEGACY_PBKDF2_ITERATIONS = 10_000;
+const PBKDF2_ITERATIONS = 600_000;
+const PASSWORD_HASH_PREFIX = "pbkdf2-sha256";
 const PBKDF2_KEY_LENGTH_BITS = 256;
 const PBKDF2_SALT_BYTES = 16;
 const PBKDF2_HASH = "SHA-256";
@@ -97,7 +98,7 @@ async function timingSafeEqual(a: Uint8Array, b: Uint8Array): Promise<boolean> {
   return diff === 0;
 }
 
-async function derivePasswordHash(password: string, saltBytes: Uint8Array): Promise<Uint8Array> {
+async function derivePasswordHash(password: string, saltBytes: Uint8Array, iterations: number): Promise<Uint8Array> {
   const keyMaterial = await crypto.subtle.importKey("raw", textEncoder.encode(password), "PBKDF2", false, [
     "deriveBits",
   ]);
@@ -105,7 +106,7 @@ async function derivePasswordHash(password: string, saltBytes: Uint8Array): Prom
     {
       name: "PBKDF2",
       salt: saltBytes as unknown as BufferSource,
-      iterations: PBKDF2_ITERATIONS,
+      iterations,
       hash: PBKDF2_HASH,
     },
     keyMaterial,
@@ -160,19 +161,40 @@ function setSessionCookies(
 
 export async function createPasswordHash(password: string): Promise<{ passwordHash: string; salt: string }> {
   const saltBytes = crypto.getRandomValues(new Uint8Array(PBKDF2_SALT_BYTES));
-  const hashBytes = await derivePasswordHash(password, saltBytes);
+  const hashBytes = await derivePasswordHash(password, saltBytes, PBKDF2_ITERATIONS);
 
   return {
-    passwordHash: bytesToBase64(hashBytes),
+    passwordHash: `${PASSWORD_HASH_PREFIX}$${PBKDF2_ITERATIONS}$${bytesToBase64(hashBytes)}`,
     salt: bytesToBase64(saltBytes),
   };
 }
 
+function parsePasswordHash(passwordHash: string): { iterations: number; encodedHash: string } | null {
+  if (!passwordHash.includes("$")) {
+    return { iterations: LEGACY_PBKDF2_ITERATIONS, encodedHash: passwordHash };
+  }
+
+  const match = /^pbkdf2-sha256\$(\d+)\$([A-Za-z0-9+/]+=*)$/.exec(passwordHash);
+  if (!match) return null;
+  const iterations = Number(match[1]);
+  if (!Number.isSafeInteger(iterations) || iterations < 1 || iterations > 2_000_000) return null;
+  return { iterations, encodedHash: match[2]! };
+}
+
+export function passwordHashNeedsUpgrade(passwordHash: string): boolean {
+  const parsed = parsePasswordHash(passwordHash);
+  return parsed === null
+    || parsed.iterations !== PBKDF2_ITERATIONS
+    || !passwordHash.startsWith(`${PASSWORD_HASH_PREFIX}$`);
+}
+
 export async function verifyPassword(password: string, salt: string, passwordHash: string): Promise<boolean> {
   try {
+    const parsed = parsePasswordHash(passwordHash);
+    if (!parsed) return false;
     const saltBytes = base64ToBytes(salt);
-    const expectedHashBytes = base64ToBytes(passwordHash);
-    const actualHashBytes = await derivePasswordHash(password, saltBytes);
+    const expectedHashBytes = base64ToBytes(parsed.encodedHash);
+    const actualHashBytes = await derivePasswordHash(password, saltBytes, parsed.iterations);
     return await timingSafeEqual(actualHashBytes, expectedHashBytes);
   } catch (error) {
     logger.error("Password verification failed with unexpected error", { error: String(error) });

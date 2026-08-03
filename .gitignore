@@ -29,6 +29,7 @@ apps/portal/e2e/.artifacts/
 !**/.dev.vars.example
 !**/.dev.vars.*.example
 **/wrangler.jsonc
+!apps/worker/wrangler.jsonc
 !**/wrangler.example.jsonc
 *.pem
 *.key

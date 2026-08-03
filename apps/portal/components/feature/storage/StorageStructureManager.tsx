@@ -2,6 +2,7 @@ import type { CreateStorageCategoryPayload, CreateStoragePayload, Storage } from
 import { ActionIcon, Badge, Button, Drawer, Group, Stack, Text, TextInput, Textarea } from "@mantine/core";
 import { useMediaQuery } from "@mantine/hooks";
 import { PlusIcon, TrashIcon } from "@portal/components/icons";
+import { useKeyedPending } from "@portal/hooks/useKeyedPending";
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 
@@ -13,24 +14,26 @@ type StorageStructureManagerProps = {
   storages: Storage[];
   selectedStorage: Storage | null;
   selectedCategoryId: string | null;
-  isSaving: boolean;
-  isDeleting: boolean;
   onSelectStorage: (id: string) => void;
   onSelectCategory: (storageId: string, categoryId: string) => void;
-  onCreateStorage: (payload: CreateStoragePayload, onSuccess: () => void) => void;
-  onUpdateStorage: (id: string, payload: Partial<CreateStoragePayload>) => void;
-  onDeleteStorage: (id: string) => void;
-  onCreateCategory: (storageId: string, payload: CreateStorageCategoryPayload, onSuccess: () => void) => void;
-  onUpdateCategory: (storageId: string, categoryId: string, payload: CreateStorageCategoryPayload) => void;
-  onDeleteCategory: (storageId: string, categoryId: string) => void;
+  onCreateStorage: (payload: CreateStoragePayload) => Promise<boolean>;
+  onUpdateStorage: (id: string, payload: Partial<CreateStoragePayload>) => Promise<boolean>;
+  onDeleteStorage: (id: string) => Promise<boolean>;
+  onCreateCategory: (storageId: string, payload: CreateStorageCategoryPayload) => Promise<boolean>;
+  onUpdateCategory: (storageId: string, categoryId: string, payload: CreateStorageCategoryPayload) => Promise<boolean>;
+  onDeleteCategory: (storageId: string, categoryId: string) => Promise<boolean>;
 };
+
+type StructureAction = "create" | "update" | "delete";
+type StructureResource = "storage" | "category";
+
+const pendingKey = (action: StructureAction, resource: StructureResource, id: string) =>
+  `${action}:${resource}:${id}`;
 
 export function StorageStructureManager({
   storages,
   selectedStorage,
   selectedCategoryId,
-  isSaving,
-  isDeleting,
   onSelectStorage,
   onSelectCategory,
   onCreateStorage,
@@ -70,6 +73,7 @@ export function StorageStructureManager({
   const [editCategoryName, setEditCategoryName] = useState("");
   const [creationDraft, setCreationDraft] = useState<CreationDraft | null>(null);
   const [treeOpened, setTreeOpened] = useState(false);
+  const { pendingKeys, runPending } = useKeyedPending();
 
   const selectedCategory = selectedStorage?.categories.find((category) => category.id === selectedCategoryId) ?? null;
   const draftCategoryStorage = creationDraft?.type === "category"
@@ -125,22 +129,32 @@ export function StorageStructureManager({
     if (!name) return;
     const payload = { name, description: editDescription.trim() || null };
     if (isCreatingStorage) {
-      onCreateStorage(payload, () => setCreationDraft(null));
+      void runPending(pendingKey("create", "storage", "new"), async () => {
+        if (await onCreateStorage(payload)) setCreationDraft(null);
+      });
       return;
     }
     if (!selectedStorage) return;
-    onUpdateStorage(selectedStorage.id, payload);
+    void runPending(
+      pendingKey("update", "storage", selectedStorage.id),
+      () => onUpdateStorage(selectedStorage.id, payload),
+    );
   };
 
   const handleSaveCategory = () => {
     const name = editCategoryName.trim();
     if (!name) return;
     if (creationDraft?.type === "category") {
-      onCreateCategory(creationDraft.storageId, { name }, () => setCreationDraft(null));
+      void runPending(pendingKey("create", "category", creationDraft.storageId), async () => {
+        if (await onCreateCategory(creationDraft.storageId, { name })) setCreationDraft(null);
+      });
       return;
     }
     if (!selectedStorage || !selectedCategory) return;
-    onUpdateCategory(selectedStorage.id, selectedCategory.id, { name });
+    void runPending(
+      pendingKey("update", "category", `${selectedStorage.id}/${selectedCategory.id}`),
+      () => onUpdateCategory(selectedStorage.id, selectedCategory.id, { name }),
+    );
   };
 
   const handleSelectStorage = (storageId: string) => {
@@ -166,7 +180,7 @@ export function StorageStructureManager({
     <Stack gap="xs" className="storage-management-modal__tree">
       <Group justify="space-between" gap="xs" wrap="nowrap" className="storage-management-modal__tree-header">
         <Text fw={700}>{labels.storageList}</Text>
-        <Button size="compact-xs" variant="light" leftSection={<PlusIcon size={13} />} loading={isSaving} onClick={handleBeginCreateStorage}>
+        <Button size="compact-xs" variant="light" leftSection={<PlusIcon size={13} />} onClick={handleBeginCreateStorage}>
           {labels.create}
         </Button>
       </Group>
@@ -184,10 +198,22 @@ export function StorageStructureManager({
               <Badge size="xs" variant="light">{storage.categories.length}</Badge>
             </button>
             <Group gap={2} wrap="nowrap" className="storage-management-modal__node-actions">
-              <ActionIcon size="sm" variant="subtle" aria-label={labels.createCategory} loading={isSaving} onClick={() => handleBeginCreateCategory(storage.id)}>
+              <ActionIcon size="sm" variant="subtle" aria-label={labels.createCategory} onClick={() => handleBeginCreateCategory(storage.id)}>
                 <PlusIcon size={13} />
               </ActionIcon>
-              <ActionIcon size="sm" color="red" variant="subtle" aria-label={labels.delete} loading={isDeleting} onClick={() => onDeleteStorage(storage.id)}>
+              <ActionIcon
+                size="sm"
+                color="red"
+                variant="subtle"
+                aria-label={labels.delete}
+                loading={pendingKeys.has(pendingKey("delete", "storage", storage.id))}
+                onClick={() => {
+                  void runPending(
+                    pendingKey("delete", "storage", storage.id),
+                    () => onDeleteStorage(storage.id),
+                  );
+                }}
+              >
                 <TrashIcon size={13} />
               </ActionIcon>
             </Group>
@@ -203,7 +229,19 @@ export function StorageStructureManager({
                 <button type="button" className="storage-management-modal__tree-node" onClick={() => handleSelectCategory(storage.id, category.id)}>
                   <Text size="sm" fw={700} lineClamp={1}>{category.name}</Text>
                 </button>
-                <ActionIcon size="sm" color="red" variant="subtle" aria-label={labels.deleteCategory} loading={isDeleting} onClick={() => onDeleteCategory(storage.id, category.id)}>
+                <ActionIcon
+                  size="sm"
+                  color="red"
+                  variant="subtle"
+                  aria-label={labels.deleteCategory}
+                  loading={pendingKeys.has(pendingKey("delete", "category", `${storage.id}/${category.id}`))}
+                  onClick={() => {
+                    void runPending(
+                      pendingKey("delete", "category", `${storage.id}/${category.id}`),
+                      () => onDeleteCategory(storage.id, category.id),
+                    );
+                  }}
+                >
                   <TrashIcon size={13} />
                 </ActionIcon>
               </div>
@@ -269,7 +307,13 @@ export function StorageStructureManager({
                         || editCategoryName.trim() === selectedCategory.name
                       ))
                     }
-                    loading={isSaving}
+                    loading={pendingKeys.has(pendingKey(
+                      isCreatingCategory ? "create" : "update",
+                      "category",
+                      isCreatingCategory
+                        ? creationDraft.storageId
+                        : `${selectedStorage?.id}/${selectedCategory?.id}`,
+                    ))}
                   >
                     {isCreatingCategory ? labels.createCategory : labels.saveCategory}
                   </Button>
@@ -293,7 +337,15 @@ export function StorageStructureManager({
               <Group justify="flex-end" className="storage-modal-actions">
                 <Group>
                   <Button variant="default" onClick={handleCancel}>{labels.cancel}</Button>
-                  <Button onClick={handleSaveStorage} disabled={!editName.trim() || (!isCreatingStorage && !selectedStorage)} loading={isSaving}>
+                  <Button
+                    onClick={handleSaveStorage}
+                    disabled={!editName.trim() || (!isCreatingStorage && !selectedStorage)}
+                    loading={pendingKeys.has(pendingKey(
+                      isCreatingStorage ? "create" : "update",
+                      "storage",
+                      isCreatingStorage ? "new" : selectedStorage?.id ?? "",
+                    ))}
+                  >
                     {isCreatingStorage ? labels.create : labels.save}
                   </Button>
                 </Group>

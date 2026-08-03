@@ -12,6 +12,12 @@ import {
 } from "@portal/hooks/useAdminBadgesController";
 import { AdminBadgesSection } from "./AdminBadgesSection";
 
+const confirm = vi.hoisted(() => vi.fn());
+
+vi.mock("@portal/hooks/useConfirmDialog", () => ({
+  useConfirmDialog: () => confirm,
+}));
+
 vi.mock("react-i18next", () => ({
   useTranslation: () => ({
     t: (key: string) => key,
@@ -59,6 +65,8 @@ function createController(
     deletePending: false,
     assignPending: false,
     unassignPending: false,
+    isBadgeDeletePending: () => false,
+    isBadgeUnassignPending: () => false,
     startCreate: vi.fn(),
     startEdit: vi.fn(),
     selectBadge: vi.fn(),
@@ -166,5 +174,54 @@ describe("AdminBadgesSection", () => {
     }));
 
     expect(startCreate).toHaveBeenCalledOnce();
+  });
+
+  it("scopes unassign pending to one member and blocks repeated destructive actions", async () => {
+    const user = userEvent.setup();
+    const unassignBadge = vi.fn();
+    const deleteBadge = vi.fn();
+    confirm.mockResolvedValue(true);
+    renderBadges(createController({
+      selectedBadgeId: badge.id,
+      badges: [badge],
+      selectedBadge: badge,
+      assignments: [
+        {
+          badge_id: badge.id,
+          user_id: "user-1",
+          username: "Alice",
+          assigned_by: "admin-1",
+          assigned_at: "2026-07-29T00:00:00.000Z",
+        },
+        {
+          badge_id: badge.id,
+          user_id: "user-2",
+          username: "Bob",
+          assigned_by: "admin-1",
+          assigned_at: "2026-07-29T00:00:00.000Z",
+        },
+      ],
+      isBadgeDeletePending: (badgeId) => badgeId === badge.id,
+      isBadgeUnassignPending: (badgeId, userId) => badgeId === badge.id && userId === "user-1",
+      deleteBadge,
+      unassignBadge,
+    }));
+
+    const aliceRow = screen.getByText("Alice").closest(".admin-badge-assignment-row") as HTMLElement;
+    const bobRow = screen.getByText("Bob").closest(".admin-badge-assignment-row") as HTMLElement;
+    const aliceUnassign = within(aliceRow).getByRole("button", { name: "badges.action.unassign" });
+    const bobUnassign = within(bobRow).getByRole("button", { name: "badges.action.unassign" });
+    const deleteButton = screen.getByRole("button", { name: "badges.action.delete" });
+
+    expect(aliceUnassign).toBeDisabled();
+    expect(bobUnassign).toBeEnabled();
+    expect(deleteButton).toBeDisabled();
+
+    await user.click(aliceUnassign);
+    await user.click(aliceUnassign);
+    await user.click(deleteButton);
+    await user.click(deleteButton);
+    expect(unassignBadge).not.toHaveBeenCalled();
+    expect(deleteBadge).not.toHaveBeenCalled();
   });
 });

@@ -14,9 +14,16 @@ const routeSearchMock = vi.hoisted(() => ({ selection: undefined as "none" | und
 const confirmMock = vi.hoisted(() => vi.fn());
 const resetCategoryDraftsMock = vi.hoisted(() => vi.fn());
 const categoryEditorState = vi.hoisted(() => ({ isDirty: false }));
+const articleEditorState = vi.hoisted(() => ({
+  isDeleting: false,
+  isCreatingArticle: false,
+  isDirty: false,
+}));
+const mediaState = vi.hoisted(() => ({ isDesktop: true }));
 const wikiEditorMock = vi.hoisted(() => vi.fn());
 const categoryEditorMock = vi.hoisted(() => vi.fn());
 const startCreateArticleMock = vi.hoisted(() => vi.fn());
+const exitArticleEditorMock = vi.hoisted(() => vi.fn());
 const permissionState = vi.hoisted(() => ({
   allowed: null as Set<string> | null,
 }));
@@ -31,6 +38,16 @@ vi.mock("@tanstack/react-router", () => ({
   useParams: () => paramsMock,
   useSearch: () => routeSearchMock,
 }));
+
+vi.mock("@mantine/hooks", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@mantine/hooks")>();
+  return {
+    ...actual,
+    useMediaQuery: (query: string) => query.includes("min-width: 1200px")
+      ? mediaState.isDesktop
+      : false,
+  };
+});
 
 vi.mock("@portal/hooks/useConfirmDialog", () => ({
   useConfirmDialog: () => confirmMock,
@@ -108,7 +125,7 @@ function createWrapper(): ({ children }: { children: ReactNode }) => ReactNode {
 }
 
 function renderWikiPage() {
-  render(<WikiPage />, { wrapper: createWrapper() });
+  return render(<WikiPage />, { wrapper: createWrapper() });
 }
 
 describe("WikiPage", () => {
@@ -120,6 +137,11 @@ describe("WikiPage", () => {
     startCreateArticleMock.mockReset();
     permissionState.allowed = null;
     categoryEditorState.isDirty = false;
+    articleEditorState.isDeleting = false;
+    articleEditorState.isCreatingArticle = false;
+    articleEditorState.isDirty = false;
+    mediaState.isDesktop = true;
+    exitArticleEditorMock.mockReset();
     paramsMock.slug = "deleted-article";
     routeSearchMock.selection = undefined;
     for (const mock of Object.values(serviceMocks)) {
@@ -192,13 +214,20 @@ describe("WikiPage", () => {
       setArticleCategoryId: vi.fn(),
       pinnedIntent: "none",
       archiveIntent: "none",
-      isCreatingArticle: false,
-      isDirty: false,
+      get isCreatingArticle() {
+        return articleEditorState.isCreatingArticle;
+      },
+      get isDirty() {
+        return articleEditorState.isDirty;
+      },
       isSaving: false,
       isCreating: false,
+      get isDeleting() {
+        return articleEditorState.isDeleting;
+      },
       canCreateArticle: true,
       startCreateArticle: startCreateArticleMock,
-      exitEditor: vi.fn(),
+      exitEditor: exitArticleEditorMock,
       createArticle: vi.fn(),
       saveSelectedArticle: vi.fn(),
       togglePinnedIntent: vi.fn(),
@@ -206,6 +235,42 @@ describe("WikiPage", () => {
       uploadWikiArticleImage: vi.fn(),
       deleteArticle: vi.fn(),
     });
+  });
+
+  it("opens mobile deep links in the article pane and returns to the list", async () => {
+    mediaState.isDesktop = false;
+    paramsMock.slug = undefined;
+    routeSearchMock.selection = "none";
+    const rendered = renderWikiPage();
+
+    expect(screen.queryByRole("button", { name: "backToList" })).not.toBeInTheDocument();
+    paramsMock.slug = "deleted-article";
+    routeSearchMock.selection = undefined;
+    rendered.rerender(<WikiPage />);
+
+    const backButton = await screen.findByRole("button", { name: "backToList" });
+    fireEvent.click(backButton);
+    await waitFor(() => {
+      expect(screen.queryByRole("button", { name: "backToList" })).not.toBeInTheDocument();
+    });
+    expect(await screen.findByText("Kept Article")).toBeInTheDocument();
+  });
+
+  it("exits create mode when browser history selects an article", async () => {
+    startCreateArticleMock.mockImplementation(() => {
+      articleEditorState.isCreatingArticle = true;
+      articleEditorState.isDirty = true;
+    });
+    const rendered = renderWikiPage();
+
+    fireEvent.click(await screen.findByRole("button", { name: "articleEditor.create" }));
+    expect(startCreateArticleMock).toHaveBeenCalledOnce();
+
+    paramsMock.slug = "history-article";
+    routeSearchMock.selection = undefined;
+    rendered.rerender(<WikiPage />);
+
+    await waitFor(() => expect(exitArticleEditorMock).toHaveBeenCalledOnce());
   });
 
   it("clears the route instead of auto-selecting another article after article deletion", async () => {
@@ -461,6 +526,18 @@ describe("WikiPage", () => {
 
     const titleField = screen.getByRole("textbox", { name: "aria.articleTitle" });
     expect(titleField.closest(".mantine-Group-root")).toHaveStyle("--group-wrap: wrap");
+  });
+
+  it("locks the article delete action while deletion is pending", async () => {
+    articleEditorState.isDeleting = true;
+    renderWikiPage();
+
+    fireEvent.click(await screen.findByText("Kept Article"));
+    fireEvent.click(await screen.findByRole("button", { name: "editor.editWiki" }));
+
+    expect(await screen.findByRole("button", {
+      name: "common:action.delete",
+    })).toBeDisabled();
   });
 
   it("keeps the narrow wiki editor comfortably tall and long headings wrap-safe", () => {

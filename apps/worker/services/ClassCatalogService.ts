@@ -16,6 +16,7 @@ import {
   deleteUploadedMedia,
   rethrowAfterUploadFailure,
 } from "./media-upload-compensation";
+import { parseMediaKey } from "./media-keys";
 import { err, ok, type ServiceResult } from "./result";
 
 type DrizzleDb = DrizzleD1Database<Record<string, never>>;
@@ -430,10 +431,13 @@ export class ClassCatalogService {
   }
 
   async referencesIcon(key: string): Promise<boolean> {
-    if (!key.startsWith("class-icons/")) return false;
+    const parsed = parseMediaKey(key);
+    if (parsed?.kind !== "class_icon" || !parsed.entityId || parsed.contentType !== "image/webp") {
+      return false;
+    }
     const row = await this.deps.rawDb
-      .prepare("SELECT id FROM class_catalog WHERE icon_key = ? LIMIT 1")
-      .bind(key)
+      .prepare("SELECT id FROM class_catalog WHERE id = ? AND icon_type = 'image' AND icon_key = ? LIMIT 1")
+      .bind(parsed.entityId, key)
       .first<{ id: string }>();
     return Boolean(row?.id);
   }

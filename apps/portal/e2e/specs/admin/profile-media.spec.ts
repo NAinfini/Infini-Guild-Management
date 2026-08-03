@@ -4,10 +4,10 @@ import { wavUpload, webpUpload } from "../../support/files";
 import { confirmDialog, expectNoDialog, field } from "../../support/ui";
 
 /*
- * 个人资料页「主页」屏的媒体卡：相册 / 视频 / 语音 / 头像 四组，收在一条内嵌切换里。
+ * 个人资料页「主页」屏的媒体卡：相册 / 视频 / 音乐 / 头像 四组，收在一条内嵌切换里。
  *
  * 这四组走的不是同一条链路，用例的收尾方式也因此不同：
- *   - 相册、语音、头像：控件直接调接口（上传 POST、删除 DELETE），点完就落库，
+ *   - 相册、音乐、头像：控件直接调接口（上传 POST、删除 DELETE），点完就落库，
  *     不经过右下角的保存条。所以断言是「请求发出去 → 回读服务端，键真的多/少了一个」。
  *   - 视频：加/删/换序全是改本地草稿，只有保存按钮会写库。所以断言是
  *     「点的时候不碰网络 → 保存 → 回读服务端，顺序和内容都对得上」。
@@ -52,7 +52,7 @@ test.beforeEach(async ({ page, api }) => {
 });
 
 test.afterEach(async ({ api }) => {
-  /* 头像和语音不在 PATCH 的可写字段里，只能按各自的 DELETE 收尾；
+  /* 头像和音乐不在 PATCH 的可写字段里，只能按各自的 DELETE 收尾；
      种子里两者都是 null，所以「当前有、原来没有」就一定是这条用例传上去的。 */
   const current = await readProfile(api);
   if (current.avatar_key && !original.avatar_key) {
@@ -61,7 +61,7 @@ test.afterEach(async ({ api }) => {
   }
   if (current.audio_key && !original.audio_key) {
     const response = await api.delete(`/api/users/${userId}/media/audio`);
-    expect(response.ok(), `清理语音返回 ${response.status()}: ${await response.text()}`).toBe(true);
+    expect(response.ok(), `清理音乐返回 ${response.status()}: ${await response.text()}`).toBe(true);
   }
   /* 相册里多出来的键要先从 R2 删掉再改指针：只把 images 写回种子值的话，
      对象还在桶里，run 结束时的站点指纹就对不上了。 */
@@ -141,7 +141,7 @@ test("分组切换：四组各自换内容，全程不碰网络", async ({ page,
   await expect(videoRows(page)).toHaveCount(original.video_urls.length);
   await expect(imageTiles(page), "切走之后相册那一组要收起来").toHaveCount(0);
 
-  await flow.clickWithoutApi(sectionTab(page, "Voice"));
+  await flow.clickWithoutApi(sectionTab(page, "Music"));
   await expect(sectionInput(page, "audio")).toBeChecked();
   await expect(page.getByRole("button", { name: "Select file", exact: true })).toBeVisible();
 
@@ -287,29 +287,28 @@ test("视频：非白名单站点被挡下，回车能加，上移换序，删�
     .toEqual(original.video_urls);
 });
 
-test("语音：WAV 上传前先在浏览器里转成 Opus，删除后键回到空", async ({ page, flow, api }) => {
-  await openSection(page, "Voice", "audio");
-  expect(original.audio_key, "种子里 admin 没有语音，这条用例从空开始").toBeNull();
+test("音乐：WAV 上传前先在浏览器里转成 Opus，删除后键回到空", async ({ page, flow, api }) => {
+  await openSection(page, "Music", "audio");
+  expect(original.audio_key, "种子里 admin 没有音乐，这条用例从空开始").toBeNull();
 
-  await page.locator(".my-profile-split__editor input[type='file']")
-    .setInputFiles(wavUpload(`e2e-voice-${Date.now()}.wav`));
-  await expect(page.getByRole("button", { name: "Upload", exact: true })).toBeEnabled();
-
-  const uploaded = await flow.click(
-    page.getByRole("button", { name: "Upload", exact: true }),
+  /* 选完就传，跟头像那一组一样，没有第二颗「上传」按钮可点。 */
+  const uploaded = await flow.act(
+    () => page.locator(".my-profile-split__editor input[type='file']")
+      .setInputFiles(wavUpload(`e2e-music-${Date.now()}.wav`)),
     { method: "POST", path: AUDIO_API },
   ) as { key: string };
   /*
-   * 送上去的是 WAV，落库的键却是 .webm/.ogg：转码发生在浏览器里
-   * （convertAudioToOpus 按 MediaRecorder 支持的容器协商，Chromium 给的是 WebM）。
-   * 这一条同时钉住「语音上传必须先转 Opus」这个契约。
+   * 送上去的是 WAV，落库的键却是 .ogg：转码发生在浏览器里（convertAudioToOpus）。
+   * 容器写死成 Ogg，不再按浏览器支持的格式协商，所以这里能钉一个确切的后缀——
+   * 以前得写成 /\.(webm|ogg)$/ 来同时容纳 Chromium 和 Firefox。
+   * 这一条同时钉住「音乐上传必须先转 Opus」这个契约。
    */
-  expect(uploaded.key, "服务端存的不该还是 WAV").toMatch(/\.(webm|ogg)$/);
+  expect(uploaded.key, "服务端存的不该还是 WAV").toMatch(/\.ogg$/);
 
   const afterUpload = await readProfile(api);
   expect(afterUpload.audio_key, "上传成功后资料上要挂上键").toBe(uploaded.key);
   await expect(sectionInput(page, "audio").locator("xpath=following-sibling::label[1]"), "切换条上的状态要跟着变")
-    .toHaveText("Voice ✓");
+    .toHaveText("Music ✓");
 
   await page.locator(".profile-media-chip-row").getByRole("button", { name: "Delete", exact: true }).click();
   const confirm = await confirmDialog(page, "Remove audio?");

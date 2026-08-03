@@ -68,6 +68,7 @@ type GuildWarStoreState = {
   setHistoryDateTo: (historyDateTo: string) => void;
   setHistoryPage: (historyPage: number) => void;
   setHistoryPerPage: (historyPerPage: number) => void;
+  resetSessionState: () => void;
 };
 
 const defaultMetric = activeGame.war.memberStats[3]?.key ?? "damage";
@@ -125,4 +126,32 @@ export const useGuildWarStore = create<GuildWarStoreState>((set) => ({
   setHistoryDateTo: (historyDateTo) => set({ historyDateTo, historyPage: 1 }),
   setHistoryPage: (historyPage) => set({ historyPage }),
   setHistoryPerPage: (historyPerPage) => set({ historyPerPage, historyPage: 1 }),
+  resetSessionState: () => set({
+    selectedEventId: undefined,
+    selectedHistoryId: null,
+    analyticsMode: "player",
+    analyticsSelectedMetrics: [defaultMetric],
+    analyticsOnlyParticipated: true,
+    analyticsDatePreset: "10",
+    analyticsSelectedWarIds: [],
+    analyticsSelectedUsers: [],
+    analyticsWarStat: activeGame.war.teamObjectives[0]?.key ?? "kills",
+    analyticsAggregation: "total",
+    analyticsMinParticipation: 1,
+    analyticsTopN: 10,
+    analyticsSelectedTeams: [],
+    analyticsTeamAggregation: "total",
+    analyticsNormEnabled: true,
+    analyticsShowDeviation: false,
+    analyticsShowContribution: false,
+    analyticsHeatmapEnabled: false,
+    modifierWeights: { ...DEFAULT_GUILD_WAR_MODIFIER_WEIGHTS },
+    modifierWeightsInitialized: false,
+    historyViewMode: "table",
+    historyChartMetric: defaultMetric,
+    historyDateFrom: "",
+    historyDateTo: "",
+    historyPage: 1,
+    historyPerPage: 20,
+  }),
 }));

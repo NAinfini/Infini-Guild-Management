@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useMemo, useRef, useState } from "react";
 import {
   DEFAULT_IMAGE_WEBP_QUALITY,
   convertFileForUpload,
@@ -62,6 +62,7 @@ export function useMediaUpload<TResult>(
   const [uploadProgress, setUploadProgress] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<TResult | null>(null);
+  const inFlightRef = useRef(false);
 
   const selectFiles = useCallback(
     (source: FileList | File[] | null) => {
@@ -132,10 +133,11 @@ export function useMediaUpload<TResult>(
       setError(supportError);
       return null;
     }
-    if (isUploading) {
+    if (inFlightRef.current) {
       return null;
     }
 
+    inFlightRef.current = true;
     setIsUploading(true);
     setError(null);
     setUploadProgress(0);
@@ -149,6 +151,7 @@ export function useMediaUpload<TResult>(
       setError(`Conversion failed: ${message}`);
       setIsConverting(false);
       setIsUploading(false);
+      inFlightRef.current = false;
       return null;
     }
 
@@ -167,10 +170,11 @@ export function useMediaUpload<TResult>(
       setError(`Upload failed: ${message}`);
       return null;
     } finally {
+      inFlightRef.current = false;
       setIsConverting(false);
       setIsUploading(false);
     }
-  }, [files, isUploading, preprocessFiles, supportError, uploadFn]);
+  }, [files, preprocessFiles, supportError, uploadFn]);
 
   const reset = useCallback(() => {
     setFiles([]);

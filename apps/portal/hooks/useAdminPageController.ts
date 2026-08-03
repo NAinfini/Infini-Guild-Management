@@ -196,6 +196,8 @@ export function useAdminPageController() {
     setMemberDetailId,
     memberDetailForm,
     setMemberDetailForm,
+    isDirty: memberDetailIsDirty,
+    markMemberDetailSaved,
     selectedMemberDetail,
     createMemberModalOpen,
     createMemberModalHandlers,
@@ -335,11 +337,15 @@ export function useAdminPageController() {
   );
   const saveSelectedMemberProfile = useCallback(() => {
     if (!selectedMemberDetail) return;
+    const memberId = selectedMemberDetail.user.id;
+    const savedForm = { ...memberDetailForm, classes: [...memberDetailForm.classes] };
     adminMutations.updateMemberProfileMutation.mutate({
-      userId: selectedMemberDetail.user.id,
-      form: memberDetailForm,
+      userId: memberId,
+      form: savedForm,
+    }, {
+      onSuccess: () => markMemberDetailSaved(memberId, savedForm),
     });
-  }, [adminMutations.updateMemberProfileMutation, memberDetailForm, selectedMemberDetail]);
+  }, [adminMutations.updateMemberProfileMutation, markMemberDetailSaved, memberDetailForm, selectedMemberDetail]);
   const createMember = useCallback(async (data: { username: string; notes: string }) => {
     const result = await adminMutations.createMemberMutation.mutateAsync(data);
     return result;
@@ -380,6 +386,7 @@ export function useAdminPageController() {
     isAdmin,
     isModerator,
     memberDetailForm,
+    memberDetailIsDirty,
     memberMediaController,
     memberSearch,
     rolesQuery,

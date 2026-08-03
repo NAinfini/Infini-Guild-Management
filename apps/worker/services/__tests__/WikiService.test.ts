@@ -1,19 +1,38 @@
 import { describe, expect, it, vi } from "vitest";
 import type { SQL } from "drizzle-orm";
 import { SQLiteSyncDialect } from "drizzle-orm/sqlite-core";
+
+vi.mock("nanoid", () => ({ nanoid: vi.fn(() => "generated-id") }));
+
 import { WikiService } from "../WikiService";
 
 // Minimal D1Database mock that captures batch/run calls.
-function createRawDb() {
-  const batchMock = vi.fn().mockResolvedValue([]);
+function createRawDb(options: { batchError?: Error; firstResponses?: unknown[] } = {}) {
+  const firstResponses = [...(options.firstResponses ?? [])];
+  const statements: Array<{ sql: string; bindings: unknown[] }> = [];
+  const batchMock = options.batchError
+    ? vi.fn().mockRejectedValue(options.batchError)
+    : vi.fn((batchStatements: unknown[]) => Promise.resolve(
+        batchStatements.map(() => ({ results: [], success: true, meta: { changes: 1 } })),
+      ));
   const runMock = vi.fn().mockResolvedValue({ results: [], success: true, meta: {} });
-  const bindMock = vi.fn().mockReturnValue({ run: runMock });
-  const prepareMock = vi.fn().mockReturnValue({ bind: bindMock });
+  const prepareMock = vi.fn((sql: string) => ({
+    bind: vi.fn((...bindings: unknown[]) => {
+      statements.push({ sql, bindings });
+      return {
+        sql,
+        bindings,
+        run: runMock,
+        first: vi.fn().mockImplementation(async () => firstResponses.shift() ?? null),
+      };
+    }),
+  }));
   return {
     rawDb: { prepare: prepareMock, batch: batchMock } as unknown as D1Database,
     batchMock,
     runMock,
     prepareMock,
+    statements,
   };
 }
 
@@ -44,6 +63,31 @@ const BASE_ARTICLE_ROW = {
   createdAt: "2024-01-01T00:00:00.000Z",
   updatedAt: "2024-01-01T00:00:00.000Z",
 };
+
+const WIKI_KEY = "wiki/art1/images/image.webp";
+
+function bodyWithImage(key: string): string {
+  return JSON.stringify({ type: "doc", content: [{ type: "image", attrs: { src: key } }] });
+}
+
+function createSequentialWikiDb(rowsBySelect: unknown[][]) {
+  const pending = [...rowsBySelect];
+  const select = vi.fn(() => ({
+    from: vi.fn(() => ({
+      where: vi.fn(() => {
+        const rows = pending.shift() ?? [];
+        const promise = Promise.resolve(rows);
+        return {
+          limit: vi.fn().mockResolvedValue(rows),
+          then: promise.then.bind(promise),
+          catch: promise.catch.bind(promise),
+          finally: promise.finally.bind(promise),
+        };
+      }),
+    })),
+  }));
+  return { select };
+}
 
 // Builds a Drizzle-like db mock for CRUD operations.
 // Handles both:
@@ -161,7 +205,7 @@ describe("WikiService", () => {
   });
 
   describe("createArticle", () => {
-    it("calls replaceMediaRefs after successful article create", async () => {
+    it("creates article, revision, and media references in one D1 batch", async () => {
       const { batchMock, rawDb } = createRawDb();
       const { db } = createCrudDb(BASE_ARTICLE_ROW);
       const deps = createDeps(rawDb);
@@ -175,13 +219,13 @@ describe("WikiService", () => {
         pinned: false,
       });
 
-      // replaceMediaRefs calls db.batch with at least the DELETE statement
-      expect(batchMock).toHaveBeenCalled();
+      expect(batchMock).toHaveBeenCalledTimes(1);
+      expect(batchMock.mock.calls[0]![0]).toHaveLength(3);
     });
 
     it("records revision 1 on article create", async () => {
-      const { rawDb } = createRawDb();
-      const { db, mocks } = createCrudDb(BASE_ARTICLE_ROW);
+      const { rawDb, prepareMock } = createRawDb();
+      const { db } = createCrudDb(BASE_ARTICLE_ROW);
       const deps = createDeps(rawDb);
       const service = new WikiService(db as never, deps);
 
@@ -193,18 +237,39 @@ describe("WikiService", () => {
         pinned: false,
       });
 
-      // Two inserts: the article row and its initial revision snapshot
-      expect(mocks.insertMock).toHaveBeenCalledTimes(2);
+      expect(prepareMock).toHaveBeenCalledWith(expect.stringContaining("INSERT INTO wiki_revisions"));
+    });
+
+    it("consumes an owned active wiki lease in the same create batch", async () => {
+      const key = "wiki/generated-id/images/image.webp";
+      const { batchMock, rawDb } = createRawDb({ firstResponses: [{ referenced: 0, leased: 1 }] });
+      const { db } = createCrudDb(BASE_ARTICLE_ROW);
+      const service = new WikiService(db as never, createDeps(rawDb));
+
+      await service.createArticle("u1", {
+        title: "My Article",
+        category_id: "cat1",
+        body_json: bodyWithImage(key),
+        sort_order: 0,
+        pinned: false,
+      });
+
+      const sql = (batchMock.mock.calls[0]?.[0] as Array<{ sql?: string }>)
+        .map((statement) => statement.sql ?? "")
+        .join("\n");
+      expect(sql).toContain("DELETE FROM media_upload_leases");
+      expect(sql).toContain("FROM wiki_articles");
     });
   });
 
   describe("updateArticle", () => {
     it("returns conflict without side effects when the conditional update loses the write race", async () => {
       const { batchMock, rawDb } = createRawDb();
-      const { db, mocks } = createCrudDb(BASE_ARTICLE_ROW);
-      const returning = vi.fn().mockResolvedValue([]);
-      const where = vi.fn(() => ({ returning }));
-      mocks.updateMock.mockReturnValue({ set: vi.fn(() => ({ where })) });
+      batchMock.mockResolvedValueOnce([
+        { results: [], success: true, meta: { changes: 0 } },
+        { results: [], success: true, meta: { changes: 0 } },
+      ]);
+      const { db } = createCrudDb(BASE_ARTICLE_ROW);
       const deps = createDeps(rawDb);
       const service = new WikiService(db as never, deps);
 
@@ -216,13 +281,12 @@ describe("WikiService", () => {
       );
 
       expect(result).toEqual({ ok: false, code: "CONFLICT", message: "Article has been modified by another user" });
-      expect(returning).toHaveBeenCalledOnce();
-      expect(batchMock).not.toHaveBeenCalled();
+      expect(batchMock).toHaveBeenCalledTimes(1);
       expect(deps.writeAuditLog).not.toHaveBeenCalled();
       expect(deps.publishEntityChanged).not.toHaveBeenCalled();
     });
 
-    it("calls replaceMediaRefs after update when body_json is provided", async () => {
+    it("updates article content and media references in one D1 batch", async () => {
       const { batchMock, rawDb } = createRawDb();
       const { db } = createCrudDb(BASE_ARTICLE_ROW);
       const deps = createDeps(rawDb);
@@ -230,10 +294,11 @@ describe("WikiService", () => {
 
       await service.updateArticle("u1", "art1", { body_json: '{"content":[]}' });
 
-      expect(batchMock).toHaveBeenCalled();
+      expect(batchMock).toHaveBeenCalledTimes(1);
+      expect(batchMock.mock.calls[0]![0]).toHaveLength(2);
     });
 
-    it("does NOT call replaceMediaRefs after update when body_json is absent", async () => {
+    it("keeps revision media references in the title-only content batch", async () => {
       const { batchMock, rawDb } = createRawDb();
       const { db } = createCrudDb(BASE_ARTICLE_ROW);
       const deps = createDeps(rawDb);
@@ -241,19 +306,20 @@ describe("WikiService", () => {
 
       await service.updateArticle("u1", "art1", { title: "New title" });
 
-      expect(batchMock).not.toHaveBeenCalled();
+      expect(batchMock).toHaveBeenCalledTimes(1);
+      expect(batchMock.mock.calls[0]![0]).toHaveLength(4);
     });
 
     it("records revision snapshots when the title changes", async () => {
-      const { rawDb } = createRawDb();
-      const { db, mocks } = createCrudDb(BASE_ARTICLE_ROW);
+      const { rawDb, prepareMock } = createRawDb();
+      const { db } = createCrudDb(BASE_ARTICLE_ROW);
       const deps = createDeps(rawDb);
       const service = new WikiService(db as never, deps);
 
       await service.updateArticle("u1", "art1", { title: "New title" });
 
-      // Legacy article (no revisions yet): baseline snapshot + new snapshot
-      expect(mocks.insertMock).toHaveBeenCalledTimes(2);
+      expect(prepareMock).toHaveBeenCalledWith(expect.stringContaining("INSERT INTO wiki_revisions"));
+      expect(prepareMock.mock.calls.filter(([sql]) => String(sql).includes("INSERT INTO wiki_revisions"))).toHaveLength(2);
     });
 
     it("does NOT record a revision when only pinned changes", async () => {
@@ -265,6 +331,61 @@ describe("WikiService", () => {
       await service.updateArticle("u1", "art1", { pinned: true });
 
       expect(mocks.insertMock).not.toHaveBeenCalled();
+    });
+
+    it("consumes an owned active lease in the same update batch", async () => {
+      const { batchMock, rawDb } = createRawDb({ firstResponses: [{ referenced: 0, leased: 1 }] });
+      const { db } = createCrudDb(BASE_ARTICLE_ROW);
+      const service = new WikiService(db as never, createDeps(rawDb));
+
+      await service.updateArticle("u1", "art1", { body_json: bodyWithImage(WIKI_KEY) });
+
+      const sql = (batchMock.mock.calls[0]?.[0] as Array<{ sql?: string }>)
+        .map((statement) => statement.sql ?? "")
+        .join("\n");
+      expect(sql).toContain("DELETE FROM media_upload_leases");
+    });
+
+    it.each([
+      ["another user", { referenced: 0, leased: 0 }],
+      ["an expired lease", { referenced: 0, leased: 0 }],
+    ])("rejects a wiki image owned by %s before saving", async (_label, access) => {
+      const { batchMock, rawDb } = createRawDb({ firstResponses: [access] });
+      const { db } = createCrudDb(BASE_ARTICLE_ROW);
+      const service = new WikiService(db as never, createDeps(rawDb));
+
+      await expect(service.updateArticle("u1", "art1", {
+        body_json: bodyWithImage(WIKI_KEY),
+      })).resolves.toEqual({
+        ok: false,
+        code: "FORBIDDEN",
+        message: "Wiki image is expired or belongs to another user",
+      });
+      expect(batchMock).not.toHaveBeenCalled();
+    });
+
+    it("does not consume a lease when a conditional article update loses", async () => {
+      const { batchMock, rawDb } = createRawDb({ firstResponses: [{ referenced: 0, leased: 1 }] });
+      batchMock.mockResolvedValueOnce([
+        { results: [], success: true, meta: { changes: 0 } },
+      ]);
+      const { db } = createCrudDb(BASE_ARTICLE_ROW);
+      const deps = createDeps(rawDb);
+      const service = new WikiService(db as never, deps);
+
+      const result = await service.updateArticle(
+        "u1",
+        "art1",
+        { body_json: bodyWithImage(WIKI_KEY) },
+        '"wiki-art1-2024-01-01T00:00:00.000Z"',
+      );
+
+      expect(result).toEqual({ ok: false, code: "CONFLICT", message: "Article has been modified by another user" });
+      const leaseDelete = (batchMock.mock.calls[0]?.[0] as Array<{ sql?: string }>)
+        .find((statement) => statement.sql?.includes("DELETE FROM media_upload_leases"));
+      expect(leaseDelete?.sql).toContain("EXISTS");
+      expect(leaseDelete?.sql).toContain("updated_at");
+      expect(deps.writeAuditLog).not.toHaveBeenCalled();
     });
   });
 
@@ -284,20 +405,55 @@ describe("WikiService", () => {
       expect(mocks.updateMock).not.toHaveBeenCalled();
       expect(deps.writeAuditLog).not.toHaveBeenCalled();
     });
+
+    it("consumes an owned active lease in the same restore batch", async () => {
+      const snapshot = {
+        id: "revision-1",
+        articleId: "art1",
+        revision: 1,
+        title: "Restored title",
+        bodyJson: bodyWithImage(WIKI_KEY),
+        editedBy: "u1",
+        editedByUsername: null,
+        restoredFrom: null,
+        createdAt: "2024-01-01T00:00:00.000Z",
+      };
+      const updated = {
+        ...BASE_ARTICLE_ROW,
+        title: snapshot.title,
+        bodyJson: snapshot.bodyJson,
+        updatedBy: "u1",
+      };
+      const db = createSequentialWikiDb([
+        [BASE_ARTICLE_ROW],
+        [snapshot],
+        [{ revision: 1, bodyJson: snapshot.bodyJson }],
+        [updated],
+      ]);
+      const { batchMock, rawDb } = createRawDb({ firstResponses: [{ referenced: 0, leased: 1 }] });
+      const service = new WikiService(db as never, createDeps(rawDb));
+
+      await expect(service.restoreRevision("u1", "art1", 1)).resolves.toMatchObject({ ok: true });
+
+      const sql = (batchMock.mock.calls[0]?.[0] as Array<{ sql?: string }>)
+        .map((statement) => statement.sql ?? "")
+        .join("\n");
+      expect(sql).toContain("DELETE FROM media_upload_leases");
+    });
   });
 
   describe("permanentDeleteArticle", () => {
-    it("calls deleteMediaRefs after article deletion", async () => {
-      const { runMock, rawDb, prepareMock } = createRawDb();
+    it("deletes article, revisions, and media references in one D1 batch", async () => {
+      const { batchMock, rawDb, prepareMock } = createRawDb();
       const { db } = createCrudDb(BASE_ARTICLE_ROW);
       const deps = createDeps(rawDb);
       const service = new WikiService(db as never, deps);
 
       await service.permanentDeleteArticle("u1", "art1");
 
-      // deleteMediaRefs calls prepare(...).bind(...).run()
       expect(prepareMock).toHaveBeenCalledWith(expect.stringContaining("DELETE FROM media_references"));
-      expect(runMock).toHaveBeenCalled();
+      expect(batchMock).toHaveBeenCalledTimes(1);
+      expect(batchMock.mock.calls[0]![0]).toHaveLength(3);
     });
   });
 
@@ -319,6 +475,46 @@ describe("WikiService", () => {
       ])).rejects.toBe(failure);
 
       expect(deleteObject).toHaveBeenCalledTimes(2);
+      expect(deps.writeAuditLog).not.toHaveBeenCalled();
+    });
+
+    it("registers every uploaded object as an owned expiring wiki lease", async () => {
+      const { batchMock, rawDb } = createRawDb();
+      const { db } = createCrudDb(BASE_ARTICLE_ROW);
+      const deps = createDeps(rawDb);
+      deps.media = {
+        put: vi.fn().mockResolvedValue(undefined),
+        delete: vi.fn().mockResolvedValue(undefined),
+      } as unknown as R2Bucket;
+      const service = new WikiService(db as never, deps);
+
+      const result = await service.uploadArticleImages("u1", "art1", [
+        { data: new ArrayBuffer(1), contentType: "image/webp" },
+      ]);
+
+      expect(result).toMatchObject({ ok: true });
+      const leaseStatement = (batchMock.mock.calls[0]?.[0] as Array<{ sql?: string }>)
+        .find((statement) => statement.sql?.includes("INSERT INTO media_upload_leases"));
+      expect(leaseStatement?.sql).toContain("'wiki_article'");
+    });
+
+    it("removes uploaded objects when lease registration fails", async () => {
+      const failure = new Error("lease insert failed");
+      const { rawDb } = createRawDb({ batchError: failure });
+      const { db } = createCrudDb(BASE_ARTICLE_ROW);
+      const deps = createDeps(rawDb);
+      const deleteObject = vi.fn().mockResolvedValue(undefined);
+      deps.media = {
+        put: vi.fn().mockResolvedValue(undefined),
+        delete: deleteObject,
+      } as unknown as R2Bucket;
+      const service = new WikiService(db as never, deps);
+
+      await expect(service.uploadArticleImages("u1", "art1", [
+        { data: new ArrayBuffer(1), contentType: "image/webp" },
+      ])).rejects.toBe(failure);
+
+      expect(deleteObject).toHaveBeenCalledWith(expect.stringMatching(/^wiki\/art1\/images\/.+\.webp$/));
       expect(deps.writeAuditLog).not.toHaveBeenCalled();
     });
   });

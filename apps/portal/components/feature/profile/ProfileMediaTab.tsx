@@ -6,7 +6,7 @@ import { ActionIcon, Avatar, Button, FileButton, Group, Paper, Progress, Segment
 import { ArrowDownIcon, ArrowUpIcon, PlusIcon, TrashIcon, UploadIcon, UserIcon, VideoIcon } from "@portal/components/icons";
 import { IMAGE_FILE_ACCEPT } from "@guild/shared";
 import { getVideoThumbnailUrl } from "@guild/shared/utils/video";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { resolveProfileMediaUrl } from "../../../utils/media";
 
@@ -45,6 +45,7 @@ type ProfileMediaTabProps = {
   onRemoveAvatar: () => void;
   onReorderImages: (nextImages: string[]) => void;
   onRemoveImage: (key: string) => void;
+  removingImageKeys: ReadonlySet<string>;
   onUploadImages: () => void;
   onVideoDraftChange: (value: string) => void;
   onAddVideoUrl: () => void;
@@ -74,6 +75,7 @@ export function ProfileMediaTab({
   onRemoveAvatar,
   onReorderImages,
   onRemoveImage,
+  removingImageKeys,
   onUploadImages,
   onVideoDraftChange,
   onAddVideoUrl,
@@ -112,6 +114,22 @@ export function ProfileMediaTab({
   const handleRemoveAudio = async () => {
     if (await confirmDelete("removeAudio")) onRemoveAudio();
   };
+
+  /*
+   * 选完就传，跟同一张卡里的头像一致——那一组从来就没有第二颗「上传」按钮。
+   * 音乐这边原先是选文件、再点上传两步，于是常态是一颗能按的和一颗灰着的并排。
+   *
+   * 用 ref 记住已经发过的那个 File 对象，而不是靠 files.length 判断：上传失败时
+   * files 不会被清空，只看长度会在 isUploading 落回 false 的那一刻无限重试。
+   * 同一个文件只发一次，失败就停在错误上（错误正常显示，不吞），要重试就重新选。
+   */
+  const stagedAudio = audioUploader.files[0] ?? null;
+  const autoUploadedAudio = useRef<File | null>(null);
+  useEffect(() => {
+    if (!stagedAudio || autoUploadedAudio.current === stagedAudio) return;
+    autoUploadedAudio.current = stagedAudio;
+    onUploadAudio();
+  }, [onUploadAudio, stagedAudio]);
 
   /* 转换与上传两条进度条原先是两条没有说明的匿名细条，看不出谁是谁。 */
   const renderProgress = (uploader: UploaderState) =>
@@ -155,6 +173,7 @@ export function ProfileMediaTab({
               maxImages={10}
               imageSize={80}
               disabled={imageUploader.isUploading || imageUploader.isConverting}
+              deletingIds={removingImageKeys}
               aria-label={t("media.images")}
             />
 
@@ -274,24 +293,23 @@ export function ProfileMediaTab({
                 accept="audio/ogg,audio/webm,audio/mp4,audio/mpeg,audio/wav"
               >
                 {(props) => (
-                  <Button variant="default" size="xs" h={44} {...props}>{t("media.selectAudio")}</Button>
+                  <Button
+                    variant="default"
+                    size="xs"
+                    h={44}
+                    loading={audioUploader.isUploading}
+                    leftSection={<UploadIcon size={14} />}
+                    {...props}
+                  >
+                    {t("media.selectAudio")}
+                  </Button>
                 )}
               </FileButton>
-              {audioUploader.files.length > 0 ? (
+              {stagedAudio ? (
                 <Text size="xs" c="dimmed" style={{ flex: 1, minWidth: 0, overflowWrap: "anywhere" }}>
-                  {audioUploader.files[0]?.name}
+                  {stagedAudio.name}
                 </Text>
               ) : null}
-              <Button
-                size="xs"
-                h={44}
-                onClick={onUploadAudio}
-                disabled={audioUploader.files.length === 0}
-                loading={audioUploader.isUploading}
-                leftSection={<UploadIcon size={14} />}
-              >
-                {t("action.upload")}
-              </Button>
             </Group>
 
             {audioUploader.error ? <Text c="red" size="sm" mt={8}>{audioUploader.error}</Text> : null}

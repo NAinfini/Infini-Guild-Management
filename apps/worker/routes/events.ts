@@ -20,7 +20,7 @@ import {
   toRaffleWinnerPayload,
   toTemplatePayload,
 } from "../services/EventService";
-import { isEventPubliclyVisible } from "../services/events/event-visibility";
+import { parseMediaKey } from "../services/media-keys";
 import { buildError, collectFiles, getDb, parseBoolean, parseJsonBody, parsePage, requireSessionUser, serveR2Object } from "./_shared";
 import { commonDeps, getMediaPolicy } from "./service-factory";
 import { getSystemTestRunId } from "../services/SystemTestService";
@@ -105,19 +105,32 @@ eventsRoutes.post("/batch-details", async (c) => {
 eventsRoutes.get("/image", async (c) => {
   const key = c.req.query("key");
   if (!key) return buildError(c, "VALIDATION_ERROR", "key query parameter required");
-  const eventId = /^events\/([A-Za-z0-9_-]+)\/images\/[^/]+$/.exec(key)?.[1];
-  if (!eventId) return buildError(c, "FORBIDDEN", "Invalid event image key");
-  const viewer = await getRequestUser(c);
-  const event = await getEventService(c).getEventById(eventId);
-  if (
-    !event
-    || (
-      !viewer?.permissions.has("events.edit")
-      && !isEventPubliclyVisible(event.visibleAt, new Date().toISOString())
-    )
-  ) {
-    return buildError(c, "NOT_FOUND", "Event image not found");
+  const parsedKey = parseMediaKey(key);
+  if (parsedKey?.kind !== "event_image" || !parsedKey.entityId || !parsedKey.contentType) {
+    return buildError(c, "FORBIDDEN", "Invalid event image key");
   }
+  const viewer = await getRequestUser(c);
+  const canManage = viewer?.permissions.has("events.edit") === true;
+  const referenced = await (c.env as Bindings).DB.prepare(`
+    SELECT 1 AS present
+    FROM media_references ref
+    INNER JOIN events event ON event.id = ref.entity_id
+    WHERE ref.media_key = ?1
+      AND ref.entity_type = 'event'
+      AND ref.entity_id = ?2
+      AND (
+        ?3 = 1
+        OR event.visible_at IS NULL
+        OR (julianday(event.visible_at) IS NOT NULL AND julianday(event.visible_at) <= julianday(?4))
+      )
+      AND EXISTS (
+        SELECT 1
+        FROM json_each(CASE WHEN json_valid(event.attachments) THEN event.attachments ELSE '[]' END)
+        WHERE json_each.value = ?1
+      )
+    LIMIT 1
+  `).bind(key, parsedKey.entityId, canManage ? 1 : 0, new Date().toISOString()).first<{ present: number }>();
+  if (!referenced) return buildError(c, "NOT_FOUND", "Event image not found");
   return serveR2Object(c, key, "Event image not found");
 });
 

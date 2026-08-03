@@ -47,22 +47,48 @@ const roles: AdminRole[] = [{
   permissions,
 }];
 
-function renderRolesSection(onCreateRole = vi.fn()) {
+const customRoles: AdminRole[] = [
+  {
+    ...roles[0]!,
+    id: "raid-lead",
+    name: "Raid Lead",
+    level: 200,
+    is_builtin: false,
+    assigned_user_count: 0,
+  },
+  {
+    ...roles[0]!,
+    id: "diplomat",
+    name: "Diplomat",
+    level: 150,
+    is_builtin: false,
+    assigned_user_count: 0,
+  },
+];
+
+function renderRolesSection(
+  overrides: Partial<React.ComponentProps<typeof AdminRolesSection>> = {},
+) {
+  const props: React.ComponentProps<typeof AdminRolesSection> = {
+    rolesLoading: false,
+    rolesError: false,
+    roles,
+    createRolePending: false,
+    updateRolePending: false,
+    isRoleDeletePending: () => false,
+    onCreateRole: vi.fn(),
+    onUpdateRole: vi.fn(),
+    onDeleteRole: vi.fn(),
+    ...overrides,
+  };
+
   render(
     <MantineProvider>
-      <AdminRolesSection
-        rolesLoading={false}
-        rolesError={false}
-        roles={roles}
-        createRolePending={false}
-        updateRolePending={false}
-        deleteRolePending={false}
-        onCreateRole={onCreateRole}
-        onUpdateRole={vi.fn()}
-        onDeleteRole={vi.fn()}
-      />
+      <AdminRolesSection {...props} />
     </MantineProvider>,
   );
+
+  return props;
 }
 
 describe("AdminRolesSection storage permissions", () => {
@@ -85,7 +111,7 @@ describe("AdminRolesSection storage permissions", () => {
 
   it("opens a focused, cancellable form and creates only after a valid name is submitted", async () => {
     const onCreateRole = vi.fn().mockResolvedValue(true);
-    renderRolesSection(onCreateRole);
+    renderRolesSection({ onCreateRole });
 
     fireEvent.click(screen.getByRole("button", { name: "roles.create" }));
 
@@ -111,5 +137,30 @@ describe("AdminRolesSection storage permissions", () => {
     await waitFor(() =>
       expect(screen.queryByRole("dialog", { name: "roles.createTitle" })).not.toBeInTheDocument(),
     );
+  });
+
+  it("scopes delete pending to the target role and mirrors it in the detail pane", async () => {
+    const user = await import("@testing-library/user-event").then(({ default: userEvent }) => userEvent.setup());
+    const onDeleteRole = vi.fn();
+    renderRolesSection({
+      roles: customRoles,
+      isRoleDeletePending: (roleId) => roleId === "raid-lead",
+      onDeleteRole,
+    });
+
+    const raidRow = screen.getByText("Raid Lead").closest("button") as HTMLElement;
+    const diplomatRow = screen.getByText("Diplomat").closest("button") as HTMLElement;
+    const raidDelete = within(raidRow).getByRole("button", { name: "roles.delete" });
+    const diplomatDelete = within(diplomatRow).getByRole("button", { name: "roles.delete" });
+    const detailDelete = within(document.querySelector(".admin-md__detail") as HTMLElement)
+      .getByRole("button", { name: "roles.delete" });
+
+    expect(raidDelete).toBeDisabled();
+    expect(detailDelete).toBeDisabled();
+    expect(diplomatDelete).toBeEnabled();
+
+    await user.click(raidDelete);
+    await user.click(raidDelete);
+    expect(onDeleteRole).not.toHaveBeenCalled();
   });
 });

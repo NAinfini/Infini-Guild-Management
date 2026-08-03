@@ -11,7 +11,8 @@ import { confirmDialog, dialogTitled, field, selectOption } from "../../support/
  * 真正落库的只有最后那一次 POST /api/storage/transactions/batch，
  * 它必须让两件物品的库存各自按量变化，并各留下一条流水。
  *
- * 两件一次性物品都由本用例自己创建，afterEach 删除，流水按外键级联消失。
+ * 两件一次性物品都由本用例自己创建并登记进系统测试运行；整轮精确补偿会先删流水，
+ * 再按已登记主键删除物品。产品接口必须继续拒绝删除已有流水的物品。
  */
 
 const BATCH_REQUEST = {
@@ -58,13 +59,6 @@ test.beforeEach(async ({ page, api }) => {
   expect((await searched).ok(), "搜索请求必须成功，否则下面断言的是没过滤的列表").toBe(true);
   await expect(card(page, itemA)).toHaveCount(1);
   await expect(card(page, itemB)).toHaveCount(1);
-});
-
-test.afterEach(async ({ api }) => {
-  for (const item of [itemA, itemB]) {
-    const response = await api.delete(`/api/storage/items/${item.id}`);
-    expect(response.ok(), `删除一次性物品 ${item.name} 失败: ${response.status()}`).toBe(true);
-  }
 });
 
 async function createItem(

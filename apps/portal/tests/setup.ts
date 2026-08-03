@@ -6,7 +6,6 @@ afterEach(() => {
   if (typeof document !== "undefined") {
     cleanup();
   }
-  vi.restoreAllMocks();
 });
 
 if (typeof window !== "undefined") {

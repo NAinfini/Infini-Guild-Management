@@ -352,7 +352,7 @@ export class AdminAuditService {
         .from(auditLog)
         .leftJoin(users, eq(auditLog.actorId, users.id))
         .where(where)
-        .orderBy(desc(auditLog.createdAt))
+        .orderBy(desc(auditLog.createdAt), desc(auditLog.id))
         .limit(query.limit)
         .offset(query.offset),
       this.deps.db.select({ count: sql<number>`count(*)` }).from(auditLog).where(where),
@@ -389,7 +389,7 @@ export class AdminAuditService {
       .from(auditLog)
       .leftJoin(users, eq(auditLog.actorId, users.id))
       .where(where)
-      .orderBy(desc(auditLog.createdAt));
+      .orderBy(desc(auditLog.createdAt), desc(auditLog.id));
     const serializedRows = rows.map(serializeAuditLogRow);
     const rangeStartLabel = query.startAt.slice(0, 10);
     const rangeEndLabel = query.endAt.slice(0, 10);

@@ -114,8 +114,6 @@ pnpm dev
 | `pnpm typecheck` | 运行 TypeScript 检查 |
 | `pnpm lint` | 检查 portal 和 worker 代码 |
 | `pnpm test` | 运行 Vitest |
-| `pnpm test:worker` | 运行带种子数据的 Worker 集成测试 |
-| `pnpm smoke:pages` | 启动 Worker 和前端后，对关键页面做冒烟测试 |
 | `pnpm db:generate` | 生成 Drizzle 迁移 |
 | `pnpm db:studio` | 打开 Drizzle Studio |
 | `pnpm db:mock:rebuild` | 删除并重建本地 D1 数据库 |

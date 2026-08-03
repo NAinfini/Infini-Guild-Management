@@ -114,15 +114,12 @@ export function StoragePage() {
   const transactionItems = transactionState?.item
     ? [transactionState.item]
     : manualItemsQuery.items;
-  const confirmDelete = async (title: string, onConfirm: () => void) => {
-    const confirmed = await confirm({
+  const confirmDelete = (title: string) => confirm({
       title,
       confirmLabel: t("common:action.delete"),
       cancelLabel: t("common:action.cancel"),
       intent: "danger",
     });
-    if (confirmed) onConfirm();
-  };
   const updateActiveBatch = (
     updater: (draft: StorageBatchDraft) => StorageBatchDraft | null,
   ) => {
@@ -385,15 +382,19 @@ export function StoragePage() {
         }}
         onUpdateItem={(id, payload) => mutations.updateItemMutation.mutate({ id, payload })}
         onDeleteItem={(id) => {
-          void confirmDelete(t("confirm.deleteItem"), () => {
-            mutations.deleteItemMutation.mutate(id, { onSuccess: () => setActiveModal(null) });
+          void confirmDelete(t("confirm.deleteItem")).then((confirmed) => {
+            if (confirmed) {
+              mutations.deleteItemMutation.mutate(id, { onSuccess: () => setActiveModal(null) });
+            }
           });
         }}
         onUploadImages={(itemId, files) => mutations.uploadImagesMutation.mutate({ itemId, files })}
-        onDeleteImage={(itemId, imageId) => {
-          void confirmDelete(t("confirm.deleteImage"), () => {
-            mutations.deleteImageMutation.mutate({ itemId, imageId });
-          });
+        onDeleteImage={async (itemId, imageId) => {
+          if (!await confirmDelete(t("confirm.deleteImage"))) return false;
+          return mutations.deleteImageMutation.mutateAsync({ itemId, imageId }).then(
+            () => true,
+            () => false,
+          );
         }}
       />
       <StorageTransactionModal

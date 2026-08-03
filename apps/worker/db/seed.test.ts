@@ -27,6 +27,7 @@ describe("clearAllData", () => {
     );
     expect(SEED_CLEAR_TABLES).toEqual([
       "system_test_artifacts",
+      "media_upload_leases",
       "media_references",
       "storage_transactions",
       "storage_item_images",

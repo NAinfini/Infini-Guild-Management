@@ -33,7 +33,14 @@ async function verifySlot(slot: number, runId: string, baseline: Record<string, 
 }
 
 async function globalTeardown(): Promise<void> {
-  const state = JSON.parse(await readFile(RUN_STATE_FILE, "utf8")) as E2eRunStateFile;
+  let serialized: string;
+  try {
+    serialized = await readFile(RUN_STATE_FILE, "utf8");
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return;
+    throw error;
+  }
+  const state = JSON.parse(serialized) as E2eRunStateFile;
 
   /*
    * 逐个槽位都要走完再汇总。某个槽位有残留就提前抛的话，后面那些槽位

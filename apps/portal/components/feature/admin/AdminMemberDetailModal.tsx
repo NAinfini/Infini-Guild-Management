@@ -27,6 +27,7 @@ type AdminMemberDetailModalProps = {
   open: boolean;
   member: AdminUserRow | null;
   form: MemberDetailFormState;
+  isDirty: boolean;
   onClose: () => void;
   onFormChange: (patch: Partial<MemberDetailFormState>) => void;
   onSaveProfile: (member: AdminUserRow) => void;
@@ -48,6 +49,7 @@ export function AdminMemberDetailModal({
   open,
   member,
   form,
+  isDirty,
   onClose,
   onFormChange,
   onSaveProfile,
@@ -216,6 +218,7 @@ export function AdminMemberDetailModal({
               leftSection={<SaveIcon size={18} />}
               onClick={() => onSaveProfile(member)}
               loading={saveProfilePending}
+              disabled={!isDirty || saveProfilePending}
               size="md"
             >
               {t("detail.saveProfile")}

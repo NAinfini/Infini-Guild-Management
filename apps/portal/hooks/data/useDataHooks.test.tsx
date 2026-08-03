@@ -7,6 +7,7 @@ import { useAdminData } from "./useAdminData";
 import { useEventsData } from "./useEventsData";
 import { useGuildWarData } from "./useGuildWarData";
 import { useProfileData } from "./useProfileData";
+import { queryKeys } from "../../api/query-keys";
 
 const serviceMocks = vi.hoisted(() => ({
   fetchAdminAuditArchiveMonths: vi.fn(),
@@ -63,14 +64,13 @@ vi.mock("../../stores/auth", () => ({
     selector({ user: { id: "user-1" } }),
 }));
 
-function createWrapper(): ({ children }: { children: ReactNode }) => ReactNode {
-  const queryClient = new QueryClient({
+function createWrapper(queryClient = new QueryClient({
     defaultOptions: {
       queries: {
         retry: false,
       },
     },
-  });
+  })): ({ children }: { children: ReactNode }) => ReactNode {
 
   return function Wrapper({ children }: { children: ReactNode }) {
     return <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>;
@@ -87,6 +87,7 @@ describe("portal data hooks", () => {
   it("loads events and users through the service layer", async () => {
     serviceMocks.fetchEventsList.mockResolvedValueOnce({ data: [] });
     serviceMocks.fetchAllUsersListWithOptions.mockResolvedValueOnce({ data: [] });
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
 
     const { result } = renderHook(
       () =>
@@ -97,7 +98,7 @@ describe("portal data hooks", () => {
           pinnedOnly: true,
           lockedOnly: true,
         }),
-      { wrapper: createWrapper() },
+      { wrapper: createWrapper(queryClient) },
     );
 
     await waitFor(() => {
@@ -115,6 +116,8 @@ describe("portal data hooks", () => {
       locked: true,
     });
     expect(serviceMocks.fetchAllUsersListWithOptions).toHaveBeenCalled();
+    expect(queryClient.getQueryCache().findAll({ queryKey: queryKeys.events.all })[0]?.queryKey).toContain("user:user-1");
+    expect(queryClient.getQueryCache().findAll({ queryKey: queryKeys.users.all })[0]?.queryKey).toContain("user:user-1");
   });
 
   it("loads guild war queries through the service layer", async () => {
@@ -326,6 +329,46 @@ describe("portal data hooks", () => {
       canManageSiteConfig: true,
       canManageClasses: false,
     });
+  });
+
+  it("uses the same normalized audit search in the query key and request", async () => {
+    serviceMocks.fetchRoles.mockResolvedValueOnce([{
+      id: "auditor",
+      permissions: { "admin.audit.view": true },
+    }]);
+    serviceMocks.fetchAdminAuditLog.mockResolvedValueOnce({ data: [] });
+    serviceMocks.fetchAllUsersListWithOptions.mockResolvedValueOnce({ data: [] });
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+
+    const { result } = renderHook(
+      () => useAdminData({
+        isModerator: true,
+        userRole: "auditor",
+        activeTab: "audit",
+        auditPage: 1,
+        auditSearch: "  raid  ",
+        auditDateFrom: "",
+        auditDateTo: "",
+        auditEntityType: "",
+        auditActorId: "",
+        inviteVisibility: "active",
+        inviteSearch: "",
+      }),
+      { wrapper: createWrapper(queryClient) },
+    );
+
+    await waitFor(() => expect(result.current.auditLogQuery.isSuccess).toBe(true));
+    expect(serviceMocks.fetchAdminAuditLog).toHaveBeenCalledWith({
+      page: 1,
+      limit: 50,
+      search: "raid",
+      start_at: undefined,
+      end_at: undefined,
+      entity_type: undefined,
+      actor_id: undefined,
+    });
+    expect(queryClient.getQueryState(queryKeys.admin.auditLog(1, "raid", "", ""))).toBeDefined();
+    expect(queryClient.getQueryState(queryKeys.admin.auditLog(1, "  raid  ", "", ""))).toBeUndefined();
   });
 
   it("does not fetch unrelated admin sections without exact permissions", async () => {

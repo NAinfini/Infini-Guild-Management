@@ -131,10 +131,6 @@ apps/
 | `scripts/seed-local-d1.mjs` | Wait for local worker health and reseed D1 via `/api/dev/reseed` |
 | **durable-objects/** | |
 | `durable-objects/WebSocketDO.ts` | WebSocket Durable Object for realtime push |
-| **tests/** | |
-| `tests/events.test.ts` | Event endpoint integration tests |
-| `tests/contracts/events.test.ts` | Event API contract tests |
-| `tests/integration-smoke.ts` | Integration smoke test runner |
 
 ### apps/portal/ — Frontend (React SPA)
 
@@ -244,6 +240,7 @@ Drizzle schema is modular — each domain is a separate file in `apps/worker/db/
 | `audit.ts` | `audit_log` | Audit Log |
 | `system-test.ts` | `system_test_runs`, `system_test_artifacts` | Admin system-test registry |
 | `class-catalog.ts` | `class_catalog` | Flat class labels, colors, vector fallbacks, and custom icon keys |
+| `media-references.ts` | `media_references`, `media_reference_backfills`, `media_upload_leases` | R2 media reference and upload lease lifecycle |
 
 SQL migrations are in `apps/worker/db/migrations/`. The core schema is `0000_core_schema.sql`.
 
@@ -366,7 +363,7 @@ Tests that upload must supply real magic bytes — a `File(["image"], …,
 
 ### Write or run an end-to-end test
 
-Playwright specs live in `apps/portal/e2e/specs/{guest,member,admin}/`, one
+Playwright specs live in `apps/portal/e2e/specs/{guest,admin}/`, one
 directory per Playwright project (per session role).
 
 **What the browser talks to.** There is no Vite dev server in the loop. The
@@ -384,7 +381,7 @@ first; `globalSetup` independently compares source mtimes against the bundle
 (`support/build-freshness.ts`) and aborts with the command to run rather than
 letting a stale bundle produce a green run.
 
-**Parallelism.** `E2E_SLOTS` (default 4) wrangler instances run side by side,
+**Parallelism.** `E2E_SLOTS` (default 2) wrangler instances run side by side,
 each with its own port (`E2E_PORT_BASE + slot`, default base 8787) and its own
 `--persist-to` directory, so each Playwright worker owns a private D1 and R2.
 Tests never share mutable state across slots. `fullyParallel` stays off, so the

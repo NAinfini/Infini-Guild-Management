@@ -3,7 +3,11 @@ import { createMemberAbsenceSchema } from "@guild/shared";
 import { MemberAbsenceService } from "../MemberAbsenceService";
 
 function createDeps() {
+  const run = vi.fn().mockResolvedValue({ meta: { changes: 1 } });
+  const bind = vi.fn(() => ({ run }));
+  const prepare = vi.fn(() => ({ bind }));
   return {
+    rawDb: { prepare },
     writeAuditLog: vi.fn().mockResolvedValue(undefined),
     publishEntityChanged: vi.fn().mockResolvedValue(undefined),
     getAbsencePolicy: vi.fn().mockResolvedValue({
@@ -53,7 +57,7 @@ describe("createMemberAbsenceSchema", () => {
 describe("MemberAbsenceService.create", () => {
   it("forbids reporting absences for another member without admin.users.edit", async () => {
     const select = vi.fn().mockReturnValueOnce(targetLookup({ role: "member", deletedAt: null, username: "Beta" }));
-    const service = new MemberAbsenceService({ select } as never, createDeps());
+    const service = new MemberAbsenceService({ select } as never, createDeps() as never);
 
     const result = await service.create(
       { id: "u-1", role: "member", permissions: new Set() },
@@ -65,11 +69,9 @@ describe("MemberAbsenceService.create", () => {
   });
 
   it("creates a self-reported absence with audit log and roster push", async () => {
-    const values = vi.fn().mockResolvedValue(undefined);
     const select = vi
       .fn()
       .mockReturnValueOnce(targetLookup({ role: "member", deletedAt: null, username: "Alpha" }))
-      .mockReturnValueOnce({ from: vi.fn(() => ({ where: vi.fn().mockResolvedValue([{ count: 0 }]) })) })
       .mockReturnValueOnce({
         from: vi.fn(() => ({
           innerJoin: vi.fn(() => ({
@@ -78,7 +80,7 @@ describe("MemberAbsenceService.create", () => {
         })),
       });
     const deps = createDeps();
-    const service = new MemberAbsenceService({ select, insert: vi.fn(() => ({ values })) } as never, deps);
+    const service = new MemberAbsenceService({ select } as never, deps as never);
 
     const result = await service.create(
       { id: "u-1", role: "member", permissions: new Set() },
@@ -87,7 +89,8 @@ describe("MemberAbsenceService.create", () => {
     );
 
     expect(result.ok).toBe(true);
-    expect(values).toHaveBeenCalledWith(expect.objectContaining({ userId: "u-1", startDate: "2026-06-15", endDate: "2026-06-20" }));
+    expect(deps.rawDb.prepare).toHaveBeenCalledWith(expect.stringContaining("INSERT INTO member_absences"));
+    expect(deps.rawDb.prepare).toHaveBeenCalledWith(expect.stringContaining("COUNT(*) FROM member_absences"));
     expect(deps.writeAuditLog).toHaveBeenCalledWith(expect.objectContaining({ entityType: "member_absence", action: "create" }));
     expect(deps.publishEntityChanged).toHaveBeenCalledWith(expect.objectContaining({ entityType: "member_profile", hint: "profile_updated" }));
   });
@@ -98,7 +101,7 @@ describe("MemberAbsenceService.create", () => {
       .mockReturnValueOnce(targetLookup({ role: "member", deletedAt: null, username: "Alpha" }));
     const deps = createDeps();
     deps.getAbsencePolicy.mockResolvedValueOnce({ max_span_days: 30, max_entries_per_user: 20 });
-    const service = new MemberAbsenceService({ select } as never, deps);
+    const service = new MemberAbsenceService({ select } as never, deps as never);
 
     const result = await service.create(
       { id: "u-1", role: "member", permissions: new Set() },
@@ -112,11 +115,13 @@ describe("MemberAbsenceService.create", () => {
   it("rejects new absences once the configured per-user cap is reached", async () => {
     const select = vi
       .fn()
-      .mockReturnValueOnce(targetLookup({ role: "member", deletedAt: null, username: "Alpha" }))
-      .mockReturnValueOnce({ from: vi.fn(() => ({ where: vi.fn().mockResolvedValue([{ count: 2 }]) })) });
+      .mockReturnValueOnce(targetLookup({ role: "member", deletedAt: null, username: "Alpha" }));
     const deps = createDeps();
     deps.getAbsencePolicy.mockResolvedValueOnce({ max_span_days: 366, max_entries_per_user: 2 });
-    const service = new MemberAbsenceService({ select } as never, deps);
+    deps.rawDb.prepare.mockReturnValueOnce({
+      bind: vi.fn(() => ({ run: vi.fn().mockResolvedValue({ meta: { changes: 0 } }) })),
+    });
+    const service = new MemberAbsenceService({ select } as never, deps as never);
 
     const result = await service.create(
       { id: "u-1", role: "member", permissions: new Set() },
@@ -125,6 +130,7 @@ describe("MemberAbsenceService.create", () => {
     );
 
     expect(result).toMatchObject({ ok: false, code: "VALIDATION_ERROR" });
+    expect(select).toHaveBeenCalledTimes(1);
   });
 });
 
@@ -138,7 +144,7 @@ describe("MemberAbsenceService.remove", () => {
           where: vi.fn(() => ({ limit: vi.fn().mockResolvedValue([]) })),
         })),
       });
-    const service = new MemberAbsenceService({ select } as never, createDeps());
+    const service = new MemberAbsenceService({ select } as never, createDeps() as never);
 
     const result = await service.remove(
       { id: "u-1", role: "member", permissions: new Set() },
@@ -162,7 +168,7 @@ describe("MemberAbsenceService.remove", () => {
         })),
       });
     const deps = createDeps();
-    const service = new MemberAbsenceService({ select, delete: vi.fn(() => ({ where: whereDelete })) } as never, deps);
+    const service = new MemberAbsenceService({ select, delete: vi.fn(() => ({ where: whereDelete })) } as never, deps as never);
 
     const result = await service.remove(
       { id: "u-1", role: "member", permissions: new Set() },

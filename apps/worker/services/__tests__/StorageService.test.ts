@@ -73,7 +73,7 @@ function createDeps(firstRow: unknown = TX_ROW) {
       media: {
         put: vi.fn().mockResolvedValue({}),
         delete: vi.fn().mockResolvedValue(undefined),
-      } as never,
+      } as unknown as R2Bucket,
       writeAuditLog: vi.fn().mockResolvedValue(undefined),
       publishEntityChanged: vi.fn().mockResolvedValue(undefined),
       getStoragePolicy: vi.fn().mockResolvedValue({ images_per_item: 5 }),
@@ -334,6 +334,57 @@ describe("StorageService.applyTransaction", () => {
     expect(result.ok).toBe(true);
     const batch = rawDb.batch.mock.calls[0]?.[0] as Array<{ sql: string; binds: unknown[] }>;
     expect(batch[1]?.binds[4]).toBe("member-1");
+  });
+});
+
+describe("StorageService.deleteItem", () => {
+  const imageRows = [
+    { id: "image-1", itemId: "item-1", r2Key: "storage/items/item-1/one.webp", createdAt: ITEM.createdAt },
+    { id: "image-2", itemId: "item-1", r2Key: "storage/items/item-1/two.webp", createdAt: ITEM.createdAt },
+  ];
+
+  it("returns an explicit conflict when the immutable ledger references the item", async () => {
+    const { deps, rawDb } = createDeps({ present: 1 });
+    const service = new StorageService({ select: selectQueue([[ITEM], imageRows]) } as never, deps);
+
+    const result = await service.deleteItem("admin-1", "item-1");
+
+    expect(result).toMatchObject({ ok: false, code: "CONFLICT" });
+    expect(rawDb.batch).not.toHaveBeenCalled();
+    expect(deps.media.delete).not.toHaveBeenCalled();
+    expect(deps.writeAuditLog).not.toHaveBeenCalled();
+  });
+
+  it("maps a concurrent ledger foreign-key race to the same conflict", async () => {
+    const { deps, rawDb } = createDeps(null);
+    rawDb.batch.mockRejectedValueOnce(new Error("D1_ERROR: FOREIGN KEY constraint failed"));
+    const service = new StorageService({ select: selectQueue([[ITEM], imageRows]) } as never, deps);
+
+    const result = await service.deleteItem("admin-1", "item-1");
+
+    expect(result).toMatchObject({ ok: false, code: "CONFLICT" });
+    expect(deps.media.delete).not.toHaveBeenCalled();
+    expect(deps.writeAuditLog).not.toHaveBeenCalled();
+  });
+
+  it("deletes the item and references atomically, then leaves failed R2 cleanup to the orphan job", async () => {
+    const { deps, rawDb } = createDeps(null);
+    (deps.media.delete as unknown as ReturnType<typeof vi.fn>)
+      .mockRejectedValueOnce(new Error("R2 unavailable"))
+      .mockResolvedValueOnce(undefined);
+    const service = new StorageService({ select: selectQueue([[ITEM], imageRows]) } as never, deps);
+
+    const result = await service.deleteItem("admin-1", "item-1");
+
+    expect(result).toEqual({ ok: true, data: { ok: true } });
+    const batch = rawDb.batch.mock.calls[0]?.[0] as Array<{ sql: string; binds: unknown[] }>;
+    expect(batch).toHaveLength(2);
+    expect(batch[0]?.sql).toContain("DELETE FROM media_references");
+    expect(batch[1]?.sql).toContain("DELETE FROM storage_items");
+    expect(batch[0]?.binds).toEqual(["storage_item", "item-1"]);
+    expect(batch[1]?.binds).toEqual(["item-1"]);
+    expect(deps.media.delete).toHaveBeenCalledTimes(2);
+    expect(deps.writeAuditLog).toHaveBeenCalledOnce();
   });
 });
 
@@ -789,7 +840,7 @@ describe("StorageService.uploadImages", () => {
     expect(result).toMatchObject({ ok: false, code: "VALIDATION_ERROR" });
   });
 
-  it("removes every attempted R2 key and image UUID when a later upload fails", async () => {
+  it("removes every attempted R2 key without starting D1 when a later upload fails", async () => {
     const failure = new Error("second R2 upload failed");
     const { deps, rawDb } = createDeps();
     const put = vi.fn()
@@ -797,10 +848,8 @@ describe("StorageService.uploadImages", () => {
       .mockRejectedValueOnce(failure);
     const deleteObject = vi.fn().mockResolvedValue(undefined);
     deps.media = { put, delete: deleteObject } as never;
-    const insertValues = vi.fn().mockResolvedValue(undefined);
     const service = new StorageService({
       select: selectQueue([[ITEM], []]),
-      insert: vi.fn(() => ({ values: insertValues })),
     } as never, deps);
 
     await expect(service.uploadImages(manager().id, "item-1", [
@@ -809,7 +858,28 @@ describe("StorageService.uploadImages", () => {
     ])).rejects.toBe(failure);
 
     expect(deleteObject).toHaveBeenCalledTimes(2);
-    expect(rawDb.prepare).toHaveBeenCalledWith("DELETE FROM storage_item_images WHERE id = ?1");
-    expect(rawDb.batch).toHaveBeenCalled();
+    expect(rawDb.batch).not.toHaveBeenCalled();
+  });
+
+  it("writes all storage image rows and the complete reference set in one D1 batch", async () => {
+    const { deps, rawDb } = createDeps();
+    const service = new StorageService({
+      select: selectQueue([[ITEM], [{ id: "old", itemId: "item-1", r2Key: "old.webp", createdAt: "now" }]]),
+    } as never, deps);
+
+    const result = await service.uploadImages(manager().id, "item-1", [
+      { data: new ArrayBuffer(1), contentType: "image/png", name: "one.png" },
+    ]);
+
+    expect(result.ok).toBe(true);
+    expect(rawDb.batch).toHaveBeenCalledTimes(1);
+    const statements = rawDb.batch.mock.calls[0]?.[0] as Array<{ sql: string; binds: unknown[] }>;
+    expect(statements[0]?.sql).toContain("INSERT INTO storage_item_images");
+    expect(statements).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        sql: expect.stringContaining("INSERT OR IGNORE INTO media_references"),
+        binds: ["old.webp", "storage_item", "item-1"],
+      }),
+    ]));
   });
 });

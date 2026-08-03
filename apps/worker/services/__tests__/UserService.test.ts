@@ -4,7 +4,21 @@ import { DEFAULT_SITE_MEDIA_POLICY } from "@guild/shared";
 import { UserService, sanitizeTitleHtml } from "../UserService";
 
 function createDeps() {
+  const rawStatements: Array<{ sql: string; binds: unknown[] }> = [];
+  const rawDb = {
+    prepare: vi.fn((sql: string) => ({
+      bind: vi.fn((...binds: unknown[]) => {
+        const statement = { sql, binds };
+        rawStatements.push(statement);
+        return statement;
+      }),
+    })),
+    batch: vi.fn().mockResolvedValue([]),
+  };
   return {
+    rawDb: rawDb as never,
+    rawDbMock: rawDb,
+    rawStatements,
     writeAuditLog: vi.fn().mockResolvedValue(undefined),
     publishEntityChanged: vi.fn().mockResolvedValue(undefined),
     storeProfileImage: vi.fn(),
@@ -185,8 +199,7 @@ describe("UserService", () => {
     });
   });
 
-  it("deletes multiple profile images with one profile update", async () => {
-    const updateSet = vi.fn(() => ({ where: vi.fn().mockResolvedValue(undefined) }));
+  it("records only managed media owned by the profile when deleting images", async () => {
     const select = vi
       .fn()
       .mockReturnValueOnce({
@@ -207,9 +220,17 @@ describe("UserService", () => {
                 classes: "[]",
                 titleHtml: null,
                 bio: null,
-                images: JSON.stringify(["one.png", "two.png", "keep.png"]),
-                avatarKey: null,
-                audioKey: null,
+                images: JSON.stringify([
+                  "members/u-1/images/one.webp",
+                  "members/u-1/images/two.webp",
+                  "members/u-1/images/keep.webp",
+                  "/mock/profile.webp",
+                  "https://cdn.example.com/profile.webp",
+                  "events/evt-1/images/poster.webp",
+                  "members/u-2/images/foreign.webp",
+                ]),
+                avatarKey: "members/u-1/images/avatar.webp",
+                audioKey: "members/u-1/audio/profile.mp3",
                 videoUrls: "[]",
                 availability: null,
                 vacationStart: null,
@@ -224,7 +245,7 @@ describe("UserService", () => {
       });
     const deps = createDeps();
     deps.deleteMediaObject.mockResolvedValue(undefined);
-    const service = new UserService({ select, update: vi.fn(() => ({ set: updateSet })) } as never, deps);
+    const service = new UserService({ select } as never, deps);
 
     const result = await (service as unknown as {
       deleteProfileImages(
@@ -232,12 +253,33 @@ describe("UserService", () => {
         targetUserId: string,
         imageKeys: string[],
       ): Promise<{ ok: true; data: { ok: true; deleted: number } }>;
-    }).deleteProfileImages({ id: "u-1", role: "member", permissions: new Set() }, "u-1", ["one.png", "two.png"]);
+    }).deleteProfileImages(
+      { id: "u-1", role: "member", permissions: new Set() },
+      "u-1",
+      ["members/u-1/images/one.webp", "members/u-1/images/two.webp"],
+    );
 
     expect(result).toEqual({ ok: true, data: { ok: true, deleted: 2 } });
     expect(deps.deleteMediaObject).toHaveBeenCalledTimes(2);
-    expect(updateSet).toHaveBeenCalledTimes(1);
-    expect(updateSet).toHaveBeenCalledWith(expect.objectContaining({ images: JSON.stringify(["keep.png"]) }));
+    expect(deps.rawDbMock.batch).toHaveBeenCalledTimes(1);
+    expect(deps.rawDbMock.batch.mock.invocationCallOrder[0]).toBeLessThan(
+      deps.deleteMediaObject.mock.invocationCallOrder[0]!,
+    );
+    expect(deps.rawStatements[0]?.sql).toContain("UPDATE member_profiles");
+    expect(deps.rawStatements[0]?.binds).toContain(JSON.stringify([
+      "members/u-1/images/keep.webp",
+      "/mock/profile.webp",
+      "https://cdn.example.com/profile.webp",
+      "events/evt-1/images/poster.webp",
+      "members/u-2/images/foreign.webp",
+    ]));
+    expect(deps.rawStatements
+      .filter(({ sql }) => sql.includes("INSERT OR IGNORE INTO media_references"))
+      .map(({ binds }) => binds)).toEqual([
+      ["members/u-1/images/keep.webp", "member_profile", "u-1"],
+      ["members/u-1/images/avatar.webp", "member_profile", "u-1"],
+      ["members/u-1/audio/profile.mp3", "member_profile", "u-1"],
+    ]);
   });
 
   it("returns validation errors from profile image storage without throwing", async () => {
@@ -298,17 +340,14 @@ describe("UserService", () => {
     expect(deps.deleteMediaObject).toHaveBeenCalledWith("members/u-1/images/one.png");
   });
 
-  it("removes profile image keys and restores the profile when its update fails", async () => {
+  it("removes profile image keys when the atomic profile/reference update fails", async () => {
     const failure = new Error("profile update failed");
-    const updateWhere = vi.fn()
-      .mockRejectedValueOnce(failure)
-      .mockResolvedValue(undefined);
     const deps = createDeps();
+    deps.rawDbMock.batch.mockRejectedValueOnce(failure);
     deps.storeProfileImage.mockResolvedValue("members/u-1/images/new.png");
     deps.deleteMediaObject.mockResolvedValue(undefined);
     const service = new UserService({
       select: createProfileUploadSelect({ images: JSON.stringify(["members/u-1/images/existing.png"]) }),
-      update: vi.fn(() => ({ set: vi.fn(() => ({ where: updateWhere })) })),
     } as never, deps);
 
     await expect(service.uploadProfileImages(
@@ -318,7 +357,7 @@ describe("UserService", () => {
     )).rejects.toBe(failure);
 
     expect(deps.deleteMediaObject).toHaveBeenCalledWith("members/u-1/images/new.png");
-    expect(updateWhere).toHaveBeenCalledTimes(2);
+    expect(deps.rawDbMock.batch).toHaveBeenCalledTimes(1);
   });
 
   it.each([
@@ -338,15 +377,12 @@ describe("UserService", () => {
     },
   ])("removes a newly stored $label when its profile update fails", async ({ method, store, key, file }) => {
     const failure = new Error(`${method} update failed`);
-    const updateWhere = vi.fn()
-      .mockRejectedValueOnce(failure)
-      .mockResolvedValue(undefined);
     const deps = createDeps();
+    deps.rawDbMock.batch.mockRejectedValueOnce(failure);
     deps[store].mockResolvedValue(key);
     deps.deleteMediaObject.mockResolvedValue(undefined);
     const service = new UserService({
       select: createProfileUploadSelect({}),
-      update: vi.fn(() => ({ set: vi.fn(() => ({ where: updateWhere })) })),
     } as never, deps);
 
     await expect(service[method](
@@ -356,7 +392,7 @@ describe("UserService", () => {
     )).rejects.toBe(failure);
 
     expect(deps.deleteMediaObject).toHaveBeenCalledWith(key);
-    expect(updateWhere).toHaveBeenCalledTimes(2);
+    expect(deps.rawDbMock.batch).toHaveBeenCalledTimes(1);
   });
 
   it("rejects profile images over the configured media policy before storage", async () => {

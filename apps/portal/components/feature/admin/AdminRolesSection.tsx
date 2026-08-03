@@ -76,7 +76,7 @@ type AdminRolesSectionProps = {
   roles: AdminRole[];
   createRolePending: boolean;
   updateRolePending: boolean;
-  deleteRolePending: boolean;
+  isRoleDeletePending: (roleId: string) => boolean;
   onCreateRole: (payload: RolePayload) => Promise<boolean>;
   onUpdateRole: (roleId: string, payload: RoleUpdatePayload) => Promise<boolean>;
   onDeleteRole: (roleId: string) => Promise<boolean>;
@@ -259,7 +259,7 @@ export function AdminRolesSection({
   roles,
   createRolePending,
   updateRolePending,
-  deleteRolePending,
+  isRoleDeletePending,
   onCreateRole,
   onUpdateRole,
   onDeleteRole,
@@ -438,7 +438,8 @@ export function AdminRolesSection({
                               e.stopPropagation();
                               void handleDeleteRole(role);
                             }}
-                            loading={deleteRolePending}
+                            loading={isRoleDeletePending(role.id)}
+                            disabled={isRoleDeletePending(role.id)}
                             aria-label={t("roles.delete")}
                           >
                             <XIcon size={12} />
@@ -503,7 +504,8 @@ export function AdminRolesSection({
                           variant="default"
                           size="lg"
                           onClick={() => { void handleDeleteRole(selectedRole); }}
-                          loading={deleteRolePending}
+                          loading={isRoleDeletePending(selectedRole.id)}
+                          disabled={isRoleDeletePending(selectedRole.id)}
                           aria-label={t("roles.delete")}
                         >
                           <TrashIcon size={16} />

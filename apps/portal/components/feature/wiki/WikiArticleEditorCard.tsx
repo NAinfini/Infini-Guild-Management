@@ -48,6 +48,7 @@ type WikiArticleEditorCardProps = {
   archiveIntent: "none" | "archive" | "unarchive";
   isSaving: boolean;
   isCreating: boolean;
+  isDeleting: boolean;
   canCreateArticle: boolean;
   onArticleTitleChange: (value: string) => void;
   onArticleBodyChange: (value: string) => void;
@@ -78,6 +79,7 @@ export function WikiArticleEditorCard({
   archiveIntent,
   isSaving,
   isCreating,
+  isDeleting,
   canCreateArticle,
   onArticleTitleChange,
   onArticleBodyChange,
@@ -103,6 +105,7 @@ export function WikiArticleEditorCard({
   const pinnedPressed = selectedArticle
     ? (selectedArticle.pinned ? pinnedIntent !== "unpin" : pinnedIntent === "pin")
     : false;
+  const editorBusy = isSaving || isDeleting;
   if (!selectedArticle && !(canEdit && isCreatingArticle)) {
     return (
       <Paper withBorder className="wiki-article-editor-card">
@@ -137,7 +140,7 @@ export function WikiArticleEditorCard({
                         color="portal-brand"
                         variant={pinnedPressed ? "light" : "default"}
                         size="lg"
-                        disabled={isSaving}
+                        disabled={editorBusy}
                         aria-label={pinLabel}
                       >
                         <PinIcon size={16} />
@@ -150,7 +153,7 @@ export function WikiArticleEditorCard({
                         color="portal-brand"
                         variant={(selectedArticle?.archived_at ? archiveIntent !== "unarchive" : archiveIntent === "archive") ? "light" : "default"}
                         size="lg"
-                        disabled={isSaving}
+                        disabled={editorBusy}
                         aria-label={archiveLabel}
                       >
                         <ArchiveIcon size={16} />
@@ -166,7 +169,7 @@ export function WikiArticleEditorCard({
                         }
                         onSaveArticle();
                       }}
-                      disabled={isSaving}
+                      disabled={editorBusy}
                     >
                       {t("articleEditor.save")}
                     </Button>
@@ -187,7 +190,7 @@ export function WikiArticleEditorCard({
                   size="md"
                   leftSection={<XIcon size={16} />}
                   onClick={onExitEditor}
-                  disabled={isSaving}
+                  disabled={editorBusy}
                 >
                   {t("editor.exit")}
                 </Button>
@@ -199,7 +202,8 @@ export function WikiArticleEditorCard({
                       size="lg"
                       className="wiki-article-editor-actions__danger"
                       onClick={onDeleteArticle}
-                      disabled={isSaving}
+                      loading={isDeleting}
+                      disabled={editorBusy}
                       aria-label={t("common:action.delete")}
                     >
                       <TrashIcon size={16} />
@@ -225,7 +229,7 @@ export function WikiArticleEditorCard({
                 <TextInput
                   label={t("articleEditor.titleField")}
                   value={articleTitle}
-                  disabled={!canEdit}
+                  disabled={!canEdit || isDeleting}
                   onChange={(event) => onArticleTitleChange(event.currentTarget.value)}
                   placeholder={t("articleEditor.titleField")}
                   aria-label={t("aria.articleTitle")}
@@ -235,7 +239,7 @@ export function WikiArticleEditorCard({
                   w={200}
                   label={t("articleEditor.category")}
                   value={articleCategoryId || null}
-                  disabled={!canEdit}
+                  disabled={!canEdit || isDeleting}
                   data={categoryOptions}
                   placeholder={t("articleEditor.category")}
                   aria-label={t("aria.articleCategory")}
@@ -250,7 +254,7 @@ export function WikiArticleEditorCard({
                 value={articleBody}
                 onChange={onArticleBodyChange}
                 placeholder={t("articleEditor.body")}
-                editable={canEdit}
+                editable={canEdit && !isDeleting}
                 ariaLabel={t("articleEditor.body")}
                 onImageUpload={onImageUpload}
                 labels={editorLabels}

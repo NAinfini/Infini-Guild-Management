@@ -34,6 +34,15 @@
   border-color: color-mix(in srgb, var(--status-success) 40%, transparent);
 }
 
+.system-health-tile--configured {
+  border-color: color-mix(in srgb, var(--status-warning) 25%, transparent);
+  background: color-mix(in srgb, var(--status-warning) 3%, var(--surface-base));
+}
+
+.system-health-tile--configured:hover {
+  border-color: color-mix(in srgb, var(--status-warning) 45%, transparent);
+}
+
 .system-health-tile--error {
   border-color: color-mix(in srgb, var(--status-danger) 25%, transparent);
   background: color-mix(in srgb, var(--status-danger) 3%, var(--surface-base));

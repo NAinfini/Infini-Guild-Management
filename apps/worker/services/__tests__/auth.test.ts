@@ -27,10 +27,13 @@ vi.mock("hono/cookie", () => ({
 }));
 
 const {
+  createPasswordHash,
   destroySessionById,
+  passwordHashNeedsUpgrade,
   resolveSession,
   SESSION_COOKIE_NAME,
   SESSION_MODE_COOKIE_NAME,
+  verifyPassword,
 } = await import("../auth");
 
 /* resolveSession 会用 MAX_ABSOLUTE_SESSION_MS（90 天）判定会话是否超过绝对寿命。
@@ -172,5 +175,24 @@ describe("destroySessionById", () => {
     expect(where).toHaveBeenCalledWith({ value: "stored-session-id" });
     expect(mocks.getCookie).not.toHaveBeenCalled();
     expect(mocks.deleteCookie).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe("password hashing", () => {
+  it("creates a self-describing current-strength hash", async () => {
+    const record = await createPasswordHash("correct horse battery staple");
+
+    expect(record.passwordHash).toMatch(/^pbkdf2-sha256\$600000\$[A-Za-z0-9+/]+=*$/);
+    expect(passwordHashNeedsUpgrade(record.passwordHash)).toBe(false);
+    await expect(verifyPassword("correct horse battery staple", record.salt, record.passwordHash)).resolves.toBe(true);
+    await expect(verifyPassword("wrong password", record.salt, record.passwordHash)).resolves.toBe(false);
+  });
+
+  it("verifies legacy 10,000-iteration hashes and marks them for upgrade", async () => {
+    const legacyHash = "d+gPm++1wHgP08FbNF4/XqcVr71FAp5Ti7pmoiY//S4=";
+    const zeroSalt = "AAAAAAAAAAAAAAAAAAAAAA==";
+
+    await expect(verifyPassword("correct horse battery staple", zeroSalt, legacyHash)).resolves.toBe(true);
+    expect(passwordHashNeedsUpgrade(legacyHash)).toBe(true);
   });
 });

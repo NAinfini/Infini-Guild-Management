@@ -22,6 +22,8 @@ import { queryKeys } from "../../api/query-keys";
 import { searchGlobal, type SearchResult, type SearchResultType } from "../../services/SearchService";
 import { buildEventWorkbenchSearch } from "../../utils/event-navigation";
 import styles from "./CmdKSearch.module.css";
+import { userScopedStorageKey } from "../../session-storage";
+import { useAuthStore } from "../../stores/auth";
 import {
   CalendarOutlined,
   FileSearchOutlined,
@@ -77,8 +79,9 @@ export function CmdKSearch({ asIcon = false }: { asIcon?: boolean }) {
   const { t } = useTranslation("common");
   const [open, openHandlers] = useDisclosure(false);
   const { search: query, setSearch: setQuery, debouncedSearch: debouncedQuery } = useDebouncedSearch();
+  const currentUserId = useAuthStore((state) => state.user?.id);
   const [recentSearches, setRecentSearches] = useLocalStorage<string[]>({
-    key: RECENT_SEARCHES_KEY,
+    key: userScopedStorageKey(RECENT_SEARCHES_KEY, currentUserId),
     defaultValue: [],
   });
   const [activeIndex, setActiveIndex] = useState(0);

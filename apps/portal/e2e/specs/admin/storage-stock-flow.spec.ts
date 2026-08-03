@@ -1,13 +1,13 @@
 import { SYSTEM_TEST_CONTENT_MARKER } from "@guild/shared/config/system-test";
 import { expect, readJson, test } from "../../support/test";
-import { confirmDialog, expectNoDialog, readInteger, selectOption, topDialog } from "../../support/ui";
+import { expectNoDialog, readInteger, selectOption, topDialog } from "../../support/ui";
 
 /*
- * 整条库存流水线：新建物品 → 存入 → 取出 → 删除。
+ * 整条库存变更流水线：新建物品 → 存入 → 取出。
  *
  * 只操作本次跑出来的一次性物品，绝不碰种子数据：既有物品被流水引用，
- * 改了没有任何回滚路径。物品本身由 POST /api/storage/items 登记进清理注册表，
- * 删除时 storage_transactions.item_id 级联，流水一并消失，收尾指纹才归零。
+ * 改了没有任何回滚路径。物品本身由 POST /api/storage/items 登记进清理注册表；
+ * 整轮精确补偿会先删流水，再按已登记主键删除物品，收尾指纹必须归零。
  *
  * 每一步都要求三件事同时成立：请求真的发出去了、UI 数字变了、服务端数据也变了。
  * 少任何一件都算这个控件没通——按钮可能没绑事件，也可能只改了前端状态。
@@ -84,23 +84,4 @@ test("库存全流程：存入加库存、取出减库存，UI 与服务端必�
   ) as { data: { type: string; quantity_delta: number }[] };
   const deltas = ledger.data.map(({ type, quantity_delta }) => `${type}:${quantity_delta}`).sort();
   expect(deltas, "存入和取出各应留下一条方向正确的流水").toEqual(["distribute:-3", "intake:10"]);
-
-  // ---- 删除物品：控件本身要验证，同时流水随级联一起消失 ----
-  await card.getByRole("button", { name: "Edit", exact: true }).click();
-  const editDrawer = topDialog(page);
-  const deleted = flow.click(
-    editDrawer.getByRole("button", { name: "Delete Item", exact: true }),
-    { method: "DELETE", path: /^\/api\/storage\/items\/[^/]+$/ },
-  );
-  // 删除走的是确认弹窗，不确认就什么都不会发生。
-  // 确认框按标题取：它叠在编辑抽屉上面，但 DOM 顺序不保证，用 .last() 会点到抽屉里的按钮。
-  await (await confirmDialog(page, "Delete this item?"))
-    .getByRole("button", { name: "Delete", exact: true }).click();
-  await deleted;
-
-  await expect(card).toHaveCount(0);
-  expect(
-    (await api.get(`/api/storage/items/${created.id}`)).status(),
-    "删掉之后再查这件物品必须是 404",
-  ).toBe(404);
 });

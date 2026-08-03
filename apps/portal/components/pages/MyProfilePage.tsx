@@ -232,6 +232,7 @@ export function MyProfilePage() {
                   onRemoveAvatar={() => avatarDeleteMutation.mutate()}
                   onReorderImages={form.setImageList}
                   onRemoveImage={mutations.removeImage}
+                  removingImageKeys={mutations.removingImageKeys}
                   onUploadImages={() => {
                     void mutations.uploadImages();
                   }}

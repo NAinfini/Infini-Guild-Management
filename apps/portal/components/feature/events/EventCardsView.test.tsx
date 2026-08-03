@@ -115,8 +115,7 @@ function renderCardsView(
         eventFlags={new Map()}
         eventMembersMap={new Map([[event.id, members]])}
         allUsers={members}
-        joinPending={false}
-        leavePending={false}
+        participantPendingEventIds={new Set()}
         onResetFilters={() => {}}
         onCreateEvent={() => {}}
         onJoinEvent={() => {}}
@@ -154,6 +153,61 @@ describe("EventCardsView", () => {
     expect(progress).toHaveAttribute("aria-valuemax", "10");
   });
 
+  it.each(["light", "dark"] as const)(
+    "only disables the signup action for the event with a pending participant mutation in the %s theme",
+    (colorScheme) => {
+      const firstEvent = createEvent({
+        id: "event-1",
+        title: "Weekly Mission Alpha",
+        end_at: "2099-05-07T18:11:00.000Z",
+      });
+      const secondEvent = createEvent({
+        id: "event-2",
+        title: "Weekly Mission Beta",
+        end_at: "2099-05-07T18:11:00.000Z",
+      });
+
+      render(
+        <MantineProvider forceColorScheme={colorScheme}>
+          <EventCardsView
+            events={[firstEvent, secondEvent]}
+            cardsEmptyDescription="No events"
+            canManage={false}
+            canInteract
+            currentUserId="user-99"
+            eventType={undefined}
+            archivedOnly={false}
+            pinnedOnly={false}
+            lockedOnly={false}
+            focusedEventId={null}
+            eventFlags={new Map()}
+            eventMembersMap={new Map()}
+            allUsers={[]}
+            participantPendingEventIds={new Set([firstEvent.id])}
+            onResetFilters={() => {}}
+            onCreateEvent={() => {}}
+            onJoinEvent={() => {}}
+            onLeaveEvent={() => {}}
+            onCopyMentions={() => {}}
+            onEditEvent={() => {}}
+            onDuplicateEvent={() => {}}
+            onTogglePinEvent={() => {}}
+            onToggleLockEvent={() => {}}
+            onArchiveEvent={() => {}}
+            onUnarchiveEvent={() => {}}
+            onDeleteEvent={() => {}}
+            onAddParticipant={() => {}}
+            onRemoveParticipant={() => {}}
+          />
+        </MantineProvider>,
+      );
+
+      const signupButtons = screen.getAllByRole("button", { name: /button\.join/i });
+      expect(signupButtons[0]).toBeDisabled();
+      expect(signupButtons[1]).toBeEnabled();
+    },
+  );
+
   it("offers one context-aware next action in an empty result", async () => {
     const onResetFilters = vi.fn();
     const onCreateEvent = vi.fn();
@@ -169,8 +223,7 @@ describe("EventCardsView", () => {
       eventFlags: new Map<string, "NEW" | "UPDATED">(),
       eventMembersMap: new Map(),
       allUsers: [],
-      joinPending: false,
-      leavePending: false,
+      participantPendingEventIds: new Set<string>(),
       onResetFilters,
       onCreateEvent,
       onJoinEvent: vi.fn(),
@@ -361,7 +414,7 @@ describe("EventCardsView", () => {
     expect(screen.getByRole("button", { name: /button\.leave/i })).toBeDisabled();
   });
 
-  it("shows poll without card voting controls", () => {
+  it("routes a poll card through one clear voting action", () => {
     const onVotePoll = vi.fn();
     renderCardsView(0, {
       eventOverrides: {
@@ -386,10 +439,9 @@ describe("EventCardsView", () => {
 
     expect(screen.queryByRole("checkbox", { name: /Raid/i })).not.toBeInTheDocument();
     expect(screen.queryByRole("checkbox", { name: /Dungeon/i })).not.toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: /poll\.vote/i })).not.toBeInTheDocument();
-    /* 报名按钮在，但按不了——投票活动没有报名这回事，理由挂在按钮的 Tooltip 上。
-       整个页脚不渲染的话，同一排卡里投票卡会比别人矮一截。 */
-    expect(screen.getByRole("button", { name: /button\.join/i })).toBeDisabled();
+    expect(screen.getByRole("button", { name: /poll\.vote/i })).toBeEnabled();
+    /* 卡片只负责把人带到详情里投票，不在紧凑卡片中复制选项，也不显示不存在的报名入口。 */
+    expect(screen.queryByRole("button", { name: /button\.join/i })).not.toBeInTheDocument();
     expect(onVotePoll).not.toHaveBeenCalled();
   });
 });

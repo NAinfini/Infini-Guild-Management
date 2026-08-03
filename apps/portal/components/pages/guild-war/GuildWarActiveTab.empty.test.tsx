@@ -3,7 +3,7 @@ import { MantineProvider } from "@mantine/core";
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
-import { GuildWarActiveEmptyState } from "./GuildWarActiveTab";
+import { GuildWarActiveEmptyState, GuildWarTeamConflictAlert } from "./GuildWarActiveTab";
 
 vi.mock("react-i18next", () => ({
   useTranslation: () => ({
@@ -46,5 +46,43 @@ describe("GuildWarActiveEmptyState", () => {
     expect(screen.getByText("active.empty.viewerDescription")).toBeInTheDocument();
     await userEvent.click(screen.getByRole("button", { name: "active.empty.historyAction" }));
     expect(onViewHistory).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("GuildWarTeamConflictAlert", () => {
+  it("offers both conflict recovery choices", async () => {
+    const onAcceptRemote = vi.fn();
+    const onRetryLocal = vi.fn();
+
+    render(
+      <MantineProvider>
+        <GuildWarTeamConflictAlert
+          pending={false}
+          onAcceptRemote={onAcceptRemote}
+          onRetryLocal={onRetryLocal}
+        />
+      </MantineProvider>,
+    );
+
+    expect(screen.getByText("active.teamConflict.description")).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "active.teamConflict.useRemote" }));
+    await userEvent.click(screen.getByRole("button", { name: "active.teamConflict.keepLocal" }));
+    expect(onAcceptRemote).toHaveBeenCalledTimes(1);
+    expect(onRetryLocal).toHaveBeenCalledTimes(1);
+  });
+
+  it("disables conflict recovery while a team save is pending", () => {
+    render(
+      <MantineProvider>
+        <GuildWarTeamConflictAlert
+          pending
+          onAcceptRemote={vi.fn()}
+          onRetryLocal={vi.fn()}
+        />
+      </MantineProvider>,
+    );
+
+    expect(screen.getByRole("button", { name: "active.teamConflict.useRemote" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "active.teamConflict.keepLocal" })).toBeDisabled();
   });
 });

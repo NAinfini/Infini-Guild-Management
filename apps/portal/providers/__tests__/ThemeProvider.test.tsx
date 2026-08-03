@@ -36,28 +36,7 @@ describe("PortalThemeProvider", () => {
 
     expect(document.documentElement.dataset.theme).toBe("dark");
     expect(document.documentElement.dataset.accent).toBe("indigo");
-  });
-
-  it("no longer writes the legacy .dark class", () => {
-    /* Task 7 迁完最后一批 .dark 选择器后兼容层已删除，
-     * data-theme 成为唯一的模式信号。 */
-    usePreferencesStore.getState().setThemeMode("dark");
-
-    render(<PortalThemeProvider><Probe /></PortalThemeProvider>);
-
-    expect(document.documentElement.dataset.theme).toBe("dark");
     expect(document.documentElement.classList.contains("dark")).toBe(false);
-  });
-
-  it("reads its state from the preferences store, not from localStorage directly", () => {
-    /* 旧实现读的是 "theme-mode" 这个键。留着它不再有任何效果，
-     * 说明 ThemeProvider 已经不再自己碰 localStorage。 */
-    localStorage.setItem("theme-mode", "dark");
-    usePreferencesStore.getState().setThemeMode("light");
-
-    render(<PortalThemeProvider><Probe /></PortalThemeProvider>);
-
-    expect(document.documentElement.dataset.theme).toBe("light");
   });
 
   it("routes setTheme through the store so the choice survives a remount", () => {

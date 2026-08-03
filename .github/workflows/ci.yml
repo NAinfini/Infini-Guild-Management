@@ -33,7 +33,9 @@ jobs:
 
       - run: node scripts/check-no-secrets.mjs --ci
 
-      - run: node --test scripts/check-no-secrets.test.mjs
+      - run: pnpm audit --prod --audit-level=moderate
+
+      - run: pnpm config:check -- --env=production
 
       - run: pnpm typecheck
 
@@ -43,12 +45,8 @@ jobs:
 
       - run: pnpm build
 
-      # wrangler.jsonc 是 gitignore 掉的（带部署身份），CI 里必须先从 example 生成一份，
-      # 否则 build:worker 找不到配置。setup:local 是幂等的，本地已有文件时不会覆盖。
-      - run: pnpm setup:local
-
-      # dry-run 不联网部署，只做打包 + 绑定校验：能抓到 compatibility_date、
-      # Durable Object 迁移、assets 目录这类只有真正打包才会暴露的问题。
+      # 对已提交的 production 配置做 dry-run，不联网部署；这能抓到环境专属的
+      # D1/R2/DO、assets 和 observability 配置错误。
       - run: pnpm build:worker
         env:
           WRANGLER_SEND_METRICS: 'false'
@@ -75,8 +73,8 @@ jobs:
       # 一起拖下来是白花两分钟。
       - run: pnpm exec playwright install --with-deps chromium
 
-      # 同 quality：wrangler.jsonc 不在仓库里，e2e 的 webServer 要拿它起 worker。
-      # 顺带生成 .dev.vars 里的 SIGNING_SECRET，没有它登不上，会话建不起来。
+      # wrangler.jsonc 已纳入版本控制；setup:local 这里只生成被忽略的本地
+      # .dev.vars/SIGNING_SECRET，供 E2E 的 development Worker 使用。
       - run: pnpm setup:local
 
       # test:e2e = pnpm build && playwright test。产物必须由这一步构建：

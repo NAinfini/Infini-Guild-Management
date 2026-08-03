@@ -39,6 +39,12 @@ const env = {
   SIGNING_SECRET: "test-secret",
 };
 
+const productionDisabledEnv = {
+  ...env,
+  ENVIRONMENT: "production",
+  ENABLE_PRODUCTION_SYSTEM_TESTS: "false",
+};
+
 beforeEach(() => {
   mocks.requirePermission.mockReset();
   mocks.writeAuditLog.mockReset();
@@ -52,6 +58,22 @@ beforeEach(() => {
 });
 
 describe("admin system test audit route", () => {
+  it.each([
+    "/status/system-test-runs",
+    "/status/system-test-runs/run-disabled/cleanup",
+    "/status/system-test-runs/run-disabled/finalize",
+    "/status/system-test-audit",
+  ])("does not expose %s when production system tests are disabled", async (path) => {
+    const { adminRoutes } = await import("./admin");
+
+    const result = await adminRoutes.request(path, { method: "POST" }, productionDisabledEnv);
+
+    expect(result.status).toBe(404);
+    expect(mocks.requirePermission).not.toHaveBeenCalled();
+    expect(mocks.createRun).not.toHaveBeenCalled();
+    expect(mocks.finalizeRun).not.toHaveBeenCalled();
+  });
+
   it("returns a private cleanup run UID and a separate public fixture UID", async () => {
     const { adminRoutes } = await import("./admin");
     mocks.requirePermission.mockResolvedValueOnce({ id: "admin-1" });

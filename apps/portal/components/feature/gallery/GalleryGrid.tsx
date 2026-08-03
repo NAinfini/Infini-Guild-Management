@@ -1,5 +1,6 @@
 import { ActionIcon, Button, Checkbox, Group, Paper, Skeleton, Stack, Text, Tooltip } from "@mantine/core";
 import { TrashIcon, PlayIcon } from "@portal/components/icons";
+import { useKeyedPending } from "@portal/hooks/useKeyedPending";
 import { useTranslation } from "react-i18next";
 import { EmptyState } from "../../shared/EmptyState";
 import type { GalleryItem } from "./shared";
@@ -11,7 +12,6 @@ type GalleryGridProps = {
   isExternalView: boolean;
   canModerate: boolean;
   selectedIds: string[];
-  deletePending: boolean;
   emptyTitle: string;
   emptyDescription?: string;
   errorTitle: string;
@@ -26,7 +26,7 @@ type GalleryGridProps = {
   onResetFilters: () => void;
   onAddMedia: () => void;
   onToggleSelect: (id: string) => void;
-  onDelete: (id: string) => void;
+  onDelete: (id: string) => Promise<boolean>;
   onOpenLightbox: (id: string) => void;
   resolveImageUrl: (key: string) => string;
   formatDateTime: (iso: string) => string;
@@ -40,7 +40,6 @@ export function GalleryGrid({
   isExternalView,
   canModerate,
   selectedIds,
-  deletePending,
   emptyTitle,
   emptyDescription,
   errorTitle,
@@ -62,6 +61,7 @@ export function GalleryGrid({
   actionDeleteLabel,
 }: GalleryGridProps) {
   const { t } = useTranslation("gallery");
+  const { pendingKeys, runPending } = useKeyedPending();
   const getOpenLabel = (item: GalleryItem) => {
     const name = item.caption ?? item.id;
     if (isExternalView) {
@@ -188,9 +188,9 @@ export function GalleryGrid({
                         aria-label={actionDeleteLabel}
                         onClick={(e: React.MouseEvent) => {
                           e.stopPropagation();
-                          onDelete(item.id);
+                          void runPending(`delete:gallery:${item.id}`, () => onDelete(item.id));
                         }}
-                        loading={deletePending}
+                        loading={pendingKeys.has(`delete:gallery:${item.id}`)}
                       >
                         <TrashIcon size={14} />
                       </ActionIcon>

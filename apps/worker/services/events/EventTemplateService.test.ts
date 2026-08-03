@@ -42,7 +42,7 @@ describe("EventTemplateService system-test cleanup registration", () => {
     await service.deleteTemplate("admin-1", template.id, template);
 
     const firstBatch = rawDb.batch.mock.calls[0]?.[0] as Array<{ sql: string; bindings: unknown[] }>;
-    expect(firstBatch).toHaveLength(7);
+    expect(firstBatch).toHaveLength(8);
     expect(firstBatch[0]?.sql).toContain("SELECT id FROM system_test_runs");
     expect(firstBatch[1]?.sql).toContain("SELECT ?1, 'event', id FROM events");
     expect(firstBatch[2]?.sql).toContain("UPDATE events SET series_id = NULL");
@@ -51,6 +51,93 @@ describe("EventTemplateService system-test cleanup registration", () => {
     // 模板私有的一次性组没有指回模板的外键，连它的成员一起显式删，否则只会攒孤儿标签。
     expect(firstBatch[4]?.sql).toContain("DELETE FROM class_tag_members");
     expect(firstBatch[5]?.sql).toContain("DELETE FROM class_tags");
-    expect(firstBatch[6]?.sql).toContain("DELETE FROM recurring_templates");
+    expect(firstBatch[6]?.sql).toContain("DELETE FROM media_references");
+    expect(firstBatch[7]?.sql).toContain("DELETE FROM recurring_templates");
+  });
+});
+
+describe("EventTemplateService media reference atomicity", () => {
+  function createRawDb() {
+    const statements: Array<{ sql: string; bindings: unknown[] }> = [];
+    const rawDb = {
+      prepare: (sql: string) => ({
+        bind: (...bindings: unknown[]) => {
+          const statement = { sql, bindings, run: async () => ({ meta: { changes: 1 } }) };
+          statements.push(statement);
+          return statement;
+        },
+      }),
+      batch: vi.fn().mockResolvedValue([]),
+    };
+    return { rawDb, statements };
+  }
+
+  const template: TemplateRow = {
+    id: "template-1",
+    type: "social",
+    title: "Test",
+    description: null,
+    startTime: "10:00",
+    durationMinutes: 60,
+    capacity: null,
+    recurrenceRule: JSON.stringify({ frequency: "daily", interval: 1 }),
+    visibilityOffsetMinutes: 0,
+    autoArchive: false,
+    attachments: JSON.stringify(["events/template-1/images/current.webp"]),
+    paused: false,
+    createdBy: "admin-1",
+    lastGeneratedDate: null,
+    generationCount: 0,
+    createdAt: "2026-05-04T00:00:00.000Z",
+    updatedAt: "2026-05-04T00:00:00.000Z",
+  };
+
+  it("creates template content and media refs in one batch", async () => {
+    const { rawDb, statements } = createRawDb();
+    const getTemplateById = vi.fn().mockResolvedValue(template);
+    const service = new EventTemplateService({} as never, rawDb as never, {
+      getTemplateById,
+      materializeRecurringSeries: vi.fn(),
+      writeAuditLog: vi.fn().mockResolvedValue(undefined),
+      createId: () => "template-1",
+      now: () => "2026-05-04T00:00:00.000Z",
+    });
+
+    await service.createTemplate("admin-1", {
+      type: "social",
+      title: "Test",
+      start_time: "10:00",
+      recurrence_rule: { frequency: "daily", interval: 1 },
+      attachments: ["events/template-1/images/current.webp"],
+    });
+
+    expect(rawDb.batch).toHaveBeenCalledTimes(1);
+    expect(statements.map(({ sql }) => sql)).toEqual(expect.arrayContaining([
+      expect.stringContaining("INSERT INTO recurring_templates"),
+      expect.stringContaining("DELETE FROM media_references"),
+      expect.stringContaining("INSERT OR IGNORE INTO media_references"),
+    ]));
+  });
+
+  it("updates template content and media refs in one batch", async () => {
+    const { rawDb, statements } = createRawDb();
+    const updated = { ...template, attachments: JSON.stringify(["events/template-1/images/next.webp"]) };
+    const service = new EventTemplateService({} as never, rawDb as never, {
+      getTemplateById: vi.fn().mockResolvedValue(updated),
+      materializeRecurringSeries: vi.fn(),
+      writeAuditLog: vi.fn().mockResolvedValue(undefined),
+      now: () => "2026-05-05T00:00:00.000Z",
+    });
+
+    await service.updateTemplate("admin-1", template.id, template, {
+      attachments: ["events/template-1/images/next.webp"],
+    });
+
+    expect(rawDb.batch).toHaveBeenCalledTimes(1);
+    expect(statements.map(({ sql }) => sql)).toEqual(expect.arrayContaining([
+      expect.stringContaining("UPDATE recurring_templates"),
+      expect.stringContaining("DELETE FROM media_references"),
+      expect.stringContaining("INSERT OR IGNORE INTO media_references"),
+    ]));
   });
 });

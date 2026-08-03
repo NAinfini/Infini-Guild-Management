@@ -4,6 +4,7 @@ import { act, renderHook, waitFor } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { useAnnouncementsController } from "./useAnnouncementsController";
+import { userScopedStorageKey } from "../session-storage";
 
 const serviceMocks = vi.hoisted(() => ({
   archiveAnnouncement: vi.fn(),
@@ -19,6 +20,11 @@ const navigateMock = vi.hoisted(() => vi.fn());
 const routeSearchMock = vi.hoisted(() => ({
   announcementId: undefined as string | undefined,
   selection: undefined as "none" | undefined,
+}));
+const authState = vi.hoisted(() => ({ user: { id: "user-1" } as { id: string } | null }));
+
+vi.mock("../stores/auth", () => ({
+  useAuthStore: (selector: (state: typeof authState) => unknown) => selector(authState),
 }));
 
 vi.mock("@tanstack/react-router", () => ({
@@ -85,6 +91,8 @@ describe("useAnnouncementsController", () => {
   };
 
   beforeEach(() => {
+    localStorage.clear();
+    authState.user = { id: "user-1" };
     navigateMock.mockReset();
     routeSearchMock.announcementId = undefined;
     routeSearchMock.selection = undefined;
@@ -123,6 +131,90 @@ describe("useAnnouncementsController", () => {
 
     await waitFor(() => expect(serviceMocks.createAnnouncement).toHaveBeenCalled());
     expect(serviceMocks.createAnnouncement.mock.calls[0]?.[0]).not.toHaveProperty("expires_at");
+  });
+
+  it("sends only one create request when publish is triggered twice", async () => {
+    let resolveCreate!: (value: { id: string }) => void;
+    serviceMocks.createAnnouncement.mockImplementation(() => new Promise((resolve) => {
+      resolveCreate = resolve;
+    }));
+    const { result } = renderHook(() => useAnnouncementsController(), { wrapper: createWrapper() });
+
+    act(() => {
+      result.current.handleCreateByStatus();
+    });
+    await waitFor(() => expect(result.current.isCreating).toBe(true));
+    act(() => {
+      result.current.setTitle("Maintenance");
+      result.current.setBodyJson('{"type":"doc","content":[{"type":"paragraph","content":[{"type":"text","text":"Planned work"}]}]}');
+    });
+    await waitFor(() => expect(result.current.isPublishReady).toBe(true));
+
+    act(() => {
+      result.current.handleFinish("none");
+      result.current.handleFinish("none");
+    });
+
+    await waitFor(() => expect(serviceMocks.createAnnouncement).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(result.current.savePending).toBe(true));
+
+    resolveCreate({ id: "announcement-1" });
+    await waitFor(() => expect(result.current.savePending).toBe(false));
+  });
+
+  it("reloads announcement last-seen state from the active user's scoped storage", async () => {
+    const firstSeenAt = "2026-01-01T00:00:00.000Z";
+    const secondSeenAt = "2026-02-01T00:00:00.000Z";
+    localStorage.setItem(
+      userScopedStorageKey("portal:last_seen", "user-1"),
+      JSON.stringify({ announcements: { lastSeenAt: firstSeenAt } }),
+    );
+    localStorage.setItem(
+      userScopedStorageKey("portal:last_seen", "user-2"),
+      JSON.stringify({ announcements: { lastSeenAt: secondSeenAt } }),
+    );
+    localStorage.setItem(
+      "portal:last_seen",
+      JSON.stringify({ announcements: { lastSeenAt: "2099-01-01T00:00:00.000Z" } }),
+    );
+    const { result, rerender } = renderHook(() => useAnnouncementsController(), { wrapper: createWrapper() });
+
+    await waitFor(() => expect(result.current.announcementsLastSeenAt).toBe(firstSeenAt));
+    authState.user = { id: "user-2" };
+    rerender();
+
+    await waitFor(() => expect(result.current.announcementsLastSeenAt).toBe(secondSeenAt));
+  });
+
+  it("exits create mode when browser history restores a selected announcement", async () => {
+    const selected = {
+      id: "announcement-history",
+      title: "History selection",
+      body_json: "{}",
+      pinned: false,
+      status: "published" as const,
+      publish_at: null,
+      expires_at: null,
+      archived_at: null,
+      created_by: "user-1",
+      updated_by: null,
+      created_at: "2026-01-01T00:00:00.000Z",
+      updated_at: "2026-01-01T00:00:00.000Z",
+    };
+    serviceMocks.fetchAnnouncement.mockResolvedValue(selected);
+    const { result, rerender } = renderHook(() => useAnnouncementsController(), { wrapper: createWrapper() });
+
+    act(() => {
+      result.current.handleCreateByStatus();
+    });
+    await waitFor(() => expect(result.current.isCreating).toBe(true));
+
+    routeSearchMock.selection = undefined;
+    routeSearchMock.announcementId = selected.id;
+    rerender();
+
+    await waitFor(() => expect(result.current.isCreating).toBe(false));
+    expect(result.current.selectedId).toBe(selected.id);
   });
 
   it("stages create-mode images without creating a ghost announcement", async () => {

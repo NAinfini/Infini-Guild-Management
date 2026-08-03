@@ -91,9 +91,12 @@ test("运维页签上的健康点：进过状态页签之前一直是「检查�
   const status = await readJson(await api.get("/api/admin/status"), "读取系统状态") as {
     db: string; r2: string; ws: string; crons: string;
   };
-  const expected = [status.db, status.r2, status.ws, status.crons].every((value) => value === "ok")
+  const values = [status.db, status.r2, status.ws, status.crons];
+  const expected = values.every((value) => value === "ok")
     ? "All systems normal"
-    : "Degraded";
+    : values.every((value) => value === "ok" || value === "configured")
+      ? "Configured; runtime unverified"
+      : "Degraded";
 
   const dot = page.locator(".admin-page__nav-dot");
   await expect(dot).toHaveCount(1);

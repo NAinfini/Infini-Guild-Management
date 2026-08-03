@@ -8,6 +8,7 @@ import type { Bindings } from "../index";
 import { getRequestUser, requirePermission } from "../middleware/rbac";
 import { GalleryService } from "../services/GalleryService";
 import { validateUploadBytes } from "../services/media";
+import { buildGalleryUserPrefix, parseMediaKey } from "../services/media-keys";
 import { buildError, collectFiles, getDb, handleResult, parseJsonBody, requireSessionUser, safeFormData, serveR2Object } from "./_shared";
 import { hasMediaQuotaCapacity, withMedia } from "./service-factory";
 
@@ -47,8 +48,22 @@ function parseDayEndIso(value: string | undefined): string | undefined {
 galleryRoutes.get("/image", async (c) => {
   const key = c.req.query("key");
   if (!key) return buildError(c, "VALIDATION_ERROR", "key query parameter required");
-  if (!key.startsWith("gallery/")) return buildError(c, "FORBIDDEN", "Invalid gallery media key");
-
+  const parsedKey = parseMediaKey(key);
+  if (parsedKey?.kind !== "gallery_image" || !parsedKey.entityId || !parsedKey.contentType) {
+    return buildError(c, "FORBIDDEN", "Invalid gallery media key");
+  }
+  const referenced = await (c.env as Bindings).DB.prepare(`
+    SELECT 1 AS present
+    FROM media_references ref
+    INNER JOIN gallery_items item ON item.id = ref.entity_id
+    WHERE ref.media_key = ?1
+      AND ref.entity_type = 'gallery_item'
+      AND ref.entity_id = ?2
+      AND item.type = 'image'
+      AND item.url = ?1
+    LIMIT 1
+  `).bind(key, parsedKey.entityId).first<{ present: number }>();
+  if (!referenced) return buildError(c, "NOT_FOUND", "Gallery media not found");
   return serveR2Object(c, key, "Gallery media not found");
 });
 
@@ -95,7 +110,7 @@ galleryRoutes.post("/images", async (c) => {
   }
   if (!await hasMediaQuotaCapacity(
     c,
-    `gallery/images/${sessionUser.id}/`,
+    buildGalleryUserPrefix(sessionUser.id),
     files.length,
     mediaPolicy.quotas.gallery,
   )) {

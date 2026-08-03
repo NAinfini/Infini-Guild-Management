@@ -136,6 +136,16 @@ export function useEventsEditorController({ attachmentSnapshot }: UseEventsEdito
     setEditorCapacity(value);
   }, []);
 
+  const handleEditorPinnedChange = useCallback((value: boolean) => {
+    setEditorTouched(true);
+    setEditorPinned(value);
+  }, []);
+
+  const handleEditorSignupLockedChange = useCallback((value: boolean) => {
+    setEditorTouched(true);
+    setEditorSignupLocked(value);
+  }, []);
+
   const handleEditorAutoArchiveChange = useCallback((value: boolean) => {
     setEditorTouched(true);
     setEditorAutoArchive(value);
@@ -320,8 +330,8 @@ export function useEventsEditorController({ attachmentSnapshot }: UseEventsEdito
     setEditorEndAt: handleEditorEndAtChange,
     setEditorCapacity: handleEditorCapacityChange,
     markEditorTouched,
-    setEditorPinned,
-    setEditorSignupLocked,
+    setEditorPinned: handleEditorPinnedChange,
+    setEditorSignupLocked: handleEditorSignupLockedChange,
     setEditorAutoArchive: handleEditorAutoArchiveChange,
     setEditorPollOptions: handleEditorPollOptionsChange,
     setEditorPollResultsVisibility: handleEditorPollResultsVisibilityChange,

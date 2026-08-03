@@ -8,9 +8,10 @@ import {
 const ID = "Abcdefghijklmnopqrstu";
 const NOW = new Date("2026-07-28T12:00:00.000Z");
 
-function rawDb(existing: { id: string } | null = null) {
+function rawDb(existing: { id: string } | null = null, batchFailure?: Error) {
   const first = vi.fn().mockResolvedValue(existing);
-  return { prepare: vi.fn(() => ({ bind: vi.fn(() => ({ first })) })), first } as unknown as D1Database;
+  const batch = vi.fn().mockImplementation(() => batchFailure ? Promise.reject(batchFailure) : Promise.resolve([]));
+  return { prepare: vi.fn((sql: string) => ({ bind: vi.fn((...bindings: unknown[]) => ({ first, sql, bindings })) })), batch, first } as unknown as D1Database;
 }
 
 describe("announcement image staging tokens", () => {
@@ -23,7 +24,7 @@ describe("announcement image staging tokens", () => {
     expect(await verifyAnnouncementImageStagingToken("secret", expired, "actor-1", NOW)).toBeNull();
   });
 
-  it("writes only to the announcement reservation prefix and never writes the database", async () => {
+  it("writes only to the announcement reservation prefix and records an ownership lease", async () => {
     const put = vi.fn().mockResolvedValue(undefined);
     const db = rawDb();
     const service = new AnnouncementImageStagingService({ media: { put, delete: vi.fn(), list: vi.fn().mockResolvedValue({ objects: [] }) } as unknown as R2Bucket, rawDb: db, signingSecret: "secret", now: () => NOW, generateId: () => ID });
@@ -32,7 +33,8 @@ describe("announcement image staging tokens", () => {
 
     expect(result).toMatchObject({ ok: true, data: { staging_id: ID } });
     expect(put).toHaveBeenCalledWith(expect.stringMatching(new RegExp(`^announcement/${ID}/images/`)), expect.any(ArrayBuffer), expect.anything());
-    expect((db as unknown as { prepare: ReturnType<typeof vi.fn> }).prepare).toHaveBeenCalledTimes(1);
+    expect((db as unknown as { prepare: ReturnType<typeof vi.fn> }).prepare).toHaveBeenCalledWith(expect.stringContaining("INSERT INTO media_upload_leases"));
+    expect((db as unknown as { batch: ReturnType<typeof vi.fn> }).batch).toHaveBeenCalledTimes(1);
   });
 
   it("removes every attempted staging key when a later R2 write fails", async () => {
@@ -55,5 +57,23 @@ describe("announcement image staging tokens", () => {
     ], undefined, 5)).rejects.toBe(failure);
 
     expect(deleteObject).toHaveBeenCalledTimes(2);
+  });
+
+  it("removes staged R2 objects when the lease batch fails", async () => {
+    const failure = new Error("lease write failed");
+    const deleteObject = vi.fn().mockResolvedValue(undefined);
+    const service = new AnnouncementImageStagingService({
+      media: { put: vi.fn().mockResolvedValue(undefined), delete: deleteObject, list: vi.fn().mockResolvedValue({ objects: [] }) } as unknown as R2Bucket,
+      rawDb: rawDb(null, failure),
+      signingSecret: "secret",
+      now: () => NOW,
+      generateId: () => ID,
+    });
+
+    await expect(service.stage("actor-1", [
+      { data: new Uint8Array([1]).buffer, contentType: "image/png" },
+    ], undefined, 5)).rejects.toBe(failure);
+
+    expect(deleteObject).toHaveBeenCalledTimes(1);
   });
 });

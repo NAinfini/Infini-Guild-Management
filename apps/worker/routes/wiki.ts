@@ -8,9 +8,11 @@ import {
 } from "@guild/shared";
 import type { Context } from "hono";
 import { Hono } from "hono";
-import { requirePermission } from "../middleware/rbac";
+import type { Bindings } from "../index";
+import { getRequestUser, requirePermission } from "../middleware/rbac";
 import { buildAuditLogStatements } from "../services/audit";
 import { validateUploadBytes } from "../services/media";
+import { parseMediaKey } from "../services/media-keys";
 import { WikiService } from "../services/WikiService";
 import { buildError, collectFiles, getDb, handleResult, parseBoolean, parseJsonBody, parsePage, safeFormData, serveR2Object } from "./_shared";
 import { hasMediaQuotaCapacity, withMedia } from "./service-factory";
@@ -31,8 +33,30 @@ async function requireWikiCategoriesManage(c: Context) { return requirePermissio
 wikiRoutes.get("/image", async (c) => {
   const key = c.req.query("key");
   if (!key) return buildError(c, "VALIDATION_ERROR", "key query parameter required");
-  if (!key.startsWith("wiki/")) return buildError(c, "FORBIDDEN", "Invalid wiki image key");
-
+  const parsedKey = parseMediaKey(key);
+  if (parsedKey?.kind !== "wiki_image" || !parsedKey.entityId || !parsedKey.contentType) {
+    return buildError(c, "FORBIDDEN", "Invalid wiki image key");
+  }
+  const user = await getRequestUser(c);
+  const nowIso = new Date().toISOString();
+  const referencedOrLeased = await (c.env as Bindings).DB.prepare(`
+    SELECT 1 AS present
+    FROM media_upload_leases lease
+    WHERE lease.media_key = ?1
+      AND lease.owner_user_id = ?3
+      AND lease.entity_type = 'wiki_article'
+      AND lease.entity_id = ?2
+      AND lease.expires_at > ?4
+    UNION ALL
+    SELECT 1 AS present
+    FROM media_references ref
+    INNER JOIN wiki_articles article ON article.id = ref.entity_id
+    WHERE ref.media_key = ?1
+      AND ref.entity_type = 'wiki_article'
+      AND ref.entity_id = ?2
+    LIMIT 1
+  `).bind(key, parsedKey.entityId, user?.id ?? "", nowIso).first<{ present: number }>();
+  if (!referencedOrLeased) return buildError(c, "NOT_FOUND", "Wiki image not found");
   return serveR2Object(c, key, "Wiki image not found");
 });
 

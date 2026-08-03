@@ -1,0 +1,124 @@
+﻿{
+  "name": "infini-guild-worker",
+  "main": "index.ts",
+  "alias": {
+    "@guild/shared": "../shared/index.ts",
+    "@guild/shared/*": "../shared/*"
+  },
+  "compatibility_date": "2026-07-01",
+  // Static assets are served through the Worker so the SPA shell can receive
+  // runtime site metadata. Keep placement local to the visitor; Smart Placement
+  // can move asset binding reads away from China users and increase latency.
+  "assets": {
+    "directory": "../portal/dist",
+    "not_found_handling": "single-page-application",
+    "binding": "ASSETS",
+    "run_worker_first": true
+  },
+  "vars": {
+    "ENVIRONMENT": "development",
+    "PORTAL_ORIGIN": "http://localhost:5173",
+    "SITE_NAME": "芳华照云阙",
+    "SITE_LOGO_URL": "/guild-logo.webp"
+  },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "guild-portal-db",
+      "database_id": "local-dev",
+      "migrations_dir": "db/migrations"
+    }
+  ],
+  "r2_buckets": [
+    {
+      "binding": "MEDIA",
+      "bucket_name": "guild-portal-media"
+    }
+  ],
+  "durable_objects": {
+    "bindings": [
+      {
+        "name": "WS",
+        "class_name": "WebSocketDO"
+      }
+    ]
+  },
+  "migrations": [
+    {
+      "tag": "v1",
+      "new_sqlite_classes": ["WebSocketDO"]
+    }
+  ],
+  "triggers": {
+    "crons": [
+      "0 0 * * *",
+      "*/15 * * * *"
+    ]
+  },
+
+  // ── Production environment ──────────────────────────────────────────
+  // Deploy with: wrangler deploy --env production
+  // Secrets (set via `wrangler secret put --env production`):
+  //   SIGNING_SECRET
+  // ⚠ database_id and bucket_name below are Cloudflare resource IDs (not secrets,
+  //   but treat as sensitive — do not share outside this private repo).
+  "env": {
+    "production": {
+      "workers_dev": false,
+      "observability": {
+        "enabled": true,
+        "logs": {
+          "enabled": true,
+          "head_sampling_rate": 1,
+          "invocation_logs": true
+        },
+        "traces": {
+          "enabled": true,
+          "head_sampling_rate": 0.1
+        }
+      },
+      "secrets": {
+        "required": ["SIGNING_SECRET"]
+      },
+      "routes": [
+        { "pattern": "fanghuazhaoyun.com", "custom_domain": true }
+      ],
+      "assets": {
+        "directory": "../portal/dist",
+        "not_found_handling": "single-page-application",
+        "binding": "ASSETS",
+        "run_worker_first": true
+      },
+      "vars": {
+        "ENVIRONMENT": "production",
+        "PORTAL_ORIGIN": "https://fanghuazhaoyun.com",
+        "MEDIA_ORPHAN_DELETE_MODE": "report",
+        "ENABLE_PRODUCTION_SYSTEM_TESTS": "false",
+        "SITE_NAME": "芳华照云阙",
+        "SITE_LOGO_URL": "/guild-logo.webp"
+      },
+      "r2_buckets": [
+        {
+          "binding": "MEDIA",
+          "bucket_name": "fanghuazhaoyun-media" // ⚠ production R2 bucket
+        }
+      ],
+      "d1_databases": [
+        {
+          "binding": "DB",
+          "database_name": "fanghuazhaoyun-db",
+          "database_id": "6481104b-c2f3-4387-9458-dcafd9221e7a", // ⚠ production D1 ID
+          "migrations_dir": "db/migrations"
+        }
+      ],
+      "durable_objects": {
+        "bindings": [
+          {
+            "name": "WS",
+            "class_name": "WebSocketDO"
+          }
+        ]
+      }
+    }
+  }
+}

@@ -1,5 +1,5 @@
-import { describe, expect, it, vi, beforeEach } from "vitest";
-import { runMediaOrphanCleanupCron } from "./media-orphan-cleanup";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import { MEDIA_REFERENCE_BACKFILL_VERSION, runMediaOrphanCleanupCron } from "./media-orphan-cleanup";
 
 vi.mock("../utils/logger", () => ({
   logger: { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() },
@@ -9,65 +9,86 @@ vi.mock("../services/media-references", async (importOriginal) => {
   const actual = await importOriginal<typeof import("../services/media-references")>();
   return {
     ...actual,
-    findUnreferencedKeys: vi.fn(),
-    replaceMediaRefs: vi.fn(),
+    deleteMediaRefs: vi.fn().mockResolvedValue(undefined),
+    findUnreferencedKeys: vi.fn().mockResolvedValue([]),
+    replaceMediaRefs: vi.fn().mockResolvedValue(undefined),
   };
 });
 
-import { findUnreferencedKeys, replaceMediaRefs } from "../services/media-references";
+import { deleteMediaRefs, findUnreferencedKeys, replaceMediaRefs } from "../services/media-references";
 
-const NOW = new Date("2024-06-01T12:00:00.000Z").getTime();
-
-/** An uploaded Date older than GRACE_HOURS (48 h) */
+const NOW = new Date("2026-08-02T12:00:00.000Z").getTime();
 const OLD_DATE = new Date(NOW - 49 * 60 * 60 * 1000);
-/** An uploaded Date within the grace window */
-const FRESH_DATE = new Date(NOW - 1 * 60 * 60 * 1000);
+const FRESH_DATE = new Date(NOW - 60 * 60 * 1000);
+const DOMAINS = [
+  "gallery",
+  "event",
+  "recurring_template",
+  "announcement",
+  "wiki_article",
+  "class_icon",
+  "storage_item",
+  "member_profile",
+  "site_config",
+] as const;
 
-function createMockDb(overrides: Record<string, { results: unknown[] }> = {}) {
+type DbOptions = {
+  missingDomains?: readonly string[];
+  rows?: Record<string, unknown[]>;
+  checkpointFailure?: Error;
+  expiredLeaseRows?: Array<{ media_key: string }>;
+  expiredLeaseOrphanKeys?: string[];
+};
+
+function createDb(options: DbOptions = {}) {
+  const missing = new Set(options.missingDomains ?? []);
+  let expiredLeasePageServed = false;
+  const prepare = vi.fn((sql: string) => ({
+    bind: vi.fn((...bindings: unknown[]) => ({
+      first: vi.fn().mockImplementation(async () => {
+        if (sql.includes("FROM media_reference_backfills")) {
+          return missing.has(String(bindings[0])) ? null : { version: MEDIA_REFERENCE_BACKFILL_VERSION };
+        }
+        return null;
+      }),
+      all: vi.fn().mockImplementation(async () => {
+        if (sql.includes("FROM media_upload_leases")) {
+          if (expiredLeasePageServed) return { results: [] };
+          expiredLeasePageServed = true;
+          return { results: options.expiredLeaseRows ?? [] };
+        }
+        const match = Object.entries(options.rows ?? {}).find(([fragment]) => sql.includes(fragment));
+        return { results: match?.[1] ?? [] };
+      }),
+      run: vi.fn().mockImplementation(async () => {
+        if (sql.includes("INSERT INTO media_reference_backfills") && options.checkpointFailure) {
+          throw options.checkpointFailure;
+        }
+        return { success: true, meta: { changes: 1 } };
+      }),
+    })),
+  }));
   return {
-    prepare: vi.fn((sql: string) => {
-      const match = Object.keys(overrides).find((k) => sql.includes(k));
-      const result = match ? overrides[match] : { results: [] };
-      return {
-        bind: vi.fn().mockReturnValue({ all: vi.fn().mockResolvedValue(result), first: vi.fn().mockResolvedValue(null) }),
-        all: vi.fn().mockResolvedValue(result),
-        first: vi.fn().mockResolvedValue(null),
-      };
-    }),
-    batch: vi.fn().mockResolvedValue([]),
+    prepare,
+    batch: vi.fn().mockResolvedValue([
+      { results: [], success: true, meta: { changes: 0 } },
+      { results: (options.expiredLeaseOrphanKeys ?? []).map((media_key) => ({ media_key })), success: true, meta: { changes: options.expiredLeaseOrphanKeys?.length ?? 0 } },
+    ]),
   };
 }
 
-function createMockEnv(
-  dbOverrides: Record<string, { results: unknown[] }> = {},
-  mediaList: (opts: { prefix: string }) => { objects: { key: string; uploaded: Date }[]; truncated: boolean } = () => ({
-    objects: [],
-    truncated: false,
-  }),
+type ListedObject = { key: string; uploaded: Date };
+type ListPage = { objects: ListedObject[]; truncated: boolean; cursor?: string };
+
+function createEnv(
+  dbOptions: DbOptions = {},
+  list: (options: { prefix: string; cursor?: string; limit: number }) => ListPage = () => ({ objects: [], truncated: false }),
 ) {
   return {
-    DB: {
-      ...createMockDb(dbOverrides),
-      // Override prepare to return a properly chained mock for COUNT(*) as well
-      prepare: vi.fn((sql: string) => {
-        if (sql.includes("COUNT(*)")) {
-          return {
-            first: vi.fn().mockResolvedValue({ cnt: 1 }),
-            all: vi.fn().mockResolvedValue({ results: [{ cnt: 1 }] }),
-            bind: vi.fn().mockReturnValue({ first: vi.fn().mockResolvedValue({ cnt: 1 }), all: vi.fn().mockResolvedValue({ results: [{ cnt: 1 }] }) }),
-          };
-        }
-        const match = Object.keys(dbOverrides).find((k) => sql.includes(k));
-        const result = match ? dbOverrides[match] : { results: [] };
-        return {
-          bind: vi.fn().mockReturnValue({ all: vi.fn().mockResolvedValue(result), first: vi.fn().mockResolvedValue(null) }),
-          all: vi.fn().mockResolvedValue(result),
-          first: vi.fn().mockResolvedValue(null),
-        };
-      }),
-    },
+    DB: createDb(dbOptions),
+    MEDIA_ORPHAN_DELETE_MODE: "delete",
     MEDIA: {
-      list: vi.fn().mockImplementation(mediaList),
+      list: vi.fn().mockImplementation(list),
       delete: vi.fn().mockResolvedValue(undefined),
     },
   };
@@ -77,243 +98,172 @@ describe("runMediaOrphanCleanupCron", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     vi.spyOn(Date, "now").mockReturnValue(NOW);
+    vi.mocked(findUnreferencedKeys).mockResolvedValue([]);
+    vi.mocked(replaceMediaRefs).mockResolvedValue(undefined);
+    vi.mocked(deleteMediaRefs).mockResolvedValue(undefined);
   });
 
-  // ── Soft-deleted user purge (unchanged behaviour) ─────────────────────────
-
-  it("deletes media for users soft-deleted more than 7 days ago", async () => {
-    const env = createMockEnv(
-      {},
-      (opts) => {
-        if (opts.prefix === "members/old-user/") {
-          return { objects: [{ key: "members/old-user/avatar.png", uploaded: OLD_DATE }], truncated: false };
-        }
-        return { objects: [], truncated: false };
-      },
-    );
-
-    // Override prepare so the users query returns an old-user row
-    env.DB.prepare = vi.fn((sql: string) => {
-      if (sql.includes("SELECT id FROM users WHERE deleted_at")) {
-        return {
-          all: vi.fn().mockResolvedValue({ results: [{ id: "old-user" }] }),
-          bind: vi.fn().mockReturnValue({ all: vi.fn().mockResolvedValue({ results: [{ id: "old-user" }] }) }),
-          first: vi.fn().mockResolvedValue(null),
-        };
-      }
-      if (sql.includes("COUNT(*)")) {
-        return {
-          first: vi.fn().mockResolvedValue({ cnt: 1 }),
-          all: vi.fn().mockResolvedValue({ results: [] }),
-          bind: vi.fn().mockReturnValue({ first: vi.fn().mockResolvedValue({ cnt: 1 }), all: vi.fn().mockResolvedValue({ results: [] }) }),
-        };
-      }
-      return {
-        all: vi.fn().mockResolvedValue({ results: [] }),
-        bind: vi.fn().mockReturnValue({ all: vi.fn().mockResolvedValue({ results: [] }), first: vi.fn().mockResolvedValue(null) }),
-        first: vi.fn().mockResolvedValue(null),
-      };
-    });
-
-    vi.mocked(findUnreferencedKeys).mockResolvedValue([]);
-
+  it("uses per-domain checkpoints instead of a global media_references count", async () => {
+    const env = createEnv();
     await runMediaOrphanCleanupCron(env as never);
 
-    expect(env.MEDIA.delete).toHaveBeenCalledWith(["members/old-user/avatar.png"]);
-  });
-
-  it("does not delete member media when no soft-deleted users qualify", async () => {
-    const env = createMockEnv();
-    vi.mocked(findUnreferencedKeys).mockResolvedValue([]);
-
-    await runMediaOrphanCleanupCron(env as never);
-
-    // delete should not be called at all if nothing is found
-    expect(env.MEDIA.delete).not.toHaveBeenCalled();
-  });
-
-  // ── Grace period ──────────────────────────────────────────────────────────
-
-  it("does not treat freshly-uploaded objects as orphan candidates", async () => {
-    const env = createMockEnv(
-      {},
-      (opts) => {
-        if (opts.prefix === "gallery/images/") {
-          return {
-            objects: [{ key: "gallery/images/new.png", uploaded: FRESH_DATE }],
-            truncated: false,
-          };
-        }
-        return { objects: [], truncated: false };
-      },
-    );
-
-    vi.mocked(findUnreferencedKeys).mockResolvedValue([]);
-
-    await runMediaOrphanCleanupCron(env as never);
-
-    // findUnreferencedKeys should have been called with an empty array for gallery prefix
-    // (the fresh key is excluded from candidates) — nothing to delete
-    expect(env.MEDIA.delete).not.toHaveBeenCalled();
-    // Verify that the fresh key was never passed to findUnreferencedKeys
-    const calls = vi.mocked(findUnreferencedKeys).mock.calls;
-    for (const [, keys] of calls) {
-      expect(keys).not.toContain("gallery/images/new.png");
+    const sql = env.DB.prepare.mock.calls.map(([statement]) => statement).join("\n");
+    expect(sql).not.toMatch(/COUNT\s*\(\s*\*\s*\).*media_references/i);
+    for (const domain of DOMAINS) {
+      expect(env.DB.prepare).toHaveBeenCalledWith(expect.stringContaining("FROM media_reference_backfills"));
+      expect(domain).toBeTruthy();
     }
-  });
-
-  // ── Referenced keys kept ─────────────────────────────────────────────────
-
-  it("keeps referenced old keys and deletes only unreferenced ones", async () => {
-    const env = createMockEnv(
-      {},
-      (opts) => {
-        if (opts.prefix === "gallery/images/") {
-          return {
-            objects: [
-              { key: "gallery/images/keep.png", uploaded: OLD_DATE },
-              { key: "gallery/images/orphan.png", uploaded: OLD_DATE },
-            ],
-            truncated: false,
-          };
-        }
-        return { objects: [], truncated: false };
-      },
-    );
-
-    // Simulate: keep.png is referenced, orphan.png is not
-    vi.mocked(findUnreferencedKeys).mockImplementation(async (_db, keys) => {
-      return (keys as string[]).filter((k) => k === "gallery/images/orphan.png");
-    });
-
-    await runMediaOrphanCleanupCron(env as never);
-
-    expect(env.MEDIA.delete).toHaveBeenCalledWith(["gallery/images/orphan.png"]);
-    // Should not delete the keep key
-    const allDeleteCalls = vi.mocked(env.MEDIA.delete).mock.calls.flat(2) as string[];
-    expect(allDeleteCalls).not.toContain("gallery/images/keep.png");
-  });
-
-  // ── Backfill triggered when count = 0 ────────────────────────────────────
-
-  it("runs backfill when media_references table is empty (count = 0)", async () => {
-    const env = createMockEnv();
-
-    // Override COUNT(*) to return 0 → trigger backfill
-    env.DB.prepare = vi.fn((sql: string) => {
-      if (sql.includes("COUNT(*)")) {
-        return {
-          first: vi.fn().mockResolvedValue({ cnt: 0 }),
-          all: vi.fn().mockResolvedValue({ results: [] }),
-          bind: vi.fn().mockReturnValue({ first: vi.fn().mockResolvedValue({ cnt: 0 }), all: vi.fn().mockResolvedValue({ results: [] }) }),
-        };
-      }
-      if (sql.includes("SELECT id FROM users WHERE deleted_at")) {
-        return {
-          all: vi.fn().mockResolvedValue({ results: [] }),
-          bind: vi.fn().mockReturnValue({ all: vi.fn().mockResolvedValue({ results: [] }) }),
-          first: vi.fn().mockResolvedValue(null),
-        };
-      }
-      // All content table queries return one row each to exercise the backfill paths
-      if (sql.includes("gallery_items")) {
-        return {
-          all: vi.fn().mockResolvedValue({ results: [{ id: "gi-1", url: "gallery/images/photo.png" }] }),
-          bind: vi.fn().mockReturnValue({ all: vi.fn().mockResolvedValue({ results: [] }) }),
-          first: vi.fn().mockResolvedValue(null),
-        };
-      }
-      if (sql.includes("recurring_templates")) {
-        return {
-          all: vi.fn().mockResolvedValue({ results: [{ id: "rt-1", attachments: '["events/template/file.pdf"]' }] }),
-          bind: vi.fn().mockReturnValue({ all: vi.fn().mockResolvedValue({ results: [] }) }),
-          first: vi.fn().mockResolvedValue(null),
-        };
-      }
-      if (sql.includes("FROM events")) {
-        return {
-          all: vi.fn().mockResolvedValue({ results: [{ id: "ev-1", attachments: '["events/ev-1/attach.png"]' }] }),
-          bind: vi.fn().mockReturnValue({ all: vi.fn().mockResolvedValue({ results: [] }) }),
-          first: vi.fn().mockResolvedValue(null),
-        };
-      }
-      if (sql.includes("announcements")) {
-        return {
-          all: vi.fn().mockResolvedValue({ results: [{ id: "ann-1", body_json: JSON.stringify({ type: "doc", content: [{ type: "paragraph", content: [{ type: "text", text: "announcement/ann-1/images/plain-text.png" }] }] }) }] }),
-          bind: vi.fn().mockReturnValue({ all: vi.fn().mockResolvedValue({ results: [] }) }),
-          first: vi.fn().mockResolvedValue(null),
-        };
-      }
-      if (sql.includes("wiki_articles")) {
-        return {
-          all: vi.fn().mockResolvedValue({ results: [{ id: "wiki-1", body_json: null }] }),
-          bind: vi.fn().mockReturnValue({ all: vi.fn().mockResolvedValue({ results: [] }) }),
-          first: vi.fn().mockResolvedValue(null),
-        };
-      }
-      return {
-        all: vi.fn().mockResolvedValue({ results: [] }),
-        bind: vi.fn().mockReturnValue({ all: vi.fn().mockResolvedValue({ results: [] }), first: vi.fn().mockResolvedValue(null) }),
-        first: vi.fn().mockResolvedValue(null),
-      };
-    });
-
-    vi.mocked(findUnreferencedKeys).mockResolvedValue([]);
-    vi.mocked(replaceMediaRefs).mockResolvedValue(undefined);
-
-    await runMediaOrphanCleanupCron(env as never);
-
-    // replaceMediaRefs should have been called for the gallery_item row
-    expect(replaceMediaRefs).toHaveBeenCalledWith(expect.anything(), "gallery_item", "gi-1", ["gallery/images/photo.png"]);
-    // and for the event row
-    expect(replaceMediaRefs).toHaveBeenCalledWith(expect.anything(), "event", "ev-1", ["events/ev-1/attach.png"]);
-    // and for the recurring_template row (latent bug fix)
-    expect(replaceMediaRefs).toHaveBeenCalledWith(expect.anything(), "recurring_template", "rt-1", ["events/template/file.pdf"]);
-    expect(replaceMediaRefs).not.toHaveBeenCalledWith(expect.anything(), "announcement", "ann-1", expect.anything());
-  });
-
-  it("skips backfill when media_references table has rows (count > 0)", async () => {
-    const env = createMockEnv();
-    vi.mocked(findUnreferencedKeys).mockResolvedValue([]);
-    vi.mocked(replaceMediaRefs).mockResolvedValue(undefined);
-
-    // Default mock returns cnt: 1 → no backfill
-    await runMediaOrphanCleanupCron(env as never);
-
     expect(replaceMediaRefs).not.toHaveBeenCalled();
   });
 
-  // ── Chunked deletion ──────────────────────────────────────────────────────
-
-  it("deletes orphans in chunks of ≤1000", async () => {
-    // Generate 2500 old orphan keys for the gallery prefix
-    const orphanKeys = Array.from({ length: 2500 }, (_, i) => `gallery/images/orphan-${i}.png`);
-
-    const env = createMockEnv(
-      {},
-      (opts) => {
-        if (opts.prefix === "gallery/images/") {
-          return {
-            objects: orphanKeys.map((key) => ({ key, uploaded: OLD_DATE })),
-            truncated: false,
-          };
-        }
-        return { objects: [], truncated: false };
+  it("never deletes a domain before its checkpoint commits", async () => {
+    const env = createEnv({
+      missingDomains: ["storage_item"],
+      checkpointFailure: new Error("checkpoint unavailable"),
+      rows: {
+        "SELECT id FROM storage_items": [{ id: "item-1" }],
+        "SELECT r2_key FROM storage_item_images": [{ r2_key: "storage/items/item-1/old.webp" }],
       },
-    );
+    });
 
-    vi.mocked(findUnreferencedKeys).mockImplementation(async (_db, keys) => keys as string[]);
+    await expect(runMediaOrphanCleanupCron(env as never)).rejects.toThrow("checkpoint unavailable");
+    expect(replaceMediaRefs).toHaveBeenCalledWith(
+      expect.anything(),
+      "storage_item",
+      "item-1",
+      ["storage/items/item-1/old.webp"],
+    );
+    expect(env.MEDIA.list).not.toHaveBeenCalled();
+    expect(env.MEDIA.delete).not.toHaveBeenCalled();
+  });
+
+  it("backfills storage/items and commits its version before scanning the prefix", async () => {
+    const env = createEnv(
+      {
+        missingDomains: ["storage_item"],
+        rows: {
+          "SELECT id FROM storage_items": [{ id: "item-1" }],
+          "SELECT r2_key FROM storage_item_images": [{ r2_key: "storage/items/item-1/image.webp" }],
+        },
+      },
+      ({ prefix }) => ({
+        objects: prefix === "storage/items/"
+          ? [{ key: "storage/items/item-1/image.webp", uploaded: OLD_DATE }]
+          : [],
+        truncated: false,
+      }),
+    );
 
     await runMediaOrphanCleanupCron(env as never);
 
-    const deleteCalls = vi.mocked(env.MEDIA.delete).mock.calls;
-    // All chunks should be ≤ 1000
-    for (const [arg] of deleteCalls) {
-      const keys = arg as string[];
-      expect(keys.length).toBeLessThanOrEqual(1000);
-    }
-    // Total deleted should equal the number of orphans
-    const totalDeleted = deleteCalls.reduce((sum, [arg]) => sum + (arg as string[]).length, 0);
-    expect(totalDeleted).toBe(2500);
+    expect(replaceMediaRefs).toHaveBeenCalledWith(expect.anything(), "storage_item", "item-1", ["storage/items/item-1/image.webp"]);
+    const checkpointCall = env.DB.prepare.mock.calls.find(([sql]) => sql.includes("INSERT INTO media_reference_backfills"));
+    expect(checkpointCall).toBeTruthy();
+    expect(env.MEDIA.list).toHaveBeenCalledWith({ prefix: "storage/items/", limit: 1000 });
+  });
+
+  it("streams every R2 page and deletes more than 1000 orphans without accumulating a prefix", async () => {
+    const pages = new Map<string | undefined, ListPage>([
+      [undefined, { objects: Array.from({ length: 1000 }, (_, index) => ({ key: `gallery/users/uploader/items/item-${index}/images/a.webp`, uploaded: OLD_DATE })), truncated: true, cursor: "page-2" }],
+      ["page-2", { objects: Array.from({ length: 1000 }, (_, index) => ({ key: `gallery/users/uploader/items/item-${index + 1000}/images/a.webp`, uploaded: OLD_DATE })), truncated: true, cursor: "page-3" }],
+      ["page-3", { objects: Array.from({ length: 500 }, (_, index) => ({ key: `gallery/users/uploader/items/item-${index + 2000}/images/a.webp`, uploaded: OLD_DATE })), truncated: false }],
+    ]);
+    const env = createEnv({}, ({ prefix, cursor }) =>
+      prefix === "gallery/" ? pages.get(cursor)! : { objects: [], truncated: false },
+    );
+    vi.mocked(findUnreferencedKeys).mockImplementation(async (_db, keys) => [...keys]);
+
+    const result = await runMediaOrphanCleanupCron(env as never);
+
+    expect(env.MEDIA.list).toHaveBeenCalledWith({ prefix: "gallery/", cursor: "page-2", limit: 1000 });
+    expect(env.MEDIA.list).toHaveBeenCalledWith({ prefix: "gallery/", cursor: "page-3", limit: 1000 });
+    const deletedChunks = env.MEDIA.delete.mock.calls.map(([keys]) => keys as string[]);
+    expect(deletedChunks.every((keys) => keys.length <= 1000)).toBe(true);
+    expect(deletedChunks.reduce((total, keys) => total + keys.length, 0)).toBe(2500);
+    expect(result.prefixes.find((entry) => entry.prefix === "gallery/")).toMatchObject({
+      objectsSeen: 2500,
+      candidates: 2500,
+      orphansDeleted: 2500,
+    });
+  });
+
+  it("honors the grace window on the storage prefix", async () => {
+    const env = createEnv({}, ({ prefix }) => ({
+      objects: prefix === "storage/items/"
+        ? [
+            { key: "storage/items/item-1/old.webp", uploaded: OLD_DATE },
+            { key: "storage/items/item-1/fresh.webp", uploaded: FRESH_DATE },
+          ]
+        : [],
+      truncated: false,
+    }));
+    vi.mocked(findUnreferencedKeys).mockImplementation(async (_db, keys) => [...keys]);
+
+    await runMediaOrphanCleanupCron(env as never);
+
+    expect(findUnreferencedKeys).toHaveBeenCalledWith(expect.anything(), ["storage/items/item-1/old.webp"]);
+    expect(env.MEDIA.delete).toHaveBeenCalledWith(["storage/items/item-1/old.webp"]);
+    expect(env.MEDIA.delete).not.toHaveBeenCalledWith(expect.arrayContaining(["storage/items/item-1/fresh.webp"]));
+  });
+
+  it("reports orphan candidates without deleting anything when deletion mode is not enabled", async () => {
+    const env = createEnv({}, ({ prefix }) => ({
+      objects: prefix === "gallery/"
+        ? [{ key: "gallery/users/uploader/items/item-1/images/a.webp", uploaded: OLD_DATE }]
+        : [],
+      truncated: false,
+    }));
+    env.MEDIA_ORPHAN_DELETE_MODE = "report";
+    vi.mocked(findUnreferencedKeys).mockImplementation(async (_db, keys) => [...keys]);
+
+    const result = await runMediaOrphanCleanupCron(env as never);
+
+    expect(result.mode).toBe("report");
+    expect(result.expiredLeaseObjectsDeleted).toBe(0);
+    expect(result.deletedUserMediaKeys).toBe(0);
+    expect(result.prefixes.find((entry) => entry.prefix === "gallery/")).toMatchObject({
+      orphansFound: 1,
+      orphansDeleted: 0,
+    });
+    expect(env.DB.batch).not.toHaveBeenCalled();
+    expect(deleteMediaRefs).not.toHaveBeenCalled();
+    expect(env.MEDIA.delete).not.toHaveBeenCalled();
+  });
+
+  it("purges expired leases without deleting objects that gained a persistent reference", async () => {
+    const referencedKey = "announcement/staged-1/images/referenced.webp";
+    const orphanKey = "announcement/staged-1/images/orphan.webp";
+    const env = createEnv({
+      expiredLeaseRows: [{ media_key: referencedKey }, { media_key: orphanKey }],
+      expiredLeaseOrphanKeys: [orphanKey],
+    });
+
+    const result = await runMediaOrphanCleanupCron(env as never);
+
+    const sql = env.DB.prepare.mock.calls.map(([statement]) => statement).join("\n");
+    expect(sql).toContain("DELETE FROM media_upload_leases");
+    expect(sql).toContain("EXISTS (SELECT 1 FROM media_references");
+    expect(sql).toContain("NOT EXISTS (SELECT 1 FROM media_references");
+    expect(env.MEDIA.delete).toHaveBeenCalledWith([orphanKey]);
+    expect(env.MEDIA.delete).not.toHaveBeenCalledWith(expect.arrayContaining([referencedKey]));
+    expect(result.expiredLeaseObjectsDeleted).toBe(1);
+  });
+
+  it("clears references before purging every page of a retained soft-deleted member prefix", async () => {
+    const env = createEnv(
+      { rows: { "SELECT id FROM users": [{ id: "old-user" }] } },
+      ({ prefix, cursor }) => {
+        if (prefix !== "members/old-user/") return { objects: [], truncated: false };
+        if (!cursor) return { objects: [{ key: "members/old-user/images/a.webp", uploaded: OLD_DATE }], truncated: true, cursor: "next" };
+        return { objects: [{ key: "members/old-user/audio/b.ogg", uploaded: OLD_DATE }], truncated: false };
+      },
+    );
+
+    const result = await runMediaOrphanCleanupCron(env as never);
+
+    expect(deleteMediaRefs).toHaveBeenCalledWith(expect.anything(), "member_profile", "old-user");
+    expect(env.MEDIA.delete).toHaveBeenNthCalledWith(1, ["members/old-user/images/a.webp"]);
+    expect(env.MEDIA.delete).toHaveBeenNthCalledWith(2, ["members/old-user/audio/b.ogg"]);
+    expect(result.deletedUserMediaKeys).toBe(2);
   });
 });

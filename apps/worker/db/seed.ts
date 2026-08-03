@@ -46,6 +46,7 @@ import { createPasswordHash } from "../services/auth";
 
 export const SEED_CLEAR_TABLES = [
   "system_test_artifacts",
+  "media_upload_leases",
   "media_references",
   "storage_transactions",
   "storage_item_images",

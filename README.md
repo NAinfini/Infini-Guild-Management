@@ -114,8 +114,6 @@ Open `http://localhost:5173` and sign in with one of the seeded accounts:
 | `pnpm typecheck` | Run TypeScript checking for the workspace |
 | `pnpm lint` | Run ESLint for portal and worker code |
 | `pnpm test` | Run Vitest |
-| `pnpm test:worker` | Run seeded Worker integration tests |
-| `pnpm smoke:pages` | Smoke-test key portal pages with Worker and portal running |
 | `pnpm db:generate` | Generate Drizzle migrations |
 | `pnpm db:studio` | Open Drizzle Studio |
 | `pnpm db:mock:rebuild` | Drop and recreate the local D1 database |

@@ -27,6 +27,18 @@ import {
 import { queryKeys } from "../api/query-keys";
 import { copyPlainText } from "../utils/copy";
 import { auditExportDatePart, downloadFileBlob, toIsoOrUndefined } from "../utils/admin";
+import { useAdminPendingActions } from "./useAdminPendingActions";
+import { revalidateSessionSnapshot } from "../session-transition";
+
+export type AdminUserPendingAction =
+  | "change-role"
+  | "activate"
+  | "deactivate"
+  | "reset-password"
+  | "reset-login-lock";
+
+export type AdminInvitePendingAction = "revoke" | "delete";
+
 type AuditFilterState = {
   search: string;
   dateFrom: string;
@@ -53,9 +65,26 @@ export function useAdminMutations({
   const queryClient = useQueryClient();
   const [selectedUserIds, setSelectedUserIds] = useState<string[]>([]);
   const [batchProgress, setBatchProgress] = useState(0);
+  const { isActionPending, runPendingAction } = useAdminPendingActions();
 
   const invalidateAdminUsers = async () => {
     await queryClient.invalidateQueries({ queryKey: queryKeys.users.all });
+  };
+
+  const refreshSessionSnapshot = () => {
+    void revalidateSessionSnapshot(queryClient).catch(() => {
+      notifyWarning(t("message.sessionRefreshFailed"));
+    });
+  };
+
+  const invalidateAdminUsersAndSession = async () => {
+    await invalidateAdminUsers();
+    refreshSessionSnapshot();
+  };
+
+  const invalidateRoleConfigAndSession = async () => {
+    await queryClient.invalidateQueries({ queryKey: queryKeys.admin.roles() });
+    refreshSessionSnapshot();
   };
 
   const invalidateInviteData = async () => {
@@ -68,7 +97,7 @@ export function useAdminMutations({
       updateAdminUserRole(userId, role),
     onSuccess: async () => {
       notifySuccess(t("message.roleUpdated"));
-      await invalidateAdminUsers();
+      await invalidateAdminUsersAndSession();
     },
     onError: (error) => showError(error, t("message.roleUpdateFailed")),
   });
@@ -77,7 +106,7 @@ export function useAdminMutations({
     mutationFn: (userId: string) => deactivateAdminUser(userId),
     onSuccess: async () => {
       notifySuccess(t("message.deactivated"));
-      await invalidateAdminUsers();
+      await invalidateAdminUsersAndSession();
     },
     onError: (error) => showError(error, t("message.deactivateFailed")),
   });
@@ -86,7 +115,7 @@ export function useAdminMutations({
     mutationFn: (userId: string) => reactivateAdminUser(userId),
     onSuccess: async () => {
       notifySuccess(t("message.reactivated"));
-      await invalidateAdminUsers();
+      await invalidateAdminUsersAndSession();
     },
     onError: (error) => showError(error, t("message.reactivateFailed")),
   });
@@ -141,7 +170,7 @@ export function useAdminMutations({
       }),
     onSuccess: async () => {
       notifySuccess(t("message.batchRoleUpdated"));
-      await invalidateAdminUsers();
+      await invalidateAdminUsersAndSession();
     },
     onError: (error) => showError(error, t("message.batchRoleUpdateFailed")),
   });
@@ -160,7 +189,7 @@ export function useAdminMutations({
     mutationFn: (userIds: string[]) => batchDeactivateAdminUsers({ user_ids: userIds }),
     onSuccess: async () => {
       notifySuccess(t("message.batchDeactivated"));
-      await invalidateAdminUsers();
+      await invalidateAdminUsersAndSession();
     },
     onError: (error) => showError(error, t("message.batchDeactivateFailed")),
   });
@@ -169,7 +198,7 @@ export function useAdminMutations({
     mutationFn: (userIds: string[]) => batchReactivateAdminUsers({ user_ids: userIds }),
     onSuccess: async () => {
       notifySuccess(t("message.batchReactivated"));
-      await invalidateAdminUsers();
+      await invalidateAdminUsersAndSession();
     },
     onError: (error) => showError(error, t("message.batchReactivateFailed")),
   });
@@ -258,6 +287,7 @@ export function useAdminMutations({
       notifySuccess(t("message.memberProfileSaved"));
       await invalidateAdminUsers();
       await queryClient.invalidateQueries({ queryKey: queryKeys.myProfile.all });
+      refreshSessionSnapshot();
     },
     onError: async (error) => {
       await invalidateAdminUsers();
@@ -278,7 +308,7 @@ export function useAdminMutations({
     mutationFn: createRole,
     onSuccess: async () => {
       notifySuccess(t("message.roleCreated"));
-      await queryClient.invalidateQueries({ queryKey: queryKeys.admin.roles() });
+      await invalidateRoleConfigAndSession();
     },
     onError: (error) => showError(error, t("message.roleCreateFailed")),
   });
@@ -288,7 +318,7 @@ export function useAdminMutations({
       updateRole(id, payload),
     onSuccess: async () => {
       notifySuccess(t("message.roleConfigSaved"));
-      await queryClient.invalidateQueries({ queryKey: queryKeys.admin.roles() });
+      await invalidateRoleConfigAndSession();
     },
     onError: (error) => showError(error, t("message.roleConfigSaveFailed")),
   });
@@ -297,7 +327,7 @@ export function useAdminMutations({
     mutationFn: (id: string) => deleteRole(id),
     onSuccess: async () => {
       notifySuccess(t("message.roleDeleted"));
-      await queryClient.invalidateQueries({ queryKey: queryKeys.admin.roles() });
+      await invalidateRoleConfigAndSession();
     },
     onError: (error) => showError(error, t("message.roleDeleteFailed")),
   });
@@ -430,9 +460,93 @@ export function useAdminMutations({
     }
   };
 
+  const changeUserRole = (userId: string, role: string) => {
+    const pending = runPendingAction(
+      { resource: "user", resourceId: userId, action: "change-role" },
+      () => updateRoleMutation.mutateAsync({ userId, role }),
+    );
+    if (pending) void pending.catch(() => undefined);
+  };
+
+  const activateUser = (userId: string) => {
+    const pending = runPendingAction(
+      { resource: "user", resourceId: userId, action: "activate" },
+      () => reactivateMutation.mutateAsync(userId),
+    );
+    if (pending) void pending.catch(() => undefined);
+  };
+
+  const deactivateUser = (userId: string) => {
+    const pending = runPendingAction(
+      { resource: "user", resourceId: userId, action: "deactivate" },
+      () => deactivateMutation.mutateAsync(userId),
+    );
+    if (pending) void pending.catch(() => undefined);
+  };
+
+  const resetUserPassword = (userId: string) => {
+    const pending = runPendingAction(
+      { resource: "user", resourceId: userId, action: "reset-password" },
+      () => resetPasswordMutation.mutateAsync(userId),
+    );
+    if (pending) void pending.catch(() => undefined);
+  };
+
+  const resetUserLoginLock = (userId: string) => {
+    const pending = runPendingAction(
+      { resource: "user", resourceId: userId, action: "reset-login-lock" },
+      () => resetLoginLockMutation.mutateAsync(userId),
+    );
+    if (pending) void pending.catch(() => undefined);
+  };
+
+  const revokeInvite = (inviteId: string) => {
+    if (
+      isActionPending({ resource: "invite", resourceId: inviteId, action: "revoke" }) ||
+      isActionPending({ resource: "invite", resourceId: inviteId, action: "delete" })
+    ) {
+      return;
+    }
+    const pending = runPendingAction(
+      { resource: "invite", resourceId: inviteId, action: "revoke" },
+      () => revokeInviteMutation.mutateAsync(inviteId),
+    );
+    if (pending) void pending.catch(() => undefined);
+  };
+
+  const deleteInvite = (inviteId: string) => {
+    if (
+      isActionPending({ resource: "invite", resourceId: inviteId, action: "revoke" }) ||
+      isActionPending({ resource: "invite", resourceId: inviteId, action: "delete" })
+    ) {
+      return;
+    }
+    const pending = runPendingAction(
+      { resource: "invite", resourceId: inviteId, action: "delete" },
+      () => deleteInviteMutation.mutateAsync(inviteId),
+    );
+    if (pending) void pending.catch(() => undefined);
+  };
+
+  const isUserActionPending = (userId: string, action: AdminUserPendingAction) =>
+    isActionPending({ resource: "user", resourceId: userId, action });
+
+  const isInviteActionPending = (inviteId: string, action: AdminInvitePendingAction) =>
+    isActionPending({ resource: "invite", resourceId: inviteId, action });
+
+  const isRoleDeletePending = (roleId: string) =>
+    isActionPending({ resource: "role", resourceId: roleId, action: "delete" });
+
   const deleteRoleConfig = async (id: string) => {
+    const pending = runPendingAction(
+      { resource: "role", resourceId: id, action: "delete" },
+      () => deleteRoleMutation.mutateAsync(id),
+    );
+    if (!pending) {
+      return false;
+    }
     try {
-      await deleteRoleMutation.mutateAsync(id);
+      await pending;
       return true;
     } catch {
       return false;
@@ -469,5 +583,15 @@ export function useAdminMutations({
     createRoleConfig,
     updateRoleConfig,
     deleteRoleConfig,
+    changeUserRole,
+    activateUser,
+    deactivateUser,
+    resetUserPassword,
+    resetUserLoginLock,
+    revokeInvite,
+    deleteInvite,
+    isUserActionPending,
+    isInviteActionPending,
+    isRoleDeletePending,
   };
 }

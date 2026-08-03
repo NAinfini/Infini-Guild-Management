@@ -1,5 +1,5 @@
 import type { SensorDescriptor, SensorOptions } from "@dnd-kit/core";
-import { Badge, Button, Card, Group, Modal, MultiSelect, Paper, Skeleton, Stack, Text } from "@mantine/core";
+import { Alert, Badge, Button, Card, Group, Modal, MultiSelect, Paper, Skeleton, Stack, Text } from "@mantine/core";
 import { useDisclosure } from "@mantine/hooks";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Suspense, lazy, useCallback, useMemo, useState } from "react";
@@ -92,6 +92,36 @@ export function GuildWarActiveEmptyState({
         }
       />
     </Paper>
+  );
+}
+
+type GuildWarTeamConflictAlertProps = {
+  pending: boolean;
+  onAcceptRemote: () => void;
+  onRetryLocal: () => void;
+};
+
+export function GuildWarTeamConflictAlert({
+  pending,
+  onAcceptRemote,
+  onRetryLocal,
+}: GuildWarTeamConflictAlertProps) {
+  const { t } = useTranslation("guild-war");
+
+  return (
+    <Alert color="orange" title={t("active.teamConflict.title")}>
+      <Stack gap="sm">
+        <Text size="sm">{t("active.teamConflict.description")}</Text>
+        <Group gap="sm">
+          <Button size="xs" variant="default" disabled={pending} onClick={onAcceptRemote}>
+            {t("active.teamConflict.useRemote")}
+          </Button>
+          <Button size="xs" color="orange" disabled={pending} onClick={onRetryLocal}>
+            {t("active.teamConflict.keepLocal")}
+          </Button>
+        </Group>
+      </Stack>
+    </Alert>
   );
 }
 
@@ -309,6 +339,14 @@ export function GuildWarActiveTab({
           saveTeamsPending={activeController.saveTeamsPending}
         />
       </Suspense>
+
+      {activeController.hasTeamDraftConflict ? (
+        <GuildWarTeamConflictAlert
+          pending={activeController.saveTeamsPending}
+          onAcceptRemote={activeController.acceptRemoteTeamChanges}
+          onRetryLocal={activeController.retryLocalTeamChanges}
+        />
+      ) : null}
 
       <Suspense fallback={<Card><Group gap={12} p="md" align="flex-start">{Array.from({ length: 4 }).map((_, i) => <Stack key={i} gap={8} style={{ flex: 1 }}><Skeleton height={24} width="60%" /><Skeleton height={60} /><Skeleton height={60} /><Skeleton height={60} /></Stack>)}</Group></Card>}>
         <LazyGuildWarDragBoard

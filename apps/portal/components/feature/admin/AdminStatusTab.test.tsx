@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { MantineProvider } from "@mantine/core";
-import { render, screen } from "@testing-library/react";
+import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
@@ -54,6 +54,7 @@ type RenderStatusTabOptions = {
     r2: string;
     ws: string;
     crons: string;
+    system_tests_enabled?: boolean;
   } | null;
   statusHealthLogs?: Array<{
     at: string;
@@ -74,7 +75,13 @@ function renderStatusTab(options: RenderStatusTabOptions = {}) {
         statusLatencyMs={options.statusLatencyMs ?? 12}
         statusLoading={options.statusLoading ?? false}
         statusError={options.statusError ?? false}
-        statusData={options.statusData ?? { db: "ok", r2: "ok", ws: "ok", crons: "ok" }}
+        statusData={options.statusData ?? {
+          db: "ok",
+          r2: "ok",
+          ws: "ok",
+          crons: "ok",
+          system_tests_enabled: true,
+        }}
         statusHealthLogs={options.statusHealthLogs ?? []}
       />
     </MantineProvider>,
@@ -94,10 +101,11 @@ describe("AdminStatusTab", () => {
     };
   });
 
-  it("does not hide the API test console behind the Vite dev flag", () => {
+  it("uses the server capability instead of the Vite build mode", () => {
     const source = readFileSync(resolve(process.cwd(), "apps/portal/components/feature/admin/AdminStatusTab.tsx"), "utf8");
 
     expect(source).not.toContain("import.meta.env.DEV");
+    expect(source).toContain("system_tests_enabled");
   });
 
   it("clears stale endpoint results before a single-category run", () => {
@@ -114,7 +122,7 @@ describe("AdminStatusTab", () => {
     expect(runCategoryBlock).toContain("finalizeServerRun");
   });
 
-  it("renders the API test console for authorized admins in production builds", () => {
+  it("renders the API test console when the server enables it", () => {
     renderStatusTab();
 
     expect(screen.getByText("status.section.apiTests")).toBeInTheDocument();
@@ -124,19 +132,66 @@ describe("AdminStatusTab", () => {
     );
   });
 
-  it("renders healthy service tiles, latency, empty health logs, and endpoint count", () => {
-    renderStatusTab();
+  it("replaces the API test console with a clear notice when the server disables it", () => {
+    renderStatusTab({
+      statusData: {
+        db: "ok",
+        r2: "ok",
+        ws: "configured",
+        crons: "configured",
+        system_tests_enabled: false,
+      },
+    });
+
+    expect(screen.getByText("status.api.disabledTitle")).toBeInTheDocument();
+    expect(screen.getByText("status.api.disabledDescription")).toBeInTheDocument();
+    expect(screen.queryByText("status.section.apiTests")).not.toBeInTheDocument();
+    expect(screen.queryByText("status.api.debugTitle")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "status.api.runAll" })).not.toBeInTheDocument();
+  });
+
+  it("distinguishes verified services from configured-only services", () => {
+    renderStatusTab({
+      statusData: {
+        db: "ok",
+        r2: "ok",
+        ws: "configured",
+        crons: "configured",
+        system_tests_enabled: true,
+      },
+    });
 
     expect(screen.getByText("status.section.health")).toBeInTheDocument();
     expect(screen.getByText("D1")).toBeInTheDocument();
     expect(screen.getByText("R2")).toBeInTheDocument();
     expect(screen.getByText("WS")).toBeInTheDocument();
     expect(screen.getByText("Crons")).toBeInTheDocument();
-    expect(screen.getAllByText("OK")).toHaveLength(4);
+    expect(screen.getAllByText("status.value.ok")).toHaveLength(2);
+    expect(screen.getAllByText("status.value.configured")).toHaveLength(2);
     expect(screen.getByText("12")).toBeInTheDocument();
-    expect(screen.getByText("status.operational")).toBeInTheDocument();
+    expect(screen.getByText("status.partiallyVerified")).toBeInTheDocument();
     expect(screen.getByText("status.healthLogs.empty")).toBeInTheDocument();
     expect(screen.getByText(/\d+ endpoints/)).toBeInTheDocument();
+  });
+
+  it("shows configured health-log services as warnings with localized labels", async () => {
+    const user = userEvent.setup();
+    renderStatusTab({
+      statusHealthLogs: [{
+        at: "2026-06-11T18:00:00.000Z",
+        db: "configured",
+        r2: "configured",
+        ws: "configured",
+        crons: "configured",
+        latencyMs: 12,
+      }],
+    });
+
+    await user.click(screen.getByRole("button", { name: /status\.healthLogs\.title/ }));
+    const table = screen.getByRole("table");
+    expect(within(table).getAllByText("status.value.configured")).toHaveLength(4);
+    expect(table.querySelectorAll(".health-log-dot--warn")).toHaveLength(4);
+    expect(table.querySelectorAll(".health-log-dot--error")).toHaveLength(0);
   });
 
   it("keeps the health log, API console and debug console collapsed until asked", async () => {
@@ -175,8 +230,8 @@ describe("AdminStatusTab", () => {
     });
 
     expect(screen.getByText("status.degraded")).toBeInTheDocument();
-    expect(screen.getAllByText("ERROR")).toHaveLength(2);
-    expect(screen.getByText("DEGRADED")).toBeInTheDocument();
+    expect(screen.getAllByText("ERROR")).toHaveLength(4);
+    expect(screen.getAllByText("DEGRADED")).toHaveLength(2);
 
     /* 日志表默认折起（Mantine Collapse 收拢后是 display:none），
        role 查询查不到隐藏节点——先真的展开，再断言表头。 */

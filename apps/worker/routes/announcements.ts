@@ -6,10 +6,12 @@ import {
 } from "@guild/shared";
 import type { Context } from "hono";
 import { Hono } from "hono";
+import type { Bindings } from "../index";
 import { getRequestUser, requirePermission } from "../middleware/rbac";
 import { AnnouncementService } from "../services/AnnouncementService";
 import { AnnouncementImageStagingService } from "../services/announcement-image-staging";
 import { validateUploadBytes } from "../services/media";
+import { parseMediaKey } from "../services/media-keys";
 import { buildError, collectFiles, getDb, handleResult, parseBoolean, parseJsonBody, parsePage, safeFormData, serveR2Object } from "./_shared";
 import { hasMediaQuotaCapacity, withMediaAndPublishAnnouncement } from "./service-factory";
 
@@ -42,7 +44,32 @@ announcementsRoutes.get("/", async (c) => {
 announcementsRoutes.get("/image", async (c) => {
   const key = c.req.query("key");
   if (!key) return buildError(c, "VALIDATION_ERROR", "key query parameter required");
-  if (!key.startsWith("announcement/")) return buildError(c, "FORBIDDEN", "Invalid announcement image key");
+  const parsedKey = parseMediaKey(key);
+  if (parsedKey?.kind !== "announcement_image" || !parsedKey.entityId || !parsedKey.contentType) {
+    return buildError(c, "FORBIDDEN", "Invalid announcement image key");
+  }
+  const user = await getRequestUser(c);
+  const canReadAll = user ? hasAnyPermission(user.permissions, ["announcements.create", "announcements.edit", "announcements.archive", "announcements.delete"]) : false;
+  const nowIso = new Date().toISOString();
+  const referencedOrLeased = await (c.env as Bindings).DB.prepare(`
+    SELECT 1 AS present
+    FROM media_upload_leases lease
+    WHERE lease.media_key = ?1
+      AND lease.owner_user_id = ?3
+      AND lease.entity_type = 'announcement'
+      AND lease.entity_id = ?2
+      AND lease.expires_at > ?4
+    UNION ALL
+    SELECT 1 AS present
+    FROM media_references ref
+    INNER JOIN announcements announcement ON announcement.id = ref.entity_id
+    WHERE ref.media_key = ?1
+      AND ref.entity_type = 'announcement'
+      AND ref.entity_id = ?2
+      AND (?5 = 1 OR announcement.status IN ('published', 'archived'))
+    LIMIT 1
+  `).bind(key, parsedKey.entityId, user?.id ?? "", nowIso, canReadAll ? 1 : 0).first<{ present: number }>();
+  if (!referencedOrLeased) return buildError(c, "NOT_FOUND", "Announcement image not found");
   return serveR2Object(c, key, "Announcement image not found");
 });
 

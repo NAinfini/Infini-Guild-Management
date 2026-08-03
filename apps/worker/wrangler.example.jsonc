@@ -65,6 +65,18 @@
   "env": {
     "production": {
       "workers_dev": true,
+      "observability": {
+        "enabled": true,
+        "logs": {
+          "enabled": true,
+          "head_sampling_rate": 1,
+          "invocation_logs": true
+        },
+        "traces": {
+          "enabled": true,
+          "head_sampling_rate": 0.1
+        }
+      },
       // For a custom domain managed by Cloudflare, change workers_dev to false
       // and uncomment the next line:
       // "routes": [{ "pattern": "guild.example.com", "custom_domain": true }],
@@ -82,6 +94,12 @@
         // Same-origin deployments can leave this empty. Set it only when a
         // separately hosted portal must call this Worker.
         "PORTAL_ORIGIN": "",
+        // Keep production in report mode until the first full media-reference
+        // scan has been reviewed. Change to "delete" only after that review.
+        "MEDIA_ORPHAN_DELETE_MODE": "report",
+        // These routes create and delete fixtures. Keep them unavailable in
+        // production unless an operator explicitly opens a maintenance window.
+        "ENABLE_PRODUCTION_SYSTEM_TESTS": "false",
         "SITE_NAME": "My Guild",
         "SITE_LOGO_URL": "/guild-logo.webp"
       },

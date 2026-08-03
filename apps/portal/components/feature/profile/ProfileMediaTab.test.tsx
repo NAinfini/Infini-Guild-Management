@@ -30,7 +30,7 @@ const uploader = {
   selectFiles: vi.fn(),
 };
 
-function renderMediaTab() {
+function renderMediaTab(onUploadAudio: () => void = vi.fn()) {
   return render(
       <MantineProvider>
         <ProfileMediaTab
@@ -46,12 +46,13 @@ function renderMediaTab() {
           onRemoveAvatar={vi.fn()}
           onReorderImages={vi.fn()}
           onRemoveImage={vi.fn()}
+          removingImageKeys={new Set()}
           onUploadImages={vi.fn()}
           onVideoDraftChange={vi.fn()}
           onAddVideoUrl={vi.fn()}
           onMoveVideo={vi.fn()}
           onRemoveVideo={vi.fn()}
-          onUploadAudio={vi.fn()}
+          onUploadAudio={onUploadAudio}
           onRemoveAudio={vi.fn()}
         />
     </MantineProvider>,
@@ -66,10 +67,7 @@ describe("ProfileMediaTab", () => {
     // The four media groups share one card now, so each group's buttons only
     // exist while its segment is selected — assert them one segment at a time.
     await user.click(screen.getByRole("radio", { name: "media.tab.audioEmpty" }));
-    const audioActions = [
-      screen.getByRole("button", { name: "media.selectAudio" }),
-      ...screen.getAllByRole("button", { name: "action.upload" }),
-    ];
+    const audioActions = [screen.getByRole("button", { name: "media.selectAudio" })];
 
     await user.click(screen.getByRole("radio", { name: "media.avatar" }));
     const avatarActions = [
@@ -77,12 +75,26 @@ describe("ProfileMediaTab", () => {
       screen.getByRole("button", { name: "media.removeAvatar" }),
     ];
 
-    expect([...audioActions, ...avatarActions]).toHaveLength(4);
+    expect([...audioActions, ...avatarActions]).toHaveLength(3);
     for (const action of [...audioActions, ...avatarActions]) {
       expect(action).toHaveStyle({
         height: "calc(2.75rem * var(--mantine-scale))",
       });
     }
+  });
+
+  it("uploads the picked music file straight away, with no second button to press", async () => {
+    const user = userEvent.setup();
+    const onUploadAudio = vi.fn();
+    renderMediaTab(onUploadAudio);
+
+    // Picking a file is the whole gesture, the same as the avatar group right
+    // next to it. A staged file that needs a second click leaves one live button
+    // and one greyed-out one sitting side by side for the entire wait.
+    expect(onUploadAudio).toHaveBeenCalledTimes(1);
+
+    await user.click(screen.getByRole("radio", { name: "media.tab.audioEmpty" }));
+    expect(screen.queryByRole("button", { name: "action.upload" })).not.toBeInTheDocument();
   });
 
   it("shows each group's count on the switch without opening it", () => {

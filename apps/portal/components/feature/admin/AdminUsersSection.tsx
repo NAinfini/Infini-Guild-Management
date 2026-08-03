@@ -37,6 +37,7 @@ import { useTranslation } from "react-i18next";
 import { DataTablePagination } from "../../shared/DataTablePagination";
 import type { UsersListResponse } from "../../../services/UserService";
 import { resolveClassCatalogItem, useClassCatalogStore } from "../../../stores/class-catalog";
+import type { AdminUserPendingAction } from "../../../hooks/useAdminMutations";
 
 export type AdminUserRow = UsersListResponse["data"][number];
 
@@ -67,10 +68,7 @@ type AdminUsersSectionProps = {
   batchActivatePending: boolean;
   batchDeactivatePending: boolean;
   batchDeletePending: boolean;
-  singleRolePending: boolean;
-  singleActivationPending: boolean;
-  singleResetPasswordPending: boolean;
-  singleResetLoginLockPending: boolean;
+  isSingleActionPending: (userId: string, action: AdminUserPendingAction) => boolean;
   isBatchPending: boolean;
   batchProgress: number;
   userRows: AdminUserRow[];
@@ -102,10 +100,7 @@ export function AdminUsersSection({
   batchActivatePending,
   batchDeactivatePending,
   batchDeletePending,
-  singleRolePending,
-  singleActivationPending,
-  singleResetPasswordPending,
-  singleResetLoginLockPending,
+  isSingleActionPending,
   isBatchPending,
   batchProgress,
   userRows,
@@ -325,6 +320,11 @@ export function AdminUsersSection({
   const contextSingleUserId = contextUserIds.length === 1 ? contextUserIds[0] ?? null : null;
   const anyActiveInContext = contextRows.some((row) => row.user.is_active);
   const anyInactiveInContext = contextRows.some((row) => !row.user.is_active);
+  const contextActionPending = (action: AdminUserPendingAction) =>
+    contextSingleUserId ? isSingleActionPending(contextSingleUserId, action) : false;
+  const roleActionPending = isBatchContext ? batchRolePending : contextActionPending("change-role");
+  const activateActionPending = isBatchContext ? batchActivatePending : contextActionPending("activate");
+  const deactivateActionPending = isBatchContext ? batchDeactivatePending : contextActionPending("deactivate");
 
   const copyContextRows = () => {
     const lines = contextRows.map((row) =>
@@ -395,7 +395,7 @@ export function AdminUsersSection({
           </Menu.Item>
           <Menu.Sub>
             <Menu.Sub.Target>
-              <Menu.Sub.Item>{t("member.context.changeRole")}</Menu.Sub.Item>
+              <Menu.Sub.Item disabled={roleActionPending}>{t("member.context.changeRole")}</Menu.Sub.Item>
             </Menu.Sub.Target>
             <Menu.Sub.Dropdown>
               {roles
@@ -406,8 +406,7 @@ export function AdminUsersSection({
                     key={role.id}
                     disabled={
                       (isBatchContext && role.id === "admin") ||
-                      singleRolePending ||
-                      batchRolePending
+                      roleActionPending
                     }
                     onClick={() => {
                       if (isBatchContext) {
@@ -427,7 +426,7 @@ export function AdminUsersSection({
           {anyInactiveInContext ? (
             <Menu.Item
               leftSection={<PlayIcon size={14} />}
-              disabled={singleActivationPending || batchActivatePending}
+              disabled={activateActionPending}
               onClick={() => {
                 if (isBatchContext) {
                   onBatchActivate(contextUserIds);
@@ -442,7 +441,7 @@ export function AdminUsersSection({
           {anyActiveInContext ? (
             <Menu.Item
               leftSection={<PlayerPauseIcon size={14} />}
-              disabled={singleActivationPending || batchDeactivatePending}
+              disabled={deactivateActionPending}
               onClick={() => {
                 if (isBatchContext) {
                   onBatchDeactivate(contextUserIds);
@@ -458,14 +457,14 @@ export function AdminUsersSection({
             <>
               <Menu.Item
                 leftSection={<KeyIcon size={14} />}
-                disabled={singleResetPasswordPending}
+                disabled={contextActionPending("reset-password")}
                 onClick={() => onSingleResetPassword(contextSingleUserId)}
               >
                 {t("member.resetPassword")}
               </Menu.Item>
               <Menu.Item
                 leftSection={<LockOpenIcon size={14} />}
-                disabled={singleResetLoginLockPending}
+                disabled={contextActionPending("reset-login-lock")}
                 onClick={() => onSingleResetLoginLock(contextSingleUserId)}
               >
                 {t("member.resetLoginLock")}

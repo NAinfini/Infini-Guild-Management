@@ -10,14 +10,15 @@ import type {
   WriteAuditLogInput as AuditLogInput,
 } from "./audit";
 import type { PushEntityType, PushHint } from "@guild/shared/constants/push-hints";
-import { and, asc, desc, eq, inArray, isNotNull, isNull, lte, or, sql, type SQL } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, isNotNull, isNull, or, sql, type SQL } from "drizzle-orm";
 import type { DrizzleD1Database } from "drizzle-orm/d1";
 import { nanoid } from "nanoid";
 import { wikiArticles, wikiCategories, wikiRevisions } from "../db/schema";
 import { ok, err, type ServiceResult } from "./result";
 import { escapeLikePattern, likeEscaped } from "./helpers";
-import { replaceMediaRefs, deleteMediaRefs, extractRichTextMediaKeys } from "./media-references";
+import { buildReplaceMediaRefsStatements, extractRichTextMediaKeys } from "./media-references";
 import { rethrowAfterUploadFailure } from "./media-upload-compensation";
+import { buildWikiImageKey } from "./media-keys";
 
 // --- Types ---
 
@@ -45,6 +46,7 @@ export type WikiServiceDeps = {
 
 /** Per-article revision retention cap; older snapshots are pruned on write. */
 const MAX_REVISIONS_PER_ARTICLE = 50;
+const WIKI_IMAGE_LEASE_TTL_SECONDS = 24 * 60 * 60;
 
 function slugify(value: string): string {
   const normalized = value.trim().toLowerCase().replace(/[^a-z0-9\s-]/g, "").replace(/\s+/g, "-").replace(/-+/g, "-").replace(/^-|-$/g, "");
@@ -137,6 +139,58 @@ export class WikiService {
     return (await this.db.select(ARTICLE_COLS).from(wikiArticles).where(eq(wikiArticles.id, articleId)).limit(1))[0] ?? null;
   }
 
+  private async classifyMediaKeys(
+    actorId: string,
+    articleId: string,
+    keys: readonly string[],
+    nowIso: string,
+  ): Promise<{ valid: boolean; leasedKeys: string[] }> {
+    const leasedKeys: string[] = [];
+    for (const key of new Set(keys)) {
+      const access = await this.deps.rawDb.prepare(`
+        SELECT
+          EXISTS(
+            SELECT 1 FROM media_references
+            WHERE media_key = ?1 AND entity_type = 'wiki_article' AND entity_id = ?2
+          ) AS referenced,
+          EXISTS(
+            SELECT 1 FROM media_upload_leases
+            WHERE media_key = ?1
+              AND owner_user_id = ?3
+              AND entity_type = 'wiki_article'
+              AND entity_id = ?2
+              AND expires_at > ?4
+          ) AS leased
+      `).bind(key, articleId, actorId, nowIso).first<{ referenced: number; leased: number }>();
+      if (!access || (!access.referenced && !access.leased)) return { valid: false, leasedKeys: [] };
+      if (access.leased) leasedKeys.push(key);
+    }
+    return { valid: true, leasedKeys };
+  }
+
+  private buildLeaseConsumptionStatements(
+    actorId: string,
+    articleId: string,
+    keys: readonly string[],
+    nowIso: string,
+    committedAt: string,
+    committedTitle: string,
+    committedBodyJson: string,
+  ): D1PreparedStatement[] {
+    return [...new Set(keys)].map((key) => this.deps.rawDb.prepare(`
+      DELETE FROM media_upload_leases
+      WHERE media_key = ?1
+        AND owner_user_id = ?2
+        AND entity_type = 'wiki_article'
+        AND entity_id = ?3
+        AND expires_at > ?4
+        AND EXISTS (
+          SELECT 1 FROM wiki_articles
+          WHERE id = ?3 AND updated_at = ?5 AND title = ?6 AND body_json = ?7
+        )
+    `).bind(key, actorId, articleId, nowIso, committedAt, committedTitle, committedBodyJson));
+  }
+
   private async uniqueCategorySlug(base: string): Promise<string> {
     const rows = await this.db.select({ slug: wikiCategories.slug }).from(wikiCategories).where(likeEscaped(wikiCategories.slug, `${escapeLikePattern(base)}%`));
     const existing = new Set(rows.map((r) => r.slug));
@@ -157,53 +211,80 @@ export class WikiService {
 
   // --- Revision helpers ---
 
-  private async latestRevisionNumber(articleId: string): Promise<number> {
-    const row = (await this.db.select({ max: sql<number | null>`max(${wikiRevisions.revision})` }).from(wikiRevisions).where(eq(wikiRevisions.articleId, articleId)))[0];
-    return Number(row?.max ?? 0);
+  private async getRevisionMediaRows(articleId: string): Promise<Array<{ revision: number; bodyJson: string }>> {
+    const rows = await this.db
+      .select({ revision: wikiRevisions.revision, bodyJson: wikiRevisions.bodyJson })
+      .from(wikiRevisions)
+      .where(eq(wikiRevisions.articleId, articleId));
+    return rows.filter((row) => Number.isInteger(row.revision) && typeof row.bodyJson === "string");
   }
 
-  private async insertRevision(articleId: string, revision: number, snapshot: { title: string; bodyJson: string; editedBy: string; restoredFrom?: number; createdAt?: string }): Promise<void> {
-    await this.db.insert(wikiRevisions).values({
-      id: nanoid(),
-      articleId,
-      revision,
-      title: snapshot.title,
-      bodyJson: snapshot.bodyJson,
-      editedBy: snapshot.editedBy,
-      restoredFrom: snapshot.restoredFrom ?? null,
-      ...(snapshot.createdAt ? { createdAt: snapshot.createdAt } : {}),
-    });
+  private buildCommittedMediaRefStatements(
+    articleId: string,
+    committedAt: string,
+    title: string,
+    bodyJson: string,
+    keys: readonly string[],
+  ): D1PreparedStatement[] {
+    const existsSql = "EXISTS (SELECT 1 FROM wiki_articles WHERE id = ? AND updated_at = ? AND title = ? AND body_json = ?)";
+    return [
+      this.deps.rawDb.prepare(`
+        DELETE FROM media_references
+        WHERE entity_type = ? AND entity_id = ? AND ${existsSql}
+      `).bind("wiki_article", articleId, articleId, committedAt, title, bodyJson),
+      ...[...new Set(keys)].map((key) => this.deps.rawDb.prepare(`
+        INSERT OR IGNORE INTO media_references (media_key, entity_type, entity_id)
+        SELECT ?, ?, ? WHERE ${existsSql}
+      `).bind(key, "wiki_article", articleId, articleId, committedAt, title, bodyJson)),
+    ];
   }
 
-  private async pruneRevisions(articleId: string, latestRevision: number): Promise<void> {
-    const cutoff = latestRevision - MAX_REVISIONS_PER_ARTICLE;
-    if (cutoff <= 0) return;
-    await this.db.delete(wikiRevisions).where(and(eq(wikiRevisions.articleId, articleId), lte(wikiRevisions.revision, cutoff)));
-  }
-
-  /** Records the post-save content as a new revision. For articles created
-   *  before revision tracking, the pre-edit state is captured first so it
-   *  stays restorable. */
-  private async snapshotContentChange(articleId: string, actorId: string, previous: { title: string; bodyJson: string; editedBy: string; editedAt: string }, current: { title: string; bodyJson: string }): Promise<void> {
-    let latest = await this.latestRevisionNumber(articleId);
-    if (latest === 0) {
-      await this.insertRevision(articleId, 1, { title: previous.title, bodyJson: previous.bodyJson, editedBy: previous.editedBy, createdAt: previous.editedAt });
-      latest = 1;
+  private buildRevisionAndRefStatements(
+    articleId: string,
+    actorId: string,
+    previous: ArticleRow,
+    current: { title: string; bodyJson: string },
+    committedAt: string,
+    revisionRows: Array<{ revision: number; bodyJson: string }>,
+    restoredFrom: number | null = null,
+  ): D1PreparedStatement[] {
+    const latestRevision = revisionRows.reduce((max, row) => Math.max(max, row.revision), 0);
+    const nextRevision = latestRevision === 0 ? 2 : latestRevision + 1;
+    const cutoff = nextRevision - MAX_REVISIONS_PER_ARTICLE;
+    const existsSql = "EXISTS (SELECT 1 FROM wiki_articles WHERE id = ? AND updated_at = ? AND title = ? AND body_json = ?)";
+    const statements: D1PreparedStatement[] = [];
+    if (latestRevision === 0) {
+      statements.push(this.deps.rawDb.prepare(`
+        INSERT INTO wiki_revisions (id, article_id, revision, title, body_json, edited_by, restored_from, created_at)
+        SELECT ?, ?, 1, ?, ?, ?, NULL, ? WHERE ${existsSql}
+      `).bind(
+        nanoid(), articleId, previous.title, previous.bodyJson,
+        previous.updatedBy ?? previous.createdBy, previous.updatedAt,
+        articleId, committedAt, current.title, current.bodyJson,
+      ));
     }
-    await this.insertRevision(articleId, latest + 1, { title: current.title, bodyJson: current.bodyJson, editedBy: actorId });
-    await this.pruneRevisions(articleId, latest + 1);
-  }
-
-  /** Media refs = union of keys in the current body and all retained revision
-   *  snapshots, so images referenced by restorable history survive the
-   *  orphan-cleanup cron. */
-  private async syncArticleMediaRefs(articleId: string, currentBodyJson: string): Promise<void> {
-    const revisionRows = await this.db.select({ bodyJson: wikiRevisions.bodyJson }).from(wikiRevisions).where(eq(wikiRevisions.articleId, articleId));
-    const keys = new Set(extractRichTextMediaKeys(currentBodyJson, "wiki", articleId));
-    for (const row of revisionRows) {
-      for (const key of extractRichTextMediaKeys(row.bodyJson, "wiki", articleId)) keys.add(key);
+    statements.push(this.deps.rawDb.prepare(`
+      INSERT INTO wiki_revisions (id, article_id, revision, title, body_json, edited_by, restored_from, created_at)
+      SELECT ?, ?, ?, ?, ?, ?, ?, ? WHERE ${existsSql}
+    `).bind(
+      nanoid(), articleId, nextRevision, current.title, current.bodyJson, actorId, restoredFrom, committedAt,
+      articleId, committedAt, current.title, current.bodyJson,
+    ));
+    if (cutoff > 0) {
+      statements.push(this.deps.rawDb.prepare(`
+        DELETE FROM wiki_revisions
+        WHERE article_id = ? AND revision <= ? AND ${existsSql}
+      `).bind(articleId, cutoff, articleId, committedAt, current.title, current.bodyJson));
     }
-    await replaceMediaRefs(this.deps.rawDb, "wiki_article", articleId, [...keys]);
+
+    const retainedBodies = revisionRows
+      .filter((row) => row.revision > cutoff)
+      .map((row) => row.bodyJson);
+    if (latestRevision === 0 && 1 > cutoff) retainedBodies.push(previous.bodyJson);
+    retainedBodies.push(current.bodyJson);
+    const keys = retainedBodies.flatMap((body) => extractRichTextMediaKeys(body, "wiki", articleId));
+    statements.push(...this.buildCommittedMediaRefStatements(articleId, committedAt, current.title, current.bodyJson, keys));
+    return statements;
   }
 
   // --- Categories ---
@@ -386,11 +467,40 @@ export class WikiService {
   async createArticle(actorId: string, data: { title: string; slug?: string; category_id: string; body_json: string; sort_order: number; pinned: boolean }): Promise<ServiceResult<unknown>> {
     const articleId = nanoid();
     const slug = await this.uniqueArticleSlug(slugify(data.slug ?? data.title));
-    await this.db.insert(wikiArticles).values({ id: articleId, title: data.title, slug, categoryId: data.category_id, bodyJson: data.body_json, sortOrder: data.sort_order, pinned: data.pinned, archivedAt: null, createdBy: actorId });
+    const revisionId = nanoid();
+    const nowIso = new Date().toISOString();
+    const claimedKeys = extractRichTextMediaKeys(data.body_json, "wiki", articleId);
+    const access = await this.classifyMediaKeys(actorId, articleId, claimedKeys, nowIso);
+    if (!access.valid) return err("FORBIDDEN", "Wiki image is expired or belongs to another user");
+    await this.deps.rawDb.batch([
+      this.deps.rawDb.prepare(`
+        INSERT INTO wiki_articles
+          (id, title, slug, category_id, body_json, sort_order, pinned, archived_at, created_by, updated_by, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, NULL, ?, NULL, ?, ?)
+      `).bind(articleId, data.title, slug, data.category_id, data.body_json, data.sort_order, data.pinned ? 1 : 0, actorId, nowIso, nowIso),
+      this.deps.rawDb.prepare(`
+        INSERT INTO wiki_revisions
+          (id, article_id, revision, title, body_json, edited_by, restored_from, created_at)
+        VALUES (?, ?, 1, ?, ?, ?, NULL, ?)
+      `).bind(revisionId, articleId, data.title, data.body_json, actorId, nowIso),
+      ...buildReplaceMediaRefsStatements(
+        this.deps.rawDb,
+        "wiki_article",
+        articleId,
+        claimedKeys,
+      ),
+      ...this.buildLeaseConsumptionStatements(
+        actorId,
+        articleId,
+        access.leasedKeys,
+        nowIso,
+        nowIso,
+        data.title,
+        data.body_json,
+      ),
+    ]);
     const created = await this.getArticleById(articleId);
     if (!created) return err("SERVER_ERROR", "Failed to create wiki article");
-    await this.insertRevision(articleId, 1, { title: created.title, bodyJson: created.bodyJson, editedBy: actorId });
-    await replaceMediaRefs(this.deps.rawDb, "wiki_article", articleId, extractRichTextMediaKeys(created.bodyJson, "wiki", articleId));
     await this.deps.writeAuditLog({ entityType: "wiki_article", action: "create", actorId, entityId: articleId, diffTitle: created.title });
     await this.deps.publishEntityChanged({ entityType: "wiki", entityId: articleId, hint: "article_created" });
     return ok(toArticlePayload(created));
@@ -416,25 +526,77 @@ export class WikiService {
     if (data.sort_order !== undefined) patch.sortOrder = data.sort_order;
     if (data.pinned !== undefined) patch.pinned = data.pinned;
     if (data.archived_at !== undefined) patch.archivedAt = data.archived_at;
-    const updateWhere = conditionalEtag
-      ? and(eq(wikiArticles.id, articleId), eq(wikiArticles.updatedAt, existing.updatedAt))
-      : eq(wikiArticles.id, articleId);
-    const updateQuery = this.db.update(wikiArticles).set(patch).where(updateWhere);
-    if (conditionalEtag) {
-      const updatedRows = await updateQuery.returning({ id: wikiArticles.id });
-      if (updatedRows.length === 0) return err("CONFLICT", "Article has been modified by another user");
+    const nextTitle = data.title ?? existing.title;
+    const nextBodyJson = data.body_json ?? existing.bodyJson;
+    const contentChanged = nextTitle !== existing.title || nextBodyJson !== existing.bodyJson;
+    if (contentChanged || data.body_json !== undefined) {
+      const assignments: string[] = ["updated_at = ?", "updated_by = ?"];
+      const values: Array<string | number | null> = [patch.updatedAt as string, actorId];
+      const add = (column: string, value: string | number | null) => {
+        assignments.push(`${column} = ?`);
+        values.push(value);
+      };
+      if (patch.title !== undefined) add("title", patch.title);
+      if (patch.slug !== undefined) add("slug", patch.slug);
+      if (patch.categoryId !== undefined) add("category_id", patch.categoryId);
+      if (patch.bodyJson !== undefined) add("body_json", patch.bodyJson);
+      if (patch.sortOrder !== undefined) add("sort_order", patch.sortOrder);
+      if (patch.pinned !== undefined) add("pinned", patch.pinned ? 1 : 0);
+      if (patch.archivedAt !== undefined) add("archived_at", patch.archivedAt);
+      const updateWhere = conditionalEtag ? "id = ? AND updated_at = ?" : "id = ?";
+      const updateStatement = this.deps.rawDb
+        .prepare(`UPDATE wiki_articles SET ${assignments.join(", ")} WHERE ${updateWhere}`)
+        .bind(...values, articleId, ...(conditionalEtag ? [existing.updatedAt] : []));
+      const revisionRows = await this.getRevisionMediaRows(articleId);
+      const claimedKeys = extractRichTextMediaKeys(nextBodyJson, "wiki", articleId);
+      const access = await this.classifyMediaKeys(actorId, articleId, claimedKeys, patch.updatedAt as string);
+      if (!access.valid) return err("FORBIDDEN", "Wiki image is expired or belongs to another user");
+      const childAndRefStatements = contentChanged
+        ? this.buildRevisionAndRefStatements(
+            articleId,
+            actorId,
+            existing,
+            { title: nextTitle, bodyJson: nextBodyJson },
+            patch.updatedAt as string,
+            revisionRows,
+          )
+        : this.buildCommittedMediaRefStatements(
+            articleId,
+            patch.updatedAt as string,
+            nextTitle,
+            nextBodyJson,
+            [nextBodyJson, ...revisionRows.map((row) => row.bodyJson)].flatMap((body) => extractRichTextMediaKeys(body, "wiki", articleId)),
+          );
+      const results = await this.deps.rawDb.batch([
+        updateStatement,
+        ...childAndRefStatements,
+        ...this.buildLeaseConsumptionStatements(
+          actorId,
+          articleId,
+          access.leasedKeys,
+          patch.updatedAt as string,
+          patch.updatedAt as string,
+          nextTitle,
+          nextBodyJson,
+        ),
+      ]);
+      if (conditionalEtag && Number(results[0]?.meta?.changes ?? 0) === 0) {
+        return err("CONFLICT", "Article has been modified by another user");
+      }
     } else {
-      await updateQuery;
+      const updateWhere = conditionalEtag
+        ? and(eq(wikiArticles.id, articleId), eq(wikiArticles.updatedAt, existing.updatedAt))
+        : eq(wikiArticles.id, articleId);
+      const updateQuery = this.db.update(wikiArticles).set(patch).where(updateWhere);
+      if (conditionalEtag) {
+        const updatedRows = await updateQuery.returning({ id: wikiArticles.id });
+        if (updatedRows.length === 0) return err("CONFLICT", "Article has been modified by another user");
+      } else {
+        await updateQuery;
+      }
     }
     const updated = await this.getArticleById(articleId);
     if (!updated) return err("SERVER_ERROR", "Failed to load updated wiki article");
-    const contentChanged = (data.title !== undefined && data.title !== existing.title) || (data.body_json !== undefined && data.body_json !== existing.bodyJson);
-    if (contentChanged) {
-      await this.snapshotContentChange(articleId, actorId, { title: existing.title, bodyJson: existing.bodyJson, editedBy: existing.updatedBy ?? existing.createdBy, editedAt: existing.updatedAt }, { title: updated.title, bodyJson: updated.bodyJson });
-    }
-    if (data.body_json !== undefined) {
-      await this.syncArticleMediaRefs(articleId, updated.bodyJson);
-    }
     const diff = buildArticleDiff(existing, data);
     await this.deps.writeAuditLog({ entityType: "wiki_article", action: "update", actorId, entityId: articleId, diffTitle: updated.title, detailText: diff ? JSON.stringify(diff) : null });
     await this.deps.publishEntityChanged({ entityType: "wiki", entityId: articleId, hint: "article_updated" });
@@ -454,11 +616,17 @@ export class WikiService {
   async permanentDeleteArticle(actorId: string, articleId: string): Promise<ServiceResult<{ ok: true }>> {
     const existing = await this.getArticleById(articleId);
     if (!existing) return err("NOT_FOUND", "Wiki article not found");
-    await this.db.delete(wikiArticles).where(eq(wikiArticles.id, articleId));
-    // Explicit revision cleanup: the FK cascade covers production, but local
-    // mock D1 may run without foreign_keys enforcement.
-    await this.db.delete(wikiRevisions).where(eq(wikiRevisions.articleId, articleId));
-    await deleteMediaRefs(this.deps.rawDb, "wiki_article", articleId);
+    const revisionRows = await this.getRevisionMediaRows(articleId);
+    const mediaKeys = [existing.bodyJson, ...revisionRows.map((row) => row.bodyJson)]
+      .flatMap((body) => extractRichTextMediaKeys(body, "wiki", articleId));
+    await this.deps.rawDb.batch([
+      this.deps.rawDb.prepare("DELETE FROM media_references WHERE entity_type = ? AND entity_id = ?").bind("wiki_article", articleId),
+      this.deps.rawDb.prepare("DELETE FROM wiki_revisions WHERE article_id = ?").bind(articleId),
+      this.deps.rawDb.prepare("DELETE FROM wiki_articles WHERE id = ?").bind(articleId),
+    ]);
+    if (this.deps.media.delete) {
+      await Promise.allSettled([...new Set(mediaKeys)].map((key) => this.deps.media.delete(key)));
+    }
     await this.deps.writeAuditLog({ entityType: "wiki_article", action: "delete", actorId, entityId: articleId, diffTitle: existing.title });
     await this.deps.publishEntityChanged({ entityType: "wiki", entityId: articleId, hint: "article_deleted" });
     return ok({ ok: true });
@@ -487,13 +655,35 @@ export class WikiService {
     if (snapshot.title === existing.title && snapshot.bodyJson === existing.bodyJson) {
       return err("VALIDATION_ERROR", "Revision content is identical to the current article");
     }
-    await this.db.update(wikiArticles).set({ title: snapshot.title, bodyJson: snapshot.bodyJson, updatedAt: new Date().toISOString(), updatedBy: actorId }).where(eq(wikiArticles.id, articleId));
+    const committedAt = new Date().toISOString();
+    const revisionRows = await this.getRevisionMediaRows(articleId);
+    const claimedKeys = extractRichTextMediaKeys(snapshot.bodyJson, "wiki", articleId);
+    const access = await this.classifyMediaKeys(actorId, articleId, claimedKeys, committedAt);
+    if (!access.valid) return err("FORBIDDEN", "Wiki image is expired or belongs to another user");
+    await this.deps.rawDb.batch([
+      this.deps.rawDb.prepare("UPDATE wiki_articles SET title = ?, body_json = ?, updated_at = ?, updated_by = ? WHERE id = ?")
+        .bind(snapshot.title, snapshot.bodyJson, committedAt, actorId, articleId),
+      ...this.buildRevisionAndRefStatements(
+        articleId,
+        actorId,
+        existing,
+        { title: snapshot.title, bodyJson: snapshot.bodyJson },
+        committedAt,
+        revisionRows,
+        revision,
+      ),
+      ...this.buildLeaseConsumptionStatements(
+        actorId,
+        articleId,
+        access.leasedKeys,
+        committedAt,
+        committedAt,
+        snapshot.title,
+        snapshot.bodyJson,
+      ),
+    ]);
     const updated = await this.getArticleById(articleId);
     if (!updated) return err("SERVER_ERROR", "Failed to load restored wiki article");
-    const latest = await this.latestRevisionNumber(articleId);
-    await this.insertRevision(articleId, latest + 1, { title: snapshot.title, bodyJson: snapshot.bodyJson, editedBy: actorId, restoredFrom: revision });
-    await this.pruneRevisions(articleId, latest + 1);
-    await this.syncArticleMediaRefs(articleId, updated.bodyJson);
     await this.deps.writeAuditLog({ entityType: "wiki_article", action: "rollback", actorId, entityId: articleId, diffTitle: updated.title, detailText: JSON.stringify({ restored_from: revision }) });
     await this.deps.publishEntityChanged({ entityType: "wiki", entityId: articleId, hint: "article_updated" });
     return ok(toArticlePayload(updated));
@@ -503,16 +693,21 @@ export class WikiService {
     const existing = await this.getArticleById(articleId);
     if (!existing) return err("NOT_FOUND", "Wiki article not found");
     const keys: string[] = [];
+    const createdAt = new Date();
+    const expiresAt = new Date(createdAt.getTime() + WIKI_IMAGE_LEASE_TTL_SECONDS * 1000).toISOString();
     try {
       for (const file of files) {
-        // No media_references entry here: keys are added when the body_json referencing
-        // them is saved (replaceMediaRefs). Unsaved uploads are orphans caught by the
-        // media-orphan-cleanup cron's 48 h grace period.
-        const key = `wiki/${articleId}/images/${Date.now()}_${nanoid()}`;
+        const key = buildWikiImageKey(articleId, file.contentType);
         keys.push(key);
         await this.deps.media.put(key, file.data, { httpMetadata: { contentType: file.contentType || "application/octet-stream" } });
       }
-      await this.deps.writeAuditLog({ entityType: "wiki_article", action: "upload_images", actorId, entityId: articleId, diffTitle: existing.title ?? null, detailText: JSON.stringify({ keys }) });
+      if (keys.length > 0) {
+        await this.deps.rawDb.batch(keys.map((key) => this.deps.rawDb.prepare(`
+          INSERT INTO media_upload_leases
+            (media_key, owner_user_id, entity_type, entity_id, expires_at, created_at)
+          VALUES (?1, ?2, 'wiki_article', ?3, ?4, ?5)
+        `).bind(key, actorId, articleId, expiresAt, createdAt.toISOString())));
+      }
     } catch (error) {
       await rethrowAfterUploadFailure(
         error,
@@ -520,6 +715,7 @@ export class WikiService {
         keys,
       );
     }
+    await this.deps.writeAuditLog({ entityType: "wiki_article", action: "upload_images", actorId, entityId: articleId, diffTitle: existing.title ?? null, detailText: JSON.stringify({ keys }) });
     return ok({ keys });
   }
 }

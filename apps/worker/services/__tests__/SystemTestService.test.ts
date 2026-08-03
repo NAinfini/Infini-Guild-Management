@@ -65,11 +65,16 @@ describe("SystemTestService exact compensation", () => {
     const { env, statements, MEDIA } = createEnv();
     await new SystemTestService(env as never).cleanupExactArtifacts([
       { type: "gallery_item", key: "gallery-test-1" },
+      { type: "user", key: "user-test-1" },
       { type: "r2_key", key: "gallery/gallery-test-1/image.png" },
     ]);
 
     expect(statements).toEqual(expect.arrayContaining([
       expect.objectContaining({ sql: "DELETE FROM gallery_items WHERE id = ?", params: ["gallery-test-1"] }),
+      expect.objectContaining({
+        sql: "DELETE FROM media_references WHERE entity_type = 'member_profile' AND entity_id = ?",
+        params: ["user-test-1"],
+      }),
       expect.objectContaining({ sql: "DELETE FROM media_references WHERE media_key = ?", params: ["gallery/gallery-test-1/image.png"] }),
     ]));
     expect(statements.some((statement) => /\bLIKE\b/i.test(statement.sql))).toBe(false);
@@ -304,6 +309,7 @@ describe("SystemTestService exact compensation", () => {
       "storage/cleanup/storage.png",
       "classes/cleanup/icon.png",
     ] as const;
+    const mockPortraitKey = "/mock/portrait-2.svg";
 
     try {
       insert("INSERT INTO users (id, username, role) VALUES ('admin-1', 'admin', 'admin')");
@@ -366,6 +372,14 @@ describe("SystemTestService exact compensation", () => {
       for (const [entityType, entityId, mediaKey] of mediaReferences) {
         insert("INSERT INTO media_references (media_key, entity_type, entity_id) VALUES (?, ?, ?)", mediaKey, entityType, entityId);
       }
+      insert(
+        "INSERT INTO media_references (media_key, entity_type, entity_id) VALUES (?, 'member_profile', ?)",
+        mockPortraitKey, ids.user,
+      );
+      insert(
+        "INSERT INTO media_upload_leases (media_key, owner_user_id, entity_type, entity_id, expires_at) VALUES (?, 'admin-1', 'gallery', ?, '2099-01-01T00:00:00.000Z')",
+        mediaKeys[3], ids.gallery,
+      );
 
       const artifacts: Array<[string, string]> = [
         ["user", ids.user], ["invite_link", ids.invite], ["role", roleId],
@@ -437,6 +451,7 @@ describe("SystemTestService exact compensation", () => {
         ["class_catalog", "id", ids.classCatalog],
         ["member_absences", "id", ids.absence],
         ["member_absences", "id", ids.absenceOnExistingMember],
+        ["media_upload_leases", "media_key", mediaKeys[3]],
       ] as const;
       for (const [table, column, value] of residueQueries) {
         const row = sqlite.prepare(`SELECT COUNT(*) AS count FROM ${table} WHERE ${column} = ?`).get(value) as { count: number };
@@ -446,6 +461,10 @@ describe("SystemTestService exact compensation", () => {
         const row = sqlite.prepare("SELECT COUNT(*) AS count FROM media_references WHERE media_key = ?").get(mediaKey) as { count: number };
         expect(Number(row.count), `media_references retained ${mediaKey}`).toBe(0);
       }
+      const mockPortraitReference = sqlite.prepare(
+        "SELECT COUNT(*) AS count FROM media_references WHERE media_key = ? AND entity_type = 'member_profile' AND entity_id = ?",
+      ).get(mockPortraitKey, ids.user) as { count: number };
+      expect(Number(mockPortraitReference.count), "member profile mock media reference was retained").toBe(0);
       expect(r2Objects).toEqual(new Set());
     } finally {
       sqlite.close();

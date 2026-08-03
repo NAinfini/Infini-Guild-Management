@@ -23,11 +23,14 @@ import { siteConfig } from "../db/schema";
 import { logger } from "../utils/logger";
 import type { WriteAuditLogInput } from "./audit";
 import { captureUploadValidation } from "./media";
+import { rethrowAfterUploadFailure } from "./media-upload-compensation";
+import { buildReplaceMediaRefsStatements } from "./media-references";
 import { err, ok, type ServiceResult } from "./result";
 
 type DrizzleDb = DrizzleD1Database<Record<string, unknown>>;
 
 type SiteConfigDeps = {
+  rawDb: D1Database;
   writeAuditLog: (input: WriteAuditLogInput) => Promise<void>;
   storeSiteLogo?: (file: File) => Promise<string>;
   deleteMediaObject?: (key: string) => Promise<void>;
@@ -91,7 +94,7 @@ function siteLogoUrlForKey(key: string): string {
   return `${SITE_LOGO_ROUTE}?key=${encodeURIComponent(key)}`;
 }
 
-function siteLogoKeyFromUrl(url: string | null | undefined): string | null {
+export function siteLogoKeyFromUrl(url: string | null | undefined): string | null {
   if (!url) return null;
   try {
     const parsed = new URL(url, "https://guild.local");
@@ -249,14 +252,26 @@ export class SiteConfigService {
 
     const previousKey = siteLogoKeyFromUrl(siteRow?.siteLogoUrl ?? this.deps.envSiteLogoUrl);
     const nextUrl = siteLogoUrlForKey(stored.data);
-    const updated = await this.updateSiteLogoUrl(actorId, nextUrl);
-    if (!updated.ok) {
-      if (this.deps.deleteMediaObject) await this.deps.deleteMediaObject(stored.data);
-      return updated;
+    try {
+      await this.commitSiteLogoUrl(nextUrl, stored.data);
+    } catch (error) {
+      await rethrowAfterUploadFailure(
+        error,
+        (key) => this.deps.deleteMediaObject?.(key) ?? Promise.resolve(),
+        [stored.data],
+      );
     }
-
+    await this.deps.writeAuditLog({
+      entityType: "site_config",
+      action: "update",
+      actorId,
+      entityId: DEFAULT_ID,
+      diffTitle: "Site Config",
+      detailText: JSON.stringify({ fields: ["siteLogoUrl"] }),
+    });
+    const updated = await this.getAdminConfig();
     if (previousKey && previousKey !== stored.data && this.deps.deleteMediaObject) {
-      await this.deps.deleteMediaObject(previousKey);
+      await Promise.allSettled([this.deps.deleteMediaObject(previousKey)]);
     }
     return updated;
   }
@@ -287,21 +302,14 @@ export class SiteConfigService {
     return this.getSiteRow();
   }
 
-  private async updateSiteLogoUrl(actorId: string, siteLogoUrl: string): Promise<ServiceResult<AdminSiteConfigResponse>> {
+  private async commitSiteLogoUrl(siteLogoUrl: string, mediaKey: string): Promise<void> {
     await this.ensureSiteRow();
-    await this.db.update(siteConfig).set({
-      siteLogoUrl,
-      updatedAt: this.nowIso(),
-    }).where(eq(siteConfig.id, DEFAULT_ID));
-    await this.deps.writeAuditLog({
-      entityType: "site_config",
-      action: "update",
-      actorId,
-      entityId: DEFAULT_ID,
-      diffTitle: "Site Config",
-      detailText: JSON.stringify({ fields: ["siteLogoUrl"] }),
-    });
-    return this.getAdminConfig();
+    await this.deps.rawDb.batch([
+      this.deps.rawDb
+        .prepare("UPDATE site_config SET site_logo_url = ?1, updated_at = ?2 WHERE id = ?3")
+        .bind(siteLogoUrl, this.nowIso(), DEFAULT_ID),
+      ...buildReplaceMediaRefsStatements(this.deps.rawDb, "site_config", DEFAULT_ID, [mediaKey]),
+    ]);
   }
 
   private nowIso(): string {

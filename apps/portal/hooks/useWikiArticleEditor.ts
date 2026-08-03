@@ -1,7 +1,7 @@
 import type { WikiArticle, WikiCategory } from "@guild/shared";
 import { TIPTAP_DEFAULT_JSON } from "@portal/components/shared/tiptap-meta";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { flushSync } from "react-dom";
 import { useDisclosure } from "@mantine/hooks";
 import { useTranslation } from "react-i18next";
@@ -45,6 +45,7 @@ export function useWikiArticleEditor({
   const { t } = useTranslation("wiki");
   const queryClient = useQueryClient();
   const { showError } = useAppError();
+  const deletePendingRef = useRef(false);
 
   const [articleTitle, setArticleTitle] = useState("");
   const [articleBody, setArticleBody] = useState(TIPTAP_DEFAULT_JSON);
@@ -130,6 +131,9 @@ export function useWikiArticleEditor({
     },
     onError: (error) => {
       showError(error, t("message.articleDeleteFailed"));
+    },
+    onSettled: () => {
+      deletePendingRef.current = false;
     },
   });
 
@@ -250,6 +254,8 @@ export function useWikiArticleEditor({
   };
 
   const deleteArticle = (id: string) => {
+    if (deletePendingRef.current) return;
+    deletePendingRef.current = true;
     deleteArticleMutation.mutate(id);
   };
 
@@ -282,6 +288,7 @@ export function useWikiArticleEditor({
     isDirty,
     isSaving: updateArticleMutation.isPending,
     isCreating: createArticleMutation.isPending,
+    isDeleting: deleteArticleMutation.isPending,
     canCreateArticle,
     startCreateArticle,
     exitEditor,

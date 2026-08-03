@@ -19,6 +19,12 @@ import { expect, readJson, test } from "../../support/test";
 
 type StatusData = { db: string; r2: string; ws: string; crons: string };
 
+function statusLabel(value: string): string {
+  if (value === "ok") return "Verified";
+  if (value === "configured") return "Configured";
+  return value.toUpperCase();
+}
+
 function healthTile(page: Page, label: string): Locator {
   return page.locator(".system-health-tile").filter({ hasText: label });
 }
@@ -65,14 +71,19 @@ test("健康面板：四个服务的状态和延迟都如实来自接口，不�
   const status = await serverStatus(api);
   await openStatus(page);
 
-  await expect(healthTile(page, "D1")).toContainText(status.db.toUpperCase());
-  await expect(healthTile(page, "R2")).toContainText(status.r2.toUpperCase());
-  await expect(healthTile(page, "WS")).toContainText(status.ws.toUpperCase());
-  await expect(healthTile(page, "Crons")).toContainText(status.crons.toUpperCase());
+  await expect(healthTile(page, "D1")).toContainText(statusLabel(status.db));
+  await expect(healthTile(page, "R2")).toContainText(statusLabel(status.r2));
+  await expect(healthTile(page, "WS")).toContainText(statusLabel(status.ws));
+  await expect(healthTile(page, "Crons")).toContainText(statusLabel(status.crons));
 
   /* 总览只看这四项服务；接口回包里还有延迟、时间戳之类的字段，不能一并拿去比。 */
-  const allOk = [status.db, status.r2, status.ws, status.crons].every((value) => value === "ok");
-  await expect(page.locator(".system-health-overall")).toHaveText(allOk ? "Operational" : "Degraded");
+  const values = [status.db, status.r2, status.ws, status.crons];
+  const overall = values.every((value) => value === "ok")
+    ? "Operational"
+    : values.every((value) => value === "ok" || value === "configured")
+      ? "Configured · runtime unverified"
+      : "Degraded";
+  await expect(page.locator(".system-health-overall")).toHaveText(overall);
   await expect(
     page.locator(".system-health-tile--latency"),
     "延迟格子必须是真实数字；显示成「—」说明这一栏根本没接上数据",

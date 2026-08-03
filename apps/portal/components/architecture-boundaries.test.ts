@@ -4,18 +4,19 @@ import { describe, expect, it } from "vitest";
 
 const repoRoot = process.cwd();
 
-function listSourceFiles(root: string, includeTests = false): string[] {
+function listSourceFiles(root: string): string[] {
   const result: string[] = [];
   for (const entry of readdirSync(root)) {
     const fullPath = join(root, entry);
     const stat = statSync(fullPath);
     if (stat.isDirectory()) {
-      result.push(...listSourceFiles(fullPath, includeTests));
+      result.push(...listSourceFiles(fullPath));
       continue;
     }
     if (
       /\.(ts|tsx)$/.test(entry) &&
-      (includeTests || (!entry.endsWith(".test.ts") && !entry.endsWith(".test.tsx")))
+      !entry.endsWith(".test.ts") &&
+      !entry.endsWith(".test.tsx")
     ) {
       result.push(fullPath);
     }
@@ -60,19 +61,6 @@ const forbiddenRawApiImportFragments = [
   "@portal/api/mutations",
 ];
 
-const removedUiPrimitiveNames = [
-  "DepthButton",
-  "DepthToggle",
-  "InfiniMenu",
-  "PortalCard",
-  "FilterToolbar",
-  "PageTabs",
-  "ConfirmDialogProvider",
-  "InfiniTable",
-  "TablePagination",
-  "FloatingSaveBar",
-] as const;
-
 function hasForbiddenRawApiImport(source: string): boolean {
   return forbiddenRawApiImportFragments.some((fragment) => source.includes(fragment));
 }
@@ -102,39 +90,6 @@ describe("portal architecture boundaries", () => {
     expect(eslintConfig).toContain("**/api/client");
     expect(eslintConfig).toContain("**/api/queries/*");
     expect(eslintConfig).toContain("**/api/mutations/*");
-  });
-
-  it("keeps removed visual primitives out of portal component source", () => {
-    const componentRoot = resolve(repoRoot, "apps/portal/components");
-    const offenders = listSourceFiles(componentRoot)
-      .filter((filePath) => !filePath.endsWith("architecture-boundaries.test.ts"))
-      .filter((filePath) => {
-        const source = readFileSync(filePath, "utf8");
-        return removedUiPrimitiveNames.some((name) => new RegExp(`\\b${name}\\b`).test(source));
-      })
-      .map((filePath) => relative(repoRoot, filePath).replace(/\\/g, "/"));
-
-    expect(offenders).toEqual([]);
-  });
-
-  it("does not restore the removed third-party UI dependencies", () => {
-    const packageJson = JSON.parse(readProjectFile("package.json")) as {
-      dependencies?: Record<string, string>;
-      devDependencies?: Record<string, string>;
-    };
-    const dependencies = {
-      ...packageJson.dependencies,
-      ...packageJson.devDependencies,
-    };
-
-    expect(dependencies).not.toHaveProperty("cmdk");
-    expect(dependencies).not.toHaveProperty("mantine-contextmenu");
-    expect(dependencies).not.toHaveProperty("@tailwindcss/vite");
-    expect(dependencies).not.toHaveProperty("tailwindcss");
-    expect(dependencies).not.toHaveProperty("tailwind-merge");
-
-    expect(readProjectFile("apps/portal/styles.css")).not.toContain("tailwindcss");
-    expect(readProjectFile("apps/portal/vite.config.ts")).not.toContain("@tailwindcss");
   });
 
   it("keeps foundational Mantine styling in the theme instead of the global stylesheet", () => {
@@ -239,17 +194,6 @@ describe("portal architecture boundaries", () => {
     expect(allComponentStyles.match(/forged-grain\.png/g)).toHaveLength(1);
   });
 
-  it("keeps the pre-React splash free of decorative effect machinery", () => {
-    const html = readProjectFile("apps/portal/index.html");
-
-    expect(html).not.toContain("splash.js");
-    expect(html).not.toContain("splash-canvas");
-    expect(html).not.toContain("splash-glow");
-    expect(html).not.toContain("splash-ring");
-    expect(html).not.toContain("radial-gradient");
-    expect(html).not.toContain("background-clip: text");
-  });
-
   it("disables Zod JIT before loading the module graph under strict CSP", () => {
     const html = readProjectFile("apps/portal/index.html");
     const jitlessScriptIndex = html.indexOf('<script src="/zod-csp.js"></script>');
@@ -260,19 +204,5 @@ describe("portal architecture boundaries", () => {
     expect(readProjectFile("apps/portal/public/zod-csp.js"))
       .toContain("__zod_globalConfig = { jitless: true }");
     expect(readProjectFile("apps/portal/main.tsx")).not.toContain("z.config({ jitless: true })");
-  });
-
-  it("does not reference deleted implementation-note or superseded plan files", () => {
-    const portalRoot = resolve(repoRoot, "apps/portal");
-    const deletedPlanReference =
-      /task-[0-9][^\s)]*\.md|final-review\.md/;
-    const offenders = [
-      ...listSourceFiles(portalRoot, true),
-      ...listStyleFiles(portalRoot),
-    ]
-      .filter((filePath) => deletedPlanReference.test(readFileSync(filePath, "utf8")))
-      .map((filePath) => relative(repoRoot, filePath).replace(/\\/g, "/"));
-
-    expect(offenders).toEqual([]);
   });
 });

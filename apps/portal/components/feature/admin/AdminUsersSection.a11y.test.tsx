@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import type { AdminRole } from "@guild/shared";
 import { MantineProvider } from "@mantine/core";
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type { ColumnDef } from "@tanstack/react-table";
 import { describe, expect, it, vi } from "vitest";
@@ -83,50 +83,72 @@ const roles = [{
   assigned_user_count: 1,
 }] as unknown as AdminRole[];
 
+const secondRow = {
+  ...row,
+  user: {
+    ...row.user,
+    id: "user-2",
+    username: "Bob",
+  },
+  profile: {
+    ...row.profile,
+    id: "profile-2",
+    user_id: "user-2",
+  },
+} as AdminUserRow;
+
+function renderUsers(
+  overrides: Partial<React.ComponentProps<typeof AdminUsersSection>> = {},
+) {
+  const props: React.ComponentProps<typeof AdminUsersSection> = {
+    usersLoading: false,
+    usersError: false,
+    isAdmin: true,
+    onOpenCreateMember: vi.fn(),
+    selectedUserIds: [],
+    batchSelectionLimit: 20,
+    onBatchRole: vi.fn(),
+    onBatchActivate: vi.fn(),
+    onBatchDeactivate: vi.fn(),
+    onBatchDelete: vi.fn(),
+    onSingleRoleChange: vi.fn(),
+    onSingleActivate: vi.fn(),
+    onSingleDeactivate: vi.fn(),
+    onSingleResetPassword: vi.fn(),
+    onSingleResetLoginLock: vi.fn(),
+    batchRolePending: false,
+    batchActivatePending: false,
+    batchDeactivatePending: false,
+    batchDeletePending: false,
+    isSingleActionPending: () => false,
+    isBatchPending: false,
+    batchProgress: 0,
+    userRows: [row],
+    userColumns: columns,
+    onOpenMemberDetail: vi.fn(),
+    onSelectionChange: vi.fn(),
+    roles,
+    memberSearch: "",
+    onMemberSearchChange: vi.fn(),
+    ...overrides,
+  };
+
+  render(
+    <MantineProvider>
+      <AdminUsersSection {...props} />
+    </MantineProvider>,
+  );
+
+  return props;
+}
+
 describe("AdminUsersSection accessibility", () => {
   it("opens, selects, and exposes the action menu from the keyboard", async () => {
     const user = userEvent.setup();
     const onOpenMemberDetail = vi.fn();
     const onSelectionChange = vi.fn();
 
-    render(
-      <MantineProvider>
-        <AdminUsersSection
-          usersLoading={false}
-          usersError={false}
-          isAdmin
-          onOpenCreateMember={vi.fn()}
-          selectedUserIds={[]}
-          batchSelectionLimit={20}
-          onBatchRole={vi.fn()}
-          onBatchActivate={vi.fn()}
-          onBatchDeactivate={vi.fn()}
-          onBatchDelete={vi.fn()}
-          onSingleRoleChange={vi.fn()}
-          onSingleActivate={vi.fn()}
-          onSingleDeactivate={vi.fn()}
-          onSingleResetPassword={vi.fn()}
-          onSingleResetLoginLock={vi.fn()}
-          batchRolePending={false}
-          batchActivatePending={false}
-          batchDeactivatePending={false}
-          batchDeletePending={false}
-          singleRolePending={false}
-          singleActivationPending={false}
-          singleResetPasswordPending={false}
-          singleResetLoginLockPending={false}
-          isBatchPending={false}
-          batchProgress={0}
-          userRows={[row]}
-          userColumns={columns}
-          onOpenMemberDetail={onOpenMemberDetail}
-          onSelectionChange={onSelectionChange}
-          roles={roles}
-          memberSearch=""
-          onMemberSearchChange={vi.fn()}
-        />
-      </MantineProvider>,
-    );
+    renderUsers({ onOpenMemberDetail, onSelectionChange });
 
     const tableRow = screen.getByRole("row", { name: "member.aria.row Alice" });
     tableRow.focus();
@@ -149,5 +171,60 @@ describe("AdminUsersSection accessibility", () => {
     expect(
       screen.getByRole("button", { name: "member.action.openDetailAria Alice" }),
     ).toBeInTheDocument();
+  });
+
+  it("keeps another member's action menu usable while one member action is pending", async () => {
+    const user = userEvent.setup();
+    const onSingleResetPassword = vi.fn();
+    const pendingActions = new Set([
+      "user-1:change-role",
+      "user-1:deactivate",
+      "user-1:reset-password",
+      "user-1:reset-login-lock",
+    ]);
+    renderUsers({
+      userRows: [row, secondRow],
+      onSingleResetPassword,
+      isSingleActionPending: (userId, action) => pendingActions.has(`${userId}:${action}`),
+    });
+
+    const actionButtons = screen.getAllByRole("button", { name: "member.action.menu" });
+    fireEvent.click(actionButtons[0]!);
+
+    let menu: HTMLElement | null = null;
+    await waitFor(() => {
+      menu = document.querySelector("[data-admin-user-action-menu]");
+      expect(menu).not.toBeNull();
+    });
+    const aliceMenu = menu as unknown as HTMLElement;
+    expect(within(aliceMenu).getByRole("menuitem", { name: "member.context.changeRole", hidden: true })).toBeDisabled();
+    expect(within(aliceMenu).getByRole("menuitem", { name: "member.deactivate", hidden: true })).toBeDisabled();
+    const resetPassword = within(aliceMenu).getByRole("menuitem", { name: "member.resetPassword", hidden: true });
+    expect(resetPassword).toBeDisabled();
+    expect(within(aliceMenu).getByRole("menuitem", { name: "member.resetLoginLock", hidden: true })).toBeDisabled();
+
+    await user.click(resetPassword);
+    await user.click(resetPassword);
+    expect(onSingleResetPassword).not.toHaveBeenCalled();
+
+    await user.keyboard("{Escape}");
+    await waitFor(() => {
+      expect(document.querySelector("[data-admin-user-action-menu]")).toBeNull();
+    });
+    fireEvent.contextMenu(screen.getByRole("row", { name: "member.aria.row Bob" }), {
+      clientX: 10,
+      clientY: 10,
+    });
+    await waitFor(() => {
+      const openMenu = document.querySelector("[data-admin-user-action-menu]") as HTMLElement | null;
+      expect(openMenu).not.toBeNull();
+      expect(within(openMenu as HTMLElement).getByText("Bob")).toBeInTheDocument();
+      menu = openMenu;
+    });
+    const bobMenu = menu as unknown as HTMLElement;
+    expect(within(bobMenu).getByRole("menuitem", { name: "member.context.changeRole", hidden: true })).toBeEnabled();
+    expect(within(bobMenu).getByRole("menuitem", { name: "member.deactivate", hidden: true })).toBeEnabled();
+    expect(within(bobMenu).getByRole("menuitem", { name: "member.resetPassword", hidden: true })).toBeEnabled();
+    expect(within(bobMenu).getByRole("menuitem", { name: "member.resetLoginLock", hidden: true })).toBeEnabled();
   });
 });

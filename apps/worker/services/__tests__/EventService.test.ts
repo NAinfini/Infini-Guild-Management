@@ -34,6 +34,25 @@ function makeRawDb() {
   };
 }
 
+function createSequentialSelectDb(rowsBySelect: unknown[][]) {
+  const pending = [...rowsBySelect];
+  const select = vi.fn(() => ({
+    from: vi.fn(() => ({
+      where: vi.fn(() => {
+        const rows = pending.shift() ?? [];
+        const promise = Promise.resolve(rows);
+        return {
+          limit: vi.fn().mockResolvedValue(rows),
+          then: promise.then.bind(promise),
+          catch: promise.catch.bind(promise),
+          finally: promise.finally.bind(promise),
+        };
+      }),
+    })),
+  }));
+  return { select };
+}
+
 function createEventRow(overrides: Partial<Record<string, unknown>> = {}) {
   return {
     id: "evt-1",
@@ -63,12 +82,7 @@ function createEventRow(overrides: Partial<Record<string, unknown>> = {}) {
 
 describe("worker EventService", () => {
   it("creates events, uploads inline files, and writes audit log", async () => {
-    const insertValues = vi.fn().mockResolvedValue(undefined);
-    const db = {
-      insert: vi.fn(() => ({ values: insertValues })),
-      update: vi.fn(() => ({ set: vi.fn(() => ({ where: vi.fn().mockResolvedValue(undefined) })) })),
-      delete: vi.fn(() => ({ where: vi.fn().mockResolvedValue(undefined) })),
-    };
+    const db = {};
     const media = {
       put: vi.fn().mockResolvedValue(undefined),
       delete: vi.fn().mockResolvedValue(undefined),
@@ -107,15 +121,17 @@ describe("worker EventService", () => {
       [imageFile("poster.png")],
     );
 
-    expect(insertValues).toHaveBeenCalledWith(
-      expect.objectContaining({
-        id: "evt-1",
-        title: "Guild Run",
-        description: "Bring food",
-        attachments: JSON.stringify(["events/evt-1/images/poster.png"]),
-        autoArchive: true,
-      }),
-    );
+    const createBatch = rawDb.batch.mock.calls[0]?.[0] as Array<{ sql: string; bindings: unknown[] }>;
+    expect(createBatch[0]?.sql).toContain("INSERT INTO events");
+    expect(createBatch[0]?.bindings).toEqual(expect.arrayContaining([
+      "evt-1",
+      "Guild Run",
+      "Bring food",
+      JSON.stringify(["events/evt-1/images/poster.png"]),
+    ]));
+    expect(createBatch.map(({ sql }) => sql)).toEqual(expect.arrayContaining([
+      expect.stringContaining("INSERT OR IGNORE INTO media_references"),
+    ]));
     expect(media.put).toHaveBeenCalledTimes(1);
     expect(writeAuditLog).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -127,20 +143,18 @@ describe("worker EventService", () => {
     expect(created).toEqual(expect.objectContaining({ ok: true }));
     const createdData = (created as { ok: true; data: { attachments: string } }).data;
     expect(parseAttachments(createdData.attachments)).toEqual(["events/evt-1/images/poster.png"]);
-    // replaceMediaRefs is called after insert
-    expect(rawDb.batch).toHaveBeenCalled();
+    expect(rawDb.batch).toHaveBeenCalledTimes(1);
   });
 
-  it("removes the event UUID and inline media when event creation fails", async () => {
+  it("removes inline media when the atomic event creation batch fails", async () => {
     const failure = new Error("event insert failed");
-    const db = {
-      insert: vi.fn(() => ({ values: vi.fn().mockRejectedValue(failure) })),
-    };
+    const db = {};
     const media = {
       put: vi.fn().mockResolvedValue(undefined),
       delete: vi.fn().mockResolvedValue(undefined),
     };
     const rawDb = makeRawDb();
+    rawDb.batch.mockRejectedValueOnce(failure);
     const service = new EventService(db as never, rawDb as never, media as never, {
       getEventById: vi.fn(),
       getUsername: vi.fn().mockResolvedValue(null),
@@ -162,20 +176,12 @@ describe("worker EventService", () => {
     )).rejects.toBe(failure);
 
     expect(media.delete).toHaveBeenCalledWith("events/evt-create-failure/images/new.png");
-    expect(rawDb.prepare).toHaveBeenCalledWith("DELETE FROM events WHERE id = ?1");
-    expect(rawDb.prepare).toHaveBeenCalledWith(
-      "DELETE FROM audit_log WHERE entity_type = ?1 AND entity_id = ?2",
-    );
+    expect(rawDb.batch).toHaveBeenCalledTimes(1);
   });
 
   it("updates event auto-archive settings", async () => {
-    const updateSet = vi.fn(() => ({ where: vi.fn().mockResolvedValue(undefined) }));
-    const db = {
-      insert: vi.fn(),
-      update: vi.fn(() => ({ set: updateSet })),
-      delete: vi.fn(),
-    };
-    const service = new EventService(db as never, makeRawDb() as never, { put: vi.fn() } as never, {
+    const rawDb = makeRawDb();
+    const service = new EventService({} as never, rawDb as never, { put: vi.fn() } as never, {
       getEventById: vi.fn().mockResolvedValue(createEventRow({ autoArchive: true })),
       getUsername: vi.fn().mockResolvedValue(null),
       writeAuditLog: vi.fn().mockResolvedValue(undefined),
@@ -187,7 +193,10 @@ describe("worker EventService", () => {
       auto_archive: true,
     });
 
-    expect(updateSet).toHaveBeenCalledWith(expect.objectContaining({ autoArchive: true }));
+    expect(rawDb.prepare).toHaveBeenCalledWith(expect.stringContaining("UPDATE events SET"));
+    const updateStatement = (rawDb.batch.mock.calls[0]?.[0] as Array<{ sql: string; bindings: unknown[] }>)[0];
+    expect(updateStatement?.sql).toContain("auto_archive = ?");
+    expect(updateStatement?.bindings).toContain(true);
   });
 
   it("rejects updates when the end date is earlier than the start date", async () => {
@@ -216,12 +225,7 @@ describe("worker EventService", () => {
   });
 
   it("uploads additional event images and merges them with existing attachments", async () => {
-    const updateSet = vi.fn(() => ({ where: vi.fn().mockResolvedValue(undefined) }));
-    const db = {
-      insert: vi.fn(),
-      update: vi.fn(() => ({ set: updateSet })),
-      delete: vi.fn(),
-    };
+    const db = {};
     const media = {
       put: vi.fn().mockResolvedValue(undefined),
       delete: vi.fn().mockResolvedValue(undefined),
@@ -247,11 +251,17 @@ describe("worker EventService", () => {
     );
 
     expect((result as { ok: true; data: { attachments: string[] } }).data.attachments).toEqual(["events/existing.png", "events/evt-1/images/new.png"]);
-    expect(updateSet).toHaveBeenCalledWith(
-      expect.objectContaining({
-        attachments: JSON.stringify(["events/existing.png", "events/evt-1/images/new.png"]),
-      }),
-    );
+    expect(rawDb.batch).toHaveBeenCalledTimes(1);
+    const statements = rawDb.batch.mock.calls[0]?.[0] as Array<{ sql: string; bindings: unknown[] }>;
+    expect(statements[0]).toMatchObject({
+      sql: expect.stringContaining("UPDATE events SET attachments"),
+      bindings: expect.arrayContaining([
+        JSON.stringify(["events/existing.png", "events/evt-1/images/new.png"]),
+      ]),
+    });
+    expect(statements.map(({ sql }) => sql)).toEqual(expect.arrayContaining([
+      expect.stringContaining("INSERT OR IGNORE INTO media_references"),
+    ]));
     expect(writeAuditLog).toHaveBeenCalledWith(
       expect.objectContaining({
         action: "upload_images",
@@ -259,17 +269,15 @@ describe("worker EventService", () => {
     );
   });
 
-  it("removes uploaded event media and restores attachments when the update fails", async () => {
+  it("removes uploaded event media when the atomic attachment/reference batch fails", async () => {
     const failure = new Error("event update failed");
-    const updateWhere = vi.fn().mockRejectedValue(failure);
-    const db = {
-      update: vi.fn(() => ({ set: vi.fn(() => ({ where: updateWhere })) })),
-    };
+    const db = {};
     const media = {
       put: vi.fn().mockResolvedValue(undefined),
       delete: vi.fn().mockResolvedValue(undefined),
     };
     const rawDb = makeRawDb();
+    rawDb.batch.mockRejectedValueOnce(failure);
     const service = new EventService(db as never, rawDb as never, media as never, {
       getEventById: vi.fn(),
       getUsername: vi.fn().mockResolvedValue(null),
@@ -323,47 +331,27 @@ describe("worker EventService", () => {
     expect(media.delete).toHaveBeenNthCalledWith(2, "events/evt-1/images/2.png");
   });
 
-  it("adds multiple participants through one batched service operation", async () => {
+  it("adds multiple participants through one capacity-guarded statement", async () => {
     const batch = vi.fn().mockResolvedValue([]);
+    const run = vi.fn().mockResolvedValue({ meta: { changes: 2 } });
     const prepare = vi.fn((sql: string) => ({
-      bind: vi.fn((...bindings: unknown[]) => ({ sql, bindings })),
+      bind: vi.fn((...bindings: unknown[]) => ({
+        sql,
+        bindings,
+        run,
+        all: vi.fn().mockResolvedValue({
+          results: sql.includes("FROM users")
+            ? [{ id: "u-1" }, { id: "u-2" }]
+            : sql.includes("SELECT ep.id")
+              ? [
+                  { id: "p-1", eventId: "evt-1", userId: "u-1", joinedAt: "2026-03-08T12:00:00.000Z" },
+                  { id: "p-2", eventId: "evt-1", userId: "u-2", joinedAt: "2026-03-08T12:00:00.000Z" },
+                ]
+              : [],
+        }),
+      })),
     }));
-    const select = vi
-      .fn()
-      .mockReturnValueOnce({
-        from: vi.fn(() => ({
-          where: vi.fn().mockResolvedValue([{ id: "u-1" }, { id: "u-2" }]),
-        })),
-      })
-      .mockReturnValueOnce({
-        from: vi.fn(() => ({
-          where: vi.fn().mockResolvedValue([]),
-        })),
-      })
-      .mockReturnValueOnce({
-        from: vi.fn(() => ({
-          where: vi.fn().mockResolvedValue([{ count: 0 }]),
-        })),
-      })
-      .mockReturnValueOnce({
-        from: vi.fn(() => ({
-          where: vi.fn().mockResolvedValue([
-            {
-              id: "p-1",
-              eventId: "evt-1",
-              userId: "u-1",
-              joinedAt: "2026-03-08T12:00:00.000Z",
-            },
-            {
-              id: "p-2",
-              eventId: "evt-1",
-              userId: "u-2",
-              joinedAt: "2026-03-08T12:00:00.000Z",
-            },
-          ]),
-        })),
-      });
-    const service = new EventService({ select } as never, { prepare, batch } as never, { put: vi.fn() } as never, {
+    const service = new EventService({} as never, { prepare, batch } as never, { put: vi.fn() } as never, {
       getEventById: vi.fn().mockResolvedValue(createEventRow({ capacity: 5 })),
       getUsername: vi.fn().mockResolvedValue(null),
       writeAuditLog: vi.fn().mockResolvedValue(undefined),
@@ -383,8 +371,129 @@ describe("worker EventService", () => {
     }).addParticipants("mod-1", "evt-1", ["u-1", "u-2"]);
 
     expect(result.ok).toBe(true);
-    expect(batch).toHaveBeenCalledTimes(1);
-    expect(prepare).toHaveBeenCalledWith(expect.stringContaining("INSERT INTO event_participants"));
+    expect(batch).not.toHaveBeenCalled();
+    expect(run).toHaveBeenCalledTimes(1);
+    expect(prepare).toHaveBeenCalledWith(expect.stringContaining("requested(id, user_id)"));
+    expect(prepare).toHaveBeenCalledWith(expect.stringContaining("json_each"));
+    expect(prepare).toHaveBeenCalledWith(expect.stringContaining("<= e.capacity"));
+  });
+
+  it("rejects a moderator batch when a concurrent signup consumes the remaining capacity", async () => {
+    const run = vi.fn().mockResolvedValue({ meta: { changes: 0 } });
+    const prepare = vi.fn((sql: string) => ({
+      bind: vi.fn(() => ({
+        run,
+        all: vi.fn().mockResolvedValue({
+          results: sql.includes("FROM users") ? [{ id: "u-1" }, { id: "u-2" }] : [],
+        }),
+      })),
+    }));
+    const service = new EventService(createSequentialSelectDb([[{ count: 2 }]]) as never, { prepare, batch: vi.fn() } as never, { put: vi.fn() } as never, {
+      getEventById: vi.fn().mockResolvedValue(createEventRow({ capacity: 2 })),
+      getUsername: vi.fn().mockResolvedValue(null),
+      writeAuditLog: vi.fn().mockResolvedValue(undefined),
+      publishEntityChanged: vi.fn().mockResolvedValue(undefined),
+      now: () => "2026-03-08T12:00:00.000Z",
+      createId: vi.fn().mockReturnValueOnce("p-1").mockReturnValueOnce("p-2"),
+    }, stubTemplateDeps);
+
+    const result = await (service as unknown as {
+      addParticipants(
+        actorId: string,
+        eventId: string,
+        targetUserIds: string[],
+      ): Promise<{ ok: boolean; code?: string }>;
+    }).addParticipants("mod-1", "evt-1", ["u-1", "u-2"]);
+
+    expect(result).toMatchObject({ ok: false, code: "CONFLICT" });
+    expect(run).toHaveBeenCalledTimes(1);
+  });
+
+  it("adds 100 participants without any statement exceeding D1's binding limit", async () => {
+    const userIds = Array.from({ length: 100 }, (_, index) => `u-${index}`);
+    const participantRows = userIds.map((userId, index) => ({
+      id: `p-${index}`,
+      eventId: "evt-1",
+      userId,
+      joinedAt: "2026-03-08T12:00:00.000Z",
+    }));
+    const boundStatements: Array<{ sql: string; bindings: unknown[] }> = [];
+    const prepare = vi.fn((sql: string) => ({
+      bind: vi.fn((...bindings: unknown[]) => {
+        const statement = {
+          sql,
+          bindings,
+          run: vi.fn().mockResolvedValue({ meta: { changes: 100 } }),
+          all: vi.fn().mockResolvedValue({
+            results: sql.includes("FROM users")
+              ? userIds.map((id) => ({ id }))
+              : sql.includes("SELECT ep.id")
+                ? participantRows
+                : [],
+          }),
+        };
+        boundStatements.push(statement);
+        return statement;
+      }),
+    }));
+    const db = createSequentialSelectDb([
+      userIds.map((id) => ({ id })),
+      [],
+      participantRows,
+    ]);
+    let participantIndex = 0;
+    const service = new EventService(db as never, { prepare, batch: vi.fn() } as never, { put: vi.fn() } as never, {
+      getEventById: vi.fn().mockResolvedValue(createEventRow({ capacity: 100 })),
+      getUsername: vi.fn().mockResolvedValue(null),
+      writeAuditLog: vi.fn().mockResolvedValue(undefined),
+      publishEntityChanged: vi.fn().mockResolvedValue(undefined),
+      now: () => "2026-03-08T12:00:00.000Z",
+      createId: () => `p-${participantIndex++}`,
+    }, stubTemplateDeps);
+
+    const result = await service.addParticipants("mod-1", "evt-1", userIds);
+
+    expect(result).toMatchObject({ ok: true });
+    if (result.ok) expect(result.participants).toHaveLength(100);
+    expect(boundStatements.every(({ bindings }) => bindings.length <= 2)).toBe(true);
+    const insert = boundStatements.find(({ sql }) => sql.includes("INSERT OR IGNORE INTO event_participants"));
+    expect(insert?.sql).toContain("json_each");
+    expect(insert?.bindings).toHaveLength(1);
+  });
+
+  it.each([
+    ["archived", { archivedAt: "2026-03-08T12:00:00.000Z" }, [], "Event is archived"],
+    ["locked", { signupLocked: true }, [], "Event signup is locked"],
+    ["ended", { endAt: "2026-03-08T11:59:59.000Z" }, [], "Event has ended"],
+    ["duplicate", {}, [[{ id: "participant-1" }]], "Already joined"],
+    ["full", { capacity: 1 }, [[], [{ count: 1 }]], "Event is full"],
+  ])("maps a concurrent %s change from the latest event state", async (_label, latestPatch, selectRows, message) => {
+    const run = vi.fn().mockResolvedValue({ meta: { changes: 0 } });
+    const prepare = vi.fn(() => ({ bind: vi.fn(() => ({ run })) }));
+    const getEventById = vi.fn()
+      .mockResolvedValueOnce(createEventRow({ capacity: 20 }))
+      .mockResolvedValueOnce(createEventRow(latestPatch));
+    const service = new EventService(
+      createSequentialSelectDb(selectRows as unknown[][]) as never,
+      { prepare, batch: vi.fn() } as never,
+      { put: vi.fn() } as never,
+      {
+        getEventById,
+        getUsername: vi.fn().mockResolvedValue(null),
+        writeAuditLog: vi.fn().mockResolvedValue(undefined),
+        publishEntityChanged: vi.fn().mockResolvedValue(undefined),
+        now: () => "2026-03-08T12:00:00.000Z",
+        createId: () => "participant-new",
+      },
+      stubTemplateDeps,
+    );
+
+    await expect(service.joinEvent("member-1", "evt-1")).resolves.toEqual({
+      ok: false,
+      code: "CONFLICT",
+      message,
+    });
+    expect(getEventById).toHaveBeenCalledTimes(2);
   });
 
   it("removes multiple participants with one delete statement", async () => {
@@ -429,6 +538,42 @@ describe("worker EventService", () => {
     expect(prepare).toHaveBeenCalledWith(expect.stringContaining("DELETE FROM media_references"));
   });
 
+  it("deletes only attachments with no references remaining after destroying an event", async () => {
+    const exclusiveKey = "events/evt-1/images/exclusive.webp";
+    const sharedKey = "events/series-1/images/shared.webp";
+    const batch = vi.fn().mockResolvedValue([]);
+    const prepare = vi.fn((sql: string) => ({
+      bind: vi.fn((...bindings: unknown[]) => ({
+        sql,
+        bindings,
+        run: vi.fn().mockResolvedValue({ meta: { changes: 1 } }),
+        all: vi.fn().mockResolvedValue({ results: [{ media_key: sharedKey }] }),
+      })),
+    }));
+    const media = {
+      put: vi.fn(),
+      delete: vi.fn().mockResolvedValue(undefined),
+    };
+    const service = new EventService({} as never, { prepare, batch } as never, media as never, {
+      getEventById: vi.fn(),
+      getUsername: vi.fn().mockResolvedValue(null),
+      writeAuditLog: vi.fn().mockResolvedValue(undefined),
+      publishEntityChanged: vi.fn().mockResolvedValue(undefined),
+      now: () => "2026-03-08T12:00:00.000Z",
+    }, stubTemplateDeps);
+
+    await service.destroyEvent("mod-1", "evt-1", createEventRow({
+      attachments: JSON.stringify([exclusiveKey, sharedKey]),
+    }));
+
+    expect(prepare).toHaveBeenCalledWith(expect.stringContaining(
+      "SELECT DISTINCT media_key FROM media_references",
+    ));
+    expect(media.delete).toHaveBeenCalledOnce();
+    expect(media.delete).toHaveBeenCalledWith(exclusiveKey);
+    expect(media.delete).not.toHaveBeenCalledWith(sharedKey);
+  });
+
   it("rejects leaving archived events", async () => {
     const db = {
       select: vi.fn(),
@@ -452,12 +597,7 @@ describe("worker EventService", () => {
   });
 
   it("creates poll events with poll settings and options", async () => {
-    const insertValues = vi.fn().mockResolvedValue(undefined);
-    const db = {
-      insert: vi.fn(() => ({ values: insertValues })),
-      update: vi.fn(() => ({ set: vi.fn(() => ({ where: vi.fn().mockResolvedValue(undefined) })) })),
-      delete: vi.fn(() => ({ where: vi.fn().mockResolvedValue(undefined) })),
-    };
+    const db = {};
     const batch = vi.fn().mockResolvedValue([]);
     const prepare = vi.fn((sql: string) => ({
       bind: vi.fn((...bindings: unknown[]) => ({ sql, bindings })),
@@ -487,11 +627,10 @@ describe("worker EventService", () => {
       },
     });
 
-    expect(insertValues).toHaveBeenCalledWith(expect.objectContaining({ type: "poll", capacity: null }));
+    expect(prepare).toHaveBeenCalledWith(expect.stringContaining("INSERT INTO events"));
     expect(prepare).toHaveBeenCalledWith(expect.stringContaining("INSERT INTO event_polls"));
     expect(prepare).toHaveBeenCalledWith(expect.stringContaining("INSERT INTO event_poll_options"));
-    // batch is called once for poll creation and once for replaceMediaRefs
-    expect(batch).toHaveBeenCalledTimes(2);
+    expect(batch).toHaveBeenCalledTimes(1);
   });
 
   it("rejects normal signups for poll events", async () => {

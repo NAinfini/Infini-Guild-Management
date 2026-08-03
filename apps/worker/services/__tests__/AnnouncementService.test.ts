@@ -4,7 +4,9 @@ import { signAnnouncementImageStagingToken } from "../announcement-image-staging
 
 // Minimal D1Database mock that captures batch/run calls.
 function createRawDb() {
-  const batchMock = vi.fn().mockResolvedValue([]);
+  const batchMock = vi.fn((statements: unknown[]) => Promise.resolve(
+    statements.map(() => ({ results: [], success: true, meta: { changes: 1 } })),
+  ));
   const runMock = vi.fn().mockResolvedValue({ results: [], success: true, meta: {} });
   const bindMock = vi.fn().mockReturnValue({ run: runMock, first: vi.fn().mockResolvedValue(null) });
   const prepareMock = vi.fn().mockReturnValue({ bind: bindMock });
@@ -115,7 +117,7 @@ describe("AnnouncementService", () => {
     expect(calls.update).not.toHaveBeenCalled();
   });
 
-  it("calls replaceMediaRefs after create", async () => {
+  it("creates announcement content and media references in one D1 batch", async () => {
     const { batchMock, rawDb } = createRawDb();
     const { db } = createCrudDb(BASE_ANNOUNCEMENT_ROW);
     const deps = createDeps(rawDb);
@@ -123,14 +125,16 @@ describe("AnnouncementService", () => {
 
     await service.create("u1", { title: "T", body_json: '{"content":[]}', pinned: false, status: "draft" });
 
-    // replaceMediaRefs issues a db.batch with at least the DELETE statement
-    expect(batchMock).toHaveBeenCalled();
+    expect(batchMock).toHaveBeenCalledTimes(1);
+    expect(batchMock.mock.calls[0]![0]).toHaveLength(2);
   });
 
   it("creates a staged announcement and its media references in one raw D1 batch", async () => {
     const id = "Abcdefghijklmnopqrstu";
     const rawDb = {
-      prepare: vi.fn(() => ({ bind: vi.fn(() => ({})) })),
+      prepare: vi.fn((sql: string) => ({ bind: vi.fn(() => ({
+        first: vi.fn().mockResolvedValue(sql.includes("AS leased") ? { referenced: 0, leased: 1 } : null),
+      })) })),
       batch: vi.fn().mockResolvedValue([]),
     } as unknown as D1Database;
     let lookups = 0;
@@ -151,7 +155,36 @@ describe("AnnouncementService", () => {
       expect.objectContaining({}),
     ]));
     expect(rawDb.batch).toHaveBeenCalledTimes(1);
-    expect((rawDb.batch as ReturnType<typeof vi.fn>).mock.calls[0]![0]).toHaveLength(3);
+    expect((rawDb.batch as ReturnType<typeof vi.fn>).mock.calls[0]![0]).toHaveLength(4);
+    expect(rawDb.prepare).toHaveBeenCalledWith(expect.stringContaining("DELETE FROM media_upload_leases"));
+  });
+
+  it("keeps lease consumption in the failed announcement batch", async () => {
+    const id = "Abcdefghijklmnopqrstu";
+    const failure = new Error("announcement batch failed");
+    const rawDb = {
+      prepare: vi.fn((sql: string) => ({ bind: vi.fn(() => ({
+        first: vi.fn().mockResolvedValue(sql.includes("AS leased") ? { referenced: 0, leased: 1 } : null),
+      })) })),
+      batch: vi.fn().mockRejectedValue(failure),
+    } as unknown as D1Database;
+    const db = {
+      select: vi.fn(() => ({
+        from: vi.fn(() => ({
+          where: vi.fn(() => ({ limit: vi.fn().mockResolvedValue([]) })),
+        })),
+      })),
+    };
+    const deps = createDeps(rawDb);
+    deps.media = { head: vi.fn().mockResolvedValue({ key: `announcement/${id}/images/a.png` }) } as unknown as R2Bucket;
+    const service = new AnnouncementService(db as never, deps);
+    const token = await signAnnouncementImageStagingToken("test-secret", { version: 1, purpose: "announcement-image-staging", announcement_id: id, actor_id: "u1", exp: Math.floor(Date.now() / 1000) + 60 });
+    const body = JSON.stringify({ type: "doc", content: [{ type: "image", attrs: { src: `/api/announcements/image?key=${encodeURIComponent(`announcement/${id}/images/a.png`)}` } }] });
+
+    await expect(service.create("u1", { title: "T", body_json: body, pinned: false, status: "draft", staging_token: token })).rejects.toBe(failure);
+
+    expect(rawDb.batch).toHaveBeenCalledTimes(1);
+    expect(rawDb.prepare).toHaveBeenCalledWith(expect.stringContaining("DELETE FROM media_upload_leases"));
   });
 
   it("does not turn ordinary announcement text into a media reference on update", async () => {
@@ -163,10 +196,10 @@ describe("AnnouncementService", () => {
     await service.update("u1", "ann1", { body_json: bodyJson });
 
     expect(batchMock).toHaveBeenCalledTimes(1);
-    expect(batchMock.mock.calls[0]![0]).toHaveLength(1);
+    expect(batchMock.mock.calls[0]![0]).toHaveLength(2);
   });
 
-  it("calls replaceMediaRefs after update when body_json is provided", async () => {
+  it("updates announcement content and media references in one D1 batch", async () => {
     const { batchMock, rawDb } = createRawDb();
     const { db } = createCrudDb(BASE_ANNOUNCEMENT_ROW);
     const deps = createDeps(rawDb);
@@ -174,15 +207,17 @@ describe("AnnouncementService", () => {
 
     await service.update("u1", "ann1", { body_json: '{"content":[]}' });
 
-    expect(batchMock).toHaveBeenCalled();
+    expect(batchMock).toHaveBeenCalledTimes(1);
+    expect(batchMock.mock.calls[0]![0]).toHaveLength(2);
   });
 
   it("returns conflict without side effects when the conditional update loses the write race", async () => {
     const { batchMock, rawDb } = createRawDb();
-    const { db, mocks } = createCrudDb(BASE_ANNOUNCEMENT_ROW);
-    const returning = vi.fn().mockResolvedValue([]);
-    const where = vi.fn(() => ({ returning }));
-    mocks.updateMock.mockReturnValue({ set: vi.fn(() => ({ where })) });
+    batchMock.mockResolvedValueOnce([
+      { results: [], success: true, meta: { changes: 0 } },
+      { results: [], success: true, meta: { changes: 0 } },
+    ]);
+    const { db } = createCrudDb(BASE_ANNOUNCEMENT_ROW);
     const deps = createDeps(rawDb);
     const service = new AnnouncementService(db as never, deps);
 
@@ -194,8 +229,7 @@ describe("AnnouncementService", () => {
     );
 
     expect(result).toEqual({ ok: false, code: "CONFLICT", message: "Announcement has been modified by another user" });
-    expect(returning).toHaveBeenCalledOnce();
-    expect(batchMock).not.toHaveBeenCalled();
+    expect(batchMock).toHaveBeenCalledTimes(1);
     expect(deps.writeAuditLog).not.toHaveBeenCalled();
     expect(deps.publishEntityChanged).not.toHaveBeenCalled();
     expect(deps.publishAnnouncementPublished).not.toHaveBeenCalled();
@@ -212,17 +246,17 @@ describe("AnnouncementService", () => {
     expect(batchMock).not.toHaveBeenCalled();
   });
 
-  it("calls deleteMediaRefs after permanentDelete", async () => {
-    const { runMock, rawDb, prepareMock } = createRawDb();
+  it("deletes announcement content and media references in one D1 batch", async () => {
+    const { batchMock, rawDb, prepareMock } = createRawDb();
     const { db } = createCrudDb(BASE_ANNOUNCEMENT_ROW);
     const deps = createDeps(rawDb);
     const service = new AnnouncementService(db as never, deps);
 
     await service.permanentDelete("u1", "ann1");
 
-    // deleteMediaRefs calls prepare(...).bind(...).run()
     expect(prepareMock).toHaveBeenCalledWith(expect.stringContaining("DELETE FROM media_references"));
-    expect(runMock).toHaveBeenCalled();
+    expect(batchMock).toHaveBeenCalledTimes(1);
+    expect(batchMock.mock.calls[0]![0]).toHaveLength(2);
   });
 
   it("removes all attempted image keys when a later R2 upload fails", async () => {

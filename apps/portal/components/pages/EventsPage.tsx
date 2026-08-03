@@ -313,8 +313,7 @@ export function EventsPage() {
                   eventFlags={filtering.eventFlags}
                   eventMembersMap={filtering.eventMembersMap}
                   allUsers={asMemberEntries(filtering.usersQuery.data?.data ?? [])}
-                  joinPending={mutations.joinPending}
-                  leavePending={mutations.leavePending}
+                  participantPendingEventIds={mutations.participantPendingEventIds}
                   votePending={mutations.votePending}
                   onResetFilters={filtering.resetFilters}
                   onCreateEvent={() => openCreateEditor()}
@@ -411,8 +410,8 @@ export function EventsPage() {
         allUsers={asMemberEntries(filtering.usersQuery.data?.data ?? [])}
         canManage={canManage}
         currentUserId={user?.id ?? undefined}
-        joinPending={mutations.joinPending}
-        leavePending={mutations.leavePending}
+        joinPending={mutations.participantPendingEventIds.has((routeDetailEvent ?? monthDetailEvent)?.id ?? "")}
+        leavePending={mutations.participantPendingEventIds.has((routeDetailEvent ?? monthDetailEvent)?.id ?? "")}
         onClose={() => {
           if (filtering.focusEventId) {
             filtering.clearFocusedEvent();

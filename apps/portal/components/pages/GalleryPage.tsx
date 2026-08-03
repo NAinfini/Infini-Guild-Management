@@ -171,7 +171,6 @@ export function GalleryPage() {
         isExternalView={c.isExternalView}
         canModerate={c.canModerate}
         selectedIds={c.selectedIds}
-        deletePending={c.deleteMutation.isPending}
         emptyTitle={c.emptyTitle}
         emptyDescription={c.emptyDescription}
         errorTitle={t("empty.error")}

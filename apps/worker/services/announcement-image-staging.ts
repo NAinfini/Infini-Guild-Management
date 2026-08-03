@@ -1,8 +1,9 @@
 import { nanoid } from "nanoid";
 import { rethrowAfterUploadFailure } from "./media-upload-compensation";
+import { buildAnnouncementImageKey } from "./media-keys";
 import { err, ok, type ServiceResult } from "./result";
 
-const STAGING_TOKEN_TTL_SECONDS = 24 * 60 * 60;
+export const ANNOUNCEMENT_IMAGE_LEASE_TTL_SECONDS = 24 * 60 * 60;
 const STAGING_PURPOSE = "announcement-image-staging";
 const STAGING_ID_PATTERN = /^[A-Za-z0-9_-]{21}$/;
 
@@ -89,14 +90,24 @@ export class AnnouncementImageStagingService {
       const objects = await this.deps.media.list({ prefix: `announcement/${stagingId}/images/`, limit: quota });
       if (objects.objects.length + files.length > quota) return err("VALIDATION_ERROR", `Announcement image quota is ${quota}`);
     }
-    const expiresAt = payload?.exp ?? Math.floor(now.getTime() / 1000) + STAGING_TOKEN_TTL_SECONDS;
+    const expiresAt = payload?.exp ?? Math.floor(now.getTime() / 1000) + ANNOUNCEMENT_IMAGE_LEASE_TTL_SECONDS;
+    const expiresAtIso = new Date(expiresAt * 1000).toISOString();
     const stagingToken = existingToken ?? await signAnnouncementImageStagingToken(this.deps.signingSecret, { version: 1, purpose: STAGING_PURPOSE, announcement_id: stagingId, actor_id: actorId, exp: expiresAt });
     const keys: string[] = [];
     try {
       for (const file of files) {
-        const key = `announcement/${stagingId}/images/${Date.now()}_${nanoid()}`;
+        const key = buildAnnouncementImageKey(stagingId, file.contentType);
         keys.push(key);
         await this.deps.media.put(key, file.data, { httpMetadata: { contentType: file.contentType } });
+      }
+      if (keys.length > 0) {
+        await this.deps.rawDb.batch(keys.map((key) => this.deps.rawDb
+          .prepare(
+            `INSERT INTO media_upload_leases
+               (media_key, owner_user_id, entity_type, entity_id, expires_at, created_at)
+             VALUES (?1, ?2, 'announcement', ?3, ?4, ?5)`,
+          )
+          .bind(key, actorId, stagingId, expiresAtIso, now.toISOString())));
       }
     } catch (error) {
       await rethrowAfterUploadFailure(
@@ -105,6 +116,6 @@ export class AnnouncementImageStagingService {
         keys,
       );
     }
-    return ok({ staging_id: stagingId, staging_token: stagingToken, expires_at: new Date(expiresAt * 1000).toISOString(), keys });
+    return ok({ staging_id: stagingId, staging_token: stagingToken, expires_at: expiresAtIso, keys });
   }
 }

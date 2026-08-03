@@ -10,7 +10,7 @@ import {
 } from "@tanstack/react-query";
 import { useNavigate, useSearch } from "@tanstack/react-router";
 import { format, isValid, parseISO } from "date-fns";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { flushSync } from "react-dom";
 import { useDisclosure } from "@mantine/hooks";
 import { useDebouncedSearch } from "./useDebouncedSearch";
@@ -34,6 +34,10 @@ import { queryKeys } from "../api/query-keys";
 import { useEffectivePermissions } from "./useEffectivePermissions";
 import { toIsoOrUndefined } from "../utils/iso-dates";
 import { notifySuccess } from "../utils/notifications";
+import { useAuthStore } from "../stores/auth";
+import { userScopedStorageKey } from "../session-storage";
+
+const ANNOUNCEMENTS_LAST_SEEN_STORAGE_KEY = "portal:last_seen";
 
 function buildAnnouncementImageUrl(key: string): string {
   if (/^(?:https?:)?\/\//i.test(key) || key.startsWith("data:")) return key;
@@ -107,9 +111,9 @@ function toDateTimePickerValue(iso: string | null): string {
   return format(date, "yyyy-MM-dd'T'HH:mm");
 }
 
-function readAnnouncementsLastSeenAt(): string | null {
+function readAnnouncementsLastSeenAt(storageKey: string): string | null {
   try {
-    const raw = localStorage.getItem("portal:last_seen");
+    const raw = localStorage.getItem(storageKey);
     if (!raw) return null;
     const parsed = JSON.parse(raw) as {
       announcements?: { lastSeenAt?: string };
@@ -129,6 +133,11 @@ export function useAnnouncementsController() {
   const routeSearch = useSearch({ strict: false }) as AnnouncementRouteSearch;
   const isExternalView = useExternalView();
   const { showError } = useAppError();
+  const currentUserId = useAuthStore((state) => state.user?.id);
+  const announcementsLastSeenStorageKey = userScopedStorageKey(
+    ANNOUNCEMENTS_LAST_SEEN_STORAGE_KEY,
+    currentUserId,
+  );
 
   const { canManage: canManagePermission } = useEffectivePermissions();
 
@@ -152,6 +161,11 @@ export function useAnnouncementsController() {
   const [publishAt, setPublishAt] = useState("");
   const [scheduleEnabled, setScheduleEnabled] = useState(false);
   const [announcementsLastSeenAt, setAnnouncementsLastSeenAt] = useState<string | null>(null);
+  const savePendingRef = useRef(false);
+  const isCreatingRef = useRef(isCreating);
+  const closeCreatingRef = useRef(isCreatingHandlers.close);
+  isCreatingRef.current = isCreating;
+  closeCreatingRef.current = isCreatingHandlers.close;
 
   const setAnnouncementSelection = useCallback((
     next: AnnouncementSelection,
@@ -210,6 +224,10 @@ export function useAnnouncementsController() {
 
   useEffect(() => {
     const next = selectionFromRoute(routeSearch);
+    if (isCreatingRef.current && next.kind !== "none") {
+      closeCreatingRef.current();
+      setImageStagingToken(null);
+    }
     setSelection((current) => sameSelection(current, next) ? current : next);
   }, [routeSearch.announcementId, routeSearch.selection]);
 
@@ -230,6 +248,9 @@ export function useAnnouncementsController() {
     },
     onError: (error) => {
       showError(error, t("message.createFailed"));
+    },
+    onSettled: () => {
+      savePendingRef.current = false;
     },
   });
 
@@ -292,6 +313,9 @@ export function useAnnouncementsController() {
         queryClient.setQueryData(queryKeys.announcements.detail(variables.id), context.previousDetail);
       }
       showError(error, t("message.saveFailed"));
+    },
+    onSettled: () => {
+      savePendingRef.current = false;
     },
   });
 
@@ -386,8 +410,8 @@ export function useAnnouncementsController() {
   const selected = detailQuery.data ?? null;
 
   useEffect(() => {
-    setAnnouncementsLastSeenAt(readAnnouncementsLastSeenAt());
-  }, []);
+    setAnnouncementsLastSeenAt(readAnnouncementsLastSeenAt(announcementsLastSeenStorageKey));
+  }, [announcementsLastSeenStorageKey]);
 
   useEffect(() => {
     if (isCreating || selection.kind !== "auto") return;
@@ -482,6 +506,8 @@ export function useAnnouncementsController() {
 
     if (isCreating) {
       if (mode === "archived") return;
+      if (savePendingRef.current) return;
+      savePendingRef.current = true;
 
       const status = ANNOUNCEMENT_STATUS_BY_FINISH_MODE[mode];
 
@@ -502,6 +528,9 @@ export function useAnnouncementsController() {
       archiveMutation.mutate(selectedId);
       return;
     }
+
+    if (savePendingRef.current) return;
+    savePendingRef.current = true;
 
     const status = ANNOUNCEMENT_STATUS_BY_FINISH_MODE[mode];
 
@@ -598,7 +627,7 @@ export function useAnnouncementsController() {
     listLoadingMore: listQuery.isFetchingNextPage,
     onLoadMoreList: () => void listQuery.fetchNextPage(),
     isBusy: createMutation.isPending || updateMutation.isPending || archiveMutation.isPending || deleteMutation.isPending,
-    savePending: updateMutation.isPending,
+    savePending: createMutation.isPending || updateMutation.isPending,
     deletePending: deleteMutation.isPending,
     isDirty,
     isPublishReady,

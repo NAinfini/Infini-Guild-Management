@@ -126,7 +126,8 @@ export function AdminBadgesSection({ userRows, controller }: AdminBadgesSectionP
     createPending,
     updatePending,
     assignPending,
-    unassignPending,
+    isBadgeDeletePending,
+    isBadgeUnassignPending,
     startCreate,
     startEdit,
     selectBadge,
@@ -142,6 +143,9 @@ export function AdminBadgesSection({ userRows, controller }: AdminBadgesSectionP
   } = controller;
 
   const handleDelete = async (badge: MemberBadge) => {
+    if (isBadgeDeletePending(badge.id)) {
+      return;
+    }
     const accepted = await confirm({
       title: t("badges.confirmDelete.title"),
       description: <Text size="sm">{t("badges.confirmDelete.description", { name: badge.name })}</Text>,
@@ -288,6 +292,8 @@ export function AdminBadgesSection({ userRows, controller }: AdminBadgesSectionP
                       color="red"
                       aria-label={t("badges.action.delete")}
                       onClick={() => handleDelete(selectedBadge)}
+                      loading={isBadgeDeletePending(selectedBadge.id)}
+                      disabled={isBadgeDeletePending(selectedBadge.id)}
                     >
                       <TrashIcon size={16} />
                     </ActionIcon>
@@ -388,7 +394,8 @@ export function AdminBadgesSection({ userRows, controller }: AdminBadgesSectionP
                           size={44}
                           aria-label={t("badges.action.unassign")}
                           onClick={() => unassignBadge(selectedBadge.id, [a.user_id])}
-                          loading={unassignPending}
+                          loading={isBadgeUnassignPending(selectedBadge.id, a.user_id)}
+                          disabled={isBadgeUnassignPending(selectedBadge.id, a.user_id)}
                         >
                           <XIcon size={14} />
                         </ActionIcon>

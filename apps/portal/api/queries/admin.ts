@@ -25,6 +25,7 @@ export type AdminStatus = {
   r2: string;
   ws: string;
   crons: string;
+  system_tests_enabled: boolean;
 };
 
 export type AdminAuditArchiveDownloadFile = {

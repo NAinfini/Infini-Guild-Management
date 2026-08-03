@@ -4,7 +4,7 @@
 CREATE TABLE IF NOT EXISTS roles (
   id TEXT PRIMARY KEY NOT NULL,
   name TEXT NOT NULL,
-  level INTEGER NOT NULL CHECK (level >= 1),
+  level INTEGER NOT NULL CONSTRAINT roles_level_positive CHECK (level >= 1),
   color TEXT,
   is_builtin INTEGER NOT NULL DEFAULT 0,
   created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
@@ -42,7 +42,7 @@ CREATE TABLE IF NOT EXISTS user_auth_password (
 CREATE TABLE IF NOT EXISTS member_profiles (
   id TEXT PRIMARY KEY NOT NULL,
   user_id TEXT NOT NULL UNIQUE REFERENCES users(id) ON DELETE CASCADE,
-  power REAL NOT NULL DEFAULT 0 CHECK (power >= 0),
+  power REAL NOT NULL DEFAULT 0 CONSTRAINT member_profiles_power_nonnegative CHECK (power >= 0),
   classes TEXT NOT NULL DEFAULT '[]',
   title_html TEXT,
   bio TEXT,
@@ -126,12 +126,12 @@ CREATE INDEX IF NOT EXISTS idx_class_tag_members_class ON class_tag_members (cla
 
 CREATE TABLE IF NOT EXISTS events (
   id TEXT PRIMARY KEY NOT NULL,
-  type TEXT NOT NULL CHECK (type IN ('weekly_mission', 'guild_war', 'social', 'poll', 'raffle', 'other')),
+  type TEXT NOT NULL CONSTRAINT events_type_valid CHECK (type IN ('weekly_mission', 'guild_war', 'social', 'poll', 'raffle', 'other')),
   title TEXT NOT NULL,
   description TEXT,
   start_at TEXT NOT NULL,
   end_at TEXT,
-  capacity INTEGER CHECK (capacity > 0),
+  capacity INTEGER CONSTRAINT events_capacity_positive CHECK (capacity IS NULL OR capacity > 0),
   pinned INTEGER NOT NULL DEFAULT 0,
   signup_locked INTEGER NOT NULL DEFAULT 0,
   visible_at TEXT,
@@ -143,19 +143,19 @@ CREATE TABLE IF NOT EXISTS events (
   attachments TEXT NOT NULL DEFAULT '[]',
   series_id TEXT,
   instance_date TEXT,
-  winner_count INTEGER CHECK (winner_count > 0),
+  winner_count INTEGER CONSTRAINT events_winner_count_positive CHECK (winner_count IS NULL OR winner_count > 0),
   created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
   updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
 );
 
 CREATE TABLE IF NOT EXISTS recurring_templates (
   id TEXT PRIMARY KEY NOT NULL,
-  type TEXT NOT NULL,
+  type TEXT NOT NULL CONSTRAINT recurring_templates_type_valid CHECK (type IN ('weekly_mission', 'guild_war', 'social', 'poll', 'raffle', 'other')),
   title TEXT NOT NULL,
   description TEXT,
   start_time TEXT NOT NULL, -- UTC wall-clock "HH:mm" (since 2026-06; portal converts local<->UTC)
   duration_minutes INTEGER,
-  capacity INTEGER CHECK (capacity > 0),
+  capacity INTEGER CONSTRAINT recurring_templates_capacity_positive CHECK (capacity IS NULL OR capacity > 0),
   recurrence_rule TEXT NOT NULL,
   visibility_offset_minutes INTEGER NOT NULL DEFAULT 0,
   auto_archive INTEGER NOT NULL DEFAULT 0,
@@ -187,8 +187,8 @@ CREATE TABLE IF NOT EXISTS recurring_template_class_quotas (
 
 CREATE TABLE IF NOT EXISTS event_participants (
   id TEXT PRIMARY KEY NOT NULL,
-  event_id TEXT NOT NULL,
-  user_id TEXT NOT NULL,
+  event_id TEXT NOT NULL REFERENCES events(id) ON DELETE CASCADE,
+  user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   joined_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
 );
 
@@ -208,18 +208,23 @@ CREATE TABLE IF NOT EXISTS event_poll_options (
   created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
 );
 
+CREATE UNIQUE INDEX IF NOT EXISTS ux_event_poll_options_event_id
+  ON event_poll_options(event_id, id);
+
 CREATE TABLE IF NOT EXISTS event_poll_votes (
   id TEXT PRIMARY KEY NOT NULL,
-  event_id TEXT NOT NULL,
-  option_id TEXT NOT NULL,
-  user_id TEXT NOT NULL,
-  created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
+  event_id TEXT NOT NULL REFERENCES events(id) ON DELETE CASCADE,
+  option_id TEXT NOT NULL REFERENCES event_poll_options(id) ON DELETE CASCADE,
+  user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+  CONSTRAINT fk_event_poll_votes_event_option
+    FOREIGN KEY (event_id, option_id) REFERENCES event_poll_options(event_id, id) ON DELETE CASCADE
 );
 
 CREATE TABLE IF NOT EXISTS event_raffle_winners (
   id TEXT PRIMARY KEY NOT NULL,
-  event_id TEXT NOT NULL,
-  user_id TEXT NOT NULL,
+  event_id TEXT NOT NULL REFERENCES events(id) ON DELETE CASCADE,
+  user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   drawn_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
 );
 
@@ -228,7 +233,7 @@ CREATE TABLE IF NOT EXISTS announcements (
   title TEXT NOT NULL,
   body_json TEXT NOT NULL,
   pinned INTEGER NOT NULL DEFAULT 0,
-  status TEXT NOT NULL DEFAULT 'draft' CHECK (status IN ('draft', 'scheduled', 'published', 'archived')),
+  status TEXT NOT NULL DEFAULT 'draft' CONSTRAINT announcements_status_valid CHECK (status IN ('draft', 'scheduled', 'published', 'archived')),
   publish_at TEXT,
   expires_at TEXT,
   archived_at TEXT,
@@ -243,8 +248,8 @@ CREATE TABLE IF NOT EXISTS war_history (
   event_id TEXT REFERENCES events(id),
   war_name TEXT NOT NULL,
   enemy_name TEXT,
-  result TEXT CHECK (result IS NULL OR result IN ('win', 'loss', 'draw')),
-  duration_minutes REAL CHECK (duration_minutes > 0),
+  result TEXT CONSTRAINT war_history_result_valid CHECK (result IS NULL OR result IN ('win', 'loss', 'draw')),
+  duration_minutes REAL CONSTRAINT war_history_duration_positive CHECK (duration_minutes IS NULL OR duration_minutes > 0),
   own_stats TEXT,
   enemy_stats TEXT,
   notes TEXT,
@@ -262,13 +267,13 @@ CREATE TABLE IF NOT EXISTS war_teams (
   sort_order INTEGER NOT NULL DEFAULT 0,
   notes TEXT,
   is_locked INTEGER NOT NULL DEFAULT 0,
-  CHECK (event_id IS NOT NULL OR war_history_id IS NOT NULL)
+  CONSTRAINT war_teams_exactly_one_parent CHECK ((event_id IS NULL) <> (war_history_id IS NULL))
 );
 
 CREATE TABLE IF NOT EXISTS war_team_members (
   id TEXT PRIMARY KEY NOT NULL,
-  war_team_id TEXT NOT NULL,
-  user_id TEXT NOT NULL,
+  war_team_id TEXT NOT NULL REFERENCES war_teams(id) ON DELETE CASCADE,
+  user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   role_tag TEXT,
   sort_order INTEGER NOT NULL DEFAULT 0,
   stats TEXT,
@@ -277,10 +282,10 @@ CREATE TABLE IF NOT EXISTS war_team_members (
 
 CREATE TABLE IF NOT EXISTS war_pool_members (
   id TEXT PRIMARY KEY NOT NULL,
-  war_history_id TEXT,
-  event_id TEXT,
-  user_id TEXT NOT NULL,
-  CHECK (event_id IS NOT NULL OR war_history_id IS NOT NULL)
+  war_history_id TEXT REFERENCES war_history(id) ON DELETE CASCADE,
+  event_id TEXT REFERENCES events(id) ON DELETE CASCADE,
+  user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  CONSTRAINT war_pool_members_exactly_one_parent CHECK ((event_id IS NULL) <> (war_history_id IS NULL))
 );
 
 CREATE TABLE IF NOT EXISTS wiki_categories (
@@ -288,7 +293,7 @@ CREATE TABLE IF NOT EXISTS wiki_categories (
   name TEXT NOT NULL,
   slug TEXT NOT NULL UNIQUE,
   sort_order INTEGER NOT NULL DEFAULT 0,
-  parent_id TEXT,
+  parent_id TEXT REFERENCES wiki_categories(id) ON DELETE SET NULL,
   created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
   updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
 );
@@ -321,8 +326,8 @@ CREATE TABLE IF NOT EXISTS invite_links (
   id TEXT PRIMARY KEY NOT NULL,
   code TEXT NOT NULL UNIQUE,
   created_by TEXT NOT NULL REFERENCES users(id),
-  max_uses INTEGER NOT NULL CHECK (max_uses > 0),
-  used_count INTEGER NOT NULL DEFAULT 0 CHECK (used_count >= 0 AND used_count <= max_uses),
+  max_uses INTEGER NOT NULL CONSTRAINT invite_links_max_uses_positive CHECK (max_uses > 0),
+  used_count INTEGER NOT NULL DEFAULT 0 CONSTRAINT invite_links_used_count_valid CHECK (used_count >= 0 AND used_count <= max_uses),
   expires_at TEXT,
   created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
   revoked_at TEXT
@@ -529,13 +534,11 @@ CREATE INDEX IF NOT EXISTS idx_invite_links_status
 
 -- audit_log
 CREATE INDEX IF NOT EXISTS idx_audit_log_created_at
-  ON audit_log(created_at);
+  ON audit_log(created_at, id);
 CREATE INDEX IF NOT EXISTS idx_audit_log_entity_actor_created
-  ON audit_log(entity_type, actor_id, created_at);
+  ON audit_log(entity_type, actor_id, created_at, id);
 CREATE INDEX IF NOT EXISTS idx_audit_log_entity_created
   ON audit_log(entity_type, created_at, id);
-CREATE INDEX IF NOT EXISTS idx_audit_log_actor_id
-  ON audit_log(actor_id);
 CREATE INDEX IF NOT EXISTS idx_audit_log_actor_created
   ON audit_log(actor_id, created_at, id);
 
@@ -553,8 +556,8 @@ CREATE TABLE IF NOT EXISTS error_log (
   created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
 );
 
-CREATE INDEX IF NOT EXISTS idx_error_log_created_at ON error_log(created_at);
-CREATE INDEX IF NOT EXISTS idx_error_log_source ON error_log(source);
+CREATE INDEX IF NOT EXISTS idx_error_log_created_at ON error_log(created_at, id);
+CREATE INDEX IF NOT EXISTS idx_error_log_source_created ON error_log(source, created_at, id);
 
 -- member_badges
 CREATE TABLE IF NOT EXISTS member_badges (
@@ -783,6 +786,25 @@ CREATE TABLE IF NOT EXISTS media_references (
 CREATE INDEX IF NOT EXISTS idx_media_references_key ON media_references(media_key);
 CREATE INDEX IF NOT EXISTS idx_media_references_entity ON media_references(entity_type, entity_id);
 
+CREATE TABLE IF NOT EXISTS media_reference_backfills (
+  domain TEXT PRIMARY KEY NOT NULL,
+  version INTEGER NOT NULL,
+  completed_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
+);
+
+-- Temporary ownership proof for uploaded objects before an editor commits the
+-- corresponding content reference. Consumption happens in the content batch.
+CREATE TABLE IF NOT EXISTS media_upload_leases (
+  media_key TEXT PRIMARY KEY NOT NULL,
+  owner_user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  entity_type TEXT NOT NULL,
+  entity_id TEXT NOT NULL,
+  expires_at TEXT NOT NULL,
+  created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_media_upload_leases_expiry ON media_upload_leases(expires_at, media_key);
+
 -- ===== ADMIN SYSTEM-TEST RUN REGISTRY =====
 -- Test cleanup is driven exclusively by these exact run-owned locators; it
 -- deliberately never searches production content by text marker or timestamp.
@@ -843,7 +865,8 @@ CREATE TABLE IF NOT EXISTS member_absences (
   start_date TEXT NOT NULL,
   end_date TEXT NOT NULL,
   note TEXT,
-  created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
+  created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+  CONSTRAINT member_absences_date_range_valid CHECK (start_date <= end_date)
 );
 
 CREATE INDEX IF NOT EXISTS idx_member_absences_user_end ON member_absences(user_id, end_date);
@@ -895,12 +918,12 @@ CREATE TABLE IF NOT EXISTS storage_item_images (
   created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
 );
 
-CREATE INDEX IF NOT EXISTS idx_storage_item_images_item ON storage_item_images(item_id);
+CREATE INDEX IF NOT EXISTS idx_storage_item_images_item ON storage_item_images(item_id, created_at, id);
 
 CREATE TABLE IF NOT EXISTS storage_transactions (
   id TEXT PRIMARY KEY,
-  item_id TEXT NOT NULL REFERENCES storage_items(id) ON DELETE CASCADE,
-  type TEXT NOT NULL CHECK (type IN ('intake', 'distribute', 'adjust')),
+  item_id TEXT NOT NULL REFERENCES storage_items(id) ON DELETE RESTRICT,
+  type TEXT NOT NULL CONSTRAINT storage_transactions_type_valid CHECK (type IN ('intake', 'distribute', 'adjust')),
   quantity_delta INTEGER NOT NULL,
   recipient_user_id TEXT REFERENCES users(id) ON DELETE SET NULL,
   note TEXT,
@@ -908,7 +931,7 @@ CREATE TABLE IF NOT EXISTS storage_transactions (
   created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
 );
 
-CREATE INDEX IF NOT EXISTS idx_storage_transactions_item ON storage_transactions(item_id, created_at);
-CREATE INDEX IF NOT EXISTS idx_storage_transactions_recipient ON storage_transactions(recipient_user_id, created_at) WHERE recipient_user_id IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_storage_transactions_item ON storage_transactions(item_id, created_at, id);
+CREATE INDEX IF NOT EXISTS idx_storage_transactions_recipient ON storage_transactions(recipient_user_id, created_at, id) WHERE recipient_user_id IS NOT NULL;
 -- Guild-wide recent-activity ledger; created_at is not unique — order by created_at DESC, id DESC.
-CREATE INDEX IF NOT EXISTS idx_storage_transactions_created ON storage_transactions(created_at);
+CREATE INDEX IF NOT EXISTS idx_storage_transactions_created ON storage_transactions(created_at, id);

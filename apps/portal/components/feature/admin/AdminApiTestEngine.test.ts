@@ -1162,18 +1162,6 @@ describe("AdminApiTestEngine request preparation", () => {
     expect(resolved.path).toBe("/api/admin/invite-links/created-invite/permanent");
   });
 
-  it("does not expose removed gallery like or comment smoke endpoints", () => {
-    const endpointKeys = buildApiCategories((key) => key)
-      .find((category) => category.key === "gallery")
-      ?.endpoints.map((endpoint) => `${endpoint.method} ${endpoint.path}`) ?? [];
-
-    expect(endpointKeys).not.toContain("POST /api/gallery/:id/like");
-    expect(endpointKeys).not.toContain("GET /api/gallery/:id/comments");
-    expect(endpointKeys).not.toContain("POST /api/gallery/:id/comments");
-    expect(endpointKeys).not.toContain("PATCH /api/gallery/:id/comments/:commentId");
-    expect(endpointKeys).not.toContain("DELETE /api/gallery/:id/comments/:commentId");
-  });
-
   it("covers website read actions that were missing from the smoke registry", () => {
     const endpointKeys = buildApiCategories((key) => key)
       .flatMap((category) => category.endpoints.map((endpoint) => `${endpoint.method} ${endpoint.path}`));

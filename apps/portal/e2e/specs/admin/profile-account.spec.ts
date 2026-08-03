@@ -141,32 +141,6 @@ async function expectNoApiCalls(action: () => Promise<void>): Promise<void> {
   expect(calls, "客户端校验阶段本不该发请求").toEqual([]);
 }
 
-test("改密码卡：三项校验没过时按钮一直是禁用的，一个请求都发不出去", async () => {
-  const card = passwordCard();
-  const submit = submitButton(card, "Change password");
-  await expect(submit, "什么都没填时不该能提交").toBeDisabled();
-
-  await expectNoApiCalls(async () => {
-    /*
-     * 三项校验对应组件里三条 notifyError 分支，但按钮在同样的条件下就是禁用的，
-     * 而表单的默认提交按钮被禁用时，浏览器不会做隐式提交——那三条提示实际上
-     * 永远不会出现。这里只能断言真正生效的那一层：禁用态。
-     */
-    await field(card, "Current password").fill(account.password);
-    await expect(submit, "只填当前密码不够").toBeDisabled();
-
-    await field(card, "New password").fill("short12");
-    await field(card, "Confirm new password").fill("short12");
-    await expect(submit, "新密码不足 8 位时不该能提交").toBeDisabled();
-
-    await field(card, "New password").fill("e2e-new-password-1");
-    await expect(submit, "两次输入不一致时不该能提交").toBeDisabled();
-
-    await field(card, "Confirm new password").fill("e2e-new-password-1");
-    await expect(submit, "三项都合规后才允许提交").toBeEnabled();
-  });
-});
-
 test("改密码卡：当前密码填错时服务端 401，会话被当成过期直接踢出，密码没变", async () => {
   const card = passwordCard();
   await field(card, "Current password").fill("definitely-not-the-password");

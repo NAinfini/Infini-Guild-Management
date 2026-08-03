@@ -22,6 +22,8 @@ import { nanoid } from "nanoid";
 import { memberProfileClasses, memberProfiles, sessions, userAuthPassword, users } from "../db/schema";
 import { captureUploadValidation } from "./media";
 import { deleteUploadedMedia, rethrowAfterUploadFailure } from "./media-upload-compensation";
+import { parseMediaKey } from "./media-keys";
+import { buildReplaceMediaRefsStatements } from "./media-references";
 import { ok, err, type ServiceResult } from "./result";
 import { escapeLikePattern, parseStringArray, parseRecord, usernameEquals } from "./helpers";
 import { logger } from "../utils/logger";
@@ -89,6 +91,7 @@ export type ListUsersParams = {
 type EntityChangedInput = { entityType: PushEntityType; entityId: string; hint: PushHint };
 
 export type UserServiceDeps = {
+  rawDb: D1Database;
   writeAuditLog: (input: {
     entityType: AuditEntityType;
     action: AuditAction;
@@ -107,6 +110,44 @@ export type UserServiceDeps = {
   clearSessionCookie: () => void;
   getMediaPolicy?: () => Promise<SiteMediaPolicy>;
 };
+
+const PROFILE_PATCH_COLUMNS: ReadonlyArray<readonly [keyof ProfilePatch, string]> = [
+  ["power", "power"],
+  ["classes", "classes"],
+  ["titleHtml", "title_html"],
+  ["bio", "bio"],
+  ["images", "images"],
+  ["avatarKey", "avatar_key"],
+  ["audioKey", "audio_key"],
+  ["videoUrls", "video_urls"],
+  ["availability", "availability"],
+  ["notes", "notes"],
+  ["updatedAt", "updated_at"],
+];
+
+function buildProfileUpdateStatement(db: D1Database, userId: string, patch: ProfilePatch): D1PreparedStatement {
+  const assignments: string[] = [];
+  const values: Array<string | number | null> = [];
+  for (const [property, column] of PROFILE_PATCH_COLUMNS) {
+    const value = patch[property];
+    if (value === undefined) continue;
+    assignments.push(`${column} = ?`);
+    values.push(value);
+  }
+  return db.prepare(`UPDATE member_profiles SET ${assignments.join(", ")} WHERE user_id = ?`).bind(...values, userId);
+}
+
+function profileMediaKeys(userId: string, profile: Pick<ProfileRow, "images" | "avatarKey" | "audioKey">): string[] {
+  return [
+    ...parseStringArray(profile.images),
+    ...(profile.avatarKey ? [profile.avatarKey] : []),
+    ...(profile.audioKey ? [profile.audioKey] : []),
+  ].filter((key) => {
+    const parsed = parseMediaKey(key);
+    return parsed?.entityId === userId
+      && (parsed.kind === "member_image" || parsed.kind === "member_audio");
+  });
+}
 
 // --- Helpers ---
 
@@ -381,6 +422,18 @@ export class UserService {
     );
   }
 
+  private async updateProfileWithMediaRefs(targetUserId: string, current: ProfileRow, patch: ProfilePatch): Promise<void> {
+    const next = {
+      images: patch.images ?? current.images,
+      avatarKey: patch.avatarKey === undefined ? current.avatarKey : patch.avatarKey,
+      audioKey: patch.audioKey === undefined ? current.audioKey : patch.audioKey,
+    };
+    await this.deps.rawDb.batch([
+      buildProfileUpdateStatement(this.deps.rawDb, targetUserId, patch),
+      ...buildReplaceMediaRefsStatements(this.deps.rawDb, "member_profile", targetUserId, profileMediaKeys(targetUserId, next)),
+    ]);
+  }
+
   private async canEditTarget(sessionUser: SessionUser, targetUserId: string): Promise<{ status: "allowed"; username: string } | { status: "forbidden" | "not_found"; username: null }> {
     const target = (
       await this.db.select({ role: users.role, deletedAt: users.deletedAt, username: users.username }).from(users).where(eq(users.id, targetUserId)).limit(1)
@@ -491,7 +544,11 @@ export class UserService {
     }
 
     const patch = buildProfilePatch(parsed.data);
-    await this.db.update(memberProfiles).set(patch).where(eq(memberProfiles.userId, targetUserId));
+    if (patch.images !== undefined) {
+      await this.updateProfileWithMediaRefs(targetUserId, oldProfile, patch);
+    } else {
+      await this.db.update(memberProfiles).set(patch).where(eq(memberProfiles.userId, targetUserId));
+    }
     if (patch.classes !== undefined) {
       await this.syncProfileClassLookup(targetUserId, patch.classes);
     }
@@ -542,26 +599,22 @@ export class UserService {
     }
 
     try {
-      await this.db.update(memberProfiles)
-        .set({ images: JSON.stringify([...existing, ...keys]), updatedAt: new Date().toISOString() })
-        .where(eq(memberProfiles.userId, targetUserId));
-      await this.deps.writeAuditLog({
-        entityType: "member_profile", action: "upload_images", actorId: sessionUser.id,
-        entityId: targetUserId, diffTitle: access.username,
-        detailText: JSON.stringify({ keys, count: keys.length }),
+      await this.updateProfileWithMediaRefs(targetUserId, profile, {
+        images: JSON.stringify([...existing, ...keys]),
+        updatedAt: new Date().toISOString(),
       });
     } catch (error) {
       await rethrowAfterUploadFailure(
         error,
         (key) => this.deps.deleteMediaObject(key),
         keys,
-        async () => {
-          await this.db.update(memberProfiles)
-            .set({ images: profile.images, updatedAt: profile.updatedAt })
-            .where(eq(memberProfiles.userId, targetUserId));
-        },
       );
     }
+    await this.deps.writeAuditLog({
+      entityType: "member_profile", action: "upload_images", actorId: sessionUser.id,
+      entityId: targetUserId, diffTitle: access.username,
+      detailText: JSON.stringify({ keys, count: keys.length }),
+    });
     return ok({ keys });
   }
 
@@ -576,11 +629,11 @@ export class UserService {
     const images = parseStringArray(profile.images);
     const requested = new Set(parsed.data.keys);
     const keysToDelete = images.filter((key) => requested.has(key));
-    await Promise.all(keysToDelete.map((key) => this.deps.deleteMediaObject(key)));
-
-    await this.db.update(memberProfiles)
-      .set({ images: JSON.stringify(images.filter((key) => !requested.has(key))), updatedAt: new Date().toISOString() })
-      .where(eq(memberProfiles.userId, targetUserId));
+    await this.updateProfileWithMediaRefs(targetUserId, profile, {
+      images: JSON.stringify(images.filter((key) => !requested.has(key))),
+      updatedAt: new Date().toISOString(),
+    });
+    await Promise.allSettled(keysToDelete.map((key) => this.deps.deleteMediaObject(key)));
     if (keysToDelete.length > 0) {
       await this.deps.writeAuditLog({
         entityType: "member_profile", action: "delete_images", actorId: sessionUser.id,
@@ -613,27 +666,23 @@ export class UserService {
     if (!stored.ok) return stored;
     const key = stored.data;
     try {
-      await this.db.update(memberProfiles)
-        .set({ avatarKey: key, updatedAt: new Date().toISOString() })
-        .where(eq(memberProfiles.userId, targetUserId));
-      await this.deps.writeAuditLog({
-        entityType: "member_profile", action: "upload_avatar", actorId: sessionUser.id,
-        entityId: targetUserId, diffTitle: access.username,
-        detailText: JSON.stringify({ key, replaced: profile.avatarKey ?? null }),
+      await this.updateProfileWithMediaRefs(targetUserId, profile, {
+        avatarKey: key,
+        updatedAt: new Date().toISOString(),
       });
-      if (profile.avatarKey) await this.deps.deleteMediaObject(profile.avatarKey);
     } catch (error) {
       await rethrowAfterUploadFailure(
         error,
         (uploadedKey) => this.deps.deleteMediaObject(uploadedKey),
         [key],
-        async () => {
-          await this.db.update(memberProfiles)
-            .set({ avatarKey: profile.avatarKey, updatedAt: profile.updatedAt })
-            .where(eq(memberProfiles.userId, targetUserId));
-        },
       );
     }
+    await this.deps.writeAuditLog({
+      entityType: "member_profile", action: "upload_avatar", actorId: sessionUser.id,
+      entityId: targetUserId, diffTitle: access.username,
+      detailText: JSON.stringify({ key, replaced: profile.avatarKey ?? null }),
+    });
+    if (profile.avatarKey) await Promise.allSettled([this.deps.deleteMediaObject(profile.avatarKey)]);
     return ok({ key });
   }
 
@@ -643,11 +692,11 @@ export class UserService {
     if (access.status === "forbidden") return err("FORBIDDEN", "You cannot delete media for this profile");
 
     const profile = await this.ensureProfile(targetUserId);
-    if (profile.avatarKey) await this.deps.deleteMediaObject(profile.avatarKey);
-
-    await this.db.update(memberProfiles)
-      .set({ avatarKey: null, updatedAt: new Date().toISOString() })
-      .where(eq(memberProfiles.userId, targetUserId));
+    await this.updateProfileWithMediaRefs(targetUserId, profile, {
+      avatarKey: null,
+      updatedAt: new Date().toISOString(),
+    });
+    if (profile.avatarKey) await Promise.allSettled([this.deps.deleteMediaObject(profile.avatarKey)]);
     await this.deps.writeAuditLog({
       entityType: "member_profile", action: "delete_avatar", actorId: sessionUser.id,
       entityId: targetUserId, diffTitle: access.username,
@@ -673,27 +722,23 @@ export class UserService {
     if (!stored.ok) return stored;
     const key = stored.data;
     try {
-      await this.db.update(memberProfiles)
-        .set({ audioKey: key, updatedAt: new Date().toISOString() })
-        .where(eq(memberProfiles.userId, targetUserId));
-      await this.deps.writeAuditLog({
-        entityType: "member_profile", action: "upload_audio", actorId: sessionUser.id,
-        entityId: targetUserId, diffTitle: access.username,
-        detailText: JSON.stringify({ key, replaced: profile.audioKey ?? null }),
+      await this.updateProfileWithMediaRefs(targetUserId, profile, {
+        audioKey: key,
+        updatedAt: new Date().toISOString(),
       });
-      if (profile.audioKey) await this.deps.deleteMediaObject(profile.audioKey);
     } catch (error) {
       await rethrowAfterUploadFailure(
         error,
         (uploadedKey) => this.deps.deleteMediaObject(uploadedKey),
         [key],
-        async () => {
-          await this.db.update(memberProfiles)
-            .set({ audioKey: profile.audioKey, updatedAt: profile.updatedAt })
-            .where(eq(memberProfiles.userId, targetUserId));
-        },
       );
     }
+    await this.deps.writeAuditLog({
+      entityType: "member_profile", action: "upload_audio", actorId: sessionUser.id,
+      entityId: targetUserId, diffTitle: access.username,
+      detailText: JSON.stringify({ key, replaced: profile.audioKey ?? null }),
+    });
+    if (profile.audioKey) await Promise.allSettled([this.deps.deleteMediaObject(profile.audioKey)]);
     return ok({ key });
   }
 
@@ -703,11 +748,11 @@ export class UserService {
     if (access.status === "forbidden") return err("FORBIDDEN", "You cannot delete media for this profile");
 
     const profile = await this.ensureProfile(targetUserId);
-    if (profile.audioKey) await this.deps.deleteMediaObject(profile.audioKey);
-
-    await this.db.update(memberProfiles)
-      .set({ audioKey: null, updatedAt: new Date().toISOString() })
-      .where(eq(memberProfiles.userId, targetUserId));
+    await this.updateProfileWithMediaRefs(targetUserId, profile, {
+      audioKey: null,
+      updatedAt: new Date().toISOString(),
+    });
+    if (profile.audioKey) await Promise.allSettled([this.deps.deleteMediaObject(profile.audioKey)]);
     await this.deps.writeAuditLog({
       entityType: "member_profile", action: "delete_audio", actorId: sessionUser.id,
       entityId: targetUserId, diffTitle: access.username,

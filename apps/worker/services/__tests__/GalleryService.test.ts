@@ -31,13 +31,10 @@ function createDeleteDb(item: { id: string; type: "image" | "video"; url: string
 }
 
 describe("GalleryService", () => {
-  it("writes media references after uploading images", async () => {
-    const insertValues = vi.fn().mockResolvedValue(undefined);
-    const db = {
-      insert: vi.fn(() => ({ values: insertValues })),
-    };
+  it("writes gallery rows and media references in one D1 batch", async () => {
+    const db = {};
     const deps = createDeps();
-    const media = { put: vi.fn().mockResolvedValue({ key: "gallery/images/actor-1/ts_item-1" }) };
+    const media = { put: vi.fn().mockResolvedValue({}) };
     const service = new GalleryService(db as never, { ...deps, media: media as unknown as R2Bucket });
 
     await service.uploadImages(
@@ -46,20 +43,20 @@ describe("GalleryService", () => {
       [null],
     );
 
-    // replaceMediaRefs calls rawDb.batch once per uploaded image (delete + insert)
-    expect(deps.rawDb.batch).toHaveBeenCalled();
-    const batchCall = (deps.rawDb.batch as ReturnType<typeof vi.fn>).mock.calls.find(
-      (call: unknown[]) => (call[0] as unknown[]).length >= 2,
+    expect(deps.rawDb.batch).toHaveBeenCalledTimes(1);
+    expect((deps.rawDb.batch as ReturnType<typeof vi.fn>).mock.calls[0]?.[0]).toHaveLength(3);
+    expect(media.put).toHaveBeenCalledWith(
+      expect.stringMatching(/^gallery\/users\/actor-1\/items\/[^/]+\/images\/[A-Za-z0-9_-]+\.png$/),
+      expect.any(ArrayBuffer),
+      { httpMetadata: { contentType: "image/png" } },
     );
-    expect(batchCall).toBeDefined();
   });
 
-  it("removes the R2 object and attempted UUID when the gallery row insert fails", async () => {
+  it("removes the R2 object when the atomic gallery row/reference batch fails", async () => {
     const failure = new Error("gallery insert failed");
-    const db = {
-      insert: vi.fn(() => ({ values: vi.fn().mockRejectedValue(failure) })),
-    };
+    const db = {};
     const deps = createDeps();
+    (deps.rawDb.batch as ReturnType<typeof vi.fn>).mockRejectedValueOnce(failure);
     const media = {
       put: vi.fn().mockResolvedValue({}),
       delete: vi.fn().mockResolvedValue(undefined),
@@ -73,39 +70,42 @@ describe("GalleryService", () => {
     )).rejects.toBe(failure);
 
     expect(media.delete).toHaveBeenCalledTimes(1);
-    expect(deps.rawDb.prepare).toHaveBeenCalledWith("DELETE FROM gallery_items WHERE id = ?1");
-    expect(deps.rawDb.prepare).toHaveBeenCalledWith(
-      "DELETE FROM media_references WHERE entity_type = ?1 AND entity_id = ?2",
-    );
-  });
-
-  it("removes media references after deleting an image item", async () => {
-    const { db } = createDeleteDb({ id: "item-1", type: "image", url: "gallery/images/item-1", caption: null, uploadedBy: "u-1" });
-    const deps = createDeps();
-    const service = new GalleryService(db as never, deps);
-
-    await service.deleteItem("u-1", false, "item-1");
-
-    // deleteMediaRefs calls rawDb.prepare + .bind + .run
     expect(deps.rawDb.prepare).toHaveBeenCalledWith(
       expect.stringContaining("DELETE FROM media_references"),
     );
   });
 
+  it("removes media references after deleting an image item", async () => {
+    const { db } = createDeleteDb({ id: "item-1", type: "image", url: "gallery/users/u-1/items/item-1/images/image.webp", caption: null, uploadedBy: "u-1" });
+    const deps = createDeps();
+    const service = new GalleryService(db as never, deps);
+
+    await service.deleteItem("u-1", false, "item-1");
+
+    expect(deps.rawDb.prepare).toHaveBeenCalledWith(
+      expect.stringContaining("DELETE FROM media_references"),
+    );
+    expect((deps.rawDb.batch as ReturnType<typeof vi.fn>).mock.calls[0]?.[0]).toHaveLength(2);
+  });
+
   it("allows members to delete their own gallery items without gallery.delete", async () => {
-    const { db } = createDeleteDb({ id: "item-1", type: "image", url: "gallery/images/item-1", caption: null, uploadedBy: "u-1" });
+    const { db } = createDeleteDb({ id: "item-1", type: "image", url: "gallery/users/u-1/items/item-1/images/image.webp", caption: null, uploadedBy: "u-1" });
     const deps = createDeps();
     const service = new GalleryService(db as never, deps);
 
     const result = await service.deleteItem("u-1", false, "item-1");
 
     expect(result).toEqual({ ok: true, data: { ok: true } });
+    expect(deps.rawDb.prepare).toHaveBeenCalledWith("DELETE FROM gallery_items WHERE id = ?1");
     expect(deps.rawDb.batch).toHaveBeenCalledTimes(1);
-    expect(deps.media.delete).toHaveBeenCalledWith("gallery/images/item-1");
+    expect(deps.media.delete).toHaveBeenCalledWith("gallery/users/u-1/items/item-1/images/image.webp");
+    expect((deps.rawDb.batch as ReturnType<typeof vi.fn>).mock.invocationCallOrder[0]).toBeLessThan(
+      (deps.media.delete as ReturnType<typeof vi.fn>).mock.invocationCallOrder[0]!,
+    );
   });
 
   it("rejects deleting someone else's gallery item without gallery.delete", async () => {
-    const { db, calls } = createDeleteDb({ id: "item-1", type: "image", url: "gallery/images/item-1", caption: null, uploadedBy: "owner-1" });
+    const { db, calls } = createDeleteDb({ id: "item-1", type: "image", url: "gallery/users/owner-1/items/item-1/images/image.webp", caption: null, uploadedBy: "owner-1" });
     const deps = createDeps();
     const service = new GalleryService(db as never, deps);
 
@@ -124,19 +124,6 @@ describe("GalleryService", () => {
     const result = await service.deleteItem("u-1", true, "item-1");
 
     expect(result).toEqual({ ok: true, data: { ok: true } });
-    expect(deps.rawDb.batch).toHaveBeenCalledTimes(1);
-  });
-
-  it("deletes only gallery item rows after gallery social tables are removed", async () => {
-    const { db } = createDeleteDb({ id: "item-1", type: "image", url: "gallery/images/item-1", caption: null, uploadedBy: "u-1" });
-    const deps = createDeps();
-    const service = new GalleryService(db as never, deps);
-
-    await service.deleteItem("u-1", false, "item-1");
-
-    expect(deps.rawDb.prepare).not.toHaveBeenCalledWith("DELETE FROM gallery_comments WHERE gallery_item_id = ?1");
-    expect(deps.rawDb.prepare).not.toHaveBeenCalledWith("DELETE FROM gallery_likes WHERE gallery_item_id = ?1");
-    expect(deps.rawDb.prepare).toHaveBeenCalledWith("DELETE FROM gallery_items WHERE id = ?1");
     expect(deps.rawDb.batch).toHaveBeenCalledTimes(1);
   });
 });

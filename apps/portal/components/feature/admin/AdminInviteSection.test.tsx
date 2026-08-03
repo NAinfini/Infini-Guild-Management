@@ -68,6 +68,7 @@ function renderSection(
     inviteSearch: "",
     onInviteSearchChange: vi.fn(),
     isInviteInactive: () => true,
+    isInviteActionPending: () => false,
     onRevokeInvite: vi.fn(),
     onDeleteInvite: vi.fn(),
     ...overrides,
@@ -205,5 +206,66 @@ describe("AdminInviteSection", () => {
     expect(within(card).getByRole("button", { name: "invite.delete" })).toBeEnabled();
     copyButton.focus();
     expect(copyButton).toHaveFocus();
+  });
+
+  it.each([
+    ["desktop", false],
+    ["compact", true],
+  ] as const)("scopes destructive pending by invite id in the %s layout", async (_label, compact) => {
+    responsive.compact = compact;
+    const user = userEvent.setup();
+    const onRevokeInvite = vi.fn();
+    const onDeleteInvite = vi.fn();
+    const otherInvite: InviteLink = {
+      ...activeInvite,
+      id: "invite-3",
+      code: "OTHER",
+    };
+    renderSection({
+      inviteVisibility: "active",
+      inviteRows: [activeInvite, otherInvite],
+      inviteTotal: 2,
+      isInviteInactive: () => false,
+      isInviteActionPending: (inviteId) => inviteId === activeInvite.id,
+      onRevokeInvite,
+      onDeleteInvite,
+    });
+
+    if (compact) {
+      const cards = screen.getAllByRole("article", { name: "invite.cardAria" });
+      const targetRevoke = within(cards[0]!).getByRole("button", { name: "invite.revoke" });
+      const targetDelete = within(cards[0]!).getByRole("button", { name: "invite.delete" });
+      expect(targetRevoke).toBeDisabled();
+      expect(targetDelete).toBeDisabled();
+      expect(within(cards[1]!).getByRole("button", { name: "invite.revoke" })).toBeEnabled();
+      expect(within(cards[1]!).getByRole("button", { name: "invite.delete" })).toBeEnabled();
+
+      await user.click(targetRevoke);
+      await user.click(targetRevoke);
+      await user.click(targetDelete);
+      await user.click(targetDelete);
+    } else {
+      const actionButtons = screen.getAllByRole("button", { name: "invite.table.actions" });
+      await user.click(actionButtons[0]!);
+      let dropdown = await screen.findByRole("menu", { hidden: true });
+      const targetRevoke = within(dropdown).getByText("invite.revoke").closest("button")!;
+      const targetDelete = within(dropdown).getByText("invite.delete").closest("button")!;
+      expect(targetRevoke).toBeDisabled();
+      expect(targetDelete).toBeDisabled();
+
+      await user.click(targetRevoke);
+      await user.click(targetDelete);
+      await user.keyboard("{Escape}");
+      await waitFor(() => {
+        expect(screen.queryByRole("menu", { hidden: true })).not.toBeInTheDocument();
+      });
+      await user.click(actionButtons[1]!);
+      dropdown = await screen.findByRole("menu", { hidden: true });
+      expect(within(dropdown).getByText("invite.revoke").closest("button")).toBeEnabled();
+      expect(within(dropdown).getByText("invite.delete").closest("button")).toBeEnabled();
+    }
+
+    expect(onRevokeInvite).not.toHaveBeenCalled();
+    expect(onDeleteInvite).not.toHaveBeenCalled();
   });
 });

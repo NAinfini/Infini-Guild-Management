@@ -2,6 +2,12 @@ import type { Context } from "hono";
 import type { Bindings } from "../index";
 import { LIMITS } from "@guild/shared/config/limits";
 import { err, ok, type ServiceResult } from "./result";
+import {
+  buildClassIconKey,
+  buildMemberAudioKey,
+  buildMemberImageKey,
+  buildSiteLogoKey,
+} from "./media-keys";
 
 const MAGIC_BYTES: Record<string, { offset: number; bytes: number[] }[]> = {
   "image/jpeg": [{ offset: 0, bytes: [0xFF, 0xD8, 0xFF] }],
@@ -146,21 +152,11 @@ function normalizeContentType(file: File, fallbackContentType: string): string {
   return fallbackContentType;
 }
 
-function sanitizeFilename(file: File, fallbackExt: string): string {
-  const raw = file.name || `file${fallbackExt}`;
-  const sanitized = raw.replace(/[^a-zA-Z0-9._\-()]/g, "_").slice(0, 80);
-  const dot = sanitized.lastIndexOf(".");
-  const base = dot > 0 ? sanitized.slice(0, dot) : sanitized;
-  const ext = dot > 0 ? sanitized.slice(dot) : fallbackExt;
-  return `${base}_${Date.now()}${ext}`;
-}
-
 export async function storeProfileImage(c: Context, userId: string, file: File): Promise<string> {
-  const name = sanitizeFilename(file, ".webp");
-  const key = `members/${userId}/images/${name}`;
   const buffer = await file.arrayBuffer();
   const validation = validateUploadBytes(buffer, normalizeContentType(file, "application/octet-stream"), STORED_IMAGE_TYPES);
   if (!validation.ok) throw new Error(validation.message);
+  const key = buildMemberImageKey(userId, validation.contentType);
   await getMediaBucket(c).put(key, buffer, {
     httpMetadata: { contentType: validation.contentType },
   });
@@ -168,11 +164,10 @@ export async function storeProfileImage(c: Context, userId: string, file: File):
 }
 
 export async function storeSiteLogo(c: Context, file: File): Promise<string> {
-  const name = sanitizeFilename(file, ".webp");
-  const key = `site/logo/${name}`;
   const buffer = await file.arrayBuffer();
   const validation = validateUploadBytes(buffer, normalizeContentType(file, "application/octet-stream"), STORED_IMAGE_TYPES);
   if (!validation.ok) throw new Error(validation.message);
+  const key = buildSiteLogoKey(validation.contentType);
   await getMediaBucket(c).put(key, buffer, {
     httpMetadata: { contentType: validation.contentType },
   });
@@ -195,7 +190,7 @@ export async function storeClassIcon(c: Context, classId: string, file: File): P
   const validation = validateUploadBytes(buffer, file.type, new Set(["image/webp"]));
   if (!validation.ok) throw new ClassIconUploadValidationError(validation.message);
 
-  const key = `class-icons/${encodeURIComponent(classId)}/${crypto.randomUUID()}.webp`;
+  const key = buildClassIconKey(classId, validation.contentType);
   await getMediaBucket(c).put(key, buffer, {
     httpMetadata: { contentType: validation.contentType },
   });
@@ -205,11 +200,10 @@ export async function storeClassIcon(c: Context, classId: string, file: File): P
 export async function storeProfileAudio(c: Context, userId: string, file: File): Promise<string> {
   /* 落库一律是 Ogg/Opus，扩展名跟着容器写 .ogg——以前兜底写 .opus，
      可存进去的字节是 WebM 或 Ogg，名字和内容对不上。 */
-  const name = sanitizeFilename(file, ".ogg");
-  const key = `members/${userId}/audio/${name}`;
   const buffer = await file.arrayBuffer();
   const validation = validateUploadBytes(buffer, normalizeContentType(file, "audio/ogg"), STORED_AUDIO_TYPES);
   if (!validation.ok) throw new Error(validation.message);
+  const key = buildMemberAudioKey(userId, validation.contentType);
   await getMediaBucket(c).put(key, buffer, {
     httpMetadata: { contentType: validation.contentType },
   });

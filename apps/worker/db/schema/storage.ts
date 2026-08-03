@@ -62,7 +62,7 @@ export const storageItemImages = sqliteTable(
     createdAt: text("created_at").notNull().default(nowUtc), // display order = createdAt, id
   },
   (table) => ({
-    idxItem: index("idx_storage_item_images_item").on(table.itemId),
+    idxItem: index("idx_storage_item_images_item").on(table.itemId, table.createdAt, table.id),
   }),
 );
 
@@ -70,7 +70,7 @@ export const storageTransactions = sqliteTable(
   "storage_transactions",
   {
     id: text("id").primaryKey(),
-    itemId: text("item_id").notNull().references(() => storageItems.id, { onDelete: "cascade" }),
+    itemId: text("item_id").notNull().references(() => storageItems.id, { onDelete: "restrict" }),
     type: text("type", { enum: ["intake", "distribute", "adjust"] }).notNull(),
     quantityDelta: integer("quantity_delta").notNull(),
     recipientUserId: text("recipient_user_id").references(() => users.id, { onDelete: "set null" }),
@@ -78,14 +78,15 @@ export const storageTransactions = sqliteTable(
     actorId: text("actor_id").notNull().references(() => users.id),
     createdAt: text("created_at").notNull().default(nowUtc),
   },
-  (table) => ({
-    idxItem: index("idx_storage_transactions_item").on(table.itemId, table.createdAt),
+  (table) => [
+    index("idx_storage_transactions_item").on(table.itemId, table.createdAt, table.id),
     // Partial: only distribute rows carry a recipient; intake/adjust rows are NULL.
-    idxRecipient: index("idx_storage_transactions_recipient")
-      .on(table.recipientUserId, table.createdAt)
+    index("idx_storage_transactions_recipient")
+      .on(table.recipientUserId, table.createdAt, table.id)
       .where(sql`${table.recipientUserId} IS NOT NULL`),
     // Guild-wide recent-activity ledger. created_at is not unique — queries
     // MUST tie-break: ORDER BY created_at DESC, id DESC.
-    idxCreated: index("idx_storage_transactions_created").on(table.createdAt),
-  }),
+    index("idx_storage_transactions_created").on(table.createdAt, table.id),
+    check("storage_transactions_type_valid", sql`${table.type} IN ('intake', 'distribute', 'adjust')`),
+  ],
 );

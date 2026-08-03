@@ -41,7 +41,33 @@ export type AdminStatusReport = {
   r2_reason: string | null;
 };
 
-const STATUS_REQUIRED_TABLES = ["users", "member_profiles", "roles", "role_permissions", "site_config"] as const;
+// Keep this list focused on tables whose absence disables authentication or an
+// entire production feature. Direct probes are intentional: D1 does not allow
+// the sqlite_master query that would otherwise enumerate the schema.
+const STATUS_REQUIRED_TABLES = [
+  "users",
+  "user_auth_password",
+  "sessions",
+  "login_failures",
+  "member_profiles",
+  "roles",
+  "role_permissions",
+  "site_config",
+  "class_catalog",
+  "class_tags",
+  "class_tag_members",
+  "events",
+  "event_class_quotas",
+  "recurring_templates",
+  "recurring_template_class_quotas",
+  "media_references",
+  "media_reference_backfills",
+  "media_upload_leases",
+  "system_test_runs",
+  "system_test_artifacts",
+  "storage_items",
+  "storage_transactions",
+] as const;
 
 /*
  * 逐表探活。
@@ -660,8 +686,11 @@ export class AdminService {
     return ok({
       db: dbStatus,
       r2: r2Status,
-      ws: this.deps.ws ? "ok" : "missing",
-      crons: "ok",
+      // A binding proves configuration, not that a Durable Object request or
+      // scheduled invocation has recently completed. Avoid reporting an
+      // unverified subsystem as healthy.
+      ws: this.deps.ws ? "configured" : "missing",
+      crons: "configured",
       db_checks: dbChecks,
       r2_reason: r2Reason,
     });
@@ -741,6 +770,7 @@ export class AdminService {
 
   private getSiteConfigService() {
     return new SiteConfigService(this.deps.db, {
+      rawDb: this.deps.rawDb,
       writeAuditLog: this.deps.writeAuditLog,
       now: this.deps.now,
       envSiteName: this.deps.envSiteName,

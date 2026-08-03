@@ -6,6 +6,7 @@ import { useMediaQuery } from "@mantine/hooks";
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { PhotoOffIcon, TrashIcon, UploadIcon } from "@portal/components/icons";
+import { useKeyedPending } from "@portal/hooks/useKeyedPending";
 import { resolveStorageMediaUrl } from "@portal/utils/media";
 
 type ItemDraft = {
@@ -29,7 +30,7 @@ type StorageItemEditorModalProps = {
   onUpdateItem: (id: string, payload: UpdateStorageItemPayload) => void;
   onDeleteItem: (id: string) => void;
   onUploadImages: (itemId: string, files: File[]) => void;
-  onDeleteImage: (itemId: string, imageId: string) => void;
+  onDeleteImage: (itemId: string, imageId: string) => Promise<boolean>;
 };
 
 const emptyDraft: ItemDraft = {
@@ -60,6 +61,7 @@ export function StorageItemEditorModal({
   const [draft, setDraft] = useState<ItemDraft>(emptyDraft);
   const [brokenImages, setBrokenImages] = useState<Set<string>>(new Set());
   const [hydratedFor, setHydratedFor] = useState<string | null>(null);
+  const { pendingKeys, runPending } = useKeyedPending();
 
   /*
    * 每个物品只灌一次表单。
@@ -177,7 +179,13 @@ export function StorageItemEditorModal({
                         variant="filled"
                         className="storage-item-editor__delete-image"
                         aria-label={t("action.deleteImage")}
-                        onClick={() => onDeleteImage(item.id, image.id)}
+                        loading={pendingKeys.has(`delete:image:${item.id}/${image.id}`)}
+                        onClick={() => {
+                          void runPending(
+                            `delete:image:${item.id}/${image.id}`,
+                            () => onDeleteImage(item.id, image.id),
+                          );
+                        }}
                       >
                         <TrashIcon size={14} />
                       </ActionIcon>

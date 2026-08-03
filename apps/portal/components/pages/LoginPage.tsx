@@ -1,6 +1,6 @@
 import { loginSchema } from "@guild/shared";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { useMutation } from "@tanstack/react-query";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate, useSearch } from "@tanstack/react-router";
 import {
   Anchor,
@@ -19,8 +19,8 @@ import { useForm } from "react-hook-form";
 import { useTranslation } from "react-i18next";
 import { z } from "zod";
 import { isApiRequestError, login as requestLogin } from "../../services/AuthService";
-import { useAuthStore } from "../../stores/auth";
 import { useSiteConfigStore } from "../../stores/site-config";
+import { transitionSession } from "../../session-transition";
 import "./AuthPages.css";
 
 const LOGIN_FORM_SCHEMA = loginSchema.extend({
@@ -88,7 +88,7 @@ export function LoginPage() {
   const { t } = useTranslation("auth");
   const navigate = useNavigate();
   const search = useSearch({ from: "/login" });
-  const setSession = useAuthStore((state) => state.setSession);
+  const queryClient = useQueryClient();
   const siteName = useSiteConfigStore((s) => s.siteName);
   const siteLogoUrl = useSiteConfigStore((s) => s.siteLogoUrl);
 
@@ -118,7 +118,7 @@ export function LoginPage() {
   const loginMutation = useMutation({
     mutationFn: requestLogin,
     onSuccess: (response) => {
-      setSession(response.user, response.profile);
+      transitionSession(queryClient, response);
       const fallback = "/";
       const target = isSafeReturnTo(search.returnTo) ? search.returnTo : fallback;
       void navigate({ to: target });

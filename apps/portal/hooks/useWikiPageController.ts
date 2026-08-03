@@ -8,7 +8,7 @@ import {
   type InfiniteData,
 } from "@tanstack/react-query";
 import { useNavigate, useParams, useSearch } from "@tanstack/react-router";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import {
   fetchWikiArticleBySlug,
@@ -92,6 +92,16 @@ export function useWikiPageController() {
   const [showHistory, historyHandlers] = useDisclosure(false);
   const isEditorPaneVisible = canEdit && showEditorPane;
   const isHistoryOpen = canEdit && showHistory;
+  const selectionRef = useRef(selection);
+  const articleEditorRef = useRef<ReturnType<typeof useWikiArticleEditor> | null>(null);
+  const isMobileRef = useRef(isMobile);
+  const editorPaneVisibleRef = useRef(isEditorPaneVisible);
+  const closeEditorPaneRef = useRef(editorPaneHandlers.close);
+  const routeSelectionProcessedRef = useRef(false);
+  selectionRef.current = selection;
+  isMobileRef.current = isMobile;
+  editorPaneVisibleRef.current = isEditorPaneVisible;
+  closeEditorPaneRef.current = editorPaneHandlers.close;
 
   const categoriesQuery = useQuery({
     queryKey: queryKeys.wiki.categories(),
@@ -178,10 +188,25 @@ export function useWikiPageController() {
     selectedCategoryIds,
     onArticleCreated: handleArticleCreated,
   });
+  articleEditorRef.current = articleEditor;
   const categoryEditor = useWikiCategoryEditor({ categories });
 
   useEffect(() => {
     const next = selectionFromRoute(routeSlug, routeSearch);
+    const routeChangedExternally = !routeSelectionProcessedRef.current
+      || !sameSelection(selectionRef.current, next);
+    routeSelectionProcessedRef.current = true;
+    if (routeChangedExternally) {
+      if (articleEditorRef.current?.isCreatingArticle) {
+        articleEditorRef.current.exitEditor();
+      }
+      if (editorPaneVisibleRef.current) {
+        closeEditorPaneRef.current();
+      }
+      if (isMobileRef.current) {
+        setMobilePane(next.kind === "selected" ? "article" : "list");
+      }
+    }
     setSelection((current) => sameSelection(current, next) ? current : next);
   }, [routeSearch.selection, routeSlug]);
 

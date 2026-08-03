@@ -1,7 +1,8 @@
 // Domain: Auth & Identity
 // Tables: roles, role_permissions, users, user_auth_password, invite_links, sessions
 // Dependencies: none (root domain)
-import { index, integer, primaryKey, sqliteTable, text } from "drizzle-orm/sqlite-core";
+import { sql } from "drizzle-orm";
+import { check, index, integer, primaryKey, sqliteTable, text } from "drizzle-orm/sqlite-core";
 import { nowUtc } from "./shared";
 
 export const roles = sqliteTable(
@@ -15,9 +16,10 @@ export const roles = sqliteTable(
     createdAt: text("created_at").notNull().default(nowUtc),
     updatedAt: text("updated_at").notNull().default(nowUtc),
   },
-  (table) => ({
-    idxLevel: index("idx_roles_level").on(table.level, table.id),
-  }),
+  (table) => [
+    index("idx_roles_level").on(table.level, table.id),
+    check("roles_level_positive", sql`${table.level} >= 1`),
+  ],
 );
 
 export const rolePermissions = sqliteTable(
@@ -79,10 +81,15 @@ export const inviteLinks = sqliteTable(
     createdAt: text("created_at").notNull().default(nowUtc),
     revokedAt: text("revoked_at"),
   },
-  (table) => ({
-    idxCreatedAt: index("idx_invite_links_created").on(table.createdAt, table.id),
-    idxStatus: index("idx_invite_links_status").on(table.revokedAt, table.expiresAt, table.createdAt),
-  }),
+  (table) => [
+    index("idx_invite_links_created").on(table.createdAt, table.id),
+    index("idx_invite_links_status").on(table.revokedAt, table.expiresAt, table.createdAt),
+    check("invite_links_max_uses_positive", sql`${table.maxUses} > 0`),
+    check(
+      "invite_links_used_count_valid",
+      sql`${table.usedCount} >= 0 AND ${table.usedCount} <= ${table.maxUses}`,
+    ),
+  ],
 );
 
 /**

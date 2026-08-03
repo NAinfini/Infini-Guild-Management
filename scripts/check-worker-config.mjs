@@ -123,6 +123,15 @@ function validateBinding(bindings, bindingName, requiredFields, label, errors) {
   }
 }
 
+function hasEnabledSampledChannel(observability, channel) {
+  const settings = isObject(observability[channel]) ? observability[channel] : {};
+  const rate = settings.head_sampling_rate;
+  return settings.enabled === true
+    && typeof rate === "number"
+    && rate > 0
+    && rate <= 1;
+}
+
 export function validateWorkerConfig(config, environment) {
   const errors = [];
 
@@ -164,6 +173,49 @@ export function validateWorkerConfig(config, environment) {
     `env.${environment} R2`,
     errors,
   );
+
+  const durableObjects = isObject(target.durable_objects) ? target.durable_objects : {};
+  const wsBinding = Array.isArray(durableObjects.bindings)
+    ? durableObjects.bindings.find((binding) => isObject(binding) && binding.name === "WS")
+    : undefined;
+  if (!isObject(wsBinding) || wsBinding.class_name !== "WebSocketDO") {
+    errors.push(`env.${environment} Durable Object binding "WS" must target WebSocketDO.`);
+  }
+
+  if (vars.MEDIA_ORPHAN_DELETE_MODE !== "report" && vars.MEDIA_ORPHAN_DELETE_MODE !== "delete") {
+    errors.push(`env.${environment}.vars.MEDIA_ORPHAN_DELETE_MODE must be "report" or "delete".`);
+  }
+
+  if (vars.ENABLE_PRODUCTION_SYSTEM_TESTS !== "false" && vars.ENABLE_PRODUCTION_SYSTEM_TESTS !== "true") {
+    errors.push(`env.${environment}.vars.ENABLE_PRODUCTION_SYSTEM_TESTS must be "false" or "true".`);
+  }
+
+  const assets = isObject(target.assets) ? target.assets : {};
+  if (assets.binding !== "ASSETS"
+    || assets.not_found_handling !== "single-page-application"
+    || assets.run_worker_first !== true
+    || typeof assets.directory !== "string"
+    || !assets.directory.trim()) {
+    errors.push(`env.${environment} SPA assets binding is incomplete.`);
+  }
+
+  const observability = isObject(target.observability) ? target.observability : {};
+  if (observability.enabled !== true || !hasEnabledSampledChannel(observability, "logs")) {
+    errors.push(`env.${environment}.observability.logs must be enabled with a sampling rate in (0, 1].`);
+  }
+  if (observability.enabled !== true || !hasEnabledSampledChannel(observability, "traces")) {
+    errors.push(`env.${environment}.observability.traces must be enabled with a sampling rate in (0, 1].`);
+  }
+
+  const triggerConfig = isObject(target.triggers)
+    ? target.triggers
+    : (isObject(config.triggers) ? config.triggers : {});
+  const crons = Array.isArray(triggerConfig.crons) ? triggerConfig.crons : [];
+  for (const requiredCron of ["0 0 * * *", "*/15 * * * *"]) {
+    if (!crons.includes(requiredCron)) {
+      errors.push(`env.${environment} cron schedule "${requiredCron}" is missing.`);
+    }
+  }
 
   const secretConfig = isObject(target.secrets)
     ? target.secrets

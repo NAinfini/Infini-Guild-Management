@@ -39,6 +39,10 @@ const INTERNAL_SERVER_MESSAGE_PATTERN = /D1_ERROR|SQLITE_ERROR|no such table|no 
 const JSON_CACHE_MAX = 100;
 const jsonResponseCache = new Map<string, CachedJsonResponse>();
 
+export function resetApiSessionCache(): void {
+  jsonResponseCache.clear();
+}
+
 function fetchWithTimeout(url: string, init: RequestInit, externalSignal?: AbortSignal, timeoutMs = 30000): Promise<Response> {
   const controller = new AbortController();
   const id = setTimeout(() => controller.abort(), timeoutMs);

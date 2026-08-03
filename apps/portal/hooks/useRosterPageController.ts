@@ -70,8 +70,9 @@ export function useRosterPageController() {
   const [audioVolume, setAudioVolumeState] = useLocalStorage<number>({ key: "roster.audio.volume", defaultValue: 20 });
   const hoverAudioDebounceRef = useRef<number | null>(null);
   const hoverAudioStopDebounceRef = useRef<number | null>(null);
-  const [selected, setSelected] = useState<RosterEntry | null>(null);
-  const selectedRef = useRef(selected);
+  const [selectedUserId, setSelectedUserId] = useState<string | null>(null);
+  const selectedUserIdRef = useRef(selectedUserId);
+  selectedUserIdRef.current = selectedUserId;
 
   const usersQuery = useQuery({
     queryKey: queryKeys.users.roster(isExternalView ? "external" : "default"),
@@ -98,12 +99,11 @@ export function useRosterPageController() {
 
   useEffect(() => {
     setVisibleCount(20);
-    if (selectedRef.current) {
+    if (selectedUserIdRef.current) {
       closeMemberProfile();
     }
     // closeMemberProfile is defined in the same render scope and reads/writes
-    // selectedRef (a stable ref), so it does not need to be in deps.
-    // Using selectedRef.current avoids capturing stale `selected` state.
+    // selectedUserIdRef (a stable ref), so it does not need to be in deps.
      
   }, [debouncedSearch, classFilter]);
 
@@ -120,6 +120,18 @@ export function useRosterPageController() {
   }, [classFilter, sortMode]);
 
   const rows = usersQuery.data?.data ?? [];
+  const displayRows = useMemo(
+    () => isExternalView
+      ? rows.map((entry) => ({
+          ...entry,
+          profile: { ...entry.profile, notes: null },
+        }))
+      : rows,
+    [isExternalView, rows],
+  );
+  const selected = selectedUserId
+    ? displayRows.find((entry) => entry.user.id === selectedUserId) ?? null
+    : null;
   const loadedClassIds = useMemo(
     () => [...new Set(
       rows.flatMap((entry) => entry.profile.classes)
@@ -130,13 +142,6 @@ export function useRosterPageController() {
   );
 
   const sortedRows = useMemo(() => {
-    const displayRows = isExternalView
-      ? rows.map((entry) => ({
-          ...entry,
-          profile: { ...entry.profile, notes: null },
-        }))
-      : rows;
-
     const filteredRows = displayRows
       .filter((entry) => {
         if (!debouncedSearch) return true;
@@ -156,7 +161,15 @@ export function useRosterPageController() {
       }
       return right.profile.power - left.profile.power;
     });
-  }, [classCatalog, rows, isExternalView, debouncedSearch, classFilter, sortMode]);
+  }, [classCatalog, displayRows, debouncedSearch, classFilter, sortMode]);
+
+  useEffect(() => {
+    if (selectedUserId && usersQuery.data && !selected) {
+      selectedUserIdRef.current = null;
+      setSelectedUserId(null);
+      stopAudio();
+    }
+  }, [selected, selectedUserId, usersQuery.data]);
 
   const playHoverAudio = (entry: { user: User; profile: MemberProfile }) => {
     if (audioMuted) return;
@@ -186,12 +199,12 @@ export function useRosterPageController() {
       window.clearTimeout(hoverAudioDebounceRef.current);
       hoverAudioDebounceRef.current = null;
     }
-    if (selectedRef.current) return;
+    if (selectedUserIdRef.current) return;
     if (hoverAudioStopDebounceRef.current !== null) {
       window.clearTimeout(hoverAudioStopDebounceRef.current);
     }
     hoverAudioStopDebounceRef.current = window.setTimeout(() => {
-      if (!selectedRef.current) {
+      if (!selectedUserIdRef.current) {
         stopAudio();
       }
       hoverAudioStopDebounceRef.current = null;
@@ -199,13 +212,13 @@ export function useRosterPageController() {
   };
 
   const openMemberProfile = (entry: RosterEntry) => {
-    selectedRef.current = entry;
-    setSelected(entry);
+    selectedUserIdRef.current = entry.user.id;
+    setSelectedUserId(entry.user.id);
   };
 
   const closeMemberProfile = () => {
-    selectedRef.current = null;
-    setSelected(null);
+    selectedUserIdRef.current = null;
+    setSelectedUserId(null);
     stopAudio();
   };
 

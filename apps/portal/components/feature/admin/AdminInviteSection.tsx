@@ -77,6 +77,7 @@ type AdminInviteSectionProps = {
   inviteSearch: string;
   onInviteSearchChange: (value: string) => void;
   isInviteInactive: (row: InviteRow) => boolean;
+  isInviteActionPending: (inviteId: string, action: "revoke" | "delete") => boolean;
   onRevokeInvite: (inviteId: string) => void;
   onDeleteInvite: (inviteId: string) => void;
 };
@@ -98,6 +99,7 @@ export function AdminInviteSection({
   inviteSearch,
   onInviteSearchChange,
   isInviteInactive,
+  isInviteActionPending,
   onRevokeInvite,
   onDeleteInvite,
 }: AdminInviteSectionProps) {
@@ -136,6 +138,9 @@ export function AdminInviteSection({
   }, []);
 
   const handleRevokeInvite = useCallback((row: InviteRow) => {
+    if (isInviteActionPending(row.id, "revoke") || isInviteActionPending(row.id, "delete")) {
+      return;
+    }
     void (async () => {
       const confirmed = await confirm({
         title: t("confirm.revokeInvite.title"),
@@ -149,9 +154,12 @@ export function AdminInviteSection({
       }
       onRevokeInvite(row.id);
     })();
-  }, [confirm, onRevokeInvite, t]);
+  }, [confirm, isInviteActionPending, onRevokeInvite, t]);
 
   const handleDeleteInvite = useCallback((row: InviteRow) => {
+    if (isInviteActionPending(row.id, "revoke") || isInviteActionPending(row.id, "delete")) {
+      return;
+    }
     void (async () => {
       const confirmed = await confirm({
         title: t("confirm.deleteInvite.title"),
@@ -165,7 +173,7 @@ export function AdminInviteSection({
       }
       onDeleteInvite(row.id);
     })();
-  }, [confirm, onDeleteInvite, t]);
+  }, [confirm, isInviteActionPending, onDeleteInvite, t]);
 
   const columns = useMemo<ColumnDef<InviteRow, unknown>[]>(() => {
     const cols: ColumnDef<InviteRow, unknown>[] = [];
@@ -230,6 +238,9 @@ export function AdminInviteSection({
         enableSorting: false,
         cell: ({ row }) => {
           const inactive = isInviteInactive(row.original);
+          const revokePending = isInviteActionPending(row.original.id, "revoke");
+          const deletePending = isInviteActionPending(row.original.id, "delete");
+          const destructivePending = revokePending || deletePending;
           const inactiveReason = t(`invite.tooltip.${resolveInviteStatus(row.original)}`);
           /* 高频的「复制」留成显式按钮，撤销/删除这两个不可逆动作收进 ⋮。
              原先每行三个控件，五行就有十五个控件在抢注意力。 */
@@ -259,8 +270,8 @@ export function AdminInviteSection({
                   <Tooltip label={inactiveReason} withArrow position="left" disabled={!inactive}>
                     <span data-disabled-tooltip-target={inactive || undefined}>
                       <Menu.Item
-                        leftSection={<BanIcon size={14} />}
-                        disabled={inactive}
+                        leftSection={revokePending ? <Loader size={14} /> : <BanIcon size={14} />}
+                        disabled={inactive || destructivePending}
                         onClick={() => handleRevokeInvite(row.original)}
                       >
                         {t("invite.revoke")}
@@ -269,7 +280,8 @@ export function AdminInviteSection({
                   </Tooltip>
                   <Menu.Item
                     color="red"
-                    leftSection={<TrashIcon size={14} />}
+                    leftSection={deletePending ? <Loader size={14} /> : <TrashIcon size={14} />}
+                    disabled={destructivePending}
                     onClick={() => handleDeleteInvite(row.original)}
                   >
                     {t("invite.delete")}
@@ -289,6 +301,7 @@ export function AdminInviteSection({
     handleDeleteInvite,
     handleRevokeInvite,
     isAdmin,
+    isInviteActionPending,
     isInviteInactive,
     t,
   ]);
@@ -388,6 +401,9 @@ export function AdminInviteSection({
             <div className="admin-invite-card-list">
               {inviteRows.map((row) => {
                 const inactive = isInviteInactive(row);
+                const revokePending = isInviteActionPending(row.id, "revoke");
+                const deletePending = isInviteActionPending(row.id, "delete");
+                const destructivePending = revokePending || deletePending;
                 const inactiveReason = t(`invite.tooltip.${resolveInviteStatus(row)}`);
                 return (
                   <Paper
@@ -454,7 +470,8 @@ export function AdminInviteSection({
                                   color="orange"
                                   variant="light"
                                   leftSection={<BanIcon size={16} />}
-                                  disabled={inactive}
+                                  loading={revokePending}
+                                  disabled={inactive || destructivePending}
                                   onClick={() => handleRevokeInvite(row)}
                                 >
                                   {t("invite.revoke")}
@@ -469,6 +486,8 @@ export function AdminInviteSection({
                                   color="red"
                                   variant="light"
                                   leftSection={<TrashIcon size={16} />}
+                                  loading={deletePending}
+                                  disabled={destructivePending}
                                   onClick={() => handleDeleteInvite(row)}
                                 >
                                   {t("invite.delete")}

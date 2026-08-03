@@ -101,6 +101,7 @@ export function useGuildWarDragData({ activeData, usersData, poolLabel, draft }:
     if (teams.length === 0) return;
 
     setTeamOrder((current) => {
+      if (current.length === 0) return current;
       const ids = teams.map((team) => team.id);
       const preserved = current.filter((id) => ids.includes(id));
       const missing = ids.filter((id) => !preserved.includes(id));
@@ -110,19 +111,28 @@ export function useGuildWarDragData({ activeData, usersData, poolLabel, draft }:
 
     setTeamDraftNames((current) => {
       const next: Record<string, string> = {};
-      for (const team of teams) next[team.id] = current[team.id] ?? team.team_name;
+      for (const team of teams) {
+        const draftName = current[team.id];
+        if (typeof draftName === "string") next[team.id] = draftName;
+      }
       return shallowRecordEqual(current, next) ? current : next;
     });
 
     setTeamDraftNotes((current) => {
       const next: Record<string, string> = {};
-      for (const team of teams) next[team.id] = current[team.id] ?? team.notes ?? "";
+      for (const team of teams) {
+        const draftNote = current[team.id];
+        if (typeof draftNote === "string") next[team.id] = draftNote;
+      }
       return shallowRecordEqual(current, next) ? current : next;
     });
 
     setTeamDraftLocks((current) => {
       const next: Record<string, boolean> = {};
-      for (const team of teams) next[team.id] = current[team.id] ?? team.is_locked;
+      for (const team of teams) {
+        const draftLock = current[team.id];
+        if (typeof draftLock === "boolean") next[team.id] = draftLock;
+      }
       return shallowRecordEqual(current, next) ? current : next;
     });
   }, [setTeamDraftLocks, setTeamDraftNames, setTeamDraftNotes, setTeamOrder, teams]);

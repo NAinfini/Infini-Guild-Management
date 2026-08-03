@@ -1,7 +1,7 @@
 import { eventParticipantSchema } from "@guild/shared";
-import { and, eq, inArray, isNull, sql } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 import { nanoid } from "nanoid";
-import { eventParticipants, users } from "../../db/schema";
+import { eventParticipants } from "../../db/schema";
 import type { DatabaseLike, EventServiceDeps, RawDbLike } from "./EventCrudService";
 
 export type EventParticipantRow = {
@@ -22,6 +22,17 @@ export function toParticipantPayload(row: EventParticipantRow) {
     throw new Error(`Invalid participant data for id=${row.id}: ${result.error.issues.map(i => `${i.path.join('.')}: ${i.message}`).join(', ')}`);
   }
   return result.data;
+}
+
+async function readRawRows<T>(
+  rawDb: RawDbLike,
+  statementSql: string,
+  ...bindings: unknown[]
+): Promise<T[]> {
+  const statement = rawDb.prepare(statementSql).bind(...bindings);
+  if (!statement.all) throw new Error("D1 statement does not support row reads");
+  const result = await statement.all();
+  return (Array.isArray(result) ? result : result.results ?? []) as T[];
 }
 
 export class EventParticipantService {
@@ -65,8 +76,16 @@ export class EventParticipantService {
       .run();
 
     if ((insertResult.meta?.changes ?? 0) !== 1) {
-      if (eventRow.archivedAt !== null) return { ok: false, code: "CONFLICT", message: "Event is archived" };
-      if (eventRow.signupLocked) return { ok: false, code: "CONFLICT", message: "Event signup is locked" };
+      const currentEvent = await this.deps.getEventById(eventId);
+      if (!currentEvent) return { ok: false, code: "NOT_FOUND", message: "Event not found" };
+      if (currentEvent.archivedAt !== null) return { ok: false, code: "CONFLICT", message: "Event is archived" };
+      if (currentEvent.signupLocked) return { ok: false, code: "CONFLICT", message: "Event signup is locked" };
+      if (currentEvent.endAt && currentEvent.endAt <= this.now()) {
+        return { ok: false, code: "CONFLICT", message: "Event has ended" };
+      }
+      if (currentEvent.type === "poll") {
+        return { ok: false, code: "CONFLICT", message: "Poll events do not support signups" };
+      }
 
       const existing = (
         await this.db
@@ -77,14 +96,14 @@ export class EventParticipantService {
       )[0];
       if (existing) return { ok: false, code: "CONFLICT", message: "Already joined" };
 
-      if (eventRow.capacity !== null) {
+      if (currentEvent.capacity !== null) {
         const countRow = (
           await this.db
             .select({ count: sql<number>`count(*)` })
             .from(eventParticipants)
             .where(eq(eventParticipants.eventId, eventId))
         )[0];
-        if (Number(countRow?.count ?? 0) >= eventRow.capacity) {
+        if (Number(countRow?.count ?? 0) >= currentEvent.capacity) {
           return { ok: false, code: "CONFLICT", message: "Event is full" };
         }
       }
@@ -185,51 +204,117 @@ export class EventParticipantService {
     if (eventRow.archivedAt !== null) return { ok: false, code: "CONFLICT", message: "Event is archived" };
     if (eventRow.endAt && eventRow.endAt <= this.now()) return { ok: false, code: "CONFLICT", message: "Event has ended" };
 
-    const activeUserRows = (await this.db
-      .select({ id: users.id })
-      .from(users)
-      .where(and(inArray(users.id, userIds), eq(users.isActive, true), isNull(users.deletedAt)))) as Array<{ id?: string; userId?: string }>;
+    const userIdsJson = JSON.stringify(userIds);
+    const activeUserRows = await readRawRows<{ id?: string; userId?: string }>(
+      this.rawDb,
+      `SELECT u.id
+       FROM users u
+       INNER JOIN json_each(?1) requested ON requested.value = u.id
+       WHERE u.is_active = 1 AND u.deleted_at IS NULL`,
+      userIdsJson,
+    );
     const activeUserIds = new Set(activeUserRows.map((row) => row.id ?? row.userId).filter((id): id is string => typeof id === "string"));
     const missingUserId = userIds.find((userId) => !activeUserIds.has(userId));
     if (missingUserId) return { ok: false, code: "NOT_FOUND", message: `User not found: ${missingUserId}` };
 
-    const existingRows = (await this.db
-      .select({ userId: eventParticipants.userId })
-      .from(eventParticipants)
-      .where(and(eq(eventParticipants.eventId, eventId), inArray(eventParticipants.userId, userIds)))) as Array<{ userId: string }>;
+    const existingRows = await readRawRows<{ userId: string }>(
+      this.rawDb,
+      `SELECT ep.user_id AS userId
+       FROM event_participants ep
+       INNER JOIN json_each(?2) requested ON requested.value = ep.user_id
+       WHERE ep.event_id = ?1`,
+      eventId,
+      userIdsJson,
+    );
     const existingUserIds = new Set(existingRows.map((row) => row.userId));
     const insertUserIds = userIds.filter((userId) => !existingUserIds.has(userId));
     if (insertUserIds.length === 0) return { ok: true, participants: [] };
 
-    if (eventRow.capacity !== null && eventRow.capacity > 0) {
-      const countRow = (
-        await this.db
-          .select({ count: sql<number>`count(*)` })
-          .from(eventParticipants)
-          .where(eq(eventParticipants.eventId, eventId))
-      )[0];
-      if (Number(countRow?.count ?? 0) + insertUserIds.length > eventRow.capacity) {
-        return { ok: false, code: "CONFLICT", message: "Event has reached maximum capacity" };
+    const participantIds = insertUserIds.map(() => this.deps.createId?.() ?? nanoid());
+    const payloadJson = JSON.stringify({
+      eventId,
+      participants: insertUserIds.map((userId, index) => ({ id: participantIds[index], userId })),
+    });
+    const insertResult = await this.rawDb
+      .prepare(
+        `WITH payload(data) AS (VALUES (?1)),
+         requested(id, user_id) AS (
+           SELECT json_extract(entry.value, '$.id'), json_extract(entry.value, '$.userId')
+           FROM payload, json_each(json_extract(payload.data, '$.participants')) entry
+         ),
+         target_event(id) AS (
+           SELECT e.id
+           FROM events e, payload
+           WHERE e.id = json_extract(payload.data, '$.eventId')
+             AND e.archived_at IS NULL
+             AND (e.end_at IS NULL OR e.end_at > datetime('now'))
+             AND (
+               e.capacity IS NULL
+               OR (
+                 (SELECT COUNT(*) FROM event_participants current WHERE current.event_id = e.id)
+                 + (SELECT COUNT(*) FROM requested candidate
+                    WHERE NOT EXISTS (
+                      SELECT 1 FROM event_participants existing
+                      WHERE existing.event_id = e.id AND existing.user_id = candidate.user_id
+                    ))
+               ) <= e.capacity
+             )
+         )
+         INSERT OR IGNORE INTO event_participants (id, event_id, user_id)
+         SELECT requested.id, target_event.id, requested.user_id
+         FROM requested
+         CROSS JOIN target_event
+         WHERE NOT EXISTS (
+           SELECT 1 FROM event_participants existing
+           WHERE existing.event_id = target_event.id
+             AND existing.user_id = requested.user_id
+         )`,
+      )
+      .bind(payloadJson)
+      .run();
+
+    if ((insertResult.meta?.changes ?? 0) === 0) {
+      const currentEvent = await this.deps.getEventById(eventId);
+      if (!currentEvent) return { ok: false, code: "NOT_FOUND", message: "Event not found" };
+      if (currentEvent.archivedAt !== null) return { ok: false, code: "CONFLICT", message: "Event is archived" };
+      if (currentEvent.endAt && currentEvent.endAt <= this.now()) {
+        return { ok: false, code: "CONFLICT", message: "Event has ended" };
       }
+
+      const currentRows = await readRawRows<{ userId: string }>(
+        this.rawDb,
+        `SELECT ep.user_id AS userId
+         FROM event_participants ep
+         INNER JOIN json_each(?2) requested ON requested.value = ep.user_id
+         WHERE ep.event_id = ?1`,
+        eventId,
+        JSON.stringify(insertUserIds),
+      );
+      const currentUserIds = new Set(currentRows.map((row) => row.userId));
+      const stillMissingUserIds = insertUserIds.filter((userId) => !currentUserIds.has(userId));
+      if (stillMissingUserIds.length === 0) return { ok: true, participants: [] };
+
+      if (currentEvent.capacity !== null) {
+        const countRow = (
+          await this.db
+            .select({ count: sql<number>`count(*)` })
+            .from(eventParticipants)
+            .where(eq(eventParticipants.eventId, eventId))
+        )[0];
+        if (Number(countRow?.count ?? 0) + stillMissingUserIds.length > currentEvent.capacity) {
+          return { ok: false, code: "CONFLICT", message: "Event has reached maximum capacity" };
+        }
+      }
+      return { ok: false, code: "SERVER_ERROR", message: "Failed to add participants" };
     }
 
-    const participantIds = insertUserIds.map(() => this.deps.createId?.() ?? nanoid());
-    const stmts = insertUserIds.map((userId, index) =>
-      this.rawDb
-        .prepare("INSERT INTO event_participants (id, event_id, user_id) VALUES (?1, ?2, ?3)")
-        .bind(participantIds[index], eventId, userId),
+    const createdRows = await readRawRows<EventParticipantRow>(
+      this.rawDb,
+      `SELECT ep.id, ep.event_id AS eventId, ep.user_id AS userId, ep.joined_at AS joinedAt
+       FROM event_participants ep
+       INNER JOIN json_each(?1) requested ON requested.value = ep.id`,
+      JSON.stringify(participantIds),
     );
-    await this.rawDb.batch(stmts);
-
-    const createdRows = (await this.db
-      .select({
-        id: eventParticipants.id,
-        eventId: eventParticipants.eventId,
-        userId: eventParticipants.userId,
-        joinedAt: eventParticipants.joinedAt,
-      })
-      .from(eventParticipants)
-      .where(inArray(eventParticipants.id, participantIds))) as EventParticipantRow[];
 
     await this.deps.writeAuditLog({
       entityType: "event_participant",
@@ -237,7 +322,7 @@ export class EventParticipantService {
       actorId,
       entityId: eventId,
       diffTitle: eventRow.title,
-      detailText: JSON.stringify({ count: insertUserIds.length, user_ids: insertUserIds }),
+      detailText: JSON.stringify({ count: createdRows.length, user_ids: createdRows.map((row) => row.userId) }),
     });
     await this.deps.publishEntityChanged({
       entityType: "event",

@@ -3,10 +3,10 @@ import type { PushEntityType } from "@guild/shared/constants/push-hints";
 import { Alert, AppShell as MantineAppShell } from "@mantine/core";
 import { useMediaQuery } from "@mantine/hooks";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import i18n from "i18next";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Outlet, useNavigate, useRouterState } from "@tanstack/react-router";
 import { useTranslation } from "react-i18next";
+import { setI18nLocale } from "../../i18n";
 import { canAccessAdmin, userCanAccessAdmin } from "../../utils/permissions";
 import { ViewingAsProvider } from "../../context/ViewingAsContext";
 import { useNotificationPresentation } from "../../hooks/useNotificationPresentation";
@@ -18,6 +18,11 @@ import { useAuthStore } from "../../stores/auth";
 import { useNotificationStore } from "../../stores/notifications";
 import { usePreferencesStore } from "../../stores/preferences";
 import { useSiteConfigStore } from "../../stores/site-config";
+import {
+  installSessionSynchronization,
+  revalidateSessionSnapshot,
+  transitionSession,
+} from "../../session-transition";
 import { isExternalViewSearch } from "../../utils/external-view";
 import { AppErrorOverlay } from "../shared/AppErrorOverlay";
 import { OverlayRegistrar } from "../shared/OverlayRegistrar";
@@ -84,7 +89,6 @@ export function AppShell() {
   const queryClient = useQueryClient();
 
   const user = useAuthStore((s) => s.user);
-  const clearSession = useAuthStore((s) => s.clearSession);
   const locale = usePreferencesStore((s) => s.locale);
   const notificationFeatures = useNotificationStore((state) => state.features);
   const pushEntries = useNotificationStore((state) => state.pushHistory);
@@ -97,9 +101,7 @@ export function AppShell() {
   const scrollContainerRef = useRef<HTMLElement>(null);
 
   useEffect(() => {
-    void i18n.changeLanguage(locale);
-    document.documentElement.dataset.locale = locale;
-    document.documentElement.lang = locale;
+    void setI18nLocale(locale);
   }, [locale]);
 
   useEffect(() => {
@@ -141,8 +143,7 @@ export function AppShell() {
       if (window.location.pathname === "/login") {
         return;
       }
-      useAuthStore.getState().clearSession();
-      queryClient.clear();
+      transitionSession(queryClient, null);
       void navigate({
         to: "/login",
         search: {
@@ -162,7 +163,35 @@ export function AppShell() {
       window.removeEventListener("guild-api-unauthorized", onUnauthorized as EventListener);
       window.removeEventListener("guild-api-forbidden", onForbidden as EventListener);
     };
-  }, [navigate, t]);
+  }, [navigate, queryClient, t]);
+
+  useEffect(() => installSessionSynchronization({
+    queryClient,
+    onSessionChange: (session) => {
+      if (!session && window.location.pathname !== "/login") {
+        void navigate({ to: "/login", search: { reason: "expired" } });
+      }
+    },
+  }), [navigate, queryClient]);
+
+  const sessionRevalidationRef = useRef<Promise<unknown> | null>(null);
+  const revalidateSession = useCallback(() => {
+    if (!useAuthStore.getState().user || sessionRevalidationRef.current) return;
+    const request = revalidateSessionSnapshot(queryClient)
+      .catch((error: unknown) => {
+        if (import.meta.env.DEV) console.error("[auth] Session revalidation failed", error);
+      })
+      .finally(() => {
+        sessionRevalidationRef.current = null;
+      });
+    sessionRevalidationRef.current = request;
+  }, [queryClient]);
+
+  useEffect(() => {
+    revalidateSession();
+    window.addEventListener("focus", revalidateSession);
+    return () => window.removeEventListener("focus", revalidateSession);
+  }, [revalidateSession, user?.id]);
 
   const handlePushMessage = useCallback(
     (message: PushMessage) => {
@@ -194,8 +223,7 @@ export function AppShell() {
   const logoutMutation = useMutation({
     mutationFn: requestLogout,
     onSettled: () => {
-      clearSession();
-      queryClient.clear();
+      transitionSession(queryClient, null);
       void navigate({ to: "/login" });
     },
   });

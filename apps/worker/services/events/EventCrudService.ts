@@ -38,8 +38,9 @@ import {
   type ClassQuotaInput,
   type ClassQuotaRow,
 } from "./event-class-quotas";
-import { buildReplaceMediaRefsStatements, replaceMediaRefs, deleteMediaRefs, extractAttachmentKeys } from "../media-references";
+import { buildReplaceMediaRefsStatements, extractAttachmentKeys, findUnreferencedKeys } from "../media-references";
 import { rethrowAfterUploadFailure } from "../media-upload-compensation";
+import { buildEventImageKey } from "../media-keys";
 import { validateUploadBytes } from "../media";
 
 export { toParticipantPayload, type EventParticipantRow } from "./EventParticipantService";
@@ -232,94 +233,69 @@ export class EventCrudService {
 
     const now = this.now();
     try {
-      await this.db.insert(events).values({
-        id: eventId,
-        type: data.type,
-        title: data.title.trim(),
-        description: data.description?.trim() || null,
-        startAt: data.start_at,
-        endAt: data.end_at ?? null,
-        capacity: data.type === "poll" ? null : data.capacity ?? null,
-        winnerCount: data.type === "raffle" ? data.winner_count ?? null : null,
-        pinned: false,
-        signupLocked: false,
-        autoArchive: data.auto_archive ?? false,
-        autoArchived: false,
-        archivedAt: null,
-        createdBy: actorId,
-        attachments: JSON.stringify(attachments),
-        seriesId: null,
-        instanceDate: null,
-        createdAt: now,
-        updatedAt: now,
-      });
-
-      if (data.type === "poll" && data.poll) {
-        await this.pollRaffle.createPoll(eventId, data.poll);
-      }
-
-      if (quotas.length > 0) {
-        await this.rawDb.batch(
-          buildReplaceClassQuotaStatements(this.rawDb, EVENT_CLASS_QUOTA_TABLE, eventId, quotas, () => this.createId()),
-        );
-      }
-
-      const created = await this.deps.getEventById(eventId);
-      if (!created) {
-        throw new Error("Failed to load created event");
-      }
-      // 回读一次而不是直接回显请求体：落库后的顺序按职业目录排，跟后续 GET 保持一致。
-      created.classQuotas = quotas.length > 0
-        ? await loadClassQuotasFor(this.rawDb, EVENT_CLASS_QUOTA_TABLE, eventId)
-        : [];
-
-      await replaceMediaRefs(this.rawDb as unknown as D1Database, "event", eventId, extractAttachmentKeys(created.attachments));
-
-      await this.deps.writeAuditLog({
-        entityType: "event",
-        action: "create",
-        actorId,
-        entityId: eventId,
-        diffTitle: created.title,
-        detailText: JSON.stringify({
-          type: created.type,
-          start_at: created.startAt,
-          end_at: created.endAt,
-        }),
-      });
-
-      await this.deps.publishEntityChanged({
-        entityType: "event",
-        entityId: eventId,
-        hint: "event_created",
-        displayName: created.title,
-      });
-
-      return ok(created);
+      const attachmentJson = JSON.stringify(attachments);
+      await this.rawDb.batch([
+        this.rawDb.prepare(`
+          INSERT INTO events
+            (id, type, title, description, start_at, end_at, capacity, pinned, signup_locked,
+             visible_at, archived_at, auto_archive, auto_archived, created_by, updated_by,
+             attachments, series_id, instance_date, winner_count, created_at, updated_at)
+          VALUES (?, ?, ?, ?, ?, ?, ?, 0, 0, NULL, NULL, ?, 0, ?, NULL, ?, NULL, NULL, ?, ?, ?)
+        `).bind(
+          eventId, data.type, data.title.trim(), data.description?.trim() || null,
+          data.start_at, data.end_at ?? null, data.type === "poll" ? null : data.capacity ?? null,
+          data.auto_archive ?? false, actorId, attachmentJson,
+          data.type === "raffle" ? data.winner_count ?? null : null, now, now,
+        ),
+        ...(data.type === "poll" && data.poll
+          ? this.pollRaffle.buildCreatePollStatements(eventId, data.poll)
+          : []),
+        ...(quotas.length > 0
+          ? buildReplaceClassQuotaStatements(this.rawDb, EVENT_CLASS_QUOTA_TABLE, eventId, quotas, () => this.createId())
+          : []),
+        ...buildReplaceMediaRefsStatements(
+          this.rawDb as unknown as D1Database,
+          "event",
+          eventId,
+          extractAttachmentKeys(attachmentJson),
+        ),
+      ]);
     } catch (error) {
       return rethrowAfterUploadFailure(
         error,
         (key) => Promise.resolve(this.media.delete(key)),
         uploadedAttachments,
-        async () => {
-          await this.rawDb.batch([
-            this.rawDb.prepare("UPDATE war_history SET event_id = NULL, updated_at = ?1 WHERE event_id = ?2").bind(now, eventId),
-            this.rawDb.prepare("DELETE FROM event_raffle_winners WHERE event_id = ?1").bind(eventId),
-            this.rawDb.prepare("DELETE FROM event_poll_votes WHERE event_id = ?1").bind(eventId),
-            this.rawDb.prepare("DELETE FROM event_poll_options WHERE event_id = ?1").bind(eventId),
-            this.rawDb.prepare("DELETE FROM event_polls WHERE event_id = ?1").bind(eventId),
-            this.rawDb.prepare("DELETE FROM event_participants WHERE event_id = ?1").bind(eventId),
-            ...buildDeleteClassQuotaStatements(this.rawDb, EVENT_CLASS_QUOTA_TABLE, eventId),
-            this.rawDb.prepare("DELETE FROM war_team_members WHERE war_team_id IN (SELECT id FROM war_teams WHERE event_id = ?1)").bind(eventId),
-            this.rawDb.prepare("DELETE FROM war_teams WHERE event_id = ?1").bind(eventId),
-            this.rawDb.prepare("DELETE FROM war_pool_members WHERE event_id = ?1").bind(eventId),
-            this.rawDb.prepare("DELETE FROM media_references WHERE entity_type = ?1 AND entity_id = ?2").bind("event", eventId),
-            this.rawDb.prepare("DELETE FROM audit_log WHERE entity_type = ?1 AND entity_id = ?2").bind("event", eventId),
-            this.rawDb.prepare("DELETE FROM events WHERE id = ?1").bind(eventId),
-          ]);
-        },
       );
     }
+
+    const created = await this.deps.getEventById(eventId);
+    if (!created) throw new Error("Failed to load created event");
+    // 回读一次而不是直接回显请求体：落库后的顺序按职业目录排，跟后续 GET 保持一致。
+    created.classQuotas = quotas.length > 0
+      ? await loadClassQuotasFor(this.rawDb, EVENT_CLASS_QUOTA_TABLE, eventId)
+      : [];
+
+    await this.deps.writeAuditLog({
+      entityType: "event",
+      action: "create",
+      actorId,
+      entityId: eventId,
+      diffTitle: created.title,
+      detailText: JSON.stringify({
+        type: created.type,
+        start_at: created.startAt,
+        end_at: created.endAt,
+      }),
+    });
+
+    await this.deps.publishEntityChanged({
+      entityType: "event",
+      entityId: eventId,
+      hint: "event_created",
+      displayName: created.title,
+    });
+
+    return ok(created);
   }
 
   async updateEvent(actorId: string, eventId: string, existing: EventRow, data: UpdateEventInput): Promise<ServiceResult<EventRow>> {
@@ -372,20 +348,41 @@ export class EventCrudService {
       ? null
       : await loadClassQuotasFor(this.rawDb, EVENT_CLASS_QUOTA_TABLE, eventId);
 
-    await this.db.update(events).set(patch).where(eq(events.id, eventId));
-
-    if (pollDataProvided) {
-      const pollErr = await this.pollRaffle.updatePoll(eventId, data.poll!, hasVotes);
-      if (pollErr) return pollErr;
-    }
-
-    if (quotaWrite === "clear") {
-      await this.rawDb.batch(buildDeleteClassQuotaStatements(this.rawDb, EVENT_CLASS_QUOTA_TABLE, eventId));
-    } else if (quotaWrite === "replace") {
-      await this.rawDb.batch(
-        buildReplaceClassQuotaStatements(this.rawDb, EVENT_CLASS_QUOTA_TABLE, eventId, data.class_quotas!, () => this.createId()),
-      );
-    }
+    const assignments: string[] = [];
+    const bindings: unknown[] = [];
+    const add = (column: string, value: unknown) => {
+      assignments.push(`${column} = ?`);
+      bindings.push(value);
+    };
+    add("updated_at", patch.updatedAt);
+    add("updated_by", patch.updatedBy);
+    if (patch.type !== undefined) add("type", patch.type);
+    if (patch.title !== undefined) add("title", patch.title);
+    if (patch.description !== undefined) add("description", patch.description);
+    if (patch.startAt !== undefined) add("start_at", patch.startAt);
+    if (patch.endAt !== undefined) add("end_at", patch.endAt);
+    if (patch.capacity !== undefined) add("capacity", patch.capacity);
+    if (patch.pinned !== undefined) add("pinned", patch.pinned);
+    if (patch.signupLocked !== undefined) add("signup_locked", patch.signupLocked);
+    if (patch.autoArchive !== undefined) add("auto_archive", patch.autoArchive);
+    if (patch.archivedAt !== undefined) add("archived_at", patch.archivedAt);
+    if (patch.attachments !== undefined) add("attachments", patch.attachments);
+    const effectiveAttachments = typeof patch.attachments === "string" ? patch.attachments : existing.attachments;
+    await this.rawDb.batch([
+      this.rawDb.prepare(`UPDATE events SET ${assignments.join(", ")} WHERE id = ?`).bind(...bindings, eventId),
+      ...(pollDataProvided ? this.pollRaffle.buildUpdatePollStatements(eventId, data.poll!, hasVotes) : []),
+      ...(quotaWrite === "clear"
+        ? buildDeleteClassQuotaStatements(this.rawDb, EVENT_CLASS_QUOTA_TABLE, eventId)
+        : quotaWrite === "replace"
+          ? buildReplaceClassQuotaStatements(this.rawDb, EVENT_CLASS_QUOTA_TABLE, eventId, data.class_quotas!, () => this.createId())
+          : []),
+      ...buildReplaceMediaRefsStatements(
+        this.rawDb as unknown as D1Database,
+        "event",
+        eventId,
+        extractAttachmentKeys(effectiveAttachments),
+      ),
+    ]);
 
     const updated = await this.deps.getEventById(eventId);
     if (!updated) {
@@ -394,8 +391,6 @@ export class EventCrudService {
     updated.classQuotas = typeSupportsClassQuotas(updated.type)
       ? await loadClassQuotasFor(this.rawDb, EVENT_CLASS_QUOTA_TABLE, eventId)
       : [];
-
-    await replaceMediaRefs(this.rawDb as unknown as D1Database, "event", eventId, extractAttachmentKeys(updated.attachments));
 
     await this.deps.writeAuditLog({
       entityType: "event",
@@ -441,10 +436,14 @@ export class EventCrudService {
       this.rawDb.prepare("DELETE FROM war_team_members WHERE war_team_id IN (SELECT id FROM war_teams WHERE event_id = ?1)").bind(eventId),
       this.rawDb.prepare("DELETE FROM war_teams WHERE event_id = ?1").bind(eventId),
       this.rawDb.prepare("DELETE FROM war_pool_members WHERE event_id = ?1").bind(eventId),
+      this.rawDb.prepare("DELETE FROM media_references WHERE entity_type = ?1 AND entity_id = ?2").bind("event", eventId),
       this.rawDb.prepare("DELETE FROM events WHERE id = ?1").bind(eventId),
     ]);
-
-    await deleteMediaRefs(this.rawDb as unknown as D1Database, "event", eventId);
+    const attachmentsToDelete = await findUnreferencedKeys(
+      this.rawDb as unknown as D1Database,
+      parseAttachments(existing.attachments),
+    );
+    await Promise.allSettled(attachmentsToDelete.map((key) => Promise.resolve(this.media.delete(key))));
 
     await this.deps.writeAuditLog({
       entityType: "event",
@@ -467,39 +466,28 @@ export class EventCrudService {
     const attachments = [...existingAttachments, ...keys].slice(0, MAX_EVENT_ATTACHMENTS);
 
     try {
-      await this.db
-        .update(events)
-        .set({
-          attachments: JSON.stringify(attachments),
-          updatedAt: this.now(),
-        })
-        .where(eq(events.id, eventId));
-
-      await replaceMediaRefs(this.rawDb as unknown as D1Database, "event", eventId, attachments);
-
-      await this.deps.writeAuditLog({
-        entityType: "event",
-        action: "upload_images",
-        actorId,
-        entityId: eventId,
-        diffTitle: existing.title,
-        detailText: JSON.stringify({ keys }),
-      });
-    } catch (error) {
       const rawDb = this.rawDb as unknown as D1Database;
+      await rawDb.batch([
+        rawDb.prepare("UPDATE events SET attachments = ?1, updated_at = ?2 WHERE id = ?3")
+          .bind(JSON.stringify(attachments), this.now(), eventId),
+        ...buildReplaceMediaRefsStatements(rawDb, "event", eventId, attachments),
+      ]);
+    } catch (error) {
       await rethrowAfterUploadFailure(
         error,
         (key) => Promise.resolve(this.media.delete(key)),
         keys,
-        async () => {
-          await rawDb.batch([
-            rawDb.prepare("UPDATE events SET attachments = ?1, updated_at = ?2 WHERE id = ?3")
-              .bind(existing.attachments, existing.updatedAt, eventId),
-            ...buildReplaceMediaRefsStatements(rawDb, "event", eventId, existingAttachments),
-          ]);
-        },
       );
     }
+
+    await this.deps.writeAuditLog({
+      entityType: "event",
+      action: "upload_images",
+      actorId,
+      entityId: eventId,
+      diffTitle: existing.title,
+      detailText: JSON.stringify({ keys }),
+    });
 
     return ok({ keys, attachments });
   }
@@ -619,7 +607,7 @@ export class EventCrudService {
     const keys: string[] = [];
     try {
       for (const image of prepared) {
-        const key = this.deps.createImageKey?.(eventId) ?? `events/${eventId}/images/${Date.now()}_${nanoid()}`;
+        const key = this.deps.createImageKey?.(eventId) ?? buildEventImageKey(eventId, image.contentType);
         keys.push(key);
         await this.media.put(key, image.data, {
           httpMetadata: {

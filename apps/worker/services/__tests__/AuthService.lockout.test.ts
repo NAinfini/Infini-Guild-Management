@@ -15,6 +15,25 @@ const ACCOUNT = {
   salt: "salt",
 };
 
+const PROFILE = {
+  id: "profile-1",
+  userId: "user-1",
+  power: 0,
+  classes: "[]",
+  titleHtml: null,
+  bio: null,
+  avatarKey: null,
+  images: "[]",
+  audioKey: null,
+  videoUrls: "[]",
+  availability: null,
+  vacationStart: null,
+  vacationEnd: null,
+  notes: null,
+  createdAt: "2026-01-01T00:00:00.000Z",
+  updatedAt: "2026-01-01T00:00:00.000Z",
+};
+
 /**
  * Mock DB for the two reads `login` performs before it can fail: the lockout
  * row, then the account row. Writes are accepted and discarded — the ladder
@@ -102,5 +121,51 @@ describe("AuthService.login lockout", () => {
     expect(result).toEqual({ ok: false, code: "UNAUTHORIZED", message: "Invalid credentials" });
     expect(deps.verifyPassword).toHaveBeenCalledTimes(1);
     expect(deps.writeAuditLog).not.toHaveBeenCalled();
+  });
+
+  it("upgrades a legacy password hash after successful verification", async () => {
+    const select = vi.fn()
+      .mockReturnValueOnce({
+        from: () => ({ where: () => ({ limit: () => Promise.resolve([]) }) }),
+      })
+      .mockReturnValueOnce({
+        from: () => ({ innerJoin: () => ({ where: () => ({ limit: () => Promise.resolve([ACCOUNT]) }) }) }),
+      })
+      .mockReturnValueOnce({
+        from: () => ({ where: () => ({ limit: () => Promise.resolve([PROFILE]) }) }),
+      })
+      .mockReturnValueOnce({
+        from: () => ({ where: () => Promise.resolve([]) }),
+      });
+    const db = {
+      select,
+      delete: () => ({ where: () => Promise.resolve() }),
+    } as never;
+    const run = vi.fn().mockResolvedValue(undefined);
+    const bind = vi.fn(() => ({ run }));
+    const prepare = vi.fn(() => ({ bind }));
+    const deps = {
+      ...createDeps(),
+      rawDb: { prepare } as never,
+      verifyPassword: vi.fn().mockResolvedValue(true),
+      createPasswordHash: vi.fn().mockResolvedValue({
+        passwordHash: "pbkdf2-sha256$600000$new-hash",
+        salt: "new-salt",
+      }),
+    };
+    const service = new AuthService(db, deps);
+
+    const result = await service.login("Victim", "correct password", false);
+
+    expect(result.ok).toBe(true);
+    expect(deps.createPasswordHash).toHaveBeenCalledWith("correct password");
+    expect(prepare).toHaveBeenCalledWith(expect.stringContaining("UPDATE user_auth_password"));
+    expect(bind).toHaveBeenCalledWith(
+      "pbkdf2-sha256$600000$new-hash",
+      "new-salt",
+      NOW.toISOString(),
+      "user-1",
+    );
+    expect(run).toHaveBeenCalledTimes(1);
   });
 });

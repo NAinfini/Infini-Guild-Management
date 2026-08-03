@@ -25,6 +25,8 @@ type ServiceInfo = {
   label: string;
 };
 
+type ServiceState = "ok" | "configured" | "error";
+
 const SERVICES: ServiceInfo[] = [
   { key: "db", icon: DatabaseIcon, label: "D1" },
   { key: "r2", icon: CloudIcon, label: "R2" },
@@ -41,8 +43,15 @@ const SERVICES: ServiceInfo[] = [
  * `errorColor` 的字面量就已经是 warning 那档的黄色，而不是其余三个服务用的
  * danger 红色，本批只是把既有的判断挪进了 class，未改动档位本身。
  */
-function iconTone(isOk: boolean, key: keyof StatusData): "ok" | "warning" | "danger" {
-  if (isOk) return "ok";
+function serviceState(value: string): ServiceState {
+  if (value === "ok") return "ok";
+  if (value === "configured") return "configured";
+  return "error";
+}
+
+function iconTone(state: ServiceState, key: keyof StatusData): "ok" | "warning" | "danger" {
+  if (state === "ok") return "ok";
+  if (state === "configured") return "warning";
   return key === "ws" ? "warning" : "danger";
 }
 
@@ -87,19 +96,43 @@ export function AdminSystemSection({
 
   if (!statusData) return null;
 
-  const allOk = SERVICES.every((s) => statusData[s.key] === "ok");
+  const states = SERVICES.map((service) => serviceState(statusData[service.key]));
+  const allOk = states.every((state) => state === "ok");
+  const hasFailure = states.some((state) => state === "error");
+  const partiallyVerified = !allOk && !hasFailure;
+  const overallLabel = allOk
+    ? t("status.operational")
+    : partiallyVerified
+      ? t("status.partiallyVerified")
+      : t("status.degraded");
+  const overallTitle = allOk
+    ? t("status.tooltip.overallHealthy.title")
+    : partiallyVerified
+      ? t("status.tooltip.overallPartial.title")
+      : t("status.tooltip.overallDegraded.title");
+  const overallDescription = allOk
+    ? t("status.tooltip.overallHealthy.desc")
+    : partiallyVerified
+      ? t("status.tooltip.overallPartial.desc")
+      : t("status.tooltip.overallDegraded.desc");
 
   return (
     <div className="system-health-grid">
       {SERVICES.map((svc) => {
-        const isOk = statusData[svc.key] === "ok";
+        const value = statusData[svc.key];
+        const state = serviceState(value);
+        const isOk = state === "ok";
         const Icon = svc.icon;
-        const tone = iconTone(isOk, svc.key);
+        const tone = iconTone(state, svc.key);
+        const badgeColor = isOk ? "green" : state === "configured" || svc.key === "ws" ? "yellow" : "red";
+        const badgeLabel = value === "ok" || value === "configured"
+          ? t(`status.value.${value}`)
+          : value.toUpperCase();
 
         return (
           <HoverCard key={svc.key} width={280} shadow="lg" withArrow arrowSize={10} openDelay={350} closeDelay={80} position="top">
             <HoverCard.Target>
-              <div data-animate-icon-trigger className={`system-health-tile ${isOk ? "system-health-tile--ok" : "system-health-tile--error"}`}>
+              <div data-animate-icon-trigger className={`system-health-tile system-health-tile--${state}`}>
                 <div className={`system-health-tile__icon system-health-tile__icon--${tone}`}>
                   <Icon size={22} />
                 </div>
@@ -107,10 +140,10 @@ export function AdminSystemSection({
                 <Badge
                   size="sm"
                   variant="light"
-                  color={isOk ? "green" : svc.key === "ws" ? "yellow" : "red"}
+                  color={badgeColor}
                   className="system-health-tile__badge"
                 >
-                  {statusData[svc.key].toUpperCase()}
+                  {badgeLabel}
                 </Badge>
               </div>
             </HoverCard.Target>
@@ -154,7 +187,7 @@ export function AdminSystemSection({
         <HoverCard.Target>
           <div data-animate-icon-trigger className={`system-health-overall ${allOk ? "system-health-overall--ok" : "system-health-overall--warn"}`}>
             <div className={`system-health-overall__dot ${allOk ? "system-health-overall__dot--ok" : "system-health-overall__dot--warn"}`} />
-            <Text size="xs" fw={700}>{allOk ? t("status.operational") : t("status.degraded")}</Text>
+            <Text size="xs" fw={700}>{overallLabel}</Text>
           </div>
         </HoverCard.Target>
         <HoverCard.Dropdown p="sm" style={{ borderRadius: 10 }}>
@@ -163,8 +196,8 @@ export function AdminSystemSection({
               {allOk ? <CircleCheckIcon size={16} /> : <AlertTriangleIcon size={16} />}
             </ThemeIcon>
             <div style={{ minWidth: 0 }}>
-              <Text size="sm" fw={700} lh={1.3}>{allOk ? t("status.tooltip.overallHealthy.title") : t("status.tooltip.overallDegraded.title")}</Text>
-              <Text size="xs" c="dimmed" lh={1.5}>{allOk ? t("status.tooltip.overallHealthy.desc") : t("status.tooltip.overallDegraded.desc")}</Text>
+              <Text size="sm" fw={700} lh={1.3}>{overallTitle}</Text>
+              <Text size="xs" c="dimmed" lh={1.5}>{overallDescription}</Text>
             </div>
           </Group>
         </HoverCard.Dropdown>

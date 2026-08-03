@@ -9,7 +9,7 @@ describe("isImmutableBuildAssetPath", () => {
   });
 
   it("does not mark non-hashed static paths immutable", () => {
-    expect(isImmutableBuildAssetPath("/splash.js")).toBe(false);
+    expect(isImmutableBuildAssetPath("/robots.txt")).toBe(false);
     expect(isImmutableBuildAssetPath("/guild-logo.webp")).toBe(false);
     expect(isImmutableBuildAssetPath("/assets/index.js")).toBe(false);
   });

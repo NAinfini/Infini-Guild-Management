@@ -4,14 +4,28 @@ import { parseJsonc, validateWorkerConfig } from "./check-worker-config.mjs";
 function validConfig() {
   return {
     secrets: { required: ["SIGNING_SECRET"] },
+    triggers: { crons: ["0 0 * * *", "*/15 * * * *"] },
     env: {
       production: {
         workers_dev: true,
+        observability: {
+          enabled: true,
+          logs: { enabled: true, head_sampling_rate: 1 },
+          traces: { enabled: true, head_sampling_rate: 0.1 },
+        },
+        assets: {
+          directory: "../portal/dist",
+          not_found_handling: "single-page-application",
+          binding: "ASSETS",
+          run_worker_first: true,
+        },
         vars: {
           ENVIRONMENT: "production",
           SITE_NAME: "My Guild",
           SITE_LOGO_URL: "/guild-logo.webp",
           PORTAL_ORIGIN: "",
+          MEDIA_ORPHAN_DELETE_MODE: "report",
+          ENABLE_PRODUCTION_SYSTEM_TESTS: "false",
         },
         d1_databases: [{
           binding: "DB",
@@ -22,6 +36,9 @@ function validConfig() {
           binding: "MEDIA",
           bucket_name: "my-guild-media",
         }],
+        durable_objects: {
+          bindings: [{ name: "WS", class_name: "WebSocketDO" }],
+        },
       },
     },
   };
@@ -69,5 +86,25 @@ describe("worker config preflight", () => {
     expect(validateWorkerConfig(config, "production")).toContain(
       "env.production needs workers_dev: true or a configured custom-domain route.",
     );
+  });
+
+  it("requires production observability, SPA assets, WS, and both cron schedules", () => {
+    const config = validConfig();
+    delete config.env.production.observability;
+    delete config.env.production.assets;
+    delete config.env.production.durable_objects;
+    delete config.env.production.vars.MEDIA_ORPHAN_DELETE_MODE;
+    delete config.env.production.vars.ENABLE_PRODUCTION_SYSTEM_TESTS;
+    config.triggers.crons = ["0 0 * * *"];
+
+    expect(validateWorkerConfig(config, "production")).toEqual(expect.arrayContaining([
+      expect.stringContaining("observability.logs"),
+      expect.stringContaining("observability.traces"),
+      expect.stringContaining("SPA assets"),
+      expect.stringContaining('Durable Object binding "WS"'),
+      expect.stringContaining("MEDIA_ORPHAN_DELETE_MODE"),
+      expect.stringContaining("ENABLE_PRODUCTION_SYSTEM_TESTS"),
+      expect.stringContaining("*/15 * * * *"),
+    ]));
   });
 });

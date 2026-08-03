@@ -23,7 +23,13 @@ const DELETE_ITEM = { method: "DELETE", path: /^\/api\/gallery\/[^/]+$/ } as con
 const BATCH_DELETE = { method: "POST", path: /^\/api\/gallery\/batch-delete$/ } as const;
 
 type Fixture = { id: string; caption: string };
-type StoredItem = { id: string; type: string; url: string; caption: string | null };
+type StoredItem = {
+  id: string;
+  type: string;
+  url: string;
+  caption: string | null;
+  uploaded_by: string;
+};
 
 let stamp: number;
 let createdIds: string[];
@@ -203,7 +209,17 @@ test("图片上传：说明随图提交，库里有行、R2 里也要有对象",
   const item = uploaded.data[0] as StoredItem;
   createdIds.push(item.id);
   expect(item.caption, "队列里填的说明要跟着这张图一起提交").toBe(caption);
-  expect(item.url, "对象要落在按上传者分目录的 gallery 前缀下").toMatch(/^gallery\/images\//);
+  const keyParts = item.url.split("/");
+  expect(keyParts, "对象键必须完整落在上传者和画廊条目各自的命名空间里").toHaveLength(7);
+  expect(keyParts.slice(0, 6)).toEqual([
+    "gallery",
+    "users",
+    encodeURIComponent(item.uploaded_by),
+    "items",
+    encodeURIComponent(item.id),
+    "images",
+  ]);
+  expect(keyParts[6], "WebP 对象名必须是规范的 UUID/nanoid 叶节点").toMatch(/^[A-Za-z0-9_-]+\.webp$/);
 
   const stored = await listGallery(api, String(stamp));
   expect(stored.map((row) => row.id), "服务端必须真的多出这一行").toEqual([item.id]);

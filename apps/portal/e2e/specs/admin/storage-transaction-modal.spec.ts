@@ -12,7 +12,8 @@ import { expectNoDialog, selectOption, topDialog } from "../../support/ui";
  *   3. 合法提交后，服务端库存和流水都要跟着变——UI 对不等于数据对。
  *
  * 每条用例只动本次自己造的一次性物品：既有物品被种子流水引用，改了没有回滚路径。
- * 物品由 POST /api/storage/items 登记进清理注册表，删除时流水按外键级联一并消失。
+ * 物品由 POST /api/storage/items 登记进清理注册表；整轮精确补偿会先删流水，
+ * 再按已登记主键删除物品。产品接口必须继续拒绝删除已有流水的物品。
  */
 
 const TRANSACTION_REQUEST = {
@@ -59,11 +60,6 @@ test.beforeEach(async ({ page, api }) => {
 
   await page.goto(`/storage?storageId=${storageId}`);
   await expect(stockValue(page)).toHaveText(String(START_STOCK));
-});
-
-test.afterEach(async ({ api }) => {
-  const response = await api.delete(`/api/storage/items/${itemId}`);
-  expect(response.ok(), `删除一次性物品失败: ${response.status()}`).toBe(true);
 });
 
 function itemCard(page: Page): Locator {

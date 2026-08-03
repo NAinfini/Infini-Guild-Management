@@ -4,6 +4,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { useEventsEditorController } from "./useEventsEditorController";
 
 const beforeUnloadPromptMock = vi.hoisted(() => vi.fn());
+const confirmMock = vi.hoisted(() => vi.fn());
 
 vi.mock("react-i18next", () => ({
   useTranslation: () => ({
@@ -17,6 +18,10 @@ vi.mock("@mantine/modals", () => ({
   },
 }));
 
+vi.mock("@portal/hooks/useConfirmDialog", () => ({
+  useConfirmDialog: () => confirmMock,
+}));
+
 vi.mock("../../../hooks/useBeforeUnloadPrompt", () => ({
   useBeforeUnloadPrompt: beforeUnloadPromptMock,
 }));
@@ -24,6 +29,7 @@ vi.mock("../../../hooks/useBeforeUnloadPrompt", () => ({
 describe("useEventsEditorController", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    confirmMock.mockResolvedValue(false);
   });
 
   it("does not arm beforeunload until the editor is actually edited", () => {
@@ -49,5 +55,20 @@ describe("useEventsEditorController", () => {
 
     expect(beforeUnloadPromptMock).toHaveBeenLastCalledWith(true);
     expect(result.current.isEditorDirty).toBe(true);
+  });
+
+  it.each([
+    ["setEditorPinned", true],
+    ["setEditorSignupLocked", true],
+  ] as const)("marks %s changes as touched so closing requires confirmation", async (setter, value) => {
+    const { result } = renderHook(() => useEventsEditorController({ attachmentSnapshot: "[]" }));
+
+    act(() => {
+      result.current.openCreateEditor();
+      result.current[setter](value);
+    });
+
+    expect(result.current.isEditorDirty).toBe(true);
+    await expect(result.current.closeEditor()).resolves.toBe(false);
   });
 });

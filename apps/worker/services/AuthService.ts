@@ -16,6 +16,7 @@ import { ok, err, type ServiceResult } from "./result";
 import { parseStringArray, parseRecord, usernameEquals } from "./helpers";
 import { clearLoginFailures, readLockout, recordLoginFailure } from "./login-lockout";
 import { logger } from "../utils/logger";
+import { passwordHashNeedsUpgrade } from "./auth";
 
 // --- Types ---
 
@@ -115,6 +116,20 @@ export class AuthService {
     return this.deps.now?.() ?? new Date();
   }
 
+  private async upgradePasswordHash(userId: string, password: string, currentHash: string, now: Date): Promise<void> {
+    if (!passwordHashNeedsUpgrade(currentHash)) return;
+    try {
+      const upgraded = await this.deps.createPasswordHash(password);
+      await this.deps.rawDb.prepare(
+        "UPDATE user_auth_password SET password_hash = ?, salt = ?, updated_at = ? WHERE user_id = ?",
+      ).bind(upgraded.passwordHash, upgraded.salt, now.toISOString(), userId).run();
+    } catch (error) {
+      // Hash migration is opportunistic. A transient D1 write failure should
+      // not reject credentials that were already verified successfully.
+      logger.error("Password hash upgrade failed", { userId, error: String(error) });
+    }
+  }
+
   /**
    * Records a failed attempt on the lockout ladder, and audits it when the
    * username belongs to a real account.
@@ -181,6 +196,7 @@ export class AuthService {
       await this.registerLoginFailure(attempted, { id: account.id, username: account.username }, "wrong_password", clientIp, now);
       return err("UNAUTHORIZED", "Invalid credentials");
     }
+    await this.upgradePasswordHash(account.id, password, account.passwordHash, now);
     // Correct password resets the ladder, so a run of typos never accumulates.
     await clearLoginFailures(this.db, attempted);
     // Keeps at most MAX_SESSIONS_PER_USER logins alive; the oldest is evicted.

@@ -8,7 +8,7 @@
   "audio.hint": "控制成员背景音乐",
   "audio.aria.mute": "静音",
   "audio.aria.unmute": "取消静音",
-  "audio.aria.volumeSlider": "成员语音音量",
+  "audio.aria.volumeSlider": "成员音乐音量",
   "search.placeholder.usernameOnly": "搜索用户名",
   "search.aria.usernameOnly": "按用户名搜索",
   "filter.class.placeholder": "筛选职业",

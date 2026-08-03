@@ -15,6 +15,7 @@ import type { CreateBadgePayload } from "../services/AdminService";
 import { queryKeys } from "../api/query-keys";
 import { notifySuccess } from "../utils/notifications";
 import { useAppError } from "./useAppError";
+import { useAdminPendingActions } from "./useAdminPendingActions";
 
 export type BadgeForm = {
   name: string;
@@ -54,6 +55,7 @@ export function useAdminBadgesController(enabled: boolean) {
   const [assignPanelOpen, setAssignPanelOpen] = useState(false);
   const [assignSearch, setAssignSearch] = useState("");
   const [pendingAssignIds, setPendingAssignIds] = useState<string[]>([]);
+  const { isActionPending, runPendingAction, runPendingActions } = useAdminPendingActions();
 
   const badgesQuery = useQuery({
     queryKey: queryKeys.badges.list(),
@@ -180,6 +182,36 @@ export function useAdminBadgesController(enabled: boolean) {
 
   const formValid = form.name.trim().length > 0 && form.label_html.trim().length > 0;
 
+  const isBadgeDeletePending = (badgeId: string) =>
+    isActionPending({ resource: "badge", resourceId: badgeId, action: "delete" });
+
+  const isBadgeUnassignPending = (badgeId: string, userId: string) =>
+    isActionPending({
+      resource: "badge-assignment",
+      resourceId: `${badgeId}:${userId}`,
+      action: "unassign",
+    });
+
+  const deleteBadgeWithPending = (badgeId: string) => {
+    const pending = runPendingAction(
+      { resource: "badge", resourceId: badgeId, action: "delete" },
+      () => deleteMutation.mutateAsync(badgeId),
+    );
+    if (pending) void pending.catch(() => undefined);
+  };
+
+  const unassignBadgeWithPending = (badgeId: string, userIds: string[]) => {
+    const pending = runPendingActions(
+      userIds.map((userId) => ({
+        resource: "badge-assignment" as const,
+        resourceId: `${badgeId}:${userId}`,
+        action: "unassign",
+      })),
+      () => unassignMutation.mutateAsync({ badgeId, userIds }),
+    );
+    if (pending) void pending.catch(() => undefined);
+  };
+
   return {
     selectedBadgeId,
     setSelectedBadgeId,
@@ -211,6 +243,8 @@ export function useAdminBadgesController(enabled: boolean) {
     deletePending: deleteMutation.isPending,
     assignPending: assignMutation.isPending,
     unassignPending: unassignMutation.isPending,
+    isBadgeDeletePending,
+    isBadgeUnassignPending,
     startCreate,
     startEdit,
     selectBadge,
@@ -220,9 +254,9 @@ export function useAdminBadgesController(enabled: boolean) {
     formValid,
     createBadge: () => createMutation.mutate(toCreateBadgePayload(form)),
     updateBadge: (id: string) => updateMutation.mutate({ id, payload: form }),
-    deleteBadge: (id: string) => deleteMutation.mutate(id),
+    deleteBadge: deleteBadgeWithPending,
     assignBadge: (badgeId: string, userIds: string[]) => assignMutation.mutate({ badgeId, userIds }),
-    unassignBadge: (badgeId: string, userIds: string[]) => unassignMutation.mutate({ badgeId, userIds }),
+    unassignBadge: unassignBadgeWithPending,
   };
 }
 

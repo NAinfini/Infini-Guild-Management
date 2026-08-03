@@ -21,6 +21,12 @@ export type LogicalChunkSize = {
   gzipBytes: number;
 };
 
+export function portalLocaleChunkName(id: string): string | undefined {
+  const normalizedId = id.replace(/\\/g, "/");
+  const match = /\/apps\/portal\/i18n\/(en|zh)\//.exec(normalizedId);
+  return match ? `portal-i18n-${match[1]}` : undefined;
+}
+
 export function findEChartsChunkBudgetViolation(
   chunks: readonly LogicalChunkSize[],
 ): string | null {
@@ -117,9 +123,8 @@ export default defineConfig(({ mode }) => {
           manualChunks(id) {
             const normalizedId = id.replace(/\\/g, "/");
 
-            if (normalizedId.includes("/apps/portal/i18n/")) {
-              return "portal-i18n";
-            }
+            const localeChunk = portalLocaleChunkName(normalizedId);
+            if (localeChunk) return localeChunk;
             if (normalizedId.includes("/apps/shared/schema")) {
               return "shared-schema";
             }

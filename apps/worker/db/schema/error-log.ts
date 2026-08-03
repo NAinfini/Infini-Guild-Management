@@ -19,7 +19,7 @@ export const errorLog = sqliteTable(
     createdAt: text("created_at").notNull().default(nowUtc),
   },
   (table) => ({
-    idxCreatedAt: index("idx_error_log_created_at").on(table.createdAt),
-    idxSource: index("idx_error_log_source").on(table.source),
+    idxCreatedAt: index("idx_error_log_created_at").on(table.createdAt, table.id),
+    idxSourceCreated: index("idx_error_log_source_created").on(table.source, table.createdAt, table.id),
   }),
 );

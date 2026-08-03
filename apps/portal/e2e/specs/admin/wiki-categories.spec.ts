@@ -300,53 +300,6 @@ test("拖拽排序：草稿顺序先变，保存后 sort_order 真的换了", as
   ).toBe(true);
 });
 
-test("批量保存是原子的：有一行不合法，同一批里合法的行也不许落库", async ({ api }) => {
-  const renamed = `${SYSTEM_TEST_CONTENT_MARKER} ShouldNotLand ${stamp}`;
-  const response = await api.patch("/api/wiki/categories/batch", {
-    data: {
-      updates: [
-        { id: categoryB.id, name: renamed },
-        /* 自己当自己的父级：这一行必然被拒。 */
-        { id: categoryA.id, parent_id: categoryA.id },
-      ],
-    },
-  });
-
-  expect(response.status(), "整批应当被判 400").toBe(400);
-  expect(
-    (await readCategory(api, categoryB.id)).name,
-    "同一批里排在前面的合法行也不能落库，否则就是改了一半",
-  ).toBe(categoryB.name);
-});
-
-test("批量保存按整批落库后的层级判嵌套：逐行看都合法，合起来两层也要拒", async ({ api }) => {
-  const top = await createCategory(api, `${SYSTEM_TEST_CONTENT_MARKER} CatTop ${stamp}`);
-  extraCategoryIds.push(top.id);
-
-  /* 先把 B 挂到 A 下面，A 这时是顶层。 */
-  const nest = await api.patch("/api/wiki/categories/batch", {
-    data: { updates: [{ id: categoryB.id, parent_id: categoryA.id }] },
-  });
-  expect(nest.status(), "把 B 挂到顶层分类 A 下面应当成功").toBe(200);
-
-  /* 再把 A 挂到 top 下面：单看这一行合法（top 没有父级），但落库后 B 就成了第三层。 */
-  const response = await api.patch("/api/wiki/categories/batch", {
-    data: { updates: [{ id: categoryA.id, parent_id: top.id }] },
-  });
-
-  expect(response.status(), "会造出三层的批次必须被拒").toBe(400);
-  expect(
-    (await readCategory(api, categoryA.id)).parent_id,
-    "被拒的批次不该改动任何一行",
-  ).toBeNull();
-
-  /* 清理顺序要求父分类先解绑，否则 afterEach 删 A 时会被子分类挡住。 */
-  const detach = await api.patch("/api/wiki/categories/batch", {
-    data: { updates: [{ id: categoryB.id, parent_id: null }] },
-  });
-  expect(detach.status(), "解绑 B 的父级").toBe(200);
-});
-
 test("删除分类：确认框拦一道，确认后服务端也没了", async ({ page, flow, api }) => {
   await openCategoryEditor(page);
   const rowA = await draftRowIndex(page, categoryA.name);

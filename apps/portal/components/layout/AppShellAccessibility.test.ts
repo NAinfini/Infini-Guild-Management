@@ -20,10 +20,12 @@ describe("App shell accessibility structure", () => {
   });
 
   it("keeps the document language and locale selector in sync", () => {
-    const source = readPortalFile("apps/portal/components/layout/AppShell.tsx");
+    const appShell = readPortalFile("apps/portal/components/layout/AppShell.tsx");
+    const i18n = readPortalFile("apps/portal/i18n/index.ts");
 
-    expect(source).toContain("document.documentElement.dataset.locale = locale");
-    expect(source).toContain("document.documentElement.lang = locale");
+    expect(appShell).toContain("void setI18nLocale(locale)");
+    expect(i18n).toContain("document.documentElement.dataset.locale = locale");
+    expect(i18n).toContain("document.documentElement.lang = locale");
   });
 
   it("keeps AppHeader as the only page-title source", () => {

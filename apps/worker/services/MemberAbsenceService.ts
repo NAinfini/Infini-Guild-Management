@@ -18,6 +18,7 @@ type DrizzleDb = ReturnType<typeof drizzle>;
 type SessionUser = { id: string; role: Role; permissions: ReadonlySet<string> };
 
 export type MemberAbsenceServiceDeps = {
+  rawDb: D1Database;
   writeAuditLog: (input: {
     entityType: AuditEntityType;
     action: AuditAction;
@@ -128,21 +129,25 @@ export class MemberAbsenceService {
       return err("VALIDATION_ERROR", `Absence cannot span more than ${policy.max_span_days} days`);
     }
 
-    const countRow = (
-      await this.db.select({ count: sql<number>`count(*)` }).from(memberAbsences).where(eq(memberAbsences.userId, targetUserId))
-    )[0];
-    if (Number(countRow?.count ?? 0) >= policy.max_entries_per_user) {
+    const id = nanoid();
+    const insertResult = await this.deps.rawDb
+      .prepare(
+        `INSERT INTO member_absences (id, user_id, start_date, end_date, note)
+         SELECT ?1, ?2, ?3, ?4, ?5
+         WHERE (SELECT COUNT(*) FROM member_absences WHERE user_id = ?2) < ?6`,
+      )
+      .bind(
+        id,
+        targetUserId,
+        parsed.data.start_date,
+        parsed.data.end_date,
+        parsed.data.note ? parsed.data.note : null,
+        policy.max_entries_per_user,
+      )
+      .run();
+    if ((insertResult.meta?.changes ?? 0) !== 1) {
       return err("VALIDATION_ERROR", `Absence limit reached (max ${policy.max_entries_per_user}); delete old entries first`);
     }
-
-    const id = nanoid();
-    await this.db.insert(memberAbsences).values({
-      id,
-      userId: targetUserId,
-      startDate: parsed.data.start_date,
-      endDate: parsed.data.end_date,
-      note: parsed.data.note ? parsed.data.note : null,
-    });
 
     await this.deps.writeAuditLog({
       entityType: "member_absence", action: "create", actorId: sessionUser.id,

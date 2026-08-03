@@ -227,7 +227,7 @@ export class EventPollRaffleService {
     return null;
   }
 
-  async createPoll(eventId: string, poll: NonNullable<CreateEventInput["poll"]>) {
+  buildCreatePollStatements(eventId: string, poll: NonNullable<CreateEventInput["poll"]>) {
     const now = this.now();
     const pollStmt = this.rawDb
       .prepare("INSERT INTO event_polls (event_id, results_visibility, show_voter_names, created_at, updated_at) VALUES (?1, ?2, ?3, ?4, ?5)")
@@ -237,11 +237,10 @@ export class EventPollRaffleService {
         .prepare("INSERT INTO event_poll_options (id, event_id, label, sort_order, created_at) VALUES (?1, ?2, ?3, ?4, ?5)")
         .bind(this.deps.createId?.() ?? nanoid(), eventId, label.trim(), index, now),
     );
-    await this.rawDb.batch([pollStmt, ...optionStmts]);
+    return [pollStmt, ...optionStmts];
   }
 
-  async updatePoll(eventId: string, poll: NonNullable<CreateEventInput["poll"]>, knownHasVotes?: boolean): Promise<ServiceErr | null> {
-    const hasVotes = knownHasVotes ?? await this.pollHasVotes(eventId);
+  buildUpdatePollStatements(eventId: string, poll: NonNullable<CreateEventInput["poll"]>, hasVotes: boolean) {
     const now = this.now();
     const stmts = [
       this.rawDb
@@ -255,11 +254,8 @@ export class EventPollRaffleService {
           .prepare("INSERT INTO event_poll_options (id, event_id, label, sort_order, created_at) VALUES (?1, ?2, ?3, ?4, ?5)")
           .bind(this.deps.createId?.() ?? nanoid(), eventId, label.trim(), index, now),
       ));
-    } else if (await this.pollOptionsChanged(eventId, poll.options)) {
-      return err("VALIDATION_ERROR", "Poll options cannot be changed after voting starts");
     }
-    await this.rawDb.batch(stmts);
-    return null;
+    return stmts;
   }
 
   async pollOptionsChanged(eventId: string, nextOptions: string[]): Promise<boolean> {

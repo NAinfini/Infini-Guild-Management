@@ -212,7 +212,10 @@ test("投票：先选后投才可提交，改投会把票挪到另一个选项�
   expect(afterFirst.poll?.options.find((option) => option.label === optionB)?.vote_count).toBe(0);
 
   await expect(pollRow(modal, optionA).locator(".event-detail-modal__poll-percent")).toHaveText("100%");
-  await expect(pollRow(modal, optionA)).toContainText(viewer.username);
+  await expect(
+    pollRow(modal, optionA).getByRole("button", { name: viewer.username, exact: true }),
+    "投票人改为头像呈现后，身份仍必须通过头像按钮的无障碍名称可识别",
+  ).toBeVisible();
   await expect(modal.locator(".event-detail-modal__poll-total")).toHaveText("1 votes");
 
   const updateButton = modal.getByRole("button", { name: "Update vote", exact: true });

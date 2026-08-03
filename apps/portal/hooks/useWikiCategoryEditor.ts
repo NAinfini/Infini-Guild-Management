@@ -1,6 +1,6 @@
 import type { BatchUpdateWikiCategoryItem, WikiCategory } from "@guild/shared";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import type { WikiCategoryDraft } from "../types/wiki";
 import { applyCategoryMove, orderCategoryDrafts, type CategoryMove } from "../utils/wiki-category-tree";
@@ -32,6 +32,50 @@ function toCategoryDrafts(categories: WikiCategory[]): WikiCategoryDraft[] {
   return orderCategoryDrafts(drafts);
 }
 
+function draftsDifferFromCategories(
+  drafts: WikiCategoryDraft[],
+  categories: WikiCategory[],
+): boolean {
+  if (drafts.length !== categories.length) return true;
+  const categoriesById = new Map(categories.map((category) => [category.id, category]));
+  return drafts.some((draft) => {
+    const current = categoriesById.get(draft.id);
+    return !current
+      || draft.name.trim() !== current.name
+      || (draft.parent_id || null) !== current.parent_id
+      || draft.sort_order !== current.sort_order;
+  });
+}
+
+function mergeCategoryDrafts(
+  drafts: WikiCategoryDraft[],
+  previousCategories: WikiCategory[],
+  nextCategories: WikiCategory[],
+): WikiCategoryDraft[] {
+  const nextDrafts = toCategoryDrafts(nextCategories);
+  if (!draftsDifferFromCategories(drafts, previousCategories)) return nextDrafts;
+
+  const previousById = new Map(previousCategories.map((category) => [category.id, category]));
+  const nextById = new Map(nextDrafts.map((draft) => [draft.id, draft]));
+  const nextIds = new Set(nextDrafts.map((draft) => draft.id));
+  const merge = (draft: WikiCategoryDraft): WikiCategoryDraft => {
+    const previous = previousById.get(draft.id);
+    const next = nextById.get(draft.id);
+    if (!previous || !next) return next ?? draft;
+    const dirtyParent = (draft.parent_id || null) !== previous.parent_id
+      && (!draft.parent_id || nextIds.has(draft.parent_id));
+    return {
+      ...next,
+      name: draft.name.trim() !== previous.name ? draft.name : next.name,
+      parent_id: dirtyParent ? draft.parent_id : next.parent_id,
+      sort_order: draft.sort_order !== previous.sort_order ? draft.sort_order : next.sort_order,
+    };
+  };
+  const retained = drafts.filter((draft) => nextIds.has(draft.id)).map(merge);
+  const retainedIds = new Set(retained.map((draft) => draft.id));
+  return [...retained, ...nextDrafts.filter((draft) => !retainedIds.has(draft.id))];
+}
+
 type UseWikiCategoryEditorParams = {
   categories: WikiCategory[];
 };
@@ -44,9 +88,15 @@ export function useWikiCategoryEditor({ categories }: UseWikiCategoryEditorParam
   const [categoryName, setCategoryName] = useState("");
   const [categoryDrafts, setCategoryDrafts] = useState<WikiCategoryDraft[]>(() => toCategoryDrafts(categories));
   const [deletingCategoryId, setDeletingCategoryId] = useState<string | null>(null);
+  const previousCategoriesRef = useRef(categories);
 
   useEffect(() => {
-    setCategoryDrafts(toCategoryDrafts(categories));
+    setCategoryDrafts((current) => mergeCategoryDrafts(
+      current,
+      previousCategoriesRef.current,
+      categories,
+    ));
+    previousCategoriesRef.current = categories;
   }, [categories]);
 
   const categoriesById = useMemo(

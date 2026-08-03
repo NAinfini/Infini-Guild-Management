@@ -25,6 +25,7 @@ import { apiRequest } from "./api/client";
 import { fetchEventDetail } from "./api/queries/events";
 import { AppShell } from "./components/layout/AppShell";
 import { resolveRouteSession } from "./router-session";
+import { transitionSession } from "./session-transition";
 import { useAuthStore } from "./stores/auth";
 import { useSiteConfigStore } from "./stores/site-config";
 import { buildEventWorkbenchSearch, EVENTS_ROUTE_SEARCH_SCHEMA, sanitizeEventsRouteSearch } from "./utils/event-navigation";
@@ -277,9 +278,7 @@ async function ensureSession(): Promise<AuthSessionResponse | null> {
         : null;
     },
     requestSession: () => apiRequest<AuthSessionResponse>("/api/auth/me"),
-    setSession: (user, profile) => useAuthStore.getState().setSession(user, profile),
-    clearSession: () => useAuthStore.getState().clearSession(),
-    clearQueryCache: () => queryClient.clear(),
+    transitionSession: (session) => transitionSession(queryClient, session, { broadcast: false }),
   });
 }
 
@@ -330,7 +329,7 @@ const rootRoute = createRootRoute({
     if (!useAuthStore.getState().user) {
       try {
         const response = await apiRequest<AuthSessionResponse>("/api/auth/me");
-        useAuthStore.getState().setSession(response.user, response.profile);
+        transitionSession(queryClient, response, { broadcast: false });
       } catch {
         // no valid session — that's fine for public routes
       }

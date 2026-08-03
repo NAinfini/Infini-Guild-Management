@@ -51,6 +51,7 @@ export interface ImageGridEditorProps {
   accept?: string;
   uploadLabel?: ReactNode;
   disabled?: boolean;
+  deletingIds?: ReadonlySet<string>;
   className?: string;
   style?: CSSProperties;
   "aria-label"?: string;
@@ -68,6 +69,7 @@ function DraggableImageCell({
   onDelete,
   deleteLabel,
   disabled,
+  deletePending,
   motionAllowed,
 }: {
   item: ImageGridEditorItem;
@@ -76,6 +78,7 @@ function DraggableImageCell({
   onDelete?: (item: ImageGridEditorItem) => void;
   deleteLabel: string;
   disabled: boolean;
+  deletePending: boolean;
   motionAllowed: boolean;
 }) {
   const dragControls = useDragControls();
@@ -166,9 +169,12 @@ function DraggableImageCell({
           variant="transparent"
           radius="xl"
           size={44}
+          loading={deletePending}
+          disabled={deletePending}
           style={{ position: "absolute", top: -6, right: -6, zIndex: 10 }}
           onClick={(e) => {
             e.stopPropagation();
+            if (deletePending) return;
             onDelete(item);
           }}
         >
@@ -213,6 +219,7 @@ export const ImageGridEditor = forwardRef<HTMLDivElement, ImageGridEditorProps>(
       accept = IMAGE_FILE_ACCEPT,
       uploadLabel,
       disabled = false,
+      deletingIds,
       className,
       style: styleProp,
       "aria-label": ariaLabel,
@@ -291,6 +298,7 @@ export const ImageGridEditor = forwardRef<HTMLDivElement, ImageGridEditorProps>(
                 onDelete={onDelete}
                 deleteLabel={t("media.aria.deleteItem", { name: item.alt ?? item.id })}
                 disabled={disabled}
+                deletePending={deletingIds?.has(item.id) ?? false}
                 motionAllowed={motionAllowed}
               />
             ))}

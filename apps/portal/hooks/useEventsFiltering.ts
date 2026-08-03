@@ -14,6 +14,7 @@ import {
   type EventStatusFilter,
   type EventsRouteSearch,
 } from "../utils/event-navigation";
+import { userScopedStorageKey } from "../session-storage";
 type MemberEntry = { user: User; profile: MemberProfile };
 
 const EVENTS_LAST_SEEN_KEY = "events.last_seen_at";
@@ -34,6 +35,7 @@ export function useEventsFiltering({ currentUserId }: UseEventsFilteringParams) 
   const lockedOnly = routeSearch.locked ?? false;
   const focusEventId = routeSearch.eventId ?? null;
   const [lastSeenAt, setLastSeenAt] = useState<string | null>(null);
+  const lastSeenStorageKey = userScopedStorageKey(EVENTS_LAST_SEEN_KEY, currentUserId);
 
   const updateSearch = useCallback(
     (updater: Partial<EventsRouteSearch> | ((prev: EventsRouteSearch) => Partial<EventsRouteSearch>)) => {
@@ -254,8 +256,9 @@ export function useEventsFiltering({ currentUserId }: UseEventsFilteringParams) 
   };
 
   useEffect(() => {
+    setLastSeenAt(null);
     try {
-      const raw = localStorage.getItem(EVENTS_LAST_SEEN_KEY);
+      const raw = localStorage.getItem(lastSeenStorageKey);
       if (raw && raw.trim()) {
         setLastSeenAt(raw);
       }
@@ -264,12 +267,12 @@ export function useEventsFiltering({ currentUserId }: UseEventsFilteringParams) 
     }
     return () => {
       try {
-        localStorage.setItem(EVENTS_LAST_SEEN_KEY, new Date().toISOString());
+        localStorage.setItem(lastSeenStorageKey, new Date().toISOString());
       } catch {
         // ignore storage write errors
       }
     };
-  }, []);
+  }, [lastSeenStorageKey]);
 
   return {
     eventType,

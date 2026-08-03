@@ -25,12 +25,11 @@ type EventCardsViewProps = {
   eventFlags: Map<string, "NEW" | "UPDATED">;
   eventMembersMap: Map<string, MemberEntry[]>;
   allUsers: MemberEntry[];
-  joinPending: boolean;
+  participantPendingEventIds: ReadonlySet<string>;
   votePending?: boolean;
   hasMore?: boolean;
   isLoadingMore?: boolean;
   onLoadMore?: () => void;
-  leavePending: boolean;
   onResetFilters: () => void;
   onCreateEvent: () => void;
   onJoinEvent: (eventId: string) => void;
@@ -65,9 +64,8 @@ export function EventCardsView({
   eventFlags,
   eventMembersMap,
   allUsers,
-  joinPending,
+  participantPendingEventIds,
   votePending,
-  leavePending,
   onResetFilters,
   onCreateEvent,
   onJoinEvent,
@@ -130,8 +128,8 @@ export function EventCardsView({
             eventFlags={eventFlags}
             eventMembersMap={eventMembersMap}
             allUsers={allUsers}
-            joinPending={joinPending}
-            leavePending={leavePending}
+            joinPending={participantPendingEventIds.has(event.id)}
+            leavePending={participantPendingEventIds.has(event.id)}
             onOpenDetail={setDetailModalEvent}
             onJoinEvent={onJoinEvent}
             onLeaveEvent={onLeaveEvent}
@@ -166,8 +164,8 @@ export function EventCardsView({
         allUsers={allUsers}
         canManage={canManage}
         currentUserId={currentUserId ?? undefined}
-        joinPending={joinPending}
-        leavePending={leavePending}
+        joinPending={detailModalEvent ? participantPendingEventIds.has(detailModalEvent.id) : false}
+        leavePending={detailModalEvent ? participantPendingEventIds.has(detailModalEvent.id) : false}
         onClose={() => setDetailModalEvent(null)}
         onJoin={onJoinEvent}
         onLeave={onLeaveEvent}

@@ -152,7 +152,10 @@ let cachedRunState: E2eRunStateFile | null = null;
  * workerIndex 是「整轮里的第几个 worker 进程」，单调递增且不重复
  * （会复用的是 parallelIndex，那是槽位号），拿它给每个进程切一段互不相交的号段。
  */
-const CLIENT_IDS_PER_WORKER = 300;
+// A full one-slot run consumes a little over 300 identities because every test
+// owns separate browser and API buckets. Keep enough headroom for the supported
+// single-worker diagnostic mode while retaining the explicit overflow failure.
+const CLIENT_IDS_PER_WORKER = 512;
 let clientCounter = 0;
 
 /** 领一个整轮唯一的客户端地址。号段一旦溢出就当场报错，不允许静默回到互撞。 */

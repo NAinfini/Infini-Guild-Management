@@ -76,4 +76,28 @@ describe("ImageGridEditor", () => {
       height: "20px",
     });
   });
+
+  it("only disables the delete action for the image being removed", () => {
+    render(
+      <MantineProvider>
+        <ImageGridEditor
+          items={[
+            { id: "attachment-1", alt: "First image" },
+            { id: "attachment-2", alt: "Second image" },
+          ]}
+          onReorder={vi.fn()}
+          onDelete={vi.fn()}
+          deletingIds={new Set(["attachment-1"])}
+          aria-label="Attachments"
+        />
+      </MantineProvider>,
+    );
+
+    expect(screen.getByRole("button", {
+      name: "Localized delete First image",
+    })).toBeDisabled();
+    expect(screen.getByRole("button", {
+      name: "Localized delete Second image",
+    })).toBeEnabled();
+  });
 });

@@ -58,6 +58,7 @@ export function useAdminData(options: UseAdminDataOptions) {
   const permissions = rolesQuery.isSuccess ? rolePermissions : effectivePermissions ?? rolePermissions;
   const needsUsers =
     activeTab === "member" || activeTab === "audit" || activeTab === "badges";
+  const normalizedAuditSearch = auditSearch.trim();
 
   const usersQuery = useQuery({
     queryKey: queryKeys.users.all,
@@ -89,12 +90,12 @@ export function useAdminData(options: UseAdminDataOptions) {
   });
 
   const auditLogQuery = useQuery({
-    queryKey: queryKeys.admin.auditLog(auditPage, auditSearch, auditDateFrom, auditDateTo, auditEntityType || undefined, auditActorId || undefined),
+    queryKey: queryKeys.admin.auditLog(auditPage, normalizedAuditSearch, auditDateFrom, auditDateTo, auditEntityType || undefined, auditActorId || undefined),
     queryFn: () =>
       fetchAdminAuditLog({
         page: auditPage,
         limit: 50,
-        search: auditSearch.trim() || undefined,
+        search: normalizedAuditSearch || undefined,
         start_at: auditDateFrom ? `${auditDateFrom}T00:00:00.000Z` : undefined,
         end_at: auditDateTo ? `${auditDateTo}T23:59:59.999Z` : undefined,
         entity_type: auditEntityType || undefined,

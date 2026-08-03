@@ -1,5 +1,6 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
+import { useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useAppError } from "./useAppError";
 import type { UseMediaUploadState } from "./useMediaUpload";
@@ -15,6 +16,7 @@ import {
 } from "../services/UserService";
 import { useAuthStore } from "../stores/auth";
 import { notifySuccess } from "../utils/notifications";
+import { transitionSession } from "../session-transition";
 
 type UseProfileMutationsParams = {
   form: ProfileFormStateController;
@@ -27,9 +29,10 @@ export function useProfileMutations({ form, imageUploader, audioUploader }: UseP
   const navigate = useNavigate();
   const user = useAuthStore((state) => state.user);
   const setProfile = useAuthStore((state) => state.setProfile);
-  const clearSession = useAuthStore((state) => state.clearSession);
   const queryClient = useQueryClient();
   const { showError } = useAppError();
+  const removingImageKeysRef = useRef(new Set<string>());
+  const [removingImageKeys, setRemovingImageKeys] = useState<ReadonlySet<string>>(new Set());
 
   const saveProfileMutation = useMutation({
     mutationFn: async () => {
@@ -82,6 +85,10 @@ export function useProfileMutations({ form, imageUploader, audioUploader }: UseP
     onError: (error) => {
       showError(error, t("message.imageRemoveFailed"));
     },
+    onSettled: (_data, _error, key) => {
+      removingImageKeysRef.current.delete(key);
+      setRemovingImageKeys(new Set(removingImageKeysRef.current));
+    },
   });
 
   const removeAudioMutation = useMutation({
@@ -112,8 +119,7 @@ export function useProfileMutations({ form, imageUploader, audioUploader }: UseP
       form.setNewPassword("");
       form.setConfirmNewPassword("");
       notifySuccess(t("message.passwordChanged"));
-      clearSession();
-      queryClient.clear();
+      transitionSession(queryClient, null);
       void navigate({ to: "/login", search: { reason: "expired" } });
     },
     onError: (error) => {
@@ -133,7 +139,7 @@ export function useProfileMutations({ form, imageUploader, audioUploader }: UseP
       notifySuccess(t("message.usernameChanged"));
       form.setCurrentPasswordForUsername("");
       form.setNewUsername("");
-      clearSession();
+      transitionSession(queryClient, null);
       void navigate({ to: "/login" });
     },
     onError: (error) => {
@@ -144,7 +150,7 @@ export function useProfileMutations({ form, imageUploader, audioUploader }: UseP
   const logoutMutation = useMutation({
     mutationFn: requestLogout,
     onSettled: () => {
-      clearSession();
+      transitionSession(queryClient, null);
       void navigate({ to: "/login" });
     },
   });
@@ -179,7 +185,9 @@ export function useProfileMutations({ form, imageUploader, audioUploader }: UseP
   };
 
   const removeImage = (key: string) => {
-    if (!user) return;
+    if (!user || removingImageKeysRef.current.has(key)) return;
+    removingImageKeysRef.current.add(key);
+    setRemovingImageKeys(new Set(removingImageKeysRef.current));
     removeImageMutation.mutate(key);
   };
 
@@ -210,6 +218,7 @@ export function useProfileMutations({ form, imageUploader, audioUploader }: UseP
     uploadImages,
     uploadAudio,
     removeImage,
+    removingImageKeys,
     removeAudio,
     changePassword,
     changeUsername,

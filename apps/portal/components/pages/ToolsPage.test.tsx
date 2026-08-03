@@ -32,18 +32,4 @@ describe("ToolsPage", () => {
 
     expect(screen.getByRole("button", { name: /dice\.title/i })).toBeInTheDocument();
   });
-
-  it("does not render the removed equipment calculator", () => {
-    renderToolsPage();
-
-    expect(screen.queryByRole("button", { name: /equipCalc\.title/i })).not.toBeInTheDocument();
-  });
-
-  // 称号沙盒搬到了资料页（在那里编辑称号才是它真正的用途），工具页不该再有入口。
-  // 弹窗自身的布局断言见 feature/profile/TitleSandboxModal.test.tsx。
-  it("does not render the title sandbox that moved to the profile page", () => {
-    renderToolsPage();
-
-    expect(screen.queryByRole("button", { name: /sandbox\.title/i })).not.toBeInTheDocument();
-  });
 });

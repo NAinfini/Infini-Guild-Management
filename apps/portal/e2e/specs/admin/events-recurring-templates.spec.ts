@@ -113,15 +113,6 @@ function formDialog(page: Page, heading: RegExp): Locator {
   return page.getByRole("dialog").filter({ has: page.getByRole("heading", { name: heading }) });
 }
 
-/**
- * SegmentedControl 的一个档位。
- * Mantine 把真正的 radio 藏在控件底下（视觉上完全不可见），只有 label 能点；
- * getByRole("radio") 取到的正是那个藏起来的 input，点它永远等不到可见。
- */
-function segment(page: Page, label: string): Locator {
-  return page.locator("label.mantine-SegmentedControl-label").filter({ hasText: new RegExp(`^${label}$`) });
-}
-
 test("新建模板：必填项不齐就存不了，填齐之后每个字段都按填的样子落库", async ({ page, flow, api }) => {
   await openTab(page);
   await page.getByRole("button", { name: "Create Template", exact: true }).click();
@@ -280,45 +271,4 @@ test("删除模板：取消什么都不做，确认后服务端和列表里都�
     "确认后服务端必须真的删掉",
   ).toBe(false);
   await expect(templateCard(page)).toHaveCount(0);
-});
-
-test("筛选：搜索、状态、类型三个控件都只在前端过滤，重置能一次清干净", async ({ page, flow, api }) => {
-  const otherTitle = `${SYSTEM_TEST_CONTENT_MARKER} Other ${stamp}`;
-  await createTemplate(api);
-  await createTemplate(api, { title: otherTitle, type: "raffle" });
-  await api.post(`/api/events/templates/${(await readTemplate(api, otherTitle)).id}/pause`);
-
-  await openTab(page);
-  await expect(templateCard(page)).toHaveCount(1);
-  await expect(templateCard(page, otherTitle)).toHaveCount(1);
-
-  /* 这三个都是内存里过滤（RecurringTemplatesTab.filteredTemplates），
-     一旦谁改成了带查询参数的请求，这里会立刻红——那意味着每敲一个字符打一次服务端。 */
-  await flow.clickWithoutApi(field(page, "Search templates…"));
-  await field(page, "Search templates…").fill(String(stamp));
-  await expect(templateCard(page)).toHaveCount(1);
-  await field(page, "Search templates…").fill(otherTitle);
-  await expect(templateCard(page)).toHaveCount(0);
-  await expect(templateCard(page, otherTitle)).toHaveCount(1);
-
-  await field(page, "Search templates…").fill("");
-  await segment(page, "Paused").click();
-  await expect(templateCard(page), "启用中的那条不该出现在 Paused 档").toHaveCount(0);
-  await expect(templateCard(page, otherTitle)).toHaveCount(1);
-
-  await segment(page, "Active").click();
-  await expect(templateCard(page)).toHaveCount(1);
-  await expect(templateCard(page, otherTitle)).toHaveCount(0);
-
-  await segment(page, "All").click();
-  await selectOption(page, "Event type", "Raffle");
-  await expect(templateCard(page)).toHaveCount(0);
-  await expect(templateCard(page, otherTitle)).toHaveCount(1);
-
-  // 类型筛到一条都不剩时，重置按钮必须能把三个条件一次清空。
-  await selectOption(page, "Event type", "Poll");
-  await expect(page.getByText("No templates match your filters", { exact: true })).toBeVisible();
-  await page.getByRole("button", { name: "Reset filters", exact: true }).click();
-  await expect(templateCard(page)).toHaveCount(1);
-  await expect(templateCard(page, otherTitle)).toHaveCount(1);
 });

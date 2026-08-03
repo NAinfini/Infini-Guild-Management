@@ -414,9 +414,11 @@ export function useGalleryPageController() {
       cancelLabel: t("common:action.cancel"),
       intent: "danger",
     });
-    if (confirmed) {
-      deleteMutation.mutate(id);
-    }
+    if (!confirmed) return false;
+    return deleteMutation.mutateAsync(id).then(
+      () => true,
+      () => false,
+    );
   };
 
   const handleAddVideo = () => {

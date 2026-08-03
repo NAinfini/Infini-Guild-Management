@@ -4,8 +4,6 @@ import {
   ADMIN_PASSWORD,
   ADMIN_USERNAME,
   E2E_SLOTS,
-  MEMBER_PASSWORD,
-  MEMBER_USERNAME,
   originForSlot,
   RUN_STATE_FILE,
   stateFileFor,
@@ -27,7 +25,7 @@ import {
  * 每次 e2e 运行的起点，对**每个并行槽位**各做一遍：
  * 1. 确认 dist 是新的，再等该槽位的 worker 真的起来（起不来就明确报错，不静默重试到超时）；
  * 2. 清库重种，把站点压回已知基线；
- * 3. 分别登录管理员和普通成员，各自存一份会话；
+ * 3. 登录管理员并存一份会话；
  * 4. 用管理员开一次服务端登记的系统测试运行，变更产物靠它按主键清理；
  * 5. 记下基线指纹，teardown 时逐项比对。
  *
@@ -46,11 +44,6 @@ async function prepareSlot(slot: number): Promise<E2eRunState> {
   const adminApi = await newApiContext(undefined, origin);
   await login(adminApi, ADMIN_USERNAME, ADMIN_PASSWORD);
   await adminApi.storageState({ path: stateFileFor("admin", slot) });
-
-  const memberApi = await newApiContext(undefined, origin);
-  await login(memberApi, MEMBER_USERNAME, MEMBER_PASSWORD);
-  await memberApi.storageState({ path: stateFileFor("member", slot) });
-  await memberApi.dispose();
 
   const runId = await createSystemTestRun(adminApi);
   /* 基线在登录和建 run 之后才取：会话行和运行簿记不属于被测数据，

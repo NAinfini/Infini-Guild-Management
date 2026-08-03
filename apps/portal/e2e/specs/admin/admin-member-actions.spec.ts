@@ -218,6 +218,12 @@ test("成员详情弹窗：改战力保存，资料确实落库；但状态那�
   expect(saved.user.is_active, "状态本来就没改，应当还是启用").toBe(true);
 
   await page.keyboard.press("Escape");
+  const unsavedDialog = dialogTitled(page, "Unsaved changes");
+  await expect(
+    unsavedDialog,
+    "复合保存有一步失败时表单仍是 dirty，关闭必须先让管理员确认，不能静默丢弃",
+  ).toBeVisible();
+  await flow.clickWithoutApi(unsavedDialog.getByRole("button", { name: "Leave", exact: true }));
   await expectNoDialog(page);
   await expect(
     memberRow(page, member.username).locator("td[data-column-id='power']"),

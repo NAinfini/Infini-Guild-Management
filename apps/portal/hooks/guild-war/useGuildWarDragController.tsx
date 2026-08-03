@@ -12,7 +12,12 @@ import {
 import { useTranslation } from "react-i18next";
 import { useConfirmDialog } from "@portal/hooks/useConfirmDialog";
 import type { UsersListResponse } from "../../services/UserService";
-import { GuildWarService, guildWarQueryKeys, moveGuildWarMember } from "../../services/GuildWarService";
+import {
+  fetchGuildWarActive,
+  GuildWarService,
+  guildWarQueryKeys,
+  moveGuildWarMember,
+} from "../../services/GuildWarService";
 import { copyPlainText } from "../../utils/copy";
 import { notifySuccess, notifyWarning } from "../../utils/notifications";
 import { useGuildWarDragData, type DragMemberColumn } from "./useGuildWarDragData";
@@ -306,30 +311,49 @@ export function useGuildWarDragController({
       });
       if (!confirmed) return;
 
-      const nextTeams = orderedTeams
-        .filter((candidate) => candidate.id !== containerId)
-        .map((candidate, index) => ({ ...candidate, sort_order: index }));
-      const poolMembers = team.members.map((member) => ({
-        userId: member.user_id,
-        from: containerId,
-        to: "pool",
-      }));
-      if (poolMembers.length > 0) {
-        handleBatchMove(poolMembers);
-      }
-      void persistTeamSnapshot(nextTeams).catch((error) => {
+      if (!selectedEventId) return;
+      try {
+        let snapshot = activeData;
+        if (team.members.length > 0) {
+          await moveGuildWarMember({
+            event_id: selectedEventId,
+            moves: team.members.map((member) => ({ user_id: member.user_id, to: "pool" })),
+            etag: activeData?.etag ?? undefined,
+          });
+          snapshot = await fetchGuildWarActive(selectedEventId);
+          queryClient.setQueryData(guildWarQueryKeys.active(selectedEventId), snapshot);
+        }
+        if (!snapshot) return;
+        const nextTeams = snapshot.teams
+          .filter((candidate) => candidate.id !== containerId)
+          .map((candidate, index) => ({ ...candidate, sort_order: index }));
+        await guildWarService.persistTeamSnapshot({
+          eventId: selectedEventId,
+          teams: nextTeams,
+          pool: snapshot.pool,
+          teamDraftNames,
+          teamDraftNotes,
+          teamDraftLocks,
+          etag: snapshot.etag ?? undefined,
+        });
+      } catch (error) {
+        await queryClient.invalidateQueries({ queryKey: guildWarQueryKeys.active(selectedEventId) });
         showError(error, t("message.deleteTeamFailed"));
-      });
+      }
     })();
   }, [
+    activeData,
     confirm,
-    handleBatchMove,
-    orderedTeams,
-    persistTeamSnapshot,
+    guildWarService,
+    queryClient,
     resolveTeamName,
+    selectedEventId,
     showError,
     t,
     teamById,
+    teamDraftLocks,
+    teamDraftNames,
+    teamDraftNotes,
   ]);
 
   const handleTeamSwap = (fromId: string, toId: string) => {

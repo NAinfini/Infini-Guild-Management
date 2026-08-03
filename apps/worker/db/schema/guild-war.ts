@@ -1,7 +1,8 @@
 // Domain: Guild War
 // Tables: warHistory, warTeams, warTeamMembers, warPoolMembers
 // Dependencies: auth.users, events.events
-import { index, integer, real, sqliteTable, text, uniqueIndex } from "drizzle-orm/sqlite-core";
+import { sql } from "drizzle-orm";
+import { check, index, integer, real, sqliteTable, text, uniqueIndex } from "drizzle-orm/sqlite-core";
 import { activeGame } from "@guild/shared/games";
 import { users } from "./auth";
 import { events } from "./events";
@@ -26,10 +27,12 @@ export const warHistory = sqliteTable(
     createdAt: text("created_at").notNull().default(nowUtc),
     updatedAt: text("updated_at").notNull().default(nowUtc),
   },
-  (table) => ({
-    uxEventId: uniqueIndex("ux_war_history_event_id").on(table.eventId),
-    idxCreated: index("idx_war_history_created").on(table.createdAt, table.id),
-  }),
+  (table) => [
+    uniqueIndex("ux_war_history_event_id").on(table.eventId),
+    index("idx_war_history_created").on(table.createdAt, table.id),
+    check("war_history_result_valid", sql`${table.result} IS NULL OR ${table.result} IN ('win', 'loss', 'draw')`),
+    check("war_history_duration_positive", sql`${table.durationMinutes} IS NULL OR ${table.durationMinutes} > 0`),
+  ],
 );
 
 export const warTeams = sqliteTable(
@@ -43,10 +46,14 @@ export const warTeams = sqliteTable(
     notes: text("notes"),
     isLocked: integer("is_locked", { mode: "boolean" }).notNull().default(false),
   },
-  (table) => ({
-    idxHistorySort: index("idx_war_teams_history_sort").on(table.warHistoryId, table.sortOrder, table.id),
-    idxEventSort: index("idx_war_teams_event_sort").on(table.eventId, table.sortOrder, table.id),
-  }),
+  (table) => [
+    index("idx_war_teams_history_sort").on(table.warHistoryId, table.sortOrder, table.id),
+    index("idx_war_teams_event_sort").on(table.eventId, table.sortOrder, table.id),
+    check(
+      "war_teams_exactly_one_parent",
+      sql`(${table.eventId} IS NULL) <> (${table.warHistoryId} IS NULL)`,
+    ),
+  ],
 );
 
 export const warTeamMembers = sqliteTable(
@@ -75,9 +82,13 @@ export const warPoolMembers = sqliteTable(
     eventId: text("event_id").references(() => events.id, { onDelete: "cascade" }),
     userId: text("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
   },
-  (table) => ({
-    uxHistoryUser: uniqueIndex("ux_war_pool_members_history_user").on(table.warHistoryId, table.userId),
-    uxEventUser: uniqueIndex("ux_war_pool_members_event_user").on(table.eventId, table.userId),
-    idxEvent: index("idx_war_pool_members_event").on(table.eventId),
-  }),
+  (table) => [
+    uniqueIndex("ux_war_pool_members_history_user").on(table.warHistoryId, table.userId),
+    uniqueIndex("ux_war_pool_members_event_user").on(table.eventId, table.userId),
+    index("idx_war_pool_members_event").on(table.eventId),
+    check(
+      "war_pool_members_exactly_one_parent",
+      sql`(${table.eventId} IS NULL) <> (${table.warHistoryId} IS NULL)`,
+    ),
+  ],
 );

@@ -14,7 +14,9 @@ export type MediaRefEntityType =
   | "announcement"
   | "wiki_article"
   | "storage_item"
-  | "class_icon";
+  | "class_icon"
+  | "member_profile"
+  | "site_config";
 
 /** SQLite bound-parameter budget per statement; keep chunks comfortably below. */
 const IN_CHUNK_SIZE = 50;

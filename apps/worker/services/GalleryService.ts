@@ -7,8 +7,9 @@ import { nanoid } from "nanoid";
 import { galleryItems, users } from "../db/schema";
 import { ok, err, type ServiceResult } from "./result";
 import { escapeLikePattern } from "./helpers";
-import { replaceMediaRefs, deleteMediaRefs, deleteMediaRefsBulk } from "./media-references";
+import { buildReplaceMediaRefsStatements } from "./media-references";
 import { rethrowAfterUploadFailure } from "./media-upload-compensation";
+import { buildGalleryImageKey } from "./media-keys";
 
 // --- Types ---
 
@@ -95,21 +96,33 @@ export class GalleryService {
 
   async uploadImages(actorId: string, files: Array<{ data: ArrayBuffer; contentType: string; name: string }>, captions: Array<string | null>): Promise<ServiceResult<unknown[]>> {
     const created: GalleryRow[] = [];
-    const attempted: Array<{ itemId: string; key: string }> = [];
+    const attempted: Array<{ itemId: string; key: string; caption: string | null }> = [];
     try {
       for (let i = 0; i < files.length; i++) {
         const file = files[i];
         if (!file) continue;
         const caption = captions[i] ?? null;
         const itemId = nanoid();
-        const key = `gallery/images/${actorId}/${Date.now()}_${itemId}`;
-        attempted.push({ itemId, key });
+        const key = buildGalleryImageKey(actorId, itemId, file.contentType);
+        attempted.push({ itemId, key, caption });
         const putResult = await this.deps.media.put(key, file.data, { httpMetadata: { contentType: file.contentType || "application/octet-stream" } });
         if (!putResult) throw new Error("Failed to upload media file");
-        await this.db.insert(galleryItems).values({ id: itemId, type: "image", url: key, caption, uploadedBy: actorId });
-        await replaceMediaRefs(this.deps.rawDb, "gallery_item", itemId, [key]);
-        created.push({ id: itemId, type: "image", url: key, caption, uploadedBy: actorId, uploadedByName: null, createdAt: new Date().toISOString() });
       }
+      await this.deps.rawDb.batch(attempted.flatMap(({ itemId, key, caption }) => [
+        this.deps.rawDb.prepare("INSERT INTO gallery_items (id, type, url, caption, uploaded_by) VALUES (?1, 'image', ?2, ?3, ?4)")
+          .bind(itemId, key, caption, actorId),
+        ...buildReplaceMediaRefsStatements(this.deps.rawDb, "gallery_item", itemId, [key]),
+      ]));
+      const createdAt = new Date().toISOString();
+      created.push(...attempted.map(({ itemId, key, caption }) => ({
+        id: itemId,
+        type: "image" as const,
+        url: key,
+        caption,
+        uploadedBy: actorId,
+        uploadedByName: null,
+        createdAt,
+      })));
       await this.deps.writeAuditLog({ entityType: "gallery_item", action: "upload_images", actorId, entityId: "batch", diffTitle: `${created.length} items`, detailText: JSON.stringify({ count: created.length, captioned_count: created.filter((item) => Boolean(item.caption)).length }) });
       await this.deps.publishEntityChanged({ entityType: "gallery", entityId: "batch", hint: "images_uploaded" });
     } catch (error) {
@@ -117,13 +130,6 @@ export class GalleryService {
         error,
         (key) => this.deps.media.delete(key),
         attempted.map((item) => item.key),
-        async () => {
-          if (attempted.length === 0) return;
-          await this.deps.rawDb.batch(attempted.flatMap(({ itemId }) => [
-            this.deps.rawDb.prepare("DELETE FROM media_references WHERE entity_type = ?1 AND entity_id = ?2").bind("gallery_item", itemId),
-            this.deps.rawDb.prepare("DELETE FROM gallery_items WHERE id = ?1").bind(itemId),
-          ]));
-        },
       );
     }
     return ok(created.map(toGalleryPayload));
@@ -144,10 +150,10 @@ export class GalleryService {
     if (!existing) return err("NOT_FOUND", "Gallery item not found");
     if (existing.uploadedBy !== actorId && !canDeleteAny) return err("FORBIDDEN", "Cannot delete this gallery item");
     await this.deps.rawDb.batch([
+      this.deps.rawDb.prepare("DELETE FROM media_references WHERE entity_type = ?1 AND entity_id = ?2").bind("gallery_item", itemId),
       this.deps.rawDb.prepare("DELETE FROM gallery_items WHERE id = ?1").bind(itemId),
     ]);
-    await deleteMediaRefs(this.deps.rawDb, "gallery_item", itemId);
-    if (existing.type === "image") await this.deps.media.delete(existing.url);
+    if (existing.type === "image") await Promise.allSettled([this.deps.media.delete(existing.url)]);
     await this.deps.writeAuditLog({ entityType: "gallery_item", action: "delete", actorId, entityId: itemId, diffTitle: existing.caption ?? existing.type });
     await this.deps.publishEntityChanged({ entityType: "gallery", entityId: itemId, hint: "item_deleted" });
     return ok({ ok: true });
@@ -157,14 +163,17 @@ export class GalleryService {
     const items = await this.db.select({ id: galleryItems.id, type: galleryItems.type, url: galleryItems.url, caption: galleryItems.caption }).from(galleryItems).where(inArray(galleryItems.id, ids));
     if (items.length === 0) return ok({ ok: true, deleted: 0 });
     const itemIds = items.map((item) => item.id);
-    const placeholders = itemIds.map(() => "?").join(",");
-    await this.deps.rawDb.batch([
-      this.deps.rawDb.prepare(`DELETE FROM gallery_items WHERE id IN (${placeholders})`).bind(...itemIds),
-    ]);
-    await deleteMediaRefsBulk(this.deps.rawDb, "gallery_item", itemIds);
-    for (const item of items) {
-      if (item.type === "image") await this.deps.media.delete(item.url);
+    const deleteStatements: D1PreparedStatement[] = [];
+    for (let offset = 0; offset < itemIds.length; offset += 50) {
+      const chunk = itemIds.slice(offset, offset + 50);
+      const placeholders = chunk.map(() => "?").join(",");
+      deleteStatements.push(
+        this.deps.rawDb.prepare(`DELETE FROM media_references WHERE entity_type = ? AND entity_id IN (${placeholders})`).bind("gallery_item", ...chunk),
+        this.deps.rawDb.prepare(`DELETE FROM gallery_items WHERE id IN (${placeholders})`).bind(...chunk),
+      );
     }
+    await this.deps.rawDb.batch(deleteStatements);
+    await Promise.allSettled(items.filter((item) => item.type === "image").map((item) => this.deps.media.delete(item.url)));
     await this.deps.writeAuditLog({ entityType: "gallery_item", action: "batch_delete", actorId, entityId: itemIds.join(","), diffTitle: `${items.length} items`, detailText: JSON.stringify({ count: items.length, ids: itemIds }) });
     await this.deps.publishEntityChanged({ entityType: "gallery", entityId: "batch", hint: "items_deleted" });
     return ok({ ok: true, deleted: items.length });

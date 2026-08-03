@@ -33,9 +33,11 @@ export const E2E_INSPECTOR_PORT_BASE = Number(process.env.E2E_INSPECTOR_PORT_BAS
  * 每个槽位内部仍然是串行的（fullyParallel: false，按文件分发），
  * 所以文件级的模块状态和「同一文件内用例有先后」的写法都不受影响。
  *
- * 出问题时把 E2E_SLOTS 设成 1 就完全退回到原来的单实例串行行为。
+ * 默认用 2 个槽位，与 CI 一致。完整套件在 4 槽位下会让浏览器与 teardown
+ * 连接承受不必要的并发压力；需要基准测试时仍可显式调高。出问题时把
+ * E2E_SLOTS 设成 1 就完全退回到原来的单实例串行行为。
  */
-export const E2E_SLOTS = Math.max(1, Number(process.env.E2E_SLOTS ?? 4));
+export const E2E_SLOTS = Math.max(1, Number(process.env.E2E_SLOTS ?? 2));
 
 export function originForSlot(slot: number): string {
   return `http://127.0.0.1:${E2E_PORT_BASE + slot}`;
@@ -58,7 +60,6 @@ export const PORTAL_ORIGIN = process.env.E2E_PORTAL_ORIGIN ?? originForSlot(SLOT
 export const ADMIN_USERNAME = process.env.E2E_ADMIN_USERNAME ?? "admin";
 export const ADMIN_PASSWORD = process.env.E2E_ADMIN_PASSWORD ?? "admin123";
 export const MEMBER_USERNAME = process.env.E2E_MEMBER_USERNAME ?? "member_01";
-export const MEMBER_PASSWORD = process.env.E2E_MEMBER_PASSWORD ?? "member1234";
 
 /*
  * 限流是按客户端地址计的（读 120 次/分钟、写 80 次/分钟，见 apps/shared/config/limits.ts:79）。
@@ -126,7 +127,7 @@ export const STATE_DIR = resolve(supportDir, "..", ".state");
  * cookie 是按 host:port 绑的，槽位之间端口不同，一份会话文件套不了两个槽位；
  * 何况每个槽位是各自独立的一份数据，会话行也各归各的库。
  */
-export type E2eRole = "guest" | "member" | "admin";
+export type E2eRole = "guest" | "admin";
 
 export function stateFileFor(role: Exclude<E2eRole, "guest">, slot: number): string {
   return resolve(STATE_DIR, `${role}-storage-state-${slot}.json`);

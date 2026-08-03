@@ -1,7 +1,7 @@
 // Domain: Events, Signups & Recurring Templates
 // Tables: events, recurring_templates, event_class_quotas, recurring_template_class_quotas, event_participants, event_polls, event_poll_options, event_poll_votes, event_raffle_winners
 // Dependencies: auth.users, class-catalog.class_tags
-import { check, index, integer, primaryKey, sqliteTable, text, uniqueIndex } from "drizzle-orm/sqlite-core";
+import { check, foreignKey, index, integer, primaryKey, sqliteTable, text, uniqueIndex } from "drizzle-orm/sqlite-core";
 import { sql } from "drizzle-orm";
 import { activeGame } from "@guild/shared/games";
 import { users } from "./auth";
@@ -35,12 +35,15 @@ export const events = sqliteTable(
     createdAt: text("created_at").notNull().default(nowUtc),
     updatedAt: text("updated_at").notNull().default(nowUtc),
   },
-  (table) => ({
-    idxArchivedStart: index("idx_events_archived_start").on(table.archivedAt, table.startAt, table.id),
-    idxAutoArchiveDue: index("idx_events_auto_archive_due").on(table.autoArchive, table.autoArchived, table.archivedAt, table.endAt, table.startAt),
-    uxSeriesInstance: uniqueIndex("ux_events_series_instance").on(table.seriesId, table.instanceDate),
-    idxCreatedBy: index("idx_events_created_by").on(table.createdBy),
-  }),
+  (table) => [
+    index("idx_events_archived_start").on(table.archivedAt, table.startAt, table.id),
+    index("idx_events_auto_archive_due").on(table.autoArchive, table.autoArchived, table.archivedAt, table.endAt, table.startAt),
+    uniqueIndex("ux_events_series_instance").on(table.seriesId, table.instanceDate),
+    index("idx_events_created_by").on(table.createdBy),
+    check("events_type_valid", sql`${table.type} IN ('weekly_mission', 'guild_war', 'social', 'poll', 'raffle', 'other')`),
+    check("events_capacity_positive", sql`${table.capacity} IS NULL OR ${table.capacity} > 0`),
+    check("events_winner_count_positive", sql`${table.winnerCount} IS NULL OR ${table.winnerCount} > 0`),
+  ],
 );
 
 export const recurringTemplates = sqliteTable(
@@ -63,12 +66,15 @@ export const recurringTemplates = sqliteTable(
     createdBy: text("created_by").notNull().references(() => users.id),
     lastGeneratedDate: text("last_generated_date"),
     generationCount: integer("generation_count").notNull().default(0),
+    timezoneOffsetMinutes: integer("timezone_offset_minutes").notNull().default(0),
     createdAt: text("created_at").notNull().default(nowUtc),
     updatedAt: text("updated_at").notNull().default(nowUtc),
   },
-  (table) => ({
-    idxActive: index("idx_recurring_templates_active").on(table.paused, table.createdAt, table.id),
-  }),
+  (table) => [
+    index("idx_recurring_templates_active").on(table.paused, table.createdAt, table.id),
+    check("recurring_templates_type_valid", sql`${table.type} IN ('weekly_mission', 'guild_war', 'social', 'poll', 'raffle', 'other')`),
+    check("recurring_templates_capacity_positive", sql`${table.capacity} IS NULL OR ${table.capacity} > 0`),
+  ],
 );
 
 /*
@@ -144,6 +150,7 @@ export const eventPollOptions = sqliteTable(
   },
   (table) => ({
     idxEventSort: index("idx_event_poll_options_event_sort").on(table.eventId, table.sortOrder, table.id),
+    uxEventId: uniqueIndex("ux_event_poll_options_event_id").on(table.eventId, table.id),
   }),
 );
 
@@ -156,11 +163,16 @@ export const eventPollVotes = sqliteTable(
     userId: text("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
     createdAt: text("created_at").notNull().default(nowUtc),
   },
-  (table) => ({
-    uxEventOptionUser: uniqueIndex("ux_event_poll_votes_event_option_user").on(table.eventId, table.optionId, table.userId),
-    idxEventUser: index("idx_event_poll_votes_event_user").on(table.eventId, table.userId),
-    idxOption: index("idx_event_poll_votes_option").on(table.optionId),
-  }),
+  (table) => [
+    uniqueIndex("ux_event_poll_votes_event_option_user").on(table.eventId, table.optionId, table.userId),
+    index("idx_event_poll_votes_event_user").on(table.eventId, table.userId),
+    index("idx_event_poll_votes_option").on(table.optionId),
+    foreignKey({
+      columns: [table.eventId, table.optionId],
+      foreignColumns: [eventPollOptions.eventId, eventPollOptions.id],
+      name: "fk_event_poll_votes_event_option",
+    }).onDelete("cascade"),
+  ],
 );
 
 export const eventRaffleWinners = sqliteTable(

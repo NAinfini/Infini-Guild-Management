@@ -133,7 +133,7 @@ export class SystemTestService {
     }
     await this.deleteEvents([...eventIds]);
     await deleteById("storage_item_images", "storage_item_image");
-    await deleteById("storage_items", "storage_item");
+    await this.deleteStorageItems(byType.get("storage_item") ?? []);
     await deleteById("storage_categories", "storage_category");
     await deleteById("storages", "storage");
     await deleteById("wiki_articles", "wiki_article");
@@ -147,17 +147,22 @@ export class SystemTestService {
     await deleteById("member_absences", "member_absence");
     for (const userId of byType.get("user") ?? []) {
       const user = await this.env.DB.prepare("SELECT username FROM users WHERE id = ?").bind(userId).first<{ username: string }>();
-      if (user) await this.env.DB.batch([
+      const deleteProfileRefs = this.env.DB.prepare(
+        "DELETE FROM media_references WHERE entity_type = 'member_profile' AND entity_id = ?",
+      ).bind(userId);
+      if (!user) {
+        await deleteProfileRefs.run();
+        continue;
+      }
+      await this.env.DB.batch([
         this.env.DB.prepare("DELETE FROM login_failures WHERE username = ?").bind(user.username),
+        deleteProfileRefs,
         this.env.DB.prepare("DELETE FROM users WHERE id = ?").bind(userId),
       ]);
     }
     await deleteById("roles", "role");
     await deleteById("class_catalog", "class_catalog");
-    for (const key of byType.get("r2_key") ?? []) {
-      await this.env.DB.prepare("DELETE FROM media_references WHERE media_key = ?").bind(key).run();
-      await this.env.MEDIA.delete(key);
-    }
+    await this.deleteR2Keys(byType.get("r2_key") ?? []);
   }
 
   async cleanupRun(runId: string, actorId?: string): Promise<{ status: string; attempts: number }> {
@@ -305,6 +310,21 @@ export class SystemTestService {
     }
   }
 
+  private async deleteStorageItems(itemIds: readonly string[]): Promise<void> {
+    for (const itemId of itemIds) {
+      await this.env.DB.prepare("DELETE FROM storage_transactions WHERE item_id = ?").bind(itemId).run();
+      await this.env.DB.prepare("DELETE FROM storage_items WHERE id = ?").bind(itemId).run();
+    }
+  }
+
+  private async deleteR2Keys(keys: readonly string[]): Promise<void> {
+    for (const key of keys) {
+      await this.env.DB.prepare("DELETE FROM media_upload_leases WHERE media_key = ?").bind(key).run();
+      await this.env.DB.prepare("DELETE FROM media_references WHERE media_key = ?").bind(key).run();
+      await this.env.MEDIA.delete(key);
+    }
+  }
+
   private async deleteRegisteredArtifacts(runId: string): Promise<void> {
     const rows = await this.env.DB.prepare(
       "SELECT artifact_type, artifact_key FROM system_test_artifacts WHERE run_id = ?",
@@ -330,7 +350,7 @@ export class SystemTestService {
     await deleteById("wiki_articles", keys("wiki_article"));
     await deleteById("wiki_categories", keys("wiki_category"));
     await deleteById("storage_item_images", keys("storage_item_image"));
-    await deleteById("storage_items", keys("storage_item"));
+    await this.deleteStorageItems(keys("storage_item"));
     await deleteById("storage_categories", keys("storage_category"));
     await deleteById("storages", keys("storage"));
     await deleteById("announcements", keys("announcement"));
@@ -347,22 +367,26 @@ export class SystemTestService {
     // class_catalog 没有入向外键，member_profile_classes 存的是纯文本类名。
     await deleteById("class_catalog", keys("class_catalog"));
 
-    for (const r2Key of keys("r2_key")) {
-      await this.env.DB.prepare("DELETE FROM media_references WHERE media_key = ?").bind(r2Key).run();
-      await this.env.MEDIA.delete(r2Key);
-    }
+    await this.deleteR2Keys(keys("r2_key"));
   }
 
   private async deleteRegisteredUsers(runId: string, userIds: readonly string[]): Promise<void> {
     for (const userId of userIds) {
       const user = await this.env.DB.prepare("SELECT username FROM users WHERE id = ?").bind(userId).first<{ username: string }>();
-      if (!user) continue;
+      const deleteProfileRefs = this.env.DB.prepare(
+        "DELETE FROM media_references WHERE entity_type = 'member_profile' AND entity_id = ?",
+      ).bind(userId);
+      if (!user) {
+        await deleteProfileRefs.run();
+        continue;
+      }
       const unregisteredAudit = await this.env.DB.prepare(
         "SELECT id FROM audit_log WHERE actor_id = ? AND id NOT IN (SELECT artifact_key FROM system_test_artifacts WHERE run_id = ? AND artifact_type = 'audit_log') LIMIT 1",
       ).bind(userId, runId).first<{ id: string }>();
       if (unregisteredAudit) throw new Error(`registered user ${userId} still owns unregistered audit ${unregisteredAudit.id}`);
       await this.env.DB.batch([
         this.env.DB.prepare("DELETE FROM login_failures WHERE username = ?").bind(user.username),
+        deleteProfileRefs,
         this.env.DB.prepare("DELETE FROM users WHERE id = ?").bind(userId),
       ]);
     }

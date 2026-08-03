@@ -3,6 +3,7 @@ import type { Context } from "hono";
 import { Hono } from "hono";
 import { clearSessionCookie, createPasswordHash, destroySession, verifyPassword } from "../services/auth";
 import { deleteMediaObject, storeProfileAudio, storeProfileImage } from "../services/media";
+import { parseMediaKey } from "../services/media-keys";
 import { UserService } from "../services/UserService";
 import { BadgeService } from "../services/BadgeService";
 import { MemberAbsenceService } from "../services/MemberAbsenceService";
@@ -15,6 +16,7 @@ export const usersRoutes = new Hono();
 function getUserService(c: Context) {
   return new UserService(getDb(c), {
     ...commonDeps(c),
+    rawDb: (c.env as { DB: D1Database }).DB,
     storeProfileImage: (userId, file) => storeProfileImage(c, userId, file),
     storeProfileAudio: (userId, file) => storeProfileAudio(c, userId, file),
     deleteMediaObject: (key) => deleteMediaObject(c, key),
@@ -30,7 +32,10 @@ function getBadgeService(c: Context) {
 }
 
 function getAbsenceService(c: Context) {
-  return new MemberAbsenceService(getDb(c), commonDeps(c));
+  return new MemberAbsenceService(getDb(c), {
+    ...commonDeps(c),
+    rawDb: (c.env as { DB: D1Database }).DB,
+  });
 }
 
 const ISO_DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
@@ -40,7 +45,31 @@ const ISO_DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 usersRoutes.get("/image", async (c) => {
   const key = c.req.query("key");
   if (!key) return buildError(c, "VALIDATION_ERROR", "key query parameter required");
-  if (!key.startsWith("members/")) return buildError(c, "FORBIDDEN", "Invalid profile media key");
+  const parsedKey = parseMediaKey(key);
+  if (!parsedKey || (parsedKey.kind !== "member_image" && parsedKey.kind !== "member_audio") || !parsedKey.entityId) {
+    return buildError(c, "FORBIDDEN", "Invalid profile media key");
+  }
+  const viewer = await getRequestUser(c);
+  const canViewInactive = viewer?.permissions.has("admin.users.view") === true ? 1 : 0;
+  const referenced = await (c.env as { DB: D1Database }).DB.prepare(`
+    SELECT 1 AS present
+    FROM member_profiles
+    INNER JOIN users ON users.id = member_profiles.user_id
+    WHERE member_profiles.user_id = ?1
+      AND users.deleted_at IS NULL
+      AND (users.is_active = 1 OR ?2 = 1)
+      AND (
+        member_profiles.avatar_key = ?3
+        OR member_profiles.audio_key = ?3
+        OR EXISTS (
+          SELECT 1
+          FROM json_each(CASE WHEN json_valid(member_profiles.images) THEN member_profiles.images ELSE '[]' END)
+          WHERE json_each.value = ?3
+        )
+      )
+    LIMIT 1
+  `).bind(parsedKey.entityId, canViewInactive, key).first<{ present: number }>();
+  if (!referenced) return buildError(c, "NOT_FOUND", "Profile media not found");
   return serveR2Object(c, key, "Profile media not found");
 });
 

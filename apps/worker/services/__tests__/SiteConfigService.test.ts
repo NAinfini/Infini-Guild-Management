@@ -79,7 +79,19 @@ function createDb(selectRows: unknown[][] = []) {
 
 function createService(selectRows: unknown[][] = []) {
   const { db, calls } = createDb(selectRows);
+  const statements: Array<{ sql: string; binds: unknown[] }> = [];
+  const rawDb = {
+    prepare: vi.fn((sql: string) => ({
+      bind: vi.fn((...binds: unknown[]) => {
+        const statement = { sql, binds };
+        statements.push(statement);
+        return statement;
+      }),
+    })),
+    batch: vi.fn().mockResolvedValue([]),
+  };
   const deps = {
+    rawDb: rawDb as never,
     writeAuditLog: vi.fn().mockResolvedValue(undefined),
     storeSiteLogo: vi.fn(),
     deleteMediaObject: vi.fn(),
@@ -88,7 +100,7 @@ function createService(selectRows: unknown[][] = []) {
     envSiteName: "Env Guild",
     envSiteLogoUrl: "/env-logo.webp",
   };
-  return { service: new SiteConfigService(db as never, deps), deps, calls };
+  return { service: new SiteConfigService(db as never, deps), deps, calls, rawDb, statements };
 }
 
 describe("SiteConfigService", () => {
@@ -191,7 +203,7 @@ describe("SiteConfigService", () => {
   });
 
   it("uploads a site logo, stores the internal logo URL, and removes the previous managed logo", async () => {
-    const { service, deps, calls } = createService([
+    const { service, deps, rawDb, statements } = createService([
       [{ id: "default", siteName: "Guild", siteLogoUrl: "/api/site-config/logo?key=site%2Flogo%2Fold.webp", createdAt: NOW.toISOString(), updatedAt: NOW.toISOString() }],
       [{ id: "default", siteName: "Guild", siteLogoUrl: "/api/site-config/logo?key=site%2Flogo%2Fold.webp", createdAt: NOW.toISOString(), updatedAt: NOW.toISOString() }],
       [{ id: "default", siteName: "Guild", siteLogoUrl: "/api/site-config/logo?key=site%2Flogo%2Fnew.webp", createdAt: NOW.toISOString(), updatedAt: NOW.toISOString() }],
@@ -204,10 +216,41 @@ describe("SiteConfigService", () => {
 
     expect(result.ok).toBe(true);
     expect(deps.storeSiteLogo).toHaveBeenCalledWith(file);
-    expect(calls.set).toHaveBeenCalledWith(expect.objectContaining({
-      siteLogoUrl: "/api/site-config/logo?key=site%2Flogo%2Fnew.webp",
-    }));
+    expect(rawDb.batch).toHaveBeenCalledTimes(1);
+    expect(statements[0]).toMatchObject({
+      sql: expect.stringContaining("UPDATE site_config"),
+      binds: [
+        "/api/site-config/logo?key=site%2Flogo%2Fnew.webp",
+        NOW.toISOString(),
+        "default",
+      ],
+    });
+    expect(statements).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        sql: expect.stringContaining("INSERT OR IGNORE INTO media_references"),
+        binds: ["site/logo/new.webp", "site_config", "default"],
+      }),
+    ]));
     expect(deps.deleteMediaObject).toHaveBeenCalledWith("site/logo/old.webp");
+  });
+
+  it("removes a newly stored logo when the atomic config/reference batch fails", async () => {
+    const failure = new Error("D1 unavailable");
+    const { service, deps, rawDb } = createService([
+      [{ ...SEEDED_SITE_ROW, siteLogoUrl: "/env-logo.webp" }],
+      [{ ...SEEDED_SITE_ROW, siteLogoUrl: "/env-logo.webp" }],
+    ]);
+    deps.storeSiteLogo = vi.fn().mockResolvedValue("site/logo/new.webp");
+    deps.deleteMediaObject = vi.fn().mockResolvedValue(undefined);
+    rawDb.batch.mockRejectedValueOnce(failure);
+
+    await expect(service.uploadSiteLogo(
+      "admin-1",
+      new File(["RIFF____WEBP"], "logo.webp", { type: "image/webp" }),
+    )).rejects.toBe(failure);
+
+    expect(deps.deleteMediaObject).toHaveBeenCalledWith("site/logo/new.webp");
+    expect(deps.writeAuditLog).not.toHaveBeenCalled();
   });
 
   it("rejects oversized site logos before writing to storage", async () => {

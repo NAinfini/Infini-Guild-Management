@@ -11,9 +11,7 @@ function createDeps(requestSession: () => Promise<RouteSession>) {
   return {
     getCachedSession: vi.fn(() => null),
     requestSession,
-    setSession: vi.fn(),
-    clearSession: vi.fn(),
-    clearQueryCache: vi.fn(),
+    transitionSession: vi.fn(),
   };
 }
 
@@ -25,8 +23,8 @@ describe("resolveRouteSession", () => {
 
     await expect(resolveRouteSession(deps)).resolves.toBeNull();
 
-    expect(deps.clearSession).toHaveBeenCalledOnce();
-    expect(deps.clearQueryCache).toHaveBeenCalledOnce();
+    expect(deps.transitionSession).toHaveBeenCalledOnce();
+    expect(deps.transitionSession).toHaveBeenCalledWith(null);
   });
 
   it.each([0, 500, 503])("preserves state and rethrows status %s failures", async (status) => {
@@ -35,14 +33,13 @@ describe("resolveRouteSession", () => {
 
     await expect(resolveRouteSession(deps)).rejects.toBe(error);
 
-    expect(deps.clearSession).not.toHaveBeenCalled();
-    expect(deps.clearQueryCache).not.toHaveBeenCalled();
+    expect(deps.transitionSession).not.toHaveBeenCalled();
   });
 
   it("uses a successful response to populate the auth store", async () => {
     const deps = createDeps(vi.fn().mockResolvedValue(session));
 
     await expect(resolveRouteSession(deps)).resolves.toBe(session);
-    expect(deps.setSession).toHaveBeenCalledWith(session.user, session.profile);
+    expect(deps.transitionSession).toHaveBeenCalledWith(session);
   });
 });

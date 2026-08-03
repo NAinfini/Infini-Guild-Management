@@ -193,6 +193,34 @@ describe("gallery permission mapping", () => {
     expect(galleryUploadImages).not.toHaveBeenCalled();
   });
 
+  it("enforces the gallery quota under the canonical uploader prefix", async () => {
+    const { galleryRoutes } = await import("./gallery");
+    mocks.requirePermission.mockResolvedValueOnce({ id: "u-1", permissions: new Set(["gallery.upload"]) });
+    const form = new FormData();
+    form.append("files", new File([
+      new Uint8Array([
+        0x52, 0x49, 0x46, 0x46, 0x24, 0x00, 0x00, 0x00,
+        0x57, 0x45, 0x42, 0x50,
+      ]),
+    ], "image.webp", { type: "image/webp" }));
+    const list = vi.fn().mockResolvedValue({
+      objects: Array.from({ length: 20 }, (_, index) => ({
+        key: `gallery/users/u-1/items/item-${index}/images/image.webp`,
+      })),
+      truncated: false,
+    });
+
+    const result = await galleryRoutes.request(
+      "/images",
+      { method: "POST", body: form },
+      { DB: createPolicyDb(), MEDIA: { list } },
+    );
+
+    expect(result.status).toBe(400);
+    expect(list).toHaveBeenCalledWith({ prefix: "gallery/users/u-1/items/", limit: 20 });
+    expect(galleryUploadImages).not.toHaveBeenCalled();
+  });
+
   it("uses session auth and passes gallery.delete capability for gallery item delete", async () => {
     const { galleryRoutes } = await import("./gallery");
     mocks.getRequestUser.mockResolvedValueOnce({

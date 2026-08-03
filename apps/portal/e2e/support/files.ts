@@ -18,11 +18,11 @@ export const TINY_PNG = Buffer.from(
 /**
  * 0.2 秒、8 kHz、16 位单声道的静音 WAV。
  *
- * 语音上传在浏览器里先解码再用 MediaRecorder 重编成 Opus
+ * 音乐上传在浏览器里先解封装再用 WebCodecs 重编成 Ogg/Opus
  * （shared/utils/media.ts 的 convertAudioToOpus），所以素材必须是
- * decodeAudioData 真能解出来的文件——随手拼的字节在解码那一步就抛错，
+ * 真能解出来的文件——随手拼的字节在解码那一步就抛错，
  * 报出来的是「转换失败」，看不出是素材的问题。
- * 采样全是 0：静音照样能解码、能录制，而字节数只有 1.6 KB。
+ * 采样全是 0：静音照样能解码、能重编，而字节数只有 1.6 KB。
  */
 function silentWav(sampleRate: number, sampleCount: number): Buffer {
   const dataBytes = sampleCount * 2;

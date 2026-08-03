@@ -14,10 +14,12 @@ const mocks = vi.hoisted(() => ({
   search: {} as { reason?: string; returnTo?: string },
   inviteValid: true,
   mutation: { mutate: vi.fn(), isPending: false },
+  queryClient: { clear: vi.fn() },
 }));
 
 vi.mock("@tanstack/react-query", () => ({
   useMutation: () => mocks.mutation,
+  useQueryClient: () => mocks.queryClient,
   useQuery: ({ queryKey }: { queryKey: readonly string[] }) => {
     if (queryKey[1] === "verify-invite") {
       return {
@@ -94,6 +96,7 @@ describe("Auth page semantics", () => {
   beforeEach(() => {
     mocks.navigate.mockReset();
     mocks.mutation.mutate.mockReset();
+    mocks.queryClient.clear.mockReset();
     mocks.params = { inviteCode: "INVITE-CODE" };
     mocks.search = {};
     mocks.inviteValid = true;

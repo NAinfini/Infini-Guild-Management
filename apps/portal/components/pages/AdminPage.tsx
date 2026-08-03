@@ -110,7 +110,11 @@ export function AdminPage() {
     createMemberMutation,
     createRoleConfig,
     createRoleMutation,
-    deactivateMutation,
+    changeUserRole,
+    activateUser,
+    deactivateUser,
+    resetUserPassword,
+    resetUserLoginLock,
     invite,
     inviteRows,
     inviteTotal,
@@ -118,9 +122,8 @@ export function AdminPage() {
     inviteStatsQuery,
     isInviteInactive,
     canAccessAdmin,
-    deleteInviteMutation,
+    deleteInvite,
     deleteRoleConfig,
-    deleteRoleMutation,
     exportAuditLogMutation,
     handleBatchActivate,
     handleBatchDeactivate,
@@ -131,13 +134,11 @@ export function AdminPage() {
     isBatchPending,
     isModerator,
     memberDetailForm,
+    memberDetailIsDirty,
     memberMediaController,
     memberSearch,
     patchMemberDetailForm,
-    reactivateMutation,
-    resetLoginLockMutation,
-    resetPasswordMutation,
-    revokeInviteMutation,
+    revokeInvite,
     rolesQuery,
     rolesWithExternal,
     saveSelectedMemberProfile,
@@ -158,7 +159,9 @@ export function AdminPage() {
     siteConfigMutations,
     siteConfigQuery,
     tabAccess,
-    updateRoleMutation,
+    isUserActionPending,
+    isInviteActionPending,
+    isRoleDeletePending,
     updateMemberProfileMutation,
     updateRoleConfigMutation,
     applyUserSelection,
@@ -225,12 +228,16 @@ export function AdminPage() {
   const memberCount = usersQuery.data ? userRowsRaw.length : null;
   const inviteStats = inviteStatsQuery.data ?? null;
   const roleCount = rolesQuery.data?.length ?? null;
-  /* 四项服务全 ok 才算正常；拿不到数据时如实显示「检查中」，不默认成绿色。 */
-  const healthState: "ok" | "degraded" | "checking" | null = !tabAccess.status
+  /* 已配置但无法由轻量探针主动验证的服务用黄色表达，不能冒充故障。 */
+  const healthState: "ok" | "configured" | "degraded" | "checking" | null = !tabAccess.status
     ? null
     : statusQuery.data
-      ? ([statusQuery.data.db, statusQuery.data.r2, statusQuery.data.ws, statusQuery.data.crons]
-          .every((value) => value === "ok") ? "ok" : "degraded")
+      ? (() => {
+          const values = [statusQuery.data.db, statusQuery.data.r2, statusQuery.data.ws, statusQuery.data.crons];
+          if (values.every((value) => value === "ok")) return "ok";
+          if (values.every((value) => value === "ok" || value === "configured")) return "configured";
+          return "degraded";
+        })()
       : "checking";
 
   const navCounts: Partial<Record<TabValue, ReactNode>> = {
@@ -315,10 +322,7 @@ export function AdminPage() {
               batchActivatePending={batchReactivateMutation.isPending}
               batchDeactivatePending={batchDeactivateMutation.isPending}
               batchDeletePending={batchDeleteMutation.isPending}
-              singleRolePending={updateRoleMutation.isPending}
-              singleActivationPending={deactivateMutation.isPending || reactivateMutation.isPending}
-              singleResetPasswordPending={resetPasswordMutation.isPending}
-              singleResetLoginLockPending={resetLoginLockMutation.isPending}
+              isSingleActionPending={isUserActionPending}
               isBatchPending={isBatchPending}
               batchProgress={batchProgress}
               userRows={userRows}
@@ -328,21 +332,11 @@ export function AdminPage() {
               roles={rolesQuery.data ?? []}
               memberSearch={memberSearch}
               onMemberSearchChange={setMemberSearch}
-              onSingleRoleChange={(userId, role) => {
-                updateRoleMutation.mutate({ userId, role });
-              }}
-              onSingleActivate={(userId) => {
-                reactivateMutation.mutate(userId);
-              }}
-              onSingleDeactivate={(userId) => {
-                deactivateMutation.mutate(userId);
-              }}
-              onSingleResetPassword={(userId) => {
-                resetPasswordMutation.mutate(userId);
-              }}
-              onSingleResetLoginLock={(userId) => {
-                resetLoginLockMutation.mutate(userId);
-              }}
+              onSingleRoleChange={changeUserRole}
+              onSingleActivate={activateUser}
+              onSingleDeactivate={deactivateUser}
+              onSingleResetPassword={resetUserPassword}
+              onSingleResetLoginLock={resetUserLoginLock}
             />
           </Suspense>
           </ErrorBoundary>
@@ -374,12 +368,9 @@ export function AdminPage() {
               inviteSearch={invite.search}
               onInviteSearchChange={setInviteSearch}
               isInviteInactive={isInviteInactive}
-              onRevokeInvite={(inviteId) => {
-                revokeInviteMutation.mutate(inviteId);
-              }}
-              onDeleteInvite={(inviteId) => {
-                deleteInviteMutation.mutate(inviteId);
-              }}
+              isInviteActionPending={isInviteActionPending}
+              onRevokeInvite={revokeInvite}
+              onDeleteInvite={deleteInvite}
             />
           </Suspense>
           </ErrorBoundary>
@@ -429,7 +420,7 @@ export function AdminPage() {
               roles={rolesWithExternal}
               createRolePending={createRoleMutation.isPending}
               updateRolePending={updateRoleConfigMutation.isPending}
-              deleteRolePending={deleteRoleMutation.isPending}
+              isRoleDeletePending={isRoleDeletePending}
               onCreateRole={createRoleConfig}
               onUpdateRole={updateRoleConfig}
               onDeleteRole={deleteRoleConfig}
@@ -502,6 +493,7 @@ export function AdminPage() {
           open={Boolean(selectedMemberDetail)}
           member={selectedMemberDetail}
           form={memberDetailForm}
+          isDirty={memberDetailIsDirty}
           onClose={closeMemberDetail}
           onFormChange={patchMemberDetailForm}
           onSaveProfile={saveSelectedMemberProfile}

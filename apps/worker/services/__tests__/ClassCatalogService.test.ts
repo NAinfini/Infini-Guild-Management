@@ -244,6 +244,34 @@ describe("ClassCatalogService reorder", () => {
 });
 
 describe("ClassCatalogService icon lifecycle", () => {
+  it("rejects malformed or non-WebP class icon keys before querying D1", async () => {
+    const { rawDb, statements } = createRawDb();
+    const service = new ClassCatalogService(createDrizzleDb([]) as never, createDeps(rawDb) as never);
+
+    await expect(service.referencesIcon("class-icons/warden/icon.png")).resolves.toBe(false);
+    await expect(service.referencesIcon("class-icons/../icon.webp")).resolves.toBe(false);
+    expect(statements).toHaveLength(0);
+  });
+
+  it("requires the encoded class id to match the persisted icon pointer", async () => {
+    const key = "class-icons/seer/icon.webp";
+    const { rawDb, statements } = createRawDb({ firstResponses: [null] });
+    const service = new ClassCatalogService(createDrizzleDb([]) as never, createDeps(rawDb) as never);
+
+    await expect(service.referencesIcon(key)).resolves.toBe(false);
+    expect(statements[0]?.sql).toContain("id = ?");
+    expect(statements[0]?.values).toEqual(["seer", key]);
+  });
+
+  it("accepts an exact valid WebP pointer for its encoded class id", async () => {
+    const key = "class-icons/warden/icon.webp";
+    const { rawDb, statements } = createRawDb({ firstResponses: [{ id: "warden" }] });
+    const service = new ClassCatalogService(createDrizzleDb([]) as never, createDeps(rawDb) as never);
+
+    await expect(service.referencesIcon(key)).resolves.toBe(true);
+    expect(statements[0]?.values).toEqual(["warden", key]);
+  });
+
   it("maps explicit class-icon file validation to a service validation error", async () => {
     const db = createDrizzleDb([[VECTOR_ROW]]);
     const { rawDb } = createRawDb();

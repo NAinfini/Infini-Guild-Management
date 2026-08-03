@@ -564,7 +564,30 @@ describe("AdminService.createMember reserved system-test username", () => {
 });
 
 describe("AdminService.getStatus", () => {
-  const REQUIRED_TABLES = ["users", "member_profiles", "roles", "role_permissions", "site_config"];
+  const REQUIRED_TABLES = [
+    "users",
+    "user_auth_password",
+    "sessions",
+    "login_failures",
+    "member_profiles",
+    "roles",
+    "role_permissions",
+    "site_config",
+    "class_catalog",
+    "class_tags",
+    "class_tag_members",
+    "events",
+    "event_class_quotas",
+    "recurring_templates",
+    "recurring_template_class_quotas",
+    "media_references",
+    "media_reference_backfills",
+    "media_upload_leases",
+    "system_test_runs",
+    "system_test_artifacts",
+    "storage_items",
+    "storage_transactions",
+  ];
 
   /**
    * 按表名给出每张表探针的结果：返回值即 first() 的行为，抛出的 Error 即真故障。
@@ -586,6 +609,7 @@ describe("AdminService.getStatus", () => {
     const service = new AdminService({
       db: {} as never,
       media: { get: vi.fn(), put: vi.fn(), head: async () => mediaHead() } as never,
+      ws: {} as never,
       rawDb: rawDb as never,
       writeAuditLog: vi.fn(),
       writeAuditLogDurable: vi.fn(),
@@ -617,6 +641,8 @@ describe("AdminService.getStatus", () => {
     expect(result.ok && result.data).toMatchObject({
       db: "ok",
       r2: "ok",
+      ws: "configured",
+      crons: "configured",
       r2_reason: null,
       db_checks: Object.fromEntries(REQUIRED_TABLES.map((t) => [t, "ok"])),
     });
