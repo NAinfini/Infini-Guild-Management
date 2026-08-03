@@ -92,7 +92,6 @@ export function EventCard({
   const isJoined = currentUserId ? members.some((member) => member.user.id === currentUserId) : false;
   const isArchived = Boolean(event.archived_at);
   const participantActionDisabledReasonKey = getParticipantActionDisabledReasonKey({
-    isPoll,
     isArchived,
     hasEnded,
     signupLocked: event.signup_locked,
@@ -101,6 +100,17 @@ export function EventCard({
     pending: joinPending || leavePending,
   });
   const participantActionDisabled = participantActionDisabledReasonKey !== null;
+  /*
+   * 投票活动没有报名这回事，所以页脚原先挂的是一颗永远禁用的「报名」——它占着位置，
+   * 却把人往一条不存在的路上指。真正要做的事是投票，而票在详情弹窗里投，所以这颗
+   * 按钮直接把人送过去。
+   * 只有归档和已结束是真投不了，那两种才禁用，理由照旧由 Tooltip 给。
+   */
+  const pollActionDisabledReasonKey = isArchived
+    ? "button.disabled.archived"
+    : hasEnded
+      ? "button.disabled.ended"
+      : null;
 
   const requestArchiveEvent = async () => {
     const confirmed = await confirm({
@@ -185,12 +195,25 @@ export function EventCard({
 
   /*
    * 页脚永远在（只要这个人有互动权限）。以前投票活动整个页脚都不渲染，同一排卡里
-   * 有的有底栏有的没有，高度和按钮位置全对不齐。投票活动的按钮是禁用的，禁用的理由
-   * 由 Tooltip 说清楚——「这一格里什么都没有」和「这里有个按钮但你现在按不了」
-   * 是两件事，后者才是实情。
+   * 有的有底栏有的没有，高度和按钮位置全对不齐。
    */
   const footer = canInteract ? (
     <div onClick={(clickEvent) => clickEvent.stopPropagation()}>
+      {isPoll ? (
+        <Tooltip label={t(pollActionDisabledReasonKey ?? (isJoined ? "poll.update" : "poll.vote"))}>
+          <span data-disabled-tooltip-target>
+            <Button
+              onClick={() => onOpenDetail(event)}
+              color="portal-brand"
+              variant={isJoined ? "light" : "filled"}
+              size="sm"
+              disabled={pollActionDisabledReasonKey !== null}
+            >
+              {isJoined ? t("poll.update") : t("poll.vote")}
+            </Button>
+          </span>
+        </Tooltip>
+      ) : (
       <Tooltip label={t(participantActionDisabledReasonKey ?? (isJoined ? "button.leave" : "button.join"))}>
         <span data-disabled-tooltip-target>
           <Button
@@ -212,6 +235,7 @@ export function EventCard({
           </Button>
         </span>
       </Tooltip>
+      )}
     </div>
   ) : null;
 

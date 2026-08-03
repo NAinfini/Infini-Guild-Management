@@ -1,6 +1,4 @@
 type ParticipantActionState = {
-  /** 投票活动没有报名这回事，参与方式是在详情里投票。 */
-  isPoll?: boolean;
   isArchived: boolean;
   hasEnded: boolean;
   signupLocked: boolean;
@@ -9,8 +7,11 @@ type ParticipantActionState = {
   pending: boolean;
 };
 
+/*
+ * 投票活动不走这里：它的页脚给的是「投票」，不是一颗按不动的「报名」，
+ * 能不能投由 EventCard 自己按归档／已结束判断。
+ */
 export function getParticipantActionDisabledReasonKey({
-  isPoll = false,
   isArchived,
   hasEnded,
   signupLocked,
@@ -18,8 +19,6 @@ export function getParticipantActionDisabledReasonKey({
   isJoined,
   pending,
 }: ParticipantActionState): string | null {
-  /* 排在最前面：投票活动无论归档没归档、满没满，报名这件事都不成立。 */
-  if (isPoll) return "button.disabled.poll";
   if (isArchived) return "button.disabled.archived";
   if (hasEnded) return "button.disabled.ended";
   if (signupLocked) return "button.disabled.locked";
