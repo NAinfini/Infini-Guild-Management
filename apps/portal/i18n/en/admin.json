@@ -1005,7 +1005,6 @@
   "classTags.createTitle": "Create tag",
   "classTags.editTitle": "Edit tag",
   "classTags.field.label": "Tag name",
-  "classTags.field.labelDescription": "The name members see in the quota chips on an event card.",
   "classTags.field.order": "Display order",
   "classTags.field.members": "Classes in this tag",
   "classTags.field.membersDescription": "Click to add or remove, up to {{max}}. Empty tags are fine, and tags may overlap — what counts as what is your call.",

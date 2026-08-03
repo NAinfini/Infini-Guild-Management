@@ -33,6 +33,28 @@
   border-right: 0;
 }
 
+/*
+ * 44px 见方是给触屏定的靶面（19788bf）。鼠标不需要：三十来个 44px 方块再配 22px 间距，
+ * 光工具条就压掉两行，比它底下的正文编辑区还抢眼。
+ *
+ * 精确指针下按 compact 档收到 32px、间距收到 12px。靶面一点没丢——ThemeProvider 给
+ * ActionIcon 的 ::before 仍是 max(--control-hit-area, 100%)，32 + 12 = 44 刚好让相邻两个
+ * 靶面贴边而不重叠，点空档不会误触旁边那个。粗指针（平板、触屏）走上面那套，不动。
+ */
+@media (pointer: fine) {
+  .infini-tiptap-toolbar,
+  .infini-tiptap-toolbar__group {
+    gap: var(--space-md);
+  }
+
+  .infini-tiptap-toolbar .mantine-ActionIcon-root {
+    width: var(--control-height-compact);
+    min-width: var(--control-height-compact);
+    height: var(--control-height-compact);
+    min-height: var(--control-height-compact);
+  }
+}
+
 .infini-tiptap-color-grid {
   display: grid;
   grid-template-columns: repeat(4, 24px);

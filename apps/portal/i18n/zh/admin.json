@@ -1005,7 +1005,6 @@
   "classTags.createTitle": "创建标签",
   "classTags.editTitle": "编辑标签",
   "classTags.field.label": "标签名称",
-  "classTags.field.labelDescription": "成员在活动卡的配额提示里看到的名字。",
   "classTags.field.order": "显示顺序",
   "classTags.field.members": "包含的职业",
   "classTags.field.membersDescription": "点选即可加入或移出，最多 {{max}} 个。允许留空，也允许与其它标签重叠——哪些职业算什么由你决定。",

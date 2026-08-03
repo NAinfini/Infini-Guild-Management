@@ -163,7 +163,6 @@ export function AdminClassTagsSection() {
                   <div className="admin-class-tags__form-row">
                     <TextInput
                       label={t("classTags.field.label")}
-                      description={t("classTags.field.labelDescription")}
                       value={draft.label}
                       maxLength={LIMITS.content.classTagLabel.max}
                       onChange={(event) => {
@@ -176,6 +175,7 @@ export function AdminClassTagsSection() {
                     />
                     <NumberInput
                       label={t("classTags.field.order")}
+                      hideControls
                       value={draft.sortOrder}
                       min={0}
                       max={100_000}

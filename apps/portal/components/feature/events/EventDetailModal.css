@@ -25,9 +25,13 @@
 }
 
 /*
- * 左栏资料、右栏参与。两栏各自滚动、弹窗整体基本不滚，读左边说明的时候右边名单一直在眼前。
+ * 左栏资料、右栏参与。弹窗整体基本不滚，读左边说明的时候右边名单一直在眼前。
  * 上限取 Mantine 给 content 的 max-height（100dvh - 5dvh*2）减去 header 的 60px 和
  * body 的上下内边距；估多估少都不会丢东西，content 的 auto 会把差额接住。
+ *
+ * 两栏的 overflow 是兜底，不是常态：左栏靠下面那条图高上限把自己收进预算内，
+ * 右栏把滚动交给名单那一块（见 __member-list）。说明特别长、或抽奖名单特别长时，
+ * 对应那一栏才会自己滚起来。
  */
 .event-detail-modal__layout {
   --detail-pane-max-height: calc(90dvh - 104px);
@@ -281,8 +285,17 @@
   display: inline-flex;
 }
 
-/* 名单不再自己开一条滚动条：它所在的右栏已经是滚动容器，套两层滚动很难用。 */
+/*
+ * 右栏里只有名单这一块滚：标题、报名按钮、加人下拉钉在上面不动，翻名单的时候
+ * 一直看得见还剩几个名额、以及从哪儿加人。
+ *
+ * 上限＝右栏的高度预算减去这一块里的固定家什（section 上下内边距 28、标题行 34 + 12、
+ * 加人下拉 36 + 12），取整到 140 留点余量。用 max-height 而不是撑满剩余高度：
+ * 只封顶、不占位，两三个人的名单不会被撑出一片空白。
+ */
 .event-detail-modal__member-list {
+  max-height: calc(var(--detail-pane-max-height) - 140px);
+  overflow-y: auto;
   padding-right: 4px;
 }
 
@@ -299,6 +312,20 @@
 }
 
 /*
+ * 图默认按 min(62vh, 520px) 画，这个高度是给独立画廊页定的；放进左栏，它加上两张
+ * 信息卡、说明和缩略图条正好比高度预算高出一点点，于是整栏为那几十像素开一条滚动条。
+ * 这里让图先把这些固定家什的位置让出来（两张卡 74 ＋ 一段说明 ~74 ＋ 画廊自己的
+ * 页码行和缩略图条 116 ＋ 栏内间距，取整 300），再按原上限封顶。
+ * 下限 220px 是防止窗口很矮时图被压没——那种情况左栏照旧自己滚，不硬塞。
+ * 只在双栏时需要，跟下面 900px 收成一栏那条互补。
+ */
+@media (min-width: 901px) {
+  .event-detail-modal__pane--info .infini-media-gallery-slide {
+    height: clamp(220px, calc(var(--detail-pane-max-height) - 300px), 520px);
+  }
+}
+
+/*
  * 窄屏收成一栏：两条独立滚动条上下叠着没法用，改成整个弹窗一起滚。
  * 参与那一栏排到前面——手机上打开活动是为了报名，不是为了读说明。
  */
@@ -308,6 +335,12 @@
   }
 
   .event-detail-modal__pane {
+    max-height: none;
+    overflow-y: visible;
+  }
+
+  /* 一栏时右栏没有高度预算，名单也就没有可算的上限：交回给弹窗一起滚。 */
+  .event-detail-modal__member-list {
     max-height: none;
     overflow-y: visible;
   }
