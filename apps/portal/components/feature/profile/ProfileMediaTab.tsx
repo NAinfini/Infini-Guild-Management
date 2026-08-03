@@ -4,6 +4,7 @@ import { SectionHeader } from "../../shared/SectionHeader";
 import { useConfirmDialog } from "@portal/hooks/useConfirmDialog";
 import { ActionIcon, Avatar, Button, FileButton, Group, Paper, Progress, SegmentedControl, Stack, Text, TextInput, Tooltip } from "@mantine/core";
 import { ArrowDownIcon, ArrowUpIcon, PlusIcon, TrashIcon, UploadIcon, UserIcon, VideoIcon } from "@portal/components/icons";
+import { IMAGE_FILE_ACCEPT } from "@guild/shared";
 import { getVideoThumbnailUrl } from "@guild/shared/utils/video";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
@@ -330,7 +331,7 @@ export function ProfileMediaTab({
             <Stack gap={8}>
               <FileButton
                 onChange={(file) => { if (file) onUploadAvatar(file); }}
-                accept="image/jpeg,image/png,image/gif,image/webp,image/avif"
+                accept={IMAGE_FILE_ACCEPT}
               >
                 {(props) => (
                   <Button variant="default" size="xs" h={44} loading={avatarUploading} leftSection={<UploadIcon size={14} />} {...props}>

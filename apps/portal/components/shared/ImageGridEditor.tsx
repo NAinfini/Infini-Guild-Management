@@ -1,3 +1,4 @@
+import { IMAGE_FILE_ACCEPT } from "@guild/shared";
 import { ActionIcon, Button } from "@mantine/core";
 import { AnimatePresence, Reorder, useDragControls } from "motion/react";
 import {
@@ -209,7 +210,7 @@ export const ImageGridEditor = forwardRef<HTMLDivElement, ImageGridEditorProps>(
       imageSize = 80,
       borderRadius = 8,
       gap = 8,
-      accept = "image/*",
+      accept = IMAGE_FILE_ACCEPT,
       uploadLabel,
       disabled = false,
       className,

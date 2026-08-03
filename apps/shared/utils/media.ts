@@ -1,39 +1,29 @@
-export const DEFAULT_IMAGE_WEBP_QUALITY = 0.8;
-/*
- * Opus is the codec; the container is whatever the browser will encode into.
- * Chromium only offers Opus inside WebM (verified on Chrome 148:
- * isTypeSupported("audio/ogg;codecs=opus") === false, "audio/webm;codecs=opus"
- * === true), while Firefox offers Ogg. Demanding Ogg alone made this converter
- * unusable on the majority of browsers, which is why both call sites had the
- * conversion switched off. The worker accepts audio/ogg and audio/webm alike, so
- * negotiating the container costs nothing and the bytes are Opus either way.
- */
-type OpusContainer = {
-  /** Passed to MediaRecorder, which needs the codec spelled out. */
-  recorderMimeType: string;
-  /*
-   * Stored on the File, and therefore the Content-Type the worker validates and
-   * R2 serves. It must stay a bare container type: the upload validator compares
-   * the declared type against an exact allow-list, so "audio/webm;codecs=opus"
-   * is rejected as an unsupported file type.
-   */
-  fileMimeType: string;
-  extension: string;
-};
+import {
+  ALL_FORMATS,
+  BlobSource,
+  BufferTarget,
+  Conversion,
+  Input,
+  OggOutputFormat,
+  Output,
+  canEncodeAudio,
+} from "mediabunny";
 
-const OPUS_CONTAINERS: readonly OpusContainer[] = [
-  { recorderMimeType: "audio/ogg;codecs=opus", fileMimeType: "audio/ogg", extension: "ogg" },
-  { recorderMimeType: "audio/webm;codecs=opus", fileMimeType: "audio/webm", extension: "webm" },
-];
+export const DEFAULT_IMAGE_WEBP_QUALITY = 0.8;
+
+/*
+ * 存下来的语音只有一种样子：Ogg 容器、Opus 编码、单声道 16 kHz。
+ *
+ * 以前是拿 MediaRecorder 现录现编，容器还要跟浏览器协商——Chromium 只给 WebM，
+ * Firefox 才给 Ogg，于是同一段音频在不同浏览器上落库成不同格式，服务端只好把
+ * 两个容器都收下。现在编码走 WebCodecs（mediabunny 负责封装），容器由我们指定，
+ * 结果与浏览器无关，服务端也就能收窄到 audio/ogg 这一种。
+ */
+const OPUS_FILE_MIME_TYPE = "audio/ogg";
+const OPUS_FILE_EXTENSION = "ogg";
 const OPUS_TARGET_SAMPLE_RATE = 16_000;
 const OPUS_TARGET_BITRATE = 48_000;
-
-function resolveOpusContainer(): OpusContainer | null {
-  if (typeof MediaRecorder === "undefined") {
-    return null;
-  }
-  return OPUS_CONTAINERS.find((candidate) => MediaRecorder.isTypeSupported(candidate.recorderMimeType)) ?? null;
-}
+const OPUS_TARGET_CHANNELS = 1;
 
 function createCanvas(width: number, height: number): HTMLCanvasElement {
   const canvas = document.createElement("canvas");
@@ -60,6 +50,15 @@ function clampQuality(value: number): number {
   return value;
 }
 
+/**
+ * 转成 WebP 反而会丢信息的两类图，一律原样存。理由见 convertImageToWebP 里的注释；
+ * 服务端 media.ts 的白名单按同一份名单开口子。
+ */
+export const LOSSLESS_PASSTHROUGH_IMAGE_TYPES: ReadonlySet<string> = new Set([
+  "image/gif",
+  "image/svg+xml",
+]);
+
 export type ImageConversionOptions = {
   quality?: number;
   /**
@@ -71,86 +70,28 @@ export type ImageConversionOptions = {
   maxDimension?: number;
 };
 
-type AudioContextLikeCtor = new (contextOptions?: AudioContextOptions) => AudioContext;
-type OfflineAudioContextLikeCtor = new (
-  numberOfChannels: number,
-  length: number,
-  sampleRate: number,
-) => OfflineAudioContext;
-
-function resolveAudioContextCtor(): AudioContextLikeCtor | null {
-  if (typeof window === "undefined") {
-    return null;
-  }
-
-  const ctor = window.AudioContext ?? (window as Window & { webkitAudioContext?: AudioContextLikeCtor }).webkitAudioContext;
-  return ctor ?? null;
-}
-
-function resolveOfflineAudioContextCtor(): OfflineAudioContextLikeCtor | null {
-  if (typeof window === "undefined") {
-    return null;
-  }
-
-  const ctor =
-    window.OfflineAudioContext ??
-    (window as Window & { webkitOfflineAudioContext?: OfflineAudioContextLikeCtor }).webkitOfflineAudioContext;
-  return ctor ?? null;
-}
-
 export type AudioConversionSupport =
   | { supported: true }
   | { supported: false; reason: string };
 
+/*
+ * 同步的门槛检查，界面在用户选文件之前就要给出答复，所以只能查「有没有 WebCodecs」
+ * 这个可以同步问的条件。「这个浏览器能不能编 Opus」必须 await，留给
+ * convertAudioToOpus 在真正开工前问一次——那里是异步的，问得起。
+ */
 export function getAudioConversionSupport(): AudioConversionSupport {
   if (typeof window === "undefined") {
     return { supported: false, reason: "Audio conversion is only available in browser runtime." };
   }
 
-  if (!resolveAudioContextCtor()) {
-    return { supported: false, reason: "This browser does not support AudioContext." };
-  }
-
-  if (!resolveOfflineAudioContextCtor()) {
-    return { supported: false, reason: "This browser does not support OfflineAudioContext." };
-  }
-
-  if (typeof MediaRecorder === "undefined") {
-    return { supported: false, reason: "This browser does not support MediaRecorder." };
-  }
-
-  if (!resolveOpusContainer()) {
+  if (typeof AudioEncoder === "undefined") {
     return {
       supported: false,
-      reason: "This browser cannot encode Opus audio. Please use Chrome, Edge, or Firefox.",
+      reason: "This browser does not support WebCodecs audio encoding. Please use Chrome, Edge, or Firefox.",
     };
   }
 
   return { supported: true };
-}
-
-function createAudioContext(options?: AudioContextOptions): AudioContext {
-  const ctor = resolveAudioContextCtor();
-  if (!ctor) {
-    throw new Error("AudioContext is unavailable");
-  }
-
-  return new ctor(options);
-}
-
-async function renderMonoAudioAtTargetRate(input: AudioBuffer): Promise<AudioBuffer> {
-  const offlineCtor = resolveOfflineAudioContextCtor();
-  if (!offlineCtor) {
-    throw new Error("OfflineAudioContext is unavailable");
-  }
-
-  const frameCount = Math.max(1, Math.ceil(input.duration * OPUS_TARGET_SAMPLE_RATE));
-  const offlineContext = new offlineCtor(1, frameCount, OPUS_TARGET_SAMPLE_RATE);
-  const source = offlineContext.createBufferSource();
-  source.buffer = input;
-  source.connect(offlineContext.destination);
-  source.start(0);
-  return offlineContext.startRendering();
 }
 
 export async function convertImageToWebP(
@@ -173,11 +114,16 @@ export async function convertImageToWebP(
   }
 
   /*
-   * GIFs pass through untouched: createImageBitmap decodes only the first frame,
-   * so re-encoding an animated GIF silently throws the animation away. Leaving
-   * it alone costs some R2 space but never destroys the image.
+   * 明写的两个例外，forceWebP 也压不过去——因为这里转过去就是有损信息，
+   * 而不是「换个编码」：
+   *
+   * - GIF：createImageBitmap 只解第一帧，重编码会把动画悄悄丢掉。
+   * - SVG：矢量图栅格化之后就不能再无级缩放了。
+   *
+   * 别处一律 WebP，这两类原样存。服务端白名单里同样开着这两个口子，
+   * 两边的理由写的是同一条。
    */
-  if (file.type === "image/gif" && !forceWebP) {
+  if (LOSSLESS_PASSTHROUGH_IMAGE_TYPES.has(file.type)) {
     onProgress?.(100);
     return file;
   }
@@ -225,9 +171,9 @@ export async function convertImageToWebP(
     );
   });
   /*
-   * Re-encoding can make a file bigger — an already-optimised JPEG, or a flat
-   * PNG with few colours. The whole point is to save R2 space, so keep whichever
-   * is actually smaller rather than assuming WebP always wins.
+   * 重编码有可能变大——本来就压得很好的 JPEG，或者颜色很少的平涂 PNG。
+   * 单看省空间当然是留小的那个，但上传路径一律传 forceWebP：留下来的原图
+   * 过不了服务端白名单。这条分支现在只服务于不面向上传的调用方。
    */
   if (!forceWebP && blob.size >= file.size) {
     onProgress?.(100);
@@ -263,7 +209,15 @@ export async function convertFileForUpload(
   options: UploadConversionOptions = {},
 ): Promise<File> {
   if (file.type.startsWith("image/")) {
-    return convertImageToWebP(file, options.onProgress, { quality: options.imageQuality });
+    /*
+     * forceWebP 恒为真：服务端的白名单只认 WebP 加上面那两个例外，所以「转出来
+     * 反而更大就留原图」这条省空间的旧规则在这里必须让位——留下的原图会被服务端
+     * 直接拒掉，用户看到的是一个莫名其妙的上传失败。
+     */
+    return convertImageToWebP(file, options.onProgress, {
+      quality: options.imageQuality,
+      forceWebP: true,
+    });
   }
   if (file.type.startsWith("audio/")) {
     return convertAudioToOpus(file, options.onProgress);
@@ -277,8 +231,8 @@ export async function convertFileForUpload(
  * batch.
  *
  * Sequential on purpose: each image costs a full canvas decode and each audio
- * file a real-time render, so converting a batch in parallel only multiplies peak
- * memory for no wall-clock gain.
+ * file a full decode-and-encode pass, so converting a batch in parallel only
+ * multiplies peak memory for no wall-clock gain.
  */
 export async function convertFilesForUpload(
   files: readonly File[],
@@ -308,94 +262,70 @@ export async function convertAudioToOpus(
     throw new Error("Audio conversion requires an audio file");
   }
 
-  /*
-   * Prefix tests, because this function's own output is
-   * "audio/ogg;codecs=opus" or "audio/webm;codecs=opus" — an equality check
-   * against "audio/ogg" did not recognise it and re-encoded an already-converted
-   * file, costing a second lossy pass and another real-time render. Both
-   * containers essentially only ever carry Opus or Vorbis here, so passing them
-   * through is a fair trade for never double-encoding.
-   */
-  if (file.type.startsWith("audio/ogg") || file.type.startsWith("audio/webm")) {
-    onProgress?.(100);
-    return file;
-  }
-
   const support = getAudioConversionSupport();
   if (!support.supported) {
     throw new Error(support.reason);
   }
 
-  const container = resolveOpusContainer();
-  if (!container) {
-    throw new Error("This browser cannot encode Opus audio.");
+  const input = new Input({ source: new BlobSource(file), formats: ALL_FORMATS });
+
+  /*
+   * 「已经是 Opus 了吗」只能问编码本身。以前是看容器：文件叫 audio/ogg 就当它是
+   * Opus 直接放行——可是 Ogg 同样装得下 Vorbis，那种文件就这么原样进了库，
+   * 而库里本该只有 Opus。这里读的是轨道的实际编码，Ogg/Vorbis 会照常重编。
+   */
+  const track = await input.getPrimaryAudioTrack();
+  if (!track) {
+    throw new Error("This file contains no audio track.");
   }
-
-  let decodeContext: AudioContext | null = null;
-  let streamContext: AudioContext | null = null;
-
-  try {
-    onProgress?.(10);
-    const audioData = await file.arrayBuffer();
-    decodeContext = createAudioContext();
-    const decodedAudio = await decodeContext.decodeAudioData(audioData.slice(0));
-    onProgress?.(35);
-
-    const renderedAudio = await renderMonoAudioAtTargetRate(decodedAudio);
-    onProgress?.(55);
-
-    streamContext = createAudioContext({ sampleRate: OPUS_TARGET_SAMPLE_RATE });
-    const destination = streamContext.createMediaStreamDestination();
-    const source = streamContext.createBufferSource();
-    source.buffer = renderedAudio;
-    source.connect(destination);
-
-    const recorder = new MediaRecorder(destination.stream, {
-      mimeType: container.recorderMimeType,
-      audioBitsPerSecond: OPUS_TARGET_BITRATE,
-    });
-
-    const chunks: BlobPart[] = [];
-    recorder.ondataavailable = (event) => {
-      if (event.data.size > 0) {
-        chunks.push(event.data);
-      }
-    };
-
-    const recording = new Promise<void>((resolve) => {
-      recorder.onstop = () => resolve();
-    });
-
-    recorder.start(200);
-    onProgress?.(75);
-    source.start();
-    source.onended = () => {
-      recorder.stop();
-    };
-    await recording;
-    onProgress?.(95);
-
-    source.disconnect();
-    destination.disconnect();
-
-    if (chunks.length === 0) {
-      throw new Error("Audio conversion produced empty output.");
-    }
-
-    const blob = new Blob(chunks, { type: container.fileMimeType });
+  if ((await track.getCodec()) === "opus" && file.type.startsWith(OPUS_FILE_MIME_TYPE)) {
     onProgress?.(100);
-
-    // Extension has to follow the container actually produced, not a fixed guess.
-    return new File([blob], fileNameWithExtension(file.name, container.extension), {
-      type: container.fileMimeType,
-      lastModified: Date.now(),
-    });
-  } finally {
-    if (decodeContext) {
-      await decodeContext.close().catch(() => undefined);
-    }
-    if (streamContext) {
-      await streamContext.close().catch(() => undefined);
-    }
+    return file;
   }
+
+  if (!(await canEncodeAudio("opus", {
+    numberOfChannels: OPUS_TARGET_CHANNELS,
+    sampleRate: OPUS_TARGET_SAMPLE_RATE,
+    bitrate: OPUS_TARGET_BITRATE,
+  }))) {
+    throw new Error("This browser cannot encode Opus audio. Please use Chrome, Edge, or Firefox.");
+  }
+
+  const target = new BufferTarget();
+  const output = new Output({ format: new OggOutputFormat(), target });
+  const conversion = await Conversion.init({
+    input,
+    output,
+    audio: {
+      codec: "opus",
+      numberOfChannels: OPUS_TARGET_CHANNELS,
+      sampleRate: OPUS_TARGET_SAMPLE_RATE,
+      bitrate: OPUS_TARGET_BITRATE,
+      /*
+       * 能走到这里只有两种情况：编码根本不是 Opus，或者是 Opus 但装错了容器
+       * （比如 WebM/Opus）。后一种只需要换个封装，参数对得上时 mediabunny 会
+       * 直接搬运数据包而不重编——省掉一次没有必要的有损。写死 true 的话，
+       * 每一个 WebM/Opus 都要白白再压一遍。
+       */
+      forceTranscode: false,
+    },
+  });
+  if (!conversion.isValid) {
+    throw new Error("This audio file cannot be converted to Opus.");
+  }
+
+  /* 必须在 execute 之前挂上，否则 mediabunny 根本不计算进度。 */
+  conversion.onProgress = (progress: number) => onProgress?.(Math.min(99, Math.round(progress * 100)));
+  await conversion.execute();
+
+  const buffer = target.buffer;
+  if (!buffer || buffer.byteLength === 0) {
+    throw new Error("Audio conversion produced empty output.");
+  }
+
+  onProgress?.(100);
+  return new File([buffer], fileNameWithExtension(file.name, OPUS_FILE_EXTENSION), {
+    type: OPUS_FILE_MIME_TYPE,
+    lastModified: Date.now(),
+  });
 }

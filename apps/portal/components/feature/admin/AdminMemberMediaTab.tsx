@@ -1,3 +1,4 @@
+import { IMAGE_FILE_ACCEPT } from "@guild/shared";
 import { ImageGridEditor } from "@portal/components/shared/ImageGridEditor";
 import type { ImageGridEditorItem } from "@portal/types/media";
 import { Avatar, Button, FileButton, Group, Paper, Progress, Stack, Text, TextInput } from "@mantine/core";
@@ -118,7 +119,7 @@ export function AdminMemberMediaTab(props: AdminMemberMediaTabProps) {
               <Stack gap={6}>
                 <FileButton
                   onChange={(file) => { if (file) onUploadAvatar(file); }}
-                  accept="image/jpeg,image/png,image/gif,image/webp,image/avif"
+                  accept={IMAGE_FILE_ACCEPT}
                 >
                   {(props) => (
                     <Button

@@ -1,3 +1,4 @@
+import { IMAGE_FILE_ACCEPT } from "@guild/shared";
 import { forwardRef } from "react";
 import {
   TIPTAP_DEFAULT_JSON as _TIPTAP_DEFAULT_JSON,
@@ -594,7 +595,7 @@ export const TipTapEditor = forwardRef<HTMLDivElement, TipTapEditorProps>(
         <input
           ref={fileInputRef}
           type="file"
-          accept="image/*"
+          accept={IMAGE_FILE_ACCEPT}
           style={{ display: "none" }}
           onChange={(event) => {
             const file = event.target.files?.[0];

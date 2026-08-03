@@ -2,12 +2,17 @@ import { describe, expect, it, vi } from "vitest";
 import { EventService, parseAttachments } from "../EventService";
 
 /**
- * 造一张字节头真实的 PNG。
+ * 造一张字节头真实的 WebP（RIFF....WEBP）。
  *
- * 上传路径会按魔数复核声明的类型，随便塞几个字节再标成 image/png 是过不去的。
+ * 上传路径会按魔数复核声明的类型，随便塞几个字节再标个 MIME 是过不去的。
+ * 以前这里造的是 PNG——白名单收窄到「只落库 WebP」之后，PNG 在类型那一关就被拦下，
+ * 根本走不到这些用例真正要考的补偿逻辑。
  */
-function pngFile(name: string): File {
-  return new File([new Uint8Array([0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A])], name, { type: "image/png" });
+function imageFile(name: string): File {
+  const bytes = new Uint8Array(16);
+  bytes.set([0x52, 0x49, 0x46, 0x46], 0); // "RIFF"
+  bytes.set([0x57, 0x45, 0x42, 0x50], 8); // "WEBP"
+  return new File([bytes], name, { type: "image/webp" });
 }
 
 const stubTemplateDeps = {
@@ -99,7 +104,7 @@ describe("worker EventService", () => {
         attachments: [],
         auto_archive: true,
       },
-      [pngFile("poster.png")],
+      [imageFile("poster.png")],
     );
 
     expect(insertValues).toHaveBeenCalledWith(
@@ -153,7 +158,7 @@ describe("worker EventService", () => {
         start_at: "2026-03-20T19:00:00.000Z",
         attachments: [],
       },
-      [pngFile("new.png")],
+      [imageFile("new.png")],
     )).rejects.toBe(failure);
 
     expect(media.delete).toHaveBeenCalledWith("events/evt-create-failure/images/new.png");
@@ -238,7 +243,7 @@ describe("worker EventService", () => {
       createEventRow({
         attachments: JSON.stringify(["events/existing.png"]),
       }),
-      [pngFile("new.png")],
+      [imageFile("new.png")],
     );
 
     expect((result as { ok: true; data: { attachments: string[] } }).data.attachments).toEqual(["events/existing.png", "events/evt-1/images/new.png"]);
@@ -277,7 +282,7 @@ describe("worker EventService", () => {
       "mod-1",
       "evt-1",
       createEventRow({ attachments: JSON.stringify(["events/existing.png"]) }),
-      [pngFile("new.png")],
+      [imageFile("new.png")],
     )).rejects.toBe(failure);
 
     expect(media.delete).toHaveBeenCalledWith("events/evt-1/images/new.png");
@@ -308,8 +313,8 @@ describe("worker EventService", () => {
       "evt-1",
       createEventRow(),
       [
-        pngFile("one.png"),
-        pngFile("two.png"),
+        imageFile("one.png"),
+        imageFile("two.png"),
       ],
     )).rejects.toBe(failure);
 

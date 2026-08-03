@@ -1,5 +1,6 @@
 import {
   DEFAULT_FEATURE_FLAGS,
+  IMAGE_FILE_ACCEPT,
   DEFAULT_SITE_ABSENCE_POLICY,
   DEFAULT_SITE_MEDIA_POLICY,
   DEFAULT_SITE_STORAGE_POLICY,
@@ -209,7 +210,7 @@ export function AdminSiteConfigSection({
                   color="gray"
                 />
               </div>
-              <FileButton onChange={(file) => { if (file) onUploadLogo(file); }} accept="image/jpeg,image/png,image/gif,image/webp,image/avif">
+              <FileButton onChange={(file) => { if (file) onUploadLogo(file); }} accept={IMAGE_FILE_ACCEPT}>
                 {(buttonProps) => (
                   <Button size="sm" variant="default" loading={logoUploading} leftSection={<UploadIcon size={16} />} {...buttonProps}>
                     {t("siteConfig.action.uploadLogo")}

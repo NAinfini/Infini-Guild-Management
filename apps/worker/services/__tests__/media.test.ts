@@ -8,6 +8,19 @@ import {
   validateUploadBytes,
 } from "../media";
 
+/**
+ * 造一页 Ogg：页头固定 27 字节，第 27 字节是分段表长度，分段表之后才是负载。
+ * `segmentCount` 可调，用来验证负载偏移是算出来的而不是写死 28。
+ */
+function oggPage(payload: string, segmentCount = 1): ArrayBuffer {
+  const payloadBytes = new TextEncoder().encode(payload);
+  const page = new Uint8Array(27 + segmentCount + payloadBytes.length);
+  page.set([0x4F, 0x67, 0x67, 0x53], 0);
+  page[26] = segmentCount;
+  page.set(payloadBytes, 27 + segmentCount);
+  return page.buffer;
+}
+
 describe("media magic-byte validation", () => {
   it("rejects files whose bytes do not match the declared image type", () => {
     const fakePng = new TextEncoder().encode("<script>alert(1)</script>").buffer;
@@ -47,10 +60,36 @@ describe("media magic-byte validation", () => {
     });
   });
 
-  it("accepts valid audio signatures and normalizes content type", () => {
-    const oggHeader = new Uint8Array([0x4F, 0x67, 0x67, 0x53, 0x00]).buffer;
+  it("accepts an Ogg page whose first payload is OpusHead", () => {
+    expect(validateUploadBytes(oggPage("OpusHead"), "audio/ogg", new Set(["audio/ogg"]))).toEqual({
+      ok: true,
+      contentType: "audio/ogg",
+    });
+  });
 
-    expect(validateUploadBytes(oggHeader, "audio/ogg", new Set(["audio/ogg"]))).toEqual({
+  it("rejects Ogg/Vorbis even though the container signature matches", () => {
+    /*
+     * "OggS" 装得下 Vorbis 也装得下 Opus。只比容器的话，一个 Vorbis 文件
+     * 就这么进了库，而这条路只允许 Opus——所以这里必须往里再读一页。
+     */
+    expect(validateUploadBytes(oggPage("\x01vorbis"), "audio/ogg", new Set(["audio/ogg"]))).toEqual({
+      ok: false,
+      message: "Unsupported audio codec: audio/ogg must contain Opus",
+    });
+  });
+
+  it("rejects a bare Ogg header with no payload at all", () => {
+    const truncated = new Uint8Array([0x4F, 0x67, 0x67, 0x53, 0x00]).buffer;
+
+    expect(validateUploadBytes(truncated, "audio/ogg", new Set(["audio/ogg"]))).toEqual({
+      ok: false,
+      message: "Unsupported audio codec: audio/ogg must contain Opus",
+    });
+  });
+
+  it("finds the payload when the segment table is longer than one byte", () => {
+    /* 偏移写死 28 的话这一条会挂：分段表长度不是 1，负载就不在 28 上。 */
+    expect(validateUploadBytes(oggPage("OpusHead", 3), "audio/ogg", new Set(["audio/ogg"]))).toEqual({
       ok: true,
       contentType: "audio/ogg",
     });

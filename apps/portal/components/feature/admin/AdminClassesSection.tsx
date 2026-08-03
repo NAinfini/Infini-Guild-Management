@@ -15,7 +15,7 @@ import {
   verticalListSortingStrategy,
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { CLASS_VECTOR_ICON_IDS, type ClassCatalogItem } from "@guild/shared";
+import { CLASS_ICON_FILE_ACCEPT, CLASS_VECTOR_ICON_IDS, type ClassCatalogItem } from "@guild/shared";
 import {
   ActionIcon,
   Badge,
@@ -409,7 +409,7 @@ export function AdminClassesSection() {
                             <Text size="xs" c="dimmed">{t("classes.upload.description")}</Text>
                           </div>
                           <FileButton
-                            accept="image/png,image/jpeg,image/webp,image/avif,image/gif"
+                            accept={CLASS_ICON_FILE_ACCEPT}
                             onChange={(file) => controller.setDraft((current) => ({ ...current, imageFile: file }))}
                           >
                             {(props) => (

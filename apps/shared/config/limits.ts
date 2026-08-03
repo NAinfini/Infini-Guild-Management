@@ -4,12 +4,17 @@ export const LIMITS = {
     upload: 32 * 1024 * 1024,
   },
   media: {
+    /*
+     * 落库的图片只有 WebP：上传前浏览器一定会转（shared/utils/media.ts），
+     * 服务端按这份名单再验一次字节头。以前 jpeg/png/avif 也收，于是同一张图在库里
+     * 有五种可能的格式，缓存和缩略图两边都得各自兼容一遍。
+     *
+     * GIF 是唯一的例外，而且是明写的：转 WebP 只会留下第一帧，动画就没了——
+     * 那是丢信息，不是换编码。
+     */
     allowedImageTypes: [
-      "image/jpeg",
-      "image/png",
-      "image/gif",
       "image/webp",
-      "image/avif",
+      "image/gif",
     ] as const,
     quotas: {
       profile: 10,

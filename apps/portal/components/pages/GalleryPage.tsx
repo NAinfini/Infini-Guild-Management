@@ -1,6 +1,7 @@
 import { PhotoIcon } from "@portal/components/icons";
 import { Button, Group, Modal, Stack, Tabs, Text, TextInput } from "@mantine/core";
-import { Dropzone, IMAGE_MIME_TYPE } from "@mantine/dropzone";
+import { Dropzone } from "@mantine/dropzone";
+import { SELECTABLE_IMAGE_TYPES } from "@guild/shared";
 import { useIntersection } from "@mantine/hooks";
 import { useEffect } from "react";
 import { useTranslation } from "react-i18next";
@@ -51,7 +52,7 @@ export function GalleryPage() {
               <Dropzone
                 onDrop={(files) => c.selectFiles(files)}
                 onReject={(rejections) => c.selectFiles(rejections.map(({ file }) => file))}
-                accept={IMAGE_MIME_TYPE}
+                accept={[...SELECTABLE_IMAGE_TYPES]}
                 maxSize={MAX_GALLERY_IMAGE_SIZE_BYTES}
                 className="gallery-dropzone gallery-dropzone--modal"
               >

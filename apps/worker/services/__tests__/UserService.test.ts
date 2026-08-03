@@ -260,7 +260,7 @@ describe("UserService", () => {
     const deps = createDeps();
     deps.storeProfileImage.mockRejectedValue(new Error("File bytes do not match declared type: image/png"));
     const service = new UserService({ select } as never, deps);
-    const file = new File([new Uint8Array([1, 2, 3])], "bad.png", { type: "image/png" });
+    const file = new File([new Uint8Array([1, 2, 3])], "bad.webp", { type: "image/webp" });
 
     const result = await service.uploadProfileImages(
       { id: "u-1", role: "member", permissions: new Set() },
@@ -289,8 +289,8 @@ describe("UserService", () => {
       { id: "u-1", role: "member", permissions: new Set() },
       "u-1",
       [
-        new File([new Uint8Array([1])], "one.png", { type: "image/png" }),
-        new File([new Uint8Array([2])], "two.png", { type: "image/png" }),
+        new File([new Uint8Array([1])], "one.webp", { type: "image/webp" }),
+        new File([new Uint8Array([2])], "two.webp", { type: "image/webp" }),
       ],
     );
 
@@ -314,7 +314,7 @@ describe("UserService", () => {
     await expect(service.uploadProfileImages(
       { id: "u-1", role: "member", permissions: new Set() },
       "u-1",
-      [new File([new Uint8Array([1])], "new.png", { type: "image/png" })],
+      [new File([new Uint8Array([1])], "new.webp", { type: "image/webp" })],
     )).rejects.toBe(failure);
 
     expect(deps.deleteMediaObject).toHaveBeenCalledWith("members/u-1/images/new.png");
@@ -327,7 +327,7 @@ describe("UserService", () => {
       method: "uploadAvatar" as const,
       store: "storeProfileImage" as const,
       key: "members/u-1/images/avatar.png",
-      file: new File([new Uint8Array([1])], "avatar.png", { type: "image/png" }),
+      file: new File([new Uint8Array([1])], "avatar.webp", { type: "image/webp" }),
     },
     {
       label: "audio",
@@ -387,7 +387,7 @@ describe("UserService", () => {
       },
     });
     const service = new UserService({ select } as never, deps);
-    const file = new File([new Uint8Array(5)], "large.png", { type: "image/png" });
+    const file = new File([new Uint8Array(5)], "large.webp", { type: "image/webp" });
 
     const result = await service.uploadProfileImages(
       { id: "u-1", role: "member", permissions: new Set() },

@@ -1,6 +1,7 @@
 import type { CreateStorageItemPayload, Storage, StorageCategory, StorageItem, UpdateStorageItemPayload } from "@guild/shared";
 import { ActionIcon, Button, Drawer, Group, Image, Select, SimpleGrid, Stack, Switch, Text, TextInput, Textarea } from "@mantine/core";
-import { Dropzone, IMAGE_MIME_TYPE } from "@mantine/dropzone";
+import { Dropzone } from "@mantine/dropzone";
+import { SELECTABLE_IMAGE_TYPES } from "@guild/shared";
 import { useMediaQuery } from "@mantine/hooks";
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
@@ -186,7 +187,7 @@ export function StorageItemEditorModal({
               ) : (
                 <div className="storage-item-editor__empty-media"><PhotoOffIcon size={32} /></div>
               )}
-              <Dropzone accept={IMAGE_MIME_TYPE} onDrop={(files) => onUploadImages(item.id, files)} loading={isUploading}>
+              <Dropzone accept={[...SELECTABLE_IMAGE_TYPES]} onDrop={(files) => onUploadImages(item.id, files)} loading={isUploading}>
                 <Group justify="center" gap="sm" className="storage-item-editor__dropzone">
                   <UploadIcon size={16} />
                   <Text size="sm">{t("manageItems.uploadHint")}</Text>
