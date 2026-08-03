@@ -148,64 +148,43 @@
   padding-bottom: 12px;
 }
 
-.wiki-category-diagram-panel {
-  border: 1px solid color-mix(in srgb, var(--text-primary) 14%, transparent);
-  border-radius: var(--radius-surface);
-  padding: 10px 12px;
-  background: color-mix(in srgb, var(--surface-base) 92%, transparent);
-}
-
-.wiki-category-diagram-list {
-  margin: 0;
-  padding: 0 0 0 16px;
-  list-style: none;
-}
-
-.wiki-category-diagram-list--root {
-  padding-left: 0;
-}
-
-.wiki-category-diagram-item {
-  position: relative;
-  margin: 4px 0;
-  padding-left: 16px;
-}
-
-.wiki-category-diagram-item::before {
-  content: "";
-  position: absolute;
-  top: 0.8em;
-  left: 0;
-  width: 10px;
-  border-top: 1px solid color-mix(in srgb, var(--text-primary) 18%, transparent);
-}
-
-.wiki-category-diagram-item::after {
-  content: "";
-  position: absolute;
-  top: -6px;
-  bottom: -6px;
-  left: 0;
-  border-left: 1px solid color-mix(in srgb, var(--text-primary) 18%, transparent);
-}
-
-.wiki-category-diagram-item:last-child::after {
-  bottom: 0.8em;
-}
-
-.wiki-category-diagram-list--root > .wiki-category-diagram-item {
-  padding-left: 0;
-}
-
-.wiki-category-diagram-list--root > .wiki-category-diagram-item::before,
-.wiki-category-diagram-list--root > .wiki-category-diagram-item::after {
-  display: none;
-}
-
-.wiki-category-diagram-node {
-  min-height: 1.5rem;
+/*
+ * 分类编辑器的那棵树。列表本身就是树图，缩进即层级——原先「平列表 + 底下一张
+ * 只读树图」的两份真相已经删掉。
+ *
+ * --wiki-category-indent 同时是视觉缩进和横向拖拽的换算单位：拖过一格算深一层。
+ * 改这个值必须同步改 utils/wiki-category-tree.ts 里的 CATEGORY_INDENT_WIDTH，
+ * 否则手感和眼睛看到的对不上。单测钉住了这个等式。
+ */
+.wiki-category-editor-tree {
+  --wiki-category-indent: 28px;
   display: flex;
-  align-items: center;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.wiki-category-editor-row {
+  --wiki-category-depth: 0;
+  position: relative;
+  padding-inline-start: calc(var(--wiki-category-depth) * var(--wiki-category-indent));
+}
+
+/*
+ * 子级左边的那条竖线。用 opacity 直接吃深度值：顶层是 0 就是透明，子级是 1 就画出来。
+ * 这样不必为「有没有父级」再挂一个 class，深度只有一个来源。
+ */
+.wiki-category-editor-row::before {
+  content: "";
+  position: absolute;
+  inset-block: 6px;
+  inset-inline-start: calc(var(--wiki-category-indent) / 2);
+  width: 1px;
+  background: color-mix(in srgb, var(--text-primary) 22%, transparent);
+  opacity: var(--wiki-category-depth);
+}
+
+.wiki-category-editor-row--dragging {
+  opacity: 0.7;
 }
 
 /* ── WikiHistoryModal ── (moved out of style={{}}, task-8 批 B). */

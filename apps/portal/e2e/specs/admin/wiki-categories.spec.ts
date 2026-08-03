@@ -6,6 +6,10 @@ import { confirmDialog, expectNoDialog, field } from "../../support/ui";
 /*
  * Wiki 分类编辑器：新建、改名、挂父级、拖拽排序、删除、关闭（含丢弃确认）。
  *
+ * 列表本身就是那棵树：缩进即层级，没有单独的树图面板，也没有「父分类」下拉。
+ * 层级有两条路——横着拖，或者按行尾的箭头。用例走箭头那条：它是键盘也走得通的路，
+ * 而且不像横向拖拽那样把结果压在几十像素的手感上。
+ *
  * 这块编辑器是「草稿 + 一次性保存」：改名、改父级、拖顺序都只改前端草稿，
  * 按保存时把所有改动过的行一次性 PATCH 到 /api/wiki/categories/batch。所以每条用例
  * 都分两段验：改的时候服务端不许动，保存之后服务端必须和界面一致。
@@ -107,8 +111,14 @@ function draftNames(page: Page): Locator {
   return field(page, "Category name").and(page.locator("input:not([aria-label])"));
 }
 
-function draftParents(page: Page): Locator {
-  return field(page, "Parent category");
+/** 行尾的「设为上一个分类的子分类」按钮。 */
+function indentButtons(page: Page): Locator {
+  return page.getByRole("button", { name: "Make it a child of the category above", exact: true });
+}
+
+/** 行尾的「提为顶层分类」按钮。 */
+function outdentButtons(page: Page): Locator {
+  return page.getByRole("button", { name: "Move to top level", exact: true });
 }
 
 function saveButton(page: Page): Locator {
@@ -190,11 +200,12 @@ test("新建分类：名字空着按钮禁用，填上之后建出来并进列�
   expect(created.name, "送出去的名字要原样落库").toBe(name);
   expect((await readCategories(api)).some((category) => category.id === created.id)).toBe(true);
   await expect(nameField(page), "建完输入框要清空，否则一不留神会连建两条").toHaveValue("");
-  await expect(draftNames(page).nth(await draftRowIndex(page, name))).toHaveValue(name);
+  const createdRow = await draftRowIndex(page, name);
+  await expect(draftNames(page).nth(createdRow)).toHaveValue(name);
   await expect(
-    page.locator(".wiki-category-diagram-panel"),
-    "树图要跟着长出新节点",
-  ).toContainText(name);
+    outdentButtons(page).nth(createdRow),
+    "新建的分类落在顶层，没有更外面一层可提",
+  ).toBeDisabled();
 });
 
 /** 记录一段操作期间发出的所有分类写请求，用来证明「一次保存 = 一个请求」。 */
@@ -223,10 +234,12 @@ test("改名与挂父级：改的时候不动服务端，保存后一个请求�
   const rowB = await draftRowIndex(page, categoryB.name);
   await draftNames(page).nth(rowB).fill(renamed);
 
-  const parentB = draftParents(page).nth(rowB);
-  await parentB.click();
-  await page.getByRole("option", { name: categoryA.name, exact: true }).click();
-  await expect(parentB).toHaveValue(categoryA.name);
+  /* B 紧挨在 A 后面，按一下行尾的箭头就挂到 A 底下。 */
+  await indentButtons(page).nth(rowB).click();
+  await expect(
+    outdentButtons(page).nth(rowB),
+    "挂进去之后这一行才有得往回提",
+  ).toBeEnabled();
 
   const stillOld = await readCategory(api, categoryB.id);
   expect(stillOld.name, "还没保存，服务端不该有变化").toBe(categoryB.name);
@@ -248,8 +261,8 @@ test("改名与挂父级：改的时候不动服务端，保存后一个请求�
   expect(saved.parent_id, "父级没落库").toBe(categoryA.id);
 
   await expect(
-    draftParents(page).nth(await draftRowIndex(page, categoryA.name)),
-    "A 底下已经挂了子分类，它自己的父级下拉要锁住，避免拖出环",
+    indentButtons(page).nth(await draftRowIndex(page, categoryA.name)),
+    "A 底下已经挂了子分类，它自己就不能再往里挂，否则落库就是三层",
   ).toBeDisabled();
 });
 
@@ -358,10 +371,9 @@ test("删除分类：确认框拦一道，确认后服务端也没了", async ({
     (await readCategories(api)).some((category) => category.id === categoryA.id),
     "确认之后服务端必须真的删掉",
   ).toBe(false);
-  await expect(
-    page.locator(".wiki-category-diagram-panel"),
-    "树图里也不该再留着它",
-  ).not.toContainText(categoryA.name);
+  const remaining = await draftNames(page)
+    .evaluateAll((nodes) => nodes.map((node) => (node as HTMLInputElement).value));
+  expect(remaining, "列表里也不该再留着它").not.toContain(categoryA.name);
 });
 
 test("关闭：有未保存草稿时先问，取消留下，确认丢弃", async ({ page, api }) => {

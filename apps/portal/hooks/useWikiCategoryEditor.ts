@@ -1,9 +1,9 @@
 import type { BatchUpdateWikiCategoryItem, WikiCategory } from "@guild/shared";
-import { arrayMove } from "@dnd-kit/sortable";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import type { WikiCategoryDraft } from "../types/wiki";
+import { applyCategoryMove, orderCategoryDrafts, type CategoryMove } from "../utils/wiki-category-tree";
 import { useAppError } from "./useAppError";
 import { notifySuccess } from "../utils/notifications";
 import {
@@ -13,8 +13,14 @@ import {
 } from "../services/WikiService";
 import { queryKeys } from "../api/query-keys";
 
+/*
+ * 草稿数组的顺序就是编辑器里从上到下的那一列，也是「这一层里排第几」的依据。
+ * 库里的 sort_order 是一串全局序号，未必让父子挨在一起（子级的序号可能比父级小），
+ * 所以读进来先按树理一遍顺序。序号本身一个都不改——此时顺手重排，
+ * 编辑器一打开保存按钮就亮，用户什么都没动却被告知有改动。
+ */
 function toCategoryDrafts(categories: WikiCategory[]): WikiCategoryDraft[] {
-  return [...categories]
+  const drafts = [...categories]
     .sort((left, right) => left.sort_order - right.sort_order || left.name.localeCompare(right.name))
     .map((category) => ({
       id: category.id,
@@ -23,6 +29,7 @@ function toCategoryDrafts(categories: WikiCategory[]): WikiCategoryDraft[] {
       parent_id: category.parent_id ?? "",
       sort_order: category.sort_order,
     }));
+  return orderCategoryDrafts(drafts);
 }
 
 type UseWikiCategoryEditorParams = {
@@ -160,25 +167,13 @@ export function useWikiCategoryEditor({ categories }: UseWikiCategoryEditorParam
     );
   };
 
-  const setCategoryDraftParentId = (categoryId: string, value: string) => {
-    setCategoryDrafts((current) =>
-      current.map((category) => (category.id === categoryId ? { ...category, parent_id: value } : category)),
-    );
-  };
-
-  const reorderCategories = (activeId: string, overId: string) => {
-    setCategoryDrafts((current) => {
-      const oldIndex = current.findIndex((category) => category.id === activeId);
-      const newIndex = current.findIndex((category) => category.id === overId);
-      if (oldIndex === -1 || newIndex === -1 || oldIndex === newIndex) {
-        return current;
-      }
-
-      return arrayMove(current, oldIndex, newIndex).map((category, index) => ({
-        ...category,
-        sort_order: index,
-      }));
-    });
+  /*
+   * 挪位置和改层级是同一件事，所以只有这一个入口：拖也好、按 ← → 也好，
+   * 落点都表达成「挂到谁底下、排第几」。拆成两个动作时，先改父级再排序会在中间
+   * 留下一帧父子不一致的草稿，而这份草稿正是保存时要发出去的东西。
+   */
+  const moveCategory = (categoryId: string, move: CategoryMove) => {
+    setCategoryDrafts((current) => applyCategoryMove(current, categoryId, move));
   };
 
   const saveCategoryDrafts = () => {
@@ -207,8 +202,7 @@ export function useWikiCategoryEditor({ categories }: UseWikiCategoryEditorParam
     canSaveDrafts: hasDraftChanges && !saveCategoryDraftsMutation.isPending,
     createCategory,
     setCategoryDraftName,
-    setCategoryDraftParentId,
-    reorderCategories,
+    moveCategory,
     saveCategoryDrafts,
     resetCategoryDrafts,
     deleteCategory,

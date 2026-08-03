@@ -78,15 +78,15 @@ describe("useWikiCategoryEditor", () => {
     const { result } = createHarness();
 
     act(() => result.current.setCategoryDraftName("guides", "Guides & Tips"));
-    act(() => result.current.reorderCategories("combat", "root"));
+    act(() => result.current.moveCategory("combat", { parentId: "", index: 0 }));
     act(() => result.current.saveCategoryDrafts());
 
     await waitFor(() => expect(apiMocks.batchUpdate).toHaveBeenCalledTimes(1));
 
-    // 拖动后顺序是 combat / root / guides，三行的 sort_order 全变了；
-    // guides 还多改了一个名字。
+    // combat 从 guides 底下提到最前面：它自己换了爹也换了序号，另外两行被顶下去，
+    // 序号跟着变；guides 还多改了一个名字。
     expect(apiMocks.batchUpdate).toHaveBeenCalledWith([
-      { id: "combat", sort_order: 0 },
+      { id: "combat", parent_id: null, sort_order: 0 },
       { id: "root", sort_order: 1 },
       { id: "guides", name: "Guides & Tips", sort_order: 2 },
     ]);
@@ -120,11 +120,13 @@ describe("useWikiCategoryEditor", () => {
 
   /* 整批被拒时缓存不能被改动过的草稿污染：界面必须能回到库里的真实顺序。 */
   it("surfaces the error and leaves the cache untouched when the batch is rejected", async () => {
-    apiMocks.batchUpdate.mockRejectedValue(new Error("Category nesting supports only one level"));
+    /* 界面这边已经挡掉了三层嵌套，剩下的拒绝理由都是前端预判不了的——
+       比如同一时间别人把这一行删了。这条只管：批次被拒之后缓存必须还是库里那份。 */
+    apiMocks.batchUpdate.mockRejectedValue(new Error("Category not found"));
     const { result, queryClient } = createHarness();
     queryClient.setQueryData(queryKeys.wiki.categories(), CATEGORIES);
 
-    act(() => result.current.setCategoryDraftParentId("guides", "root"));
+    act(() => result.current.moveCategory("root", { parentId: "guides", index: 0 }));
     await act(async () => { result.current.saveCategoryDrafts(); });
 
     await waitFor(() => expect(showError).toHaveBeenCalled());

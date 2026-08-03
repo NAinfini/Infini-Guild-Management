@@ -115,8 +115,7 @@ export function WikiPage() {
           onSaveDrafts={controller.categoryEditor.saveCategoryDrafts}
           onCloseEditor={controller.handleCloseCategoryEditorWithoutSave}
           onCategoryDraftNameChange={controller.categoryEditor.setCategoryDraftName}
-          onCategoryDraftParentIdChange={controller.categoryEditor.setCategoryDraftParentId}
-          onCategoryReorder={controller.categoryEditor.reorderCategories}
+          onCategoryMove={controller.categoryEditor.moveCategory}
           onDeleteCategory={controller.handleDeleteCategory}
         />
       ) : (
