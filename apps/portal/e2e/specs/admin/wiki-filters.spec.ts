@@ -121,10 +121,15 @@ function pinnedToggle(page: Page, pressed: boolean): Locator {
   return page.getByRole("button", { name: pressed ? "Show All" : "Show Pinned", exact: true });
 }
 
-/** 记下下一次文章列表请求，用来断言查询串——只看列表变化验不出参数对不对。 */
-function nextArticlesRequest(page: Page): Promise<Request> {
-  return page.waitForRequest((candidate) =>
-    candidate.method() === "GET" && candidate.url().includes("/api/wiki/articles?"));
+/** 记下下一次符合本次筛选维度的文章请求，避免把前一个条件的迟到请求记到当前操作。 */
+function nextArticlesRequest(
+  page: Page,
+  matchesQuery: (url: URL) => boolean = () => true,
+): Promise<Request> {
+  return page.waitForRequest((candidate) => {
+    if (candidate.method() !== "GET" || !candidate.url().includes("/api/wiki/articles?")) return false;
+    return matchesQuery(new URL(candidate.url()));
+  });
 }
 
 /** 把列表筛到本用例造的三篇。 */
@@ -133,7 +138,7 @@ async function searchThisRun(page: Page, flow: Flow): Promise<void> {
 }
 
 test("搜索框：条件送到服务端，只留下命中的文章", async ({ page, flow }) => {
-  const request = nextArticlesRequest(page);
+  const request = nextArticlesRequest(page, (url) => url.searchParams.has("search"));
   await searchThisRun(page, flow);
 
   const url = new URL((await request).url());
@@ -150,7 +155,7 @@ test("分类多选：只留下该分类的文章，再选一个是并集", async
   await searchThisRun(page, flow);
 
   const categoryField = field(page, "Filter categories");
-  const request = nextArticlesRequest(page);
+  const request = nextArticlesRequest(page, (url) => url.searchParams.getAll("category_id").length === 1);
   await flow.act(async () => {
     await categoryField.click();
     await page.getByRole("option", { name: categoryA.name, exact: true }).click();
@@ -162,7 +167,7 @@ test("分类多选：只留下该分类的文章，再选一个是并集", async
   await expect(item(page, alpha.title)).toBeVisible();
   await expect(items(page), "B 分类的 Beta 必须被滤掉").toHaveCount(1);
 
-  const bothRequest = nextArticlesRequest(page);
+  const bothRequest = nextArticlesRequest(page, (url) => url.searchParams.getAll("category_id").length === 2);
   await flow.act(async () => {
     await categoryField.click();
     await page.getByRole("option", { name: categoryB.name, exact: true }).click();
