@@ -262,15 +262,15 @@ describe("guild-war permission mapping", () => {
     ["GET /active", "/active", { method: "GET" }],
     ["GET /history", "/history", { method: "GET" }],
     [
-      "POST /history/batch",
-      "/history/batch",
-      { method: "POST", body: JSON.stringify({ ids: ["war-1"] }), headers: { "Content-Type": "application/json" } },
+      "GET /history/batch",
+      "/history/batch?ids=war-1,war-2",
+      { method: "GET" },
     ],
     ["GET /history/:id", "/history/war-1", { method: "GET" }],
     ["GET /analytics", "/analytics?war_ids=war-1&user_ids=user-1", { method: "GET" }],
   ] as const;
 
-  it.each(anonymousGuildWarReadRoutes)("allows anonymous guild-war read access for %s", async (_label, path, init) => {
+  it.each(anonymousGuildWarReadRoutes)("allows anonymous guild-war read access for %s", async (label, path, init) => {
     const { guildWarRoutes } = await import("./guild-war");
     mocks.getRequestUser.mockResolvedValueOnce(null);
 
@@ -279,6 +279,9 @@ describe("guild-war permission mapping", () => {
     expect(result.status).toBe(200);
     if (path === "/active") {
       expect(guildWarServiceMethods.getActive).toHaveBeenCalledWith(undefined, false);
+    }
+    if (label === "GET /history/batch") {
+      expect(guildWarServiceMethods.batchHistory).toHaveBeenCalledWith(["war-1", "war-2"]);
     }
   });
 

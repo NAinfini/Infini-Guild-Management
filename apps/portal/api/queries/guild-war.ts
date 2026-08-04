@@ -91,10 +91,11 @@ export function fetchGuildWarHistoryDetail(id: string): Promise<GuildWarHistoryD
 }
 
 export function fetchGuildWarHistoryBatch(ids: string[]): Promise<{ data: GuildWarHistoryDetailResponse[] }> {
-  return apiRequest<{ data: GuildWarHistoryDetailResponse[] }>("/api/guild-war/history/batch", {
-    method: "POST",
-    bodyJson: { ids },
-  });
+  const query = new URLSearchParams();
+  if (ids.length > 0) query.set("ids", ids.join(","));
+  return apiRequest<{ data: GuildWarHistoryDetailResponse[] }>(
+    `/api/guild-war/history/batch${query.size > 0 ? `?${query.toString()}` : ""}`,
+  );
 }
 
 export function fetchGuildWarAnalytics(params: {

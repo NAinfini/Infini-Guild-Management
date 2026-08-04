@@ -108,11 +108,12 @@ guildWarRoutes.get("/history", async (c) => {
   return handleResult(c, result);
 });
 
-guildWarRoutes.post("/history/batch", async (c) => {
+guildWarRoutes.get("/history/batch", async (c) => {
   // Read-only batch detail lookup used by the public history UI; this is not a mutation.
-  const body = await parseJsonBody(c);
-  if (!body || typeof body !== "object" || !Array.isArray((body as { ids?: unknown }).ids)) return buildError(c, "VALIDATION_ERROR", "Body must contain an ids array");
-  const ids = ((body as { ids: string[] }).ids).filter((id) => typeof id === "string" && id.length > 0);
+  const ids = (c.req.queries("ids") ?? [])
+    .flatMap((item) => item.split(","))
+    .map((id) => id.trim())
+    .filter(Boolean);
   if (ids.length === 0) return c.json({ data: [] });
   if (ids.length > 50) return buildError(c, "VALIDATION_ERROR", "Maximum 50 ids per batch request");
   const result = await getService(c).batchHistory(ids);

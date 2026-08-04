@@ -125,7 +125,7 @@ export function buildApiCategories(t: (key: string) => string): CategoryDef[] {
         { label: t("status.api.ep.exportGuildWar"), method: "GET", path: "/api/guild-war/export?format=json" },
         { label: t("status.api.ep.warHistory"), method: "GET", path: "/api/guild-war/history?page=1&limit=5" },
         { label: t("status.api.ep.historyDetail"), method: "GET", path: "/api/guild-war/history/:id" },
-        { label: t("status.api.ep.batchHistoryDetails"), method: "POST", path: "/api/guild-war/history/batch" },
+        { label: t("status.api.ep.batchHistoryDetails"), method: "GET", path: "/api/guild-war/history/batch" },
         { label: t("status.api.ep.createHistory"), method: "POST", path: "/api/guild-war/history" },
         { label: t("status.api.ep.analytics"), method: "GET", path: "/api/guild-war/analytics" },
         { label: t("status.api.ep.concludeWar"), method: "POST", path: "/api/guild-war/conclude" },
@@ -389,7 +389,7 @@ function permissionRequirementForEndpoint(endpoint: EndpointDef): EndpointPermis
   if (endpoint.path.startsWith("/api/guild-war/save-teams") || endpoint.path.startsWith("/api/guild-war/move") || endpoint.path.startsWith("/api/guild-war/role-tag") || endpoint.path.startsWith("/api/guild-war/conclude")) return requiresAll("events.create", "events.archive", "events.delete", "guildwar.teams.edit", "guildwar.history.edit");
   if (endpoint.path.startsWith("/api/guild-war/export")) return requiresAll("guildwar.history.edit");
   if (endpoint.path.startsWith("/api/guild-war/history")) {
-    return endpoint.method === "GET" || endpoint.method === "POST" && endpoint.path.includes("/batch")
+    return endpoint.method === "GET"
       ? publicEndpoint()
       : requiresAll("guildwar.history.edit");
   }

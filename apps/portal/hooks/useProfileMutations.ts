@@ -60,11 +60,13 @@ export function useProfileMutations({ form, imageUploader, audioUploader }: UseP
       });
       return { profile, submitted };
     },
-    onSuccess: async ({ profile: updatedProfile, submitted }) => {
+    onSuccess: ({ profile: updatedProfile, submitted }) => {
       form.acceptServerProfile(updatedProfile, submitted);
       setProfile(updatedProfile);
-      await queryClient.invalidateQueries({ queryKey: queryKeys.myProfile.detail(user?.id) });
-      await queryClient.invalidateQueries({ queryKey: queryKeys.users.all });
+      /* PATCH 已经返回了权威资料；后续 refetch 只负责同步缓存，不能继续占用
+         saving 状态。CI 上一次慢 GET 因此让保存条多留了 10 秒。 */
+      void queryClient.invalidateQueries({ queryKey: queryKeys.myProfile.detail(user?.id) });
+      void queryClient.invalidateQueries({ queryKey: queryKeys.users.all });
       notifySuccess(t("message.profileSaved"));
     },
     onError: (error) => {

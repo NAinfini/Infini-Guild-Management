@@ -466,6 +466,13 @@ export function prepareEndpointRequest(endpoint: EndpointDef, context: TestRunCo
         true,
       );
     }
+    if (endpoint.path === "/api/guild-war/history/batch") {
+      const historyId = context.createdWarHistoryId ?? context.warHistoryId;
+      if (!historyId) {
+        return skipEndpoint(path, "Missing war history id");
+      }
+      return { path: `${path}?ids=${encodeURIComponent(historyId)}` };
+    }
     return { path };
   }
 
@@ -941,14 +948,6 @@ export function prepareEndpointRequest(endpoint: EndpointDef, context: TestRunCo
       }
       return buildJsonRequest(path, {
         ids: [context.galleryDeleteId],
-      });
-
-    case "POST /api/guild-war/history/batch":
-      if (!context.createdWarHistoryId && !context.warHistoryId) {
-        return skipEndpoint(path, "Missing war history id");
-      }
-      return buildJsonRequest(path, {
-        ids: [context.createdWarHistoryId ?? context.warHistoryId],
       });
 
     case "POST /api/guild-war/history/batch-delete":

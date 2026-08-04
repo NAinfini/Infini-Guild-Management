@@ -252,9 +252,9 @@ describe("AdminApiTestEngine request preparation", () => {
       ctx,
     ).path).toBe("/api/guild-war/history/created-war/member-stats/user-1");
     expect(prepareEndpointRequest(
-      { label: "Batch History", method: "POST", path: "/api/guild-war/history/batch" },
+      { label: "Batch History", method: "GET", path: "/api/guild-war/history/batch" },
       ctx,
-    ).body).toBe(JSON.stringify({ ids: ["created-war"] }));
+    ).path).toBe("/api/guild-war/history/batch?ids=created-war");
   });
 
   it("creates guild-war history only for the guild-war event made by this run", () => {
@@ -785,7 +785,7 @@ describe("AdminApiTestEngine request preparation", () => {
       "POST /api/guild-war/conclude",
       "GET /api/guild-war/export?format=json",
       "GET /api/guild-war/history?page=1&limit=5",
-      "POST /api/guild-war/history/batch",
+      "GET /api/guild-war/history/batch",
       "GET /api/guild-war/history/:id",
       "POST /api/guild-war/history",
       "PATCH /api/guild-war/history/:id",
@@ -972,6 +972,8 @@ describe("AdminApiTestEngine request preparation", () => {
     expect(endpointKeys).not.toContain("POST /api/admin/users");
     expect(endpointKeys).not.toContain("POST /api/auth/register/:inviteCode");
     expect(endpointKeys).not.toContain("POST /api/guild-war/save-teams");
+    expect(endpointKeys).toContain("GET /api/guild-war/history/batch");
+    expect(endpointKeys).not.toContain("POST /api/guild-war/history/batch-delete");
   });
 
   it("exposes production mutation smoke tests when full fixture lifecycle permissions are available", () => {
