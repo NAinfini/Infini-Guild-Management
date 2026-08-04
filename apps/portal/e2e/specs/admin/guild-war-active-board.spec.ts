@@ -386,5 +386,9 @@ test("成员详情：点开卡片能看到他在这场战里的归属和统计",
     modal.locator(".guild-war-member-detail__assignment"),
     "还没分队的人，归属就该显示池子",
   ).toContainText("Pool");
-  await expect(modal.locator(".guild-war-member-detail__stat-grid")).toContainText("0/0/0");
+  const stats = modal.locator(".guild-war-member-detail__stat");
+  await expect(stats.filter({ hasText: /^Kills\s*0$/ })).toHaveCount(1);
+  await expect(stats.filter({ hasText: /^Deaths\s*0$/ })).toHaveCount(1);
+  await expect(stats.filter({ hasText: /^Assists\s*0$/ })).toHaveCount(1);
+  await expect(stats.filter({ hasText: /^KDA\s*0\.00$/ })).toHaveCount(1);
 });

@@ -204,7 +204,7 @@ test("置顶开关：按下只剩置顶文章，按钮状态跟着翻转", async
   const toggle = pinnedToggle(page, false);
   await expect(toggle).toHaveAttribute("aria-pressed", "false");
 
-  const request = nextArticlesRequest(page);
+  const request = nextArticlesRequest(page, (url) => url.searchParams.get("pinned") === "true");
   await flow.act(() => toggle.click(), ARTICLES);
   expect(new URL((await request).url()).searchParams.get("pinned")).toBe("true");
 
