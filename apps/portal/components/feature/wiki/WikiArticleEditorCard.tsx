@@ -109,13 +109,11 @@ export function WikiArticleEditorCard({
   if (!selectedArticle && !(canEdit && isCreatingArticle)) {
     return (
       <Paper withBorder className="wiki-article-editor-card">
-        <div style={{ padding: "var(--card-padding)" }}>
-          <Stack gap={10}>
-            <Text component="h2" fw={600} className="wiki-article-editor-title">
-              {t("articleEditor.title")}
-            </Text>
-            <EmptyState title={emptyTitle} />
-          </Stack>
+        <div className="wiki-card-body" style={{ padding: "var(--card-padding)" }}>
+          <Text component="h2" fw={600} className="wiki-article-editor-title">
+            {t("articleEditor.title")}
+          </Text>
+          <EmptyState title={emptyTitle} />
         </div>
       </Paper>
     );
@@ -123,8 +121,8 @@ export function WikiArticleEditorCard({
 
   return (
     <Paper withBorder className="wiki-article-editor-card">
-      <div style={{ padding: "var(--card-padding)" }}>
-        <Stack gap={12}>
+      {/* 标题行钉住：保存、退出、删除这几个按钮不能跟着正文滚出视口。 */}
+      <div className="wiki-card-body" style={{ padding: "var(--card-padding)" }}>
           <Group justify="space-between" align="start">
             <Text component="h2" fw={600} className="wiki-article-editor-title">
               {t("articleEditor.title")}
@@ -214,6 +212,7 @@ export function WikiArticleEditorCard({
             ) : null}
           </Group>
 
+          <Stack gap={12} className="wiki-card-scroll">
           {isLoading ? (
             <Stack gap={8}>
               {Array.from({ length: 7 }).map((_, index) => (

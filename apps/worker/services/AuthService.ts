@@ -17,13 +17,14 @@ import { parseStringArray, parseRecord, usernameEquals } from "./helpers";
 import { clearLoginFailures, readLockout, recordLoginFailure } from "./login-lockout";
 import { logger } from "../utils/logger";
 import { passwordHashNeedsUpgrade } from "./auth";
+import { loadMemberClasses, loadMemberImages } from "./ordered-relations";
 
 // --- Types ---
 
 type DrizzleDb = DrizzleD1Database<Record<string, never>>;
 
 type UserRow = { id: string; username: string; role: string; isActive: boolean; deletedAt: string | null; createdAt: string; updatedAt: string };
-type ProfileRow = { id: string; userId: string; power: number; classes: string; titleHtml: string | null; bio: string | null; avatarKey: string | null; images: string; audioKey: string | null; videoUrls: string; availability: string | null; vacationStart: string | null; vacationEnd: string | null; notes: string | null; createdAt: string; updatedAt: string };
+type ProfileRow = { id: string; userId: string; power: number; classes: string[]; titleHtml: string | null; bio: string | null; avatarKey: string | null; images: string[]; audioKey: string | null; videoUrls: string; availability: string | null; vacationStart: string | null; vacationEnd: string | null; notes: string | null; createdAt: string; updatedAt: string };
 
 export type AuthServiceDeps = {
   rawDb: D1Database;
@@ -59,8 +60,8 @@ function toUserPayload(user: UserRow, extra?: { permissions: Record<Permission, 
 function toProfilePayload(profile: ProfileRow) {
   const result = memberProfileSchema.safeParse({
     id: profile.id, user_id: profile.userId, power: profile.power,
-    classes: parseStringArray(profile.classes), title_html: profile.titleHtml, bio: profile.bio,
-    avatar_key: profile.avatarKey ?? null, images: parseStringArray(profile.images), audio_key: profile.audioKey, video_urls: parseStringArray(profile.videoUrls),
+    classes: profile.classes, title_html: profile.titleHtml, bio: profile.bio,
+    avatar_key: profile.avatarKey ?? null, images: profile.images, audio_key: profile.audioKey, video_urls: parseStringArray(profile.videoUrls),
     availability: parseRecord(profile.availability), vacation_start: profile.vacationStart, vacation_end: profile.vacationEnd,
     notes: profile.notes,
     created_at: profile.createdAt, updated_at: profile.updatedAt,
@@ -72,9 +73,8 @@ function toProfilePayload(profile: ProfileRow) {
 }
 
 const USER_COLS = { id: users.id, username: users.username, role: users.role, isActive: users.isActive, deletedAt: users.deletedAt, createdAt: users.createdAt, updatedAt: users.updatedAt } as const;
-// vacation_start/vacation_end are derived from the absence history (current-or-next
-// absence); the legacy member_profiles columns are no longer read.
-const PROFILE_COLS = { id: memberProfiles.id, userId: memberProfiles.userId, power: memberProfiles.power, classes: memberProfiles.classes, titleHtml: memberProfiles.titleHtml, bio: memberProfiles.bio, avatarKey: memberProfiles.avatarKey, images: memberProfiles.images, audioKey: memberProfiles.audioKey, videoUrls: memberProfiles.videoUrls, availability: memberProfiles.availability, vacationStart: sql<string | null>`(SELECT ma.start_date FROM member_absences ma WHERE ma.user_id = ${memberProfiles.userId} AND ma.end_date >= date('now') ORDER BY ma.start_date ASC LIMIT 1)`.as("derived_vacation_start"), vacationEnd: sql<string | null>`(SELECT ma.end_date FROM member_absences ma WHERE ma.user_id = ${memberProfiles.userId} AND ma.end_date >= date('now') ORDER BY ma.start_date ASC LIMIT 1)`.as("derived_vacation_end"), notes: memberProfiles.notes, createdAt: memberProfiles.createdAt, updatedAt: memberProfiles.updatedAt } as const;
+// vacation_start/vacation_end are derived from the absence history (current-or-next absence).
+const PROFILE_COLS = { id: memberProfiles.id, userId: memberProfiles.userId, power: memberProfiles.power, titleHtml: memberProfiles.titleHtml, bio: memberProfiles.bio, avatarKey: memberProfiles.avatarKey, audioKey: memberProfiles.audioKey, videoUrls: memberProfiles.videoUrls, availability: memberProfiles.availability, vacationStart: sql<string | null>`(SELECT ma.start_date FROM member_absences ma WHERE ma.user_id = ${memberProfiles.userId} AND ma.end_date >= date('now') ORDER BY ma.start_date ASC LIMIT 1)`.as("derived_vacation_start"), vacationEnd: sql<string | null>`(SELECT ma.end_date FROM member_absences ma WHERE ma.user_id = ${memberProfiles.userId} AND ma.end_date >= date('now') ORDER BY ma.start_date ASC LIMIT 1)`.as("derived_vacation_end"), notes: memberProfiles.notes, createdAt: memberProfiles.createdAt, updatedAt: memberProfiles.updatedAt } as const;
 
 // --- Service ---
 
@@ -100,13 +100,19 @@ export class AuthService {
   }
 
   private async getProfileByUserId(userId: string): Promise<ProfileRow | null> {
-    return (await this.db.select(PROFILE_COLS).from(memberProfiles).where(eq(memberProfiles.userId, userId)).limit(1))[0] ?? null;
+    const row = (await this.db.select(PROFILE_COLS).from(memberProfiles).where(eq(memberProfiles.userId, userId)).limit(1))[0];
+    if (!row) return null;
+    const [classes, images] = await Promise.all([
+      loadMemberClasses(this.deps.rawDb, [userId]),
+      loadMemberImages(this.deps.rawDb, [userId]),
+    ]);
+    return { ...row, classes: classes.get(userId) ?? [], images: images.get(userId) ?? [] };
   }
 
   private async ensureProfile(userId: string): Promise<ProfileRow> {
     const existing = await this.getProfileByUserId(userId);
     if (existing) return existing;
-    await this.db.insert(memberProfiles).values({ id: nanoid(), userId, power: 0, classes: "[]", images: "[]", videoUrls: "[]" });
+    await this.db.insert(memberProfiles).values({ id: nanoid(), userId, power: 0, videoUrls: "[]" });
     const created = await this.getProfileByUserId(userId);
     if (!created) throw new Error("Failed to create member profile");
     return created;
@@ -251,7 +257,7 @@ export class AuthService {
       await rawDb.batch([
         rawDb.prepare(`INSERT INTO users (id, username, role, is_active) VALUES (?, ?, 'member', 1)`).bind(userId, username),
         rawDb.prepare(`INSERT INTO user_auth_password (user_id, password_hash, salt) VALUES (?, ?, ?)`).bind(userId, passwordRecord.passwordHash, passwordRecord.salt),
-        rawDb.prepare(`INSERT INTO member_profiles (id, user_id, power, classes, images, video_urls) VALUES (?, ?, 0, '[]', '[]', '[]')`).bind(profileId, userId),
+        rawDb.prepare(`INSERT INTO member_profiles (id, user_id, power, video_urls) VALUES (?, ?, 0, '[]')`).bind(profileId, userId),
       ]);
     } catch (error) {
       await rawDb.prepare(`UPDATE invite_links SET used_count = used_count - 1 WHERE code = ? AND used_count > 0`).bind(inviteCode).run();

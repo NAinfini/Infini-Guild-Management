@@ -8,6 +8,7 @@ const mocks = vi.hoisted(() => ({
     list: vi.fn(),
     create: vi.fn(),
     update: vi.fn(),
+    reorder: vi.fn(),
     delete: vi.fn(),
   },
 }));
@@ -47,6 +48,7 @@ beforeEach(() => {
   mocks.service.list.mockReset().mockResolvedValue({ ok: true, data: [] });
   mocks.service.create.mockReset().mockResolvedValue({ ok: true, data: {} });
   mocks.service.update.mockReset().mockResolvedValue({ ok: true, data: {} });
+  mocks.service.reorder.mockReset().mockResolvedValue({ ok: true, data: [] });
   mocks.service.delete.mockReset().mockResolvedValue({ ok: true, data: { deleted: true } });
 });
 
@@ -66,6 +68,14 @@ function patch(id: string, body: unknown) {
   );
 }
 
+function reorderRequest(body: unknown) {
+  return createApp().request(
+    "/class-tags/reorder",
+    { method: "PATCH", body: JSON.stringify(body), headers: { "content-type": "application/json" } },
+    { DB: {} },
+  );
+}
+
 describe("class tag routes", () => {
   it("keeps tag reads public, same as the class catalog", async () => {
     // 成员要看懂卡片上的「治疗 1/2」就得知道标签叫什么，读取不能要权限。
@@ -78,9 +88,10 @@ describe("class tag routes", () => {
   it("guards every mutation with fresh admin.classes.manage permissions", async () => {
     await post({ label: "治疗" });
     await patch("tag-1", { label: "坦克" });
+    await reorderRequest({ order: ["tag-1"] });
     await createApp().request("/class-tags/tag-1", { method: "DELETE" }, { DB: {} });
 
-    expect(mocks.requirePermission).toHaveBeenCalledTimes(3);
+    expect(mocks.requirePermission).toHaveBeenCalledTimes(4);
     for (const call of mocks.requirePermission.mock.calls) {
       expect(call[1]).toBe("admin.classes.manage");
       expect(call[2]).toEqual({ freshPermissions: true });
@@ -131,6 +142,39 @@ describe("class tag routes", () => {
     });
 
     const response = await post({ label: "治疗" });
+
+    expect(response.status).toBe(409);
+    expect(await response.json()).toMatchObject({ error_code: "CONFLICT" });
+  });
+
+  /* "reorder" 必须在 `/:id` 之前注册，否则它会被当成一个叫 reorder 的标签去 update。
+     这条断言盯的就是那个注册顺序，不是 reorder 本身的逻辑。 */
+  it("routes PATCH /reorder to the batch endpoint instead of updating a tag named reorder", async () => {
+    const response = await reorderRequest({ order: ["tag-2", "tag-1"] });
+
+    expect(response.status).toBe(200);
+    expect(mocks.service.reorder).toHaveBeenCalledWith(["tag-2", "tag-1"], "admin-1");
+    expect(mocks.service.update).not.toHaveBeenCalled();
+  });
+
+  it("rejects a reorder that lists the same tag twice before it reaches the service", async () => {
+    const response = await reorderRequest({ order: ["tag-1", "tag-1"] });
+
+    expect(response.status).toBe(400);
+    expect(await response.json()).toMatchObject({ error_code: "VALIDATION_ERROR" });
+    expect(mocks.service.reorder).not.toHaveBeenCalled();
+  });
+
+  it("surfaces a stale-order conflict as 409 rather than swallowing it", async () => {
+    /* 本地列表过期（别人加/删了标签）时服务端会拒绝整批，这个状态码必须原样传出去——
+       吞掉的话界面会显示成排序成功，实际一条都没落库。 */
+    mocks.service.reorder.mockResolvedValueOnce({
+      ok: false,
+      code: "CONFLICT",
+      message: "Class tag order must list all 3 tags; received 2",
+    });
+
+    const response = await reorderRequest({ order: ["tag-1", "tag-2"] });
 
     expect(response.status).toBe(409);
     expect(await response.json()).toMatchObject({ error_code: "CONFLICT" });

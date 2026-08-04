@@ -586,17 +586,70 @@
   border-bottom: 0;
 }
 
+/* 列宽写死而不是让中间那列 flex:1 吃掉全部余量：宽屏下那样会在标题和右边的
+   头像之间留出一千多像素的空白。配额条自己占一列，既填了这块空白，又拿到一个
+   有上限的宽度——它内部是等分网格，宽度不定时每个槽位的名字和数字之间空多少
+   全看名字多长。没配额的行不画这一列，免得留一条空轨道。 */
+.upcoming-event-row__grid {
+  display: grid;
+  grid-template-columns: 52px minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: var(--space-md);
+}
+
+.upcoming-event-row[data-has-quota="true"] .upcoming-event-row__grid {
+  grid-template-columns: 52px minmax(0, 1fr) minmax(0, 26rem) auto auto;
+}
+
+.upcoming-event-row__date {
+  display: grid;
+  justify-items: center;
+  line-height: 1.15;
+}
+
+.upcoming-event-row__month {
+  color: var(--text-muted);
+  font-size: var(--text-micro);
+  font-weight: var(--fw-medium);
+  letter-spacing: 0.06em;
+}
+
+.upcoming-event-row__day {
+  color: var(--text-primary);
+  font-size: var(--text-h2);
+  font-variant-numeric: tabular-nums;
+  font-weight: var(--fw-strong);
+}
+
+.upcoming-event-row__main {
+  display: grid;
+  gap: var(--space-xs);
+  min-width: 0;
+  justify-items: start;
+}
+
 .upcoming-event-row__title {
   overflow-wrap: anywhere;
 }
 
+/* 头像和容量数字说的是同一件事，收成一组紧挨着；原先它们之间隔着整行的 12px，
+   那个 8/10 看着像是跟右边的箭头一伙的。 */
+.upcoming-event-row__people {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+}
+
 .upcoming-event-row__capacity {
-  min-width: 40px;
   color: var(--text-secondary);
   font-size: var(--text-meta);
   font-variant-numeric: tabular-nums;
   font-weight: var(--fw-medium);
-  text-align: center;
+}
+
+.upcoming-event-row__go {
+  min-width: 32px;
+  padding: var(--space-xs) var(--space-sm);
 }
 
 .upcoming-event-row .mantine-Badge-root {
@@ -608,11 +661,25 @@
   flex-shrink: 0;
 }
 
-/* 该行是 wrap="nowrap"，头像组又是 flex-shrink: 0。改用叠放的 MemberAvatarStack
-   之后，最多五个 34px 头像互相压掉三分之一，整组只占约 112px（原先六个平铺的
-   36px 头像要 236px），平板宽度已经放得下，因此 1023px 那档的隐藏规则去掉了。
-   479px 以下仍然隐藏：那里卡片内宽只有约 335px，日期列、容量数字和箭头按钮加起来
-   就已经吃满，头像再进来会被 .dashboard-card 的 overflow: hidden 裁掉且无法点击。 */
+/* 五列排不下的时候，配额条整条掉到第二行去铺满，而不是继续跟标题抢宽度——
+   挤到一半宽的进度计既读不出比例，也会把标题压成两行。其余四格是自动排布的，
+   把它钉在第 2 行不影响它们仍然填第 1 行。 */
+@media (max-width: 1023px) {
+  .upcoming-event-row[data-has-quota="true"] .upcoming-event-row__grid {
+    grid-template-columns: 52px minmax(0, 1fr) auto auto;
+  }
+
+  .upcoming-event-row__quota {
+    grid-row: 2;
+    grid-column: 2 / -1;
+  }
+}
+
+/* 头像组用叠放的 MemberAvatarStack，最多五个 34px 头像互相压掉三分之一，整组只占
+   约 112px（原先六个平铺的 36px 头像要 236px），平板宽度已经放得下，因此 1023px
+   那档的隐藏规则去掉了。479px 以下仍然隐藏：那里卡片内宽只有约 335px，日期列、
+   容量数字和箭头按钮加起来就已经吃满，头像再进来会被 .dashboard-card 的
+   overflow: hidden 裁掉且无法点击。 */
 @media (max-width: 479px) {
   .upcoming-event-row__avatars {
     display: none;

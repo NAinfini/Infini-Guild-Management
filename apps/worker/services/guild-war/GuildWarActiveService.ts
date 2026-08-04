@@ -1,4 +1,4 @@
-import { eventSchema } from "@guild/shared";
+import { eventSchema, getEventBehavior } from "@guild/shared";
 import { and, eq, inArray, sql } from "drizzle-orm";
 import { nanoid } from "nanoid";
 import type { z } from "zod";
@@ -45,6 +45,7 @@ export class GuildWarActiveService extends GuildWarCoreService {
   private async getEventPayload(eventId: string, canManage: boolean): Promise<EventPayload> {
     const eventRow = (await this.db.select({ id: events.id, type: events.type, title: events.title, description: events.description, startAt: events.startAt, endAt: events.endAt, capacity: events.capacity, pinned: events.pinned, signupLocked: events.signupLocked, autoArchive: events.autoArchive, autoArchived: events.autoArchived, visibleAt: events.visibleAt, archivedAt: events.archivedAt, createdBy: events.createdBy, updatedBy: events.updatedBy, seriesId: events.seriesId, instanceDate: events.instanceDate, createdAt: events.createdAt, updatedAt: events.updatedAt }).from(events).where(eq(events.id, eventId)).limit(1))[0];
     if (!eventRow) return null;
+    if (getEventBehavior(await this.getGameRules(), eventRow.type) !== "guild_war") return null;
     if (!canManage && !isEventPubliclyVisible(eventRow.visibleAt, new Date().toISOString())) return null;
     return eventSchema.parse({ id: eventRow.id, type: eventRow.type, title: eventRow.title, description: eventRow.description, start_at: eventRow.startAt, end_at: eventRow.endAt ?? null, capacity: eventRow.capacity ?? null, pinned: eventRow.pinned, signup_locked: eventRow.signupLocked, auto_archive: eventRow.autoArchive, auto_archived: eventRow.autoArchived, visible_at: eventRow.visibleAt ?? null, archived_at: eventRow.archivedAt ?? null, created_by: eventRow.createdBy, updated_by: eventRow.updatedBy ?? null, series_id: eventRow.seriesId ?? null, instance_date: eventRow.instanceDate ?? null, created_at: eventRow.createdAt, updated_at: eventRow.updatedAt });
   }

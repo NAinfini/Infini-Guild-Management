@@ -116,6 +116,22 @@ export function parseAvailabilityRanges(rawAvailability: unknown): Map<number, A
   return rangesByDay;
 }
 
+/**
+ * 一周里被时段覆盖的总分钟数。
+ *
+ * 资料页有两处要这个数——右栏的「一周 N 小时」和概览条上的每周在线。两处必须
+ * 报同一个值，所以求和只写在这里；各算各的迟早会因为跨夜时段的处理不同而分叉。
+ */
+export function weeklyAvailableMinutes(rawAvailability: unknown): number {
+  let total = 0;
+  for (const ranges of parseAvailabilityRanges(rawAvailability).values()) {
+    for (const range of ranges) {
+      total += range.endMinutes - range.startMinutes;
+    }
+  }
+  return total;
+}
+
 export function buildAvailabilityHeatData(users: AvailabilityMemberEntry[]): AvailabilityHeatData {
   const hourlyByDay = new Map<number, number[]>();
   const dayPeakByDay = new Map<number, number>();

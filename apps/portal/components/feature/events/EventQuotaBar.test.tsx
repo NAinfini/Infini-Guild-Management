@@ -52,6 +52,101 @@ describe("EventQuotaBar", () => {
     expect(source).not.toContain("<Tooltip");
   });
 
+  it("spends hue on role identity only and keeps red for over-capacity alone", () => {
+    const css = readFileSync(
+      resolve(process.cwd(), "apps/portal/components/feature/events/EventQuotaBar.css"),
+      "utf8",
+    );
+    const fillColorRules = [...css.matchAll(/--quota-state-color:\s*var\((--[a-z0-9-]+)\)/g)]
+      .map((match) => match[1]!);
+
+    /* 条子的色相只编码「这是哪一格」：默认的活动域色、四位分类色序、「其他」的中性
+       域色，外加超员的红。禁的一直是「用色相冒充状态」——所以这里逐条钉住：色相里
+       不许出现任何一个状态色（绿/黄），红只许由 over 一条规则给出。 */
+    expect(new Set(fillColorRules)).toEqual(new Set([
+      "--domain-event",
+      "--series-1",
+      "--series-2",
+      "--series-3",
+      "--series-4",
+      "--domain-ops",
+      "--status-danger",
+    ]));
+    expect(fillColorRules.filter((name) => name === "--status-danger")).toHaveLength(1);
+    expect(fillColorRules).not.toContain("--status-success");
+    expect(fillColorRules).not.toContain("--status-warning");
+
+    /* 分类色必须取自位次（data-quota-series），不许挂在状态上：挂在状态上就又变回
+       「色相说状态」了。 */
+    expect(css).not.toMatch(/data-quota-state="(ready|filling)"\][^{]*\{[^}]*--quota-state-color/);
+    expect(css).toMatch(/data-quota-series="0"\]\s*\{\s*--quota-state-color:\s*var\(--series-1\)/);
+    /* 超员的红必须写在分类色之后，否则同特异度下会被位次色盖掉。 */
+    expect(css.indexOf('data-quota-state="over"'))
+      .toBeGreaterThan(css.indexOf('data-quota-series="3"'));
+    /* 够员仍然由计数变绿点名，不动条子。 */
+    expect(css).toMatch(
+      /data-quota-state="ready"\]\s+\.quota-bar__role-count\s*\{\s*color:\s*var\(--status-success\)/,
+    );
+  });
+
+  it("assigns series colours by position and keeps Other out of the series", () => {
+    renderQuotaBar({
+      slots: [
+        { key: "tank", class_ids: ["tank"], required: 1, matched: 0, dedicated: 0, eligible: 1, floor: 0, ceiling: 1, status: "short", member_ids: [] },
+        { key: "healer", class_ids: ["healer"], required: 1, matched: 0, dedicated: 0, eligible: 1, floor: 0, ceiling: 1, status: "short", member_ids: [] },
+      ],
+      benched: [],
+      unassigned: [],
+      flexible: 0,
+      requiredTotal: 2,
+      matchedTotal: 0,
+      shortfall: 2,
+    }, [
+      { tag_id: "tank", label: "Tank" },
+      { tag_id: "healer", label: "Healer" },
+    ], { capacity: 6, participantCount: 0 });
+
+    const slots = [...document.querySelectorAll(".quota-bar__slot")];
+    expect(slots.map((slot) => slot.getAttribute("data-quota-series")))
+      .toEqual(["0", "1", "other"]);
+  });
+
+  it("marks the signup bar as over when participants pass a finite capacity", () => {
+    renderQuotaBar(null, [], { capacity: 10, participantCount: 12 });
+
+    expect(document.querySelector(".quota-bar__slot")).toHaveAttribute("data-quota-state", "over");
+  });
+
+  it("keeps the Other column out of the alarm state while it is merely filling up", () => {
+    renderQuotaBar({
+      slots: [
+        {
+          key: "tank",
+          class_ids: ["tank"],
+          required: 2,
+          matched: 2,
+          dedicated: 2,
+          eligible: 2,
+          floor: 2,
+          ceiling: 2,
+          status: "filled",
+          member_ids: ["tank-1", "tank-2"],
+        },
+      ],
+      benched: [],
+      unassigned: [],
+      flexible: 0,
+      requiredTotal: 2,
+      matchedTotal: 2,
+      shortfall: 0,
+    }, [
+      { tag_id: "tank", label: "Tank" },
+    ], { capacity: 8, participantCount: 5 });
+
+    const other = screen.getByRole("progressbar", { name: "quota.role.other" });
+    expect(other.closest(".quota-bar__slot")).toHaveAttribute("data-quota-state", "filling");
+  });
+
   it("uses mutually exclusive assignments when a swing member cannot fill two seats", () => {
     renderQuotaBar({
       slots: [
@@ -96,7 +191,7 @@ describe("EventQuotaBar", () => {
     expect(tank).toHaveAttribute("aria-valuenow", "1");
     expect(tank.closest(".quota-bar__slot")).toHaveAttribute("data-quota-state", "ready");
     expect(healer).toHaveAttribute("aria-valuenow", "0");
-    expect(healer.closest(".quota-bar__slot")).toHaveAttribute("data-quota-state", "short");
+    expect(healer.closest(".quota-bar__slot")).toHaveAttribute("data-quota-state", "filling");
     expect(screen.getByText("1 / 1")).toBeInTheDocument();
     expect(screen.getByText("0 / 1")).toBeInTheDocument();
     expect(screen.queryByText("quota.lineup.short")).not.toBeInTheDocument();

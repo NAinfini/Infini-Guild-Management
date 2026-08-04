@@ -142,7 +142,7 @@
   "quota.roles.label": "岗位分配",
   "quota.role.other": "其他",
   "quota.role.tooltip.ready": "{{label}}：已安排 {{assigned}} / {{required}} 人；共有 {{available}} 人可胜任，包含可兼任多个岗位的成员。",
-  "quota.role.tooltip.short": "{{label}}：已安排 {{assigned}} / {{required}} 人；共有 {{available}} 人可胜任，包含可兼任多个岗位的成员；还缺 {{count}} 人。",
+  "quota.role.tooltip.filling": "{{label}}：已安排 {{assigned}} / {{required}} 人；共有 {{available}} 人可胜任，包含可兼任多个岗位的成员；还缺 {{count}} 人。",
   "quota.role.tooltip.other": "其他名额已计 {{assigned}} / {{required}} 人；有 {{unassigned}} 名参与者未安排到预留岗位。",
   "quota.capacityConflict": "岗位需求共 {{required}} 人，超过活动容量 {{capacity}} 人。",
   "quota.generic.label": "报名进度",

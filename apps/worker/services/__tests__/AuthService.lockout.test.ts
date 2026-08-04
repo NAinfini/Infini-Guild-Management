@@ -142,7 +142,8 @@ describe("AuthService.login lockout", () => {
       delete: () => ({ where: () => Promise.resolve() }),
     } as never;
     const run = vi.fn().mockResolvedValue(undefined);
-    const bind = vi.fn(() => ({ run }));
+    const all = vi.fn().mockResolvedValue({ results: [] });
+    const bind = vi.fn(() => ({ run, all }));
     const prepare = vi.fn(() => ({ bind }));
     const deps = {
       ...createDeps(),

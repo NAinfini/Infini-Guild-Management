@@ -23,7 +23,6 @@
   display: grid;
   gap: var(--space-xs);
   min-width: 0;
-  --quota-state-color: var(--text-secondary);
 }
 
 .quota-bar__slot-header {
@@ -49,11 +48,16 @@
   line-height: 1.35;
 }
 
+/* 空槽必须看得见，否则「还差多少」没有参照物。原先用 --surface-sunken：浅色模式下
+   它和卡面几乎同色，整条只剩下那截填充悬在空气里。改成按当前文字色调出来的浅灰，
+   深浅两套主题、任何一层表面上都留得住。 */
 .quota-bar__progress {
-  height: 6px;
+  /* 6px → 8px：一格现在有自己的色相，条子得有够读出色相的面积。
+     仍然是一条带子而不是一个色块，卡片上的行高只多 2px。 */
+  height: 8px;
   overflow: hidden;
   border-radius: var(--radius-control);
-  background: var(--surface-sunken);
+  background: color-mix(in srgb, var(--text-primary) 14%, transparent);
 }
 
 .quota-bar__progress-fill {
@@ -67,19 +71,63 @@
    instead of exposing a 100% progressbar to sighted or assistive-technology users. */
 .quota-bar__progress--unlimited {
   border: 1px dashed color-mix(in srgb, var(--quota-state-color) 54%, transparent);
-  background: color-mix(in srgb, var(--quota-state-color) 8%, var(--surface-sunken));
+  background: color-mix(in srgb, var(--quota-state-color) 10%, transparent);
 }
 
-.quota-bar__slot[data-quota-state="ready"] {
-  --quota-state-color: var(--status-success);
+/*
+ * 色相说「这是哪个岗位」，长度说「满了多少」，计数的字色说「够没够」。三件事三个
+ * 通道，互不重叠——这是上一版「一条带子只有一个色相」那条规则的延续，不是推翻它。
+ *
+ * 上一版把所有格子涂成同一个活动域色，是因为当时的三个色相（绿/红/蓝）说的是状态，
+ * 而状态已经由长度说过一遍了。禁的是「用色相冒充状态」，不是「用色相」。这里的色相
+ * 严格只编码分类：第几格就是第几个色，跟这一格满没满、超没超一点关系都没有——换个
+ * 报名人数进来，颜色一个都不变。所以并排三四条带子第一眼就能认出谁是谁，不必逐个
+ * 去读上面那行 11px 的岗位名。
+ *
+ * 默认（没有位次的那些格子：无配额时的整体报名条）仍然走活动域色。
+ */
+.quota-bar__slot {
+  --quota-state-color: var(--domain-event);
 }
 
-.quota-bar__slot[data-quota-state="short"] {
+/* 分类色序取自 semantic.css 的 --series-*，那边只定义了四位，超过四个岗位由
+   EventQuotaBar.tsx 取模循环回第一位。序列里没有绿/黄/红：那三个色相归状态。 */
+.quota-bar__slot[data-quota-series="0"] {
+  --quota-state-color: var(--series-1);
+}
+
+.quota-bar__slot[data-quota-series="1"] {
+  --quota-state-color: var(--series-2);
+}
+
+.quota-bar__slot[data-quota-series="2"] {
+  --quota-state-color: var(--series-3);
+}
+
+.quota-bar__slot[data-quota-series="3"] {
+  --quota-state-color: var(--series-4);
+}
+
+/* 「其他」不是岗位，是配额之外剩下的容量，所以它不参与分类色序，走中性的 ops 域色。
+   给它也发一个色相等于把「剩余席位」摆成和岗位平级的一类。 */
+.quota-bar__slot[data-quota-series="other"] {
+  --quota-state-color: var(--domain-ops);
+}
+
+/* 唯一会盖掉分类色的一种情况：人数越过容量。红在这条带子上从此只有这一个意思，
+   所以它必须写在分类色之后——超员是要处理的事，压过「这是第几格」。 */
+.quota-bar__slot[data-quota-state="over"] {
   --quota-state-color: var(--status-danger);
 }
 
-.quota-bar__slot[data-quota-state="neutral"] {
-  --quota-state-color: var(--status-info);
+/* 「够员了」不靠条子变绿，靠右上角那个计数变绿：一句话大小的绿点名，不会在一排
+   活动卡上堆成一片色块。这也跟详情弹窗名单里的 .quota-status-text 对上了口径。 */
+.quota-bar__slot[data-quota-state="ready"] .quota-bar__role-count {
+  color: var(--status-success);
+}
+
+.quota-bar__slot[data-quota-state="over"] .quota-bar__role-count {
+  color: var(--status-danger);
 }
 
 /* The detail roster keeps its assigned-member count; flexible coverage is no longer a warning. */

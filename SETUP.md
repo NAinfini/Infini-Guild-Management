@@ -156,7 +156,9 @@ The Admin console stores these settings in D1. `SITE_NAME` and `SITE_LOGO_URL` i
 | Member roles, permissions, invites | **Admin console** | No |
 | D1, R2, domain, environment, fallback branding | `apps/worker/wrangler.jsonc` | Deploy |
 | Cloudflare signing secret | `wrangler secret put` | Deploy |
-| Game classes, event types, and war metrics | `apps/shared/games/definitions/` | Build and deploy |
+| Game classes and class tags | **Admin → Classes** | No |
+| Guild-war analytics weights | `/api/admin/analytics-settings` | No |
+| Persisted event/result/stat keys | Shared domain contracts plus a data migration | Build and deploy |
 | Hard safety ceilings, rate limits, and pagination defaults | `apps/shared/config/limits.ts` | Build and deploy |
 
 There is no `FEATURES` environment variable. Runtime module switches belong in Admin → Site Config so there is one source of truth.

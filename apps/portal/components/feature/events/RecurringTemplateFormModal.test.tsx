@@ -62,7 +62,7 @@ describe("RecurringTemplateFormModal", () => {
     expect(createButton).toBeDisabled();
 
     await user.click(screen.getAllByLabelText("Type")[0]!);
-    await user.click(await screen.findByText("common:eventType.social"));
+    await user.click(await screen.findByText("Social"));
     expect(createButton).toBeEnabled();
 
     await user.clear(screen.getByLabelText("Start Time"));
@@ -159,7 +159,7 @@ describe("RecurringTemplateFormModal", () => {
 
     await user.type(screen.getByLabelText("Title"), "Daily Run");
     await user.click(screen.getAllByLabelText("Type")[0]!);
-    await user.click(await screen.findByText("common:eventType.social"));
+    await user.click(await screen.findByText("Social"));
     await user.type(screen.getByLabelText("Start Time"), "10:00");
     await user.click(screen.getByText("Auto archive"));
     await user.click(screen.getByRole("button", { name: "Create recurring template" }));

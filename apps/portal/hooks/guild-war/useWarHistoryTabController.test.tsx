@@ -3,7 +3,7 @@ import { MantineProvider } from "@mantine/core";
 import { act, render, renderHook, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
-import { activeGame } from "@guild/shared/games";
+import { WAR_MEMBER_STAT_KEYS } from "@guild/shared";
 import { DataTableAdapter } from "@portal/components/shared/DataTableAdapter";
 import type { HistoryDetailData, HistorySummaryRow } from "../../types/guild-war";
 import {
@@ -194,7 +194,7 @@ describe("history metric editing", () => {
         <DataTableAdapter table={result.current.detailTable} />
       </MantineProvider>,
     );
-    expect(screen.queryAllByLabelText(/ — history\.table\./)).toHaveLength(0);
+    expect(screen.queryAllByLabelText(/^(Alice|Bob) — /)).toHaveLength(0);
     readOnlyRender.unmount();
 
     act(() => {
@@ -207,10 +207,10 @@ describe("history metric editing", () => {
       </MantineProvider>,
     );
 
-    const metricInputs = screen.getAllByLabelText(/ — history\.table\./);
-    const bobKills = screen.getByLabelText("Bob — history.table.kills");
-    const aliceKills = screen.getByLabelText("Alice — history.table.kills");
-    const aliceDamage = screen.getByLabelText("Alice — history.table.damage");
+    const metricInputs = screen.getAllByLabelText(/^(Alice|Bob) — /);
+    const bobKills = screen.getByLabelText("Bob — Kills");
+    const aliceKills = screen.getByLabelText("Alice — Kills");
+    const aliceDamage = screen.getByLabelText("Alice — Damage");
 
     expect(metricInputs).toHaveLength(16);
     expect(bobKills).toHaveAttribute("data-metric-grid", "guild-war-history-metrics");
@@ -275,7 +275,7 @@ describe("history metric editing", () => {
       </MantineProvider>,
     );
 
-    const kills = screen.getByLabelText("Alice — history.table.kills");
+    const kills = screen.getByLabelText("Alice — Kills");
     await user.clear(kills);
     await user.type(kills, "9");
 
@@ -286,7 +286,7 @@ describe("history metric editing", () => {
     /* member-stats 接口对 stats 是整列覆盖，只送改过的那一项会把其余指标清空。
        所以这里断言送出去的是完整的一份草稿——少一个 key 就是一次静默的数据丢失。 */
     const expectedPayload: Record<string, number> = Object.fromEntries(
-      activeGame.war.memberStats.map((stat) => [stat.key, 0]),
+      WAR_MEMBER_STAT_KEYS.map((key) => [key, 0]),
     );
     expectedPayload.kills = 9;
     expectedPayload.deaths = 2;

@@ -312,6 +312,11 @@ export function ProfileMediaTab({
               ) : null}
             </Group>
 
+            {/* 选完就传、而且传上去的不是原文件：浏览器会先转成 Opus/Ogg。这句话
+                以前只存在于 i18n 里，没有任何组件渲染它，用户看到的是一个不说明
+                自己会做什么的上传按钮。 */}
+            <Text c="dimmed" size="xs" mt={6}>{t("media.audioHint")}</Text>
+
             {audioUploader.error ? <Text c="red" size="sm" mt={8}>{audioUploader.error}</Text> : null}
             {renderProgress(audioUploader)}
 

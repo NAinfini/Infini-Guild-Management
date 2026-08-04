@@ -1,7 +1,8 @@
 // Domain: Wiki
 // Tables: wiki_categories, wiki_articles, wiki_revisions
 // Dependencies: auth.users
-import { type AnySQLiteColumn, index, integer, sqliteTable, text, uniqueIndex } from "drizzle-orm/sqlite-core";
+import { sql } from "drizzle-orm";
+import { type AnySQLiteColumn, check, index, integer, sqliteTable, text, uniqueIndex } from "drizzle-orm/sqlite-core";
 import { users } from "./auth";
 import { nowUtc } from "./shared";
 
@@ -38,8 +39,8 @@ export const wikiArticles = sqliteTable(
     createdAt: text("created_at").notNull().default(nowUtc),
     updatedAt: text("updated_at").notNull().default(nowUtc),
   },
-  (table) => ({
-    idxCategoryArchivedSort: index("idx_wiki_articles_category_archived_sort").on(
+  (table) => [
+    index("idx_wiki_articles_category_archived_sort").on(
       table.categoryId,
       table.archivedAt,
       table.pinned,
@@ -47,13 +48,14 @@ export const wikiArticles = sqliteTable(
       table.updatedAt,
       table.id,
     ),
-    idxArchivedUpdated: index("idx_wiki_articles_archived_updated").on(
+    index("idx_wiki_articles_archived_updated").on(
       table.archivedAt,
       table.pinned,
       table.updatedAt,
       table.id,
     ),
-  }),
+    check("wiki_articles_body_json_object", sql`json_valid(${table.bodyJson}) AND json_type(${table.bodyJson}) = 'object'`),
+  ],
 );
 
 // Per-save content snapshots: revision N holds the article's title/body as of
@@ -71,7 +73,8 @@ export const wikiRevisions = sqliteTable(
     restoredFrom: integer("restored_from"),
     createdAt: text("created_at").notNull().default(nowUtc),
   },
-  (table) => ({
-    uqArticleRevision: uniqueIndex("uq_wiki_revisions_article_revision").on(table.articleId, table.revision),
-  }),
+  (table) => [
+    uniqueIndex("uq_wiki_revisions_article_revision").on(table.articleId, table.revision),
+    check("wiki_revisions_body_json_object", sql`json_valid(${table.bodyJson}) AND json_type(${table.bodyJson}) = 'object'`),
+  ],
 );

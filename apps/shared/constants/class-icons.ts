@@ -1,63 +1,69 @@
+/*
+ * 职业默认图标。这个数组的顺序就是图标库网格里的顺序，所以按「近战 → 远程 → 施法 →
+ * 其它」摆，别按加进来的先后追加——同一类武器散在四处的话，挑图标得整片扫一遍。
+ *
+ * 加之前先在这张表里找一遍近似的：zap 和 bolt 曾经并排放着两道几乎一样的闪电，
+ * sparkles-2 和 sparkles 也是同一簇星，缩到 24px 完全分不出，等于白占一格。
+ *
+ * 只是加 id 的话不用动数据库：class_catalog.vector_icon 是裸 TEXT，取值范围由
+ * apps/shared/schemas/class-catalog.ts 里的 zod enum 管。但每加一个都得配齐三样：
+ * apps/portal/components/icons 下的组件、ClassIcon.tsx 里的映射、两份 admin.json
+ * 里的 classes.icon.<id> 名字。漏了映射会在渲染时回退成长剑，漏了名字则回退成 id。
+ *
+ * 删 id 就不是加的逆操作了：ClassCatalogService 读表时会拿这个 enum 校验每一行
+ * （classCatalogItemSchema.parse），库里还留着被删的 id 的话，整个职业列表接口会抛。
+ * 所以删之前必须先把存量行改掉：
+ *   UPDATE class_catalog SET vector_icon = 'sword' WHERE vector_icon NOT IN (...);
+ */
 export const CLASS_VECTOR_ICON_IDS = [
+  // 近战
   "sword",
   "swords",
+  "dagger",
+  "axe",
+  "spear",
+  "trident",
+  "scythe",
+  "hammer",
+  "claw",
+  "gauntlet",
   "shield",
-  "heartbeat",
-  "heart",
-  "bolt",
-  "zap",
-  "flame",
+  // 远程、投掷
+  "bow",
   "target",
   "target-arrow",
-  "crown",
-  "trophy",
-  "hammer",
-  "gauntlet",
-  "boot",
-  "pendant",
-  "rings",
+  "bomb",
+  // 施法
+  "staff",
+  "wand",
+  "orb",
+  "gem",
   "sparkles",
-  "sparkles-2",
-  "user",
-  "users",
-  "user-circle",
-  "friends",
-  "world",
-  "cloud",
+  "flame",
+  "bolt",
+  "snowflake",
   "moon",
   "sun",
-  "flag",
-  "gift",
-  "dice",
-  "wrench",
+  // 辅助、治疗
+  "heart",
+  "heartbeat",
+  "potion",
+  "chalice",
+  "leaf",
+  // 学识、演艺
   "book",
-  "palette",
+  "scroll",
+  "lute",
+  // 身份、装束
+  "crown",
+  "trophy",
+  "flag",
+  "mask",
+  "pendant",
+  "rings",
+  "boot",
+  "skull",
+  "dice",
 ] as const;
 
 export type ClassVectorIconId = (typeof CLASS_VECTOR_ICON_IDS)[number];
-
-export type DefaultClassCatalogSeed = {
-  id: string;
-  label: string;
-  color: string;
-  vector_icon: ClassVectorIconId;
-  sort_order: number;
-};
-
-/**
- * Existing profile rows store these names as their class IDs. Keeping the same
- * values in the catalog makes the migration additive: no member data rewrite
- * and no temporary split-brain between the JSON and lookup tables.
- */
-export const DEFAULT_CLASS_CATALOG: readonly DefaultClassCatalogSeed[] = [
-  { id: "鸣金虹", label: "鸣金虹", color: "#6EA8FE", vector_icon: "sword", sort_order: 0 },
-  { id: "鸣金影", label: "鸣金影", color: "#79A7F2", vector_icon: "target-arrow", sort_order: 10 },
-  { id: "牵丝玉", label: "牵丝玉", color: "#58C7A6", vector_icon: "sparkles", sort_order: 20 },
-  { id: "牵丝霖", label: "牵丝霖", color: "#54C39B", vector_icon: "heartbeat", sort_order: 30 },
-  { id: "牵丝翊", label: "牵丝翊", color: "#62BEA7", vector_icon: "pendant", sort_order: 40 },
-  { id: "破竹风", label: "破竹风", color: "#A78BFA", vector_icon: "bolt", sort_order: 50 },
-  { id: "破竹尘", label: "破竹尘", color: "#9B8AE8", vector_icon: "shield", sort_order: 60 },
-  { id: "破竹鸢", label: "破竹鸢", color: "#B18CF1", vector_icon: "target", sort_order: 70 },
-  { id: "裂石威", label: "裂石威", color: "#E27676", vector_icon: "shield", sort_order: 80 },
-  { id: "裂石钧", label: "裂石钧", color: "#DB7770", vector_icon: "hammer", sort_order: 90 },
-] as const;

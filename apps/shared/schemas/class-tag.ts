@@ -67,6 +67,21 @@ export const updateClassTagSchema = z.object({
   message: "At least one class tag field is required",
 });
 
+/*
+ * 整表重排，和 reorderClassCatalogSchema 是同一套约定：请求体带**完整**的标签 id
+ * 顺序，服务端按下标 * 10 重写。为什么不是「只报被拖动的那一个」，理由写在
+ * class-catalog.ts 那份 schema 上面，两处不重复一遍。
+ */
+export const reorderClassTagsSchema = z.object({
+  order: z.array(classTagIdSchema)
+    .min(1)
+    .max(L.classTags.max)
+    .refine((ids) => new Set(ids).size === ids.length, {
+      message: "Class tag order must not list the same tag twice",
+    }),
+}).strict();
+
 export type ClassTag = z.infer<typeof classTagSchema>;
 export type CreateClassTagInput = z.infer<typeof createClassTagSchema>;
 export type UpdateClassTagInput = z.infer<typeof updateClassTagSchema>;
+export type ReorderClassTagsInput = z.infer<typeof reorderClassTagsSchema>;

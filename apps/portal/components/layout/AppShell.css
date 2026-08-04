@@ -449,10 +449,23 @@
   color: var(--text-primary);
 }
 
+/*
+ * 路由容器必须是一条 flex 列，整条「填满视口高度」的链才接得上。
+ *
+ * 它原先是普通块级容器：`.app-main` 是 flex 列、这一层拿到了 flex:1、下面
+ * `.page-layout` 也写了 flex:1 + min-height:0——但中间这一层不是 flex 容器，
+ * `.page-layout` 的 flex:1 在块级流里根本不生效，于是它只有内容高。链子从这里断，
+ * 再往下 `.page-layout__content`、管理后台的工作区、主从台全都在跟一个内容高的
+ * 祖先要「剩余高度」，要不到。这就是后台各页签下方那一大块空白的真正来源，
+ * 也是各页此前用 calc(100vh - 200px) 这类目测值硬凑高度的原因。
+ */
 .app-route-container {
   width: 100%;
   min-width: 0;
   flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-block-size: 0;
 }
 
 .app-content-mobile {

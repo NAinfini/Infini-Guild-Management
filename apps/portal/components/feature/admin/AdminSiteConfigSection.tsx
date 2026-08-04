@@ -65,7 +65,6 @@ function copyEditableConfig(data: AdminSiteConfigResponse): EditableSiteConfig {
   const mediaPolicy = data.site.media_policy ?? DEFAULT_SITE_MEDIA_POLICY;
   const storagePolicy = data.site.storage_policy ?? DEFAULT_SITE_STORAGE_POLICY;
   const absencePolicy = data.site.absence_policy ?? DEFAULT_SITE_ABSENCE_POLICY;
-
   return {
     site_name: data.site.site_name,
     features: { ...features },
@@ -157,7 +156,9 @@ export function AdminSiteConfigSection({
   };
   const hasPendingChanges = baselineConfig !== null
     && !areEditableConfigsEqual(currentConfig, baselineConfig);
-  const canSave = hasPendingChanges && siteName.trim().length > 0 && !saving;
+  const canSave = hasPendingChanges
+    && siteName.trim().length > 0
+    && !saving;
   const enabledFeatureCount = FEATURE_KEYS.filter((key) => features[key]).length;
 
   if (loading) {
@@ -180,7 +181,7 @@ export function AdminSiteConfigSection({
       <section id="site-config-branding" className="site-config-card">
         <div className="site-config-card__header">
           <div className="site-config-title-row">
-            <Text fw={800}>{t("siteConfig.branding.title")}</Text>
+            <Text fw={800} className="site-config-card__title">{t("siteConfig.branding.title")}</Text>
             <SiteConfigInfo
               title={t("siteConfig.branding.title")}
               description={t("siteConfig.branding.description")}
@@ -225,7 +226,7 @@ export function AdminSiteConfigSection({
       <section id="site-config-features" className="site-config-card">
         <div className="site-config-card__header">
           <div className="site-config-title-row">
-            <Text fw={800}>{t("siteConfig.policy.features")}</Text>
+            <Text fw={800} className="site-config-card__title">{t("siteConfig.policy.features")}</Text>
             <SiteConfigInfo
               title={t("siteConfig.policy.features")}
               description={t("siteConfig.policy.featuresDescription")}
@@ -233,7 +234,8 @@ export function AdminSiteConfigSection({
               color="gray"
             />
           </div>
-          <Text size="xs" fw={700} c="dimmed">{t("siteConfig.summary.compact", { enabled: enabledFeatureCount, total: FEATURE_KEYS.length })}</Text>
+          {/* c="dimmed" 去掉了：底色改成品牌浅底之后，灰字压在上面对比度不够。 */}
+          <Text size="xs" fw={700} className="site-config-count">{t("siteConfig.summary.compact", { enabled: enabledFeatureCount, total: FEATURE_KEYS.length })}</Text>
         </div>
 
         {/* 一行一个开关。原先是四列卡片网格，开关被推到每张卡的右缘，
@@ -266,7 +268,7 @@ export function AdminSiteConfigSection({
       <section id="site-config-limits" className="site-config-card">
         <div className="site-config-card__header">
           <div className="site-config-title-row">
-            <Text fw={800}>{t("siteConfig.policy.limits")}</Text>
+            <Text fw={800} className="site-config-card__title">{t("siteConfig.policy.limits")}</Text>
             <SiteConfigInfo
               title={t("siteConfig.policy.limits")}
               description={t("siteConfig.policy.limitsDescription")}

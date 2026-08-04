@@ -32,5 +32,6 @@ export const announcements = sqliteTable(
     index("idx_announcements_schedule").on(table.status, table.publishAt),
     index("idx_announcements_expiry").on(table.status, table.expiresAt),
     check("announcements_status_valid", sql`${table.status} IN ('draft', 'scheduled', 'published', 'archived')`),
+    check("announcements_body_json_object", sql`json_valid(${table.bodyJson}) AND json_type(${table.bodyJson}) = 'object'`),
   ],
 );

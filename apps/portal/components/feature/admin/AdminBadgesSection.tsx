@@ -4,8 +4,6 @@ import type { AdminBadgesController, BadgeForm } from "@portal/hooks/useAdminBad
 import {
   ActionIcon,
   Button,
-  Checkbox,
-  Collapse,
   ColorInput,
   Group,
   ScrollArea,
@@ -15,14 +13,26 @@ import {
   TextInput,
   Tooltip,
 } from "@mantine/core";
-import { PencilIcon, PlusIcon, TrashIcon, UserCheckIcon, XIcon } from "@portal/components/icons";
+import { PencilIcon, PlusIcon, TrashIcon, UserCheckIcon } from "@portal/components/icons";
 import DOMPurify from "dompurify";
 import { useMemo } from "react";
 import { useTranslation } from "react-i18next";
 import { EmptyState } from "../../shared/EmptyState";
+import { MemberRoleAvatar } from "../../shared/MemberRoleAvatar";
+import { PickList } from "../../shared/PickList";
+import { AdminBadgeMemberList } from "./AdminBadgeMemberList";
 import "./AdminBadgesSection.css";
 
-type UserRow = { user: { id: string; username: string }; profile: unknown };
+/*
+ * profile 原先是 unknown——徽章页只用到用户名。现在名单要显示头像和职业，
+ * 就把 MemberRoleAvatar 需要的那三个字段挑明；这正是 AdminPage 传进来的
+ * userRowsRaw 的形状，不是新契约。
+ */
+export type AdminBadgeMemberRow = {
+  user: { id: string; username: string };
+  profile: { classes: readonly string[]; power: number; avatar_key: string | null };
+};
+type UserRow = AdminBadgeMemberRow;
 
 type AdminBadgesSectionProps = {
   userRows: UserRow[];
@@ -108,15 +118,15 @@ export function AdminBadgesSection({ userRows, controller }: AdminBadgesSectionP
     isCreating,
     form,
     setForm,
-    assignPanelOpen,
-    setAssignPanelOpen,
-    assignSearch,
-    setAssignSearch,
-    pendingAssignIds,
+    membershipOpen,
+    memberSearch,
+    setMemberSearch,
+    draftMemberIds,
+    draftAdded,
+    draftRemoved,
     badges,
     assignments,
     selectedBadge,
-    assignedUserIds,
     badgesLoading,
     assignmentsLoading,
     badgesError,
@@ -125,20 +135,22 @@ export function AdminBadgesSection({ userRows, controller }: AdminBadgesSectionP
     retryAssignments,
     createPending,
     updatePending,
-    assignPending,
+    membershipPending,
     isBadgeDeletePending,
     isBadgeUnassignPending,
     startCreate,
     startEdit,
     selectBadge,
     cancelEdit,
-    openAssignPanel,
-    togglePendingAssign,
+    openMembership,
+    closeMembership,
+    toggleDraftMember,
+    setDraftMembers,
     formValid,
     createBadge,
     updateBadge,
     deleteBadge,
-    assignBadge,
+    saveMembership,
     unassignBadge,
   } = controller;
 
@@ -156,14 +168,65 @@ export function AdminBadgesSection({ userRows, controller }: AdminBadgesSectionP
     if (accepted) deleteBadge(badge.id);
   };
 
+  /*
+   * 面板列的是全体成员，不再只列「还没有这枚徽章的人」：勾选状态本身就表示有没有，
+   * 加人和删人是同一份名单上的同一个动作。
+   */
   const filteredUsers = useMemo(() => {
-    const q = assignSearch.trim().toLowerCase();
-    const available = userRows.filter((r) => !assignedUserIds.has(r.user.id));
-    if (!q) return available;
-    return available.filter((r) => r.user.username.toLowerCase().includes(q));
-  }, [userRows, assignedUserIds, assignSearch]);
+    const q = memberSearch.trim().toLowerCase();
+    if (!q) return userRows;
+    return userRows.filter((r) => r.user.username.toLowerCase().includes(q));
+  }, [userRows, memberSearch]);
+
+  const memberById = useMemo(
+    () => new Map(userRows.map((row) => [row.user.id, row])),
+    [userRows],
+  );
+
+  const memberOptions = useMemo(
+    () => filteredUsers.map((row) => ({
+      id: row.user.id,
+      label: row.user.username,
+      /* 徽章页认的是人，不是职业配置：头像上再挂三个职业圈，一列名字看起来全是花的。 */
+      icon: (
+        <MemberRoleAvatar
+          user={row.user}
+          profile={row.profile}
+          size={28}
+          withTooltip={false}
+          withClassCircles={false}
+        />
+      ),
+    })),
+    [filteredUsers],
+  );
+
+  const confirmUnassign = (count: number) => confirm({
+    title: t("badges.unassignTitle"),
+    description: (
+      <Text size="sm">
+        {t("badges.unassignDescription", { count, badge: selectedBadge?.name ?? "" })}
+      </Text>
+    ),
+    confirmLabel: t("badges.action.unassign"),
+    cancelLabel: t("badges.action.cancel"),
+    intent: "danger",
+  });
+
+  const handleUnassign = async (badgeId: string, userId: string) => {
+    if (isBadgeUnassignPending(badgeId, userId)) return;
+    if (await confirmUnassign(1)) unassignBadge(badgeId, [userId]);
+  };
+
+  /* 差异里含移除时才拦一道：纯新增没有可后悔的东西，弹窗只会变成肌肉记忆。 */
+  const handleSaveMembership = async () => {
+    if (!selectedBadgeId) return;
+    if (draftRemoved.length > 0 && !(await confirmUnassign(draftRemoved.length))) return;
+    saveMembership(selectedBadgeId);
+  };
 
   const isEditing = Boolean(editingBadgeId) && Boolean(selectedBadge);
+  const membershipDirty = draftAdded.length > 0 || draftRemoved.length > 0;
 
   return (
     <div className="admin-md">
@@ -304,73 +367,83 @@ export function AdminBadgesSection({ userRows, controller }: AdminBadgesSectionP
 
             <ScrollArea className="admin-md__detail-body" type="auto" scrollbarSize={6}>
               <Stack gap={12} className="admin-md__detail-pad">
-                <Group justify="space-between" wrap="wrap" gap={8}>
-                  <Text size="sm" fw={600}>{t("badges.assignedCount", { count: assignments.length })}</Text>
-                  {/*
-                    * 加人原先是一个弹窗。弹窗一开就把这枚徽章现有的成员整个盖住，
-                    * 而「谁已经有了」正是决定要不要给某人加的依据；关掉弹窗才能回看，
-                    * 于是加一个人要开关一次。改成就地展开，两份名单同屏。
-                    */}
-                  <Button
-                    variant={assignPanelOpen ? "light" : "default"}
-                    size="sm"
-                    aria-expanded={assignPanelOpen}
-                    leftSection={<UserCheckIcon size={16} />}
-                    onClick={() => (assignPanelOpen ? setAssignPanelOpen(false) : openAssignPanel())}
-                  >
-                    {t("badges.action.manageMembership")}
-                  </Button>
-                </Group>
+                {/*
+                  * 编辑成员不再另开一块面板。原先「管理成员」会在标题和名单之间凭空展开
+                  * 一整块东西，把名单顶出一屏——而那块东西列的正是同一批人。现在是同一
+                  * 份名单换状态：查看态是已分配的人，编辑态是全员＋勾选框，位置、行高、
+                  * 分隔线都不变，标题行换成搜索和保存。
+                  * 分配还没加载完（或加载失败）时不能进编辑态——那时草稿的起点是空集合，
+                  * 保存出去就是「移除所有人」。
+                  */}
+                {membershipOpen ? null : (
+                  <Group justify="space-between" wrap="wrap" gap={8}>
+                    <Text size="sm" fw={600}>{t("badges.assignedCount", { count: assignments.length })}</Text>
+                    <Button
+                      variant="default"
+                      size="sm"
+                      disabled={assignmentsLoading || assignmentsError}
+                      leftSection={<UserCheckIcon size={16} />}
+                      onClick={openMembership}
+                    >
+                      {t("badges.action.manageMembership")}
+                    </Button>
+                  </Group>
+                )}
 
-                <Collapse expanded={assignPanelOpen}>
-                  <div className="admin-badge-assign">
-                    <Stack gap={10}>
-                      <div>
-                        <Text size="sm" fw={600}>{t("badges.assignTitle")}</Text>
-                        <Text size="xs" c="dimmed">{t("badges.assignDescription")}</Text>
-                      </div>
-                      <TextInput
-                        aria-label={t("badges.searchMembers")}
-                        placeholder={t("badges.searchMembers")}
-                        value={assignSearch}
-                        onChange={(e) => { const v = e.currentTarget.value; setAssignSearch(v); }}
-                      />
-                      <ScrollArea.Autosize mah={220} type="auto" scrollbarSize={6}>
-                        <Stack gap={4}>
-                          {filteredUsers.map((row) => (
-                            <Checkbox
-                              key={row.user.id}
-                              label={row.user.username}
-                              checked={pendingAssignIds.includes(row.user.id)}
-                              onChange={() => togglePendingAssign(row.user.id)}
-                            />
-                          ))}
-                          {filteredUsers.length === 0 ? (
-                            <Text size="sm" c="dimmed" py={10}>{t("badges.assignNoCandidates")}</Text>
-                          ) : null}
-                        </Stack>
-                      </ScrollArea.Autosize>
-                      <Group justify="flex-end" gap={8}>
-                        <Button variant="default" size="sm" onClick={() => setAssignPanelOpen(false)}>
+                {membershipOpen ? (
+                  <PickList
+                    aria-label={t("badges.action.manageMembership")}
+                    options={memberOptions}
+                    selected={draftMemberIds}
+                    onToggle={toggleDraftMember}
+                    emptyLabel={t("badges.membership.noMatch")}
+                    search={{
+                      value: memberSearch,
+                      onChange: setMemberSearch,
+                      placeholder: t("badges.searchMembers"),
+                    }}
+                    bulk={{
+                      selectAll: {
+                        label: t("badges.membership.selectAll"),
+                        disabled: filteredUsers.length === 0,
+                        onClick: () => setDraftMembers([
+                          ...new Set([...draftMemberIds, ...filteredUsers.map((r) => r.user.id)]),
+                        ]),
+                      },
+                      clear: {
+                        label: t("badges.membership.clear"),
+                        disabled: draftMemberIds.size === 0,
+                        onClick: () => setDraftMembers([]),
+                      },
+                    }}
+                    status={(
+                      <Text size="xs" c={membershipDirty ? undefined : "dimmed"}>
+                        {t("badges.membership.diff", {
+                          added: draftAdded.length,
+                          removed: draftRemoved.length,
+                        })}
+                      </Text>
+                    )}
+                    actions={(
+                      <>
+                        <Button variant="default" size="sm" onClick={closeMembership}>
                           {t("badges.action.cancel")}
                         </Button>
                         <Button
                           size="sm"
-                          disabled={pendingAssignIds.length === 0 || !selectedBadgeId}
-                          loading={assignPending}
-                          onClick={() => {
-                            if (selectedBadgeId) assignBadge(selectedBadgeId, pendingAssignIds);
-                          }}
+                          disabled={!membershipDirty || !selectedBadgeId}
+                          loading={membershipPending}
+                          onClick={() => { void handleSaveMembership(); }}
                         >
-                          {t("badges.action.assign")} ({pendingAssignIds.length})
+                          {t("badges.action.saveMembership")}
                         </Button>
-                      </Group>
-                    </Stack>
-                  </div>
-                </Collapse>
-
-                {assignmentsLoading ? (
-                  <Stack gap={6}>{Array.from({ length: 3 }).map((_, i) => <Skeleton key={i} height={32} />)}</Stack>
+                      </>
+                    )}
+                  />
+                ) : assignmentsLoading ? (
+                  <Stack gap={4}>
+                    {Array.from({ length: 5 }).map((_, i) => <Skeleton key={i} height={44} radius="sm" />)}
+                  </Stack>
                 ) : assignmentsError ? (
                   <EmptyState
                     status="error"
@@ -384,24 +457,12 @@ export function AdminBadgesSection({ userRows, controller }: AdminBadgesSectionP
                 ) : assignments.length === 0 ? (
                   <Text size="sm" c="dimmed">{t("badges.noMembers")}</Text>
                 ) : (
-                  <Stack gap={4}>
-                    {assignments.map((a) => (
-                      <Group key={a.user_id} justify="space-between" className="admin-badge-assignment-row">
-                        <Text size="sm">{a.username ?? a.user_id.slice(0, 8)}</Text>
-                        <ActionIcon
-                          variant="subtle"
-                          color="red"
-                          size={44}
-                          aria-label={t("badges.action.unassign")}
-                          onClick={() => unassignBadge(selectedBadge.id, [a.user_id])}
-                          loading={isBadgeUnassignPending(selectedBadge.id, a.user_id)}
-                          disabled={isBadgeUnassignPending(selectedBadge.id, a.user_id)}
-                        >
-                          <XIcon size={14} />
-                        </ActionIcon>
-                      </Group>
-                    ))}
-                  </Stack>
+                  <AdminBadgeMemberList
+                    assignments={assignments}
+                    memberById={memberById}
+                    isUnassignPending={(userId) => isBadgeUnassignPending(selectedBadge.id, userId)}
+                    onUnassign={(userId) => { void handleUnassign(selectedBadge.id, userId); }}
+                  />
                 )}
               </Stack>
             </ScrollArea>

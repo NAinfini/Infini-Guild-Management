@@ -5,23 +5,10 @@
  * 一起删除，改用 Mantine ColorInput。这里只剩徽章本身的样子。
  */
 
-.admin-badge-assignment-row {
-  padding: 6px 8px;
-  border-radius: var(--radius-control);
-  transition: background var(--transition-fast);
-}
-
-.admin-badge-assignment-row:hover {
-  background: var(--surface-raised);
-}
-
-/* 就地展开的加人面板：和下方已有成员同屏，靠底色区分「候选」与「已有」。 */
-.admin-badge-assign {
-  padding: var(--space-sm);
-  border: 1px solid var(--border-subtle);
-  border-radius: var(--radius-control);
-  background: var(--surface-sunken);
-}
+/*
+ * 成员名单（查看态和编辑态）都走 shared/PickList：行高、分隔线、勾选态、搜索和
+ * 批量按钮的样子在那边定，这里只留徽章本身的东西。
+ */
 
 .admin-badge-pill {
   display: inline-flex;

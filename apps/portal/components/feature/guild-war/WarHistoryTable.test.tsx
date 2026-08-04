@@ -76,7 +76,7 @@ describe("WarHistoryTable rail", () => {
     expect(item).toHaveClass("war-history-rail-item");
     expect(item).toHaveAttribute("data-result", "win");
     expect(
-      within(item).getByText("win").closest('[data-variant="light"]'),
+      within(item).getByText("Win").closest('[data-variant="light"]'),
     ).not.toBeNull();
   });
 

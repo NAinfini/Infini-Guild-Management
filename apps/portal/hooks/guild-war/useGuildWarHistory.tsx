@@ -1,5 +1,7 @@
 import { useMemo } from "react";
 import { format } from "date-fns";
+import { useSiteConfigStore } from "@portal/stores/site-config";
+import { getGuildWarMemberStatLabel } from "@portal/utils/game-rules";
 
 function formatDateTime(iso: string): string {
   const date = new Date(iso);
@@ -29,24 +31,34 @@ type UseGuildWarHistoryParams = {
 export function useGuildWarHistory({
   historyDetailData,
 }: UseGuildWarHistoryParams) {
+  const gameRules = useSiteConfigStore((state) => state.gameRules);
   const historyMvp = useMemo(() => {
     const stats = historyDetailData?.member_stats ?? [];
     if (stats.length === 0) {
       return null;
     }
 
-    const topDamage = [...stats].sort((a, b) => (b.stats?.damage ?? 0) - (a.stats?.damage ?? 0))[0] ?? null;
-    const topHealing = [...stats].sort((a, b) => (b.stats?.healing ?? 0) - (a.stats?.healing ?? 0))[0] ?? null;
-    const topBuilding = [...stats].sort((a, b) => (b.stats?.building_damage ?? 0) - (a.stats?.building_damage ?? 0))[0] ?? null;
-    const topDamageTaken = [...stats].sort((a, b) => (b.stats?.damage_taken ?? 0) - (a.stats?.damage_taken ?? 0))[0] ?? null;
-
-    return {
-      damage: topDamage ? `${topDamage.username ?? topDamage.user_id} (${topDamage.stats?.damage ?? 0})` : "-",
-      healing: topHealing ? `${topHealing.username ?? topHealing.user_id} (${topHealing.stats?.healing ?? 0})` : "-",
-      building: topBuilding ? `${topBuilding.username ?? topBuilding.user_id} (${topBuilding.stats?.building_damage ?? 0})` : "-",
-      damageTaken: topDamageTaken ? `${topDamageTaken.username ?? topDamageTaken.user_id} (${topDamageTaken.stats?.damage_taken ?? 0})` : "-",
-    };
-  }, [historyDetailData]);
+    return gameRules.guild_war.member_stats
+      .filter((definition) => definition.mvp)
+      .map((definition) => {
+        const ranked = stats
+          .flatMap((member) => {
+            const value = member.stats?.[definition.key];
+            return typeof value === "number" && Number.isFinite(value)
+              ? [{ member, value }]
+              : [];
+          })
+          .sort((left, right) => definition.lower_is_better
+            ? left.value - right.value
+            : right.value - left.value);
+        const top = ranked[0] ?? null;
+        return {
+          key: definition.key,
+          label: getGuildWarMemberStatLabel(definition.key, undefined, gameRules),
+          value: top ? `${top.member.username ?? top.member.user_id} (${top.value})` : "-",
+        };
+      });
+  }, [gameRules, historyDetailData]);
 
   const historyTeamSizeBaseline = useMemo(() => {
     const teams = historyDetailData?.teams ?? [];

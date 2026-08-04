@@ -93,18 +93,6 @@ export async function findUnreferencedKeys(db: D1Database, keys: readonly string
 
 // --- Extraction helpers (shared by write paths and the cron's backfill) ---
 
-/** Parses an events/recurring-templates `attachments` JSON column into R2 keys. */
-export function extractAttachmentKeys(attachmentsJson: string | null | undefined): string[] {
-  if (!attachmentsJson) return [];
-  try {
-    const parsed = JSON.parse(attachmentsJson) as unknown;
-    if (!Array.isArray(parsed)) return [];
-    return parsed.filter((item): item is string => typeof item === "string" && item.length > 0);
-  } catch {
-    return [];
-  }
-}
-
 /**
  * Extracts R2 keys embedded in TipTap rich-text JSON for announcements and
  * wiki articles. Mirrors the historical orphan-cleanup matching exactly:

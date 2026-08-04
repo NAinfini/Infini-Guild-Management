@@ -1,4 +1,4 @@
-import { EVENT_TYPES } from "@guild/shared";
+import { DEFAULT_GAME_RULES, findEventTypeDefinition } from "@guild/shared";
 import { ActionIcon, Box, Button, Collapse, Flex, Group, Paper, SegmentedControl, Select, Stack, TextInput, Tooltip } from "@mantine/core";
 import { useDisclosure, useMediaQuery } from "@mantine/hooks";
 import { LockIcon, PinIcon, SearchIcon } from "@portal/components/icons";
@@ -6,9 +6,10 @@ import { IconAdjustmentsHorizontal } from "@tabler/icons-react";
 import { useTranslation } from "react-i18next";
 import { type EventStatusFilter, type EventTypeFilter, type EventWorkbenchViewMode } from "../../../utils/event-navigation";
 import { EventsViewSwitcher } from "./EventsViewSwitcher";
+import { getEventTypeLabel } from "@portal/utils/game-rules";
 
 function isEventTypeFilter(value: string): value is EventTypeFilter {
-  return EVENT_TYPES.includes(value as EventTypeFilter);
+  return Boolean(findEventTypeDefinition(DEFAULT_GAME_RULES, value)?.enabled);
 }
 
 type EventsFiltersCardProps = {
@@ -76,7 +77,12 @@ export function EventsFiltersCard({
           value={eventType ?? null}
           aria-label={t("aria.filterByType")}
           onChange={(value) => onEventTypeChange(value && isEventTypeFilter(value) ? value : undefined)}
-          data={EVENT_TYPES.map((value) => ({ value, label: t(`common:eventType.${value}`) }))}
+          data={DEFAULT_GAME_RULES.events.types
+            .filter((definition) => definition.enabled)
+            .map((definition) => ({
+              value: definition.id,
+              label: getEventTypeLabel(definition.id),
+            }))}
           className="events-filter-type"
         />
         <Group gap={6} wrap="nowrap" className="events-filter-toggles">

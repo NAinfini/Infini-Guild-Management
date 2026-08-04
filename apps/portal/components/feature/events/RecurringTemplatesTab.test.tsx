@@ -160,7 +160,7 @@ describe("RecurringTemplatesTab", () => {
 
     await user.click(screen.getByRole("radio", { name: "recurring.filter.all" }));
     await user.click(screen.getByRole("combobox", { name: "recurring.filter.type" }));
-    fireEvent.click(screen.getByRole("option", { name: "common:eventType.social", hidden: true }));
+    fireEvent.click(screen.getByRole("option", { name: "Social", hidden: true }));
     expect(screen.queryByText("Alpha Run")).not.toBeInTheDocument();
     expect(screen.getByText("Beta Social")).toBeInTheDocument();
   });

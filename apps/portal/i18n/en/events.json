@@ -142,7 +142,7 @@
   "quota.roles.label": "Role allocation",
   "quota.role.other": "Other",
   "quota.role.tooltip.ready": "{{label}}: {{assigned}} / {{required}} assigned; {{available}} eligible, including multi-role members.",
-  "quota.role.tooltip.short": "{{label}}: {{assigned}} / {{required}} assigned; {{available}} eligible, including multi-role members; {{count}} still needed.",
+  "quota.role.tooltip.filling": "{{label}}: {{assigned}} / {{required}} assigned; {{available}} eligible, including multi-role members; {{count}} still needed.",
   "quota.role.tooltip.other": "{{assigned}} / {{required}} unreserved places counted; {{unassigned}} participants are outside reserved-role assignments.",
   "quota.capacityConflict": "Role requirements ({{required}}) exceed event capacity ({{capacity}}).",
   "quota.generic.label": "Signup progress",

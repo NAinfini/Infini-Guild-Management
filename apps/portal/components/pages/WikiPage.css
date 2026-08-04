@@ -10,16 +10,32 @@
   width: 15rem;
 }
 
+/*
+ * 维基是一个工作台，不是一篇长文档：左边的文章清单和右边的正文各自滚，页面本身不滚。
+ *
+ * 原先这块网格是内容高——align-items:start 加隐式的 auto 行高，清单有几篇就多高。
+ * 文章少的时候卡片只是左上角一小条，下面一大片空白；文章一长，右栏又把整页顶着往下
+ * 滚，清单跟着滚出视口，想换一篇得先滚回顶部。两个毛病是同一个原因。
+ *
+ * 现在网格向上要一次剩余高度（flex:1 + min-block-size:0，这条链的起点是 AppShell.css
+ * 里的 .app-route-container），行按 minmax(0, 1fr) 撑满，两栏各自内滚。
+ * 窄屏不这么做：单栏堆叠时把视口切成几个小滚动区只会更难用，那边还是整页滚。
+ */
 .wiki-page-grid {
   width: 100%;
   display: grid;
   gap: var(--space-md);
   grid-template-columns: clamp(19rem, 22vw, 24rem) minmax(0, 1fr);
-  align-items: start;
+  grid-template-rows: minmax(0, 1fr);
+  align-items: stretch;
+  flex: 1 1 auto;
+  min-block-size: 0;
 }
 
 .wiki-page-grid--mobile {
   grid-template-columns: minmax(0, 1fr);
+  grid-template-rows: auto;
+  flex: 0 1 auto;
   min-height: auto;
 }
 
@@ -28,30 +44,22 @@
   flex-direction: column;
   gap: var(--space-md);
   min-width: 0;
+  min-block-size: 0;
 }
 
 .wiki-page-column--mobile {
   min-height: auto;
+  min-block-size: auto;
 }
 
-.wiki-category-tree-card,
 .wiki-article-list-card,
 .wiki-article-editor-card,
-.wiki-article-reader-card {
+.wiki-article-reader-card,
+.wiki-category-editor-card {
   display: flex;
   flex-direction: column;
-}
-
-.wiki-category-tree-card {
-  flex: 0 0 auto;
-  min-height: 11.25rem;
-  max-height: min(22.5rem, 42dvh);
-}
-
-.wiki-article-list-card,
-.wiki-article-editor-card,
-.wiki-article-reader-card {
   flex: 1 1 auto;
+  min-block-size: 0;
 }
 
 .wiki-article-reader-card {
@@ -76,15 +84,40 @@
   margin-inline-start: var(--space-sm);
 }
 
-.wiki-category-tree-card > div,
-.wiki-article-list-card > div,
-.wiki-article-editor-card > div,
-.wiki-article-reader-card > div {
-  height: 100%;
+/*
+ * 卡片内部统一的两段式：卡头钉在上边，剩下的内滚。四张卡的 DOM 形状一样，规则只写一份。
+ *
+ * 钉住卡头是有代价才做的选择：清单卡的「新建文章 / 编辑分类」、编辑器卡的保存与退出，
+ * 都是随时要够得着的东西，跟着内容滚走等于没有。正文卡是例外——标题、面包屑和正文是
+ * 一篇东西，整块一起滚才对，所以它直接把 wiki-card-scroll 挂在最外层。
+ */
+.wiki-card-body {
+  display: flex;
+  flex-direction: column;
+  /* 顶掉原先三张卡各写一遍的 Stack gap（12/12/10），统一到标度上的 12px。 */
+  gap: var(--space-md);
+  block-size: 100%;
+  min-block-size: 0;
 }
 
-.wiki-category-tree-card > div {
-  overflow: auto;
+.wiki-card-scroll {
+  flex: 1 1 auto;
+  min-block-size: 0;
+  /*
+   * 只竖着滚，横向一律裁掉。
+   *
+   * 原先这里只写了 overflow-y: auto。CSS 规范规定：一个轴不是 visible 时，另一轴的
+   * visible 会被**静默提升成 auto**——于是内容只要宽出去一两像素，整篇文章底下就多一条
+   * 横向滚动条（Windows 上还是带箭头按钮的系统原生样式，跟站里别处的细滚动条不是一路）。
+   * 而一篇文章从来就不该整篇横着滚：真正需要横向空间的东西自己会滚（tiptap 的
+   * pre 有 overflow-x: auto），图片和表格分别被 max-width:100% / width:100% 收住。
+   * 所以这里把意图写明，而不是继续吃那条隐式提升。
+   */
+  overflow-x: clip;
+  overflow-y: auto;
+  /* 给竖滚动条留一条固定的槽。替掉原先手写的 4px：4px 比真滚动条窄，压不住它，
+     而且滚动条出现/消失时正文会左右跳一下。stable 是常留，宽窄不随内容变。 */
+  scrollbar-gutter: stable;
 }
 
 .wiki-article-item {
@@ -199,18 +232,25 @@
   background-color: var(--mantine-color-blue-light);
 }
 
+/* 单栏堆叠之后回到整页滚：把窄屏视口再切成两个小滚动区只会更难用。 */
 @media (max-width: 1199px) {
   .wiki-page-grid {
     grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: auto;
+    flex: 0 1 auto;
     min-height: auto;
   }
 
   .wiki-page-column {
     min-height: auto;
+    min-block-size: auto;
   }
 
-  .wiki-category-tree-card {
-    max-height: 240px;
+  /* 两轴一起复位。只写 overflow-y: visible 的话，留在宽屏那条 overflow-x: clip
+     又会反过来把它提升成 auto——正是上面刚拆掉的那条隐式规则。 */
+  .wiki-card-scroll {
+    overflow: visible;
+    scrollbar-gutter: auto;
   }
 }
 
@@ -221,10 +261,6 @@
 
   .wiki-page-toolbar__categories {
     width: 100%;
-  }
-
-  .wiki-category-tree-card {
-    max-height: 200px;
   }
 
   .wiki-article-list-card,

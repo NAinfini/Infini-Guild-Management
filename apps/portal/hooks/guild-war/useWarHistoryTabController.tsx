@@ -1,5 +1,5 @@
 import { Badge, Group, HoverCard, Text, ThemeIcon } from "@mantine/core";
-import { activeGame } from "@guild/shared/games";
+import { GUILD_WAR_KDA_KEY, evaluateKda } from "@guild/shared";
 import { CircleCheckIcon, AlertTriangleIcon } from "@portal/components/icons";
 import { MetricGridInput } from "@portal/components/shared/MetricGridInput";
 import { useConfirmDialog } from "@portal/hooks/useConfirmDialog";
@@ -18,11 +18,11 @@ import type {
   HistoryMemberStatsUpdate,
   HistorySummaryRow,
 } from "@portal/types/guild-war";
+import { useSiteConfigStore } from "@portal/stores/site-config";
+import { getGuildWarMemberStatLabel } from "@portal/utils/game-rules";
 
 type EditableMetricKey = string;
 type MemberStatDraft = Record<string, number>;
-
-const EDITABLE_METRIC_KEYS: string[] = activeGame.war.memberStats.map((stat) => stat.key);
 
 export function toDraftMetricValue(value: string | number | null | undefined): number {
   const numericValue = Number(value ?? 0);
@@ -32,16 +32,16 @@ export function toDraftMetricValue(value: string | number | null | undefined): n
   return Math.max(0, numericValue);
 }
 
-function createMemberDraft(row: HistoryMemberStat): MemberStatDraft {
+function createMemberDraft(row: HistoryMemberStat, metricKeys: readonly string[]): MemberStatDraft {
   return Object.fromEntries(
-    EDITABLE_METRIC_KEYS.map((key) => [key, toDraftMetricValue(row.stats?.[key])]),
+    metricKeys.map((key) => [key, toDraftMetricValue(row.stats?.[key])]),
   );
 }
 
-function createDraftMap(rows: HistoryMemberStat[]): Record<string, MemberStatDraft> {
+function createDraftMap(rows: HistoryMemberStat[], metricKeys: readonly string[]): Record<string, MemberStatDraft> {
   const draftMap: Record<string, MemberStatDraft> = {};
   for (const row of rows) {
-    draftMap[row.user_id] = createMemberDraft(row);
+    draftMap[row.user_id] = createMemberDraft(row, metricKeys);
   }
   return draftMap;
 }
@@ -74,6 +74,12 @@ export function useWarHistoryTabController({
   onDeleteHistory,
 }: UseWarHistoryTabControllerParams) {
   const { t } = useTranslation("guild-war");
+  const gameRules = useSiteConfigStore((state) => state.gameRules);
+  const warRules = gameRules.guild_war;
+  const editableMetricKeys = useMemo(
+    () => warRules.member_stats.map((definition) => definition.key),
+    [warRules.member_stats],
+  );
   const confirm = useConfirmDialog();
   // The detail panel is always mounted on desktop. `activeHistoryId` is the row
   // it shows; `mobileView` only decides which of the two panes the single-column
@@ -125,7 +131,7 @@ export function useWarHistoryTabController({
       return;
     }
 
-    const nextBaseline = createDraftMap(historyDetail.member_stats);
+    const nextBaseline = createDraftMap(historyDetail.member_stats, editableMetricKeys);
     setMemberStatsBaseline(nextBaseline);
     const nextDraft: Record<string, MemberStatDraft> = {};
     for (const [userId, draft] of Object.entries(nextBaseline)) {
@@ -134,7 +140,7 @@ export function useWarHistoryTabController({
     setMemberStatsDraft(nextDraft);
     /* 换了一条战史就回到只读态，否则会带着上一条的编辑态进入新记录。 */
     setIsEditingMemberStats(false);
-  }, [historyDetail, historyDetailId]);
+  }, [editableMetricKeys, historyDetail, historyDetailId]);
 
   const filteredHistoryRows = historyRows;
 
@@ -151,7 +157,7 @@ export function useWarHistoryTabController({
         continue;
       }
 
-      const changed = EDITABLE_METRIC_KEYS.some((key) => draft[key] !== baseline[key]);
+      const changed = editableMetricKeys.some((key) => draft[key] !== baseline[key]);
       if (!changed) {
         continue;
       }
@@ -164,14 +170,14 @@ export function useWarHistoryTabController({
        * 草稿本身由 createMemberDraft 按全部可编辑指标建立，送出去就是完整的一份。
        */
       const payload: Partial<Record<EditableMetricKey, number>> = {};
-      for (const key of EDITABLE_METRIC_KEYS) {
+      for (const key of editableMetricKeys) {
         payload[key] = draft[key];
       }
       updates.push({ userId: row.user_id, payload });
     }
 
     return updates;
-  }, [canManage, historyDetail, memberStatsBaseline, memberStatsDraft]);
+  }, [canManage, editableMetricKeys, historyDetail, memberStatsBaseline, memberStatsDraft]);
 
   const hasUnsavedMemberChanges = pendingMemberStatUpdates.length > 0;
 
@@ -317,11 +323,12 @@ export function useWarHistoryTabController({
       accessorFn: (row) => row.role_tag ?? "",
       cell: ({ row }) => row.original.role_tag ?? "-",
     },
-    ...EDITABLE_METRIC_KEYS.map((metricKey, columnIndex): ColumnDef<HistoryMemberStat, unknown> => ({
-      header: t(`history.table.${metricKey === "building_damage" ? "building" : metricKey === "damage_taken" ? "damageTaken" : metricKey}`),
-      id: metricKey,
-      accessorFn: (row) => row.stats?.[metricKey] ?? 0,
+    ...warRules.member_stats.map((definition, columnIndex): ColumnDef<HistoryMemberStat, unknown> => ({
+      header: getGuildWarMemberStatLabel(definition.key, undefined, gameRules),
+      id: definition.key,
+      accessorFn: (row) => row.stats?.[definition.key] ?? 0,
       cell: ({ row, table }) => {
+        const metricKey = definition.key;
         /* 只读态一律显示纯数字：没有权限，或者有权限但还没点「编辑」。 */
         if (!canManage || !isEditingMemberStats) {
           return row.original.stats?.[metricKey] ?? "-";
@@ -333,41 +340,32 @@ export function useWarHistoryTabController({
           <MetricGridInput
             aria-label={t("history.aria.memberMetric", {
               member: row.original.username ?? row.original.user_id,
-              metric: t(`history.table.${metricKey === "building_damage" ? "building" : metricKey === "damage_taken" ? "damageTaken" : metricKey}`),
+              metric: getGuildWarMemberStatLabel(metricKey, undefined, gameRules),
             })}
             gridId="guild-war-history-metrics"
             rowIndex={visibleRowIndex}
             columnIndex={columnIndex}
             rowCount={visibleRows.length}
-            columnCount={EDITABLE_METRIC_KEYS.length}
+            columnCount={editableMetricKeys.length}
             hideControls
             min={0}
             size="xs"
             variant="unstyled"
             value={row.original.stats?.[metricKey] ?? 0}
             onChange={(value) => updateDraftMetric(row.original.user_id, metricKey, value)}
-            decimalScale={["damage", "healing", "building_damage", "damage_taken"].includes(metricKey) ? 2 : undefined}
             styles={{ input: { minWidth: 64, padding: "2px 4px", textAlign: "center" } }}
           />
         );
       },
     })),
     {
-      header: t("analytics.metric.kda"),
-      id: "kda",
+      header: getGuildWarMemberStatLabel(GUILD_WAR_KDA_KEY, undefined, gameRules),
+      id: GUILD_WAR_KDA_KEY,
       enableSorting: true,
       accessorFn: (row) => {
-        const kills = row.stats?.kills ?? 0;
-        const deaths = row.stats?.deaths ?? 0;
-        const assists = row.stats?.assists ?? 0;
-        return (kills + assists) / Math.max(1, deaths);
+        return evaluateKda(row.stats ?? {});
       },
-      cell: ({ row }) => {
-        const kills = row.original.stats?.kills ?? 0;
-        const deaths = row.original.stats?.deaths ?? 0;
-        const assists = row.original.stats?.assists ?? 0;
-        return ((kills + assists) / Math.max(1, deaths)).toFixed(2);
-      },
+      cell: ({ row }) => evaluateKda(row.original.stats ?? {}).toFixed(2),
     },
     {
       header: t("history.table.missing"),
@@ -415,7 +413,7 @@ export function useWarHistoryTabController({
         );
       },
     },
-  ], [canManage, isEditingMemberStats, t, updateDraftMetric]);
+  ], [canManage, editableMetricKeys.length, gameRules, isEditingMemberStats, t, updateDraftMetric, warRules]);
 
   const detailTable = useReactTable({
     data: detailRows,

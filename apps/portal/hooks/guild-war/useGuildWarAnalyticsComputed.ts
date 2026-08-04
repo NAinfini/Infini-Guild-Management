@@ -1,8 +1,10 @@
 import { useCallback, useMemo } from "react";
 import { useTranslation } from "react-i18next";
-import { activeGame } from "@guild/shared/games";
+import { GUILD_WAR_KDA_KEY, evaluateKda, findGuildWarResultDefinition } from "@guild/shared";
 import type { AnalyticsAggregation, AnalyticsMetricKey, AnalyticsTableColumn } from "../../types/guild-war";
 import { aggregateValues, computeStdDev, hashToPaletteColor } from "@portal/utils/guild-war-analytics";
+import { useSiteConfigStore } from "@portal/stores/site-config";
+import { getGuildWarResultLabel } from "@portal/utils/game-rules";
 
 type WarDetail = {
   id: string;
@@ -107,10 +109,12 @@ export function useGuildWarAnalyticsComputed({
   normalizeMetricValue,
 }: UseGuildWarAnalyticsComputedParams) {
   const { t } = useTranslation("guild-war");
+  const gameRules = useSiteConfigStore((state) => state.gameRules);
+  const warRules = gameRules.guild_war;
 
-  const analyticsMetric = analyticsSelectedMetrics[0] ?? "damage";
-  const analyticsMetricLabel = t(getMetricLabelKey(analyticsMetric));
-  const analyticsMetricLabels = analyticsSelectedMetrics.map((m) => t(getMetricLabelKey(m)));
+  const analyticsMetric = analyticsSelectedMetrics[0] ?? warRules.default_member_stat_key;
+  const analyticsMetricLabel = getMetricLabelKey(analyticsMetric);
+  const analyticsMetricLabels = analyticsSelectedMetrics.map((metric) => getMetricLabelKey(metric));
 
   const analyticsSelectableUserIds = useMemo(() => {
     const detailIds = analyticsWarDetails.flatMap((war) => war.member_stats.map((member) => member.user_id));
@@ -170,7 +174,7 @@ export function useGuildWarAnalyticsComputed({
         war_name: war.war_name,
         created_at: war.created_at.slice(0, 10),
         enemy_name: war.enemy_name ?? "—",
-        result: war.result ? t(`conclude.result.${war.result}`) : "—",
+        result: war.result ? getGuildWarResultLabel(war.result, undefined, gameRules) : "—",
         own,
         enemy,
         margin: own !== null && enemy !== null ? own - enemy : null,
@@ -184,13 +188,15 @@ export function useGuildWarAnalyticsComputed({
       if (war.result) counts.set(war.result, (counts.get(war.result) ?? 0) + 1);
     }
     const decided = Array.from(counts.values()).reduce((sum, value) => sum + value, 0);
-    const wins = counts.get("win") ?? 0;
+    const wins = Array.from(counts.entries()).reduce((sum, [resultId, count]) => (
+      findGuildWarResultDefinition(gameRules, resultId)?.outcome === "win" ? sum + count : sum
+    ), 0);
     return {
       counts,
       decided,
       winRate: decided > 0 ? Number(((wins / decided) * 100).toFixed(0)) : null,
     };
-  }, [analyticsWars]);
+  }, [analyticsWars, gameRules]);
 
   const getNormalizedMetricValue = useCallback(
     (warId: string, member: Parameters<typeof metricValueFromWarMember>[0], metric: AnalyticsMetricKey): number => {
@@ -198,11 +204,13 @@ export function useGuildWarAnalyticsComputed({
       if (!analyticsNormEnabled) return raw;
       const ctx = warNormContext.get(warId);
       if (!ctx) return raw;
-      if (metric === "kda") {
-        const normK = normalizeMetricValue(member.stats?.kills ?? 0, "kills", ctx.durationMinutes, referenceDuration, ctx.modifier);
-        const normD = normalizeMetricValue(member.stats?.deaths ?? 0, "deaths", ctx.durationMinutes, referenceDuration, ctx.modifier);
-        const normA = normalizeMetricValue(member.stats?.assists ?? 0, "assists", ctx.durationMinutes, referenceDuration, ctx.modifier);
-        return Number(((normK + normA) / Math.max(normD, 1)).toFixed(2));
+      if (metric === GUILD_WAR_KDA_KEY) {
+        const dependencyKeys = ["kills", "assists", "deaths"];
+        const normalizedStats = Object.fromEntries(Array.from(dependencyKeys).map((key) => [
+          key,
+          normalizeMetricValue(member.stats?.[key] ?? 0, key, ctx.durationMinutes, referenceDuration, ctx.modifier),
+        ]));
+        return evaluateKda(normalizedStats);
       }
       return normalizeMetricValue(raw, metric, ctx.durationMinutes, referenceDuration, ctx.modifier);
     },
@@ -216,7 +224,7 @@ export function useGuildWarAnalyticsComputed({
       if (!analyticsNormEnabled) return raw;
       const ctx = warNormContext.get(warId);
       if (!ctx) return raw;
-      if (metric === "kda") {
+      if (metric === GUILD_WAR_KDA_KEY) {
         return getNormalizedMetricValue(warId, member, metric);
       }
       return normalizeMetricValue(raw, metric, ctx.durationMinutes, referenceDuration, ctx.modifier);
@@ -225,7 +233,7 @@ export function useGuildWarAnalyticsComputed({
   );
 
   const analyticsRankingRows = useMemo(() => {
-    const primaryMetric = analyticsSelectedMetrics[0] ?? "damage";
+    const primaryMetric = analyticsSelectedMetrics[0] ?? warRules.default_member_stat_key;
     const valuesByUser = new Map<string, number[]>();
     const poolEntriesByUser = new Map<string, Array<{ warId: string; date: string }>>();
     const foughtWarIdsByUser = new Map<string, Set<string>>();
@@ -284,7 +292,7 @@ export function useGuildWarAnalyticsComputed({
       .filter((row) => row.participation >= analyticsMinParticipation)
       .sort((left, right) => right.score - left.score)
       .slice(0, analyticsTopN);
-  }, [analyticsAbsences, analyticsAggregation, analyticsSelectedMetrics, analyticsMinParticipation, analyticsTimeline, analyticsTopN, getNormalizedMetricValue]);
+  }, [analyticsAbsences, analyticsAggregation, analyticsSelectedMetrics, analyticsMinParticipation, analyticsTimeline, analyticsTopN, getNormalizedMetricValue, warRules.default_member_stat_key]);
 
   const analyticsRankingRowsByMetric = useMemo(() => {
     const userPool = new Set(analyticsRankingRows.map((row) => row.user_id));
@@ -309,7 +317,7 @@ export function useGuildWarAnalyticsComputed({
   }, [analyticsAggregation, analyticsRankingRows, analyticsSelectedMetrics, analyticsTimeline, getNormalizedMetricValue]);
 
   const analyticsTeamSeries = useMemo(() => {
-    const primaryMetric = analyticsSelectedMetrics[0] ?? "damage";
+    const primaryMetric = analyticsSelectedMetrics[0] ?? warRules.default_member_stat_key;
     const seriesMap = new Map<string, Array<{ warId: string; warName: string; value: number }>>();
     for (const war of analyticsTimeline) {
       for (const team of war.teams) {
@@ -414,7 +422,7 @@ export function useGuildWarAnalyticsComputed({
             });
             series.push({
               type: "line",
-              name: `${analyticsUserIdToUsername.get(userId) ?? userId} - ${t(getMetricLabelKey(metric))}`,
+              name: `${analyticsUserIdToUsername.get(userId) ?? userId} - ${getMetricLabelKey(metric)}`,
               smooth: true,
               data,
             });
@@ -434,7 +442,7 @@ export function useGuildWarAnalyticsComputed({
         analyticsSelectedMetrics.forEach((metric, metricIndex) => {
           series.push({
             type: "line",
-            name: `${analyticsUserIdToUsername.get(userId) ?? userId} - ${t(getMetricLabelKey(metric))}`,
+            name: `${analyticsUserIdToUsername.get(userId) ?? userId} - ${getMetricLabelKey(metric)}`,
             smooth: true,
             data: analyticsPlayerRows.map((row) => row[`user${userIndex}_metric${metricIndex}`]),
           });
@@ -488,7 +496,7 @@ export function useGuildWarAnalyticsComputed({
           const scores = analyticsRankingRowsByMetric.get(metric);
           return {
             type: "bar",
-            name: t(getMetricLabelKey(metric)),
+            name: getMetricLabelKey(metric),
             data: analyticsRankingRows.map((row) => scores?.get(row.user_id) ?? 0),
             itemStyle: { color: chartPalette[idx % chartPalette.length] },
           };
@@ -510,7 +518,7 @@ export function useGuildWarAnalyticsComputed({
        * dimension at all, and the legend was one undifferentiated member list.
        */
       const warNames = firstSeries ? firstSeries.points.map((p) => p.warName) : [];
-      const primaryMetric = analyticsSelectedMetrics[0] ?? "damage";
+      const primaryMetric = analyticsSelectedMetrics[0] ?? warRules.default_member_stat_key;
       const isSelectedTeam = (teamName: string) =>
         analyticsSelectedTeams.length === 0 || analyticsSelectedTeams.includes(teamName);
 
@@ -620,7 +628,7 @@ export function useGuildWarAnalyticsComputed({
         for (const ts of metricSeries) {
           series.push({
             type: "bar",
-            name: `${ts.teamName} - ${t(getMetricLabelKey(metric))}`,
+            name: `${ts.teamName} - ${getMetricLabelKey(metric)}`,
             data: ts.points.map((point) => point.value),
           });
         }
@@ -684,8 +692,8 @@ export function useGuildWarAnalyticsComputed({
     const metricsToUse: AnalyticsMetricKey[] = analyticsSelectedMetrics.length > 0
       ? analyticsSelectedMetrics
       : [
-          ...activeGame.war.memberStats.map((s) => s.key),
-          ...(activeGame.war.computedStats?.map((s) => s.key) ?? []),
+          ...warRules.member_stats.map((definition) => definition.key),
+          GUILD_WAR_KDA_KEY,
         ];
 
     // Compute max per metric across all users for normalization to percentile
@@ -726,7 +734,7 @@ export function useGuildWarAnalyticsComputed({
       legend: { type: "scroll", data: userProfiles.map((p) => p.name) },
       radar: {
         indicator: metricsToUse.map((metric) => ({
-          name: t(getMetricLabelKey(metric)),
+          name: getMetricLabelKey(metric),
           max: 100,
         })),
         shape: "polygon",
@@ -748,6 +756,7 @@ export function useGuildWarAnalyticsComputed({
     getNormalizedMetricValue,
     getMetricLabelKey,
     t,
+    warRules,
   ]);
 
   const analyticsTableRows = useMemo(() => {
@@ -808,7 +817,7 @@ export function useGuildWarAnalyticsComputed({
       analyticsSelectedUsers.forEach((userId, userIndex) => {
         analyticsSelectedMetrics.forEach((metric, metricIndex) => {
           columns.push({
-            title: `${analyticsUserIdToUsername.get(userId) ?? userId} - ${t(getMetricLabelKey(metric))}`,
+            title: `${analyticsUserIdToUsername.get(userId) ?? userId} - ${getMetricLabelKey(metric)}`,
             dataIndex: `user${userIndex}_metric${metricIndex}`,
             key: `user${userIndex}_metric${metricIndex}`,
           });
@@ -830,7 +839,7 @@ export function useGuildWarAnalyticsComputed({
       } else {
         for (const metric of analyticsSelectedMetrics) {
           columns.push({
-            title: t(getMetricLabelKey(metric)),
+            title: getMetricLabelKey(metric),
             dataIndex: `metric_${metric}`,
             key: `metric_${metric}`,
           });

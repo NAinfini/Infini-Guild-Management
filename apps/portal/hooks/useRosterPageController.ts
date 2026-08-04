@@ -1,5 +1,4 @@
 import type { MemberProfile, User, UserBadge } from "@guild/shared";
-import { activeGame } from "@guild/shared/games";
 import { useQuery } from "@tanstack/react-query";
 import { useLocalStorage } from "@mantine/hooks";
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -17,11 +16,7 @@ export type RosterEntry = { user: User; profile: MemberProfile; badges?: UserBad
 
 const ROSTER_FILTERS_KEY = "roster.filters";
 
-const ROSTER_SORT_MODES = [
-  ...activeGame.profileStats.filter((s) => s.sortable).map((s) => s.key),
-  "username",
-  "class",
-] as const;
+const ROSTER_SORT_MODES = ["power", "username", "class"] as const;
 
 export type RosterSortMode = (typeof ROSTER_SORT_MODES)[number];
 

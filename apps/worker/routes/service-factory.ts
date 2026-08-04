@@ -1,6 +1,7 @@
 import type { Context } from "hono";
 import {
   DEFAULT_FEATURE_FLAGS,
+  DEFAULT_GAME_RULES,
   DEFAULT_SITE_ABSENCE_POLICY,
   DEFAULT_SITE_MEDIA_POLICY,
   DEFAULT_SITE_STORAGE_POLICY,
@@ -19,6 +20,7 @@ import { writeAuditLog, type WriteAuditLogInput } from "../services/audit";
 import { publishEntityChanged, publishAnnouncementPublished } from "../services/push";
 import type { PushEntityType, PushHint } from "@guild/shared/constants/push-hints";
 import { getSystemTestRunId } from "../services/SystemTestService";
+import { protectContentMediaBucket } from "../services/media";
 
 type PolicyColumn = "absence_policy_json" | "feature_flags_json" | "media_policy_json" | "storage_policy_json";
 type SitePolicyRow = Record<PolicyColumn, string | null>;
@@ -94,6 +96,10 @@ export function getStoragePolicy(c: Context): Promise<SiteStoragePolicy> {
   return readSitePolicy(c, "storage_policy_json", siteStoragePolicySchema, DEFAULT_SITE_STORAGE_POLICY);
 }
 
+export function getGameRules(_c: Context) {
+  return Promise.resolve(DEFAULT_GAME_RULES);
+}
+
 export async function hasMediaQuotaCapacity(
   c: Context,
   prefix: string,
@@ -110,13 +116,14 @@ export function commonDeps(c: Context) {
     publishEntityChanged: (payload: { entityType: PushEntityType; entityId: string; hint: PushHint; displayName?: string }) =>
       publishEntityChanged(c, payload),
     getAbsencePolicy: () => getAbsencePolicy(c),
+    getGameRules: () => getGameRules(c),
   };
 }
 
 export function withMedia(c: Context) {
   return {
     ...commonDeps(c),
-    media: (c.env as Bindings).MEDIA,
+    media: protectContentMediaBucket((c.env as Bindings).MEDIA),
     rawDb: (c.env as Bindings).DB,
     systemTestRunId: getSystemTestRunId(c),
     getMediaPolicy: () => getMediaPolicy(c),

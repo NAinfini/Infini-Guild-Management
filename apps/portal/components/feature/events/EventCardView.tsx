@@ -1,20 +1,15 @@
 import type { Event, MemberProfile, User } from "@guild/shared";
-import { EVENT_TYPE_COLORS, UNKNOWN_EVENT_TYPE_COLOR } from "@portal/utils/event-colors";
 import { Badge, Group, HoverCard, Paper, Stack, Text, ThemeIcon, UnstyledButton } from "@mantine/core";
 import {
   ArchiveIcon,
   CalendarEventIcon,
-  ChartBarIcon,
   ClockIcon,
-  FriendsIcon,
   GiftIcon,
   LockIcon,
   PinIcon,
   RefreshCwIcon,
   Sparkles2Icon,
   SparklesIcon,
-  SwordsIcon,
-  TargetArrowIcon,
   UsersIcon,
 } from "@portal/components/icons";
 import React from "react";
@@ -22,22 +17,9 @@ import { useTranslation } from "react-i18next";
 import { MemberAvatarStack } from "@portal/components/shared/MemberAvatarStack";
 import { EventQuotaBar } from "./EventQuotaBar";
 import { summariseEventClassQuotas } from "./class-quota-view";
-
-// Icons are not carried in the game config (config stores string identifiers like
-// "TargetOutlined", not React nodes). The local map is keyed on event type ids;
-// unknown types fall back to CalendarEventIcon via the ?? below.
-const EVENT_TYPE_ICONS: Record<string, React.ReactNode> = {
-  weekly_mission: <TargetArrowIcon size={12} />,
-  guild_war: <SwordsIcon size={12} />,
-  social: <FriendsIcon size={12} />,
-  poll: <ChartBarIcon size={12} />,
-  raffle: <GiftIcon size={12} />,
-  other: <CalendarEventIcon size={12} />,
-};
-
-function getTypeGradientClass(type: string): string {
-  return `event-card__header--${type in EVENT_TYPE_COLORS ? type : "other"}`;
-}
+import { eventHasBehavior, getEventTypeLabel } from "@portal/utils/game-rules";
+import { EventTypeIcon } from "@portal/components/shared/EventTypeIcon";
+import { eventTypeColor } from "@portal/utils/event-colors";
 
 // The card's meta row is one line wide. "2026年7月25日周六" plus "下午5:15 - 下午7:15"
 // overflowed it on every card, so the year is only spelled out when the event is
@@ -143,8 +125,8 @@ export function EventCardView({
 }: EventCardViewProps) {
   const { t, i18n } = useTranslation("events");
   const joinedCount = members.length;
-  const typeColor = EVENT_TYPE_COLORS[event.type] ?? UNKNOWN_EVENT_TYPE_COLOR;
-  const raffleHasDrawn = event.type === "raffle" && (event.raffle_winners?.length ?? 0) > 0;
+  const typeColor = eventTypeColor(event.type);
+  const raffleHasDrawn = eventHasBehavior(event.type, "raffle") && (event.raffle_winners?.length ?? 0) > 0;
   const quotaSummary = summariseEventClassQuotas(event, members);
 
   const statusIndicators = (
@@ -224,19 +206,22 @@ export function EventCardView({
       withBorder
       className={`event-card${isFocused ? " event-card--focused" : ""}`}
       onClick={onOpenDetail}
-      style={onOpenDetail ? { cursor: "pointer" } : undefined}
+      style={{
+        "--event-card-accent": typeColor,
+        ...(onOpenDetail ? { cursor: "pointer" } : {}),
+      } as React.CSSProperties}
     >
       {/* ── 色带：身份与管理 ── */}
-      <div className={`event-card__header ${getTypeGradientClass(event.type)}`}>
+      <div className="event-card__header">
         <div className="event-card__header-left">
           <Badge
             size="sm"
             variant="light"
             color={typeColor}
             className="event-card__type-badge"
-            leftSection={EVENT_TYPE_ICONS[event.type] ?? EVENT_TYPE_ICONS.other}
+            leftSection={<EventTypeIcon eventType={event.type} size={12} />}
           >
-            {t(`common:eventType.${event.type}`)}
+            {getEventTypeLabel(event.type, i18n.language)}
           </Badge>
         </div>
         {/* 状态图标固定单行不换行——它一换行整张卡就变高，一排卡片的底边就参差不齐。 */}

@@ -1,78 +1,103 @@
 /* 职业标签页。主从台本身来自 AdminPage.css 的 .admin-md，这里只有编辑器内部的东西。 */
 
-.admin-class-tags__form-row {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(120px, 0.45fr);
-  gap: var(--space-sm);
-  align-items: start;
-}
-
-/* 职业按钮排成网格而不是一行 Chip：目录动辄十几个职业，一行排下来会折成好几段，
-   看不出「一共有哪些可选」。auto-fill 让它跟着右栏宽度自己决定几列。 */
-.admin-class-tags__member-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(9rem, 1fr));
-  gap: 6px;
-}
-
-.admin-class-tags__member {
+/* 清单行外壳：手柄 + .admin-md__item，跟 .admin-classes__row 同一个形状。 */
+.admin-class-tags__row {
   display: flex;
   align-items: center;
-  gap: var(--space-sm);
+  gap: 2px;
+  min-inline-size: 0;
+}
+
+.admin-class-tags__grip {
+  display: grid;
+  place-items: center;
+  flex: 0 0 auto;
+  inline-size: 26px;
   /* 44px 触控靶面，和 .admin-md__item 同一档。 */
   min-block-size: 44px;
-  min-inline-size: 0;
-  padding: var(--space-xs) var(--space-sm);
-  border: 1px solid var(--border-subtle);
+  padding: 0;
+  border: 0;
   border-radius: var(--radius-control);
-  background: var(--surface-sunken);
-  color: var(--text-secondary);
-  font: inherit;
-  text-align: start;
-  cursor: pointer;
-  transition:
-    color var(--motion-state),
-    border-color var(--motion-state),
-    background-color var(--motion-state);
+  background: transparent;
+  color: var(--text-muted);
+  cursor: grab;
+  touch-action: none;
 }
 
-.admin-class-tags__member:hover:not(:disabled) {
+.admin-class-tags__grip:hover {
   color: var(--text-primary);
-  border-color: var(--border-strong);
+  background: var(--surface-raised);
 }
 
-.admin-class-tags__member:focus-visible {
+.admin-class-tags__grip:focus-visible {
   outline: 2px solid var(--brand-fill);
   outline-offset: 1px;
 }
 
-.admin-class-tags__member:disabled {
+.admin-class-tags__grip:disabled {
   cursor: default;
-  opacity: 0.45;
+  opacity: 0.4;
 }
 
-.admin-class-tags__member--selected {
-  color: var(--brand-text);
-  border-color: var(--brand-fill);
-  background: color-mix(in srgb, var(--brand-fill) 15%, var(--surface-raised));
-  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--brand-fill) 32%, transparent);
+/* 和职业编辑器同一条上限：单行控件不该跟着右栏无限长。原先是 1fr，2000px 的屏上
+   一个放「坦克」两个字的输入框横跨 1350px，标签在最左、光标在最左、右边一千像素
+   全是空的。 */
+.admin-class-tags__name-field {
+  max-inline-size: 24rem;
 }
 
-.admin-class-tags__member-label {
-  min-inline-size: 0;
+/* 编辑器里除了成员清单，谁都不许被压缩：清单是唯一自带滚动条的那块，
+   高度不够时该让它滚，而不是把名称输入框和用量那行挤扁。 */
+.admin-class-tags__name-field,
+.admin-class-tags__usage {
+  flex: 0 0 auto;
+}
+
+/* 编辑器主体自己就是一条填满高度的列，不再套外层滚动区（理由写在 tsx 上）。 */
+.admin-class-tags__body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-md);
+  min-block-size: 0;
+  padding: var(--space-md) var(--space-lg);
   overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+}
+
+/*
+ * 成员这一块高度跟着内容走，不再 flex:1 吃满剩余高度：十来个职业占着一块能放二十行
+ * 的地方，底下大半屏是空的。flex-shrink 留着——清单长到超过右栏时由清单自己滚。
+ */
+.admin-class-tags__members {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-xs);
+  flex: 0 1 auto;
+  min-block-size: 0;
+  max-inline-size: 40rem;
+}
+
+.admin-class-tags__members-intro {
+  min-inline-size: 0;
+}
+
+/*
+ * 清单：内容不满时就是内容高，满了才在自己身上滚（行本身的样子在 shared/PickList.css）。
+ * 上限用 rem 而不是 px，跟着字号走。
+ */
+.admin-class-tags__picker .pick-list__body {
+  max-block-size: 20rem;
 }
 
 @media (max-width: 47.99em) {
-  .admin-class-tags__form-row {
-    grid-template-columns: 1fr;
+  /* 窄屏上主从台回到内容高（见 AdminPage.css 同一断点），这里也没有「剩余高度」
+     可分了，改回固定高度并让整块跟着页面滚。 */
+  .admin-class-tags__body {
+    overflow: visible;
+    padding: var(--space-md);
   }
-}
 
-@media (prefers-reduced-motion: reduce) {
-  .admin-class-tags__member {
-    transition: none;
+  /* 窄屏上没有「剩余高度」可分，清单封一个上限跟着页面滚，免得一屏全是它。 */
+  .admin-class-tags__picker .pick-list__body {
+    max-block-size: 18rem;
   }
 }

@@ -4,6 +4,7 @@ import {
   buildClassOptions,
   compareClassCatalogItems,
   resolveClassCatalogItem,
+  useClassCatalogStore,
 } from "./class-catalog";
 
 const item = (overrides: Partial<ClassCatalogItem> = {}): ClassCatalogItem => ({
@@ -20,6 +21,10 @@ const item = (overrides: Partial<ClassCatalogItem> = {}): ClassCatalogItem => ({
 });
 
 describe("class catalog store helpers", () => {
+  it("starts empty until the D1-backed catalog is loaded", () => {
+    expect(useClassCatalogStore.getState().items).toEqual([]);
+  });
+
   it("resolves catalog labels, colors, and icons by stable id", () => {
     expect(resolveClassCatalogItem("warden", [item()])).toMatchObject({
       id: "warden",

@@ -220,4 +220,18 @@ describe("TipTapEditorToolbar", () => {
     expect(toolbarRule).toContain("max-width: 100%");
     expect(toolbarRule).toContain("min-width: 0");
   });
+
+  /*
+   * 二十八个控件排一行：44px 按钮配 22px 间距要约 1875px，32px 配 12px 只要约
+   * 1269px。收窄这一档的条件必须是 any-pointer（有没有鼠标可用），不能是 pointer
+   * （哪个是主指针）——带触摸的 Windows 笔记本插着鼠标也报主指针为粗，整块不生效，
+   * 工具条就折成两行。这是从截图里认出来的实际故障，不是假设，所以钉一条断言。
+   */
+  it("compacts the toolbar on any device that has a mouse, not just where the primary pointer is fine", () => {
+    const css = readFileSync(resolve(process.cwd(), "apps/portal/components/shared/tiptap-editor.css"), "utf8");
+    const fineBlock = css.match(/@media \(any-pointer: fine\)\s*\{[\s\S]*?\n\}/)?.[0] ?? "";
+
+    expect(fineBlock).toContain("var(--control-height-compact)");
+    expect(css).not.toMatch(/@media \(pointer: fine\)/);
+  });
 });

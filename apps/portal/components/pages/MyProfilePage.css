@@ -1,12 +1,17 @@
-/* 每屏「左编辑 / 右预览」。预览栏不是全局共用的一张卡：主页屏给名册卡，
-   时间屏给本周可见度，账号屏没有预览。 */
-/* 编辑栏封顶 880px。1fr 在 2000px 的屏上把每个输入框拉到 1500px 宽——一个战力
-   数字横跨整个屏幕，读者的眼睛要从标签走到值走一整行。880 是「两列字段各
-   ~420px」的宽度，和预览里的比例一致；剩下的空间留白，不摊给表单。 */
+/* 三屏共用的外壳：同宽、同起点。切页签时卡片的左边缘不跳。 */
+.my-profile-shell {
+  max-inline-size: 1680px;
+  margin-inline: auto;
+  display: grid;
+  gap: var(--space-md);
+  min-width: 0;
+}
+
+/* 只有时间屏是「左编辑 / 右预览」——本周热力图答的是编辑器里数不出来的问题。
+   主页和账号屏没有侧栏。 */
 .my-profile-split {
   display: grid;
-  grid-template-columns: minmax(0, 880px) 300px;
-  justify-content: center;
+  grid-template-columns: minmax(0, 1fr) 320px;
   gap: var(--space-lg);
   align-items: start;
   min-width: 0;
@@ -15,7 +20,18 @@
 .my-profile-split__editor {
   display: grid;
   gap: var(--space-md);
+  align-content: start;
   min-width: 0;
+}
+
+/* 主页屏的编辑区没有侧栏分走宽度，两张卡（身份 / 媒体）宽到放得下就并排。
+   1fr 单列会把一个战力输入框拉到 1600px 宽——一个数字横跨整屏，眼睛要从
+   标签走到值走一整行。并排之后单栏还是 ~800px，且整页不再中间一条、两侧
+   各留几百像素空白。 */
+@media (min-width: 1200px) {
+  .my-profile-split__editor--wide {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
 }
 
 .my-profile-split__rail {
@@ -23,14 +39,198 @@
   top: var(--space-md);
   display: grid;
   gap: var(--space-sm);
+  align-content: start;
   min-width: 0;
 }
 
-/* 账号屏没有预览栏。它不跟着撑满，而是和另外两屏的编辑列同宽同起点——三屏
-   之间切换时，卡片的左边缘不应该跳来跳去。 */
-.my-profile-account {
-  max-inline-size: 1196px;
-  margin-inline: auto;
+/* ── 概览条 ── */
+
+/* 主页屏顶上的全宽一条：左边「我是谁」，右边五个计数。它答的是「现在是什么」，
+   下面的表单答的是「改什么」——所以它是一条，不是又一张带标题的卡。 */
+.profile-overview {
+  /* 主职业色。组件按主职业内联覆盖这一个变量；这里声明的是「没有职业」时的
+     取值。必须是独立声明，不能写成 var() 的第二参数兜底——守卫 rule 1
+     不许任何 var() 兜底。 */
+  --overview-accent: var(--brand-fill);
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: var(--space-lg);
+  min-width: 0;
+  padding: var(--card-padding);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-surface);
+  /* 左侧那道主职业色，是这一条和右栏名片预览之间唯一的视觉连线。 */
+  border-inline-start: 3px solid var(--overview-accent);
+  /* 160deg 是全站统一的材质角度（architecture-boundaries 守卫的那条）。 */
+  background: linear-gradient(
+    160deg,
+    color-mix(in srgb, var(--overview-accent) 9%, var(--surface-raised)) 0%,
+    var(--surface-raised) 70%
+  );
+}
+
+.profile-overview__identity {
+  display: flex;
+  align-items: center;
+  gap: var(--space-md);
+  min-width: 0;
+}
+
+.profile-overview__avatar {
+  position: relative;
+  flex: 0 0 auto;
+  inline-size: 64px;
+  block-size: 64px;
+  border-radius: 50%;
+  overflow: visible;
+  display: grid;
+  place-items: center;
+  border: 2px solid var(--surface-base);
+  background: var(--surface-sunken);
+  font-size: var(--text-h2);
+  font-weight: var(--fw-strong);
+  color: var(--text-muted);
+}
+
+.profile-overview__avatar img {
+  inline-size: 100%;
+  block-size: 100%;
+  border-radius: 50%;
+  object-fit: cover;
+}
+
+.profile-overview__dot {
+  position: absolute;
+  inset-inline-end: 0;
+  inset-block-end: 2px;
+  inline-size: 14px;
+  block-size: 14px;
+  border-radius: 50%;
+  border: 3px solid var(--surface-raised);
+}
+
+.profile-overview__dot--active { background: var(--status-success); }
+.profile-overview__dot--inactive { background: color-mix(in srgb, var(--text-primary) 35%, transparent); }
+.profile-overview__dot--vacation { background: var(--status-danger); }
+
+.profile-overview__who {
+  display: grid;
+  gap: var(--space-xs);
+  min-width: 0;
+}
+
+.profile-overview__name-row {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: var(--space-sm);
+  min-width: 0;
+}
+
+.profile-overview__name {
+  margin: 0;
+  font-size: var(--text-h2);
+  font-weight: var(--fw-strong);
+  line-height: 1.15;
+  overflow-wrap: anywhere;
+}
+
+.profile-overview__role {
+  font-size: var(--text-micro);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.profile-overview__status {
+  padding: 1px 8px;
+  border-radius: var(--shape-pill);
+  font-size: var(--text-micro);
+  line-height: 1.6;
+}
+
+.profile-overview__status--active {
+  background: color-mix(in srgb, var(--status-success) 15%, transparent);
+  color: var(--status-success);
+}
+
+.profile-overview__status--inactive {
+  background: var(--surface-sunken);
+  color: var(--text-muted);
+}
+
+.profile-overview__status--vacation {
+  background: color-mix(in srgb, var(--status-danger) 14%, transparent);
+  color: var(--status-danger);
+}
+
+.profile-overview__title {
+  font-size: var(--text-meta);
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}
+
+.profile-overview__tags {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-xs);
+}
+
+.profile-overview__class {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px 2px 5px;
+  border-radius: var(--shape-pill);
+  font-size: var(--text-micro);
+  line-height: 1.5;
+  border: 1px solid var(--border-subtle);
+  background: var(--surface-sunken);
+}
+
+.profile-overview__meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-sm) var(--space-md);
+  font-size: var(--text-micro);
+  color: var(--text-muted);
+}
+
+/* 五个计数横排。auto-fit 会在窄屏上自己折成两行，不必再写一档断点。 */
+.profile-overview__stats {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(72px, auto));
+  gap: var(--space-md) var(--space-lg);
+  margin: 0;
+}
+
+.profile-overview__stat {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.profile-overview__stat-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: var(--text-micro);
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
+.profile-overview__stat-icon {
+  display: inline-flex;
+  color: var(--overview-accent);
+}
+
+.profile-overview__stat-value {
+  margin: 0;
+  font-size: var(--text-h3);
+  line-height: 1.1;
+  color: var(--text-primary);
 }
 
 .profile-account {
@@ -38,13 +238,40 @@
   gap: var(--space-md);
 }
 
-/* 两张卡等宽并排：改密码和改用户名是同一层级的两件事，竖着排会让下面那张
-   看起来像上面那张的后续步骤。 */
+/* 三张卡（账号事实 / 改密码 / 改用户名）等宽并排：它们是同一层级的三件事，
+   竖着排会让下面那张看起来像上面那张的后续步骤。auto-fit 让窄屏自己折。 */
 .profile-account__cards {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
   gap: var(--space-md);
   align-items: start;
+}
+
+/* 只读的账号事实：标签一列、值一列，两列贴着走，不是表单那种上下结构——
+   它没有输入框，撑成表单的行高会让人以为能点进去改。 */
+.profile-account__facts {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: var(--space-xs) var(--space-md);
+  margin: 0;
+  margin-block-start: var(--space-md);
+}
+
+.profile-account__fact {
+  display: contents;
+}
+
+.profile-account__fact-label {
+  font-size: var(--text-meta);
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
+.profile-account__fact-value {
+  margin: 0;
+  font-size: var(--text-meta);
+  color: var(--text-primary);
+  overflow-wrap: anywhere;
 }
 
 .profile-account__exit {
@@ -68,13 +295,13 @@
 /* 页签沿用全站那套下划线：主题里 .tabsTab 统一给了内边距、2px 底边和透明的
    选中态背景（ThemeProvider.module.css）。在这一页改成胶囊，就得逐条覆盖那些
    规则，而且这一页会变成全站唯一一处不一样的页签。 */
-/* 和下面的 880+300 对齐：页签比内容宽或窄，切屏时整页会左右晃。 */
+/* 和 .my-profile-shell 同宽：页签比内容宽或窄，切屏时整页会左右晃。 */
 .my-profile-tabbar {
   display: flex;
   align-items: center;
   gap: var(--space-md);
   flex-wrap: wrap;
-  max-inline-size: 1196px;
+  max-inline-size: 1680px;
   margin-inline: auto;
 }
 
@@ -104,211 +331,6 @@
 .profile-rail__label {
   letter-spacing: 0.06em;
   text-transform: uppercase;
-}
-
-/* ── 名册卡实时预览 ── */
-
-.profile-live-preview {
-  display: grid;
-  gap: var(--space-sm);
-  min-width: 0;
-}
-
-/* 名片本体。骨架照 Discord 的侧写卡：横幅 → 压上来的圆头像 → 名字 → 称号 →
-   职业 → 战力/媒体 → 自述 → 语音条。 */
-.pcard {
-  /* 横幅底色。组件按主职业色内联覆盖这一个变量；这里声明的是「没有职业」时的
-     取值。必须是一条独立声明，不能写成 var() 的第二参数兜底——守卫 rule 1
-     不许任何 var() 兜底。 */
-  --pcard-accent: var(--brand-fill);
-  min-inline-size: 0;
-  border: 1px solid var(--border-subtle);
-  border-radius: var(--radius-overlay);
-  background: var(--surface-base);
-  overflow: hidden;
-  transition: border-color var(--transition-smooth);
-}
-
-.pcard:hover {
-  border-color: var(--border-strong);
-}
-
-/* --pcard-accent 由组件按主职业色内联注入；没有职业时退回品牌色。 */
-.pcard__banner {
-  position: relative;
-  block-size: 64px;
-  background: linear-gradient(
-    160deg,
-    var(--pcard-accent) 0%,
-    color-mix(in srgb, var(--pcard-accent) 28%, var(--surface-sunken)) 100%
-  );
-}
-
-.pcard__banner-img {
-  inline-size: 100%;
-  block-size: 100%;
-  object-fit: cover;
-  display: block;
-}
-
-.pcard__avatar {
-  position: absolute;
-  inset-inline-start: var(--space-md);
-  inset-block-end: -24px;
-  inline-size: 60px;
-  block-size: 60px;
-  border-radius: 50%;
-  overflow: hidden;
-  display: grid;
-  place-items: center;
-  /* 3px 卡底色描边：头像压在横幅上，没有这圈隔离，深色头像会和横幅糊成一块。 */
-  border: 3px solid var(--surface-base);
-  background: var(--surface-raised);
-  font-size: 26px;
-  font-weight: var(--fw-strong);
-  color: var(--text-muted);
-}
-
-.pcard__avatar img {
-  inline-size: 100%;
-  block-size: 100%;
-  object-fit: cover;
-}
-
-.pcard__dot {
-  position: absolute;
-  inset-inline-start: 56px;
-  inset-block-end: -20px;
-  inline-size: 14px;
-  block-size: 14px;
-  border-radius: 50%;
-  border: 3px solid var(--surface-base);
-}
-
-.pcard__dot--active { background: var(--status-success); }
-.pcard__dot--inactive { background: color-mix(in srgb, var(--text-primary) 35%, transparent); }
-.pcard__dot--vacation { background: var(--status-danger); }
-
-/* 上内边距要让开头像露出来的那 24px。 */
-.pcard__body {
-  padding: calc(24px + var(--space-md)) var(--space-md) var(--space-md);
-}
-
-.pcard__name {
-  font-size: var(--text-body);
-  font-weight: var(--fw-strong);
-  line-height: 1.25;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.pcard__title {
-  margin-block-start: 2px;
-  font-size: var(--text-meta);
-  line-height: 1.35;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.pcard__title--empty {
-  color: var(--text-muted);
-}
-
-.pcard__classes {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--space-xs);
-  margin-block-start: var(--space-sm);
-}
-
-.pcard__class {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  padding: 2px 8px 2px 5px;
-  border-radius: var(--shape-pill);
-  font-size: var(--text-micro);
-  line-height: 1.5;
-  border: 1px solid var(--border-subtle);
-  background: var(--surface-sunken);
-}
-
-.pcard__stats {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: var(--space-sm);
-  margin-block-start: var(--space-sm);
-  font-size: var(--text-micro);
-  color: var(--text-muted);
-}
-
-.pcard__power b {
-  color: var(--text-secondary);
-  font-weight: var(--fw-medium);
-}
-
-/* 用 --brand-* 而不是 --accent-*：个人主色 token 按守卫 rule 7 只允许出现在
-   AppShell / SettingsPage / MemberCard 三处身份表面。 */
-.pcard__pill {
-  display: inline-flex;
-  align-items: center;
-  gap: 3px;
-  padding: 1px 7px;
-  border-radius: var(--shape-pill);
-  border: 1px solid color-mix(in srgb, var(--brand-fill) 30%, transparent);
-  background: color-mix(in srgb, var(--brand-fill) 14%, transparent);
-  color: var(--brand-text);
-}
-
-.pcard__bio {
-  margin: var(--space-sm) 0 0;
-  padding-block-start: var(--space-sm);
-  border-block-start: 1px solid var(--border-subtle);
-  font-size: var(--text-meta);
-  color: var(--text-secondary);
-  line-height: 1.5;
-  overflow-wrap: anywhere;
-}
-
-/* 语音签名，对应 Discord 那块「在语音频道中」。没上传语音时整块不渲染。 */
-.pcard__audio {
-  display: flex;
-  align-items: center;
-  gap: var(--space-sm);
-  margin: 0 var(--space-md) var(--space-md);
-  padding: var(--space-sm) var(--space-md);
-  border: 1px solid var(--border-subtle);
-  border-radius: var(--radius-surface);
-  background: var(--surface-sunken);
-}
-
-.pcard__play {
-  flex: 0 0 auto;
-  inline-size: 28px;
-  block-size: 28px;
-  border: 0;
-  border-radius: 50%;
-  cursor: pointer;
-  display: grid;
-  place-items: center;
-  background: var(--brand-fill);
-  color: var(--brand-on-fill);
-}
-
-.pcard__audio-label {
-  flex: 1 1 auto;
-  min-inline-size: 0;
-  font-size: var(--text-meta);
-  color: var(--text-secondary);
-}
-
-.pcard__audio-time {
-  font-size: var(--text-micro);
-  color: var(--text-muted);
-  font-variant-numeric: tabular-nums;
 }
 
 /* ── 空值点名 ── */
@@ -550,8 +572,7 @@
 }
 
 @media (max-width: 1199px) {
-  /* 预览栏折到编辑区下面，而不是继续压缩：280px 以下名册卡就不再是名册里
-     那个比例，预览也就不成立了。 */
+  /* 热力图折到编辑区下面，而不是继续压缩：再窄下去一天 12 格就糊成一条。 */
   .my-profile-split {
     grid-template-columns: minmax(0, 1fr);
   }
@@ -559,11 +580,18 @@
   .my-profile-split__rail {
     position: static;
   }
+}
 
-  /* 折行之后预览栏有整屏那么宽，名片再吃满就成了一张横躺的巨卡。收回原来那个
-     量级，并且靠左——居中会让它孤零零地飘在一大片空白中间。 */
-  .pcard {
-    max-inline-size: 300px;
+/* 概览条的两块（身份 / 计数）挤到一行放不下时改成上下两行，计数自己折。
+   断点比整页的 1199 早：这一条本来就是横向最吃宽度的一块。 */
+@media (max-width: 1399px) {
+  .profile-overview {
+    grid-template-columns: minmax(0, 1fr);
+    align-items: start;
+  }
+
+  .profile-overview__stats {
+    grid-template-columns: repeat(auto-fit, minmax(96px, max-content));
   }
 }
 
@@ -663,12 +691,24 @@
   place-items: center;
   inline-size: 24px;
   block-size: 24px;
+  padding: 0;
   border: 1px dashed var(--border-subtle);
   border-radius: 50%;
   background: transparent;
   color: var(--text-muted);
   cursor: pointer;
   transition: border-color var(--transition-smooth), color var(--transition-smooth);
+}
+
+/* 加号原先偏右下 2px / 1px，两个方向各有一个原因：
+   横向——按钮没清 UA 默认的 padding: 1px 6px，内容盒只剩 10.9px，比 14px 的
+   图标还窄；网格项一旦溢出，justify-items: center 就退化成贴住起始边，图标
+   整体被顶到右边。
+   纵向——PlusIcon 在 <svg> 外面还包了一个 <div>，svg 是 inline 的，行盒底下
+   多出一截降部空间，包装盒比图标高；居中的是包装盒，图标贴在盒子顶部。
+   两条一起改完实测 dx=dy=0。 */
+.availability-day__add > * {
+  display: flex;
 }
 
 .availability-day__add:hover {

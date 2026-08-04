@@ -3,12 +3,33 @@ import { describe, expect, it, vi } from "vitest";
 import { DEFAULT_SITE_MEDIA_POLICY } from "@guild/shared";
 import { UserService, sanitizeTitleHtml } from "../UserService";
 
-function createDeps() {
+type RelationFixtures = {
+  classes?: Record<string, string[]>;
+  images?: Record<string, string[]>;
+};
+
+function createDeps(relations: RelationFixtures = {}) {
   const rawStatements: Array<{ sql: string; binds: unknown[] }> = [];
   const rawDb = {
     prepare: vi.fn((sql: string) => ({
       bind: vi.fn((...binds: unknown[]) => {
-        const statement = { sql, binds };
+        const relationRows = sql.includes("FROM member_profile_classes")
+          ? relations.classes
+          : sql.includes("FROM member_profile_images")
+            ? relations.images
+            : undefined;
+        const statement = {
+          sql,
+          binds,
+          all: vi.fn().mockResolvedValue({
+            results: binds.flatMap((ownerId) =>
+              (relationRows?.[String(ownerId)] ?? []).map((value) => ({
+                owner_id: String(ownerId),
+                value,
+              })),
+            ),
+          }),
+        };
         rawStatements.push(statement);
         return statement;
       }),
@@ -47,7 +68,6 @@ function createProfileUploadSelect(profile: Record<string, unknown>) {
         where: vi.fn(() => ({
           limit: vi.fn().mockResolvedValue([{
             userId: "u-1",
-            images: "[]",
             avatarKey: null,
             audioKey: null,
             updatedAt: "2026-03-08T12:00:00.000Z",
@@ -160,10 +180,8 @@ describe("UserService", () => {
       profileId: "profile-1",
       profileUserId: "u-1",
       power: 100,
-      classes: "[]",
       titleHtml: null,
       bio: null,
-      images: "[]",
       avatarKey: null,
       audioKey: null,
       videoUrls: "[]",
@@ -179,7 +197,11 @@ describe("UserService", () => {
     const where = vi.fn(() => ({ orderBy }));
     const leftJoin = vi.fn(() => ({ where }));
     const from = vi.fn(() => ({ leftJoin }));
-    const service = new UserService({ select: vi.fn(() => ({ from })) } as never, createDeps());
+    const deps = createDeps({
+      classes: { "u-1": ["warrior", "healer"] },
+      images: { "u-1": ["members/u-1/images/one.webp", "members/u-1/images/two.webp"] },
+    });
+    const service = new UserService({ select: vi.fn(() => ({ from })) } as never, deps);
 
     const result = await service.listUsers({
       page: 1,
@@ -193,6 +215,8 @@ describe("UserService", () => {
     if (!result.ok) return;
     expect(result.data.data[0]).toMatchObject({
       profile: {
+        classes: ["warrior", "healer"],
+        images: ["members/u-1/images/one.webp", "members/u-1/images/two.webp"],
         vacation_start: null,
         vacation_end: null,
       },
@@ -217,18 +241,8 @@ describe("UserService", () => {
                 id: "profile-1",
                 userId: "u-1",
                 power: 0,
-                classes: "[]",
                 titleHtml: null,
                 bio: null,
-                images: JSON.stringify([
-                  "members/u-1/images/one.webp",
-                  "members/u-1/images/two.webp",
-                  "members/u-1/images/keep.webp",
-                  "/mock/profile.webp",
-                  "https://cdn.example.com/profile.webp",
-                  "events/evt-1/images/poster.webp",
-                  "members/u-2/images/foreign.webp",
-                ]),
                 avatarKey: "members/u-1/images/avatar.webp",
                 audioKey: "members/u-1/audio/profile.mp3",
                 videoUrls: "[]",
@@ -243,7 +257,19 @@ describe("UserService", () => {
           })),
         })),
       });
-    const deps = createDeps();
+    const deps = createDeps({
+      images: {
+        "u-1": [
+          "members/u-1/images/one.webp",
+          "members/u-1/images/two.webp",
+          "members/u-1/images/keep.webp",
+          "/mock/profile.webp",
+          "https://cdn.example.com/profile.webp",
+          "events/evt-1/images/poster.webp",
+          "members/u-2/images/foreign.webp",
+        ],
+      },
+    });
     deps.deleteMediaObject.mockResolvedValue(undefined);
     const service = new UserService({ select } as never, deps);
 
@@ -265,14 +291,15 @@ describe("UserService", () => {
     expect(deps.rawDbMock.batch.mock.invocationCallOrder[0]).toBeLessThan(
       deps.deleteMediaObject.mock.invocationCallOrder[0]!,
     );
-    expect(deps.rawStatements[0]?.sql).toContain("UPDATE member_profiles");
-    expect(deps.rawStatements[0]?.binds).toContain(JSON.stringify([
-      "members/u-1/images/keep.webp",
-      "/mock/profile.webp",
-      "https://cdn.example.com/profile.webp",
-      "events/evt-1/images/poster.webp",
-      "members/u-2/images/foreign.webp",
-    ]));
+    expect(deps.rawStatements
+      .filter(({ sql }) => sql.includes("INSERT INTO member_profile_images"))
+      .map(({ binds }) => binds)).toEqual([
+      ["u-1", "members/u-1/images/keep.webp", 0],
+      ["u-1", "/mock/profile.webp", 1],
+      ["u-1", "https://cdn.example.com/profile.webp", 2],
+      ["u-1", "events/evt-1/images/poster.webp", 3],
+      ["u-1", "members/u-2/images/foreign.webp", 4],
+    ]);
     expect(deps.rawStatements
       .filter(({ sql }) => sql.includes("INSERT OR IGNORE INTO media_references"))
       .map(({ binds }) => binds)).toEqual([
@@ -295,7 +322,7 @@ describe("UserService", () => {
       .mockReturnValueOnce({
         from: vi.fn(() => ({
           where: vi.fn(() => ({
-            limit: vi.fn().mockResolvedValue([{ userId: "u-1", images: "[]", avatarKey: null }]),
+            limit: vi.fn().mockResolvedValue([{ userId: "u-1", avatarKey: null }]),
           })),
         })),
       });
@@ -342,12 +369,12 @@ describe("UserService", () => {
 
   it("removes profile image keys when the atomic profile/reference update fails", async () => {
     const failure = new Error("profile update failed");
-    const deps = createDeps();
+    const deps = createDeps({ images: { "u-1": ["members/u-1/images/existing.png"] } });
     deps.rawDbMock.batch.mockRejectedValueOnce(failure);
     deps.storeProfileImage.mockResolvedValue("members/u-1/images/new.png");
     deps.deleteMediaObject.mockResolvedValue(undefined);
     const service = new UserService({
-      select: createProfileUploadSelect({ images: JSON.stringify(["members/u-1/images/existing.png"]) }),
+      select: createProfileUploadSelect({}),
     } as never, deps);
 
     await expect(service.uploadProfileImages(
@@ -450,12 +477,13 @@ describe("UserService", () => {
         from: vi.fn(() => ({
           where: vi.fn(() => ({
             limit: vi.fn().mockResolvedValue([
-              { userId: "u-1", images: JSON.stringify(["members/u-1/own.webp"]), avatarKey: null },
+              { userId: "u-1", avatarKey: null },
             ]),
           })),
         })),
       });
-    const service = new UserService({ select, update } as never, createDeps());
+    const deps = createDeps({ images: { "u-1": ["members/u-1/own.webp"] } });
+    const service = new UserService({ select, update } as never, deps);
 
     const result = await service.updateProfile(
       { id: "u-1", role: "member", permissions: new Set() } as never,

@@ -61,29 +61,30 @@ export function WikiArticleListCard({
 
   return (
     <Paper withBorder radius="md" p="var(--card-padding)" className="wiki-article-list-card">
-      <div>
-        <Stack gap={10}>
-          <Group justify="space-between">
-            <Text fw={600}>{title}</Text>
-            {canCreateArticle || canManageCategories ? (
-              <Group gap={6}>
-                {canCreateArticle ? (
-                  <Tooltip label={createLabel} withArrow>
-                    <ActionIcon size={44} onClick={onCreateArticle} aria-label={t("articleEditor.create")}>
-                      <PlusIcon size={16} />
-                    </ActionIcon>
-                  </Tooltip>
-                ) : null}
-                {canManageCategories ? (
-                  <Tooltip label={t("editor.editCategories")} withArrow>
-                    <ActionIcon size={44} variant="default" onClick={onOpenCategoryEditor} aria-label={t("editor.editCategories")}>
-                      <PencilIcon size={16} />
-                    </ActionIcon>
-                  </Tooltip>
-                ) : null}
-              </Group>
-            ) : null}
-          </Group>
+      {/* 卡头钉住、清单内滚：新建文章和编辑分类是随时要够得着的，跟着列表滚走等于没有。 */}
+      <div className="wiki-card-body">
+        <Group justify="space-between">
+          <Text fw={600}>{title}</Text>
+          {canCreateArticle || canManageCategories ? (
+            <Group gap={6}>
+              {canCreateArticle ? (
+                <Tooltip label={createLabel} withArrow>
+                  <ActionIcon size={44} onClick={onCreateArticle} aria-label={t("articleEditor.create")}>
+                    <PlusIcon size={16} />
+                  </ActionIcon>
+                </Tooltip>
+              ) : null}
+              {canManageCategories ? (
+                <Tooltip label={t("editor.editCategories")} withArrow>
+                  <ActionIcon size={44} variant="default" onClick={onOpenCategoryEditor} aria-label={t("editor.editCategories")}>
+                    <PencilIcon size={16} />
+                  </ActionIcon>
+                </Tooltip>
+              ) : null}
+            </Group>
+          ) : null}
+        </Group>
+        <Stack gap={10} className="wiki-card-scroll">
           {isLoading ? (
             <Stack gap={8}>
               {Array.from({ length: 6 }).map((_, index) => (

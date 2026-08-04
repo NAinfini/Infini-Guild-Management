@@ -227,7 +227,7 @@ test("明细面板：比分、队伍快照与表格/图表切换", async ({ page
   const scoreboard = detail.locator("[data-testid='war-history-scoreboard']");
   await expect(scoreboard, "记分板正中就是双方击杀").toContainText("7");
   await expect(scoreboard).toContainText("3");
-  await expect(scoreboard).toContainText("WIN");
+  await expect(scoreboard).toContainText("Win");
   await expect(scoreboard, "对手名要显示出来，否则这条记录看不出打的是谁").toContainText(enemyName);
 
   await expect(detail.locator(".whd-team__name")).toContainText("Alpha");

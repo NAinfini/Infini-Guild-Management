@@ -117,11 +117,18 @@ async function fillColor(scope: Locator, value: string): Promise<void> {
   await scope.getByText("Live preview", { exact: true }).click();
 }
 
-test("新建职业：没名字存不了；填完之后颜色、图标、顺序原样落库，清单和计数一起更新", async ({ page, api, flow }) => {
+test("新建职业：没名字存不了；填完之后颜色、图标原样落库，新的排在末尾，清单和计数一起更新", async ({ page, api, flow }) => {
   const label = `E2E ${uniqueTag("cls")}`;
+  const existing = await serverClasses(api);
   await openClasses(page);
   const before = await shownCount(page);
-  await expectEditorClosed(page);
+
+  /* 进页面右栏直接摊开第一条，不再停在「选一个」上：九成情况人就是来改职业的，
+     停在提示页等于每次先付一次点击。 */
+  await expect(
+    editor(page).getByText("Edit class", { exact: true }),
+    "进页面该自动选中第一个职业",
+  ).toBeVisible();
 
   await master(page).getByRole("button", { name: "New class", exact: true }).click();
   const form = editor(page);
@@ -131,7 +138,6 @@ test("新建职业：没名字存不了；填完之后颜色、图标、顺序�
 
   await field(form, "Class name").fill(label);
   await fillColor(form, "#A78BFA");
-  await field(form, "Display order").fill("777");
   await iconOption(form, "Crown").click();
   await expect(iconOption(form, "Crown"), "选中的图标要标出来").toHaveAttribute("aria-pressed", "true");
   await expect(
@@ -151,7 +157,12 @@ test("新建职业：没名字存不了；填完之后颜色、图标、顺序�
   expect(saved.vector_icon, "选的是皇冠").toBe("crown");
   expect(saved.icon_type, "没传图片就该是矢量图标").toBe("vector");
   expect(saved.icon_key, "矢量图标不该在 R2 上留下对象").toBeNull();
-  expect(saved.sort_order).toBe(777);
+  /* 表单里已经没有「显示顺序」这个数字框了——顺序改由左栏拖拽决定。新建的一条由服务端
+     排到末尾（当前最大值 + 10），正好对上拖拽序里「新的在最后」。 */
+  expect(
+    saved.sort_order,
+    "新建的职业该排在所有已有职业后面",
+  ).toBeGreaterThan(Math.max(...existing.map((item) => item.sort_order)));
 
   const row = classItem(page, label);
   await expect(row, "建完必须直接出现在清单里").toBeVisible();
@@ -159,40 +170,33 @@ test("新建职业：没名字存不了；填完之后颜色、图标、顺序�
   expect(await shownCount(page), "计数要跟着加一").toBe(before + 1);
 });
 
-test("编辑职业：点清单选中，改名和改顺序都落到服务端，取消则一个字都不改", async ({ page, api, flow }) => {
+test("编辑职业：点清单选中，改名落到服务端且不动顺序", async ({ page, api, flow }) => {
   const item = await createServerClass(api, `E2E ${uniqueTag("edit")}`);
   const renamed = `${item.label} v2`;
   await openClasses(page);
 
-  /* 先验取消：改了一半点取消，不该发请求，服务端也得毫发无损。 */
-  await classItem(page, item.label).click();
   const form = editor(page);
-  await expect(form.getByText("Edit class", { exact: true })).toBeVisible();
-  await field(form, "Class name").fill("throwaway");
-  await flow.clickWithoutApi(cancelButton(form));
-  await expectEditorClosed(page);
-  expect((await serverClass(api, item.id)).label, "取消之后名字不能变").toBe(item.label);
-
   await classItem(page, item.label).click();
+  await expect(form.getByText("Edit class", { exact: true })).toBeVisible();
   await expect(
     field(form, "Class name"),
     "点开一行要带出这一条现在的值，而不是一张空表",
   ).toHaveValue(item.label);
-  await expect(field(form, "Display order")).toHaveValue(String(item.sort_order));
   await expect(
     classItem(page, item.label),
     "正在编辑的那一行要标出来，否则右边这张表是谁的全靠记",
   ).toHaveClass(/admin-md__item--active/);
 
   await field(form, "Class name").fill(renamed);
-  await field(form, "Display order").fill("880");
   await flow.click(saveButton(form), UPDATE_CLASS);
   await expectNotified(page, "Class saved");
   await expectEditorClosed(page);
 
   const saved = await serverClass(api, item.id);
   expect(saved.label).toBe(renamed);
-  expect(saved.sort_order).toBe(880);
+  /* 保存表单不能顺手改顺序。顺序只有拖拽那一条写入口——表单要是也带着一个 sort_order
+     上去，它带的是打开编辑器那一刻的旧值，会把中间发生过的拖拽抹掉。 */
+  expect(saved.sort_order, "保存表单不该动到顺序").toBe(item.sort_order);
   expect(saved.color, "没碰的字段不能被顺手改掉").toBe(item.color);
   await expect(classItem(page, renamed), "清单要跟着刷新").toBeVisible();
 });

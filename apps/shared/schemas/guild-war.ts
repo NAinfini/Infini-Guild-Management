@@ -1,22 +1,21 @@
 import { z } from "zod";
 import { LIMITS } from "../config/limits";
+import { WAR_RESULTS } from "../constants/guild-war";
 import { eventSchema } from "./event";
-import { activeGame } from "../games";
 
 const L = LIMITS.content;
 
 const statValueSchema = z.number();
+const warResultSchema = z.enum(WAR_RESULTS);
 const writeStatsObjectSchema = z.record(z.string(), statValueSchema.nullable());
 const statsObjectSchema = writeStatsObjectSchema.nullable();
-
-const WAR_RESULTS = activeGame.war.resultOptions as unknown as [string, ...string[]];
 
 export const warHistorySchema = z.object({
   id: z.string(),
   event_id: z.string().nullable(),
   war_name: z.string().max(L.warName.max),
   enemy_name: z.string().max(L.warEnemyName.max).nullable(),
-  result: z.enum(WAR_RESULTS).nullable(),
+  result: warResultSchema.nullable(),
   own_stats: statsObjectSchema,
   enemy_stats: statsObjectSchema,
   duration_minutes: z.number().nullable(),
@@ -31,7 +30,7 @@ export const createWarHistorySchema = z.object({
   event_id: z.string().optional(),
   war_name: z.string().min(L.warName.min).max(L.warName.max),
   enemy_name: z.string().max(L.warEnemyName.max).optional(),
-  result: z.enum(WAR_RESULTS).optional(),
+  result: warResultSchema.optional(),
   own_stats: writeStatsObjectSchema.optional(),
   enemy_stats: writeStatsObjectSchema.optional(),
   duration_minutes: z.number().positive().optional(),
@@ -113,7 +112,7 @@ export const concludeWarPayloadSchema = z.object({
   event_id: z.string(),
   war_info: z.object({
     enemy_name: z.string().max(L.warEnemyName.max).optional(),
-    result: z.enum(WAR_RESULTS),
+    result: warResultSchema,
     duration_minutes: z.number().positive().nullable().optional(),
     own_stats: writeStatsObjectSchema.optional(),
     enemy_stats: writeStatsObjectSchema.optional(),

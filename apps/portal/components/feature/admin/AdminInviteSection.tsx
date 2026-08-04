@@ -337,7 +337,8 @@ export function AdminInviteSection({
   );
 
   return (
-    <Stack gap={12}>
+    /* admin-fill：把 .admin-page__panel 给的高度原样传给下面的表格卡片。 */
+    <Stack gap={12} className="admin-fill">
       {/* 工具条语序和成员页一致：搜索（伸展）→ 筛选 → ——— → 主操作。 */}
       <div className="admin-toolbar">
         <TextInput
@@ -507,7 +508,7 @@ export function AdminInviteSection({
         ) : (
           /* 原先滚动容器和内边距长在同一个 div 上：横向滚动条被推进内边距里，
              外层 Stack 的 gap 又叠了一层，就是那道多出来的空隙。拆成两层。 */
-          <Paper withBorder radius="md" className="admin-table-card">
+          <Paper withBorder radius="md" className="admin-table-card admin-table-card--fill">
             <div className="admin-table-card__scroll">
               <DataTableAdapter
                 className="admin-table"

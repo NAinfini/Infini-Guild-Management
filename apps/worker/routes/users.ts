@@ -63,8 +63,9 @@ usersRoutes.get("/image", async (c) => {
         OR member_profiles.audio_key = ?3
         OR EXISTS (
           SELECT 1
-          FROM json_each(CASE WHEN json_valid(member_profiles.images) THEN member_profiles.images ELSE '[]' END)
-          WHERE json_each.value = ?3
+          FROM member_profile_images image
+          WHERE image.user_id = member_profiles.user_id
+            AND image.media_key = ?3
         )
       )
     LIMIT 1

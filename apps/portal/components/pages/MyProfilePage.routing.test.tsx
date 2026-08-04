@@ -124,8 +124,8 @@ vi.mock("../shared/UnsavedChangesAffix", () => ({
   UnsavedChangesAffix: () => null,
 }));
 
-vi.mock("../feature/profile/ProfileLivePreview", () => ({
-  ProfileLivePreview: () => null,
+vi.mock("../feature/profile/ProfileOverviewCard", () => ({
+  ProfileOverviewCard: () => null,
 }));
 
 vi.mock("../feature/profile/ProfileWeekSummary", () => ({

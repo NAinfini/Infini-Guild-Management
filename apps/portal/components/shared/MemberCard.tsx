@@ -36,7 +36,9 @@ const BADGE_SANITIZE_OPTIONS = {
   ALLOWED_ATTR: ["style"],
 };
 
-const MemberBadge = memo(function MemberBadge({ badge }: { badge: UserBadge }) {
+/* 导出给资料页用：名片预览和概览条都要挂同一批徽章，理由同 getMemberStatus——
+   同一个人在两处不该长成两种样子，清洗白名单也不该有第二份。 */
+export const MemberBadgeChip = memo(function MemberBadgeChip({ badge }: { badge: UserBadge }) {
   const sanitizedHtml = useMemo(
     () => DOMPurify.sanitize(badge.label_html, BADGE_SANITIZE_OPTIONS),
     [badge.label_html],
@@ -261,7 +263,7 @@ export const MemberCard = memo(function MemberCard({
             </span>
           ) : null}
           {badges?.map((badge) => (
-            <MemberBadge key={badge.id} badge={badge} />
+            <MemberBadgeChip key={badge.id} badge={badge} />
           ))}
         </div>
 

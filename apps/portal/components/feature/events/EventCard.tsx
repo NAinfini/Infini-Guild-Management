@@ -18,6 +18,7 @@ import {
 import { useTranslation } from "react-i18next";
 import { EventCardView } from "./EventCardView";
 import { getParticipantActionDisabledReasonKey } from "./participant-action";
+import { eventHasBehavior } from "@portal/utils/game-rules";
 
 type MemberEntry = { user: User; profile: MemberProfile };
 
@@ -78,7 +79,7 @@ export function EventCard({
   const { t } = useTranslation("events");
   const confirm = useConfirmDialog();
   const participantMembers = eventMembersMap.get(event.id) ?? [];
-  const isPoll = event.type === "poll";
+  const isPoll = eventHasBehavior(event.type, "poll");
   const hasEnded = event.end_at != null && new Date(event.end_at) <= now;
   const pollVoterMembers = isPoll && event.poll
     ? (() => {

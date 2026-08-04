@@ -21,7 +21,7 @@ The portal gives a game guild one self-hosted place to operate instead of splitt
 
 ## Positioning
 
-The portal combines guild operations, member participation, shared knowledge, media, and game-specific war planning in one configurable system. A shared game definition supplies classes, roles, stats, event types, and war metrics across the frontend and backend, while site configuration lets each installation expose only the modules it needs.
+The portal combines guild operations, member participation, shared knowledge, media, and game-specific war planning in one configurable system. D1-backed site settings and catalogs supply runtime customization, while small shared domain contracts keep persisted event and guild-war data consistent across the frontend and backend.
 
 ## Operating Context
 

@@ -67,7 +67,7 @@ function querySaveButton() {
 }
 
 describe("AdminSiteConfigSection layout", () => {
-  it("stacks the three config cards in one column without a second-level nav", () => {
+  it("stacks the config cards in one column without a second-level nav", () => {
     const { container } = renderSiteConfig();
 
     expect(container.querySelector(".site-config")).toBeInTheDocument();
@@ -79,9 +79,9 @@ describe("AdminSiteConfigSection layout", () => {
   it("lists every feature toggle on its own row", () => {
     const { container } = renderSiteConfig();
 
-    expect(container.querySelectorAll(".site-config-feature-row")).toHaveLength(
-      screen.getAllByRole("switch").length,
-    );
+    const featureCount = Object.keys(DEFAULT_FEATURE_FLAGS).length;
+    expect(container.querySelectorAll(".site-config-feature-row")).toHaveLength(featureCount);
+    expect(container.querySelectorAll('.site-config-feature-row [role="switch"]')).toHaveLength(featureCount);
     expect(container.querySelector(".site-config-feature-grid")).not.toBeInTheDocument();
   });
 

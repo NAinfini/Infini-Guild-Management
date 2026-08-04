@@ -50,9 +50,9 @@ describe("ConcludeWarModal", () => {
       </MantineProvider>,
     );
 
-    const aliceKills = screen.getByLabelText("Alice — conclude.col.kills");
-    const aliceDeaths = screen.getByLabelText("Alice — conclude.col.deaths");
-    const bobKills = screen.getByLabelText("Bob — conclude.col.kills");
+    const aliceKills = screen.getByLabelText("Alice — Kills");
+    const aliceDeaths = screen.getByLabelText("Alice — Deaths");
+    const bobKills = screen.getByLabelText("Bob — Kills");
 
     expect(aliceKills).toHaveAttribute("data-metric-grid", "conclude-war-member-stats");
 
@@ -82,7 +82,7 @@ describe("ConcludeWarModal", () => {
     expect(screen.getByRole("table", { name: "conclude.section.objectives" })).toBeInTheDocument();
     expect(screen.getByRole("columnheader", { name: "history.compare.us" })).toBeInTheDocument();
     expect(screen.getByRole("columnheader", { name: "history.compare.enemy" })).toBeInTheDocument();
-    expect(screen.getByRole("rowheader", { name: "history.kills" })).toBeInTheDocument();
+    expect(screen.getByRole("rowheader", { name: "Kills" })).toBeInTheDocument();
   });
 
   it("clears war information after closing before the next open", async () => {

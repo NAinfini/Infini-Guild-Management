@@ -50,7 +50,7 @@ const ENTITY_QUERY_KEYS = {
   storage: [queryKeys.storage.all],
   guild_war: [queryKeys.guildWar.all],
   member_profile: [queryKeys.users.all, queryKeys.myProfile.all],
-  member_badge: [],
+  member_badge: [queryKeys.users.all, queryKeys.myProfile.all],
 } satisfies Record<PushEntityType, readonly (readonly string[])[]>;
 
 function normalizeViewingAs(role: string | null, isExternalView: boolean): string {

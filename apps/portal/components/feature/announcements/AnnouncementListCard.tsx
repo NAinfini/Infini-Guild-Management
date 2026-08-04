@@ -67,20 +67,21 @@ export function AnnouncementListCard({
   const { t } = useTranslation("announcements");
   return (
     <Paper withBorder radius="md" p="var(--card-padding)" className="announcements-list-card">
-      <div>
-        <Stack gap={8}>
-          <Group justify="space-between" align="center">
-            <Text fw={600}>{title}</Text>
-            {canCreate && onCreate ? (
-              <Button
-                onClick={() => onCreate()}
-                size="sm"
-                leftSection={<PlusIcon size={16} />}
-              >
-                {t("action.newAnnouncement")}
-              </Button>
-            ) : null}
-          </Group>
+      {/* 卡头钉住、清单内滚：「新建公告」是随时要够得着的，跟着列表滚走等于没有。 */}
+      <div className="announcements-card-body">
+        <Group justify="space-between" align="center">
+          <Text fw={600}>{title}</Text>
+          {canCreate && onCreate ? (
+            <Button
+              onClick={() => onCreate()}
+              size="sm"
+              leftSection={<PlusIcon size={16} />}
+            >
+              {t("action.newAnnouncement")}
+            </Button>
+          ) : null}
+        </Group>
+        <Stack gap={8} className="announcements-card-scroll">
           {isLoading ? (
             <Stack gap={8}>
               {Array.from({ length: 4 }).map((_, i) => (

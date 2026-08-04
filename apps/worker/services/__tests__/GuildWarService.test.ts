@@ -131,6 +131,45 @@ describe("GuildWarService helpers", () => {
     expect(etag).not.toBe(buildWarEtag("war-2", "2026-03-08T12:00:00.000Z"));
   });
 
+  it("returns D1 analytics settings even when there is no war history", async () => {
+    const configuredSettings = {
+      reference_duration_minutes: 45,
+      modifier_weights: { kills: 0.8, towers: 0.2 },
+    };
+    const select = vi.fn()
+      .mockReturnValueOnce({
+        from: vi.fn(() => ({
+          where: vi.fn(() => ({
+            limit: vi.fn().mockResolvedValue([
+              { analyticsSettingsJson: JSON.stringify(configuredSettings) },
+            ]),
+          })),
+        })),
+      })
+      .mockReturnValueOnce({
+        from: vi.fn(() => ({
+          where: vi.fn(() => ({
+            orderBy: vi.fn(() => ({
+              limit: vi.fn().mockResolvedValue([]),
+            })),
+          })),
+        })),
+      });
+    const service = new GuildWarService({ select } as never, {
+      media: { get: vi.fn() },
+      writeAuditLog: vi.fn(),
+      publishEntityChanged: vi.fn(),
+      rawDb: {} as D1Database,
+    });
+
+    const result = await service.getAnalytics([], []);
+
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.data.analytics_settings).toMatchObject(configuredSettings);
+    }
+  });
+
   it("filters history rows and totals with one escaped server-side search", async () => {
     const where = vi.fn()
       .mockReturnValueOnce({

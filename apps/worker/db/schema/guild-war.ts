@@ -3,13 +3,12 @@
 // Dependencies: auth.users, events.events
 import { sql } from "drizzle-orm";
 import { check, index, integer, real, sqliteTable, text, uniqueIndex } from "drizzle-orm/sqlite-core";
-import { activeGame } from "@guild/shared/games";
+import { WAR_RESULTS } from "@guild/shared/constants/guild-war";
 import { users } from "./auth";
 import { events } from "./events";
 import { nowUtc } from "./shared";
 
-const WAR_RESULT_OPTIONS = activeGame.war.resultOptions as unknown as [string, ...string[]];
-
+const WAR_RESULT_OPTIONS = WAR_RESULTS as unknown as [string, ...string[]];
 export const warHistory = sqliteTable(
   "war_history",
   {
@@ -32,6 +31,8 @@ export const warHistory = sqliteTable(
     index("idx_war_history_created").on(table.createdAt, table.id),
     check("war_history_result_valid", sql`${table.result} IS NULL OR ${table.result} IN ('win', 'loss', 'draw')`),
     check("war_history_duration_positive", sql`${table.durationMinutes} IS NULL OR ${table.durationMinutes} > 0`),
+    check("war_history_own_stats_json_object", sql`${table.ownStats} IS NULL OR (json_valid(${table.ownStats}) AND json_type(${table.ownStats}) = 'object')`),
+    check("war_history_enemy_stats_json_object", sql`${table.enemyStats} IS NULL OR (json_valid(${table.enemyStats}) AND json_type(${table.enemyStats}) = 'object')`),
   ],
 );
 
@@ -67,11 +68,12 @@ export const warTeamMembers = sqliteTable(
     stats: text("stats", { mode: "json" }).$type<Record<string, number | null>>(),
     note: text("note"),
   },
-  (table) => ({
-    uxTeamUser: uniqueIndex("ux_war_team_members_team_user").on(table.warTeamId, table.userId),
-    idxTeamSort: index("idx_war_team_members_team_sort").on(table.warTeamId, table.sortOrder, table.id),
-    idxUser: index("idx_war_team_members_user").on(table.userId),
-  }),
+  (table) => [
+    uniqueIndex("ux_war_team_members_team_user").on(table.warTeamId, table.userId),
+    index("idx_war_team_members_team_sort").on(table.warTeamId, table.sortOrder, table.id),
+    index("idx_war_team_members_user").on(table.userId),
+    check("war_team_members_stats_json_object", sql`${table.stats} IS NULL OR (json_valid(${table.stats}) AND json_type(${table.stats}) = 'object')`),
+  ],
 );
 
 export const warPoolMembers = sqliteTable(

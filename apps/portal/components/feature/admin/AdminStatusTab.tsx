@@ -133,6 +133,8 @@ export function AdminStatusTab({
   const totalEndpoints = visibleApiCategories.reduce((sum, cat) => sum + cat.endpoints.length, 0);
   const completedEndpoints = Math.min(resultMap.size, totalEndpoints);
   const progressPercent = totalEndpoints > 0 ? (completedEndpoints / totalEndpoints) * 100 : 0;
+  /* 一次都没跑过、也没在跑，就没有进度可报，那根条子不该占位。 */
+  const hasProgress = isRunning || completedEndpoints > 0;
 
   let passedEndpoints = 0;
   let failedEndpoints = 0;
@@ -253,7 +255,7 @@ export function AdminStatusTab({
         <>
       {/* ── API Test Console ────────────────────────── */}
       <div className="api-console">
-        <div className="api-console__header">
+        <div className={`api-console__header${hasProgress ? " api-console__header--with-progress" : ""}`}>
           <div className="api-console__header-left">
             <SectionToggle open={apiConsoleOpen} onToggle={() => setApiConsoleOpen((open) => !open)}>
               <Text fw={700} size="sm">{t("status.section.apiTests")}</Text>
@@ -301,12 +303,22 @@ export function AdminStatusTab({
           </div>
         </div>
 
-        <div className="api-console__progress-track">
-          <div
-            className={`api-console__progress-fill${runningAll ? " api-console__progress-fill--running" : ""}`}
-            style={{ width: `${progressPercent}%` }}
-          />
-        </div>
+        {/*
+          * 进度条只在真有进度可报的时候才在。
+          *
+          * 原先它无条件渲染：一条 3px 的空槽紧贴在表头那条 1px 下边框底下，一进这一页
+          * 就看见表头画了粗细不一的两条线，看起来像多描了一道边。分类行里的同一根条子
+          * （AdminApiTestCategory）本来就是 catDone > 0 || catRunning 才渲染的，
+          * 这里跟它对齐；同时表头在进度条露面时不再自己画线，那 3px 就是分界线。
+          */}
+        {hasProgress ? (
+          <div className="api-console__progress-track">
+            <div
+              className={`api-console__progress-fill${runningAll ? " api-console__progress-fill--running" : ""}`}
+              style={{ width: `${progressPercent}%` }}
+            />
+          </div>
+        ) : null}
 
         <Collapse expanded={apiConsoleOpen}>
           <div className="api-cat-list">

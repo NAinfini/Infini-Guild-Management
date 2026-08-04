@@ -135,7 +135,7 @@ export function GuildWarHistoryTabWrapper({
         chartThemeConfig={chartThemeConfig}
         chartPalette={chartPalette}
         hashToPaletteColor={hashToPaletteColor}
-        getMetricLabel={(metric) => t(getMetricLabelKey(metric))}
+        getMetricLabel={getMetricLabelKey}
         metricValueOrNullFromWarMember={metricValueOrNullFromWarMember}
         controller={controller}
       />

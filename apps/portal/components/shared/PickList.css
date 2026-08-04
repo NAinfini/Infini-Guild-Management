@@ -1,0 +1,174 @@
+/*
+ * 勾选清单的统一外观。原先这套东西在三处各写了一遍——徽章的成员名单、职业标签的
+ * 成员清单、一次性组的职业下拉——行高、勾选框、选中态、搜索框、批量按钮全都对不齐：
+ * 一处 44px 一处 36px，一处用 Mantine Checkbox 一处手搓 svg 勾，选中态一处是描边
+ * 一处是底色。这里只留一套。
+ *
+ * 行的样子对外也是契约：徽章页的查看态用 PickListStaticRow 走同一套行高和分隔线，
+ * 所以查看／编辑切换时名单不会跳。
+ */
+.pick-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-xs);
+  min-inline-size: 0;
+  min-block-size: 0;
+}
+
+/* 搜索、批量勾选、计数、确认按钮挤在同一行。窄了就折行，不各自另起一块。 */
+.pick-list__toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-xs);
+}
+
+.pick-list__search {
+  flex: 1 1 12rem;
+  min-inline-size: 0;
+}
+
+/* 计数／差异贴右端，和左边的操作分开：一个是状态，一个是动作。 */
+.pick-list__status {
+  margin-inline-start: auto;
+  font-variant-numeric: tabular-nums;
+}
+
+/*
+ * 清单本体：一整块，行与行只用一条分隔线，外面一圈边框。
+ * 卡片网格试过——一人一个方框，九个人就是九个悬浮的盒子，边框比内容还抢眼。
+ * 不满时就是内容高，给了 maxBlockSize 才在自己身上滚（普通 div 而不是 ScrollArea：
+ * ScrollArea 的视口是 height:100%，撑不出「内容多高就多高」）。
+ */
+.pick-list__body {
+  display: flex;
+  flex-direction: column;
+  min-block-size: 0;
+  overflow: hidden auto;
+  overscroll-behavior: contain;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-control);
+  background: var(--surface-base);
+}
+
+.pick-list__row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+  min-inline-size: 0;
+  /* 44px 触控靶面，和 .admin-md__item 同一档（19788bf 定的）。 */
+  min-block-size: 44px;
+  padding: 2px var(--space-xs) 2px calc(var(--space-sm) - 3px);
+  /* 选中态那条色条的位置。所有行都留着（透明），只有勾上的才上色——不然选中的行会
+     比别的行宽 3px，整列名字跟着晃。查看态的静态行同样留，两态切换时不移位。 */
+  border-inline-start: 3px solid transparent;
+  transition:
+    background var(--transition-fast),
+    border-color var(--transition-fast);
+}
+
+.pick-list__row + .pick-list__row {
+  border-block-start: 1px solid var(--border-subtle);
+}
+
+.pick-list__row:hover {
+  background: var(--surface-raised);
+}
+
+/*
+ * 可勾选的行：Mantine Checkbox 的 root 直接当行用，于是静态行和勾选行共用同一套
+ * 行高与分隔线。整行都是点击靶面。
+ *
+ * 选中态不铺底色，走「左侧色条 + 明暗对比」：勾上的行左边一条品牌色，名字转成正文色
+ * 并加粗；没勾的名字压到次级色。整行染 --brand-tint 试过——一屏勾掉七八个人之后列表
+ * 被染成一整片，分隔线全被吃掉，反而看不出哪几行是选中的。色条只占 3px，长名单扫
+ * 下来一眼就知道选了哪几行。
+ */
+.pick-list__row--pick {
+  cursor: pointer;
+  color: var(--text-secondary);
+}
+
+.pick-list__row--pick:has(input:checked) {
+  color: var(--text-primary);
+  border-inline-start-color: var(--brand-fill);
+}
+
+.pick-list__row--pick:has(input:checked) .pick-list__row-label {
+  font-weight: 600;
+}
+
+.pick-list__row--pick .mantine-Checkbox-body {
+  align-items: center;
+  inline-size: 100%;
+  min-inline-size: 0;
+}
+
+.pick-list__row--pick .mantine-Checkbox-labelWrapper {
+  flex: 1 1 auto;
+  min-inline-size: 0;
+}
+
+/* 到上限之后没勾上的那些会一起变灰——理由由调用方写在计数行里，这里只负责看得出来。 */
+.pick-list__row--pick:has(input:disabled) {
+  cursor: default;
+  opacity: 0.45;
+}
+
+.pick-list__row--pick:has(input:disabled):hover {
+  background: transparent;
+}
+
+.pick-list__row-main {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+  inline-size: 100%;
+  min-inline-size: 0;
+}
+
+.pick-list__row-icon {
+  display: flex;
+  flex: 0 0 auto;
+}
+
+/* 名字让位，右端那些不许被挤扁。 */
+.pick-list__row-label {
+  flex: 1 1 auto;
+  min-inline-size: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.pick-list__row-meta {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex: 0 1 auto;
+  margin-inline-start: auto;
+  min-inline-size: 0;
+  overflow: hidden;
+}
+
+/* 分组标题跟着滚到顶就停住：一份按标签分节的目录，滚到一半得知道现在在哪一节。 */
+.pick-list__section-head {
+  position: sticky;
+  inset-block-start: 0;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-sm);
+  padding: 4px var(--space-sm);
+  border-block-end: 1px solid var(--border-subtle);
+  background: var(--surface-sunken);
+}
+
+.pick-list__section + .pick-list__section .pick-list__section-head {
+  border-block-start: 1px solid var(--border-subtle);
+}
+
+.pick-list__empty {
+  padding: var(--space-sm);
+}

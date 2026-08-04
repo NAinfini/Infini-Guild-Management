@@ -1,4 +1,4 @@
-import { LIMITS } from "@guild/shared";
+import { DEFAULT_GAME_RULES, getEventBehavior, LIMITS, type GameRules } from "@guild/shared";
 import type { RawDbLike } from "./EventCrudService";
 
 /** 就地造的一次性组：只服务于这一个活动／模板，不进目录。 */
@@ -391,6 +391,8 @@ export async function loadClassQuotasFor(
  * 校验层已经拒收带配额的投票／抽奖请求，但类型是可以改的：活动改成投票时没人会再
  * 传 class_quotas，旧配额行必须在这里清掉，否则改回来就会冒出一批没人设过的配额。
  */
-export function typeSupportsClassQuotas(type: string): boolean {
-  return type !== "poll" && type !== "raffle";
+export function typeSupportsClassQuotas(type: string, rules: GameRules = DEFAULT_GAME_RULES): boolean {
+  const behavior = getEventBehavior(rules, type);
+  if (!behavior) throw new Error(`Unknown configured event type: ${type}`);
+  return behavior !== "poll" && behavior !== "raffle";
 }

@@ -89,6 +89,15 @@
 .api-console__stat-dot--pass { background: var(--status-success); }
 .api-console__stat-dot--fail { background: var(--status-danger); }
 
+/*
+ * 进度条露面时表头不再自己画线：那条 3px 的进度条就是表头和内容之间的分界。
+ * 两条一起画就是 1px 细线上面再压一条 3px 粗带，看着像给表头描了两道边。
+ * 条件同 AdminStatusTab.tsx 的 hasProgress，两处一起变。
+ */
+.api-console__header--with-progress {
+  border-bottom: 0;
+}
+
 /* ── Global Progress Track ── */
 
 .api-console__progress-track {

@@ -30,7 +30,6 @@ import {
   AdjustmentsIcon,
   CopyIcon,
 } from "@portal/components/icons";
-import { activeGame } from "@guild/shared/games";
 import { BarChart, LineChart, RadarChart } from "echarts/charts";
 import {
   GridComponent,
@@ -43,6 +42,7 @@ import { CanvasRenderer } from "echarts/renderers";
 import ReactEChartsCore from "echarts-for-react/esm/core";
 import { useEffect, useState, type ComponentType } from "react";
 import { useTranslation } from "react-i18next";
+import { DEFAULT_GAME_RULES, GUILD_WAR_KDA_KEY, GUILD_WAR_RESULT_DEFINITIONS } from "@guild/shared";
 import type {
   AnalyticsAggregation,
   AnalyticsDatePreset,
@@ -54,6 +54,8 @@ import type { GuildWarAnalyticsController } from "../../../hooks/guild-war/useGu
 import { ANALYTICS_SELECTION_HARD_CAP } from "../../../services/GuildWarService";
 import { GuildWarAnalyticsChartPanel } from "./GuildWarAnalyticsChartPanel";
 import { GuildWarAnalyticsListBox, UserListBoxItem } from "./GuildWarAnalyticsListBox";
+import { getTeamObjectiveLabelKey } from "@portal/utils/guild-war-analytics";
+import { getGuildWarMemberStatLabel, getGuildWarResultLabel } from "@portal/utils/game-rules";
 
 echarts.use([
   BarChart,
@@ -74,25 +76,15 @@ type GuildWarAnalyticsTabProps = {
   canManageWeights: boolean;
 };
 
-const WAR_STAT_OPTIONS = activeGame.war.teamObjectives.map((objective) => ({
-  value: objective.key,
-  labelKey: objective.label.replace(/^guild-war:/, ""),
-}));
-
-const ANALYTICS_METRIC_OPTIONS: Array<{
-  value: AnalyticsMetricKey;
-  labelKey: string;
-  Icon: ComponentType<{ size?: number }>;
-}> = [
-  { value: "damage", labelKey: "analytics.metric.damage", Icon: SwordsIcon },
-  { value: "healing", labelKey: "analytics.metric.healing", Icon: HeartIcon },
-  { value: "building_damage", labelKey: "analytics.metric.buildingDamage", Icon: HammerIcon },
-  { value: "credits", labelKey: "analytics.metric.credits", Icon: CrownIcon },
-  { value: "kills", labelKey: "analytics.metric.kills", Icon: TargetIcon },
-  { value: "deaths", labelKey: "analytics.metric.deaths", Icon: FlameIcon },
-  { value: "assists", labelKey: "analytics.metric.assists", Icon: UserCheckIcon },
-  { value: "damage_taken", labelKey: "analytics.metric.damageTaken", Icon: ShieldIcon },
-  { value: "kda", labelKey: "analytics.metric.kda", Icon: TrophyIcon },
+const METRIC_ICONS: ComponentType<{ size?: number }>[] = [
+  SwordsIcon,
+  HeartIcon,
+  HammerIcon,
+  CrownIcon,
+  TargetIcon,
+  FlameIcon,
+  UserCheckIcon,
+  ShieldIcon,
 ];
 
 type ConsoleFieldId = "source" | "subject" | "metric";
@@ -139,6 +131,8 @@ export function GuildWarAnalyticsTab({
   canManageWeights,
 }: GuildWarAnalyticsTabProps) {
   const { t } = useTranslation("guild-war");
+  const gameRules = DEFAULT_GAME_RULES;
+  const warRules = gameRules.guild_war;
   const [normExpanded, setNormExpanded] = useState(false);
   // The table is the artefact people copy out to chat, so it stays open by
   // default; the toggle is for reclaiming height, not for finding it.
@@ -154,15 +148,26 @@ export function GuildWarAnalyticsTab({
     echarts.registerTheme(chartThemeName, chartThemeConfig);
   }, [chartThemeConfig, chartThemeName]);
 
-  const metricOptions = ANALYTICS_METRIC_OPTIONS.map((opt) => ({
-    value: opt.value,
-    label: t(opt.labelKey),
-    Icon: opt.Icon,
+  const warStatOptions = warRules.team_stats.map((definition) => ({
+    value: definition.key,
+    label: getTeamObjectiveLabelKey(definition.key),
   }));
+  const metricOptions = [
+    ...warRules.member_stats.map((definition, index) => ({
+      value: definition.key,
+      label: getGuildWarMemberStatLabel(definition.key),
+      Icon: METRIC_ICONS[index % METRIC_ICONS.length] ?? TargetIcon,
+    })),
+    {
+      value: GUILD_WAR_KDA_KEY,
+      label: getGuildWarMemberStatLabel(GUILD_WAR_KDA_KEY),
+      Icon: TrophyIcon,
+    },
+  ];
 
-  const warStatLabelKey = WAR_STAT_OPTIONS.find(
+  const warStatLabel = warStatOptions.find(
     (option) => option.value === analytics.analyticsWarStat,
-  )?.labelKey;
+  )?.label;
 
   // Describe the query the chart is actually answering: which subject, which
   // metric, over how many wars. Empty fragments drop out rather than rendering
@@ -181,7 +186,7 @@ export function GuildWarAnalyticsTab({
           : t("analytics.chart.subject.wars");
   const chartMetric =
     analytics.analyticsMode === "wars"
-      ? (warStatLabelKey ? t(warStatLabelKey) : "")
+      ? (warStatLabel ?? "")
       : metricOptions
           .filter((option) => analytics.analyticsSelectedMetrics.includes(option.value))
           .map((option) => option.label)
@@ -219,7 +224,7 @@ export function GuildWarAnalyticsTab({
           : null;
   const suggestedWarId = analytics.analyticsWarOptions[0]?.value;
   const suggestedUserId = analytics.analyticsSelectableUserIds[0];
-  const suggestedMetric = ANALYTICS_METRIC_OPTIONS[0]?.value;
+  const suggestedMetric = metricOptions[0]?.value;
   const emptyState = analyticsEmptyReason
     ? {
         title: t("analytics.empty.title"),
@@ -298,10 +303,10 @@ export function GuildWarAnalyticsTab({
       {/* Wars mode: win/loss record summary */}
       {!isLoading && !isError && analytics.analyticsMode === "wars" ? (
         <Group gap={16} className="gwa-war-summary">
-          {activeGame.war.resultOptions.map((result) => (
-            <Text key={result} size="sm">
-              <Text span fw={600}>{t(`conclude.result.${result}`)}</Text>
-              {" "}{analytics.analyticsWarSummary.counts.get(result) ?? 0}
+          {GUILD_WAR_RESULT_DEFINITIONS.map((result) => (
+            <Text key={result.id} size="sm">
+              <Text span fw={600}>{getGuildWarResultLabel(result.id)}</Text>
+              {" "}{analytics.analyticsWarSummary.counts.get(result.id) ?? 0}
             </Text>
           ))}
           {analytics.analyticsWarSummary.winRate !== null ? (
@@ -465,7 +470,7 @@ export function GuildWarAnalyticsTab({
                       value={analytics.analyticsWarStat}
                       aria-label={t("analytics.warStat.title")}
                       onChange={(value) => value && analytics.setAnalyticsWarStat(value)}
-                      data={WAR_STAT_OPTIONS.map((opt) => ({ value: opt.value, label: t(opt.labelKey) }))}
+                      data={warStatOptions}
                     />
                   </ConsoleField>
                 ) : (
@@ -576,11 +581,13 @@ export function GuildWarAnalyticsTab({
                           {t("analytics.normalization.equationDesc")}
                         </Text>
                         <div className="gwa-norm-weights">
-                          {(["kda", "towers", "credits", "distance", "basehp"] as const).map(
-                            (key) => (
+                          {warRules.team_stats.filter((definition) => definition.dashboard !== "hidden").map(
+                            (definition) => {
+                              const key = definition.key;
+                              return (
                               <Group key={key} gap={8} wrap="nowrap" align="center">
                                 <Text size="xs" fw={500} style={{ width: 64, flexShrink: 0 }}>
-                                  {t(`analytics.normalization.weight.${key}`)}
+                                  {getTeamObjectiveLabelKey(key)}
                                 </Text>
                                 {/* Weights are a shared baseline: only moderators may tune them */}
                                 {canManageWeights ? (
@@ -611,20 +618,18 @@ export function GuildWarAnalyticsTab({
                                   {((analytics.modifierWeights[key] ?? 0) * 100).toFixed(0)}%
                                 </Text>
                               </Group>
-                            ),
+                              );
+                            },
                           )}
                         </div>
                         <Text size="xs" c="dimmed" mt={6}>
                           {t("analytics.normalization.weightsTotal", {
-                            total:
-                              (
-                                ((analytics.modifierWeights.kda ?? 0) +
-                                  (analytics.modifierWeights.towers ?? 0) +
-                                  (analytics.modifierWeights.credits ?? 0) +
-                                  (analytics.modifierWeights.distance ?? 0) +
-                                  (analytics.modifierWeights.basehp ?? 0)) *
-                                100
-                              ).toFixed(0) + "%",
+                            total: `${(
+                              warRules.team_stats.reduce(
+                                (sum, definition) => sum + (analytics.modifierWeights[definition.key] ?? 0),
+                                0,
+                              ) * 100
+                            ).toFixed(0)}%`,
                           })}
                         </Text>
                       </div>

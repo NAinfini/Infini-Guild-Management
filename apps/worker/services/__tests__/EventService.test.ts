@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { EventService, parseAttachments } from "../EventService";
+import { EventService } from "../EventService";
 
 /**
  * 造一张字节头真实的 WebP（RIFF....WEBP）。
@@ -27,6 +27,7 @@ function makeRawDb() {
       bind: vi.fn((...bindings: unknown[]) => ({
         sql,
         bindings,
+        all: vi.fn().mockResolvedValue({ results: [] }),
         run: vi.fn().mockResolvedValue({ meta: { changes: 1 } }),
       })),
     })),
@@ -69,7 +70,7 @@ function createEventRow(overrides: Partial<Record<string, unknown>> = {}) {
     autoArchived: false,
     createdBy: "mod-1",
     updatedBy: null,
-    attachments: "[]",
+    attachments: [],
     seriesId: null,
     instanceDate: null,
     visibleAt: null,
@@ -91,7 +92,7 @@ describe("worker EventService", () => {
       .fn()
       .mockResolvedValue(
         createEventRow({
-          attachments: JSON.stringify(["events/evt-1/images/poster.png"]),
+          attachments: ["events/evt-1/images/poster.png"],
         }),
       );
     const writeAuditLog = vi.fn().mockResolvedValue(undefined);
@@ -127,9 +128,9 @@ describe("worker EventService", () => {
       "evt-1",
       "Guild Run",
       "Bring food",
-      JSON.stringify(["events/evt-1/images/poster.png"]),
     ]));
     expect(createBatch.map(({ sql }) => sql)).toEqual(expect.arrayContaining([
+      expect.stringContaining("INSERT INTO event_attachments"),
       expect.stringContaining("INSERT OR IGNORE INTO media_references"),
     ]));
     expect(media.put).toHaveBeenCalledTimes(1);
@@ -141,8 +142,8 @@ describe("worker EventService", () => {
       }),
     );
     expect(created).toEqual(expect.objectContaining({ ok: true }));
-    const createdData = (created as { ok: true; data: { attachments: string } }).data;
-    expect(parseAttachments(createdData.attachments)).toEqual(["events/evt-1/images/poster.png"]);
+    const createdData = (created as { ok: true; data: { attachments: string[] } }).data;
+    expect(createdData.attachments).toEqual(["events/evt-1/images/poster.png"]);
     expect(rawDb.batch).toHaveBeenCalledTimes(1);
   });
 
@@ -245,7 +246,7 @@ describe("worker EventService", () => {
       "mod-1",
       "evt-1",
       createEventRow({
-        attachments: JSON.stringify(["events/existing.png"]),
+        attachments: ["events/existing.png"],
       }),
       [imageFile("new.png")],
     );
@@ -253,13 +254,10 @@ describe("worker EventService", () => {
     expect((result as { ok: true; data: { attachments: string[] } }).data.attachments).toEqual(["events/existing.png", "events/evt-1/images/new.png"]);
     expect(rawDb.batch).toHaveBeenCalledTimes(1);
     const statements = rawDb.batch.mock.calls[0]?.[0] as Array<{ sql: string; bindings: unknown[] }>;
-    expect(statements[0]).toMatchObject({
-      sql: expect.stringContaining("UPDATE events SET attachments"),
-      bindings: expect.arrayContaining([
-        JSON.stringify(["events/existing.png", "events/evt-1/images/new.png"]),
-      ]),
-    });
+    expect(statements[0]?.sql).toContain("UPDATE events SET updated_at");
     expect(statements.map(({ sql }) => sql)).toEqual(expect.arrayContaining([
+      expect.stringContaining("DELETE FROM event_attachments"),
+      expect.stringContaining("INSERT INTO event_attachments"),
       expect.stringContaining("INSERT OR IGNORE INTO media_references"),
     ]));
     expect(writeAuditLog).toHaveBeenCalledWith(
@@ -289,13 +287,13 @@ describe("worker EventService", () => {
     await expect(service.uploadEventImages(
       "mod-1",
       "evt-1",
-      createEventRow({ attachments: JSON.stringify(["events/existing.png"]) }),
+      createEventRow({ attachments: ["events/existing.png"] }),
       [imageFile("new.png")],
     )).rejects.toBe(failure);
 
     expect(media.delete).toHaveBeenCalledWith("events/evt-1/images/new.png");
     expect(rawDb.prepare).toHaveBeenCalledWith(
-      "UPDATE events SET attachments = ?1, updated_at = ?2 WHERE id = ?3",
+      "UPDATE events SET updated_at = ?1 WHERE id = ?2",
     );
   });
 
@@ -563,7 +561,7 @@ describe("worker EventService", () => {
     }, stubTemplateDeps);
 
     await service.destroyEvent("mod-1", "evt-1", createEventRow({
-      attachments: JSON.stringify([exclusiveKey, sharedKey]),
+      attachments: [exclusiveKey, sharedKey],
     }));
 
     expect(prepare).toHaveBeenCalledWith(expect.stringContaining(
@@ -596,7 +594,7 @@ describe("worker EventService", () => {
     expect(publishEntityChanged).not.toHaveBeenCalled();
   });
 
-  it("creates poll events with poll settings and options", async () => {
+  it("creates poll events from the fixed source behavior definition", async () => {
     const db = {};
     const batch = vi.fn().mockResolvedValue([]);
     const prepare = vi.fn((sql: string) => ({
@@ -750,6 +748,58 @@ describe("worker EventService", () => {
       expect.objectContaining({
         id: "evt-1",
         visible_at: "2026-03-09T12:00:00.000Z",
+      }),
+    );
+  });
+
+  it("returns hydrated class quotas in event details", async () => {
+    const select = vi.fn((fields: Record<string, unknown>) => {
+      if ("title" in fields) {
+        return {
+          from: vi.fn(() => ({
+            where: vi.fn(() => ({
+              limit: vi.fn().mockResolvedValue([createEventRow()]),
+            })),
+          })),
+        };
+      }
+      return {
+        from: vi.fn(() => ({
+          where: vi.fn().mockResolvedValue([]),
+        })),
+      };
+    });
+    const rawDb = {
+      prepare: vi.fn((sql: string) => ({
+        bind: vi.fn(() => ({
+          all: vi.fn().mockResolvedValue({
+            results: sql.includes("FROM event_class_quotas q")
+              ? [{ parent_id: "evt-1", tag_id: "tag-dps", required: 2, label: "Damage", owner_kind: null }]
+              : sql.includes("FROM class_tag_members m")
+                ? [{ tag_id: "tag-dps", class_id: "mage" }]
+                : [],
+          }),
+        })),
+      })),
+      batch: vi.fn(),
+    };
+    const service = new EventService({ select } as never, rawDb as never, { put: vi.fn() } as never, {
+      getEventById: vi.fn(),
+      getUsername: vi.fn(),
+      writeAuditLog: vi.fn(),
+      publishEntityChanged: vi.fn(),
+      now: () => "2026-03-08T12:00:00.000Z",
+    }, stubTemplateDeps);
+
+    await expect(service.getEventDetail("evt-1", null, false)).resolves.toEqual(
+      expect.objectContaining({
+        class_quotas: [{
+          tag_id: "tag-dps",
+          required: 2,
+          label: "Damage",
+          class_ids: ["mage"],
+          one_time: false,
+        }],
       }),
     );
   });

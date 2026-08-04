@@ -1,8 +1,15 @@
 // @vitest-environment jsdom
-import { PERMISSIONS, type MemberProfile, type Permission, type User } from "@guild/shared";
+import {
+  PERMISSIONS,
+  type ClassCatalogItem,
+  type MemberProfile,
+  type Permission,
+  type User,
+} from "@guild/shared";
 import { fireEvent, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { useClassCatalogStore } from "../../stores/class-catalog";
 import { MemberCard } from "./MemberCard";
 
 const motionHarness = vi.hoisted(() => ({
@@ -51,6 +58,18 @@ vi.mock("./ClassIcon", () => ({
 }));
 
 const now = "2026-07-29T12:00:00.000Z";
+const classCatalogItem: ClassCatalogItem = {
+  id: "鸣金虹",
+  label: "鸣金虹",
+  color: "#6EA8FE",
+  icon_type: "vector",
+  vector_icon: "sword",
+  icon_key: null,
+  sort_order: 0,
+  created_at: now,
+  updated_at: now,
+};
+
 const noPermissions = Object.fromEntries(
   PERMISSIONS.map((permission) => [permission, false]),
 ) as Record<Permission, boolean>;
@@ -88,6 +107,7 @@ const profile: MemberProfile = {
 beforeEach(() => {
   motionHarness.reducedMotion = false;
   motionHarness.springs = [];
+  useClassCatalogStore.getState().setItems([classCatalogItem]);
 });
 
 describe("MemberCard protected runtime interaction", () => {

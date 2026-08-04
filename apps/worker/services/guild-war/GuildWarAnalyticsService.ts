@@ -1,4 +1,5 @@
 import { and, desc, eq, inArray, sql, type SQL } from "drizzle-orm";
+import type { GameRules } from "@guild/shared";
 import { siteConfig, warHistory, warTeamMembers, warTeams } from "../../db/schema";
 import { type AnalyticsSettings, defaultAnalyticsSettings } from "../AdminService";
 import { ok, type ServiceResult } from "../result";
@@ -19,8 +20,7 @@ function computeWarModifier(
   const factors = Object.entries(settings.modifier_weights)
     .filter(([, weight]) => weight > 0)
     .map(([key, weight]) => {
-      const objectiveKey = key === "basehp" ? "base_hp" : key === "kda" ? "kills" : key;
-      return { key, weight, ownVal: war.ownStats?.[objectiveKey] ?? null, enemyVal: war.enemyStats?.[objectiveKey] ?? null };
+      return { key, weight, ownVal: war.ownStats?.[key] ?? null, enemyVal: war.enemyStats?.[key] ?? null };
     });
   const valid = factors
     .filter((f): f is { key: string; weight: number; ownVal: number; enemyVal: number } => f.ownVal !== null && f.enemyVal !== null)
@@ -48,13 +48,14 @@ export class GuildWarAnalyticsService extends GuildWarCoreService {
     super(db, deps);
   }
 
-  private async readAnalyticsSettings(): Promise<AnalyticsSettings> {
+  private async readAnalyticsSettings(gameRules: GameRules): Promise<AnalyticsSettings> {
     const [row] = await this.db
       .select({ analyticsSettingsJson: siteConfig.analyticsSettingsJson })
       .from(siteConfig)
       .where(eq(siteConfig.id, "default"))
       .limit(1);
     if (!row?.analyticsSettingsJson) return defaultAnalyticsSettings();
+    let settings: AnalyticsSettings;
     try {
       const parsed = JSON.parse(row.analyticsSettingsJson) as unknown;
       const defaults = defaultAnalyticsSettings();
@@ -67,16 +68,22 @@ export class GuildWarAnalyticsService extends GuildWarCoreService {
           if (typeof val === "number") modifier_weights[key] = val;
         }
       }
-      return {
+      settings = {
         reference_duration_minutes: typeof record.reference_duration_minutes === "number" && record.reference_duration_minutes > 0 ? record.reference_duration_minutes : defaults.reference_duration_minutes,
         modifier_weights,
       };
     } catch {
       return defaultAnalyticsSettings();
     }
+    const teamStatKeys = new Set(gameRules.guild_war.team_stats.map((stat) => stat.key));
+    const unknownKeys = Object.keys(settings.modifier_weights).filter((key) => !teamStatKeys.has(key));
+    if (unknownKeys.length > 0) throw new Error(`Unknown analytics team stat keys: ${unknownKeys.join(", ")}`);
+    return settings;
   }
 
   async getAnalytics(warIds: string[], userIds: string[]): Promise<ServiceResult<{ wars: unknown[]; member_stats: unknown[]; analytics_settings: AnalyticsSettings }>> {
+    const gameRules = await this.getGameRules();
+    const analyticsSettings = await this.readAnalyticsSettings(gameRules);
     const warFilters: SQL<unknown>[] = [];
     if (warIds.length > 0) warFilters.push(inArray(warHistory.id, warIds));
     const wars = await this.db
@@ -86,7 +93,7 @@ export class GuildWarAnalyticsService extends GuildWarCoreService {
       .orderBy(desc(warHistory.createdAt), desc(warHistory.id))
       .limit(200);
     const historyIds = wars.map((w) => w.id);
-    if (historyIds.length === 0) return ok({ wars: [], member_stats: [], analytics_settings: defaultAnalyticsSettings() });
+    if (historyIds.length === 0) return ok({ wars: [], member_stats: [], analytics_settings: analyticsSettings });
 
     const teamSizeCounts = await this.db
       .select({ warHistoryId: warTeams.warHistoryId, memberCount: sql<number>`count(${warTeamMembers.id})`.as("member_count") })
@@ -97,7 +104,6 @@ export class GuildWarAnalyticsService extends GuildWarCoreService {
     const teamSizeMap = new Map<string, number>();
     for (const row of teamSizeCounts) if (row.warHistoryId) teamSizeMap.set(row.warHistoryId, row.memberCount);
 
-    const analyticsSettings = await this.readAnalyticsSettings();
     const warsWithModifier = wars.map((war) => {
       const teamSize = teamSizeMap.get(war.id) ?? 0;
       const modifier = computeWarModifier(war, teamSize, analyticsSettings);

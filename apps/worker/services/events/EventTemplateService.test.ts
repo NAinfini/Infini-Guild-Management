@@ -30,7 +30,7 @@ describe("EventTemplateService system-test cleanup registration", () => {
       recurrenceRule: JSON.stringify({ frequency: "daily", interval: 1 }),
       visibilityOffsetMinutes: 0,
       autoArchive: false,
-      attachments: "[]",
+      attachments: [],
       paused: false,
       createdBy: "admin-1",
       lastGeneratedDate: null,
@@ -83,7 +83,7 @@ describe("EventTemplateService media reference atomicity", () => {
     recurrenceRule: JSON.stringify({ frequency: "daily", interval: 1 }),
     visibilityOffsetMinutes: 0,
     autoArchive: false,
-    attachments: JSON.stringify(["events/template-1/images/current.webp"]),
+    attachments: ["events/template-1/images/current.webp"],
     paused: false,
     createdBy: "admin-1",
     lastGeneratedDate: null,
@@ -114,6 +114,7 @@ describe("EventTemplateService media reference atomicity", () => {
     expect(rawDb.batch).toHaveBeenCalledTimes(1);
     expect(statements.map(({ sql }) => sql)).toEqual(expect.arrayContaining([
       expect.stringContaining("INSERT INTO recurring_templates"),
+      expect.stringContaining("INSERT INTO recurring_template_attachments"),
       expect.stringContaining("DELETE FROM media_references"),
       expect.stringContaining("INSERT OR IGNORE INTO media_references"),
     ]));
@@ -121,7 +122,7 @@ describe("EventTemplateService media reference atomicity", () => {
 
   it("updates template content and media refs in one batch", async () => {
     const { rawDb, statements } = createRawDb();
-    const updated = { ...template, attachments: JSON.stringify(["events/template-1/images/next.webp"]) };
+    const updated = { ...template, attachments: ["events/template-1/images/next.webp"] };
     const service = new EventTemplateService({} as never, rawDb as never, {
       getTemplateById: vi.fn().mockResolvedValue(updated),
       materializeRecurringSeries: vi.fn(),
@@ -136,6 +137,8 @@ describe("EventTemplateService media reference atomicity", () => {
     expect(rawDb.batch).toHaveBeenCalledTimes(1);
     expect(statements.map(({ sql }) => sql)).toEqual(expect.arrayContaining([
       expect.stringContaining("UPDATE recurring_templates"),
+      expect.stringContaining("DELETE FROM recurring_template_attachments"),
+      expect.stringContaining("INSERT INTO recurring_template_attachments"),
       expect.stringContaining("DELETE FROM media_references"),
       expect.stringContaining("INSERT OR IGNORE INTO media_references"),
     ]));

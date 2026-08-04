@@ -70,7 +70,13 @@ describe("event schemas", () => {
     expect(updateTemplateSchema.parse({ auto_archive: false })).toMatchObject({ auto_archive: false });
   });
 
-  it("requires poll events to have an end time and 2-10 options", () => {
+  it("accepts only source-owned event types while validating poll requirements", () => {
+    expect(createEventSchema.safeParse({
+      type: "custom_event",
+      title: "Custom",
+      start_at: "2026-05-07T19:00:00.000Z",
+    }).success).toBe(false);
+
     expect(createEventSchema.safeParse({
       type: "poll",
       title: "Next activity?",

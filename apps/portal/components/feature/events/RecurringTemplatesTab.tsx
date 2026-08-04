@@ -1,5 +1,4 @@
-import type { RecurringTemplate } from "@guild/shared";
-import { EVENT_TYPES } from "@guild/shared";
+import { DEFAULT_GAME_RULES, type RecurringTemplate } from "@guild/shared";
 import { utcWeekdayToLocal } from "@guild/shared/utils/recurrence";
 import { tzOffsetToAnchorIso, buildFormState, computeNextLifecyclePreview, formatLifecycleDate, utcTimeToLocalTime } from "./RecurringTemplateFormModal.helpers";
 import { useConfirmDialog } from "@portal/hooks/useConfirmDialog";
@@ -33,6 +32,7 @@ import {
 } from "./RecurringTemplateFormModal";
 import { EventsViewSwitcher } from "./EventsViewSwitcher";
 import { type EventWorkbenchViewMode } from "../../../utils/event-navigation";
+import { getEventTypeLabel } from "@portal/utils/game-rules";
 
 const WEEKDAY_KEYS = ["weekday.sun", "weekday.mon", "weekday.tue", "weekday.wed", "weekday.thu", "weekday.fri", "weekday.sat"] as const;
 type TemplateStatusFilter = "all" | "active" | "paused";
@@ -97,6 +97,7 @@ export function RecurringTemplatesTab({
   onDeleteTemplate,
 }: RecurringTemplatesTabProps) {
   const { t, i18n } = useTranslation("events");
+  const gameRules = DEFAULT_GAME_RULES;
   const confirm = useConfirmDialog();
   const isMobile = useMediaQuery("(max-width: 47.99em)");
 
@@ -225,7 +226,12 @@ export function RecurringTemplatesTab({
         onChange={setTypeFilter}
         placeholder={t("recurring.filter.type")}
         aria-label={t("recurring.filter.type")}
-        data={EVENT_TYPES.map((value) => ({ value, label: t(`common:eventType.${value}`) }))}
+        data={gameRules.events.types
+          .filter((definition) => definition.enabled)
+          .map((definition) => ({
+            value: definition.id,
+            label: getEventTypeLabel(definition.id, i18n.language, gameRules),
+          }))}
         className="recurring-template-filter-type"
       />
     </>
@@ -329,7 +335,7 @@ export function RecurringTemplatesTab({
         ) : (
           filteredTemplates.map((template) => {
             const isPaused = template.paused;
-            const typeDef = EVENT_TYPES.find((et) => et === template.type);
+            const typeDef = gameRules.events.types.find((definition) => definition.id === template.type);
             const time = template.start_time ? utcTimeToLocalTime(template.start_time) : "--:--";
             const lifecycle = isPaused ? null : computeNextLifecyclePreview(buildFormState(template), template, "edit");
             const lang = i18n.language;
@@ -373,7 +379,7 @@ export function RecurringTemplatesTab({
                           </Text>
                           {typeDef && (
                             <Badge size="xs" variant="light" style={{ flexShrink: 0 }}>
-                              {t(`common:eventType.${typeDef}`)}
+                              {getEventTypeLabel(typeDef.id, i18n.language, gameRules)}
                             </Badge>
                           )}
                           <HoverCard width={280} shadow="lg" withArrow arrowSize={10} openDelay={350} closeDelay={80} position="top">

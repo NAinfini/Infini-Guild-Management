@@ -30,6 +30,7 @@ import {
 } from "../api/queries/events";
 import type { EventDetailResponse } from "../api/queries/events";
 import type { AttachmentItem, AttachmentService } from "./AttachmentService";
+import { eventHasBehavior } from "@portal/utils/game-rules";
 
 export {
   addEventParticipant,
@@ -185,7 +186,9 @@ export class EventService {
     }
 
     let capacity: number | undefined;
-    if (input.eventType !== "poll" && input.capacity.trim()) {
+    const isPoll = eventHasBehavior(input.eventType, "poll");
+    const isRaffle = eventHasBehavior(input.eventType, "raffle");
+    if (!isPoll && input.capacity.trim()) {
       const parsedCapacity = Number.parseInt(input.capacity, 10);
       if (Number.isNaN(parsedCapacity) || parsedCapacity < 1) {
         throw new EventValidationError("invalid_capacity", "Capacity must be positive");
@@ -195,7 +198,7 @@ export class EventService {
 
     const description = input.description.trim();
     const pollOptions = (input.pollOptions ?? []).map((option) => option.trim()).filter(Boolean);
-    if (input.eventType === "poll") {
+    if (isPoll) {
       if (!input.endIso) {
         throw new EventValidationError("missing_poll_end", "Poll end time required");
       }
@@ -204,7 +207,7 @@ export class EventService {
       }
     }
 
-    if (input.eventType === "raffle") {
+    if (isRaffle) {
       if (!input.endIso) {
         throw new EventValidationError("missing_raffle_end", "Raffle end time required");
       }
@@ -214,7 +217,7 @@ export class EventService {
       }
     }
 
-    const winnerCount = input.eventType === "raffle"
+    const winnerCount = isRaffle
       ? Number.parseInt(input.winnerCount ?? "", 10) || undefined
       : undefined;
 
@@ -222,7 +225,7 @@ export class EventService {
      * 投票和抽奖必须发空数组，不能把编辑器里残留的配额带过去：服务端对这两种类型
      * 收到非空配额会整个请求拒收。表单在类型切成投票/抽奖时只是把控件藏了，状态还在。
      */
-    const classQuotas = input.eventType === "poll" || input.eventType === "raffle"
+    const classQuotas = isPoll || isRaffle
       ? []
       : input.classQuotas ?? [];
 
@@ -235,7 +238,7 @@ export class EventService {
       capacity,
       attachments: [],
       auto_archive: input.autoArchive,
-      poll: input.eventType === "poll"
+      poll: isPoll
         ? {
             options: pollOptions,
             results_visibility: input.pollResultsVisibility ?? "after_vote",

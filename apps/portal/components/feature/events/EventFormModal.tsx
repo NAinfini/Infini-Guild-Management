@@ -1,4 +1,4 @@
-import { EVENT_TYPES, type EventClassQuotaInput } from "@guild/shared";
+import { DEFAULT_GAME_RULES, EVENT_TYPES, type EventClassQuotaInput, type EventType } from "@guild/shared";
 import {
   Button,
   Group,
@@ -21,6 +21,7 @@ import { ImageGridEditor } from "@portal/components/shared/ImageGridEditor";
 import { NativeDateTimeInput } from "@portal/components/shared/NativeDateTimeInput";
 import type { ImageGridEditorItem } from "@portal/types/media";
 import "./EventFormModal.css";
+import { eventHasBehavior, getEventTypeLabel } from "@portal/utils/game-rules";
 
 const WEEKDAY_KEYS = ["weekday.sun", "weekday.mon", "weekday.tue", "weekday.wed", "weekday.thu", "weekday.fri", "weekday.sat"] as const;
 
@@ -30,8 +31,8 @@ type EventFormModalProps = {
   canManage: boolean;
   title: string;
   onTitleChange: (value: string) => void;
-  eventType: (typeof EVENT_TYPES)[number] | "";
-  onEventTypeChange: (value: (typeof EVENT_TYPES)[number] | "") => void;
+  eventType: EventType | "";
+  onEventTypeChange: (value: EventType | "") => void;
   startAt: string;
   onStartAtChange: (value: string) => void;
   endAt: string;
@@ -104,12 +105,19 @@ export function EventFormModal({
   onSave,
 }: EventFormModalProps) {
   const { t } = useTranslation("events");
+  const gameRules = DEFAULT_GAME_RULES;
   const [titleTouched, setTitleTouched] = useState(false);
 
   const titleError = titleTouched && !title.trim() ? t("message.titleRequired") : undefined;
   const dateError = startAt && endAt && endAt < startAt ? t("field.endBeforeStart") : undefined;
-  const isPoll = eventType === "poll";
-  const isRaffle = eventType === "raffle";
+  const isPoll = eventHasBehavior(eventType, "poll", gameRules);
+  const isRaffle = eventHasBehavior(eventType, "raffle", gameRules);
+  const eventTypeOptions = gameRules.events.types
+    .filter((definition) => definition.enabled)
+    .map((definition) => ({
+      value: definition.id,
+      label: getEventTypeLabel(definition.id),
+    }));
   const pollOptionCount = pollOptions.map((option) => option.trim()).filter(Boolean).length;
   const pollError = isPoll && pollOptionCount < 2 ? t("poll.field.optionsInvalid") : undefined;
   const raffleWinnerCountNum = Number.parseInt(winnerCount, 10);
@@ -167,8 +175,13 @@ export function EventFormModal({
           <Select
             label={t("filter.type")}
             value={eventType || null}
-            onChange={(value) => value && onEventTypeChange(value as (typeof EVENT_TYPES)[number])}
-            data={EVENT_TYPES.map((value) => ({ value, label: t(`common:eventType.${value}`) }))}
+            onChange={(value) => {
+              const nextType = value && EVENT_TYPES.includes(value as EventType)
+                ? value as EventType
+                : "";
+              onEventTypeChange(nextType);
+            }}
+            data={eventTypeOptions}
             placeholder={t("field.selectType")}
           />
 
@@ -230,7 +243,7 @@ export function EventFormModal({
 
         <section className="event-form__column event-form__type-block">
           <Text size="sm" fw={800}>
-            {eventType ? t(`common:eventType.${eventType}`) : t("field.selectType")}
+            {eventType ? getEventTypeLabel(eventType) : t("field.selectType")}
           </Text>
 
           {!eventType ? (

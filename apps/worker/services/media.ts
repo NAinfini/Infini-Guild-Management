@@ -7,6 +7,7 @@ import {
   buildMemberAudioKey,
   buildMemberImageKey,
   buildSiteLogoKey,
+  assertContentMediaKey,
 } from "./media-keys";
 
 const MAGIC_BYTES: Record<string, { offset: number; bytes: number[] }[]> = {
@@ -214,5 +215,29 @@ export async function deleteMediaObject(c: Context, key: string): Promise<void> 
   if (!key) {
     return;
   }
+  assertContentMediaKey(key);
   await getMediaBucket(c).delete(key);
+}
+
+/** Wrap the shared MEDIA binding so content services cannot cross into archive or unknown keyspace. */
+export function protectContentMediaBucket(bucket: R2Bucket): R2Bucket {
+  return new Proxy(bucket, {
+    get(target, property) {
+      if (property === "put") {
+        return (key: string, ...args: unknown[]) => {
+          assertContentMediaKey(key);
+          return Reflect.apply(target.put, target, [key, ...args]);
+        };
+      }
+      if (property === "delete") {
+        return async (keys: string | string[]) => {
+          const values = Array.isArray(keys) ? keys : [keys];
+          values.forEach(assertContentMediaKey);
+          await target.delete(keys);
+        };
+      }
+      const value = Reflect.get(target, property, target) as unknown;
+      return typeof value === "function" ? value.bind(target) : value;
+    },
+  });
 }

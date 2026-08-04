@@ -176,15 +176,6 @@ describe("core schema system-test registry", () => {
   });
 });
 
-describe("core schema onboarding baseline data", () => {
-  it("seeds the default onboarding config disabled by default", () => {
-    expect(schemaSql).toContain("INSERT OR IGNORE INTO onboarding_config");
-    expect(schemaSql).toContain("'Member onboarding'");
-    expect(schemaSql).toContain("Welcome to the guild");
-    expect(schemaSql).toContain("NULL,");
-  });
-});
-
 describe("core schema site config baseline data", () => {
   it("stores admin-managed policies and analytics settings in D1", () => {
     const expectedColumns = [
@@ -200,6 +191,17 @@ describe("core schema site config baseline data", () => {
     }
 
     expect(schemaSql).toContain("INSERT OR IGNORE INTO site_config");
+    for (const removedTable of [
+      "site_event_types",
+      "site_guild_war_results",
+      "site_guild_war_team_stats",
+      "site_guild_war_member_stats",
+      "site_guild_war_settings",
+      "site_guild_war_kda_terms",
+    ]) {
+      expect(schemaSql).not.toContain(removedTable);
+    }
+    expect(schemaSql).not.toContain("game_rules_json");
     expect(schemaSql).toContain('"reference_duration_minutes":30');
     expect(schemaSql).toContain('"storage":true');
     expect(schemaSql).not.toContain("intake_batch");

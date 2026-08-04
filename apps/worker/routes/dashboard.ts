@@ -1,4 +1,4 @@
-import { activeGame } from "@guild/shared/games";
+import type { GameRules } from "@guild/shared";
 import { and, asc, desc, eq, gte, inArray, isNotNull, isNull, lte, sql } from "drizzle-orm";
 import { Hono } from "hono";
 import {
@@ -10,7 +10,7 @@ import {
   warTeamMembers,
   warTeams,
 } from "../db/schema";
-import { parseStringArray } from "../services/helpers";
+import { loadEventAttachments, loadMemberClasses } from "../services/ordered-relations";
 import { eventPublicVisibilityFilter } from "../services/events/event-visibility";
 import { toEventPayload, type EventRow } from "../services/EventService";
 import type { RawDbLike } from "../services/events/EventCrudService";
@@ -24,7 +24,7 @@ import type { SessionUser } from "../services/auth";
 import type { Bindings } from "../index";
 import { getRequestUser } from "../middleware/rbac";
 import { getDb } from "./_shared";
-import { getFeatureFlags } from "./service-factory";
+import { getFeatureFlags, getGameRules } from "./service-factory";
 
 export const dashboardRoutes = new Hono();
 
@@ -47,7 +47,6 @@ const DASHBOARD_EVENT_FIELDS = {
   autoArchived: events.autoArchived,
   createdBy: events.createdBy,
   updatedBy: events.updatedBy,
-  attachments: events.attachments,
   seriesId: events.seriesId,
   instanceDate: events.instanceDate,
   winnerCount: events.winnerCount,
@@ -86,6 +85,7 @@ async function loadUpcomingEvents(
   db: DashboardDb,
   rawDb: RawDbLike,
   viewer: SessionUser | null,
+  gameRules: GameRules,
 ) {
   const window = weekWindow();
   const eventVisibilityFilter = viewer?.permissions.has("events.edit")
@@ -125,11 +125,14 @@ async function loadUpcomingEvents(
   const eventIds = dashboardEventRows.map((row) => row.id);
   /* 面板上的活动条也要能看出「还缺什么」，所以这里得跟活动列表一样把配额读出来。
      投票和抽奖存不进配额，不必为它们白查一遍。 */
-  const quotasByEvent = await loadClassQuotas(
-    rawDb,
-    EVENT_CLASS_QUOTA_TABLE,
-    dashboardEventRows.filter((row) => typeSupportsClassQuotas(row.type)).map((row) => row.id),
-  );
+  const [quotasByEvent, attachmentsByEvent] = await Promise.all([
+    loadClassQuotas(
+      rawDb,
+      EVENT_CLASS_QUOTA_TABLE,
+      dashboardEventRows.filter((row) => typeSupportsClassQuotas(row.type, gameRules)).map((row) => row.id),
+    ),
+    loadEventAttachments(rawDb as unknown as D1Database, eventIds),
+  ]);
   const participantRows = eventIds.length > 0
     ? await db
         .select({
@@ -137,7 +140,6 @@ async function loadUpcomingEvents(
           userId: users.id,
           username: users.username,
           role: users.role,
-          classes: memberProfiles.classes,
           power: memberProfiles.power,
           avatarKey: memberProfiles.avatarKey,
         })
@@ -147,6 +149,11 @@ async function loadUpcomingEvents(
         .where(and(inArray(eventParticipants.eventId, eventIds), isNull(users.deletedAt), eq(users.isActive, true)))
         .orderBy(eventParticipants.joinedAt, users.username)
     : [];
+
+  const classesByUser = await loadMemberClasses(
+    rawDb as unknown as D1Database,
+    participantRows.map((row) => row.userId),
+  );
 
   const participantsByEvent = new Map<string, unknown[]>();
   const mySignupEventIds = new Set<string>();
@@ -159,7 +166,7 @@ async function loadUpcomingEvents(
       user_id: row.userId,
       username: row.username,
       role: row.role,
-      classes: parseStringArray(row.classes ?? "[]"),
+      classes: classesByUser.get(row.userId) ?? [],
       power: Number(row.power ?? 0),
       avatar_key: row.avatarKey ?? null,
     });
@@ -167,7 +174,11 @@ async function loadUpcomingEvents(
   }
 
   const toDashboardEvent = (row: (typeof dashboardEventRows)[number]) => ({
-    ...toEventPayload({ ...row, classQuotas: quotasByEvent.get(row.id) ?? [] } as EventRow),
+    ...toEventPayload({
+      ...row,
+      attachments: attachmentsByEvent.get(row.id) ?? [],
+      classQuotas: quotasByEvent.get(row.id) ?? [],
+    } as EventRow),
     participants: participantsByEvent.get(row.id) ?? [],
   });
 
@@ -179,7 +190,8 @@ async function loadUpcomingEvents(
   };
 }
 
-async function loadWarStats(db: DashboardDb) {
+async function loadWarStats(db: DashboardDb, gameRules: GameRules) {
+  const winCondition = eq(warHistory.result, "win");
   const [recentWarRows, warStatsRows] = await Promise.all([
     db
       .select({
@@ -203,7 +215,7 @@ async function loadWarStats(db: DashboardDb) {
     db
       .select({
         total: sql<number>`count(*)`,
-        wins: sql<number>`sum(case when ${warHistory.result} = 'win' then 1 else 0 end)`,
+        wins: sql<number>`sum(case when ${winCondition} then 1 else 0 end)`,
       })
       .from(warHistory)
       .where(isNotNull(warHistory.result)),
@@ -224,7 +236,7 @@ async function loadWarStats(db: DashboardDb) {
         .where(inArray(warTeams.warHistoryId, warIds))
     : [];
 
-  const mvpCategories = activeGame.war.mvpCategories;
+  const mvpCategories = gameRules.guild_war.member_stats.filter((stat) => stat.mvp);
   const warMembersByHistory = new Map<string, typeof warMemberRows>();
   for (const member of warMemberRows) {
     if (!member.warHistoryId) continue;
@@ -234,21 +246,27 @@ async function loadWarStats(db: DashboardDb) {
   const recentWarMvps = recentWarRows.map((war) => {
     const members = warMembersByHistory.get(war.id) ?? [];
     if (members.length === 0) return null;
-    return mvpCategories.map((category) => {
-      let top = members[0]!;
-      for (const member of members.slice(1)) {
-        if ((member.stats?.[category] ?? 0) > (top.stats?.[category] ?? 0)) {
-          top = member;
+    const mvps = mvpCategories.flatMap((category) => {
+      const candidates = members.flatMap((member) => {
+        const value = member.stats?.[category.key];
+        return typeof value === "number" && Number.isFinite(value) ? [{ member, value }] : [];
+      });
+      if (candidates.length === 0) return [];
+      let top = candidates[0]!;
+      for (const candidate of candidates.slice(1)) {
+        if (category.lower_is_better ? candidate.value < top.value : candidate.value > top.value) {
+          top = candidate;
         }
       }
-      return {
-        category,
-        label: category,
-        name: top.username,
-        initials: initials(top.username),
-        value: top.stats?.[category] ?? 0,
-      };
+      return [{
+        category: category.key,
+        label: category.key,
+        name: top.member.username,
+        initials: initials(top.member.username),
+        value: top.value,
+      }];
     });
+    return mvps.length > 0 ? mvps : null;
   });
 
   const warStats = warStatsRows[0];
@@ -283,7 +301,7 @@ dashboardRoutes.get("/events", async (c) => {
   const viewer = c.req.query("external_view") === "true"
     ? null
     : await getRequestUser(c);
-  return c.json(await loadUpcomingEvents(getDb(c), (c.env as Bindings).DB as never, viewer));
+  return c.json(await loadUpcomingEvents(getDb(c), (c.env as Bindings).DB as never, viewer, await getGameRules(c)));
 });
 
 dashboardRoutes.get("/wars", async (c) => {
@@ -296,5 +314,5 @@ dashboardRoutes.get("/wars", async (c) => {
     });
   }
 
-  return c.json(await loadWarStats(getDb(c)));
+  return c.json(await loadWarStats(getDb(c), await getGameRules(c)));
 });

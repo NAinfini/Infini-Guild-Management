@@ -1,7 +1,7 @@
 import { sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/d1";
 import { nanoid } from "nanoid";
-import { DEFAULT_CLASS_CATALOG, PERMISSIONS } from "@guild/shared";
+import { PERMISSIONS, type ClassVectorIconId } from "@guild/shared";
 import {
   announcements,
   auditLog,
@@ -21,6 +21,7 @@ import {
   memberBadgeAssignments,
   memberBadges,
   memberProfileClasses,
+  memberProfileImages,
   memberProfiles,
   rolePermissions,
   roles,
@@ -61,12 +62,14 @@ export const SEED_CLEAR_TABLES = [
   "event_polls",
   "event_raffle_winners",
   "event_participants",
+  "event_attachments",
   "war_team_members",
   "war_pool_members",
   "war_teams",
   "war_history",
   /* 配额行先走，它们指着活动／模板和标签；然后才轮得到标签和职业目录。 */
   "recurring_template_class_quotas",
+  "recurring_template_attachments",
   "event_class_quotas",
   "recurring_templates",
   "events",
@@ -81,10 +84,9 @@ export const SEED_CLEAR_TABLES = [
   "member_badge_assignments",
   "member_badges",
   "member_absences",
+  "member_profile_images",
   "member_profile_classes",
   "member_profiles",
-  "member_onboarding_state",
-  "onboarding_config",
   "site_config",
   "system_test_runs",
   "sessions",
@@ -101,9 +103,29 @@ export async function clearAllData(env: Bindings): Promise<void> {
   }
 }
 
-import { activeGame } from "@guild/shared/games";
+type SeedClassCatalogItem = {
+  id: string;
+  label: string;
+  color: string;
+  vectorIcon: ClassVectorIconId;
+  sortOrder: number;
+};
 
-const CLASSES = activeGame.classes.map((c) => c.id);
+/** Local development fixture; production class data comes from D1 class_catalog. */
+const SEEDED_CLASS_CATALOG = [
+  { id: "鸣金虹", label: "鸣金虹", color: "#6EA8FE", vectorIcon: "sword", sortOrder: 0 },
+  { id: "鸣金影", label: "鸣金影", color: "#79A7F2", vectorIcon: "target-arrow", sortOrder: 10 },
+  { id: "牵丝玉", label: "牵丝玉", color: "#58C7A6", vectorIcon: "sparkles", sortOrder: 20 },
+  { id: "牵丝霖", label: "牵丝霖", color: "#54C39B", vectorIcon: "heartbeat", sortOrder: 30 },
+  { id: "牵丝翊", label: "牵丝翊", color: "#62BEA7", vectorIcon: "pendant", sortOrder: 40 },
+  { id: "破竹风", label: "破竹风", color: "#A78BFA", vectorIcon: "bolt", sortOrder: 50 },
+  { id: "破竹尘", label: "破竹尘", color: "#9B8AE8", vectorIcon: "shield", sortOrder: 60 },
+  { id: "破竹鸢", label: "破竹鸢", color: "#B18CF1", vectorIcon: "target", sortOrder: 70 },
+  { id: "裂石威", label: "裂石威", color: "#E27676", vectorIcon: "shield", sortOrder: 80 },
+  { id: "裂石钧", label: "裂石钧", color: "#DB7770", vectorIcon: "hammer", sortOrder: 90 },
+] as const satisfies readonly SeedClassCatalogItem[];
+
+const CLASSES = SEEDED_CLASS_CATALOG.map((item) => item.id);
 
 const MODERATOR_GRANTED_PERMISSIONS = new Set<string>([
   "admin.users.view",
@@ -234,14 +256,14 @@ export async function seedDatabase(env: Bindings): Promise<void> {
   await batchInsert(
     db,
     classCatalog,
-    DEFAULT_CLASS_CATALOG.map((item) => ({
+    SEEDED_CLASS_CATALOG.map((item) => ({
       id: item.id,
       label: item.label,
       color: item.color,
       iconType: "vector",
-      vectorIcon: item.vector_icon,
+      vectorIcon: item.vectorIcon,
       iconKey: null,
-      sortOrder: item.sort_order,
+      sortOrder: item.sortOrder,
     })),
     10,
     { ignoreConflicts: true },
@@ -348,13 +370,14 @@ export async function seedDatabase(env: Bindings): Promise<void> {
       reference_duration_minutes: 30,
       modifier_weights: {
         credits: 0.3,
-        kda: 0.3,
-        basehp: 0.15,
+        kills: 0.3,
+        base_hp: 0.15,
         towers: 0.1,
         distance: 0.15,
       },
     }),
   }).onConflictDoNothing();
+
   const passwords = new Map<string, string>([
     [adminId, "admin123"],
     ...moderatorIds.map((id, index) => [id, `moderator${index + 1}23`] as const),
@@ -377,19 +400,21 @@ export async function seedDatabase(env: Bindings): Promise<void> {
   // ════════════════════════════════════════════
 
   const profileRows: Array<typeof memberProfiles.$inferInsert> = [];
+  const profileClassesByUser = new Map<string, string[]>();
+  const profileImagesByUser = new Map<string, string[]>();
   for (let index = 0; index < memberIds.length; index += 1) {
     const userId = memberIds[index]!;
     const onVacation = index === 5 || index === 11;
     const profileImages = index % 4 === 3 ? [] : [seedMockAsset("portrait", index)];
     const profileVideos = index % 6 === 0 ? ["https://www.youtube.com/watch?v=aqz-KE-bpKQ"] : [];
+    profileClassesByUser.set(userId, pickClasses(index));
+    profileImagesByUser.set(userId, profileImages);
     profileRows.push({
       id: nanoid(),
       userId,
       power: 3000 + index * 120,
-      classes: JSON.stringify(pickClasses(index)),
       titleHtml: `<p>Seed Title ${index + 1}</p>`,
       bio: `Seed profile for member ${index + 1}`,
-      images: JSON.stringify(profileImages),
       audioKey: null,
       videoUrls: JSON.stringify(profileVideos),
       availability: JSON.stringify({
@@ -397,42 +422,39 @@ export async function seedDatabase(env: Bindings): Promise<void> {
         weekendAfternoon: index % 3 === 0,
         guildWarNight: index % 4 !== 0,
       }),
-      vacationStart: null,
-      vacationEnd: null,
       notes: index % 5 === 0 ? "High priority member" : onVacation ? "Vacation scheduled" : null,
     });
   }
 
-  const moderatorProfileRows: Array<typeof memberProfiles.$inferInsert> = moderatorIds.map((id, index) => ({
-    id: nanoid(),
-    userId: id,
-    power: 6000 + index * 500,
-    classes: JSON.stringify(pickClasses(index + 5)),
-    titleHtml: `<p>Moderator ${index + 1}</p>`,
-    bio: `Seed profile for moderator ${index + 1}`,
-    images: JSON.stringify([seedMockAsset("portrait", index + 20)]),
-    audioKey: null,
-    videoUrls: JSON.stringify(index === 0 ? ["https://www.youtube.com/watch?v=aqz-KE-bpKQ"] : []),
-    availability: JSON.stringify({ weekdayEvening: true, weekendAfternoon: true, guildWarNight: true }),
-    vacationStart: null,
-    vacationEnd: null,
-    notes: index === 0 ? "Lead moderator" : null,
-  }));
+  const moderatorProfileRows: Array<typeof memberProfiles.$inferInsert> = moderatorIds.map((id, index) => {
+    profileClassesByUser.set(id, pickClasses(index + 5));
+    profileImagesByUser.set(id, [seedMockAsset("portrait", index + 20)]);
+    return {
+      id: nanoid(),
+      userId: id,
+      power: 6000 + index * 500,
+      titleHtml: `<p>Moderator ${index + 1}</p>`,
+      bio: `Seed profile for moderator ${index + 1}`,
+      audioKey: null,
+      videoUrls: JSON.stringify(index === 0 ? ["https://www.youtube.com/watch?v=aqz-KE-bpKQ"] : []),
+      availability: JSON.stringify({ weekdayEvening: true, weekendAfternoon: true, guildWarNight: true }),
+      notes: index === 0 ? "Lead moderator" : null,
+    };
+  });
+
+  profileClassesByUser.set(adminId, ["鸣金虹"]);
+  profileImagesByUser.set(adminId, [seedMockAsset("portrait", 99)]);
 
   const allProfileRows = [
     {
       id: nanoid(),
       userId: adminId,
       power: 9999,
-      classes: JSON.stringify(["鸣金虹"]),
       titleHtml: "<p>Guild Leader</p>",
       bio: "Seeded admin profile",
-      images: JSON.stringify([seedMockAsset("portrait", 99)]),
       audioKey: null,
       videoUrls: JSON.stringify(["https://www.youtube.com/watch?v=aqz-KE-bpKQ"]),
       availability: JSON.stringify({ all_day: true }),
-      vacationStart: null,
-      vacationEnd: null,
       notes: "seed-admin",
     },
     ...moderatorProfileRows,
@@ -451,9 +473,18 @@ export async function seedDatabase(env: Bindings): Promise<void> {
     db,
     memberProfileClasses,
     allProfileRows.flatMap((profile) => {
-      const classNames = JSON.parse(profile.classes ?? "[]") as string[];
-      return [...new Set(classNames)].map((className) => ({ userId: profile.userId, className }));
+      const classIds = [...new Set(profileClassesByUser.get(profile.userId) ?? [])];
+      return classIds.map((classId, sortOrder) => ({ userId: profile.userId, classId, sortOrder }));
     }),
+    10,
+  );
+  await batchInsert(
+    db,
+    memberProfileImages,
+    allProfileRows.flatMap((profile) =>
+      [...new Set(profileImagesByUser.get(profile.userId) ?? [])]
+        .map((mediaKey, sortOrder) => ({ userId: profile.userId, mediaKey, sortOrder })),
+    ),
     10,
   );
 
@@ -532,7 +563,7 @@ export async function seedDatabase(env: Bindings): Promise<void> {
   const pendingRaffleEventId = nanoid();
 
   const eventRows: Array<typeof events.$inferInsert> = [
-    // [0] weekly_mission - future, pinned, with attachments
+    // [0] weekly_mission - future, pinned
     {
       id: nanoid(),
       type: "weekly_mission",
@@ -546,7 +577,6 @@ export async function seedDatabase(env: Bindings): Promise<void> {
       archivedAt: null,
       createdBy: adminId,
       updatedBy: null,
-      attachments: JSON.stringify(["/mock/scene-1.svg", "/mock/scene-2.svg"]),
       seriesId: null,
       instanceDate: null,
     },
@@ -581,7 +611,6 @@ export async function seedDatabase(env: Bindings): Promise<void> {
       archivedAt: null,
       createdBy: adminId,
       updatedBy: null,
-      attachments: JSON.stringify(["/mock/portrait-1.svg"]),
       seriesId: null,
       instanceDate: null,
     },

@@ -5,6 +5,9 @@ import { BoltIcon } from "@portal/components/icons";
 import { ClassIcon } from "@portal/components/shared/ClassIcon";
 import { resolveClassCatalogItem, useClassCatalogStore } from "@portal/stores/class-catalog";
 import { sanitizeTitleHtml } from "../../../utils/sanitize";
+import { useSiteConfigStore } from "@portal/stores/site-config";
+import { getGuildWarMemberStatLabel, getGuildWarMetricValue } from "@portal/utils/game-rules";
+import { GUILD_WAR_KDA_KEY } from "@guild/shared";
 
 type ActiveMemberDetail = {
   username: string;
@@ -13,13 +16,7 @@ type ActiveMemberDetail = {
   titleHtml: string | null;
   teamName: string;
   roleTag: string | null;
-  kills: number;
-  deaths: number;
-  assists: number;
-  damage: number;
-  healing: number;
-  buildingDamage: number;
-  credits: number;
+  stats: Record<string, number | null>;
 };
 
 type WarMemberDetailModalProps = {
@@ -35,7 +32,8 @@ export function WarMemberDetailModal({
   activeDetail,
   onClose,
 }: WarMemberDetailModalProps) {
-  const { t } = useTranslation("guild-war");
+  const { t, i18n } = useTranslation("guild-war");
+  const gameRules = useSiteConfigStore((state) => state.gameRules);
   const classCatalog = useClassCatalogStore((state) => state.items);
   const safeTitleHtml = useMemo(
     () => (activeDetail?.titleHtml ? sanitizeTitleHtml(activeDetail.titleHtml) : ""),
@@ -102,11 +100,19 @@ export function WarMemberDetailModal({
           <section className="guild-war-member-detail__stats">
             <Text size="xs" fw={600} c="dimmed">{t("memberDetail.statsHeader")}</Text>
             <div className="guild-war-member-detail__stat-grid">
-              <MemberStat label={t("memberDetail.kda")} value={`${activeDetail.kills}/${activeDetail.deaths}/${activeDetail.assists}`} />
-              <MemberStat label={t("memberDetail.damage")} value={activeDetail.damage.toLocaleString()} />
-              <MemberStat label={t("memberDetail.healing")} value={activeDetail.healing.toLocaleString()} />
-              <MemberStat label={t("memberDetail.building")} value={activeDetail.buildingDamage.toLocaleString()} />
-              <MemberStat label={t("memberDetail.credits")} value={activeDetail.credits.toLocaleString()} />
+              {gameRules.guild_war.member_stats.map((definition) => (
+                <MemberStat
+                  key={definition.key}
+                  label={getGuildWarMemberStatLabel(definition.key, i18n.language, gameRules)}
+                  value={(activeDetail.stats[definition.key] ?? 0).toLocaleString(undefined, {
+                    maximumFractionDigits: 20,
+                  })}
+                />
+              ))}
+              <MemberStat
+                label={getGuildWarMemberStatLabel(GUILD_WAR_KDA_KEY, i18n.language, gameRules)}
+                value={getGuildWarMetricValue(activeDetail.stats, GUILD_WAR_KDA_KEY, gameRules).toFixed(2)}
+              />
             </div>
           </section>
         </Stack>

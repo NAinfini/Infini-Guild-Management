@@ -23,7 +23,7 @@
 
 Infini Guild Management 是一个面向游戏公会的全栈管理门户。它把成员资料、活动报名、公告、战报、百科、媒体和后台管理放在一个系统里，避免核心信息散落在表格、聊天置顶和临时工具中。
 
-项目围绕“游戏定义”设计。职业、角色定位、成员属性、活动类型、战报指标和界面标签都尽量放在共享 TypeScript 配置里，而不是硬编码到各处。这样换游戏或调整规则时，改动范围更小，也更容易维护。
+可运行时调整的内容由对应数据源管理：管理员通过 D1 支持的站点配置与目录维护品牌、功能开关、限制、职业、职业标签、角色和权限。已经持久化或会触发产品行为的活动与公会战键，则保留为明确的共享 API 契约。
 
 部署方式也比较直接：React 前端会打包成静态资源，由同一个 Cloudflare Worker 提供 API 和页面。一次部署，一个访问地址。
 
@@ -49,12 +49,12 @@ Infini Guild Management 是一个面向游戏公会的全栈管理门户。它�
 
 ```text
 apps/
-├── shared/   Zod schema、共享类型、常量、游戏配置、API 契约
+├── shared/   Zod schema、共享类型、领域常量、API 契约
 ├── worker/   Cloudflare Workers 上的 Hono API，使用 D1、R2、Durable Objects
 └── portal/   React SPA，使用 TanStack Router、TanStack Query、Mantine、Zustand
 ```
 
-`shared` 是前后端的契约层。后端路由使用共享 Zod schema 校验数据，前端查询使用同一套类型，游戏相关逻辑也集中在这里。
+`shared` 是前后端的契约层。后端路由使用共享 Zod schema 校验数据，前端查询使用同一套类型。运行时目录保存在 D1，已持久化的稳定值只保留为小型领域常量。
 
 ## 技术栈
 
@@ -120,124 +120,21 @@ pnpm dev
 | `pnpm db:mock:init` | 给本地 D1 应用迁移 |
 | `pnpm db:mock:seed` | 通过运行中的 Worker 写入本地测试数据 |
 
-## 适配其他游戏
+## 调整站点适配内容
 
-大部分游戏相关行为都从 active game definition 开始。复制现有游戏定义，改成你的规则，再把它导出为 active game。
+项目不再使用 active game 定义文件。请在各自唯一的数据源中修改：
 
-### 1. 创建游戏定义
+| 内容 | 唯一数据源 | 是否可运行时修改 |
+| --- | --- | --- |
+| 站点名、Logo、功能开关、限制 | **管理后台 → 站点配置**（`site_config`） | 可以 |
+| 职业、颜色与图标 | **管理后台 → 职业管理**（`class_catalog`） | 可以 |
+| 活动配额使用的职业分组 | 职业标签（`class_tags`） | 可以 |
+| 角色与权限 | 后台角色管理（`roles`、`role_permissions`） | 可以 |
+| 公会战分析权重 | `site_config.analytics_settings_json` | 可以 |
+| 活动类型、战果与战绩字段键 | `apps/shared/constants/` 中的领域契约 | 不可以；需要代码与数据迁移 |
+| 界面文案 | `apps/portal/i18n/` | 需要构建部署 |
 
-复制 `apps/shared/games/definitions/yan-yun.ts`，例如新建：
-
-```typescript
-// apps/shared/games/definitions/my-game.ts
-import type { GameDefinition } from "../types";
-
-export const myGame: GameDefinition = {
-  id: "my-game",
-  name: "我的游戏",
-
-  classes: [
-    { id: "warrior", label: "战士", colorGroup: "red", role: "tank" },
-    { id: "mage", label: "法师", colorGroup: "blue", role: "dps" },
-    { id: "priest", label: "牧师", colorGroup: "green", role: "healer" },
-  ],
-
-  classColorMapping: {
-    warrior: "var(--mantine-color-red-6)",
-    mage: "var(--mantine-color-blue-6)",
-    priest: "var(--mantine-color-green-6)",
-  },
-
-  roles: [
-    { id: "tank", label: "坦克", color: "blue", avatarColor: "#4dabf7", icon: "IconShield" },
-    { id: "dps", label: "输出", color: "red", avatarColor: "#ff6b6b", icon: "IconSword" },
-    { id: "healer", label: "治疗", color: "green", avatarColor: "#51cf66", icon: "IconHeart" },
-  ],
-  defaultRole: "dps",
-
-  profileStats: [
-    { key: "power", label: "战力", type: "number", sortable: true },
-  ],
-
-  war: {
-    enabled: true,
-    featureLabel: "guild-war:title",
-    resultOptions: ["victory", "defeat", "draw"],
-    teamObjectives: [
-      { key: "score", label: "guild-war:conclude.score", hasBothSides: true },
-    ],
-    memberStats: [
-      { key: "kills", label: "guild-war:stats.kills", aggregations: ["total", "average", "best"] },
-      { key: "deaths", label: "guild-war:stats.deaths", aggregations: ["total", "average", "best"], lowerIsBetter: true },
-      { key: "damage", label: "guild-war:stats.damage", aggregations: ["total", "average", "best"] },
-      { key: "healing", label: "guild-war:stats.healing", aggregations: ["total", "average", "best"] },
-    ],
-    computedStats: [
-      {
-        key: "kda",
-        label: "guild-war:stats.kda",
-        compute: (s) => (s.kills + (s.assists ?? 0)) / Math.max(s.deaths, 1),
-      },
-    ],
-    mvpCategories: ["kills", "damage", "healing"],
-    defaultTeamNames: ["甲队", "乙队"],
-    modifierWeights: { kills: 1, damage: 1, healing: 1 },
-  },
-
-  eventTypes: [
-    { id: "guild_war", label: "公会战", icon: "IconSwords", color: "red" },
-    { id: "raid", label: "副本", icon: "IconTarget", color: "orange" },
-    { id: "social", label: "日常", icon: "IconUsers", color: "blue" },
-  ],
-};
-```
-
-### 2. 切换 active game
-
-```typescript
-// apps/shared/games/index.ts
-export { myGame as activeGame } from "./definitions/my-game";
-```
-
-### 3. 补充翻译
-
-把游戏定义里用到的标签补到相关 i18n 文件，例如：
-
-- `apps/portal/i18n/en/guild-war.json`
-- `apps/portal/i18n/zh/guild-war.json`
-
-### 4. 修改品牌信息
-
-在本地 `apps/worker/wrangler.jsonc` 中设置站点名称、Logo 路径和前端来源（先从 `wrangler.example.jsonc` 复制）：
-
-```jsonc
-"vars": {
-  "SITE_NAME": "你的公会名",
-  "SITE_LOGO_URL": "/your-logo.webp",
-  "PORTAL_ORIGIN": "https://your-domain.com"
-}
-```
-
-Logo 可以放在 `apps/portal/public/` 下，也可以替换现有的 `guild-logo.webp`。
-
-### 5. 关闭不需要的模块
-
-站点管理员无需改代码。登录后进入 **管理后台 → 站点配置 → 功能** 即可修改模块开关。
-
-新数据库记录使用的代码默认值位于 `apps/shared/config/features.ts`：
-
-```typescript
-export const DEFAULT_FEATURE_FLAGS: FeatureFlags = {
-  announcements: true,
-  events: true,
-  guildWar: true,
-  gallery: true,
-  wiki: true,
-  tools: true,
-  equipmentCalc: true,
-  storage: true,
-};
-```
+投票、抽奖等活动类型带有专用行为，公会战字段键也已经写入历史 JSON。若未来要让它们可编辑，必须先设计版本机制和现有数据迁移，不能把数组直接放进站点配置。
 
 ## 部署
 

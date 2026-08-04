@@ -96,25 +96,9 @@
   text-overflow: ellipsis;
 }
 
-.quota-editor__picker {
-  display: grid;
-  gap: var(--space-sm);
-}
-
-.quota-editor__picker-count {
-  font-variant-numeric: tabular-nums;
-}
-
-.quota-editor__picker-list {
-  display: grid;
-  gap: var(--space-md);
-  max-height: 280px;
-  overflow-y: auto;
-}
-
-.quota-editor__picker-section {
-  display: grid;
-  gap: var(--space-xs);
+/* 下拉里的清单封个高度，免得目录一长就把下拉撑到屏幕外（行的样子在 shared/PickList.css）。 */
+.quota-editor__picker .pick-list__body {
+  max-block-size: 280px;
 }
 
 /*

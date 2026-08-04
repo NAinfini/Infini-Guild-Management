@@ -1,8 +1,9 @@
 import type { ClassCatalogItem, ClassTag } from "@guild/shared";
 import { LIMITS } from "@guild/shared/config/limits";
-import { Button, Checkbox, Group, Popover, Text, TextInput, UnstyledButton } from "@mantine/core";
-import { ChevronDownIcon, SearchIcon } from "@portal/components/icons";
+import { Button, Popover, Text, UnstyledButton } from "@mantine/core";
+import { ChevronDownIcon } from "@portal/components/icons";
 import { ClassIcon } from "@portal/components/shared/ClassIcon";
+import { PickList } from "@portal/components/shared/PickList";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { ClassIconStrip } from "./ClassIconStrip";
@@ -17,7 +18,7 @@ type ClassPickerPopoverProps = {
   onChange: (next: string[]) => void;
 };
 
-type Section = { key: string; label: string; items: ClassCatalogItem[]; tagClassIds: string[] | null };
+type Group = { key: string; label: string; items: ClassCatalogItem[]; tagClassIds: string[] | null };
 
 /*
  * 一次性组的职业勾选面板。
@@ -46,17 +47,17 @@ export function ClassPickerPopover({
   const matches = (item: ClassCatalogItem) => query === "" || item.label.toLowerCase().includes(query);
 
   const grouped = new Set(tags.flatMap((tag) => tag.class_ids));
-  const sections: Section[] = [];
+  const groups: Group[] = [];
   for (const tag of tags) {
     const items = tag.class_ids.map((id) => byId.get(id)).filter((item): item is ClassCatalogItem => Boolean(item));
     const visible = items.filter(matches);
     if (visible.length > 0) {
-      sections.push({ key: tag.id, label: tag.label, items: visible, tagClassIds: items.map((item) => item.id) });
+      groups.push({ key: tag.id, label: tag.label, items: visible, tagClassIds: items.map((item) => item.id) });
     }
   }
   const ungrouped = catalog.filter((item) => !grouped.has(item.id)).filter(matches);
   if (ungrouped.length > 0) {
-    sections.push({ key: "__ungrouped", label: t("quota.editor.ungrouped"), items: [...ungrouped], tagClassIds: null });
+    groups.push({ key: "__ungrouped", label: t("quota.editor.ungrouped"), items: [...ungrouped], tagClassIds: null });
   }
 
   const toggle = (classId: string) => {
@@ -87,56 +88,44 @@ export function ClassPickerPopover({
         </UnstyledButton>
       </Popover.Target>
       <Popover.Dropdown className="quota-editor__picker">
-        <TextInput
+        <PickList
           size="xs"
-          value={search}
-          onChange={(event) => setSearch(event.currentTarget.value)}
-          placeholder={t("quota.editor.searchClasses")}
-          aria-label={t("quota.editor.searchClasses")}
-          leftSection={<SearchIcon size={14} />}
-        />
-        {/* 到上限之后没勾上的会一起变灰，不写出来的话那是一片没有理由的灰。 */}
-        <Text size="xs" c="dimmed" className="quota-editor__picker-count">
-          {t("quota.editor.selectedCount", { count: selected.size, max: MAX_MEMBERS })}
-        </Text>
-        <div className="quota-editor__picker-list">
-          {sections.length === 0 ? (
-            <Text size="xs" c="dimmed">{t("quota.editor.noClassMatch")}</Text>
-          ) : (
-            sections.map((section) => (
-              <div key={section.key} className="quota-editor__picker-section">
-                <Group gap={8} justify="space-between" wrap="nowrap">
-                  <Text size="xs" fw={800} c="dimmed" truncate>{section.label}</Text>
-                  {section.tagClassIds ? (
-                    <Button
-                      size="compact-xs"
-                      variant="subtle"
-                      disabled={atMax}
-                      onClick={() => bringGroup(section.tagClassIds!)}
-                    >
-                      {t("quota.editor.bringGroup")}
-                    </Button>
-                  ) : null}
-                </Group>
-                {section.items.map((item) => (
-                  <Checkbox
-                    key={`${section.key}:${item.id}`}
-                    size="xs"
-                    checked={selected.has(item.id)}
-                    disabled={atMax && !selected.has(item.id)}
-                    onChange={() => toggle(item.id)}
-                    label={
-                      <Group gap={6} wrap="nowrap">
-                        <ClassIcon item={item} size={16} />
-                        <Text size="xs">{item.label}</Text>
-                      </Group>
-                    }
-                  />
-                ))}
-              </div>
-            ))
+          aria-label={t("quota.editor.pickClasses")}
+          sections={groups.map((group) => ({
+            key: group.key,
+            label: group.label,
+            options: group.items.map((item) => ({
+              id: item.id,
+              label: item.label,
+              icon: <ClassIcon item={item} size={16} />,
+            })),
+            action: group.tagClassIds ? (
+              <Button
+                size="compact-xs"
+                variant="subtle"
+                disabled={atMax}
+                onClick={() => bringGroup(group.tagClassIds!)}
+              >
+                {t("quota.editor.bringGroup")}
+              </Button>
+            ) : null,
+          }))}
+          selected={selected}
+          onToggle={toggle}
+          max={MAX_MEMBERS}
+          emptyLabel={t("quota.editor.noClassMatch")}
+          search={{
+            value: search,
+            onChange: setSearch,
+            placeholder: t("quota.editor.searchClasses"),
+          }}
+          /* 到上限之后没勾上的会一起变灰，不写出来的话那是一片没有理由的灰。 */
+          status={(
+            <Text size="xs" c="dimmed">
+              {t("quota.editor.selectedCount", { count: selected.size, max: MAX_MEMBERS })}
+            </Text>
           )}
-        </div>
+        />
       </Popover.Dropdown>
     </Popover>
   );

@@ -5,7 +5,7 @@ import type {
 } from "@guild/shared";
 import { arrayMove } from "@dnd-kit/sortable";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import {
   createClassCatalogItem,
@@ -20,13 +20,15 @@ import { fetchClassCatalog } from "../api/queries/classes";
 import { useClassCatalogStore } from "../stores/class-catalog";
 import { notifyError, notifySuccess } from "../utils/notifications";
 
+/* sort_order 不在草稿里：顺序由左栏拖拽决定，走整表重排接口。留在草稿里的话
+   同一份顺序有两个写入口——保存表单会把编辑器打开那一刻的旧数字写回去，把中间
+   发生过的拖拽抹掉。 */
 export type ClassEditorDraft = {
   id: string | null;
   label: string;
   color: string;
   vectorIcon: ClassVectorIconId;
   iconMode: "vector" | "image";
-  sortOrder: number;
   imageFile: File | null;
 };
 
@@ -36,7 +38,6 @@ export const EMPTY_CLASS_EDITOR_DRAFT: ClassEditorDraft = {
   color: "#61B8AA",
   vectorIcon: "sword",
   iconMode: "vector",
-  sortOrder: 0,
   imageFile: null,
 };
 
@@ -47,7 +48,6 @@ function itemToDraft(item: ClassCatalogItem): ClassEditorDraft {
     color: item.color,
     vectorIcon: item.vector_icon,
     iconMode: item.icon_type,
-    sortOrder: item.sort_order,
     imageFile: null,
   };
 }
@@ -85,7 +85,6 @@ export function useAdminClassesController() {
         label: nextDraft.label.trim(),
         color: nextDraft.color.toUpperCase(),
         vector_icon: nextDraft.vectorIcon,
-        sort_order: nextDraft.sortOrder,
       };
 
       const createdNow = !nextDraft.id;
@@ -190,8 +189,8 @@ export function useAdminClassesController() {
   };
 
   const openCreate = () => {
-    const nextOrder = (query.data?.at(-1)?.sort_order ?? -10) + 10;
-    setDraft({ ...EMPTY_CLASS_EDITOR_DRAFT, sortOrder: nextOrder });
+    /* sort_order 不传：服务端按当前最大值 + 10 排到末尾，正好是拖拽序里「新的在最后」。 */
+    setDraft(EMPTY_CLASS_EDITOR_DRAFT);
     setUploadProgress(0);
     setOpened(true);
   };
@@ -202,14 +201,24 @@ export function useAdminClassesController() {
     setOpened(true);
   };
 
+  /*
+   * 进页面直接把第一个职业摊开，右栏不再停在一句「选择一个职业进行编辑」上。
+   *
+   * 只认一次（autoSelected）：不认的话，删完当前这条把右栏收掉，这个 effect 立刻又把
+   * 列表里的头一条开回来，看着像是删错了人。
+   */
+  const autoSelected = useRef(false);
+  useEffect(() => {
+    if (autoSelected.current) return;
+    const first = query.data?.[0];
+    if (!first) return;
+    autoSelected.current = true;
+    openEdit(first);
+  }, [query.data]);
+
   return {
     query,
     opened,
-    close: () => {
-      if (saveMutation.isPending) return;
-      setOpened(false);
-      setUploadProgress(0);
-    },
     draft,
     setDraft,
     openCreate,

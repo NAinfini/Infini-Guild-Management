@@ -9,6 +9,8 @@ import { notifyError } from "../../../utils/notifications";
 vi.mock("react-i18next", () => ({
   useTranslation: () => ({
     t: (key: string) => key,
+    /* 账号事实那张卡要按当前语言格式化日期，所以这个 mock 得带上 i18n。 */
+    i18n: { language: "en" },
   }),
 }));
 
@@ -17,6 +19,10 @@ vi.mock("../../../utils/notifications", () => ({
 }));
 
 const baseProps = {
+  username: "tester",
+  role: "member",
+  joinedAt: "2024-01-02T00:00:00.000Z",
+  profileUpdatedAt: "2024-03-04T00:00:00.000Z",
   currentPassword: "",
   newPassword: "",
   confirmNewPassword: "",

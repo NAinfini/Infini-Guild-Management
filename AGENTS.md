@@ -71,9 +71,9 @@ apps/
 | `schemas/class-catalog.ts` | Flat class catalog CRUD contracts, colors, and vector icon allowlist |
 | `types/` | TypeScript types inferred from Zod schemas |
 | `constants/roles.ts` | Role definitions (admin, moderator, member) |
-| `constants/classes.ts` | Character class constants |
-| `constants/class-icons.ts` | Dynamic class defaults and curated vector icon IDs |
+| `constants/class-icons.ts` | Curated vector icon IDs for the D1-backed class catalog |
 | `constants/event-types.ts` | Event type categories |
+| `constants/guild-war.ts` | Persisted guild-war result, objective, and stat-key contracts |
 | `constants/media.ts` | File size limits, image quotas |
 | `constants/errors.ts` | Error codes and HTTP status mappings |
 | `index.ts` | Barrel export |

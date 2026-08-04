@@ -4,6 +4,7 @@ import {
   createAnnouncementSchema,
   updateAnnouncementSchema,
 } from "./announcement";
+import { createWikiArticleSchema, updateWikiArticleSchema } from "./wiki";
 
 const stagingToken = "signed-announcement-staging-token".repeat(3);
 
@@ -55,4 +56,24 @@ describe("announcement staging contracts", () => {
       }).success,
     ).toBe(false);
   });
+
+  it.each(["not-json", "[]", "null", "42", '"text"'])(
+    "rejects non-object announcement body JSON: %s",
+    (body_json) => {
+      expect(createAnnouncementSchema.safeParse({ title: "Invalid", body_json }).success).toBe(false);
+      expect(updateAnnouncementSchema.safeParse({ body_json }).success).toBe(false);
+    },
+  );
+
+  it.each(["not-json", "[]", "null", "42", '"text"'])(
+    "rejects non-object wiki body JSON: %s",
+    (body_json) => {
+      expect(createWikiArticleSchema.safeParse({
+        title: "Invalid",
+        category_id: "category-1",
+        body_json,
+      }).success).toBe(false);
+      expect(updateWikiArticleSchema.safeParse({ body_json }).success).toBe(false);
+    },
+  );
 });

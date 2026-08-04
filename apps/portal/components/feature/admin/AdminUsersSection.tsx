@@ -9,7 +9,6 @@ import {
   Paper,
   SegmentedControl,
   Skeleton,
-  Progress,
   Stack,
   Text,
   TextInput,
@@ -54,7 +53,6 @@ type AdminUsersSectionProps = {
   isAdmin: boolean;
   onOpenCreateMember: () => void;
   selectedUserIds: string[];
-  batchSelectionLimit: number;
   onBatchRole: (userIds: string[], role: string) => void;
   onBatchActivate: (userIds: string[]) => void;
   onBatchDeactivate: (userIds: string[]) => void;
@@ -69,8 +67,6 @@ type AdminUsersSectionProps = {
   batchDeactivatePending: boolean;
   batchDeletePending: boolean;
   isSingleActionPending: (userId: string, action: AdminUserPendingAction) => boolean;
-  isBatchPending: boolean;
-  batchProgress: number;
   userRows: AdminUserRow[];
   userColumns: ColumnDef<AdminUserRow, unknown>[];
   onOpenMemberDetail: (userId: string) => void;
@@ -86,7 +82,6 @@ export function AdminUsersSection({
   isAdmin,
   onOpenCreateMember,
   selectedUserIds,
-  batchSelectionLimit,
   onBatchRole,
   onBatchActivate,
   onBatchDeactivate,
@@ -101,8 +96,6 @@ export function AdminUsersSection({
   batchDeactivatePending,
   batchDeletePending,
   isSingleActionPending,
-  isBatchPending,
-  batchProgress,
   userRows,
   userColumns,
   onOpenMemberDetail,
@@ -227,10 +220,8 @@ export function AdminUsersSection({
     getRowId: (row) => row.user.id,
   });
 
-  const orderedRowIds = useMemo(
-    () => table.getRowModel().rows.map((row) => row.original.user.id),
-    [table, sorting, userRows],
-  );
+  const orderedRowIds = table.getRowModel().rows.map((row) => row.original.user.id);
+  const currentPageUserIdSet = new Set(orderedRowIds);
 
   const handleRowClick = (
     userId: string,
@@ -312,7 +303,8 @@ export function AdminUsersSection({
     }
   };
 
-  const contextUserIds = actionMenu?.userIds ?? [];
+  const contextUserIds = (actionMenu?.userIds ?? [])
+    .filter((userId) => currentPageUserIdSet.has(userId));
   const contextRows = contextUserIds
     .map((userId) => usersById.get(userId))
     .filter(Boolean) as AdminUserRow[];
@@ -350,7 +342,8 @@ export function AdminUsersSection({
   };
 
   return (
-    <Stack gap={12}>
+    /* admin-fill：把 .admin-page__panel 给的高度原样传给下面的表格卡片。 */
+    <Stack gap={12} className="admin-fill">
       <Menu
         opened={actionMenu !== null}
         onClose={closeActionMenu}
@@ -541,7 +534,7 @@ export function AdminUsersSection({
             </>
           ) : null}
 
-          <Paper withBorder radius="md" className="admin-member-table-desktop admin-table-card">
+          <Paper withBorder radius="md" className="admin-member-table-desktop admin-table-card admin-table-card--fill">
             <>
               <DataTableAdapter
                 className="admin-table"
@@ -551,7 +544,9 @@ export function AdminUsersSection({
                 withTableBorder={false}
                 withColumnBorders={false}
                 virtualize
-                maxHeight="65vh"
+                /* 高度交给 .admin-table-card--fill 那条 flex 链。原先写死 65vh：
+                   工具条一换行就顶出视口，行数一少又在卡片下面留一大块白。 */
+                maxHeight="none"
                 onRowDoubleClick={(row) => onOpenMemberDetail(row.original.user.id)}
                 onRowClick={(row, event) => handleRowClick(row.original.user.id, event)}
                 onRowContextMenu={(row, event) => openActionMenu(row.original.user.id, event)}
@@ -568,78 +563,11 @@ export function AdminUsersSection({
             </>
           </Paper>
 
+          {/* 选中后那条批量操作栏已按要求删掉。批量操作没有消失：右键任意一行
+              （或 Shift+F10）弹出的就是同一套菜单，改身份 / 启用 / 停用 / 批量删除
+              都在里面，且对多选生效。下面这句提示是它唯一的入口说明，保留。 */}
           {isAdmin ? (
-            <>
-              {/* 批量操作原先只能靠右键，唯一线索是一句灰字提示。选中即摆出来。
-                  放在表格下方并吸底：出现时不再把表格整体往下推。 */}
-              {selectedUserIds.length > 0 ? (
-                <div className="admin-selbar">
-                  <span className="admin-selbar__count">
-                    {t("member.selected", { count: selectedUserIds.length })} / {batchSelectionLimit}
-                  </span>
-                  <Menu withinPortal position="bottom-start" shadow="md" width={200}>
-                    <Menu.Target>
-                      <Button size="compact-sm" variant="default" disabled={batchRolePending}>
-                        {t("member.context.changeRole")}
-                      </Button>
-                    </Menu.Target>
-                    <Menu.Dropdown>
-                      {roles
-                        .slice()
-                        .sort((a, b) => a.level - b.level)
-                        .map((role) => (
-                          <Menu.Item
-                            key={role.id}
-                            disabled={role.id === "admin" || batchRolePending}
-                            onClick={() => onBatchRole(selectedUserIds, role.id)}
-                          >
-                            {role.name}
-                          </Menu.Item>
-                        ))}
-                    </Menu.Dropdown>
-                  </Menu>
-                  <Button
-                    size="compact-sm"
-                    variant="default"
-                    disabled={batchActivatePending}
-                    onClick={() => onBatchActivate(selectedUserIds)}
-                  >
-                    {t("member.reactivate")}
-                  </Button>
-                  <Button
-                    size="compact-sm"
-                    variant="default"
-                    disabled={batchDeactivatePending}
-                    onClick={() => onBatchDeactivate(selectedUserIds)}
-                  >
-                    {t("member.deactivate")}
-                  </Button>
-                  <Button
-                    size="compact-sm"
-                    variant="default"
-                    color="red"
-                    disabled={batchDeletePending}
-                    onClick={() => onBatchDelete(selectedUserIds)}
-                  >
-                    {t("member.context.batchDelete")}
-                  </Button>
-                  <div className="admin-toolbar__spacer" />
-                  <Button size="compact-sm" variant="subtle" onClick={() => onSelectionChange([])}>
-                    {t("member.batch.clear")}
-                  </Button>
-                  {isBatchPending || batchProgress > 0 ? (
-                    <Progress
-                      className="admin-selbar__progress"
-                      size="xs"
-                      value={batchProgress}
-                      animated={isBatchPending}
-                    />
-                  ) : null}
-                </div>
-              ) : (
-                <Text c="dimmed" size="xs">{t("member.selectionHint")}</Text>
-              )}
-            </>
+            <Text c="dimmed" size="xs">{t("member.selectionHint")}</Text>
           ) : null}
 
           <div className="admin-member-cards-mobile">

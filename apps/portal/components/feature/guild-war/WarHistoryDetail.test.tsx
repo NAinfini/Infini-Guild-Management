@@ -107,6 +107,6 @@ describe("WarHistoryDetail", () => {
     const board = screen.getByTestId("war-history-scoreboard");
     expect(board).toHaveTextContent("35");
     expect(board).toHaveTextContent("28");
-    expect(board).toHaveTextContent("history.kills");
+    expect(board).toHaveTextContent("Kills");
   });
 });

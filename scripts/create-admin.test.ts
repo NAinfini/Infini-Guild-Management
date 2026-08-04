@@ -22,6 +22,8 @@ describe("first administrator setup", () => {
     expect(sql).toContain("owner''name");
     expect(sql).toContain("WHERE NOT EXISTS (SELECT 1 FROM users)");
     expect(sql).not.toContain("owner'name");
+    expect(sql).toContain("member_profiles (id, user_id, power, video_urls)");
+    expect(sql).not.toMatch(/member_profiles \([^)]*\b(classes|images)\b/);
   });
 
   it("finds Wrangler D1 counts inside nested JSON output", () => {

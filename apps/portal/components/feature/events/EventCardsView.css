@@ -7,67 +7,13 @@
  * 旁边少一行的就多空一截）。正文吃掉这份富余，页脚才会贴着卡片下沿。
  */
 .event-card {
+  --event-card-accent: var(--domain-event);
   display: flex;
   flex-direction: column;
   overflow: visible;
   position: relative;
   border-radius: var(--radius-surface);
   transition: border-color 160ms ease, background 160ms ease;
-}
-
-/*
- * 类型色以前是卡片左缘一条 3px 的竖条，现在改由顶部色带承担（见
- * .event-card__header）：色带同时容纳类型徽章、状态图标和管理按钮，一条竖条再加
- * 一条色带就是同一件事说两遍。--event-card-accent 本身没动，只是换了个地方用。
- *
- * --event-card-accent 的兜底一直是死代码：下面的六条 :has() 规则
- * （weekly_mission、guild_war、social、poll、raffle、other）覆盖了
- * EventCardView.tsx 里 `type in EVENT_TYPE_COLORS ? type : "other"` 的全部分支，
- * 没有第七种未匹配的情况。这个覆盖关系今天成立，但 CSS 侧类名硬编码、配置侧数据
- * 驱动，两者原本无守卫绑定——现在由 event-colors.test.ts 里的一条断言把两边钉在
- * 一起：往游戏配置加一个事件类型且这里漏加对应规则会直接测红，而不是让
- * --event-card-accent 静默解析不出来（the final colour review I3）。
- */
-
-/* 色带取色策略：weekly_mission 与下面的 social 两类刻意吃 --accent-fill /
-   --accent-fill-hover（主题强调色），不吃 utils/event-colors.ts 为徽章/标签
-   派生的游戏配置色（yan-yun.ts 现在把这两类配成 cyan / grape）。这是本次
-   改版引入的有意视觉分歧：同一张卡上竖条与徽章可能不同色，是否统一由后续
-   视觉决策裁定，见 event-colors.ts 顶部注释（the final colour review I2）。 */
-.event-card:has(.event-card__header--weekly_mission) {
-  --event-card-accent: var(--domain-event);
-}
-
-.event-card:has(.event-card__header--guild_war) {
-  --event-card-accent: var(--domain-war);
-}
-
-/* --color-secondary（古铜色）是本次改版要消灭的暖金配色，装饰性用途收敛到
-   「更深一档主色」= --accent-fill-hover，与 weekly_mission 的
-   --accent-fill 区分开，保留分类可辨识度（the token-layer contract 前序约定段，
-   不用 --accent-600）。竖条取色刻意跟主题色而非游戏配置色的说明见上方
-   weekly_mission 规则前的注释（the final colour review I2）。 */
-.event-card:has(.event-card__header--social) {
-  --event-card-accent: var(--domain-community);
-}
-
-/* poll/raffle 此前是裸 hex，且不对应替换表里任何一个语义角色（不是
-   success/warning/danger，也不是主色）——它们是活动类型的分类色，与站点
-   可切换的强调色主题无关，所以不能收敛到 --accent-fill。utils/event-colors.ts
-   派生自 apps/shared/games/definitions/yan-yun.ts，poll 的真实分类色就是
-   "teal"、raffle 就是 "pink"；下方 .event-card__winners-tag 的徽章底色本来就在用
-   --mantine-color-pink-5，这里改用同一套 Mantine 色阶变量以保持分类色与该文件
-   既有写法一致，而不是新造一个 token（the token-layer contract H 节）。 */
-.event-card:has(.event-card__header--poll) {
-  --event-card-accent: var(--mantine-color-teal-5);
-}
-
-.event-card:has(.event-card__header--raffle) {
-  --event-card-accent: var(--mantine-color-pink-5);
-}
-
-.event-card:has(.event-card__header--other) {
-  --event-card-accent: color-mix(in srgb, var(--text-primary) 36%, transparent);
 }
 
 .event-card:hover {

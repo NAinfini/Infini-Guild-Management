@@ -166,8 +166,9 @@ export function WikiPage() {
           {t("backToList")}
         </Button>
       ) : null}
+      {/* 正文卡整块内滚：标题、面包屑、正文是一篇东西，一起滚才对，不像编辑器那样钉卡头。 */}
       <Paper withBorder className="wiki-article-reader-card" p="lg">
-          <Stack gap={12}>
+          <Stack gap={12} className="wiki-card-scroll">
             {(controller.detailQuery.isLoading || (controller.detailQuery.isFetching && !controller.detailQuery.data)) && controller.selectedSlug ? (
               <Stack gap={12} style={{ padding: "1rem 0" }}>
                 <Skeleton height={22} width="55%" />

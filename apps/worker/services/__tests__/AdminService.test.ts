@@ -372,14 +372,14 @@ describe("AdminService role assignment guardrails", () => {
 
     const result = await service.updateAnalyticsSettings("admin-1", {
       reference_duration_minutes: 60,
-      modifier_weights: { kills: 2, assists: 1 },
+      modifier_weights: { kills: 2, towers: 1 },
     });
 
     expect(result.ok).toBe(true);
     expect(set).toHaveBeenCalledWith(expect.objectContaining({
       analyticsSettingsJson: JSON.stringify({
         reference_duration_minutes: 60,
-        modifier_weights: { kills: 0.6667, assists: 0.3333 },
+        modifier_weights: { kills: 0.6667, towers: 0.3333 },
       }),
     }));
     expect(media.put).not.toHaveBeenCalled();
@@ -570,6 +570,8 @@ describe("AdminService.getStatus", () => {
     "sessions",
     "login_failures",
     "member_profiles",
+    "member_profile_classes",
+    "member_profile_images",
     "roles",
     "role_permissions",
     "site_config",
@@ -577,8 +579,10 @@ describe("AdminService.getStatus", () => {
     "class_tags",
     "class_tag_members",
     "events",
+    "event_attachments",
     "event_class_quotas",
     "recurring_templates",
+    "recurring_template_attachments",
     "recurring_template_class_quotas",
     "media_references",
     "media_reference_backfills",

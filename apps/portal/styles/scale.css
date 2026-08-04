@@ -145,6 +145,30 @@
   }
 }
 
+/*
+ * 但上面那条问错了对象：pointer 只描述**主**指针。
+ *
+ * Windows 的触屏笔记本（以及带触摸的一体机、手写屏）把触摸报成主指针，插着鼠标
+ * 也一样——于是一台鼠标驱动的桌面设备被整档判成粗指针，全站输入框、按钮、页签
+ * 各高 8px。单看不明显，累积起来就是「主从台比视口高一点」：管理后台的成员表和
+ * 公会战历史的详情面板各自内滚之外，外层再多出一条整页滚动条；富文本工具条更直接，
+ * 44px 按钮配 22px 间距，二十八个控件排不下一行，末尾六个折到第二行。
+ *
+ * any-pointer 问的是「有没有一个精确指针可用」，同样是硬件事实、同样稳定（不像
+ * data-input-modality 那样跟着上一次输入翻），但不受「哪个是主指针」的影响。
+ * 纯触屏设备上 any-pointer: fine 为假，上面那条 44px 原样保留，AAA 靶面不丢。
+ *
+ * 写成「粗指针档 + 细指针复位」两块而不是把上面那条改成
+ * `(any-pointer: coarse) and (not (any-pointer: fine))`：后者要媒体查询的布尔
+ * `not`（MQ Level 4），老一档浏览器整条查询失效会让触屏一起丢掉 44px；这里两块
+ * 都只用基础特性查询，且靠源序决胜。
+ */
+@media (any-pointer: fine) {
+  :root {
+    --control-height-regular: 36px;
+  }
+}
+
 html[data-locale="zh"] {
   --font-body: "Noto Sans SC", "Microsoft YaHei", system-ui, sans-serif;
 }

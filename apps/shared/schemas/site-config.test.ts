@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { LIMITS } from "../config/limits";
 import {
   DEFAULT_SITE_ABSENCE_POLICY,
+  DEFAULT_SITE_ANALYTICS_SETTINGS,
   DEFAULT_SITE_MEDIA_POLICY,
   DEFAULT_SITE_STORAGE_POLICY,
   siteAbsencePolicySchema,
@@ -11,6 +12,19 @@ import {
 } from "./site-config";
 
 describe("site media policy", () => {
+  it("keeps guild-war modifier defaults in Site Config", () => {
+    expect(DEFAULT_SITE_ANALYTICS_SETTINGS).toEqual({
+      reference_duration_minutes: 30,
+      modifier_weights: {
+        kills: 0.3,
+        towers: 0.1,
+        credits: 0.3,
+        distance: 0.15,
+        base_hp: 0.15,
+      },
+    });
+  });
+
   it("accepts the default media limits", () => {
     expect(siteMediaPolicySchema.parse(DEFAULT_SITE_MEDIA_POLICY)).toEqual(DEFAULT_SITE_MEDIA_POLICY);
   });
@@ -55,5 +69,9 @@ describe("site media policy", () => {
     expect(updateSiteConfigSchema.safeParse({ analytics_settings: { reference_duration_minutes: 30 } }).success).toBe(false);
     expect(updateSiteConfigSchema.safeParse({ pagination_policy: { events: 10 } }).success).toBe(false);
     expect(updateSiteConfigSchema.safeParse({ site_logo_url: "https://example.com/tracker.gif" }).success).toBe(false);
+  });
+
+  it("rejects game rules in the general Site Config update contract", () => {
+    expect(updateSiteConfigSchema.safeParse({ game_rules: {} }).success).toBe(false);
   });
 });

@@ -1,7 +1,6 @@
 import { z } from "zod";
 import { featureFlagsSchema } from "../config/features";
 import { LIMITS, MAX_CONFIGURABLE_MEDIA_FILE_BYTES } from "../config/limits";
-import { activeGame } from "../games";
 
 export const siteMediaPolicySchema = z.object({
   max_file_size_bytes: z.object({
@@ -68,7 +67,13 @@ export const DEFAULT_SITE_ABSENCE_POLICY = siteAbsencePolicySchema.parse({
 
 export const DEFAULT_SITE_ANALYTICS_SETTINGS = siteAnalyticsSettingsSchema.parse({
   reference_duration_minutes: 30,
-  modifier_weights: { ...activeGame.war.modifierWeights },
+  modifier_weights: {
+    kills: 0.30,
+    towers: 0.10,
+    credits: 0.30,
+    distance: 0.15,
+    base_hp: 0.15,
+  },
 });
 
 export const siteConfigSchema = z.object({

@@ -38,9 +38,18 @@ function detail(page: Page): Locator {
 function badgeItem(page: Page, name: string): Locator {
   return page.locator(".admin-md__item").filter({ hasText: name });
 }
-/* 分配面板：详情里的一块，不是弹窗，所以要断言「收起」而不是「不存在」。 */
-function assignPanel(page: Page): Locator {
-  return detail(page).locator(".admin-badge-assign");
+/*
+ * 成员编辑没有独立面板：详情里那份名单换状态，标题行换成这条工具栏。
+ * 它在查看态是不渲染的，所以断言「不存在」而不是「收起」。
+ */
+function memberToolbar(page: Page): Locator {
+  return detail(page).locator(".pick-list__toolbar");
+}
+function memberList(page: Page): Locator {
+  return detail(page).locator(".pick-list__body");
+}
+function memberRow(page: Page, username: string): Locator {
+  return detail(page).locator(".pick-list__row").filter({ hasText: username });
 }
 /*
  * Mantine ColorInput 的预设色板在挂到 body 的下拉里，按钮的无障碍名就是色值本身。
@@ -184,55 +193,101 @@ test("编辑徽章：点清单选中，改名和改描述都落到服务端，�
   await expect(badgeItem(page, renamed), "左边清单要跟着刷新").toBeVisible();
 });
 
-test("分配与移除：勾人才让提交，分配后候选里不再出现他，移除后两边都归零", async ({ page, api, flow }) => {
+test("成员名单：勾选即拥有，改动攒成差异一次保存；再打开时已有的人是勾上的", async ({ page, api, flow }) => {
   const badge = await createServerBadge(api, `E2E ${uniqueTag("assign")}`);
+  /* 切换徽章要把面板收掉，得有第二枚可切；建在打开页面之前，否则清单里没有它。 */
+  const other = await createServerBadge(api, `E2E ${uniqueTag("other")}`);
   const member = await createThrowawayMember(api, uniqueTag("bm"));
   await openBadges(page);
   await badgeItem(page, badge.name).click();
   await expect(detail(page).getByText("No members assigned to this badge.")).toBeVisible();
 
   const manage = detail(page).getByRole("button", { name: "Manage Members", exact: true });
-  await expect(assignPanel(page), "没点之前面板是收起的").toBeHidden();
+  const toolbar = memberToolbar(page);
+  await expect(toolbar, "查看态里没有编辑工具栏").toHaveCount(0);
+  await expect(memberList(page).getByRole("checkbox"), "查看态里也不该有勾选框").toHaveCount(0);
   await manage.click();
-  const panel = assignPanel(page);
-  await expect(panel).toBeVisible();
-  const assignButton = panel.getByRole("button", { name: /^Assign \(\d+\)$/ });
-  await expect(assignButton, "一个人都没勾时不该能提交").toBeDisabled();
+  await expect(toolbar).toBeVisible();
+  const save = toolbar.getByRole("button", { name: "Save changes", exact: true });
+  await expect(save, "一个字都没改时没有可保存的东西").toBeDisabled();
 
-  await panel.getByPlaceholder("Search members...").fill(member.username);
-  await expect(panel.getByRole("checkbox"), "搜索要把候选收敛到那一个人").toHaveCount(1);
-  await panel.getByRole("checkbox", { name: member.username, exact: true }).check();
-  await expect(assignButton, "按钮上的数字就是将要分配的人数").toHaveText("Assign (1)");
+  /*
+   * 草稿只对进入编辑态时那一枚徽章有意义：带着它切到另一枚，保存出去就是拿这边的
+   * 勾选去改那边的成员。切换必须退出编辑态。
+   */
+  await badgeItem(page, other.name).click();
+  await expect(toolbar, "换了一枚徽章就该回到查看态").toHaveCount(0);
+  await badgeItem(page, badge.name).click();
+  await manage.click();
+  await expect(toolbar).toBeVisible();
 
-  await flow.click(assignButton, ASSIGN_BADGE);
-  await expectNotified(page, "Badge assigned to 1 member(s)");
-  await expect(panel, "分配成功之后面板自己收起来").toBeHidden();
+  await toolbar.getByPlaceholder("Search members...").fill(member.username);
+  await expect(memberList(page).getByRole("checkbox"), "搜索要把名单收敛到那一个人").toHaveCount(1);
+  const box = memberList(page).getByRole("checkbox", { name: member.username, exact: true });
+  await expect(box, "还没给他徽章，所以是没勾的").not.toBeChecked();
+  await box.check();
+  await expect(toolbar.getByText("1 to add · 0 to remove"), "工具栏要说清这次会改动什么").toBeVisible();
+
+  await flow.click(save, ASSIGN_BADGE);
+  await expectNotified(page, "Added 1, removed 0");
+  await expect(toolbar, "保存成功之后回到查看态").toHaveCount(0);
 
   expect(
     (await serverAssignments(api, badge.id)).map((row) => row.user_id),
     "服务端得真的挂上这条分配",
   ).toEqual([member.id]);
   await expect(detail(page).getByText("1 assigned", { exact: true })).toBeVisible();
-  await expect(detail(page).getByText(member.username, { exact: true })).toBeVisible();
+  await expect(memberRow(page, member.username), "已分配的人以卡片出现").toBeVisible();
+  await expect(
+    memberRow(page, member.username).getByText(/^Granted /),
+    "授予时间后端一直在返回，名单上要看得到",
+  ).toBeVisible();
 
-  /* 已经有这枚徽章的人不该再出现在候选里，否则会重复分配。 */
+  /* 已经有徽章的人仍在名单里，只是勾上了——取消勾选就是移除，不再是两份名单。 */
   await manage.click();
-  await expect(panel).toBeVisible();
-  await panel.getByPlaceholder("Search members...").fill(member.username);
-  await expect(panel.getByRole("checkbox")).toHaveCount(0);
-  await expect(panel.getByText("Every member already has this badge.")).toBeVisible();
-  /*
-   * 折进详情之后，候选空了也不再挡住下方的已有成员名单——这正是从弹窗改过来的理由，
-   * 顺手在这里钉住。
-   */
-  await expect(detail(page).getByText(member.username, { exact: true })).toBeVisible();
-  await flow.clickWithoutApi(panel.getByRole("button", { name: "Cancel", exact: true }));
-  await expect(panel).toBeHidden();
+  await expect(toolbar).toBeVisible();
+  await toolbar.getByPlaceholder("Search members...").fill(member.username);
+  await expect(box).toBeChecked();
+  await box.uncheck();
+  await expect(toolbar.getByText("0 to add · 1 to remove")).toBeVisible();
 
-  await flow.click(detail(page).getByRole("button", { name: "Remove", exact: true }), UNASSIGN_BADGE);
-  await expectNotified(page, "Badge removed from 1 member(s)");
+  /* 摘徽章是不可撤销的，和删除徽章一样要先确认。 */
+  await save.click();
+  const dialog = await confirmDialog(page, "Remove Badge Assignment");
+  await expect(dialog, "确认框要点名是哪一枚徽章").toContainText(badge.name);
+  await flow.click(dialog.getByRole("button", { name: "Remove", exact: true }), UNASSIGN_BADGE);
+  await expectNotified(page, "Added 0, removed 1");
+
   expect(await serverAssignments(api, badge.id), "移除之后服务端不能再留着这条分配").toEqual([]);
   await expect(detail(page).getByText("0 assigned", { exact: true })).toBeVisible();
+  await expect(detail(page).getByText("No members assigned to this badge.")).toBeVisible();
+});
+
+test("卡片上的移除：确认框取消什么都不做，确认之后两边一起归零", async ({ page, api, flow }) => {
+  const badge = await createServerBadge(api, `E2E ${uniqueTag("unassign")}`);
+  const member = await createThrowawayMember(api, uniqueTag("bm"));
+  /* 靶子直接用接口挂上：面板那条路另有用例专门验，这里只看卡片上的移除。 */
+  await api.post(`/api/badges/${badge.id}/assign`, { data: { user_ids: [member.id] } });
+
+  await openBadges(page);
+  await badgeItem(page, badge.name).click();
+  const card = memberRow(page, member.username);
+  await expect(card).toBeVisible();
+
+  await card.getByRole("button", { name: "Remove", exact: true }).click();
+  await flow.clickWithoutApi(
+    (await confirmDialog(page, "Remove Badge Assignment")).getByRole("button", { name: "Cancel", exact: true }),
+  );
+  await expectNoDialog(page);
+  await expect(card, "取消之后这个人必须还在").toBeVisible();
+  expect((await serverAssignments(api, badge.id)).length, "取消不能动服务端").toBe(1);
+
+  await card.getByRole("button", { name: "Remove", exact: true }).click();
+  const confirmed = await confirmDialog(page, "Remove Badge Assignment");
+  await flow.click(confirmed.getByRole("button", { name: "Remove", exact: true }), UNASSIGN_BADGE);
+  await expectNotified(page, "Badge removed from 1 member(s)");
+
+  expect(await serverAssignments(api, badge.id), "确认之后服务端不能再留着这条分配").toEqual([]);
   await expect(detail(page).getByText("No members assigned to this badge.")).toBeVisible();
 });
 

@@ -2,20 +2,24 @@ import type { Bindings } from "../index";
 import { logger } from "../utils/logger";
 import {
   deleteMediaRefs,
-  extractAttachmentKeys,
   extractAnnouncementImageNodeKeys,
   extractRichTextMediaKeys,
   findUnreferencedKeys,
   replaceMediaRefs,
 } from "../services/media-references";
-import { mediaKeyFromUrl } from "../services/media-keys";
+import { assertDeletableContentMediaKey, mediaKeyFromUrl } from "../services/media-keys";
+import {
+  loadEventAttachments,
+  loadMemberImages,
+  loadRecurringTemplateAttachments,
+} from "../services/ordered-relations";
 
 const SOFT_DELETE_RETENTION_DAYS = 7;
 const GRACE_HOURS = 48;
 const R2_PAGE_SIZE = 1000;
 const R2_DELETE_CHUNK = 1000;
 const D1_PAGE_SIZE = 50;
-export const MEDIA_REFERENCE_BACKFILL_VERSION = 1;
+export const MEDIA_REFERENCE_BACKFILL_VERSION = 2;
 
 type BackfillDomain =
   | "gallery"
@@ -59,6 +63,24 @@ async function forEachIdPage<T extends IdRow>(
   }
 }
 
+async function forEachIdBatchPage<T extends IdRow>(
+  db: D1Database,
+  query: string,
+  handle: (rows: T[]) => Promise<number>,
+): Promise<number> {
+  let cursor = "";
+  let processed = 0;
+  while (true) {
+    const page = await db.prepare(query).bind(cursor, D1_PAGE_SIZE).all<T>();
+    const rows = page.results ?? [];
+    processed += await handle(rows);
+    if (rows.length < D1_PAGE_SIZE) return processed;
+    const nextCursor = rows.at(-1)?.id;
+    if (!nextCursor || nextCursor <= cursor) throw new Error("Media reference backfill cursor did not advance");
+    cursor = nextCursor;
+  }
+}
+
 async function backfillDomain(db: D1Database, domain: BackfillDomain): Promise<number> {
   switch (domain) {
     case "gallery":
@@ -71,23 +93,33 @@ async function backfillDomain(db: D1Database, domain: BackfillDomain): Promise<n
         },
       );
     case "event":
-      return forEachIdPage<{ id: string; attachments: string | null }>(
+      return forEachIdBatchPage<{ id: string }>(
         db,
-        "SELECT id, attachments FROM events WHERE id > ? ORDER BY id LIMIT ?",
-        async (row) => {
-          const keys = extractAttachmentKeys(row.attachments);
-          await replaceMediaRefs(db, "event", row.id, keys);
-          return keys.length;
+        "SELECT id FROM events WHERE id > ? ORDER BY id LIMIT ?",
+        async (rows) => {
+          const attachmentMap = await loadEventAttachments(db, rows.map((row) => row.id));
+          let total = 0;
+          for (const row of rows) {
+            const keys = attachmentMap.get(row.id) ?? [];
+            await replaceMediaRefs(db, "event", row.id, keys);
+            total += keys.length;
+          }
+          return total;
         },
       );
     case "recurring_template":
-      return forEachIdPage<{ id: string; attachments: string | null }>(
+      return forEachIdBatchPage<{ id: string }>(
         db,
-        "SELECT id, attachments FROM recurring_templates WHERE id > ? ORDER BY id LIMIT ?",
-        async (row) => {
-          const keys = extractAttachmentKeys(row.attachments);
-          await replaceMediaRefs(db, "recurring_template", row.id, keys);
-          return keys.length;
+        "SELECT id FROM recurring_templates WHERE id > ? ORDER BY id LIMIT ?",
+        async (rows) => {
+          const attachmentMap = await loadRecurringTemplateAttachments(db, rows.map((row) => row.id));
+          let total = 0;
+          for (const row of rows) {
+            const keys = attachmentMap.get(row.id) ?? [];
+            await replaceMediaRefs(db, "recurring_template", row.id, keys);
+            total += keys.length;
+          }
+          return total;
         },
       );
     case "announcement":
@@ -140,22 +172,27 @@ async function backfillDomain(db: D1Database, domain: BackfillDomain): Promise<n
         },
       );
     case "member_profile":
-      return forEachIdPage<{ id: string; images: string | null; avatar_key: string | null; audio_key: string | null }>(
+      return forEachIdBatchPage<{ id: string; avatar_key: string | null; audio_key: string | null }>(
         db,
-        `SELECT mp.user_id AS id, mp.images, mp.avatar_key, mp.audio_key
+        `SELECT mp.user_id AS id, mp.avatar_key, mp.audio_key
          FROM member_profiles mp
          JOIN users u ON u.id = mp.user_id
          WHERE mp.user_id > ?
            AND (u.deleted_at IS NULL OR u.deleted_at >= strftime('%Y-%m-%dT%H:%M:%fZ', 'now', '-${SOFT_DELETE_RETENTION_DAYS} days'))
          ORDER BY mp.user_id LIMIT ?`,
-        async (row) => {
-          const keys = [
-            ...extractAttachmentKeys(row.images),
-            ...(row.avatar_key ? [row.avatar_key] : []),
-            ...(row.audio_key ? [row.audio_key] : []),
-          ];
-          await replaceMediaRefs(db, "member_profile", row.id, keys);
-          return keys.length;
+        async (rows) => {
+          const imageMap = await loadMemberImages(db, rows.map((row) => row.id));
+          let total = 0;
+          for (const row of rows) {
+            const keys = [
+              ...(imageMap.get(row.id) ?? []),
+              ...(row.avatar_key ? [row.avatar_key] : []),
+              ...(row.audio_key ? [row.audio_key] : []),
+            ];
+            await replaceMediaRefs(db, "member_profile", row.id, keys);
+            total += keys.length;
+          }
+          return total;
         },
       );
     case "site_config":
@@ -193,6 +230,7 @@ async function deleteR2Keys(bucket: R2Bucket, keys: readonly string[]): Promise<
   for (let index = 0; index < keys.length; index += R2_DELETE_CHUNK) {
     const chunk = keys.slice(index, index + R2_DELETE_CHUNK);
     if (chunk.length === 0) continue;
+    chunk.forEach(assertDeletableContentMediaKey);
     await bucket.delete([...chunk]);
     deleted += chunk.length;
   }

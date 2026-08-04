@@ -9,6 +9,7 @@ import {
   Stack,
   Text,
 } from "@mantine/core";
+import { DEFAULT_GAME_RULES } from "@guild/shared";
 import {
   ArrowLeftIcon,
   PencilIcon,
@@ -36,6 +37,10 @@ import type {
   HistoryMvpSummary,
   HistoryViewMode,
 } from "@portal/types/guild-war";
+import {
+  getGuildWarResultLabel,
+  getGuildWarTeamStatLabel,
+} from "@portal/utils/game-rules";
 
 echarts.use([
   BarChart,
@@ -124,6 +129,7 @@ export function WarHistoryDetail({
 }: WarHistoryDetailProps) {
   const { t } = useTranslation("guild-war");
   const siteName = useSiteConfigStore((state) => state.siteName);
+  const gameRules = DEFAULT_GAME_RULES;
 
   useEffect(() => {
     echarts.registerTheme(chartThemeName, chartThemeConfig);
@@ -137,43 +143,19 @@ export function WarHistoryDetail({
   const resultKey = historyDetail?.result ?? null;
   const resultColor = resolveResultTagColor(resultKey);
   const comparisonMetrics: ComparisonMetric[] = historyDetail
-    ? [
-        {
-          id: "kills",
-          label: t("history.kills"),
-          own: historyDetail.own_stats?.kills ?? 0,
-          enemy: historyDetail.enemy_stats?.kills ?? 0,
-        },
-        {
-          id: "towers",
-          label: t("history.towers"),
-          own: historyDetail.own_stats?.towers ?? 0,
-          enemy: historyDetail.enemy_stats?.towers ?? 0,
-        },
-        {
-          id: "base_hp",
-          label: t("history.baseHp"),
-          own: historyDetail.own_stats?.base_hp ?? 0,
-          enemy: historyDetail.enemy_stats?.base_hp ?? 0,
-        },
-        {
-          id: "distance",
-          label: t("history.distance"),
-          own: historyDetail.own_stats?.distance ?? 0,
-          enemy: historyDetail.enemy_stats?.distance ?? 0,
-        },
-        {
-          id: "credits",
-          label: t("history.credits"),
-          own: historyDetail.own_stats?.credits ?? 0,
-          enemy: historyDetail.enemy_stats?.credits ?? 0,
-        },
-      ]
+    ? gameRules.guild_war.team_stats.map((definition) => ({
+        id: definition.key,
+        label: getGuildWarTeamStatLabel(definition.key),
+        own: historyDetail.own_stats?.[definition.key] ?? 0,
+        enemy: historyDetail.enemy_stats?.[definition.key] ?? 0,
+      }))
     : [];
   // The scoreboard headline is explicitly the kills column, not an abstract
   // "score" — the label stays visible so the number never claims to be the
   // thing that decided the war.
-  const headline = comparisonMetrics[0] ?? null;
+  const primaryStat = gameRules.guild_war.team_stats.find((definition) => definition.dashboard === "primary")
+    ?? gameRules.guild_war.team_stats[0];
+  const headline = comparisonMetrics.find((metric) => metric.id === primaryStat?.key) ?? comparisonMetrics[0] ?? null;
 
   return (
     <section
@@ -212,7 +194,7 @@ export function WarHistoryDetail({
         {!historyDetailLoading && !historyDetailError && historyDetail ? (
           <Stack gap={0}>
             <header
-              className={`whd-board whd-board--${resultKey ?? "unknown"}`}
+              className="whd-board"
               data-testid="war-history-scoreboard"
             >
               <div className="whd-board__side">
@@ -231,7 +213,9 @@ export function WarHistoryDetail({
                 <div className="whd-board__caption">
                   <span className="whd-board__metric">{headline?.label}</span>
                   <Badge size="sm" color={resultColor} variant="light">
-                    {(historyDetail.result ?? t("history.unknownResult")).toUpperCase()}
+                    {historyDetail.result
+                      ? getGuildWarResultLabel(historyDetail.result)
+                      : t("history.unknownResult")}
                   </Badge>
                 </div>
               </div>
@@ -274,10 +258,9 @@ export function WarHistoryDetail({
                 <section className="whd-panel">
                   <SectionHeader title={t("history.mvpHighlights")} />
                   <div className="whd-mvp">
-                    <MvpRow label={t("analytics.metric.damage")} value={historyMvp.damage} />
-                    <MvpRow label={t("analytics.metric.healing")} value={historyMvp.healing} />
-                    <MvpRow label={t("analytics.metric.buildingDamage")} value={historyMvp.building} />
-                    <MvpRow label={t("analytics.metric.damageTaken")} value={historyMvp.damageTaken} />
+                    {historyMvp.map((entry) => (
+                      <MvpRow key={entry.key} label={entry.label} value={entry.value} />
+                    ))}
                   </div>
                 </section>
               ) : null}

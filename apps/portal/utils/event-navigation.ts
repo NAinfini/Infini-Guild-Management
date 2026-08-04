@@ -1,5 +1,6 @@
-import { EVENT_TYPES } from "@guild/shared";
+import { findEventTypeDefinition } from "@guild/shared";
 import { z } from "zod";
+import { getCurrentGameRules } from "./game-rules";
 
 const EVENT_WORKBENCH_VIEW_MODES = ["cards", "month", "recurring"] as const;
 /*
@@ -13,7 +14,7 @@ const EVENT_STATUS_FILTERS = ["active", "archived", "all"] as const;
 
 export type EventWorkbenchViewMode = (typeof EVENT_WORKBENCH_VIEW_MODES)[number];
 export type EventsTab = (typeof EVENTS_TABS)[number];
-export type EventTypeFilter = (typeof EVENT_TYPES)[number];
+export type EventTypeFilter = string;
 export type EventStatusFilter = (typeof EVENT_STATUS_FILTERS)[number];
 
 export type EventsRouteSearch = {
@@ -60,8 +61,12 @@ export const EVENTS_ROUTE_SEARCH_SCHEMA = z.object({
   // 其余枚举字段都用 preprocess 把不认识的值当成没填；type 也必须一致，
   // 否则手改成 ?type=1 就是一次整页崩溃，而不是一个被忽略的筛选条件。
   type: z.preprocess(
-    (val) => (typeof val === "string" && (EVENT_TYPES as readonly string[]).includes(val) ? val : undefined),
-    z.enum(EVENT_TYPES).optional(),
+    (val) => (
+      typeof val === "string" && findEventTypeDefinition(getCurrentGameRules(), val)?.enabled
+        ? val
+        : undefined
+    ),
+    z.string().optional(),
   ),
   status: z.preprocess(
     (val) => (typeof val === "string" && (EVENT_STATUS_FILTERS as readonly string[]).includes(val) ? val : undefined),

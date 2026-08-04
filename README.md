@@ -23,7 +23,7 @@ Built as one Cloudflare Worker plus one React app, with shared TypeScript contra
 
 Infini Guild Management is a full-stack portal for running a game guild without spreading core data across spreadsheets, Discord pins, and one-off tools.
 
-The app is designed around a shared game definition. Classes, roles, member stats, event types, war metrics, and labels live in TypeScript configuration instead of being hardcoded throughout the frontend and backend. That keeps the project adaptable when the guild changes games or needs a different ruleset.
+Runtime customization lives with the data it controls: administrators manage branding, feature flags, limits, classes, class tags, roles, and permissions through D1-backed settings and catalogs. Event and guild-war keys that are persisted or drive product behavior remain explicit shared API contracts.
 
 The deployment model is also simple: the React portal is built into static assets and served by the Cloudflare Worker that runs the API. One deploy gives you one URL for the whole portal.
 
@@ -49,12 +49,12 @@ The deployment model is also simple: the React portal is built into static asset
 
 ```text
 apps/
-├── shared/   Zod schemas, shared types, constants, game config, API contracts
+├── shared/   Zod schemas, shared types, domain constants, API contracts
 ├── worker/   Hono API on Cloudflare Workers, D1, R2, Durable Objects
 └── portal/   React SPA with TanStack Router, TanStack Query, Mantine, Zustand
 ```
 
-The shared package is the contract layer. Backend routes validate with shared Zod schemas, frontend queries consume the same inferred types, and game-specific behavior is centralized instead of duplicated.
+The shared package is the contract layer. Backend routes validate with shared Zod schemas, and frontend queries consume the same inferred types. Runtime catalogs live in D1; stable persisted values remain small, focused domain constants.
 
 ## Tech Stack
 
@@ -120,123 +120,21 @@ Open `http://localhost:5173` and sign in with one of the seeded accounts:
 | `pnpm db:mock:init` | Apply migrations to the local D1 database |
 | `pnpm db:mock:seed` | Seed local data through the running Worker |
 
-## Adapting the Portal to Another Game
+## Adapting the Portal
 
-Most game-specific behavior starts in the active game definition. Copy the existing game file, edit the values, then export your definition as the active game.
+There is no active-game definition file. Change each concern at its authoritative source:
 
-### 1. Create a game definition
+| Concern | Source of truth | Runtime change? |
+| --- | --- | --- |
+| Site name, logo, feature flags, limits | **Admin → Site Config** (`site_config`) | Yes |
+| Classes, colors, and icons | **Admin → Classes** (`class_catalog`) | Yes |
+| Class groupings used by event quotas | Class tags (`class_tags`) | Yes |
+| Roles and permissions | Admin role management (`roles`, `role_permissions`) | Yes |
+| Guild-war analytics weights | `site_config.analytics_settings_json` | Yes |
+| Event types and war result/stat keys | `apps/shared/constants/` domain contracts | No; requires code and data migration |
+| Labels | `apps/portal/i18n/` | Build and deploy |
 
-Copy `apps/shared/games/definitions/yan-yun.ts` to a new file, for example:
-
-```typescript
-// apps/shared/games/definitions/my-game.ts
-import type { GameDefinition } from "../types";
-
-export const myGame: GameDefinition = {
-  id: "my-game",
-  name: "My Game",
-
-  classes: [
-    { id: "warrior", label: "Warrior", colorGroup: "red", role: "tank" },
-    { id: "mage", label: "Mage", colorGroup: "blue", role: "dps" },
-    { id: "priest", label: "Priest", colorGroup: "green", role: "healer" },
-  ],
-
-  classColorMapping: {
-    warrior: "var(--mantine-color-red-6)",
-    mage: "var(--mantine-color-blue-6)",
-    priest: "var(--mantine-color-green-6)",
-  },
-
-  roles: [
-    { id: "tank", label: "Tank", color: "blue", avatarColor: "#4dabf7", icon: "IconShield" },
-    { id: "dps", label: "DPS", color: "red", avatarColor: "#ff6b6b", icon: "IconSword" },
-    { id: "healer", label: "Healer", color: "green", avatarColor: "#51cf66", icon: "IconHeart" },
-  ],
-  defaultRole: "dps",
-
-  profileStats: [
-    { key: "power", label: "Power", type: "number", sortable: true },
-  ],
-
-  war: {
-    enabled: true,
-    featureLabel: "guild-war:title",
-    resultOptions: ["victory", "defeat", "draw"],
-    teamObjectives: [
-      { key: "score", label: "guild-war:conclude.score", hasBothSides: true },
-    ],
-    memberStats: [
-      { key: "kills", label: "guild-war:stats.kills", aggregations: ["total", "average", "best"] },
-      { key: "deaths", label: "guild-war:stats.deaths", aggregations: ["total", "average", "best"], lowerIsBetter: true },
-      { key: "damage", label: "guild-war:stats.damage", aggregations: ["total", "average", "best"] },
-      { key: "healing", label: "guild-war:stats.healing", aggregations: ["total", "average", "best"] },
-    ],
-    computedStats: [
-      {
-        key: "kda",
-        label: "guild-war:stats.kda",
-        compute: (s) => (s.kills + (s.assists ?? 0)) / Math.max(s.deaths, 1),
-      },
-    ],
-    mvpCategories: ["kills", "damage", "healing"],
-    defaultTeamNames: ["Team A", "Team B"],
-    modifierWeights: { kills: 1, damage: 1, healing: 1 },
-  },
-
-  eventTypes: [
-    { id: "guild_war", label: "Guild War", icon: "IconSwords", color: "red" },
-    { id: "raid", label: "Raid", icon: "IconTarget", color: "orange" },
-    { id: "social", label: "Social", icon: "IconUsers", color: "blue" },
-  ],
-};
-```
-
-### 2. Make it active
-
-```typescript
-// apps/shared/games/index.ts
-export { myGame as activeGame } from "./definitions/my-game";
-```
-
-### 3. Add translations
-
-Add labels used by the game definition to the relevant i18n files, such as:
-
-- `apps/portal/i18n/en/guild-war.json`
-- `apps/portal/i18n/zh/guild-war.json`
-
-### 4. Update branding
-
-Set the site name, logo path, and portal origin in your local `apps/worker/wrangler.jsonc` (copy from `wrangler.example.jsonc` first):
-
-```jsonc
-"vars": {
-  "SITE_NAME": "Your Guild Name",
-  "SITE_LOGO_URL": "/your-logo.webp",
-  "PORTAL_ORIGIN": "https://your-domain.com"
-}
-```
-
-Place the logo under `apps/portal/public/`, or replace the existing `guild-logo.webp`.
-
-### 5. Toggle optional modules
-
-Site owners can change modules without editing code. Sign in as an administrator and open **Admin → Site Config → Features**.
-
-The code-level defaults, used for new database rows, live in `apps/shared/config/features.ts`:
-
-```typescript
-export const DEFAULT_FEATURE_FLAGS: FeatureFlags = {
-  announcements: true,
-  events: true,
-  guildWar: true,
-  gallery: true,
-  wiki: true,
-  tools: true,
-  storage: true,
-};
-```
+Event types such as polls and raffles have dedicated behavior, and guild-war keys are stored in historical JSON. Do not turn either list into an editable setting without designing versioning and a migration for existing rows.
 
 ## Deployment
 

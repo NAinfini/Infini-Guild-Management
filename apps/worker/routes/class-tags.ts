@@ -1,4 +1,5 @@
-import { createClassTagSchema, updateClassTagSchema } from "@guild/shared";
+import { createClassTagSchema, reorderClassTagsSchema, updateClassTagSchema } from "@guild/shared";
+import type { ReorderClassTagsInput } from "@guild/shared";
 import type { Context } from "hono";
 import { Hono } from "hono";
 import { nanoid } from "nanoid";
@@ -36,6 +37,14 @@ classTagRoutes.post("/", async (c) => {
     await getClassTagService(c).create(input as Parameters<ClassTagService["create"]>[0], actor.id),
     201,
   );
+});
+
+/* 必须排在 `/:id` 之前：Hono 按注册顺序匹配，否则 "reorder" 会被当成一个标签 id。
+   职业目录那条路由（routes/classes.ts）踩过同一个坑，注释也在那边。 */
+classTagRoutes.patch("/reorder", async (c) => {
+  const actor = await requireClassManagement(c);
+  const input = await parseJsonBody(c, reorderClassTagsSchema) as ReorderClassTagsInput;
+  return handleResult(c, await getClassTagService(c).reorder(input.order, actor.id));
 });
 
 classTagRoutes.patch("/:id", async (c) => {

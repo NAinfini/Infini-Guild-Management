@@ -62,8 +62,8 @@ WHERE NOT EXISTS (SELECT 1 FROM users);
 INSERT INTO user_auth_password (user_id, password_hash, salt)
 SELECT '${values.userId}', '${values.passwordHash}', '${values.salt}'
 WHERE EXISTS (SELECT 1 FROM users WHERE id = '${values.userId}');
-INSERT INTO member_profiles (id, user_id, power, classes, images, video_urls)
-SELECT '${values.profileId}', '${values.userId}', 0, '[]', '[]', '[]'
+INSERT INTO member_profiles (id, user_id, power, video_urls)
+SELECT '${values.profileId}', '${values.userId}', 0, '[]'
 WHERE EXISTS (SELECT 1 FROM users WHERE id = '${values.userId}');
 COMMIT;
 `;

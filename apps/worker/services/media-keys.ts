@@ -29,6 +29,8 @@ export type ParsedMediaKey = {
   contentType: StoredContentType | null;
 };
 
+export const AUDIT_ARCHIVE_PREFIX = "audit-archive/";
+
 const EXTENSION_CONTENT_TYPES = new Map<string, StoredContentType>(
   Object.entries(CONTENT_TYPE_EXTENSIONS).map(([contentType, extension]) => [extension, contentType as StoredContentType]),
 );
@@ -146,6 +148,25 @@ export function parseMediaKey(key: string): ParsedMediaKey | null {
   }
   return null;
 }
+
+/**
+ * R2 contains both user-facing content and audit archives. Content cleanup
+ * must only remove keys produced by this module; audit objects are owned by
+ * the archive service and must never be swept through a content path.
+ */
+export function assertContentMediaKey(key: string): ParsedMediaKey {
+  if (key.startsWith(AUDIT_ARCHIVE_PREFIX)) {
+    throw new Error(`Refusing audit archive key through content media path: ${key}`);
+  }
+  const parsed = parseMediaKey(key);
+  if (!parsed?.contentType) {
+    throw new Error(`Refusing unrecognized content media key: ${key}`);
+  }
+  return parsed;
+}
+
+/** Backwards-compatible name for callers that only delete content objects. */
+export const assertDeletableContentMediaKey = assertContentMediaKey;
 
 export function mediaKeyFromUrl(url: string | null | undefined): string | null {
   if (!url) return null;

@@ -156,7 +156,9 @@ pnpm deploy:production
 | 成员角色、权限、邀请链接 | **管理后台** | 不需要 |
 | D1、R2、域名、环境、后备品牌信息 | `apps/worker/wrangler.jsonc` | 需要 |
 | Cloudflare 签名密钥 | `wrangler secret put` | 需要 |
-| 游戏职业、活动类型、公会战指标 | `apps/shared/games/definitions/` | 构建并部署 |
+| 游戏职业与职业标签 | **管理后台 → 职业管理** | 不需要 |
+| 公会战分析权重 | `/api/admin/analytics-settings` | 不需要 |
+| 已持久化的活动、战果和战绩键 | 共享领域契约并配套数据迁移 | 需要 |
 | 请求硬上限、限流、分页默认值 | `apps/shared/config/limits.ts` | 构建并部署 |
 
 项目不存在 `FEATURES` 环境变量。运行时模块开关统一放在“管理后台 → 站点配置”，避免出现两套互相冲突的配置来源。

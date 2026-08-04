@@ -1,12 +1,18 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { rolePermissions, roles, siteConfig, users } from "./schema";
+import { eventAttachments, eventPolls, events, rolePermissions, roles, siteConfig, users } from "./schema";
+import { parseMediaKey } from "../services/media-keys";
 
 const mocks = vi.hoisted(() => ({
   drizzle: vi.fn(),
+  createPasswordHash: vi.fn().mockResolvedValue({ passwordHash: "hash", salt: "salt" }),
 }));
 
 vi.mock("drizzle-orm/d1", () => ({
   drizzle: mocks.drizzle,
+}));
+
+vi.mock("../services/auth", () => ({
+  createPasswordHash: mocks.createPasswordHash,
 }));
 
 const { clearAllData, SEED_CLEAR_TABLES, seedDatabase } = await import("./seed");
@@ -42,11 +48,13 @@ describe("clearAllData", () => {
       "event_polls",
       "event_raffle_winners",
       "event_participants",
+      "event_attachments",
       "war_team_members",
       "war_pool_members",
       "war_teams",
       "war_history",
       "recurring_template_class_quotas",
+      "recurring_template_attachments",
       "event_class_quotas",
       "recurring_templates",
       "events",
@@ -61,10 +69,9 @@ describe("clearAllData", () => {
       "member_badge_assignments",
       "member_badges",
       "member_absences",
+      "member_profile_images",
       "member_profile_classes",
       "member_profiles",
-      "member_onboarding_state",
-      "onboarding_config",
       "site_config",
       "system_test_runs",
       "sessions",
@@ -120,5 +127,31 @@ describe("seedDatabase schema baselines", () => {
     expect(conflictHandlers.get(rolePermissions)?.every((handler) => handler.mock.calls.length === 1)).toBe(true);
     expect(conflictHandlers.get(siteConfig)?.every((handler) => handler.mock.calls.length === 1)).toBe(true);
     expect(conflictHandlers.get(users)?.every((handler) => handler.mock.calls.length === 0)).toBe(true);
+  });
+
+  it("does not seed public mock URLs as formal event attachment keys", async () => {
+    const stopAfterEvents = new Error("event attachment assertions complete");
+    const attachmentRows: Array<{ eventId: string; mediaKey: string }> = [];
+    const insert = vi.fn((table: unknown) => ({
+      values: vi.fn((rows: unknown) => {
+        if (table === eventPolls) throw stopAfterEvents;
+        if (table === eventAttachments) {
+          attachmentRows.push(...rows as Array<{ eventId: string; mediaKey: string }>);
+        }
+        return { onConflictDoNothing: vi.fn().mockResolvedValue(undefined) };
+      }),
+    }));
+    const select = vi.fn(() => ({
+      from: vi.fn().mockResolvedValue([{ count: 0 }]),
+    }));
+    mocks.drizzle.mockReturnValue({ insert, select });
+
+    await expect(seedDatabase({ DB: {} } as never)).rejects.toBe(stopAfterEvents);
+
+    expect(insert).toHaveBeenCalledWith(events);
+    expect(attachmentRows.filter((row) => {
+      const parsed = parseMediaKey(row.mediaKey);
+      return parsed?.kind !== "event_image" || parsed.entityId !== row.eventId || !parsed.contentType;
+    })).toEqual([]);
   });
 });

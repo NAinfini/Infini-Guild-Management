@@ -4,7 +4,10 @@ import { expect, readJson, test } from "../../support/test";
 import { confirmDialog, expectNoDialog } from "../../support/ui";
 
 /*
- * 选择条上的四件批量操作：改角色、启用、停用、删除。
+ * 四件批量操作：改角色、启用、停用、删除。
+ *
+ * 入口是行上的操作菜单（右键、Shift+F10 或行尾的 Actions 按钮）——原先表格下方
+ * 那条选择条已经删掉，这套菜单是现在唯一的入口，也一直是同一套回调。
  *
  * 每一件都隔着一个确认框，所以每条用例都要把两条路都走一遍——
  * 取消必须真的什么都不发（确认框形同虚设是最容易漏的一类缺陷），
@@ -29,8 +32,8 @@ function searchBox(page: Page): Locator {
 function memberRow(page: Page, username: string): Locator {
   return page.getByRole("row", { name: `${username} member row`, exact: true });
 }
-function selectionBar(page: Page): Locator {
-  return page.locator(".admin-selbar");
+function actionMenu(page: Page): Locator {
+  return page.locator("[data-admin-user-action-menu]");
 }
 
 async function serverMembers(api: APIRequestContext): Promise<ServerMember[]> {
@@ -60,12 +63,35 @@ async function setUpPair(page: Page, api: APIRequestContext): Promise<[Throwaway
 
   await memberRow(page, first.username).click();
   await memberRow(page, second.username).click({ modifiers: ["ControlOrMeta"] });
-  await expect(selectionBar(page).locator(".admin-selbar__count")).toHaveText(/^Selected: 2 /);
+  await expectSelectedCount(page, 2);
   return [first, second];
 }
 
-function batchButton(page: Page, name: string): Locator {
-  return selectionBar(page).getByRole("button", { name, exact: true });
+/*
+ * 选中人数没有单独的读数控件了，操作菜单的标题就是那个读数（「N members selected」）。
+ * 顺带这也证明了菜单确实按批量上下文打开——批量操作打在几个人身上，是这套用例里
+ * 最不能出错的一件事。
+ */
+async function expectSelectedCount(page: Page, count: number): Promise<void> {
+  await openRowMenu(page);
+  await expect(actionMenu(page), `菜单标题要报出选中了 ${count} 人`)
+    .toContainText(`${count} members selected`);
+  await page.keyboard.press("Escape");
+  await expect(actionMenu(page)).toHaveCount(0);
+}
+
+/** 打开任意一行的操作菜单。选中态是全表共享的，从哪一行打开都是同一份上下文。 */
+async function openRowMenu(page: Page): Promise<void> {
+  await page.getByRole("row", { name: /member row$/ }).first()
+    .getByRole("button", { name: "Actions", exact: true })
+    .click();
+  await expect(actionMenu(page)).toBeVisible();
+}
+
+/** 从行操作菜单里点一件批量操作。 */
+async function batchAction(page: Page, name: string): Promise<void> {
+  await openRowMenu(page);
+  await page.getByRole("menuitem", { name, exact: true }).click();
 }
 
 /** 打开确认框并确认它点名了这两个人——批量操作误伤的代价太高，名单必须摆出来。 */
@@ -99,7 +125,7 @@ async function expectNoApiCalls(page: Page, action: () => Promise<void>): Promis
 test("批量改角色：取消什么都不改；确认之后选中的每一个人角色都变了", async ({ page, api, flow }) => {
   const [first, second] = await setUpPair(page, api);
 
-  await batchButton(page, "Change Role").click();
+  await batchAction(page, "Change Role");
   await page.getByRole("menuitem", { name: "Moderator", exact: true }).click();
   const dialog = await expectConfirm(
     page,
@@ -113,7 +139,7 @@ test("批量改角色：取消什么都不改；确认之后选中的每一个�
   });
   expect((await serverMember(api, first.id)).user.role, "取消之后角色必须原封不动").toBe("member");
 
-  await batchButton(page, "Change Role").click();
+  await batchAction(page, "Change Role");
   await page.getByRole("menuitem", { name: "Moderator", exact: true }).click();
   const again = await confirmDialog(page, CONFIRM_TITLE);
   await flow.click(again.getByRole("button", { name: "Save", exact: true }), BATCH_ROLE);
@@ -127,7 +153,7 @@ test("批量改角色：取消什么都不改；确认之后选中的每一个�
 test("批量停用再批量启用：两个人的状态列和服务端一起翻转，一个都不能落下", async ({ page, api, flow }) => {
   const [first, second] = await setUpPair(page, api);
 
-  await batchButton(page, "Deactivate").click();
+  await batchAction(page, "Batch Deactivate");
   const stopDialog = await expectConfirm(
     page,
     "Deactivate 2 selected member(s)?",
@@ -142,8 +168,8 @@ test("批量停用再批量启用：两个人的状态列和服务端一起翻�
   }
 
   /* 批量停用不会清空选中项，所以可以直接接着批量启用。 */
-  await expect(selectionBar(page).locator(".admin-selbar__count")).toHaveText(/^Selected: 2 /);
-  await batchButton(page, "Reactivate").click();
+  await expectSelectedCount(page, 2);
+  await batchAction(page, "Batch Activate");
   const startDialog = await expectConfirm(
     page,
     "Reactivate 2 selected member(s)?",
@@ -158,10 +184,15 @@ test("批量停用再批量启用：两个人的状态列和服务端一起翻�
   }
 });
 
-test("批量删除：确认之后两行一起从列表消失，服务端也查不到，选中态跟着清空", async ({ page, api, flow }) => {
+/*
+ * 这条原先还断言了「删完之后选中态清空」，靠的是那条选择条从 DOM 里消失。选择条
+ * 删掉之后选中态在界面上不再有任何读数——被删的行本身也不在了，从哪一行开菜单都
+ * 只会拿到那一行自己的上下文。这一点现在没有 E2E 覆盖，清空逻辑本身没有改动。
+ */
+test("批量删除：确认之后两行一起从列表消失，服务端也查不到", async ({ page, api, flow }) => {
   const [first, second] = await setUpPair(page, api);
 
-  await batchButton(page, "Batch Delete").click();
+  await batchAction(page, "Batch Delete");
   const dialog = await expectConfirm(
     page,
     "Delete 2 selected member(s)?",
@@ -170,8 +201,6 @@ test("批量删除：确认之后两行一起从列表消失，服务端也查�
   await flow.click(dialog.getByRole("button", { name: "Save", exact: true }), BATCH_DELETE);
 
   await expect(page.getByRole("row", { name: /member row$/ }), "两行都该消失").toHaveCount(0);
-  await expect(selectionBar(page), "删完之后选中态必须清掉，否则后面的批量操作会打在幽灵 id 上")
-    .toHaveCount(0);
 
   const remaining = await serverMembers(api);
   for (const member of [first, second]) {

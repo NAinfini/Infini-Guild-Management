@@ -1,5 +1,6 @@
 import {
   DEFAULT_FEATURE_FLAGS,
+  DEFAULT_GAME_RULES,
   DEFAULT_SITE_ABSENCE_POLICY,
   DEFAULT_SITE_ANALYTICS_SETTINGS,
   DEFAULT_SITE_MEDIA_POLICY,
@@ -123,18 +124,26 @@ export class SiteConfigService {
 
   async getAnalyticsSettings() {
     const row = await this.getSiteRow();
-    return ok(mapSiteConfig(row, this.deps).analytics_settings);
+    return ok(parseJsonOrDefault(row?.analyticsSettingsJson, siteAnalyticsSettingsSchema, DEFAULT_SITE_ANALYTICS_SETTINGS, "analytics_settings_json"));
   }
 
   async updateAnalyticsSettings(actorId: string, input: Record<string, unknown>) {
     const previous = await this.getAnalyticsSettings();
     const parsed = siteAnalyticsSettingsSchema.partial().safeParse(input);
     if (!parsed.success) return err("VALIDATION_ERROR", "Invalid analytics settings payload", parsed.error.flatten());
+    const teamStatKeys = new Set(DEFAULT_GAME_RULES.guild_war.team_stats.map((stat) => stat.key));
+    const unknownKeys = Object.keys(parsed.data.modifier_weights ?? {}).filter((key) => !teamStatKeys.has(key));
+    if (unknownKeys.length > 0) {
+      return err("VALIDATION_ERROR", `Unknown analytics team stat keys: ${unknownKeys.join(", ")}`);
+    }
     const defaults = previous.ok ? previous.data : DEFAULT_SITE_ANALYTICS_SETTINGS;
+    const currentWeights = Object.fromEntries(
+      Object.entries(defaults.modifier_weights).filter(([key]) => teamStatKeys.has(key)),
+    );
     const next = normalizeAnalyticsWeights(siteAnalyticsSettingsSchema.parse({
       reference_duration_minutes: parsed.data.reference_duration_minutes ?? defaults.reference_duration_minutes,
       modifier_weights: {
-        ...defaults.modifier_weights,
+        ...currentWeights,
         ...(parsed.data.modifier_weights ?? {}),
       },
     }));
@@ -179,15 +188,14 @@ export class SiteConfigService {
       if (!sitePatchInput.success) return err("VALIDATION_ERROR", "Invalid site config payload", sitePatchInput.error.flatten());
     }
     const previous = await this.getSiteRow();
+    const current = mapSiteConfig(previous, this.deps);
     const nowIso = this.nowIso();
     const sitePatch: Partial<typeof siteConfig.$inferInsert> = { updatedAt: nowIso };
     if (input.site_name !== undefined) sitePatch.siteName = input.site_name.trim();
     if (input.features !== undefined) {
-      const current = mapSiteConfig(previous, this.deps);
       sitePatch.featureFlagsJson = JSON.stringify({ ...current.features, ...input.features });
     }
     if (input.media_policy !== undefined) {
-      const current = mapSiteConfig(previous, this.deps);
       sitePatch.mediaPolicyJson = JSON.stringify({
         ...current.media_policy,
         ...input.media_policy,
@@ -202,11 +210,9 @@ export class SiteConfigService {
       });
     }
     if (input.storage_policy !== undefined) {
-      const current = mapSiteConfig(previous, this.deps);
       sitePatch.storagePolicyJson = JSON.stringify({ ...current.storage_policy, ...input.storage_policy });
     }
     if (input.absence_policy !== undefined) {
-      const current = mapSiteConfig(previous, this.deps);
       sitePatch.absencePolicyJson = JSON.stringify({ ...current.absence_policy, ...input.absence_policy });
     }
     if (siteFieldCount > 0) {

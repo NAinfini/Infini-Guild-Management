@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { LIMITS } from "../config/limits";
 import { ANNOUNCEMENT_STATUSES } from "../constants/announcements";
+import { jsonObjectStringSchema } from "./json";
 
 const L = LIMITS.content;
 const ANNOUNCEMENT_STAGING_ID_PATTERN = /^[A-Za-z0-9_-]{21}$/;
@@ -25,7 +26,9 @@ export const announcementSchema = z.object({
 
 const announcementWriteSchema = z.object({
   title: z.string().min(L.announcementTitle.min).max(L.announcementTitle.max),
-  body_json: z.string().min(L.announcementBody.min).max(L.announcementBody.max),
+  body_json: jsonObjectStringSchema(
+    z.string().min(L.announcementBody.min).max(L.announcementBody.max),
+  ),
   pinned: z.boolean(),
   publish_at: z.string().datetime().optional(),
   status: z.enum(ANNOUNCEMENT_STATUSES),

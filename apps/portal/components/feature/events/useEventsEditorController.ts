@@ -1,4 +1,4 @@
-import { EVENT_TYPES, type Event, type EventClassQuotaInput } from "@guild/shared";
+import type { Event, EventClassQuotaInput, EventType } from "@guild/shared";
 import { useConfirmDialog } from "@portal/hooks/useConfirmDialog";
 import { useCallback, useState } from "react";
 import { useDisclosure } from "@mantine/hooks";
@@ -9,7 +9,7 @@ import { toClassQuotaInputs } from "./class-quota-view";
 type EditorSnapshot = {
   mode: "create" | "edit";
   editingEventId: string | null;
-  type: string;
+  type: EventType | "";
   title: string;
   description: string;
   startAt: string;
@@ -61,7 +61,7 @@ export function useEventsEditorController({ attachmentSnapshot }: UseEventsEdito
   const [editorTouched, setEditorTouched] = useState(false);
   const [editorMode, setEditorMode] = useState<"create" | "edit">("create");
   const [editingEventId, setEditingEventId] = useState<string | null>(null);
-  const [editorType, setEditorType] = useState<(typeof EVENT_TYPES)[number] | "">("");
+  const [editorType, setEditorType] = useState<EventType | "">("");
   const [editorTitle, setEditorTitle] = useState("");
   const [editorDescription, setEditorDescription] = useState("");
   const [editorStartAt, setEditorStartAt] = useState("");
@@ -106,7 +106,7 @@ export function useEventsEditorController({ attachmentSnapshot }: UseEventsEdito
     setEditorTouched(true);
   }, []);
 
-  const handleEditorTypeChange = useCallback((value: (typeof EVENT_TYPES)[number] | "") => {
+  const handleEditorTypeChange = useCallback((value: EventType | "") => {
     setEditorTouched(true);
     setEditorType(value);
   }, []);

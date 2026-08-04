@@ -96,8 +96,6 @@ export function AdminPage() {
     auditMonthsQuery,
     auditRows,
     badgesController,
-    batchSelectionLimit,
-    batchProgress,
     batchRoleMutation,
     batchReactivateMutation,
     batchDeactivateMutation,
@@ -131,7 +129,6 @@ export function AdminPage() {
     handleBatchRole,
     handleCopyConfigSummary,
     isAdmin,
-    isBatchPending,
     isModerator,
     memberDetailForm,
     memberDetailIsDirty,
@@ -313,7 +310,6 @@ export function AdminPage() {
               isAdmin={isAdmin}
               onOpenCreateMember={createMemberModalHandlers.open}
               selectedUserIds={selectedUserIds}
-              batchSelectionLimit={batchSelectionLimit}
               onBatchRole={handleBatchRole}
               onBatchActivate={handleBatchActivate}
               onBatchDeactivate={handleBatchDeactivate}
@@ -323,8 +319,6 @@ export function AdminPage() {
               batchDeactivatePending={batchDeactivateMutation.isPending}
               batchDeletePending={batchDeleteMutation.isPending}
               isSingleActionPending={isUserActionPending}
-              isBatchPending={isBatchPending}
-              batchProgress={batchProgress}
               userRows={userRows}
               userColumns={userColumns}
               onOpenMemberDetail={setMemberDetailId}

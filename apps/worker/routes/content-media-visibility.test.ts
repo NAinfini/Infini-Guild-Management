@@ -87,8 +87,8 @@ describe("content media visibility", () => {
 
     expect(response.status).toBe(200);
     expect(env.prepare.mock.calls[0]?.[0]).toContain("INNER JOIN events");
-    expect(env.prepare.mock.calls[0]?.[0]).toContain("FROM json_each");
-    expect(env.bind).toHaveBeenCalledWith(key, "event-1", 0, expect.any(String));
+    expect(env.prepare.mock.calls[0]?.[0]).toContain("INNER JOIN event_attachments");
+    expect(env.bind).toHaveBeenCalledWith(key, 0, expect.any(String));
   });
 
   it("does not serve an unreferenced wiki object with a valid prefix", async () => {

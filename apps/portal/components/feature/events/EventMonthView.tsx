@@ -1,9 +1,10 @@
 import type { Event as GuildEvent } from "@guild/shared";
-import { EVENT_TYPE_COLORS, UNKNOWN_EVENT_TYPE_COLOR } from "@portal/utils/event-colors";
+import { eventTypeColor } from "@portal/utils/event-colors";
 import { Badge, Button, Group, HoverCard, Paper, Popover, Stack, Text, ThemeIcon, UnstyledButton } from "@mantine/core";
 import { addDays, format, getDate, getDay, getMonth, isSameDay, startOfMonth, startOfWeek } from "date-fns";
 import type { CSSProperties, ReactNode } from "react";
 import { useTranslation } from "react-i18next";
+import { getEventTypeLabel } from "@portal/utils/game-rules";
 import { CalendarEventIcon } from "@portal/components/icons";
 import "./EventMonthView.css";
 
@@ -149,7 +150,7 @@ export function EventMonthView({
               <Stack gap={2} style={{ width: "100%" }}>
                 {dayEvents.slice(0, 3).map((event) => {
                   const isMuted = isMutedMonthEvent(event);
-                  const eventColor = isMuted ? "gray" : EVENT_TYPE_COLORS[event.type] ?? UNKNOWN_EVENT_TYPE_COLOR;
+                  const eventColor = isMuted ? "gray" : eventTypeColor(event.type);
                   return (
                     <HoverCard key={event.id} width={260} shadow="lg" withArrow arrowSize={10} openDelay={350} closeDelay={80} position="top">
                       <HoverCard.Target>
@@ -178,7 +179,7 @@ export function EventMonthView({
                           <div style={{ minWidth: 0 }}>
                             <Text size="sm" fw={700} lh={1.3}>{event.title}</Text>
                             <Group gap={4} mt={4}>
-                              <Text size="xs">{t(`common:eventType.${event.type}`)}</Text>
+                              <Text size="xs">{getEventTypeLabel(event.type)}</Text>
                               <Text size="xs" c="dimmed">{format(new Date(event.start_at), "HH:mm")}</Text>
                             </Group>
                             {event.description ? (

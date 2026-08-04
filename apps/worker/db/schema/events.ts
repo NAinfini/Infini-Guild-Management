@@ -1,15 +1,14 @@
 // Domain: Events, Signups & Recurring Templates
-// Tables: events, recurring_templates, event_class_quotas, recurring_template_class_quotas, event_participants, event_polls, event_poll_options, event_poll_votes, event_raffle_winners
+// Tables: events, event_attachments, recurring_templates, recurring_template_attachments, event_class_quotas, recurring_template_class_quotas, event_participants, event_polls, event_poll_options, event_poll_votes, event_raffle_winners
 // Dependencies: auth.users, class-catalog.class_tags
 import { check, foreignKey, index, integer, primaryKey, sqliteTable, text, uniqueIndex } from "drizzle-orm/sqlite-core";
 import { sql } from "drizzle-orm";
-import { activeGame } from "@guild/shared/games";
+import { EVENT_TYPES } from "@guild/shared/constants/event-types";
 import { users } from "./auth";
 import { classTags } from "./class-catalog";
 import { nowUtc } from "./shared";
 
-const EVENT_TYPE_IDS = activeGame.eventTypes.map((e) => e.id) as [string, ...string[]];
-
+const EVENT_TYPE_IDS = EVENT_TYPES as unknown as [string, ...string[]];
 export const events = sqliteTable(
   "events",
   {
@@ -28,7 +27,6 @@ export const events = sqliteTable(
     autoArchived: integer("auto_archived", { mode: "boolean" }).notNull().default(false),
     createdBy: text("created_by").notNull().references(() => users.id),
     updatedBy: text("updated_by").references(() => users.id),
-    attachments: text("attachments").notNull().default("[]"),
     seriesId: text("series_id"),
     instanceDate: text("instance_date"),
     winnerCount: integer("winner_count"),
@@ -53,20 +51,17 @@ export const recurringTemplates = sqliteTable(
     type: text("type", { enum: EVENT_TYPE_IDS }).notNull(),
     title: text("title").notNull(),
     description: text("description"),
-    // UTC wall-clock "HH:mm"; the portal converts local↔UTC. The DB also has a
-    // legacy timezone_offset_minutes column (unused, kept for prod parity).
+    // UTC wall-clock "HH:mm"; the portal converts local↔UTC.
     startTime: text("start_time").notNull(),
     durationMinutes: integer("duration_minutes"),
     capacity: integer("capacity"),
     recurrenceRule: text("recurrence_rule").notNull(),
     visibilityOffsetMinutes: integer("visibility_offset_minutes").notNull().default(0),
     autoArchive: integer("auto_archive", { mode: "boolean" }).notNull().default(false),
-    attachments: text("attachments").notNull().default("[]"),
     paused: integer("paused", { mode: "boolean" }).notNull().default(false),
     createdBy: text("created_by").notNull().references(() => users.id),
     lastGeneratedDate: text("last_generated_date"),
     generationCount: integer("generation_count").notNull().default(0),
-    timezoneOffsetMinutes: integer("timezone_offset_minutes").notNull().default(0),
     createdAt: text("created_at").notNull().default(nowUtc),
     updatedAt: text("updated_at").notNull().default(nowUtc),
   },
@@ -74,6 +69,37 @@ export const recurringTemplates = sqliteTable(
     index("idx_recurring_templates_active").on(table.paused, table.createdAt, table.id),
     check("recurring_templates_type_valid", sql`${table.type} IN ('weekly_mission', 'guild_war', 'social', 'poll', 'raffle', 'other')`),
     check("recurring_templates_capacity_positive", sql`${table.capacity} IS NULL OR ${table.capacity} > 0`),
+    check("recurring_templates_recurrence_rule_json_object", sql`json_valid(${table.recurrenceRule}) AND json_type(${table.recurrenceRule}) = 'object'`),
+  ],
+);
+
+export const eventAttachments = sqliteTable(
+  "event_attachments",
+  {
+    eventId: text("event_id").notNull().references(() => events.id, { onDelete: "cascade" }),
+    mediaKey: text("media_key").notNull(),
+    sortOrder: integer("sort_order").notNull(),
+  },
+  (table) => [
+    primaryKey({ columns: [table.eventId, table.mediaKey] }),
+    uniqueIndex("ux_event_attachments_event_sort").on(table.eventId, table.sortOrder),
+    index("idx_event_attachments_media_event").on(table.mediaKey, table.eventId),
+    check("event_attachments_sort_nonnegative", sql`${table.sortOrder} >= 0`),
+  ],
+);
+
+export const recurringTemplateAttachments = sqliteTable(
+  "recurring_template_attachments",
+  {
+    templateId: text("template_id").notNull().references(() => recurringTemplates.id, { onDelete: "cascade" }),
+    mediaKey: text("media_key").notNull(),
+    sortOrder: integer("sort_order").notNull(),
+  },
+  (table) => [
+    primaryKey({ columns: [table.templateId, table.mediaKey] }),
+    uniqueIndex("ux_recurring_template_attachments_template_sort").on(table.templateId, table.sortOrder),
+    index("idx_recurring_template_attachments_media_template").on(table.mediaKey, table.templateId),
+    check("recurring_template_attachments_sort_nonnegative", sql`${table.sortOrder} >= 0`),
   ],
 );
 

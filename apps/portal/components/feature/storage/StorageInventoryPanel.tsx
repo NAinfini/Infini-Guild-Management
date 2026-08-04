@@ -175,6 +175,16 @@ export function StorageInventoryPanel({
           ) : null}
         </Group>
 
+        {/* 列名这一行是表头，钉在滚动区外面——跟着货品滚走的表头等于没有。 */}
+        {items.length > 0 ? (
+          <div className="storage-item-list__header" aria-hidden>
+            <span>{t("field.item")}</span>
+            <span>{t("field.stock")}</span>
+            <span>{t("inventory.memberActions")}</span>
+          </div>
+        ) : null}
+
+        <div className="storage-inventory-main__body">
         {itemsQuery.isLoading ? (
           <Stack gap={6} className="storage-loading-list">
             {Array.from({ length: 6 }, (_, index) => (
@@ -196,11 +206,6 @@ export function StorageInventoryPanel({
 
         {items.length > 0 ? (
           <>
-            <div className="storage-item-list__header" aria-hidden>
-              <span>{t("field.item")}</span>
-              <span>{t("field.stock")}</span>
-              <span>{t("inventory.memberActions")}</span>
-            </div>
             <div className="storage-grid" aria-live="polite">
               {items.map((item) => (
                 <StorageItemCard
@@ -237,6 +242,7 @@ export function StorageInventoryPanel({
             ) : null}
           </>
         ) : null}
+        </div>
       </section>
     </div>
   );

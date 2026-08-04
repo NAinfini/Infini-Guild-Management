@@ -1,5 +1,4 @@
-import type { GuildWarActiveResponse } from "@guild/shared";
-import { activeGame } from "@guild/shared/games";
+import { GUILD_WAR_CAPTAIN_ROLE_TAG, type GuildWarActiveResponse } from "@guild/shared";
 import { useQueryClient } from "@tanstack/react-query";
 import type { DragEndEvent, DragStartEvent } from "@dnd-kit/core";
 import {
@@ -380,12 +379,12 @@ export function useGuildWarDragController({
 
   const handleSetCaptain = (userId: string) => {
     if (!selectedEventId) return;
-    roleTagMutation.mutate({ event_id: selectedEventId, user_id: userId, role_tag: activeGame.war.captainRoleTag });
+    roleTagMutation.mutate({ event_id: selectedEventId, user_id: userId, role_tag: GUILD_WAR_CAPTAIN_ROLE_TAG });
   };
 
   const handleRemoveCaptain = (userId: string) => {
     const member = allTeamMembers.find((c) => c.user_id === userId);
-    if (!member || !selectedEventId || member.role_tag !== activeGame.war.captainRoleTag) return;
+    if (!member || !selectedEventId || member.role_tag !== GUILD_WAR_CAPTAIN_ROLE_TAG) return;
     roleTagMutation.mutate({ event_id: selectedEventId, user_id: userId, role_tag: null });
   };
 

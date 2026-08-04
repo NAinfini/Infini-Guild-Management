@@ -1,4 +1,5 @@
 import { ActionIcon, Alert, Badge, Group, HoverCard, NumberInput, Paper, Select, Skeleton, Stack, Text, TextInput, ThemeIcon, UnstyledButton } from "@mantine/core";
+import { DEFAULT_GAME_RULES } from "@guild/shared";
 import { CalendarOffIcon } from "@portal/components/icons";
 import { NativeDateTimeInput } from "@portal/components/shared/NativeDateTimeInput";
 import { format } from "date-fns";
@@ -6,6 +7,7 @@ import { useTranslation } from "react-i18next";
 import { resolveResultTagColor } from "@portal/utils/guild-war";
 import type { HistorySummaryRow } from "@portal/types/guild-war";
 import { EmptyState } from "../../shared/EmptyState";
+import { getGuildWarResultLabel } from "@portal/utils/game-rules";
 
 type WarHistoryTableProps = {
   historyDateFrom: string;
@@ -60,6 +62,9 @@ export function WarHistoryTable({
   onHistoryPerPageChange,
 }: WarHistoryTableProps) {
   const { t } = useTranslation("guild-war");
+  const gameRules = DEFAULT_GAME_RULES;
+  const primaryTeamStat = gameRules.guild_war.team_stats.find((definition) => definition.dashboard === "primary")
+    ?? gameRules.guild_war.team_stats[0];
 
   return (
     <>
@@ -163,10 +168,14 @@ export function WarHistoryTable({
                               color={resolveResultTagColor(item.result)}
                               variant="light"
                             >
-                              {item.result ?? t("history.unknownResult")}
+                              {item.result
+                                ? getGuildWarResultLabel(item.result)
+                                : t("history.unknownResult")}
                             </Badge>
                             <span className="war-history-rail-item__score tabular-nums">
-                              {item.own_stats?.kills ?? 0} / {item.enemy_stats?.kills ?? 0}
+                              {primaryTeamStat
+                                ? `${item.own_stats?.[primaryTeamStat.key] ?? 0} / ${item.enemy_stats?.[primaryTeamStat.key] ?? 0}`
+                                : "—"}
                             </span>
                           </span>
                           <time

@@ -43,25 +43,31 @@ CREATE TABLE IF NOT EXISTS member_profiles (
   id TEXT PRIMARY KEY NOT NULL,
   user_id TEXT NOT NULL UNIQUE REFERENCES users(id) ON DELETE CASCADE,
   power REAL NOT NULL DEFAULT 0 CONSTRAINT member_profiles_power_nonnegative CHECK (power >= 0),
-  classes TEXT NOT NULL DEFAULT '[]',
   title_html TEXT,
   bio TEXT,
   avatar_key TEXT,
-  images TEXT NOT NULL DEFAULT '[]',
   audio_key TEXT,
-  video_urls TEXT NOT NULL DEFAULT '[]',
-  availability TEXT,
-  vacation_start TEXT,
-  vacation_end TEXT,
+  video_urls TEXT NOT NULL DEFAULT '[]'
+    CONSTRAINT member_profiles_video_urls_json_array CHECK (json_valid(video_urls) AND json_type(video_urls) = 'array'),
+  availability TEXT
+    CONSTRAINT member_profiles_availability_json_object CHECK (availability IS NULL OR (json_valid(availability) AND json_type(availability) = 'object')),
   notes TEXT,
   created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
   updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
 );
 
 CREATE TABLE IF NOT EXISTS member_profile_classes (
-  user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-  class TEXT NOT NULL,
-  PRIMARY KEY (user_id, class)
+  user_id TEXT NOT NULL REFERENCES member_profiles(user_id) ON DELETE CASCADE,
+  class_id TEXT NOT NULL REFERENCES class_catalog(id) ON DELETE CASCADE,
+  sort_order INTEGER NOT NULL CONSTRAINT member_profile_classes_sort_nonnegative CHECK (sort_order >= 0),
+  PRIMARY KEY (user_id, class_id)
+);
+
+CREATE TABLE IF NOT EXISTS member_profile_images (
+  user_id TEXT NOT NULL REFERENCES member_profiles(user_id) ON DELETE CASCADE,
+  media_key TEXT NOT NULL,
+  sort_order INTEGER NOT NULL CONSTRAINT member_profile_images_sort_nonnegative CHECK (sort_order >= 0),
+  PRIMARY KEY (user_id, media_key)
 );
 
 CREATE TABLE IF NOT EXISTS class_catalog (
@@ -140,7 +146,6 @@ CREATE TABLE IF NOT EXISTS events (
   auto_archived INTEGER NOT NULL DEFAULT 0,
   created_by TEXT NOT NULL REFERENCES users(id),
   updated_by TEXT REFERENCES users(id),
-  attachments TEXT NOT NULL DEFAULT '[]',
   series_id TEXT,
   instance_date TEXT,
   winner_count INTEGER CONSTRAINT events_winner_count_positive CHECK (winner_count IS NULL OR winner_count > 0),
@@ -156,15 +161,14 @@ CREATE TABLE IF NOT EXISTS recurring_templates (
   start_time TEXT NOT NULL, -- UTC wall-clock "HH:mm" (since 2026-06; portal converts local<->UTC)
   duration_minutes INTEGER,
   capacity INTEGER CONSTRAINT recurring_templates_capacity_positive CHECK (capacity IS NULL OR capacity > 0),
-  recurrence_rule TEXT NOT NULL,
+  recurrence_rule TEXT NOT NULL
+    CONSTRAINT recurring_templates_recurrence_rule_json_object CHECK (json_valid(recurrence_rule) AND json_type(recurrence_rule) = 'object'),
   visibility_offset_minutes INTEGER NOT NULL DEFAULT 0,
   auto_archive INTEGER NOT NULL DEFAULT 0,
-  attachments TEXT NOT NULL DEFAULT '[]',
   paused INTEGER NOT NULL DEFAULT 0,
   created_by TEXT NOT NULL REFERENCES users(id),
   last_generated_date TEXT,
   generation_count INTEGER NOT NULL DEFAULT 0,
-  timezone_offset_minutes INTEGER NOT NULL DEFAULT 0, -- legacy, unused since 2026-06 (start_time is UTC)
   created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
   updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
 );
@@ -208,6 +212,20 @@ CREATE TABLE IF NOT EXISTS event_poll_options (
   created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
 );
 
+CREATE TABLE IF NOT EXISTS event_attachments (
+  event_id TEXT NOT NULL REFERENCES events(id) ON DELETE CASCADE,
+  media_key TEXT NOT NULL,
+  sort_order INTEGER NOT NULL CONSTRAINT event_attachments_sort_nonnegative CHECK (sort_order >= 0),
+  PRIMARY KEY (event_id, media_key)
+);
+
+CREATE TABLE IF NOT EXISTS recurring_template_attachments (
+  template_id TEXT NOT NULL REFERENCES recurring_templates(id) ON DELETE CASCADE,
+  media_key TEXT NOT NULL,
+  sort_order INTEGER NOT NULL CONSTRAINT recurring_template_attachments_sort_nonnegative CHECK (sort_order >= 0),
+  PRIMARY KEY (template_id, media_key)
+);
+
 CREATE UNIQUE INDEX IF NOT EXISTS ux_event_poll_options_event_id
   ON event_poll_options(event_id, id);
 
@@ -231,7 +249,8 @@ CREATE TABLE IF NOT EXISTS event_raffle_winners (
 CREATE TABLE IF NOT EXISTS announcements (
   id TEXT PRIMARY KEY NOT NULL,
   title TEXT NOT NULL,
-  body_json TEXT NOT NULL,
+  body_json TEXT NOT NULL
+    CONSTRAINT announcements_body_json_object CHECK (json_valid(body_json) AND json_type(body_json) = 'object'),
   pinned INTEGER NOT NULL DEFAULT 0,
   status TEXT NOT NULL DEFAULT 'draft' CONSTRAINT announcements_status_valid CHECK (status IN ('draft', 'scheduled', 'published', 'archived')),
   publish_at TEXT,
@@ -250,8 +269,8 @@ CREATE TABLE IF NOT EXISTS war_history (
   enemy_name TEXT,
   result TEXT CONSTRAINT war_history_result_valid CHECK (result IS NULL OR result IN ('win', 'loss', 'draw')),
   duration_minutes REAL CONSTRAINT war_history_duration_positive CHECK (duration_minutes IS NULL OR duration_minutes > 0),
-  own_stats TEXT,
-  enemy_stats TEXT,
+  own_stats TEXT CONSTRAINT war_history_own_stats_json_object CHECK (own_stats IS NULL OR (json_valid(own_stats) AND json_type(own_stats) = 'object')),
+  enemy_stats TEXT CONSTRAINT war_history_enemy_stats_json_object CHECK (enemy_stats IS NULL OR (json_valid(enemy_stats) AND json_type(enemy_stats) = 'object')),
   notes TEXT,
   created_by TEXT NOT NULL REFERENCES users(id),
   updated_by TEXT REFERENCES users(id),
@@ -276,7 +295,7 @@ CREATE TABLE IF NOT EXISTS war_team_members (
   user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   role_tag TEXT,
   sort_order INTEGER NOT NULL DEFAULT 0,
-  stats TEXT,
+  stats TEXT CONSTRAINT war_team_members_stats_json_object CHECK (stats IS NULL OR (json_valid(stats) AND json_type(stats) = 'object')),
   note TEXT
 );
 
@@ -303,7 +322,8 @@ CREATE TABLE IF NOT EXISTS wiki_articles (
   title TEXT NOT NULL,
   slug TEXT NOT NULL UNIQUE,
   category_id TEXT NOT NULL REFERENCES wiki_categories(id),
-  body_json TEXT NOT NULL,
+  body_json TEXT NOT NULL
+    CONSTRAINT wiki_articles_body_json_object CHECK (json_valid(body_json) AND json_type(body_json) = 'object'),
   sort_order INTEGER NOT NULL DEFAULT 0,
   pinned INTEGER NOT NULL DEFAULT 0,
   archived_at TEXT,
@@ -348,31 +368,11 @@ CREATE TABLE IF NOT EXISTS site_config (
   id TEXT PRIMARY KEY NOT NULL,
   site_name TEXT NOT NULL,
   site_logo_url TEXT NOT NULL,
-  feature_flags_json TEXT NOT NULL,
-  media_policy_json TEXT NOT NULL,
-  storage_policy_json TEXT NOT NULL,
-  absence_policy_json TEXT NOT NULL,
-  analytics_settings_json TEXT NOT NULL,
-  created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
-  updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
-);
-
-CREATE TABLE IF NOT EXISTS onboarding_config (
-  id TEXT PRIMARY KEY NOT NULL,
-  title TEXT NOT NULL,
-  body_json TEXT NOT NULL,
-  checklist_json TEXT NOT NULL DEFAULT '[]',
-  require_ack INTEGER NOT NULL DEFAULT 1,
-  published_at TEXT,
-  updated_by TEXT REFERENCES users(id) ON DELETE SET NULL,
-  created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
-  updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
-);
-
-CREATE TABLE IF NOT EXISTS member_onboarding_state (
-  user_id TEXT PRIMARY KEY NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-  completed_item_ids_json TEXT NOT NULL DEFAULT '[]',
-  acknowledged_at TEXT,
+  feature_flags_json TEXT NOT NULL CONSTRAINT site_config_feature_flags_json_object CHECK (json_valid(feature_flags_json) AND json_type(feature_flags_json) = 'object'),
+  media_policy_json TEXT NOT NULL CONSTRAINT site_config_media_policy_json_object CHECK (json_valid(media_policy_json) AND json_type(media_policy_json) = 'object'),
+  storage_policy_json TEXT NOT NULL CONSTRAINT site_config_storage_policy_json_object CHECK (json_valid(storage_policy_json) AND json_type(storage_policy_json) = 'object'),
+  absence_policy_json TEXT NOT NULL CONSTRAINT site_config_absence_policy_json_object CHECK (json_valid(absence_policy_json) AND json_type(absence_policy_json) = 'object'),
+  analytics_settings_json TEXT NOT NULL CONSTRAINT site_config_analytics_settings_json_object CHECK (json_valid(analytics_settings_json) AND json_type(analytics_settings_json) = 'object'),
   created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
   updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
 );
@@ -404,7 +404,13 @@ CREATE INDEX IF NOT EXISTS idx_users_role_active
 
 -- member profile classes
 CREATE INDEX IF NOT EXISTS idx_member_profile_classes_class_user
-  ON member_profile_classes(class, user_id);
+  ON member_profile_classes(class_id, user_id);
+CREATE UNIQUE INDEX IF NOT EXISTS ux_member_profile_classes_user_sort
+  ON member_profile_classes(user_id, sort_order);
+CREATE INDEX IF NOT EXISTS idx_member_profile_images_media_user
+  ON member_profile_images(media_key, user_id);
+CREATE UNIQUE INDEX IF NOT EXISTS ux_member_profile_images_user_sort
+  ON member_profile_images(user_id, sort_order);
 CREATE INDEX IF NOT EXISTS idx_class_catalog_sort
   ON class_catalog(sort_order, id);
 CREATE UNIQUE INDEX IF NOT EXISTS ux_class_catalog_label_nocase
@@ -429,6 +435,14 @@ CREATE INDEX IF NOT EXISTS idx_login_failures_last_failed_at
   ON login_failures(last_failed_at);
 
 -- events
+CREATE INDEX IF NOT EXISTS idx_event_attachments_media_event
+  ON event_attachments(media_key, event_id);
+CREATE UNIQUE INDEX IF NOT EXISTS ux_event_attachments_event_sort
+  ON event_attachments(event_id, sort_order);
+CREATE INDEX IF NOT EXISTS idx_recurring_template_attachments_media_template
+  ON recurring_template_attachments(media_key, template_id);
+CREATE UNIQUE INDEX IF NOT EXISTS ux_recurring_template_attachments_template_sort
+  ON recurring_template_attachments(template_id, sort_order);
 CREATE INDEX IF NOT EXISTS idx_events_archived_start
   ON events(archived_at, start_at, id);
 CREATE INDEX IF NOT EXISTS idx_events_auto_archive_due
@@ -611,18 +625,7 @@ INSERT OR IGNORE INTO site_config (
     '{"max_file_size_bytes":{"site_logo":2097152,"profile_image":5242880,"profile_audio":20971520,"announcement_image":5242880,"wiki_image":5242880,"event_image":5242880,"gallery_image":10485760,"storage_image":5242880},"quotas":{"profile":10,"announcement":10,"gallery":20,"wiki":10}}',
     '{"images_per_item":5}',
     '{"max_span_days":366,"max_entries_per_user":20}',
-    '{"reference_duration_minutes":30,"modifier_weights":{"credits":0.3,"kda":0.3,"basehp":0.15,"towers":0.1,"distance":0.15}}'
-  );
-
-INSERT OR IGNORE INTO onboarding_config (id, title, body_json, checklist_json, require_ack, published_at, updated_by) VALUES
-  (
-    'default',
-    'Member onboarding',
-    '{"type":"doc","content":[{"type":"paragraph","content":[{"type":"text","text":"Welcome to the guild. Review the rules before joining events, claiming storage, or participating in guild war planning."}]},{"type":"paragraph","content":[{"type":"text","text":"Keep your profile current and contact leadership when your availability, name, role, or class changes."}]}]}',
-    '[{"id":"read-rules","label":"Read guild rules","description":"Understand expectations for events, storage, guild war, and member communication.","required":true},{"id":"complete-profile","label":"Complete your profile","description":"Add your power, class, availability, and contact details.","required":true},{"id":"ask-questions","label":"Ask questions early","description":"Contact leadership if any rule or workflow is unclear.","required":false}]',
-    1,
-    NULL,
-    NULL
+    '{"reference_duration_minutes":30,"modifier_weights":{"credits":0.3,"kills":0.3,"base_hp":0.15,"towers":0.1,"distance":0.15}}'
   );
 
 INSERT OR IGNORE INTO role_permissions (role_id, permission, granted) VALUES
@@ -846,7 +849,8 @@ CREATE TABLE IF NOT EXISTS wiki_revisions (
   article_id TEXT NOT NULL REFERENCES wiki_articles(id) ON DELETE CASCADE,
   revision INTEGER NOT NULL,
   title TEXT NOT NULL,
-  body_json TEXT NOT NULL,
+  body_json TEXT NOT NULL
+    CONSTRAINT wiki_revisions_body_json_object CHECK (json_valid(body_json) AND json_type(body_json) = 'object'),
   edited_by TEXT NOT NULL REFERENCES users(id),
   restored_from INTEGER,
   created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
@@ -856,8 +860,7 @@ CREATE UNIQUE INDEX IF NOT EXISTS uq_wiki_revisions_article_revision ON wiki_rev
 
 
 -- ===== MEMBER ABSENCES (请假 history) =====
--- Source of truth for member vacations. member_profiles.vacation_start/vacation_end
--- are legacy columns; read paths derive them from the current-or-next absence here.
+-- Source of truth for member vacations.
 
 CREATE TABLE IF NOT EXISTS member_absences (
   id TEXT PRIMARY KEY,

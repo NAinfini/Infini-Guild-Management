@@ -11,6 +11,7 @@ import {
   fetchGuildWarHistoryDetail,
 } from "../../services/GuildWarService";
 import { queryKeys } from "../../api/query-keys";
+import { useSiteConfigStore } from "@portal/stores/site-config";
 
 type UseGuildWarDataOptions = {
   selectedEventId?: string;
@@ -24,16 +25,20 @@ type UseGuildWarDataOptions = {
 
 export function useGuildWarData(options: UseGuildWarDataOptions) {
   const { selectedEventId, selectedHistoryId, historyDateFrom, historyDateTo, historySearch, historyPage, historyPerPage } = options;
+  const guildWarEventTypeId = useSiteConfigStore((state) =>
+    state.gameRules.events.types.find((definition) => definition.behavior === "guild_war")?.id,
+  );
 
   const warEventsQuery = useQuery({
-    queryKey: queryKeys.guildWar.events(),
+    queryKey: [...queryKeys.guildWar.events(), guildWarEventTypeId ?? "missing"],
     queryFn: () =>
       fetchEventsList({
         page: 1,
         limit: 100,
-        type: "guild_war",
+        type: guildWarEventTypeId,
         archived: false,
       }),
+    enabled: Boolean(guildWarEventTypeId),
     staleTime: 10 * 60_000,
   });
 

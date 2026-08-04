@@ -345,7 +345,8 @@ export function GuildWarPage() {
           </Tabs.Panel>
         ) : null}
 
-        <Tabs.Panel value="history" pt="md">
+        {/* --fill：这一个页签是主从工作台，两栏各自内滚，高度从外层 flex 链上要。 */}
+        <Tabs.Panel value="history" pt="md" className="guild-war-page__panel--fill">
           <GuildWarHistoryTabWrapper
             canManageActive={canManageActive}
             historyViewMode={historyViewMode}

@@ -191,12 +191,32 @@ html:not([data-input-modality="pointer"]) .storage-batch-drawer .mantine-Textare
 
 /* Inventory workspace */
 
+/*
+ * 从页面根到库存工作区的一条填高链。中间那两级 Stack 只是分组容器，本身不表达高度，
+ * 只负责把「还剩多少」原样往下传；它们的其他子级（位置页签条、批量面板）是 flex 项，
+ * min-height 默认 auto，压不到内容以下，所以不会被这条链挤扁。
+ */
+.storage-page__stack {
+  flex: 1 1 auto;
+  min-block-size: 0;
+}
+
+/*
+ * 分类侧栏和货品列表各自内滚，工作区整体钉在视口里。
+ *
+ * 原先侧栏是 position: sticky 跟着整页滚：货品一多，页面往下滚，侧栏在自己那一段
+ * 里贴着走，滚过它的高度之后照样被带出视口——「分类一直在」只兑现了一半。而且列
+ * 表和侧栏的滚动是同一条，翻货品时分类会跟着动。现在两边各滚各的。
+ */
 .storage-inventory-shell {
   display: grid;
   grid-template-columns: minmax(180px, 208px) minmax(0, 1fr);
-  align-items: start;
+  grid-template-rows: minmax(0, 1fr);
+  align-items: stretch;
   gap: var(--space-md);
   min-width: 0;
+  flex: 1 1 auto;
+  min-block-size: 0;
 }
 
 .storage-category-rail,
@@ -209,8 +229,9 @@ html:not([data-input-modality="pointer"]) .storage-batch-drawer .mantine-Textare
 }
 
 .storage-category-rail {
-  position: sticky;
-  top: var(--space-sm);
+  display: flex;
+  flex-direction: column;
+  min-block-size: 0;
   overflow: hidden;
 }
 
@@ -219,15 +240,22 @@ html:not([data-input-modality="pointer"]) .storage-batch-drawer .mantine-Textare
   align-items: center;
   justify-content: space-between;
   gap: var(--space-sm);
+  flex: 0 0 auto;
   min-height: 48px;
   padding: var(--space-sm) var(--space-md);
   border-bottom: 1px solid var(--storage-border);
 }
 
+/* 「分类」那行表头钉住，分类本身内滚。align-content 必须写死 start：
+   这一层现在有确定高度了，不写的话 grid 会把几个分类均摊到整栏高上。 */
 .storage-category-rail__nav {
   display: grid;
+  align-content: start;
   gap: 2px;
   padding: var(--space-sm);
+  flex: 1 1 auto;
+  min-block-size: 0;
+  overflow-y: auto;
 }
 
 .storage-category-rail__item {
@@ -281,8 +309,24 @@ html:not([data-input-modality="pointer"]) .storage-batch-drawer .mantine-Textare
   outline-offset: -2px;
 }
 
+/* 工具条、计数条、列表表头三行钉住，货品清单内滚。 */
 .storage-inventory-main {
+  display: flex;
+  flex-direction: column;
+  min-block-size: 0;
   overflow: hidden;
+}
+
+.storage-command,
+.storage-inventory-meta,
+.storage-item-list__header {
+  flex: 0 0 auto;
+}
+
+.storage-inventory-main__body {
+  flex: 1 1 auto;
+  min-block-size: 0;
+  overflow-y: auto;
 }
 
 .storage-command {
@@ -1058,6 +1102,25 @@ html:not([data-input-modality="pointer"]) .storage-item-editor__dropzone:has(:fo
   .storage-inventory-shell,
   .storage-management-modal {
     grid-template-columns: minmax(0, 1fr);
+  }
+
+  /* 侧栏收起、只剩一栏之后回到整页滚：窄屏上再切一个内滚区只会更难用。 */
+  .storage-page__stack,
+  .storage-inventory-shell {
+    flex: 0 1 auto;
+    min-block-size: auto;
+  }
+
+  .storage-inventory-shell {
+    grid-template-rows: auto;
+  }
+
+  .storage-inventory-main {
+    min-block-size: auto;
+  }
+
+  .storage-inventory-main__body {
+    overflow-y: visible;
   }
 
   .storage-category-rail {

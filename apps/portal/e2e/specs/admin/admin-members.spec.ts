@@ -17,7 +17,6 @@ import { field, readInteger, topDialog } from "../../support/ui";
  *     每条用例用自己的 tag 当搜索词，搜出来的就只有自己造的那几个。
  */
 
-const BATCH_SELECTION_LIMIT = 50;
 
 function searchBox(page: Page): Locator {
   return page.getByPlaceholder("Search members...");
@@ -38,9 +37,6 @@ function statusFilter(page: Page, label: string): Locator {
 }
 function statusFilterInput(page: Page, label: string): Locator {
   return page.getByRole("radio", { name: label, exact: true });
-}
-function selectionBar(page: Page): Locator {
-  return page.locator(".admin-selbar");
 }
 /*
  * 分页条在页面上有两份：桌面表格的页脚一份，移动端卡片列表里还有一份。
@@ -180,7 +176,12 @@ test("分页：超过一页才出现分页条，末页行数对得上，改成�
   await expect(field(pagination(page), "Per page")).toHaveCount(0);
 });
 
-test("选择条：选中即出现并报数，Ctrl 点选累加，清空选择后回到提示文案", async ({ page, api, flow }) => {
+/*
+ * 选中态现在只体现在行的 aria-selected 上——那条报数的批量操作栏已经删掉，批量操作
+ * 统一走右键菜单（见 admin-member-batch.spec.ts）。这条断言的是选择模型本身：
+ * 单击换选、Ctrl 点选累加、再单击别处收回。
+ */
+test("选择：单击换选，Ctrl 点选累加，再单击一行把选中收回这一行", async ({ page, api, flow }) => {
   const tag = uniqueTag("sel");
   const first = await createThrowawayMember(api, tag);
   const second = await createThrowawayMember(api, tag);
@@ -189,24 +190,21 @@ test("选择条：选中即出现并报数，Ctrl 点选累加，清空选择后
   await searchBox(page).fill(tag);
   await expect(memberRows(page)).toHaveCount(2);
 
-  await expect(selectionBar(page), "还没选人时不该有选择条").toHaveCount(0);
   await expect(page.getByText(/Click or press Space to select/)).toBeVisible();
+  await expect(memberRow(page, first.username)).toHaveAttribute("aria-selected", "false");
 
   await flow.clickWithoutApi(memberRow(page, first.username));
-  await expect(selectionBar(page)).toBeVisible();
-  await expect(selectionBar(page).locator(".admin-selbar__count"))
-    .toHaveText(`Selected: 1 / ${BATCH_SELECTION_LIMIT}`);
   await expect(memberRow(page, first.username)).toHaveAttribute("aria-selected", "true");
+  await expect(memberRow(page, second.username)).toHaveAttribute("aria-selected", "false");
 
   await memberRow(page, second.username).click({ modifiers: ["ControlOrMeta"] });
-  await expect(selectionBar(page).locator(".admin-selbar__count"))
-    .toHaveText(`Selected: 2 / ${BATCH_SELECTION_LIMIT}`);
+  await expect(memberRow(page, first.username)).toHaveAttribute("aria-selected", "true");
   await expect(memberRow(page, second.username)).toHaveAttribute("aria-selected", "true");
 
-  await page.getByRole("button", { name: "Clear selection", exact: true }).click();
-  await expect(selectionBar(page)).toHaveCount(0);
-  await expect(memberRow(page, first.username)).toHaveAttribute("aria-selected", "false");
-  await expect(page.getByText(/Click or press Space to select/)).toBeVisible();
+  await flow.clickWithoutApi(memberRow(page, second.username));
+  await expect(memberRow(page, first.username), "不带修饰键的单击应当只留下这一行")
+    .toHaveAttribute("aria-selected", "false");
+  await expect(memberRow(page, second.username)).toHaveAttribute("aria-selected", "true");
 });
 
 test("键盘：提示文案承诺的三件事都要真的能做到——空格选中、回车看详情、Shift+F10 出菜单", async ({ page, api }) => {
@@ -221,7 +219,6 @@ test("键盘：提示文案承诺的三件事都要真的能做到——空格�
   await row.focus();
   await page.keyboard.press(" ");
   await expect(row, "空格应当选中当前行").toHaveAttribute("aria-selected", "true");
-  await expect(selectionBar(page)).toBeVisible();
 
   await page.keyboard.press("Enter");
   await expect(topDialog(page), "回车应当打开这一行的成员详情").toBeVisible();

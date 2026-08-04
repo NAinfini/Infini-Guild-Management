@@ -2,16 +2,39 @@
   width: 280px;
 }
 
+/* 外层 Stack 只为把 .page-layout__content 的剩余高度往下传一层：
+   公告页在筛选卡和网格之间多包了一个 Stack，链在这里断掉，网格就只有内容高。 */
+.announcements-page__stack {
+  flex: 1 1 auto;
+  min-block-size: 0;
+}
+
+/*
+ * 和维基同一套：清单和正文各自内滚，页面本身不滚。
+ *
+ * 原先这块网格是内容高——隐式的 auto 行高，公告有几条就多高。条目少的时候左栏只是
+ * 一小截，右边正文卡跟着塌到同一高度；条目一多，右栏又把整页顶着往下滚，清单跟着
+ * 滚出视口，想换一篇得先滚回顶部。
+ *
+ * 现在向上要一次剩余高度（flex:1 + min-block-size:0，链的起点是 AppShell.css 里的
+ * .app-route-container），行按 minmax(0, 1fr) 撑满。窄屏不这么做，见下面的媒体查询。
+ */
 .announcements-page-grid {
   display: grid;
   grid-template-columns: clamp(18rem, 28%, 26rem) minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr);
   align-items: stretch;
   gap: var(--space-md);
   width: 100%;
+  flex: 1 1 auto;
+  min-block-size: 0;
 }
 
 .announcements-page-column {
+  display: flex;
+  flex-direction: column;
   min-width: 0;
+  min-block-size: 0;
 }
 
 .announcements-list-card,
@@ -19,6 +42,34 @@
   width: 100%;
   display: flex;
   flex-direction: column;
+  flex: 1 1 auto;
+  min-block-size: 0;
+}
+
+/*
+ * 卡内两段式：卡头钉在上边，剩下的内滚。
+ *
+ * 清单卡钉住卡头是有代价才做的选择：「新建公告」是随时要够得着的，跟着列表滚走等于
+ * 没有。正文卡是例外——标题、徽标和正文是一篇东西，整块一起滚才对，所以它直接把
+ * announcements-card-scroll 挂在最外层（和 wiki-article-reader-card 同一处理）。
+ */
+.announcements-card-body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-md);
+  block-size: 100%;
+  min-block-size: 0;
+}
+
+.announcements-card-scroll {
+  flex: 1 1 auto;
+  min-block-size: 0;
+  /* 只竖着滚。CSS 规定一个轴不是 visible 时另一轴的 visible 会被静默提升成 auto，
+     只写 overflow-y 会在内容宽出一两像素时多出一条系统原生横向滚动条。 */
+  overflow-x: clip;
+  overflow-y: auto;
+  /* 常留竖滚动条的槽：内容增减时正文不会左右跳。 */
+  scrollbar-gutter: stable;
 }
 
 .announcements-list-row {
@@ -130,9 +181,36 @@
 
 /* ── Responsive ── */
 
+/* 单栏堆叠之后回到整页滚：把窄屏视口再切成两个小滚动区只会更难用。 */
 @media (max-width: 991px) {
   .announcements-page-grid {
     grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: auto;
+    flex: 0 1 auto;
+    min-block-size: auto;
+  }
+
+  .announcements-page__stack {
+    flex: 0 1 auto;
+    min-block-size: auto;
+  }
+
+  .announcements-page-column,
+  .announcements-list-card,
+  .announcements-detail-card {
+    flex: 0 1 auto;
+    min-block-size: auto;
+  }
+
+  .announcements-card-body {
+    block-size: auto;
+  }
+
+  /* 两轴一起复位：只写 overflow-y: visible 的话，宽屏那条 overflow-x: clip 又会
+     把它提升回 auto——正是上面刚拆掉的那条隐式规则。 */
+  .announcements-card-scroll {
+    overflow: visible;
+    scrollbar-gutter: auto;
   }
 }
 

@@ -24,6 +24,12 @@ import { captureUploadValidation } from "./media";
 import { deleteUploadedMedia, rethrowAfterUploadFailure } from "./media-upload-compensation";
 import { parseMediaKey } from "./media-keys";
 import { buildReplaceMediaRefsStatements } from "./media-references";
+import {
+  buildReplaceMemberClassStatements,
+  buildReplaceMemberImageStatements,
+  loadMemberClasses,
+  loadMemberImages,
+} from "./ordered-relations";
 import { ok, err, type ServiceResult } from "./result";
 import { escapeLikePattern, parseStringArray, parseRecord, usernameEquals } from "./helpers";
 import { logger } from "../utils/logger";
@@ -46,10 +52,10 @@ type ProfileRow = {
   id: string;
   userId: string;
   power: number;
-  classes: string;
+  classes: string[];
   titleHtml: string | null;
   bio: string | null;
-  images: string;
+  images: string[];
   avatarKey: string | null;
   audioKey: string | null;
   videoUrls: string;
@@ -65,10 +71,8 @@ type UserWithProfileRow = { user: UserRow; profile: ProfileRow };
 
 type ProfilePatch = {
   power?: number;
-  classes?: string;
   titleHtml?: string | null;
   bio?: string | null;
-  images?: string;
   avatarKey?: string | null;
   audioKey?: string | null;
   videoUrls?: string;
@@ -113,10 +117,8 @@ export type UserServiceDeps = {
 
 const PROFILE_PATCH_COLUMNS: ReadonlyArray<readonly [keyof ProfilePatch, string]> = [
   ["power", "power"],
-  ["classes", "classes"],
   ["titleHtml", "title_html"],
   ["bio", "bio"],
-  ["images", "images"],
   ["avatarKey", "avatar_key"],
   ["audioKey", "audio_key"],
   ["videoUrls", "video_urls"],
@@ -139,7 +141,7 @@ function buildProfileUpdateStatement(db: D1Database, userId: string, patch: Prof
 
 function profileMediaKeys(userId: string, profile: Pick<ProfileRow, "images" | "avatarKey" | "audioKey">): string[] {
   return [
-    ...parseStringArray(profile.images),
+    ...profile.images,
     ...(profile.avatarKey ? [profile.avatarKey] : []),
     ...(profile.audioKey ? [profile.audioKey] : []),
   ].filter((key) => {
@@ -228,10 +230,10 @@ function toProfilePayload(profile: ProfileRow, options: { includeNotes: boolean;
     id: profile.id,
     user_id: profile.userId,
     power: profile.power,
-    classes: parseStringArray(profile.classes),
+    classes: profile.classes,
     title_html: profile.titleHtml,
     bio: profile.bio,
-    images: parseStringArray(profile.images),
+    images: profile.images,
     avatar_key: profile.avatarKey ?? null,
     audio_key: profile.audioKey,
     video_urls: parseStringArray(profile.videoUrls),
@@ -253,10 +255,8 @@ function buildProfilePatch(
 ): ProfilePatch {
   const patch: ProfilePatch = {};
   if (payload.power !== undefined) patch.power = payload.power;
-  if (payload.classes !== undefined) patch.classes = JSON.stringify(payload.classes);
   if (payload.title_html !== undefined) patch.titleHtml = payload.title_html === null ? null : sanitizeTitleHtml(payload.title_html);
   if (payload.bio !== undefined) patch.bio = payload.bio;
-  if (payload.images !== undefined) patch.images = JSON.stringify(payload.images);
   if (payload.video_urls !== undefined) patch.videoUrls = JSON.stringify(payload.video_urls);
   if (payload.availability !== undefined) {
     patch.availability = payload.availability === null ? null : JSON.stringify(payload.availability);
@@ -269,11 +269,11 @@ function buildProfilePatch(
 function buildProfileDiff(
   old: ProfileRow,
   patch: ProfilePatch,
+  relations: { classes?: string[] } = {},
 ): Record<string, { from: unknown; to: unknown }> | null {
   const diff: Record<string, { from: unknown; to: unknown }> = {};
   const fieldMap: Array<[keyof ProfilePatch, keyof ProfileRow]> = [
     ["power", "power"],
-    ["classes", "classes"],
     ["titleHtml", "titleHtml"],
     ["bio", "bio"],
     ["notes", "notes"],
@@ -286,6 +286,9 @@ function buildProfileDiff(
     if (oldVal !== newVal) {
       diff[patchKey] = { from: old[oldKey] ?? null, to: patch[patchKey] ?? null };
     }
+  }
+  if (relations.classes !== undefined && JSON.stringify(relations.classes) !== JSON.stringify(old.classes)) {
+    diff.classes = { from: old.classes, to: relations.classes };
   }
   return Object.keys(diff).length > 0 ? diff : null;
 }
@@ -305,7 +308,7 @@ function buildUsersWhereFilters(params: {
   if (params.activeFilter !== undefined) filters.push(eq(users.isActive, params.activeFilter));
   if (params.classFilter) {
     filters.push(
-      sql`EXISTS (SELECT 1 FROM ${memberProfileClasses} WHERE ${memberProfileClasses.userId} = ${users.id} AND ${memberProfileClasses.className} = ${params.classFilter})`,
+      sql`EXISTS (SELECT 1 FROM ${memberProfileClasses} WHERE ${memberProfileClasses.userId} = ${users.id} AND ${memberProfileClasses.classId} = ${params.classFilter})`,
     );
   }
   return filters;
@@ -322,16 +325,13 @@ const userProfileSelect = {
   profileId: memberProfiles.id,
   profileUserId: memberProfiles.userId,
   power: memberProfiles.power,
-  classes: memberProfiles.classes,
   titleHtml: memberProfiles.titleHtml,
   bio: memberProfiles.bio,
-  images: memberProfiles.images,
   avatarKey: memberProfiles.avatarKey,
   audioKey: memberProfiles.audioKey,
   videoUrls: memberProfiles.videoUrls,
   availability: memberProfiles.availability,
-  // Derived from the absence history (current-or-next absence); the legacy
-  // member_profiles.vacation_start/vacation_end columns are no longer read.
+  // Derived from the absence history (current-or-next absence).
   vacationStart: sql<string | null>`(SELECT ma.start_date FROM member_absences ma WHERE ma.user_id = ${users.id} AND ma.end_date >= date('now') ORDER BY ma.start_date ASC LIMIT 1)`.as("derived_vacation_start"),
   vacationEnd: sql<string | null>`(SELECT ma.end_date FROM member_absences ma WHERE ma.user_id = ${users.id} AND ma.end_date >= date('now') ORDER BY ma.start_date ASC LIMIT 1)`.as("derived_vacation_end"),
   notes: memberProfiles.notes,
@@ -339,7 +339,10 @@ const userProfileSelect = {
   profileUpdatedAt: memberProfiles.updatedAt,
 } as const;
 
-function rowToUserWithProfile(row: Record<string, unknown>): UserWithProfileRow {
+function rowToUserWithProfile(
+  row: Record<string, unknown>,
+  relations: { classes?: string[]; images?: string[] } = {},
+): UserWithProfileRow {
   return {
     user: {
       id: row.userId as string,
@@ -354,10 +357,10 @@ function rowToUserWithProfile(row: Record<string, unknown>): UserWithProfileRow 
       id: (row.profileId as string) ?? nanoid(),
       userId: (row.profileUserId as string) ?? (row.userId as string),
       power: (row.power as number) ?? 0,
-      classes: (row.classes as string) ?? "[]",
+      classes: relations.classes ?? [],
       titleHtml: (row.titleHtml as string | null) ?? null,
       bio: (row.bio as string | null) ?? null,
-      images: (row.images as string) ?? "[]",
+      images: relations.images ?? [],
       avatarKey: (row.avatarKey as string | null) ?? null,
       audioKey: (row.audioKey as string | null) ?? null,
       videoUrls: (row.videoUrls as string) ?? "[]",
@@ -389,47 +392,55 @@ export class UserService {
         .limit(1)
     )[0];
     if (!row) return null;
+    const [classes, images] = await Promise.all([
+      loadMemberClasses(this.deps.rawDb, [userId]),
+      loadMemberImages(this.deps.rawDb, [userId]),
+    ]);
     return {
-      data: rowToUserWithProfile(row as unknown as Record<string, unknown>),
+      data: rowToUserWithProfile(row as unknown as Record<string, unknown>, {
+        classes: classes.get(userId) ?? [],
+        images: images.get(userId) ?? [],
+      }),
       profileExists: (row as unknown as Record<string, unknown>).profileId != null,
     };
   }
 
   private async ensureProfile(userId: string): Promise<ProfileRow> {
-    const row = (
-      await this.db.select().from(memberProfiles).where(eq(memberProfiles.userId, userId)).limit(1)
-    )[0];
-    if (row) return row;
+    let row = (await this.db.select().from(memberProfiles).where(eq(memberProfiles.userId, userId)).limit(1))[0];
     // Profile missing — shouldn't happen post-registration but handle gracefully
-    await this.db.insert(memberProfiles).values({
-      id: nanoid(), userId, power: 0, classes: "[]", images: "[]", videoUrls: "[]",
-    });
-    const created = (
-      await this.db.select().from(memberProfiles).where(eq(memberProfiles.userId, userId)).limit(1)
-    )[0];
-    if (!created) throw new Error("Failed to create profile");
-    return created;
-  }
-
-  private async syncProfileClassLookup(userId: string, classesJson: string): Promise<void> {
-    const classNames = [...new Set(parseStringArray(classesJson))];
-    await this.db.delete(memberProfileClasses).where(eq(memberProfileClasses.userId, userId));
-    if (classNames.length === 0) {
-      return;
+    if (!row) {
+      await this.db.insert(memberProfiles).values({ id: nanoid(), userId, power: 0, videoUrls: "[]" });
+      row = (await this.db.select().from(memberProfiles).where(eq(memberProfiles.userId, userId)).limit(1))[0];
     }
-    await this.db.insert(memberProfileClasses).values(
-      classNames.map((className) => ({ userId, className })),
-    );
+    if (!row) throw new Error("Failed to create profile");
+    const [classes, images] = await Promise.all([
+      loadMemberClasses(this.deps.rawDb, [userId]),
+      loadMemberImages(this.deps.rawDb, [userId]),
+    ]);
+    return {
+      ...row,
+      classes: classes.get(userId) ?? [],
+      images: images.get(userId) ?? [],
+      vacationStart: null,
+      vacationEnd: null,
+    };
   }
 
-  private async updateProfileWithMediaRefs(targetUserId: string, current: ProfileRow, patch: ProfilePatch): Promise<void> {
+  private async updateProfileWithRelations(
+    targetUserId: string,
+    current: ProfileRow,
+    patch: ProfilePatch,
+    relations: { classes?: string[]; images?: string[] } = {},
+  ): Promise<void> {
     const next = {
-      images: patch.images ?? current.images,
+      images: relations.images ?? current.images,
       avatarKey: patch.avatarKey === undefined ? current.avatarKey : patch.avatarKey,
       audioKey: patch.audioKey === undefined ? current.audioKey : patch.audioKey,
     };
     await this.deps.rawDb.batch([
       buildProfileUpdateStatement(this.deps.rawDb, targetUserId, patch),
+      ...(relations.classes === undefined ? [] : buildReplaceMemberClassStatements(this.deps.rawDb, targetUserId, relations.classes)),
+      ...(relations.images === undefined ? [] : buildReplaceMemberImageStatements(this.deps.rawDb, targetUserId, relations.images)),
       ...buildReplaceMediaRefsStatements(this.deps.rawDb, "member_profile", targetUserId, profileMediaKeys(targetUserId, next)),
     ]);
   }
@@ -476,8 +487,16 @@ export class UserService {
       totalPages = rows.length < params.limit ? params.page : params.page + 1;
     }
 
+    const userIds = rows.map((row) => row.userId);
+    const [classes, images] = await Promise.all([
+      loadMemberClasses(this.deps.rawDb, userIds),
+      loadMemberImages(this.deps.rawDb, userIds),
+    ]);
     const data = rows.map((row) => {
-      const normalized = rowToUserWithProfile(row as unknown as Record<string, unknown>);
+      const normalized = rowToUserWithProfile(row as unknown as Record<string, unknown>, {
+        classes: classes.get(row.userId) ?? [],
+        images: images.get(row.userId) ?? [],
+      });
       return {
         user: toUserPayload(normalized.user),
         profile: toProfilePayload(normalized.profile, {
@@ -536,7 +555,7 @@ export class UserService {
     // member's (or the site logo's) R2 key and then delete it through
     // DELETE /media/images, which deletes whatever is listed on the profile.
     if (parsed.data.images !== undefined) {
-      const existingImages = new Set(parseStringArray(oldProfile.images));
+      const existingImages = new Set(oldProfile.images);
       const foreignKey = parsed.data.images.find((key) => !existingImages.has(key));
       if (foreignKey !== undefined) {
         return err("VALIDATION_ERROR", `images may only reorder or remove existing profile media: ${foreignKey}`);
@@ -544,19 +563,17 @@ export class UserService {
     }
 
     const patch = buildProfilePatch(parsed.data);
-    if (patch.images !== undefined) {
-      await this.updateProfileWithMediaRefs(targetUserId, oldProfile, patch);
+    const relations = { classes: parsed.data.classes, images: parsed.data.images };
+    if (relations.classes !== undefined || relations.images !== undefined) {
+      await this.updateProfileWithRelations(targetUserId, oldProfile, patch, relations);
     } else {
       await this.db.update(memberProfiles).set(patch).where(eq(memberProfiles.userId, targetUserId));
-    }
-    if (patch.classes !== undefined) {
-      await this.syncProfileClassLookup(targetUserId, patch.classes);
     }
 
     const updated = await this.loadUserWithProfile(targetUserId);
     if (!updated) return err("NOT_FOUND", "User not found");
 
-    const diff = buildProfileDiff(oldProfile, patch);
+    const diff = buildProfileDiff(oldProfile, patch, { classes: relations.classes });
     await this.deps.writeAuditLog({
       entityType: "member_profile", action: "update", actorId: sessionUser.id,
       entityId: targetUserId, diffTitle: updated.data.user.username,
@@ -583,7 +600,7 @@ export class UserService {
     }
 
     const profile = await this.ensureProfile(targetUserId);
-    const existing = parseStringArray(profile.images);
+    const existing = profile.images;
     const avatarCount = profile.avatarKey ? 1 : 0;
     if (existing.length + avatarCount + files.length > mediaPolicy.quotas.profile)
       return err("CONFLICT", "Profile image quota exceeded");
@@ -599,10 +616,9 @@ export class UserService {
     }
 
     try {
-      await this.updateProfileWithMediaRefs(targetUserId, profile, {
-        images: JSON.stringify([...existing, ...keys]),
+      await this.updateProfileWithRelations(targetUserId, profile, {
         updatedAt: new Date().toISOString(),
-      });
+      }, { images: [...existing, ...keys] });
     } catch (error) {
       await rethrowAfterUploadFailure(
         error,
@@ -626,13 +642,12 @@ export class UserService {
     if (!parsed.success) return err("VALIDATION_ERROR", "Invalid image delete payload", parsed.error.flatten());
 
     const profile = await this.ensureProfile(targetUserId);
-    const images = parseStringArray(profile.images);
+    const images = profile.images;
     const requested = new Set(parsed.data.keys);
     const keysToDelete = images.filter((key) => requested.has(key));
-    await this.updateProfileWithMediaRefs(targetUserId, profile, {
-      images: JSON.stringify(images.filter((key) => !requested.has(key))),
+    await this.updateProfileWithRelations(targetUserId, profile, {
       updatedAt: new Date().toISOString(),
-    });
+    }, { images: images.filter((key) => !requested.has(key)) });
     await Promise.allSettled(keysToDelete.map((key) => this.deps.deleteMediaObject(key)));
     if (keysToDelete.length > 0) {
       await this.deps.writeAuditLog({
@@ -657,7 +672,7 @@ export class UserService {
       return err("VALIDATION_ERROR", `Image exceeds ${maxImageBytes} bytes`);
 
     const profile = await this.ensureProfile(targetUserId);
-    const existing = parseStringArray(profile.images);
+    const existing = profile.images;
     const avatarCount = profile.avatarKey ? 1 : 0;
     if (existing.length + avatarCount + 1 - avatarCount > mediaPolicy.quotas.profile)
       return err("CONFLICT", "Profile image quota exceeded");
@@ -666,7 +681,7 @@ export class UserService {
     if (!stored.ok) return stored;
     const key = stored.data;
     try {
-      await this.updateProfileWithMediaRefs(targetUserId, profile, {
+      await this.updateProfileWithRelations(targetUserId, profile, {
         avatarKey: key,
         updatedAt: new Date().toISOString(),
       });
@@ -692,7 +707,7 @@ export class UserService {
     if (access.status === "forbidden") return err("FORBIDDEN", "You cannot delete media for this profile");
 
     const profile = await this.ensureProfile(targetUserId);
-    await this.updateProfileWithMediaRefs(targetUserId, profile, {
+    await this.updateProfileWithRelations(targetUserId, profile, {
       avatarKey: null,
       updatedAt: new Date().toISOString(),
     });
@@ -722,7 +737,7 @@ export class UserService {
     if (!stored.ok) return stored;
     const key = stored.data;
     try {
-      await this.updateProfileWithMediaRefs(targetUserId, profile, {
+      await this.updateProfileWithRelations(targetUserId, profile, {
         audioKey: key,
         updatedAt: new Date().toISOString(),
       });
@@ -748,7 +763,7 @@ export class UserService {
     if (access.status === "forbidden") return err("FORBIDDEN", "You cannot delete media for this profile");
 
     const profile = await this.ensureProfile(targetUserId);
-    await this.updateProfileWithMediaRefs(targetUserId, profile, {
+    await this.updateProfileWithRelations(targetUserId, profile, {
       audioKey: null,
       updatedAt: new Date().toISOString(),
     });

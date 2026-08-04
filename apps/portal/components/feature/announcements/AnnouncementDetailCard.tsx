@@ -165,8 +165,10 @@ export function AnnouncementDetailCard({
 
   return (
     <Paper withBorder className="announcements-detail-card">
-      <div style={{ padding: "var(--card-padding)" }}>
-        <Stack gap={12}>
+      {/* 正文卡整块内滚：标题、徽标和正文是一篇东西，一起滚才对
+          （和 wiki-article-reader-card 同一处理）。 */}
+      <div className="announcements-card-body" style={{ padding: "var(--card-padding)" }}>
+        <Stack gap={12} className="announcements-card-scroll">
           {/* ── Header ── */}
           <Group justify="space-between" align="center">
             <Text fw={600}>{title}</Text>

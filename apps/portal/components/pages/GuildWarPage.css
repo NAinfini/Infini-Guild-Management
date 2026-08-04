@@ -13,6 +13,28 @@
   width: 100%;
 }
 
+/*
+ * 把「还剩多少高度」一路传到历史页签的工作区，替掉它原先自己算的那一版
+ * （见 .war-history-workspace）。
+ *
+ * Tabs 根节点变成 flex 列不会动另外两个页签：它们的面板照旧是内容高，多出来的
+ * 高度落在 Tabs 根上，而它没有背景也没有边框，看不出来。只有挂了 --fill 的那个
+ * 面板会去要剩余高度，所以这条改动的作用面就是历史页签一处。
+ */
+.guild-war-page__tabs {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-block-size: 0;
+}
+
+.guild-war-page__tabs .guild-war-page__panel--fill {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-block-size: 0;
+}
+
 /* 这里原先重写了底边颜色、圆角和字重，三条都跟主题的 .tabsList / .tabsTab 同值
    （字重那条还是写死的 600，而不是 --fw-medium）。删掉，页签样式只有主题一处。 */
 
@@ -348,38 +370,51 @@
 
 /* History master-detail ledger */
 
+/* 标题在上，工作区吃掉剩下的高度。 */
 .war-history-shell {
-  display: grid;
+  display: flex;
+  flex-direction: column;
   gap: var(--space-md);
   min-width: 0;
   width: 100%;
+  flex: 1 1 auto;
+  min-block-size: 0;
 }
 
 /* Master and detail are both permanently mounted; the rail is the only list
    form at every breakpoint. */
 .war-history-workspace {
-  /* Both panes scroll internally, so the workspace itself must fit the viewport
-     — otherwise .app-content scrolls too and the reader gets two scrollbars
-     stacked on the right. The chrome above and below is: app header
-     (--header-height) + .app-main padding-top 12 + the tab row ~39 +
-     Tabs.Panel pt="md" 16 + .page-layout padding-bottom 24 ≈ 91, rounded up to
-     96 so a slightly taller tab row still cannot bring the outer bar back. */
-  --war-history-pane-max: calc(100dvh - var(--header-height) - 96px);
+  /*
+   * 两栏都内滚，所以工作区必须正好等于视口剩下的那块——大了外层 .app-content 也开始
+   * 滚，右边就叠出两条滚动条；小了详情面板被凭空裁掉一截。
+   *
+   * 这个高度原先是自己算的：calc(100dvh - var(--header-height) - 96px)，96 是把
+   * .app-main 的 padding-top 12、页签行约 39、Tabs.Panel 的 pt="md" 16、
+   * .page-layout 的 padding-bottom 24 加起来「约等于 91，往上取整到 96」。
+   * 它必须跟着上面每一层的内边距走：页签行一换行、间距一改，这个数就错了，
+   * 而错了的表现是滚动条莫名多一条或者详情底下缺一块，很难联想到这里。
+   *
+   * 现在不算了：高度从 .guild-war-page__tabs 那条 flex 链上要，上面有多少层、
+   * 每层多厚都不用知道。
+   */
   display: grid;
   grid-template-columns: minmax(340px, 0.55fr) minmax(0, 1.45fr);
+  grid-template-rows: minmax(0, 1fr);
   gap: var(--space-md);
-  align-items: start;
+  align-items: stretch;
   min-width: 0;
   width: 100%;
+  flex: 1 1 auto;
+  min-block-size: 0;
 }
 
+/* 两栏都不再 sticky：工作区自己已经钉在视口里了，栏目跟着行高撑满即可。 */
 .war-history-master {
   display: grid;
-  position: sticky;
-  top: var(--space-sm);
+  align-content: start;
   gap: var(--space-md);
   min-width: 0;
-  max-height: var(--war-history-pane-max);
+  min-block-size: 0;
   overflow-y: auto;
   scrollbar-gutter: stable;
 }
@@ -547,10 +582,8 @@
   display: flex;
   flex-direction: column;
   min-width: 0;
-  max-height: var(--war-history-pane-max);
+  min-block-size: 0;
   overflow: hidden;
-  position: sticky;
-  top: var(--space-sm);
   border: 1px solid var(--border-subtle);
   border-radius: var(--radius-surface);
   background: var(--surface-raised);
@@ -565,8 +598,11 @@
   background: var(--surface-base);
 }
 
+/* 正文吃掉面板里剩下的高度：内容短的时候面板底边也钉住，不再跟着内容缩回去。 */
 .war-history-detail-panel__body {
   min-width: 0;
+  flex: 1 1 auto;
+  min-block-size: 0;
   overflow-y: auto;
   overscroll-behavior: contain;
   scrollbar-gutter: stable;
@@ -1556,14 +1592,27 @@
 @media (max-width: 991px) {
   /* Single column: reveal exactly one pane, and only here does the detail
      need a way back to the list. */
+  /* 单栏之后回到整页滚：把窄视口再切成一个内滚区，反而把可读高度切没了。 */
+  .guild-war-page__tabs .guild-war-page__panel--fill,
+  .war-history-shell,
   .war-history-workspace {
-    grid-template-columns: minmax(0, 1fr);
+    flex: 0 1 auto;
+    min-block-size: auto;
   }
 
+  .war-history-workspace {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: auto;
+  }
+
+  /* 宽屏那两条 position: sticky / max-height 已经删了，这里不必再复位。 */
   .war-history-master,
   .war-history-detail-panel {
-    position: static;
-    max-height: none;
+    min-block-size: auto;
+  }
+
+  .war-history-master {
+    overflow-y: visible;
   }
 
   /* Without a cap the rail stretches to the whole viewport, which drags the war

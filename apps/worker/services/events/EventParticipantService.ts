@@ -1,4 +1,10 @@
-import { eventParticipantSchema } from "@guild/shared";
+import {
+  DEFAULT_GAME_RULES,
+  eventParticipantSchema,
+  getEventBehavior,
+  type EventBehavior,
+  type GameRules,
+} from "@guild/shared";
 import { and, eq, sql } from "drizzle-orm";
 import { nanoid } from "nanoid";
 import { eventParticipants } from "../../db/schema";
@@ -52,7 +58,7 @@ export class EventParticipantService {
     if (eventRow.visibleAt && new Date(eventRow.visibleAt) > new Date(this.deps.now?.() ?? new Date().toISOString())) {
       return { ok: false, code: "NOT_FOUND", message: "Event not found" };
     }
-    if (eventRow.type === "poll") {
+    if (await this.getBehavior(eventRow.type) === "poll") {
       return { ok: false, code: "CONFLICT", message: "Poll events do not support signups" };
     }
 
@@ -83,7 +89,7 @@ export class EventParticipantService {
       if (currentEvent.endAt && currentEvent.endAt <= this.now()) {
         return { ok: false, code: "CONFLICT", message: "Event has ended" };
       }
-      if (currentEvent.type === "poll") {
+      if (await this.getBehavior(currentEvent.type) === "poll") {
         return { ok: false, code: "CONFLICT", message: "Poll events do not support signups" };
       }
 
@@ -151,7 +157,7 @@ export class EventParticipantService {
     const eventRow = await this.deps.getEventById(eventId);
     if (!eventRow) return { ok: false, code: "NOT_FOUND", message: "Event not found" };
     if (eventRow.archivedAt !== null) return { ok: false, code: "CONFLICT", message: "Event is archived" };
-    if (eventRow.type === "poll") return { ok: false, code: "CONFLICT", message: "Poll events do not support signups" };
+    if (await this.getBehavior(eventRow.type) === "poll") return { ok: false, code: "CONFLICT", message: "Poll events do not support signups" };
     if (eventRow.signupLocked) return { ok: false, code: "CONFLICT", message: "Event signup is locked" };
     if (eventRow.endAt && eventRow.endAt <= this.now()) return { ok: false, code: "CONFLICT", message: "Event has ended" };
 
@@ -200,7 +206,7 @@ export class EventParticipantService {
 
     const eventRow = await this.deps.getEventById(eventId);
     if (!eventRow) return { ok: false, code: "NOT_FOUND", message: "Event not found" };
-    if (eventRow.type === "poll") return { ok: false, code: "CONFLICT", message: "Poll events do not support signups" };
+    if (await this.getBehavior(eventRow.type) === "poll") return { ok: false, code: "CONFLICT", message: "Poll events do not support signups" };
     if (eventRow.archivedAt !== null) return { ok: false, code: "CONFLICT", message: "Event is archived" };
     if (eventRow.endAt && eventRow.endAt <= this.now()) return { ok: false, code: "CONFLICT", message: "Event has ended" };
 
@@ -371,5 +377,12 @@ export class EventParticipantService {
 
   private now() {
     return this.deps.now?.() ?? new Date().toISOString();
+  }
+
+  private async getBehavior(eventType: string): Promise<EventBehavior> {
+    const rules: GameRules = await (this.deps.getGameRules?.() ?? Promise.resolve(DEFAULT_GAME_RULES));
+    const behavior = getEventBehavior(rules, eventType);
+    if (!behavior) throw new Error(`Unknown configured event type: ${eventType}`);
+    return behavior;
   }
 }

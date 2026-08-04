@@ -40,6 +40,23 @@
   --domain-ops: var(--palette-neutral-700);
   --domain-community: var(--palette-orange-700);
 
+  /* ── 分类色序（--series-*）──
+   *
+   * 「一组并排的同类项，彼此需要区分开」时按位次取色，不表达任何状态。
+   * 状态色是 --status-*，域色是 --domain-*，这是第三种用法：色相只说
+   * 「这是第几项」。因此序列里刻意不含绿 / 黄 / 红——那三个色相在站内
+   * 已经被 --status-success/warning/danger 占住，混进分类序会让人把
+   * 「第二项」读成「有问题」。
+   *
+   * 顺序是 青瓷 → 紫罗兰 → 琥珀 → 靛蓝：相邻两位色相拉到最开，两三项时
+   * 也不会撞。项数超过 4 由消费方取模循环。
+   * 档位分工同 --domain-*：浅色模式 700，深色模式 500。
+   * 消费者：EventQuotaBar.css（.quota-bar__slot[data-quota-series]）。 */
+  --series-1: var(--palette-teal-700);
+  --series-2: var(--palette-violet-700);
+  --series-3: var(--palette-orange-700);
+  --series-4: var(--palette-indigo-700);
+
   /* accent 的文字档：浅色模式用 700 */
   --accent-text: var(--accent-700);
   /* accent 填充上的文字：浅色模式在 500 填充上放 900 墨 */
@@ -77,6 +94,11 @@
   --domain-event: var(--palette-info-bright);
   --domain-ops: var(--palette-neutral-200);
   --domain-community: var(--palette-orange-500);
+
+  --series-1: var(--palette-teal-500);
+  --series-2: var(--palette-violet-500);
+  --series-3: var(--palette-orange-500);
+  --series-4: var(--palette-indigo-500);
 
   /* accent 的文字档：深色模式用 500 */
   --accent-text: var(--accent-500);

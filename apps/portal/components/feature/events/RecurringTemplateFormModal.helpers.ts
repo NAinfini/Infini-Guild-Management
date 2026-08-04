@@ -1,4 +1,4 @@
-import { EVENT_TYPES, type EventClassQuotaInput, type RecurringTemplate } from "@guild/shared";
+import type { EventClassQuotaInput, EventType, RecurringTemplate } from "@guild/shared";
 import { computeNextOccurrence, localWeekdayToUtc, utcWeekdayToLocal } from "@guild/shared/utils/recurrence";
 import { toClassQuotaInputs } from "./class-quota-view";
 
@@ -9,7 +9,7 @@ export type RecurrenceEndMode = "never" | "date" | "count";
 export type DurationUnit = "minutes" | "hours";
 
 export type RecurringTemplateFormPayload = {
-  type: (typeof EVENT_TYPES)[number];
+  type: EventType;
   title: string;
   description?: string;
   /** UTC wall-clock "HH:mm" — converted from the local form input before submit. */
@@ -31,7 +31,7 @@ export type RecurringTemplateFormPayload = {
 
 export type RecurringTemplateFormState = {
   title: string;
-  eventType: (typeof EVENT_TYPES)[number];
+  eventType: EventType | "";
   description: string;
   startTime: string;
   durationValue: number;
@@ -111,7 +111,7 @@ export function buildFormState(template: RecurringTemplate | null): RecurringTem
     : storedDays;
   return {
     title: template?.title ?? "",
-    eventType: (template?.type as (typeof EVENT_TYPES)[number]) ?? ("" as (typeof EVENT_TYPES)[number]),
+    eventType: template?.type ?? "",
     description: template?.description ?? "",
     startTime: template ? utcTimeToLocalTime(template.start_time) : "00:00",
     durationValue: duration.value,

@@ -121,6 +121,7 @@ function createMockEnv(featureFlags?: Record<string, boolean>): Bindings {
               storage_policy_json: null,
             }
           : null,
+        all: async () => ({ results: [] }),
       }),
     }),
   };
@@ -641,6 +642,84 @@ describe("Guest read API access", () => {
       recent_wars: [],
       recent_war_mvps: [],
     });
+  });
+
+  it("ranks only finite present MVP values and returns no candidate when none exist", async () => {
+    mocks.getCookie.mockReturnValue(undefined);
+    const warRows = [
+      {
+        id: "war-1",
+        eventId: null,
+        warName: "First war",
+        enemyName: "Enemy",
+        result: "win",
+        ownStats: {},
+        enemyStats: {},
+        durationMinutes: 30,
+        notes: null,
+        createdBy: "admin-1",
+        updatedBy: null,
+        createdAt: "2026-07-02T00:00:00.000Z",
+        updatedAt: "2026-07-02T00:00:00.000Z",
+      },
+      {
+        id: "war-2",
+        eventId: null,
+        warName: "Second war",
+        enemyName: "Enemy",
+        result: "loss",
+        ownStats: {},
+        enemyStats: {},
+        durationMinutes: 30,
+        notes: null,
+        createdBy: "admin-1",
+        updatedBy: null,
+        createdAt: "2026-07-01T00:00:00.000Z",
+        updatedAt: "2026-07-01T00:00:00.000Z",
+      },
+    ];
+    const memberRows = [
+      { warHistoryId: "war-1", userId: "missing", username: "Missing", stats: {} },
+      { warHistoryId: "war-1", userId: "bob", username: "Bob", stats: { damage_taken: 12 } },
+      { warHistoryId: "war-1", userId: "infinite", username: "Infinite", stats: { damage_taken: Number.POSITIVE_INFINITY } },
+      { warHistoryId: "war-1", userId: "null", username: "Null", stats: { damage_taken: null } },
+      { warHistoryId: "war-2", userId: "empty", username: "Empty", stats: {} },
+    ];
+    let selectCall = 0;
+    const select = vi.fn(() => {
+      selectCall += 1;
+      if (selectCall === 1) {
+        return { from: vi.fn(() => ({ orderBy: vi.fn(() => ({ limit: vi.fn().mockResolvedValue(warRows) })) })) };
+      }
+      if (selectCall === 2) {
+        return { from: vi.fn(() => ({ where: vi.fn().mockResolvedValue([{ total: 2, wins: 1 }]) })) };
+      }
+      return {
+        from: vi.fn(() => ({
+          innerJoin: vi.fn(() => ({
+            innerJoin: vi.fn(() => ({
+              where: vi.fn().mockResolvedValue(memberRows),
+            })),
+          })),
+        })),
+      };
+    });
+    mocks.drizzle.mockReturnValueOnce({ select });
+
+    const res = await appRequest("/api/dashboard/wars");
+    const body = await res.json() as { recent_war_mvps: unknown };
+
+    expect(res.status).toBe(200);
+    expect(body.recent_war_mvps).toEqual([
+      [{
+        category: "damage_taken",
+        label: "damage_taken",
+        name: "Bob",
+        initials: "BO",
+        value: 12,
+      }],
+      null,
+    ]);
   });
 });
 

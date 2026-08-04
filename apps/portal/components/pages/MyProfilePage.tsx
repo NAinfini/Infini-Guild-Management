@@ -15,8 +15,8 @@ import { useAppError } from "../../hooks/useAppError";
 import { ProfileAccountTab } from "../feature/profile/ProfileAccountTab";
 import { ProfileAvailabilityTab } from "../feature/profile/ProfileAvailabilityTab";
 import { ProfileGapsCallout } from "../feature/profile/ProfileGapsCallout";
-import { ProfileLivePreview } from "../feature/profile/ProfileLivePreview";
 import { ProfileMediaTab } from "../feature/profile/ProfileMediaTab";
+import { ProfileOverviewCard } from "../feature/profile/ProfileOverviewCard";
 import { ProfileProfileTab } from "../feature/profile/ProfileProfileTab";
 import { ProfileWeekSummary } from "../feature/profile/ProfileWeekSummary";
 import { EmptyState } from "../shared/EmptyState";
@@ -115,6 +115,10 @@ export function MyProfilePage() {
   });
 
   const profile = profileQuery.data?.profile;
+  /* 同一个请求已经把这两样带回来了（fetchUserDetail 返回 user/profile/badges）。
+     显示用的 user 取这一份而不是会话里那份：角色、加入时间只在这一份上有。 */
+  const profileUser = profileQuery.data?.user ?? null;
+  const badges = profileQuery.data?.badges ?? [];
 
   /* A dot on the tab, so unsaved work stays findable after switching away. */
   const renderTabLabel = (label: string, dirty: boolean) => (
@@ -189,21 +193,38 @@ export function MyProfilePage() {
             ) : null}
           </div>
 
-          {/* Home and availability each carry the preview that answers their own
-              question — how the roster card reads, and how much of the week is
-              covered. The account screen has neither, because nothing on it is
-              part of the public profile. */}
+          {/* 三屏共用一个外壳（.my-profile-shell）：同宽、同起点，切屏时卡片的
+              左边缘不会跳。只有时间屏带侧栏预览（本周热力图），因为「填了哪些
+              时段」光看编辑器数不出来；另外两屏各自的表单已经把自己讲清楚了。 */}
           <Tabs.Panel value="home" pt="md">
-            <div className="my-profile-split">
-              <div className="my-profile-split__editor">
-                <ProfileGapsCallout
-                  avatarKey={profile?.avatar_key ?? null}
-                  titleHtml={form.titleHtml}
-                  bio={form.bio}
-                  classList={form.classList}
-                  imageList={form.imageList}
-                  availabilityData={form.availabilityData}
-                />
+            <div className="my-profile-shell">
+              {/* 概览条横跨整宽：它讲的是「这个号现在是什么样」，和下面的表单不是
+                  同一层，塞进表单里会被读成表单的一部分。空值点名紧跟其后，因为
+                  它说的正是这条概览里哪几格还是空的。 */}
+              <ProfileOverviewCard
+                user={profileUser}
+                profile={profile}
+                badges={badges}
+                power={form.power}
+                titleHtml={form.titleHtml}
+                classList={form.classList}
+                imageList={form.imageList}
+                videoList={form.videoList}
+                availabilityData={form.availabilityData}
+              />
+              <ProfileGapsCallout
+                avatarKey={profile?.avatar_key ?? null}
+                titleHtml={form.titleHtml}
+                bio={form.bio}
+                classList={form.classList}
+                imageList={form.imageList}
+                availabilityData={form.availabilityData}
+              />
+
+              {/* 主页屏没有预览栏：顶上那条概览已经在讲「现在是什么样」，右边再挂
+                  一张同源的名片就是把同一批字段说两遍。表单因此吃满整宽，宽屏时
+                  身份和媒体并排（--wide）。 */}
+              <div className="my-profile-split__editor my-profile-split__editor--wide">
                 <ProfileProfileTab
                   power={form.power}
                   classDraft={form.classDraft}
@@ -250,39 +271,33 @@ export function MyProfilePage() {
                   onRemoveAudio={mutations.removeAudio}
                 />
               </div>
-              <aside className="my-profile-split__rail">
-                <ProfileLivePreview
-                  user={user}
-                  profile={profile}
-                  power={form.power}
-                  titleHtml={form.titleHtml}
-                  bio={form.bio}
-                  classList={form.classList}
-                  imageList={form.imageList}
-                  videoList={form.videoList}
-                />
-              </aside>
             </div>
           </Tabs.Panel>
 
           <Tabs.Panel value="availability" pt="md">
-            <div className="my-profile-split">
-              <div className="my-profile-split__editor">
-                <ProfileAvailabilityTab
-                  userId={user?.id}
-                  availabilityData={form.availabilityData}
-                  onAvailabilityChange={form.setAvailabilityData}
-                />
+            <div className="my-profile-shell">
+              <div className="my-profile-split">
+                <div className="my-profile-split__editor">
+                  <ProfileAvailabilityTab
+                    userId={user?.id}
+                    availabilityData={form.availabilityData}
+                    onAvailabilityChange={form.setAvailabilityData}
+                  />
+                </div>
+                <aside className="my-profile-split__rail">
+                  <ProfileWeekSummary availabilityData={form.availabilityData} />
+                </aside>
               </div>
-              <aside className="my-profile-split__rail">
-                <ProfileWeekSummary availabilityData={form.availabilityData} />
-              </aside>
             </div>
           </Tabs.Panel>
 
           <Tabs.Panel value="account" pt="md">
-            <div className="my-profile-account">
+            <div className="my-profile-shell">
               <ProfileAccountTab
+                username={profileUser?.username ?? null}
+                role={profileUser?.role ?? null}
+                joinedAt={profileUser?.created_at ?? null}
+                profileUpdatedAt={profile?.updated_at ?? null}
                 currentPassword={form.currentPassword}
                 newPassword={form.newPassword}
                 confirmNewPassword={form.confirmNewPassword}

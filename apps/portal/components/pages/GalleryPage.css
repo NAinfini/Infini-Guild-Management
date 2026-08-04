@@ -214,9 +214,18 @@
   overflow: hidden;
 }
 
+/*
+ * 媒体区自己已经是视口高度减掉上下留白之后的那一块（.gallery-lb__media 的
+ * flex:1 + min-height:0），所以图和视频只要跟着它就行。
+ *
+ * 原先它们各写一个 calc(100vh - 120px) / calc(100vh - 140px)：那 120 和 140 是把
+ * 媒体区 60px 上内边距和底部信息条的高度目测加出来的。信息条的说明文字一换行就多
+ * 一行，图片随即被媒体区的 overflow:hidden 裁掉底下一条——而且是无声地裁，看起来
+ * 像图片没加载完。这里改成 block-size: 100%，上面多厚不用再猜。
+ */
 .gallery-lb__img-wrap {
   max-width: 100%;
-  max-height: 100%;
+  block-size: 100%;
   overflow: auto;
   display: flex;
   align-items: center;
@@ -226,7 +235,7 @@
 
 .gallery-lb__img {
   max-width: 100%;
-  max-height: calc(100vh - 120px);
+  max-block-size: 100%;
   object-fit: contain;
   transform-origin: center center;
   transition: transform 120ms ease;
@@ -237,7 +246,7 @@
 .gallery-lb__video {
   width: 100%;
   max-width: 960px;
-  height: calc(100vh - 140px);
+  block-size: 100%;
   border: none;
   border-radius: var(--radius-surface);
 }

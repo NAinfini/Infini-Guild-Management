@@ -50,6 +50,8 @@ const STATUS_REQUIRED_TABLES = [
   "sessions",
   "login_failures",
   "member_profiles",
+  "member_profile_classes",
+  "member_profile_images",
   "roles",
   "role_permissions",
   "site_config",
@@ -57,8 +59,10 @@ const STATUS_REQUIRED_TABLES = [
   "class_tags",
   "class_tag_members",
   "events",
+  "event_attachments",
   "event_class_quotas",
   "recurring_templates",
+  "recurring_template_attachments",
   "recurring_template_class_quotas",
   "media_references",
   "media_reference_backfills",
@@ -465,7 +469,7 @@ export class AdminService {
       await this.deps.rawDb.batch([
         this.deps.rawDb.prepare("INSERT INTO users (id, username, role, is_active, deleted_at, created_at, updated_at) VALUES (?1, ?2, 'member', 1, NULL, ?3, ?3)").bind(userId, username, nowIso),
         this.deps.rawDb.prepare("INSERT INTO user_auth_password (user_id, password_hash, salt) VALUES (?1, ?2, ?3)").bind(userId, passwordHash.passwordHash, passwordHash.salt),
-        this.deps.rawDb.prepare("INSERT INTO member_profiles (id, user_id, power, classes, images, video_urls) VALUES (?1, ?2, 0, '[]', '[]', '[]')").bind(profileId, userId),
+        this.deps.rawDb.prepare("INSERT INTO member_profiles (id, user_id, power, video_urls) VALUES (?1, ?2, 0, '[]')").bind(profileId, userId),
       ]);
     } catch (error) {
       if (error instanceof Error && error.message.includes("UNIQUE constraint failed: users.username")) return err("CONFLICT", "Username already taken");

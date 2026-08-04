@@ -1,10 +1,12 @@
 import {
   createWarHistorySchema,
+  DEFAULT_GAME_RULES,
   saveTeamsPayloadSchema,
   updateWarHistorySchema,
   warHistorySchema,
   warTeamMemberSchema,
   warTeamSchema,
+  type GameRules,
 } from "@guild/shared";
 import type { PushEntityType, PushHint } from "@guild/shared/constants/push-hints";
 import { asc, desc, eq, inArray } from "drizzle-orm";
@@ -80,6 +82,7 @@ export type GuildWarServiceDeps = {
   writeAuditLog: (input: AuditLogInput) => Promise<void>;
   publishEntityChanged: (input: { entityType: PushEntityType; entityId: string; hint: PushHint }) => Promise<void>;
   rawDb: D1Database;
+  getGameRules?: () => Promise<GameRules>;
 };
 
 // --- Pure helpers ---
@@ -152,6 +155,10 @@ export class GuildWarCoreService {
   constructor(db: DrizzleDb, deps: GuildWarServiceDeps) {
     this.db = db;
     this.deps = deps;
+  }
+
+  protected getGameRules(): Promise<GameRules> {
+    return this.deps.getGameRules?.() ?? Promise.resolve(DEFAULT_GAME_RULES);
   }
 
   // --- DB query methods ---

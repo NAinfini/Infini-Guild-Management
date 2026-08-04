@@ -6,6 +6,14 @@ import {
 } from "./guild-war";
 
 describe("guild war decimal stats", () => {
+  it.each(["win", "loss", "draw"])("accepts the fixed %s result", (result) => {
+    expect(createWarHistorySchema.parse({ war_name: "Result test", result }).result).toBe(result);
+  });
+
+  it.each(["victory", "Victory-now"])("rejects unsupported result %s", (result) => {
+    expect(createWarHistorySchema.safeParse({ war_name: "Result test", result }).success).toBe(false);
+  });
+
   it("accepts decimal metrics in every write contract", () => {
     expect(
       createWarHistorySchema.parse({

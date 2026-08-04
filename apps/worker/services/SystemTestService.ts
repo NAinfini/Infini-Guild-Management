@@ -5,7 +5,7 @@ export const SYSTEM_TEST_ARTIFACT_TYPES = [
   "gallery_item", "war_history", "wiki_category", "wiki_article", "badge",
   "storage", "storage_category", "storage_item", "storage_item_image", "audit_log", "error_log", "r2_key",
   // member_absences 会随 users 级联删除，但请假也可以挂在既有成员身上；
-  // class_catalog 没有任何入向外键，删不掉就是永久残留。两者都必须显式登记。
+  // class_catalog 由 member_profile_classes 引用；系统测试仍需显式登记并按依赖顺序清理。
   "class_catalog", "member_absence",
 ] as const;
 export type SystemTestArtifactType = (typeof SYSTEM_TEST_ARTIFACT_TYPES)[number];
@@ -319,6 +319,7 @@ export class SystemTestService {
 
   private async deleteR2Keys(keys: readonly string[]): Promise<void> {
     for (const key of keys) {
+      assertDeletableContentMediaKey(key);
       await this.env.DB.prepare("DELETE FROM media_upload_leases WHERE media_key = ?").bind(key).run();
       await this.env.DB.prepare("DELETE FROM media_references WHERE media_key = ?").bind(key).run();
       await this.env.MEDIA.delete(key);
@@ -364,7 +365,7 @@ export class SystemTestService {
 
     await this.deleteRegisteredUsers(runId, keys("user"));
     await deleteById("roles", keys("role"));
-    // class_catalog 没有入向外键，member_profile_classes 存的是纯文本类名。
+    // 测试职业只会在已登记测试用户清理后删除，避免 member_profile_classes 外键冲突。
     await deleteById("class_catalog", keys("class_catalog"));
 
     await this.deleteR2Keys(keys("r2_key"));
@@ -397,3 +398,4 @@ export function getSystemTestRunId(c: { get(key: string): unknown }): string | n
   const value = c.get("systemTestRunId");
   return typeof value === "string" ? value : null;
 }
+import { assertDeletableContentMediaKey } from "./media-keys";

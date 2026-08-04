@@ -45,9 +45,15 @@
   opacity: 0.4;
 }
 
+/*
+ * 表单列封顶 40rem。原先是 minmax(0, 1fr)，右栏有多宽它就有多宽——2000px 的屏上
+ * 约 1370px，于是一个放「鸣金虹」三个字的输入框横跨大半屏，标签和光标离得老远；
+ * 两个选项的「图标来源」开关铺满同样的宽度；九列图标格每格被撑到 140px 去装一个
+ * 20px 的图标。这三样看着是三个毛病，其实是同一条：单行控件不该跟着容器无限长。
+ */
 .admin-classes__editor {
   display: grid;
-  grid-template-columns: 180px minmax(0, 1fr);
+  grid-template-columns: 180px minmax(0, 40rem);
   gap: var(--space-xl);
 }
 
@@ -83,33 +89,20 @@
   object-fit: contain;
 }
 
-.admin-classes__form-row {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(120px, 0.45fr);
-  gap: var(--space-sm);
+/* 颜色框自己封一次顶。它原先跟「显示顺序」并排占一格，那个数字框删掉之后如果不管，
+   一个装着 #61B8AA 七个字符的输入框会撑满整条 40rem。 */
+.admin-classes__color-field {
+  max-inline-size: 20rem;
 }
 
-/* 标签后面挂一个问号，说明收进 Tooltip。原先那三行常驻说明比输入框本身还高。 */
-.admin-classes__label-hint {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--space-xs);
-}
-
-.admin-classes__hint-dot {
-  display: inline-flex;
-  color: var(--text-muted);
-  cursor: help;
-}
-
-.admin-classes__hint-dot:hover,
-.admin-classes__hint-dot:focus-visible {
-  color: var(--text-primary);
-}
-
+/*
+ * 格子按固定尺寸铺，不按固定列数分。写死 9 列时格子宽度 = 容器宽 / 9，容器一宽
+ * 格子就跟着变成一个个大方块，里面还是那个 20px 的图标，空得离谱。现在格子钉在
+ * 44–56px（44 是触控靶面下限），列数由容器算出来。
+ */
 .admin-classes__icon-grid {
   display: grid;
-  grid-template-columns: repeat(9, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(44px, 56px));
   gap: 6px;
 }
 
@@ -144,6 +137,13 @@
   box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--brand-fill) 32%, transparent);
 }
 
+/* 上传进度条挪进了常驻页脚，跟提交按钮同一行，所以要给它一个不抢位置的宽度。 */
+.admin-classes__save-progress {
+  flex: 1 1 auto;
+  align-self: center;
+  max-inline-size: 220px;
+}
+
 .admin-classes__upload-box {
   padding: var(--space-md);
   border: 1px dashed var(--border-strong);
@@ -174,13 +174,7 @@
     margin: 0;
   }
 
-  .admin-classes__form-row {
-    grid-template-columns: 1fr;
-  }
-
-  .admin-classes__icon-grid {
-    grid-template-columns: repeat(6, minmax(0, 1fr));
-  }
+  /* 图标格这里不用再压列数：auto-fill 本来就按容器宽算得出来。 */
 }
 
 @media (prefers-reduced-motion: reduce) {

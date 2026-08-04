@@ -238,9 +238,10 @@ export function WikiCategoryEditorCard({
   };
 
   return (
-    <Paper withBorder radius="md" p="var(--card-padding)">
-      <div>
-        <Stack gap={12}>
+    <Paper withBorder radius="md" p="var(--card-padding)" className="wiki-category-editor-card">
+      {/* 保存/放弃和「新建分类」钉在卡头，只有分类树本身内滚——分类多起来时这两组控件
+          不能跟着滚走。 */}
+      <div className="wiki-card-body">
           <Group justify="space-between" align="center" wrap="wrap">
             <Text fw={700}>{t("categoryEditor.title")}</Text>
             <Group gap={8}>
@@ -291,7 +292,7 @@ export function WikiCategoryEditorCard({
             </Button>
           </Group>
 
-          <Stack gap={8}>
+          <Stack gap={8} className="wiki-card-scroll">
             <Group justify="space-between" align="center" wrap="wrap">
               <Text fw={600} size="sm">
                 {t("categoryEditor.listTitle")}
@@ -352,7 +353,6 @@ export function WikiCategoryEditorCard({
               </DndContext>
             )}
           </Stack>
-        </Stack>
       </div>
     </Paper>
   );

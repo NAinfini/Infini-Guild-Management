@@ -5,13 +5,17 @@ import {
   announcements,
   auditLog,
   errorLog,
+  eventAttachments,
   eventParticipants,
   eventPollVotes,
   eventRaffleWinners,
   events,
   inviteLinks,
   memberAbsences,
+  memberProfileClasses,
+  memberProfileImages,
   memberProfiles,
+  recurringTemplateAttachments,
   recurringTemplates,
   roles,
   storageTransactions,
@@ -56,9 +60,31 @@ describe("core schema Drizzle/baseline parity", () => {
     }
   });
 
-  it("keeps legacy recurring timezone_offset_minutes in both schema sources", () => {
-    expect(getTableConfig(recurringTemplates).columns.map((column) => column.name)).toContain("timezone_offset_minutes");
-    expect(tableBlock("recurring_templates")).toContain("timezone_offset_minutes INTEGER NOT NULL DEFAULT 0");
+  it("removes legacy JSON/list columns and keeps ordered relations in both schema sources", () => {
+    expect(getTableConfig(memberProfiles).columns.map((column) => column.name)).not.toEqual(
+      expect.arrayContaining(["classes", "images", "vacation_start", "vacation_end"]),
+    );
+    expect(getTableConfig(events).columns.map((column) => column.name)).not.toContain("attachments");
+    expect(getTableConfig(recurringTemplates).columns.map((column) => column.name)).not.toEqual(
+      expect.arrayContaining(["attachments", "timezone_offset_minutes"]),
+    );
+    expect(tableBlock("member_profiles")).not.toMatch(/\b(classes|images|vacation_start|vacation_end)\b/);
+    expect(tableBlock("events")).not.toMatch(/\battachments\b/);
+    expect(tableBlock("recurring_templates")).not.toMatch(/\b(attachments|timezone_offset_minutes)\b/);
+
+    const relations: Array<readonly [SQLiteTable, string, string]> = [
+      [memberProfileClasses, "ux_member_profile_classes_user_sort", "idx_member_profile_classes_class_user"],
+      [memberProfileImages, "ux_member_profile_images_user_sort", "idx_member_profile_images_media_user"],
+      [eventAttachments, "ux_event_attachments_event_sort", "idx_event_attachments_media_event"],
+      [recurringTemplateAttachments, "ux_recurring_template_attachments_template_sort", "idx_recurring_template_attachments_media_template"],
+    ];
+    for (const [table, uniqueName, lookupName] of relations) {
+      const indexes = getTableConfig(table).indexes;
+      expect(indexes.find((index) => index.config.name === uniqueName)?.config.unique).toBe(true);
+      expect(indexes.map((index) => index.config.name)).toContain(lookupName);
+      expect(schemaSql).toContain(`CREATE UNIQUE INDEX IF NOT EXISTS ${uniqueName}`);
+      expect(schemaSql).toContain(`CREATE INDEX IF NOT EXISTS ${lookupName}`);
+    }
   });
 
   it("keeps the missing relationship foreign keys in both schema sources", () => {

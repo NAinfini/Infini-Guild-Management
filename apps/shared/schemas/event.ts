@@ -16,6 +16,7 @@ const recurrenceRuleSchema = z.object({
 });
 const eventAttachmentsSchema = z.array(z.string().min(1)).max(L.eventAttachments.max);
 const pollResultsVisibilitySchema = z.enum(POLL_RESULTS_VISIBILITIES);
+const eventTypeIdSchema = z.enum(EVENT_TYPES);
 
 /*
  * 每一格配额指向一个职业标签，说的是「这一格要 N 个人，标签里的职业都算数」。只要
@@ -102,7 +103,7 @@ export const eventRaffleWinnerSchema = z.object({
 
 export const eventSchema = z.object({
   id: z.string(),
-  type: z.enum(EVENT_TYPES),
+  type: eventTypeIdSchema,
   title: z.string(),
   description: z.string().nullable(),
   start_at: z.string(),
@@ -128,7 +129,7 @@ export const eventSchema = z.object({
 });
 
 const eventMutationSchema = z.object({
-  type: z.enum(EVENT_TYPES),
+  type: eventTypeIdSchema,
   title: z.string().min(L.eventTitle.min).max(L.eventTitle.max),
   description: z.string().max(L.eventDescription.max).optional(),
   start_at: z.string().datetime(),
@@ -235,7 +236,7 @@ export const eventParticipantsBatchSchema = z.object({
 
 export const recurringTemplateSchema = z.object({
   id: z.string(),
-  type: z.enum(EVENT_TYPES),
+  type: eventTypeIdSchema,
   title: z.string(),
   description: z.string().nullable(),
   start_time: z.string(),
@@ -255,7 +256,7 @@ export const recurringTemplateSchema = z.object({
 });
 
 const templateMutationSchema = z.object({
-  type: z.enum(EVENT_TYPES),
+  type: eventTypeIdSchema,
   title: z.string().min(L.eventTitle.min).max(L.eventTitle.max),
   description: z.string().max(L.eventDescription.max).optional(),
   // UTC wall-clock time "HH:mm" — the portal converts local input to UTC

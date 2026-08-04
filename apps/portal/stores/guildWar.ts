@@ -1,5 +1,5 @@
 import { create } from "zustand";
-import { activeGame } from "@guild/shared/games";
+import { DEFAULT_GAME_RULES, DEFAULT_SITE_ANALYTICS_SETTINGS } from "@guild/shared";
 import type {
   AnalyticsAggregation,
   AnalyticsDatePreset,
@@ -13,7 +13,9 @@ type ModifierWeights = Record<string, number>;
 
 export type { AnalyticsDatePreset, HistoryViewMode } from "../types/guild-war";
 
-const DEFAULT_GUILD_WAR_MODIFIER_WEIGHTS: ModifierWeights = { ...activeGame.war.modifierWeights };
+const DEFAULT_GUILD_WAR_MODIFIER_WEIGHTS: ModifierWeights = {
+  ...DEFAULT_SITE_ANALYTICS_SETTINGS.modifier_weights,
+};
 
 type GuildWarStoreState = {
   selectedEventId: string | undefined;
@@ -71,7 +73,9 @@ type GuildWarStoreState = {
   resetSessionState: () => void;
 };
 
-const defaultMetric = activeGame.war.memberStats[3]?.key ?? "damage";
+const defaultMetric = DEFAULT_GAME_RULES.guild_war.default_member_stat_key;
+const defaultTeamStat = DEFAULT_GAME_RULES.guild_war.team_stats.find((definition) => definition.dashboard === "primary")?.key
+  ?? DEFAULT_GAME_RULES.guild_war.team_stats[0]!.key;
 
 export const useGuildWarStore = create<GuildWarStoreState>((set) => ({
   selectedEventId: undefined,
@@ -82,7 +86,7 @@ export const useGuildWarStore = create<GuildWarStoreState>((set) => ({
   analyticsDatePreset: "10",
   analyticsSelectedWarIds: [],
   analyticsSelectedUsers: [],
-  analyticsWarStat: activeGame.war.teamObjectives[0]?.key ?? "kills",
+  analyticsWarStat: defaultTeamStat,
   analyticsAggregation: "total",
   analyticsMinParticipation: 1,
   analyticsTopN: 10,
@@ -135,7 +139,7 @@ export const useGuildWarStore = create<GuildWarStoreState>((set) => ({
     analyticsDatePreset: "10",
     analyticsSelectedWarIds: [],
     analyticsSelectedUsers: [],
-    analyticsWarStat: activeGame.war.teamObjectives[0]?.key ?? "kills",
+    analyticsWarStat: defaultTeamStat,
     analyticsAggregation: "total",
     analyticsMinParticipation: 1,
     analyticsTopN: 10,

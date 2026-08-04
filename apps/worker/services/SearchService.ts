@@ -66,7 +66,6 @@ export class SearchService {
           id: users.id,
           username: users.username,
           role: users.role,
-          classes: memberProfiles.classes,
           power: memberProfiles.power,
         })
         .from(users)

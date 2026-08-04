@@ -1,21 +1,7 @@
-import {
-  DEFAULT_CLASS_CATALOG,
-  type ClassCatalogItem,
-  type ClassVectorIconId,
-} from "@guild/shared";
+import type { ClassCatalogItem, ClassVectorIconId } from "@guild/shared";
 import { create } from "zustand";
 
 const LEGACY_COLOR = "#8C94A3";
-
-function defaultItems(): ClassCatalogItem[] {
-  return DEFAULT_CLASS_CATALOG.map((item) => ({
-    ...item,
-    icon_type: "vector",
-    icon_key: null,
-    created_at: "",
-    updated_at: "",
-  }));
-}
 
 type ClassCatalogState = {
   items: ClassCatalogItem[];
@@ -23,7 +9,7 @@ type ClassCatalogState = {
 };
 
 export const useClassCatalogStore = create<ClassCatalogState>((set) => ({
-  items: defaultItems(),
+  items: [],
   setItems: (items) => set({ items: [...items].sort(compareClassCatalogItems) }),
 }));
 

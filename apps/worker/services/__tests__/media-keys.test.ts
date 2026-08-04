@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
   buildAnnouncementImageKey,
   buildClassIconKey,
@@ -10,8 +10,10 @@ import {
   buildSiteLogoKey,
   buildStorageItemImageKey,
   buildWikiImageKey,
+  assertDeletableContentMediaKey,
   parseMediaKey,
 } from "../media-keys";
+import { protectContentMediaBucket } from "../media";
 
 const OBJECT_ID = "018f47ac-18c2-7ddf-9f0b-1a2b3c4d5e6f";
 
@@ -42,5 +44,29 @@ describe("canonical media keys", () => {
     expect(parseMediaKey("events/event-1/images/folder/a.webp")).toBeNull();
     expect(parseMediaKey("events/event-1/images/original file.png")).toBeNull();
     expect(parseMediaKey(`gallery/users/../items/item-1/images/${OBJECT_ID}.webp`)).toBeNull();
+  });
+
+  it("allows only canonical content keys through the delete gate", () => {
+    expect(assertDeletableContentMediaKey(buildEventImageKey("event-1", "image/webp", OBJECT_ID))).toMatchObject({
+      kind: "event_image",
+      entityId: "event-1",
+    });
+    expect(() => assertDeletableContentMediaKey("audit-archive/2026/manifest.json")).toThrow(/audit archive/);
+    expect(() => assertDeletableContentMediaKey("misc/free-form.json")).toThrow(/unrecognized/);
+  });
+
+  it("blocks archive and unknown keys before content R2 put or delete", async () => {
+    const put = vi.fn().mockResolvedValue({});
+    const remove = vi.fn().mockResolvedValue(undefined);
+    const bucket = protectContentMediaBucket({ put, delete: remove } as unknown as R2Bucket);
+    const canonical = buildEventImageKey("event-1", "image/webp", OBJECT_ID);
+
+    await bucket.put(canonical, new Uint8Array([1]));
+    expect(put).toHaveBeenCalledWith(canonical, expect.any(Uint8Array));
+
+    expect(() => bucket.put("audit-archive/2026/manifest.json", new Uint8Array([1]))).toThrow(/audit archive/);
+    expect(() => bucket.put("misc/free-form.json", new Uint8Array([1]))).toThrow(/unrecognized/);
+    await expect(bucket.delete("audit-archive/2026/manifest.json")).rejects.toThrow(/audit archive/);
+    expect(remove).not.toHaveBeenCalled();
   });
 });

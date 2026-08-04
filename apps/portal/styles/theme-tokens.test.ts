@@ -61,7 +61,8 @@ export const MIGRATED: string[] = [
      卡片走 --surface-base / --border-subtle / --radius-surface，
      把手走 --text-secondary / --brand-text / --transition-normal。 */
   "apps/portal/components/feature/admin/AdminStatusTab.css",
-  /* 职业配额条由绿色/红色表达够员与缺员，无配额报名进度走信息色，全部使用语义 token。 */
+  /* 职业配额条只有一个填充色相（活动域色），超员时转危险色，够员靠计数变成功色；
+     全部使用语义 token。 */
   "apps/portal/components/feature/events/EventQuotaBar.css",
   "apps/portal/components/feature/events/ClassQuotaEditor.css",
   "apps/portal/components/feature/events/EventFormModal.css",
@@ -70,6 +71,10 @@ export const MIGRATED: string[] = [
   /* 后台职业标签页的编辑器内部。选中态与 AdminClassesSection.css 的图标格同一套
      --brand-fill / --surface-raised 写法。 */
   "apps/portal/components/feature/admin/AdminClassTagsSection.css",
+  /* 勾选清单的共用外观。行与分隔线是从 AdminBadgesSection.css 和
+     AdminClassTagsSection.css 搬过来的，用的还是那两处的 --surface-* / --border-*；
+     选中态那条色条走 --brand-fill。 */
+  "apps/portal/components/shared/PickList.css",
 ];
 
 /** 唯一允许出现 hex 的文件。 */
@@ -519,6 +524,22 @@ describe("control sizing scale (Task 1)", () => {
     const coarseBlock = scale.match(/@media \(pointer: coarse\)\s*\{[\s\S]*?\n\}/);
     expect(coarseBlock).not.toBeNull();
     expect(coarseBlock?.[0]).toMatch(/--control-height-regular:\s*44px\b/);
+  });
+
+  /*
+   * 上面那条只问主指针。带触摸的 Windows 笔记本把触摸报成主指针，插着鼠标也一样，
+   * 于是一台鼠标设备被整档判成触屏：输入框、按钮、页签各高 8px，累积起来把管理
+   * 后台和公会战历史的工作区顶出视口，多出一条整页滚动条。细指针复位块负责把这
+   * 类设备拉回 36px，它必须排在粗指针块之后（同为 :root，靠源序决胜），删掉或
+   * 挪到前面都不会有别的用例报警。
+   */
+  it("falls back to the compact 36px control on any device that has a mouse", () => {
+    const coarseAt = scale.search(/@media \(pointer: coarse\)/);
+    const fineAt = scale.search(/@media \(any-pointer: fine\)/);
+    expect(fineAt).toBeGreaterThan(-1);
+    expect(fineAt).toBeGreaterThan(coarseAt);
+    expect(scale.slice(fineAt).match(/@media \(any-pointer: fine\)\s*\{[\s\S]*?\n\}/)?.[0])
+      .toMatch(/--control-height-regular:\s*36px\b/);
   });
 
   it("bridges Mantine Button, Input, ActionIcon, and Tabs onto the scale", () => {

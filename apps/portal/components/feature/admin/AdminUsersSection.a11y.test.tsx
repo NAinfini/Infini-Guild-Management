@@ -106,7 +106,6 @@ function renderUsers(
     isAdmin: true,
     onOpenCreateMember: vi.fn(),
     selectedUserIds: [],
-    batchSelectionLimit: 20,
     onBatchRole: vi.fn(),
     onBatchActivate: vi.fn(),
     onBatchDeactivate: vi.fn(),
@@ -121,8 +120,6 @@ function renderUsers(
     batchDeactivatePending: false,
     batchDeletePending: false,
     isSingleActionPending: () => false,
-    isBatchPending: false,
-    batchProgress: 0,
     userRows: [row],
     userColumns: columns,
     onOpenMemberDetail: vi.fn(),
@@ -226,5 +223,56 @@ describe("AdminUsersSection accessibility", () => {
     expect(within(bobMenu).getByRole("menuitem", { name: "member.deactivate", hidden: true })).toBeEnabled();
     expect(within(bobMenu).getByRole("menuitem", { name: "member.resetPassword", hidden: true })).toBeEnabled();
     expect(within(bobMenu).getByRole("menuitem", { name: "member.resetLoginLock", hidden: true })).toBeEnabled();
+  });
+
+  it("limits context batch actions to selected members on the current filtered page", async () => {
+    const user = userEvent.setup();
+    const onBatchDelete = vi.fn();
+    const userRows = Array.from({ length: 22 }, (_, index) => {
+      const number = index + 1;
+      return {
+        ...row,
+        user: {
+          ...row.user,
+          id: `user-${number}`,
+          username: `User ${number}`,
+          is_active: number !== 3,
+        },
+        profile: {
+          ...row.profile,
+          id: `profile-${number}`,
+          user_id: `user-${number}`,
+        },
+      } as AdminUserRow;
+    });
+
+    renderUsers({
+      userRows,
+      selectedUserIds: ["user-1", "user-2", "user-3", "user-22"],
+      onBatchDelete,
+    });
+
+    await user.click(screen.getByRole("radio", { name: "member.status.active" }));
+    await waitFor(() => {
+      expect(screen.queryByRole("row", { name: "member.aria.row User 3" })).not.toBeInTheDocument();
+      expect(screen.queryByRole("row", { name: "member.aria.row User 22" })).not.toBeInTheDocument();
+    });
+
+    fireEvent.contextMenu(screen.getByRole("row", { name: "member.aria.row User 1" }), {
+      clientX: 10,
+      clientY: 10,
+    });
+
+    let menu: HTMLElement | null = null;
+    await waitFor(() => {
+      menu = document.querySelector("[data-admin-user-action-menu]");
+      expect(menu).not.toBeNull();
+    });
+    fireEvent.click(within(menu as unknown as HTMLElement).getByRole("menuitem", {
+      name: "member.context.batchDelete",
+      hidden: true,
+    }));
+
+    expect(onBatchDelete).toHaveBeenCalledWith(["user-1", "user-2"]);
   });
 });

@@ -1,11 +1,21 @@
-import { recurringTemplateSchema } from "@guild/shared";
+import {
+  DEFAULT_GAME_RULES,
+  findEventTypeDefinition,
+  recurringTemplateSchema,
+  type GameRules,
+} from "@guild/shared";
 import type { WriteAuditLogInput as AuditLogInput } from "../audit";
 import { asc, eq } from "drizzle-orm";
 import { nanoid } from "nanoid";
 import { recurringTemplates } from "../../db/schema";
 import { err, ok, type ServiceErr, type ServiceResult } from "../result";
-import { diffRecurrenceRule, parseAttachments, parseRecurrenceRule, type DatabaseLike, type RawDbLike } from "./EventCrudService";
-import { buildReplaceMediaRefsStatements, extractAttachmentKeys } from "../media-references";
+import { diffRecurrenceRule, parseRecurrenceRule, type DatabaseLike, type RawDbLike } from "./EventCrudService";
+import { buildReplaceMediaRefsStatements } from "../media-references";
+import { parseMediaKey } from "../media-keys";
+import {
+  buildReplaceRecurringTemplateAttachmentStatements,
+  loadRecurringTemplateAttachments,
+} from "../ordered-relations";
 import {
   buildDeleteClassQuotaStatements,
   buildReplaceClassQuotaStatements,
@@ -29,7 +39,7 @@ export type TemplateRow = {
   recurrenceRule: string;
   visibilityOffsetMinutes: number;
   autoArchive: boolean;
-  attachments: string;
+  attachments: string[];
   paused: boolean;
   createdBy: string;
   lastGeneratedDate: string | null;
@@ -75,6 +85,7 @@ export type TemplateServiceDeps = {
   systemTestRunId?: string | null;
   now?: () => string;
   createId?: () => string;
+  getGameRules?: () => Promise<GameRules>;
 };
 
 const templateSelectFields = {
@@ -88,7 +99,6 @@ const templateSelectFields = {
   recurrenceRule: recurringTemplates.recurrenceRule,
   visibilityOffsetMinutes: recurringTemplates.visibilityOffsetMinutes,
   autoArchive: recurringTemplates.autoArchive,
-  attachments: recurringTemplates.attachments,
   paused: recurringTemplates.paused,
   createdBy: recurringTemplates.createdBy,
   lastGeneratedDate: recurringTemplates.lastGeneratedDate,
@@ -109,7 +119,7 @@ export function toTemplatePayload(row: TemplateRow) {
     recurrence_rule: parseRecurrenceRule(row.recurrenceRule),
     visibility_offset_minutes: row.visibilityOffsetMinutes,
     auto_archive: row.autoArchive,
-    attachments: parseAttachments(row.attachments),
+    attachments: row.attachments,
     class_quotas: row.classQuotas ?? [],
     paused: row.paused,
     created_by: row.createdBy,
@@ -132,31 +142,42 @@ export class EventTemplateService {
   ) {}
 
   async getTemplateById(templateId: string): Promise<TemplateRow | null> {
-    return ((await this.db.select(templateSelectFields).from(recurringTemplates).where(eq(recurringTemplates.id, templateId)).limit(1)) as TemplateRow[])[0] ?? null;
+    const row = ((await this.db.select(templateSelectFields).from(recurringTemplates).where(eq(recurringTemplates.id, templateId)).limit(1)) as Omit<TemplateRow, "attachments">[])[0];
+    if (!row) return null;
+    const attachments = await loadRecurringTemplateAttachments(this.rawDb as unknown as D1Database, [templateId]);
+    return { ...row, attachments: attachments.get(templateId) ?? [] };
   }
 
   async createTemplate(actorId: string, data: CreateTemplateInput): Promise<ServiceResult<TemplateRow>> {
+    const rules = await this.getGameRules();
+    const typeDefinition = findEventTypeDefinition(rules, data.type);
+    if (!typeDefinition || !typeDefinition.enabled) {
+      return err("VALIDATION_ERROR", `Unknown or disabled event type: ${data.type}`);
+    }
     const quotas = data.class_quotas ?? [];
-    const quotaErr = await this.validateClassQuotas(data.type, quotas);
+    const quotaErr = await this.validateClassQuotas(data.type, quotas, rules);
     if (quotaErr) return quotaErr;
 
     const templateId = this.createId();
+    const attachmentErr = this.validateAttachmentKeys(templateId, data.attachments ?? []);
+    if (attachmentErr) return attachmentErr;
     const recurrenceRuleJson = JSON.stringify(data.recurrence_rule);
-    const attachments = JSON.stringify(data.attachments ?? []);
+    const attachments = data.attachments ?? [];
     const now = this.now();
     await this.rawDb.batch([
       this.rawDb.prepare(`
         INSERT INTO recurring_templates
           (id, type, title, description, start_time, duration_minutes, capacity, recurrence_rule,
-           visibility_offset_minutes, auto_archive, attachments, paused, created_by,
+           visibility_offset_minutes, auto_archive, paused, created_by,
            last_generated_date, generation_count, created_at, updated_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, NULL, 0, ?, ?)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, NULL, 0, ?, ?)
       `).bind(
         templateId, data.type, data.title, data.description ?? null, data.start_time,
         data.duration_minutes ?? null, data.capacity ?? null, recurrenceRuleJson,
         data.visibility_offset_minutes ?? 0, data.auto_archive ?? false,
-        attachments, actorId, now, now,
+        actorId, now, now,
       ),
+      ...buildReplaceRecurringTemplateAttachmentStatements(this.rawDb as unknown as D1Database, templateId, attachments),
       ...(quotas.length > 0
         ? buildReplaceClassQuotaStatements(this.rawDb, TEMPLATE_CLASS_QUOTA_TABLE, templateId, quotas, () => this.createId())
         : []),
@@ -164,7 +185,7 @@ export class EventTemplateService {
         this.rawDb as unknown as D1Database,
         "recurring_template",
         templateId,
-        extractAttachmentKeys(attachments),
+        attachments,
       ),
     ]);
 
@@ -188,9 +209,16 @@ export class EventTemplateService {
   }
 
   async updateTemplate(actorId: string, templateId: string, existing: TemplateRow, data: UpdateTemplateInput): Promise<ServiceResult<TemplateRow>> {
+    const rules = await this.getGameRules();
     const effectiveType = data.type ?? existing.type;
-    const quotaErr = await this.validateClassQuotas(effectiveType, data.class_quotas ?? []);
+    const typeDefinition = findEventTypeDefinition(rules, effectiveType);
+    if (!typeDefinition || !typeDefinition.enabled) {
+      return err("VALIDATION_ERROR", `Unknown or disabled event type: ${effectiveType}`);
+    }
+    const quotaErr = await this.validateClassQuotas(effectiveType, data.class_quotas ?? [], rules);
     if (quotaErr) return quotaErr;
+    const attachmentErr = this.validateAttachmentKeys(templateId, data.attachments ?? existing.attachments);
+    if (attachmentErr) return attachmentErr;
 
     const patch: Record<string, unknown> = { updatedAt: this.now() };
     if (data.type !== undefined) patch.type = data.type;
@@ -208,9 +236,6 @@ export class EventTemplateService {
     if (data.auto_archive !== undefined) {
       patch.autoArchive = data.auto_archive;
     }
-    if (data.attachments !== undefined) {
-      patch.attachments = JSON.stringify(data.attachments);
-    }
 
     const scheduleChanged =
       (data.start_time !== undefined && data.start_time !== existing.startTime) ||
@@ -224,7 +249,7 @@ export class EventTemplateService {
      * 跟活动侧同一套规则：改成投票／抽奖就清空配额，否则按请求整组替换。旧值只在
      * 真要动配额时才读，用来写审计日志的 from。
      */
-    const quotaWrite = !typeSupportsClassQuotas(effectiveType)
+    const quotaWrite = !typeSupportsClassQuotas(effectiveType, rules)
       ? "clear"
       : data.class_quotas !== undefined
         ? "replace"
@@ -249,10 +274,9 @@ export class EventTemplateService {
     if (patch.recurrenceRule !== undefined) add("recurrence_rule", patch.recurrenceRule);
     if (patch.visibilityOffsetMinutes !== undefined) add("visibility_offset_minutes", patch.visibilityOffsetMinutes);
     if (patch.autoArchive !== undefined) add("auto_archive", patch.autoArchive);
-    if (patch.attachments !== undefined) add("attachments", patch.attachments);
     if (patch.lastGeneratedDate !== undefined) add("last_generated_date", patch.lastGeneratedDate);
     if (patch.generationCount !== undefined) add("generation_count", patch.generationCount);
-    const effectiveAttachments = typeof patch.attachments === "string" ? patch.attachments : existing.attachments;
+    const effectiveAttachments = data.attachments ?? existing.attachments;
     await this.rawDb.batch([
       this.rawDb.prepare(`UPDATE recurring_templates SET ${assignments.join(", ")} WHERE id = ?`).bind(...bindings, templateId),
       ...(quotaWrite === "clear"
@@ -260,17 +284,20 @@ export class EventTemplateService {
         : quotaWrite === "replace"
           ? buildReplaceClassQuotaStatements(this.rawDb, TEMPLATE_CLASS_QUOTA_TABLE, templateId, data.class_quotas!, () => this.createId())
           : []),
+      ...(data.attachments === undefined
+        ? []
+        : buildReplaceRecurringTemplateAttachmentStatements(this.rawDb as unknown as D1Database, templateId, effectiveAttachments)),
       ...buildReplaceMediaRefsStatements(
         this.rawDb as unknown as D1Database,
         "recurring_template",
         templateId,
-        extractAttachmentKeys(effectiveAttachments),
+        effectiveAttachments,
       ),
     ]);
 
     const updated = await this.deps.getTemplateById(templateId);
     if (!updated) throw new Error("Failed to load updated template");
-    updated.classQuotas = typeSupportsClassQuotas(updated.type)
+    updated.classQuotas = typeSupportsClassQuotas(updated.type, rules)
       ? await loadClassQuotasFor(this.rawDb, TEMPLATE_CLASS_QUOTA_TABLE, templateId)
       : [];
 
@@ -355,18 +382,23 @@ export class EventTemplateService {
   }
 
   async listTemplates() {
+    const rules = await this.getGameRules();
     const rows = (await this.db
       .select(templateSelectFields)
       .from(recurringTemplates)
       .orderBy(asc(recurringTemplates.createdAt), asc(recurringTemplates.id))) as TemplateRow[];
 
-    const quotaMap = await loadClassQuotas(
-      this.rawDb,
-      TEMPLATE_CLASS_QUOTA_TABLE,
-      rows.filter((row) => typeSupportsClassQuotas(row.type)).map((row) => row.id),
-    );
+    const [quotaMap, attachmentMap] = await Promise.all([
+      loadClassQuotas(
+        this.rawDb,
+        TEMPLATE_CLASS_QUOTA_TABLE,
+        rows.filter((row) => typeSupportsClassQuotas(row.type, rules)).map((row) => row.id),
+      ),
+      loadRecurringTemplateAttachments(this.rawDb as unknown as D1Database, rows.map((row) => row.id)),
+    ]);
     for (const row of rows) {
       row.classQuotas = quotaMap.get(row.id) ?? [];
+      row.attachments = attachmentMap.get(row.id) ?? [];
     }
 
     return rows.map(toTemplatePayload);
@@ -376,19 +408,33 @@ export class EventTemplateService {
    * 配额自身的服务层校验。zod 已经查过重复项和类型限制，这里再挡一次是因为
    * 「标签存不存在」只有拿到数据库才知道。
    */
-  private async validateClassQuotas(type: string, quotas: readonly ClassQuotaInput[]): Promise<ServiceErr | null> {
+  private async validateClassQuotas(type: string, quotas: readonly ClassQuotaInput[], rules: GameRules): Promise<ServiceErr | null> {
     if (quotas.length === 0) {
       return null;
     }
-    if (!typeSupportsClassQuotas(type)) {
+    if (!typeSupportsClassQuotas(type, rules)) {
       return err("VALIDATION_ERROR", `${type} templates do not use class quotas`);
     }
     const broken = await findBrokenQuotaReferences(this.rawDb, quotas);
     return broken ? err("VALIDATION_ERROR", broken) : null;
   }
 
+  private validateAttachmentKeys(templateId: string, keys: readonly string[]): ServiceErr | null {
+    const invalid = keys.find((key) => {
+      const parsed = parseMediaKey(key);
+      return parsed?.kind !== "event_image" || parsed.entityId !== templateId || !parsed.contentType;
+    });
+    return invalid
+      ? err("VALIDATION_ERROR", `Invalid recurring-template attachment key for ${templateId}: ${invalid}`)
+      : null;
+  }
+
   private createId(): string {
     return this.deps.createId?.() ?? nanoid();
+  }
+
+  private getGameRules(): Promise<GameRules> {
+    return this.deps.getGameRules?.() ?? Promise.resolve(DEFAULT_GAME_RULES);
   }
 
   private buildTemplateUpdateDiff(
@@ -421,7 +467,7 @@ export class EventTemplateService {
     if (data.auto_archive !== undefined && data.auto_archive !== existing.autoArchive)
       diff.auto_archive = { from: existing.autoArchive, to: data.auto_archive };
     if (data.attachments !== undefined) {
-      const existingKeys = parseAttachments(existing.attachments);
+      const existingKeys = existing.attachments;
       if (JSON.stringify(data.attachments) !== JSON.stringify(existingKeys))
         diff.attachments = { from: existingKeys.length, to: data.attachments?.length ?? 0 };
     }

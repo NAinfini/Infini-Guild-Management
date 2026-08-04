@@ -257,7 +257,7 @@ export function GuildWarActiveTab({
         event_id: eventId,
         war_info: {
           enemy_name: data.warInfo.enemyName || undefined,
-          result: data.warInfo.result as "win" | "loss" | "draw",
+          result: data.warInfo.result,
           duration_minutes: data.warInfo.durationMinutes,
           own_stats: Object.keys(ownStats).length > 0 ? ownStats : undefined,
           enemy_stats: Object.keys(enemyStats).length > 0 ? enemyStats : undefined,

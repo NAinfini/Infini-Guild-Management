@@ -41,7 +41,7 @@ describe("guild war analytics utilities", () => {
   });
 
   it("resolves labels and palette colors with fallback behavior", () => {
-    expect(getMetricLabelKey("kda")).toBe("analytics.metric.kda");
+    expect(getMetricLabelKey("kda")).toBe("KDA");
     expect(getMetricLabelKey("unknown_metric")).toBe("unknown_metric");
     expect(hashToPaletteColor("alice", ["red", "blue"])).toMatch(/red|blue/);
     expect(hashToPaletteColor("alice", [])).toBe("var(--ant-color-primary)");

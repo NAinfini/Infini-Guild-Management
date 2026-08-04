@@ -41,7 +41,7 @@ const SEEDED_SITE_ROW = {
   }),
   analyticsSettingsJson: JSON.stringify({
     reference_duration_minutes: 45,
-    modifier_weights: { kills: 0.7, basehp: 0.3 },
+    modifier_weights: { kills: 0.7, base_hp: 0.3 },
   }),
   createdAt: NOW.toISOString(),
   updatedAt: NOW.toISOString(),
@@ -174,7 +174,7 @@ describe("SiteConfigService", () => {
       ok: true,
       data: {
         reference_duration_minutes: 45,
-        modifier_weights: { kills: 0.7, basehp: 0.3 },
+        modifier_weights: { kills: 0.7, base_hp: 0.3 },
       },
     });
   });

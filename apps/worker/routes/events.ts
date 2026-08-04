@@ -24,6 +24,7 @@ import { parseMediaKey } from "../services/media-keys";
 import { buildError, collectFiles, getDb, parseBoolean, parseJsonBody, parsePage, requireSessionUser, serveR2Object } from "./_shared";
 import { commonDeps, getMediaPolicy } from "./service-factory";
 import { getSystemTestRunId } from "../services/SystemTestService";
+import { protectContentMediaBucket } from "../services/media";
 
 export const eventsRoutes = new Hono();
 
@@ -42,9 +43,16 @@ function getEventService(c: Context) {
     getTemplateById: (templateId: string) => svc.getTemplateById(templateId),
     materializeRecurringSeries: (templateId: string) => materializeRecurringSeries(c, templateId),
     writeAuditLog: deps.writeAuditLog,
+    getGameRules: deps.getGameRules,
     systemTestRunId: getSystemTestRunId(c),
   };
-  const svc: EventService = new EventService(db as never, (c.env as Bindings).DB as never, (c.env as Bindings).MEDIA as never, deps, templateDeps);
+  const svc: EventService = new EventService(
+    db as never,
+    (c.env as Bindings).DB as never,
+    protectContentMediaBucket((c.env as Bindings).MEDIA) as never,
+    deps,
+    templateDeps,
+  );
   return svc;
 }
 
@@ -114,22 +122,19 @@ eventsRoutes.get("/image", async (c) => {
   const referenced = await (c.env as Bindings).DB.prepare(`
     SELECT 1 AS present
     FROM media_references ref
-    INNER JOIN events event ON event.id = ref.entity_id
+    INNER JOIN event_attachments attachment
+      ON attachment.media_key = ref.media_key
+     AND attachment.event_id = ref.entity_id
+    INNER JOIN events event ON event.id = attachment.event_id
     WHERE ref.media_key = ?1
       AND ref.entity_type = 'event'
-      AND ref.entity_id = ?2
       AND (
-        ?3 = 1
+        ?2 = 1
         OR event.visible_at IS NULL
-        OR (julianday(event.visible_at) IS NOT NULL AND julianday(event.visible_at) <= julianday(?4))
-      )
-      AND EXISTS (
-        SELECT 1
-        FROM json_each(CASE WHEN json_valid(event.attachments) THEN event.attachments ELSE '[]' END)
-        WHERE json_each.value = ?1
+        OR (julianday(event.visible_at) IS NOT NULL AND julianday(event.visible_at) <= julianday(?3))
       )
     LIMIT 1
-  `).bind(key, parsedKey.entityId, canManage ? 1 : 0, new Date().toISOString()).first<{ present: number }>();
+  `).bind(key, canManage ? 1 : 0, new Date().toISOString()).first<{ present: number }>();
   if (!referenced) return buildError(c, "NOT_FOUND", "Event image not found");
   return serveR2Object(c, key, "Event image not found");
 });

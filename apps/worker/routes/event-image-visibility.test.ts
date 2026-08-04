@@ -39,16 +39,15 @@ function createD1Fixture() {
   return {
     prepare: vi.fn((sql: string) => {
       expect(sql).toContain("FROM media_references ref");
+      expect(sql).toContain("INNER JOIN event_attachments attachment");
       expect(sql).toContain("INNER JOIN events event");
-      expect(sql).toContain("json_each");
       return {
-        bind: (key: string, entityId: string, canManage: number, checkedAt: string) => ({
+        bind: (key: string, canManage: number, checkedAt: string) => ({
           first: async () => {
             expect(key).toBe(mediaKey);
-            expect(entityId).toBe(futureEvent.id);
             expect([0, 1]).toContain(canManage);
             expect(Number.isNaN(Date.parse(checkedAt))).toBe(false);
-            const referenced = mediaReferences.has(`${key}\u0000event\u0000${entityId}`)
+            const referenced = mediaReferences.has(`${key}\u0000event\u0000${futureEvent.id}`)
               && futureEvent.attachments.includes(key);
             const visible = canManage === 1 || futureEvent.visibleAt <= checkedAt;
             return referenced && visible ? { present: 1 } : null;

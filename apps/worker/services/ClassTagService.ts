@@ -165,6 +165,54 @@ export class ClassTagService {
     return this.get(id);
   }
 
+  /*
+   * 整表重排，和 ClassCatalogService.reorder 一模一样的形状：请求体必须列全，
+   * 服务端按下标 * 10 重写。少一个或多一个都拒绝——顺序是全序，收下半张表就得去猜
+   * 剩下那些排在哪，而猜出来的结果客户端看不见。
+   *
+   * 只管目录标签：owner_kind 不为 NULL 的是某个活动自己造的一次性标签，它们不在这个
+   * 界面上，也不该被这里的下标改动。
+   */
+  async reorder(order: string[], actorId: string): Promise<ServiceResult<ClassTag[]>> {
+    const existingIds = (
+      await this.db
+        .select({ id: classTags.id })
+        .from(classTags)
+        .where(isNull(classTags.ownerKind))
+    ).map((row) => row.id);
+
+    if (existingIds.length !== order.length) {
+      return err(
+        "CONFLICT",
+        `Class tag order must list all ${existingIds.length} tags; received ${order.length}`,
+      );
+    }
+    const submitted = new Set(order);
+    const missing = existingIds.filter((id) => !submitted.has(id));
+    if (missing.length > 0) {
+      return err("CONFLICT", `Class tag order is missing ${missing.length} tag(s)`);
+    }
+
+    const updatedAt = new Date().toISOString();
+    await this.deps.rawDb.batch([
+      /* WHERE 上再钉一次 owner_kind IS NULL：id 已经过了上面的核对，但这条 SQL
+         是直接拼在 rawDb 上的，把约束留在语句里比留在调用方安全。 */
+      ...order.map((id, index) => this.deps.rawDb.prepare(
+        "UPDATE class_tags SET sort_order = ?, updated_at = ? WHERE id = ? AND owner_kind IS NULL",
+      ).bind(index * 10, updatedAt, id)),
+      /* entityId 用 "batch"：这次改的是整张表，不是某一行。 */
+      ...this.deps.buildAuditLogStatements({
+        entityType: "class_tag",
+        action: "batch_update",
+        actorId,
+        entityId: "batch",
+        diffTitle: `${order.length} class tags reordered`,
+        detailText: JSON.stringify({ count: order.length, order }),
+      }),
+    ]);
+    return this.list();
+  }
+
   async delete(id: string, actorId: string): Promise<ServiceResult<{ deleted: true }>> {
     const existing = await this.findRow(id);
     if (!existing) return err("NOT_FOUND", "Class tag not found");

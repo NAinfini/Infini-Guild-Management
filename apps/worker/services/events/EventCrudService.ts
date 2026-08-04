@@ -1,10 +1,13 @@
 import {
   ALLOWED_IMAGE_TYPES,
+  DEFAULT_GAME_RULES,
   DEFAULT_SITE_MEDIA_POLICY,
   createEventSchema,
   eventSchema,
   updateEventSchema,
   LIMITS,
+  findEventTypeDefinition,
+  type GameRules,
   type SiteMediaPolicy,
 } from "@guild/shared";
 import type { WriteAuditLogInput as AuditLogInput } from "../audit";
@@ -38,10 +41,14 @@ import {
   type ClassQuotaInput,
   type ClassQuotaRow,
 } from "./event-class-quotas";
-import { buildReplaceMediaRefsStatements, extractAttachmentKeys, findUnreferencedKeys } from "../media-references";
+import { buildReplaceMediaRefsStatements, findUnreferencedKeys } from "../media-references";
 import { rethrowAfterUploadFailure } from "../media-upload-compensation";
-import { buildEventImageKey } from "../media-keys";
+import { buildEventImageKey, parseMediaKey } from "../media-keys";
 import { validateUploadBytes } from "../media";
+import {
+  buildReplaceEventAttachmentStatements,
+  loadEventAttachments,
+} from "../ordered-relations";
 
 export { toParticipantPayload, type EventParticipantRow } from "./EventParticipantService";
 export { toRaffleWinnerPayload, type RaffleWinnerRow } from "./EventPollRaffleService";
@@ -81,7 +88,7 @@ export type EventRow = {
   autoArchived: boolean;
   createdBy: string;
   updatedBy: string | null;
-  attachments: string;
+  attachments: string[];
   seriesId: string | null;
   instanceDate: string | null;
   winnerCount: number | null;
@@ -95,6 +102,8 @@ export type EventRow = {
   classQuotas?: ClassQuotaRow[];
 };
 
+type EventBaseRow = Omit<EventRow, "attachments">;
+
 const MAX_EVENT_ATTACHMENTS = LIMITS.content.eventAttachments.max;
 export type EventServiceDeps = {
   getEventById: (eventId: string) => Promise<EventRow | null>;
@@ -105,6 +114,7 @@ export type EventServiceDeps = {
   createId?: () => string;
   createImageKey?: (eventId: string) => string;
   getMediaPolicy?: () => Promise<SiteMediaPolicy>;
+  getGameRules?: () => Promise<GameRules>;
 };
 
 export type CreateEventInput = z.infer<typeof createEventSchema>;
@@ -147,21 +157,10 @@ export function diffRecurrenceRule(
   }
 }
 
-export function parseAttachments(value: string | null | undefined): string[] {
-  if (!value) {
-    return [];
-  }
-  try {
-    const parsed = JSON.parse(value) as unknown;
-    if (!Array.isArray(parsed)) {
-      return [];
-    }
-    return parsed
-      .filter((item): item is string => typeof item === "string" && item.trim().length > 0)
-      .slice(0, MAX_EVENT_ATTACHMENTS);
-  } catch {
-    return [];
-  }
+export function parseAttachments(value: readonly string[] | null | undefined): string[] {
+  return [...new Set(value ?? [])]
+    .filter((item) => typeof item === "string" && item.trim().length > 0)
+    .slice(0, MAX_EVENT_ATTACHMENTS);
 }
 
 export function toEventPayload(row: EventRow) {
@@ -181,7 +180,7 @@ export function toEventPayload(row: EventRow) {
     archived_at: row.archivedAt,
     created_by: row.createdBy,
     updated_by: row.updatedBy ?? null,
-    attachments: parseAttachments(row.attachments),
+    attachments: row.attachments,
     class_quotas: row.classQuotas ?? [],
     series_id: row.seriesId,
     instance_date: row.instanceDate,
@@ -211,21 +210,29 @@ export class EventCrudService {
   }
 
   async createEvent(actorId: string, data: CreateEventInput, files: File[] = []): Promise<ServiceResult<EventRow>> {
+    const rules = await this.getGameRules();
+    const typeDefinition = findEventTypeDefinition(rules, data.type);
+    if (!typeDefinition || !typeDefinition.enabled) {
+      return err("VALIDATION_ERROR", `Unknown or disabled event type: ${data.type}`);
+    }
+    const behavior = typeDefinition.behavior;
     const dateErr = this.validateDateRange(data.start_at, data.end_at);
     if (dateErr) return dateErr;
-    const pollErr = this.pollRaffle.validatePollEventInput(data);
+    const pollErr = this.pollRaffle.validatePollEventInput(data, behavior);
     if (pollErr) return pollErr;
-    const raffleErr = this.pollRaffle.validateRaffleEventInput(data);
+    const raffleErr = this.pollRaffle.validateRaffleEventInput(data, behavior);
     if (raffleErr) return raffleErr;
     if ((data.attachments?.length ?? 0) + files.length > MAX_EVENT_ATTACHMENTS) {
       return err("VALIDATION_ERROR", `Max ${MAX_EVENT_ATTACHMENTS} attachments per event`);
     }
     const quotas = data.class_quotas ?? [];
     // 图片一旦落桶就得靠补偿删除去擦，所以先把不花钱的校验做完再上传。
-    const quotaErr = await this.validateClassQuotas(data.type, quotas);
+    const quotaErr = await this.validateClassQuotas(data.type, quotas, rules);
     if (quotaErr) return quotaErr;
 
     const eventId = this.createId();
+    const attachmentErr = this.validateAttachmentKeys(eventId, data.attachments ?? []);
+    if (attachmentErr) return attachmentErr;
     const imageResult = await this.storeImages(eventId, files, 0);
     if ("ok" in imageResult && !imageResult.ok) return imageResult;
     const uploadedAttachments = imageResult as string[];
@@ -233,21 +240,21 @@ export class EventCrudService {
 
     const now = this.now();
     try {
-      const attachmentJson = JSON.stringify(attachments);
       await this.rawDb.batch([
         this.rawDb.prepare(`
           INSERT INTO events
             (id, type, title, description, start_at, end_at, capacity, pinned, signup_locked,
              visible_at, archived_at, auto_archive, auto_archived, created_by, updated_by,
-             attachments, series_id, instance_date, winner_count, created_at, updated_at)
-          VALUES (?, ?, ?, ?, ?, ?, ?, 0, 0, NULL, NULL, ?, 0, ?, NULL, ?, NULL, NULL, ?, ?, ?)
+             series_id, instance_date, winner_count, created_at, updated_at)
+          VALUES (?, ?, ?, ?, ?, ?, ?, 0, 0, NULL, NULL, ?, 0, ?, NULL, NULL, NULL, ?, ?, ?)
         `).bind(
           eventId, data.type, data.title.trim(), data.description?.trim() || null,
-          data.start_at, data.end_at ?? null, data.type === "poll" ? null : data.capacity ?? null,
-          data.auto_archive ?? false, actorId, attachmentJson,
-          data.type === "raffle" ? data.winner_count ?? null : null, now, now,
+          data.start_at, data.end_at ?? null, behavior === "poll" ? null : data.capacity ?? null,
+          data.auto_archive ?? false, actorId,
+          behavior === "raffle" ? data.winner_count ?? null : null, now, now,
         ),
-        ...(data.type === "poll" && data.poll
+        ...buildReplaceEventAttachmentStatements(this.rawDb as unknown as D1Database, eventId, attachments),
+        ...(behavior === "poll" && data.poll
           ? this.pollRaffle.buildCreatePollStatements(eventId, data.poll)
           : []),
         ...(quotas.length > 0
@@ -257,7 +264,7 @@ export class EventCrudService {
           this.rawDb as unknown as D1Database,
           "event",
           eventId,
-          extractAttachmentKeys(attachmentJson),
+          attachments,
         ),
       ]);
     } catch (error) {
@@ -299,15 +306,28 @@ export class EventCrudService {
   }
 
   async updateEvent(actorId: string, eventId: string, existing: EventRow, data: UpdateEventInput): Promise<ServiceResult<EventRow>> {
+    const rules = await this.getGameRules();
+    const existingDefinition = findEventTypeDefinition(rules, existing.type);
+    if (!existingDefinition) return err("VALIDATION_ERROR", `Unknown event type: ${existing.type}`);
+    const effectiveType = data.type ?? existing.type;
+    const effectiveDefinition = findEventTypeDefinition(rules, effectiveType);
+    if (!effectiveDefinition || !effectiveDefinition.enabled) {
+      return err("VALIDATION_ERROR", `Unknown or disabled event type: ${effectiveType}`);
+    }
+    const effectiveBehavior = effectiveDefinition.behavior;
     const effectiveStartAt = data.start_at ?? existing.startAt;
     const effectiveEndAt = data.end_at !== undefined ? data.end_at : existing.endAt;
     const dateErr = this.validateDateRange(effectiveStartAt, effectiveEndAt);
     if (dateErr) return dateErr;
-    const pollUpdateErr = this.pollRaffle.validatePollEventUpdate(existing, data, effectiveEndAt);
+    const pollUpdateErr = this.pollRaffle.validatePollEventUpdate(data, effectiveEndAt, existingDefinition.behavior, effectiveBehavior);
     if (pollUpdateErr) return pollUpdateErr;
-    const effectiveType = data.type ?? existing.type;
-    const quotaErr = await this.validateClassQuotas(effectiveType, data.class_quotas ?? []);
+    const effectiveWinnerCount = data.winner_count ?? existing.winnerCount;
+    const raffleUpdateErr = this.pollRaffle.validateRaffleEventUpdate(data, effectiveEndAt, effectiveWinnerCount, effectiveBehavior);
+    if (raffleUpdateErr) return raffleUpdateErr;
+    const quotaErr = await this.validateClassQuotas(effectiveType, data.class_quotas ?? [], rules);
     if (quotaErr) return quotaErr;
+    const attachmentErr = this.validateAttachmentKeys(eventId, data.attachments ?? existing.attachments);
+    if (attachmentErr) return attachmentErr;
 
     const patch: Record<string, unknown> = {
       updatedAt: this.now(),
@@ -319,14 +339,18 @@ export class EventCrudService {
     if (data.description !== undefined) patch.description = data.description?.trim() || null;
     if (data.start_at !== undefined) patch.startAt = data.start_at;
     if (data.end_at !== undefined) patch.endAt = data.end_at ?? null;
-    if (data.capacity !== undefined) patch.capacity = existing.type === "poll" || data.type === "poll" ? null : data.capacity ?? null;
+    if (data.capacity !== undefined || (data.type !== undefined && effectiveBehavior === "poll")) {
+      patch.capacity = effectiveBehavior === "poll" ? null : data.capacity ?? null;
+    }
     if (data.pinned !== undefined) patch.pinned = data.pinned;
     if (data.signup_locked !== undefined) patch.signupLocked = data.signup_locked;
     if (data.auto_archive !== undefined) patch.autoArchive = data.auto_archive;
     if (data.archived_at !== undefined) patch.archivedAt = data.archived_at;
-    if (data.attachments !== undefined) patch.attachments = JSON.stringify(data.attachments);
+    if (data.winner_count !== undefined || (data.type !== undefined && effectiveBehavior !== "raffle")) {
+      patch.winnerCount = effectiveBehavior === "raffle" ? data.winner_count ?? existing.winnerCount : null;
+    }
 
-    const pollDataProvided = (existing.type === "poll" || data.type === "poll") && data.poll;
+    const pollDataProvided = effectiveBehavior === "poll" && data.poll;
     const hasVotes = pollDataProvided ? await this.pollRaffle.pollHasVotes(eventId) : false;
 
     if (pollDataProvided && hasVotes && await this.pollRaffle.pollOptionsChanged(eventId, data.poll!.options)) {
@@ -339,7 +363,7 @@ export class EventCrudService {
      * 旧值只在真要动配额时才读——审计日志要写 from，而 existing 来自不查配额的
      * getEventById。
      */
-    const quotaWrite = !typeSupportsClassQuotas(effectiveType)
+    const quotaWrite = !typeSupportsClassQuotas(effectiveType, rules)
       ? "clear"
       : data.class_quotas !== undefined
         ? "replace"
@@ -366,8 +390,8 @@ export class EventCrudService {
     if (patch.signupLocked !== undefined) add("signup_locked", patch.signupLocked);
     if (patch.autoArchive !== undefined) add("auto_archive", patch.autoArchive);
     if (patch.archivedAt !== undefined) add("archived_at", patch.archivedAt);
-    if (patch.attachments !== undefined) add("attachments", patch.attachments);
-    const effectiveAttachments = typeof patch.attachments === "string" ? patch.attachments : existing.attachments;
+    if (patch.winnerCount !== undefined) add("winner_count", patch.winnerCount);
+    const effectiveAttachments = data.attachments ?? existing.attachments;
     await this.rawDb.batch([
       this.rawDb.prepare(`UPDATE events SET ${assignments.join(", ")} WHERE id = ?`).bind(...bindings, eventId),
       ...(pollDataProvided ? this.pollRaffle.buildUpdatePollStatements(eventId, data.poll!, hasVotes) : []),
@@ -376,11 +400,14 @@ export class EventCrudService {
         : quotaWrite === "replace"
           ? buildReplaceClassQuotaStatements(this.rawDb, EVENT_CLASS_QUOTA_TABLE, eventId, data.class_quotas!, () => this.createId())
           : []),
+      ...(data.attachments === undefined
+        ? []
+        : buildReplaceEventAttachmentStatements(this.rawDb as unknown as D1Database, eventId, effectiveAttachments)),
       ...buildReplaceMediaRefsStatements(
         this.rawDb as unknown as D1Database,
         "event",
         eventId,
-        extractAttachmentKeys(effectiveAttachments),
+        effectiveAttachments,
       ),
     ]);
 
@@ -388,7 +415,7 @@ export class EventCrudService {
     if (!updated) {
       throw new Error("Failed to load updated event");
     }
-    updated.classQuotas = typeSupportsClassQuotas(updated.type)
+    updated.classQuotas = typeSupportsClassQuotas(updated.type, rules)
       ? await loadClassQuotasFor(this.rawDb, EVENT_CLASS_QUOTA_TABLE, eventId)
       : [];
 
@@ -441,7 +468,7 @@ export class EventCrudService {
     ]);
     const attachmentsToDelete = await findUnreferencedKeys(
       this.rawDb as unknown as D1Database,
-      parseAttachments(existing.attachments),
+      existing.attachments,
     );
     await Promise.allSettled(attachmentsToDelete.map((key) => Promise.resolve(this.media.delete(key))));
 
@@ -459,7 +486,7 @@ export class EventCrudService {
       return err("VALIDATION_ERROR", "No files provided");
     }
 
-    const existingAttachments = parseAttachments(existing.attachments);
+    const existingAttachments = existing.attachments;
     const imageResult = await this.storeImages(eventId, files, existingAttachments.length);
     if ("ok" in imageResult && !imageResult.ok) return imageResult;
     const keys = imageResult as string[];
@@ -468,8 +495,8 @@ export class EventCrudService {
     try {
       const rawDb = this.rawDb as unknown as D1Database;
       await rawDb.batch([
-        rawDb.prepare("UPDATE events SET attachments = ?1, updated_at = ?2 WHERE id = ?3")
-          .bind(JSON.stringify(attachments), this.now(), eventId),
+        rawDb.prepare("UPDATE events SET updated_at = ?1 WHERE id = ?2").bind(this.now(), eventId),
+        ...buildReplaceEventAttachmentStatements(rawDb, eventId, attachments),
         ...buildReplaceMediaRefsStatements(rawDb, "event", eventId, attachments),
       ]);
     } catch (error) {
@@ -528,7 +555,7 @@ export class EventCrudService {
     if (data.archived_at !== undefined && (data.archived_at ?? null) !== existing.archivedAt)
       diff.archived_at = { from: existing.archivedAt, to: data.archived_at ?? null };
     if (data.attachments !== undefined) {
-      const existingKeys = parseAttachments(existing.attachments);
+      const existingKeys = existing.attachments;
       if (JSON.stringify(data.attachments) !== JSON.stringify(existingKeys))
         diff.attachments = { from: existingKeys.length, to: data.attachments?.length ?? 0 };
     }
@@ -539,19 +566,33 @@ export class EventCrudService {
    * 配额自身的服务层校验。zod 已经查过重复项和类型限制，这里再挡一次是因为
    * 「标签存不存在」只有拿到数据库才知道，而 zod 是纯函数。
    */
-  private async validateClassQuotas(type: string, quotas: readonly ClassQuotaInput[]): Promise<ServiceErr | null> {
+  private async validateClassQuotas(type: string, quotas: readonly ClassQuotaInput[], rules: GameRules): Promise<ServiceErr | null> {
     if (quotas.length === 0) {
       return null;
     }
-    if (!typeSupportsClassQuotas(type)) {
+    if (!typeSupportsClassQuotas(type, rules)) {
       return err("VALIDATION_ERROR", `${type} events do not use class quotas`);
     }
     const broken = await findBrokenQuotaReferences(this.rawDb, quotas);
     return broken ? err("VALIDATION_ERROR", broken) : null;
   }
 
+  private validateAttachmentKeys(eventId: string, keys: readonly string[]): ServiceErr | null {
+    const invalid = keys.find((key) => {
+      const parsed = parseMediaKey(key);
+      return parsed?.kind !== "event_image" || parsed.entityId !== eventId || !parsed.contentType;
+    });
+    return invalid
+      ? err("VALIDATION_ERROR", `Invalid event attachment key for ${eventId}: ${invalid}`)
+      : null;
+  }
+
   private createId(): string {
     return this.deps.createId?.() ?? nanoid();
+  }
+
+  private getGameRules(): Promise<GameRules> {
+    return this.deps.getGameRules?.() ?? Promise.resolve(DEFAULT_GAME_RULES);
   }
 
   private validateDateRange(startAt: string | null | undefined, endAt: string | null | undefined): ServiceErr | null {
@@ -608,6 +649,8 @@ export class EventCrudService {
     try {
       for (const image of prepared) {
         const key = this.deps.createImageKey?.(eventId) ?? buildEventImageKey(eventId, image.contentType);
+        const keyError = this.validateAttachmentKeys(eventId, [key]);
+        if (keyError) return keyError;
         keys.push(key);
         await this.media.put(key, image.data, {
           httpMetadata: {
@@ -647,7 +690,6 @@ export class EventCrudService {
     autoArchived: events.autoArchived,
     createdBy: events.createdBy,
     updatedBy: events.updatedBy,
-    attachments: events.attachments,
     seriesId: events.seriesId,
     instanceDate: events.instanceDate,
     winnerCount: events.winnerCount,
@@ -695,20 +737,28 @@ export class EventCrudService {
   }
 
   /** 给一批行补上配额。投票和抽奖不带配额，排除掉，别白查一遍。 */
-  private async hydrateClassQuotas(rows: EventRow[]): Promise<EventRow[]> {
-    const quotaMap = await loadClassQuotas(
-      this.rawDb,
-      EVENT_CLASS_QUOTA_TABLE,
-      rows.filter((row) => typeSupportsClassQuotas(row.type)).map((row) => row.id),
-    );
-    for (const row of rows) {
-      row.classQuotas = quotaMap.get(row.id) ?? [];
-    }
-    return rows;
+  private async hydrateClassQuotas(rows: EventBaseRow[]): Promise<EventRow[]> {
+    const rules = await this.getGameRules();
+    const [quotaMap, attachmentMap] = await Promise.all([
+      loadClassQuotas(
+        this.rawDb,
+        EVENT_CLASS_QUOTA_TABLE,
+        rows.filter((row) => typeSupportsClassQuotas(row.type, rules)).map((row) => row.id),
+      ),
+      loadEventAttachments(this.rawDb as unknown as D1Database, rows.map((row) => row.id)),
+    ]);
+    return rows.map((row) => ({
+      ...row,
+      classQuotas: quotaMap.get(row.id) ?? [],
+      attachments: attachmentMap.get(row.id) ?? [],
+    }));
   }
 
   async getEventById(eventId: string): Promise<EventRow | null> {
-    return ((await this.db.select(EventCrudService.eventSelectFields).from(events).where(eq(events.id, eventId)).limit(1)) as EventRow[])[0] ?? null;
+    const row = ((await this.db.select(EventCrudService.eventSelectFields).from(events).where(eq(events.id, eventId)).limit(1)) as EventBaseRow[])[0];
+    if (!row) return null;
+    const attachments = await loadEventAttachments(this.rawDb as unknown as D1Database, [eventId]);
+    return { ...row, attachments: attachments.get(eventId) ?? [] };
   }
 
   async listEvents(params: {
@@ -727,7 +777,7 @@ export class EventCrudService {
         .where(whereClause)
         .orderBy(asc(events.startAt), asc(events.id))
         .offset(offset)
-        .limit(params.limit) as Promise<EventRow[]>,
+        .limit(params.limit) as Promise<EventBaseRow[]>,
       this.db.select({ count: sql<number>`count(*)` }).from(events).where(whereClause) as Promise<{ count: number }[]>,
     ]);
 
@@ -753,16 +803,19 @@ export class EventCrudService {
     const eventRow = await this.getEventById(eventId);
     if (!eventRow) return null;
     if (!canManage && !isEventPubliclyVisible(eventRow.visibleAt, this.now())) return null;
-    await this.hydrateClassQuotas([eventRow]);
+    const hydratedEventRow = (await this.hydrateClassQuotas([eventRow]))[0]!;
 
     const participants = (await this.db
       .select({ id: eventParticipants.id, eventId: eventParticipants.eventId, userId: eventParticipants.userId, joinedAt: eventParticipants.joinedAt })
       .from(eventParticipants)
       .where(eq(eventParticipants.eventId, eventId))) as EventParticipantRow[];
 
-    const [eventWithPoll] = await this.pollRaffle.attachPolls([toEventPayload(eventRow)], viewerId ?? null, canManage);
+    const [eventWithPoll] = await this.pollRaffle.attachPolls([toEventPayload(hydratedEventRow)], viewerId ?? null, canManage);
 
-    const raffleWinners = eventRow.type === "raffle"
+    const rules = await this.getGameRules();
+    const eventDefinition = findEventTypeDefinition(rules, eventRow.type);
+    if (!eventDefinition) throw new Error(`Unknown configured event type: ${eventRow.type}`);
+    const raffleWinners = eventDefinition.behavior === "raffle"
       ? ((await this.db
           .select({ id: eventRaffleWinners.id, eventId: eventRaffleWinners.eventId, userId: eventRaffleWinners.userId, drawnAt: eventRaffleWinners.drawnAt })
           .from(eventRaffleWinners)
@@ -780,7 +833,7 @@ export class EventCrudService {
     const eventRows = (await this.db
       .select(EventCrudService.eventSelectFields)
       .from(events)
-      .where(inArray(events.id, ids))) as EventRow[];
+      .where(inArray(events.id, ids))) as EventBaseRow[];
     const visibleEventRows = canManage
       ? eventRows
       : eventRows.filter((row) => isEventPubliclyVisible(row.visibleAt, this.now()));

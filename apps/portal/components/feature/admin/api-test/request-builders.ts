@@ -4,6 +4,7 @@ import {
   type TestRunContext,
   disposableMemberId,
 } from "./types";
+import { getCurrentGameRules } from "@portal/utils/game-rules";
 
 export function toIso(hoursFromNow: number): string {
   return new Date(Date.now() + hoursFromNow * 60 * 60 * 1000).toISOString();
@@ -403,6 +404,22 @@ export function resolveEndpointPath(endpoint: EndpointDef, context: TestRunConte
 }
 
 export function prepareEndpointRequest(endpoint: EndpointDef, context: TestRunContext): PreparedEndpointRequest {
+  const gameRules = getCurrentGameRules();
+  const eventTypeForBehavior = (behavior: "standard" | "guild_war" | "poll" | "raffle") =>
+    gameRules.events.types.find((definition) => definition.behavior === behavior && definition.enabled)?.id;
+  const winningResultId = "win";
+  const teamStatsFixture = Object.fromEntries(gameRules.guild_war.team_stats.map((definition, index) => [
+    definition.key,
+    index === 0 ? 10 : 1,
+  ]));
+  const enemyTeamStatsFixture = Object.fromEntries(gameRules.guild_war.team_stats.map((definition, index) => [
+    definition.key,
+    index === 0 ? 5 : 0,
+  ]));
+  const memberStatsFixture = Object.fromEntries(gameRules.guild_war.member_stats.map((definition, index) => [
+    definition.key,
+    index === 0 ? 1 : 0,
+  ]));
   const resolved = resolveEndpointPath(endpoint, context);
   if (resolved.missing) {
     if (endpoint.path === "/api/admin/audit-archive/download") {
@@ -537,12 +554,12 @@ export function prepareEndpointRequest(endpoint: EndpointDef, context: TestRunCo
     case "POST /api/events?fixture=raffle":
       return buildJsonRequest(path, {
         type: endpoint.path === "/api/events?fixture=guild-war"
-          ? "guild_war"
+          ? eventTypeForBehavior("guild_war")
           : endpoint.path === "/api/events?fixture=poll"
-            ? "poll"
+            ? eventTypeForBehavior("poll")
             : endpoint.path === "/api/events?fixture=raffle"
-              ? "raffle"
-              : "weekly_mission",
+              ? eventTypeForBehavior("raffle")
+              : eventTypeForBehavior("standard"),
         title: endpoint.path === "/api/events?fixture=guild-war"
           ? `[systemtest] API Guild War Event ${nowId}`
           : endpoint.path === "/api/events?fixture=poll"
@@ -711,15 +728,15 @@ export function prepareEndpointRequest(endpoint: EndpointDef, context: TestRunCo
         event_id: context.createdGuildWarEventId ?? context.createdEventId,
         war_info: {
           enemy_name: "[systemtest] API Enemy",
-          result: "win",
+          result: winningResultId,
           duration_minutes: 30,
-          own_stats: { kills: 10, towers: 3, credits: 10000, distance: 3000, base_hp: 50 },
-          enemy_stats: { kills: 5, towers: 1, credits: 8000, distance: 2000, base_hp: 0 },
+          own_stats: teamStatsFixture,
+          enemy_stats: enemyTeamStatsFixture,
         },
         member_stats: [
           {
             user_id: context.warMemberUserId ?? testMemberId,
-            stats: { kills: 1 },
+            stats: memberStatsFixture,
           },
         ],
       });
@@ -743,7 +760,7 @@ export function prepareEndpointRequest(endpoint: EndpointDef, context: TestRunCo
       return buildJsonRequest(path, {
         event_id: context.createdGuildWarEventId,
         war_name: `[systemtest] API Test War ${nowId}`,
-        result: "win",
+        result: winningResultId,
       });
 
     case "PATCH /api/guild-war/history/:id":

@@ -13,6 +13,12 @@ const LOGOUT_BUTTON_VARS = {
 } as CSSProperties;
 
 type ProfileAccountTabProps = {
+  /* 四项都可能还没到（会话数据是异步的）。没到就不渲染那一行，而不是填一个
+     占位符——「加入于 Invalid Date」比少一行更糟。 */
+  username: string | null;
+  role: string | null;
+  joinedAt: string | null;
+  profileUpdatedAt: string | null;
   currentPassword: string;
   newPassword: string;
   confirmNewPassword: string;
@@ -31,6 +37,10 @@ type ProfileAccountTabProps = {
 };
 
 export function ProfileAccountTab({
+  username,
+  role,
+  joinedAt,
+  profileUpdatedAt,
   currentPassword,
   newPassword,
   confirmNewPassword,
@@ -47,7 +57,7 @@ export function ProfileAccountTab({
   changePasswordPending,
   changeUsernamePending,
 }: ProfileAccountTabProps) {
-  const { t } = useTranslation("profile");
+  const { t, i18n } = useTranslation("profile");
   const changePasswordLabel = t("button.changePassword");
   const changeUsernameLabel = t("button.changeUsername");
   const isPasswordInvalid =
@@ -86,9 +96,36 @@ export function ProfileAccountTab({
     onChangeUsername();
   };
 
+  /* 只到日；这四行是「我这个号是什么」，不是审计时间线，精确到分秒没人要读。 */
+  const formatDay = (value: string | null) =>
+    value ? new Date(value).toLocaleDateString(i18n.language) : null;
+  const facts = [
+    { key: "username", label: t("account.field.username"), value: username },
+    { key: "role", label: t("overview.role"), value: role },
+    { key: "joined", label: t("overview.joined"), value: formatDay(joinedAt) },
+    { key: "updated", label: t("overview.updated"), value: formatDay(profileUpdatedAt) },
+  ].filter((fact): fact is { key: string; label: string; value: string } => Boolean(fact.value));
+
   return (
     <div className="profile-account">
       <div className="profile-account__cards">
+          {/* 这一屏此前只有两张表单卡，而「我现在是谁、什么角色、什么时候加入的」
+              这几件事全站只在名册弹窗里露过一半。它们不是可改项，所以是一张只读卡，
+              和两张表单卡并排——三张一行，正好把这一屏铺满。 */}
+          {facts.length > 0 ? (
+            <Paper withBorder radius="md" p="var(--card-padding)">
+              <SectionHeader title={t("account.section.facts")} headingLevel={2} />
+              <dl className="profile-account__facts">
+                {facts.map((fact) => (
+                  <div className="profile-account__fact" key={fact.key}>
+                    <dt className="profile-account__fact-label">{fact.label}</dt>
+                    <dd className="profile-account__fact-value">{fact.value}</dd>
+                  </div>
+                ))}
+              </dl>
+            </Paper>
+          ) : null}
+
           <Paper withBorder radius="md" p="var(--card-padding)" className="profile-account__card">
             <form onSubmit={(event) => { event.preventDefault(); handleChangePassword(); }}>
             <SectionHeader title={changePasswordLabel} headingLevel={2} />

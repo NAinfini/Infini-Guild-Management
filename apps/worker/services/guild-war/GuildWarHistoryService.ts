@@ -1,4 +1,8 @@
-import { updateMemberStatsSchema } from "@guild/shared";
+import {
+  findGuildWarResultDefinition,
+  updateMemberStatsSchema,
+  type GameRules,
+} from "@guild/shared";
 import { and, asc, desc, eq, gte, inArray, lte, or, sql, type SQL } from "drizzle-orm";
 import { nanoid } from "nanoid";
 import type { z } from "zod";
@@ -74,6 +78,41 @@ function buildMemberStatsDiff(
   return Object.keys(diff).length > 0 ? diff : null;
 }
 
+function unknownStatKeys(
+  stats: Record<string, number | null> | null | undefined,
+  allowed: ReadonlySet<string>,
+): string[] {
+  return stats ? Object.keys(stats).filter((key) => !allowed.has(key)) : [];
+}
+
+function validateHistoryRuleKeys(
+  rules: GameRules,
+  input: {
+    result?: string;
+    own_stats?: Record<string, number | null>;
+    enemy_stats?: Record<string, number | null>;
+  },
+): string | null {
+  if (input.result !== undefined && !findGuildWarResultDefinition(input.result)) {
+    return `Unknown guild-war result: ${input.result}`;
+  }
+  const teamKeys = new Set(rules.guild_war.team_stats.map((stat) => stat.key));
+  const unknownOwn = unknownStatKeys(input.own_stats, teamKeys);
+  if (unknownOwn.length > 0) return `Unknown own team stat keys: ${unknownOwn.join(", ")}`;
+  const unknownEnemy = unknownStatKeys(input.enemy_stats, teamKeys);
+  if (unknownEnemy.length > 0) return `Unknown enemy team stat keys: ${unknownEnemy.join(", ")}`;
+  return null;
+}
+
+function validateMemberRuleKeys(
+  rules: GameRules,
+  stats: Record<string, number | null> | null | undefined,
+): string | null {
+  const memberKeys = new Set(rules.guild_war.member_stats.map((stat) => stat.key));
+  const unknown = unknownStatKeys(stats, memberKeys);
+  return unknown.length > 0 ? `Unknown member stat keys: ${unknown.join(", ")}` : null;
+}
+
 export class GuildWarHistoryService extends GuildWarCoreService {
   constructor(db: DrizzleDb, deps: GuildWarServiceDeps, private readonly facade?: GuildWarFacade) {
     super(db, deps);
@@ -123,6 +162,13 @@ export class GuildWarHistoryService extends GuildWarCoreService {
     warInfo: { enemy_name?: string; result: string; duration_minutes?: number | null; own_stats?: Record<string, number | null>; enemy_stats?: Record<string, number | null> },
     memberStats?: Array<{ user_id: string; stats: Record<string, number> }>,
   ): Promise<ServiceResult<{ war_history_id: string }>> {
+    const rules = await this.getGameRules();
+    const historyRuleError = validateHistoryRuleKeys(rules, warInfo);
+    if (historyRuleError) return err("VALIDATION_ERROR", historyRuleError);
+    for (const member of memberStats ?? []) {
+      const memberRuleError = validateMemberRuleKeys(rules, member.stats);
+      if (memberRuleError) return err("VALIDATION_ERROR", `${member.user_id}: ${memberRuleError}`);
+    }
     const existingHistory = await this.getLatestWarHistory(eventId);
     if (existingHistory) return eventHistoryConflict(existingHistory.id);
 
@@ -267,6 +313,9 @@ export class GuildWarHistoryService extends GuildWarCoreService {
   }
 
   async createHistory(actorId: string, input: CreateWarHistoryInput): Promise<ServiceResult<unknown>> {
+    const rules = await this.getGameRules();
+    const ruleError = validateHistoryRuleKeys(rules, input);
+    if (ruleError) return err("VALIDATION_ERROR", ruleError);
     const historyId = nanoid();
     try {
       await this.db.insert(warHistory).values({ id: historyId, eventId: input.event_id ?? null, warName: input.war_name, enemyName: input.enemy_name ?? null, result: input.result ?? null, ownStats: input.own_stats ?? null, enemyStats: input.enemy_stats ?? null, notes: input.notes ?? null, createdBy: actorId });
@@ -307,6 +356,9 @@ export class GuildWarHistoryService extends GuildWarCoreService {
   }
 
   async updateHistory(actorId: string, warId: string, input: UpdateWarHistoryInput): Promise<ServiceResult<unknown>> {
+    const rules = await this.getGameRules();
+    const ruleError = validateHistoryRuleKeys(rules, input);
+    if (ruleError) return err("VALIDATION_ERROR", ruleError);
     const existing = await this.getWarHistoryById(warId);
     if (!existing) return err("NOT_FOUND", "War history not found");
     const patch: Partial<typeof warHistory.$inferInsert> = { updatedAt: new Date().toISOString(), updatedBy: actorId };
@@ -377,6 +429,8 @@ export class GuildWarHistoryService extends GuildWarCoreService {
   }
 
   async updateMemberStats(actorId: string, warId: string, targetUserId: string, input: z.infer<typeof updateMemberStatsSchema>): Promise<ServiceResult<unknown>> {
+    const ruleError = validateMemberRuleKeys(await this.getGameRules(), input.stats);
+    if (ruleError) return err("VALIDATION_ERROR", ruleError);
     const existingHistory = await this.getWarHistoryById(warId);
     if (!existingHistory) return err("NOT_FOUND", "War history not found");
     const memberRow = (await this.db.select({ id: warTeamMembers.id, warTeamId: warTeamMembers.warTeamId, userId: warTeamMembers.userId, roleTag: warTeamMembers.roleTag, sortOrder: warTeamMembers.sortOrder, stats: warTeamMembers.stats, note: warTeamMembers.note }).from(warTeamMembers).innerJoin(warTeams, eq(warTeams.id, warTeamMembers.warTeamId)).where(and(eq(warTeams.warHistoryId, warId), eq(warTeamMembers.userId, targetUserId))).limit(1))[0];
@@ -394,6 +448,15 @@ export class GuildWarHistoryService extends GuildWarCoreService {
   }
 
   async batchUpdateMemberStats(actorId: string, warId: string, updates: Array<{ user_id: string; stats: unknown }>): Promise<ServiceResult<{ data: unknown[] }>> {
+    const rules = await this.getGameRules();
+    const parsedUpdates: Array<{ user_id: string; data: z.infer<typeof updateMemberStatsSchema> }> = [];
+    for (const update of updates) {
+      const parsed = updateMemberStatsSchema.safeParse(update.stats);
+      if (!parsed.success) return err("VALIDATION_ERROR", `Invalid stats for user ${update.user_id}`, parsed.error.flatten());
+      const ruleError = validateMemberRuleKeys(rules, parsed.data.stats);
+      if (ruleError) return err("VALIDATION_ERROR", `${update.user_id}: ${ruleError}`);
+      parsedUpdates.push({ user_id: update.user_id, data: parsed.data });
+    }
     const existingHistory = await this.getWarHistoryById(warId);
     if (!existingHistory) return err("NOT_FOUND", "War history not found");
     const userIds = updates.map((u) => u.user_id).filter((id) => typeof id === "string" && id.length > 0);
@@ -402,14 +465,12 @@ export class GuildWarHistoryService extends GuildWarCoreService {
     const results: ReturnType<typeof toMemberPayload>[] = [];
     const pendingPatches: Array<{ memberRow: WarTeamMemberRow; patch: Partial<typeof warTeamMembers.$inferInsert> }> = [];
 
-    for (const update of updates) {
+    for (const update of parsedUpdates) {
       const memberRow = memberByUserId.get(update.user_id);
       if (!memberRow) continue;
-      const parsed = updateMemberStatsSchema.safeParse(update.stats);
-      if (!parsed.success) continue;
       const patch: Partial<typeof warTeamMembers.$inferInsert> = {};
-      if (parsed.data.stats !== undefined) patch.stats = parsed.data.stats;
-      if (parsed.data.note !== undefined) patch.note = parsed.data.note;
+      if (update.data.stats !== undefined) patch.stats = update.data.stats;
+      if (update.data.note !== undefined) patch.note = update.data.note;
       if (Object.keys(patch).length > 0) pendingPatches.push({ memberRow, patch });
       else results.push(toMemberPayload(memberRow));
     }
@@ -435,4 +496,5 @@ export class GuildWarHistoryService extends GuildWarCoreService {
     await this.deps.writeAuditLog({ entityType: "guild_war_member_stats", action: "batch_update", actorId, entityId: warId, diffTitle: targetNames.map((r) => r.username).join(", "), detailText: JSON.stringify({ count: results.length, user_ids: userIds, usernames: targetNames.map((r) => r.username) }) });
     return ok({ data: results });
   }
+
 }

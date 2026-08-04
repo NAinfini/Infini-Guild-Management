@@ -63,10 +63,11 @@ describe("SystemTestService exact compensation", () => {
 
   it("deletes only registered exact IDs, media references, and R2 keys", async () => {
     const { env, statements, MEDIA } = createEnv();
+    const mediaKey = "gallery/users/user-test-1/items/gallery-test-1/images/image.png";
     await new SystemTestService(env as never).cleanupExactArtifacts([
       { type: "gallery_item", key: "gallery-test-1" },
       { type: "user", key: "user-test-1" },
-      { type: "r2_key", key: "gallery/gallery-test-1/image.png" },
+      { type: "r2_key", key: mediaKey },
     ]);
 
     expect(statements).toEqual(expect.arrayContaining([
@@ -75,10 +76,10 @@ describe("SystemTestService exact compensation", () => {
         sql: "DELETE FROM media_references WHERE entity_type = 'member_profile' AND entity_id = ?",
         params: ["user-test-1"],
       }),
-      expect.objectContaining({ sql: "DELETE FROM media_references WHERE media_key = ?", params: ["gallery/gallery-test-1/image.png"] }),
+      expect.objectContaining({ sql: "DELETE FROM media_references WHERE media_key = ?", params: [mediaKey] }),
     ]));
     expect(statements.some((statement) => /\bLIKE\b/i.test(statement.sql))).toBe(false);
-    expect(MEDIA.delete).toHaveBeenCalledWith("gallery/gallery-test-1/image.png");
+    expect(MEDIA.delete).toHaveBeenCalledWith(mediaKey);
   });
 
   it("uses child-first cleanup for compensated event, template, war, and error UUIDs", async () => {
@@ -301,13 +302,13 @@ describe("SystemTestService exact compensation", () => {
     const roleId = "systemtest_role_cleanup";
     const username = "systemtest_cleanup_user";
     const mediaKeys = [
-      "profiles/cleanup/profile.png",
-      "events/cleanup/event.png",
-      "announcements/cleanup/announcement.png",
-      "gallery/cleanup/gallery.png",
-      "wiki/cleanup/wiki.png",
-      "storage/cleanup/storage.png",
-      "classes/cleanup/icon.png",
+      `members/${ids.user}/images/profile.png`,
+      `events/${ids.event}/images/event.png`,
+      `announcement/${ids.announcement}/images/announcement.png`,
+      `gallery/users/admin-1/items/${ids.gallery}/images/gallery.png`,
+      `wiki/${ids.wikiArticle}/images/wiki.png`,
+      `storage/items/${ids.storageItem}/storage.png`,
+      `class-icons/${ids.classCatalog}/icon.webp`,
     ] as const;
     const mockPortraitKey = "/mock/portrait-2.svg";
 
@@ -317,9 +318,14 @@ describe("SystemTestService exact compensation", () => {
       insert("INSERT INTO role_permissions (role_id, permission, granted) VALUES (?, 'events.create', 1)", roleId);
       insert("INSERT INTO users (id, username, role) VALUES (?, ?, ?)", ids.user, username, roleId);
       insert("INSERT INTO user_auth_password (user_id, password_hash, salt) VALUES (?, 'hash', 'salt')", ids.user);
-      insert("INSERT INTO member_profiles (id, user_id, avatar_key, images, audio_key) VALUES (?, ?, ?, ?, ?)",
-        "00000000-0000-4000-8000-000000000032", ids.user, mediaKeys[0], JSON.stringify([mediaKeys[0]]), mediaKeys[0]);
-      insert("INSERT INTO member_profile_classes (user_id, class) VALUES (?, 'mage')", ids.user);
+      insert(
+        "INSERT INTO class_catalog (id, label, color, icon_type, vector_icon, icon_key) VALUES (?, 'System test class', '#AABBCC', 'image', 'sword', ?)",
+        ids.classCatalog, mediaKeys[6],
+      );
+      insert("INSERT INTO member_profiles (id, user_id, avatar_key, audio_key) VALUES (?, ?, ?, ?)",
+        "00000000-0000-4000-8000-000000000032", ids.user, mediaKeys[0], mediaKeys[0]);
+      insert("INSERT INTO member_profile_classes (user_id, class_id, sort_order) VALUES (?, ?, 0)", ids.user, ids.classCatalog);
+      insert("INSERT INTO member_profile_images (user_id, media_key, sort_order) VALUES (?, ?, 0)", ids.user, mediaKeys[0]);
       insert("INSERT INTO sessions (id, user_id, expires_at) VALUES (?, ?, '2099-01-01T00:00:00.000Z')", ids.session, ids.user);
       insert("INSERT INTO login_failures (username, fail_count) VALUES (?, 2)", username);
       insert("INSERT INTO system_test_runs (id, actor_id) VALUES (?, 'admin-1')", ids.run);
@@ -354,10 +360,6 @@ describe("SystemTestService exact compensation", () => {
       insert("INSERT INTO audit_log (id, entity_type, action, actor_id, entity_id) VALUES (?, 'event', 'create', ?, ?)", ids.audit, ids.user, ids.event);
       insert("INSERT INTO audit_log (id, entity_type, action, actor_id, entity_id) VALUES (?, 'storage_transaction', 'intake', 'admin-1', ?)", ids.storageMarker, ids.storageMarker);
       insert("INSERT INTO error_log (id, source, message) VALUES (?, 'request', 'test error')", ids.error);
-      insert(
-        "INSERT INTO class_catalog (id, label, color, icon_type, vector_icon, icon_key) VALUES (?, 'System test class', '#AABBCC', 'image', 'sword', ?)",
-        ids.classCatalog, mediaKeys[6],
-      );
       insert("INSERT INTO member_absences (id, user_id, start_date, end_date) VALUES (?, ?, '2099-01-01', '2099-01-03')", ids.absence, ids.user);
       insert("INSERT INTO member_absences (id, user_id, start_date, end_date) VALUES (?, 'admin-1', '2099-02-01', '2099-02-03')", ids.absenceOnExistingMember);
       const mediaReferences: Array<[string, string, string]> = [
@@ -417,6 +419,7 @@ describe("SystemTestService exact compensation", () => {
         ["login_failures", "username", username],
         ["member_profiles", "user_id", ids.user],
         ["member_profile_classes", "user_id", ids.user],
+        ["member_profile_images", "user_id", ids.user],
         ["invite_links", "id", ids.invite],
         ["events", "id", ids.event],
         ["events", "id", ids.generatedEvent],

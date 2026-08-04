@@ -189,7 +189,8 @@ export function StoragePage() {
 
   return (
     <PageLayout className="storage-page">
-      <Stack gap="md">
+      {/* storage-page__stack：这两级 Stack 只是分组，把剩余高度往下传给库存工作区。 */}
+      <Stack gap="md" className="storage-page__stack">
         {treeQuery.isLoading ? (
           <Skeleton height={220} radius="md" className="storage-loading" />
         ) : null}
@@ -204,7 +205,7 @@ export function StoragePage() {
           />
         ) : null}
         {!treeQuery.isLoading && activeStorage ? (
-          <Stack gap="md">
+          <Stack gap="md" className="storage-page__stack">
             <section className="storage-location-rail" aria-label={t("field.storage")}>
               <div className="storage-location-rail__switcher">
                 <Tabs

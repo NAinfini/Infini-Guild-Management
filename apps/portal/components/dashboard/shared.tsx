@@ -1,6 +1,6 @@
 import type { Event } from "@guild/shared";
 import type { ClassQuotaSummary } from "@guild/shared/utils/class-quota";
-import { EVENT_TYPE_COLORS, UNKNOWN_EVENT_TYPE_COLOR } from "@portal/utils/event-colors";
+import { eventTypeColor } from "@portal/utils/event-colors";
 import { Group, Title } from "@mantine/core";
 import { format } from "date-fns";
 import type { ReactNode } from "react";
@@ -15,7 +15,7 @@ export function formatDateTime(iso: string | null): string {
 }
 
 export function eventTypeTagColor(value: string): string {
-  return EVENT_TYPE_COLORS[value] ?? UNKNOWN_EVENT_TYPE_COLOR;
+  return eventTypeColor(value);
 }
 
 export function cardHeading(text: string, icon?: ReactNode) {

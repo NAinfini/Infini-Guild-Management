@@ -28,6 +28,14 @@ describe("App shell accessibility structure", () => {
     expect(i18n).toContain("document.documentElement.lang = locale");
   });
 
+  it("refreshes member lists and the current profile after realtime badge changes", () => {
+    const appShell = readPortalFile("apps/portal/components/layout/AppShell.tsx");
+
+    expect(appShell).toMatch(
+      /member_badge:\s*\[queryKeys\.users\.all,\s*queryKeys\.myProfile\.all\]/,
+    );
+  });
+
   it("keeps AppHeader as the only page-title source", () => {
     const appShell = readPortalFile("apps/portal/components/layout/AppShell.tsx");
     const appHeader = readPortalFile("apps/portal/components/layout/AppHeader.tsx");

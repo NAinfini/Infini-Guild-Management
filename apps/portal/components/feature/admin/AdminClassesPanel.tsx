@@ -18,7 +18,8 @@ export function AdminClassesPanel() {
   const [view, setView] = useState<ClassesPanelView>("classes");
 
   return (
-    <Stack gap={12}>
+    /* admin-fill：把 .admin-page__panel 给的高度原样传给下面的主从台。 */
+    <Stack gap={12} className="admin-fill">
       <SegmentedControl
         value={view}
         onChange={(value) => setView(value as ClassesPanelView)}
@@ -27,6 +28,9 @@ export function AdminClassesPanel() {
           { value: "tags", label: t("classTags.title") },
         ]}
         aria-label={t("classes.panelSwitch")}
+        /* Stack 会把子项拉伸到整行宽，于是这个两选项的开关横跨整屏，成了这一页
+           视觉上最重的一条——比它下面真正的内容还抢眼。收回内容宽度。 */
+        w="fit-content"
       />
       {view === "classes" ? <AdminClassesSection /> : <AdminClassTagsSection />}
     </Stack>

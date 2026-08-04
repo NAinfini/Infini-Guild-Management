@@ -1,8 +1,8 @@
-import { EVENT_TYPES } from "@guild/shared";
 import { Group, NumberInput, Select, Stack, Switch, Text, TextInput, Textarea } from "@mantine/core";
 import { NativeDateTimeInput } from "@portal/components/shared/NativeDateTimeInput";
 import type { Dispatch, SetStateAction } from "react";
 import { useTranslation } from "react-i18next";
+import { DEFAULT_GAME_RULES, EVENT_TYPES, type EventType } from "@guild/shared";
 import { ClassQuotaEditor } from "./ClassQuotaEditor";
 import {
   WEEKDAY_KEYS,
@@ -11,6 +11,7 @@ import {
   type RecurrenceFreq,
   type RecurringTemplateFormState,
 } from "./RecurringTemplateFormModal.helpers";
+import { eventHasBehavior, getEventTypeLabel } from "@portal/utils/game-rules";
 
 /*
  * 模板表单的两段：生成什么，什么时候生成。
@@ -59,6 +60,7 @@ export function RecurringTemplateTimingFields({ formState, setFormState }: FormF
 
 function ProducesFields({ formState, setFormState }: FormFieldsProps) {
   const { t } = useTranslation("events");
+  const gameRules = DEFAULT_GAME_RULES;
   const { title, eventType, description, capacity, classQuotas, autoArchive } = formState;
 
   return (
@@ -78,10 +80,15 @@ function ProducesFields({ formState, setFormState }: FormFieldsProps) {
         onChange={(value) =>
           setFormState((current) => ({
             ...current,
-            eventType: (value ?? "") as (typeof EVENT_TYPES)[number],
+          eventType: value && EVENT_TYPES.includes(value as EventType) ? value as EventType : "",
           }))
         }
-        data={EVENT_TYPES.map((value) => ({ value, label: t(`common:eventType.${value}`) }))}
+        data={gameRules.events.types
+          .filter((definition) => definition.enabled)
+          .map((definition) => ({
+            value: definition.id,
+            label: getEventTypeLabel(definition.id),
+          }))}
         placeholder={t("recurring.field.typePlaceholder")}
         clearable
       />
@@ -110,7 +117,7 @@ function ProducesFields({ formState, setFormState }: FormFieldsProps) {
       />
 
       {/* 投票和抽奖没有阵容可言，服务端也拒收它们的配额。 */}
-      {eventType !== "poll" && eventType !== "raffle" ? (
+      {!eventHasBehavior(eventType, "poll", gameRules) && !eventHasBehavior(eventType, "raffle", gameRules) ? (
         <ClassQuotaEditor
           value={classQuotas}
           onChange={(next) => setFormState((current) => ({ ...current, classQuotas: next }))}

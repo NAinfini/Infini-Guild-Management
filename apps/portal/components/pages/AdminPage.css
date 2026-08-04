@@ -26,12 +26,25 @@
   color: var(--text-muted);
 }
 
+/*
+ * 工作区吃满内容区剩下的高度。上游本来就是一条「flex:1 + min-height:0」的列
+ * （PageLayout.css 的 .page-layout 和 .page-layout__content），缺的只是这一环：
+ * 工作区原先按内容高，于是页签内容一短，视口下面就空一大块。
+ *
+ * grid-template-rows 必须显式写成 1fr。不写的话隐式行是 auto（内容高），容器再高
+ * 也只是在行下面留白——这正是原先那块空白的来源。
+ * align-items 保持 start 让左边的页签栏贴顶（它是 sticky 的），右边的面板单独
+ * align-self: stretch。
+ */
 .admin-page__workspace {
   width: 100%;
   display: grid;
   grid-template-columns: minmax(13rem, 15rem) minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr);
   align-items: start;
   gap: var(--space-xl);
+  flex: 1 1 auto;
+  min-block-size: 0;
 }
 
 .admin-page__domain-nav {
@@ -167,10 +180,39 @@
   box-shadow: none;
 }
 
+/*
+ * 面板本身是一条填满高度的列。八个页签的根节点都成了它的 flex 子项：
+ * 想撑满的（主从台、表格台）自己写 flex:1，内容天然就短的（站点配置那类表单）
+ * 保持默认的 flex:0 1 auto 贴顶——把一张短表单拉成整屏只是把空白搬进了卡片里。
+ */
 .admin-page__panel {
+  display: flex;
+  flex-direction: column;
+  align-self: stretch;
   min-width: 0;
-  overflow-x: hidden;
+  min-block-size: 0;
+  /*
+   * overflow-x 用 clip 不用 hidden。
+   *
+   * 这两行的本意是「横向裁掉、纵向不滚」，但 hidden 做不到后半句：CSS 规范规定
+   * 一个轴是 hidden/auto/scroll 时，另一轴的 visible 会被**静默提升成 auto**，
+   * 于是这块面板自己变成了一个纵向滚动容器——成员表内部已经有一条滚动条了，
+   * 外面再套一条，就是「一个页面两条滚动条」里多出来的那一条。
+   * clip 是规范里唯一不触发这条提升的裁剪值，写它才真的只裁横向。
+   * 同型缺陷见 WikiPage.css 的 .wiki-card-scroll。
+   */
+  overflow-x: clip;
   overflow-y: visible;
+}
+
+/* 页签根节点想把高度传给里面的工作台时挂这个。有几个页签在 .admin-md 外面还包了
+   一层 Stack（加载骨架、错误提示、职业页的两块切换开关），不传的话主从台的 flex:1
+   抵着一个内容高的父级，等于没写。 */
+.admin-fill {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-block-size: 0;
 }
 
 /* ── 版式 A：列表台 ──────────────────────────────────────────
@@ -236,30 +278,6 @@
   }
 }
 
-/* 批量条：原先批量操作只能靠右键，唯一线索是一句灰字提示。
-   放在表格下方。摆在上方时它随选择出现／消失，每次都把整张表往下推；
-   表格本身限高 65vh 内部滚动，所以放下面依然一直在视野里，不需要吸底。 */
-.admin-selbar {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: var(--space-sm);
-  padding: var(--space-sm) var(--space-md);
-  border: 1px solid var(--brand-border);
-  border-radius: var(--radius-surface);
-  background: var(--brand-tint);
-  font-size: var(--text-sm);
-}
-
-.admin-selbar__count {
-  font-variant-numeric: tabular-nums;
-  font-weight: var(--fw-medium);
-}
-
-.admin-selbar__progress {
-  flex: 1 1 100%;
-}
-
 /* 生效筛选回执。每个条件单独可点掉。 */
 .admin-filter-summary {
   display: flex;
@@ -316,6 +334,36 @@
    外层 Stack 的 gap 再叠一层，就是邀请表下面那道多出来的空隙。 */
 .admin-table-card {
   overflow: hidden;
+}
+
+/*
+ * 表格卡片吃掉页签里剩下的高度。表格原先自己写 maxHeight="65vh"——又是一个
+ * 「上面还有多高」的目测值：工具条一换行就顶出视口，行数一少又在卡片下面留白。
+ * 现在滚动区从 flex 要高度，分页脚钉在卡片底边。
+ */
+.admin-table-card--fill {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  /* 筛选和统计条挤掉太多时给表格保一个下限，不然它会被压成只剩表头。 */
+  min-block-size: 18rem;
+}
+
+/* 只认直接子级：成员页的滚动区是 .admin-table 本身，邀请页多包了一层 __scroll。 */
+.admin-table-card--fill > .admin-table,
+.admin-table-card--fill > .admin-table-card__scroll {
+  flex: 1 1 auto;
+  min-block-size: 0;
+}
+
+/* 邀请表没有虚拟化，纵向也交给这一层滚，表头之外的高度才有地方去。 */
+.admin-table-card--fill > .admin-table-card__scroll {
+  overflow-y: auto;
+}
+
+/* 分页脚钉在卡片底边，不参与分配剩余高度。 */
+.admin-table-card--fill > .admin-table-card__footer {
+  flex: 0 0 auto;
 }
 
 .admin-table-card__scroll {
@@ -543,8 +591,15 @@
 }
 
 @media (max-width: 79.99em) {
+  /* 页签栏改成横排、压在内容上方。用 flex 列而不是 block：block 布局没法把面板
+     拉到剩余高度，页签内容一短，下面照样空一块——那正是这次要修的东西。 */
   .admin-page__workspace {
-    display: block;
+    display: flex;
+    flex-direction: column;
+  }
+
+  .admin-page__panel {
+    flex: 1 1 auto;
   }
 }
 
@@ -575,16 +630,18 @@
   /* 左栏宽度：容得下最长的角色名加状态徽标，又不至于把右边挤窄。 */
   --admin-md-master: 15rem;
   /*
-   * 工作区高度。原先写死 calc(100vh - 200px)，那个 200px 是当时页头加页签栏的
-   * 目测值，页头一改就对不上；矮屏上还会算出负数把列表压没。改成一个区间：
-   * 矮屏保底 30rem，高屏不超过 56rem，中间跟着视口走。
-   * 要退回「跟着内容自然长高」，删掉这一行和下面的 block-size 即可。
+   * 高度不再自己算。这里先后写过 calc(100vh - 200px) 和
+   * clamp(30rem, calc(100vh - 12rem), 56rem)：那个 200px / 12rem 是页头加页签栏的
+   * 目测值，页头一改就对不上；56rem 的上限则在大屏上直接在下方留出一大块空白。
+   * 两个数都是在猜「上面还有多高」，而这件事只有布局本身知道。
+   *
+   * 现在靠 flex 从上游要高度：.admin-page__panel 是一条填满内容区的列，
+   * 主从台占掉其中的全部剩余。min-block-size 只保一个下限，免得矮屏上被压没。
    */
-  --admin-md-height: clamp(30rem, calc(100vh - 12rem), 56rem);
-
   display: grid;
   grid-template-columns: var(--admin-md-master) minmax(0, 1fr);
-  block-size: var(--admin-md-height);
+  flex: 1 1 auto;
+  min-block-size: 30rem;
   overflow: hidden;
   border: 1px solid var(--border-subtle);
   border-radius: var(--radius-surface);
@@ -684,6 +741,18 @@
   padding: var(--space-md) var(--space-lg);
 }
 
+/* 提交按钮常驻底边，不跟着表单滚。表单一长（职业页的图标库有四十多个格子），
+   排在末尾的保存按钮就落到视口外面去了，改一个字段也要先滚到底。 */
+.admin-md__detail-foot {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: var(--space-sm);
+  padding: var(--space-sm) var(--space-lg);
+  border-block-start: 1px solid var(--border-subtle);
+  background: var(--surface-base);
+}
+
 .admin-md__empty {
   display: grid;
   flex: 1 1 auto;
@@ -693,9 +762,12 @@
 
 /* 窄屏：上下排。左栏限高，避免清单长到把详情推出一屏之外。 */
 @media (max-width: 47.99em) {
+  /* 窄屏上下排就别再撑满了：左右两栏叠成一列之后，撑满等于让详情区在一屏里
+     只剩下半截，反而更难用。回到跟着内容长高。 */
   .admin-md {
     grid-template-columns: minmax(0, 1fr);
-    block-size: auto;
+    flex: 0 1 auto;
+    min-block-size: 0;
   }
 
   .admin-md__master {
@@ -707,6 +779,10 @@
   .admin-md__detail-head,
   .admin-md__detail-pad {
     padding: var(--space-md);
+  }
+
+  .admin-md__detail-foot {
+    padding: var(--space-sm) var(--space-md);
   }
 }
 
@@ -745,10 +821,23 @@
    / -checklist-panel / -ack-card / -checklist-list / -checklist-row(__fields/__actions)
    / -empty-checklist，成员引导功能在任务 #7 里整体移除）。 */
 
+/*
+ * 这一页是表单，不是表格：先给它一个量度。
+ *
+ * /admin 整条路由是 contentWidth: "workbench"（route-metadata.ts），即 100% 视口宽——
+ * 成员表格那个页签要这个宽度，站点设置不要。在 2000px 的屏上，一个八个字的公会名称
+ * 被拉成 1800px 宽的输入框；功能开关的名字钉在最左、开关钉在最右，中间隔着 1900px。
+ * 那不是「布局松」，是对不上号：确认哪个开关归哪个名字得横扫一整屏。
+ *
+ * 收到阅读宽度并靠左。靠左而不居中，是为了让这一页的左边缘和上面的页签栏、以及其他
+ * 页签里的表格列首对齐——在 2000px 里居中一根 1120px 的柱子，会和上面那条通栏页签
+ * 栏整个脱开。
+ */
 .site-config {
   display: grid;
   gap: var(--space-md);
   width: 100%;
+  max-inline-size: var(--content-width-reading);
   min-width: 0;
 }
 
@@ -780,12 +869,16 @@
   box-shadow: var(--edge-top);
 }
 
+/* 卡头和卡身之间画一条线。三张卡的标题原先跟下面的字段标签同一个字号，只靠字重
+   区分，从上滚到下是一片同级的粗体，看不出「这里换了一节」。 */
 .site-config-card__header {
   display: flex;
-  gap: 14px;
-  align-items: start;
+  gap: var(--space-md);
+  align-items: center;
   justify-content: space-between;
   min-width: 0;
+  padding-block-end: var(--space-md);
+  border-block-end: 1px solid var(--border-subtle);
 }
 
 .site-config-card__header > div {
@@ -827,17 +920,34 @@
   background: color-mix(in srgb, var(--brand-fill) 10%, transparent);
 }
 
-.site-config-card__header .mantine-Text-root:first-child {
-  line-height: 1.18;
+/* 卡标题吃标度上的卡片档（18px）。原先靠 fw={800} 在 14px 上撑层级，撑不出来。
+   选择器从 `.mantine-Text-root:first-child` 换成显式类名：前者靠 DOM 顺序命中，
+   卡头里将来多一个元素就会静默错位。 */
+.site-config-card__title {
+  font-size: var(--text-card);
+  line-height: var(--lh-tight);
+}
+
+/* 「功能 7/7」原先是 xs 号灰字，钉在标题一屏之外，等于没有。 */
+.site-config-count {
+  flex: 0 0 auto;
+  padding: 3px var(--space-sm);
+  border-radius: var(--shape-pill);
+  color: var(--brand-text);
+  background: var(--brand-tint);
+  font-variant-numeric: tabular-nums;
 }
 
 .site-config-brand-block {
   display: grid;
   /* 预览框从 160px 收到 104px：它只是确认「传上去的是哪张图」，
-     不需要占掉右边输入框一半的横向空间。 */
-  grid-template-columns: 104px minmax(0, 1fr);
-  gap: var(--space-md);
+     不需要占掉右边输入框一半的横向空间。
+     字段列封顶 26rem：公会名称是一行短文本，输入框宽过它装得下的内容，
+     只会让人以为这里该填一长串东西。 */
+  grid-template-columns: 104px minmax(0, 26rem);
+  gap: var(--space-lg);
   align-items: center;
+  justify-content: start;
 }
 
 .site-config-logo-preview {
@@ -865,45 +975,51 @@
   min-width: 0;
 }
 
+/*
+ * 上传按钮直接跟在「标志图片」标签下面。
+ *
+ * 原先这里是一条 justify-content: space-between 的独立方框：标签钉最左、按钮钉最右，
+ * 卡有多宽两者就隔多远。方框本身也是白付的深度——页 → 卡 → 方框三层边框在同一屏上
+ * 比粗细，而这层方框不表达任何分组信息，框里就一个标签加一个按钮。
+ */
 .site-config-logo-upload {
-  display: flex;
-  gap: 12px;
-  align-items: center;
-  justify-content: space-between;
+  display: grid;
+  gap: var(--space-sm);
+  justify-items: start;
   min-width: 0;
-  padding: 16px;
-  border: 1px solid color-mix(in srgb, var(--text-primary) 8%, transparent);
-  border-radius: var(--radius-control);
-  background: color-mix(in srgb, var(--text-primary) 3%, transparent);
 }
 
-.site-config-logo-upload .mantine-Button-root {
-  justify-self: start;
-}
-
-/* 一行一个开关。原先是 4 列卡片网格，开关被推到每张卡的右缘，
-   名字和它管的那个开关之间隔着一整段空白，扫一眼对不上号；
-   排成一行以后名字和开关同在一条基线上。 */
+/*
+ * 七个开关按可用宽度自动分列，每格最窄 15rem。
+ *
+ * 这块改过两轮，两轮栽在同一件事上：格子太宽。最早是四列卡片网格，卡片跟着页面撑开，
+ * 开关被推到卡的右缘，名字和它管的开关之间隔一段空白；上一轮改成一行一个，结果在宽屏
+ * 上这段空白从「一张卡」变成了「一整屏」，更糟。
+ *
+ * 该管的从来不是列数，是单格宽度：格子够窄，名字和开关就永远在同一个视野里，一列还是
+ * 四列都无所谓。列数交给 auto-fit 按容器算，不用再为每档断点写一个数。
+ *
+ * 顺带去掉原先「1px 间隙 + 底色当描边」画表格线的写法：那是为单列表格准备的，换成多列
+ * 之后最后一行不满，空格会在网格线里露出一个洞。现在每格自带底色和圆角，缺格看不出来。
+ */
 .site-config-feature-list {
   display: grid;
-  gap: 1px;
+  grid-template-columns: repeat(auto-fit, minmax(15rem, 1fr));
+  gap: var(--space-sm);
   min-width: 0;
-  overflow: hidden;
-  border: 1px solid var(--border-subtle);
-  border-radius: var(--radius-control);
-  background: var(--border-subtle);
 }
 
 .site-config-feature-row {
   display: flex;
-  gap: var(--space-md);
+  gap: var(--space-sm);
   align-items: center;
   justify-content: space-between;
   min-width: 0;
   /* 44px 触控靶面，和 .admin-md__item 同一档。 */
   min-block-size: 44px;
-  padding: 8px var(--space-sm);
-  background: var(--surface-base);
+  padding: var(--space-sm) var(--space-md);
+  border-radius: var(--radius-control);
+  background: var(--surface-sunken);
   transition: background var(--transition-normal);
 }
 
@@ -913,22 +1029,33 @@
 
 .site-config-limits-sections {
   display: grid;
-  gap: 14px;
+  gap: var(--space-lg);
   min-width: 0;
 }
 
+/*
+ * 两组限额之间只留一条线，不再各自套一个带边框的浅底方框。
+ * 「上传与仓库」这张卡本身就是分组，方框是对同一批东西再分一次组，换来的是
+ * 页 → 卡 → 方框三层边框在同一屏里比粗细。
+ */
 .site-config-subpanel {
   min-width: 0;
-  padding: 14px;
-  border: 1px solid var(--border-subtle);
-  border-radius: var(--radius-control);
-  background: var(--surface-sunken);
+}
+
+.site-config-subpanel + .site-config-subpanel {
+  padding-block-start: var(--space-lg);
+  border-block-start: 1px solid var(--border-subtle);
 }
 
 @media (max-width: 820px) {
   .site-config-card__header {
     flex-direction: column;
     align-items: stretch;
+  }
+
+  /* 卡头转成竖排后交叉轴变成横向，align-items: stretch 会把计数药丸拉成通栏一条。 */
+  .site-config-count {
+    align-self: start;
   }
 }
 

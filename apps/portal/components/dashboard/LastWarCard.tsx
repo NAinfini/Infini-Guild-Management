@@ -17,6 +17,9 @@ import { FlameIcon, HeartIcon, HammerIcon, ShieldIcon } from "@portal/components
 import { CompareBar } from "../shared/CompareBar";
 import { EmptyState } from "../shared/EmptyState";
 import { cardHeading, formatDateTime, type DashboardLastWarMvp, type DashboardLastWarMvpEntry } from "./shared";
+import { findGuildWarResultDefinition } from "@guild/shared";
+import { useSiteConfigStore } from "@portal/stores/site-config";
+import { getGuildWarResultLabel, getGuildWarTeamStatLabel } from "@portal/utils/game-rules";
 
 const MVP_ICON_MAP: Record<string, React.ReactNode> = {
   damage: <FlameIcon size={12} />,
@@ -32,26 +35,6 @@ type LastWarCardProps = {
   onOpenHistory: (warName: string) => void;
   onViewHistory: () => void;
 };
-
-const RESULT_COLOR: Record<string, string> = {
-  win: "var(--status-success)",
-  loss: "var(--status-danger)",
-  draw: "var(--status-warning)",
-};
-
-const RESULT_LABEL_KEY: Record<string, string> = {
-  win: "card.lastWar.result.victory",
-  loss: "card.lastWar.result.defeat",
-  draw: "card.lastWar.result.draw",
-};
-
-function resultColor(result: string | null): string {
-  return (result && RESULT_COLOR[result]) ?? "var(--text-muted)";
-}
-
-function resultLabel(result: string | null, t: (key: string) => string): string {
-  return t((result && RESULT_LABEL_KEY[result]) ?? "card.lastWar.result.pending");
-}
 
 function MvpChip({ entry, icon }: { entry: DashboardLastWarMvpEntry; icon: React.ReactNode }) {
   return (
@@ -84,7 +67,8 @@ export const LastWarCard = memo(function LastWarCard({
   onOpenHistory,
   onViewHistory,
 }: LastWarCardProps) {
-  const { t } = useTranslation("dashboard");
+  const { t, i18n } = useTranslation("dashboard");
+  const gameRules = useSiteConfigStore((state) => state.gameRules);
   const [index, setIndex] = useState(0);
 
   const war = recentWars[index] ?? null;
@@ -92,6 +76,16 @@ export const LastWarCard = memo(function LastWarCard({
   const total = recentWars.length;
   const hasPrev = index > 0;
   const hasNext = index < total - 1;
+  const resultDefinition = war?.result ? findGuildWarResultDefinition(gameRules, war.result) : undefined;
+  const resultColor = resultDefinition?.tone === "success"
+    ? "var(--status-success)"
+    : resultDefinition?.tone === "danger"
+      ? "var(--status-danger)"
+      : "var(--text-muted)";
+  const teamStats = isExternalView
+    ? [gameRules.guild_war.team_stats.find((definition) => definition.dashboard === "primary")
+        ?? gameRules.guild_war.team_stats[0]].filter(Boolean)
+    : gameRules.guild_war.team_stats.filter((definition) => definition.dashboard !== "hidden");
 
   return (
     <Paper withBorder radius="md" className="dashboard-card">
@@ -142,10 +136,12 @@ export const LastWarCard = memo(function LastWarCard({
             </div>
             <div
               className="war-result-badge"
-              style={{ "--war-result-color": resultColor(war.result) } as React.CSSProperties}
+              style={{ "--war-result-color": resultColor } as React.CSSProperties}
             >
               <TrophyOutlined size={14} />
-              <span>{resultLabel(war.result, t)}</span>
+              <span>{war.result
+                ? getGuildWarResultLabel(war.result, i18n.language, gameRules)
+                : t("card.lastWar.result.pending")}</span>
             </div>
           </div>
 
@@ -158,38 +154,16 @@ export const LastWarCard = memo(function LastWarCard({
 
           {/* Comparison bars */}
           <Stack gap={8}>
-            <CompareBar
-              classPrefix="war-compare-"
-              icon={<TargetOutlined size={13} />}
-              label={t("card.lastWar.kills")}
-              own={war.own_stats?.kills ?? 0}
-              enemy={war.enemy_stats?.kills ?? 0}
-            />
-            {!isExternalView ? (
-              <>
-                <CompareBar
-                  classPrefix="war-compare-"
-                  icon={<CrownOutlined size={13} />}
-                  label={t("card.lastWar.credits")}
-                  own={war.own_stats?.credits ?? 0}
-                  enemy={war.enemy_stats?.credits ?? 0}
-                />
-                <CompareBar
-                  classPrefix="war-compare-"
-                  icon={<ShieldOutlined size={13} />}
-                  label={t("card.lastWar.towers")}
-                  own={war.own_stats?.towers ?? 0}
-                  enemy={war.enemy_stats?.towers ?? 0}
-                />
-                <CompareBar
-                  classPrefix="war-compare-"
-                  icon={<ShieldOutlined size={13} />}
-                  label={t("card.lastWar.baseHp")}
-                  own={war.own_stats?.base_hp ?? 0}
-                  enemy={war.enemy_stats?.base_hp ?? 0}
-                />
-              </>
-            ) : null}
+            {teamStats.map((definition, statIndex) => definition ? (
+              <CompareBar
+                key={definition.key}
+                classPrefix="war-compare-"
+                icon={statIndex === 0 ? <TargetOutlined size={13} /> : statIndex === 1 ? <CrownOutlined size={13} /> : <ShieldOutlined size={13} />}
+                label={getGuildWarTeamStatLabel(definition.key, i18n.language, gameRules)}
+                own={war.own_stats?.[definition.key] ?? 0}
+                enemy={war.enemy_stats?.[definition.key] ?? 0}
+              />
+            ) : null)}
           </Stack>
 
           {/* MVPs */}

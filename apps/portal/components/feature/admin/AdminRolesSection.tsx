@@ -371,7 +371,8 @@ export function AdminRolesSection({
   };
 
   return (
-    <Stack gap={12}>
+    /* admin-fill：把 .admin-page__panel 给的高度原样传给下面的主从台。 */
+    <Stack gap={12} className="admin-fill">
       {rolesLoading ? <Stack gap={8}>{Array.from({ length: 4 }).map((_, i) => <Skeleton key={i} height={18} />)}</Stack> : null}
       {rolesError ? <Alert color="red" title={loadErrorMessage} /> : null}
 

@@ -57,9 +57,8 @@ export type HistoryDetailData = {
   teams: HistoryDetailTeam[];
 };
 
-export type HistoryMvpSummary = {
-  damage: string;
-  healing: string;
-  building: string;
-  damageTaken: string;
-};
+export type HistoryMvpSummary = Array<{
+  key: string;
+  label: string;
+  value: string;
+}>;
