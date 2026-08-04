@@ -1,8 +1,6 @@
-import { readFileSync } from "node:fs";
 import { DatabaseSync } from "node:sqlite";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-
-const schemaSql = readFileSync("apps/worker/db/migrations/0000_core_schema.sql", "utf8");
+import { applyMigrations } from "./migration-test-utils";
 
 describe("core schema integrity constraints", () => {
   let db: DatabaseSync;
@@ -10,7 +8,7 @@ describe("core schema integrity constraints", () => {
   beforeEach(() => {
     db = new DatabaseSync(":memory:");
     db.exec("PRAGMA foreign_keys = ON;");
-    db.exec(schemaSql);
+    applyMigrations(db);
     db.prepare("INSERT INTO users (id, username, role) VALUES (?, ?, ?)").run("user-1", "user-one", "member");
     db.prepare("INSERT INTO users (id, username, role) VALUES (?, ?, ?)").run("user-2", "user-two", "member");
   });

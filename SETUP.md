@@ -23,12 +23,11 @@ pnpm setup:local
 pnpm dev
 ```
 
-`setup:local` creates two ignored files:
-
-- `apps/worker/wrangler.jsonc`, your private Cloudflare configuration
-- `apps/worker/.dev.vars`, containing a randomly generated local signing secret
-
-It never overwrites either file. Do not add them to Git.
+`setup:local` keeps the tracked `apps/worker/wrangler.jsonc` configuration and creates
+the ignored `apps/worker/.dev.vars` file with a randomly generated local signing
+secret. If the tracked Wrangler configuration is missing, the command restores it
+from the repository example. It never overwrites either existing file. Do not add
+`.dev.vars` to Git.
 
 Open `http://localhost:5173` after the terminal reports that the portal is ready. Local development uses disposable demo data:
 
@@ -41,6 +40,11 @@ Open `http://localhost:5173` after the terminal reports that the portal is ready
 Stopping and restarting with `pnpm dev` resets this local database. These demo accounts are never created in production.
 
 ## 2. Connect Cloudflare
+
+The tracked `apps/worker/wrangler.jsonc` is this private deployment's reviewed
+production manifest. Before deploying a fork, replace its production D1 and R2
+bindings, route, `PORTAL_ORIGIN`, and fallback branding with resources you own.
+Never deploy a fork while any of those values still point at this project.
 
 Log in from the terminal:
 
@@ -66,7 +70,8 @@ If either command says that the resource already exists, choose a different glob
 
 ## 3. Set the site name and secret
 
-Open `apps/worker/wrangler.jsonc` and edit only these production values:
+Open `apps/worker/wrangler.jsonc` and replace these production values in addition
+to the resource bindings created above:
 
 ```jsonc
 "vars": {
@@ -165,13 +170,16 @@ There is no `FEATURES` environment variable. Runtime module switches belong in A
 
 ## Optional: use a custom domain
 
-The default production config uses `workers_dev: true`, so a domain is not required. To use a domain already managed by Cloudflare:
+This project's tracked production manifest uses `workers_dev: false` and its own
+custom domain. For a fork, choose one deployment mode before running the config
+check:
 
-1. Change `workers_dev` to `false` under `env.production`.
-2. Uncomment the example `routes` entry.
-3. Replace its pattern with your hostname, such as `guild.example.com`.
-4. Run `pnpm config:check -- --env=production`.
-5. Run `pnpm deploy:production`.
+1. For a custom domain, keep `workers_dev: false` and replace the tracked `routes`
+   entry with your hostname, such as `guild.example.com`.
+2. For a `workers.dev` address, set `workers_dev: true` and remove the tracked
+   `routes` entry.
+3. Run `pnpm config:check -- --env=production`.
+4. Run `pnpm deploy:production`.
 
 Because the portal and API share one origin, `PORTAL_ORIGIN` can remain empty.
 
@@ -193,7 +201,8 @@ Never run `pnpm setup:admin` on an existing installation.
 
 ### `wrangler.jsonc not found`
 
-Run `pnpm setup:local`. If you already have a private config elsewhere, copy it to `apps/worker/wrangler.jsonc`.
+Restore the tracked file from the repository, or run `pnpm setup:local` to recreate
+it from the repository example.
 
 ### A placeholder is reported
 

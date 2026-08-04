@@ -485,25 +485,6 @@
   border-color: var(--border-strong);
 }
 
-/* The stripe is the scan cue; the badge beside it carries the same fact in
-   text so result is never colour-only. */
-.war-history-rail-item__stripe {
-  flex: 0 0 3px;
-  background: var(--text-muted);
-}
-
-.war-history-rail-item[data-result="win"] .war-history-rail-item__stripe {
-  background: var(--status-success);
-}
-
-.war-history-rail-item[data-result="loss"] .war-history-rail-item__stripe {
-  background: var(--status-danger);
-}
-
-.war-history-rail-item[data-result="draw"] .war-history-rail-item__stripe {
-  background: var(--status-info);
-}
-
 .war-history-rail-item--highlight {
   border-color: var(--status-warning);
   background-color: color-mix(in srgb, var(--status-warning) 9%, transparent);

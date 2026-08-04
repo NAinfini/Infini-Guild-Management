@@ -23,12 +23,10 @@ pnpm setup:local
 pnpm dev
 ```
 
-`setup:local` 会创建两个已被 Git 忽略的私人文件：
-
-- `apps/worker/wrangler.jsonc`：你的 Cloudflare 配置
-- `apps/worker/.dev.vars`：自动生成的本地签名密钥
-
-已有文件不会被覆盖，也不要把这两个文件加入 Git。
+`setup:local` 会保留仓库已跟踪的 `apps/worker/wrangler.jsonc` 配置，并创建被
+Git 忽略的 `apps/worker/.dev.vars`，其中包含自动生成的本地签名密钥。如果
+Wrangler 配置缺失，该命令会从仓库示例恢复它。已有文件不会被覆盖；不要把
+`.dev.vars` 加入 Git。
 
 终端显示前端已启动后，打开 `http://localhost:5173`。本地环境会使用可随时重置的演示数据：
 
@@ -41,6 +39,10 @@ pnpm dev
 再次运行 `pnpm dev` 会重置本地数据库。这些演示账号绝不会自动写入生产环境。
 
 ## 2. 连接 Cloudflare
+
+仓库已跟踪的 `apps/worker/wrangler.jsonc` 是本私有部署经过审查的生产
+manifest。分叉部署前，必须把其中的生产 D1、R2、路由、`PORTAL_ORIGIN` 和
+后备品牌信息全部替换成自己拥有的资源。仍指向本项目时绝对不要部署。
 
 在终端登录：
 
@@ -66,7 +68,8 @@ pnpm exec wrangler r2 bucket create my-guild-media --binding MEDIA --env product
 
 ## 3. 设置站点名称和密钥
 
-打开 `apps/worker/wrangler.jsonc`，只修改生产环境中的这些值：
+打开 `apps/worker/wrangler.jsonc`，除上面创建的资源绑定外，还要替换这些
+生产值：
 
 ```jsonc
 "vars": {
@@ -165,13 +168,15 @@ pnpm deploy:production
 
 ## 可选：绑定自己的域名
 
-生产示例默认使用 `workers_dev: true`，因此无需域名。若域名已托管在 Cloudflare：
+本项目已跟踪的生产 manifest 使用 `workers_dev: false` 和项目自己的自定义
+域名。分叉部署时，请在配置检查前选择一种方式：
 
-1. 把 `env.production` 下的 `workers_dev` 改成 `false`。
-2. 取消示例 `routes` 的注释。
-3. 把域名改成自己的地址，例如 `guild.example.com`。
-4. 运行 `pnpm config:check -- --env=production`。
-5. 运行 `pnpm deploy:production`。
+1. 使用自定义域名：保留 `workers_dev: false`，并把已跟踪的 `routes` 改成
+   自己的域名，例如 `guild.example.com`。
+2. 使用 `workers.dev` 地址：设为 `workers_dev: true`，并删除已跟踪的
+   `routes` 条目。
+3. 运行 `pnpm config:check -- --env=production`。
+4. 运行 `pnpm deploy:production`。
 
 网页与 API 同域时，`PORTAL_ORIGIN` 仍可留空。
 
@@ -193,7 +198,7 @@ pnpm deploy:production
 
 ### 提示找不到 `wrangler.jsonc`
 
-运行 `pnpm setup:local`。若已有私人配置，把它复制到 `apps/worker/wrangler.jsonc`。
+从仓库恢复该已跟踪文件，或运行 `pnpm setup:local` 从仓库示例重新创建它。
 
 ### 检查提示仍有占位符
 

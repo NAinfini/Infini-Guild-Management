@@ -1,5 +1,9 @@
 {
-  "mode": "v1-dev-baseline",
-  "current_version": "1.x-dev",
-  "baseline_schema": "0000_core_schema.sql"
+  "mode": "versioned-production",
+  "current_version": "0001",
+  "baseline_schema": "0000_core_schema.sql",
+  "migrations": [
+    "0000_core_schema.sql",
+    "0001_release_schema_upgrade.sql"
+  ]
 }

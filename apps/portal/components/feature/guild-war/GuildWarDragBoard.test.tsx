@@ -3,7 +3,22 @@ import { MantineProvider } from "@mantine/core";
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
-import { GuildWarDragBoard } from "./GuildWarDragBoard";
+
+const collisionMocks = vi.hoisted(() => ({
+  closestCenter: vi.fn(() => [{ id: "keyboard-target" }]),
+  pointerWithin: vi.fn(() => [{ id: "pointer-target" }]),
+}));
+
+vi.mock("@dnd-kit/core", async (importOriginal) => ({
+  ...await importOriginal<typeof import("@dnd-kit/core")>(),
+  closestCenter: collisionMocks.closestCenter,
+  pointerWithin: collisionMocks.pointerWithin,
+}));
+
+import {
+  GuildWarDragBoard,
+  guildWarCollisionDetection,
+} from "./GuildWarDragBoard";
 
 vi.mock("react-i18next", () => ({
   useTranslation: () => ({
@@ -49,6 +64,27 @@ const baseProps = {
 };
 
 describe("GuildWarDragBoard", () => {
+  it("uses pointer collision for pointer drags and a keyboard-safe fallback", () => {
+    const baseArgs = {
+      active: { id: "member-1", data: { current: {} }, rect: { current: { initial: null, translated: null } } },
+      collisionRect: { width: 1, height: 1, top: 0, bottom: 1, left: 0, right: 1 },
+      droppableContainers: [],
+      droppableRects: new Map(),
+    };
+
+    expect(guildWarCollisionDetection({
+      ...baseArgs,
+      pointerCoordinates: { x: 1, y: 1 },
+    } as Parameters<typeof guildWarCollisionDetection>[0])).toEqual([{ id: "pointer-target" }]);
+    expect(collisionMocks.pointerWithin).toHaveBeenCalledOnce();
+
+    expect(guildWarCollisionDetection({
+      ...baseArgs,
+      pointerCoordinates: null,
+    } as Parameters<typeof guildWarCollisionDetection>[0])).toEqual([{ id: "keyboard-target" }]);
+    expect(collisionMocks.closestCenter).toHaveBeenCalledOnce();
+  });
+
   it("uses one direct-drag board with only the three useful readiness totals", () => {
     render(
       <MantineProvider>

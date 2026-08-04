@@ -71,6 +71,76 @@ function createConcludeService(batch: ReturnType<typeof vi.fn>) {
 }
 
 describe("GuildWarService helpers", () => {
+  it("preserves event-owned team ids, generates ids for new teams, and rejects foreign ids", async () => {
+    const batch = vi.fn().mockResolvedValue([]);
+    const prepare = vi.fn((sql: string) => ({
+      sql,
+      bind: vi.fn((...bindings: unknown[]) => ({ sql, bindings })),
+    }));
+    const service = new GuildWarService({} as never, {
+      media: { get: vi.fn() },
+      writeAuditLog: vi.fn(),
+      publishEntityChanged: vi.fn(),
+      rawDb: { prepare, batch } as never,
+    });
+    vi.spyOn(service, "getTeamsForEvent").mockResolvedValue([
+      {
+        id: "team-owned",
+        warHistoryId: null,
+        eventId: "event-1",
+        teamName: "Alpha",
+        sortOrder: 0,
+        notes: null,
+        isLocked: false,
+      },
+    ]);
+
+    const result = await service.replaceEventTeams("event-1", {
+      teams: [
+        {
+          id: "team-owned",
+          team_name: "Alpha Prime",
+          sort_order: 0,
+          members: [],
+        },
+        {
+          team_name: "Bravo",
+          sort_order: 1,
+          members: [],
+        },
+      ],
+      pool_members: [],
+    });
+
+    expect(result).toEqual({ ok: true, data: { ok: true } });
+    const statements = batch.mock.calls[0]?.[0] as Array<{ sql: string; bindings: unknown[] }>;
+    const teamInserts = statements.filter((statement) => statement.sql.includes("INSERT INTO war_teams"));
+    expect(teamInserts[0]?.bindings[0]).toBe("team-owned");
+    expect(teamInserts[1]?.bindings[0]).toEqual(expect.any(String));
+    expect(teamInserts[1]?.bindings[0]).not.toBe("team-owned");
+
+    batch.mockClear();
+    const rejected = await service.replaceEventTeams("event-1", {
+      teams: [
+        {
+          id: "team-from-another-event",
+          team_name: "Injected",
+          sort_order: 0,
+          members: [],
+        },
+      ],
+      pool_members: [],
+    });
+
+    expect(rejected).toEqual({
+      ok: false,
+      code: "VALIDATION_ERROR",
+      message: "Team does not belong to this guild war event",
+      details: { team_id: "team-from-another-event" },
+    });
+    expect(batch).not.toHaveBeenCalled();
+  });
+
   it("toWarHistoryPayload maps camelCase to snake_case", () => {
     const payload = toWarHistoryPayload(historyRow);
     expect(payload).toEqual(

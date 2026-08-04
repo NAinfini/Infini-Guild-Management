@@ -55,9 +55,31 @@ export class GuildWarActiveService extends GuildWarCoreService {
     return rows.map((r) => r.userId);
   }
 
-  async replaceEventTeams(eventId: string, snapshot: WarTemplateSnapshot): Promise<void> {
+  async replaceEventTeams(eventId: string, snapshot: WarTemplateSnapshot): Promise<ServiceResult<{ ok: true }>> {
     const { rawDb } = this.deps;
     const existingTeams = await this.getTeamsForEvent(eventId);
+    const existingTeamIds = new Set(existingTeams.map((team) => team.id));
+    const retainedTeamIds = new Set<string>();
+
+    for (const team of snapshot.teams) {
+      if (!team.id) continue;
+      if (!existingTeamIds.has(team.id)) {
+        return err(
+          "VALIDATION_ERROR",
+          "Team does not belong to this guild war event",
+          { team_id: team.id },
+        );
+      }
+      if (retainedTeamIds.has(team.id)) {
+        return err(
+          "VALIDATION_ERROR",
+          "Team id appears more than once in the guild war snapshot",
+          { team_id: team.id },
+        );
+      }
+      retainedTeamIds.add(team.id);
+    }
+
     const stmts: D1PreparedStatement[] = [];
 
     for (const team of existingTeams) {
@@ -67,7 +89,7 @@ export class GuildWarActiveService extends GuildWarCoreService {
     stmts.push(rawDb.prepare("DELETE FROM war_pool_members WHERE event_id = ?1").bind(eventId));
 
     for (const team of snapshot.teams) {
-      const teamId = nanoid();
+      const teamId = team.id ?? nanoid();
       stmts.push(rawDb.prepare("INSERT INTO war_teams (id, event_id, team_name, sort_order, notes, is_locked) VALUES (?1, ?2, ?3, ?4, ?5, ?6)").bind(teamId, eventId, team.team_name, team.sort_order, team.notes ?? null, team.is_locked ? 1 : 0));
       for (const member of team.members) {
         stmts.push(rawDb.prepare("INSERT INTO war_team_members (id, war_team_id, user_id, role_tag, sort_order) VALUES (?1, ?2, ?3, ?4, ?5)").bind(nanoid(), teamId, member.user_id, member.role_tag ?? null, member.sort_order));
@@ -79,6 +101,7 @@ export class GuildWarActiveService extends GuildWarCoreService {
     }
 
     await rawDb.batch(stmts);
+    return ok({ ok: true });
   }
 
   async getActive(eventId?: string, canManage = false): Promise<ServiceResult<unknown>> {
@@ -129,7 +152,8 @@ export class GuildWarActiveService extends GuildWarCoreService {
       if (conditionalEtag !== expectedEtag) return err("CONFLICT", "Guild war roster changed, refresh and retry", { expected_etag: expectedEtag });
     }
     const snapshot: WarTemplateSnapshot = { teams: payload.teams, pool_members: payload.pool_members };
-    await this.replaceEventTeams(eventId, snapshot);
+    const replaceResult = await this.replaceEventTeams(eventId, snapshot);
+    if (!replaceResult.ok) return replaceResult;
     const eventRow = (await this.db.select({ title: events.title }).from(events).where(eq(events.id, eventId)).limit(1))[0];
     await this.deps.writeAuditLog({ entityType: "guild_war", action: "save_teams", actorId, entityId: eventId, diffTitle: eventRow?.title ?? null, detailText: JSON.stringify({ event_id: eventId, event_name: eventRow?.title ?? null }) });
     await this.deps.publishEntityChanged({ entityType: "guild_war", entityId: eventId, hint: "teams_saved" });

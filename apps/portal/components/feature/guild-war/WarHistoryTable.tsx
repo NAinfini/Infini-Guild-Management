@@ -142,9 +142,7 @@ export function WarHistoryTable({
                       key={item.id}
                       role="listitem"
                       className={itemClasses}
-                      data-result={item.result ?? "unknown"}
                     >
-                      <span className="war-history-rail-item__stripe" aria-hidden="true" />
                       <UnstyledButton
                         className="war-history-rail-item__open"
                         onClick={() => onRowClick(item.id)}

@@ -65,7 +65,7 @@ function HistoryTableHarness({
 }
 
 describe("WarHistoryTable rail", () => {
-  it("carries the result as a data attribute and a text badge, never colour alone", () => {
+  it("colours only the result badge", () => {
     render(
       <MantineProvider>
         <HistoryTableHarness onRowClick={vi.fn()} />
@@ -74,7 +74,8 @@ describe("WarHistoryTable rail", () => {
 
     const item = screen.getByRole("listitem");
     expect(item).toHaveClass("war-history-rail-item");
-    expect(item).toHaveAttribute("data-result", "win");
+    expect(item).not.toHaveAttribute("data-result");
+    expect(item.querySelector(".war-history-rail-item__stripe")).toBeNull();
     expect(
       within(item).getByText("Win").closest('[data-variant="light"]'),
     ).not.toBeNull();

@@ -63,6 +63,7 @@ export const saveTeamsPayloadSchema = z.object({
   event_id: z.string(),
   teams: z.array(
     z.object({
+      id: z.string().optional(),
       team_name: z.string(),
       sort_order: z.number().int(),
       notes: z.string().optional(),

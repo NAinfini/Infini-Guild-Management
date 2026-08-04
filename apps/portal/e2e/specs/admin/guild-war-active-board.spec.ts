@@ -246,6 +246,7 @@ test("建队、改名、上锁、删队：每一步都被自动保存写回服�
   let teams = (await readBoard(api)).teams;
   expect(teams, "新增的队伍必须落库，否则刷新就没了").toHaveLength(1);
   expect(teams[0]!.team_name).toBe("Team 1");
+  const teamId = teams[0]!.id;
   await expect(teamColumns(page)).toHaveCount(1);
   await expect(readiness(page, "Squads")).toHaveText("1");
 
@@ -264,9 +265,7 @@ test("建队、改名、上锁、删队：每一步都被自动保存写回服�
 
   teams = (await readBoard(api)).teams;
   expect(teams[0]!.team_name, "改名必须真的写回服务端").toBe(renamed);
-  /* 这里不能断言队伍 id 不变：save-teams 是整表替换（replaceEventTeams 先删光
-     war_teams / war_team_members / war_pool_members 再按快照重插），每存一次
-     所有队伍都会换一个新 id。这是那个接口的既定语义，不是本次改动引入的。 */
+  expect(teams[0]!.id, "自动保存不得更换已有队伍 id").toBe(teamId);
   expect(teams, "改名不该顺手多出或少掉队伍").toHaveLength(1);
   await expect(teamColumns(page)).toContainText(renamed);
 

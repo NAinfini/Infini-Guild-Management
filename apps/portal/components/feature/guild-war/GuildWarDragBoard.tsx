@@ -1,4 +1,13 @@
-import { DndContext, DragOverlay, pointerWithin, type DragEndEvent, type DragStartEvent, type Modifier } from "@dnd-kit/core";
+import {
+  closestCenter,
+  DndContext,
+  DragOverlay,
+  pointerWithin,
+  type CollisionDetection,
+  type DragEndEvent,
+  type DragStartEvent,
+  type Modifier,
+} from "@dnd-kit/core";
 import { Badge, Button, Paper, Stack, Text } from "@mantine/core";
 import type { ComponentProps, ReactNode } from "react";
 import { useTranslation } from "react-i18next";
@@ -52,6 +61,9 @@ const snapCenterToCursor: Modifier = ({ activatorEvent, draggingNodeRect, transf
   }
   return transform;
 };
+
+export const guildWarCollisionDetection: CollisionDetection = (args) =>
+  args.pointerCoordinates ? pointerWithin(args) : closestCenter(args);
 
 export function GuildWarDragBoard({
   dragColumns,
@@ -146,7 +158,7 @@ export function GuildWarDragBoard({
   return (
     <DndContext
       sensors={sensors}
-      collisionDetection={pointerWithin}
+      collisionDetection={guildWarCollisionDetection}
       onDragStart={onDragStart}
       onDragCancel={onDragCancel}
       onDragEnd={onDragEnd}

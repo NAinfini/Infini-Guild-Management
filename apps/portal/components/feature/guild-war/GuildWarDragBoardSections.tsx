@@ -90,13 +90,27 @@ const DraggableMemberCard = memo(function DraggableMemberCard({
   userId,
   onOpenMember,
 }: DraggableMemberCardProps) {
-  const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
+  const {
+    attributes,
+    listeners,
+    setNodeRef: setDraggableNodeRef,
+    isDragging,
+  } = useDraggable({
+    id: itemId,
+    disabled: dragDisabled,
+  });
+  const { setNodeRef: setDroppableNodeRef } = useDroppable({
     id: itemId,
     disabled: dragDisabled,
   });
   const { t } = useTranslation("guild-war");
   const [holding, setHolding] = useState(false);
   const holdTimerRef = useRef<number | null>(null);
+
+  const setNodeRef = useCallback((node: HTMLButtonElement | null) => {
+    setDraggableNodeRef(node);
+    setDroppableNodeRef(node);
+  }, [setDraggableNodeRef, setDroppableNodeRef]);
 
   const handleOpen = useCallback(() => {
     onOpenMember?.(userId);

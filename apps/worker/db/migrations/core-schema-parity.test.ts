@@ -1,6 +1,5 @@
-import { readFileSync } from "node:fs";
 import { getTableConfig, type SQLiteTable } from "drizzle-orm/sqlite-core";
-import { describe, expect, it } from "vitest";
+import { afterAll, describe, expect, it } from "vitest";
 import {
   announcements,
   auditLog,
@@ -25,38 +24,45 @@ import {
   warTeams,
   wikiCategories,
 } from "../schema";
+import { createMigratedDatabase, schemaObjectSql } from "./migration-test-utils";
 
-const schemaSql = readFileSync("apps/worker/db/migrations/0000_core_schema.sql", "utf8");
+const migrated = createMigratedDatabase();
+afterAll(() => migrated.close());
 
 function tableBlock(table: string): string {
-  const block = schemaSql.match(new RegExp(`CREATE TABLE IF NOT EXISTS ${table} \\([\\s\\S]*?\\n\\);`))?.[0];
+  const block = schemaObjectSql(migrated, "table", table);
   expect(block, `missing ${table} DDL`).toBeTruthy();
-  return block!;
+  return block;
 }
 
 function checkNames(table: SQLiteTable): string[] {
   return getTableConfig(table).checks.map((constraint) => constraint.name);
 }
 
-describe("core schema Drizzle/baseline parity", () => {
-  it("keeps every baseline CHECK represented by a named Drizzle check", () => {
-    const expected: Array<readonly [SQLiteTable, readonly string[]]> = [
-      [roles, ["roles_level_positive"]],
-      [memberProfiles, ["member_profiles_power_nonnegative"]],
-      [events, ["events_type_valid", "events_capacity_positive", "events_winner_count_positive"]],
-      [recurringTemplates, ["recurring_templates_type_valid", "recurring_templates_capacity_positive"]],
-      [announcements, ["announcements_status_valid"]],
-      [warHistory, ["war_history_result_valid", "war_history_duration_positive"]],
-      [warTeams, ["war_teams_exactly_one_parent"]],
-      [warPoolMembers, ["war_pool_members_exactly_one_parent"]],
-      [inviteLinks, ["invite_links_max_uses_positive", "invite_links_used_count_valid"]],
-      [memberAbsences, ["member_absences_date_range_valid"]],
-      [storageTransactions, ["storage_transactions_type_valid"]],
+describe("core schema Drizzle/migrated-schema parity", () => {
+  it("keeps every runtime CHECK aligned with its named Drizzle check", () => {
+    const expected: Array<readonly [SQLiteTable, string, readonly string[], readonly string[]]> = [
+      [roles, "roles", ["roles_level_positive"], ["CHECK (level >= 1)"]],
+      [memberProfiles, "member_profiles", ["member_profiles_power_nonnegative"], []],
+      [events, "events", ["events_type_valid", "events_capacity_positive", "events_winner_count_positive"], []],
+      [recurringTemplates, "recurring_templates", ["recurring_templates_type_valid", "recurring_templates_capacity_positive"], []],
+      [announcements, "announcements", ["announcements_status_valid"], []],
+      [warHistory, "war_history", ["war_history_result_valid", "war_history_duration_positive"], []],
+      [warTeams, "war_teams", ["war_teams_exactly_one_parent"], []],
+      [warPoolMembers, "war_pool_members", ["war_pool_members_exactly_one_parent"], []],
+      [inviteLinks, "invite_links", ["invite_links_max_uses_positive", "invite_links_used_count_valid"], ["CHECK (max_uses > 0)", "CHECK (used_count >= 0 AND used_count <= max_uses)"]],
+      [memberAbsences, "member_absences", ["member_absences_date_range_valid"], []],
+      [storageTransactions, "storage_transactions", ["storage_transactions_type_valid"], []],
     ];
 
-    for (const [table, names] of expected) {
+    for (const [table, tableName, names, legacyEquivalentChecks] of expected) {
       expect(checkNames(table)).toEqual(expect.arrayContaining([...names]));
-      for (const name of names) expect(schemaSql).toContain(`CONSTRAINT ${name} CHECK`);
+      const ddl = tableBlock(tableName);
+      if (legacyEquivalentChecks.length > 0) {
+        for (const expression of legacyEquivalentChecks) expect(ddl).toContain(expression);
+      } else {
+        for (const name of names) expect(ddl).toContain(`CONSTRAINT ${name} CHECK`);
+      }
     }
   });
 
@@ -82,8 +88,8 @@ describe("core schema Drizzle/baseline parity", () => {
       const indexes = getTableConfig(table).indexes;
       expect(indexes.find((index) => index.config.name === uniqueName)?.config.unique).toBe(true);
       expect(indexes.map((index) => index.config.name)).toContain(lookupName);
-      expect(schemaSql).toContain(`CREATE UNIQUE INDEX IF NOT EXISTS ${uniqueName}`);
-      expect(schemaSql).toContain(`CREATE INDEX IF NOT EXISTS ${lookupName}`);
+      expect(schemaObjectSql(migrated, "index", uniqueName)).toBeTruthy();
+      expect(schemaObjectSql(migrated, "index", lookupName)).toBeTruthy();
     }
   });
 
@@ -101,18 +107,18 @@ describe("core schema Drizzle/baseline parity", () => {
       expect(getTableConfig(table).foreignKeys).toHaveLength(count);
     }
 
-    expect(tableBlock("event_participants")).toMatch(/event_id TEXT NOT NULL REFERENCES events\(id\) ON DELETE CASCADE/);
+    expect(tableBlock("event_participants")).toMatch(/event_id TEXT NOT NULL REFERENCES "?events"?\(id\) ON DELETE CASCADE/);
     expect(tableBlock("event_participants")).toMatch(/user_id TEXT NOT NULL REFERENCES users\(id\) ON DELETE CASCADE/);
-    expect(tableBlock("event_poll_votes")).toContain("FOREIGN KEY (event_id, option_id) REFERENCES event_poll_options(event_id, id) ON DELETE CASCADE");
+    expect(tableBlock("event_poll_votes")).toMatch(/FOREIGN KEY \(event_id, option_id\) REFERENCES "?event_poll_options"?\(event_id, id\) ON DELETE CASCADE/);
     expect(tableBlock("event_poll_votes")).toMatch(/user_id TEXT NOT NULL REFERENCES users\(id\) ON DELETE CASCADE/);
-    expect(tableBlock("event_raffle_winners")).toMatch(/event_id TEXT NOT NULL REFERENCES events\(id\) ON DELETE CASCADE/);
+    expect(tableBlock("event_raffle_winners")).toMatch(/event_id TEXT NOT NULL REFERENCES "?events"?\(id\) ON DELETE CASCADE/);
     expect(tableBlock("event_raffle_winners")).toMatch(/user_id TEXT NOT NULL REFERENCES users\(id\) ON DELETE CASCADE/);
-    expect(tableBlock("war_team_members")).toMatch(/war_team_id TEXT NOT NULL REFERENCES war_teams\(id\) ON DELETE CASCADE/);
+    expect(tableBlock("war_team_members")).toMatch(/war_team_id TEXT NOT NULL REFERENCES "?war_teams"?\(id\) ON DELETE CASCADE/);
     expect(tableBlock("war_team_members")).toMatch(/user_id TEXT NOT NULL REFERENCES users\(id\) ON DELETE CASCADE/);
-    expect(tableBlock("war_pool_members")).toMatch(/war_history_id TEXT REFERENCES war_history\(id\) ON DELETE CASCADE/);
-    expect(tableBlock("war_pool_members")).toMatch(/event_id TEXT REFERENCES events\(id\) ON DELETE CASCADE/);
+    expect(tableBlock("war_pool_members")).toMatch(/war_history_id TEXT REFERENCES "?war_history"?\(id\) ON DELETE CASCADE/);
+    expect(tableBlock("war_pool_members")).toMatch(/event_id TEXT REFERENCES "?events"?\(id\) ON DELETE CASCADE/);
     expect(tableBlock("war_pool_members")).toMatch(/user_id TEXT NOT NULL REFERENCES users\(id\) ON DELETE CASCADE/);
-    expect(tableBlock("wiki_categories")).toMatch(/parent_id TEXT REFERENCES wiki_categories\(id\) ON DELETE SET NULL/);
+    expect(tableBlock("wiki_categories")).toMatch(/parent_id TEXT REFERENCES "?wiki_categories"?\(id\) ON DELETE SET NULL/);
   });
 
   it("protects storage ledger rows from item cascade deletion", () => {
@@ -145,10 +151,10 @@ describe("core schema Drizzle/baseline parity", () => {
       expect(getTableConfig(table).indexes.map((index) => index.config.name)).toEqual(
         expect.arrayContaining([...names]),
       );
-      for (const name of names) expect(schemaSql).toContain(`CREATE INDEX IF NOT EXISTS ${name}`);
+      for (const name of names) expect(schemaObjectSql(migrated, "index", name)).toBeTruthy();
     }
     expect(getTableConfig(auditLog).indexes.map((index) => index.config.name)).not.toContain("idx_audit_log_actor_id");
-    expect(schemaSql).not.toContain("CREATE INDEX IF NOT EXISTS idx_audit_log_actor_id");
-    expect(schemaSql).not.toContain("CREATE INDEX IF NOT EXISTS idx_error_log_source ON");
+    expect(schemaObjectSql(migrated, "index", "idx_audit_log_actor_id")).toBe("");
+    expect(schemaObjectSql(migrated, "index", "idx_error_log_source")).toBe("");
   });
 });

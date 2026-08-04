@@ -23,4 +23,4 @@ Repository owners must enable **Private vulnerability reporting** in GitHub's co
 
 ## Deployment responsibility
 
-Self-hosters are responsible for protecting their Cloudflare account, rotating secrets, applying database migrations, and keeping dependencies current. Start with [SETUP.md](./SETUP.md) and keep populated `.dev.vars`, `.env`, and `wrangler.jsonc` files out of Git.
+Self-hosters are responsible for protecting their Cloudflare account, rotating secrets, applying database migrations, and keeping dependencies current. Start with [SETUP.md](./SETUP.md), keep populated `.dev.vars` and `.env` files out of Git, and replace every project-specific production binding in the tracked `wrangler.jsonc` before deploying a fork.

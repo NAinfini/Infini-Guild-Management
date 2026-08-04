@@ -5,6 +5,7 @@ import {
   useSensor,
   useSensors,
 } from "@dnd-kit/core";
+import { sortableKeyboardCoordinates } from "@dnd-kit/sortable";
 import { buildEChartsTheme } from "../../theme/echarts";
 import { useTheme } from "../../providers/ThemeProvider";
 import { useSearch } from "@tanstack/react-router";
@@ -196,7 +197,9 @@ export function GuildWarPage() {
         tolerance: 8,
       },
     }),
-    useSensor(KeyboardSensor),
+    useSensor(KeyboardSensor, {
+      coordinateGetter: sortableKeyboardCoordinates,
+    }),
   );
 
   const {

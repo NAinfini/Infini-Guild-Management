@@ -1,6 +1,6 @@
-import { readFileSync } from "node:fs";
 import { DatabaseSync, type SQLInputValue } from "node:sqlite";
 import { describe, expect, it, vi } from "vitest";
+import { applyMigrations } from "../../db/migrations/migration-test-utils";
 import { SystemTestService } from "../SystemTestService";
 
 function createEnv() {
@@ -256,10 +256,7 @@ describe("SystemTestService exact compensation", () => {
   it("removes every registered root UUID, generated child UUID, control row, media reference, and R2 object", async () => {
     const sqlite = new DatabaseSync(":memory:");
     sqlite.exec("PRAGMA foreign_keys = ON");
-    sqlite.exec(readFileSync(
-      new URL("../../db/migrations/0000_core_schema.sql", import.meta.url),
-      "utf8",
-    ));
+    applyMigrations(sqlite);
     const insert = (sql: string, ...params: SQLInputValue[]) => sqlite.prepare(sql).run(...params);
     const ids = {
       run: "00000000-0000-4000-8000-000000000001",

@@ -61,6 +61,7 @@ export type WarTeamMemberRow = {
 
 export type WarTemplateSnapshot = {
   teams: Array<{
+    id?: string;
     team_name: string;
     sort_order: number;
     notes?: string;

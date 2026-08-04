@@ -16,22 +16,23 @@ The underlying Wrangler command is:
 wrangler d1 migrations apply guild-portal-db --local --config apps/worker/wrangler.jsonc --persist-to apps/worker/.wrangler/state
 ```
 
-## Current v1 Policy
+## Versioned Migration Policy
 
-The project is still in v1 development. Routine schema changes should update the baseline schema instead of adding incremental migration files.
+Production migration tracking starts at `0001_release_schema_upgrade.sql`.
+`0000_core_schema.sql` is an immutable historical baseline: never edit a
+migration that may already have been applied. Every schema change now receives a
+new, monotonically numbered SQL file.
 
 When changing the schema:
 
 1. Update the relevant Drizzle schema file in `apps/worker/db/schema/`.
-2. Update `apps/worker/db/migrations/0000_core_schema.sql`.
-3. Run `pnpm db:mock:rebuild` to verify the local database can rebuild from the baseline.
-4. Run `pnpm typecheck` before handing off the change.
+2. Generate or write the next incremental migration without changing older files.
+3. Add an upgrade-path test that starts from the previously released schema and preserves representative data.
+4. Run `pnpm db:mock:rebuild` to verify a fresh database can apply all migrations in filename order.
+5. Run the migration tests and `pnpm typecheck` before handing off the change.
 
-Do not add new incremental migration files for ordinary v1 changes unless the project explicitly starts versioned production migration tracking.
-
-This baseline workflow is only safe while databases can be rebuilt. Editing
-`0000_core_schema.sql` does not update a database that has already applied that
-migration, and D1 does not provide automatic migration rollback.
+D1 has no automatic rollback. Back up production data and test the exact
+incremental path locally before any remote migration is explicitly authorized.
 
 ## Schema Source of Truth
 
@@ -52,17 +53,10 @@ The Drizzle schema is split by domain:
 
 ## Existing Migration Files
 
-- `0000_core_schema.sql`: active v1 baseline schema. It should contain every table needed to rebuild a fresh local D1 database.
+- `0000_core_schema.sql`: immutable v1 baseline already used by existing installations.
+- `0001_release_schema_upgrade.sql`: production-ready incremental upgrade to the current Drizzle runtime schema. It preserves legacy onboarding records under `legacy_*` table names, normalizes ordered relations, backfills exact media references, and leaves resumable media-domain checkpoints unset.
 
-## Future Versioned Migration Rules
-
-When the project switches from v1 baseline editing to production migration tracking:
-
-1. Stop editing already-applied migration files.
-2. Generate a new migration with `pnpm db:generate`.
-3. Review generated SQL for destructive operations before applying it.
-4. Apply the migration to local D1 with `pnpm db:mock:init`.
-5. Back up production data and prepare a tested recovery migration before destructive changes.
-6. Keep Drizzle schema, SQL migrations, seed data, and shared Zod schemas in sync.
-
-Until that switch happens, treat `0000_core_schema.sql` as the rebuildable baseline.
+Migration tests discover `NNNN_*.sql` files, sort them by filename, and execute
+the complete sequence. `release-schema-upgrade.test.ts` separately verifies both
+the existing-database path (`0000` data followed by `0001`) and an empty-database
+build (`0000` + `0001`).

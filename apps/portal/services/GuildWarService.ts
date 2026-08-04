@@ -82,6 +82,7 @@ export class GuildWarService {
     return {
       event_id: input.eventId,
       teams: input.teams.map((team, teamIndex) => ({
+        ...(team.id.startsWith("new:") ? {} : { id: team.id }),
         team_name: (input.teamDraftNames[team.id] ?? team.team_name).trim() || team.team_name,
         sort_order: teamIndex,
         notes: (input.teamDraftNotes[team.id] ?? team.notes ?? "").trim() || undefined,

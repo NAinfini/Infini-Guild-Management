@@ -1,15 +1,14 @@
-import { readFileSync } from "node:fs";
 import { DatabaseSync } from "node:sqlite";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-
-const schemaSql = readFileSync("apps/worker/db/migrations/0000_core_schema.sql", "utf8");
+import { applyMigrations } from "./migration-test-utils";
 
 describe("core schema query plans", () => {
   let db: DatabaseSync;
 
   beforeAll(() => {
     db = new DatabaseSync(":memory:");
-    db.exec(schemaSql);
+    db.exec("PRAGMA foreign_keys = ON;");
+    applyMigrations(db);
   });
 
   afterAll(() => db.close());
