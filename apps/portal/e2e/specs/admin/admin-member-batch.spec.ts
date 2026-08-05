@@ -3,17 +3,7 @@ import { createThrowawayMember, uniqueTag, type ThrowawayMember } from "../../su
 import { expect, readJson, test } from "../../support/test";
 import { confirmDialog, expectNoDialog } from "../../support/ui";
 
-/*
- * 四件批量操作：改角色、启用、停用、删除。
- *
- * 入口是行上的操作菜单（右键、Shift+F10 或行尾的 Actions 按钮）——原先表格下方
- * 那条选择条已经删掉，这套菜单是现在唯一的入口，也一直是同一套回调。
- *
- * 每一件都隔着一个确认框，所以每条用例都要把两条路都走一遍——
- * 取消必须真的什么都不发（确认框形同虚设是最容易漏的一类缺陷），
- * 确认之后必须回读服务端逐个核对。批量接口一次改多条，只核对其中一条
- * 等于放过「只改了第一个」这种最典型的批量 bug。
- */
+/* Exercise both confirmation paths and verify every affected member server-side. */
 
 const BATCH_ROLE = { method: "PATCH", path: /^\/api\/admin\/users\/batch\/role$/ } as const;
 const BATCH_DEACTIVATE = { method: "PATCH", path: /^\/api\/admin\/users\/batch\/deactivate$/ } as const;
@@ -27,7 +17,7 @@ type ServerMember = {
 };
 
 function searchBox(page: Page): Locator {
-  return page.getByPlaceholder("Search members...");
+  return page.getByRole("textbox", { name: "Search members", exact: true });
 }
 function memberRow(page: Page, username: string): Locator {
   return page.getByRole("row", { name: `${username} member row`, exact: true });
@@ -129,7 +119,7 @@ test("批量改角色：取消什么都不改；确认之后选中的每一个�
   await page.getByRole("menuitem", { name: "Moderator", exact: true }).click();
   const dialog = await expectConfirm(
     page,
-    "Update role to Moderator for 2 selected member(s)?",
+    "Update 2 selected members to the Moderator role?",
     [first.username, second.username],
   );
 
@@ -156,7 +146,7 @@ test("批量停用再批量启用：两个人的状态列和服务端一起翻�
   await batchAction(page, "Batch Deactivate");
   const stopDialog = await expectConfirm(
     page,
-    "Deactivate 2 selected member(s)?",
+    "Deactivate 2 selected members?",
     [first.username, second.username],
   );
   await flow.click(stopDialog.getByRole("button", { name: "Save", exact: true }), BATCH_DEACTIVATE);
@@ -172,7 +162,7 @@ test("批量停用再批量启用：两个人的状态列和服务端一起翻�
   await batchAction(page, "Batch Activate");
   const startDialog = await expectConfirm(
     page,
-    "Reactivate 2 selected member(s)?",
+    "Reactivate 2 selected members?",
     [first.username, second.username],
   );
   await flow.click(startDialog.getByRole("button", { name: "Save", exact: true }), BATCH_REACTIVATE);
@@ -184,18 +174,13 @@ test("批量停用再批量启用：两个人的状态列和服务端一起翻�
   }
 });
 
-/*
- * 这条原先还断言了「删完之后选中态清空」，靠的是那条选择条从 DOM 里消失。选择条
- * 删掉之后选中态在界面上不再有任何读数——被删的行本身也不在了，从哪一行开菜单都
- * 只会拿到那一行自己的上下文。这一点现在没有 E2E 覆盖，清空逻辑本身没有改动。
- */
-test("批量删除：确认之后两行一起从列表消失，服务端也查不到", async ({ page, api, flow }) => {
+test("移除所选成员：确认后两行从成员列表消失，服务端列表也不再返回", async ({ page, api, flow }) => {
   const [first, second] = await setUpPair(page, api);
 
-  await batchAction(page, "Batch Delete");
+  await batchAction(page, "Remove selected");
   const dialog = await expectConfirm(
     page,
-    "Delete 2 selected member(s)?",
+    "Remove 2 selected members from the guild? Their accounts will be hidden from the member list and their data will be retained.",
     [first.username, second.username],
   );
   await flow.click(dialog.getByRole("button", { name: "Save", exact: true }), BATCH_DELETE);
@@ -206,7 +191,7 @@ test("批量删除：确认之后两行一起从列表消失，服务端也查�
   for (const member of [first, second]) {
     expect(
       remaining.some((row) => row.user.id === member.id),
-      `${member.username} 删除后不该再出现在成员列表里`,
+      `${member.username} 移除后不该再出现在成员列表里`,
     ).toBe(false);
   }
 });

@@ -55,13 +55,7 @@ type ProfileMediaTabProps = {
   onRemoveAudio: () => void;
 };
 
-/**
- * 媒体卡：相册 / 视频 / 语音 / 头像 收进一条内嵌切换。
- *
- * 这四组原先是四张各自撑开高度的卡，占满一整个标签页；现在它们和身份卡同处
- * 「主页」屏，必须让出高度。切换条上带计数，所以收起来也知道每组有多少。
- * 代价是四组不能同屏对照——但它们之间本来就没有需要对照的关系。
- */
+/** Profile media workspace for images, video, audio, and avatar controls. */
 export function ProfileMediaTab({
   avatarKey,
   profileAudioKey,
@@ -115,14 +109,8 @@ export function ProfileMediaTab({
     if (await confirmDelete("removeAudio")) onRemoveAudio();
   };
 
-  /*
-   * 选完就传，跟同一张卡里的头像一致——那一组从来就没有第二颗「上传」按钮。
-   * 音乐这边原先是选文件、再点上传两步，于是常态是一颗能按的和一颗灰着的并排。
-   *
-   * 用 ref 记住已经发过的那个 File 对象，而不是靠 files.length 判断：上传失败时
-   * files 不会被清空，只看长度会在 isUploading 落回 false 的那一刻无限重试。
-   * 同一个文件只发一次，失败就停在错误上（错误正常显示，不吞），要重试就重新选。
-   */
+  // Track the exact File object so a failed auto-upload does not retry forever
+  // when `isUploading` returns to false.
   const stagedAudio = audioUploader.files[0] ?? null;
   const autoUploadedAudio = useRef<File | null>(null);
   useEffect(() => {
@@ -131,7 +119,6 @@ export function ProfileMediaTab({
     onUploadAudio();
   }, [onUploadAudio, stagedAudio]);
 
-  /* 转换与上传两条进度条原先是两条没有说明的匿名细条，看不出谁是谁。 */
   const renderProgress = (uploader: UploaderState) =>
     uploader.isConverting || uploader.isUploading ? (
       <Stack gap={4} mt={8}>
@@ -142,8 +129,6 @@ export function ProfileMediaTab({
 
   return (
     <Paper withBorder radius="md" p="var(--card-padding)">
-      {/* 切换条放进标题行的右侧：它自己独占一行时，左边一整段空白没有任何东西，
-          而它和「媒体」本来就是同一层——选的是这张卡里显示哪一组。 */}
       <SectionHeader
         title={t("section.media")}
         trailing={
@@ -312,9 +297,6 @@ export function ProfileMediaTab({
               ) : null}
             </Group>
 
-            {/* 选完就传、而且传上去的不是原文件：浏览器会先转成 Opus/Ogg。这句话
-                以前只存在于 i18n 里，没有任何组件渲染它，用户看到的是一个不说明
-                自己会做什么的上传按钮。 */}
             <Text c="dimmed" size="xs" mt={6}>{t("media.audioHint")}</Text>
 
             {audioUploader.error ? <Text c="red" size="sm" mt={8}>{audioUploader.error}</Text> : null}

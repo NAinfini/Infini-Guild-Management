@@ -213,11 +213,11 @@ test("加人进池：选完人确认后池子和服务端一起加一", async ({
   expect((await readBoard(api)).pool, "刚建的战里应该一个人都没有").toEqual([]);
   await expect(readiness(page, "In pool")).toHaveText("0");
 
-  await poolColumn(page).getByRole("button", { name: "Add to Pool", exact: true }).click();
+  await poolColumn(page).getByRole("button", { name: "Add to pool", exact: true }).click();
   const modal = page.getByRole("dialog");
   await expect(modal).toBeVisible();
 
-  const confirm = modal.getByRole("button", { name: /^Add \d+ to Pool$/ });
+  const confirm = modal.getByRole("button", { name: /^Add \d+ members? to pool$/ });
   await expect(confirm, "一个人都没选就能提交，等于放行一次空操作").toBeDisabled();
 
   await field(modal, "Available members").fill(member.username);
@@ -226,7 +226,7 @@ test("加人进池：选完人确认后池子和服务端一起加一", async ({
   // MultiSelect 选完不会自己收起下拉（还要继续选人），而下拉正好盖住确认按钮。
   await page.keyboard.press("Escape");
 
-  await flow.click(modal.getByRole("button", { name: "Add 1 to Pool", exact: true }), MOVE_MEMBER);
+  await flow.click(modal.getByRole("button", { name: "Add 1 member to pool", exact: true }), MOVE_MEMBER);
   await expectNoDialog(page);
 
   const board = await readBoard(api);
@@ -248,7 +248,7 @@ test("建队、改名、上锁、删队：每一步都被自动保存写回服�
   expect(teams[0]!.team_name).toBe("Team 1");
   const teamId = teams[0]!.id;
   await expect(teamColumns(page)).toHaveCount(1);
-  await expect(readiness(page, "Squads")).toHaveText("1");
+  await expect(readiness(page, "Teams")).toHaveText("1");
 
   // 改名：点标题进入编辑态，回车提交。名字只存在草稿里，靠 350ms 自动保存落库。
   const renamed = `Vanguard ${stamp}`;
@@ -295,7 +295,7 @@ test("建队、改名、上锁、删队：每一步都被自动保存写回服�
 
   expect((await readBoard(api)).teams, "确认后服务端必须真的删掉").toEqual([]);
   await expect(teamColumns(page)).toHaveCount(0);
-  await expect(readiness(page, "Squads")).toHaveText("0");
+  await expect(readiness(page, "Teams")).toHaveText("0");
 });
 
 test("拖拽调人：从池子拖进队伍，再拖到回收区移出这场战", async ({ page, flow, api }) => {

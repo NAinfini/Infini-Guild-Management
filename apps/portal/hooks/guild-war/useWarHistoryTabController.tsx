@@ -91,8 +91,7 @@ export function useWarHistoryTabController({
   const [detailSorting, setDetailSorting] = useState<SortingState>([]);
   const [memberStatsBaseline, setMemberStatsBaseline] = useState<Record<string, MemberStatDraft>>({});
   const [memberStatsDraft, setMemberStatsDraft] = useState<Record<string, MemberStatDraft>>({});
-  /* 成员数据默认只读。原先九列输入框长期挂在表里，光看不改的时候整张表都是输入框，
-     既读不清也很容易误改。改成显式进入编辑态，保存即退出。 */
+  // Member statistics are read-only until the moderator explicitly enters edit mode.
   const [isEditingMemberStats, setIsEditingMemberStats] = useState(false);
 
   useEffect(() => {
@@ -379,7 +378,15 @@ export function useWarHistoryTabController({
         return hasAnyData ? (
           <HoverCard width={280} shadow="lg" withArrow arrowSize={10} openDelay={350} closeDelay={80} position="top">
             <HoverCard.Target>
-              <Badge data-animate-icon-trigger color="green" style={{ cursor: "default" }}>{t("history.table.complete")}</Badge>
+              <Badge
+                component="button"
+                type="button"
+                data-animate-icon-trigger
+                color="green"
+                style={{ cursor: "default" }}
+              >
+                {t("history.table.complete")}
+              </Badge>
             </HoverCard.Target>
             <HoverCard.Dropdown p="sm" style={{ borderRadius: 10 }}>
               <Group gap={10} wrap="nowrap" align="flex-start">
@@ -396,7 +403,15 @@ export function useWarHistoryTabController({
         ) : (
           <HoverCard width={280} shadow="lg" withArrow arrowSize={10} openDelay={350} closeDelay={80} position="top">
             <HoverCard.Target>
-              <Badge data-animate-icon-trigger color="yellow" style={{ cursor: "default" }}>{t("history.table.missing")}</Badge>
+              <Badge
+                component="button"
+                type="button"
+                data-animate-icon-trigger
+                color="yellow"
+                style={{ cursor: "default" }}
+              >
+                {t("history.table.missing")}
+              </Badge>
             </HoverCard.Target>
             <HoverCard.Dropdown p="sm" style={{ borderRadius: 10 }}>
               <Group gap={10} wrap="nowrap" align="flex-start">

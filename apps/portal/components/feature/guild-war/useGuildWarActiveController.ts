@@ -132,11 +132,9 @@ export function useGuildWarActiveController({
   const isTeamsDirty = useMemo(() => {
     if (serverTeams.length === 0) return false;
 
-    // Check team order
     const orderBaseline = draftBaselinesRef.current.order;
     if (teamOrder.length > 0 && orderBaseline && !teamOrdersEqual(teamOrder, orderBaseline)) return true;
 
-    // Check names, notes, locks
     for (const team of serverTeams) {
       const draftName = teamDraftNames[team.id];
       if (draftName !== undefined && draftName !== (draftBaselinesRef.current.names[team.id] ?? team.team_name)) return true;

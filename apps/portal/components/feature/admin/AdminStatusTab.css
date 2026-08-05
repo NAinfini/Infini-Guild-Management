@@ -29,7 +29,7 @@
   padding: var(--card-padding);
 }
 
-/* 44px 触控靶面，此前是 TSX 里的 h={44}。 */
+/* Status actions retain a 44px touch target. */
 .admin-status-card__action {
   min-height: 44px;
 }

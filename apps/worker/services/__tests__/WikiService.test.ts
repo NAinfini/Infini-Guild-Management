@@ -89,6 +89,24 @@ function createSequentialWikiDb(rowsBySelect: unknown[][]) {
   return { select };
 }
 
+function createArticleListDb() {
+  const offset = vi.fn().mockResolvedValue([]);
+  const limit = vi.fn(() => ({ offset }));
+  const orderBy = vi.fn((..._expressions: SQL[]) => ({ limit }));
+  const where = vi.fn()
+    .mockReturnValueOnce({ orderBy })
+    .mockResolvedValueOnce([{ count: 0 }]);
+  const from = vi.fn(() => ({ where }));
+  const select = vi.fn(() => ({ from }));
+  return { db: { select }, orderBy };
+}
+
+function toOrderSql(expressions: SQL[]): string[] {
+  return expressions.map((expression) =>
+    new SQLiteSyncDialect().sqlToQuery(expression).sql.replaceAll('"', ""));
+}
+
+
 // Builds a Drizzle-like db mock for CRUD operations.
 // Handles both:
 //   select().from().where().limit(1)   → resolves to array (getById)
@@ -168,16 +186,52 @@ describe("WikiService", () => {
       expect(query.sql).toMatch(/category_id"? in \(\?, \?\)/i);
       expect(query.params).toEqual(["cat1", "cat2"]);
     });
+    it.each([
+      [
+        "the default curated order",
+        undefined,
+        [
+          "wiki_articles.pinned desc",
+          "wiki_articles.sort_order asc",
+          "wiki_articles.updated_at desc",
+          "wiki_articles.id asc",
+        ],
+      ],
+      [
+        "updated descending order",
+        "updated_desc",
+        [
+          "wiki_articles.pinned desc",
+          "wiki_articles.updated_at desc",
+          "wiki_articles.id desc",
+        ],
+      ],
+      [
+        "updated ascending order",
+        "updated_asc",
+        [
+          "wiki_articles.pinned desc",
+          "wiki_articles.updated_at asc",
+          "wiki_articles.id asc",
+        ],
+      ],
+    ] as const)("uses stable pagination for %s", async (_label, sort, expectedOrder) => {
+      const { db, orderBy } = createArticleListDb();
+      const service = new WikiService(db as never, createDeps());
+
+      await service.listArticles({
+        page: 1,
+        limit: 50,
+        ...(sort ? { sort } : {}),
+      });
+
+      expect(toOrderSql(orderBy.mock.calls[0] ?? [])).toEqual(expectedOrder);
+    });
+
   });
 
   describe("updateCategory", () => {
     it("stamps updated_at on the single-row path, same as the batch path does", async () => {
-      /*
-       * 这条是照着一次真实的漏改立的：批量路径写 updated_at（batchUpdateCategories
-       * 里的 assignments.push("updated_at = ?")），单行路径不写。结果是同一个字段
-       * 改一行不动时间戳、改一批动——updated_at 的先后取决于走了哪个接口，任何按它
-       * 排序或做增量同步的地方都会读到错的顺序，而且两条路径单独看都「正常」。
-       */
       const { rawDb } = createRawDb();
       const { db, mocks } = createCrudDb(BASE_CATEGORY_ROW);
       const service = new WikiService(db as never, createDeps(rawDb));
@@ -523,7 +577,6 @@ describe("WikiService", () => {
     it("blocks deletion and calls no media refs when category has articles", async () => {
       // deleteCategory returns CONFLICT when articles exist — no ref cleanup needed
       const { batchMock, runMock, rawDb } = createRawDb();
-      // Mock: hasArticles check returns a row, blocking delete
       const limitMock = vi.fn().mockResolvedValue([{ id: "art1" }]);
       const whereMock = vi.fn(() => ({ limit: limitMock }));
       const fromMock = vi.fn(() => ({ where: whereMock }));

@@ -44,22 +44,9 @@ import "./AdminClassTagsSection.css";
 
 const MAX_MEMBERS = LIMITS.content.classesPerTag.max;
 
-/*
- * 职业标签的管理界面，跟职业目录共用 .admin-md 主从台。
- *
- * 标签里装什么一律不设限：空标签、跟别的标签重叠、装下整个目录都放行——哪些职业算
- * 「治疗」是公会自己的判断（见 apps/shared/schemas/class-tag.ts 里同一条说明）。所以
- * 这个界面上不会出现任何「这样组不合理」的提示，唯一的硬上限是一个标签最多装几个职业。
- *
- * 顺序跟职业目录一样靠左栏拖拽，不再有那个数字输入框（详见 useAdminClassTagsController
- * 里 ClassTagDraft 上的说明）。标签顺序决定活动卡上配额格的排列。
- */
+/* 标签允许为空或相互重叠；标签顺序由左栏拖拽决定，并控制活动卡配额排列。 */
 
-/*
- * 清单行 = 「点开编辑」按钮 + 右侧拖拽手柄，跟 AdminClassesSection 的 SortableClassRow
- * 是同一个形状。手柄单独拆出来的理由也一样：整行可拖时，想点开编辑却把指针挪了两像素
- * 就会被判成一次拖拽。按钮不能嵌按钮，所以外面多一层 div。
- */
+/* 编辑按钮与拖拽手柄是兄弟控件，避免嵌套按钮并将拖拽限定在手柄。 */
 function SortableTagRow({
   tag,
   active,
@@ -117,16 +104,7 @@ function SortableTagRow({
   );
 }
 
-/*
- * 成员清单换过两轮。最早是「整个职业目录铺成一张网格，选中的描个边」，一眼看不出选了
- * 哪些；于是拆成可选／已选两栏的穿梭框，但一个只有十来个职业的目录被摊成两栏两个搜索框，
- * 屏幕上大半是空的，而「这个职业还在别的哪些标签里」两栏都答不上来——那才是多对多关系
- * 下最容易出错的地方（同一个职业进了两个标签，配额算的是两笔）。
- *
- * 现在是一栏勾选清单（shared/PickList）：勾选框回答「在不在这个标签里」，行尾的芯片
- * 回答「它还在哪些标签里」。清单按目录顺序渲染，不按点选先后——点选序会让刚勾上的职业
- * 跳到末尾，下次打开又排回来，看着像被人改过。
- */
+/* 单一 PickList 按职业目录排序，勾选表示成员关系，行尾标签标示重叠归属。 */
 
 export function AdminClassTagsSection() {
   const { t } = useTranslation("admin");
@@ -135,8 +113,7 @@ export function AdminClassTagsSection() {
   const controller = useAdminClassTagsController();
   const { draft } = controller;
   const catalog = useClassCatalogStore((state) => state.items);
-  /* 不在这里再 sort 一遍：服务端已经按 sort_order 排好，而拖拽是乐观更新——本地按
-     sort_order 重排会拿还没回来的旧数字把刚拖出来的顺序推回去。 */
+  /* 保留服务端或乐观更新提供的顺序，避免未确认的 sort_order 覆盖拖拽结果。 */
   const tags = controller.query.data;
   const existing = draft.id ? tags?.find((tag) => tag.id === draft.id) ?? null : null;
 
@@ -305,8 +282,7 @@ export function AdminClassTagsSection() {
                       key={tag.id}
                       tag={tag}
                       active={controller.opened && draft.id === tag.id}
-                      /* 上一次重排还在飞时不允许再拖：两个 PATCH 并发时先发的可能后到，
-                         onSuccess 会把旧顺序写回缓存。 */
+                      // Serialize reorders so a late response cannot restore stale order.
                       disabled={controller.reorderPending}
                       onOpen={() => controller.selectTag(tag)}
                     />
@@ -324,8 +300,6 @@ export function AdminClassTagsSection() {
             <div className="admin-md__detail-head">
               <Group justify="space-between" align="center" wrap="nowrap">
                 <Group gap={8} align="center" wrap="nowrap" style={{ minWidth: 0 }}>
-                  {/* 查看态标题就是标签自己的名字；进了编辑态才换成「编辑标签」，
-                      那时名字已经在下面的输入框里了，标题再重复一遍是废话。 */}
                   <Text fw={700} size="sm" truncate>
                     {controller.editing
                       ? (draft.id ? t("classTags.editTitle") : t("classTags.createTitle"))
@@ -335,7 +309,6 @@ export function AdminClassTagsSection() {
                     <Badge size="xs" variant="light" color="yellow">{t("classTags.dirty")}</Badge>
                   ) : null}
                 </Group>
-                {/* size={44} 是 19788bf「improve tablet accessibility」定的触控靶面。 */}
                 <Group gap={6} wrap="nowrap">
                   {existing && !controller.editing ? (
                     <Tooltip label={t("classTags.editTitle")} withArrow>
@@ -407,8 +380,6 @@ export function AdminClassTagsSection() {
                 </div>
 
                 {!controller.editing ? (
-                  /* 查看态：只列装进来的那几个职业，同一套行（PickListStaticRow），
-                     所以点了编辑之后行不会跳。 */
                   pickedItems.length === 0 ? (
                     <Text size="xs" c="dimmed">{t("classTags.members.none")}</Text>
                   ) : (
@@ -430,8 +401,6 @@ export function AdminClassTagsSection() {
                 ) : catalog.length === 0 ? (
                   <Text size="xs" c="dimmed">{t("classTags.noClasses")}</Text>
                 ) : (
-                  /* 清单自己滚：高度跟着内容走、到 320px 才滚。原先它是 flex:1 吃满
-                     剩余高度的，十个职业占着能放二十行的地方。 */
                   <PickList
                     className="admin-class-tags__picker"
                     size="xs"
@@ -460,7 +429,6 @@ export function AdminClassTagsSection() {
                         onClick: clearVisible,
                       },
                     }}
-                    /* 到上限之后没勾上的那些一起变灰，不写出来的话那是一片没有理由的灰。 */
                     status={atLimit ? (
                       <Text size="xs" c="dimmed">
                         {t("classTags.members.limitReached", { max: MAX_MEMBERS })}
@@ -477,13 +445,10 @@ export function AdminClassTagsSection() {
               ) : null}
             </div>
 
-            {/* 提交这一组钉在底边，跟职业页同一个理由：清单一长，排在它后面的保存
-                按钮就落到视口外面去了。查看态没有可提交的东西，整条不出现。 */}
+            {/* Keep edit actions reachable while the member list scrolls. */}
             {controller.editing ? (
               <div className="admin-md__detail-foot">
                 <Group justify="flex-end" gap={8} ml="auto">
-                  {/* 现在的「取消」是真的撤销：把草稿退回服务端那份（新建时收起右栏），
-                      不再只是把面板关掉。 */}
                   <Button variant="default" onClick={controller.cancelEdit}>
                     {tc("action.cancel")}
                   </Button>

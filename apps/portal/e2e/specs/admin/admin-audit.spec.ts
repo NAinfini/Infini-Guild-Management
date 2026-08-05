@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import type { APIRequestContext, Locator, Page } from "@playwright/test";
 import { expect, readJson, test } from "../../support/test";
-import { field } from "../../support/ui";
+import { ensureFiltersOpen, field, selectSegmentedControlOption } from "../../support/ui";
 
 /*
  * 后台「审计日志」页签的全部控件：搜索、时间预设分段、两个自定义日期框、筛选摘要上的
@@ -64,7 +64,7 @@ function endOf(day: string): string {
 }
 
 function toolbar(page: Page): Locator {
-  return page.locator(".admin-toolbar");
+  return page.locator(".admin-audit-toolbar");
 }
 function searchBox(page: Page): Locator {
   return page.getByLabel("Search audit logs", { exact: true });
@@ -80,13 +80,6 @@ function filterSummary(page: Page): Locator {
 }
 function filterChip(page: Page, text: string): Locator {
   return page.locator(".admin-filter-chip").filter({ hasText: text });
-}
-/*
- * Mantine 的 SegmentedControl 把真正的 radio 藏了起来，可点的是它的 label；
- * 按 role 取到的是隐藏 input，点它会一直等「元素可见」直到超时。
- */
-function preset(page: Page, label: string): Locator {
-  return page.locator("label.mantine-SegmentedControl-label").filter({ hasText: new RegExp(`^${label}$`) });
 }
 /*
  * Mantine 的 Pagination 只给首/末/前/后四颗控件配了 aria-label，页码本身的无障碍名
@@ -241,32 +234,35 @@ test("搜索：词送到服务端，命中的就是刚才那次操作，展开�
 
 test("时间范围：三个预设各自改的是起始日，切回「自定义」露出两个日期框且不重新取数", async ({ page }) => {
   await openAudit(page);
+  await ensureFiltersOpen(toolbar(page));
 
-  const week = await expectAuditRequest(page, () => preset(page, "7D").click(), {
+  const week = await expectAuditRequest(page, () => selectSegmentedControlOption(page, "7D"), {
     start_at: startOf(utcDay(-7)),
     end_at: endOf(utcDay()),
     page: "1",
   });
   await expect(filterChip(page, `${utcDay(-7)} to ${utcDay()}`)).toBeVisible();
   await expect(
-    field(toolbar(page), "Audit date from"),
+    field(page, "Audit date from"),
     "选了预设之后自定义日期框就该收起来，不然屏幕上同时有两套互相矛盾的时间控件",
   ).toHaveCount(0);
 
-  const month = await expectAuditRequest(page, () => preset(page, "1M").click(), {
+  await ensureFiltersOpen(toolbar(page));
+  const month = await expectAuditRequest(page, () => selectSegmentedControlOption(page, "1M"), {
     start_at: startOf(utcDay(-30)),
     page: "1",
   });
   expect(month.total, "范围放宽之后条数只会多不会少").toBeGreaterThanOrEqual(week.total);
 
   /* 切回「自定义」只是把两个日期框放出来，筛选条件一个字没变，不该重新取数。 */
-  await expectNoApiCalls(page, () => preset(page, "Custom").click());
-  await expect(field(toolbar(page), "Audit date from")).toHaveValue(utcDay(-30));
-  await expect(field(toolbar(page), "Audit date to")).toHaveValue(utcDay());
+  await ensureFiltersOpen(toolbar(page));
+  await expectNoApiCalls(page, () => selectSegmentedControlOption(page, "Custom"));
+  await expect(field(page, "Audit date from")).toHaveValue(utcDay(-30));
+  await expect(field(page, "Audit date to")).toHaveValue(utcDay());
 
   await expectAuditRequest(
     page,
-    () => field(toolbar(page), "Audit date from").fill(utcDay(-3)),
+    () => field(page, "Audit date from").fill(utcDay(-3)),
     { start_at: startOf(utcDay(-3)), end_at: endOf(utcDay()) },
   );
   await expect(filterChip(page, `${utcDay(-3)} to ${utcDay()}`)).toBeVisible();
@@ -350,7 +346,7 @@ test("导出：CSV 和 JSON 都真的落盘、内容就是当前筛选的结果�
 
   const filenameBase = `guild-audit-${utcDay(-1)}-to-${utcDay()}`;
 
-  await toolbar(page).getByRole("button", { name: "Export", exact: true }).click();
+  await page.getByRole("button", { name: "Export", exact: true }).click();
   const csvDownload = page.waitForEvent("download");
   await clickExport(page, page.getByRole("menuitem", { name: "Export CSV", exact: true }), "text/csv");
   const csvFile = await csvDownload;
@@ -365,7 +361,7 @@ test("导出：CSV 和 JSON 都真的落盘、内容就是当前筛选的结果�
   expect(csv.length, "当前筛选只剩一条，导出的就该只有这一条——导出必须跟着筛选走").toBe(2);
   expect(csv[1], "导出的正是屏幕上那一条").toContain(invite.id);
 
-  await toolbar(page).getByRole("button", { name: "Export", exact: true }).click();
+  await page.getByRole("button", { name: "Export", exact: true }).click();
   const jsonDownload = page.waitForEvent("download");
   await clickExport(page, page.getByRole("menuitem", { name: "Export JSON", exact: true }), "application/json");
   const jsonFile = await jsonDownload;

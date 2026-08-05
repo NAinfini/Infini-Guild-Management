@@ -219,20 +219,7 @@ export function watchPageDefects(page: Page): () => void {
 }
 
 export function createFlow(page: Page): Flow {
-  /*
-   * 页面自己发起的请求要先落完，clickWithoutApi 才有资格开始计时。
-   *
-   * 那条断言的语义是「这次点击没引发请求」，但实现上只能观察点击后一段窗口里出现的
-   * 所有 /api/ 响应。页面加载后的查询往往是链式的（比如公会战分析：analytics →
-   * details → 由 details 算出的请假窗口 → absences），上一环的数据落地才会触发下一环。
-   * 单跑时这条链在点击之前就走完了，整套跑起来慢一截，尾巴上那一发正好落进点击后的
-   * 窗口，于是别人的请求被算到了被点的控件头上——之前 guild-war-analytics 那条
-   * 「整套跑挂、单跑就过」就是这么来的。
-   *
-   * 这里补的是断言缺的前提，不是放宽断言：点击窗口内仍然一个请求都不许有。
-   * 等不静下来也不吞——直接往下走，让下面的断言把那串请求原样报出来（页面在轮询
-   * 本身就是缺陷，藏起来只会更难查）。
-   */
+  /* clickWithoutApi 先等待 API 静止，并按请求开始时间归因，以排除点击前已在飞的请求。 */
   /* 记的是在飞的请求本身而不是个数：awaitApi 要凭它认出「这一发是上一步的，不是这次操作的」。 */
   const apiInFlight = new Set<Request>();
   let lastApiSettledAt = 0;
@@ -295,11 +282,7 @@ export function createFlow(page: Page): Flow {
     async clickWithoutApi(control, quietMs = 500) {
       await waitForApiQuiet(quietMs, 10_000);
       const calls: string[] = [];
-      /*
-       * 记的是「发出去」而不是「回来了」。
-       * 按响应记的话，点击之前就已经在飞的请求只要在窗口里落地就会被算进来——
-       * 那不是这次点击干的。按请求记，窗口里出现的每一条都确实是点击之后才发出去的。
-       */
+      /* 记录请求开始事件，观察窗口只归因于点击后新发出的 API 请求。 */
       const record = (request: Request): void => {
         if (isApiUrl(request.url())) {
           calls.push(`${request.method()} ${pathOf(request.url())}`);

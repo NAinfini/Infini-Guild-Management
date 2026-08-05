@@ -6,11 +6,7 @@ import { MemberRoleAvatar } from "../../shared/MemberRoleAvatar";
 import { PickListFrame, PickListStaticRow } from "../../shared/PickList";
 import type { AdminBadgeMemberRow } from "./AdminBadgesSection";
 
-/*
- * 已分配成员。原先一个人占一整行、右端一个删除按钮，中间上千像素空白，除了名字
- * 什么都看不到。现在是一份紧凑名单：头像认人，授予时间（后端一直在返回，页面此前
- * 整个丢掉了）靠右成列，停上去还有授予人；行高压到 44px，九个人不再占满一屏。
- */
+/** Compact assigned-member list with assignment provenance. */
 export function AdminBadgeMemberList({
   assignments,
   memberById,
@@ -64,7 +60,6 @@ export function AdminBadgeMemberList({
                     {t("badges.grantedOn", { date: formatDay(assignment.assigned_at) })}
                   </Text>
                 </Tooltip>
-                {/* size={44} 是 19788bf「improve tablet accessibility」定的触控靶面。 */}
                 <ActionIcon
                   variant="subtle"
                   color="red"

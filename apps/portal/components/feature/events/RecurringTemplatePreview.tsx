@@ -5,13 +5,7 @@ import {
   type LifecyclePreview,
 } from "./RecurringTemplateFormModal.helpers";
 
-/*
- * 模板编辑器的预览：这一轮的三个时间点，画在「什么时候生成」正下方。
- *
- * 这里以前还有一张按表单实时拼出来的活动卡。它被拿掉了：模板编辑器里唯一说不准的
- * 是时间——生成时刻、开始、结束，都要靠重复规则和可见提前量算出来；标题、描述、
- * 配额这些是照抄表单，卡上再画一遍并不多告诉人什么，却占掉半个弹窗。
- */
+/** Preview the generated instance lifecycle derived from recurrence rules. */
 type RecurringTemplateLifecycleProps = {
   lifecycle: LifecyclePreview | null;
   locale: string;

@@ -3,10 +3,8 @@
  *
  * These are readable fixture labels only. Cleanup uses the server-side run
  * registry and exact IDs/keys exclusively; it never searches by these strings.
- * The legacy username prefix remains reserved at registration
- * (AuthService.register), at admin-created accounts (AdminService.createMember),
- * and at username change (UserService.changeUsername) so automated fixture
- * names remain recognizable. It is never used as a cleanup selector.
+ * The username prefix is reserved on every account-write path so automated
+ * fixture names remain recognizable. It is never used as a cleanup selector.
  */
 export const SYSTEM_TEST_USERNAME_PREFIX = "systemtest_";
 export const SYSTEM_TEST_CONTENT_MARKER = "[systemtest]";

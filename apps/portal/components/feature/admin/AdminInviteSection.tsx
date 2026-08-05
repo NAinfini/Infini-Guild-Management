@@ -242,8 +242,7 @@ export function AdminInviteSection({
           const deletePending = isInviteActionPending(row.original.id, "delete");
           const destructivePending = revokePending || deletePending;
           const inactiveReason = t(`invite.tooltip.${resolveInviteStatus(row.original)}`);
-          /* 高频的「复制」留成显式按钮，撤销/删除这两个不可逆动作收进 ⋮。
-             原先每行三个控件，五行就有十五个控件在抢注意力。 */
+          // Keep the frequent copy action visible; destructive actions stay in the row menu.
           return (
             <Group gap={6} wrap="nowrap">
               <Tooltip label={inactiveReason} withArrow disabled={!inactive}>
@@ -368,8 +367,6 @@ export function AdminInviteSection({
         ) : null}
       </div>
 
-      {/* 原先这四个数字是彩色 Badge，而彩色胶囊在站内其他地方一律表示状态，
-          语义撞车。换成和成员页同一个四格数据条，颜色只留给需要处理的项。 */}
       {inviteStats ? (
         <div className="admin-stats">
           <div className="admin-stat">
@@ -506,8 +503,6 @@ export function AdminInviteSection({
             {inviteCountControls}
           </Stack>
         ) : (
-          /* 原先滚动容器和内边距长在同一个 div 上：横向滚动条被推进内边距里，
-             外层 Stack 的 gap 又叠了一层，就是那道多出来的空隙。拆成两层。 */
           <Paper withBorder radius="md" className="admin-table-card admin-table-card--fill">
             <div className="admin-table-card__scroll">
               <DataTableAdapter

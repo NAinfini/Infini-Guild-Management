@@ -155,7 +155,7 @@ function detailPanel(page: Page): Locator {
 }
 
 function searchBox(page: Page): Locator {
-  return field(page, "Search guild war histories");
+  return field(page, "Search war records");
 }
 
 /** 打开 History 标签，等列表卡片渲染出来。 */
@@ -183,7 +183,7 @@ test("搜索与日期筛选：条件都送到服务端，列表跟着变", async
 
   await flow.act(() => searchBox(page).fill(`nobody-${stamp}`), HISTORY_LIST);
   await expect(railItems(page), "搜不到就该是空列表，而不是退回全量").toHaveCount(0);
-  await expect(page.getByText("No war histories found.", { exact: true })).toBeVisible();
+  await expect(page.getByText("No war records found.", { exact: true })).toBeVisible();
 
   // 回到刚才那个条件：结果由缓存直接给出，所以这里只对界面，不等请求。
   await searchBox(page).fill(String(stamp));
@@ -321,7 +321,7 @@ test("删除战史：取消什么都不做，确认后服务端和列表一起�
     "确认之后服务端必须真的删掉",
   ).toBe(404);
   await expect(railItems(page)).toHaveCount(0);
-  await expect(page.getByText("No war histories found.", { exact: true })).toBeVisible();
+  await expect(page.getByText("No war records found.", { exact: true })).toBeVisible();
 });
 
 test("导出：两种格式都真的下载下来，但导出范围不受列表筛选影响", async ({ page, flow }) => {
@@ -336,7 +336,7 @@ test("导出：两种格式都真的下载下来，但导出范围不受列表�
       (response) => response.request().method() === EXPORT.method
         && EXPORT.path.test(new URL(response.url()).pathname),
     );
-    await detailPanel(page).getByRole("button", { name: label, exact: true }).click();
+    await detailPanel(page).getByRole("button", { name: new RegExp(`^${label}:`) }).click();
     const response = await responded;
     expect(response.status(), `${label} 的导出请求返回 ${response.status()}`).toBe(200);
 

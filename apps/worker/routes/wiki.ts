@@ -13,11 +13,16 @@ import { getRequestUser, requirePermission } from "../middleware/rbac";
 import { buildAuditLogStatements } from "../services/audit";
 import { validateUploadBytes } from "../services/media";
 import { parseMediaKey } from "../services/media-keys";
-import { WikiService } from "../services/WikiService";
+import { WikiService, type WikiSort } from "../services/WikiService";
 import { buildError, collectFiles, getDb, handleResult, parseBoolean, parseJsonBody, parsePage, safeFormData, serveR2Object } from "./_shared";
 import { hasMediaQuotaCapacity, withMedia } from "./service-factory";
 
 export const wikiRoutes = new Hono();
+
+function parseWikiSort(value: string | undefined): WikiSort | null {
+  if (value === undefined) return "curated";
+  return value === "curated" || value === "updated_desc" || value === "updated_asc" ? value : null;
+}
 
 function getService(c: Context): WikiService {
   return new WikiService(getDb(c), {
@@ -97,7 +102,7 @@ wikiRoutes.patch("/categories/:id", async (c) => {
 });
 
 wikiRoutes.delete("/categories/:id", async (c) => {
-  const sessionUser = await requirePermission(c, "wiki.categories.manage", { freshPermissions: true });
+  const sessionUser = await requirePermission(c, "wiki.categories.manage");
   const result = await getService(c).deleteCategory(sessionUser.id, c.req.param("id"));
   return handleResult(c, result);
 });
@@ -106,6 +111,8 @@ wikiRoutes.delete("/categories/:id", async (c) => {
 
 wikiRoutes.get("/articles", async (c) => {
   const query = c.req.query();
+  const sort = parseWikiSort(query.sort);
+  if (!sort) return buildError(c, "VALIDATION_ERROR", "Invalid wiki sort");
   const categoryIds = [...new Set(
     (c.req.queries("category_id") ?? [])
       .flatMap((value) => value.split(","))
@@ -124,6 +131,7 @@ wikiRoutes.get("/articles", async (c) => {
     archived: parseBoolean(query.archived),
     pinned: parseBoolean(query.pinned),
     search: (query.search ?? "").trim() || undefined,
+    sort,
   });
   return handleResult(c, result);
 });
@@ -185,7 +193,7 @@ wikiRoutes.delete("/articles/:id", async (c) => {
 });
 
 wikiRoutes.delete("/articles/:id/permanent", async (c) => {
-  const sessionUser = await requirePermission(c, "wiki.articles.delete", { freshPermissions: true });
+  const sessionUser = await requirePermission(c, "wiki.articles.delete");
   const result = await getService(c).permanentDeleteArticle(sessionUser.id, c.req.param("id"));
   return handleResult(c, result);
 });

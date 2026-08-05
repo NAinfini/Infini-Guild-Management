@@ -13,16 +13,6 @@ import {
 } from "./RecurringTemplateFormModal.helpers";
 import { eventHasBehavior, getEventTypeLabel } from "@portal/utils/game-rules";
 
-/*
- * 模板表单的两段：生成什么，什么时候生成。
- *
- * 以前是「活动信息／选项／时间与重复」三段散在两栏里：容量在右栏的时间段落里，
- * 自动归档在左栏的选项段落里，可见提前量也在左栏——同样是在描述那张将要被生成的
- * 活动长什么样，却隔着一整栏。现在只问两件事，字段一个没删，只是各归各位。
- *
- * 这两段各占一栏（见 RecurringTemplateFormModal）：挤在同一栏时那一栏有十几个控件
- * 要自己滚，隔壁只放一张预览卡，看着就是一边塞满一边空着。
- */
 type FormFieldsProps = {
   formState: RecurringTemplateFormState;
   setFormState: Dispatch<SetStateAction<RecurringTemplateFormState>>;
@@ -257,7 +247,7 @@ function WeekdayPicker({ formState, setFormState }: FormFieldsProps) {
             <button
               key={key}
               type="button"
-              // 选中与否此前只体现在 class 上：读屏听不出来，测试也只能去比 class。
+              // Expose toggle state independently from its visual class.
               aria-pressed={isSelected}
               className={`rtf-weekday-btn${isSelected ? " rtf-weekday-btn--selected" : ""}`}
               onClick={() =>
@@ -278,10 +268,7 @@ function WeekdayPicker({ formState, setFormState }: FormFieldsProps) {
   );
 }
 
-/*
- * 结束条件以前是三个单选加两个输入框，没选中的那两个框灰着摆在那儿——两行永远无效的
- * 控件，还占着位置。现在先选一种结束方式，再填那一种要的那一个值；「永不」什么都不用填。
- */
+// Only the field owned by the selected end mode is mounted and submitted.
 function EndConditionField({ formState, setFormState }: FormFieldsProps) {
   const { t } = useTranslation("events");
   const { recurrenceEndMode, recurrenceEndDate, recurrenceEndCount } = formState;

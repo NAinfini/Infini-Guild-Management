@@ -1,21 +1,21 @@
 # 自托管安装指南
 
-本指南从全新下载开始，一步步完成本地试用和 Cloudflare 正式部署。无需自己购买或维护服务器：Cloudflare Worker 会同时提供网页和 API。
+本文档是本地安装、Cloudflare 部署、生产初始化、更新与安装故障排查的唯一事实源。README 只链接到这里，不重复维护这些命令。
 
 English version: [SETUP.md](./SETUP.md)
 
 ## 需要准备
 
-- 安装 [Node.js 24 LTS（24.18.0 或更高版本）](https://nodejs.org/)
-- pnpm 11.17.0；若 `pnpm --version` 报错，运行 `npm install --global pnpm@11.17.0`
-- 一个 [Cloudflare 账号](https://dash.cloudflare.com/sign-up)
+- [Node.js 24 LTS](https://nodejs.org/) 24.18.0 或更高版本
+- pnpm 11.17.0（需要时运行 `npm install --global pnpm@11.17.0`）
 - Git，或从 GitHub 下载的项目 ZIP
+- 用于生产部署的 [Cloudflare 账号](https://dash.cloudflare.com/sign-up)
 
-不需要自定义域名，首次部署可直接使用免费的 `*.workers.dev` 地址。
+本地开发不需要 Cloudflare 账号。自定义域名也不是必需项；生产环境可以先使用 `*.workers.dev`。
 
-## 1. 先在电脑上试运行
+## 1. 本地运行
 
-在项目目录中依次运行：
+在仓库根目录运行：
 
 ```bash
 pnpm install
@@ -23,74 +23,85 @@ pnpm setup:local
 pnpm dev
 ```
 
-`setup:local` 会保留仓库已跟踪的 `apps/worker/wrangler.jsonc` 配置，并创建被
-Git 忽略的 `apps/worker/.dev.vars`，其中包含自动生成的本地签名密钥。如果
-Wrangler 配置缺失，该命令会从仓库示例恢复它。已有文件不会被覆盖；不要把
-`.dev.vars` 加入 Git。
+`pnpm setup:local` 会保留现有的已跟踪 `apps/worker/wrangler.jsonc`；只有该文件缺失时才从 `wrangler.example.jsonc` 恢复；同时创建被忽略的 `apps/worker/.dev.vars` 和随机本地 `SIGNING_SECRET`。它不会覆盖已有配置或 `.dev.vars`。不要提交 `.dev.vars`。
 
-终端显示前端已启动后，打开 `http://localhost:5173`。本地环境会使用可随时重置的演示数据：
+门户启动后打开 `http://localhost:5173`。本地环境使用可随时重置的演示数据：
 
-| 用户名 | 密码 | 权限 |
+| 用户名 | 密码 | 角色 |
 | --- | --- | --- |
 | `admin` | `admin123` | 管理员 |
 | `mod_1` | `moderator123` | 管理组 |
 | `member_01` | `member1234` | 普通成员 |
 
-再次运行 `pnpm dev` 会重置本地数据库。这些演示账号绝不会自动写入生产环境。
+`pnpm dev` 会重建本地 D1 并重新写入演示数据。这些账号绝不会自动进入生产环境。
 
-## 2. 连接 Cloudflare
+## 生产数据库迁移政策
 
-仓库已跟踪的 `apps/worker/wrangler.jsonc` 是本私有部署经过审查的生产
-manifest。分叉部署前，必须把其中的生产 D1、R2、路由、`PORTAL_ORIGIN` 和
-后备品牌信息全部替换成自己拥有的资源。仍指向本项目时绝对不要部署。
+仓库仍处于首次生产初始化之前。`apps/worker/db/migrations/0000_core_schema.sql` 是唯一核心迁移，代表当前完整的新数据库结构。
 
-在终端登录：
+- 首个生产 D1 创建前，维护者仍可让 `0000_core_schema.sql` 与当前源码 schema 同步并重建。
+- 创建首个生产 D1 就是冻结点：从那一刻起，该生产线不得再编辑或替换 `0000_core_schema.sql`。
+- 此后的所有 schema 变更都必须使用保护既有数据的新增量迁移。
+- 绝不要手工修改生产 D1。只通过 Wrangler 应用经过审查的迁移，并在获准的远程迁移前备份生产数据。
+
+数据库刻意不包含运行时游戏规则表。活动类型、战果、战绩键与 KDA 行为是源码拥有的契约，不是站点配置记录。
+
+## 2. 连接 Cloudflare 并创建资源
+
+已跟踪的 `apps/worker/wrangler.jsonc` 是本部署经过审查的 manifest。分叉部署前，必须把生产 D1 绑定、R2 绑定、路由、`PORTAL_ORIGIN` 和后备品牌信息改成自己拥有的资源。manifest 中已跟踪的资源名称、ID 与路由是配置标识符，不是凭据；`SIGNING_SECRET` 和 Cloudflare API Token 才是秘密。
+
+登录：
 
 ```bash
 pnpm exec wrangler login
 ```
 
-浏览器会打开 Cloudflare 授权页。授权完成并看到终端确认后再继续。
-
-创建生产 D1 数据库，并让 Wrangler 自动更新 `DB` 绑定：
+创建生产 D1，并更新 `DB` 绑定：
 
 ```bash
 pnpm exec wrangler d1 create my-guild-db --binding DB --env production --update-config --config apps/worker/wrangler.jsonc
 ```
 
-创建生产 R2 存储桶，并自动更新 `MEDIA` 绑定：
+这一步就是上面迁移政策所说的首个生产 D1 创建与冻结点。
+
+创建一个生产 R2 存储桶，并更新 `MEDIA` 绑定：
 
 ```bash
 pnpm exec wrangler r2 bucket create my-guild-media --binding MEDIA --env production --update-config --config apps/worker/wrangler.jsonc
 ```
 
-若提示名称已存在，请换一个名称；也可以把已有资源的名称和 ID 手动填入 `env.production`。
+只需要一个 R2 绑定。`MEDIA` 桶同时保存内容媒体、审计归档数据，以及每月归档的权威 manifest。不要另建审计桶，也不要手工重写或删除生产 R2 对象。
 
-## 3. 设置站点名称和密钥
+资源名已被占用时请更换名称。绑定已有资源时，只修改对应的 `env.production` 绑定。
 
-打开 `apps/worker/wrangler.jsonc`，除上面创建的资源绑定外，还要替换这些
-生产值：
+## 3. 配置生产变量与密钥
+
+在 `apps/worker/wrangler.jsonc` 中连同资源绑定一起核对生产变量：
 
 ```jsonc
 "vars": {
   "ENVIRONMENT": "production",
   "PORTAL_ORIGIN": "",
+  "MEDIA_ORPHAN_DELETE_MODE": "report",
+  "ENABLE_PRODUCTION_SYSTEM_TESTS": "false",
   "SITE_NAME": "我的公会",
   "SITE_LOGO_URL": "/guild-logo.webp"
 }
 ```
 
-正常的一体化部署请保持 `PORTAL_ORIGIN` 为空。只有前端放在另一个域名、需要跨域调用 API 时才填写。
+普通的一体化部署请让 `PORTAL_ORIGIN` 保持为空。只有单独托管的前端需要调用这个 Worker 时才填写。
 
-把生产签名密钥安全地保存到 Cloudflare：
+在运维人员审阅完整媒体引用扫描前，保持 `MEDIA_ORPHAN_DELETE_MODE=report`。`ENABLE_PRODUCTION_SYSTEM_TESTS=false` 会让创建测试夹具的系统测试路由在生产不可用；只有明确、受控的维护窗口才可临时开启。
+
+把生产密钥保存到 Cloudflare：
 
 ```bash
 pnpm exec wrangler secret put SIGNING_SECRET --env production --config apps/worker/wrangler.jsonc
 ```
 
-按提示粘贴一个很长的随机值。它只应存在 Cloudflare 中，不要写进 `wrangler.jsonc`、`.env`、GitHub Issue 或 Git 提交。
+请使用很长的随机值。`SIGNING_SECRET` 同时用于签发审计归档下载 token，以及认证 Worker 到 Durable Object 的内部推送发布。它只能存放在 Cloudflare Secret 中；不要写入 `wrangler.jsonc`、`.env`、Issue 或提交。
 
-检查配置：
+验证 manifest：
 
 ```bash
 pnpm config:check -- --env=production
@@ -102,9 +113,9 @@ pnpm config:check -- --env=production
 [config] production configuration is ready.
 ```
 
-## 4. 建立生产数据库和首位管理员
+## 4. 初始化 D1 并创建首位管理员
 
-应用数据库迁移：
+应用经过审查的迁移：
 
 ```bash
 pnpm exec wrangler d1 migrations apply DB --remote --env production --config apps/worker/wrangler.jsonc
@@ -116,17 +127,9 @@ pnpm exec wrangler d1 migrations apply DB --remote --env production --config app
 pnpm setup:admin -- --env=production
 ```
 
-这个命令会：
+该命令只在交互式终端运行，密码输入不会回显；密码必须为 12–128 个字符；只操作明确选择的生产环境；数据库已有任何用户时会拒绝运行；并会清理自己的临时 SQL 目录。后续用户都应通过管理后台创建的邀请链接注册。
 
-- 只在交互式终端运行，输入密码时不回显；
-- 要求密码长度为 12–128 个字符；
-- 只操作明确指定的环境；
-- 数据库已有任何用户时拒绝执行；
-- 执行结束立即删除临时 SQL 文件。
-
-后续成员一律使用管理员后台创建的邀请链接注册。
-
-## 5. 正式部署
+## 5. 部署
 
 运行：
 
@@ -134,92 +137,85 @@ pnpm setup:admin -- --env=production
 pnpm deploy:production
 ```
 
-它会依次检查配置、构建 React 前端，然后把 Worker 与静态资源一起部署。完成后 Wrangler 会显示公开网址；打开它并用第 4 步创建的管理员账号登录。
+该脚本会执行仓库的生产发布检查、构建门户、预演 Worker 部署，并把 Worker 与静态资源一起发布。不要改用裸 `wrangler deploy`，否则可能发布陈旧前端资源或跳过必要检查。
 
-如果页面空白或仍是旧版本，请再次运行 `pnpm build` 和 `pnpm deploy:production`。前端有改动后不要只运行裸 `wrangler deploy`，否则可能部署旧的前端产物。
+部署完成后 Wrangler 会显示公开网址。打开它并使用第 4 步创建的管理员登录。
 
-## 6. 在管理后台完成设置
+## 6. 在管理后台完成配置
 
-进入 **管理后台 → 站点配置**，逐项检查：
+进入 **管理后台 → 站点配置**，检查：
 
-1. **品牌**：站点名称和 Logo。
-2. **功能**：公告、活动、公会战、图库、Wiki、工具、装备计算器和仓库。
-3. **限制**：单文件上传上限、媒体数量配额、仓库物品图片数。
-4. **新成员引导**：规则、是否必须确认，以及入会检查清单。
+1. **品牌**：站点名称与上传的 Logo。
+2. **功能**：`announcements`、`events`、`guildWar`、`gallery`、`wiki`、`tools`、`storage`。
+3. **限制**：单文件上传限制、媒体数量配额、仓储物品图片数。
 
-然后进入 **管理后台 → 邀请链接**，创建第一条成员邀请。不要让其他账号复用首位管理员的密码。
+随后在 **管理后台 → 邀请链接** 创建成员邀请。不要让任何其他账号复用首位管理员密码。
 
-后台设置保存在 D1 中。Wrangler 中的 `SITE_NAME` 和 `SITE_LOGO_URL` 是应用启动期间使用的安全后备值。
+Wrangler 中的 `SITE_NAME` 与 `SITE_LOGO_URL` 是启动后备值。上传的 Logo 与运行时站点配置由应用保存。
 
-## 每种设置应该改哪里
+## 每种配置应该改哪里
 
-| 想修改的内容 | 正确位置 | 是否要重新部署 |
+| 修改内容 | 唯一事实源 | 是否要部署 |
 | --- | --- | --- |
-| 站点名、Logo、功能开关、媒体配额、新成员引导 | **管理后台 → 站点配置** | 不需要 |
-| 成员角色、权限、邀请链接 | **管理后台** | 不需要 |
-| D1、R2、域名、环境、后备品牌信息 | `apps/worker/wrangler.jsonc` | 需要 |
-| Cloudflare 签名密钥 | `wrangler secret put` | 需要 |
-| 游戏职业与职业标签 | **管理后台 → 职业管理** | 不需要 |
-| 公会战分析权重 | `/api/admin/analytics-settings` | 不需要 |
-| 已持久化的活动、战果和战绩键 | 共享领域契约并配套数据迁移 | 需要 |
-| 请求硬上限、限流、分页默认值 | `apps/shared/config/limits.ts` | 构建并部署 |
+| 站点名/Logo、七个功能开关、上传限制、媒体配额、仓储策略 | **管理后台 → 站点配置** | 不需要 |
+| 成员资料、角色、权限、邀请、职业、职业标签、徽章 | 对应管理后台流程 | 不需要 |
+| 公会战分析权重 | 带相应权限的 `/api/admin/analytics-settings` | 不需要 |
+| D1、唯一 `MEDIA` R2 桶、环境、域名、后备品牌信息 | `apps/worker/wrangler.jsonc` | 需要 |
+| `SIGNING_SECRET` | 通过 `wrangler secret put` 保存的 Cloudflare Secret | 需要 |
+| 活动类型、战果、战绩定义、KDA 公式 | 共享源码契约；需要时配套新增量数据迁移 | 构建并部署 |
+| 硬安全上限、限流、分页默认值 | `apps/shared/config/limits.ts` | 构建并部署 |
 
-项目不存在 `FEATURES` 环境变量。运行时模块开关统一放在“管理后台 → 站点配置”，避免出现两套互相冲突的配置来源。
+不存在 `FEATURES` 环境变量。不要制造第二套配置来源，也不要通过手工修改生产 D1 或 R2 来改变应用行为。
 
-## 可选：绑定自己的域名
+## 可选：自定义域名
 
-本项目已跟踪的生产 manifest 使用 `workers_dev: false` 和项目自己的自定义
-域名。分叉部署时，请在配置检查前选择一种方式：
+在配置检查前选择一种生产访问方式：
 
-1. 使用自定义域名：保留 `workers_dev: false`，并把已跟踪的 `routes` 改成
-   自己的域名，例如 `guild.example.com`。
-2. 使用 `workers.dev` 地址：设为 `workers_dev: true`，并删除已跟踪的
-   `routes` 条目。
+1. 使用 `workers.dev`：把 `env.production.workers_dev` 设为 `true`，并删除已跟踪的生产 `routes`。
+2. 使用 Cloudflare 管理的自定义域名：把 `workers_dev` 设为 `false`，并把 `routes` 改成自己的域名，例如 `guild.example.com`。
 3. 运行 `pnpm config:check -- --env=production`。
 4. 运行 `pnpm deploy:production`。
 
-网页与 API 同域时，`PORTAL_ORIGIN` 仍可留空。
+门户与 API 通常保持同源，因此 `PORTAL_ORIGIN` 仍可留空。
 
-## 更新已有站点
+## 更新已初始化站点
 
-重大更新前先备份 D1，然后运行：
+在获准迁移前先备份生产数据，然后运行：
 
 ```bash
 pnpm install
-pnpm typecheck
-pnpm test
+pnpm config:check -- --env=production
 pnpm exec wrangler d1 migrations apply DB --remote --env production --config apps/worker/wrangler.jsonc
 pnpm deploy:production
 ```
 
-已有站点不要再次运行 `pnpm setup:admin`。
+已初始化站点绝不能再次运行 `pnpm setup:admin`、重写 `0000_core_schema.sql`，或直接修改生产 D1/R2。未来版本的 schema 变化必须提供增量迁移。
 
 ## 常见问题
 
-### 提示找不到 `wrangler.jsonc`
+### 缺少 `wrangler.jsonc`
 
-从仓库恢复该已跟踪文件，或运行 `pnpm setup:local` 从仓库示例重新创建它。
+恢复已跟踪文件，或运行 `pnpm setup:local`；该命令只会在文件不存在时复制仓库示例。
 
-### 检查提示仍有占位符
+### 配置检查提示占位符
 
-错误会指出具体字段。重新运行 D1 或 R2 的 `--update-config` 命令，或只替换 `env.production` 中对应的值。
+按错误指出的具体字段处理。重新运行对应的 D1/R2 `--update-config` 命令，或只替换那一个生产值。
 
 ### Cloudflare 登录失败
 
-先运行 `pnpm exec wrangler logout`，再运行 `pnpm exec wrangler login`。
+```bash
+pnpm exec wrangler logout
+pnpm exec wrangler login
+```
 
 ### 首位管理员命令提示已有用户
 
-这是安全停止，不是程序故障。请使用已有管理员登录。如果数据库确实没有管理员，不要删除生产数据；提交安装求助 Issue，并先删除所有密钥和资源 ID。
+这是安全停止。请使用已有管理员。如果没有可用管理员，不要删除或修改生产数据；求助前删除凭据和私人公会数据。
 
 ### 无法上传
 
-确认 `MEDIA` 绑定指向正确的 R2 存储桶。普通 API 写请求的整体上限为 1 MiB，上传路由为 32 MiB；更小的单文件限制可在 **管理后台 → 站点配置** 中调整。
+确认 `MEDIA` 指向唯一且正确的 R2 桶。持久化图片必须是 WebP 或 GIF；资料音频必须是包含 Opus 的 Ogg。Worker 会核对声明 MIME 类型与魔数，并拒绝 SVG。普通 API 请求体上限为 1 MiB，上传请求为 32 MiB；更小的单文件限制位于站点配置。
 
-### 安全地求助
+### 安全地请求安装帮助
 
-使用仓库的 **Setup help / 安装求助** Issue 表单。可以粘贴命令和错误信息，但必须删除：
-
-- 密码、Cookie、邀请 ID/邀请码和签名密钥；
-- Cloudflare API Token；
-- D1 数据库 ID、账号 ID 和私人域名。
+使用仓库的 **Setup help / 安装求助** Issue 表单，附上失败命令与完整错误。删除密码、Cookie、邀请码、`SIGNING_SECRET`、Cloudflare API Token 和私人公会数据。已跟踪 `wrangler.jsonc` 中的资源标识符是配置，不是认证秘密；私人分叉仍可自行遮盖不希望公开的标识符。

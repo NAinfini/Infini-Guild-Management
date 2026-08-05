@@ -16,10 +16,7 @@ import { ok, err, type ServiceResult } from "./result";
 import { parseStringArray, parseRecord, usernameEquals } from "./helpers";
 import { clearLoginFailures, readLockout, recordLoginFailure } from "./login-lockout";
 import { logger } from "../utils/logger";
-import { passwordHashNeedsUpgrade } from "./auth";
 import { loadMemberClasses, loadMemberImages } from "./ordered-relations";
-
-// --- Types ---
 
 type DrizzleDb = DrizzleD1Database<Record<string, never>>;
 
@@ -37,8 +34,6 @@ export type AuthServiceDeps = {
   writeAuditLog: (input: { entityType: AuditEntityType; action: AuditAction; actorId: string; entityId: string; diffTitle?: string | null; detailText?: string | null }) => Promise<void>;
   now?: () => Date;
 };
-
-// --- Helpers ---
 
 function toUserPayload(user: UserRow, extra?: { permissions: Record<Permission, boolean> }) {
   const result = userSchema.safeParse({
@@ -75,8 +70,6 @@ function toProfilePayload(profile: ProfileRow) {
 const USER_COLS = { id: users.id, username: users.username, role: users.role, isActive: users.isActive, deletedAt: users.deletedAt, createdAt: users.createdAt, updatedAt: users.updatedAt } as const;
 // vacation_start/vacation_end are derived from the absence history (current-or-next absence).
 const PROFILE_COLS = { id: memberProfiles.id, userId: memberProfiles.userId, power: memberProfiles.power, titleHtml: memberProfiles.titleHtml, bio: memberProfiles.bio, avatarKey: memberProfiles.avatarKey, audioKey: memberProfiles.audioKey, videoUrls: memberProfiles.videoUrls, availability: memberProfiles.availability, vacationStart: sql<string | null>`(SELECT ma.start_date FROM member_absences ma WHERE ma.user_id = ${memberProfiles.userId} AND ma.end_date >= date('now') ORDER BY ma.start_date ASC LIMIT 1)`.as("derived_vacation_start"), vacationEnd: sql<string | null>`(SELECT ma.end_date FROM member_absences ma WHERE ma.user_id = ${memberProfiles.userId} AND ma.end_date >= date('now') ORDER BY ma.start_date ASC LIMIT 1)`.as("derived_vacation_end"), notes: memberProfiles.notes, createdAt: memberProfiles.createdAt, updatedAt: memberProfiles.updatedAt } as const;
-
-// --- Service ---
 
 export class AuthService {
   private db: DrizzleDb;
@@ -120,20 +113,6 @@ export class AuthService {
 
   private now(): Date {
     return this.deps.now?.() ?? new Date();
-  }
-
-  private async upgradePasswordHash(userId: string, password: string, currentHash: string, now: Date): Promise<void> {
-    if (!passwordHashNeedsUpgrade(currentHash)) return;
-    try {
-      const upgraded = await this.deps.createPasswordHash(password);
-      await this.deps.rawDb.prepare(
-        "UPDATE user_auth_password SET password_hash = ?, salt = ?, updated_at = ? WHERE user_id = ?",
-      ).bind(upgraded.passwordHash, upgraded.salt, now.toISOString(), userId).run();
-    } catch (error) {
-      // Hash migration is opportunistic. A transient D1 write failure should
-      // not reject credentials that were already verified successfully.
-      logger.error("Password hash upgrade failed", { userId, error: String(error) });
-    }
   }
 
   /**
@@ -193,7 +172,11 @@ export class AuthService {
     const account = (await this.db.select({ ...USER_COLS, passwordHash: userAuthPassword.passwordHash, salt: userAuthPassword.salt }).from(users).innerJoin(userAuthPassword, eq(users.id, userAuthPassword.userId)).where(usernameEquals(username)).limit(1))[0];
     if (!account || !account.isActive || account.deletedAt !== null) {
       // Run password derivation with a dummy salt to prevent timing-based username enumeration
-      await this.deps.verifyPassword(password, "AAAAAAAAAAAAAAAAAAAAAA==", "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=");
+      await this.deps.verifyPassword(
+        password,
+        "AAAAAAAAAAAAAAAAAAAAAA==",
+        "pbkdf2-sha256$600000$AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=",
+      );
       await this.registerLoginFailure(attempted, account ? { id: account.id, username: account.username } : null, "unknown_or_inactive_account", clientIp, now);
       return err("UNAUTHORIZED", "Invalid credentials");
     }
@@ -202,7 +185,6 @@ export class AuthService {
       await this.registerLoginFailure(attempted, { id: account.id, username: account.username }, "wrong_password", clientIp, now);
       return err("UNAUTHORIZED", "Invalid credentials");
     }
-    await this.upgradePasswordHash(account.id, password, account.passwordHash, now);
     // Correct password resets the ladder, so a run of typos never accumulates.
     await clearLoginFailures(this.db, attempted);
     // Keeps at most MAX_SESSIONS_PER_USER logins alive; the oldest is evicted.

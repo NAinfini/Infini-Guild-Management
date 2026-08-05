@@ -1,12 +1,4 @@
-/*
- * 勾选清单的统一外观。原先这套东西在三处各写了一遍——徽章的成员名单、职业标签的
- * 成员清单、一次性组的职业下拉——行高、勾选框、选中态、搜索框、批量按钮全都对不齐：
- * 一处 44px 一处 36px，一处用 Mantine Checkbox 一处手搓 svg 勾，选中态一处是描边
- * 一处是底色。这里只留一套。
- *
- * 行的样子对外也是契约：徽章页的查看态用 PickListStaticRow 走同一套行高和分隔线，
- * 所以查看／编辑切换时名单不会跳。
- */
+/* Static and editable pickers share row geometry so mode changes do not shift content. */
 .pick-list {
   display: flex;
   flex-direction: column;

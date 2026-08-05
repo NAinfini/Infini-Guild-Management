@@ -139,7 +139,7 @@ galleryRoutes.delete("/:id", async (c) => {
 });
 
 galleryRoutes.post("/batch-delete", async (c) => {
-  const sessionUser = await requirePermission(c, "gallery.delete", { freshPermissions: true });
+  const sessionUser = await requirePermission(c, "gallery.delete");
   const body = await parseJsonBody(c);
   if (!body || typeof body !== "object" || !Array.isArray((body as { ids?: unknown }).ids)) return buildError(c, "VALIDATION_ERROR", "Body must contain an ids array");
   const ids = (body as { ids: string[] }).ids.filter((id) => typeof id === "string" && id.length > 0);

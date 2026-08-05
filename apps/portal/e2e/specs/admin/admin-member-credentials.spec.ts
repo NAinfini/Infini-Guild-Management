@@ -66,7 +66,7 @@ async function failLogins(username: string, address: string, times: number): Pro
 }
 
 function searchBox(page: Page): Locator {
-  return page.getByPlaceholder("Search members...");
+  return page.getByRole("textbox", { name: "Search members", exact: true });
 }
 function memberRow(page: Page, username: string): Locator {
   return page.getByRole("row", { name: `${username} member row`, exact: true });

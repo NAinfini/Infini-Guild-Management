@@ -61,39 +61,9 @@ function progressState(allPassed: boolean, hasFail: boolean): ProgressState {
   return "pending";
 }
 
-/*
- * RingProgress 的 color prop 只吃字面字符串，不认 className——但字面字符串
- * 不一定要是 hex。Mantine 对无法识别成内置色名的字符串会原样透传（见
- * node_modules/@mantine/core esm/components/RingProgress/Curve/Curve.mjs:41
- * 的 `getThemeColor(color, theme)` 和 parse-theme-color.mjs:68-75：
- * `_color in theme.colors` 为 false 时 `variable` 是 undefined，
- * `getThemeColor` 直接把原串塞进 `--curve-color`；再由 RingProgress 自带的
- * CSS `stroke: var(--curve-color, var(--rp-curve-root-color))` 消费），
- * 所以这里直接写 var() 字符串，三态本身仍然穷举、不是拼接颜色。
- *
- * 这个结论只对 RingProgress/Curve 这条路径成立，不要照抄到别的组件：
- * Curve 从不读 parsed.isLight。凡是走 Mantine 的
- * defaultVariantColorsResolver（Badge、Button、Alert…）都会读这个字段，
- * 而 luminance.mjs:26-28 的 isLightColor 第一行就是
- * `if (color.startsWith("var(")) return false`——任何 var() 字符串一律
- * 判定为「暗色」，不管它实际解析出来是深是浅。这只在组件的
- * autoContrast 为真时才会真正选错前景色（filled 变体靠这个字段挑黑/白字），
- * 本仓库 ThemeProvider.tsx 里已把 autoContrast 整体移除、没有任何调用点
- * 显式传它（已 grep 确认），所以目前没有组件会踩到；但这只是当前配置下
- * 恰好没触发，不是这条写法本身安全，别的地方要用同样的 var() 字符串前
- * 应该重新核实 autoContrast 状态。
- *
- * 另外，本仓库 task-5/6b 复盘过 `rgba("portal-bronze", 0.1)` 让 Alert
- * 底色变黑的事故，但那是一个不以 "var(" 开头的裸色名落进了
- * to-rgba.mjs 认不出格式就返回黑色的兜底分支；核实当前 Mantine 版本，
- * rgba.mjs:7-9 / darken.mjs:3-4 / lighten.mjs:3-4 三个函数都显式判断
- * `color.startsWith("var(")` 并改用 color-mix() 处理，根本不会调用
- * toRgba——所以字面 var() 字符串不会重演那次「变黑」，Badge/Alert 这类
- * 组件上真正的风险是上一段说的 isLight 误判，不是变黑。
- */
-// 导出（而不只是模块内 const）是因为 AdminApiTestCategory.test.ts 里的守卫
-// 断言要拿它跟 AdminApiTest.css 的 .api-cat__progress-fill--* 逐值比对，
-// 防止两份同义 token 表悄悄漂移（the final colour review M3）。
+/* RingProgress accepts literal CSS variables, but this pattern must not be reused
+ * in auto-contrast components because Mantine classifies var() colors as dark. */
+// Exported so the CSS parity test keeps progress bars and rings on the same palette.
 export const PROGRESS_STATE_COLOR_VAR: Record<ProgressState, string> = {
   fail: "var(--status-danger)",
   pass: "var(--status-success)",

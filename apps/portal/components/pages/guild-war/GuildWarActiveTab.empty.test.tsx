@@ -15,7 +15,7 @@ describe("GuildWarActiveEmptyState", () => {
   it("offers event setup to viewers who can create events", async () => {
     const onCreateWarEvent = vi.fn();
 
-    render(
+    const { container } = render(
       <MantineProvider>
         <GuildWarActiveEmptyState
           canCreateWarEvent
@@ -25,6 +25,7 @@ describe("GuildWarActiveEmptyState", () => {
       </MantineProvider>,
     );
 
+    expect(container.querySelector(".guild-war-active-empty__state svg")).toBeInTheDocument();
     expect(screen.getByText("active.empty.managerDescription")).toBeInTheDocument();
     await userEvent.click(screen.getByRole("button", { name: "active.empty.createAction" }));
     expect(onCreateWarEvent).toHaveBeenCalledTimes(1);

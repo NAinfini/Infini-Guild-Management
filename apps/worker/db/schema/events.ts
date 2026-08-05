@@ -163,6 +163,12 @@ export const eventPolls = sqliteTable(
     createdAt: text("created_at").notNull().default(nowUtc),
     updatedAt: text("updated_at").notNull().default(nowUtc),
   },
+  (table) => ({
+    resultsVisibilityValid: check(
+      "event_polls_results_visibility_valid",
+      sql`${table.resultsVisibility} IN ('always', 'after_vote', 'after_close')`,
+    ),
+  }),
 );
 
 export const eventPollOptions = sqliteTable(

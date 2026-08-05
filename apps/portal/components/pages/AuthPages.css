@@ -82,7 +82,11 @@
 }
 
 .login-page__password-input {
-  padding-inline-end: calc(var(--control-hit-area) + var(--space-xl) + var(--space-md));
+  padding-inline-end: calc(var(--control-hit-area) + var(--space-md));
+}
+
+.login-page__password-control {
+  position: relative;
 }
 
 .login-page__password-actions {
@@ -123,7 +127,20 @@
 }
 
 .login-page__caps-icon {
+  display: flex;
+  flex: 0 0 auto;
   color: var(--status-warning);
+}
+
+.login-page__caps-warning {
+  display: flex;
+  align-items: center;
+  gap: var(--space-xs);
+  margin-top: var(--space-xs);
+  color: var(--status-warning);
+  font-size: var(--text-meta);
+  font-weight: var(--fw-medium);
+  line-height: var(--lh-normal);
 }
 
 .login-page__notice {

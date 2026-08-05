@@ -1,9 +1,4 @@
-/*
- * Mantine 给 Modal content 的是 overflow-y: auto；这里原本写 overflow: hidden 把它盖掉了，
- * 内容一旦超过 max-height 就被裁掉而且滚不到。圆角本来就由 header 自己的
- * border-start-*-radius 收，不需要靠 hidden 裁，所以直接还成 auto——
- * 它同时是下面两栏各自滚动的兜底：万一标题折行把 header 撑高，多出来的那点由弹窗自己滚。
- */
+/* 弹窗保留纵向滚动，以容纳超出最大高度的内容和换行标题。 */
 .event-detail-modal__content {
   border-radius: var(--radius-overlay);
   overflow-y: auto;
@@ -67,16 +62,37 @@
 }
 
 .event-detail-modal__meta-card {
-  display: flex;
-  align-items: flex-start;
-  gap: 10px;
-  min-height: 74px;
+  display: grid;
+  align-content: start;
+  gap: 7px;
+  min-height: 94px;
   padding: 12px;
 }
 
-.event-detail-modal__meta-card svg {
+.event-detail-modal__meta-heading {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.event-detail-modal__meta-heading svg {
   flex-shrink: 0;
-  margin-top: 2px;
+}
+
+.event-detail-modal__meta-value,
+.event-detail-modal__time-value {
+  min-width: 0;
+}
+
+.event-detail-modal__time-value {
+  display: grid;
+  gap: 2px;
+}
+
+.event-detail-modal__time-date,
+.event-detail-modal__time-range {
+  white-space: nowrap;
 }
 
 .event-detail-modal__meta-card--type svg {
@@ -114,11 +130,7 @@
   font-variant-numeric: tabular-nums;
 }
 
-/*
- * 只染标题那一组的图标。原来选的是整条后代，标题行右边的报名按钮也在同一个 Group 里，
- * 它的图标被一并染成品牌绿——压在同样是品牌绿的按钮填充上就等于没画，只有悬停时填充
- * 变深才隐约看得见。按钮里的图标应该跟着按钮自己的文字色走。
- */
+/* Scope the accent to heading icons; action icons inherit their button foreground. */
 .event-detail-modal__section--members > .mantine-Group-root:first-child > .mantine-Group-root svg {
   color: var(--brand-text);
 }
@@ -220,7 +232,7 @@
   white-space: nowrap;
 }
 
-/* 条子原来从勾选圈底下起画，比它上面的标题和下面的投票人都宽出一截，看着像溢出了。 */
+/* Align poll progress with the option label and voter content. */
 .event-detail-modal__poll-progress {
   width: auto;
   margin-left: var(--poll-label-indent);
@@ -314,14 +326,14 @@
 /*
  * 图默认按 min(62vh, 520px) 画，这个高度是给独立画廊页定的；放进左栏，它加上两张
  * 信息卡、说明和缩略图条正好比高度预算高出一点点，于是整栏为那几十像素开一条滚动条。
- * 这里让图先把这些固定家什的位置让出来（两张卡 74 ＋ 一段说明 ~74 ＋ 画廊自己的
- * 页码行和缩略图条 116 ＋ 栏内间距，取整 300），再按原上限封顶。
+ * 这里让图先把这些固定家什的位置让出来（两张卡所在的元信息行 94 ＋ 一段说明 ~74 ＋
+ * 画廊自己的页码行和缩略图条 116 ＋ 栏内间距，取整 320），再按原上限封顶。
  * 下限 220px 是防止窗口很矮时图被压没——那种情况左栏照旧自己滚，不硬塞。
  * 只在双栏时需要，跟下面 900px 收成一栏那条互补。
  */
 @media (min-width: 901px) {
   .event-detail-modal__pane--info .infini-media-gallery-slide {
-    height: clamp(220px, calc(var(--detail-pane-max-height) - 300px), 520px);
+    height: clamp(220px, calc(var(--detail-pane-max-height) - 320px), 520px);
   }
 }
 

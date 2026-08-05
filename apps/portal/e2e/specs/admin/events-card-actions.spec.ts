@@ -273,7 +273,7 @@ test("报名与退出：人数、服务端参与者名单和按钮状态一起�
   ).toEqual([viewer.id]);
   await expect(capacity, "人数要跟着加一").toHaveText("1/∞");
 
-  const leaveButton = card(page).getByRole("button", { name: "Leave", exact: true });
+  const leaveButton = card(page).getByRole("button", { name: "Cancel signup", exact: true });
   await expect(leaveButton).toHaveAttribute("aria-pressed", "true");
 
   // 退出要过确认框；取消不该动名单。

@@ -14,12 +14,7 @@
   min-width: 0;
 }
 
-/*
- * 两栏都由弹窗自己滚，不再给单独一栏限高。
- *
- * 以前两段表单都在左栏，左栏必须自己滚才不会把弹窗撑破，代价是一个靠估算的 150px
- * 魔法数字。现在两栏内容量相当，谁也不用单独开滚动条。
- */
+/* The modal owns scrolling for both balanced form columns. */
 
 @media (max-width: 680px) {
   .rtf-columns {
@@ -38,10 +33,6 @@
 .rtf-section:hover {
   border-color: color-mix(in srgb, var(--brand-fill) 25%, transparent);
 }
-
-/* 深浅两模式此前只是背景/边框的不透明度不同（80%/60% vs 无覆盖时的
-   100%/70%），迁移后交给 --surface-raised / --border-subtle 自动承担，
-   整块删除（the token-layer contract E 节：只差颜色）。 */
 
 /* ── Section dividers with gold gradient accent ── */
 
@@ -114,8 +105,7 @@
   background: color-mix(in srgb, var(--brand-fill) 8%, transparent);
 }
 
-/* 选中态的填充是主色，文字压在填充之上，落在替换表「若在主色填充之上」分支，
-   取 --accent-on-fill（此前是字面 #fff，the token-layer contract 前序约定段）。 */
+/* Selected text uses the foreground calibrated for the brand fill. */
 .rtf-weekday-btn--selected {
   border-color: var(--brand-fill);
   background: var(--brand-fill);
@@ -123,13 +113,7 @@
   font-weight: 600;
 }
 
-/* --color-accent（古铜色）同样是要消灭的暖金配色，这里的悬停态想要的是「主色
-   再深一档」，直接收敛到 --accent-fill-hover 这一个 token，不再用 color-mix
-   去混两个旧变量（the token-layer contract 前序约定段）。
-   悬停态把填充切到 --accent-fill-hover 后，继承自基础规则的 --accent-on-fill
-   文字（只按 --accent-fill 校准）会被拖到 3.16–3.50，不过 AA（task-7 修复
-   轮次 1 修复 I2）。这里换成 --accent-on-fill-hover（跨 accent 共用的纯黑墨，
-   见 semantic.css），三个 accent 都能稳过 AA。 */
+/* The darker hover fill requires its separately calibrated on-fill text token. */
 .rtf-weekday-btn--selected:hover {
   background: var(--brand-fill-hover);
   border-color: var(--brand-fill-hover);

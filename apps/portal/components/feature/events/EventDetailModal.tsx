@@ -57,12 +57,8 @@ type EventDetailModalProps = {
 };
 
 /*
- * 详情弹窗分两栏：左边是「这是什么活动」（类型、时间、说明、图），右边是「谁参与了」
- * （投票 / 抽奖 / 报名名单）。以前是一栏到底，有图才劈成两栏，于是同一个弹窗宽度会
- * 随附件有无在 820px 和满屏之间跳；现在宽度固定，图并进左栏。
- *
- * 弹窗整体不滚——右栏那份名单在读左栏说明的时候一直钉在眼前。滚的是名单本身，
- * 右栏的标题、报名按钮和加人下拉留在原地。
+ * Event information and participation use separate columns. Only the roster
+ * body scrolls so its heading and actions remain available.
  */
 export function EventDetailModal({
   event,
@@ -166,18 +162,25 @@ export function EventDetailModal({
           <div className="event-detail-modal__pane event-detail-modal__pane--info">
             <SimpleGrid cols={{ base: 1, sm: 2 }} spacing={10}>
               <section className="event-detail-modal__meta-card event-detail-modal__meta-card--type">
-                <CalendarEventIcon size={20} />
-                <div>
+                <div className="event-detail-modal__meta-heading">
+                  <CalendarEventIcon size={20} />
                   <Text size="xs" fw={700} tt="uppercase" c="dimmed">{t("detail.eventType")}</Text>
-                  <Text size="sm" fw={700}>{getEventTypeLabel(event.type, i18n.language, gameRules)}</Text>
                 </div>
+                <Text size="sm" fw={700} className="event-detail-modal__meta-value">
+                  {getEventTypeLabel(event.type, i18n.language, gameRules)}
+                </Text>
               </section>
               <section className="event-detail-modal__meta-card event-detail-modal__meta-card--time">
-                <ClockIcon size={20} />
-                <div>
+                <div className="event-detail-modal__meta-heading">
+                  <ClockIcon size={20} />
                   <Text size="xs" fw={700} tt="uppercase" c="dimmed">{t("detail.time")}</Text>
-                  <Text size="sm" fw={600}>
-                    {formatLocalDate(event.start_at, i18n.language)} - {formatLocalTime(event.start_at, event.end_at, i18n.language)}
+                </div>
+                <div className="event-detail-modal__time-value">
+                  <Text size="sm" fw={700} className="event-detail-modal__time-date">
+                    {formatLocalDate(event.start_at, i18n.language)}
+                  </Text>
+                  <Text size="sm" fw={600} className="event-detail-modal__time-range">
+                    {formatLocalTime(event.start_at, event.end_at, i18n.language)}
                   </Text>
                 </div>
               </section>

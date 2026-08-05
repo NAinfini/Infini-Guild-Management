@@ -52,20 +52,8 @@
   box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent-fill) 40%, transparent);
 }
 
-/*
- * Big icon card, restored per user request: a full-width 1:1 avatar tile with
- * the name/title underneath, plus a lift + colour-glow hover treatment. This
- * predates the token migration, so the geometry/spacing/hover transform below
- * are recreated from the pre-flattening version but the colours are wired to
- * the new L2 semantic tokens rather than the old fallback-style var() calls
- * (rule 1 bans var() fallback values, see theme-tokens.test.ts). RosterGrid's
- * virtualiser estimateSize and RosterPage's column-count breakpoints were
- * restored alongside this to match the taller card.
- */
-/* transform-origin 从 center bottom 改成 center center：这里的 transform 已经
- * 不是原来那个「向上平移」，而是绕 X/Y 轴的三维旋转，绕底边转会让卡整个
- * 甩出去而不是就地翻转。overflow:hidden 是给下面的高光层兜底的（那一层
- * 铺得比卡大，靠这里裁到圆角内），元素自身的外投影不受它影响。 */
+/* Portrait card geometry is coupled to the roster virtualizer's row estimate. */
+/* Center 3D rotation in place and clip the oversized highlight to the card radius. */
 .member-card--full {
   padding: 10px;
   position: relative;
@@ -144,7 +132,7 @@
 
 .member-card__avatar-fallback {
   display: grid; place-items: center;
-  font-size: 52px; font-weight: var(--fw-strong);
+  font-size: var(--text-display); font-weight: var(--fw-strong);
   color: color-mix(in srgb, var(--text-primary) 65%, transparent);
 }
 
@@ -173,12 +161,8 @@
 }
 
 /*
- * 徽章数量没有上限，挂满的人会把这一行撑到三四排，同一行卡片的高度就此参差不齐。
- * 封到两排：22px 是一枚徽章的实际行高（11px 字 × 1.4 行距 + 1px 上下内边距 + 1px
- * 上下描边），两排再加中间那道 4px 间距。
- *
- * 用滚动而不是 hidden：截断会让第三排的徽章彻底消失，卡片上看不出还有别的。滚动条
- * 至少说明「下面还有」，也点得到。
+ * Keep metadata in flow so the virtual row measures its tallest card and every
+ * sibling can stretch to the same height without clipping identity badges.
  */
 .member-card__meta-row {
   margin-top: 4px;
@@ -186,9 +170,7 @@
   flex-wrap: wrap;
   gap: 4px;
   align-items: center;
-  max-height: calc(22px * 2 + 4px);
-  overflow-y: auto;
-  scrollbar-width: thin;
+  min-width: 0;
 }
 
 .member-card__pill {
@@ -197,6 +179,15 @@
   padding: 2px 7px; font-size: 12px; line-height: 1.4;
   font-weight: 600;
 }
+.member-card__pill-label {
+  font-size: var(--text-micro);
+  font-weight: var(--fw-medium);
+}
+
+.member-card__pill-count {
+  font-variant-numeric: tabular-nums;
+  font-weight: var(--fw-strong);
+}
 
 .member-card__pill--photo {
   background: color-mix(in srgb, var(--accent-fill) 14%, transparent);
@@ -204,33 +195,38 @@
   color: var(--accent-text);
 }
 
-/*
- * --color-accent（旧铜色）本次改版要消灭，装饰性用途收敛到 --accent-fill 系。
- * 上面的 --photo 徽章已经用了 --accent-fill，这里选 --accent-fill-hover 而不是
- * 同一个值，保留 photo/video 两种媒体徽章的色相区分（同 EventCardsView.css 的
- * social 分类色先例）。
- */
+/* The darker accent shade distinguishes video from photo media badges. */
 .member-card__pill--video {
   background: color-mix(in srgb, var(--accent-fill-hover) 14%, transparent);
   border: 1px solid color-mix(in srgb, var(--accent-fill-hover) 30%, transparent);
   color: color-mix(in srgb, var(--accent-fill-hover) 50%, var(--text-primary));
 }
 
-.member-card__content { margin-top: 6px; }
-.member-card__username { display: block; font-size: var(--text-body); font-weight: var(--fw-medium); line-height: 1.3; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-
+.member-card__content {
+  margin-top: var(--space-sm);
+}
+.member-card__identity {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: var(--space-xs) var(--space-sm);
+  min-width: 0;
+}
+.member-card__username {
+  display: block;
+  flex: 1 1 8ch;
+  min-width: 0;
+  font-size: var(--text-h3);
+  font-weight: var(--fw-strong);
+  line-height: 1.35;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 .member-card__title {
   margin-top: 2px; min-height: 18px; line-height: 1.35;
   color: color-mix(in srgb, var(--text-primary) 65%, transparent);
   display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 1; overflow: hidden;
-}
-
-.member-card__class-row {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  min-width: 0;
-  margin-top: var(--space-xs);
 }
 
 .member-card__class-chip,
@@ -246,26 +242,34 @@
 }
 
 .member-card__class-chip {
-  max-width: calc(50% - 12px);
+  max-width: 100%;
   padding: 2px 6px 2px 4px;
   font-size: var(--text-meta);
   font-weight: var(--fw-medium);
   line-height: 1.2;
 }
-
-.member-card__class-label {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.member-card__class-overflow {
-  flex: 0 0 auto;
-  color: var(--text-secondary);
-  font-size: var(--text-meta);
+.member-card__class-chip--primary {
+  flex: 0 1 auto;
+  width: fit-content;
+  max-width: 100%;
+  padding: var(--space-xs) var(--space-sm);
+  font-size: var(--text-sm);
   font-weight: var(--fw-strong);
 }
 
+.member-card__class-label {
+  min-width: 0;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+.member-card__badge-overflow {
+  flex: 0 0 auto;
+  color: var(--text-secondary);
+  font-size: var(--text-micro);
+  font-weight: var(--fw-strong);
+  line-height: 1.4;
+}
 .member-card__badge {
   display: inline-flex;
   align-items: center;
@@ -285,9 +289,8 @@
    */
   color: color-mix(in srgb, var(--badge-color) 50%, var(--text-primary));
   max-width: 100%;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  white-space: normal;
+  overflow-wrap: anywhere;
 }
 
 .member-card--compact {
@@ -373,4 +376,3 @@
   .member-card { transition: none; }
   .member-card__spec { transition: none; }
 }
-

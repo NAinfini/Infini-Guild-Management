@@ -56,7 +56,7 @@ test.beforeEach(async ({ page }) => {
 test("工具卡：点开骰子弹窗，关掉后回到卡片，全程不碰网络", async ({ page, flow }) => {
   await flow.clickWithoutApi(page.getByRole("heading", { name: "Dice Roller", exact: true }));
   await expect(toolsDialog(page), "卡片本身就是打开弹窗的按钮").toBeVisible();
-  await expect(toolsDialog(page).getByText("No rolls yet. Hit Roll!")).toBeVisible();
+  await expect(toolsDialog(page).getByText("No rolls yet. Select Roll to begin.")).toBeVisible();
 
   await toolsDialog(page).getByRole("button", { name: "Close", exact: true }).click();
   await expect(page.getByRole("dialog")).toHaveCount(0);
@@ -130,6 +130,6 @@ test("历史：连投累积成多条，清空按钮把界面和落盘一起清�
 
   await dialog.getByRole("button", { name: "Clear", exact: true }).click();
   await expect(historyItems(page)).toHaveCount(0);
-  await expect(dialog.getByText("No rolls yet. Hit Roll!")).toBeVisible();
+  await expect(dialog.getByText("No rolls yet. Select Roll to begin.")).toBeVisible();
   expect(await readHistoryStorage(page), "清空必须连落盘一起清").toEqual([]);
 });

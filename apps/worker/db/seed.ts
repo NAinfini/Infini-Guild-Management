@@ -1663,9 +1663,7 @@ export async function seedDatabase(env: Bindings): Promise<void> {
   // ════════════════════════════════════════════
   // ── Invite Links ──
   // ════════════════════════════════════════════
-  // usedCount: 18 = 1 admin + 3 mods + 14 active members (member_14 is inactive but was registered via this link)
-  // Total registered users through SEEDLIVE = 19 (all users), but some may have used other links
-  // For simplicity: admin + 3 mods + 15 members = 19, minus those via other links = 18
+  // SEEDLIVE represents 18 of 19 seeded registrations; one user used another invite link.
 
   await db.insert(inviteLinks).values([
     {

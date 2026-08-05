@@ -23,6 +23,7 @@ import { buildWikiImageKey } from "./media-keys";
 // --- Types ---
 
 type DrizzleDb = DrizzleD1Database<Record<string, never>>;
+export type WikiSort = "curated" | "updated_desc" | "updated_asc";
 
 type CategoryRow = { id: string; name: string; slug: string; sortOrder: number; parentId: string | null; createdAt: string; updatedAt: string };
 type ArticleRow = { id: string; title: string; slug: string; categoryId: string; bodyJson: string; sortOrder: number; pinned: boolean; archivedAt: string | null; createdBy: string; updatedBy: string | null; createdAt: string; updatedAt: string; updatedByUsername: string | null };
@@ -314,11 +315,7 @@ export class WikiService {
     const existing = await this.getCategoryById(categoryId);
     if (!existing) return err("NOT_FOUND", "Wiki category not found");
 
-    /* updatedAt 无条件写，与下面 batchUpdateCategories 的写法一致（那边是
-       assignments.push("updated_at = ?")）。原先这条单行路径漏了它，于是同一个字段
-       改一行不动时间戳、改一批动——同一张表的 updated_at 取决于走了哪个接口，
-       任何按它排序或做增量同步的地方都会读到错的先后。
-       顺带兜住 patch 为空的情况：Drizzle 的 set({}) 会抛，现在至少有一个赋值。 */
+    // Every category update advances the ordering/sync timestamp, including an empty patch.
     const patch: Partial<typeof wikiCategories.$inferInsert> = { updatedAt: new Date().toISOString() };
     if (data.name !== undefined) patch.name = data.name;
     if (data.slug !== undefined) {
@@ -438,7 +435,7 @@ export class WikiService {
 
   // --- Articles ---
 
-  async listArticles(opts: { page: number; limit: number; categoryIds?: string[]; archived?: boolean; pinned?: boolean; search?: string }): Promise<ServiceResult<{ data: unknown[]; total: number; page: number; limit: number; total_pages: number }>> {
+  async listArticles(opts: { page: number; limit: number; categoryIds?: string[]; archived?: boolean; pinned?: boolean; search?: string; sort?: WikiSort }): Promise<ServiceResult<{ data: unknown[]; total: number; page: number; limit: number; total_pages: number }>> {
     const offset = (opts.page - 1) * opts.limit;
     const filters: SQL<unknown>[] = [];
     if (opts.categoryIds?.length) filters.push(inArray(wikiArticles.categoryId, opts.categoryIds));
@@ -450,8 +447,14 @@ export class WikiService {
       filters.push(or(likeEscaped(wikiArticles.title, pattern), likeEscaped(wikiArticles.bodyJson, pattern))!);
     }
     const whereClause = and(...filters);
+    const sort = opts.sort ?? "curated";
+    const orderExpressions = sort === "updated_asc"
+      ? [desc(wikiArticles.pinned), asc(wikiArticles.updatedAt), asc(wikiArticles.id)]
+      : sort === "updated_desc"
+        ? [desc(wikiArticles.pinned), desc(wikiArticles.updatedAt), desc(wikiArticles.id)]
+        : [desc(wikiArticles.pinned), asc(wikiArticles.sortOrder), desc(wikiArticles.updatedAt), asc(wikiArticles.id)];
     const [rows, countRow] = await Promise.all([
-      this.db.select(LIST_ARTICLE_COLS).from(wikiArticles).where(whereClause).orderBy(desc(wikiArticles.pinned), asc(wikiArticles.sortOrder), desc(wikiArticles.updatedAt), asc(wikiArticles.id)).limit(opts.limit).offset(offset),
+      this.db.select(LIST_ARTICLE_COLS).from(wikiArticles).where(whereClause).orderBy(...orderExpressions).limit(opts.limit).offset(offset),
       this.db.select({ count: sql<number>`count(*)` }).from(wikiArticles).where(whereClause),
     ]);
     const total = Number(countRow[0]?.count ?? 0);

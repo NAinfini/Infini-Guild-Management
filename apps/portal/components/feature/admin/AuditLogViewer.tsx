@@ -2,7 +2,7 @@ import type { AuditLogEntry } from "@guild/shared";
 import type { AuditAction, AuditEntityType } from "@guild/shared/constants/audit";
 import { Alert, Badge, Group, NumberInput, Pagination, Skeleton, Stack, Text, Tooltip } from "@mantine/core";
 import { ArrowRightIcon, ChevronDownIcon } from "@portal/components/icons";
-import { useMemo, useState } from "react";
+import { useId, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import "./AuditLogViewer.css";
 
@@ -33,6 +33,47 @@ type DetailData =
 const ISO_DATE_RE = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/;
 
 const DAY_KEYS = ["sun", "mon", "tue", "wed", "thu", "fri", "sat"];
+const AUDIT_VALUE_PREVIEW_LENGTH = 360;
+
+type AuditValueProps = {
+  value: string;
+  className: string;
+  t: (key: string, opts?: Record<string, unknown>) => string;
+};
+
+function AuditValue({ value, className, t }: AuditValueProps) {
+  const [expanded, setExpanded] = useState(false);
+  const contentId = useId();
+
+  if (value.length <= AUDIT_VALUE_PREVIEW_LENGTH) {
+    return <span className={className}>{value}</span>;
+  }
+
+  return (
+    <span className="audit-detail-value">
+      <span
+        id={contentId}
+        className={`${className} audit-detail-value__content ${expanded ? "audit-detail-value__content--expanded" : ""}`.trim()}
+      >
+        {expanded ? value : (
+          <>
+            {value.slice(0, AUDIT_VALUE_PREVIEW_LENGTH)}
+            <span className="audit-detail-value__truncated">{t("audit.detail.truncated")}</span>
+          </>
+        )}
+      </span>
+      <button
+        type="button"
+        className="audit-detail-value__toggle"
+        aria-controls={contentId}
+        aria-expanded={expanded}
+        onClick={() => setExpanded((current) => !current)}
+      >
+        {t(expanded ? "audit.detail.showLess" : "audit.detail.showFull")}
+      </button>
+    </span>
+  );
+}
 
 function formatDiffValue(
   value: unknown,
@@ -246,8 +287,6 @@ const ENTITY_COLOR_MAP = {
   seed: "gray",
   system_test: "gray",
   site_config: "teal",
-  onboarding: "teal",
-  onboarding_ack: "green",
   storage: "cyan",
   storage_category: "cyan",
   storage_item: "cyan",
@@ -467,9 +506,9 @@ export function AuditLogViewer({
                           {row.detailData!.entries.map((entry) => (
                             <div key={entry.field} className="audit-diff-entry">
                               <span className="audit-diff-entry__field">{entry.field}</span>
-                              <span className="audit-diff-entry__from">{(entry as DiffEntry).from}</span>
+                              <AuditValue className="audit-diff-entry__from" value={(entry as DiffEntry).from} t={t} />
                               <ArrowRightIcon size={12} className="audit-diff-entry__arrow" />
-                              <span className="audit-diff-entry__to">{(entry as DiffEntry).to}</span>
+                              <AuditValue className="audit-diff-entry__to" value={(entry as DiffEntry).to} t={t} />
                             </div>
                           ))}
                         </div>
@@ -478,7 +517,7 @@ export function AuditLogViewer({
                           {row.detailData!.entries.map((entry) => (
                             <div key={entry.field} className="audit-info-entry">
                               <span className="audit-info-entry__field">{entry.field}</span>
-                              <span className="audit-info-entry__value">{(entry as InfoEntry).value}</span>
+                              <AuditValue className="audit-info-entry__value" value={(entry as InfoEntry).value} t={t} />
                             </div>
                           ))}
                         </div>
@@ -506,7 +545,7 @@ export function AuditLogViewer({
             />
             <NumberInput
               aria-label={tCommon("pagination.page")}
-              size="xs"
+              size="sm"
               min={1}
               max={totalPages}
               value={auditPageCurrent}

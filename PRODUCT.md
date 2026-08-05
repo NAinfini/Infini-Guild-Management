@@ -4,70 +4,48 @@
 
 ## Platform
 
-web
+Responsive bilingual web application for desktop and mobile.
 
 ## Users
 
-Infini Guild Management serves two primary groups:
+- Guild members browse current information, manage their profiles and absences, join events, vote or enter raffles, review war plans and history, use shared knowledge/media/storage, and interact with permitted tools.
+- Moderators and administrators publish content, coordinate events and wars, maintain members and catalogs, manage storage, review operational records, and administer permissions and site policy.
+- Guests may read the dashboard, events, roster, announcements, guild-war, gallery, wiki, settings, and tools surfaces. Profile, storage, administration, and privileged mutations require authentication and server-side permission checks.
 
-- Guild administrators and moderators who organize members, permissions, events, announcements, wars, media, knowledge, storage, and site configuration.
-- Guild members who check current information, manage their profiles, join activities, review guild-war information, browse shared media and knowledge, and interact with other members.
+## Product purpose
 
-Desktop and mobile are equally important. Every primary workflow must be complete, understandable, and comfortable on both rather than treating mobile as a reduced companion experience.
+Infini Guild Management gives a game guild one self-hosted operational home instead of splitting authoritative information across spreadsheets, chat pins, media folders, and isolated utilities. Success means members can find current information and complete common actions without technical guidance, while staff can operate the guild with traceable permissions and audit history.
 
-## Product Purpose
+## Current user capabilities
 
-The portal gives a game guild one self-hosted place to operate instead of splitting important information across spreadsheets, Discord pins, isolated media folders, and one-off utilities. Success means administrators can run the guild efficiently while members can find current information and act without needing technical knowledge or procedural guidance.
+- Dashboard summaries, command search, member roster, rich profiles, classes, badges, availability, absences, media, and user-controlled profile audio.
+- Invite registration, account settings, cookie sessions, profile-title styling, and responsive English/Chinese presentation.
+- Events with fixed behaviors, recurring templates, quotas, signups, participant management, polls, raffles, and automatic archival.
+- Scheduled rich-text announcements, wiki categories/articles/revisions, gallery images/external videos, and content moderation.
+- Active guild-war planning, team/pool movement, conclusion, history, member stats, export, and analytics.
+- Authenticated storage structures, categories, items, quantities, images, and transaction history.
+- A Tools surface currently containing the dice roller, plus administration for members, invites, roles, permissions, Site Config, classes, class tags, badges, audit/error/status data, and maintenance.
+- Authenticated realtime update hints through WebSocket connections backed by a Durable Object.
 
-## Positioning
+## Product boundaries
 
-The portal combines guild operations, member participation, shared knowledge, media, and game-specific war planning in one configurable system. D1-backed site settings and catalogs supply runtime customization, while small shared domain contracts keep persisted event and guild-war data consistent across the frontend and backend.
+- Runtime feature visibility is limited to `announcements`, `events`, `guildWar`, `gallery`, `wiki`, `tools`, and `storage`.
+- Site Config covers branding, those feature flags, and media/storage/absence policies. Game rules remain source-owned contracts.
+- Event types are source-owned and limited to `weekly_mission`, `guild_war`, `social`, `poll`, `raffle`, and `other`.
+- Guild-war results are source-owned and limited to `win`, `loss`, and `draw`. KDA is `(kills + assists) / max(deaths, 1)` without pre-rounding. Stat definitions own one `name`, not localized `labels` or a configurable `precision`.
+- Admin cannot redefine those persisted contracts. They are not represented by dynamic D1 rule tables and require coordinated code/data migration when changed.
+- The single R2 `MEDIA` bucket contains persisted media and audit archives, including authoritative archive manifests. Persisted images are WebP or GIF; profile audio is Ogg/Opus; server validation rejects mismatched bytes and SVG.
+- Public visibility never grants mutation rights. Backend authorization remains authoritative even when the interface hides or disables an action.
+- Demo data is representative development content, not evidence of real users, adoption, performance, or customer claims.
 
-## Operating Context
+## Product principles
 
-- Frequent guild operations include reviewing the dashboard, publishing announcements, scheduling events, managing signups, maintaining the roster, planning guild wars, curating wiki and gallery content, managing storage, and administering roles and invitations.
-- Members commonly arrive to scan current state and complete a short action, such as reading an announcement, joining an event, checking a war plan, opening a profile, or finding a wiki article.
-- Selected content is public, while profile, storage, administration, and privileged actions require authentication and permission checks.
-- The product is bilingual in English and Chinese and supports light and dark themes.
-- The portal is self-hosted on Cloudflare Workers, D1, R2, and Durable Objects.
+1. **One task model on every device.** Mobile and desktop may compose information differently, but neither is an intentionally reduced product.
+2. **Guild-specific character with predictable controls.** Identity comes from hierarchy, media, data, and deliberate interaction; standard controls keep standard behavior.
+3. **Progressive complexity.** Members see current information and common actions first; administrative depth remains permission-gated and discoverable.
+4. **Traceable operations.** Sensitive changes have server authorization, audit context, and explicit destructive actions.
+5. **Preserve useful identity.** Portrait-led roster cards, reduced-motion behavior, and user-controlled member audio are product assets rather than decoration.
 
-## Capabilities and Constraints
+## Accessibility and inclusion
 
-- Preserve existing business behavior, routes, permissions, API contracts, and data flows during the interface rearchitecture.
-- Navigation grouping and page information hierarchy may change when they improve comprehension and task completion.
-- Feature visibility remains configurable through Admin Site Config.
-- Public and protected access boundaries remain authoritative on the server.
-- The responsive interface must provide feature parity across desktop and mobile, adapting composition and interaction rather than hiding primary capabilities.
-- Roster member cards are a confirmed product asset. Their current portrait-led presentation, spring-based tilt, hover scale, specular response, color-dispersion glow, profile opening behavior, and reduced-motion handling must remain intact.
-- Roster hover audio is a confirmed product behavior. Delayed playback and stop behavior, member-specific media, mute, volume, and user control must remain intact.
-
-## Brand Commitments
-
-- Product name: Infini Guild Management.
-- Preserve the recognizable dark guild atmosphere while providing an equally complete, intentionally designed light theme.
-- The interface should feel like a capable guild operations space, not a generic admin template or a decorative game landing page.
-- The Roster page is an incumbent visual reference: personal, tactile, media-led, and responsive to interaction without obscuring information.
-
-## Evidence on Hand
-
-- Product and deployment facts: `README.md`, `README.zh.md`, `SETUP.md`, and `SETUP.zh.md`.
-- Current product flows and route structure: `apps/portal/router.tsx` and `apps/portal/components/pages/`.
-- Existing design tokens: `apps/portal/styles/tokens.css`, `semantic.css`, and `scale.css`.
-- Confirmed Roster interaction reference: `MemberCard.tsx`, `MemberCard.css`, `RosterPage.tsx`, `RosterPage.css`, `RosterGrid.tsx`, `RosterFilterCard.tsx`, and `useRosterPageController.ts`.
-- Existing guild branding asset: `apps/portal/public/guild-logo.webp`.
-- Representative development data is available through the local seed; it is demonstration content, not evidence of real deployments or users.
-- The repository contains no approved testimonials, customer claims, adoption metrics, or performance claims; future interface work must not fabricate them.
-
-## Product Principles
-
-1. **One task model on every device.** Desktop and mobile may compose information differently, but neither may become the incomplete version.
-2. **Familiar operations, guild-specific character.** Standard controls should behave predictably; identity comes from hierarchy, material, data, media, and a few deliberate interactions.
-3. **One shared pattern for one job.** Page shells, navigation, tabs, filters, cards, tables, forms, states, and actions should come from reusable primitives rather than page-local imitations.
-4. **Progressive complexity.** Members should see the information and actions they need immediately, while administrative depth remains discoverable without crowding every screen.
-5. **Preserve interactions that carry identity.** Distinctive, useful experiences such as Roster card motion and member audio are assets to protect and integrate, not flatten during standardization.
-
-## Accessibility & Inclusion
-
-- Keyboard navigation, visible focus, semantic labels, readable contrast, and reduced-motion behavior must be preserved or improved.
-- Audio remains user-controlled through mute and volume settings and must never be the only carrier of information.
-- Responsive layouts must support touch targets, zoom, long translated strings, and content reflow without hiding primary actions.
+Keyboard navigation, visible focus, semantic labels, readable contrast, reduced-motion handling, touch targets, zoom, long translated strings, and content reflow are baseline requirements. Audio is user-controlled and never the only carrier of information.

@@ -1,8 +1,22 @@
 // @vitest-environment jsdom
 import { PERMISSIONS, type MemberProfile, type Permission, type User } from "@guild/shared";
 import { fireEvent, render, screen } from "@testing-library/react";
-import { describe, expect, it, vi } from "vitest";
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { RosterGrid } from "./RosterGrid";
+
+const virtualizerHarness = vi.hoisted(() => ({
+  items: [] as Array<{ key: string; index: number; start: number }>,
+}));
+
+vi.mock("@tanstack/react-virtual", () => ({
+  useVirtualizer: () => ({
+    getVirtualItems: () => virtualizerHarness.items,
+    getTotalSize: () => 280,
+    measureElement: vi.fn(),
+  }),
+}));
 
 vi.mock("@portal/components/effects", () => ({
   StaggerList: ({ children, staggerMs: _staggerMs, ...props }: React.HTMLAttributes<HTMLDivElement> & { staggerMs?: number }) => (
@@ -58,6 +72,9 @@ const profile: MemberProfile = {
   created_at: now,
   updated_at: now,
 };
+beforeEach(() => {
+  virtualizerHarness.items = [];
+});
 
 describe("RosterGrid audio input boundaries", () => {
   it("plays hover audio only for a mouse pointer while retaining keyboard focus audio", () => {
@@ -91,5 +108,50 @@ describe("RosterGrid audio input boundaries", () => {
 
     fireEvent.focus(card);
     expect(onCardFocus).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("RosterGrid card sizing", () => {
+  it("keeps the full-height interaction wrapper in every virtual grid cell", () => {
+    virtualizerHarness.items = [{ key: "row-0", index: 0, start: 0 }];
+    const secondUser = { ...user, id: "user-2", username: "Beryl" };
+    const secondProfile = { ...profile, id: "profile-2", user_id: secondUser.id };
+
+    const { container } = render(
+      <RosterGrid
+        rows={[{ user, profile }, { user: secondUser, profile: secondProfile }]}
+        shouldVirtualize
+        columnCount={2}
+        staggerKey="all"
+        ariaLabel="Roster"
+        onCardClick={vi.fn()}
+        onCardMouseEnter={vi.fn()}
+        onCardMouseLeave={vi.fn()}
+        onCardFocus={vi.fn()}
+        onCardBlur={vi.fn()}
+      />,
+    );
+
+    const cells = [...container.querySelectorAll(".roster-virtual-cell")];
+    expect(cells).toHaveLength(2);
+    expect(cells.every((cell) => cell.firstElementChild?.classList.contains("roster-card-interaction"))).toBe(true);
+
+    const css = readFileSync(
+      resolve(process.cwd(), "apps/portal/components/pages/RosterPage.css"),
+      "utf8",
+    ).replace(/\/\*[\s\S]*?\*\//g, "");
+    expect(css).toMatch(/\.roster-virtual-cell\s*\{[^}]*height:\s*100%/);
+    expect(css).toMatch(/\.roster-card-interaction\s*\{[^}]*height:\s*100%/);
+  });
+
+  it("switches the non-virtual roster to one readable column below 576px", () => {
+    const css = readFileSync(
+      resolve(process.cwd(), "apps/portal/components/pages/RosterPage.css"),
+      "utf8",
+    ).replace(/\/\*[\s\S]*?\*\//g, "");
+
+    expect(css).toMatch(
+      /@media \(max-width: 575px\)\s*\{\s*\.roster-card-grid\s*\{[^}]*grid-template-columns:\s*minmax\(0,\s*1fr\)/,
+    );
   });
 });

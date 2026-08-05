@@ -1,3 +1,4 @@
+import type { ClassCatalogItem } from "@guild/shared";
 import { useDraggable, useDroppable } from "@dnd-kit/core";
 import {
   ActionIcon,
@@ -35,7 +36,6 @@ import { useTranslation } from "react-i18next";
 import { ClassIcon } from "@portal/components/shared/ClassIcon";
 import {
   resolveClassCatalogItem,
-  type ResolvedClassCatalogItem,
   useClassCatalogStore,
 } from "@portal/stores/class-catalog";
 
@@ -70,7 +70,7 @@ type DraggableMemberCardProps = {
   domId: string;
   username: string;
   power: number;
-  classItem: ResolvedClassCatalogItem;
+  classItem: ClassCatalogItem;
   dragDisabled: boolean;
   isMatched: boolean;
   isAbsent: boolean;
@@ -193,7 +193,7 @@ const DraggableMemberCard = memo(function DraggableMemberCard({
   );
 });
 
-function ClassIdentity({ item }: { item: ResolvedClassCatalogItem }) {
+function ClassIdentity({ item }: { item: ClassCatalogItem }) {
   return (
     <span
       className="guild-war-class-identity"

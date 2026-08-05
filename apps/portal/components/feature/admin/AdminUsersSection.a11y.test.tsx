@@ -196,6 +196,8 @@ describe("AdminUsersSection accessibility", () => {
     const aliceMenu = menu as unknown as HTMLElement;
     expect(within(aliceMenu).getByRole("menuitem", { name: "member.context.changeRole", hidden: true })).toBeDisabled();
     expect(within(aliceMenu).getByRole("menuitem", { name: "member.deactivate", hidden: true })).toBeDisabled();
+    expect(within(aliceMenu).getByRole("menuitem", { name: "member.context.delete", hidden: true })).toBeEnabled();
+    expect(within(aliceMenu).getAllByRole("menuitem", { name: "member.deactivate", hidden: true })).toHaveLength(1);
     const resetPassword = within(aliceMenu).getByRole("menuitem", { name: "member.resetPassword", hidden: true });
     expect(resetPassword).toBeDisabled();
     expect(within(aliceMenu).getByRole("menuitem", { name: "member.resetLoginLock", hidden: true })).toBeDisabled();
@@ -221,6 +223,8 @@ describe("AdminUsersSection accessibility", () => {
     const bobMenu = menu as unknown as HTMLElement;
     expect(within(bobMenu).getByRole("menuitem", { name: "member.context.changeRole", hidden: true })).toBeEnabled();
     expect(within(bobMenu).getByRole("menuitem", { name: "member.deactivate", hidden: true })).toBeEnabled();
+    expect(within(bobMenu).getByRole("menuitem", { name: "member.context.delete", hidden: true })).toBeEnabled();
+    expect(within(bobMenu).getAllByRole("menuitem", { name: "member.deactivate", hidden: true })).toHaveLength(1);
     expect(within(bobMenu).getByRole("menuitem", { name: "member.resetPassword", hidden: true })).toBeEnabled();
     expect(within(bobMenu).getByRole("menuitem", { name: "member.resetLoginLock", hidden: true })).toBeEnabled();
   });

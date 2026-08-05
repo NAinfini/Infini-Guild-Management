@@ -58,7 +58,7 @@ async function initI18n(): Promise<void> {
   const resources = await loadLocaleResources(locale);
   const namespaces = Object.keys(resources);
 
-  // HMR and isolated tests can reuse i18next's singleton. Clear old bundles so
+  // HMR and isolated tests can reuse i18next's singleton. Clear loaded bundles so
   // bootstrap retains the same one-locale loading contract as a fresh page.
   const existingResources = (i18n.services?.resourceStore as unknown as {
     data?: Record<string, Record<string, unknown>>;

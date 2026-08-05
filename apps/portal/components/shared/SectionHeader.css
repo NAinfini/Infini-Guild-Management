@@ -1,13 +1,4 @@
-/*
- * 卡片内的章节标题。抽出来之前全站有两套写法：
- *   <Text fw={700} size="sm" c="dimmed" tt="uppercase" lts={0.5}>  ×20（10 个文件）
- *   <Text fw={600} size="sm">                                      ×2（ProfileAccountTab）
- * 同一个页面上两套并存，所以「看着不像一个页面」。这里定死一套。
- *
- * 尾部那条发丝线是这次返工新增的：原来所有内容都是同一个视觉权重，靠
- * <Divider my={16}> 硬切，读不出分组。让标题自带一条延伸到行尾的线，分组
- * 关系由标题本身承担，卡片内部就不再需要成排的分隔线。
- */
+/* The heading and trailing hairline establish card-internal section hierarchy. */
 .section-header {
   display: flex;
   align-items: center;

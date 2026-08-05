@@ -6,7 +6,7 @@ body:
   - type: markdown
     attributes:
       value: |
-        Read SETUP.md first. Remove passwords, cookies, invite codes, secrets, Cloudflare tokens, account IDs, and D1 database IDs from everything you post.
+        Read SETUP.md first; it is the canonical setup guide. Remove passwords, cookies, invite codes, SIGNING_SECRET, Cloudflare API tokens, and private guild data. Resource identifiers already present in tracked wrangler.jsonc are configuration, not credentials.
   - type: dropdown
     id: stage
     attributes:
@@ -14,7 +14,7 @@ body:
       options:
         - Local installation
         - Cloudflare login
-        - D1 or R2 creation
+        - D1 or MEDIA R2 creation
         - Database migrations
         - First administrator
         - Deployment
@@ -49,5 +49,5 @@ body:
     attributes:
       label: Safety check
       options:
-        - label: I removed all credentials, secrets, tokens, cookies, invite codes, account IDs, and database IDs.
+        - label: I removed all credentials, secrets, tokens, cookies, invite codes, and private guild data.
           required: true

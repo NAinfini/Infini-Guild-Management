@@ -1,4 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
+import type { SQL } from "drizzle-orm";
+import { SQLiteSyncDialect } from "drizzle-orm/sqlite-core";
 import { AnnouncementService } from "../AnnouncementService";
 import { signAnnouncementImageStagingToken } from "../announcement-image-staging";
 
@@ -32,7 +34,7 @@ function createDeps(rawDb: D1Database = createRawDb().rawDb) {
 function createListDb(rows: unknown[] = []) {
   const offset = vi.fn().mockResolvedValue(rows);
   const limit = vi.fn(() => ({ offset }));
-  const orderBy = vi.fn(() => ({ limit }));
+  const orderBy = vi.fn((..._expressions: SQL[]) => ({ limit }));
   const where = vi.fn(() => ({ orderBy }));
   const from = vi.fn(() => ({ where }));
   const select = vi.fn(() => ({ from }));
@@ -42,7 +44,7 @@ function createListDb(rows: unknown[] = []) {
 
   return {
     db: { select, update },
-    calls: { select, update, set, updateWhere },
+    calls: { select, orderBy, update, set, updateWhere },
   };
 }
 
@@ -116,6 +118,30 @@ describe("AnnouncementService", () => {
 
     expect(calls.update).not.toHaveBeenCalled();
   });
+
+  it.each([
+    ["the default descending order", undefined, ["desc", "desc"]],
+    ["ascending updated order", "updated_asc", ["asc", "asc"]],
+  ] as const)("uses pinned-first stable pagination for %s", async (_label, sort, directions) => {
+    const { db, calls } = createListDb();
+    const service = new AnnouncementService(db as never, createDeps());
+
+    await service.list({
+      canReadAll: false,
+      page: 1,
+      limit: 20,
+      archived: false,
+      ...(sort ? { sort } : {}),
+    });
+
+    const orderSql = (calls.orderBy.mock.calls[0] ?? []).map((expression) =>
+      new SQLiteSyncDialect().sqlToQuery(expression).sql.replaceAll('"', ""));
+    expect(orderSql).toHaveLength(3);
+    expect(orderSql[0]).toBe("announcements.pinned desc");
+    expect(orderSql[1]).toBe("announcements.updated_at " + directions[0]);
+    expect(orderSql[2]).toBe("announcements.id " + directions[1]);
+  });
+
 
   it("creates announcement content and media references in one D1 batch", async () => {
     const { batchMock, rawDb } = createRawDb();

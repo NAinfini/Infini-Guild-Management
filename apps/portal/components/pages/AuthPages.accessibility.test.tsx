@@ -2,7 +2,7 @@
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { MantineProvider } from "@mantine/core";
-import { fireEvent, render, screen } from "@testing-library/react";
+import { createEvent, fireEvent, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { LoginPage } from "./LoginPage";
@@ -123,6 +123,32 @@ describe("Auth page semantics", () => {
       "href",
       "/register",
     );
+  });
+
+  it("shows and announces a localized Caps Lock warning without sharing the eye control", () => {
+    renderLogin();
+
+    const password = screen.getByLabelText("field.password");
+    const capsLockEvent = createEvent.keyDown(password, { key: "A" });
+    Object.defineProperty(capsLockEvent, "getModifierState", {
+      value: (modifier: string) => modifier === "CapsLock",
+    });
+    fireEvent(password, capsLockEvent);
+
+    const warning = screen.getByRole("status");
+    const toggle = screen.getByRole("button", { name: "aria.showPassword" });
+    const passwordControl = password.closest(".login-page__password-control");
+    expect(warning).toHaveTextContent("capsLockWarning");
+    expect(warning).toHaveClass("login-page__caps-warning");
+    expect(passwordControl).not.toBeNull();
+    expect(toggle.closest(".login-page__password-actions")?.parentElement).toBe(passwordControl);
+    expect(warning.parentElement).toBe(passwordControl?.parentElement);
+    expect(warning.previousElementSibling).toBe(passwordControl);
+    expect(warning.querySelector(".login-page__caps-icon")).toHaveAttribute(
+      "aria-hidden",
+      "true",
+    );
+    expect(toggle).toBeInTheDocument();
   });
 
   it("gives both registration password controls accurate names and pressed state", async () => {

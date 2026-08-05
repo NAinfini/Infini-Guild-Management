@@ -116,7 +116,8 @@ export function AnnouncementListCard({
                     >
                       <Stack gap={2}>
                         <div className="announcement-item-title">
-                            <Text fw={600}>{item.title}</Text>
+                          <Text fw={600} className="announcement-item-title-text">{item.title}</Text>
+                          <span className="announcement-item-meta">
                           {item.pinned ? <PushpinOutlined className="announcement-item-pin" /> : null}
                           {canEdit || item.status === "archived" ? (() => {
                             const { color, icon } = STATUS_THEME[item.status];
@@ -148,6 +149,7 @@ export function AnnouncementListCard({
                               </Tooltip>
                             );
                           })() : null}
+                          </span>
                         </div>
                         <Group gap={8}>
                           {canEdit && item.status === "scheduled" && item.publish_at ? (

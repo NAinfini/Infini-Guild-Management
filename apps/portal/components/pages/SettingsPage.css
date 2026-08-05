@@ -1,9 +1,26 @@
 /* ── Settings Page ── */
 
+.settings-page {
+  width: 100%;
+  max-width: 60rem;
+  margin-inline: auto;
+  container-type: inline-size;
+}
+
 .settings-section {
   border: 1px solid color-mix(in srgb, var(--border-subtle) 80%, transparent);
   background: var(--surface-raised);
   padding: 24px;
+}
+
+.settings-choice-grid {
+  display: grid;
+  gap: var(--space-md);
+}
+
+.settings-choice-grid--binary,
+.settings-choice-grid--accent {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
 /* ── Option card (shared by theme, locale, motion selectors) ── */
@@ -88,6 +105,12 @@
 
 /* ── Responsive ── */
 
+@container (min-width: 48rem) {
+  .settings-choice-grid--accent {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+}
+
 @media (max-width: 767px) {
   .settings-section {
     padding: 16px;
@@ -101,5 +124,16 @@
   .settings-option-card__icon {
     width: 34px;
     height: 34px;
+  }
+}
+
+@media (max-width: 30rem) {
+  .settings-option-card--with-icon {
+    gap: var(--space-sm);
+    padding-inline: var(--space-md);
+  }
+
+  .settings-option-card__description {
+    display: none;
   }
 }

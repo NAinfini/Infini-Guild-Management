@@ -1,10 +1,12 @@
 import type { HeartbeatAckMessage, HeartbeatMessage, PushMessage } from "@guild/shared";
+import { LIMITS } from "@guild/shared/config/limits";
 import type { Bindings } from "../index";
 import { isSessionStillValid } from "../services/auth";
 
 const STALE_TIMEOUT_MS = 90_000;
 const SWEEP_INTERVAL_MS = 60_000;
-export const MAX_WEBSOCKET_CONNECTIONS = 1500;
+const CONNECTION_LIMIT_RETRY_MS = 1_000;
+export const MAX_WEBSOCKET_CONNECTIONS = LIMITS.websocket.maxConnections;
 
 /**
  * How long a socket may keep pushing on a session that is no longer verified.
@@ -25,14 +27,27 @@ const WS_CLOSE_UNAUTHORIZED = 4401;
  * index.ts. Always overwritten there, so a client cannot forge it.
  */
 export const WS_SESSION_ID_HEADER = "X-Internal-Session-Id";
+export const WS_ACCOUNT_ID_HEADER = "X-Internal-Account-Id";
 
 type SocketAttachment = {
   /** Last heartbeat, epoch ms. */
   ts: number;
   /** Hashed session id this socket authenticated with. */
   sid: string;
+  /** Trusted internal account id resolved by the `/ws` route. */
+  accountId: string;
   /** Last time the session was confirmed to still be valid, epoch ms. */
   checkedAt: number;
+};
+
+type HandshakeBucket = {
+  count: number;
+  windowId: number;
+};
+
+type HandshakeDecision = {
+  count: number;
+  resetAt: number;
 };
 
 export class WebSocketDO {
@@ -53,6 +68,49 @@ export class WebSocketDO {
     const attachment = this.getAttachment(ws);
     if (!attachment) return;
     ws.serializeAttachment({ ...attachment, ts });
+  }
+
+  private countAccountConnections(accountId: string, sockets: WebSocket[]): number {
+    let count = 0;
+    for (const socket of sockets) {
+      if (this.getAttachment(socket)?.accountId === accountId) count += 1;
+    }
+    return count;
+  }
+
+  private async consumeHandshake(accountId: string, now: number): Promise<HandshakeDecision> {
+    const { windowMs } = LIMITS.websocket.handshakes;
+    const windowId = Math.floor(now / windowMs);
+    const key = `websocket-handshakes:${accountId}`;
+
+    const count = await this.state.storage.transaction(async (txn) => {
+      const current = await txn.get<HandshakeBucket>(key);
+      const nextCount = current?.windowId === windowId ? current.count + 1 : 1;
+      await txn.put(key, { count: nextCount, windowId } satisfies HandshakeBucket);
+      return nextCount;
+    });
+
+    return { count, resetAt: (windowId + 1) * windowMs };
+  }
+
+  private rateLimited(
+    scope: string,
+    limit: number,
+    resetAt: number,
+    now: number,
+    message: string,
+  ): Response {
+    const retryAfter = Math.max(1, Math.ceil((resetAt - now) / 1000));
+    return new Response(message, {
+      status: 429,
+      headers: {
+        "Retry-After": String(retryAfter),
+        "X-RateLimit-Scope": scope,
+        "X-RateLimit-Limit": String(limit),
+        "X-RateLimit-Remaining": "0",
+        "X-RateLimit-Reset": String(Math.ceil(resetAt / 1000)),
+      },
+    });
   }
 
   private broadcast(payload: string): void {
@@ -87,10 +145,10 @@ export class WebSocketDO {
 
     for (const socket of this.state.getWebSockets()) {
       const attachment = this.getAttachment(socket);
-      if (!attachment?.sid) {
-        // No session id to check against. Either a socket accepted by an older
-        // build of this DO (its attachment was `{ ts }` only) or a bug — either
-        // way it cannot be revalidated, so it cannot be trusted to stay open.
+      if (!attachment?.sid || !attachment.accountId) {
+        // Missing trusted identity means this socket was accepted by an older
+        // build or through a broken internal call. It cannot be accounted for
+        // and revalidated safely, so it cannot stay open.
         try { socket.close(WS_CLOSE_UNAUTHORIZED, "session identity missing"); } catch { /* ignore */ }
         continue;
       }
@@ -138,16 +196,44 @@ export class WebSocketDO {
     if (!sessionId) {
       return new Response("Missing session identity", { status: 401 });
     }
+    const accountId = request.headers.get(WS_ACCOUNT_ID_HEADER);
+    if (!accountId) {
+      return new Response("Missing account identity", { status: 401 });
+    }
 
-    if (this.state.getWebSockets().length >= MAX_WEBSOCKET_CONNECTIONS) {
+    const now = Date.now();
+    const handshake = await this.consumeHandshake(accountId, now);
+    if (handshake.count > LIMITS.websocket.handshakes.maxRequests) {
+      return this.rateLimited(
+        "websocket-handshakes",
+        LIMITS.websocket.handshakes.maxRequests,
+        handshake.resetAt,
+        now,
+        "Too many WebSocket handshakes",
+      );
+    }
+
+    // This snapshot, both limit checks, and acceptWebSocket are intentionally
+    // synchronous. No other DO request can interleave and oversubscribe either
+    // connection limit between the count and the accept.
+    const sockets = this.state.getWebSockets();
+    if (sockets.length >= MAX_WEBSOCKET_CONNECTIONS) {
       return new Response("Too many connections", { status: 503 });
+    }
+    if (this.countAccountConnections(accountId, sockets) >= LIMITS.websocket.connectionsPerAccount) {
+      return this.rateLimited(
+        "websocket-connections",
+        LIMITS.websocket.connectionsPerAccount,
+        now + CONNECTION_LIMIT_RETRY_MS,
+        now,
+        "Too many connections for this account",
+      );
     }
 
     const pair = new WebSocketPair();
     const [client, server] = Object.values(pair) as [WebSocket, WebSocket];
     this.state.acceptWebSocket(server);
-    const now = Date.now();
-    server.serializeAttachment({ ts: now, sid: sessionId, checkedAt: now } satisfies SocketAttachment);
+    server.serializeAttachment({ ts: now, sid: sessionId, accountId, checkedAt: now } satisfies SocketAttachment);
 
     const currentAlarm = await this.state.storage.getAlarm();
     if (currentAlarm == null) {

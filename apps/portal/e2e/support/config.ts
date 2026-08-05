@@ -24,19 +24,7 @@ export const E2E_PORT_BASE = Number(process.env.E2E_PORT_BASE ?? 8787);
 /* inspector 端口单独一条：它和站点端口没有换算关系，挤在一起改会互相牵连。 */
 export const E2E_INSPECTOR_PORT_BASE = Number(process.env.E2E_INSPECTOR_PORT_BASE ?? 9329);
 
-/*
- * 并行槽位：每个 Playwright worker 进程对着**自己那一份** worker + D1 + R2。
- *
- * 串行跑的理由一直是「本地只有一个 D1，它是所有用例共享的可变状态」。
- * 那就把这个前提去掉：起 N 个 wrangler 实例，各自 --persist-to 到独立目录、
- * 监听独立端口，用例之间在数据层面根本碰不到面，于是可以放心并行。
- * 每个槽位内部仍然是串行的（fullyParallel: false，按文件分发），
- * 所以文件级的模块状态和「同一文件内用例有先后」的写法都不受影响。
- *
- * 默认用 2 个槽位，与 CI 一致。完整套件在 4 槽位下会让浏览器与 teardown
- * 连接承受不必要的并发压力；需要基准测试时仍可显式调高。出问题时把
- * E2E_SLOTS 设成 1 就完全退回到原来的单实例串行行为。
- */
+/* 每个槽位使用独立的 worker、D1 和 R2；槽位内串行，E2E_SLOTS=1 表示单槽位串行运行。 */
 export const E2E_SLOTS = Math.max(1, Number(process.env.E2E_SLOTS ?? 2));
 
 export function originForSlot(slot: number): string {

@@ -1,8 +1,6 @@
 /* ── API Test Console — Ops Dashboard ── */
 
-/* 控制台外壳收敛到和后台其余表面一样的一档：--surface-base + --border-subtle。
-   原先是 color-mix 自调的一层「比底色深一点」的面和一条 8% 墨色的边——
-   和左边的健康卡片放在同一屏里，两块本该同级的面看起来是两种材质。 */
+/* The console uses the same surface tier as adjacent admin panels. */
 .api-console {
   display: flex;
   flex-direction: column;
@@ -24,11 +22,7 @@
   background: var(--surface-sunken);
 }
 
-/* 只收敛 Mantine 按钮的尺寸；折叠把手是本文件外的 .admin-status-toggle，
-   不能被这条压到（原选择器 `.api-console__header button` 会一并命中它）。
-   .mantine-Button-root 是 (0,2,0)，稳过 @mantine/core 单哈希类的 (0,1,0)，
-   不必靠源码顺序或感叹号优先级。5px、6px 不在标度上，保留字面量
-   （the token-layer contract L 节）。 */
+/* Scope sizing to Mantine actions so the independent collapse trigger is unaffected. */
 .api-console__header .mantine-Button-root {
   padding: 5px var(--space-md);
   font-size: var(--text-meta);
@@ -51,7 +45,7 @@
   flex-shrink: 0;
 }
 
-/* 44px 触控靶面。停止按钮此前是 TSX 里的 h={44}。 */
+/* Primary console actions retain a 44px touch target. */
 .api-console__header .api-console__run-all,
 .api-console__header .api-console__stop {
   min-height: 44px;
@@ -281,8 +275,7 @@
   flex-shrink: 0;
 }
 
-/* Keep the icon action's real box large enough for touch; the previous 23×17px
-   box was clipped on 320–375px viewports. */
+/* 图标操作保持 44px 触控目标，并适配窄视口。 */
 .api-cat__actions .api-cat__run-button {
   width: 44px;
   min-height: 44px;
@@ -307,11 +300,7 @@
   transition: background 400ms ease;
 }
 
-/* 三态穷举（pass/fail/pending），来自 AdminApiTestCategory.tsx 的
-   progressState()（the inline-style migration contract B 节类 2，Task 8 批 C 收敛）。
-   RingProgress 的 color prop 另行用字面 var() 字符串消费同一状态，两处共用
-   同一组 token，不再各自维护一份颜色，也不再需要运行期注入的 channel 变量。
-   这三条是本文件里唯一给 .api-cat__progress-fill 设 background 的规则。 */
+/* Progress bars and rings consume the same exhaustive pass/fail/pending tokens. */
 .api-cat__progress-fill--pass { background: var(--status-success); }
 .api-cat__progress-fill--fail { background: var(--status-danger); }
 .api-cat__progress-fill--pending { background: var(--brand-fill); }

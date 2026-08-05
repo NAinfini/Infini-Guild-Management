@@ -212,14 +212,18 @@ test("图片上传与删除：服务端 images 数组和界面计数必须一起
 
   await expect(drawer.locator(".storage-item-editor__image")).toHaveCount(1);
   await expect(mediaHeader.getByText("1", { exact: true })).toHaveCount(1);
+  const deleteImage = drawer.getByRole("button", {
+    name: `Delete image 1 of 1 for ${item.name}`,
+    exact: true,
+  });
 
   // 删除要过确认框；取消不该动任何数据。
-  await drawer.getByRole("button", { name: "Delete image", exact: true }).click();
+  await deleteImage.click();
   await (await confirmDialog(page, "Delete this image?"))
     .getByRole("button", { name: "Cancel", exact: true }).click();
   expect((await readItem(api, item.id)).images, "取消确认后图片必须还在").toHaveLength(1);
 
-  await drawer.getByRole("button", { name: "Delete image", exact: true }).click();
+  await deleteImage.click();
   await flow.act(
     async () => {
       await (await confirmDialog(page, "Delete this image?"))

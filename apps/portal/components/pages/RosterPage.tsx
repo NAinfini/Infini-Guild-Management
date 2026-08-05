@@ -45,7 +45,6 @@ export function RosterPage() {
   useLoadWarningToast(controller.usersQuery.isError, t("common:loadErrorRetry"));
 
   const { sortedRows, visibleCount, setVisibleCount, debouncedSearch, classFilter, sortMode } = controller;
-  const isMobile = windowWidth < 768;
   const shouldVirtualize = sortedRows.length > 50;
   const renderedRows = shouldVirtualize ? sortedRows : sortedRows.slice(0, visibleCount);
   const columnCount = resolveColumnCount(windowWidth);
@@ -76,7 +75,6 @@ export function RosterPage() {
         onAudioVolumeChange={controller.setAudioVolumeState}
         renderedCount={renderedRows.length}
         totalCount={sortedRows.length}
-        isMobile={isMobile}
       />
 
       {controller.usersQuery.isLoading ? (

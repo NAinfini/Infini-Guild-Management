@@ -67,6 +67,7 @@ export function ProfileWeekSummary({ availabilityData }: ProfileWeekSummaryProps
     );
     return { perDay, totalMinutes, peak };
   }, [availabilityData]);
+  const totalHours = Math.round(summary.totalMinutes / 60);
 
   return (
     <section className="profile-week">
@@ -76,7 +77,7 @@ export function ProfileWeekSummary({ availabilityData }: ProfileWeekSummaryProps
 
       <div className="profile-week__total">
         <Text fw={700} size="xl" lh={1.1}>
-          {t("week.hours", { hours: Math.round(summary.totalMinutes / 60) })}
+          {t("week.hours", { hours: totalHours, count: totalHours })}
         </Text>
         <Text size="xs" c="dimmed">
           {summary.peak.minutes > 0

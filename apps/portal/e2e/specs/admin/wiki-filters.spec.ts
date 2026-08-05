@@ -1,7 +1,7 @@
 import type { APIRequestContext, Locator, Page, Request } from "@playwright/test";
 import { SYSTEM_TEST_CONTENT_MARKER } from "@guild/shared/config/system-test";
 import { expect, readJson, test, type Flow } from "../../support/test";
-import { field } from "../../support/ui";
+import { ensureFiltersOpen, field, selectOption } from "../../support/ui";
 
 /*
  * Wiki 页顶部的筛选条：搜索、分类多选、状态分段器、置顶开关、重置。
@@ -112,8 +112,8 @@ function item(page: Page, title: string): Locator {
   return page.getByRole("button", { name: `Open wiki article ${title}`, exact: true });
 }
 
-function statusSegment(page: Page, label: string): Locator {
-  return page.locator("label.mantine-SegmentedControl-label").filter({ hasText: new RegExp(`^${label}$`) });
+function filterToolbar(page: Page): Locator {
+  return page.locator(".wiki-page-toolbar");
 }
 
 /** 置顶开关的无障碍名会随状态改变，所以按「当前是不是按下」取。 */
@@ -153,6 +153,7 @@ test("搜索框：条件送到服务端，只留下命中的文章", async ({ pa
 
 test("分类多选：只留下该分类的文章，再选一个是并集", async ({ page, flow }) => {
   await searchThisRun(page, flow);
+  await ensureFiltersOpen(filterToolbar(page));
 
   const categoryField = field(page, "Filter categories");
   const request = nextArticlesRequest(page, (url) => url.searchParams.getAll("category_id").length === 1);
@@ -168,6 +169,7 @@ test("分类多选：只留下该分类的文章，再选一个是并集", async
   await expect(items(page), "B 分类的 Beta 必须被滤掉").toHaveCount(1);
 
   const bothRequest = nextArticlesRequest(page, (url) => url.searchParams.getAll("category_id").length === 2);
+  await ensureFiltersOpen(filterToolbar(page));
   await flow.act(async () => {
     await categoryField.click();
     await page.getByRole("option", { name: categoryB.name, exact: true }).click();
@@ -179,18 +181,20 @@ test("分类多选：只留下该分类的文章，再选一个是并集", async
   await expect(items(page)).toHaveCount(2);
 });
 
-test("状态分段器：Active / Archived / All 三档各自成立", async ({ page, flow }) => {
+test("状态下拉：Active / Archived / All 三档各自成立", async ({ page, flow }) => {
   await searchThisRun(page, flow);
   await expect(item(page, gamma.title), "默认 Active 档不该显示归档文章").toHaveCount(0);
 
+  await ensureFiltersOpen(filterToolbar(page));
   const archivedRequest = nextArticlesRequest(page);
-  await flow.act(() => statusSegment(page, "Archived").click(), ARTICLES);
+  await flow.act(() => selectOption(page, "Article status", "Archived"), ARTICLES);
   expect(new URL((await archivedRequest).url()).searchParams.get("archived")).toBe("true");
   await expect(item(page, gamma.title)).toBeVisible();
   await expect(items(page), "未归档的两篇不该出现在 Archived 档").toHaveCount(1);
 
+  await ensureFiltersOpen(filterToolbar(page));
   const allRequest = nextArticlesRequest(page);
-  await flow.act(() => statusSegment(page, "All").click(), ARTICLES);
+  await flow.act(() => selectOption(page, "Article status", "All"), ARTICLES);
   expect(
     new URL((await allRequest).url()).searchParams.has("archived"),
     "All 档必须干脆不带 archived，带上任何一个值都会漏掉另一半",
@@ -200,6 +204,7 @@ test("状态分段器：Active / Archived / All 三档各自成立", async ({ pa
 
 test("置顶开关：按下只剩置顶文章，按钮状态跟着翻转", async ({ page, flow }) => {
   await searchThisRun(page, flow);
+  await ensureFiltersOpen(filterToolbar(page));
 
   const toggle = pinnedToggle(page, false);
   await expect(toggle).toHaveAttribute("aria-pressed", "false");
@@ -216,15 +221,23 @@ test("置顶开关：按下只剩置顶文章，按钮状态跟着翻转", async
   ).toHaveAttribute("aria-pressed", "true");
 
   // 撤回到几秒前刚取过的组合，命中缓存，所以这里只验结果集回到两篇。
+  await ensureFiltersOpen(filterToolbar(page));
   await pinnedToggle(page, true).click();
   await expect(items(page)).toHaveCount(2);
 });
 
 test("重置筛选：一次清掉四个条件，列表回到全量", async ({ page, flow }) => {
   await searchThisRun(page, flow);
-  await flow.act(() => statusSegment(page, "All").click(), ARTICLES);
+  await ensureFiltersOpen(filterToolbar(page));
+  await flow.act(() => selectOption(page, "Article status", "All"), ARTICLES);
+  await ensureFiltersOpen(filterToolbar(page));
   await flow.act(() => pinnedToggle(page, false).click(), ARTICLES);
-  await expect(items(page), "全状态 + 只看置顶，只剩 Alpha").toHaveCount(1);
+  await ensureFiltersOpen(filterToolbar(page));
+  await flow.act(async () => {
+    await field(page, "Filter categories").click();
+    await page.getByRole("option", { name: categoryB.name, exact: true }).click();
+  }, ARTICLES);
+  await expect(items(page), "置顶的 Alpha 不属于 categoryB，四个条件叠加后应为空").toHaveCount(0);
 
   const reset = page.getByRole("button", { name: "Reset filters", exact: true });
   await expect(reset, "有条件在生效时才该出现重置按钮").toBeVisible();
@@ -232,9 +245,10 @@ test("重置筛选：一次清掉四个条件，列表回到全量", async ({ pa
   await reset.click();
 
   await expect(searchBox(page), "搜索框要被一起清掉").toHaveValue("");
+  await ensureFiltersOpen(filterToolbar(page));
+  await expect(field(page, "Filter categories")).toHaveValue("");
   await expect(pinnedToggle(page, false)).toHaveAttribute("aria-pressed", "false");
-  /* Mantine 的 SegmentedControl 把 radio 藏在 label 外面，选中态只能从 input 上读。 */
-  await expect(page.locator('.wiki-page-toolbar input[type="radio"][value="active"]')).toBeChecked();
+  await expect(field(page, "Article status")).toHaveValue("Not archived");
   await expect(
     item(page, "Getting Started"),
     "重置之后应当能看到本用例之外的文章，说明筛选真的撤了",

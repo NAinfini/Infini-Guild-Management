@@ -25,7 +25,7 @@ import { useAttachmentService } from "../../services/AttachmentService";
 import { useAuthStore } from "../../stores/auth";
 import { useEffectivePermissions } from "../../hooks/useEffectivePermissions";
 import { buildMentionList } from "../../utils/copy";
-import { resolveEventsViewMode, sanitizeEventsRouteSearch, type EventWorkbenchViewMode, type EventsRouteSearch } from "../../utils/event-navigation";
+import { sanitizeEventsRouteSearch, type EventWorkbenchViewMode, type EventsRouteSearch } from "../../utils/event-navigation";
 import { useEventsEditorController } from "../feature/events/useEventsEditorController";
 import { useRecurringTemplatesController } from "../feature/events/useRecurringTemplatesController";
 import { PageLayout } from "../layout/PageLayout";
@@ -75,12 +75,9 @@ export function EventsPage() {
   const canManage = isModerator && !isExternalView;
   const canInteract = Boolean(user) && !isExternalView;
 
-  /*
-   * 周期模板是 view 的第三档，不再是独立标签页。旧链接的 tab=recurring 由
-   * resolveEventsViewMode 统一折算，读写共用同一条规则。这里只兜权限：没有管理
-   * 权限时该档不渲染，手敲 ?view=recurring 也回落到卡片，而不是给一个空面板。
-   */
-  const requestedView = resolveEventsViewMode(eventsRouteSearch) ?? "cards";
+  // Recurring templates are an administrative view; normalize unauthorized
+  // deep links to cards instead of rendering an empty workbench.
+  const requestedView = eventsRouteSearch.view ?? "cards";
   const viewMode: EventWorkbenchViewMode =
     requestedView === "recurring" && !canManage ? "cards" : requestedView;
   const [, setSelectedDate] = useState(() => new Date().toISOString().slice(0, 10));

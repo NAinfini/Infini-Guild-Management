@@ -1,20 +1,3 @@
-/* 这里曾有一条 .dashboard-page .mantine-Text-root[data-variant="dimmed"]
- * （以及并列的 [data-variant="filled"] 分支），Task 9 复审 R-1/R-2 证明**两个分支
- * 都匹配不到任何元素**，整条已删除，视觉影响为零：
- *   - Mantine 的 data-variant 属性由 Box.mjs:65 从 variant prop 原样透传。
- *     Text 的 defaultProps 只有 { inherit: false }（Text.mjs:32），
- *     ThemeProvider.tsx 的 components 里也没有 Text 条目，全仓库
- *     variant="dimmed" 零命中 —— 所以 Text 根本不会带上这个属性。
- *     实际写法是 c="dimmed"，走的是 --mantine-color-dimmed，
- *     styles.css 早已把它桥接到 var(--text-muted)。
- *   - filled 分支同理：LastWarCard.tsx 三处 ActionIcon 都没传 variant，
- *     ActionIcon 的 defaultProps 也不含 variant（主题里的 extend 只给了 radius）。
- *     ActionIcon.mjs 里那句 variant || "filled" 在 varsResolver 内部，
- *     只决定算颜色时用哪套 variant，不影响 DOM 属性。
- * 原声明是 color: color-mix(in srgb, var(--text-primary) 72%, black 28%)，
- * 它在浅色模式下算出 #131110，比正文 --text-primary（#1A1815）还深 ——
- * 名为 dimmed 却更抢眼，语义是反的。即便它当年匹配得上也是错的。 */
-
 /* ── Dashboard card padding ── */
 .dashboard-card > div:last-child {
   padding: var(--space-md);
@@ -101,6 +84,28 @@
 
 .dashboard-card .empty-state {
   padding: var(--space-lg) var(--space-md);
+}
+
+.dashboard-card .dashboard-signups-empty {
+  padding: var(--space-md) var(--space-sm) var(--space-sm);
+}
+
+.dashboard-signups-empty .empty-state__icon {
+  width: 48px;
+  height: 48px;
+  margin-bottom: var(--space-sm);
+}
+
+.dashboard-signups-empty .empty-state__title {
+  font-size: var(--text-body);
+}
+
+.dashboard-signups-empty .empty-state__actions {
+  margin-top: var(--space-md);
+}
+
+.dashboard-signups-empty .mantine-Button-root {
+  min-height: 44px;
 }
 
 /* ── Signup Day Boxes (8-box grid: yesterday + today + 6 future) ── */
@@ -504,10 +509,7 @@
   border-top: 1px solid color-mix(in srgb, var(--text-primary) 8%, transparent);
 }
 
-/* 这行小标题已改用共享的 <SectionHeader className="section-header--flush">，
-   原来的 .war-mvp-section-header 随之删除（它其实一直是死规则：TSX 里写的是
-   内联 style，从没挂过这个类）。--flush 的理由见 SectionHeader.css：
-   .war-mvp-section 本身是 gap:6px 的 flex 列，不需要标题再自带下边距。 */
+/* The section's own gap supplies spacing, so its shared heading uses the flush variant. */
 
 .war-mvp-chips {
   display: flex;
@@ -574,10 +576,9 @@
   animation: war-history-highlight 1.2s ease-out;
 }
 
-/* ── Upcoming Events Card row ── (moved out of style={{}} + onMouseEnter/
-   onMouseLeave direct style mutation, task-8 批 B). The hover handlers only
-   ever toggled between two fixed states, so :hover replaces them outright. */
+/* ── Upcoming Events Card row ── */
 .upcoming-event-row {
+  container-type: inline-size;
   padding: var(--space-sm) 0;
   border-bottom: 1px solid var(--border-subtle);
 }
@@ -632,8 +633,7 @@
   overflow-wrap: anywhere;
 }
 
-/* 头像和容量数字说的是同一件事，收成一组紧挨着；原先它们之间隔着整行的 12px，
-   那个 8/10 看着像是跟右边的箭头一伙的。 */
+/* Keep member avatars and capacity as one semantic group. */
 .upcoming-event-row__people {
   display: flex;
   align-items: center;
@@ -653,6 +653,7 @@
 }
 
 .upcoming-event-row .mantine-Badge-root {
+  color: color-mix(in srgb, var(--badge-color) 60%, var(--text-primary));
   text-transform: none;
   letter-spacing: normal;
 }
@@ -661,10 +662,9 @@
   flex-shrink: 0;
 }
 
-/* 五列排不下的时候，配额条整条掉到第二行去铺满，而不是继续跟标题抢宽度——
-   挤到一半宽的进度计既读不出比例，也会把标题压成两行。其余四格是自动排布的，
-   把它钉在第 2 行不影响它们仍然填第 1 行。 */
-@media (max-width: 1023px) {
+/* 这张卡在桌面双栏里也可能只有七百多像素，所以必须看行容器而不是视口。五列排不下
+   时，配额条整条掉到第二行铺满，标题和进度计都保住可读宽度。 */
+@container (max-width: 64rem) {
   .upcoming-event-row[data-has-quota="true"] .upcoming-event-row__grid {
     grid-template-columns: 52px minmax(0, 1fr) auto auto;
   }
@@ -675,11 +675,7 @@
   }
 }
 
-/* 头像组用叠放的 MemberAvatarStack，最多五个 34px 头像互相压掉三分之一，整组只占
-   约 112px（原先六个平铺的 36px 头像要 236px），平板宽度已经放得下，因此 1023px
-   那档的隐藏规则去掉了。479px 以下仍然隐藏：那里卡片内宽只有约 335px，日期列、
-   容量数字和箭头按钮加起来就已经吃满，头像再进来会被 .dashboard-card 的
-   overflow: hidden 裁掉且无法点击。 */
+/* Hide the avatar stack only when the remaining row controls consume the card width. */
 @media (max-width: 479px) {
   .upcoming-event-row__avatars {
     display: none;

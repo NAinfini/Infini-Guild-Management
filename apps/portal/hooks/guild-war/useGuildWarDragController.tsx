@@ -151,7 +151,7 @@ export function useGuildWarDragController({
   const activeDragItem = activeDragItemId ? dragItemMap.get(activeDragItemId) ?? null : null;
   const activeDetail = activeDetailUserId ? activeMemberDetailByUserId.get(activeDetailUserId) ?? null : null;
 
-  // --- Move ---
+  // Member and team mutations share one server snapshot and ETag.
 
   const resolveTeamName = useCallback((containerId: string) => {
     if (containerId === "pool") return t("active.pool");
@@ -396,7 +396,7 @@ export function useGuildWarDragController({
     setActiveDetailUserId(userId);
   };
 
-  // --- Drag Events ---
+  // Drag-and-drop lifecycle
 
   const handleDragStart = (event: DragStartEvent) => {
     const nextActiveId = String(event.active.id);
@@ -456,7 +456,7 @@ export function useGuildWarDragController({
     }]);
   };
 
-  // --- Team Status Panels (component-based, no longer JSX in hook) ---
+  // Team status controls keyed by their drag container.
 
   const teamStatusContentByContainerId = useMemo<Record<string, ReactNode>>(() => {
     if (!canManageActive) return {};

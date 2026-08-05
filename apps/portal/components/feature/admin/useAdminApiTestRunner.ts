@@ -260,8 +260,8 @@ export function useAdminApiTestRunner(visibleApiCategories: CategoryDef[]) {
 
   /*
    * Aborts the in-flight run and waits for its teardown to finish before the
-   * caller touches contextRef — otherwise the new run resets the ids the old
-   * run still needs in order to delete its own rows.
+   * caller touches contextRef — otherwise the new run resets IDs the previous
+   * run still needs to delete its own rows.
    */
   const beginRun = useCallback(async () => {
     abortRef.current?.abort();

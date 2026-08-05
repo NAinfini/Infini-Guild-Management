@@ -59,6 +59,37 @@ describe("EventDetailModal", () => {
     );
   });
 
+  it("gives the event date and time range separate readable lines", () => {
+    render(
+      <MantineProvider>
+        <EventDetailModal
+          event={{
+            id: "event-time-layout",
+            title: "Evening Mission",
+            type: "weekly_mission",
+            start_at: "2099-03-12T16:00:00.000Z",
+            end_at: "2099-03-12T18:00:00.000Z",
+            description: null,
+            capacity: null,
+            attachments: [],
+            class_quotas: [],
+          } as never}
+          members={[]}
+          allUsers={[]}
+          canManage={false}
+          onClose={() => {}}
+          onAddParticipant={() => {}}
+          onRemoveParticipant={() => {}}
+        />
+      </MantineProvider>,
+    );
+
+    const timeCard = document.querySelector(".event-detail-modal__meta-card--time");
+    expect(timeCard).not.toBeNull();
+    expect(timeCard?.querySelector(".event-detail-modal__time-date")).toHaveTextContent("2099");
+    expect(timeCard?.querySelector(".event-detail-modal__time-range")).not.toBeEmptyDOMElement();
+  });
+
   it("leaves the head count to the section title instead of repeating it above the roster", () => {
     render(
       <MantineProvider>

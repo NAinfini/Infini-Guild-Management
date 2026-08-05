@@ -1,4 +1,4 @@
-import { Alert, Paper, SimpleGrid, Stack, Text, Title, UnstyledButton } from "@mantine/core";
+import { Alert, Paper, Stack, Text, Title, UnstyledButton } from "@mantine/core";
 import { DiceFiveFilledIcon } from "@portal/components/icons";
 import { DiceRollerModal } from "@portal/components/feature/tools/DiceRollerModal";
 import { useTranslation } from "react-i18next";
@@ -33,37 +33,43 @@ export function ToolsPage() {
 
   return (
     <PageLayout>
-      <Stack gap={16}>
-      {isExternalView ? (
-        <Alert color="gray" title={t("page.readOnlyHint")} />
-      ) : null}
+      <Stack gap="lg" className="tools-page">
+        <Text c="dimmed" className="tools-page__description">
+          {t("page.description")}
+        </Text>
 
-      <SimpleGrid cols={{ base: 1, sm: 2, lg: 3 }} spacing={{ base: 12, md: 16 }}>
-        {toolCards.map((tool) => (
-          <Paper key={tool.key} withBorder className="tool-card">
-            <UnstyledButton
-              className="tool-card__btn"
-              onClick={() => {
-                if (isExternalView) return;
-                tool.onOpen();
-              }}
-            >
-              <div className="tool-card__content">
-                {/* h2, not h3: the page title is the h1, so h3 skipped a level. */}
-                <Title order={2} className="tool-card__title">
-                  {tool.title}
-                </Title>
-                <Text c="dimmed" className="tool-card__description">
-                  {tool.description}
-                </Text>
-              </div>
-              <div className="tool-card__icon-wrap">
-                <div className="tool-card__icon">{tool.icon}</div>
-              </div>
-            </UnstyledButton>
-          </Paper>
-        ))}
-      </SimpleGrid>
+        <Stack gap="md" className="tools-page__utility">
+          {isExternalView ? (
+            <Alert color="gray" title={t("page.readOnlyHint")} />
+          ) : null}
+
+          {toolCards.map((tool) => (
+            <Paper key={tool.key} withBorder className="tool-launch-panel">
+              <UnstyledButton
+                className="tool-launch-panel__button"
+                disabled={isExternalView}
+                aria-disabled={isExternalView}
+                onClick={tool.onOpen}
+              >
+                <div className="tool-launch-panel__icon" aria-hidden>
+                  {tool.icon}
+                </div>
+                <div className="tool-launch-panel__content">
+                  {/* h2 follows the route-level h1 owned by the application shell. */}
+                  <Title order={2} className="tool-launch-panel__title">
+                    {tool.title}
+                  </Title>
+                  <Text c="dimmed" className="tool-launch-panel__description">
+                    {tool.description}
+                  </Text>
+                  <Text component="span" className="tool-launch-panel__action">
+                    {t("dice.open")}
+                  </Text>
+                </div>
+              </UnstyledButton>
+            </Paper>
+          ))}
+        </Stack>
       </Stack>
 
       <DiceRollerModal opened={diceOpened} onClose={diceHandlers.close} />

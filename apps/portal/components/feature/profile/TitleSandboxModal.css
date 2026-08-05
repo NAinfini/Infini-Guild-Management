@@ -1,5 +1,4 @@
-/* 外部只读态的遮罩。原名 .tools-readonly、原本住在 ToolsPage.css，但唯一的消费者
-   就是这个弹窗——留在那边的话，从资料页打开时只读态不生效，控件看着可点。 */
+/* 只读态遮罩阻止交互并保留可见反馈。 */
 .sandbox--readonly {
   pointer-events: none;
   opacity: 0.72;

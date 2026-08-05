@@ -73,15 +73,8 @@ const STATUS_REQUIRED_TABLES = [
   "storage_transactions",
 ] as const;
 
-/*
- * 逐表探活。
- * 原先这里读 sqlite_master 拿表清单，但 D1 不允许读它（SQLITE_AUTH，见 index.ts
- * /api/dev/table-counts 处的同一条说明）——于是那个 catch 每次都命中，线上永远
- * 报 db: error、五张表全是 "error"，且没有任何原因被记下来：一个把真故障和
- * 「探针本身用错了 API」压成同一句话的兜底。改成直接查表本身，D1 与本地
- * miniflare 都支持；表不存在与真故障分开报，真故障连原因一起抬出来。
- * 表名来自本模块的常量数组，不是请求输入，拼接不引入注入面。
- */
+/* D1 blocks sqlite_master, so probe the declared core tables directly.
+ * Table names come only from REQUIRED_TABLES and never from request input. */
 async function probeTable(rawDb: D1Database, table: string): Promise<string> {
   try {
     await rawDb.prepare(`SELECT 1 FROM "${table}" LIMIT 1`).first();

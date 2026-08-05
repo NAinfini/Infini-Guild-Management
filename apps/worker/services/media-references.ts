@@ -91,13 +91,10 @@ export async function findUnreferencedKeys(db: D1Database, keys: readonly string
   return candidates.filter((key) => !referenced.has(key));
 }
 
-// --- Extraction helpers (shared by write paths and the cron's backfill) ---
-
 /**
  * Extracts R2 keys embedded in TipTap rich-text JSON for announcements and
- * wiki articles. Mirrors the historical orphan-cleanup matching exactly:
- * quoted strings containing `<domain>/.../images/...` that start with the
- * entity's own prefix `<domain>/<entityId>/images/`.
+ * wiki articles. Only quoted keys under the owning entity's exact
+ * `<domain>/<entityId>/images/` prefix are accepted.
  */
 export function extractRichTextMediaKeys(bodyJson: string | null | undefined, domain: "announcement" | "wiki", entityId: string): string[] {
   if (!bodyJson) return [];

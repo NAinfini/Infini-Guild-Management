@@ -34,6 +34,72 @@ export async function selectOption(scope: Locator | Page, label: string, optionT
 }
 
 /**
+ * 窄工具栏会把次要筛选收进 Popover / Drawer。宽屏时按钮根本不渲染，窄屏时则先按
+ * 无障碍名找到它并确认已经展开；计数徽章会把名字变成 `Filter & sort (2)`，所以名称
+ * 只允许多出末尾的数字计数，不靠布局类名猜当前是哪一种呈现。
+ */
+export async function ensureFiltersOpen(scope: Locator | Page): Promise<void> {
+  const toggle = scope
+    .getByRole("button", { name: /^Filter & sort(?: \(\d+\))?$/ })
+    .first();
+  if (!(await toggle.isVisible())) return;
+
+  const dismissAutofocusedCombobox = async (): Promise<void> => {
+    const expandedCombobox = toggle.page().getByRole("combobox", { expanded: true }).first();
+    if (await expandedCombobox.isVisible()) {
+      await expandedCombobox.press("Escape");
+    }
+  };
+
+  const focusFirstVisibleDialogButton = async (): Promise<void> => {
+    const dialog = toggle.page()
+      .getByRole("dialog", { name: /^Filter & sort(?: \(\d+\))?$/ })
+      .first();
+    const buttons = dialog.getByRole("button");
+    for (let index = 0; index < await buttons.count(); index += 1) {
+      const button = buttons.nth(index);
+      if (await button.isVisible()) {
+        await button.focus();
+        return;
+      }
+    }
+  };
+
+  if ((await toggle.getAttribute("aria-expanded")) !== "true") {
+    await toggle.click();
+  }
+  await expect(toggle).toHaveAttribute("aria-expanded", "true");
+
+  // FocusTrap 会自动聚焦第一个可搜索下拉，并把它展开到筛选面板之上。
+  // 先收起内层 listbox；若 Escape 连外层一起收掉，只重开一次并转移到面板内的按钮。
+  await dismissAutofocusedCombobox();
+  if ((await toggle.getAttribute("aria-expanded")) !== "true") {
+    await toggle.click();
+    await expect(toggle).toHaveAttribute("aria-expanded", "true");
+    await focusFirstVisibleDialogButton();
+  } else {
+    await focusFirstVisibleDialogButton();
+  }
+  await expect(toggle).toHaveAttribute("aria-expanded", "true");
+}
+
+/** 按 radio 语义和可访问名称取得 SegmentedControl 的选项，不依赖 Mantine 内部类名。 */
+export function segmentedControlOption(scope: Locator | Page, label: string): Locator {
+  return scope.getByRole("radio", { name: label, exact: true });
+}
+
+/** 选择并确认一个 SegmentedControl 选项。 */
+export async function selectSegmentedControlOption(
+  scope: Locator | Page,
+  label: string,
+): Promise<void> {
+  const option = segmentedControlOption(scope, label);
+  await option.focus();
+  await option.press("Space");
+  await expect(option).toBeChecked();
+}
+
+/**
  * 按标题取开关或复选框。
  * Mantine 的 Switch 把 input、标题和描述一起包在同一个 <label>（Switch-body）里，
  * 所以带 description 的开关，label 的 textContent 是「标题+描述」拼起来的一整串。

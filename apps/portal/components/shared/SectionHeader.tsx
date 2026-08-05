@@ -11,10 +11,7 @@ export interface SectionHeaderProps {
   className?: string;
 }
 
-/**
- * 卡片内的章节标题。样式全部在 SectionHeader.css 里，调用点不再各自拼
- * Mantine 的 fw/size/c/tt/lts 组合 —— 那是此前 20 处逐字重复的来源。
- */
+/** Shared semantic heading for sections inside cards. */
 export function SectionHeader({
   title,
   trailing,

@@ -29,17 +29,13 @@ vi.mock("hono/cookie", () => ({
 const {
   createPasswordHash,
   destroySessionById,
-  passwordHashNeedsUpgrade,
   resolveSession,
   SESSION_COOKIE_NAME,
   SESSION_MODE_COOKIE_NAME,
   verifyPassword,
 } = await import("../auth");
 
-/* resolveSession 会用 MAX_ABSOLUTE_SESSION_MS（90 天）判定会话是否超过绝对寿命。
-   原先这里写死 "2026-05-01"，到 2026-07-30 就跨过 90 天，三个用例集体走进
-   删除分支，报 db.delete is not a function——失败原因和用例本身毫无关系。
-   固定成「相对现在一天前」，日期再往后走也不会触发绝对过期。 */
+// Keep session fixtures inside the 90-day absolute lifetime.
 const RECENT_SESSION_CREATED_AT = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
 
 function createContext() {
@@ -122,9 +118,7 @@ describe("resolveSession", () => {
     expect(resolved?.user.permissions.has("admin.storage.stock")).toBe(false);
   });
 
-  it("deduplicates per-request calls and treats freshPermissions as no-op (permissions always fresh)", async () => {
-    // All three resolveSession calls use the same per-request dedup cache when on the same context.
-    // Calls on different contexts each issue one query.
+  it("deduplicates within a request without sharing cache across requests", async () => {
     const joinedRows = [
       {
         sessionId: "sess-1",
@@ -145,16 +139,15 @@ describe("resolveSession", () => {
     const select = vi.fn(() => ({ from }));
     mocks.drizzle.mockReturnValue({ select });
 
-    // Three separate contexts → three separate DB queries (no cross-request caching)
-    const first = await resolveSession(createContext() as never);
+    const firstContext = createContext();
+    const first = await resolveSession(firstContext as never);
+    const cached = await resolveSession(firstContext as never);
     const second = await resolveSession(createContext() as never);
-    const fresh = await resolveSession(createContext() as never, { freshPermissions: true });
 
     expect(first?.user.permissions.has("events.create")).toBe(true);
+    expect(cached).toBe(first);
     expect(second?.user.permissions.has("events.create")).toBe(true);
-    expect(fresh?.user.permissions.has("events.create")).toBe(true);
-    // Each context issues exactly one joined query
-    expect(select).toHaveBeenCalledTimes(3);
+    expect(select).toHaveBeenCalledTimes(2);
   });
 });
 
@@ -183,16 +176,19 @@ describe("password hashing", () => {
     const record = await createPasswordHash("correct horse battery staple");
 
     expect(record.passwordHash).toMatch(/^pbkdf2-sha256\$600000\$[A-Za-z0-9+/]+=*$/);
-    expect(passwordHashNeedsUpgrade(record.passwordHash)).toBe(false);
     await expect(verifyPassword("correct horse battery staple", record.salt, record.passwordHash)).resolves.toBe(true);
     await expect(verifyPassword("wrong password", record.salt, record.passwordHash)).resolves.toBe(false);
   });
 
-  it("verifies legacy 10,000-iteration hashes and marks them for upgrade", async () => {
-    const legacyHash = "d+gPm++1wHgP08FbNF4/XqcVr71FAp5Ti7pmoiY//S4=";
+  it("rejects hashes outside the current format", async () => {
+    const unversionedHash = "d+gPm++1wHgP08FbNF4/XqcVr71FAp5Ti7pmoiY//S4=";
     const zeroSalt = "AAAAAAAAAAAAAAAAAAAAAA==";
 
-    await expect(verifyPassword("correct horse battery staple", zeroSalt, legacyHash)).resolves.toBe(true);
-    expect(passwordHashNeedsUpgrade(legacyHash)).toBe(true);
+    await expect(verifyPassword("correct horse battery staple", zeroSalt, unversionedHash)).resolves.toBe(false);
+    await expect(verifyPassword(
+      "correct horse battery staple",
+      zeroSalt,
+      "pbkdf2-sha256$10000$d+gPm++1wHgP08FbNF4/XqcVr71FAp5Ti7pmoiY//S4=",
+    )).resolves.toBe(false);
   });
 });

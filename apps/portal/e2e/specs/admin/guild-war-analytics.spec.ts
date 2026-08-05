@@ -271,7 +271,7 @@ async function openAnalyticsTab(page: Page, flow: Flow): Promise<void> {
   await page.goto("/guild-war");
   await page.getByRole("tab", { name: "History", exact: true }).click();
   await flow.act(
-    () => field(page, "Search guild war histories").fill(String(stamp)),
+    () => field(page, "Search war records").fill(String(stamp)),
     HISTORY_LIST,
   );
   await expect(page.locator(".war-history-rail-item"), "列表必须只剩本用例的两场战").toHaveCount(2);
@@ -393,12 +393,12 @@ test("玩家模式：「只看参战过的活动」真的把没上场的那一�
   await expect(rowCells(page, 0).nth(0)).toHaveText(warBTitle);
   await expect(rowCells(page, 0).nth(3)).toHaveText("400");
 
-  await toggleInput(page, "Only wars where player participated").uncheck();
+  await toggleInput(page, "Only include wars the selected player participated in").uncheck();
   await expect(tableRows(page), "关掉之后没上场的那一场也要列出来").toHaveCount(2);
   await expect(rowCells(page, 0).nth(0)).toHaveText(warATitle);
   await expect(rowCells(page, 0).nth(3), "没上场的格子给的是占位符，不是 0").toHaveText("-");
 
-  await toggleInput(page, "Only wars where player participated").check();
+  await toggleInput(page, "Only include wars the selected player participated in").check();
   await expect(tableRows(page)).toHaveCount(1);
 });
 
@@ -477,7 +477,7 @@ test("排行榜模式：聚合方式、Top N 与最少场次各自改变榜单",
   await field(page, "Select rankings top N").fill("10");
   await expect(tableRows(page)).toHaveCount(3);
 
-  await field(page, "Select minimum wars participation").fill("2");
+  await field(page, "Set the minimum number of wars played").fill("2");
   await expect(tableRows(page), "只打过一场的 m3 要被门槛挡掉").toHaveCount(2);
   await expect(page.getByText("Data Table (2 rows)", { exact: true })).toBeVisible();
 });
@@ -564,7 +564,7 @@ test("归一化：开关一按整表数值改写，权重滑块目前只是展�
 
   const note = page.locator(".gwa-chart__note");
   await expect(note, "归一化开着就必须在图表头上说明白").toHaveText(
-    `Values normalised to a ${referenceDuration}-minute baseline`,
+    `Values normalized to a ${referenceDuration}-minute baseline`,
   );
   await expect(rowCells(page, 0).nth(3)).toHaveText("500");
 

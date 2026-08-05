@@ -52,7 +52,7 @@ describe("EventQuotaBar", () => {
     expect(source).not.toContain("<Tooltip");
   });
 
-  it("spends hue on role identity only and keeps red for over-capacity alone", () => {
+  it("spends hue on role identity and uses a neutral fill for generic capacity", () => {
     const css = readFileSync(
       resolve(process.cwd(), "apps/portal/components/feature/events/EventQuotaBar.css"),
       "utf8",
@@ -60,19 +60,17 @@ describe("EventQuotaBar", () => {
     const fillColorRules = [...css.matchAll(/--quota-state-color:\s*var\((--[a-z0-9-]+)\)/g)]
       .map((match) => match[1]!);
 
-    /* 条子的色相只编码「这是哪一格」：默认的活动域色、四位分类色序、「其他」的中性
-       域色，外加超员的红。禁的一直是「用色相冒充状态」——所以这里逐条钉住：色相里
-       不许出现任何一个状态色（绿/黄），红只许由 over 一条规则给出。 */
+    /* 条子的色相只编码「这是哪一格」：无岗位容量用中性色，岗位用四位分类色序，
+       「其他」再弱一级。状态色不作为常态填充色；超员另由柔和的 color-mix 处理。 */
     expect(new Set(fillColorRules)).toEqual(new Set([
-      "--domain-event",
+      "--text-secondary",
       "--series-1",
       "--series-2",
       "--series-3",
       "--series-4",
-      "--domain-ops",
-      "--status-danger",
+      "--text-muted",
     ]));
-    expect(fillColorRules.filter((name) => name === "--status-danger")).toHaveLength(1);
+    expect(fillColorRules).not.toContain("--status-danger");
     expect(fillColorRules).not.toContain("--status-success");
     expect(fillColorRules).not.toContain("--status-warning");
 
@@ -80,9 +78,15 @@ describe("EventQuotaBar", () => {
        「色相说状态」了。 */
     expect(css).not.toMatch(/data-quota-state="(ready|filling)"\][^{]*\{[^}]*--quota-state-color/);
     expect(css).toMatch(/data-quota-series="0"\]\s*\{\s*--quota-state-color:\s*var\(--series-1\)/);
-    /* 超员的红必须写在分类色之后，否则同特异度下会被位次色盖掉。 */
+    /* 超员规则必须写在分类色之后，且用弱化危险色，不能把整条刷成饱和实红。 */
     expect(css.indexOf('data-quota-state="over"'))
       .toBeGreaterThan(css.indexOf('data-quota-series="3"'));
+    expect(css).toMatch(
+      /data-quota-state="over"[^}]*--quota-state-color:\s*color-mix\([^)]*var\(--status-danger\)/s,
+    );
+    expect(css).not.toMatch(
+      /data-quota-state="over"[^}]*--quota-state-color:\s*var\(--status-danger\)/s,
+    );
     /* 够员仍然由计数变绿点名，不动条子。 */
     expect(css).toMatch(
       /data-quota-state="ready"\]\s+\.quota-bar__role-count\s*\{\s*color:\s*var\(--status-success\)/,
@@ -114,7 +118,25 @@ describe("EventQuotaBar", () => {
   it("marks the signup bar as over when participants pass a finite capacity", () => {
     renderQuotaBar(null, [], { capacity: 10, participantCount: 12 });
 
-    expect(document.querySelector(".quota-bar__slot")).toHaveAttribute("data-quota-state", "over");
+    expect(document.querySelector(".quota-bar__generic")).toHaveAttribute("data-quota-state", "over");
+  });
+
+  it("keeps every progress track the same height, including over-capacity tracks", () => {
+    const css = readFileSync(
+      resolve(process.cwd(), "apps/portal/components/feature/events/EventQuotaBar.css"),
+      "utf8",
+    );
+    const progressRule = css.match(/\.quota-bar__progress\s*\{[^}]*\}/)?.[0] ?? "";
+    const heightContract = css.match(
+      /\.quota-bar__slots,\s*\.quota-bar__generic,\s*\.quota-bar__unlimited-state\s*\{[^}]*\}/,
+    )?.[0] ?? "";
+    const overRules = [...css.matchAll(/[^{}]*data-quota-state="over"[^{}]*\{[^}]*\}/g)]
+      .map((match) => match[0]);
+
+    expect(progressRule).toContain("height: 8px");
+    expect(heightContract).toContain("min-height: var(--control-icon-size-regular)");
+    expect(overRules.length).toBeGreaterThan(0);
+    expect(overRules.join("\n")).not.toMatch(/\bheight\s*:/);
   });
 
   it("keeps the Other column out of the alarm state while it is merely filling up", () => {
@@ -361,24 +383,25 @@ describe("EventQuotaBar", () => {
     );
   });
 
-  it("falls back to one signup bar when the event has no class quotas", () => {
+  it("shows one neutral signup bar without repeating the header capacity count", () => {
     renderQuotaBar(null, [], { capacity: 12, participantCount: 8 });
 
     const progress = screen.getByRole("progressbar", { name: "quota.generic.label" });
     expect(progress).toHaveAttribute("aria-valuemax", "12");
     expect(progress).toHaveAttribute("aria-valuenow", "8");
-    expect(screen.getByText("quota.generic.allMembers")).toBeInTheDocument();
+    expect(screen.getByText("quota.generic.label")).toBeInTheDocument();
+    expect(screen.queryByText("quota.generic.count")).not.toBeInTheDocument();
+    expect(document.querySelector(".quota-bar__role-count")).toBeNull();
   });
 
-  it("describes unlimited capacity without exposing a fake completed progressbar", () => {
+  it("describes unlimited capacity as text without any fake track or progressbar", () => {
     renderQuotaBar(null, [], { capacity: null, participantCount: 3 });
 
-    expect(screen.getByText("quota.generic.unlimitedCount")).toBeInTheDocument();
+    expect(screen.getByText("quota.generic.unlimited")).toBeInTheDocument();
+    expect(screen.queryByText("quota.generic.unlimitedCount")).not.toBeInTheDocument();
     expect(screen.queryByRole("progressbar")).not.toBeInTheDocument();
-    expect(document.querySelector(".quota-bar__slot-status")).not.toBeInTheDocument();
-    expect(document.querySelector(".quota-bar__progress--unlimited")).toHaveAttribute(
-      "aria-hidden",
-      "true",
-    );
+    expect(document.querySelector(".quota-bar__progress")).toBeNull();
+    expect(document.querySelector(".quota-bar__slots")).toBeNull();
+    expect(document.querySelector(".quota-bar__unlimited-state")).not.toBeNull();
   });
 });

@@ -31,7 +31,6 @@ type ResolvedSession = {
   user: SessionUser;
 };
 
-const LEGACY_PBKDF2_ITERATIONS = 10_000;
 const PBKDF2_ITERATIONS = 600_000;
 const PASSWORD_HASH_PREFIX = "pbkdf2-sha256";
 const PBKDF2_KEY_LENGTH_BITS = 256;
@@ -169,32 +168,19 @@ export async function createPasswordHash(password: string): Promise<{ passwordHa
   };
 }
 
-function parsePasswordHash(passwordHash: string): { iterations: number; encodedHash: string } | null {
-  if (!passwordHash.includes("$")) {
-    return { iterations: LEGACY_PBKDF2_ITERATIONS, encodedHash: passwordHash };
-  }
-
-  const match = /^pbkdf2-sha256\$(\d+)\$([A-Za-z0-9+/]+=*)$/.exec(passwordHash);
-  if (!match) return null;
-  const iterations = Number(match[1]);
-  if (!Number.isSafeInteger(iterations) || iterations < 1 || iterations > 2_000_000) return null;
-  return { iterations, encodedHash: match[2]! };
-}
-
-export function passwordHashNeedsUpgrade(passwordHash: string): boolean {
-  const parsed = parsePasswordHash(passwordHash);
-  return parsed === null
-    || parsed.iterations !== PBKDF2_ITERATIONS
-    || !passwordHash.startsWith(`${PASSWORD_HASH_PREFIX}$`);
+function parsePasswordHash(passwordHash: string): string | null {
+  const match = /^pbkdf2-sha256\$600000\$([A-Za-z0-9+/]+=*)$/.exec(passwordHash);
+  return match?.[1] ?? null;
 }
 
 export async function verifyPassword(password: string, salt: string, passwordHash: string): Promise<boolean> {
   try {
-    const parsed = parsePasswordHash(passwordHash);
-    if (!parsed) return false;
+    const encodedHash = parsePasswordHash(passwordHash);
+    if (!encodedHash) return false;
     const saltBytes = base64ToBytes(salt);
-    const expectedHashBytes = base64ToBytes(parsed.encodedHash);
-    const actualHashBytes = await derivePasswordHash(password, saltBytes, parsed.iterations);
+    const expectedHashBytes = base64ToBytes(encodedHash);
+    if (saltBytes.length !== PBKDF2_SALT_BYTES || expectedHashBytes.length !== PBKDF2_KEY_LENGTH_BITS / 8) return false;
+    const actualHashBytes = await derivePasswordHash(password, saltBytes, PBKDF2_ITERATIONS);
     return await timingSafeEqual(actualHashBytes, expectedHashBytes);
   } catch (error) {
     logger.error("Password verification failed with unexpected error", { error: String(error) });
@@ -233,9 +219,7 @@ export async function createSession(
   return { sessionId: hashedToken, expiresAt };
 }
 
-export async function resolveSession(c: Context, _options: { freshPermissions?: boolean } = {}): Promise<ResolvedSession | null> {
-  // freshPermissions is now a no-op: the joined query is always fresh.
-  // Both fresh and non-fresh paths share the same per-request dedup cache.
+export async function resolveSession(c: Context): Promise<ResolvedSession | null> {
   const carrier = c as ContextWithSessionCache;
   carrier[RESOLVED_SESSION_PROMISE] ??= resolveSessionUncached(c);
   return await carrier[RESOLVED_SESSION_PROMISE];

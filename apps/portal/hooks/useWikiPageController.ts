@@ -23,6 +23,7 @@ import { queryKeys } from "../api/query-keys";
 import { useEffectivePermissions } from "./useEffectivePermissions";
 
 type WikiArchivedMode = "active" | "archived" | "all";
+type WikiSort = "curated" | "updated_desc" | "updated_asc";
 type WikiSelection =
   | { kind: "auto" }
   | { kind: "none" }
@@ -80,6 +81,7 @@ export function useWikiPageController() {
   const { search, setSearch, debouncedSearch: debouncedSearchRaw } = useDebouncedSearch();
   const debouncedSearch = debouncedSearchRaw.trim();
   const [pinnedOnly, setPinnedOnly] = useState(false);
+  const [sortOrder, setSortOrder] = useState<WikiSort>("curated");
   const [archivedMode, setArchivedMode] = useState<WikiArchivedMode>("active");
   const [selectedCategoryId, setSelectedCategoryId] = useState<string | undefined>(undefined);
   const [selectedCategoryIds, setSelectedCategoryIds] = useState<string[]>([]);
@@ -113,7 +115,7 @@ export function useWikiPageController() {
     selectedCategoryIds.length === 0 ? "all" : [...selectedCategoryIds].sort().join(",");
 
   const articlesQuery = useInfiniteQuery({
-    queryKey: queryKeys.wiki.articles(selectedCategoryFilterKey, debouncedSearch, archivedMode, pinnedOnly),
+    queryKey: queryKeys.wiki.articles(selectedCategoryFilterKey, debouncedSearch, archivedMode, pinnedOnly, sortOrder),
     queryFn: ({ pageParam }) =>
       fetchWikiArticles({
         page: pageParam,
@@ -122,6 +124,7 @@ export function useWikiPageController() {
         search: debouncedSearch || undefined,
         archived: toArchivedParam(archivedMode),
         pinned: pinnedOnly ? true : undefined,
+        sort: sortOrder,
       }),
     initialPageParam: 1,
     getNextPageParam: (lastPage) =>
@@ -291,11 +294,12 @@ export function useWikiPageController() {
         intent: "danger",
       });
       if (!confirmed) {
-        return;
+        return false;
       }
     }
     articleEditor.exitEditor();
     editorPaneHandlers.close();
+    return true;
   }, [articleEditor, confirm, editorPaneHandlers, t]);
 
   const handleCategoryFilterChange = useCallback((values: string[]) => {
@@ -312,10 +316,11 @@ export function useWikiPageController() {
         cancelLabel: t("common:action.cancel"),
         intent: "danger",
       });
-      if (!confirmed) return;
+      if (!confirmed) return false;
     }
     categoryEditor.resetCategoryDrafts();
     editorPaneHandlers.close();
+    return true;
   }, [categoryEditor, confirm, editorPaneHandlers, t]);
 
   const handleDeleteCategory = useCallback(async (categoryId: string) => {
@@ -346,6 +351,8 @@ export function useWikiPageController() {
     setSearch,
     pinnedOnly,
     setPinnedOnly,
+    sortOrder,
+    setSortOrder,
     archivedMode,
     setArchivedMode,
     selectedCategoryIds,

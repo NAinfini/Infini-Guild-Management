@@ -7,7 +7,14 @@ import { describe, expect, it, vi } from "vitest";
 import { StorageItemEditorModal } from "./StorageItemEditorModal";
 
 vi.mock("react-i18next", () => ({
-  useTranslation: () => ({ t: (key: string) => key }),
+  useTranslation: () => ({
+    t: (key: string, options?: { index?: number; total?: number; item?: string }) => {
+      if (key === "action.deleteImage") {
+        return `Delete image ${options?.index} of ${options?.total} for ${options?.item}`;
+      }
+      return key;
+    },
+  }),
 }));
 
 const storage: Storage = {
@@ -63,15 +70,18 @@ describe("StorageItemEditorModal image deletion", () => {
       </MantineProvider>,
     );
 
-    const deleteButtons = screen.getAllByRole("button", { name: "action.deleteImage" });
-    await user.click(deleteButtons[0]!);
+    const firstDeleteButton = screen.getByRole("button", { name: "Delete image 1 of 2 for Crystal" });
+    const secondDeleteButton = screen.getByRole("button", { name: "Delete image 2 of 2 for Crystal" });
+    await user.click(firstDeleteButton);
 
-    expect(deleteButtons[0]).toHaveAttribute("data-loading", "true");
-    expect(deleteButtons[1]).not.toHaveAttribute("data-loading", "true");
-    await user.click(deleteButtons[0]!);
+    expect(firstDeleteButton).toHaveAttribute("data-loading", "true");
+    expect(secondDeleteButton).not.toHaveAttribute("data-loading", "true");
+    await user.click(firstDeleteButton);
     expect(onDeleteImage).toHaveBeenCalledTimes(1);
+    expect(onDeleteImage).toHaveBeenCalledWith("item-1", "image-1");
 
     finishDelete();
-    await waitFor(() => expect(deleteButtons[0]).not.toHaveAttribute("data-loading", "true"));
+    await waitFor(() => expect(firstDeleteButton).not.toHaveAttribute("data-loading", "true"));
+    expect(secondDeleteButton).not.toHaveAttribute("data-loading", "true");
   });
 });

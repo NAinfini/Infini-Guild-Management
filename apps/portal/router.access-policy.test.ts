@@ -70,7 +70,7 @@ describe("portal route access policy", () => {
     expect(manageRoute).toContain('throw redirect({ to: "/storage" })');
   });
 
-  it("accepts every profile workspace in the profile route search schema", () => {
+  it("accepts the current profile subpages in route search", () => {
     const source = routerSource();
     const profileSearchSchema = source.slice(
       source.indexOf("const PROFILE_SEARCH_SCHEMA"),
@@ -78,7 +78,7 @@ describe("portal route access policy", () => {
     );
 
     expect(profileSearchSchema).toContain(
-      'z.enum(["profile", "media", "availability", "account"])',
+      'z.enum(["availability", "account"])',
     );
   });
 });

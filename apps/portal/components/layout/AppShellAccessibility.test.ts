@@ -78,6 +78,20 @@ describe("App shell accessibility structure", () => {
     expect(scale).toMatch(/--content-width-wide:\s*2200px\b/);
   });
 
+  it("uses compact navigation through tablet portrait without changing the phone header breakpoint", () => {
+    const appShell = readPortalFile("apps/portal/components/layout/AppShell.tsx");
+    const appSidebar = readPortalFile("apps/portal/components/layout/AppSidebar.tsx");
+
+    expect(appSidebar).toContain("export const MOBILE_BREAKPOINT_PX = 767");
+    expect(appSidebar).toContain("export const COMPACT_NAV_BREAKPOINT_PX = 1023");
+    expect(appShell).toContain(
+      "const usesCompactNavigation = useMediaQuery(`(max-width: ${COMPACT_NAV_BREAKPOINT_PX}px)`)",
+    );
+    expect(appShell).toContain("navbar={!usesCompactNavigation");
+    expect(appShell).toContain("{!usesCompactNavigation ? (");
+    expect(appShell).toContain("{usesCompactNavigation ? (");
+  });
+
   it("uses one route registry and does not apply generic route entrance motion", () => {
     const appShell = readPortalFile("apps/portal/components/layout/AppShell.tsx");
     const appShellCss = readPortalFile("apps/portal/components/layout/AppShell.css");

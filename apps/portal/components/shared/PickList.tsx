@@ -4,18 +4,8 @@ import type { ReactNode } from "react";
 import "./PickList.css";
 
 /*
- * 「从一份名单里勾出若干个」的统一控件。
- *
- * 这件事在库里原来有三套实现：徽章页的成员名单（Mantine Checkbox 行）、职业标签页的
- * 成员清单（手搓 button + aria-pressed + 自己画的勾）、一次性组的职业下拉（Popover 里
- * 又一套 Checkbox 加分节）。三套的行高、选中态、搜索框位置、批量按钮措辞都不一样，
- * 而它们回答的是同一个问题。这里收成一个。
- *
- * 语义统一到 checkbox：多选清单里读屏器要报的是「已勾选／未勾选」，aria-pressed 那种
- * 开关语义是给单个按钮用的。行本身就是 Checkbox 的 root，所以整行可点。
- *
- * 组件不管过滤——搜索框是受控的，过滤后的 options 由调用方传进来。因为「全选可见的」
- * 这类批量操作作用于过滤结果，过滤留在调用方那里，两边才不会各算一份。
+ * Shared checkbox semantics for selecting records from a list. Filtering stays
+ * with the caller so bulk actions operate on the same visible option set.
  */
 
 export type PickListOption = {

@@ -33,4 +33,15 @@ describe("resolveGuildWarAbsenceWindow", () => {
     expect(activeTab).not.toContain("onMoveSelected");
     expect(activeTab).not.toContain("onSaveTeams=");
   });
+
+  it("keeps the no-active-war card compact", () => {
+    const styles = readFileSync(
+      resolve(process.cwd(), "apps/portal/components/pages/GuildWarPage.css"),
+      "utf8",
+    );
+    const emptyStateRule = styles.match(/\.guild-war-active-empty\s*\{([^}]*)\}/)?.[1] ?? "";
+
+    expect(emptyStateRule).toContain("max-width");
+    expect(emptyStateRule).not.toContain("min-height");
+  });
 });

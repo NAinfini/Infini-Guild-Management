@@ -146,13 +146,13 @@ guildWarRoutes.patch("/history/:id", async (c) => {
 });
 
 guildWarRoutes.delete("/history/:id", async (c) => {
-  const user = await requirePermission(c, "guildwar.history.edit", { freshPermissions: true });
+  const user = await requirePermission(c, "guildwar.history.edit");
   const result = await getService(c).deleteHistory(user.id, c.req.param("id"));
   return handleResult(c, result);
 });
 
 guildWarRoutes.post("/history/batch-delete", async (c) => {
-  const user = await requirePermission(c, "guildwar.history.edit", { freshPermissions: true });
+  const user = await requirePermission(c, "guildwar.history.edit");
   const body = await parseJsonBody(c);
   if (!body || typeof body !== "object" || !Array.isArray((body as { ids?: unknown }).ids)) return buildError(c, "VALIDATION_ERROR", "Body must contain an ids array");
   const ids = ((body as { ids: string[] }).ids).filter((id) => typeof id === "string" && id.length > 0);

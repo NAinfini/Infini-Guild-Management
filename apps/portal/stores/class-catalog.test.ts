@@ -31,16 +31,14 @@ describe("class catalog store helpers", () => {
       label: "Warden",
       color: "#61B8AA",
       vector_icon: "shield",
-      legacy: false,
     });
   });
 
-  it("keeps deleted or unknown profile values visible as legacy options", () => {
+  it("keeps referenced values visible after their catalog entry is deleted", () => {
     const resolved = resolveClassCatalogItem("retired-class", [item()]);
     expect(resolved).toMatchObject({
       id: "retired-class",
       label: "retired-class",
-      legacy: true,
     });
     expect(buildClassOptions([item()], ["retired-class", "retired-class"])).toEqual([
       { value: "warden", label: "Warden" },

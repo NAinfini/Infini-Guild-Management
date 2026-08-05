@@ -1,8 +1,7 @@
 /*
  * 一格配额 = 一行：名称、职业、人数、删除。
  *
- * 四样东西各占一格并且列宽固定，配额一多，四列上下对齐，扫一眼就知道哪一格缺人。
- * 以前职业是折行铺在名称下面的第二排，行高随职业数变，两格配额之间根本对不齐。
+ * Fixed columns align fields across quota rows for rapid comparison.
  *
  * 断点走容器查询而不是媒体查询：这个编辑器住在活动表单的右栏里，栏宽比视口窄得多，
  * 按视口判断的话桌面上永远是宽版四列，而它实际只有四百来像素，图标会被切掉。
@@ -101,14 +100,7 @@
   max-block-size: 280px;
 }
 
-/*
- * 窄的时候压列宽，不折行：一格配额永远只占一行。
- *
- * 原来这里把名称顶到单独一行，结果表单右栏（四百来像素）里每格配额都是两行高，两格
- * 配额之间的名称和职业列还是对不齐——正是四列布局想解决的问题。名称和职业两列都是
- * minmax(0, 1fr)，挤不下时名称走省略号、职业条收成「图标 +N」，两者本来就为截断设计。
- * 人数框留 72px：Mantine NumberInput 带上下箭头再窄就点不中了。
- */
+/* Compact rows preserve four-column alignment; the number input retains a usable 72px target. */
 @container (max-width: 620px) {
   .quota-editor__row {
     grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) 72px auto;

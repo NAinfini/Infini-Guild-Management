@@ -145,7 +145,7 @@ test("编辑角色：没改动时保存是禁用的；改完名字、级别和�
   await expect(saveButton(page), "什么都没改的时候保存必须是禁用的").toBeDisabled();
 
   const granted = "View member list";
-  const untouched = "Delete members";
+  const untouched = "Deactivate members";
   await expect(permission(page, granted)).toHaveAttribute("aria-pressed", "false");
 
   await field(detail(page), "Display Name").fill(renamed);

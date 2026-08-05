@@ -1,5 +1,5 @@
 import { Button, Group, Modal } from "@mantine/core";
-import type { TipTapEditorLabels } from "./TipTapEditor";
+import type { TipTapEditorLabels } from "./tiptap-meta";
 
 type TipTapEditorLinkDialogProps = {
   labels: TipTapEditorLabels;

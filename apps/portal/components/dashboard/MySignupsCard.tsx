@@ -64,9 +64,17 @@ export const MySignupsCard = memo(function MySignupsCard({
           card of vertical space and saying nothing. */}
       {mySignupEvents.length === 0 ? (
         <EmptyState
+          className="dashboard-signups-empty"
+          icon={(
+            <CalendarEventIcon
+              aria-hidden="true"
+              className="dashboard-signups-empty__icon"
+              size={28}
+            />
+          )}
           title={t("card.mySignups.empty")}
           actions={(
-            <Button variant="default" onClick={onBrowseEvents}>
+            <Button onClick={onBrowseEvents}>
               {t("card.mySignups.browseEvents")}
             </Button>
           )}

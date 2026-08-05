@@ -64,7 +64,7 @@ export function AuditArchiveExplorer({
             <ArchiveIcon size={18} />
             <Text fw={600}>{t("auditArchive.title")}</Text>
           </Group>
-          <Button variant={opened ? "default" : "light"} size="compact-sm" onClick={() => setOpened((v) => !v)}>
+          <Button variant={opened ? "default" : "light"} size="sm" onClick={() => setOpened((v) => !v)}>
             {opened ? t("auditArchive.toggleHide") : t("auditArchive.toggleShow")}
           </Button>
         </Group>
@@ -90,7 +90,7 @@ export function AuditArchiveExplorer({
                 />
                 <Button
                   variant="default"
-                  size="compact-sm"
+                  size="sm"
                   onClick={() => void handleDownload()}
                   loading={downloading}
                   disabled={!selectedMonth}

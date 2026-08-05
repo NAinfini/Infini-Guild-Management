@@ -171,12 +171,6 @@ export function AdminSiteConfigSection({
   };
 
   return (
-    /*
-     * 单列。原先是「左边一条 220-260px 的二级导航 + 右边内容」，那条导航只有三项，
-     * 靠 <a href="#site-config-…"> 跳锚点——在 SPA 里点它会把 hash 写进地址栏，
-     * 而路由的 tab 参数也在 URL 上，来回点几次浏览器的后退键就退不回上一个页签了。
-     * 三个卡片顺着往下排，滚一屏就到底，用不着二级导航。
-     */
     <div className="site-config">
       <section id="site-config-branding" className="site-config-card">
         <div className="site-config-card__header">
@@ -234,12 +228,9 @@ export function AdminSiteConfigSection({
               color="gray"
             />
           </div>
-          {/* c="dimmed" 去掉了：底色改成品牌浅底之后，灰字压在上面对比度不够。 */}
           <Text size="xs" fw={700} className="site-config-count">{t("siteConfig.summary.compact", { enabled: enabledFeatureCount, total: FEATURE_KEYS.length })}</Text>
         </div>
 
-        {/* 一行一个开关。原先是四列卡片网格，开关被推到每张卡的右缘，
-            名字和它管的那个开关之间隔着一段空白，扫一眼对不上。 */}
         <div className="site-config-feature-list">
           {FEATURE_KEYS.map((key) => (
             <div key={key} className="site-config-feature-row">
@@ -339,12 +330,7 @@ export function AdminSiteConfigSection({
         </div>
       </section>
 
-      {/*
-        * 保存条只在有改动时才出现。原先它是侧栏底部一个常驻按钮，绝大多数时候是灰的——
-        * 一个永远在那里、九成时间点不动的控件，既占位置又不告诉人「现在到底有没有东西要存」。
-        * 出现即代表「有未保存的改动」；名字填成空白时它仍然在，只是按钮禁用，
-        * 这样「有改动但存不了」和「没有改动」是两种看得出区别的状态。
-        */}
+      {/* The save bar remains visible for invalid dirty state, but not for a clean form. */}
       {hasPendingChanges ? (
         <div className="site-config-savebar" role="status">
           <Text size="sm" fw={700}>{t("siteConfig.unsavedChanges")}</Text>

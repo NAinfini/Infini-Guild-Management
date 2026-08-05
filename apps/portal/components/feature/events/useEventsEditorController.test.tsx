@@ -70,5 +70,8 @@ describe("useEventsEditorController", () => {
 
     expect(result.current.isEditorDirty).toBe(true);
     await expect(result.current.closeEditor()).resolves.toBe(false);
+    expect(confirmMock).toHaveBeenCalledWith(expect.objectContaining({
+      confirmLabel: "common:action.discard",
+    }));
   });
 });

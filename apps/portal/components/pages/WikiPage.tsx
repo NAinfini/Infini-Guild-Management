@@ -1,26 +1,22 @@
 import {
   ActionIcon,
-  Box,
   Button,
   Card,
-  Collapse,
   Drawer,
-  Flex,
   Group,
   MultiSelect,
   Paper,
-  SegmentedControl,
+  Select,
   Skeleton,
   Stack,
   Text,
   TextInput,
   Tooltip,
 } from "@mantine/core";
-import { useDisclosure, useMediaQuery } from "@mantine/hooks";
 import { useConfirmDialog } from "@portal/hooks/useConfirmDialog";
+import { ContentFilterToolbar } from "@portal/components/shared/ContentFilterToolbar";
 import { buildTipTapEditorLabels } from "@portal/components/shared/tiptap-meta";
-import { ClockIcon, PencilIcon, PinIcon, SearchIcon } from "@portal/components/icons";
-import { IconAdjustmentsHorizontal } from "@tabler/icons-react";
+import { ArrowLeftIcon, ClockIcon, PencilIcon, PinIcon, SearchIcon } from "@portal/components/icons";
 import { Suspense, lazy, useMemo } from "react";
 import { useTranslation } from "react-i18next";
 import { useLoadWarningToast } from "../../hooks/useLoadWarningToast";
@@ -57,20 +53,44 @@ export function WikiPage() {
   const confirm = useConfirmDialog();
 
   const controller = useWikiPageController();
-  const isFilterMobile = useMediaQuery("(max-width: 47.99em)");
-  const [filtersOpen, { toggle: toggleFilters }] = useDisclosure(false);
   const hasActiveFilters = Boolean(
     controller.search.trim()
     || controller.pinnedOnly
     || controller.archivedMode !== "active"
-    || controller.selectedCategoryIds.length > 0,
+    || controller.selectedCategoryIds.length > 0
+    || controller.sortOrder !== "curated",
   );
+  const activeFilterCount = [
+    controller.search.trim().length > 0,
+    controller.selectedCategoryIds.length > 0,
+    controller.archivedMode !== "active",
+    controller.pinnedOnly,
+    controller.sortOrder !== "curated",
+  ].filter(Boolean).length;
   const resetFilters = () => {
     controller.setSearch("");
     controller.setPinnedOnly(false);
     controller.setArchivedMode("active");
     controller.handleCategoryFilterChange([]);
+    controller.setSortOrder("curated");
   };
+  const closeMobilePane = async () => {
+    if (controller.isEditorPaneVisible) {
+      const closed = controller.editorTab === "categories"
+        ? await controller.handleCloseCategoryEditorWithoutSave()
+        : await controller.handleExitArticleEditor();
+      if (!closed) return;
+    }
+    controller.setMobilePane("list");
+  };
+  const mobileDrawerTitle = controller.isEditorPaneVisible
+    ? controller.editorTab === "categories"
+      ? t("categoryEditor.title")
+      : t("articleEditor.title")
+    : t("drawer.readerTitle", {
+        category: controller.selectedCategory?.name
+          ?? t("articleEditor.categoryFallback"),
+      });
 
   const handleDeleteArticle = async () => {
     if (!controller.selectedArticle) return;
@@ -97,7 +117,15 @@ export function WikiPage() {
       gap={12}
     >
       {mobileMode ? (
-        <Button size="sm" onClick={() => controller.setMobilePane("list")} style={{ alignSelf: "flex-start" }}>
+        <Button
+          variant="subtle"
+          size="sm"
+          leftSection={<ArrowLeftIcon size={16} />}
+          onClick={() => {
+            void closeMobilePane();
+          }}
+          style={{ alignSelf: "flex-start" }}
+        >
           {t("backToList")}
         </Button>
       ) : null}
@@ -162,7 +190,15 @@ export function WikiPage() {
       gap={12}
     >
       {mobileMode ? (
-        <Button size="sm" onClick={() => controller.setMobilePane("list")} style={{ alignSelf: "flex-start" }}>
+        <Button
+          variant="subtle"
+          size="sm"
+          leftSection={<ArrowLeftIcon size={16} />}
+          onClick={() => {
+            void closeMobilePane();
+          }}
+          style={{ alignSelf: "flex-start" }}
+        >
           {t("backToList")}
         </Button>
       ) : null}
@@ -183,7 +219,7 @@ export function WikiPage() {
             ) : !controller.selectedArticle ? (
               <EmptyState title={t("welcome.title")} description={t("welcome.description")} />
             ) : (
-              <>
+              <div className="wiki-article-reader-content">
                 <Group justify="space-between" align="start">
                   <Text component="h2" fw={700} size="lg" className="wiki-article-reader-title">
                     {controller.selectedArticle.title}
@@ -203,13 +239,17 @@ export function WikiPage() {
                     </Group>
                   ) : null}
                 </Group>
-                <Group gap={6}>
-                  <Text size="sm">{t("title")}</Text>
-                  <Text size="sm" c="dimmed">
-                    /
-                  </Text>
-                  <Text size="sm">{controller.selectedCategory?.name ?? t("articleEditor.categoryFallback")}</Text>
-                </Group>
+                <nav className="wiki-article-breadcrumb" aria-label={t("aria.breadcrumb")}>
+                  <Group gap={6}>
+                    <Text component="span" size="sm">{t("title")}</Text>
+                    <Text component="span" size="sm" c="dimmed">
+                      /
+                    </Text>
+                    <Text component="span" size="sm">
+                      {controller.selectedCategory?.name ?? t("articleEditor.categoryFallback")}
+                    </Text>
+                  </Group>
+                </nav>
                 <Suspense fallback={<Card><Stack gap={8} p="md"><Skeleton height={200} radius={8} /></Stack></Card>}>
                   <LazyTipTapEditor
                     value={controller.selectedArticle.body_json}
@@ -228,97 +268,114 @@ export function WikiPage() {
                     {t("articleEditor.archivedAt", { date: formatDateTime(controller.selectedArticle.archived_at) })}
                   </Text>
                 ) : null}
-              </>
+              </div>
             )}
           </Stack>
       </Paper>
     </Stack>
   );
 
-  const primaryFilter = (
-    <TextInput
-      className="wiki-page-toolbar__search"
-      placeholder={t("filter.search")}
-      aria-label={t("filter.searchAria")}
-      value={controller.search}
-      onChange={(event) => controller.setSearch(event.currentTarget.value)}
-      leftSection={<SearchIcon size={16} />}
-    />
+  const statusOptions = [
+    { value: "active", label: t("filter.status.active") },
+    { value: "archived", label: t("filter.status.archived") },
+    { value: "all", label: t("filter.status.all") },
+  ];
+  const sortOptions = [
+    { value: "curated", label: t("filter.sort.curated") },
+    { value: "updated_desc", label: t("filter.sort.updated_desc") },
+    { value: "updated_asc", label: t("filter.sort.updated_asc") },
+  ];
+  const selectedCategoryNames = controller.selectedCategoryIds.map(
+    (id) => controller.categoryOptions.find((option) => option.value === id)?.label ?? id,
   );
-  const filters = (
-    <>
-      <MultiSelect
-        className="wiki-page-toolbar__categories"
-        clearable
-        searchable
-        placeholder={t("filter.allCategories")}
-        aria-label={t("filter.categories")}
-        value={controller.selectedCategoryIds}
-        onChange={controller.handleCategoryFilterChange}
-        data={controller.categoryOptions}
-      />
-      <SegmentedControl
-        value={controller.archivedMode}
-        onChange={(value) => controller.setArchivedMode(value as "active" | "archived" | "all")}
-        data={[
-          { value: "active", label: t("filter.status.active") },
-          { value: "archived", label: t("filter.status.archived") },
-          { value: "all", label: t("filter.status.all") },
-        ]}
-        aria-label={t("filter.status")}
-      />
-      <Tooltip label={controller.pinnedOnly ? t("filter.showAll") : t("filter.showPinned")} withArrow>
-        <ActionIcon
-          variant={controller.pinnedOnly ? "light" : "default"}
-          color="portal-brand"
-          size="lg"
-          aria-pressed={controller.pinnedOnly}
-          aria-label={controller.pinnedOnly ? t("filter.showAll") : t("filter.showPinned")}
-          onClick={() => controller.setPinnedOnly((value) => !value)}
-        >
-          <PinIcon size={16} />
-        </ActionIcon>
-      </Tooltip>
-      {hasActiveFilters ? (
-        <Button variant="subtle" size="compact-sm" onClick={resetFilters}>
-          {t("action.resetFilters")}
-        </Button>
-      ) : null}
-    </>
+  const filterSummary = [
+    controller.search.trim()
+      ? t("filter.summary.search", { value: controller.search.trim() })
+      : null,
+    selectedCategoryNames.length > 0
+      ? t("filter.summary.categories", { value: selectedCategoryNames.join(", ") })
+      : null,
+    controller.archivedMode !== "active"
+      ? t("filter.summary.status", {
+          value: statusOptions.find((option) => option.value === controller.archivedMode)?.label
+            ?? controller.archivedMode,
+        })
+      : null,
+    controller.pinnedOnly ? t("filter.summary.pinned") : null,
+    controller.sortOrder !== "curated"
+      ? t("filter.summary.sort", {
+          value: sortOptions.find((option) => option.value === controller.sortOrder)?.label
+            ?? controller.sortOrder,
+        })
+      : null,
+  ].filter(Boolean).join(" · ");
+  const filterToolbar = (
+    <ContentFilterToolbar
+      className="wiki-page-toolbar"
+      toggleLabel={t("common:filter.toggle")}
+      activeSummary={filterSummary}
+      activeFilterCount={activeFilterCount}
+      collapseBelow={1120}
+      search={(
+        <TextInput
+          placeholder={t("filter.search")}
+          aria-label={t("filter.searchAria")}
+          value={controller.search}
+          onChange={(event) => controller.setSearch(event.currentTarget.value)}
+          leftSection={<SearchIcon size={16} />}
+        />
+      )}
+      controls={(
+        <>
+          <MultiSelect
+            className="wiki-page-toolbar__categories"
+            clearable
+            searchable
+            placeholder={t("filter.allCategories")}
+            aria-label={t("filter.categories")}
+            value={controller.selectedCategoryIds}
+            onChange={controller.handleCategoryFilterChange}
+            data={controller.categoryOptions}
+          />
+          <Select
+            value={controller.archivedMode}
+            onChange={(value) => {
+              if (value) controller.setArchivedMode(value as "active" | "archived" | "all");
+            }}
+            data={statusOptions}
+            aria-label={t("filter.status")}
+            allowDeselect={false}
+          />
+          <Select
+            value={controller.sortOrder}
+            onChange={(value) => {
+              if (value) controller.setSortOrder(value as "curated" | "updated_desc" | "updated_asc");
+            }}
+            data={sortOptions}
+            aria-label={t("filter.sort")}
+            allowDeselect={false}
+          />
+          <Tooltip label={controller.pinnedOnly ? t("filter.showAll") : t("filter.showPinned")} withArrow>
+            <ActionIcon
+              variant={controller.pinnedOnly ? "light" : "default"}
+              color="portal-brand"
+              size="lg"
+              aria-pressed={controller.pinnedOnly}
+              aria-label={controller.pinnedOnly ? t("filter.showAll") : t("filter.showPinned")}
+              onClick={() => controller.setPinnedOnly((value) => !value)}
+            >
+              <PinIcon size={16} />
+            </ActionIcon>
+          </Tooltip>
+        </>
+      )}
+    />
   );
 
   return (
     <PageLayout>
       <PageLayout.Section>
-        <Paper withBorder p="sm" className="wiki-page-toolbar">
-          {isFilterMobile ? (
-            <Stack gap={0}>
-              <Group gap="xs" wrap="nowrap" align="center">
-                <Box style={{ flex: 1, minWidth: 0 }}>{primaryFilter}</Box>
-                <ActionIcon
-                  variant={filtersOpen ? "filled" : "default"}
-                  size="lg"
-                  onClick={toggleFilters}
-                  aria-label={t("common:filter.toggle")}
-                >
-                  <IconAdjustmentsHorizontal size={18} />
-                </ActionIcon>
-              </Group>
-              <Collapse expanded={filtersOpen}>
-                <Group gap="xs" wrap="wrap" pt="sm">
-                  {filters}
-                </Group>
-              </Collapse>
-            </Stack>
-          ) : (
-            <Flex gap="sm" align="center" wrap="wrap">
-              <Box style={{ flex: "1 1 280px", minWidth: 240 }}>{primaryFilter}</Box>
-              <Group gap="xs" wrap="wrap">
-                {filters}
-              </Group>
-            </Flex>
-          )}
-        </Paper>
+        {filterToolbar}
       </PageLayout.Section>
 
       <div className={`wiki-page-grid ${controller.isMobile ? "wiki-page-grid--mobile" : ""}`}>
@@ -359,9 +416,11 @@ export function WikiPage() {
           <Drawer
             position="right"
             size="100%"
-            title={controller.selectedArticle?.title ?? t("articleEditor.title")}
+            title={mobileDrawerTitle}
             opened={controller.mobilePane === "article"}
-            onClose={() => controller.setMobilePane("list")}
+            onClose={() => {
+              void closeMobilePane();
+            }}
             keepMounted={false}
           >
             {controller.isEditorPaneVisible ? renderEditorPane(true) : renderReaderPane(true)}

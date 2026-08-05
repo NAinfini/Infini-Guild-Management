@@ -1,6 +1,7 @@
 import type { AuditLogEntry } from "@guild/shared";
 import { Button, Group, Menu, SegmentedControl, Stack, Text, TextInput } from "@mantine/core";
 import { ArrowDownIcon, SearchIcon, XIcon } from "@portal/components/icons";
+import { ContentFilterToolbar } from "@portal/components/shared/ContentFilterToolbar";
 import { NativeDateTimeInput } from "@portal/components/shared/NativeDateTimeInput";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
@@ -85,71 +86,78 @@ export function AdminAuditSection({
   };
 
   const hasFilters = Boolean(auditSearch || auditDateFrom || auditDateTo);
-
+  const activeFilterCount = [
+    auditSearch.trim().length > 0,
+    Boolean(auditDateFrom || auditDateTo),
+  ].filter(Boolean).length;
   return (
     <Stack gap={12}>
-      {/* 原先八个控件挤在一个 wrap 的 Group 里，宽度 200/170/170/compact×3/auto×2，
-          换行之后参差不齐。收成：搜索（伸展）→ 时间范围 → ——— → 导出。 */}
-      <div className="admin-toolbar">
-        <TextInput
-          className="admin-toolbar__search"
-          size="sm"
-          leftSection={<SearchIcon size={14} />}
-          placeholder={t("audit.search")}
-          aria-label={t("audit.aria.search")}
-          value={auditSearch}
-          onChange={(event) => onAuditSearchChange(event.currentTarget.value)}
-        />
-        <SegmentedControl
-          size="xs"
-          value={range}
-          onChange={applyPreset}
-          data={[
-            { value: "1d", label: t("audit.lastDay") },
-            { value: "7d", label: t("audit.last7Days") },
-            { value: "1m", label: t("audit.lastMonth") },
-            { value: "custom", label: t("audit.range.custom") },
-          ]}
-        />
-        {range === "custom" ? (
-          <Group gap={6} wrap="nowrap">
-            <NativeDateTimeInput
-              size="sm"
-              w={150}
-              value={auditDateFrom}
-              onChange={(event) => onAuditDateFromChange(event.currentTarget.value)}
-              aria-label={t("audit.aria.dateFrom")}
+      <ContentFilterToolbar
+        className="admin-audit-toolbar"
+        search={(
+          <TextInput
+            size="sm"
+            leftSection={<SearchIcon size={14} />}
+            placeholder={t("audit.search")}
+            aria-label={t("audit.aria.search")}
+            value={auditSearch}
+            onChange={(event) => onAuditSearchChange(event.currentTarget.value)}
+          />
+        )}
+        controls={(
+          <>
+            <SegmentedControl
+              size="xs"
+              value={range}
+              onChange={applyPreset}
+              data={[
+                { value: "1d", label: t("audit.lastDay") },
+                { value: "7d", label: t("audit.last7Days") },
+                { value: "1m", label: t("audit.lastMonth") },
+                { value: "custom", label: t("audit.range.custom") },
+              ]}
             />
-            <NativeDateTimeInput
-              size="sm"
-              w={150}
-              value={auditDateTo}
-              onChange={(event) => onAuditDateToChange(event.currentTarget.value)}
-              aria-label={t("audit.aria.dateTo")}
-            />
-          </Group>
-        ) : null}
-        <div className="admin-toolbar__spacer" />
-        {/* 导出是低频动作，两个同级按钮原先吃掉工具条近一半宽度。 */}
-        <Menu withinPortal position="bottom-end" shadow="md" width={180}>
-          <Menu.Target>
-            <Button
-              size="sm"
-              variant="default"
-              loading={exportAuditLogPending}
-              leftSection={<ArrowDownIcon size={14} />}
-            >
-              {t("audit.export")}
-            </Button>
-          </Menu.Target>
-          <Menu.Dropdown>
-            <Menu.Item onClick={onDownloadFilteredCsv}>{t("audit.downloadFilteredCsv")}</Menu.Item>
-            <Menu.Item onClick={onDownloadFilteredJson}>{t("audit.downloadFilteredJson")}</Menu.Item>
-          </Menu.Dropdown>
-        </Menu>
-      </div>
+            {range === "custom" ? (
+              <Group gap={6} wrap="nowrap" className="admin-audit-toolbar__dates">
+                <NativeDateTimeInput
+                  size="sm"
+                  value={auditDateFrom}
+                  onChange={(event) => onAuditDateFromChange(event.currentTarget.value)}
+                  aria-label={t("audit.aria.dateFrom")}
+                />
+                <NativeDateTimeInput
+                  size="sm"
+                  value={auditDateTo}
+                  onChange={(event) => onAuditDateToChange(event.currentTarget.value)}
+                  aria-label={t("audit.aria.dateTo")}
+                />
+              </Group>
+            ) : null}
+          </>
+        )}
+        primary={(
+          <Menu withinPortal position="bottom-end" shadow="md" width={180}>
+            <Menu.Target>
+              <Button
+                size="sm"
+                variant="default"
+                loading={exportAuditLogPending}
+                leftSection={<ArrowDownIcon size={14} />}
+              >
+                {t("audit.export")}
+              </Button>
+            </Menu.Target>
+            <Menu.Dropdown>
+              <Menu.Item onClick={onDownloadFilteredCsv}>{t("audit.downloadFilteredCsv")}</Menu.Item>
+              <Menu.Item onClick={onDownloadFilteredJson}>{t("audit.downloadFilteredJson")}</Menu.Item>
+            </Menu.Dropdown>
+          </Menu>
+        )}
+        toggleLabel={t("common:filter.toggle")}
+        activeFilterCount={activeFilterCount}
+        collapseBelow={1120}
+      />
 
-      {/* 设了筛选之后原先没有任何回执，只能靠盯着两个日期框回想筛掉了什么。 */}
       {hasFilters ? (
         <div className="admin-filter-summary">
           <Text size="xs" c="dimmed">{t("audit.filter.active")}</Text>

@@ -101,12 +101,7 @@ export function EventCard({
     pending: joinPending || leavePending,
   });
   const participantActionDisabled = participantActionDisabledReasonKey !== null;
-  /*
-   * 投票活动没有报名这回事，所以页脚原先挂的是一颗永远禁用的「报名」——它占着位置，
-   * 却把人往一条不存在的路上指。真正要做的事是投票，而票在详情弹窗里投，所以这颗
-   * 按钮直接把人送过去。
-   * 只有归档和已结束是真投不了，那两种才禁用，理由照旧由 Tooltip 给。
-   */
+  // Poll cards open the detail voting flow; signup constraints do not apply.
   const pollActionDisabledReasonKey = isArchived
     ? "button.disabled.archived"
     : hasEnded
@@ -194,10 +189,6 @@ export function EventCard({
     </Menu>
   ) : null;
 
-  /*
-   * 页脚永远在（只要这个人有互动权限）。以前投票活动整个页脚都不渲染，同一排卡里
-   * 有的有底栏有的没有，高度和按钮位置全对不齐。
-   */
   const footer = canInteract ? (
     <div onClick={(clickEvent) => clickEvent.stopPropagation()}>
       {isPoll ? (

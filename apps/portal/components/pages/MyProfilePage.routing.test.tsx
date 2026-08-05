@@ -7,7 +7,7 @@ import { MyProfilePage } from "./MyProfilePage";
 
 const routeMocks = vi.hoisted(() => ({
   navigate: vi.fn(),
-  search: { tab: "media" as string | undefined },
+  search: { tab: "availability" as string | undefined },
 }));
 
 vi.mock("@tanstack/react-router", () => ({
@@ -177,7 +177,6 @@ describe("MyProfilePage tab routing", () => {
       viewTransition: false,
     });
 
-    // Home merged the old profile and media tabs, so both panels live here.
     await user.click(screen.getByRole("tab", { name: /tab\.home/ }));
     expect(screen.getByText("profile-panel")).toBeVisible();
     expect(screen.getByText("media-panel")).toBeVisible();
@@ -187,25 +186,6 @@ describe("MyProfilePage tab routing", () => {
       replace: true,
       viewTransition: false,
     });
-  });
-
-  it("resolves links to the retired profile and media tabs onto home", () => {
-    routeMocks.search.tab = "media";
-    const { unmount } = render(
-      <MantineProvider>
-        <MyProfilePage />
-      </MantineProvider>,
-    );
-    expect(screen.getByText("profile-panel")).toBeVisible();
-    unmount();
-
-    routeMocks.search.tab = "profile";
-    render(
-      <MantineProvider>
-        <MyProfilePage />
-      </MantineProvider>,
-    );
-    expect(screen.getByText("profile-panel")).toBeVisible();
   });
 
   it("marks the tab that owns unsaved changes", () => {

@@ -166,22 +166,18 @@
   --accent-fill-hover: var(--accent-600);
   --accent-border: var(--accent-300);
   /* --accent-on-fill 只按 --accent-fill（500）校准，压在 --accent-fill-hover
-   * （600）上不过 AA（task-7 修复轮次 1 修复 I2，实测 3.16–3.50）。
+   * （600）上不过 AA（实测 3.16–3.50）。
    * --accent-fill-hover 必须保持比 --accent-fill 深一档，不能为了凑文字对比度
    * 调浅，所以换一个 hover 专用、跨 accent 共用的纯黑墨，只在「文字压在
    * --accent-fill-hover 上」这一种场景使用。 */
   --accent-on-fill-hover: var(--palette-ink-black);
 
-  /* ── 旧品牌辅色（与模式、与 accent 选择都无关）──
+  /* ── Secondary brand accent（与模式、与 accent 选择都无关）──
    *
-   * 迁自 styles.css 旧名转发块的 --color-secondary（the semantic-colour contract D 节）。
-   * tokens.css 的 --palette-bronze-warm 本身没有语义、不随 [data-theme] 或
-   * [data-accent] 变化，只是历史遗留的第二品牌色，用来把某一类目跟当前选中的
-   * accent 区分开（不是「危险 / 警告」这类状态色，纯粹是另一条视觉分类线）。
+   * tokens.css 的 --palette-bronze-warm 不随 [data-theme] 或 [data-accent]
+   * 变化，用来把另一类视觉数据与当前 accent 区分开；它不是状态色。
    * 组件层不许直接引用 L1 的 --palette-*（守卫 rule 6），这里给它一个 L2 名字。
-   * 消费者：MyProfilePage.css（.profile-preview-stat-icon--video）。
-   * 复审 T-1：此前这是紧挨着上面那块的第二个 :root，两块之间只隔一段注释，
-   * 合并成一块。 */
+   * 消费者：MyProfilePage.css（.profile-preview-stat-icon--video）。 */
   --brand-secondary: var(--palette-bronze-warm);
 
   /* ── 主色选择器的色块（与模式、与当前 accent 都无关）──
@@ -209,17 +205,7 @@
   --glow-dispersion-mid: var(--palette-violet-500);
   --glow-dispersion-warm: var(--palette-orange-500);
 
-  /* ── 查找高亮（与模式、与 accent 都无关，复审 I-7 / N-4 收口）──
-   *
-   * tiptap-editor.css 的「查找命中」标记色（黄/橙），独立于主题色阶、不随
-   * [data-theme] 反色。批 2 曾把它登记为字面量豁免，复审 I-7 指出它是全表
-   * 唯一一处「真正有色相」的豁免，且批 1 刚为完全同类的 --palette-bronze-warm
-   * 建立了「L1 落值 + L2 开名」的先例——这里补齐同样的处理，不是重新设计。
-   * L1 值见 tokens.css 的 --palette-highlight-search(-active)（复审 N-4 后
-   * 已改成不透明 hex）。这里不再是直接转发，而是用 color-mix 把 alpha
-   * 通道还原回来（35% / 55%，与原 rgba(255, 217, 0, 0.35) /
-   * rgba(255, 140, 0, 0.55) 逐字等价），供组件层消费（守卫 rule 6 不许组件层
-   * 直接引用 --palette-*）。 */
+  /* Search highlights are mode-independent; L1 owns hue and L2 owns alpha. */
   --highlight-search: color-mix(in srgb, var(--palette-highlight-search) 35%, transparent);
   --highlight-search-active: color-mix(in srgb, var(--palette-highlight-search-active) 55%, transparent);
 }

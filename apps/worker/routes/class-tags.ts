@@ -22,7 +22,7 @@ function getClassTagService(c: Context): ClassTagService {
 
 /* 标签跟职业目录是同一件事的两面，共用同一个权限；改动照样要求刷新权限缓存。 */
 async function requireClassManagement(c: Context) {
-  return requirePermission(c, "admin.classes.manage", { freshPermissions: true });
+  return requirePermission(c, "admin.classes.manage");
 }
 
 classTagRoutes.get("/", async (c) => {

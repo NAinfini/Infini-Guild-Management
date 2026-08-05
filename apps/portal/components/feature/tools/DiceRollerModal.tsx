@@ -62,9 +62,6 @@ export function DiceRollerModal({ opened, onClose }: DiceRollerModalProps) {
 
   const diceTotal = useMemo(() => diceResults.reduce((sum, value) => sum + value, 0), [diceResults]);
   const hasRolled = diceResults.length > 0;
-  /* 没投过时也把骰位摆出来。原先结果区是投掷后才出现的，打开弹窗看到的是
-     两个输入框、一颗孤零零的按钮，再加一段空的历史——整个弹窗中间是空的，
-     而且第一次投掷会把下面的内容整体顶下去。 */
   const stageFaces: Array<number | null> = hasRolled
     ? diceResults
     : Array.from({ length: Math.max(1, Math.min(diceCount, 20)) }, () => null);
@@ -111,7 +108,6 @@ export function DiceRollerModal({ opened, onClose }: DiceRollerModalProps) {
               </div>
             ))}
           </div>
-          {/* 总计常驻。原先只有多颗骰子且投掷结束时才出现，每次投掷都让弹窗抖一下高度。 */}
           <div className="dice__total">
             <Text size="sm" c="dimmed">{t("dice.total")}</Text>
             <Text className="dice__total-value">{hasRolled && !isRolling ? diceTotal : "—"}</Text>
@@ -150,9 +146,6 @@ export function DiceRollerModal({ opened, onClose }: DiceRollerModalProps) {
             <div className="dice__history-list">
               {diceHistory.map((entry) => (
                 <div key={entry.timestamp} className="dice__history-item">
-                  {/* 原先整行是一句 {{count}}d{{sides}} → … = … 的插值字符串：
-                      灰字挤成一行读不出重点，而且 count 是 i18next 的复数保留参数。
-                      拆成骰式／点数／总计三段，各自对齐。 */}
                   <span className="dice__history-notation">{entry.count}d{entry.sides}</span>
                   <span className="dice__history-rolls">{entry.results.join(" · ")}</span>
                   <span className="dice__history-total">{entry.total}</span>

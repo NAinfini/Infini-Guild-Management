@@ -17,13 +17,8 @@ type EventDetailMemberRosterProps = {
   onRemoveMember: (userId: string, username: string) => void;
 };
 
-/*
- * 活动详情弹窗里的报名名单。
- *
- * 有配额时按配额分组，没配额时保持原来那份平铺名单——分组只在真有配额时接管。
- * 分组本身的规则见 class-quota-view.ts：每组的人就是算法分进这一格的人，人数跟筹码上
- * 的分子同源。
- */
+// Quota grouping and its counters share the allocation algorithm in
+// class-quota-view.ts; events without quotas use the flat roster.
 export function EventDetailMemberRoster({
   event,
   members,

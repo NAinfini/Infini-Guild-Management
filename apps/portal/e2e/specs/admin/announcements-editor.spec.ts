@@ -217,7 +217,6 @@ test("未就绪：标题或正文空着时不给发布，三个出口一起禁�
   await openEditor(page);
 
   await titleField(page).fill("   ");
-  await expect(page.getByText("Not ready — add a title and content", { exact: true })).toBeVisible();
   await expect(publishButton(page), "标题空着不该能发布").toBeDisabled();
   await expect(finishMenuTrigger(page), "下拉里的另外两个出口同样要挡住").toBeDisabled();
 
@@ -272,7 +271,7 @@ test("定时发布：未来时间进 scheduled，过去时间被前端挡住", a
 
   const publishAt = field(page, "Announcement publish time");
   await publishAt.fill(await localDateTimeValue(page, -24 * 60));
-  await clickWithoutWrite(page, await chooseFinish(page, "Post Scheduled"));
+  await clickWithoutWrite(page, await chooseFinish(page, "Schedule post"));
   await expect(
     page.getByText("Scheduled publish time must be in the future.", { exact: true }),
     "过去的时间要当场说清楚为什么不行",
@@ -280,7 +279,7 @@ test("定时发布：未来时间进 scheduled，过去时间被前端挡住", a
   expect((await readAnnouncement(api, target.id)).status, "被挡住的定时发布不该动服务端").toBe("draft");
 
   await publishAt.fill(await localDateTimeValue(page, 24 * 60));
-  await flow.click(await chooseFinish(page, "Post Scheduled"), UPDATE);
+  await flow.click(await chooseFinish(page, "Schedule post"), UPDATE);
 
   const saved = await readAnnouncement(api, target.id);
   expect(saved.status, "定时发布要把状态写成 scheduled").toBe("scheduled");

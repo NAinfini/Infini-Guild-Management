@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { adminUpdateProfileSchema, memberProfileSchema, updateProfileSchema } from "./user";
 
 describe("updateProfileSchema", () => {
-  it("accepts dynamic and legacy class IDs while rejecting duplicates", () => {
+  it("accepts catalog and persisted class IDs while rejecting duplicates", () => {
     expect(updateProfileSchema.safeParse({
       classes: ["new-catalog-id", "历史职业"],
     }).success).toBe(true);
@@ -50,9 +50,9 @@ describe("updateProfileSchema", () => {
     expect(parsed.success).toBe(true);
   });
 
-  it("still parses legacy rows on the read side", () => {
-    // Read-side parsing must not fail on URLs stored before the allowlist
-    // existed, otherwise the roster stops rendering for everyone.
+  it("keeps read-side parsing independent from the write allowlist", () => {
+    // Stored URLs remain readable if the write allowlist changes; validation is
+    // enforced only when a profile submits a new value.
     const parsed = memberProfileSchema.partial().safeParse({
       video_urls: ["https://evil.example.com/clip.mp4"],
     });

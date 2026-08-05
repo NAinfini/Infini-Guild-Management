@@ -6,7 +6,7 @@
  * FORM: Quartermaster Rail, approved concept A; passive detail uses a drawer and batch state stays pinned above inventory.
  */
 import type { CreateStorageTransactionPayload, StorageItem } from "@guild/shared";
-import { ActionIcon, Button, Select, Skeleton, Stack, Tabs, Tooltip } from "@mantine/core";
+import { ActionIcon, Alert, Button, Select, Skeleton, Stack, Tabs, Tooltip } from "@mantine/core";
 import { useQuery } from "@tanstack/react-query";
 import { Link, useNavigate, useSearch } from "@tanstack/react-router";
 import { PlusIcon, SettingsIcon } from "@portal/components/icons";
@@ -68,6 +68,8 @@ export function StoragePage() {
   const canManageStock = canManage(["admin.storage.stock", "admin.storage.manage"]);
   const treeQuery = useStorageTree();
   const storages = treeQuery.data?.data ?? [];
+  const treeBlockingError = treeQuery.isError && storages.length === 0;
+  const treeRefreshError = treeQuery.isError && storages.length > 0;
   const { storageId } = useSearch({ strict: false }) as { storageId?: string };
   const navigate = useNavigate();
   const activeStorage = storages.find((storage) => storage.id === storageId) ?? storages[0] ?? null;
@@ -194,7 +196,37 @@ export function StoragePage() {
         {treeQuery.isLoading ? (
           <Skeleton height={220} radius="md" className="storage-loading" />
         ) : null}
-        {!treeQuery.isLoading && storages.length === 0 ? (
+        {!treeQuery.isLoading && treeBlockingError ? (
+          <EmptyState
+            status="error"
+            title={t("common:loadError")}
+            description={t("common:errors.connectionIssue")}
+            actions={(
+              <Button
+                loading={treeQuery.isFetching}
+                onClick={() => void treeQuery.refetch()}
+              >
+                {t("common:action.retry")}
+              </Button>
+            )}
+          />
+        ) : null}
+        {!treeQuery.isLoading && treeRefreshError ? (
+          <Alert color="red" title={t("common:loadError")}>
+            <Stack gap="xs" align="flex-start">
+              <span>{t("common:errors.connectionIssue")}</span>
+              <Button
+                variant="default"
+                size="compact-sm"
+                loading={treeQuery.isFetching}
+                onClick={() => void treeQuery.refetch()}
+              >
+                {t("common:action.retry")}
+              </Button>
+            </Stack>
+          </Alert>
+        ) : null}
+        {!treeQuery.isLoading && !treeQuery.isError && storages.length === 0 ? (
           <EmptyState
             title={t("empty.noStorage")}
             actions={canManageStructure ? (
@@ -309,12 +341,8 @@ export function StoragePage() {
                   });
                   return;
                 }
-                /*
-                 * 管理员必须自己选领取人：这条记录决定这批货算在谁头上。
-                 * 之前默认填成员列表的第一个人，管理员忘记改就会把整批货
-                 * 静默记到一个无关的人身上——默认值在这里等于伪造凭据。
-                 * 普通成员没有选择权（面板上是只读徽章），领取人就是本人。
-                 */
+                /* Administrators must choose the accountable recipient explicitly;
+                 * regular members can only record a batch for themselves. */
                 const defaultRecipientId = canManageStock ? null : user?.id ?? null;
                 setBatchDrafts((current) => ({
                   ...current,

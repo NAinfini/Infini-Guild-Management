@@ -23,8 +23,7 @@ vi.mock("react-i18next", () => ({
   }),
 }));
 
-/* 特意用 shield：ShieldIcon 曾经用 spring 动 3 个关键帧，一 hover 就抛未捕获错误，
-   就是在这条用例里炸出来的。留着它当哨兵，回归了这里会立刻响。 */
+/* Shield remains a sentinel for invalid multi-keyframe spring animations. */
 const CLASS_ROWS = [
   { id: "warden", label: "Warden", icon_type: "vector" as const, vector_icon: "shield" as const, icon_key: null, color: "#61B8AA" },
   { id: "seer", label: "Seer", icon_type: "vector" as const, vector_icon: "swords" as const, icon_key: null, color: "#6EA8FE" },

@@ -258,6 +258,7 @@ export class SiteConfigService {
 
     const previousKey = siteLogoKeyFromUrl(siteRow?.siteLogoUrl ?? this.deps.envSiteLogoUrl);
     const nextUrl = siteLogoUrlForKey(stored.data);
+    // 先原子提交新 Logo 指针及媒体引用，再 best-effort 删除旧对象；失败由孤儿清理回收。
     try {
       await this.commitSiteLogoUrl(nextUrl, stored.data);
     } catch (error) {

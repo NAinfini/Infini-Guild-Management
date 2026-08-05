@@ -15,6 +15,11 @@ const storageState = vi.hoisted(() => ({
   storages: [] as Storage[],
   allItems: [] as StorageItem[],
   manualHasMore: false,
+  treeLoading: false,
+  treeError: false,
+  treeFetching: false,
+  treeHasData: true,
+  treeRefetch: vi.fn(),
 }));
 
 const storageHooks = vi.hoisted(() => ({
@@ -60,8 +65,11 @@ vi.mock("../../hooks/useEffectivePermissions", () => ({
 
 vi.mock("../../hooks/useStorage", () => ({
   useStorageTree: () => ({
-    data: { data: storageState.storages },
-    isLoading: false,
+    data: storageState.treeHasData ? { data: storageState.storages } : undefined,
+    isLoading: storageState.treeLoading,
+    isError: storageState.treeError,
+    isFetching: storageState.treeFetching,
+    refetch: storageState.treeRefetch,
   }),
   useStorageItems: storageHooks.useStorageItems,
   useStorageItem: () => ({ data: null }),
@@ -254,6 +262,11 @@ describe("StoragePage recovery and filter isolation", () => {
     storageState.storages = [];
     storageState.allItems = [item];
     storageState.manualHasMore = false;
+    storageState.treeLoading = false;
+    storageState.treeError = false;
+    storageState.treeFetching = false;
+    storageState.treeHasData = true;
+    storageState.treeRefetch.mockReset();
     storageHooks.fetchNextPage.mockReset();
     storageHooks.useStorageItems.mockReset();
     mutationMocks.createBatchTransaction.mockReset();
@@ -278,6 +291,32 @@ describe("StoragePage recovery and filter isolation", () => {
       "href",
       "/storage/manage",
     );
+  });
+
+  it("shows a retryable connection error without an empty or create state on initial failure", async () => {
+    const user = userEvent.setup();
+    storageState.treeError = true;
+    storageState.treeHasData = false;
+
+    renderPage();
+
+    expect(screen.getByText("common:errors.connectionIssue")).toBeInTheDocument();
+    expect(screen.queryByText("empty.noStorage")).not.toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: "action.createStorage" })).not.toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "common:action.retry" }));
+    expect(storageState.treeRefetch).toHaveBeenCalledOnce();
+  });
+
+  it("keeps cached storage visible with a retry action after a background failure", async () => {
+    const user = userEvent.setup();
+    storageState.storages = [storages[0]!];
+    storageState.treeError = true;
+
+    renderPage();
+
+    expect(screen.getAllByText("Main vault").length).toBeGreaterThan(0);
+    await user.click(screen.getByRole("button", { name: "common:action.retry" }));
+    expect(storageState.treeRefetch).toHaveBeenCalledOnce();
   });
 
   it("does not expose the create action to users without structure permission", () => {

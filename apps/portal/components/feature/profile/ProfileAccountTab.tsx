@@ -109,9 +109,7 @@ export function ProfileAccountTab({
   return (
     <div className="profile-account">
       <div className="profile-account__cards">
-          {/* 这一屏此前只有两张表单卡，而「我现在是谁、什么角色、什么时候加入的」
-              这几件事全站只在名册弹窗里露过一半。它们不是可改项，所以是一张只读卡，
-              和两张表单卡并排——三张一行，正好把这一屏铺满。 */}
+          {/* Immutable account facts stay separate from editable forms. */}
           {facts.length > 0 ? (
             <Paper withBorder radius="md" p="var(--card-padding)">
               <SectionHeader title={t("account.section.facts")} headingLevel={2} />
@@ -129,8 +127,7 @@ export function ProfileAccountTab({
           <Paper withBorder radius="md" p="var(--card-padding)" className="profile-account__card">
             <form onSubmit={(event) => { event.preventDefault(); handleChangePassword(); }}>
             <SectionHeader title={changePasswordLabel} headingLevel={2} />
-            {/* 三个框此前只有 placeholder，一开始输入就没有任何提示说明当前
-                填的是哪一个。改密码场景下这不是审美问题。 */}
+            {/* Persistent labels are required because password values obscure field context. */}
             <Stack gap="var(--space-md)">
               <PasswordInput
                 id="profile-current-password"
@@ -206,8 +203,6 @@ export function ProfileAccountTab({
           </Paper>
       </div>
 
-      {/* 登出原先是最后一张卡下面一个孤零零的红按钮，和上面两张「填完点保存」
-          的卡长得一模一样，但它一点就走。分成独立一条，左边说清楚它是什么。 */}
       <div className="profile-account__exit">
         <div>
           <Text size="sm" fw={600}>{t("account.exit.title")}</Text>

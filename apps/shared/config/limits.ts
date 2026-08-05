@@ -4,14 +4,7 @@ export const LIMITS = {
     upload: 32 * 1024 * 1024,
   },
   media: {
-    /*
-     * 落库的图片只有 WebP：上传前浏览器一定会转（shared/utils/media.ts），
-     * 服务端按这份名单再验一次字节头。以前 jpeg/png/avif 也收，于是同一张图在库里
-     * 有五种可能的格式，缓存和缩略图两边都得各自兼容一遍。
-     *
-     * GIF 是唯一的例外，而且是明写的：转 WebP 只会留下第一帧，动画就没了——
-     * 那是丢信息，不是换编码。
-     */
+    // Persist WebP, except GIF where conversion would discard animation frames.
     allowedImageTypes: [
       "image/webp",
       "image/gif",
@@ -41,10 +34,7 @@ export const LIMITS = {
     eventTitle: { min: 1, max: 200 },
     eventDescription: { max: 5000 },
     eventAttachments: { max: 5 },
-    /* 一个活动最多能设几格职业配额。原先这个数跟 classesPerProfile 绑在一起，理由是
-       「一个人最多挂 20 个职业，配额再多也没有能对上的人」——一格能指向一整个职业
-       标签之后这条推理就不成立了，格子数跟单人职业数再无关系。留在 20 是因为一支
-       队伍的编成位不会比这更多，超过就该拆活动而不是继续加格。 */
+    // Quota slots describe team composition and are independent of per-member classes.
     eventClassQuotas: { max: 20 },
     eventParticipantsBatch: { max: 100 },
     announcementTitle: { min: 1, max: 200 },
@@ -106,6 +96,11 @@ export const LIMITS = {
     uploads: { maxRequests: 20, windowMs: 60_000 },
     credentials: { maxRequests: 5, windowMs: 60_000 },
     reads: { maxRequests: 120, windowMs: 60_000 },
+  },
+  websocket: {
+    maxConnections: 1500,
+    connectionsPerAccount: 12,
+    handshakes: { maxRequests: 30, windowMs: 60_000 },
   },
   cache: {
     mediaMaxAgeSeconds: 3600,

@@ -33,6 +33,18 @@ const serviceMocks = vi.hoisted(() => ({
   fetchWikiCategories: vi.fn(),
 }));
 
+class WideResizeObserver {
+  constructor(private readonly callback: ResizeObserverCallback) {}
+  disconnect() {}
+  unobserve() {}
+  observe() {
+    this.callback(
+      [{ contentRect: { width: 1200 } } as ResizeObserverEntry],
+      this as unknown as ResizeObserver,
+    );
+  }
+}
+
 vi.mock("@tanstack/react-router", () => ({
   useNavigate: () => navigateMock,
   useParams: () => paramsMock,
@@ -98,7 +110,10 @@ vi.mock("../../hooks/useLoadWarningToast", () => ({
 
 vi.mock("react-i18next", () => ({
   useTranslation: () => ({
-    t: (key: string) => key,
+    t: (key: string, values?: { category?: string }) =>
+      key === "drawer.readerTitle"
+        ? `Wiki / ${values?.category ?? "Category"}`
+        : key,
   }),
 }));
 
@@ -130,6 +145,7 @@ function renderWikiPage() {
 
 describe("WikiPage", () => {
   beforeEach(() => {
+    window.ResizeObserver = WideResizeObserver as unknown as typeof ResizeObserver;
     navigateMock.mockReset();
     confirmMock.mockReset();
     confirmMock.mockResolvedValue(true);
@@ -201,7 +217,9 @@ describe("WikiPage", () => {
       moveCategory: vi.fn(),
       deleteCategory: vi.fn(),
       resetCategoryDrafts: resetCategoryDraftsMock,
-      isDirty: categoryEditorState.isDirty,
+      get isDirty() {
+        return categoryEditorState.isDirty;
+      },
     });
     wikiEditorMock.mockReturnValue({
       articleTitle: "",
@@ -235,6 +253,16 @@ describe("WikiPage", () => {
       uploadWikiArticleImage: vi.fn(),
       deleteArticle: vi.fn(),
     });
+  });
+
+  it("requests curated server order by default", async () => {
+    renderWikiPage();
+
+    await waitFor(() =>
+      expect(serviceMocks.fetchWikiArticles).toHaveBeenCalledWith(
+        expect.objectContaining({ sort: "curated" }),
+      ),
+    );
   });
 
   it("opens mobile deep links in the article pane and returns to the list", async () => {
@@ -553,5 +581,111 @@ describe("WikiPage", () => {
     expect(titleRule).toContain("min-width: 0");
     expect(narrowEditorRule).toContain("min-height: clamp(");
     expect(narrowEditorRule).not.toContain("overflow");
+  });
+
+  it("wires wiki sort through the toolbar without a shared clear action", async () => {
+    renderWikiPage();
+
+    const sort = await screen.findByRole("combobox", { name: "filter.sort" });
+    expect(sort).toHaveValue("filter.sort.curated");
+    expect(sort.closest(".content-filter-toolbar")).toHaveClass("wiki-page-toolbar");
+
+    fireEvent.click(await screen.findByRole("option", { name: "filter.sort.updated_asc", hidden: true }));
+
+    await waitFor(() =>
+      expect(serviceMocks.fetchWikiArticles).toHaveBeenCalledWith(
+        expect.objectContaining({ sort: "updated_asc" }),
+      ),
+    );
+    expect(screen.queryByText("filter.summary.sort")).not.toBeInTheDocument();
+
+    expect(sort).toHaveValue("filter.sort.updated_asc");
+    expect(screen.queryByRole("button", { name: "common:filter.clearAll" })).not.toBeInTheDocument();
+  });
+
+  it("uses a semantic breadcrumb and page-scoped reading layout", async () => {
+    renderWikiPage();
+
+    const breadcrumb = await screen.findByRole("navigation", { name: "aria.breadcrumb" });
+    expect(within(breadcrumb).getByText("title")).toBeInTheDocument();
+    expect(within(breadcrumb).getByText("Guides")).toBeInTheDocument();
+
+    const css = readFileSync(resolve(process.cwd(), "apps/portal/components/pages/WikiPage.css"), "utf8");
+    expect(css).toMatch(
+      /\.wiki-article-reader-content\s*\{[\s\S]*?max-width:\s*72ch/,
+    );
+    expect(css).toMatch(
+      /\.wiki-article-reader-card\s*\{[\s\S]*?flex:\s*0 1 auto[\s\S]*?max-block-size:\s*100%/,
+    );
+    expect(css).toMatch(
+      /\.wiki-article-reader-card \.infini-tiptap-toc\s*\{[\s\S]*?order:\s*-1[\s\S]*?position:\s*static[\s\S]*?width:\s*100%/,
+    );
+    expect(css).toMatch(
+      /@media \(max-width: 767px\)[\s\S]*?\.wiki-article-item \+ \.wiki-article-item\s*\{[\s\S]*?border-block-start-color:\s*var\(--border-subtle\)/,
+    );
+  });
+
+  it("uses Wiki and category context instead of repeating the article title in the mobile drawer", async () => {
+    mediaState.isDesktop = false;
+    renderWikiPage();
+
+    await screen.findByText("Deleted Article", { selector: ".wiki-article-reader-title" });
+    const drawerTitle = document.querySelector(".mantine-Drawer-title");
+    expect(drawerTitle).not.toBeNull();
+    expect(drawerTitle).toHaveTextContent("Wiki / Guides");
+    expect(drawerTitle).not.toHaveTextContent("Deleted Article");
+  });
+
+  it("keeps a dirty article editor open when mobile Back is cancelled and closes after confirmation", async () => {
+    mediaState.isDesktop = false;
+    articleEditorState.isDirty = true;
+    confirmMock.mockResolvedValueOnce(false).mockResolvedValueOnce(true);
+    renderWikiPage();
+
+    fireEvent.click(await screen.findByRole("button", { name: "editor.editWiki" }));
+    await screen.findByText("articleEditor.title", { selector: ".wiki-article-editor-title" });
+    const back = screen.getByRole("button", { name: "backToList" });
+    expect(back).toHaveAttribute("data-variant", "subtle");
+    expect(back.querySelector("svg")).not.toBeNull();
+
+    fireEvent.click(back);
+    await waitFor(() => expect(confirmMock).toHaveBeenCalledTimes(1));
+    expect(screen.getByRole("button", { name: "backToList" })).toBeInTheDocument();
+    expect(exitArticleEditorMock).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByRole("button", { name: "backToList" }));
+    await waitFor(() => expect(exitArticleEditorMock).toHaveBeenCalledOnce());
+    await waitFor(() =>
+      expect(screen.queryByRole("button", { name: "backToList" })).not.toBeInTheDocument(),
+    );
+  });
+
+  it("keeps a dirty category editor open when the Drawer X is cancelled and closes after confirmation", async () => {
+    mediaState.isDesktop = false;
+    paramsMock.slug = undefined;
+    routeSearchMock.selection = "none";
+    categoryEditorState.isDirty = true;
+    confirmMock.mockResolvedValueOnce(false).mockResolvedValueOnce(true);
+    renderWikiPage();
+
+    fireEvent.click(await screen.findByRole("button", { name: "editor.editCategories" }));
+    expect(await screen.findByRole("button", { name: "editor.closeNoSave" })).toBeInTheDocument();
+    expect(document.querySelector(".mantine-Drawer-title")).toHaveTextContent(
+      "categoryEditor.title",
+    );
+
+    const close = document.querySelector(".mantine-Drawer-close") as HTMLButtonElement | null;
+    expect(close).not.toBeNull();
+    fireEvent.click(close as HTMLButtonElement);
+
+    await waitFor(() => expect(confirmMock).toHaveBeenCalledTimes(1));
+    expect(screen.getByRole("button", { name: "editor.closeNoSave" })).toBeInTheDocument();
+    expect(resetCategoryDraftsMock).not.toHaveBeenCalled();
+
+    fireEvent.click(close as HTMLButtonElement);
+    await waitFor(() => expect(resetCategoryDraftsMock).toHaveBeenCalledOnce());
+    await waitFor(() =>
+      expect(screen.queryByRole("button", { name: "editor.closeNoSave" })).not.toBeInTheDocument(),
+    );
   });
 });

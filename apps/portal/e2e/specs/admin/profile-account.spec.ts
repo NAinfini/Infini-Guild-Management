@@ -216,7 +216,7 @@ test("改用户名卡：非法用户名当场报错且按钮禁用，合法改�
 });
 
 test("登出条：点一次跳回登录页，服务端的会话当场作废", async ({ clientAddress }) => {
-  await flow.click(page.getByRole("button", { name: "Logout", exact: true }), LOGOUT);
+  await flow.click(page.getByRole("button", { name: "Sign out", exact: true }), LOGOUT);
   await expect(page).toHaveURL(/\/login(\?|$)/);
 
   /*

@@ -1,4 +1,5 @@
 import type { Bindings } from "../index";
+import { assertContentMediaKey } from "./media-keys";
 
 export const SYSTEM_TEST_ARTIFACT_TYPES = [
   "user", "invite_link", "role", "event", "event_template", "announcement",
@@ -319,7 +320,7 @@ export class SystemTestService {
 
   private async deleteR2Keys(keys: readonly string[]): Promise<void> {
     for (const key of keys) {
-      assertDeletableContentMediaKey(key);
+      assertContentMediaKey(key);
       await this.env.DB.prepare("DELETE FROM media_upload_leases WHERE media_key = ?").bind(key).run();
       await this.env.DB.prepare("DELETE FROM media_references WHERE media_key = ?").bind(key).run();
       await this.env.MEDIA.delete(key);
@@ -398,4 +399,3 @@ export function getSystemTestRunId(c: { get(key: string): unknown }): string | n
   const value = c.get("systemTestRunId");
   return typeof value === "string" ? value : null;
 }
-import { assertDeletableContentMediaKey } from "./media-keys";

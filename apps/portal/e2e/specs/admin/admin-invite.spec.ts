@@ -231,7 +231,7 @@ test("新建邀请码：弹窗填的次数和到期时间一路落到库里，�
   const row = inviteRow(page, created.code);
   await expect(row).toHaveCount(1);
   await expect(row.locator("td[data-column-id='usage']"), "用量列显示 已用/上限").toContainText("0/3");
-  await expect(row.locator("td[data-column-id='status']")).toHaveText("active");
+  await expect(row.locator("td[data-column-id='status']")).toHaveText("Valid");
   await expect(row.locator("td[data-column-id='expires']")).toHaveText("2031-03-07 05:09");
 
   const after = { ...before, total: before.total + 1, active: before.active + 1 };
@@ -250,7 +250,7 @@ test("可见性三段：有效／过期／撤销各自只装自己那一批，�
   ).toBe(200);
 
   await openInvites(page);
-  await expect(segmentInput(page, "Active"), "默认停在「有效」这一段").toBeChecked();
+  await expect(segmentInput(page, "Valid"), "默认停在「有效」这一段").toBeChecked();
   await expect(inviteRow(page, active.code)).toHaveCount(1);
   await expect(inviteRow(page, expired.code), "过期的码不该出现在有效段").toHaveCount(0);
   await expect(inviteRow(page, revoked.code), "撤销的码不该出现在有效段").toHaveCount(0);

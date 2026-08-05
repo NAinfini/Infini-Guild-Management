@@ -30,7 +30,6 @@ describe("notification session storage", () => {
     useNotificationStore.getState().setIdentity("user-b");
     expect(useNotificationStore.getState().pushHistory).toEqual([]);
     expect(localStorage.getItem(aKeys.push)).toContain("A-only title");
-    expect(localStorage.getItem(aKeys.pushVersion)).toBe("2");
 
     useNotificationStore.getState().setIdentity("user-a");
     expect(localStorage.getItem(aKeys.push)).not.toBeNull();

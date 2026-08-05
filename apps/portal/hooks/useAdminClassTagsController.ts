@@ -41,8 +41,7 @@ export function useAdminClassTagsController() {
   const queryClient = useQueryClient();
   const setTags = useClassTagStore((state) => state.setTags);
   const [opened, setOpened] = useState(false);
-  /* 右栏分两态：选中一个标签先只是「看」，动它得再点一下编辑。原先点一下左栏就直接
-     进表单，于是想确认「坦克里都有谁」也要先进入一个可写的界面，手一滑就改了。 */
+  // Selection opens a read-only detail; editing requires a separate action.
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState<ClassTagDraft>(EMPTY_CLASS_TAG_DRAFT);
 
@@ -163,13 +162,8 @@ export function useAdminClassTagsController() {
     setDraft(EMPTY_CLASS_TAG_DRAFT);
   };
 
-  /*
-   * 进页面直接把第一个标签摊开（只是看，不进编辑态）。右栏原先停在一句「选择一个标签
-   * 进行编辑」上，而九成情况下人就是冲着某个标签来的，等于每次都先付一次点击。
-   *
-   * 只在本次挂载里认一次（autoSelected）：不认的话，删完当前这个标签把右栏收掉，这个
-   * effect 立刻又把列表里的头一个开回来，看着像是删错了。
-   */
+  // Auto-select only once per mount so deleting the active tag can leave the
+  // detail closed instead of immediately reopening the next row.
   const autoSelected = useRef(false);
   useEffect(() => {
     if (autoSelected.current) return;

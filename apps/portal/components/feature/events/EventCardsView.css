@@ -1,11 +1,4 @@
-/*
- * 卡片是纵向三段（色带 / 正文 / 页脚），必须显式排成一列。
- *
- * SimpleGrid 默认 align-items: stretch，同一行里的卡都被拉到最高那张的高度。
- * 卡片原本是块级流，多出来的高度就堆在最后一个子元素**下面**——也就是页脚按钮
- * 底下那块凭空多出来的空白，而且每张卡多多少还不一样（有配额筹码行的那张最高，
- * 旁边少一行的就多空一截）。正文吃掉这份富余，页脚才会贴着卡片下沿。
- */
+/* 卡片采用纵向伸展布局，正文吸收网格行的富余空间，使页脚贴底。 */
 .event-card {
   --event-card-accent: var(--domain-event);
   display: flex;
@@ -32,8 +25,9 @@
   display: flex;
   align-items: center;
   flex-wrap: nowrap;
-  gap: 6px;
-  padding: 6px var(--space-sm) 6px var(--space-md);
+  min-width: 0;
+  gap: 5px;
+  padding: 5px var(--space-sm) 5px var(--space-md);
   border-radius: var(--radius-surface) var(--radius-surface) 0 0;
   /* 全站材质渐变统一 160deg，由 architecture-boundaries 守着，色带不能自成一套。 */
   background: linear-gradient(
@@ -47,6 +41,7 @@
 .event-card__header-left {
   display: flex;
   align-items: center;
+  flex: 1 1 auto;
   min-width: 0;
   overflow: hidden;
 }
@@ -64,6 +59,7 @@
   letter-spacing: normal;
   font-weight: 700;
   min-height: 24px;
+  max-width: 100%;
 }
 
 /* 人数住在色带右端，复制按钮左边。 */
@@ -71,8 +67,8 @@
   display: flex;
   align-items: center;
   flex-shrink: 0;
-  gap: 4px;
-  padding: 2px 8px;
+  gap: 3px;
+  padding: 2px 7px;
   border-radius: var(--shape-pill);
   font-size: 11px;
   font-weight: 700;
@@ -81,6 +77,12 @@
   border: 1px solid color-mix(in srgb, var(--text-primary) 10%, transparent);
   background: color-mix(in srgb, var(--surface-base) 86%, transparent);
   white-space: nowrap;
+}
+
+.event-card__capacity[data-capacity-state="over"] {
+  color: var(--status-danger);
+  border-color: color-mix(in srgb, var(--status-danger) 38%, transparent);
+  background: color-mix(in srgb, var(--status-danger) 9%, var(--surface-base));
 }
 
 .event-card__menu-btn {
@@ -97,15 +99,13 @@
   background: color-mix(in srgb, var(--text-primary) 10%, transparent);
 }
 
-/* 正文吃掉 SimpleGrid 拉伸出来的那点富余（见 .event-card 的注释），页脚才会贴着
-   卡片下沿而不是浮在半空、底下拖一条空白。 */
+/* 正文吸收网格伸展空间，使页脚保持贴底。 */
 .event-card__body {
   flex: 1;
   padding: var(--space-sm) var(--space-md);
 }
 
-/* The card is no longer a role="button", so the title carries the keyboard
-   affordance. It has to shrink exactly like the plain <Text> it replaced. */
+/* 标题承担键盘入口，并像普通文本一样允许收缩。 */
 .event-card__title-btn {
   display: block;
   width: 100%;
@@ -124,9 +124,7 @@
   margin: 0;
 }
 
-/* 单行、不换行、不折叠。以前它允许换行并限宽 86px，五个状态一起出现时会换到
-   第二行、把卡片顶高，一排卡的底边就参差不齐。现在它固定一行——最多五个同时出现
-   （周期＋置顶＋锁定＋归档＋新/更新，后两者互斥），20px 一个放得下。 */
+/* Keep the bounded status set on one rail so peer cards retain equal height. */
 .event-card__status-rail {
   display: flex;
   align-items: center;
@@ -146,13 +144,7 @@
   background: color-mix(in srgb, var(--text-primary) 5%, transparent);
 }
 
-/* Status-indicator icon colours, moved out of style={{}} (task-8 批 B).
-   Each targets the icon itself, not the .event-card__status-icon wrapper span,
-   so there is no specificity contention with the rule above: the wrapper's
-   `color` would only apply here via inheritance, and an explicit `color` on
-   the icon's own class always wins over an inherited value. Mantine's dynamic
-   --mantine-color-* vars are exempt from the "every var must resolve"
-   guard (theme-tokens.test.ts RUNTIME_INJECTED_VARS). */
+/* Status icons set their own color instead of inheriting the neutral rail color. */
 .event-card__status-icon--pinned {
   color: var(--mantine-color-portal-brand-6);
 }
@@ -192,8 +184,7 @@
   padding: var(--space-xs) 0;
 }
 
-/* 中奖者标记。以前是一个带浮动徽章的描边盒子，单独占一行；现在缩成参与行左端的
-   一枚筹码，行数不变。 */
+/* Winner status remains an inline chip within the participation row. */
 .event-card__winners-tag {
   display: inline-flex;
   align-items: center;
@@ -202,9 +193,7 @@
   padding: 2px 8px 2px 5px;
   border-radius: 10px;
   background: var(--mantine-color-pink-5);
-  /* 徽章底色固定吃 --mantine-color-pink-5，不随 [data-theme] 变化，压在
-     它上面的文字也保持不变，直接用 Mantine 自带的 --mantine-color-white，
-     不必新造字面白色（the token-layer contract I 节）。 */
+  /* Fixed pink winner badges use Mantine's fixed white foreground. */
   color: var(--mantine-color-white);
   font-size: 11px;
   font-weight: 600;
@@ -272,4 +261,34 @@
 .event-members-modal__col--power {
   text-align: right;
   min-width: 0;
+}
+
+@media (max-width: 30rem) {
+  .event-card__header {
+    gap: 4px;
+    padding: 4px var(--space-sm);
+  }
+
+  .event-card__header-right,
+  .event-card__header-actions {
+    gap: 2px;
+  }
+
+  .event-card__type-badge {
+    min-height: 22px;
+  }
+
+  .event-card__capacity {
+    gap: 2px;
+    padding: 1px 5px;
+  }
+
+  .event-card__status-rail {
+    gap: 1px;
+  }
+
+  .event-card__status-icon {
+    width: 18px;
+    height: 18px;
+  }
 }

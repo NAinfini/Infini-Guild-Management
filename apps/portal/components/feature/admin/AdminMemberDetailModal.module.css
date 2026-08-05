@@ -10,8 +10,7 @@
   min-height: 200px;
 }
 
-/* 原来是 1rem 1.2rem（16 / 19.2px）。两个值都不在间距标度上，且上下左右不等
-   的理由无从查考。统一到 --card-padding，和其它卡片内容一致。 */
+/* Match shared card-content padding. */
 .sectionBody {
   padding: var(--card-padding);
 }

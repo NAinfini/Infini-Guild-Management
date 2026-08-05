@@ -23,7 +23,7 @@ export function AnnouncementsPage() {
   useLoadWarningToast(controller.listQuery.isError || controller.detailQuery.isError, t("common:loadErrorRetry"));
 
   const hasActiveFilters = Boolean(
-    controller.search.trim() || controller.statusFilter || controller.pinnedFilter,
+    controller.search.trim() || controller.statusFilter || controller.pinnedFilter || controller.sortOrder !== "updated_desc",
   );
   const emptyText = (
     <EmptyState
@@ -121,10 +121,12 @@ export function AnnouncementsPage() {
         <AnnouncementFiltersCard
           pinnedFilter={controller.pinnedFilter}
           statusFilter={controller.statusFilter}
+          sortOrder={controller.sortOrder}
           search={controller.search}
           canEdit={controller.canEdit}
           onPinnedFilterChange={controller.setPinnedFilter}
           onStatusFilterChange={controller.setStatusFilter}
+          onSortOrderChange={controller.setSortOrder}
           onSearchChange={controller.setSearch}
         />
       ) : null}
@@ -151,7 +153,7 @@ export function AnnouncementsPage() {
       ) : (
         <div className="announcements-page-grid">
           <div className="announcements-page-column">{listCard}</div>
-          <div className="announcements-page-column">{detailCard}</div>
+          <div className="announcements-page-column announcements-page-column--detail">{detailCard}</div>
         </div>
       )}
 

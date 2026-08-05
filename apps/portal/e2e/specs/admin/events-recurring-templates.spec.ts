@@ -85,13 +85,8 @@ async function createTemplate(api: APIRequestContext, extra: Record<string, unkn
   ) as ServerTemplate;
 }
 
-/*
- * 周期模板已经从独立标签页并入 卡片/月/周期 这个视图切换器。这里刻意继续用旧的
- * ?tab=recurring 进入：它同时是这条链路的入口和「旧链接仍然落到模板视图」的回归
- * 守卫——真退回卡片视图的话，页面看上去完全正常，只有这条断言会响。
- */
-async function openTab(page: Page): Promise<void> {
-  await page.goto("/events?tab=recurring");
+async function openRecurringView(page: Page): Promise<void> {
+  await page.goto("/events?view=recurring");
   await expect(page.getByRole("radio", { name: "Recurring", exact: true })).toBeChecked();
 }
 
@@ -114,7 +109,7 @@ function formDialog(page: Page, heading: RegExp): Locator {
 }
 
 test("新建模板：必填项不齐就存不了，填齐之后每个字段都按填的样子落库", async ({ page, flow, api }) => {
-  await openTab(page);
+  await openRecurringView(page);
   await page.getByRole("button", { name: "Create Template", exact: true }).click();
 
   const modal = formDialog(page, /^Create Template/);
@@ -187,7 +182,7 @@ test("编辑模板：改动落到服务端，没碰的字段一个也不能丢",
     duration_minutes: 120,
   });
 
-  await openTab(page);
+  await openRecurringView(page);
   await editOverlay(page).click();
 
   const modal = formDialog(page, /^Edit Template/);
@@ -219,7 +214,7 @@ test("编辑模板：改动落到服务端，没碰的字段一个也不能丢",
 
 test("暂停与恢复：徽章和服务端的 paused 一起翻转", async ({ page, flow, api }) => {
   await createTemplate(api);
-  await openTab(page);
+  await openRecurringView(page);
   await expect(templateCard(page).getByText("Active", { exact: true })).toBeVisible();
 
   await editOverlay(page).click();
@@ -245,7 +240,7 @@ test("暂停与恢复：徽章和服务端的 paused 一起翻转", async ({ pag
 
 test("删除模板：取消什么都不做，确认后服务端和列表里都不再有它", async ({ page, flow, api }) => {
   const created = await createTemplate(api);
-  await openTab(page);
+  await openRecurringView(page);
 
   await editOverlay(page).click();
   const modal = formDialog(page, /^Edit Template/);

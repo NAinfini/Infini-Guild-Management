@@ -136,7 +136,7 @@ export function AdminUsersSection({
     return userRows.filter((row) => row.user.is_active === wantActive);
   }, [userRows, statusFilter]);
 
-  /* 换筛选之后行数会变少，停在原来的页码上会看到一片空白。 */
+  // A changed status filter invalidates the current page index.
   useEffect(() => {
     setPagination((previous) => (previous.pageIndex === 0 ? previous : { ...previous, pageIndex: 0 }));
   }, [statusFilter]);
@@ -491,6 +491,7 @@ export function AdminUsersSection({
                   value={memberSearch}
                   onChange={(event) => onMemberSearchChange(event.currentTarget.value)}
                   placeholder={t("member.search.placeholder")}
+                  aria-label={t("member.search.aria")}
                   leftSection={<SearchIcon size={14} />}
                   size="sm"
                 />
@@ -544,8 +545,6 @@ export function AdminUsersSection({
                 withTableBorder={false}
                 withColumnBorders={false}
                 virtualize
-                /* 高度交给 .admin-table-card--fill 那条 flex 链。原先写死 65vh：
-                   工具条一换行就顶出视口，行数一少又在卡片下面留一大块白。 */
                 maxHeight="none"
                 onRowDoubleClick={(row) => onOpenMemberDetail(row.original.user.id)}
                 onRowClick={(row, event) => handleRowClick(row.original.user.id, event)}
@@ -563,9 +562,7 @@ export function AdminUsersSection({
             </>
           </Paper>
 
-          {/* 选中后那条批量操作栏已按要求删掉。批量操作没有消失：右键任意一行
-              （或 Shift+F10）弹出的就是同一套菜单，改身份 / 启用 / 停用 / 批量删除
-              都在里面，且对多选生效。下面这句提示是它唯一的入口说明，保留。 */}
+          {/* 多选操作通过任意选中行的右键菜单或 Shift+F10 进入，并作用于全部选中成员。 */}
           {isAdmin ? (
             <Text c="dimmed" size="xs">{t("member.selectionHint")}</Text>
           ) : null}

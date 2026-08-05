@@ -122,11 +122,7 @@ export function EventFormModal({
   const pollError = isPoll && pollOptionCount < 2 ? t("poll.field.optionsInvalid") : undefined;
   const raffleWinnerCountNum = Number.parseInt(winnerCount, 10);
   const raffleError = isRaffle && (!Number.isFinite(raffleWinnerCountNum) || raffleWinnerCountNum < 1);
-  /*
-   * 保存禁用有五个分支，以前它们全挤在一个布尔里：按钮灰着，而缺的那一项可能在另一栏、
-   * 甚至在还没展开的类型块里，人只能一格格找。这里把同一组条件按顺序摊开，页脚直接说
-   * 卡在哪一条——条件本身一个没变，只是把结论写出来了。
-   */
+  // Keep the first blocking condition so the footer can explain a disabled save.
   const blockingReasonKey = !title.trim()
     ? "form.missing.title"
     : !eventType
@@ -152,11 +148,7 @@ export function EventFormModal({
       centered
       size="min(920px, calc(100vw - 32px))"
     >
-      {/*
-        * 左栏是所有活动都要填的，右栏只放当前类型独有的那一块。
-        * 以前它们串成一列，选了投票就在日期底下长出一段选项、选了抽奖又换成另一段，
-        * 同一个表单会随类型上下窜；分栏之后类型只影响右边这一格。
-        */}
+      {/* Common event fields stay separate from type-specific behavior fields. */}
       <div className="event-form__layout">
         <Stack gap={16} className="event-form__column">
           <TextInput

@@ -36,7 +36,7 @@ import {
   LayoutListIcon,
   SearchIcon,
 } from "@portal/components/icons";
-import type { TipTapEditorLabels } from "./TipTapEditor";
+import type { TipTapEditorLabels } from "./tiptap-meta";
 
 const TEXT_COLORS = ["#1f6feb", "#16a34a", "#f59e0b", "#dc2626", "#7c3aed", "#ec4899", "#0891b2", "#334155"];
 const HIGHLIGHT_COLORS = ["#fef08a", "#bbf7d0", "#bfdbfe", "#fecdd3", "#e9d5ff", "#fed7aa"];

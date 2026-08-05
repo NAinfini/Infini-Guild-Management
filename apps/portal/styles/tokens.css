@@ -57,10 +57,8 @@
   --palette-orange-700: #954804;
   --palette-orange-900: #3F2612;
 
-  /* ── 中性 · 暖色温 ──
-   * 浅色端是「纸」不是「屏」：暖白纸 #FAF9F5 承载纯白卡片。
-   * 深色端沿用现有的四级近黑，避免顺手改掉一整套已调好的深色表面。
-   * 暖墨 #1A1815 是现有深色文字字面量的语义，本次只把它 token 化，不换色相。 */
+  /* ── Warm neutral ramp ──
+   * Paper-toned light surfaces and near-black dark surfaces share one scale. */
   --palette-neutral-0: #FFFFFF;
   --palette-neutral-25: #FAF9F5;
   --palette-neutral-50: #F1EEE7;
@@ -79,8 +77,8 @@
    * 单独命名以标注其唯一用途：dark 模式 --text-primary。 */
   --palette-ink-warm: #F0EDE8;
 
-  /* 唯一消费处：semantic.css 的 --accent-on-fill-hover（task-7 修复轮次 1
-   * 修复 I2）。--accent-on-fill（各 accent 自己的 900 档）落在
+  /* 唯一消费处：semantic.css 的 --accent-on-fill-hover。
+   * --accent-on-fill（各 accent 自己的 900 档）落在
    * --accent-fill-hover（600）上只有 3.16–3.50，不过 AA；而 --accent-fill-hover
    * 必须仍然比 --accent-fill 深一档（hover 加深反馈），不能为了凑文字对比度
    * 调浅。三个 accent 的 900 墨也不够深，撑不到 600 底所需的最深文字亮度
@@ -90,13 +88,8 @@
    * （5.36/4.73/4.60，见 theme-tokens.test.ts）。 */
   --palette-ink-black: #000000;
 
-  /* ── 语义色 ──
-   * 亮档给深色模式（近黑底），深档给浅色模式（纸底）。
-   * 这个分档规则现由 semantic.css 的 --status-*（浅色模式 :30-33 取 *-deep，
-   * 深色模式 :68-71 取 *-bright）体现，此处沿用同一分配（复审 T3：此前这里
-   * 写的是「styles.css:104-111 注释里已经确立」，核实后那两行现在是
-   * .star-border 的定义，规则早已随 status 语义色一起迁进了 semantic.css，
-   * 不再住在 styles.css）。 */
+  /* ── Status colors ──
+   * semantic.css uses deep shades on paper surfaces and bright shades on dark surfaces. */
   --palette-success-bright: #4ADE80;
   --palette-success-deep: #15803D;
   --palette-warning-bright: #FBBF24;
@@ -106,27 +99,9 @@
   --palette-info-bright: #7DD3FC;
   --palette-info-deep: #0369A1;
 
-  /* ── Mantine light variant 的文字档（Task 4 迁入） ──
-   * Mantine 的 light variant 在 10% alpha 填充上放 shade-6 文字（不是曾经写的
-   * 12%——@mantine/core 的 get-css-color-variables.mjs 里是
-   * alpha(colors[X][primaryShade], 0.1)，已去 node_modules 核实，
-   * theme-tokens.test.ts 的 MANTINE_LIGHT_FILL_ALPHA = 0.1 是对的，这条注释
-   * 此前手抄错了百分比），浅色模式下只有约 2.9:1。
-   *
-   * 下面这六个（红/青瓷/绿/黄绿/黄/橙）比库里最深的 shade 9 还深，库里没有
-   * 对应档位，只能落在 L1；gray / pink / grape / violet / indigo / blue / cyan
-   * 七个色阶库里恰好有对应档位，直接引用库变量，不在这里重复。
-   *
-   * 但「引用库变量」不等于「过 AA」——这条注释此前声称全部十三条都钉到了
-   * 「仍能在自己的 light 填充上过 4.5:1 的最深一档」，实测证伪：在三层浅色
-   * 表面（--palette-neutral-0/25/50）上逐条算过之后，只有 gray / red / blue /
-   * teal / green 五条全过，其余八条（pink / grape / violet / indigo / cyan /
-   * lime / yellow / orange）至少在最不利的 sunken 表面上不过 4.5:1，
-   * lime / yellow 甚至在中间那层表面上也不过。这是已知缺口、非本次引入，
-   * 库里已经是各自能用的最深档位，控制者尚未裁决是否要为这八条另开更深的
-   * L1 档位。清单与实测值见 theme-tokens.test.ts 的
-   * 「Mantine light variant 的文字色在浅色模式下过 AA」一组，任何一条数字
-   * 漂移都会让测试变红。 */
+  /* Mantine light-variant text colors.
+   * Mantine places text on a 10% primary-shade fill. Values deeper than its
+   * built-in shade 9 live here; contrast coverage is enforced in theme-tokens.test.ts. */
   --palette-mantine-red-text: #B02121;
   --palette-mantine-teal-text: #0A6B4E;
   --palette-mantine-green-text: #1F6B2E;
@@ -134,31 +109,10 @@
   --palette-mantine-yellow-text: #AC5900;
   --palette-mantine-orange-text: #C1400D;
 
-  /* ── 旧品牌辅色（Task 4 迁入，Task 9 批 1 收口 D 节）──
-   * 装饰性渐变（登录页光晕、侧栏描边、活动卡强调）在消费的暖色。
-   * --palette-bronze-warm：没有语义对应物、不随模式变化，但仍有 1 处组件层
-   * 消费（MyProfilePage.css .profile-preview-stat-icon--video）。组件层不许直接
-   * 引用 L1（守卫 rule 6），故本任务在 semantic.css 开了 L2 名字
-   * --brand-secondary，消费者已改指
-   * 过去；本值的唯一消费处从旧名转发块换成了 --brand-secondary。
-   * （复审 M6：--palette-copper-warm 此前留在这里，注释自己写着「此名现无
-   * 消费者」——它是 styles.css 旧名转发块 --color-accent 曾经的唯一消费处，
-   * 该转发块随本任务整体删除后就是零消费死 token，已删除，不保留「可能有用」
-   * 的侥幸。） */
+  /* Decorative brand accent exposed to components as --brand-secondary. */
   --palette-bronze-warm: #8B7355;
 
-  /* ── 查找高亮（与模式、与 accent 都无关，复审 I-7 / N-4 收口）──
-   * tiptap-editor.css 的「查找命中」标记色（黄/橙），独立于主题色阶，语义上
-   * 类似浏览器原生查找高亮，不随 [data-theme] 反色。批 2 曾把它登记为豁免的
-   * 字面量留在组件层，但它是「新引入的、只此一处定义的品牌外颜色」，跟
-   * --palette-bronze-warm 是同一类情况——批 1 对 bronze-warm 已经落了 L1/L2，
-   * 这里补上同样的处理，不是重新设计。
-   * 复审 N-4：这里只落不透明色，alpha 挪到 semantic.css 用 color-mix 表达
-   * （与本文件其余每一个值一致——L1 不烘 alpha），且 palette() 解析器只认
-   * `#hex`，落成 hex 才能被对比度审计看见。#FFD900 / #FF8C00 是原
-   * rgba(255, 217, 0, 0.35) / rgba(255, 140, 0, 0.55) 的不透明分量，alpha
-   * 通道在 semantic.css 的 --highlight-search(-active) 里用 color-mix 还原，
-   * 计算值逐字不变。 */
+  /* Search highlights are theme-independent opaque colors; semantic.css owns alpha. */
   --palette-highlight-search: #FFD900;
   --palette-highlight-search-active: #FF8C00;
 }

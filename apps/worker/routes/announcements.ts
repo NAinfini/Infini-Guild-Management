@@ -8,7 +8,7 @@ import type { Context } from "hono";
 import { Hono } from "hono";
 import type { Bindings } from "../index";
 import { getRequestUser, requirePermission } from "../middleware/rbac";
-import { AnnouncementService } from "../services/AnnouncementService";
+import { AnnouncementService, type AnnouncementSort } from "../services/AnnouncementService";
 import { AnnouncementImageStagingService } from "../services/announcement-image-staging";
 import { validateUploadBytes } from "../services/media";
 import { parseMediaKey } from "../services/media-keys";
@@ -16,6 +16,11 @@ import { buildError, collectFiles, getDb, handleResult, parseBoolean, parseJsonB
 import { hasMediaQuotaCapacity, withMediaAndPublishAnnouncement } from "./service-factory";
 
 export const announcementsRoutes = new Hono();
+
+function parseAnnouncementSort(value: string | undefined): AnnouncementSort | null {
+  if (value === undefined) return "updated_desc";
+  return value === "updated_desc" || value === "updated_asc" ? value : null;
+}
 
 function getService(c: Context): AnnouncementService {
   return new AnnouncementService(getDb(c), withMediaAndPublishAnnouncement(c));
@@ -35,9 +40,11 @@ announcementsRoutes.get("/", async (c) => {
   const user = await getRequestUser(c);
   const canReadAll = user ? hasAnyPermission(user.permissions, ["announcements.create", "announcements.edit", "announcements.archive", "announcements.delete"]) : false;
   const query = c.req.query();
+  const sort = parseAnnouncementSort(query.sort);
+  if (!sort) return buildError(c, "VALIDATION_ERROR", "Invalid announcement sort");
   const page = parsePage(query.page, 1);
   const limit = Math.min(100, parsePage(query.limit, 20));
-  const result = await getService(c).list({ canReadAll, page, limit, status: query.status, pinned: parseBoolean(query.pinned), archived: parseBoolean(query.archived), search: (query.search ?? "").trim() || undefined });
+  const result = await getService(c).list({ canReadAll, page, limit, status: query.status, pinned: parseBoolean(query.pinned), archived: parseBoolean(query.archived), search: (query.search ?? "").trim() || undefined, sort });
   return handleResult(c, result);
 });
 
@@ -131,7 +138,7 @@ announcementsRoutes.delete("/:id", async (c) => {
 });
 
 announcementsRoutes.delete("/:id/permanent", async (c) => {
-  const sessionUser = await requirePermission(c, "announcements.delete", { freshPermissions: true });
+  const sessionUser = await requirePermission(c, "announcements.delete");
   const result = await getService(c).permanentDelete(sessionUser.id, c.req.param("id"));
   return handleResult(c, result);
 });

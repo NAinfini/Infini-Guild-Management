@@ -101,7 +101,7 @@ describe("admin system test audit route", () => {
     }, env);
 
     expect(result.status).toBe(401);
-    expect(mocks.requirePermission).toHaveBeenCalledWith(expect.anything(), "admin.status.view", { freshPermissions: false });
+    expect(mocks.requirePermission).toHaveBeenCalledWith(expect.anything(), "admin.status.view");
     expect(mocks.writeAuditLogDurable).not.toHaveBeenCalled();
     expect(mocks.finalizeRun).not.toHaveBeenCalled();
   });

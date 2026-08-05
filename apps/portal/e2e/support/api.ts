@@ -47,16 +47,8 @@ export async function newApiContext(
 }
 
 /**
- * 前置条件：服务端必须真的按客户端地址分限流桶。
- *
- * 整套 e2e 的配额安排都压在这一条上（见 config.ts 的 clientIdentityHeaders）。
- * 它一旦不成立，表现出来的不是「限流没生效」，而是一整轮里几十条互不相干的用例
- * 各自报着自己的功能失败——真正的原因（大家挤在同一个桶里，配额被别人用光了）
- * 不会出现在任何一条报错里。CI 上已经这么烧过一轮 19 条。
- *
- * 所以在这里当场验一次：同一个地址连发两次，读数必须递减（证明真的在计数）；
- * 换一个地址再发一次，读数必须比前一个地址的第二次高（证明换了桶）。
- * 不成立就带着诊断当场停，不进入用例。
+ * E2E 配额隔离要求按客户端地址分桶：同地址读数递减，不同地址使用独立桶。
+ * 预检不满足时携带诊断立即停止。
  */
 export async function assertRateLimitIsolation(origin: string, slot: number): Promise<void> {
   const remainingFor = async (address: string): Promise<number> => {

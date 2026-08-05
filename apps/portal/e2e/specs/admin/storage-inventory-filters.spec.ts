@@ -1,6 +1,7 @@
 import type { Page } from "@playwright/test";
 import { SYSTEM_TEST_CONTENT_MARKER } from "@guild/shared/config/system-test";
 import { expect, readJson, test } from "../../support/test";
+import { ensureFiltersOpen, field, selectOption } from "../../support/ui";
 
 /*
  * 库存面板上的四个筛选控件：分类导轨、移动端分类下拉、搜索框、库存下拉。
@@ -96,8 +97,8 @@ function card(page: Page, sample: Sample) {
 }
 
 async function pickStock(page: Page, option: string) {
-  await page.locator(".storage-command__stock input").click();
-  await page.getByRole("option", { name: option, exact: true }).click();
+  await ensureFiltersOpen(page.locator(".storage-command"));
+  await selectOption(page, "Stock", option);
 }
 
 test("搜索框按名称过滤：命中项留下，其余全部滤掉", async ({ page, flow }) => {
@@ -105,17 +106,17 @@ test("搜索框按名称过滤：命中项留下，其余全部滤掉", async ({
   expect(before, "搜索前列表里应该不止一件").toBeGreaterThan(1);
 
   await flow.act(
-    () => page.locator(".storage-command__search input").fill(depositSample.name),
+    () => field(page, "Search items").fill(depositSample.name),
     ITEMS_REQUEST,
   );
 
   await expect(page.locator(CARD)).toHaveCount(1);
   await expect(card(page, depositSample)).toHaveCount(1);
-  await expect(page.locator(".storage-inventory-meta")).toContainText("1 items shown");
+  await expect(page.locator(".storage-inventory-meta")).toContainText("Showing 1 item");
 });
 
 test("清空搜索框会取消过滤", async ({ page, flow }) => {
-  const search = page.locator(".storage-command__search input");
+  const search = field(page, "Search items");
   const before = await page.locator(CARD).count();
 
   await flow.act(() => search.fill(depositSample.name), ITEMS_REQUEST);
@@ -216,20 +217,22 @@ test("移动端分类下拉与导轨等效：窄屏下导轨隐藏，下拉照�
   await page.setViewportSize({ width: 430, height: 900 });
   await expect(page.locator(".storage-category-rail"), "窄屏下导轨应当收起").toBeHidden();
 
-  const mobileSelect = page.locator(".storage-command__category-mobile input");
+  await ensureFiltersOpen(page.locator(".storage-command"));
+  const mobileSelect = field(page, "Filter by category");
   await expect(mobileSelect).toBeVisible();
 
-  await flow.act(async () => {
-    await mobileSelect.click();
-    await page.getByRole("option", { name: withdrawSample.categoryName, exact: true }).click();
-  }, ITEMS_REQUEST);
+  await flow.act(
+    () => selectOption(page, "Filter by category", withdrawSample.categoryName),
+    ITEMS_REQUEST,
+  );
   await expect(card(page, depositSample), "选到别的分类后样本必须消失").toHaveCount(0);
   await expect(card(page, withdrawSample)).toHaveCount(1);
 
-  await flow.act(async () => {
-    await mobileSelect.click();
-    await page.getByRole("option", { name: depositSample.categoryName, exact: true }).click();
-  }, ITEMS_REQUEST);
+  await ensureFiltersOpen(page.locator(".storage-command"));
+  await flow.act(
+    () => selectOption(page, "Filter by category", depositSample.categoryName),
+    ITEMS_REQUEST,
+  );
   await expect(card(page, depositSample), "选回样本所在分类，样本必须回来").toHaveCount(1);
   await expect(card(page, withdrawSample)).toHaveCount(0);
 });

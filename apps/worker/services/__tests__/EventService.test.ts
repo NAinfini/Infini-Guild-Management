@@ -1,13 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { EventService } from "../EventService";
 
-/**
- * 造一张字节头真实的 WebP（RIFF....WEBP）。
- *
- * 上传路径会按魔数复核声明的类型，随便塞几个字节再标个 MIME 是过不去的。
- * 以前这里造的是 PNG——白名单收窄到「只落库 WebP」之后，PNG 在类型那一关就被拦下，
- * 根本走不到这些用例真正要考的补偿逻辑。
- */
+/** 构造带真实 WebP 魔数的夹具，以通过上传类型校验并覆盖补偿逻辑。 */
 function imageFile(name: string): File {
   const bytes = new Uint8Array(16);
   bytes.set([0x52, 0x49, 0x46, 0x46], 0); // "RIFF"

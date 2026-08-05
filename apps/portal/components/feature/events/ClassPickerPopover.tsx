@@ -20,16 +20,8 @@ type ClassPickerPopoverProps = {
 
 type Group = { key: string; label: string; items: ClassCatalogItem[]; tagClassIds: string[] | null };
 
-/*
- * 一次性组的职业勾选面板。
- *
- * 以前这些职业是一整排按钮直接摊在表单里：目录有二三十个职业，那一排就把整个配额区
- * 顶开，而且它跟隔壁只读的标签图标行长得一模一样，看不出哪一行是能点的。现在收进
- * 一个下拉里，表单里那一格只剩图标。
- *
- * 面板按目录标签分节，一个职业属于几个标签就在几节里出现——那是同一个勾，勾哪边都一样。
- * 每节带一个「整组带入」，因为一次性组常常就是「治疗那几个，再加一个」。
- */
+// A class may appear in multiple tag sections, but every occurrence controls
+// the same selected-ID set. Section actions apply the complete visible group.
 export function ClassPickerPopover({
   classIds,
   catalog,

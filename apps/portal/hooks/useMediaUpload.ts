@@ -14,11 +14,7 @@ type UploadFunction<TResult> = (files: File[], context: UploadContext) => Promis
 type UseMediaUploadOptions = {
   maxFiles?: number;
   maxFileSizeBytes?: number;
-  /*
-   * 转码不是可选项：image 一定转 WebP，audio 一定转 Opus，raw 一律原样上传。
-   * 原来这里还有 convertImagesToWebp / convertAudioToOpus 两个开关，没有任何
-   * 调用方传过 false——留着只是给「悄悄关掉转码」开了个口子。
-   */
+  /** Images use WebP, audio uses Opus, and raw media bypasses conversion. */
   mediaType?: "image" | "audio" | "raw";
   imageWebpQuality?: number;
 };

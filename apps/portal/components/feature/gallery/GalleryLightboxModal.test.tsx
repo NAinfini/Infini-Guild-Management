@@ -64,6 +64,7 @@ describe("GalleryLightboxModal", () => {
       "utf8",
     ).replace(/\/\*[\s\S]*?\*\//g, "");
     const overlayRule = styles.match(/\.gallery-lb-overlay\s*\{([^}]*)\}/)?.[1];
+    const contentRule = styles.match(/\.gallery-lb-content\s*\{([^}]*)\}/)?.[1];
 
     expect(overlayRule).toBeDefined();
     expect(overlayRule).toContain("background:");
@@ -71,6 +72,34 @@ describe("GalleryLightboxModal", () => {
     expect(overlayRule).not.toMatch(
       /\b(?:position|inset|z-index|display|align-items|justify-content)\s*:/,
     );
+    expect(contentRule).toBeDefined();
+    expect(contentRule).not.toMatch(/\bz-index\s*:/);
+  });
+
+  it("gives the fixed-curtain controls clear surfaces and keyboard focus", () => {
+    const styles = readFileSync(
+      resolve(process.cwd(), "apps/portal/components/pages/GalleryPage.css"),
+      "utf8",
+    ).replace(/\/\*[\s\S]*?\*\//g, "");
+    const closeRule = styles.match(/\.gallery-lb__close\s*\{([^}]*)\}/)?.[1] ?? "";
+    const navRule = styles.match(/\.gallery-lb__nav\s*\{([^}]*)\}/)?.[1] ?? "";
+    const closeFocusRule = styles.match(
+      /\.gallery-lb__close:focus-visible\s*\{([^}]*)\}/,
+    )?.[1] ?? "";
+    const navFocusRule = styles.match(
+      /\.gallery-lb__nav:focus-visible\s*\{([^}]*)\}/,
+    )?.[1] ?? "";
+
+    expect(closeRule).toContain("background: rgba(255, 255, 255, 0.2)");
+    expect(closeRule).toContain("border: 1px solid rgba(255, 255, 255, 0.1)");
+    expect(closeRule).toContain("color: rgb(255 255 255)");
+    expect(navRule).toContain("background: rgba(255, 255, 255, 0.18)");
+    expect(navRule).toContain("border: 1px solid rgba(255, 255, 255, 0.08)");
+    expect(navRule).toContain("color: rgb(255 255 255)");
+    expect(closeFocusRule).toContain("outline: 2px solid rgba(255, 255, 255, 0.8)");
+    expect(closeFocusRule).toContain("outline-offset: 3px");
+    expect(navFocusRule).toContain("outline: 2px solid rgba(255, 255, 255, 0.7)");
+    expect(navFocusRule).toContain("outline-offset: 3px");
   });
 
   it("uses a labelled, focus-trapped dialog that closes with Escape and returns focus", async () => {

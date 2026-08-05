@@ -3,7 +3,7 @@ import type { RecurringTemplate } from "@guild/shared";
 import { MantineProvider } from "@mantine/core";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { RecurringTemplatesTab } from "./RecurringTemplatesTab";
 
 vi.mock("react-i18next", () => ({
@@ -13,6 +13,18 @@ vi.mock("react-i18next", () => ({
     i18n: { language: "en" },
   }),
 }));
+
+class WideResizeObserver {
+  constructor(private readonly callback: ResizeObserverCallback) {}
+  disconnect() {}
+  unobserve() {}
+  observe() {
+    this.callback(
+      [{ contentRect: { width: 1200 } } as ResizeObserverEntry],
+      this as unknown as ResizeObserver,
+    );
+  }
+}
 
 function buildTemplate(overrides: Partial<RecurringTemplate>): RecurringTemplate {
   return {
@@ -43,12 +55,16 @@ function buildTemplate(overrides: Partial<RecurringTemplate>): RecurringTemplate
 }
 
 describe("RecurringTemplatesTab", () => {
+  beforeEach(() => {
+    window.ResizeObserver = WideResizeObserver as unknown as typeof ResizeObserver;
+  });
+
   /*
    * 模板档不渲染 EventsFiltersCard，视图切换器改挂在这条工具栏上——这两条守的是
-   * 那次并栏本身：切换器必须跟模板筛选项同处一条，而且在一个模板都没有时也得在，
+   * 那次并栏本身：切换器必须跟模板筛选项同处一个工具栏，而且在一个模板都没有时也得在，
    * 否则用户进得来出不去。
    */
-  it("keeps the view switcher on the same toolbar row as the template filters", () => {
+  it("keeps the view switcher in the same toolbar as the template filters", () => {
     render(
       <MantineProvider>
         <RecurringTemplatesTab
@@ -68,7 +84,7 @@ describe("RecurringTemplatesTab", () => {
 
     const switcher = screen.getByRole("radio", { name: "view.recurring" });
     const search = screen.getByRole("textbox", { name: "recurring.filter.search" });
-    // 同一个 Paper 里 = 一条工具栏；拆成两个卡片就是回到上下两行那个样子。
+    // 同一个 Paper 里 = 同一套工具栏；拆成两个卡片就是回到重复控制区。
     expect(switcher.closest(".mantine-Paper-root")).toBe(search.closest(".mantine-Paper-root"));
   });
 

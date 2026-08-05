@@ -59,7 +59,7 @@ function getEventService(c: Context) {
 async function requireEventCreate(c: Context) { return requirePermission(c, "events.create"); }
 async function requireEventEdit(c: Context) { return requirePermission(c, "events.edit"); }
 async function requireEventArchive(c: Context) { return requirePermission(c, "events.archive"); }
-async function requireEventDelete(c: Context) { return requirePermission(c, "events.delete", { freshPermissions: true }); }
+async function requireEventDelete(c: Context) { return requirePermission(c, "events.delete"); }
 async function requireEventTemplates(c: Context) { return requirePermission(c, "events.templates"); }
 
 async function parseCreateEventRequest(c: Context): Promise<{ body: unknown; files: File[] } | Response> {
@@ -292,7 +292,7 @@ eventsRoutes.post("/templates/:id/resume", async (c) => {
 });
 
 eventsRoutes.delete("/templates/:id", async (c) => {
-  const sessionUser = await requirePermission(c, "events.templates", { freshPermissions: true });
+  const sessionUser = await requirePermission(c, "events.templates");
   const svc = getEventService(c);
   const existing = await svc.getTemplateById(c.req.param("id"));
   if (!existing) return buildError(c, "NOT_FOUND", "Template not found");

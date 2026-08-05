@@ -261,6 +261,7 @@ export async function runAuditArchiveCron(env: Bindings): Promise<void> {
       for (let index = 0; index < databaseRows.length; index += ARCHIVE_PART_ROWS) {
         files.push(await writeDataPart(env.MEDIA, month, files.length + 1, databaseRows.slice(index, index + ARCHIVE_PART_ROWS)));
       }
+      // Manifest 是归档提交标记；只有读回验证且覆盖全部 D1 行 ID 后，才能删除源行。
       await writeManifest(env.MEDIA, buildManifest(month, files, databaseRows));
       committed = await readAndVerifyManifest(env.MEDIA, month);
       if (!committed) throw new Error(`Audit archive manifest was not committed for ${month}`);

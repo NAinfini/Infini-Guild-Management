@@ -353,13 +353,6 @@ export function StorageTransactionModal({
           value={note}
           onChange={(event) => setNote(event.currentTarget.value)}
         />
-        {/*
-          * 这几个控件（Select / NumberInput / Button）的高度由 ThemeProvider 桥接到
-          * --control-height-regular：细指针 36px，粗指针整档回到 44px。原先每处都写死
-          * minHeight: 44 覆盖掉它，于是桌面上这个弹窗里的控件比站内其他地方高 8px，
-          * 而且改令牌对它们无效。删掉覆盖即回到令牌，触屏上的 44px 靶面由
-          * @media (pointer: coarse) 那一档保证，不需要在组件里重复一遍。
-          */}
         <Group justify="flex-end" className="storage-transaction-modal__actions">
           <Button variant="default" onClick={onClose}>
             {t("common:action.cancel")}

@@ -61,8 +61,7 @@ describe("GuildWarAnalyticsChartPanel", () => {
           heading={{
             kicker: "Player",
             title: "4 members · Damage · 10 wars",
-            // Normalization rewrites every plotted number, so the header has to
-            // say so — it used to be silent.
+            // Normalization rewrites every plotted number, so the header must disclose it.
             note: "Values normalised to a 30-minute baseline",
           }}
           t={(key) => key}

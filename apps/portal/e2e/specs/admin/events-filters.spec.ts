@@ -1,7 +1,13 @@
-import type { APIRequestContext, Locator, Page } from "@playwright/test";
+import type { APIRequestContext, Locator, Page, Request } from "@playwright/test";
 import { SYSTEM_TEST_CONTENT_MARKER } from "@guild/shared/config/system-test";
 import { expect, readJson, test } from "../../support/test";
-import { clearButton, dialogTitled, selectOption } from "../../support/ui";
+import {
+  clearButton,
+  dialogTitled,
+  ensureFiltersOpen,
+  selectOption,
+  selectSegmentedControlOption,
+} from "../../support/ui";
 
 /*
  * 活动页的筛选条：搜索、类型、状态分段器、置顶/锁定开关、视图切换、新建按钮。
@@ -68,8 +74,20 @@ function toggle(page: Page, label: string): Locator {
   return page.getByRole("button", { name: label, exact: true });
 }
 
-function statusSegment(page: Page, label: string): Locator {
-  return page.locator(".events-filter-status label").filter({ hasText: new RegExp(`^${label}$`) });
+async function expectNoApiCalls(page: Page, action: () => Promise<void>): Promise<void> {
+  const calls: string[] = [];
+  const record = (request: Request): void => {
+    const path = new URL(request.url()).pathname;
+    if (path.startsWith("/api/")) calls.push(`${request.method()} ${path}`);
+  };
+  page.on("request", record);
+  try {
+    await action();
+    await page.waitForTimeout(500);
+  } finally {
+    page.off("request", record);
+  }
+  expect(calls, "这个视图切换本应是纯前端的，却发了请求").toEqual([]);
 }
 
 test("搜索框：命中项留下，其余滤掉，条件写进 URL", async ({ page, flow }) => {
@@ -85,6 +103,7 @@ test("搜索框：命中项留下，其余滤掉，条件写进 URL", async ({ p
 });
 
 test("类型下拉：只留下该类型，清空后两个都回来", async ({ page, flow }) => {
+  await ensureFiltersOpen(page);
   await flow.act(
     () => selectOption(page, "Filter events by type", "Other"),
     EVENTS_REQUEST,
@@ -96,6 +115,7 @@ test("类型下拉：只留下该类型，清空后两个都回来", async ({ pa
    * 清空是「退回一个刚取过的查询」：staleTime 是 5 分钟（apps/portal/router.tsx:251），
    * 这条键几秒前刚填过，直接命中缓存不再发请求。所以只断言结果回到全量。
    */
+  await ensureFiltersOpen(page);
   await clearButton(page, "Filter events by type").click();
   await expect(card(page, alpha.title)).toHaveCount(1);
   await expect(card(page, beta.title)).toHaveCount(1);
@@ -109,16 +129,19 @@ test("状态分段器：Active/Archived/All 三档各自成立", async ({ page, 
   await expect(card(page, alpha.title), "默认的 Active 档不该显示已归档活动").toHaveCount(0);
   await expect(card(page, beta.title)).toHaveCount(1);
 
-  await flow.act(() => statusSegment(page, "Archived").click(), EVENTS_REQUEST);
+  await ensureFiltersOpen(page);
+  await flow.act(() => selectSegmentedControlOption(page, "Archived"), EVENTS_REQUEST);
   await expect(card(page, alpha.title)).toHaveCount(1);
   await expect(card(page, beta.title), "未归档的活动不该出现在 Archived 档").toHaveCount(0);
 
-  await flow.act(() => statusSegment(page, "All").click(), EVENTS_REQUEST);
+  await ensureFiltersOpen(page);
+  await flow.act(() => selectSegmentedControlOption(page, "All"), EVENTS_REQUEST);
   await expect(card(page, alpha.title)).toHaveCount(1);
   await expect(card(page, beta.title)).toHaveCount(1);
 });
 
 test("置顶筛选：按下后只剩置顶活动，按钮状态同步翻转", async ({ page, flow }) => {
+  await ensureFiltersOpen(page);
   const pinned = toggle(page, "Pinned only");
   await expect(pinned).toHaveAttribute("aria-pressed", "false");
 
@@ -131,6 +154,7 @@ test("置顶筛选：按下后只剩置顶活动，按钮状态同步翻转", as
 });
 
 test("锁定筛选：按下后只剩锁定报名的活动", async ({ page, flow }) => {
+  await ensureFiltersOpen(page);
   const locked = toggle(page, "Locked only");
   await flow.act(() => locked.click(), EVENTS_REQUEST);
 
@@ -139,19 +163,16 @@ test("锁定筛选：按下后只剩锁定报名的活动", async ({ page, flow 
   await expect(card(page, beta.title)).toHaveCount(0);
 });
 
-test("视图切换：卡片与月历互斥，选择写进 URL，且不重新拉数据", async ({ page, flow }) => {
-  const month = page.locator(".events-filter-view label").filter({ hasText: /^Month$/ });
-
+test("视图切换：卡片与月历互斥，选择写进 URL，且不重新拉数据", async ({ page }) => {
   /*
    * 换视图只是换同一份数据的呈现方式，不该再打一次服务端。
    * 这里钉死这一点：哪天有人把它改成每次切换都重新拉全量，这条用例会立刻变红。
    */
-  await flow.clickWithoutApi(month);
+  await expectNoApiCalls(page, () => selectSegmentedControlOption(page, "Month"));
   await expect(page).toHaveURL(/view=month/);
   await expect(page.locator(".event-card"), "月历视图下不该还留着卡片列表").toHaveCount(0);
 
-  const cards = page.locator(".events-filter-view label").filter({ hasText: /^Cards$/ });
-  await flow.clickWithoutApi(cards);
+  await expectNoApiCalls(page, () => selectSegmentedControlOption(page, "Cards"));
   await expect(card(page, alpha.title)).toHaveCount(1);
 });
 

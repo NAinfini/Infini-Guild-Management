@@ -275,7 +275,7 @@ export function useGuildWarAnalyticsComputed({
             !fought?.has(entry.warId)
             && ranges.some((range) => range.start <= entry.date && entry.date <= range.end),
         ).length;
-        // Pool snapshots can be missing for old wars; never report a rate > 100%.
+        // Missing pool snapshots must never produce attendance above 100%.
         const poolWars = Math.max(poolEntries.length, values.length);
         const effectivePool = Math.max(poolWars - excused, values.length);
         return {
@@ -508,15 +508,7 @@ export function useGuildWarAnalyticsComputed({
     const firstSeries = analyticsTeamSeries[0];
 
     if (analyticsShowContribution) {
-      /*
-       * Contribution mode: one stack per team, so each war shows Alpha and
-       * Bravo side by side and each bar fills to 100% on its own.
-       *
-       * Previously every member landed in a single shared stack and the
-       * percentage was their share of the *whole selected roster*. With two
-       * teams selected that halved every number, the bars carried no team
-       * dimension at all, and the legend was one undifferentiated member list.
-       */
+      /* Contribution mode normalizes each team independently and renders one stack per team. */
       const warNames = firstSeries ? firstSeries.points.map((p) => p.warName) : [];
       const primaryMetric = analyticsSelectedMetrics[0] ?? warRules.default_member_stat_key;
       const isSelectedTeam = (teamName: string) =>
@@ -531,10 +523,8 @@ export function useGuildWarAnalyticsComputed({
         }
       }
 
-      // The legend is now teams × members, so the cap is per team. The cut-off
-      // members are still charted as one named band — the old code took an
-      // arbitrary 15 in Set order and silently dropped the rest, which left the
-      // stacks short of 100% with nothing on screen saying so.
+      // Limit named members per team and aggregate the remainder so every stack
+      // still represents 100% of the team's contribution.
       const NAMED_PER_TEAM = 12;
       const contributionSeries: Array<{
         type: string;

@@ -126,7 +126,7 @@ test("切到 Adjust：领取人消失，数量预填当前库存，没变化时�
   const target = dialog.getByLabel("Target stock", { exact: true });
   await expect(target).toHaveValue(String(START_STOCK));
   await expectPreview(dialog, START_STOCK, START_STOCK, "0");
-  await expect(dialog.getByText("Choose a different stock total.")).toBeVisible();
+  await expect(dialog.getByText("Enter a target stock total that differs from the current stock.")).toBeVisible();
   await expect(
     dialog.getByRole("button", { name: "Submit", exact: true }),
     "目标库存和当前库存一样时不该允许提交",

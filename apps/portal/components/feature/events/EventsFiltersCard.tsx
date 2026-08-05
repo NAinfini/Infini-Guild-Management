@@ -1,8 +1,7 @@
 import { DEFAULT_GAME_RULES, findEventTypeDefinition } from "@guild/shared";
-import { ActionIcon, Box, Button, Collapse, Flex, Group, Paper, SegmentedControl, Select, Stack, TextInput, Tooltip } from "@mantine/core";
-import { useDisclosure, useMediaQuery } from "@mantine/hooks";
+import { ActionIcon, Button, Group, SegmentedControl, Select, TextInput, Tooltip } from "@mantine/core";
 import { LockIcon, PinIcon, SearchIcon } from "@portal/components/icons";
-import { IconAdjustmentsHorizontal } from "@tabler/icons-react";
+import { ContentFilterToolbar } from "@portal/components/shared/ContentFilterToolbar";
 import { useTranslation } from "react-i18next";
 import { type EventStatusFilter, type EventTypeFilter, type EventWorkbenchViewMode } from "../../../utils/event-navigation";
 import { EventsViewSwitcher } from "./EventsViewSwitcher";
@@ -46,8 +45,13 @@ export function EventsFiltersCard({
   onCreateEvent,
 }: EventsFiltersCardProps) {
   const { t } = useTranslation("events");
-  const isMobile = useMediaQuery("(max-width: 47.99em)");
-  const [filtersOpen, { toggle: toggleFilters }] = useDisclosure(false);
+  const activeFilterCount = [
+    searchQuery.trim().length > 0,
+    Boolean(eventType),
+    eventStatus !== "active",
+    pinnedOnly,
+    lockedOnly,
+  ].filter(Boolean).length;
   const primary = (
         <TextInput
           placeholder={t("filter.search")}
@@ -118,11 +122,7 @@ export function EventsFiltersCard({
   );
   const actions = (
         canManage && onCreateEvent ? (
-          <Button
-            onClick={onCreateEvent}
-            size="sm"
-            style={isMobile ? { minHeight: 44, flexShrink: 0 } : undefined}
-          >
+          <Button onClick={onCreateEvent} size="sm">
             {t("button.create")}
           </Button>
         ) : null
@@ -132,48 +132,20 @@ export function EventsFiltersCard({
    * 模板档不会走到这里：那一档的切换器挂在 RecurringTemplatesTab 自己那条筛选栏上，
    * EventsPage 直接不渲染这张卡。这里再渲染一次就是上下并排的两条工具栏，而且上面
    * 那条筛的是活动、按了对模板不起作用。
-   */
+  */
   return (
-    <Paper withBorder radius="md" p="sm">
-      {isMobile ? (
-        <Stack gap={0}>
-          <Group gap="xs" wrap="nowrap" align="center">
-            <Box style={{ flex: 1, minWidth: 0 }}>{primary}</Box>
-            {actions}
-            <ActionIcon
-              variant={filtersOpen ? "filled" : "default"}
-              size="lg"
-              onClick={toggleFilters}
-              aria-label={t("common:filter.toggle")}
-            >
-              <IconAdjustmentsHorizontal size={18} />
-            </ActionIcon>
-          </Group>
-          <Collapse expanded={filtersOpen}>
-            <Stack gap="sm" pt="sm">
-              <Group gap="xs" wrap="wrap">
-                {filters}
-              </Group>
-              {viewControls}
-            </Stack>
-          </Collapse>
-        </Stack>
-      ) : (
-        <Flex gap="sm" align="center" wrap="wrap">
-          {/*
-            * maxWidth 是必需的：搜索框是这一行里唯一会伸的元素，不封顶的话宽屏下
-            * 它会把全部富余空间吃掉——1920 宽时长成一条一千多像素的输入框，而它要
-            * 装的只是一个活动名。封顶之后富余空间归 marginLeft:auto，右端主按钮
-            * 贴边，中间那几个筛选项保持左聚。窄屏仍可收缩到 160。
-            */}
-          <Box style={{ flex: "1 1 180px", minWidth: 160, maxWidth: 360 }}>{primary}</Box>
-          <Group gap="xs" wrap="wrap">
-            {filters}
-          </Group>
+    <ContentFilterToolbar
+      search={primary}
+      controls={filters}
+      primary={(
+        <>
           {viewControls}
-          {actions ? <Box style={{ marginLeft: "auto" }}>{actions}</Box> : null}
-        </Flex>
+          {actions}
+        </>
       )}
-    </Paper>
+      toggleLabel={t("common:filter.toggle")}
+      activeFilterCount={activeFilterCount}
+      collapseBelow={1120}
+    />
   );
 }

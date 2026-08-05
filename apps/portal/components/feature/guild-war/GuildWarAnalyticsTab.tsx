@@ -323,14 +323,7 @@ export function GuildWarAnalyticsTab({
           <div
             className={`gwa-content${isFetching ? " gwa-content--fetching" : ""}${chartExpanded ? " gwa-content--expanded" : ""}`}
           >
-            {/*
-              * ── Console ──
-              * Every control lives on one rail in a fixed order: data source →
-              * subject → metric → processing → normalization. Switching mode
-              * only swaps the subject/processing slots, so the sections that do
-              * survive never move — the split left/right sidebars used to make
-              * a single query cost three trips across the screen.
-              */}
+            {/* Controls keep a stable source → subject → metric → processing order. */}
             {!chartExpanded ? (
               <div className="gwa-console">
                 <div className="gwa-console__head">
@@ -659,12 +652,7 @@ export function GuildWarAnalyticsTab({
 
             {/* Data table — kept open: it is the artefact people copy out */}
             <div className="gwa-table-section">
-              {/*
-                * The header bar used to be one big UnstyledButton wrapping the heatmap
-                * Switch and the CSV button — a <button> inside a <button>, which is
-                * invalid HTML. Only the expand affordance is a button now; the controls
-                * on the right are siblings, so they no longer need stopPropagation.
-                */}
+              {/* Only the expand affordance is interactive; sibling controls are not nested in it. */}
               <div className="gwa-table-toggle">
                 <UnstyledButton
                   onClick={() => setTableExpanded(!tableExpanded)}

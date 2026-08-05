@@ -157,7 +157,7 @@ test("分组切换：四组各自换内容，全程不碰网络", async ({ page,
 test("相册：上传一张真的多一张，取消删除不动手，确认删除才少一张", async ({ page, flow, api }) => {
   const fileName = `e2e-profile-${Date.now()}.webp`;
   await page.locator(".my-profile-split__editor input[type='file']").setInputFiles(webpUpload(fileName));
-  await expect(page.getByText("1 file(s) selected")).toBeVisible();
+  await expect(page.getByText("1 file selected")).toBeVisible();
 
   const uploaded = await flow.click(
     page.getByRole("button", { name: "Upload", exact: true }),
@@ -244,15 +244,9 @@ test("视频：非白名单站点被挡下，回车能加，上移换序，删�
 
   await field(page, "Videos").fill("https://example.com/not-a-video");
   await flow.clickWithoutApi(mediaBody(page).getByRole("button", { name: "Add", exact: true }));
-  /*
-   * 弹出来的是 "Unsupported video host"，不是那句列了白名单的
-   * message.videoHostAllowedOnly——后者是以「兜底文案」传进 showError 的，
-   * 而 presentAppError 只在 ZodError / 接口错误时才用兜底，普通 Error 走的是
-   * error.message（useAppError.ts:50）。这里按现状断言，那句更有用的文案
-   * 目前谁也看不到，已记在问题清单里。
-   */
+  /* 非白名单链接必须显示当前可操作错误，不能静默失败。 */
   await expect(
-    page.getByText("Unsupported video host"),
+    page.getByText("Use a supported video link", { exact: true }),
     "站点不在白名单里就该说清楚，而不是静悄悄什么都不发生",
   ).toBeVisible();
   await expect(videoRows(page), "被挡下的链接不该进列表").toHaveCount(original.video_urls.length);
@@ -297,12 +291,7 @@ test("音乐：WAV 上传前先在浏览器里转成 Opus，删除后键回到�
       .setInputFiles(wavUpload(`e2e-music-${Date.now()}.wav`)),
     { method: "POST", path: AUDIO_API },
   ) as { key: string };
-  /*
-   * 送上去的是 WAV，落库的键却是 .ogg：转码发生在浏览器里（convertAudioToOpus）。
-   * 容器写死成 Ogg，不再按浏览器支持的格式协商，所以这里能钉一个确切的后缀——
-   * 以前得写成 /\.(webm|ogg)$/ 来同时容纳 Chromium 和 Firefox。
-   * 这一条同时钉住「音乐上传必须先转 Opus」这个契约。
-   */
+  /* WAV 上传必须转换为 Ogg 容器中的 Opus，并使用 .ogg 存储键。 */
   expect(uploaded.key, "服务端存的不该还是 WAV").toMatch(/\.ogg$/);
 
   const afterUpload = await readProfile(api);

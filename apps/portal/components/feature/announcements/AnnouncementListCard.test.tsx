@@ -44,4 +44,32 @@ describe("AnnouncementListCard", () => {
     expect(row).not.toHaveAttribute("aria-label");
     expect(row.querySelector("[aria-expanded]")).toBeNull();
   });
+
+  it("keeps the title flexible and pin/status metadata in a stable trailing region", () => {
+    render(
+      <PortalThemeProvider>
+        <AnnouncementListCard
+          title="Announcement List"
+          rows={[{ ...announcement, pinned: true }]}
+          selectedId={announcement.id}
+          canEdit
+          canCreate={false}
+          announcementsLastSeenAt={null}
+          isLoading={false}
+          isError={false}
+          warningMessage=""
+          emptyText=""
+          onSelect={vi.fn()}
+        />
+      </PortalThemeProvider>,
+    );
+
+    const row = screen.getByRole("button", { name: /Welcome to Infini Guild/ });
+    expect(row.querySelector(".announcement-item-title-text")).toHaveTextContent(
+      "Welcome to Infini Guild",
+    );
+    const meta = row.querySelector(".announcement-item-meta");
+    expect(meta).not.toBeNull();
+    expect(meta?.querySelectorAll("svg").length).toBeGreaterThanOrEqual(2);
+  });
 });

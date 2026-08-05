@@ -628,10 +628,7 @@ describe("AdminService.getStatus", () => {
     return { service, sql };
   }
 
-  /*
-   * 这条是对根因的回归锁：探针曾经读 sqlite_master 拿表清单，而 D1 禁止读它，
-   * 于是线上恒定报 db: error。只要有人把这个查询改回去，这里立刻红。
-   */
+  /* D1 forbids sqlite_master reads, so health checks probe required tables directly. */
   it("probes each required table directly instead of reading sqlite_master", async () => {
     const { service, sql } = createStatusService(() => ({ 1: 1 }));
 

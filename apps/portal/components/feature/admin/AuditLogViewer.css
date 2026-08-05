@@ -7,11 +7,6 @@
   border: 1px solid color-mix(in srgb, var(--text-primary) 8%, transparent);
 }
 
-/* 浅色模式边框是中性的 --text-primary（8%），.dark 覆盖把颜色族换成了主色
-   --color-primary（同为 8%）——这不是「同一族颜色换不透明度」，是额外叠加了
-   一层暖金装饰，属于本次改版要收敛掉的古铜色调性。迁移后两模式统一走中性的
-   --text-primary，整块删除（the token-layer contract E 节 + 前序约定段）。 */
-
 .audit-log-row {
   background: var(--surface-base);
   transition: background-color 0.15s ease;
@@ -25,21 +20,9 @@
   background: color-mix(in srgb, var(--brand-fill) 4%, var(--surface-base));
 }
 
-/* .dark .audit-log-row 只是在 --surface-base 之上再叠一层 95% 不透明度混色，
-   --surface-base 本身已经分模式解析到正确的深色表面，整块删除（只差颜色）。
-   .dark .audit-log-row:hover / --expanded 只把 4% 改成 6%/10%，同样只差
-   不透明度，整块删除，保留浅色模式定下的 4%（the token-layer contract E 节）。 */
-
 .audit-log-row + .audit-log-row {
   border-top: 1px solid color-mix(in srgb, var(--text-primary) 6%, transparent);
 }
-
-/* .dark 覆盖用的是同一个 --color-text，但兜底 hex 和不透明度都换了一套
-   （#e2e8f0 65% vs #1A1815 6%）——迁移后统一成 --text-primary 6%。6%→65%
-   跨度很大，虽然仍落在「只差颜色/不透明度」范围内（the token-layer contract E
-   节没有按跨度大小开例外），但这处的视觉权重变化比批 A/B 其余删除的 .dark
-   覆盖都大，已在报告里单独标注，请在 Step 5 目视复核这条相邻行分隔线在深色
-   模式下是否仍然可见。 */
 
 /* ── Clickable header row ── */
 
@@ -65,15 +48,7 @@
   min-width: 100px;
 }
 
-/* 去掉感叹号优先级，先去掉确认是否被压过：这两条选择器都是单个类，
-   特异性 (0,1,0)，跟 @mantine/core/styles.css 里 Badge 根类 .m_347db0ec
-   （同为单类 (0,1,0)：text-transform: uppercase; font-weight: 700;）打平。
-   打平时后来者赢——bootstrap.tsx 在入口最前面 import "@mantine/core/styles.css"，
-   而 AuditLogViewer.css 是这个组件模块自己的样式表，在模块图里排在入口之后，
-   稳定地晚于 Mantine 基础样式注入，所以本来就没被压过（the token-layer contract
-   F 节；由于禁止起 dev server，这条判断只是静态推导，未做浏览器实测，
-   请在 Step 5 目视复核这两个徽章文案是否仍是原样大小写、粗细）。
-   600 落在 --fw-medium 上，直接替换。 */
+/* Component badge classes load after Mantine base styles and need no priority override. */
 .audit-log-row__entity-badge {
   width: fit-content;
   text-transform: none;
@@ -156,17 +131,7 @@
   margin-bottom: 6px;
 }
 
-/* .dark 覆盖同样是同一个 --color-text 换了兜底 hex 和不透明度（65% vs 8%），
-   统一成 --text-primary 8%，整块删除；6%→65% 那条同款跨度提醒同样适用于这里
-   （the token-layer contract E 节，另见上方 .audit-log-row + .audit-log-row 的
-   标注）。 */
-
-/* 去掉感叹号优先级，先去掉确认是否被压过：.audit-detail__title 是单个类
-   (0,1,0)，跟 Mantine Text 根类 .m_b6d8b162（font-size 读 --text-fz 变量，
-   同为单类 (0,1,0)）打平，打平时后来者赢，理由同上方两个徽章
-   （the token-layer contract F 节；同样只是静态推导，未做浏览器实测，请在 Step 5
-   核对这行小标题字号是否仍是 10px）。10px 不落在 --text-* 标度上（--text-meta
-   是 12px），保留字面量，不强行吸附（the token-layer contract L 节）。 */
+/* Compact audit-detail labels intentionally sit below the shared 12px metadata tier. */
 .audit-detail__title {
   letter-spacing: 0.05em;
   font-size: 10px;
@@ -176,6 +141,52 @@
   display: flex;
   flex-direction: column;
   gap: 0;
+}
+
+.audit-detail-value {
+  display: grid;
+  flex: 1;
+  gap: 4px;
+  min-width: 0;
+  max-width: 100%;
+}
+
+.audit-detail-value__content {
+  display: block;
+  min-width: 0;
+  max-width: 100%;
+  overflow-wrap: anywhere;
+}
+
+.audit-detail-value__content--expanded {
+  max-height: 12rem;
+  overflow: auto;
+  overscroll-behavior: contain;
+}
+
+.audit-detail-value__truncated {
+  margin-inline-start: 0.25em;
+  white-space: nowrap;
+}
+
+.audit-detail-value__toggle {
+  width: fit-content;
+  padding: 2px 0;
+  border: 0;
+  color: var(--brand-text);
+  background: transparent;
+  font: inherit;
+  font-size: var(--text-meta);
+  font-weight: 600;
+  line-height: 1.4;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  cursor: pointer;
+}
+
+.audit-detail-value__toggle:focus-visible {
+  outline: 2px solid var(--brand-fill);
+  outline-offset: 2px;
 }
 
 .audit-detail__table-head {
@@ -257,12 +268,6 @@
   min-width: 0;
 }
 
-/* .dark 覆盖把不透明度从 10% 提到 15%、文字色从 #dc2626（深）换成 #fca5a5
-   （亮）—— --status-danger 本身在浅/深两模式就是 deep/bright 两档
-   （--palette-danger-deep / --palette-danger-bright），batch A 的
-   .api-ep__method--PATCH 已经用同样理由删过一次，这里整块删除
-   （the token-layer contract E 节）。 */
-
 .audit-diff-entry__arrow {
   flex-shrink: 0;
   color: color-mix(in srgb, var(--text-primary) 65%, transparent);
@@ -280,9 +285,6 @@
   flex: 1;
   min-width: 0;
 }
-
-/* .dark 覆盖同理：--status-success 已经分模式取 deep/bright，整块删除，
-   理由同上方 .dark .audit-diff-entry__from。 */
 
 /* ── Info entries (key: value) ── */
 
@@ -319,10 +321,6 @@
   white-space: pre-wrap;
   word-break: break-all;
 }
-
-/* .dark 覆盖把主色淡底从 8% 提到 12%、文字不透明度从 85% 提到 90%（且换了
-   --color-text 的兜底 hex）——两个 var 名都跟浅色模式一致，只差不透明度，
-   整块删除（the token-layer contract E 节）。 */
 
 /* ── Responsive ── */
 

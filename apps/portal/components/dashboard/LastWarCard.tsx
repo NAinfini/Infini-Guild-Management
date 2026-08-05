@@ -180,7 +180,7 @@ export const LastWarCard = memo(function LastWarCard({
         </div>
         ) : (
           <EmptyState
-            title={t("empty")}
+            title={t("card.lastWar.empty")}
             actions={(
               <Button variant="default" onClick={onViewHistory}>
                 {t("card.lastWar.viewHistory")}

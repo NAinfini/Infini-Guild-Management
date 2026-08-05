@@ -7,6 +7,8 @@ type EmptyStateProps = {
   title: ReactNode;
   description?: ReactNode;
   actions?: ReactNode;
+  className?: string;
+  icon?: ReactNode;
   status?: EmptyStateStatus;
   subTitle?: ReactNode;
   extra?: ReactNode;
@@ -23,17 +25,20 @@ export const EmptyState = memo(function EmptyState({
   title,
   description,
   actions,
+  className,
+  icon,
   status = "info",
   subTitle,
   extra,
 }: EmptyStateProps) {
   const desc = description ?? subTitle;
   const act = actions ?? extra;
+  const rootClassName = className ? `empty-state ${className}` : "empty-state";
 
   return (
-    <div aria-live="polite" className="empty-state">
+    <div aria-live="polite" className={rootClassName}>
       <div className={`empty-state__icon empty-state__icon--${status}`}>
-        {statusIcon[status]}
+        {icon ?? statusIcon[status]}
       </div>
       {/*
         * Not a heading: the panel this sits in has no <h2>, so an <h3> skipped a

@@ -155,7 +155,7 @@ adminRoutes.delete("/invite-links/:id/permanent", async (c) => {
 
 // User Management
 adminRoutes.patch("/users/batch/role", async (c) => {
-  const sessionUser = await requirePermission(c, "admin.users.role", { freshPermissions: true });
+  const sessionUser = await requirePermission(c, "admin.users.role");
   const body = await parseJsonBody(c);
   const parsed = batchRoleChangeSchema.safeParse(body);
   if (!parsed.success) return buildError(c, "VALIDATION_ERROR", "Invalid batch role payload", parsed.error.flatten());
@@ -182,7 +182,7 @@ adminRoutes.patch("/users/batch/reactivate", async (c) => {
 });
 
 adminRoutes.patch("/users/batch/delete", async (c) => {
-  const sessionUser = await requirePermission(c, "admin.users.delete", { freshPermissions: true });
+  const sessionUser = await requirePermission(c, "admin.users.delete");
   const body = await parseJsonBody(c);
   const parsed = batchDeactivateSchema.safeParse(body);
   if (!parsed.success) return buildError(c, "VALIDATION_ERROR", "Invalid batch delete payload", parsed.error.flatten());
@@ -201,7 +201,7 @@ adminRoutes.post("/users", async (c) => {
 });
 
 adminRoutes.patch("/users/:id/role", async (c) => {
-  const sessionUser = await requirePermission(c, "admin.users.role", { freshPermissions: true });
+  const sessionUser = await requirePermission(c, "admin.users.role");
   const body = await parseJsonBody(c);
   const parsed = batchRoleChangeSchema.shape.new_role.safeParse((body as { role?: unknown }).role);
   if (!parsed.success) return buildError(c, "VALIDATION_ERROR", "Invalid role payload", parsed.error.flatten());
@@ -231,7 +231,7 @@ adminRoutes.patch("/users/:id/reactivate", async (c) => {
 });
 
 adminRoutes.post("/users/:id/reset-password", async (c) => {
-  const sessionUser = await requirePermission(c, "admin.users.password", { freshPermissions: true });
+  const sessionUser = await requirePermission(c, "admin.users.password");
   const body = await parseJsonBody(c);
   const temporaryPasswordInput = (body as { temporary_password?: unknown }).temporary_password;
   if (temporaryPasswordInput !== undefined && typeof temporaryPasswordInput !== "string") return buildError(c, "VALIDATION_ERROR", "temporary_password must be a string when provided");
@@ -241,7 +241,7 @@ adminRoutes.post("/users/:id/reset-password", async (c) => {
 });
 
 adminRoutes.post("/users/:id/reset-login-lock", async (c) => {
-  const sessionUser = await requirePermission(c, "admin.users.password", { freshPermissions: true });
+  const sessionUser = await requirePermission(c, "admin.users.password");
   const result = await getAdminService(c).resetLoginLock(sessionUser.id, c.req.param("id"));
   return handleResult(c, result);
 });
@@ -254,7 +254,7 @@ adminRoutes.get("/roles", async (c) => {
 });
 
 adminRoutes.post("/roles", async (c) => {
-  const sessionUser = await requirePermission(c, "admin.roles.manage", { freshPermissions: true });
+  const sessionUser = await requirePermission(c, "admin.roles.manage");
   const body = await parseJsonBody(c);
   const parsed = createRoleSchema.safeParse(body);
   if (!parsed.success) return buildError(c, "VALIDATION_ERROR", "Invalid role payload", parsed.error.flatten());
@@ -263,7 +263,7 @@ adminRoutes.post("/roles", async (c) => {
 });
 
 adminRoutes.patch("/roles/:id", async (c) => {
-  const sessionUser = await requirePermission(c, "admin.roles.manage", { freshPermissions: true });
+  const sessionUser = await requirePermission(c, "admin.roles.manage");
   const body = await parseJsonBody(c);
   const parsed = updateRoleSchema.safeParse(body);
   if (!parsed.success) return buildError(c, "VALIDATION_ERROR", "Invalid role update payload", parsed.error.flatten());
@@ -272,7 +272,7 @@ adminRoutes.patch("/roles/:id", async (c) => {
 });
 
 adminRoutes.delete("/roles/:id", async (c) => {
-  const sessionUser = await requirePermission(c, "admin.roles.manage", { freshPermissions: true });
+  const sessionUser = await requirePermission(c, "admin.roles.manage");
   const result = await getAdminService(c).deleteRole(sessionUser.id, c.req.param("id"));
   if (!result.ok) return handleResult(c, result);
   return c.json({ ok: true });
@@ -285,7 +285,7 @@ adminRoutes.get("/site-config", async (c) => {
 });
 
 adminRoutes.patch("/site-config", async (c) => {
-  const sessionUser = await requirePermission(c, "admin.siteConfig.manage", { freshPermissions: true });
+  const sessionUser = await requirePermission(c, "admin.siteConfig.manage");
   const body = await parseJsonBody(c);
   const parsed = updateSiteConfigSchema.safeParse(body);
   if (!parsed.success) return buildError(c, "VALIDATION_ERROR", "Invalid site config payload", parsed.error.flatten());
@@ -293,7 +293,7 @@ adminRoutes.patch("/site-config", async (c) => {
 });
 
 adminRoutes.post("/site-config/logo", async (c) => {
-  const sessionUser = await requirePermission(c, "admin.siteConfig.manage", { freshPermissions: true });
+  const sessionUser = await requirePermission(c, "admin.siteConfig.manage");
   let form: FormData;
   try {
     form = await c.req.formData();
@@ -306,7 +306,7 @@ adminRoutes.post("/site-config/logo", async (c) => {
 });
 
 adminRoutes.get("/status", async (c) => {
-  await requirePermission(c, "admin.status.view", { freshPermissions: false });
+  await requirePermission(c, "admin.status.view");
   const result = await getAdminService(c).getStatus();
   if (!result.ok) return handleResult(c, result);
   return c.json({
@@ -318,7 +318,7 @@ adminRoutes.get("/status", async (c) => {
 adminRoutes.post("/status/system-test-runs", async (c) => {
   const disabledResponse = rejectDisabledSystemTests(c);
   if (disabledResponse) return disabledResponse;
-  const sessionUser = await requirePermission(c, "admin.status.view", { freshPermissions: false });
+  const sessionUser = await requirePermission(c, "admin.status.view");
   const runId = await new SystemTestService(c.env as Bindings).createRun(sessionUser.id);
   return c.json({ run_id: runId, fixture_id: crypto.randomUUID() }, 201);
 });
@@ -326,7 +326,7 @@ adminRoutes.post("/status/system-test-runs", async (c) => {
 adminRoutes.post("/status/system-test-runs/:runId/cleanup", async (c) => {
   const disabledResponse = rejectDisabledSystemTests(c);
   if (disabledResponse) return disabledResponse;
-  const sessionUser = await requirePermission(c, "admin.status.view", { freshPermissions: false });
+  const sessionUser = await requirePermission(c, "admin.status.view");
   try {
     const result = await new SystemTestService(c.env as Bindings).cleanupRun(c.req.param("runId"), sessionUser.id);
     return c.json({ ok: result.status === "completed", ...result }, result.status === "completed" ? 200 : 409);
@@ -338,7 +338,7 @@ adminRoutes.post("/status/system-test-runs/:runId/cleanup", async (c) => {
 adminRoutes.post("/status/system-test-runs/:runId/finalize", async (c) => {
   const disabledResponse = rejectDisabledSystemTests(c);
   if (disabledResponse) return disabledResponse;
-  const sessionUser = await requirePermission(c, "admin.status.view", { freshPermissions: false });
+  const sessionUser = await requirePermission(c, "admin.status.view");
   try {
     await new SystemTestService(c.env as Bindings).finalizeRun(c.req.param("runId"), sessionUser.id);
     return c.json({ ok: true });
@@ -350,7 +350,7 @@ adminRoutes.post("/status/system-test-runs/:runId/finalize", async (c) => {
 adminRoutes.post("/status/system-test-audit", async (c) => {
   const disabledResponse = rejectDisabledSystemTests(c);
   if (disabledResponse) return disabledResponse;
-  const sessionUser = await requirePermission(c, "admin.status.view", { freshPermissions: false });
+  const sessionUser = await requirePermission(c, "admin.status.view");
   const runId = c.req.header(SYSTEM_TEST_RUN_ID_HEADER) ?? getSystemTestRunId(c);
   if (!runId) return buildError(c, "FORBIDDEN", "A valid active system-test run is required");
   if (!(await new SystemTestService(c.env as Bindings).isRunOwnedBy(runId, sessionUser.id))) {

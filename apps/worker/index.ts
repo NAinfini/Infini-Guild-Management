@@ -5,7 +5,7 @@ import { bodyLimit } from "hono/body-limit";
 import { LIMITS } from "@guild/shared/config/limits";
 import { logger } from "./utils/logger";
 import { runDailyMaintenanceCron, runQuarterHourlyMaintenanceCron } from "./crons/maintenance";
-import { WebSocketDO, WS_SESSION_ID_HEADER } from "./durable-objects/WebSocketDO";
+import { WebSocketDO, WS_ACCOUNT_ID_HEADER, WS_SESSION_ID_HEADER } from "./durable-objects/WebSocketDO";
 import { etagMiddleware } from "./middleware/etag";
 import { featureGateMiddleware } from "./middleware/feature-gate";
 import { handleAppError } from "./middleware/error-handler";
@@ -214,7 +214,7 @@ app.use("/api/*", async (c, next) => {
     return;
   }
 
-  if (c.req.method === "GET") {
+  if (c.req.method === "GET" || c.req.method === "HEAD") {
     await readRateLimit(c, next);
     return;
   }
@@ -312,9 +312,10 @@ app.get("/ws", async (c) => {
   const objectId = c.env.WS.idFromName("global");
   const stub = c.env.WS.get(objectId);
 
-  // The DO needs the session id to recheck it periodically while the socket is
-  // open. `set` overwrites, so a client-supplied value of this header is dropped.
+  // The DO needs the session id for periodic revalidation and the account id for
+  // per-account quotas. `set` overwrites both client-supplied internal headers.
   const headers = new Headers(c.req.raw.headers);
+  headers.set(WS_ACCOUNT_ID_HEADER, session.user.id);
   headers.set(WS_SESSION_ID_HEADER, session.sessionId);
   return stub.fetch(c.req.url, { method: "GET", headers });
 });

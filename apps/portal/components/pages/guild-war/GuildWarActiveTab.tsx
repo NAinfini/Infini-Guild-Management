@@ -8,6 +8,7 @@ import { useAppError } from "../../../hooks/useAppError";
 import { absenceQueryKeys, concludeGuildWar, guildWarQueryKeys, moveGuildWarMember, usersQueryKeys } from "../../../services/GuildWarService";
 import { fetchAbsencesWindow, fetchAllUsersListWithOptions } from "../../../services/UserService";
 import { notifySuccess } from "../../../utils/notifications";
+import { SwordsIcon } from "../../icons";
 import type { ConcludeWarMember, ConcludeWarSubmitData } from "../../feature/guild-war/ConcludeWarModal";
 import type { useGuildWarActiveController } from "../../feature/guild-war/useGuildWarActiveController";
 import type { useGuildWarDragController } from "../../../hooks/guild-war/useGuildWarDragController";
@@ -73,10 +74,12 @@ export function GuildWarActiveEmptyState({
     <Paper
       withBorder
       radius="md"
-      p="var(--card-padding)"
+      p={0}
       className="guild-war-active-empty"
     >
       <EmptyState
+        className="guild-war-active-empty__state"
+        icon={<SwordsIcon size={24} aria-hidden="true" />}
         title={t("active.empty.title")}
         description={
           canCreateWarEvent
@@ -152,7 +155,7 @@ export function GuildWarActiveTab({
     staleTime: 10 * 60_000,
   });
 
-  // Absences (请假) covering the war date — marks members on the drag board.
+  // Absence queries use the selected war's calendar date, not today's date.
   const absenceWindow = resolveGuildWarAbsenceWindow(activeQuery.data?.event?.start_at);
   const absencesQuery = useQuery({
     queryKey: absenceQueryKeys.window(absenceWindow?.from ?? "", absenceWindow?.to ?? ""),
@@ -170,7 +173,7 @@ export function GuildWarActiveTab({
     [absencesQuery.data],
   );
 
-  // --- Add to Pool ---
+  // Add-to-pool state
   const [addToPoolOpen, addToPoolHandlers] = useDisclosure(false);
   const [addToPoolSelection, setAddToPoolSelection] = useState<string[]>([]);
 
@@ -215,7 +218,7 @@ export function GuildWarActiveTab({
     });
   }, [addToPoolMutation, addToPoolSelection, selectedEventId]);
 
-  // --- Conclude War ---
+  // War conclusion state
   const [concludeWarOpen, concludeWarHandlers] = useDisclosure(false);
 
   const concludeWarMembers = useMemo<ConcludeWarMember[]>(() => {

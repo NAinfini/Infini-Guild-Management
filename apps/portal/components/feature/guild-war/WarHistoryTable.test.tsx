@@ -2,6 +2,8 @@
 import { MantineProvider } from "@mantine/core";
 import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import { describe, expect, it, vi } from "vitest";
 import type { HistorySummaryRow } from "@portal/types/guild-war";
 import { WarHistoryTable } from "./WarHistoryTable";
@@ -90,9 +92,9 @@ describe("WarHistoryTable rail", () => {
       </MantineProvider>,
     );
 
-    expect(
-      screen.getByRole("list", { name: "history.warList" }),
-    ).toBeInTheDocument();
+    const list = screen.getByRole("list", { name: "history.warList" });
+    expect(list.tagName).toBe("UL");
+    expect(within(list).getByRole("listitem").tagName).toBe("LI");
     await userEvent.click(
       screen.getByRole("button", {
         name: "history.aria.openRecord: War Session E",
@@ -144,6 +146,45 @@ describe("WarHistoryTable rail", () => {
     } finally {
       Reflect.deleteProperty(HTMLInputElement.prototype, "showPicker");
     }
+  });
+
+  it("uses distinct localized placeholders for the date range", () => {
+    render(
+      <MantineProvider>
+        <HistoryTableHarness onRowClick={vi.fn()} />
+      </MantineProvider>,
+    );
+
+    expect(screen.getByLabelText("history.aria.dateFrom")).toHaveAttribute(
+      "placeholder",
+      "history.dateFromPlaceholder",
+    );
+    expect(screen.getByLabelText("history.aria.dateTo")).toHaveAttribute(
+      "placeholder",
+      "history.dateToPlaceholder",
+    );
+  });
+
+  it("keeps the 390px search row above one compact date row", () => {
+    const componentSource = readFileSync(
+      resolve(process.cwd(), "apps/portal/components/feature/guild-war/WarHistoryTable.tsx"),
+      "utf8",
+    );
+    const css = readFileSync(
+      resolve(process.cwd(), "apps/portal/components/pages/GuildWarPage.css"),
+      "utf8",
+    );
+
+    expect(componentSource).toContain(
+      'import { DEFAULT_GAME_RULES } from "@guild/shared";',
+    );
+    expect(componentSource).toContain("const gameRules = DEFAULT_GAME_RULES;");
+    expect(css).toMatch(
+      /@media \(max-width: 767px\)[\s\S]*?\.war-history-filters__group\s*\{[\s\S]*?grid-template-columns:\s*minmax\(0,\s*1fr\)\s+minmax\(0,\s*1fr\)\s+var\(--control-height-regular\)/,
+    );
+    expect(css).toMatch(
+      /@media \(max-width: 767px\)[\s\S]*?\.war-history-filter--search\s*\{[\s\S]*?grid-column:\s*1\s*\/\s*-1/,
+    );
   });
 
   it("labels every icon-only pagination control", () => {

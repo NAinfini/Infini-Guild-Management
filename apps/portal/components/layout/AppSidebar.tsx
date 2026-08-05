@@ -25,7 +25,8 @@ import { ViewingAsSelector } from "./ViewingAsSelector";
 export const SIDEBAR_WIDTH = 236;
 export const SIDEBAR_COLLAPSED_WIDTH = 84;
 export const MOBILE_BREAKPOINT_PX = 767;
-export const HEADER_COMPACT_BREAKPOINT_PX = 1023;
+export const COMPACT_NAV_BREAKPOINT_PX = 1023;
+export const HEADER_COMPACT_BREAKPOINT_PX = COMPACT_NAV_BREAKPOINT_PX;
 
 type AppSidebarProps = {
   isSidebarCollapsed: boolean;

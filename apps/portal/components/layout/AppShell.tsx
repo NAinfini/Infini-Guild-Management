@@ -32,6 +32,7 @@ import {
   SIDEBAR_WIDTH,
   SIDEBAR_COLLAPSED_WIDTH,
   MOBILE_BREAKPOINT_PX,
+  COMPACT_NAV_BREAKPOINT_PX,
   HEADER_COMPACT_BREAKPOINT_PX,
 } from "./AppSidebar";
 import { AppHeader } from "./AppHeader";
@@ -79,6 +80,7 @@ export function AppShell() {
   const searchStr = useRouterState({ select: (state) => state.location.searchStr });
   const isExternalView = isExternalViewSearch(searchStr);
   const isMobile = useMediaQuery(`(max-width: ${MOBILE_BREAKPOINT_PX}px)`) ?? false;
+  const usesCompactNavigation = useMediaQuery(`(max-width: ${COMPACT_NAV_BREAKPOINT_PX}px)`) ?? false;
   const isHeaderCompact = useMediaQuery(`(max-width: ${HEADER_COMPACT_BREAKPOINT_PX}px)`) ?? false;
   const [isSidebarExpanded, setIsSidebarExpanded] = useState(true);
   const isSidebarCollapsed = !isSidebarExpanded;
@@ -370,13 +372,13 @@ export function AppShell() {
         className="app-shell-root"
         layout="alt"
         header={{ height: 48 }}
-        navbar={!isMobile ? { width: sidebarWidth, breakpoint: MOBILE_BREAKPOINT_PX } : undefined}
+        navbar={!usesCompactNavigation ? { width: sidebarWidth, breakpoint: COMPACT_NAV_BREAKPOINT_PX } : undefined}
         padding={0}
       >
         <OverlayRegistrar />
         <AppErrorOverlay />
 
-        {!isMobile ? (
+        {!usesCompactNavigation ? (
           <AppSidebar
             isSidebarCollapsed={isSidebarCollapsed}
             onCollapse={() => setIsSidebarExpanded(false)}
@@ -413,7 +415,7 @@ export function AppShell() {
           onLoginClick={() => void navigate({ to: "/login" })}
         />
 
-        <MantineAppShell.Main id="main-content" ref={scrollContainerRef} className={`app-content ${isMobile ? "app-content-mobile" : ""}`}>
+        <MantineAppShell.Main id="main-content" ref={scrollContainerRef} className={`app-content ${usesCompactNavigation ? "app-content-mobile" : ""}`}>
           <div className="app-main">
             {isExternalView ? (
               <Alert color="gray" variant="light" className="app-banner">
@@ -444,7 +446,7 @@ export function AppShell() {
           </div>
         </MantineAppShell.Main>
 
-        {isMobile ? (
+        {usesCompactNavigation ? (
           <BottomNav
             pathname={pathname}
             mainItems={mobileMainItems.map((item) => ({

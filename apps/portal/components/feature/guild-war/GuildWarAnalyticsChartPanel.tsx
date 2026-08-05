@@ -9,13 +9,7 @@ type AnalyticsChartEmptyState = {
   onAction?: () => void;
 };
 
-/**
- * The header used to read "Mode / Chart", which described nothing — the reader
- * had to look back at the filters to know what was plotted. It now carries the
- * query itself: the mode as kicker, the subject/metric/scope as the title, and
- * `note` for a processing step that silently rewrites every number on screen
- * (normalization), so an active one can never go unnoticed.
- */
+/** The heading mirrors the active query and exposes normalization in `note`. */
 type AnalyticsChartHeading = {
   kicker: string;
   title: string;

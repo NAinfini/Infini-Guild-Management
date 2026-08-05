@@ -117,16 +117,7 @@ describe("AvailabilityEditor", () => {
     /* 周六是第六行；周末预设之后只有周六周日的「复制到…」是可点的。 */
     const saturdayRow = container.querySelectorAll(".availability-day")[5] as HTMLElement;
     await user.click(saturdayRow.querySelector(".availability-day__copy") as HTMLElement);
-    /*
-     * 这里必须带 hidden: true。
-     *
-     * 菜单确实开了（触发按钮的 aria-expanded 变成 true，Menu.Dropdown 也挂进了
-     * portal），但 jsdom 里任何元素都没有布局，floating-ui 的 hide 中间件据此判定
-     * 参照元素不可见，给浮层盖了一层 display: none。默认的 getByRole 会跳过隐藏
-     * 元素，于是这一步变成一个纯计时问题：定位计算是异步的，单跑时还没算完就查到了
-     * 元素，整套并跑时算完了就查不到——之前那次「整套跑挂、单跑就过」正是这么来的。
-     * 关掉可见性过滤，让这条用例只断言它真正要断言的东西：菜单项在、点了会复制。
-     */
+    /* jsdom 没有布局，floating-ui 会隐藏 portal 菜单；这里只验证菜单内容和复制行为。 */
     const target = await screen.findByRole("menuitem", { name: "availability.editor.dayMon", hidden: true });
     await user.click(target);
 

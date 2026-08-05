@@ -17,10 +17,7 @@
     transform var(--motion-state);
 }
 
-/* hover 字色不在这里管：Mantine 自己就有 --button-hover-color（缺省回落到
-   --button-color），品牌按钮由 ThemeProvider 直接写那一个变量。以前这里额外套了一层
-   --portal-button-hover-color，缺省值是 inherit，等于给**每一个**按钮的 hover 都盖上
-   「继承父级字色」——红色的移除按钮一悬停就变成周围正文的颜色。 */
+/* Hover text color remains owned by Mantine's per-variant button variables. */
 .buttonRoot:active:not(:disabled, [data-disabled]) {
   transform: translateY(1px);
 }
@@ -61,10 +58,7 @@
 }
 
 .inputWrapper {
-  /* xs 原先也指向 regular，于是输入框的 xs 档实际不存在：size="xs" 写了跟没写
-     一样。按钮（--button-height-xs）和 ActionIcon 的 input 档（--ai-size-input-xs）
-     一直指的是 compact，只有输入框这一档漏了，结果是查找替换栏、分页器、表格
-     单元格里那几个 xs 输入框比同排的 xs 按钮和图标按钮高出一截。 */
+  /* Keep xs text controls aligned with xs buttons and action icons. */
   --input-height-xs: var(--control-height-compact);
   --input-height-sm: var(--control-height-regular);
   --input-height-md: var(--control-height-regular);
@@ -111,13 +105,7 @@
   border-bottom-color: var(--border-subtle);
 }
 
-/* padding-inline 原先是 0：选中条只有文字那么宽，一排页签看起来是「几个被划了
-   线的词」，命中区也只有文字宽度。仓库页那条位置栏是全站唯一一处把内边距补回来
-   的（.storage-location-tabs .mantine-Tabs-tab { padding-inline: var(--space-lg) }），
-   也正是看着最像页签的一处。把它收进主题，其余页面（战、资料、图库弹窗、成员详情
-   弹窗）就都是同一套，而不是各写各的。
-   取值直接照搬仓库那条，不另造数值。管理页的域导航是另一种形态（竖排导航栏／
-   窄屏胶囊），用 padding 简写自带更高优先级，不受这条影响。 */
+/* Theme-level padding gives every standard tab a consistent pointer target. */
 .tabsTab {
   min-height: var(--control-height-regular);
   padding-inline: var(--space-lg);

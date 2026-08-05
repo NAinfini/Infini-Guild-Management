@@ -1,4 +1,4 @@
-import { getTableConfig, type SQLiteTable } from "drizzle-orm/sqlite-core";
+import { getTableConfig, SQLiteSyncDialect, type SQLiteTable } from "drizzle-orm/sqlite-core";
 import { afterAll, describe, expect, it } from "vitest";
 import {
   announcements,
@@ -6,9 +6,11 @@ import {
   errorLog,
   eventAttachments,
   eventParticipants,
+  eventPolls,
   eventPollVotes,
   eventRaffleWinners,
   events,
+  galleryItems,
   inviteLinks,
   memberAbsences,
   memberProfileClasses,
@@ -24,13 +26,13 @@ import {
   warTeams,
   wikiCategories,
 } from "../schema";
-import { createMigratedDatabase, schemaObjectSql } from "./migration-test-utils";
+import { createMigratedDatabase, migrationFiles, schemaObjectSql } from "./migration-test-utils";
 
-const migrated = createMigratedDatabase();
-afterAll(() => migrated.close());
+const coreDb = createMigratedDatabase();
+afterAll(() => coreDb.close());
 
 function tableBlock(table: string): string {
-  const block = schemaObjectSql(migrated, "table", table);
+  const block = schemaObjectSql(coreDb, "table", table);
   expect(block, `missing ${table} DDL`).toBeTruthy();
   return block;
 }
@@ -39,7 +41,17 @@ function checkNames(table: SQLiteTable): string[] {
   return getTableConfig(table).checks.map((constraint) => constraint.name);
 }
 
-describe("core schema Drizzle/migrated-schema parity", () => {
+function checkExpression(table: SQLiteTable, name: string): string {
+  const constraint = getTableConfig(table).checks.find((candidate) => candidate.name === name);
+  expect(constraint, `missing Drizzle CHECK ${name}`).toBeDefined();
+  return new SQLiteSyncDialect().sqlToQuery(constraint!.value).sql.replaceAll('"', "");
+}
+
+describe("core schema Drizzle/SQL parity", () => {
+  it("boots from the single pre-release core schema", () => {
+    expect(migrationFiles).toEqual(["0000_core_schema.sql"]);
+  });
+
   it("keeps every runtime CHECK aligned with its named Drizzle check", () => {
     const expected: Array<readonly [SQLiteTable, string, readonly string[], readonly string[]]> = [
       [roles, "roles", ["roles_level_positive"], ["CHECK (level >= 1)"]],
@@ -53,20 +65,29 @@ describe("core schema Drizzle/migrated-schema parity", () => {
       [inviteLinks, "invite_links", ["invite_links_max_uses_positive", "invite_links_used_count_valid"], ["CHECK (max_uses > 0)", "CHECK (used_count >= 0 AND used_count <= max_uses)"]],
       [memberAbsences, "member_absences", ["member_absences_date_range_valid"], []],
       [storageTransactions, "storage_transactions", ["storage_transactions_type_valid"], []],
+      [galleryItems, "gallery_items", ["gallery_items_type_valid"], ["CHECK(type IN ('image', 'video'))"]],
+      [eventPolls, "event_polls", ["event_polls_results_visibility_valid"], ["CHECK (results_visibility IN ('always', 'after_vote', 'after_close'))"]],
     ];
 
-    for (const [table, tableName, names, legacyEquivalentChecks] of expected) {
+    for (const [table, tableName, names, equivalentSqlChecks] of expected) {
       expect(checkNames(table)).toEqual(expect.arrayContaining([...names]));
       const ddl = tableBlock(tableName);
-      if (legacyEquivalentChecks.length > 0) {
-        for (const expression of legacyEquivalentChecks) expect(ddl).toContain(expression);
+      if (equivalentSqlChecks.length > 0) {
+        for (const expression of equivalentSqlChecks) expect(ddl).toContain(expression);
       } else {
         for (const name of names) expect(ddl).toContain(`CONSTRAINT ${name} CHECK`);
       }
     }
   });
 
-  it("removes legacy JSON/list columns and keeps ordered relations in both schema sources", () => {
+  it("keeps gallery and poll enum CHECK expressions equal to the SQL schema", () => {
+    expect(checkExpression(galleryItems, "gallery_items_type_valid"))
+      .toContain("gallery_items.type IN ('image', 'video')");
+    expect(checkExpression(eventPolls, "event_polls_results_visibility_valid"))
+      .toContain("event_polls.results_visibility IN ('always', 'after_vote', 'after_close')");
+  });
+
+  it("keeps denormalized JSON/list columns out of ordered relations", () => {
     expect(getTableConfig(memberProfiles).columns.map((column) => column.name)).not.toEqual(
       expect.arrayContaining(["classes", "images", "vacation_start", "vacation_end"]),
     );
@@ -88,8 +109,8 @@ describe("core schema Drizzle/migrated-schema parity", () => {
       const indexes = getTableConfig(table).indexes;
       expect(indexes.find((index) => index.config.name === uniqueName)?.config.unique).toBe(true);
       expect(indexes.map((index) => index.config.name)).toContain(lookupName);
-      expect(schemaObjectSql(migrated, "index", uniqueName)).toBeTruthy();
-      expect(schemaObjectSql(migrated, "index", lookupName)).toBeTruthy();
+      expect(schemaObjectSql(coreDb, "index", uniqueName)).toBeTruthy();
+      expect(schemaObjectSql(coreDb, "index", lookupName)).toBeTruthy();
     }
   });
 
@@ -151,10 +172,10 @@ describe("core schema Drizzle/migrated-schema parity", () => {
       expect(getTableConfig(table).indexes.map((index) => index.config.name)).toEqual(
         expect.arrayContaining([...names]),
       );
-      for (const name of names) expect(schemaObjectSql(migrated, "index", name)).toBeTruthy();
+      for (const name of names) expect(schemaObjectSql(coreDb, "index", name)).toBeTruthy();
     }
     expect(getTableConfig(auditLog).indexes.map((index) => index.config.name)).not.toContain("idx_audit_log_actor_id");
-    expect(schemaObjectSql(migrated, "index", "idx_audit_log_actor_id")).toBe("");
-    expect(schemaObjectSql(migrated, "index", "idx_error_log_source")).toBe("");
+    expect(schemaObjectSql(coreDb, "index", "idx_audit_log_actor_id")).toBe("");
+    expect(schemaObjectSql(coreDb, "index", "idx_error_log_source")).toBe("");
   });
 });

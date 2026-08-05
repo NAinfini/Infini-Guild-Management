@@ -52,6 +52,7 @@ type AnnouncementSelection =
   | { kind: "selected"; id: string };
 
 type AnnouncementFinishMode = "none" | "draft" | "archived" | "scheduled";
+type AnnouncementSort = "updated_desc" | "updated_asc";
 
 const ANNOUNCEMENT_STATUS_BY_FINISH_MODE = {
   none: "published",
@@ -146,6 +147,7 @@ export function useAnnouncementsController() {
   const canCreate = canManagePermission(["announcements.create"]) && !isExternalView;
 
   const [pinnedFilter, setPinnedFilter] = useState(false);
+  const [sortOrder, setSortOrder] = useState<AnnouncementSort>("updated_desc");
   const [statusFilter, setStatusFilter] = useState<string | undefined>(undefined);
   const { search, setSearch, debouncedSearch: debouncedSearchRaw } = useDebouncedSearch();
   const debouncedSearch = debouncedSearchRaw.trim();
@@ -199,7 +201,7 @@ export function useAnnouncementsController() {
   }, [isCreatingHandlers]);
 
   const listQuery = useInfiniteQuery({
-    queryKey: queryKeys.announcements.list(pinnedFilter ? "pinned" : "all", statusFilter ?? "all", debouncedSearch),
+    queryKey: queryKeys.announcements.list(pinnedFilter ? "pinned" : "all", statusFilter ?? "all", debouncedSearch, sortOrder),
     queryFn: ({ pageParam }) =>
       fetchAnnouncements({
         page: pageParam,
@@ -208,6 +210,7 @@ export function useAnnouncementsController() {
         pinned: pinnedFilter ? true : undefined,
         search: debouncedSearch || undefined,
         archived: statusFilter === "archived",
+        sort: sortOrder,
       }),
     initialPageParam: 1,
     getNextPageParam: (lastPage) =>
@@ -397,12 +400,7 @@ export function useAnnouncementsController() {
     if (pinnedFilter) {
       raw = raw.filter((item) => item.pinned);
     }
-    return [...raw].sort((left, right) => {
-      if (left.pinned === right.pinned) {
-        return new Date(right.updated_at).getTime() - new Date(left.updated_at).getTime();
-      }
-      return left.pinned ? -1 : 1;
-    });
+    return raw;
   }, [canEdit, accumulatedAnnouncements, pinnedFilter, statusFilter]);
 
   const listHasMore = listQuery.hasNextPage ?? false;
@@ -499,6 +497,7 @@ export function useAnnouncementsController() {
     setSearch("");
     setStatusFilter(undefined);
     setPinnedFilter(false);
+    setSortOrder("updated_desc");
   }, []);
 
   const handleFinish = (mode: AnnouncementFinishMode) => {
@@ -596,6 +595,8 @@ export function useAnnouncementsController() {
     canEdit,
     canCreate,
     pinnedFilter,
+    sortOrder,
+    setSortOrder,
     setPinnedFilter,
     statusFilter,
     setStatusFilter,

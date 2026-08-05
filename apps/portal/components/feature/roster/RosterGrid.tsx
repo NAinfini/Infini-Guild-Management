@@ -91,6 +91,7 @@ export function RosterGrid({
                 {members.map((entry) => (
                   <div key={entry.user.id} role="listitem" className="roster-virtual-cell">
                     <div
+                      className="roster-card-interaction"
                       onPointerEnter={(event) => handlePointerEnter(event, entry)}
                       onPointerLeave={handlePointerLeave}
                       onFocus={() => onCardFocus(entry)}
@@ -120,6 +121,7 @@ export function RosterGrid({
         {rows.map((entry) => (
           <motion.div key={entry.user.id} role="listitem" variants={rosterCardVariants} className="roster-card-cell">
             <div
+              className="roster-card-interaction"
               onPointerEnter={(event) => handlePointerEnter(event, entry)}
               onPointerLeave={handlePointerLeave}
               onFocus={() => onCardFocus(entry)}

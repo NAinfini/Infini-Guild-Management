@@ -11,8 +11,8 @@
   overflow: visible;
 }
 
-/* 头像一张压一张，像一摞牌。负边距吃掉三分之一个头像的宽度，五个人只占三个多
-   头像的地方。 */
+/* 头像一张压一张，像一摞牌。负边距只吃掉四分之一个头像的宽度；34px 头像的中心
+   步距因此是 25.5px，仍保留至少 24px 的相邻互动目标安全间距。 */
 .member-avatar-stack__slot {
   display: inline-flex;
   position: relative;
@@ -29,7 +29,7 @@
 }
 
 .member-avatar-stack__slot + .member-avatar-stack__slot {
-  margin-left: calc(var(--member-avatar-stack-size) * -0.34);
+  margin-left: calc(var(--member-avatar-stack-size) * -0.25);
 }
 
 /* 悬停时提到最前面并抬起一点，才能看清被压住的那半张脸。z-index 要盖过

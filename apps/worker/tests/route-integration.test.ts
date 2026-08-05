@@ -150,10 +150,6 @@ async function appRequest(
   return app.request(path, init, createMockEnv());
 }
 
-// ---------------------------------------------------------------------------
-// Setup
-// ---------------------------------------------------------------------------
-
 beforeAll(async () => {
   // Default: no session cookie
   mocks.getCookie.mockReturnValue(undefined);
@@ -169,7 +165,6 @@ beforeAll(async () => {
 
 describe("GET /api/health", () => {
   it("returns 200 with ok:true when DB is healthy", async () => {
-    // Mock DB.prepare().first() to return { ok: 1 }
     const mockEnv = createMockEnv();
     (mockEnv.DB as unknown as Record<string, unknown>).prepare = () => ({
       bind: () => ({
@@ -779,8 +774,45 @@ describe("Rate limiting", () => {
     expect(body.request_id).toBeDefined();
     expect(res.headers.get("Retry-After")).toBeTruthy();
 
-    // Cleanup
     fakeCacheStore.delete(cacheKey);
+  });
+
+  it("counts HEAD requests against the read quota and rejects the request after the quota is spent", async () => {
+    const windowMs = 60_000;
+    const now = Date.now();
+    const nowSpy = vi.spyOn(Date, "now").mockReturnValue(now);
+    const windowId = Math.floor(now / windowMs);
+    const cacheKey = `https://rate-limit-v1/read/unknown/${windowId}`;
+    fakeCacheStore.set(cacheKey, new Response(JSON.stringify({
+      count: 119,
+      resetAt: (windowId + 1) * windowMs,
+    }), {
+      headers: { "Content-Type": "application/json" },
+    }));
+
+    const limit = vi.fn().mockResolvedValue([]);
+    const where = vi.fn(() => ({ limit }));
+    const from = vi.fn(() => ({ where }));
+    mocks.drizzle.mockReturnValue({ select: vi.fn(() => ({ from })) });
+    const mockEnv = createMockEnv();
+
+    try {
+      const allowed = await app.request("/api/site-config", { method: "HEAD" }, mockEnv);
+      expect(allowed.status).toBe(200);
+      expect(allowed.headers.get("X-RateLimit-Scope")).toBe("read");
+      expect(allowed.headers.get("X-RateLimit-Remaining")).toBe("0");
+
+      const rejected = await app.request("/api/site-config", { method: "HEAD" }, mockEnv);
+      expect(rejected.status).toBe(429);
+      expect(rejected.headers.get("X-RateLimit-Scope")).toBe("read");
+      expect(rejected.headers.get("X-RateLimit-Limit")).toBe("120");
+      expect(rejected.headers.get("X-RateLimit-Remaining")).toBe("0");
+      expect(rejected.headers.get("Retry-After")).toBeTruthy();
+    } finally {
+      nowSpy.mockRestore();
+      fakeCacheStore.delete(cacheKey);
+      mocks.drizzle.mockReturnValue({});
+    }
   });
 
   it("can defer successful read counter writes without blocking the response", async () => {
@@ -884,6 +916,61 @@ describe("Rate limiting", () => {
     } finally {
       callRelease(releasePut);
       fakeCachePut = previousPut;
+    }
+  });
+});
+
+describe("WebSocket routing", () => {
+  it("overwrites client-supplied internal identities with the resolved session and account ids", async () => {
+    const { WS_ACCOUNT_ID_HEADER, WS_SESSION_ID_HEADER } = await import("../durable-objects/WebSocketDO");
+    const now = Date.now();
+    const where = vi.fn().mockResolvedValue([{
+      sessionId: "trusted-session-id",
+      expiresAt: new Date(now + 20 * 24 * 60 * 60_000).toISOString(),
+      sessionCreatedAt: new Date(now - 60_000).toISOString(),
+      userId: "trusted-account-id",
+      roleId: "member",
+      isActive: true,
+      deletedAt: null,
+      permission: null,
+      granted: null,
+    }]);
+    const leftJoin = vi.fn(() => ({ where }));
+    const innerJoin = vi.fn(() => ({ leftJoin }));
+    const from = vi.fn(() => ({ innerJoin }));
+    mocks.drizzle.mockReturnValue({ select: vi.fn(() => ({ from })) });
+    mocks.getCookie.mockImplementation((_c: unknown, name: string) => {
+      if (name === "ig_session") return "raw-session-token";
+      if (name === "ig_session_mode") return "0";
+      return undefined;
+    });
+
+    const forwardedFetch = vi.fn().mockResolvedValue(new Response(null, { status: 200 }));
+    const env = createMockEnv();
+    env.WS = {
+      idFromName: vi.fn().mockReturnValue({}),
+      get: vi.fn().mockReturnValue({ fetch: forwardedFetch }),
+    } as unknown as DurableObjectNamespace;
+
+    try {
+      const response = await app.request("/ws", {
+        headers: {
+          Upgrade: "websocket",
+          Origin: "https://portal.example.com",
+          [WS_ACCOUNT_ID_HEADER]: "forged-account-id",
+          [WS_SESSION_ID_HEADER]: "forged-session-id",
+        },
+      }, env);
+
+      expect(response.status).toBe(200);
+      expect(forwardedFetch).toHaveBeenCalledOnce();
+      const [, init] = forwardedFetch.mock.calls[0]!;
+      const forwardedHeaders = new Headers(init?.headers);
+      expect(forwardedHeaders.get(WS_ACCOUNT_ID_HEADER)).toBe("trusted-account-id");
+      expect(forwardedHeaders.get(WS_SESSION_ID_HEADER)).toBe("trusted-session-id");
+    } finally {
+      mocks.getCookie.mockReturnValue(undefined);
+      mocks.drizzle.mockReturnValue({});
     }
   });
 });

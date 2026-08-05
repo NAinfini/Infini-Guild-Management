@@ -3,6 +3,8 @@ import type { StorageItem } from "@guild/shared";
 import { MantineProvider } from "@mantine/core";
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import type { ComponentProps } from "react";
 import { describe, expect, it, vi } from "vitest";
 import { StorageItemCard } from "./StorageItemCard";
@@ -56,6 +58,24 @@ function renderCard(
 }
 
 describe("StorageItemCard permissions", () => {
+  it("uses 44px-token hit areas for mobile card actions without inflating desktop controls", () => {
+    const css = readFileSync(
+      resolve(process.cwd(), "apps/portal/components/pages/StoragePage.css"),
+      "utf8",
+    );
+    const mobileStart = css.indexOf("@media (max-width: 40em)");
+    const nextMedia = css.indexOf("\n@media", mobileStart + 1);
+    const mobileCss = css.slice(mobileStart, nextMedia === -1 ? undefined : nextMedia);
+
+    expect(mobileStart).toBeGreaterThanOrEqual(0);
+    expect(mobileCss).toMatch(
+      /\.storage-item-card__actions \.mantine-Button-root\s*\{[^}]*min-block-size:\s*var\(--control-hit-area\)/s,
+    );
+    expect(mobileCss).toMatch(
+      /\.storage-item-card__actions \.mantine-ActionIcon-root\s*\{[^}]*min-inline-size:\s*var\(--control-hit-area\)[^}]*min-block-size:\s*var\(--control-hit-area\)/s,
+    );
+  });
+
   it("opens an item without an image by pointer and keyboard", async () => {
     const user = userEvent.setup();
     const onOpen = vi.fn();

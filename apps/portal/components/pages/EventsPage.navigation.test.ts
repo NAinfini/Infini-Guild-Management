@@ -3,19 +3,15 @@ import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 
 describe("EventsPage navigation architecture", () => {
-  /*
-   * 卡片、月、周期模板现在是同一个 view 参数的三档，页面不再有第二层标签导航。
-   * 断言里保留「只挂当前这一档」这条：原先由 Tabs 的 keepMounted={false} 保证，
-   * 现在由三元分支保证——周期模板那棵树带自己的查询，被无条件挂上去就会白拉数据。
-   */
+  // Mount only the active view; the recurring tree owns a query and must not fetch off-screen.
   it("drives every view from the URL without a second tab layer or a counter event bus", () => {
     const source = readFileSync(
       resolve(process.cwd(), "apps/portal/components/pages/EventsPage.tsx"),
       "utf8",
     );
 
-    // 视图必须走共用的折算函数，页面自己再解析一遍 search.view 就会跟写路径分叉。
-    expect(source).toContain("resolveEventsViewMode(eventsRouteSearch)");
+    // The page reads the same validated `view` field that navigation writes.
+    expect(source).toContain('eventsRouteSearch.view ?? "cards"');
     expect(source).toContain('viewMode === "recurring" ? (');
     expect(source).toContain('canManage && viewMode === "recurring"');
     expect(source).not.toContain("<Tabs");

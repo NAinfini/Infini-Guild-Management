@@ -74,9 +74,7 @@
   transform: scale(1.1);
 }
 
-/* 服务图标色调，替代 AdminSystemSection.tsx 里 style={{ color }} 拼字符串
-   （the inline-style migration contract B 节类 2，Task 8 批 C 收敛）。这三条是本文件里唯一
-   给 .system-health-tile__icon 设 color 的规则，无同名/同选择器冲突。 */
+/* Service icons use the exhaustive health-state palette. */
 .system-health-tile__icon--ok { color: var(--status-success); }
 .system-health-tile__icon--warning { color: var(--status-warning); }
 .system-health-tile__icon--danger { color: var(--status-danger); }
@@ -193,27 +191,17 @@
 .health-log-latency-bar {
   height: 4px;
   border-radius: 2px;
-  /* 长度由 AdminStatusTab.tsx 按 latencyScalePercent() 算；这两条是版式约束，
-     不是数据：4px 保证 0ms 也看得出这里有一根条，40px 是这一列容得下的上限。
-     它们原本写在那个 style={{}} 里，和百分比宽度混在一起。 */
+  /* Bounds keep zero-latency visible without exceeding the table column. */
   min-width: 4px;
   max-width: 40px;
 }
 
-/* AdminStatusTab.tsx's latency column, moved out of style={{}} (task-8 批 B).
-   Time column: no existing rule in this file sets `color` on
-   `.health-log-table td`, so this plain class needs no specificity fight. */
+/* Latency log timestamp. */
 .health-log-time {
   color: color-mix(in srgb, var(--text-primary) 65%, transparent);
 }
 
-/* 三态穷举（good/warn/bad），来自 AdminSystemSection.tsx 的
-   LATENCY_BAND_COLOR_VAR（latencyBand() 分档，the inline-style migration contract B 节类 2）。
-   同一个常量对象还以字面 var() 字符串的形式喂给这个组件里 RingProgress 的
-   color prop（延迟环），因为该 prop 只吃字面字符串、不认 className，这条例外
-   走的是 AdminApiTest.css:282-286 记录过的同一条通道。这三条与下面
-   .health-log-latency-value--* 是本文件里给这一组状态色分别设 background/color
-   的规则，三处共用同一组 token，不各自维护一份颜色。 */
+/* Latency bars, values, and rings share the same exhaustive good/warn/bad palette. */
 .health-log-latency-bar--good { background: var(--status-success); }
 .health-log-latency-bar--warn { background: var(--status-warning); }
 .health-log-latency-bar--bad { background: var(--status-danger); }

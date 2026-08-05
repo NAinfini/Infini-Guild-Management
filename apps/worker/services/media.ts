@@ -23,13 +23,8 @@ const MAGIC_BYTES: Record<string, { offset: number; bytes: number[] }[]> = {
   "audio/wav": [{ offset: 0, bytes: [0x52, 0x49, 0x46, 0x46] }, { offset: 8, bytes: [0x57, 0x41, 0x56, 0x45] }],
 };
 
-/*
- * 头像和站点 Logo 跟图库、Wiki、公告那几条路走同一份名单（WebP 加 GIF 例外），
- * 不再自己抄一遍——原先这里各写各的 new Set(...)，收紧一次要记得改五个地方。
- *
- * SVG 不在名单上，而且不该加：SVG 能内嵌 <script>，当作用户内容原样发出去是个
- * XSS 面。客户端不把它栅格化（那会丢矢量），但服务端照旧不收。
- */
+/* All image routes share the persisted-media allowlist.
+ * SVG remains excluded because user-authored markup would create an XSS surface. */
 const STORED_IMAGE_TYPES: ReadonlySet<string> = new Set(LIMITS.media.allowedImageTypes);
 
 /** 语音只存 Ogg/Opus。容器之外的编码校验在 validateUploadBytes 里。 */
@@ -199,8 +194,7 @@ export async function storeClassIcon(c: Context, classId: string, file: File): P
 }
 
 export async function storeProfileAudio(c: Context, userId: string, file: File): Promise<string> {
-  /* 落库一律是 Ogg/Opus，扩展名跟着容器写 .ogg——以前兜底写 .opus，
-     可存进去的字节是 WebM 或 Ogg，名字和内容对不上。 */
+  /* 资料音频按 Ogg/Opus 契约存储，键扩展名与 Ogg 容器一致。 */
   const buffer = await file.arrayBuffer();
   const validation = validateUploadBytes(buffer, normalizeContentType(file, "audio/ogg"), STORED_AUDIO_TYPES);
   if (!validation.ok) throw new Error(validation.message);

@@ -27,8 +27,6 @@ import {
   getGuildWarTeamStatLabel,
 } from "@portal/utils/game-rules";
 
-// --- Types ---
-
 export type ConcludeWarMember = {
   userId: string;
   username: string;
@@ -76,8 +74,6 @@ function createInitialMemberStats(
 ): Map<string, Record<string, number>> {
   return new Map(members.map((member) => [member.userId, { ...member.stats }]));
 }
-
-// --- Component ---
 
 export function ConcludeWarModal({
   opened,

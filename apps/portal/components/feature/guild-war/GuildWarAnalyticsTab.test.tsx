@@ -172,8 +172,7 @@ describe("GuildWarAnalyticsTab", () => {
     const { container } = renderAnalyticsTab(createAnalytics());
 
     expect(container.querySelectorAll(".gwa-console")).toHaveLength(1);
-    // The war set, the members and the metrics used to be split across a left
-    // and a right sidebar; all three now live in the same rail.
+    // All selection dimensions belong to the same console rail.
     const rail = container.querySelector(".gwa-console")!;
     ["analytics.aria.selectWars", "analytics.aria.selectMembers", "analytics.aria.selectMetrics"]
       .forEach((label) => {

@@ -120,8 +120,6 @@ describe("AdminPage responsive and permission states", () => {
     });
   });
 
-  /* 窄屏原先塌成一个 Select：看不见当前位置，切换要点两次，读屏也丢了 tablist 语义。
-     现在换成同一个 tablist 的横向胶囊条，只改排布不改语义。 */
   it.each([768, 1024])(
     "keeps one horizontal tablist at %ipx",
     (width) => {

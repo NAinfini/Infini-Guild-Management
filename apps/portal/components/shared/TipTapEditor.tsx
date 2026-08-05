@@ -1,9 +1,9 @@
 import { IMAGE_FILE_ACCEPT } from "@guild/shared";
 import { forwardRef } from "react";
 import {
-  TIPTAP_DEFAULT_JSON as _TIPTAP_DEFAULT_JSON,
-  buildTipTapEditorLabels as _buildTipTapEditorLabels,
-  type TipTapEditorLabels as _TipTapEditorLabels,
+  TIPTAP_DEFAULT_JSON,
+  buildTipTapEditorLabels,
+  type TipTapEditorLabels,
 } from "./tiptap-meta";
 import CodeBlockLowlight from "@tiptap/extension-code-block-lowlight";
 import Color from "@tiptap/extension-color";
@@ -48,9 +48,6 @@ type LightboxImage = {
 const LIGHTBOX_ZOOM_MIN = 1;
 const LIGHTBOX_ZOOM_MAX = 2.6;
 const LIGHTBOX_ZOOM_STEP = 0.2;
-
-// Re-exported from tiptap-meta for backward compatibility.
-export type TipTapEditorLabels = _TipTapEditorLabels;
 
 const DEFAULT_LABELS: TipTapEditorLabels = {
   bold: "Bold",
@@ -117,9 +114,6 @@ const DEFAULT_LABELS: TipTapEditorLabels = {
   characters: "characters",
 };
 
-// Re-exported from tiptap-meta for backward compatibility.
-export const buildTipTapEditorLabels = _buildTipTapEditorLabels;
-
 export type TipTapEditorProps = {
   value: string;
   onChange: (value: string) => void;
@@ -142,7 +136,7 @@ type SlashCommand = {
   run: (editor: Editor) => void;
 };
 
-const DEFAULT_DOC_JSON = _TIPTAP_DEFAULT_JSON;
+const DEFAULT_DOC_JSON = TIPTAP_DEFAULT_JSON;
 
 function parseContent(value: string, mode: EditorMode): Content {
   if (!value.trim()) {
@@ -769,6 +763,3 @@ export const TipTapEditor = forwardRef<HTMLDivElement, TipTapEditorProps>(
     );
   }
 );
-
-// Re-exported from tiptap-meta for backward compatibility.
-export const TIPTAP_DEFAULT_JSON = _TIPTAP_DEFAULT_JSON;

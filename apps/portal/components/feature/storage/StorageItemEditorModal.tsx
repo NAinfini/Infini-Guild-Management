@@ -63,15 +63,8 @@ export function StorageItemEditorModal({
   const [hydratedFor, setHydratedFor] = useState<string | null>(null);
   const { pendingKeys, runPending } = useKeyedPending();
 
-  /*
-   * 每个物品只灌一次表单。
-   *
-   * 原来这里的依赖是 item 这个对象本身，只要它换了引用就整份重置。抽屉打开时
-   * 先拿列表里那一行顶上，随后 /api/storage/items/:id 的结果到位，item 就换了个
-   * 新对象——内容一模一样，但这一下会把用户已经敲进去的名称/描述抹掉，接着点保存
-   * 提交的就是旧值。WebSocket 推来的失效重取同理。
-   * 现在按物品 id 记账：换物品才重新灌，同一个物品的后续重取不再动草稿。
-   */
+  // Hydrate once per item ID so query refreshes and WebSocket invalidations do
+  // not overwrite edits already made in the open drawer.
   useEffect(() => {
     if (!opened) {
       setHydratedFor(null);
@@ -167,7 +160,7 @@ export function StorageItemEditorModal({
               </Group>
               {item.images.length ? (
                 <SimpleGrid cols={{ base: 2, sm: 3 }} spacing="xs">
-                  {item.images.map((image) => (
+                  {item.images.map((image, imageIndex) => (
                     <div key={image.id} className="storage-item-editor__image">
                       {brokenImages.has(image.id) ? (
                         <span className="storage-item-editor__broken-image"><PhotoOffIcon size={26} /></span>
@@ -178,7 +171,11 @@ export function StorageItemEditorModal({
                         color="red"
                         variant="filled"
                         className="storage-item-editor__delete-image"
-                        aria-label={t("action.deleteImage")}
+                        aria-label={t("action.deleteImage", {
+                          index: imageIndex + 1,
+                          total: item.images.length,
+                          item: item.name,
+                        })}
                         loading={pendingKeys.has(`delete:image:${item.id}/${image.id}`)}
                         onClick={() => {
                           void runPending(

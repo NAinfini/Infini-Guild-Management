@@ -51,12 +51,7 @@ const AxeIcon = forwardRef<AxeIconHandle, AxeIconProps>(
     return (
       <div ref={wrapperRef} className={cn(className)} onMouseEnter={handleMouseEnter} onMouseLeave={handleMouseLeave} {...props}>
         <motion.svg animate={controls} fill="none" height={size} initial="normal" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" variants={SVG_VARIANTS} viewBox="0 0 24 24" width={size} xmlns="http://www.w3.org/2000/svg">
-          {/*
-            前四稿全废在同一件事上：斧头画小了、柄画长了，比例一到就读成旗子（柄上挂一片布）。
-            现在斧头占掉大半张图、柄退成一条细线穿过斧眼，柄尾在斧背后头露出一小截——
-            「刃在一侧、背在另一侧、柄从中间穿过去」这三样凑齐才是斧头。
-            整体转 -40°，跟 SwordIcon 一样刃朝右上。
-          */}
+          {/* 斧刃占据主体，细柄穿过斧眼并在斧背露出短尾；整体旋转 -40°，刃朝右上。 */}
           <g transform="rotate(-40 12 12)">
             <path d="M12 22V4.5" />
             <path d="M8 5.5H12.5C17 5 20.5 7.5 21 12.5C16.5 13.5 12 12 8 10.5Z" />

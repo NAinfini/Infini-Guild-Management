@@ -10,7 +10,7 @@ import {
   buildSiteLogoKey,
   buildStorageItemImageKey,
   buildWikiImageKey,
-  assertDeletableContentMediaKey,
+  assertContentMediaKey,
   parseMediaKey,
 } from "../media-keys";
 import { protectContentMediaBucket } from "../media";
@@ -47,12 +47,12 @@ describe("canonical media keys", () => {
   });
 
   it("allows only canonical content keys through the delete gate", () => {
-    expect(assertDeletableContentMediaKey(buildEventImageKey("event-1", "image/webp", OBJECT_ID))).toMatchObject({
+    expect(assertContentMediaKey(buildEventImageKey("event-1", "image/webp", OBJECT_ID))).toMatchObject({
       kind: "event_image",
       entityId: "event-1",
     });
-    expect(() => assertDeletableContentMediaKey("audit-archive/2026/manifest.json")).toThrow(/audit archive/);
-    expect(() => assertDeletableContentMediaKey("misc/free-form.json")).toThrow(/unrecognized/);
+    expect(() => assertContentMediaKey("audit-archive/2026/manifest.json")).toThrow(/audit archive/);
+    expect(() => assertContentMediaKey("misc/free-form.json")).toThrow(/unrecognized/);
   });
 
   it("blocks archive and unknown keys before content R2 put or delete", async () => {

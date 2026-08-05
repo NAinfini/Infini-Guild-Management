@@ -3,13 +3,10 @@ import { utcWeekdayToLocal } from "@guild/shared/utils/recurrence";
 import { tzOffsetToAnchorIso, buildFormState, computeNextLifecyclePreview, formatLifecycleDate, utcTimeToLocalTime } from "./RecurringTemplateFormModal.helpers";
 import { useConfirmDialog } from "@portal/hooks/useConfirmDialog";
 import { CalendarRepeatIcon, CircleCheckIcon, ClockIcon, PauseIcon, SearchIcon, UsersIcon } from "@portal/components/icons";
+import { ContentFilterToolbar } from "@portal/components/shared/ContentFilterToolbar";
 import {
-  ActionIcon,
   Badge,
-  Box,
   Button,
-  Collapse,
-  Flex,
   Group,
   HoverCard,
   Paper,
@@ -23,8 +20,7 @@ import {
   UnstyledButton,
 } from "@mantine/core";
 import { useCallback, useMemo, useState } from "react";
-import { useDisclosure, useMediaQuery } from "@mantine/hooks";
-import { IconAdjustmentsHorizontal } from "@tabler/icons-react";
+import { useDisclosure } from "@mantine/hooks";
 import { useTranslation } from "react-i18next";
 import {
   RecurringTemplateFormModal,
@@ -99,10 +95,8 @@ export function RecurringTemplatesTab({
   const { t, i18n } = useTranslation("events");
   const gameRules = DEFAULT_GAME_RULES;
   const confirm = useConfirmDialog();
-  const isMobile = useMediaQuery("(max-width: 47.99em)");
 
   const [formOpen, formHandlers] = useDisclosure(false);
-  const [filtersOpen, filterHandlers] = useDisclosure(false);
   const [formMode, setFormMode] = useState<"create" | "edit">("create");
   const [editingTemplate, setEditingTemplate] = useState<RecurringTemplate | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
@@ -124,6 +118,11 @@ export function RecurringTemplatesTab({
   }, [i18n.language, searchQuery, statusFilter, templates, typeFilter]);
 
   const hasActiveFilters = searchQuery.trim().length > 0 || statusFilter !== "all" || typeFilter !== null;
+  const activeFilterCount = [
+    searchQuery.trim().length > 0,
+    statusFilter !== "all",
+    typeFilter !== null,
+  ].filter(Boolean).length;
   const resetFilters = () => {
     setSearchQuery("");
     setStatusFilter("all");
@@ -241,71 +240,32 @@ export function RecurringTemplatesTab({
     <>
       <Stack gap={12}>
         {/*
-          * 这条工具栏跟活动档那条（EventsFiltersCard）保持同一套布局和顺序：
-          * 搜索 → 状态 → 类型 → 视图切换器 → 新建。两档来回切时控件不会跳位。
+          * 这条工具栏跟活动档那条（EventsFiltersCard）共用同一套渐进披露：搜索、
+          * 视图切换和新建始终可见，状态与类型只在容器足够宽时内联。
           * 没有模板时只留切换器：筛一个空列表没有意义，但切换器是退出模板档的唯一
           * 入口，跟着一起消失就是进得来出不去。
           */}
-        <Paper withBorder radius="md" p="sm">
-          {isMobile ? (
-            <Stack gap={0}>
-              <Group gap="xs" wrap="nowrap" align="center">
-                {templates.length > 0 ? (
-                  <>
-                    <Box style={{ flex: 1, minWidth: 0 }}>{searchControl}</Box>
-                    {canManage ? (
-                      <Button size="sm" onClick={handleCreate} style={{ minHeight: 44, flexShrink: 0 }}>
-                        {t("recurring.create")}
-                      </Button>
-                    ) : null}
-                    <ActionIcon
-                      variant={filtersOpen ? "filled" : "default"}
-                      size="lg"
-                      onClick={filterHandlers.toggle}
-                      aria-label={t("common:filter.toggle")}
-                    >
-                      <IconAdjustmentsHorizontal size={18} />
-                    </ActionIcon>
-                  </>
-                ) : (
-                  <Box style={{ flex: 1, minWidth: 0 }}>{viewSwitcher}</Box>
-                )}
-              </Group>
-              {templates.length > 0 ? (
-                <Collapse expanded={filtersOpen}>
-                  <Stack gap="sm" pt="sm">
-                    <Group gap="xs" wrap="wrap">
-                      {filterControls}
-                    </Group>
-                    {viewSwitcher}
-                  </Stack>
-                </Collapse>
-              ) : null}
-            </Stack>
-          ) : (
-            <Flex gap="sm" align="center" wrap="wrap">
-              {templates.length > 0 ? (
-                <>
-                  {/* 封顶理由同 EventsFiltersCard：不封顶宽屏下搜索框会吃掉全部富余空间。 */}
-                  <Box style={{ flex: "1 1 180px", minWidth: 160, maxWidth: 360 }}>{searchControl}</Box>
-                  <Group gap="xs" wrap="wrap">
-                    {filterControls}
-                  </Group>
-                  {viewSwitcher}
-                  {canManage ? (
-                    <Box style={{ marginLeft: "auto" }}>
-                      <Button size="sm" onClick={handleCreate}>
-                        {t("recurring.create")}
-                      </Button>
-                    </Box>
-                  ) : null}
-                </>
-              ) : (
-                viewSwitcher
-              )}
-            </Flex>
-          )}
-        </Paper>
+        {templates.length > 0 ? (
+          <ContentFilterToolbar
+            search={searchControl}
+            controls={filterControls}
+            primary={(
+              <>
+                {viewSwitcher}
+                {canManage ? (
+                  <Button size="sm" onClick={handleCreate}>
+                    {t("recurring.create")}
+                  </Button>
+                ) : null}
+              </>
+            )}
+            toggleLabel={t("common:filter.toggle")}
+            activeFilterCount={activeFilterCount}
+            collapseBelow={1120}
+          />
+        ) : (
+          <Paper withBorder radius="md" p="sm">{viewSwitcher}</Paper>
+        )}
         {templates.length === 0 ? (
           <Paper withBorder radius="md">
             <div>

@@ -1,72 +1,51 @@
 # Changelog
 
-All notable changes to this project are documented here.
+All notable changes to this pre-release project are summarized here.
 
-This project follows the structure of [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html) where release versions are assigned.
+The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Release versions will follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
 ### Added
 
-- Full-stack guild management portal with shared, worker, and portal app areas.
-- Session-based auth with invite-only registration, login/logout, username checks, and profile credential management.
-- Member roster with profiles, classes, stats, bio, media, and availability.
-- Event management with recurrence rules, capacity limits, signup locking, polls, and participant tracking.
-- Announcement workflow with TipTap rich text editing, draft/scheduled/published/archived states, expiration, and pinning.
-- Guild war tools for active team composition, war history, templates, per-member stats, and analytics.
-- Wiki with hierarchical categories, rich text articles, and article history support.
-- Gallery backed by R2 media storage.
-- Admin console for user management, roles, invite links, audit logs, status, and diagnostics.
-- Command search with `Cmd+K` / `Ctrl+K` across cached portal content.
-- WebSocket push updates through Cloudflare Durable Objects.
-- Scheduled maintenance jobs for event instance generation, announcement publishing/expiry, audit archival, and media cleanup.
-- English and Chinese localization through i18next.
-- RBAC enforced on both client and server, with support for custom roles.
-- Service layer across worker domains, including auth, events, guild war, admin, users, announcements, wiki, gallery, media, audit, and game data.
-- ESLint boundary rules to keep feature components from importing API modules directly.
-- Zustand stores for auth, preferences, notifications, guild war state, and equipment calculator local data.
-- TanStack Query data hooks for page-level data orchestration.
-- Feature components extracted from large page components across admin, announcements, events, gallery, guild war, profile, and wiki areas.
-- Test coverage across worker services, integration routes, contracts, shared schemas, portal components, and utility logic.
-- Security headers middleware for CSP, HSTS, `X-Content-Type-Options`, and related headers.
-- Local database seed data for users, roles, events, guild war records, and RBAC scenarios.
-- Equipment calculator work in progress: shared schemas and calculator code, game data API, admin game-data UI, Tools page launcher, local store, worker search, and translations.
-- Beginner-friendly local setup, deployment preflight, production deployment command, and first-administrator bootstrap tooling.
-- English and Chinese self-hosting guides plus public-repository security and support templates.
+- Bilingual English/Chinese guild portal with invite-only registration, session-based authentication, profile credential management, custom roles, and permission-gated administration.
+- Member roster and profiles with class catalog/tags, badges, availability and absence tracking, statistics, biography, images, avatar, and audio.
+- Event workflows for fixed and recurring events, visibility scheduling, capacity, class quotas, signup locking, polls, raffles, attachments, and automatic archival.
+- Announcement authoring with TipTap rich text, staged images, draft/scheduled/published/archived states, expiration, and pinning.
+- Guild-war workspaces for active team composition, pool management, templates, conclusions, history, per-member statistics, exports, and analytics.
+- Wiki categories and revisioned rich-text articles, gallery media, storage locations/categories/items and transaction ledger, dashboard summaries, and global command search.
+- Admin tools for members, roles, invite links, classes, class tags, badges, Site Config, audit/error review, system status, and isolated diagnostics.
+- Cloudflare Worker API with D1 persistence, Durable Object WebSocket updates, scheduled maintenance, and one R2 `MEDIA` bucket for content media and audit archives.
+- Browser media conversion plus server-side allowlist and magic-byte validation, media reference tracking, upload leases, orphan reporting/cleanup, and compensation for partial writes.
+- Local setup, first-admin bootstrap, secret/config checks, production dry-run, deployment command, and English/Chinese self-hosting documentation.
 
 ### Changed
 
-- Guild war page state moved from many local `useState` values into a smaller page controller plus Zustand store.
-- Worker routes now use shared Zod validation more consistently.
-- Admin and tooling surfaces were expanded to support game-data management for the equipment calculator.
-- Frontend stack updated to React 19, Mantine 8, Vite 8, Tailwind CSS 4, and current TanStack packages.
-- TipTap upgraded to v3 for rich text editing.
-- Admin Site Config now exposes the independent equipment calculator feature switch.
-- Admin-configured media file limits are capped below the request-wide upload ceiling to prevent impossible settings.
-- Every upload path now transcodes on the client through one shared dispatcher: images to WebP, audio to Opus. The site logo was the last path still sending the original bytes.
-- Storage item images, wiki article images, event attachments, and announcement article images are now validated server-side against the shared image allow-list and their magic bytes, matching the gallery path. Event attachments previously accepted anything declaring an `image/*` type, including SVG; announcement article images trusted the declared `Content-Type` outright, unlike the staging path next to them.
+- The portal uses one responsive Mantine AppShell and route metadata registry, with a single route heading, compact tablet navigation, mobile bottom navigation, content-width modes, and accessible loading/error/permission states.
+- Shared design tokens provide warm light and dark surfaces, fixed action colors, selectable identity accents, domain/status colors, typography and control scales, reduced-motion behavior, and protected Roster interaction effects.
+- Reusable `SectionHeader` and container-aware `ContentFilterToolbar` compositions standardize section hierarchy and responsive search/filter controls without duplicating foundational Mantine behavior.
+- TanStack Query owns server data and invalidation; focused Zustand stores own session, preferences, notification, guild-war, and catalog UI state. Session transitions clear or refresh state across login, logout, expiry, focus, and cross-tab changes.
+- Conditional writes use ETags or source timestamps where concurrent editors could overwrite announcements, wiki articles, guild-war rosters, classes, or inventory state; conflicting writes return explicit refresh/retry responses.
+- Storage transactions and batch operations preserve ledger consistency and idempotency, while ordered relations and database constraints protect domain invariants.
+- Game rules are fixed source contracts rather than Site Config or D1-managed data: six event types, three guild-war results, shared stat definitions, and an unrounded KDA evaluator.
+- Upload paths share the same browser conversion and Worker validation contract, including server-normalized content types and validation before the first R2 write in a batch.
 
-### Removed
+### Security
 
-- `useMediaUpload`'s `convertImagesToWebp` and `convertAudioToOpus` options. No call site ever set them to `false`; they only offered a way to silently disable transcoding.
-
-- Legacy AIVectorMemory configuration and related Claude hook files.
-- Older planning and audit notes were consolidated under `docs/` and `.trellis/` task tracking.
-
-### Technical
-
-- Cloudflare Workers and Hono provide the serverless API.
-- Cloudflare D1 with Drizzle ORM stores relational data.
-- Cloudflare R2 stores uploaded media and audit archives.
-- Cloudflare Durable Objects provide WebSocket coordination.
-- React, TanStack Router, and TanStack Query power the portal.
-- Mantine and Tailwind CSS provide the UI foundation.
-- Zod schemas are shared between portal and worker code.
-- pnpm 11.17.0 manages the workspace.
+- Worker middleware enforces request IDs, strict CORS, mutation origin and `X-Requested-With` checks, per-purpose rate limits, body-size limits, ETags, session and permission checks, feature gates, and structured error envelopes.
+- CSP, HSTS, frame denial, content-type protection, referrer policy, permissions policy, invite/login lockout behavior, hashed session tokens, and PBKDF2 password storage are covered by focused tests.
+- Mutating operations emit audit records; aged audit data is archived to integrity-checked R2 objects with signed access rather than exposed directly.
+- Production configuration requires secrets outside tracked files and keeps production system tests disabled by default.
 
 ### Database
 
-- Modular Drizzle schema files are split by domain.
-- Baseline SQL lives in `apps/worker/db/migrations/0000_core_schema.sql` during v1 development.
-- Audit logs are retained in D1 before archival to R2.
-- Session and domain tables use cascade behavior where appropriate.
+- Modular Drizzle schemas define the runtime D1 model, with mirrored named checks, foreign keys, indexes, ordered relation tables, and baseline role/permission, class, and Site Config records in `0000_core_schema.sql`.
+- Before the first production D1 database is created, `0000_core_schema.sql` remains the single fresh-database migration that may be synchronized or rebuilt in place. As soon as that database is created, `0000` freezes permanently; every later schema change uses monotonic incremental migrations starting at `0001_...`.
+- D1 media references and R2 lifecycle checks keep content rows, upload leases, cleanup checkpoints, and stored objects reconcilable.
+
+### Tooling
+
+- Current frontend baseline: React 19.2, TypeScript 6, Vite 8.2, Mantine 9.5, TanStack Router/Query, Zustand, TipTap 3, and ECharts 6. The project does not use Tailwind CSS.
+- Vitest covers shared contracts, portal components/hooks/styles, Worker services/routes/middleware, and Drizzle/SQL parity and constraints.
+- Playwright builds the portal and tests Worker-served assets in isolated slots, each with its own Worker, D1, R2, client identities, tracked cleanup, and post-run data fingerprint verification.
+- `pnpm release:check` combines secret/config checks, dependency audit, typecheck, lint, unit tests, E2E, and a production Worker dry-run before deployment.

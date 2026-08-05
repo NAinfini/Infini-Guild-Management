@@ -9,6 +9,7 @@ import {
   Stack,
   Text,
 } from "@mantine/core";
+import { useMediaQuery } from "@mantine/hooks";
 import { DEFAULT_GAME_RULES } from "@guild/shared";
 import {
   ArrowLeftIcon,
@@ -21,7 +22,7 @@ import { EmptyState } from "@portal/components/shared/EmptyState";
 import { SectionHeader } from "@portal/components/shared/SectionHeader";
 import { resolveResultTagColor } from "@portal/utils/guild-war";
 import { useSiteConfigStore } from "@portal/stores/site-config";
-import { useReactTable } from "@tanstack/react-table";
+import { flexRender, useReactTable } from "@tanstack/react-table";
 import ReactEChartsCore from "echarts-for-react/esm/core";
 import { BarChart, LineChart } from "echarts/charts";
 import { GridComponent, LegendComponent, TooltipComponent } from "echarts/components";
@@ -130,6 +131,7 @@ export function WarHistoryDetail({
   const { t } = useTranslation("guild-war");
   const siteName = useSiteConfigStore((state) => state.siteName);
   const gameRules = DEFAULT_GAME_RULES;
+  const isMobileMemberLayout = useMediaQuery("(max-width: 767px)") ?? false;
 
   useEffect(() => {
     echarts.registerTheme(chartThemeName, chartThemeConfig);
@@ -227,24 +229,45 @@ export function WarHistoryDetail({
             </header>
 
             <div className="whd-identity">
-              <h3 className="whd-identity__title">{historyDetail.war_name}</h3>
-              <div className="whd-identity__meta">
-                <span>{t("history.membersCount", { count: historyDetail.member_stats.length })}</span>
-                <span className="whd-identity__sep" aria-hidden="true" />
-                <span>{t("history.teamsCount", { count: historyDetail.teams.length })}</span>
-                {historyDetail.notes ? (
-                  <>
-                    <span className="whd-identity__sep" aria-hidden="true" />
-                    {/* 备注就是一句普通说明，原先套 Tooltip + 虚线下划线，看着像可点的术语。 */}
-                    <span className="whd-identity__note">{historyDetail.notes}</span>
-                  </>
-                ) : null}
-                {hasUnsavedMemberChanges ? (
-                  <Badge color="orange" variant="light" size="sm">
-                    {t("history.unsavedChanges")}
-                  </Badge>
-                ) : null}
+              <div className="whd-identity__copy">
+                <h2 className="whd-identity__title">{historyDetail.war_name}</h2>
+                <div className="whd-identity__meta">
+                  <span>{t("history.membersCount", { count: historyDetail.member_stats.length })}</span>
+                  <span className="whd-identity__sep" aria-hidden="true" />
+                  <span>{t("history.teamsCount", { count: historyDetail.teams.length })}</span>
+                  {historyDetail.notes ? (
+                    <>
+                      <span className="whd-identity__sep" aria-hidden="true" />
+                      <span className="whd-identity__note">{historyDetail.notes}</span>
+                    </>
+                  ) : null}
+                  {hasUnsavedMemberChanges ? (
+                    <Badge color="orange" variant="light" size="sm">
+                      {t("history.unsavedChanges")}
+                    </Badge>
+                  ) : null}
+                </div>
               </div>
+              <Group gap={8} wrap="wrap" className="whd-identity__exports">
+                <Button
+                  variant="default"
+                  onClick={() => onExport("csv")}
+                  loading={exportPending}
+                  disabled={historyRows.length === 0}
+                  aria-label={`${exportCsvLabel}: ${historyDetail.war_name}`}
+                >
+                  {exportCsvLabel}
+                </Button>
+                <Button
+                  variant="default"
+                  onClick={() => onExport("json")}
+                  loading={exportPending}
+                  disabled={historyRows.length === 0}
+                  aria-label={`${exportJsonLabel}: ${historyDetail.war_name}`}
+                >
+                  {exportJsonLabel}
+                </Button>
+              </Group>
             </div>
 
             <div className="whd-strip" aria-label={t("history.comparison")}>
@@ -337,9 +360,16 @@ export function WarHistoryDetail({
                       {t("history.keyboardHint")}
                     </Text>
                   ) : null}
-                  <div className="war-history-detail-table-wrap">
-                    <DataTableAdapter table={detailTable} />
-                  </div>
+                  {isMobileMemberLayout ? (
+                    <WarHistoryMemberCards
+                      detailTable={detailTable}
+                      label={t("history.memberData")}
+                    />
+                  ) : (
+                    <div className="war-history-detail-table-wrap">
+                      <DataTableAdapter table={detailTable} />
+                    </div>
+                  )}
                 </>
               ) : (
                 <div className="whd-chart-wrap">
@@ -376,9 +406,9 @@ export function WarHistoryDetail({
               )}
             </section>
 
-            <footer className="whd-actions">
-              <div>
-                {canManage ? (
+            {canManage ? (
+              <footer className="whd-actions">
+                <div>
                   <Button
                     color="red"
                     variant="subtle"
@@ -390,54 +420,94 @@ export function WarHistoryDetail({
                   >
                     {t("common:action.delete")}
                   </Button>
-                ) : null}
-              </div>
-              <Group gap={8} justify="flex-end">
-                <Button variant="default" onClick={() => onExport("csv")} loading={exportPending} disabled={historyRows.length === 0}>
-                  {exportCsvLabel}
-                </Button>
-                <Button variant="default" onClick={() => onExport("json")} loading={exportPending} disabled={historyRows.length === 0}>
-                  {exportJsonLabel}
-                </Button>
-                {/* 点「编辑」进入编辑态，点「保存改动」写回并退出；没改动时保存等于直接退出。 */}
-                {canManage && !isEditingMemberStats ? (
-                  <Button
-                    variant="default"
-                    leftSection={<PencilIcon size={15} />}
-                    onClick={onBeginEditMemberStats}
-                    disabled={historyDetailLoading || historyRows.length === 0}
-                  >
-                    {t("history.editMemberData")}
-                  </Button>
-                ) : null}
-                {canManage && isEditingMemberStats ? (
-                  <>
-                    {hasUnsavedMemberChanges ? (
-                      <Text size="xs" c="dimmed">{t("history.unsavedChanges")}</Text>
-                    ) : null}
+                </div>
+                <Group gap={8} justify="flex-end">
+                  {/* 点「编辑」进入编辑态，点「保存改动」写回并退出；没改动时保存等于直接退出。 */}
+                  {!isEditingMemberStats ? (
                     <Button
-                      variant="subtle"
-                      onClick={onCancelEditMemberStats}
-                      disabled={saveMemberStatsPending}
+                      variant="default"
+                      leftSection={<PencilIcon size={15} />}
+                      onClick={onBeginEditMemberStats}
+                      disabled={historyDetailLoading || historyRows.length === 0}
                     >
-                      {t("common:action.cancel")}
+                      {t("history.editMemberData")}
                     </Button>
-                    <Button
-                      leftSection={<SaveIcon size={15} />}
-                      onClick={onSaveMemberStats}
-                      loading={saveMemberStatsPending}
-                      disabled={historyDetailLoading}
-                    >
-                      {t("history.saveChanges")}
-                    </Button>
-                  </>
-                ) : null}
-              </Group>
-            </footer>
+                  ) : (
+                    <>
+                      {hasUnsavedMemberChanges ? (
+                        <Text size="xs" c="dimmed">{t("history.unsavedChanges")}</Text>
+                      ) : null}
+                      <Button
+                        variant="subtle"
+                        onClick={onCancelEditMemberStats}
+                        disabled={saveMemberStatsPending}
+                      >
+                        {t("common:action.cancel")}
+                      </Button>
+                      <Button
+                        leftSection={<SaveIcon size={15} />}
+                        onClick={onSaveMemberStats}
+                        loading={saveMemberStatsPending}
+                        disabled={historyDetailLoading}
+                      >
+                        {t("history.saveChanges")}
+                      </Button>
+                    </>
+                  )}
+                </Group>
+              </footer>
+            ) : null}
           </Stack>
         ) : null}
       </div>
     </section>
+  );
+}
+
+function WarHistoryMemberCards({
+  detailTable,
+  label,
+}: {
+  detailTable: ReturnType<typeof useReactTable<HistoryMemberStat>>;
+  label: string;
+}) {
+  const headersByColumnId = new Map(
+    detailTable.getFlatHeaders().map((header) => [header.column.id, header]),
+  );
+
+  return (
+    <div className="whd-member-cards" role="list" aria-label={label}>
+      {detailTable.getRowModel().rows.map((row) => (
+        <article
+          key={row.id}
+          className="whd-member-card"
+          role="listitem"
+          data-testid={`war-history-member-card-${row.original.user_id}`}
+        >
+          <dl className="whd-member-card__fields">
+            {row.getVisibleCells().map((cell) => {
+              const header = headersByColumnId.get(cell.column.id);
+              return (
+                <div
+                  key={cell.id}
+                  className="whd-member-card__field"
+                  data-column-id={cell.column.id}
+                >
+                  <dt className="whd-member-card__label">
+                    {header && !header.isPlaceholder
+                      ? flexRender(header.column.columnDef.header, header.getContext())
+                      : cell.column.id}
+                  </dt>
+                  <dd className="whd-member-card__value">
+                    {flexRender(cell.column.columnDef.cell, cell.getContext())}
+                  </dd>
+                </div>
+              );
+            })}
+          </dl>
+        </article>
+      ))}
+    </div>
   );
 }
 

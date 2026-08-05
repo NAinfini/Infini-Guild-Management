@@ -2,6 +2,8 @@
 import { MantineProvider } from "@mantine/core";
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import type { ReactNode } from "react";
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { AnnouncementsPage } from "./AnnouncementsPage";
 
@@ -9,6 +11,8 @@ const controller = vi.hoisted(() => ({
   search: "",
   statusFilter: undefined as string | undefined,
   pinnedFilter: false,
+  sortOrder: "updated_desc" as "updated_desc" | "updated_asc",
+  setSortOrder: vi.fn(),
   canEdit: true,
   canCreate: true,
   resetFilters: vi.fn(),
@@ -45,7 +49,19 @@ vi.mock("../../context/PageHeaderContext", () => ({
 }));
 
 vi.mock("../feature/announcements/AnnouncementFiltersCard", () => ({
-  AnnouncementFiltersCard: () => null,
+  AnnouncementFiltersCard: ({
+    sortOrder,
+    onSortOrderChange,
+  }: {
+    sortOrder: string;
+    onSortOrderChange: (value: "updated_desc" | "updated_asc") => void;
+  }) => (
+    <div data-testid="announcement-filters" data-sort={sortOrder}>
+      <button type="button" onClick={() => onSortOrderChange("updated_desc")}>
+        sort newest
+      </button>
+    </div>
+  ),
 }));
 
 vi.mock("../feature/announcements/AnnouncementListCard", () => ({
@@ -95,6 +111,8 @@ describe("AnnouncementsPage empty state", () => {
     controller.search = "";
     controller.statusFilter = undefined;
     controller.pinnedFilter = false;
+    controller.sortOrder = "updated_desc";
+    controller.setSortOrder.mockReset();
     controller.canEdit = true;
     controller.canCreate = true;
     controller.resetFilters.mockReset();
@@ -188,5 +206,44 @@ describe("AnnouncementsPage empty state", () => {
     );
     expect(screen.getByTestId("announcement-detail")).toBeInTheDocument();
     expect(screen.queryByTestId("announcement-list")).not.toBeInTheDocument();
+  });
+
+  it("wires announcement sort and treats a non-default sort as an active filter", () => {
+    controller.sortOrder = "updated_asc";
+    renderPage();
+
+    expect(screen.getByTestId("announcement-filters")).toHaveAttribute(
+      "data-sort",
+      "updated_asc",
+    );
+    expect(screen.getByText("empty.filtered")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "sort newest" }));
+    const filteredEmptyState = screen.getByText("empty.filtered").closest(".empty-state");
+    expect(filteredEmptyState).not.toBeNull();
+    fireEvent.click(
+      within(filteredEmptyState as HTMLElement).getByRole("button", {
+        name: "action.resetFilters",
+      }),
+    );
+
+    expect(controller.setSortOrder).toHaveBeenCalledWith("updated_desc");
+    expect(controller.resetFilters).toHaveBeenCalledOnce();
+  });
+
+  it("marks the desktop detail column and lets short details stay natural-height", () => {
+    renderPage();
+
+    const detailColumn = document.querySelector(".announcements-page-column--detail");
+    expect(detailColumn).not.toBeNull();
+    expect(detailColumn).toContainElement(screen.getByTestId("announcement-detail"));
+
+    const css = readFileSync(
+      resolve(process.cwd(), "apps/portal/components/pages/AnnouncementsPage.css"),
+      "utf8",
+    );
+    expect(css).toMatch(
+      /\.announcements-detail-card\s*\{[\s\S]*?flex:\s*0 1 auto[\s\S]*?max-block-size:\s*100%/,
+    );
   });
 });

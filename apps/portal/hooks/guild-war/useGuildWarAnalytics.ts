@@ -160,8 +160,7 @@ export function useGuildWarAnalytics({
   const analyticsRows = analyticsQuery.data?.member_stats ?? [];
   const analyticsWarDetails = analyticsDetailsQuery.data ?? [];
 
-  // Absence (请假) window covering all selected wars — used to excuse
-  // rostered-but-absent members from the attendance denominator.
+  // One absence window covers every selected war used by attendance analytics.
   const absencesWindow = useMemo(() => {
     if (analyticsWarDetails.length === 0) {
       return null;

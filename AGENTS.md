@@ -1,521 +1,174 @@
-# AGENTS.md — Machine-Readable Guild Management Reference
+# AGENTS.md — Repository Agent Guide
 
-> **This file is for AI coding agents.** Read this first before modifying any code in this repository.
+This file defines the stable working contract for coding agents in this repository. Read the relevant source before editing; this guide points to authorities instead of duplicating a file inventory.
 
-## Repository Identity
+## Repository baseline
 
-- **Name:** Infini Guild Management
-- **Type:** Full-stack guild management portal (private)
-- **Framework:** Cloudflare Workers (Hono) + React 19 SPA
-- **Database:** Cloudflare D1 (SQLite) via Drizzle ORM
-- **Object Storage:** Cloudflare R2
-- **Realtime:** Cloudflare Durable Objects (WebSocket)
-- **Package manager:** pnpm 11.17.0
-- **Node.js:** 24.18+
+- Infini Guild Management is a bilingual guild operations portal.
+- The portal is a React 19.2 SPA built with TypeScript 6, Vite 8.2, Mantine 9.5, TanStack Router/Query, Zustand, and TipTap.
+- The API is a Hono application on Cloudflare Workers, with D1 through Drizzle ORM, one R2 bucket, and a Durable Object for WebSocket delivery.
+- pnpm 11 is the package manager. The supported Node and pnpm ranges are in `package.json` and `.node-version`.
+- There is no Tailwind dependency or Tailwind styling layer.
 
-## Commands
+## Authority map
 
-```
-pnpm dev            # Start worker + portal concurrently
-pnpm dev:worker     # Cloudflare Worker only (localhost:8787)
-pnpm dev:portal     # React portal only (Vite)
-pnpm build          # Build portal SPA
-pnpm build:worker   # Dry-run worker deployment
-pnpm typecheck      # Full TypeScript check
-pnpm db:generate    # Generate Drizzle migrations from schema changes
-pnpm db:studio      # Drizzle visual editor
-pnpm db:mock:rebuild  # Reset local D1 (drop + apply migrations)
-pnpm db:mock:init     # Apply migrations only (keep data)
-pnpm db:mock:seed     # Reseed local D1 through the running dev worker
-pnpm db:mock:status   # Show local table list
-pnpm test             # Vitest (unit + component)
-pnpm test:e2e         # Build the SPA, then run Playwright
-```
+Use these locations as the source of truth:
 
-## Monorepo Structure
+- `package.json`: scripts, dependency versions, and runtime requirements.
+- `apps/shared/`: cross-runtime constants, Zod contracts, inferred types, configuration limits, and shared utilities.
+- `apps/portal/router.tsx`: route tree, route guards, lazy page loading, and search validation.
+- `apps/portal/components/layout/route-metadata.ts`: navigation grouping, labels, feature gates, and content-width modes.
+- `apps/portal/api/`: raw HTTP client plus TanStack Query fetchers and mutations.
+- `apps/portal/services/`, `apps/portal/hooks/`, and `apps/portal/stores/`: portal orchestration and client state.
+- `apps/portal/components/`: pages, layout, shared behavior, and feature UI.
+- `apps/portal/styles/` and `apps/portal/providers/ThemeProvider.tsx`: visual tokens and Mantine theme bridge.
+- `DESIGN.md`: design rules; source CSS wins if exact values ever drift.
+- `apps/worker/index.ts`: bindings type, middleware order, route mounting, asset handling, WebSocket entry, and cron dispatch.
+- `apps/worker/routes/`: HTTP boundary and permission checks.
+- `apps/worker/services/`: business rules, transactions, audit writes, and storage logic.
+- `apps/worker/db/schema/`: Drizzle model truth.
+- `apps/worker/db/migrations/`: executable D1 SQL and migration policy.
+- `apps/worker/wrangler.jsonc`: the tracked Worker configuration for assets, D1, R2, Durable Objects, variables, production bindings, and schedules. There is no root `wrangler.jsonc`.
+- `apps/portal/e2e/` and `playwright.config.ts`: end-to-end isolation and cleanup contract.
 
-```
-apps/
-├── shared/           # Zod schemas, types, constants, API registry
-├── worker/           # Cloudflare Worker — Hono API + D1 + R2 + Durable Objects
-└── portal/           # React SPA — TanStack Router + Mantine
-```
+Prefer directory-level discovery with `rg --files` and targeted symbol search. Do not maintain a second exhaustive file list here.
 
-## File Index
+## Common commands
 
-### Root
-
-| File | Purpose |
-|------|---------|
-| `package.json` | Root workspace config, all scripts |
-| `tsconfig.json` | Root tsconfig with path aliases (`@portal`, `@guild/shared`) |
-| `wrangler.jsonc` | Cloudflare Worker config (D1, R2, Durable Objects, crons) |
-| `.npmrc` | pnpm config |
-| `README.md` | Human-readable documentation |
-| `AGENTS.md` | This file |
-| `eslint.config.js` | Root ESLint flat config |
-| **docs/** | Planning specs, database ER diagram |
-
-### apps/shared/ — Shared Contract
-
-| Path | Purpose |
-|------|---------|
-| `schemas/auth.ts` | `loginSchema`, `registerSchema` |
-| `schemas/user.ts` | `userSchema`, `memberProfileSchema`, `updateProfileSchema`, `changePasswordSchema` |
-| `schemas/event.ts` | `eventSchema`, `createEventSchema`, `updateEventSchema`, `eventParticipantSchema` |
-| `schemas/announcement.ts` | `announcementSchema`, `createAnnouncementSchema`, `updateAnnouncementSchema` |
-| `schemas/guild-war.ts` | `warHistorySchema`, `warTemplateSchema`, `warTeamSchema`, `saveTeamsPayloadSchema`, `updateMemberStatsSchema` |
-| `schemas/wiki.ts` | `wikiCategorySchema`, `wikiArticleSchema`, `createWikiArticleSchema`, `updateWikiArticleSchema` |
-| `schemas/gallery.ts` | `galleryItemSchema`, `createGalleryItemSchema` |
-| `schemas/admin.ts` | `inviteLinkSchema`, `auditLogSchema`, `batchRoleChangeSchema` |
-| `schemas/class-catalog.ts` | Flat class catalog CRUD contracts, colors, and vector icon allowlist |
-| `types/` | TypeScript types inferred from Zod schemas |
-| `constants/roles.ts` | Role definitions (admin, moderator, member) |
-| `constants/class-icons.ts` | Curated vector icon IDs for the D1-backed class catalog |
-| `constants/event-types.ts` | Event type categories |
-| `constants/guild-war.ts` | Persisted guild-war result, objective, and stat-key contracts |
-| `constants/media.ts` | File size limits, image quotas |
-| `constants/errors.ts` | Error codes and HTTP status mappings |
-| `index.ts` | Barrel export |
-
-### apps/worker/ — Backend (Cloudflare Worker)
-
-| Path | Purpose |
-|------|---------|
-| `index.ts` | Main entry — bindings, middleware stack, route mounting, cron dispatcher |
-| **routes/** | |
-| `routes/auth.ts` | Login, logout, register, session check, username availability |
-| `routes/users.ts` | Member listing, profile CRUD, media uploads, password/username changes |
-| `routes/events.ts` | Event CRUD, join/leave, recurrence, series handling |
-| `routes/announcements.ts` | Announcement CRUD, publish scheduling, pinning |
-| `routes/guild-war.ts` | War history, templates, team composition, member stats |
-| `routes/wiki.ts` | Wiki categories, articles, versioning, search |
-| `routes/gallery.ts` | Gallery CRUD, filtering |
-| `routes/admin.ts` | Invite links, role management, audit logs |
-| `routes/classes.ts` | Public class catalog reads and permission-gated catalog/icon management |
-| **middleware/** | |
-| `middleware/session.ts` | `sessionMiddleware` |
-| `middleware/rbac.ts` | `requirePermission()` — permission-based access control |
-| `middleware/rate-limit.ts` | `createRateLimitMiddleware()` — Cache API sliding window rate limiter |
-| `middleware/security-headers.ts` | Security headers middleware (CSP, HSTS, etc.) |
-| `middleware/etag.ts` | `etagMiddleware` — HTTP caching |
-| `middleware/error-handler.ts` | `handleAppError()` — global error handler |
-| **services/** | |
-| `services/auth.ts` | PBKDF2 password hashing, session management (30-day TTL) |
-| `services/push.ts` | WebSocket push notifications via Durable Objects |
-| `services/media.ts` | R2 media storage with content-type normalization |
-| `services/audit.ts` | Audit trail logging |
-| `services/AdminAuditService.ts` | Audit log queries, archive management |
-| `services/result.ts` | `Result<T,E>` type for service return values |
-| `services/helpers.ts` | Shared helpers — `escapeLikePattern`, `parseStringArray`, `parseRecord` |
-| `services/AuthService.ts` | Auth business logic (login, register, session) |
-| `services/EventService.ts` | Event business logic (validation, recurrence, attachments) |
-| `services/AnnouncementService.ts` | Announcement lifecycle management |
-| `services/GuildWarService.ts` | War analytics, team validation, conflict detection |
-| `services/AdminService.ts` | Bulk ops, audit queries, invite management |
-| `services/UserService.ts` | User profile business logic |
-| `services/WikiService.ts` | Wiki article and category management |
-| `services/GalleryService.ts` | Gallery CRUD operations |
-| **crons/** | |
-| `crons/event-instance-gen.ts` | Generate recurring event instances 56 days ahead (daily 00:00 UTC) |
-| `crons/maintenance.ts` | Daily and 15-minute cron job grouping |
-| `crons/announcement-publish.ts` | Publish scheduled announcements and expire old announcements (15-minute maintenance) |
-| `crons/audit-archive.ts` | Archive audit logs >90 days to R2 (daily 00:00 UTC maintenance) |
-| `crons/media-orphan-cleanup.ts` | Delete R2 media for deleted users (daily 00:00 UTC maintenance) |
-| `crons/event-auto-archive.ts` | Auto-archive past events (15-minute maintenance) |
-| **db/** | |
-| `db/schema/` | Modular Drizzle schema (see Database section below) |
-| `db/schema/index.ts` | Barrel export for all schema modules |
-| `db/migrations/` | D1 SQL migrations |
-| `db/seed.ts` | Mock data seeder |
-| `scripts/seed-local-d1.mjs` | Wait for local worker health and reseed D1 via `/api/dev/reseed` |
-| **durable-objects/** | |
-| `durable-objects/WebSocketDO.ts` | WebSocket Durable Object for realtime push |
-
-### apps/portal/ — Frontend (React SPA)
-
-| Path | Purpose |
-|------|---------|
-| `router.tsx` | All route definitions (TanStack Router, lazy code splitting) |
-| `vite.config.ts` | Vite config with `@portal` alias |
-| **api/** | |
-| `api/client.ts` | HTTP client with ETag caching |
-| `api/queries/` | TanStack Query fetchers (per-domain) |
-| `api/mutations/` | TanStack Query mutations (per-domain) |
-| **components/** | |
-| `components/pages/LoginPage.tsx` | Auth — login form |
-| `components/pages/RegisterPage.tsx` | Auth — registration via invite code |
-| `components/pages/DashboardPage.tsx` | Home overview (upcoming events, signups, notifications, war stats) |
-| `components/pages/EventsPage.tsx` | Event listing and management |
-| `components/pages/AnnouncementsPage.tsx` | Announcement feed |
-| `components/pages/GuildWarPage.tsx` | War history, templates, team composition |
-| `components/pages/RosterPage.tsx` | Member roster with profiles |
-| `components/pages/GalleryPage.tsx` | Media gallery |
-| `components/pages/WikiPage.tsx` | Wiki articles and categories |
-| `components/pages/MyProfilePage.tsx` | User profile editor (protected) |
-| `components/pages/AdminPage.tsx` | Admin console (protected) |
-| `components/pages/ToolsPage.tsx` | Utility tools |
-| `components/pages/SettingsPage.tsx` | App settings |
-| `components/layout/AppShell.tsx` | Main layout wrapper |
-| `components/layout/BottomNav.tsx` | Mobile bottom navigation |
-| `components/layout/CmdKSearch.tsx` | Global search modal (Ctrl+K / Cmd+K) |
-| `components/layout/PageLayout.tsx` | Page-level layout wrapper |
-| `components/layout/UserProfileDropdown.tsx` | User profile dropdown menu |
-| `components/layout/ViewingAsSelector.tsx` | Admin "view as" role selector |
-| `components/shared/` | Reusable behavior/domain components — AppErrorOverlay, DataTableAdapter, DataTablePagination, EmptyState, MediaGallery, MemberCard, OverlayRegistrar, ProfileModal, SectionHeader, UnsavedChangesAffix |
-| `components/feature/` | Feature-specific components across 7 domains (admin, announcements, events, gallery, guild-war, profile, wiki) |
-| `components/dashboard/` | Dashboard card components (ActiveMembersCard, LastWarCard, MySignupsCard, UpcomingEventsCard) |
-| **services/** | |
-| `services/AttachmentService.ts` | Attachment handling and validation |
-| `services/EventService.ts` | Event CRUD and participant management |
-| `services/GuildWarService.ts` | War history, teams, analytics selection |
-| **stores/** | |
-| `stores/auth.ts` | `useAuthStore` — Zustand session state |
-| `stores/preferences.ts` | `usePreferencesStore` — theme, locale preferences |
-| `stores/notifications.ts` | `useNotificationsStore` — push notification queue |
-| `stores/guildWar.ts` | `useGuildWarStore` — analytics state (Zustand) |
-| **hooks/** | |
-| `hooks/useBeforeUnloadPrompt.ts` | Warn on unsaved changes |
-| `hooks/useExternalView.ts` | External view mode detection |
-| `hooks/useMediaUpload.ts` | File upload with validation |
-| `hooks/useNotificationSync.ts` | WebSocket notification sync |
-| `hooks/useAppError.ts` | Global error handling |
-| `hooks/useColorPicker.ts` | Color picker state |
-| `hooks/useLoadWarningToast.ts` | Load warning toast display |
-| `hooks/useNotificationPresentation.ts` | Notification display logic |
-| `hooks/useAnnouncementsController.ts` | Announcements page controller |
-| `hooks/useEventsFiltering.ts` | Event list filtering logic |
-| `hooks/useEventsMutations.ts` | Event mutation hooks |
-| `hooks/useProfileFormState.ts` | Profile form state management |
-| `hooks/useProfileMutations.ts` | Profile mutation hooks |
-| `hooks/useWikiArticleEditor.ts` | Wiki article editing state |
-| `hooks/useWikiCategoryEditor.ts` | Wiki category editing state |
-| `hooks/useAdminAuditFilter.ts` | Admin audit log filter state |
-| `hooks/useAdminInviteController.ts` | Admin invite management |
-| `hooks/useAdminMemberDetail.ts` | Admin member detail modal |
-| `hooks/useAdminMutations.ts` | Admin mutation hooks |
-| `hooks/useAdminStatusController.ts` | Admin system status controller |
-| `hooks/data/useEventsData.ts` | Events data fetching |
-| `hooks/data/useGuildWarData.ts` | Guild war data fetching |
-| `hooks/data/useProfileData.ts` | Profile data fetching |
-| `hooks/data/useAdminData.ts` | Admin data fetching |
-| `hooks/guild-war/useGuildWarAnalytics.ts` | War analytics computations |
-| `hooks/guild-war/useGuildWarDragController.tsx` | Drag-and-drop team controller |
-| `hooks/guild-war/useGuildWarDragData.ts` | Drag board data preparation |
-| `hooks/guild-war/useGuildWarHistory.tsx` | War history tab controller |
-| `hooks/guild-war/useGuildWarMutations.ts` | Guild war mutation hooks |
-| `hooks/guild-war/useGuildWarSearch.ts` | War member search |
-| **utils/** | |
-| `utils/date.ts` | Date formatting utilities |
-| `utils/copy.ts` | Clipboard copy helpers |
-| `utils/external-view.ts` | External view mode utilities |
-| `utils/icons.tsx` | Icon mappings |
-| `utils/permissions.ts` | Permission check helpers |
-| `utils/availability.ts` | Availability grid calculations |
-| `utils/admin.ts` | Admin utility functions |
-| **i18n/** | |
-| `i18n/en/` | English translations (14 namespace files) |
-| `i18n/zh/` | Chinese translations (14 namespace files) |
-
-### docs/plans/ — Active Implementation Plan
-
-| File | Purpose |
-|------|---------|
-| `2026-07-29-portal-ui-architecture.md` | Authoritative portal UI architecture, responsive behavior, implementation phases, and release criteria |
-
-## Database Schema
-
-Drizzle schema is modular — each domain is a separate file in `apps/worker/db/schema/`:
-
-| File | Tables | Domain |
-|------|--------|--------|
-| `shared.ts` | — | `nowUtc` SQL helper |
-| `auth.ts` | `roles`, `role_permissions`, `users`, `user_auth_password`, `invite_links`, `sessions` | Auth & Identity |
-| `members.ts` | `member_profiles` | Member Profiles |
-| `events.ts` | `events`, `event_participants` | Events & Signups |
-| `announcements.ts` | `announcements` | Announcements |
-| `guild-war.ts` | `war_history`, `war_teams`, `war_team_members`, `war_pool_members`, `war_templates` | Guild War |
-| `wiki.ts` | `wiki_categories`, `wiki_articles` | Wiki |
-| `gallery.ts` | `gallery_items` | Gallery |
-| `audit.ts` | `audit_log` | Audit Log |
-| `system-test.ts` | `system_test_runs`, `system_test_artifacts` | Admin system-test registry |
-| `class-catalog.ts` | `class_catalog` | Flat class labels, colors, vector fallbacks, and custom icon keys |
-| `media-references.ts` | `media_references`, `media_reference_backfills`, `media_upload_leases` | R2 media reference and upload lease lifecycle |
-
-SQL migrations are in `apps/worker/db/migrations/`. The core schema is `0000_core_schema.sql`.
-
-**Schema modification workflow:**
-1. Edit the Drizzle schema file(s) in `db/schema/`
-2. Run `pnpm db:generate` to generate migration SQL
-3. Run `pnpm db:mock:rebuild` to test locally
-4. Keep Drizzle schema and SQL migration in sync
-
-## Import Path Patterns
-
-### Internal aliases
-
-```ts
-// From portal code
-import { useAuthStore } from "@portal/stores/auth";
-import { DashboardPage } from "@portal/components/pages/DashboardPage";
-
-// From worker code
-import { users, sessions } from "./db/schema";
-
-// From shared
-import { loginSchema } from "@guild/shared/schemas/auth";
-import type { User } from "@guild/shared/types";
+```bash
+pnpm dev
+pnpm dev:portal
+pnpm dev:worker
+pnpm build
+pnpm build:worker
+pnpm typecheck
+pnpm lint
+pnpm test
+pnpm test:e2e
+pnpm config:check -- --env=production
+pnpm check:secrets
+pnpm db:mock:init
+pnpm db:mock:rebuild
+pnpm db:mock:seed
+pnpm db:mock:status
+pnpm release:check
 ```
 
-## Worker Bindings
+Use the narrowest validation that covers the change. `pnpm release:check` is the release gate, not the default check for every scoped edit; it includes security/config checks, audit, typecheck, lint, unit tests, E2E, and the Worker production dry-run.
 
-Defined in `wrangler.jsonc`:
+## Working rules
 
-| Binding | Type | Purpose |
-|---------|------|---------|
-| `DB` | D1 Database | SQLite database |
-| `MEDIA` | R2 Bucket | Media file storage |
-| `WS` | Durable Object | WebSocket connections |
-| `PORTAL_ORIGIN` | Variable | CORS allowed origin |
-| `SIGNING_SECRET` | Secret | HMAC signing secret for audit archive download tokens |
+1. Inspect the exact symbols and tests before editing.
+2. Keep the change limited to the requested concern. Do not refactor, rename, reformat, or update dependencies incidentally.
+3. Treat the working tree as shared and potentially dirty. Preserve unrelated staged, unstaged, and untracked work; never reset, clean, checkout, or overwrite it.
+4. Prefer editing existing files. Do not add wrappers, abstractions, flags, or speculative paths.
+5. Diagnose failures from evidence and fix the root cause. Do not hide errors, weaken tests, or add silent fallbacks.
+6. Add or update the smallest relevant test for non-trivial behavior. Pure documentation changes need only document validation.
+7. Run scoped validation once. If it fails, make one evidence-based focused repair and rerun only the failed step.
+8. Review the final diff for scope, correctness, side effects, security, accessibility, and maintainability.
+9. Do not commit, push, open a pull request, merge, publish, deploy, or mutate production/shared infrastructure without explicit authorization.
+10. Do not delete data, rewrite history, or remove files unless the user explicitly requested it and the exact target has been verified.
 
-## API Routes
+## Cross-layer changes
 
-| Route group | Auth | Description |
-|-------------|------|-------------|
-| `/api/auth` | Public | Login, register (invite-only), session check |
-| `/api/users` | Session | Member roster, profile CRUD, media uploads |
-| `/api/events` | Session | Event CRUD, join/leave, recurrence |
-| `/api/announcements` | Session | Announcement CRUD, publish scheduling |
-| `/api/guild-war` | Session | War history, team composition, stats |
-| `/api/wiki` | Session | Categories, articles, versioning |
-| `/api/gallery` | Session | Media upload and listing |
-| `/api/admin` | Admin | User management, invite links, audit log |
-| `/api/classes` | Public read / permission-gated write | Class catalog CRUD and WebP class icons |
-| `/ws` | Session | WebSocket upgrade (Durable Object) |
-| `/api/health` | Public | Health check |
+### API and shared contracts
 
-## How to Modify This App
+- Request and response validation belongs in `apps/shared/schemas/`; infer TypeScript types when a shared Zod schema exists.
+- Keep shared schemas, Worker route/service behavior, portal query/mutation code, and tests aligned.
+- Components must not import the raw API client or `api/queries`/`api/mutations` directly. Use the established service or hook boundary.
+- Keep route handlers thin. Business logic, transactions, and multi-step storage behavior belong in services.
+- Mount every new route in `apps/worker/index.ts` and expose every new page through `apps/portal/router.tsx`.
 
-### Add a new API endpoint
+### Portal routing and state
 
-1. Add Zod schema in `apps/shared/schemas/<domain>.ts`
-2. Add TypeScript type in `apps/shared/types/`
-3. Add route handler in `apps/worker/routes/<domain>.ts`
-4. Add service logic in `apps/worker/services/` if business rules are complex
-5. Add TanStack Query fetcher in `apps/portal/api/queries/`
-6. Add mutation hook in `apps/portal/api/mutations/` if write operation
-7. Run `pnpm typecheck`
+- `router.tsx` owns access and feature guards. Navigation metadata lives in `components/layout/route-metadata.ts`; do not create a second route registry in `AppShell`.
+- `AppHeader` owns the single visible route `h1`. Page content must not repeat the route title.
+- Server data belongs in TanStack Query. Zustand is for durable client/session/UI state already represented under `apps/portal/stores/`; do not mirror query data into another store without a demonstrated need.
+- Preserve session transitions and query-cache clearing across login, logout, expiry, and cross-tab synchronization.
+- Keep English and Chinese UI resources synchronized for every user-facing string.
 
-### Add a new database table
+### Portal design
 
-1. Add or edit Drizzle schema in `apps/worker/db/schema/<domain>.ts`
-2. Export from `apps/worker/db/schema/index.ts` if new file
-3. Run `pnpm db:generate` to create migration SQL
-4. Verify the generated SQL in `apps/worker/db/migrations/`
-5. Run `pnpm db:mock:rebuild` to test locally
-6. Add corresponding Zod schema in `apps/shared/schemas/`
+- Use Mantine primitives for foundational controls and overlays; do not recreate their keyboard, focus, menu, dialog, or form behavior.
+- Consume L2/L3 semantic tokens. Component CSS must not read `--palette-*` directly or introduce hard-coded colors outside the allowed source-owned rules.
+- Preserve light/dark themes, all supported accents, visible keyboard focus, reduced motion, and responsive task parity.
+- `AppShell` owns page offsets and scrolling. Compact navigation replaces the sidebar through tablet portrait; the phone-specific header breakpoint remains separate.
+- Use `SectionHeader` for semantic in-card headings and `ContentFilterToolbar` for search/filter compositions that collapse by container width.
+- Roster `MemberCard` pointer, focus, touch, reduced-motion, visual-dispersion, and audio behavior is protected product character.
+- Effect boundaries and token guards are enforced by the focused style and architecture tests; update the contract before intentionally changing a foundational rule.
 
-### Add a new portal page
+## Protected static game rules
 
-1. Create `apps/portal/components/pages/YourPage.tsx`
-2. Add route in `apps/portal/router.tsx`
-3. Add navigation entry in `AppShell.tsx` sidebar
-4. Add i18n keys in `apps/portal/i18n/en/` and `zh/`
-5. If data-driven, add query hooks in `apps/portal/hooks/data/`
+Game rules are source-owned application contracts, not runtime administration data.
 
-### Add a new media upload path
+- Admin does not provide a game-rules editor.
+- Site Config has no `game_rules` field.
+- D1 has no dynamic game-rule tables.
+- `EVENT_TYPES` remains exactly `weekly_mission`, `guild_war`, `social`, `poll`, `raffle`, and `other`.
+- Guild-war results remain exactly `win`, `loss`, and `draw`.
+- KDA is `(kills + assists) / max(deaths, 1)` and remains unrounded in the shared evaluator. Round only at a presentation boundary.
+- Guild-war stat definitions use one source-owned `name` field. Do not add parallel `labels` or `precision` fields.
+- Preserve the named SQL/Drizzle checks `events_type_valid`, `recurring_templates_type_valid`, and `war_history_result_valid`.
+- Authorities are `apps/shared/constants/event-types.ts`, `apps/shared/constants/guild-war.ts`, `apps/shared/schemas/game-rules.ts`, and the matching Drizzle/SQL constraints.
 
-Every upload in this app goes through the same two-sided contract. Both sides
-are mandatory — neither one alone is sufficient.
+## Worker and security boundaries
 
-**Client (browser) — always transcode before sending.**
+- Bindings and middleware are defined from `apps/worker/index.ts`; configuration is in `apps/worker/wrangler.jsonc`.
+- Use `requirePermission()` for protected actions. Session permissions are resolved from D1 per request and may be cached only within that request. Isolate-wide permission caches are forbidden.
+- Mutations require an allowed `Origin` and `X-Requested-With: XMLHttpRequest`. Keep CORS, request-size limits, rate limits, ETags, feature gates, and security headers in the existing middleware order.
+- Validate untrusted input with shared schemas at the boundary. Do not trust client identifiers, MIME declarations, filenames, route permissions, or derived ownership.
+- Mutating domain operations must write the appropriate audit record. Use durable audit writes where the existing service requires failure to block success.
+- Keep CSP, HSTS, frame denial, content-type protection, referrer policy, and permissions policy intact unless the requested change explicitly changes the security model.
+- Never commit secrets or populated local secret files. `SIGNING_SECRET` is a Cloudflare secret, not a value for tracked JSON. A tracked `apps/worker/wrangler.jsonc` is expected; production binding changes still require review.
+- Keep production system tests disabled unless an explicitly authorized production diagnostic requires them.
 
-1. Call `convertFileForUpload()` from `apps/shared/utils/media.ts`. It is the
-   single dispatcher: `image/*` → WebP, `audio/*` → Opus, everything else is
-   passed through untouched.
-2. Do not add an option to skip it. Two such switches existed on
-   `useMediaUpload` and were removed precisely because they let a call site
-   silently disable transcoding.
-3. Two deliberate pass-throughs live inside `convertImageToWebP` and are
-   documented there: the re-encoded WebP is discarded when it comes out larger
-   than the original, and animated GIFs are sent untouched (a canvas re-encode
-   would flatten them to one frame). Non-WebP objects therefore still exist in
-   R2 by design.
+## Media and R2
 
-**Server (worker) — never trust the declared type.**
+There is one R2 binding: `MEDIA`. It stores user/content media and audit archive objects; do not invent a second bucket contract without an approved infrastructure change.
 
-1. Reject on `ALLOWED_IMAGE_TYPES` (from `@guild/shared`), not on
-   `type.startsWith("image/")` — the latter admits `image/svg+xml`.
-2. Then call `validateUploadBytes(buffer, declaredType, allowedTypes)` from
-   `apps/worker/services/media.ts` and store `validation.contentType`, never
-   the client's `file.type`.
-3. Validate **every** file before the first `R2.put`. Validating inside the put
-   loop leaves already-written objects behind, because a validation failure
-   returns normally and never reaches the compensation `catch`.
+For every upload path:
 
-Reference implementation: `apps/worker/routes/gallery.ts`. The same shape is in
-`routes/storage.ts`, `routes/wiki.ts` and
-`services/events/EventCrudService.ts#readValidatedImages`.
+1. Browser uploads use `convertFileForUpload()` or its batch helper from `apps/shared/utils/media.ts`. Persistable images become WebP; GIF files pass through unchanged to preserve animation. Profile audio becomes Ogg/Opus. SVG cannot be selected or persisted, and the Worker rejects it.
+2. The Worker checks the shared allowlist and then verifies magic bytes with `validateUploadBytes()`. Store the normalized validated content type, not the declared type.
+3. Validate every file before the first `R2.put` in a batch.
+4. Use the established media-key, reference, lease, and compensation helpers so database rows and R2 objects cannot silently diverge.
+5. Tests must use bytes that match the declared media type.
 
-Tests that upload must supply real magic bytes — a `File(["image"], …,
-{type: "image/png"})` is now rejected, correctly.
+R2 audit archives are integrity-checked and signed through existing services. Do not expose raw archive objects or signing material directly.
 
-### Write or run an end-to-end test
+## D1 and migrations
 
-Playwright specs live in `apps/portal/e2e/specs/{guest,admin}/`, one
-directory per Playwright project (per session role).
+- Drizzle modules under `apps/worker/db/schema/` define the runtime model. `apps/worker/db/migrations/0000_core_schema.sql` must mirror that model plus SQLite-only details and required seed records.
+- Before the first production D1 database is created, `0000_core_schema.sql` is the only migration and the only fresh-database core SQL that may be synchronized or rebuilt in place. Keep `versions.json` in pre-production core mode.
+- As soon as the first production D1 database is created, freeze `0000_core_schema.sql` permanently. Every later schema change uses a new monotonic incremental file (`0001_...`, then `0002_...`) with an upgrade/data-preservation test.
+- Keep Drizzle checks, SQL checks, foreign keys, indexes, built-in roles/permissions, classes, and Site Config seed data aligned.
+- D1 has no automatic rollback. Never apply a remote migration without explicit authorization, a backup plan, and local verification of the exact path.
+- For current details and validation commands, read `apps/worker/db/migrations/README.md`.
 
-**What the browser talks to.** There is no Vite dev server in the loop. The
-Worker serves the built SPA itself through its `ASSETS` binding
-(`wrangler.jsonc` → `assets.directory: ../portal/dist`,
-`not_found_handling: single-page-application`, `run_worker_first: true`), and
-rewrites `{{SITE_NAME}}` in `index.html` at `apps/worker/index.ts:343`. Site and
-API are therefore the same origin. That is both faster (a page load fetches a
-dozen hashed chunks instead of hundreds of unbundled modules, and no `/api`
-request goes through a proxy) and closer to production, since the artefact under
-test is the artefact that ships.
+## E2E isolation contract
 
-The cost is that `apps/portal/dist` must be current. `pnpm test:e2e` builds
-first; `globalSetup` independently compares source mtimes against the bundle
-(`support/build-freshness.ts`) and aborts with the command to run rather than
-letting a stale bundle produce a green run.
+- `pnpm test:e2e` builds the portal first. Playwright talks to the Worker serving `apps/portal/dist` through the `ASSETS` binding; it does not use a Vite dev server.
+- Each E2E slot owns a separate Wrangler process, port, inspector port, persistence directory, D1 database, and R2 state. Do not enable shared mutable state or server reuse.
+- `fullyParallel` remains off so specs are the scheduling unit. Retries remain off so timing defects are not masked.
+- The setup verifies bundle freshness and rate-limit identity isolation, reseeds each slot, establishes role state, starts a tracked system-test run, and records a D1/R2 fingerprint.
+- Browser and API readback channels use separate client identities. Keep both `CF-Connecting-IP` and `X-Forwarded-For` in the E2E helper contract.
+- Tests must register and remove created artifacts. Teardown cleans by registered primary key and fails if table counts or R2 object counts drift from the baseline.
+- Do not replace teardown verification with a reseed; that would erase evidence instead of proving cleanup.
+- When starting any long-running local server outside the Playwright-managed flow, check for an existing healthy process, record the PID/port/log, and stop only the process tree started for the task.
 
-**Parallelism.** `E2E_SLOTS` (default 2) wrangler instances run side by side,
-each with its own port (`E2E_PORT_BASE + slot`, default base 8787) and its own
-`--persist-to` directory, so each Playwright worker owns a private D1 and R2.
-Tests never share mutable state across slots. `fullyParallel` stays off, so the
-distribution unit is the spec file and per-file module state remains safe. Set
-`E2E_SLOTS=1` to fall back to a single serial instance; set `E2E_PORT_BASE` (and
-`E2E_INSPECTOR_PORT_BASE`, default 9329) to move off a busy port range.
+## Local process safety
 
-**Rate-limit quota.** Each test presents its own client address so the server
-treats it as an independent client with its own quota (120 reads/min, 80
-writes/min). **Send it as both `CF-Connecting-IP` and `X-Forwarded-For`** —
-`X-Forwarded-For` alone is not enough. Miniflare's entry worker fills in
-`CF-Connecting-IP` from the TCP peer when the request does not already carry one,
-and the server reads that header first, so every test collapses into one bucket
-keyed on 127.0.0.1. That does not reproduce on Windows, so it stayed green locally
-and cost a full CI run: 19 unrelated tests each reporting their own feature
-failure, all of them 429s from a quota someone else had spent. `config.ts`'s
-`clientIdentityHeaders` is the single place that builds these headers, and
-`globalSetup` now asserts the isolation before any test runs.
+- Reuse a healthy development server when it matches the required command, repository, and port.
+- Before starting a server, watcher, browser automation run, or command that may leave child processes, record the relevant process baseline.
+- Start task-owned background processes hidden with output redirected to a known log, then perform a bounded health check.
+- Record the command, working directory, PID/process tree, port, and log path so the process can be attributed and stopped safely.
+- On completion, stop the task-owned tree from leaves to root and confirm the port is released. Never kill processes by name or disturb processes that predate the task.
+- If a process is continuously recreated by an IDE or another active parent, stop retrying and report the actual owner.
 
-The id must be unique across the whole run, not just within a worker
-process: Playwright starts a fresh worker process after every failure and between
-projects, and a plain module-level counter restarts at zero there, handing live
-ids back out. Two tests then share one bucket, the second gets 429, that failure
-starts another worker, and one failure snowballs into a screenful of unrelated
-429s — visible only where something already failed. `support/test.ts` therefore
-partitions the id space by `workerIndex` and throws rather than letting a segment
-overlap.
+## Documentation and delivery
 
-A test draws two ids, not one: the browser and the `api` readback channel each get
-their own. The readback channel is the test's instrument, not the user being
-simulated. Sharing one id also corrupted the measurement — both channels read the
-same `X-RateLimit-Remaining`, so the readback line reported the browser's spend as
-its own. Splitting them does not relax the limit; both channels still get 120
-reads/min and a browser that really exceeds it still gets a 429.
-
-Run with `E2E_QUOTA_TRACE=1` to print each test's peak consumption per channel and
-bucket (`page 50/120  api 3/120`); measure before assuming a 429 means a real
-defect. It is on in CI as a temporary instrument: local peaks sit at 50–55/120,
-while CI has been observed at 1–6 remaining on the same specs, and that gap is
-still unexplained. See the comment on `E2E_QUOTA_TRACE` in
-`.github/workflows/ci.yml` for what removes it.
-
-**`wrangler` is pinned to 4.113.0 on purpose. Do not bump it without running the
-full e2e suite.** 4.118.0 resolves `miniflare` to `5.x-alpha`, whose
-ProxyController treats `Network connection lost.` as fatal and tears down the
-whole `wrangler dev` session. e2e produces that condition constantly — every
-navigation that aborts an in-flight fetch — so a random slot dies mid-run and
-every later spec on that slot fails with `ECONNREFUSED`. It looks like a dozen
-unrelated flaky specs; it is one dead server.
-
-**Assertion helpers** (`support/test.ts`):
-
-- `flow.click(control, {method, path})` — the control must fire that request and
-  the server must accept it. `flow.act(action, …)` is the same for non-click
-  interactions.
-- `flow.clickWithoutApi(control)` — the control must be purely local. It waits
-  for the page's own traffic to go quiet first, then records requests *sent*
-  during the window (not responses received, which would blame the control for
-  something already in flight).
-- A control whose request is debounced needs an explicit
-  `page.waitForResponse` keyed on the query string — a pending timer is
-  invisible to both helpers.
-
-Every spec must clean up what it creates; `globalTeardown` diffs per-table row
-counts and R2 object counts against the baseline and fails the run on any drift.
-
-### Add a new scheduled job
-
-1. Create `apps/worker/crons/<job-name>.ts`
-2. Register in the cron dispatcher in `apps/worker/index.ts`
-3. Add cron expression to `wrangler.jsonc` → `triggers.crons`
-4. Document the schedule in this file
-
-## Path Alias Configuration
-
-Aliases must be kept in sync between:
-
-| File | Scope |
-|------|-------|
-| `tsconfig.json` → `compilerOptions.paths` | TypeScript resolution |
-| `apps/portal/vite.config.ts` → `resolve.alias` | Vite runtime resolution |
-| `wrangler.jsonc` → `alias` | Worker bundler resolution |
-
-## Agent Workflow Rules
-
-### Track every file you touch
-
-- Before making changes, list all files you intend to modify.
-- After making changes, verify the app still compiles (`pnpm typecheck`).
-- When adding a new table, update both the Drizzle schema AND the SQL migration.
-- When modifying Zod schemas, check that worker routes and portal queries using those schemas still compile.
-
-### Verify before declaring done
-
-- Run `pnpm typecheck` — must succeed.
-- If you modified a route, test with `pnpm dev:worker` and verify the endpoint responds.
-- If you modified a schema, verify Drizzle ↔ SQL migration parity.
-- If you changed portal components, verify under at least two themes.
-
-### Keep files in sync
-
-| When you change... | Also update... |
-|---------------------|---------------|
-| Drizzle schema | SQL migration (`pnpm db:generate`), shared Zod schemas if types changed |
-| A Zod schema | Worker routes using it, portal mutations using it |
-| A route handler | Shared API registry, portal query/mutation hooks |
-| Portal router | AppShell sidebar nav, i18n translation keys |
-| Worker bindings | `wrangler.jsonc`, `apps/worker/index.ts` type definition |
-| Cron jobs | `wrangler.jsonc` triggers, `apps/worker/index.ts` dispatcher |
-| Path aliases | `tsconfig.json`, `vite.config.ts`, `wrangler.jsonc` |
-| Schema domain headers | This AGENTS.md file |
-
-### No orphaned files
-
-- Every schema module must be exported from `apps/worker/db/schema/index.ts`.
-- Every route must be mounted in `apps/worker/index.ts`.
-- Every page must have a route in `apps/portal/router.tsx`.
-- Every Zod schema must be exported from `apps/shared/index.ts`.
-- Delete files completely when removing — do not leave dead imports or commented-out references.
-<!-- TRELLIS:START -->
-# Trellis Instructions
-
-These instructions are for AI assistants working in this project.
-
-Use the `/trellis:start` command when starting a new session to:
-- Initialize your developer identity
-- Understand current project context
-- Read relevant guidelines
-
-Use `@/.trellis/` to learn:
-- Development workflow (`workflow.md`)
-- Project structure guidelines (`spec/`)
-- Developer workspace (`workspace/`)
-
-Keep this managed block so 'trellis update' can refresh the instructions.
-
-<!-- TRELLIS:END -->
+- Keep `README.md` with `README.zh.md`, and `SETUP.md` with `SETUP.zh.md`, synchronized when their shared facts change.
+- Keep code examples, script names, paths, bindings, schema policy, and dependency claims grounded in the repository.
+- Avoid volatile service/file/test counts, release-verification dates, machine-specific measurements, and paths that do not exist.
+- Update `CHANGELOG.md` under `Unreleased` for notable behavior, security, data, or operational changes; do not use it as a build diary.
+- Before handoff, run `git diff --check` and the scoped validations relevant to the files changed. Report exactly what ran and any remaining limitation.

@@ -421,7 +421,7 @@ describe("site config permission mapping", () => {
     }, { DB: {} });
 
     expect(writeResult.status).toBe(401);
-    expect(mocks.requirePermission).toHaveBeenLastCalledWith(expect.anything(), "admin.siteConfig.manage", { freshPermissions: true });
+    expect(mocks.requirePermission).toHaveBeenLastCalledWith(expect.anything(), "admin.siteConfig.manage");
 
     mocks.requirePermission.mockRejectedValueOnce(new HTTPException(401));
     const form = new FormData();
@@ -432,12 +432,12 @@ describe("site config permission mapping", () => {
     }, { DB: {} });
 
     expect(uploadResult.status).toBe(401);
-    expect(mocks.requirePermission).toHaveBeenLastCalledWith(expect.anything(), "admin.siteConfig.manage", { freshPermissions: true });
+    expect(mocks.requirePermission).toHaveBeenLastCalledWith(expect.anything(), "admin.siteConfig.manage");
   });
 });
 
 describe("class catalog permission mapping", () => {
-  it("requires a fresh admin.classes.manage check for every catalog mutation", async () => {
+  it("requires admin.classes.manage for every catalog mutation", async () => {
     const { classRoutes } = await import("./classes");
     const mutations = [
       { path: "/", method: "POST" },
@@ -455,7 +455,6 @@ describe("class catalog permission mapping", () => {
       expect(mocks.requirePermission).toHaveBeenLastCalledWith(
         expect.anything(),
         "admin.classes.manage",
-        { freshPermissions: true },
       );
     }
   });

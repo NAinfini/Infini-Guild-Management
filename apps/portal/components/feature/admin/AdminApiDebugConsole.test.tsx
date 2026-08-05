@@ -48,7 +48,7 @@ describe("AdminApiDebugConsole", () => {
     ).replace(/\/\*[\s\S]*?\*\//g, "");
     const filterRule = css.match(/\.api-debug__filter-btn\s*\{([^}]+)\}/)?.[1];
     const rowRule = css.match(/\.api-debug__row-main\s*\{([^}]+)\}/)?.[1];
-    /* 运行和停止两个按钮共用同一条规则；停止按钮的 44px 此前是 TSX 里的 h={44}。 */
+    /* Run and stop share the same touch-target rule. */
     const consoleActionRule = css.match(
       /\.api-console__header\s+\.api-console__run-all,\s*\.api-console__header\s+\.api-console__stop\s*\{([^}]+)\}/,
     )?.[1];

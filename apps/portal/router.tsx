@@ -50,13 +50,7 @@ const GUILD_WAR_SEARCH_SCHEMA = z.object({
 });
 
 const PROFILE_SEARCH_SCHEMA = z.object({
-  /*
-   * "profile" and "media" merged into the home tab and are no longer emitted,
-   * but they stay in the enum: validateSearch throws on an unlisted value, so
-   * dropping them would turn every existing bookmark into a hard route error
-   * instead of the redirect MyProfilePage already performs.
-   */
-  tab: z.enum(["profile", "media", "availability", "account"]).optional(),
+  tab: z.enum(["availability", "account"]).optional(),
 });
 
 const ANNOUNCEMENTS_SEARCH_SCHEMA = z.object({

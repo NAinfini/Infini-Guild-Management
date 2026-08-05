@@ -1,10 +1,4 @@
-/*
- * 这一页原先是「顶部 hero + 满屏卡片网格 + 760px 弹窗编辑器」三件套：hero 里的标题、
- * 说明、计数和新建按钮各占一行，编辑要开弹窗，弹窗又把卡片全盖住。现在和角色、徽章
- * 一样并到 AdminPage.css 的 .admin-md 主从台，hero（含 __eyebrow）、卡片
- * （__card / __card-accent / __card-copy / __color-dot）整套删除。
- * 剩下的都是编辑器内部的东西，原样搬进右栏。
- */
+/* Class editing uses the shared admin master-detail workspace. */
 
 /* 清单行外壳：手柄 + .admin-md__item。手柄是独立按钮，不能嵌进那个按钮里。 */
 .admin-classes__row {
@@ -45,12 +39,7 @@
   opacity: 0.4;
 }
 
-/*
- * 表单列封顶 40rem。原先是 minmax(0, 1fr)，右栏有多宽它就有多宽——2000px 的屏上
- * 约 1370px，于是一个放「鸣金虹」三个字的输入框横跨大半屏，标签和光标离得老远；
- * 两个选项的「图标来源」开关铺满同样的宽度；九列图标格每格被撑到 140px 去装一个
- * 20px 的图标。这三样看着是三个毛病，其实是同一条：单行控件不该跟着容器无限长。
- */
+/* Bound the form column so short controls retain readable proportions on wide screens. */
 .admin-classes__editor {
   display: grid;
   grid-template-columns: 180px minmax(0, 40rem);
@@ -89,17 +78,12 @@
   object-fit: contain;
 }
 
-/* 颜色框自己封一次顶。它原先跟「显示顺序」并排占一格，那个数字框删掉之后如果不管，
-   一个装着 #61B8AA 七个字符的输入框会撑满整条 40rem。 */
+/* A short color value does not need the full form-column width. */
 .admin-classes__color-field {
   max-inline-size: 20rem;
 }
 
-/*
- * 格子按固定尺寸铺，不按固定列数分。写死 9 列时格子宽度 = 容器宽 / 9，容器一宽
- * 格子就跟着变成一个个大方块，里面还是那个 20px 的图标，空得离谱。现在格子钉在
- * 44–56px（44 是触控靶面下限），列数由容器算出来。
- */
+/* 图标格保持 44–56px 触控尺寸，列数随容器自动调整。 */
 .admin-classes__icon-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(44px, 56px));

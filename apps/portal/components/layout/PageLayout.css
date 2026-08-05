@@ -67,11 +67,7 @@
   gap: var(--space-lg);
 }
 
-/*
- * The section heading used to carry an animated tri-colour underline that grew
- * on hover. It was gold used as decoration, on a permanent loop, next to every
- * other gold thing on the page. Size and weight say "section" on their own.
- */
+/* Section hierarchy is communicated through typography without decorative motion. */
 .page-layout__section-title {
   margin: 0;
   font-size: var(--text-section);

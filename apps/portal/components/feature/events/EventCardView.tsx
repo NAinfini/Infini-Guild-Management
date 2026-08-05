@@ -125,6 +125,8 @@ export function EventCardView({
 }: EventCardViewProps) {
   const { t, i18n } = useTranslation("events");
   const joinedCount = members.length;
+  const overCapacity = event.capacity !== null && joinedCount > event.capacity;
+
   const typeColor = eventTypeColor(event.type);
   const raffleHasDrawn = eventHasBehavior(event.type, "raffle") && (event.raffle_winners?.length ?? 0) > 0;
   const quotaSummary = summariseEventClassQuotas(event, members);
@@ -194,13 +196,8 @@ export function EventCardView({
     </>
   );
 
-  /*
-   * The card used to be role="button" + tabIndex={0}, but it also holds
-   * real buttons (copy mentions, the kebab menu, the signup actions), so
-   * it was a widget with focusable descendants — unusable by keyboard and
-   * screen reader alike. The whole-card click stays as a mouse shortcut;
-   * the title below is the focusable affordance that opens the detail.
-   */
+  // The card contains interactive descendants, so only its title receives the
+  // keyboard link affordance; the card-level click remains a pointer shortcut.
   return (
     <Paper
       withBorder
@@ -232,7 +229,10 @@ export function EventCardView({
            * 第二行，那张卡就比旁边高一截。色带这一行的宽度是固定的（徽章、状态图标、
            * 两个按钮都不随数据变宽），人数放这儿谁也挤不着谁。
            */}
-          <div className="event-card__capacity">
+          <div
+            className="event-card__capacity"
+            data-capacity-state={overCapacity ? "over" : undefined}
+          >
             <UsersIcon size={13} />
             <span>{joinedCount}/{event.capacity ?? "∞"}</span>
           </div>

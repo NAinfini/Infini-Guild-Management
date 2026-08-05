@@ -221,7 +221,7 @@ test("成员名单：勾选即拥有，改动攒成差异一次保存；再打�
   await manage.click();
   await expect(toolbar).toBeVisible();
 
-  await toolbar.getByPlaceholder("Search members...").fill(member.username);
+  await toolbar.getByRole("textbox", { name: "Search members…", exact: true }).fill(member.username);
   await expect(memberList(page).getByRole("checkbox"), "搜索要把名单收敛到那一个人").toHaveCount(1);
   const box = memberList(page).getByRole("checkbox", { name: member.username, exact: true });
   await expect(box, "还没给他徽章，所以是没勾的").not.toBeChecked();
@@ -246,7 +246,7 @@ test("成员名单：勾选即拥有，改动攒成差异一次保存；再打�
   /* 已经有徽章的人仍在名单里，只是勾上了——取消勾选就是移除，不再是两份名单。 */
   await manage.click();
   await expect(toolbar).toBeVisible();
-  await toolbar.getByPlaceholder("Search members...").fill(member.username);
+  await toolbar.getByRole("textbox", { name: "Search members…", exact: true }).fill(member.username);
   await expect(box).toBeChecked();
   await box.uncheck();
   await expect(toolbar.getByText("0 to add · 1 to remove")).toBeVisible();
@@ -285,7 +285,7 @@ test("卡片上的移除：确认框取消什么都不做，确认之后两边�
   await card.getByRole("button", { name: "Remove", exact: true }).click();
   const confirmed = await confirmDialog(page, "Remove Badge Assignment");
   await flow.click(confirmed.getByRole("button", { name: "Remove", exact: true }), UNASSIGN_BADGE);
-  await expectNotified(page, "Badge removed from 1 member(s)");
+  await expectNotified(page, "Badge removed from 1 member");
 
   expect(await serverAssignments(api, badge.id), "确认之后服务端不能再留着这条分配").toEqual([]);
   await expect(detail(page).getByText("No members assigned to this badge.")).toBeVisible();

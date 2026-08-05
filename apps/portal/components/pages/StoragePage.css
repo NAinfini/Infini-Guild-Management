@@ -201,13 +201,7 @@ html:not([data-input-modality="pointer"]) .storage-batch-drawer .mantine-Textare
   min-block-size: 0;
 }
 
-/*
- * 分类侧栏和货品列表各自内滚，工作区整体钉在视口里。
- *
- * 原先侧栏是 position: sticky 跟着整页滚：货品一多，页面往下滚，侧栏在自己那一段
- * 里贴着走，滚过它的高度之后照样被带出视口——「分类一直在」只兑现了一半。而且列
- * 表和侧栏的滚动是同一条，翻货品时分类会跟着动。现在两边各滚各的。
- */
+/* Category and inventory panes independently scroll within the page workspace. */
 .storage-inventory-shell {
   display: grid;
   grid-template-columns: minmax(180px, 208px) minmax(0, 1fr);
@@ -330,13 +324,23 @@ html:not([data-input-modality="pointer"]) .storage-batch-drawer .mantine-Textare
 }
 
 .storage-command {
-  display: grid;
-  grid-template-columns: minmax(220px, 1fr) minmax(144px, 168px) auto;
-  align-items: center;
-  gap: var(--space-sm);
+  display: block;
   padding: var(--space-md);
   border-bottom: 1px solid var(--storage-border);
-  background: var(--storage-field);
+  border-radius: 0;
+  background: var(--storage-plate);
+}
+
+.storage-command .content-filter-toolbar__layout[data-compact="false"] {
+  grid-template-columns: minmax(16rem, 26rem) auto minmax(0, 1fr);
+}
+
+.storage-command .content-filter-toolbar__layout[data-compact="false"] .content-filter-toolbar__controls {
+  justify-content: flex-start;
+}
+
+.storage-command .content-filter-toolbar__layout[data-compact="false"] .storage-command__stock {
+  inline-size: 13rem;
 }
 
 .storage-command__category-mobile {
@@ -1074,12 +1078,7 @@ html:not([data-input-modality="pointer"]) .storage-item-editor__dropzone:has(:fo
 }
 
 @media (max-width: 74em) {
-  .storage-command {
-    grid-template-columns: minmax(180px, 1fr) minmax(136px, 160px);
-  }
-
   .storage-command__actions {
-    grid-column: 1 / -1;
     justify-content: flex-start;
   }
 
@@ -1127,16 +1126,8 @@ html:not([data-input-modality="pointer"]) .storage-item-editor__dropzone:has(:fo
     display: none;
   }
 
-  .storage-command {
-    grid-template-columns: minmax(150px, 0.8fr) minmax(180px, 1.2fr) minmax(136px, 160px);
-  }
-
   .storage-command__category-mobile {
     display: block;
-  }
-
-  .storage-command__actions {
-    grid-column: 1 / -1;
   }
 
   .storage-management-modal__node-actions,
@@ -1190,15 +1181,10 @@ html:not([data-input-modality="pointer"]) .storage-item-editor__dropzone:has(:fo
     flex: 1;
   }
 
-  .storage-command {
-    grid-template-columns: minmax(0, 1fr);
-  }
-
   .storage-command__category-mobile,
   .storage-command__search,
   .storage-command__stock,
   .storage-command__actions {
-    grid-column: auto;
     width: 100%;
   }
 
@@ -1240,6 +1226,12 @@ html:not([data-input-modality="pointer"]) .storage-item-editor__dropzone:has(:fo
 
   .storage-item-card__actions .mantine-Button-root {
     flex: 1 1 112px;
+    min-block-size: var(--control-hit-area);
+  }
+
+  .storage-item-card__actions .mantine-ActionIcon-root {
+    min-inline-size: var(--control-hit-area);
+    min-block-size: var(--control-hit-area);
   }
 
   .storage-detail-media__image,

@@ -5,7 +5,7 @@ import type { Editor } from "@tiptap/react";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, expect, it, vi } from "vitest";
-import type { TipTapEditorLabels } from "./TipTapEditor";
+import type { TipTapEditorLabels } from "./tiptap-meta";
 import { TipTapEditorToolbar } from "./TipTapEditorToolbar";
 
 const labels: TipTapEditorLabels = {

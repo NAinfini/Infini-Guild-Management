@@ -27,9 +27,7 @@ type SitePolicyRow = Record<PolicyColumn, string | null>;
 
 /**
  * One D1 read per request for the whole policy row, memoised on the request's
- * Context. `featureGateMiddleware` runs on every content API call, so each of
- * those requests used to pay an extra round-trip, and an upload that needs both
- * the feature flags and the media policy paid for the same row twice.
+ * Context so feature gates and upload policies share the same snapshot.
  *
  * Deliberately NOT cached across requests: the Cache API is per-colo, so a
  * `delete` on config change would not reach other colos and an admin toggling a
@@ -64,13 +62,8 @@ async function readSitePolicy<T>(
   try {
     return schema.parse(JSON.parse(value) as unknown);
   } catch (error) {
-    // Deliberate fail-open, and the ONLY reason it is acceptable is that this
-    // line is loud. A corrupt blob used to silently re-enable every feature
-    // flag with no trace at all — the flags gate whole API prefixes, so that
-    // quietly re-opened features an admin had turned off. Failing closed
-    // instead would turn a data-integrity glitch into a full site outage,
-    // which is the worse failure mode. To flip the policy, throw here instead
-    // of returning the fallback.
+    // Deliberate fail-open: log the integrity failure, then serve defaults to
+    // avoid turning one corrupt policy blob into a full-site outage.
     logger.error("site_config policy column is corrupt; serving defaults", {
       column,
       requestId: c.get("requestId") as string | undefined,

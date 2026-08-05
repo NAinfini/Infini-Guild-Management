@@ -21,7 +21,7 @@ describe("confirm dialog convergence", () => {
       .filter((path) => readFileSync(path, "utf8").includes("modals.openConfirmModal"))
       .filter((path) => !path.endsWith("hooks\\useConfirmDialog.ts") && !path.endsWith("hooks/useConfirmDialog.ts"))
       .map((path) => path.slice(portalRoot.length + 1).replaceAll("\\", "/"));
-    const legacyStateMarkers = [
+    const manualStateMarkers = [
       "archiveConfirmEvent",
       "deleteConfirmOpen",
       "pendingRemove",
@@ -30,7 +30,7 @@ describe("confirm dialog convergence", () => {
     const manualModalOffenders = sourceFiles
       .filter((path) => {
         const source = readFileSync(path, "utf8");
-        return legacyStateMarkers.some((marker) => source.includes(marker));
+        return manualStateMarkers.some((marker) => source.includes(marker));
       })
       .map((path) => path.slice(portalRoot.length + 1).replaceAll("\\", "/"));
 

@@ -24,13 +24,7 @@ type ProfileProfileTabProps = {
   onBioChange: (value: string) => void;
 };
 
-/**
- * 身份卡：战力、职业、称号、简介。
- *
- * 称号原先是一个裸的 HTML 文本框，要求成员自己去工具页生成、复制、粘贴一段
- * `<span style="…">`，中间任何一步出错都要靠肉眼比对标签。现在这里只显示渲染
- * 结果，编辑走同一个称号沙盒（工具页用的就是它），存下来的仍是同一份 HTML。
- */
+/** Identity fields; title editing shares the validated title-sandbox contract. */
 export function ProfileProfileTab({
   power,
   classDraft,

@@ -283,7 +283,7 @@ export function useEventsEditorController({ attachmentSnapshot }: UseEventsEdito
       const confirmed = await confirm({
         title: t("confirm.discardUnsaved.title"),
         description: t("confirm.discardUnsaved.description"),
-        confirmLabel: t("common:action.delete"),
+        confirmLabel: t("common:action.discard"),
         cancelLabel: t("common:action.cancel"),
         intent: "warning",
       });

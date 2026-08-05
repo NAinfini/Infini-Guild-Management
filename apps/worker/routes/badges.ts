@@ -48,7 +48,7 @@ badgeRoutes.patch("/:id", async (c) => {
 });
 
 badgeRoutes.delete("/:id", async (c) => {
-  const sessionUser = await requirePermission(c, "admin.badges.manage", { freshPermissions: true });
+  const sessionUser = await requirePermission(c, "admin.badges.manage");
   const result = await getService(c).deleteBadge(sessionUser.id, c.req.param("id"));
   return handleResult(c, result);
 });

@@ -9,13 +9,15 @@ import { describe, expect, it } from "vitest";
  * 这些图标的 animate 变体是 hover 触发的，抛出来的是未捕获错误——页面不会白屏，
  * 但错误守卫（e2e 的 failOnPageDefects）会把整条用例判成缺陷，而且真正的失败会被
  * 这堆噪音盖住。
- *
- * 曾经有 6 个图标是这样写的，一个个 hover 才发现。这条守卫按源码扫，
- * 不依赖谁去 hover 它。
+ * The guard scans source so coverage does not depend on manually hovering every icon.
  */
 
 const iconsDir = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(iconsDir, "../../../..");
+const themeProviderSource = readFileSync(
+  resolve(repoRoot, "apps/portal/providers/ThemeProvider.tsx"),
+  "utf8",
+);
 
 /** 只取 transition 里的 type，避免把变体里别的 `type:` 字段算进来。 */
 const SPRING_TRANSITION = /transition:\s*\{[^}]*\btype:\s*["'](spring|inertia)["']/g;
@@ -60,6 +62,25 @@ export function springKeyframeOffenders(path: string, source: string): string[] 
 }
 
 describe("图标动画变体", () => {
+  it("由根 MotionConfig 对全部图标入口遵循系统减弱动效偏好", () => {
+    expect(themeProviderSource).toContain('import { MotionConfig } from "motion/react"');
+    expect(themeProviderSource).toContain('<MotionConfig reducedMotion="user">');
+
+    const uncovered = iconSources()
+      .filter(({ source }) => !(
+        source.includes('from "motion/react"')
+        && source.includes("useParentInteractiveHover")
+        && source.includes("onMouseEnter")
+        && source.includes("useImperativeHandle")
+      ))
+      .map(({ path }) => path);
+
+    expect(
+      uncovered,
+      "每个图标的父级 hover、直接 hover 与程序化入口都必须留在根 MotionConfig 覆盖的 Motion 链路中",
+    ).toEqual([]);
+  });
+
   it("不给 spring 超过两个关键帧", () => {
     const offenders = iconSources().flatMap(({ path, source }) => (
       springKeyframeOffenders(path, source)

@@ -3,7 +3,7 @@ import {
 } from "@guild/shared";
 import type { WriteAuditLogInput as AuditLogInput } from "./audit";
 import type { PushEntityType, PushHint } from "@guild/shared/constants/push-hints";
-import { and, desc, eq, inArray, or, sql, type SQL } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, or, sql, type SQL } from "drizzle-orm";
 import type { DrizzleD1Database } from "drizzle-orm/d1";
 import { nanoid } from "nanoid";
 import { announcements } from "../db/schema";
@@ -21,6 +21,7 @@ type EntityChangedInput = { entityType: PushEntityType; entityId: string; hint: 
 type AnnouncementPublishedInput = { announcementId: string; title: string; publishedAt: string };
 
 type AnnouncementStatus = "draft" | "scheduled" | "published" | "archived";
+export type AnnouncementSort = "updated_desc" | "updated_asc";
 
 type AnnouncementRow = {
   id: string; title: string; bodyJson: string; pinned: boolean;
@@ -153,7 +154,7 @@ export class AnnouncementService {
 
   // --- Public ---
 
-  async list(opts: { canReadAll: boolean; page: number; limit: number; status?: string; pinned?: boolean; archived?: boolean; search?: string }): Promise<ServiceResult<{ data: unknown[]; total: number; page: number; limit: number; total_pages: number }>> {
+  async list(opts: { canReadAll: boolean; page: number; limit: number; status?: string; pinned?: boolean; archived?: boolean; search?: string; sort?: AnnouncementSort }): Promise<ServiceResult<{ data: unknown[]; total: number; page: number; limit: number; total_pages: number }>> {
     const offset = (opts.page - 1) * opts.limit;
     const filters: SQL<unknown>[] = [];
 
@@ -172,8 +173,9 @@ export class AnnouncementService {
     }
 
     const whereClause = and(...filters);
+    const sortDirection = opts.sort === "updated_asc" ? asc : desc;
     const [rows, countRow] = await Promise.all([
-      this.db.select(LIST_COLS).from(announcements).where(whereClause).orderBy(desc(announcements.pinned), desc(announcements.createdAt), desc(announcements.id)).limit(opts.limit).offset(offset),
+      this.db.select(LIST_COLS).from(announcements).where(whereClause).orderBy(desc(announcements.pinned), sortDirection(announcements.updatedAt), sortDirection(announcements.id)).limit(opts.limit).offset(offset),
       this.db.select({ count: sql<number>`count(*)` }).from(announcements).where(whereClause),
     ]);
     const total = Number(countRow[0]?.count ?? 0);

@@ -26,6 +26,9 @@ export type MediaGalleryLabels = {
   seekVideo: string;
   playVideoAria: string;
   openItemAria: (index: number) => string;
+  imageAlt: (index: number) => string;
+  imageThumbnailAlt: (index: number) => string;
+  videoThumbnailAlt: (index: number) => string;
 };
 
 const DEFAULT_LABELS: MediaGalleryLabels = {
@@ -47,6 +50,9 @@ const DEFAULT_LABELS: MediaGalleryLabels = {
   seekVideo: "Seek video",
   playVideoAria: "Play video",
   openItemAria: (index) => `Open item ${index}`,
+  imageAlt: (index) => `Media image ${index}`,
+  imageThumbnailAlt: (index) => `Media thumbnail ${index}`,
+  videoThumbnailAlt: (index) => `Video thumbnail ${index}`,
 };
 
 export function buildMediaGalleryLabels(
@@ -71,6 +77,9 @@ export function buildMediaGalleryLabels(
     seekVideo: t("media.aria.seekVideo"),
     playVideoAria: t("media.aria.playVideo"),
     openItemAria: (index) => t("media.aria.openItem", { index }),
+    imageAlt: (index) => t("media.aria.imageAlt", { index }),
+    imageThumbnailAlt: (index) => t("media.aria.imageThumbnailAlt", { index }),
+    videoThumbnailAlt: (index) => t("media.aria.videoThumbnailAlt", { index }),
   };
 }
 
@@ -228,7 +237,7 @@ export const MediaGallery = forwardRef<HTMLDivElement, MediaGalleryProps>(
                 {item.type === "image" ? (
                   isRenderableUrl(item.source) && !brokenImages.has(index) ? (
                     <div className="infini-media-gallery-slide">
-                      <img src={item.source} alt={`Media image ${index + 1}`} loading="lazy" decoding="async" onError={() => handleImageError(index)} />
+                      <img src={item.source} alt={labels.imageAlt(index + 1)} loading="lazy" decoding="async" onError={() => handleImageError(index)} />
                     </div>
                   ) : (
                     <div className="infini-media-gallery-slide infini-media-gallery-slide--broken">
@@ -335,11 +344,11 @@ export const MediaGallery = forwardRef<HTMLDivElement, MediaGalleryProps>(
                   aria-pressed={index === activeIndex}
                 >
                   {item.type === "image" && isRenderableUrl(item.source) && !brokenImages.has(index) ? (
-                    <img src={item.source} alt={`Media thumbnail ${index + 1}`} loading="lazy" decoding="async" onError={() => handleImageError(index)} />
+                    <img src={item.source} alt={labels.imageThumbnailAlt(index + 1)} loading="lazy" decoding="async" onError={() => handleImageError(index)} />
                   ) : item.type === "video" ? (
                     "thumbnailUrl" in item && item.thumbnailUrl ? (
                       <div className="infini-media-gallery-thumb-video">
-                        <img src={item.thumbnailUrl} alt={`Video thumbnail ${index + 1}`} loading="lazy" decoding="async" />
+                        <img src={item.thumbnailUrl} alt={labels.videoThumbnailAlt(index + 1)} loading="lazy" decoding="async" />
                         <PlayIcon size={16} className="infini-media-gallery-thumb-play" />
                       </div>
                     ) : "isDirect" in item && item.isDirect ? (

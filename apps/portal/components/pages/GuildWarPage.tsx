@@ -48,23 +48,35 @@ type GuildWarTabResolution = {
   replacementTab: GuildWarTab | null;
 };
 
+type GuildWarActiveAvailability = "loading" | "available" | "empty";
+
 export function resolveGuildWarTab(
   search: Pick<GuildWarRouteSearch, "tab" | "warName">,
   isExternalView: boolean,
+  activeAvailability: GuildWarActiveAvailability = "available",
 ): GuildWarTabResolution {
   const firstVisibleTab: GuildWarTab = isExternalView ? "history" : "active";
   const visibleTabs: GuildWarTab[] = isExternalView
     ? ["history", "analytics"]
     : ["active", "history", "analytics"];
+  const hasExplicitTab = search.tab !== undefined;
+  const hasExplicitWarName = search.warName !== undefined;
+  const shouldDefaultToHistory = !isExternalView
+    && activeAvailability === "empty"
+    && !hasExplicitTab
+    && !hasExplicitWarName;
   const requestedTab = search.tab
-    ?? (search.warName ? "history" : firstVisibleTab);
+    ?? (hasExplicitWarName || shouldDefaultToHistory ? "history" : firstVisibleTab);
   const activeTab = visibleTabs.includes(requestedTab)
     ? requestedTab
     : firstVisibleTab;
+  const shouldNormalizeExplicitTab = hasExplicitTab && search.tab !== activeTab;
 
   return {
     activeTab,
-    replacementTab: search.tab && search.tab !== activeTab ? activeTab : null,
+    replacementTab: shouldNormalizeExplicitTab || shouldDefaultToHistory
+      ? activeTab
+      : null,
   };
 }
 
@@ -74,7 +86,7 @@ export function buildGuildWarTabSearch(
 ): GuildWarRouteSearch {
   return {
     ...previous,
-    tab: tab === "active" ? undefined : tab,
+    tab,
     ...(tab === "active" ? { warName: undefined } : {}),
   };
 }
@@ -161,11 +173,6 @@ export function GuildWarPage() {
     setHistoryPage(1);
   }, [guildWarSearch.warName, setHistoryPage]);
 
-  const tabResolution = useMemo(
-    () => resolveGuildWarTab(guildWarSearch, isExternalView),
-    [guildWarSearch, isExternalView],
-  );
-  const activeTab = tabResolution.activeTab;
   const setGuildWarTab = useCallback((tab: GuildWarTab) => {
     void navigate({
       to: "/guild-war",
@@ -174,12 +181,6 @@ export function GuildWarPage() {
       viewTransition: false,
     });
   }, [navigate]);
-
-  useEffect(() => {
-    if (tabResolution.replacementTab) {
-      setGuildWarTab(tabResolution.replacementTab);
-    }
-  }, [setGuildWarTab, tabResolution.replacementTab]);
 
   const openEventsPage = useCallback(() => {
     void navigate({ to: "/events", viewTransition: false });
@@ -221,6 +222,23 @@ export function GuildWarPage() {
     historyPage,
     historyPerPage,
   });
+
+  const activeAvailability: GuildWarActiveAvailability = !activeEligibilityReady
+    ? "loading"
+    : eligibleWarEvents.length > 0
+      ? "available"
+      : "empty";
+  const tabResolution = useMemo(
+    () => resolveGuildWarTab(guildWarSearch, isExternalView, activeAvailability),
+    [activeAvailability, guildWarSearch, isExternalView],
+  );
+  const activeTab = tabResolution.activeTab;
+
+  useEffect(() => {
+    if (tabResolution.replacementTab) {
+      setGuildWarTab(tabResolution.replacementTab);
+    }
+  }, [setGuildWarTab, tabResolution.replacementTab]);
 
   const activeController = useGuildWarActiveController({
     selectedEventId: activeSelectedEventId,

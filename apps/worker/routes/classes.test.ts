@@ -131,13 +131,12 @@ describe("class catalog routes", () => {
     expect(await response.json()).toMatchObject({ error_code: "CONFLICT" });
   });
 
-  it("guards reorder with fresh admin.classes.manage permissions", async () => {
+  it("guards reorder with admin.classes.manage", async () => {
     await reorderRequest({ order: ["warden"] });
 
     expect(mocks.requirePermission).toHaveBeenCalledWith(
       expect.anything(),
       "admin.classes.manage",
-      { freshPermissions: true },
     );
   });
 

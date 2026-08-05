@@ -2,10 +2,6 @@
   width: 100%;
 }
 
-.roster-filter-padding {
-  padding: var(--card-padding);
-}
-
 .roster-search-input {
   width: 260px;
 }
@@ -122,6 +118,15 @@
   min-width: 0;
   height: 100%;
 }
+.roster-card-interaction {
+  min-width: 0;
+  height: 100%;
+}
+
+.roster-virtual-cell {
+  min-width: 0;
+  height: 100%;
+}
 
 /*
  * 悬停时卡片放大（MemberCard.tsx 的 HOVER_SCALE）并做三维倾斜，越界量已经小于
@@ -159,10 +164,6 @@
 }
 
 @media (max-width: 991px) {
-  .roster-filter-card .roster-filter-padding {
-    padding: 0.7rem;
-  }
-
   .roster-search-input,
   .roster-class-select,
   .roster-sort-select,
@@ -179,30 +180,15 @@
 }
 
 @media (max-width: 767px) {
-  .roster-filter-card .roster-filter-padding {
-    padding: 0.5rem;
-  }
-
-  /* Overrides Mantine Group's own gap rule (equal specificity: its class
-     sets `gap` from the --group-gap custom property) without the elevated-
-     priority marker this block used to carry: this page's CSS chunk loads
-     after mantine-core's stylesheet, so it wins the cascade tie on source
-     order alone (task-6 addendum F). 6px isn't on the L3 scale, snapped up
-     to --space-sm (8px); the paired calc() below is adjusted to match so
-     the two controls still sum to exactly 100% width. */
+  /* Keep the compact filter panel aligned to the shared spacing scale. */
   .roster-filter-controls {
     gap: var(--space-sm);
   }
 
-  .roster-search-input,
-  .roster-class-select {
-    flex: 1 1 calc(50% - 4px);
-    width: auto;
-  }
-
+  .roster-class-select,
   .roster-sort-select {
     flex: 1 1 100%;
-    width: auto;
+    width: 100%;
   }
 
   .roster-volume-control {
@@ -211,13 +197,13 @@
   }
 
   .roster-audio-menu {
-    flex: 1 1 100%;
+    flex: 0 0 auto;
   }
 
   .roster-audio-menu__panel {
-    position: static;
-    width: 100%;
-    margin-top: var(--space-sm);
+    position: absolute;
+    width: min(280px, calc(100vw - 2rem));
+    margin-top: 0;
   }
 
   .roster-count-text {
@@ -238,5 +224,11 @@
 
   .roster-virtual-scroll {
     min-height: 200px;
+  }
+}
+
+@media (max-width: 575px) {
+  .roster-card-grid {
+    grid-template-columns: minmax(0, 1fr);
   }
 }

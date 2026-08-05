@@ -13,7 +13,8 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { useState } from "react";
 import { beforeAll, describe, expect, it, vi } from "vitest";
-import { buildTipTapEditorLabels, sanitizeTipTapHtml, TipTapEditor } from "./TipTapEditor";
+import { sanitizeTipTapHtml, TipTapEditor } from "./TipTapEditor";
+import { buildTipTapEditorLabels } from "./tiptap-meta";
 
 const editorLabels = {
   bold: "Bold",

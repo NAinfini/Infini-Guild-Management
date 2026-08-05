@@ -14,16 +14,8 @@ type MemberEntry = {
   profile: { classes: readonly string[]; power: number; avatar_key: string | null };
 };
 
-/*
- * 一摞头像：只露五个人，多的收进 "+N"，一张压一张。
- *
- * 以前活动卡那版按容器宽度算能塞几个、头像还会从 36px 缩到 24px，为的是把所有报名
- * 的人都摆出来。现在「谁来了」不再由头像承担——缺什么职业由配额筹码行讲，人数由容量
- * 数字讲，头像只剩「有人来了」这一个作用。于是尺寸固定、数量固定，layout 不再依赖
- * 测量，ResizeObserver 也就没有存在的理由了。
- *
- * 每个人的职业圈一律不画：这一摞是叠着的，圈会互相压住，谁的圈都看不全。
- */
+// Keep the stack stable at five fixed-size avatars; capacity and quota controls
+// carry the numeric detail, and overlapping avatars omit unreadable class rings.
 const MAX_VISIBLE_AVATARS = 5;
 const AVATAR_SIZE = 34;
 

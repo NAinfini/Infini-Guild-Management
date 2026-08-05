@@ -4,16 +4,14 @@ import { LIMITS, MAX_CONFIGURABLE_MEDIA_FILE_BYTES } from "../config/limits";
 
 export const siteMediaPolicySchema = z.object({
   max_file_size_bytes: z.object({
-    site_logo: z.number().int().positive().max(MAX_CONFIGURABLE_MEDIA_FILE_BYTES)
-      .default(LIMITS.media.maxFileSize.siteLogo),
+    site_logo: z.number().int().positive().max(MAX_CONFIGURABLE_MEDIA_FILE_BYTES),
     profile_image: z.number().int().positive().max(MAX_CONFIGURABLE_MEDIA_FILE_BYTES),
     profile_audio: z.number().int().positive().max(MAX_CONFIGURABLE_MEDIA_FILE_BYTES),
     announcement_image: z.number().int().positive().max(MAX_CONFIGURABLE_MEDIA_FILE_BYTES),
     wiki_image: z.number().int().positive().max(MAX_CONFIGURABLE_MEDIA_FILE_BYTES),
     event_image: z.number().int().positive().max(MAX_CONFIGURABLE_MEDIA_FILE_BYTES),
     gallery_image: z.number().int().positive().max(MAX_CONFIGURABLE_MEDIA_FILE_BYTES),
-    storage_image: z.number().int().positive().max(MAX_CONFIGURABLE_MEDIA_FILE_BYTES)
-      .default(LIMITS.media.maxFileSize.storageImage),
+    storage_image: z.number().int().positive().max(MAX_CONFIGURABLE_MEDIA_FILE_BYTES),
   }),
   quotas: z.object({
     profile: z.number().int().positive().max(LIMITS.media.configurableQuotaMax),

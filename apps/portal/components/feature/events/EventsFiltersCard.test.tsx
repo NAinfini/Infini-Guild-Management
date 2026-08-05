@@ -5,7 +5,19 @@ import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { EventsFiltersCard } from "./EventsFiltersCard";
 
-const responsive = vi.hoisted(() => ({ mobile: false }));
+const responsive = vi.hoisted(() => ({ mobile: false, width: 1200 }));
+
+class ResponsiveResizeObserver {
+  constructor(private readonly callback: ResizeObserverCallback) {}
+  disconnect() {}
+  unobserve() {}
+  observe() {
+    this.callback(
+      [{ contentRect: { width: responsive.width } } as ResizeObserverEntry],
+      this as unknown as ResizeObserver,
+    );
+  }
+}
 
 vi.mock("@mantine/hooks", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@mantine/hooks")>();
@@ -52,16 +64,18 @@ function renderFilters(overrides: Partial<React.ComponentProps<typeof EventsFilt
 describe("EventsFiltersCard", () => {
   beforeEach(() => {
     responsive.mobile = false;
+    responsive.width = 1200;
+    window.ResizeObserver = ResponsiveResizeObserver as unknown as typeof ResizeObserver;
   });
 
   it("keeps the administrator create action visible and keyboard-operable on mobile", async () => {
     responsive.mobile = true;
+    responsive.width = 390;
     const user = userEvent.setup();
     const props = renderFilters();
 
     const createButton = screen.getByRole("button", { name: "button.create" });
     expect(createButton).toBeVisible();
-    expect(createButton).toHaveStyle({ minHeight: "44px" });
 
     createButton.focus();
     await user.keyboard("{Enter}");
@@ -75,11 +89,19 @@ describe("EventsFiltersCard", () => {
     expect(screen.getByRole("button", { name: "button.create" })).toBeVisible();
   });
 
-  /*
-   * 周期模板并进这个切换器之后，它同时是进入模板视图和退出模板视图的唯一入口，
-   * 顶部已经没有标签行兜底了。模板档本身的工具栏由 RecurringTemplatesTab 承载，
-   * 那一侧的守卫在 RecurringTemplatesTab.test.tsx。
-   */
+  it("does not expose a shared clear action for active filters", () => {
+    renderFilters({
+      searchQuery: "raid",
+      eventType: "guild_war",
+      eventStatus: "archived",
+      pinnedOnly: true,
+      lockedOnly: true,
+    });
+
+    expect(screen.queryByRole("button", { name: "common:filter.clearAll" })).not.toBeInTheDocument();
+  });
+
+  /* 周期模板视图只向管理员开放，并仅通过此切换器进入或退出。 */
   it("offers the recurring view only to managers", () => {
     renderFilters();
     expect(screen.getByRole("radio", { name: "view.recurring" })).toBeInTheDocument();

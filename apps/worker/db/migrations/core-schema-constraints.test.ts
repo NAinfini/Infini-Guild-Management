@@ -61,6 +61,18 @@ describe("core schema integrity constraints", () => {
     ).run("absence-1", "user-1", "2026-08-10", "2026-08-01")).toThrow(/member_absences_date_range_valid/i);
   });
 
+  it("rejects gallery and poll values outside their static enums", () => {
+    db.prepare("INSERT INTO events (id, type, title, start_at, created_by) VALUES (?, 'poll', ?, ?, ?)")
+      .run("event-enum", "Enum poll", "2026-08-01T00:00:00.000Z", "user-1");
+
+    expect(() => db.prepare(
+      "INSERT INTO event_polls (event_id, results_visibility) VALUES (?, ?)",
+    ).run("event-enum", "admin_only")).toThrow(/CHECK constraint failed/i);
+    expect(() => db.prepare(
+      "INSERT INTO gallery_items (id, type, url, uploaded_by) VALUES (?, ?, ?, ?)",
+    ).run("gallery-enum", "audio", "media/audio", "user-1")).toThrow(/CHECK constraint failed/i);
+  });
+
   it("blocks item deletion once ledger rows exist", () => {
     db.prepare("INSERT INTO storages (id, name) VALUES (?, ?)").run("storage-1", "Main");
     db.prepare("INSERT INTO storage_items (id, storage_id, name, quantity) VALUES (?, ?, ?, ?)")

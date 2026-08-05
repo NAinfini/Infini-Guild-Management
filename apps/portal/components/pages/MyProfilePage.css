@@ -24,10 +24,7 @@
   min-width: 0;
 }
 
-/* 主页屏的编辑区没有侧栏分走宽度，两张卡（身份 / 媒体）宽到放得下就并排。
-   1fr 单列会把一个战力输入框拉到 1600px 宽——一个数字横跨整屏，眼睛要从
-   标签走到值走一整行。并排之后单栏还是 ~800px，且整页不再中间一条、两侧
-   各留几百像素空白。 */
+/* 宽屏编辑区分为等宽双列，使表单字段保持可读量度。 */
 @media (min-width: 1200px) {
   .my-profile-split__editor--wide {
     grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -292,10 +289,7 @@
   }
 }
 
-/* 页签沿用全站那套下划线：主题里 .tabsTab 统一给了内边距、2px 底边和透明的
-   选中态背景（ThemeProvider.module.css）。在这一页改成胶囊，就得逐条覆盖那些
-   规则，而且这一页会变成全站唯一一处不一样的页签。 */
-/* 和 .my-profile-shell 同宽：页签比内容宽或窄，切屏时整页会左右晃。 */
+/* 页签沿用全站下划线样式，并与资料内容保持同宽以避免切换位移。 */
 .my-profile-tabbar {
   display: flex;
   align-items: center;
@@ -369,9 +363,7 @@
   gap: 2px;
 }
 
-/* 热力图：7 行 × 12 格（两小时一格），和编辑器里的 7×24 网格同构。
-   之前那版是七条长度条——条形只答得出「哪天久」，答不出「几点」，而
-   「几点在线」才是别人排团时要看的东西。 */
+/* 热力图按 7 天 × 12 个两小时时段显示可用时间。 */
 .profile-week__map {
   display: grid;
   gap: 3px;
@@ -452,8 +444,7 @@
   color: var(--text-primary);
 }
 
-/* 每个职业一整行时，三个职业就吃掉半屏高度，而每行真正有字的部分不到 200px。
-   改成可换行的胶囊：拖动、主职业、删除都还在，但一行能放下三四个。 */
+/* 职业胶囊可换行，同时保留拖拽、主职业和删除控件。 */
 .profile-class__pills {
   display: flex;
   flex-wrap: wrap;
@@ -602,9 +593,7 @@
   }
 }
 
-/* ── 一周在线时间编辑器 ──
-   原来是 7×48 的拖涂网格（.availability-grid__*），改成每天一行时段条之后整块
-   样式跟着换掉了。留在这个页面文件里：编辑器只有资料页在用。 */
+/* ── Weekly availability editor, owned by the profile page ── */
 
 .availability-presets {
   display: flex;
@@ -700,13 +689,7 @@
   transition: border-color var(--transition-smooth), color var(--transition-smooth);
 }
 
-/* 加号原先偏右下 2px / 1px，两个方向各有一个原因：
-   横向——按钮没清 UA 默认的 padding: 1px 6px，内容盒只剩 10.9px，比 14px 的
-   图标还窄；网格项一旦溢出，justify-items: center 就退化成贴住起始边，图标
-   整体被顶到右边。
-   纵向——PlusIcon 在 <svg> 外面还包了一个 <div>，svg 是 inline 的，行盒底下
-   多出一截降部空间，包装盒比图标高；居中的是包装盒，图标贴在盒子顶部。
-   两条一起改完实测 dx=dy=0。 */
+/* Normalize the icon wrapper so the add glyph centers within the native button box. */
 .availability-day__add > * {
   display: flex;
 }
@@ -716,8 +699,7 @@
   color: var(--text-primary);
 }
 
-/* 菜单按钮。原先是无边框的 11px 灰字，标签末尾的「…」被读成「文字没显示全」，
-   而不是「点开还有内容」。给它按钮的外形，文字提到正文档位。 */
+/* Give the copy menu an explicit control affordance. */
 .availability-day__copy {
   flex: 0 0 auto;
   display: inline-flex;
@@ -757,15 +739,13 @@
   }
 }
 
-/* ── Profile Media Tab ── (moved out of style={{}}, task-8 批 B) */
+/* ── Profile Media Tab ── */
 
 .profile-media-avatar {
   border: 2px solid var(--border-subtle);
 }
 
-/* 语音那一条。原先和视频列表共用一条 --brand-tint 的底：品牌绿本来是用来标
-   「选中/激活」的，铺在一条静态列表行上，看着像这一条被选中了。改成和相册
-   缩略图同一种下沉方块。 */
+/* Static media rows use a neutral recessed surface rather than an active-state tint. */
 .profile-media-chip-row {
   padding: var(--space-xs) var(--space-sm);
   border: 1px solid var(--border-subtle);

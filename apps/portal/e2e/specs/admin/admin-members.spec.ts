@@ -19,7 +19,7 @@ import { field, readInteger, topDialog } from "../../support/ui";
 
 
 function searchBox(page: Page): Locator {
-  return page.getByPlaceholder("Search members...");
+  return page.getByRole("textbox", { name: "Search members", exact: true });
 }
 function memberRows(page: Page): Locator {
   return page.getByRole("row", { name: /member row$/ });
@@ -176,11 +176,7 @@ test("分页：超过一页才出现分页条，末页行数对得上，改成�
   await expect(field(pagination(page), "Per page")).toHaveCount(0);
 });
 
-/*
- * 选中态现在只体现在行的 aria-selected 上——那条报数的批量操作栏已经删掉，批量操作
- * 统一走右键菜单（见 admin-member-batch.spec.ts）。这条断言的是选择模型本身：
- * 单击换选、Ctrl 点选累加、再单击别处收回。
- */
+/* 多选操作通过行的右键菜单进入；本用例验证 aria-selected 对应的选择模型。 */
 test("选择：单击换选，Ctrl 点选累加，再单击一行把选中收回这一行", async ({ page, api, flow }) => {
   const tag = uniqueTag("sel");
   const first = await createThrowawayMember(api, tag);

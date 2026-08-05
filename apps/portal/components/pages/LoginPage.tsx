@@ -195,31 +195,40 @@ export function LoginPage() {
                 onKeyUpCapture={(event) => setIsCapsLockOn(event.getModifierState("CapsLock"))}
                 onKeyDownCapture={(event) => setIsCapsLockOn(event.getModifierState("CapsLock"))}
               >
-                <TextInput
-                  label={t("field.password")}
-                  type={showPassword ? "text" : "password"}
-                  value={passwordValue}
-                  onChange={(event) => {
-                    setValue("password", event.currentTarget.value);
-                  }}
-                  error={passwordError}
-                  classNames={{ root: "login-floating-root", input: "login-floating-input login-page__password-input", label: "login-floating-label" }}
-                  autoComplete="current-password"
-                />
-                <div className="login-page__password-actions">
-                  {isCapsLockOn ? (
-                    <KeyboardIcon size={18} className="login-page__caps-icon" />
-                  ) : null}
-                  <button
-                    type="button"
-                    className="login-page__eye-btn"
-                    onClick={showPasswordHandlers.toggle}
-                    aria-label={showPassword ? t("aria.hidePassword") : t("aria.showPassword")}
-                    aria-pressed={showPassword}
-                  >
-                    {showPassword ? <EyeOffIcon size={18} /> : <EyeIcon size={18} />}
-                  </button>
+                <div className="login-page__password-control">
+                  <TextInput
+                    label={t("field.password")}
+                    type={showPassword ? "text" : "password"}
+                    value={passwordValue}
+                    onChange={(event) => {
+                      setValue("password", event.currentTarget.value);
+                    }}
+                    error={passwordError}
+                    classNames={{ root: "login-floating-root", input: "login-floating-input login-page__password-input", label: "login-floating-label" }}
+                    autoComplete="current-password"
+                  />
+                  <div className="login-page__password-actions">
+                    <button
+                      type="button"
+                      className="login-page__eye-btn"
+                      onClick={showPasswordHandlers.toggle}
+                      aria-label={showPassword ? t("aria.hidePassword") : t("aria.showPassword")}
+                      aria-pressed={showPassword}
+                    >
+                      {showPassword ? <EyeOffIcon size={18} /> : <EyeIcon size={18} />}
+                    </button>
+                  </div>
                 </div>
+                {isCapsLockOn ? (
+                  <div className="login-page__caps-warning" role="status" aria-live="polite">
+                    <KeyboardIcon
+                      size={18}
+                      className="login-page__caps-icon"
+                      aria-hidden="true"
+                    />
+                    <span>{t("capsLockWarning")}</span>
+                  </div>
+                ) : null}
               </div>
 
               <Checkbox {...register("stay_logged_in")} label={t("field.stayLoggedIn")} />

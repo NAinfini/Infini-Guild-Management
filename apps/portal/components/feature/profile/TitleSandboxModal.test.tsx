@@ -27,8 +27,6 @@ function renderModal() {
 }
 
 describe("TitleSandboxModal", () => {
-  /* 这条断言原本挂在 ToolsPage.test.tsx 上，随组件一起搬过来：弹窗从工具页移到
-     资料页后，工具页已经没有入口，布局回归得在组件自己这里看。 */
   it("renders the workspace editor layout", () => {
     renderModal();
 

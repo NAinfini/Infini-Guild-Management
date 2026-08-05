@@ -32,8 +32,6 @@ type PushNotificationEntry = {
 
 const FEATURE_STORAGE_KEY = "portal:last_seen";
 const PUSH_STORAGE_KEY = "portal:push-notification-center";
-const PUSH_VERSION_KEY = "portal:push-version";
-const PUSH_VERSION = 2;
 const MAX_PUSH_ENTRIES = 80;
 const FEATURES: NotificationFeature[] = ["announcements", "members"];
 const ENTRY_TYPES: PushNotificationEntryType[] = [
@@ -48,7 +46,6 @@ export function notificationStorageKeys(userId: string | null) {
   return {
     features: userScopedStorageKey(FEATURE_STORAGE_KEY, userId),
     push: userScopedStorageKey(PUSH_STORAGE_KEY, userId),
-    pushVersion: userScopedStorageKey(PUSH_VERSION_KEY, userId),
   };
 }
 
@@ -77,16 +74,6 @@ function removeStorage(key: string): void {
   } catch {
     // Storage is optional.
   }
-}
-
-function migrateLegacyStorage(userId: string | null, namespacedKey: string, legacyKey: string): string | null {
-  const namespaced = readStorage(namespacedKey);
-  if (namespaced !== null || userId === null) return namespaced;
-  const legacy = readStorage(legacyKey);
-  if (legacy === null) return null;
-  writeStorage(namespacedKey, legacy);
-  removeStorage(legacyKey);
-  return legacy;
 }
 
 function emptyFeatureState(lastSeenAt?: string): FeatureState {
@@ -121,7 +108,7 @@ function parseFeatureState(raw: string | null): FeatureMap {
 
 function readFeatureState(userId: string | null): FeatureMap {
   const keys = notificationStorageKeys(userId);
-  return parseFeatureState(migrateLegacyStorage(userId, keys.features, FEATURE_STORAGE_KEY));
+  return parseFeatureState(readStorage(keys.features));
 }
 
 function persistFeatureState(userId: string | null, state: FeatureMap): void {
@@ -210,17 +197,7 @@ function mergePushHistories(...histories: PushNotificationEntry[][]): PushNotifi
 
 function readPushHistory(userId: string | null): PushNotificationEntry[] {
   const keys = notificationStorageKeys(userId);
-  let raw = readStorage(keys.push);
-  let versionRaw = readStorage(keys.pushVersion);
-  if (raw === null && userId !== null) {
-    raw = migrateLegacyStorage(userId, keys.push, PUSH_STORAGE_KEY);
-    versionRaw = migrateLegacyStorage(userId, keys.pushVersion, PUSH_VERSION_KEY);
-  }
-  if (Number(versionRaw ?? "0") < PUSH_VERSION) {
-    removeStorage(keys.push);
-    writeStorage(keys.pushVersion, String(PUSH_VERSION));
-    return [];
-  }
+  const raw = readStorage(keys.push);
   if (!raw) return [];
   try {
     return sanitizePushEntries(JSON.parse(raw));
@@ -231,7 +208,6 @@ function readPushHistory(userId: string | null): PushNotificationEntry[] {
 
 function persistPushHistory(userId: string | null, entries: PushNotificationEntry[]): void {
   const keys = notificationStorageKeys(userId);
-  writeStorage(keys.pushVersion, String(PUSH_VERSION));
   writeStorage(keys.push, JSON.stringify(entries));
 }
 
@@ -524,7 +500,6 @@ export const useNotificationStore = create<NotificationStore>((set) => ({
     const keys = notificationStorageKeys(state.identityUserId);
     removeStorage(keys.features);
     removeStorage(keys.push);
-    writeStorage(keys.pushVersion, String(PUSH_VERSION));
     return {
       features: nextFeatures,
       pushHistory: [],
@@ -556,7 +531,7 @@ export function synchronizeNotificationStorage(event: StorageEvent): void {
       },
     };
     useNotificationStore.setState({ features });
-  } else if (event.key === keys.push || event.key === keys.pushVersion) {
+  } else if (event.key === keys.push) {
     useNotificationStore.setState({ pushHistory: readPushHistory(state.identityUserId) });
   }
 }

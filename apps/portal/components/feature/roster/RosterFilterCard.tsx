@@ -1,6 +1,5 @@
 import {
   ActionIcon,
-  Collapse,
   Group,
   MultiSelect,
   Paper,
@@ -11,7 +10,7 @@ import {
 } from "@mantine/core";
 import { useClickOutside, useDisclosure } from "@mantine/hooks";
 import { SearchIcon } from "@portal/components/icons";
-import { IconAdjustmentsHorizontal } from "@tabler/icons-react";
+import { ContentFilterToolbar } from "@portal/components/shared/ContentFilterToolbar";
 import { useTranslation } from "react-i18next";
 import { VolumeOutlined, VolumeMutedOutlined } from "../../../utils/icons";
 import { isAudioPlaying, stopAudio } from "../../../utils/audio-player";
@@ -32,7 +31,6 @@ type Props = {
   onAudioVolumeChange: (value: number) => void;
   renderedCount: number;
   totalCount: number;
-  isMobile: boolean;
 };
 
 const SORT_MODES = ["power", "username", "class"] as const;
@@ -51,11 +49,9 @@ export function RosterFilterCard({
   onAudioVolumeChange,
   renderedCount,
   totalCount,
-  isMobile,
 }: Props) {
   const { t } = useTranslation("roster");
   const classCatalog = useClassCatalogStore((state) => state.items);
-  const [filtersOpen, { toggle: toggleFilters }] = useDisclosure(false);
   const [audioOpen, { close: closeAudio, toggle: toggleAudio }] = useDisclosure(false);
   const audioPreferencesRef = useClickOutside(closeAudio);
 
@@ -129,62 +125,26 @@ export function RosterFilterCard({
     { value: "username", label: t("sort.usernameAsc") },
     { value: "class", label: t("sort.class") },
   ];
-
+  const activeFilterCount = [
+    search.trim().length > 0,
+    classFilter.length > 0,
+    sortMode !== "power",
+  ].filter(Boolean).length;
   return (
-    <Paper withBorder className="roster-filter-card">
-      <div className="roster-filter-padding">
-        {isMobile ? (
-          <>
-            <Group gap="xs" wrap="nowrap" align="center">
-              <TextInput
-                className="roster-search-input"
-                value={search}
-                placeholder={t("search.placeholder.usernameOnly")}
-                aria-label={t("search.aria.usernameOnly")}
-                onChange={(event) => onSearchChange(event.currentTarget.value)}
-                leftSection={<SearchIcon size={14} />}
-                style={{ flex: 1 }}
-              />
-              <ActionIcon variant={filtersOpen ? "filled" : "default"} size="lg" onClick={toggleFilters} aria-label={t("filter.toggle")}>
-                <IconAdjustmentsHorizontal size={18} />
-              </ActionIcon>
-              <Text size="xs" c="dimmed" style={{ whiteSpace: "nowrap" }}>
-                {renderedCount}/{totalCount}
-              </Text>
-            </Group>
-            <Collapse expanded={filtersOpen}>
-              <Group wrap="wrap" gap={6} mt={6} className="roster-filter-controls">
-                <MultiSelect
-                  className="roster-class-select"
-                  value={classFilter}
-                  onChange={onClassFilterChange}
-                  data={classData}
-                  placeholder={t("filter.class.placeholder")}
-                  aria-label={t("filter.class.aria")}
-                  clearable
-                  searchable
-                />
-                <Select
-                  className="roster-sort-select"
-                  value={sortMode}
-                  aria-label={t("sort.aria")}
-                  onChange={(value) => { if (value && (SORT_MODES as readonly string[]).includes(value)) onSortModeChange(value as RosterSortMode); }}
-                  data={sortData}
-                />
-                {audioPreferences}
-              </Group>
-            </Collapse>
-          </>
-        ) : (
-          <Group wrap="wrap" gap="md" className="roster-filter-controls">
-            <TextInput
-              className="roster-search-input"
-              value={search}
-              placeholder={t("search.placeholder.usernameOnly")}
-              aria-label={t("search.aria.usernameOnly")}
-              onChange={(event) => onSearchChange(event.currentTarget.value)}
-              leftSection={<SearchIcon size={14} />}
-            />
+    <ContentFilterToolbar
+      className="roster-filter-card"
+      search={(
+        <TextInput
+          className="roster-search-input"
+          value={search}
+          placeholder={t("search.placeholder.usernameOnly")}
+          aria-label={t("search.aria.usernameOnly")}
+          onChange={(event) => onSearchChange(event.currentTarget.value)}
+          leftSection={<SearchIcon size={14} />}
+        />
+      )}
+      controls={(
+        <Group wrap="wrap" gap="sm" className="roster-filter-controls">
             <MultiSelect
               className="roster-class-select"
               value={classFilter}
@@ -202,13 +162,19 @@ export function RosterFilterCard({
               onChange={(value) => { if (value && (SORT_MODES as readonly string[]).includes(value)) onSortModeChange(value as RosterSortMode); }}
               data={sortData}
             />
-            {audioPreferences}
-            <Text size="sm" c="dimmed" className="roster-count-text">
-              {t("count.showing", { visible: renderedCount, total: totalCount })}
-            </Text>
-          </Group>
-        )}
-      </div>
-    </Paper>
+        </Group>
+      )}
+      primary={(
+        <>
+          {audioPreferences}
+          <Text size="sm" c="dimmed" className="roster-count-text">
+            {t("count.showing", { visible: renderedCount, total: totalCount })}
+          </Text>
+        </>
+      )}
+      toggleLabel={t("common:filter.toggle")}
+      activeFilterCount={activeFilterCount}
+      collapseBelow={920}
+    />
   );
 }

@@ -352,7 +352,7 @@ describe("useAnnouncementsController", () => {
 
     const { result } = renderHook(() => useAnnouncementsController(), { wrapper: createWrapper() });
 
-    await waitFor(() => expect(result.current.selectedId).toBe("announcement-2"));
+    await waitFor(() => expect(result.current.selectedId).toBe("announcement-1"));
 
     act(() => {
       result.current.setSelectedId("announcement-1");
@@ -464,7 +464,7 @@ describe("useAnnouncementsController", () => {
       await result.current.onLoadMoreList();
     });
     await waitFor(() =>
-      expect(result.current.rows.map((item) => item.id).sort()).toEqual([
+      expect(result.current.rows.map((item) => item.id)).toEqual([
         "announcement-1",
         "announcement-2",
       ]),
@@ -478,5 +478,31 @@ describe("useAnnouncementsController", () => {
       expect(result.current.rows.map((item) => item.id)).toEqual(["announcement-pinned"]),
     );
     expect(result.current.listHasMore).toBe(false);
+  });
+
+  it("passes server sort state through and resets it to updated_desc", async () => {
+    const { result } = renderHook(() => useAnnouncementsController(), { wrapper: createWrapper() });
+
+    await waitFor(() =>
+      expect(serviceMocks.fetchAnnouncements).toHaveBeenCalledWith(
+        expect.objectContaining({ sort: "updated_desc" }),
+      ),
+    );
+    expect(result.current.sortOrder).toBe("updated_desc");
+
+    act(() => {
+      result.current.setSortOrder("updated_asc");
+    });
+    await waitFor(() =>
+      expect(serviceMocks.fetchAnnouncements).toHaveBeenCalledWith(
+        expect.objectContaining({ sort: "updated_asc" }),
+      ),
+    );
+    expect(result.current.sortOrder).toBe("updated_asc");
+
+    act(() => {
+      result.current.resetFilters();
+    });
+    expect(result.current.sortOrder).toBe("updated_desc");
   });
 });

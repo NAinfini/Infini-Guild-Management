@@ -2,7 +2,13 @@ import type { APIRequestContext, Locator, Page, Request } from "@playwright/test
 import { SYSTEM_TEST_CONTENT_MARKER } from "@guild/shared/config/system-test";
 import { expect, readJson, test, type Flow } from "../../support/test";
 import { webpUpload } from "../../support/files";
-import { clearButton, field, selectOption } from "../../support/ui";
+import {
+  clearButton,
+  ensureFiltersOpen,
+  field,
+  selectOption,
+  selectSegmentedControlOption,
+} from "../../support/ui";
 
 /*
  * 画廊页顶部的筛选条：搜索、类型下拉、新旧分段器、起止日期、清除日期、重置。
@@ -82,7 +88,7 @@ function searchBox(page: Page): Locator {
 }
 
 function items(page: Page): Locator {
-  return page.locator(".gallery-masonry__item");
+  return page.locator(".gallery-grid__item");
 }
 
 function itemByCaption(page: Page, caption: string): Locator {
@@ -91,11 +97,11 @@ function itemByCaption(page: Page, caption: string): Locator {
 
 /** 卡片脚注里的第一行就是说明文字，按 DOM 顺序读出来即是当前排序。 */
 function captions(page: Page): Locator {
-  return page.locator(".gallery-masonry__item .gallery-card__meta > *:first-child");
+  return page.locator(".gallery-grid__item .gallery-card__meta > *:first-child");
 }
 
-function sortSegment(page: Page, label: string): Locator {
-  return page.locator("label.mantine-SegmentedControl-label").filter({ hasText: new RegExp(`^${label}$`) });
+function filterToolbar(page: Page): Locator {
+  return page.locator(".gallery-filters");
 }
 
 function dateFrom(page: Page): Locator {
@@ -148,11 +154,12 @@ test("搜索框：条件按归一化后的形态送到服务端，只留下命�
 
   await flow.act(() => searchBox(page).fill(`nobody-${stamp}`), GALLERY);
   await expect(items(page), "搜不到就该是空列表，而不是退回全量").toHaveCount(0);
-  await expect(page.getByText("No media match your filters")).toBeVisible();
+  await expect(page.getByText("No media matches your filters.")).toBeVisible();
 });
 
 test("类型下拉：只留下该类型，清除按钮把条件撤回", async ({ page, flow }) => {
   await searchThisRun(page, flow);
+  await ensureFiltersOpen(filterToolbar(page));
 
   const request = nextGalleryRequest(page);
   await flow.act(() => selectOption(page, "Filter gallery by type", "Video"), GALLERY);
@@ -162,6 +169,7 @@ test("类型下拉：只留下该类型，清除按钮把条件撤回", async ({
   await expect(itemByCaption(page, gamma.caption), "图片必须被滤掉").toHaveCount(0);
 
   // 撤回到刚取过的「只有搜索词」组合，命中缓存，所以这里只验结果集。
+  await ensureFiltersOpen(filterToolbar(page));
   await clearButton(page, "Filter gallery by type").click();
   await expect(field(page, "Filter gallery by type"), "清除按钮要把下拉一起清空").toHaveValue("");
   await expect(items(page)).toHaveCount(3);
@@ -172,8 +180,9 @@ test("新旧分段器：order 送到服务端，卡片顺序跟着整个翻过�
   await expect(captions(page), "默认按创建时间倒序，最后造的排最前")
     .toHaveText([gamma.caption, beta.caption, alpha.caption]);
 
+  await ensureFiltersOpen(filterToolbar(page));
   const request = nextGalleryRequest(page);
-  await flow.act(() => sortSegment(page, "Oldest").click(), GALLERY);
+  await flow.act(() => selectSegmentedControlOption(page, "Oldest"), GALLERY);
 
   expect(new URL((await request).url()).searchParams.get("order")).toBe("asc");
   await expect(captions(page), "顺序必须由服务端给出，前端不该自己倒一遍")
@@ -182,6 +191,7 @@ test("新旧分段器：order 送到服务端，卡片顺序跟着整个翻过�
 
 test("起止日期：两个条件分别送到服务端，清除按钮一次清掉两个", async ({ page, flow }) => {
   await searchThisRun(page, flow);
+  await ensureFiltersOpen(filterToolbar(page));
 
   const clearDates = page.getByRole("button", { name: "Clear dates", exact: true });
   await expect(clearDates, "一个日期都没设时不该能点").toBeDisabled();
@@ -191,11 +201,13 @@ test("起止日期：两个条件分别送到服务端，清除按钮一次清�
   expect(new URL((await fromRequest).url()).searchParams.get("date_from")).toBe(dayOffset(0));
   await expect(items(page), "三件都是刚造的，起点定在今天不该滤掉任何一件").toHaveCount(3);
 
+  await ensureFiltersOpen(filterToolbar(page));
   const toRequest = nextGalleryRequest(page);
   await flow.act(() => dateTo(page).fill(dayOffset(-1)), GALLERY);
   expect(new URL((await toRequest).url()).searchParams.get("date_to")).toBe(dayOffset(-1));
   await expect(items(page), "截止到昨天，今天造的三件都该被滤掉").toHaveCount(0);
 
+  await ensureFiltersOpen(filterToolbar(page));
   await expect(clearDates, "设了日期之后清除按钮才该亮起来").toBeEnabled();
   await clearDates.click();
   await expect(dateFrom(page)).toHaveValue("");
@@ -205,7 +217,9 @@ test("起止日期：两个条件分别送到服务端，清除按钮一次清�
 
 test("重置筛选：一次清掉搜索、类型和两个日期，列表回到全量", async ({ page, flow }) => {
   await searchThisRun(page, flow);
+  await ensureFiltersOpen(filterToolbar(page));
   await flow.act(() => selectOption(page, "Filter gallery by type", "Video"), GALLERY);
+  await ensureFiltersOpen(filterToolbar(page));
   await flow.act(() => dateFrom(page).fill(dayOffset(1)), GALLERY);
   await expect(items(page), "起点定在明天，结果集应当是空的").toHaveCount(0);
 
@@ -237,7 +251,8 @@ test("换筛选条件：已勾选的条目必须跟着清掉", async ({ page, fl
   await selectCheckbox(page, alpha.id).check();
   await expect(bulkDelete, "选中一条之后批量删除才该可用").toBeEnabled();
 
-  await flow.act(() => sortSegment(page, "Oldest").click(), GALLERY);
+  await ensureFiltersOpen(filterToolbar(page));
+  await flow.act(() => selectSegmentedControlOption(page, "Oldest"), GALLERY);
 
   await expect(selectCheckbox(page, alpha.id), "换了结果集，旧的勾选不能留着").not.toBeChecked();
   await expect(

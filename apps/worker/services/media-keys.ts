@@ -165,9 +165,6 @@ export function assertContentMediaKey(key: string): ParsedMediaKey {
   return parsed;
 }
 
-/** Backwards-compatible name for callers that only delete content objects. */
-export const assertDeletableContentMediaKey = assertContentMediaKey;
-
 export function mediaKeyFromUrl(url: string | null | undefined): string | null {
   if (!url) return null;
   try {

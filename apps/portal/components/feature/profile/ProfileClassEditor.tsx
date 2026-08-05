@@ -84,8 +84,6 @@ function SortableClassRow({
         </ActionIcon>
       </Tooltip>
       <ClassIcon item={item} size={16} />
-      {/* 序号原先是行尾一个「#1」，要读到那儿才知道谁是主职业。现在只有第一枚
-          胶囊带主色，位置本身就是顺序；主色是什么意思写在提示里。 */}
       <Tooltip label={t("classRow.primaryHint")} withArrow disabled={!isPrimary}>
         <Text component="span" size="sm" fw={isPrimary ? 700 : 600} className="profile-class__pill-label">
           {item.label}

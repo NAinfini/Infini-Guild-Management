@@ -15,6 +15,7 @@ import {
   Text,
   TextInput,
   Tooltip,
+  Title,
 } from "@mantine/core";
 import { useDisclosure } from "@mantine/hooks";
 import { format } from "date-fns";
@@ -170,8 +171,19 @@ export function AnnouncementDetailCard({
       <div className="announcements-card-body" style={{ padding: "var(--card-padding)" }}>
         <Stack gap={12} className="announcements-card-scroll">
           {/* ── Header ── */}
-          <Group justify="space-between" align="center">
-            <Text fw={600}>{title}</Text>
+          <Group
+            component="header"
+            justify="space-between"
+            align="center"
+            className={!editing && selected ? "announcement-reader-header" : undefined}
+          >
+            {!editing && selected ? (
+              <Title order={2} className="announcement-reader-title">
+                {selected.title}
+              </Title>
+            ) : (
+              <Text fw={600}>{title}</Text>
+            )}
             {canEdit && (selectedId && selected || isCreateMode) ? (
               editing ? (
                 <Group gap={8}>
@@ -255,11 +267,6 @@ export function AnnouncementDetailCard({
           {/* ── Reader View (default for everyone) ── */}
           {!isLoading && !isError && selected && !editing ? (
             <Stack gap={12}>
-              {/* Title */}
-              <Text fw={700} size="xl" className="announcement-reader-title">
-                {selected.title}
-              </Text>
-
               {/* Meta badges */}
               <Group gap={8} wrap="wrap">
                 {canEdit && selected.status === "scheduled" && selected.publish_at ? (

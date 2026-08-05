@@ -2,6 +2,7 @@ import type { Event } from "@guild/shared";
 import { Button, Grid, Skeleton, Stack } from "@mantine/core";
 import { useQuery } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
+import { useMediaQuery } from "@mantine/hooks";
 import { differenceInHours } from "date-fns";
 import { useCallback, useMemo } from "react";
 import { useTranslation } from "react-i18next";
@@ -33,6 +34,7 @@ import { UpcomingEventsCard } from "../dashboard/UpcomingEventsCard";
 import "./DashboardPage.css";
 
 export const DASHBOARD_EVENTS_REFETCH_INTERVAL_MS = 60_000;
+export const DASHBOARD_MOBILE_MEDIA_QUERY = "(max-width: 47.99em)";
 
 export function roundDashboardNow(value = new Date()): Date {
   const rounded = new Date(value);
@@ -96,6 +98,7 @@ export function DashboardPage() {
   const eventsEnabled = useSiteConfigStore((state) => state.features.events);
   const guildWarEnabled = useSiteConfigStore((state) => state.features.guildWar);
   const isExternalView = useExternalView();
+  const isMobileDashboard = useMediaQuery(DASHBOARD_MOBILE_MEDIA_QUERY) ?? false;
 
   const memberStatsQuery = useQuery({
     queryKey: dashboardQueryKeys.members(),
@@ -184,6 +187,65 @@ export function DashboardPage() {
     t("common:loadErrorRetry"),
   );
 
+  const actionsColumn = eventsEnabled ? (
+    <Stack gap={16}>
+      {!isExternalView && (
+        <Skeleton visible={eventsQuery.isLoading} radius={8}>
+          <MySignupsCard
+            mySignupEvents={mySignupEvents}
+            now={now}
+            onOpenEvent={openEventDetail}
+            onBrowseEvents={openAllEvents}
+          />
+        </Skeleton>
+      )}
+
+      <Skeleton visible={eventsQuery.isLoading} radius={8}>
+        <UpcomingEventsCard
+          upcomingEventsCount={eventsQuery.data?.active_events_count ?? 0}
+          featuredRows={featuredEventRows}
+          rows={upcomingEventRows}
+          onOpenEvent={openEventDetail}
+          onViewAll={openAllEvents}
+        />
+      </Skeleton>
+    </Stack>
+  ) : null;
+
+  const activeMembersCard = (
+    <ActiveMembersCard
+      activeMemberCount={memberStatsQuery.data?.active_member_count ?? 0}
+      totalMembersCount={memberStatsQuery.data?.total_member_count ?? 0}
+      allWarWinRate={warsQuery.data?.all_war_win_rate ?? 0}
+      activeEventsCount={eventsQuery.data?.active_events_count ?? 0}
+      memberStatsLoading={memberStatsQuery.isLoading}
+      eventsLoading={eventsQuery.isLoading}
+      warsLoading={warsQuery.isLoading}
+    />
+  );
+
+  const lastWarCard = guildWarEnabled ? (
+    <Skeleton visible={warsQuery.isLoading} radius={8}>
+      <LastWarCard
+        recentWars={recentWars}
+        warMvps={recentWarMvps}
+        isExternalView={isExternalView}
+        onOpenHistory={(warName) => {
+          void navigate({
+            to: "/guild-war",
+            search: { tab: "history", warName },
+          });
+        }}
+        onViewHistory={() => {
+          void navigate({
+            to: "/guild-war",
+            search: { tab: "history" },
+          });
+        }}
+      />
+    </Skeleton>
+  ) : null;
+
   return (
     <PageLayout className="dashboard-page">
       {hasInitialLoadError ? (
@@ -206,64 +268,25 @@ export function DashboardPage() {
         />
       ) : (
         <Grid gap={{ base: 12, md: 16 }} align="flex-start">
-        {eventsEnabled ? <Grid.Col span={{ base: 12, xl: "auto" }}>
-          <Stack gap={16}>
-            {!isExternalView && (
-              <Skeleton visible={eventsQuery.isLoading} radius={8}>
-                <MySignupsCard
-                  mySignupEvents={mySignupEvents}
-                  now={now}
-                  onOpenEvent={openEventDetail}
-                  onBrowseEvents={openAllEvents}
-                />
-              </Skeleton>
-            )}
-
-            <Skeleton visible={eventsQuery.isLoading} radius={8}>
-              <UpcomingEventsCard
-                upcomingEventsCount={eventsQuery.data?.active_events_count ?? 0}
-                featuredRows={featuredEventRows}
-                rows={upcomingEventRows}
-                onOpenEvent={openEventDetail}
-                onViewAll={openAllEvents}
-              />
-            </Skeleton>
-          </Stack>
-        </Grid.Col> : null}
-
-        <Grid.Col span={{ base: 12, xl: eventsEnabled ? (isExternalView ? 6 : 4) : 12 }}>
-          <Stack gap={16}>
-            <ActiveMembersCard
-              activeMemberCount={memberStatsQuery.data?.active_member_count ?? 0}
-              totalMembersCount={memberStatsQuery.data?.total_member_count ?? 0}
-              allWarWinRate={warsQuery.data?.all_war_win_rate ?? 0}
-              activeEventsCount={eventsQuery.data?.active_events_count ?? 0}
-              memberStatsLoading={memberStatsQuery.isLoading}
-              eventsLoading={eventsQuery.isLoading}
-              warsLoading={warsQuery.isLoading}
-            />
-
-            {guildWarEnabled ? <Skeleton visible={warsQuery.isLoading} radius={8}>
-              <LastWarCard
-                recentWars={recentWars}
-                warMvps={recentWarMvps}
-                isExternalView={isExternalView}
-                onOpenHistory={(warName) => {
-                  void navigate({
-                    to: "/guild-war",
-                    search: { tab: "history", warName },
-                  });
-                }}
-                onViewHistory={() => {
-                  void navigate({
-                    to: "/guild-war",
-                    search: { tab: "history" },
-                  });
-                }}
-              />
-            </Skeleton> : null}
-          </Stack>
-        </Grid.Col>
+          {isMobileDashboard ? (
+            <>
+              {actionsColumn ? <Grid.Col span={12}>{actionsColumn}</Grid.Col> : null}
+              <Grid.Col span={12}>{activeMembersCard}</Grid.Col>
+              {lastWarCard ? <Grid.Col span={12}>{lastWarCard}</Grid.Col> : null}
+            </>
+          ) : (
+            <>
+              {actionsColumn ? (
+                <Grid.Col span={{ base: 12, xl: "auto" }}>{actionsColumn}</Grid.Col>
+              ) : null}
+              <Grid.Col span={{ base: 12, xl: eventsEnabled ? (isExternalView ? 6 : 4) : 12 }}>
+                <Stack gap={16}>
+                  {activeMembersCard}
+                  {lastWarCard}
+                </Stack>
+              </Grid.Col>
+            </>
+          )}
         </Grid>
       )}
     </PageLayout>

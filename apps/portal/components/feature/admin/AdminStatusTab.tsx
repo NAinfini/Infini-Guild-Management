@@ -160,9 +160,6 @@ export function AdminStatusTab({
   return (
     <Stack gap={16}>
 
-      {/* ── 系统健康 ───────────────────────────────
-          四张服务卡片整行铺开。原先它和健康日志并排挤在两列网格里，各占半屏宽，
-          四张卡片一行放不下就换行，最该一眼看完的那部分反而要扫两行。 */}
       <section className="admin-status-card">
         <div className="admin-status-card__head">
           <Text fw={700} size="sm">{t("status.section.health")}</Text>
@@ -215,10 +212,7 @@ export function AdminStatusTab({
                   <tbody>
                     {statusHealthLogs.map((row, index) => {
                       const latency = row.latencyMs ?? 0;
-                      // 三段离散状态（好/警/差），按 the inline-style migration brief Step 3.4 的要求
-                      // 切换预定义类，不拼接颜色字符串。200/400ms 阈值和 500ms 满格刻度都来自
-                      // utils/latency-thresholds.ts——与 AdminSystemSection.tsx 共用同一份定义，
-                      // 不再各自维护一份数值（the inline-style migration contract B 节，Task 8 批 C 收敛）。
+                      // Status cards and the log share the same latency bands.
                       const band = latencyBand(latency);
                       return (
                         <tr key={`${row.at}-${index}`}>
@@ -231,8 +225,6 @@ export function AdminStatusTab({
                           {renderHealthLogStatus(row.crons)}
                           <td>
                             <span className="health-log-latency">
-                              {/* 只有长度是数据驱动的；最小/最大宽度是版式约束，落在
-                                  AdminSystemSection.css 的 .health-log-latency-bar 上。 */}
                               <span
                                 className={`health-log-latency-bar health-log-latency-bar--${band}`}
                                 style={{ width: `${latencyScalePercent(latency)}%` }}
@@ -303,14 +295,6 @@ export function AdminStatusTab({
           </div>
         </div>
 
-        {/*
-          * 进度条只在真有进度可报的时候才在。
-          *
-          * 原先它无条件渲染：一条 3px 的空槽紧贴在表头那条 1px 下边框底下，一进这一页
-          * 就看见表头画了粗细不一的两条线，看起来像多描了一道边。分类行里的同一根条子
-          * （AdminApiTestCategory）本来就是 catDone > 0 || catRunning 才渲染的，
-          * 这里跟它对齐；同时表头在进度条露面时不再自己画线，那 3px 就是分界线。
-          */}
         {hasProgress ? (
           <div className="api-console__progress-track">
             <div

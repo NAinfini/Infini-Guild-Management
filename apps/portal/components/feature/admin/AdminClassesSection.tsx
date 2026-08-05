@@ -244,9 +244,6 @@ export function AdminClassesSection() {
         </ScrollArea>
       </div>
 
-      {/* ── 右栏：编辑器 ──
-          原先这是一个 min(760px, 96vw) 的弹窗。弹窗一开就把职业清单盖住，而改一个职业的
-          颜色时最需要看的恰恰是「其它职业都是什么颜色」；现在两边同屏。 */}
       <div className="admin-md__detail">
         {controller.opened ? (
           <>
@@ -257,7 +254,6 @@ export function AdminClassesSection() {
                 </Text>
                 {existing ? (
                   <Tooltip label={t("classes.action.delete")} withArrow>
-                    {/* size={44} 是 19788bf「improve tablet accessibility」定的触控靶面。 */}
                     <ActionIcon
                       size={44}
                       variant="subtle"
@@ -313,9 +309,7 @@ export function AdminClassesSection() {
                       }}
                       required
                     />
-                    {/* 「显示顺序」那个数字输入框删掉了：顺序改由左栏拖拽决定。一个数字
-                        既说不出自己管什么（问过两次），又跟拖拽是同一份顺序的第二个写
-                        入口——保存表单会把打开编辑器那一刻的旧数字写回去。 */}
+                    {/* 排序只由左栏拖拽更新，编辑表单不写 sort_order。 */}
                     <ColorInput
                       className="admin-classes__color-field"
                       label={t("classes.field.color")}
@@ -330,8 +324,7 @@ export function AdminClassesSection() {
 
                     <div>
                       <Text size="sm" fw={600} mb={6}>{t("classes.field.source")}</Text>
-                      {/* fullWidth 去掉：两个选项没有理由铺满整列，铺满之后每个选项
-                          里全是留白，反而看不出「矢量图标」和「自定义图片」是一组互斥项。 */}
+                      {/* 图标来源选项按内容宽度呈现为一组互斥控件。 */}
                       <SegmentedControl
                         value={draft.iconMode}
                         data={[
@@ -407,10 +400,6 @@ export function AdminClassesSection() {
               </div>
             </ScrollArea>
 
-            {/* 提交这一组搬出了滚动区，钉在底边。原先它排在图标库后面，而图标库有
-                四十多个格子，一展开就把保存按钮顶到视口以外——只改个名字也得先滚到
-                最底下才能存。上传进度条一起搬过来，理由相同：它原先也在滚动区里，
-                正在上传时人只要没停在底部就看不到它。 */}
             <div className="admin-md__detail-foot">
               {controller.savePending && controller.uploadProgress > 0 ? (
                 <Progress
@@ -420,8 +409,6 @@ export function AdminClassesSection() {
                   aria-label={t("classes.upload.progress")}
                 />
               ) : null}
-              {/* 只剩保存一个按钮。原先旁边那个「取消」只是把右栏收起来，既不撤销
-                  已经改了的字段，也不回滚任何请求——按下去唯一的效果是自己消失。 */}
               <Group justify="flex-end" gap={8} ml="auto">
                 <Button
                   leftSection={<SaveIcon size={16} />}

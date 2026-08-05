@@ -243,24 +243,8 @@ describe("StorageTransactionModal", () => {
     expect(screen.getByRole("button", { name: "action.submit" })).toBeEnabled();
   });
 
-  /*
-   * 只验声明值，不验渲染结果——jsdom 的视口宽度写死 1024，resizeTo() 没实现，
-   * 覆写 window.innerWidth 也不参与 CSS 解算，窄屏在这里造不出来。
-   *
-   * 另外 max-width 不能再用 toHaveStyle 断言：jsdom 30 起 getComputedStyle 会
-   * 真的把 vw 算成像素（calc(100vw - 16px) → 1008px），而 toHaveStyle 读的正是
-   * 计算值，拿它跟字面量比必然不等。29 版原样返回字符串才让这条一直是绿的。
-   * min-height 是纯 px，不受影响，继续用 toHaveStyle。
-   *
-   * 窄屏下真的没被挤出视口，得靠能设视口的 Playwright 去证——目前三个 project
-   * 都是 Desktop Chrome，这块覆盖是空的。
-   *
-   * 控件高度这一半改成反向断言：原先每个控件都写死 minHeight: 44，把
-   * --control-height-regular 顶掉了（细指针 36px / 粗指针 44px），桌面上这个弹窗
-   * 因此比站内其他地方高一档，而且调令牌对它无效。现在守的是「没有行内高度」，
-   * 也就是这些控件确实吃令牌；44px 触控靶面由 scale.css 里
-   * @media (pointer: coarse) 那一档负责，不在组件里重复。
-   */
+  /* jsdom has no reliable responsive viewport and resolves vw in computed styles.
+   * Assert authored bounds directly and leave responsive height to the global scale. */
   it("declares a viewport-bounded max width and leaves control height to the token", () => {
     const { container } = render(
       <MantineProvider>

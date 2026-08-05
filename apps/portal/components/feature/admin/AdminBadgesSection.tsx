@@ -23,11 +23,6 @@ import { PickList } from "../../shared/PickList";
 import { AdminBadgeMemberList } from "./AdminBadgeMemberList";
 import "./AdminBadgesSection.css";
 
-/*
- * profile 原先是 unknown——徽章页只用到用户名。现在名单要显示头像和职业，
- * 就把 MemberRoleAvatar 需要的那三个字段挑明；这正是 AdminPage 传进来的
- * userRowsRaw 的形状，不是新契约。
- */
 export type AdminBadgeMemberRow = {
   user: { id: string; username: string };
   profile: { classes: readonly string[]; power: number; avatar_key: string | null };
@@ -74,12 +69,7 @@ function BadgeFormFields({
         value={form.label_html}
         onChange={(e) => { const v = e.currentTarget.value; setForm((f) => ({ ...f, label_html: v })); }}
       />
-      {/*
-        * 取色统一走 ColorInput：角色和职业两个页签本来就是它，徽章这里原先是一个
-        * 原生 <input type="color"> 外加八个手搓的圆点按钮——同一件事三种控件。
-        * COLOR_PRESETS 的值原样交给 swatches：它们是落库的 MemberBadge.color 数据色，
-        * 不是主题色（见 inline-colour.test.ts 的豁免表），一个都不能换成 token。
-        */}
+      {/* Presets are persisted badge data, not theme tokens. */}
       <ColorInput
         label={t("badges.field.color")}
         format="hex"
@@ -335,8 +325,6 @@ export function AdminBadgesSection({ userRows, controller }: AdminBadgesSectionP
                     {selectedBadge.description ? <Text size="xs" c="dimmed">{selectedBadge.description}</Text> : null}
                   </div>
                 </Group>
-                {/* size={44} 是 19788bf「improve tablet accessibility」定的触控靶面，
-                    这次只换外框不动尺寸。 */}
                 <Group gap={6} wrap="nowrap">
                   <Tooltip label={t("badges.editTitle")}>
                     <ActionIcon
@@ -367,14 +355,7 @@ export function AdminBadgesSection({ userRows, controller }: AdminBadgesSectionP
 
             <ScrollArea className="admin-md__detail-body" type="auto" scrollbarSize={6}>
               <Stack gap={12} className="admin-md__detail-pad">
-                {/*
-                  * 编辑成员不再另开一块面板。原先「管理成员」会在标题和名单之间凭空展开
-                  * 一整块东西，把名单顶出一屏——而那块东西列的正是同一批人。现在是同一
-                  * 份名单换状态：查看态是已分配的人，编辑态是全员＋勾选框，位置、行高、
-                  * 分隔线都不变，标题行换成搜索和保存。
-                  * 分配还没加载完（或加载失败）时不能进编辑态——那时草稿的起点是空集合，
-                  * 保存出去就是「移除所有人」。
-                  */}
+                {/* Membership editing waits for the assignment baseline to load. */}
                 {membershipOpen ? null : (
                   <Group justify="space-between" wrap="wrap" gap={8}>
                     <Text size="sm" fw={600}>{t("badges.assignedCount", { count: assignments.length })}</Text>

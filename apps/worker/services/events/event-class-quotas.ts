@@ -142,8 +142,7 @@ export const MAX_CLASS_QUOTAS = LIMITS.content.eventClassQuotas.max;
  * 返回语句而不是直接执行，好让调用方塞进它自己那个 batch 里，跟父行的写入同生共死。
  *
  * 一次性组跟着一起整组重建：删除段先把这一行名下的所有私有标签清掉，然后每个 { tag }
- * 现造一个。它们没有值得保留的身份——没人能从别处引用它，改名和改成员都等价于换一个新
- * 的，逐条比对只会引来「这个组还是不是原来那个」这种没有答案的问题。
+ * 现造一个。它们没有外部引用或稳定身份，因此只保留编辑器中的值与顺序。
  * sort_order 按编辑器里的次序给，筹码行的排列因此跟表单一致。
  */
 export function buildReplaceClassQuotaStatements(

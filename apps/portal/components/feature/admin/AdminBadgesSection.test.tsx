@@ -111,12 +111,7 @@ function renderBadges(
 }
 
 describe("AdminBadgesSection", () => {
-  /*
-   * 原来这条守的是 .admin-badge-color-picker / .admin-badge-swatch 两个手搓控件的
-   * 44px。取色改用 Mantine ColorInput 之后这两个 class 不存在了，色板尺寸由
-   * Mantine 的 --cp-swatch-size 决定，我们无从在 CSS 里断言——这是一处有意的放宽，
-   * 已在交付说明里单独点出。清单项这一个仍然是本页最主要的点击目标，继续守住。
-   */
+  /* Master rows are the page's primary custom touch targets. */
   it("keeps the master list rows at real 44px touch targets", () => {
     const css = readFileSync(
       resolve(process.cwd(), "apps/portal/components/pages/AdminPage.css"),
@@ -337,7 +332,6 @@ describe("AdminBadgesSection", () => {
     expect(unassignBadge).toHaveBeenCalledWith(badge.id, ["user-1"]);
   });
 
-  /* 授予时间后端一直在返回，页面此前整个丢掉了。 */
   it("surfaces when the badge was granted", () => {
     renderBadges(createController({
       selectedBadgeId: badge.id,

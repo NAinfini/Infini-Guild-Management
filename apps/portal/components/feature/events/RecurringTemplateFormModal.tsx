@@ -35,14 +35,7 @@ type RecurringTemplateFormModalProps = {
   onDelete?: (id: string) => void;
 };
 
-/*
- * 周期模板编辑器。两栏各管一个问题：左边「生成什么」，右边「什么时候生成」，
- * 时间那一栏底下跟着这一轮的三个时间点。
- *
- * 以前两段表单都堆在左栏里自己滚，右栏整栏留给一张按表单实时拼出来的活动卡——
- * 十几个控件挤一边，另一边一张卡。那张卡已经拿掉（理由见 RecurringTemplatePreview），
- * 剩下的两段一栏一段，谁也不用单独开滚动条。
- */
+// The two columns separate generated event content from recurrence timing.
 export function RecurringTemplateFormModal({
   open,
   mode,

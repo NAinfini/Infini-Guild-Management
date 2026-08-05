@@ -2,7 +2,7 @@
 import { MantineProvider } from "@mantine/core";
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { RosterFilterCard } from "./RosterFilterCard";
 
 vi.mock("react-i18next", () => ({
@@ -16,7 +16,23 @@ vi.mock("../../../utils/audio-player", () => ({
   stopAudio: vi.fn(),
 }));
 
+class WideResizeObserver {
+  constructor(private readonly callback: ResizeObserverCallback) {}
+  disconnect() {}
+  unobserve() {}
+  observe() {
+    this.callback(
+      [{ contentRect: { width: 1200 } } as ResizeObserverEntry],
+      this as unknown as ResizeObserver,
+    );
+  }
+}
+
 describe("RosterFilterCard", () => {
+  beforeEach(() => {
+    window.ResizeObserver = WideResizeObserver as unknown as typeof ResizeObserver;
+  });
+
   it("keeps BGM playback preferences available without dominating the filter row", async () => {
     render(
       <MantineProvider>
@@ -34,7 +50,6 @@ describe("RosterFilterCard", () => {
           onAudioVolumeChange={vi.fn()}
           renderedCount={12}
           totalCount={12}
-          isMobile={false}
         />
       </MantineProvider>,
     );
@@ -51,7 +66,7 @@ describe("RosterFilterCard", () => {
     ).toBeInTheDocument();
   });
 
-  it("keeps a loaded legacy class selectable after it leaves the catalog", async () => {
+  it("keeps a referenced class selectable after it leaves the catalog", async () => {
     const user = userEvent.setup();
     render(
       <MantineProvider>
@@ -69,7 +84,6 @@ describe("RosterFilterCard", () => {
           onAudioVolumeChange={vi.fn()}
           renderedCount={1}
           totalCount={1}
-          isMobile={false}
         />
       </MantineProvider>,
     );

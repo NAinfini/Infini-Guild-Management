@@ -7,7 +7,7 @@ import {
   findUnreferencedKeys,
   replaceMediaRefs,
 } from "../services/media-references";
-import { assertDeletableContentMediaKey, mediaKeyFromUrl } from "../services/media-keys";
+import { assertContentMediaKey, mediaKeyFromUrl } from "../services/media-keys";
 import {
   loadEventAttachments,
   loadMemberImages,
@@ -230,7 +230,7 @@ async function deleteR2Keys(bucket: R2Bucket, keys: readonly string[]): Promise<
   for (let index = 0; index < keys.length; index += R2_DELETE_CHUNK) {
     const chunk = keys.slice(index, index + R2_DELETE_CHUNK);
     if (chunk.length === 0) continue;
-    chunk.forEach(assertDeletableContentMediaKey);
+    chunk.forEach(assertContentMediaKey);
     await bucket.delete([...chunk]);
     deleted += chunk.length;
   }

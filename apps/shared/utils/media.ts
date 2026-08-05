@@ -11,14 +11,7 @@ import {
 
 export const DEFAULT_IMAGE_WEBP_QUALITY = 0.8;
 
-/*
- * 存下来的语音只有一种样子：Ogg 容器、Opus 编码、单声道 16 kHz。
- *
- * 以前是拿 MediaRecorder 现录现编，容器还要跟浏览器协商——Chromium 只给 WebM，
- * Firefox 才给 Ogg，于是同一段音频在不同浏览器上落库成不同格式，服务端只好把
- * 两个容器都收下。现在编码走 WebCodecs（mediabunny 负责封装），容器由我们指定，
- * 结果与浏览器无关，服务端也就能收窄到 audio/ogg 这一种。
- */
+/* 存储契约固定为 Ogg 容器、Opus 编码、单声道 16 kHz。 */
 const OPUS_FILE_MIME_TYPE = "audio/ogg";
 const OPUS_FILE_EXTENSION = "ogg";
 const OPUS_TARGET_SAMPLE_RATE = 16_000;
@@ -199,10 +192,8 @@ export type UploadConversionOptions = {
  * The single conversion entry point for uploads: an image becomes WebP, audio
  * becomes Opus, anything else passes through untouched.
  *
- * Every upload path goes through here rather than reaching for a per-format
- * converter. Two implementations of this logic used to sit side by side, which is
- * how the audio path ended up producing files named `.opus` that were really
- * WebM, and how different flows drifted onto different WebP quality settings.
+ * Every upload path goes through this function so file extensions, container
+ * formats, and WebP quality remain consistent.
  */
 export async function convertFileForUpload(
   file: File,
@@ -269,11 +260,7 @@ export async function convertAudioToOpus(
 
   const input = new Input({ source: new BlobSource(file), formats: ALL_FORMATS });
 
-  /*
-   * 「已经是 Opus 了吗」只能问编码本身。以前是看容器：文件叫 audio/ogg 就当它是
-   * Opus 直接放行——可是 Ogg 同样装得下 Vorbis，那种文件就这么原样进了库，
-   * 而库里本该只有 Opus。这里读的是轨道的实际编码，Ogg/Vorbis 会照常重编。
-   */
+  /* 必须读取实际音轨编码；只有 Ogg 容器中的 Opus 轨道可以直接复用。 */
   const track = await input.getPrimaryAudioTrack();
   if (!track) {
     throw new Error("This file contains no audio track.");

@@ -30,6 +30,7 @@ const HOVER_SCALE = 1.04;
  * 那圈 -30% 的余量之内；再大就会把渐变的软边平移出卡面，露出一条硬边。
  */
 const SPECULAR_TRAVEL = 1.3;
+const VISIBLE_BADGE_LIMIT = 2;
 
 const BADGE_SANITIZE_OPTIONS = {
   ALLOWED_TAGS: ["span", "b", "strong", "i", "em", "u", "br"],
@@ -114,10 +115,8 @@ export const MemberCard = memo(function MemberCard({
   const classCatalog = useClassCatalogStore((state) => state.items);
   const primaryClass = profile.classes[0] ?? null;
   const primaryClassItem = resolveClassCatalogItem(primaryClass, classCatalog);
-  const visibleClassItems = profile.classes
-    .slice(0, 2)
-    .map((classId) => resolveClassCatalogItem(classId, classCatalog));
-  const remainingClassCount = Math.max(0, profile.classes.length - visibleClassItems.length);
+  const visibleBadges = badges?.slice(0, VISIBLE_BADGE_LIMIT) ?? [];
+  const remainingBadgeCount = Math.max(0, (badges?.length ?? 0) - visibleBadges.length);
   const status = getMemberStatus(user, profile);
   const avatarKey = profile.avatar_key ?? null;
   const avatarSrc = avatarKey ? resolveMediaUrl(avatarKey) : null;
@@ -226,45 +225,49 @@ export const MemberCard = memo(function MemberCard({
         </div>
 
         <div className="member-card__content">
-          <span className="member-card__username">{user.username}</span>
+          <div className="member-card__identity">
+            <span className="member-card__username">{user.username}</span>
+          </div>
           <div className="member-card__title" dangerouslySetInnerHTML={{ __html: titleHtml || "&nbsp;" }} />
-          {visibleClassItems.length > 0 ? (
-            <div className="member-card__class-row">
-              {visibleClassItems.map((item) => (
-                <span
-                  key={item.id}
-                  className="member-card__class-chip"
-                  style={{ "--class-color": item.color } as React.CSSProperties}
-                >
-                  <ClassIcon item={item} size={16} framed={false} />
-                  <span className="member-card__class-label">{item.label}</span>
-                </span>
-              ))}
-              {remainingClassCount > 0 ? (
-                <span className="member-card__class-overflow">+{remainingClassCount}</span>
-              ) : null}
-            </div>
-          ) : null}
         </div>
 
         {/* A "0" count says nothing and, on a roster where most profiles carry no
             media, turned every card into a row of zeroes. Only non-empty counts show. */}
         <div className="member-card__meta-row">
+          {primaryClass ? (
+            <span
+              className="member-card__class-chip member-card__class-chip--primary"
+              style={{ "--class-color": primaryClassItem.color } as React.CSSProperties}
+            >
+              <ClassIcon item={primaryClassItem} size={16} framed={false} />
+              <span className="member-card__class-label">{primaryClassItem.label}</span>
+            </span>
+          ) : null}
           {profile.images.length > 0 ? (
             <span className="member-card__pill member-card__pill--photo" aria-label={`${t("member.photo")} ${profile.images.length}`}>
-              <IconPhoto size={13} />
-              {profile.images.length}
+              <IconPhoto size={13} aria-hidden="true" />
+              <span className="member-card__pill-label">{t("member.photo")}</span>
+              <span className="member-card__pill-count">{profile.images.length}</span>
             </span>
           ) : null}
           {profile.video_urls.length > 0 ? (
             <span className="member-card__pill member-card__pill--video" aria-label={`${t("member.video")} ${profile.video_urls.length}`}>
-              <IconVideo size={13} />
-              {profile.video_urls.length}
+              <IconVideo size={13} aria-hidden="true" />
+              <span className="member-card__pill-label">{t("member.video")}</span>
+              <span className="member-card__pill-count">{profile.video_urls.length}</span>
             </span>
           ) : null}
-          {badges?.map((badge) => (
+          {visibleBadges.map((badge) => (
             <MemberBadgeChip key={badge.id} badge={badge} />
           ))}
+          {remainingBadgeCount > 0 ? (
+            <span
+              className="member-card__badge-overflow"
+              aria-label={t("member.moreBadges", { count: remainingBadgeCount })}
+            >
+              +{remainingBadgeCount}
+            </span>
+          ) : null}
         </div>
 
         {/* 放在最后：定位元素本来就画在常规流之上，写在末尾只是让「这层盖在
@@ -278,4 +281,3 @@ export const MemberCard = memo(function MemberCard({
     </div>
   );
 });
-

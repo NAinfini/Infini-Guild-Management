@@ -126,21 +126,21 @@ test("预设：叠加而不是覆盖，清空一键归零，两次都要保存�
   for (const day of ["Mon", "Sat"]) {
     await expect(blocksOf(page, day), "种子里 admin 没有填过时段").toHaveCount(0);
   }
-  await expect(weekHours(page)).toHaveText("0 hours a week");
+  await expect(weekHours(page)).toHaveText("0 hours available per week");
 
   await flow.clickWithoutApi(page.getByRole("button", { name: "Weeknights", exact: true }));
   for (const day of ["Mon", "Tue", "Wed", "Thu", "Fri"]) {
     await expect(blocksOf(page, day)).toHaveText(["20:00–24:00"]);
   }
   await expect(blocksOf(page, "Sat"), "工作日预设不该碰周末").toHaveCount(0);
-  await expect(weekHours(page), "5 天 × 4 小时").toHaveText("20 hours a week");
+  await expect(weekHours(page), "5 天 × 4 小时").toHaveText("20 hours available per week");
 
   /* 第二个预设必须和第一个合并：先点晚上再点周末，两样都该在。 */
   await flow.clickWithoutApi(page.getByRole("button", { name: "Weekends", exact: true }));
   await expect(blocksOf(page, "Mon"), "叠加不能把已有的顶掉").toHaveText(["20:00–24:00"]);
   await expect(blocksOf(page, "Sat")).toHaveText(["10:00–24:00"]);
   await expect(blocksOf(page, "Sun")).toHaveText(["10:00–24:00"]);
-  await expect(weekHours(page), "20 + 2 天 × 14 小时").toHaveText("48 hours a week");
+  await expect(weekHours(page), "20 + 2 天 × 14 小时").toHaveText("48 hours available per week");
 
   await save(page, flow);
   const saved = await readAvailability(api);
@@ -151,8 +151,8 @@ test("预设：叠加而不是覆盖，清空一键归零，两次都要保存�
   for (const day of ["Mon", "Sat", "Sun"]) {
     await expect(blocksOf(page, day)).toHaveCount(0);
   }
-  await expect(weekHours(page)).toHaveText("0 hours a week");
-  await expect(page.getByText("Empty — nobody knows when you are around")).toBeVisible();
+  await expect(weekHours(page)).toHaveText("0 hours available per week");
+  await expect(page.getByText("No availability set", { exact: true })).toBeVisible();
 
   await save(page, flow);
   const cleared = await readAvailability(api);
@@ -168,12 +168,12 @@ test("单日时段：结束早于开始就不让加，加完能删，两步都�
 
   /* 结束早于开始时禁用按钮并说明原因，而不是替用户把两个值调个个儿。 */
   await selectOption(picker, "To", "00:30");
-  await expect(picker.getByRole("button", { name: "Add", exact: true })).toBeDisabled();
+  await expect(picker.getByRole("button", { name: "Add time", exact: true })).toBeDisabled();
   await expect(picker.getByText("End must be later than start")).toBeVisible();
 
   /* 换开始时间把它救回来：证明这个提示是两个值一起决定的，不是「结束」自己的校验。 */
   await selectOption(picker, "From", "00:00");
-  const addBlock = picker.getByRole("button", { name: "Add", exact: true });
+  const addBlock = picker.getByRole("button", { name: "Add time", exact: true });
   await expect(addBlock).toBeEnabled();
   await flow.clickWithoutApi(addBlock);
   await expect(page.getByRole("dialog"), "加完之后弹层该自己收起来").toHaveCount(0);
@@ -185,7 +185,7 @@ test("单日时段：结束早于开始就不让加，加完能删，两步都�
     .toEqual([{ start_utc: "00:00", end_utc: "00:30" }]);
 
   await flow.clickWithoutApi(
-    blocksOf(page, "Wed").getByRole("button", { name: "Remove Wed 00:00 to 00:30", exact: true }),
+    blocksOf(page, "Wed").getByRole("button", { name: "Remove 00:00–00:30 on Wed", exact: true }),
   );
   await expect(blocksOf(page, "Wed")).toHaveCount(0);
 
@@ -200,7 +200,7 @@ test("复制到某天：空的一天不能复制，复制过去的时段能落�
   ).toBeDisabled();
 
   await dayRow(page, "Mon").locator(".availability-day__add").click();
-  await flow.clickWithoutApi(page.getByRole("dialog").getByRole("button", { name: "Add", exact: true }));
+  await flow.clickWithoutApi(page.getByRole("dialog").getByRole("button", { name: "Add time", exact: true }));
   await expect(blocksOf(page, "Mon")).toHaveText(["20:00–24:00"]);
 
   await dayRow(page, "Mon").locator(".availability-day__copy").click();

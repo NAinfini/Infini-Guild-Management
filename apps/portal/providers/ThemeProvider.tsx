@@ -33,6 +33,7 @@ import {
 import { useReducedMotion } from "@mantine/hooks";
 import { ModalsProvider } from "@mantine/modals";
 import { Notifications } from "@mantine/notifications";
+import { MotionConfig } from "motion/react";
 import i18n from "../i18n";
 import { usePreferencesStore } from "../stores/preferences";
 import classes from "./ThemeProvider.module.css";
@@ -265,11 +266,7 @@ export function useTheme(): ThemeContextValue {
 }
 
 export function PortalThemeProvider({ children }: { children: ReactNode }) {
-  /*
-   * 模式与主色都是用户偏好，和 locale 走同一条链路。此前模式由本组件
-   * 直接读写 localStorage("theme-mode")，绕开了 preferences store —— 两个
-   * 偏好系统各存一半，reset 也只清得掉一半。
-   */
+  /* Theme mode, accent, and locale share the preferences store lifecycle. */
   const theme = usePreferencesStore((s) => s.themeMode);
   const setTheme = usePreferencesStore((s) => s.setThemeMode);
   const accent = usePreferencesStore((s) => s.accent);
@@ -369,6 +366,7 @@ export function PortalThemeProvider({ children }: { children: ReactNode }) {
 
   return (
     <ThemeContext.Provider value={contextValue}>
+      <MotionConfig reducedMotion="user">
       {/*
         * cssVariablesResolver 必须显式钉在 v8 这一版，不是为了怀旧，是因为
         * Mantine 9 的新公式在这套主题上前提不成立。
@@ -403,6 +401,7 @@ export function PortalThemeProvider({ children }: { children: ReactNode }) {
           {children}
         </ModalsProvider>
       </MantineProvider>
+      </MotionConfig>
     </ThemeContext.Provider>
   );
 }

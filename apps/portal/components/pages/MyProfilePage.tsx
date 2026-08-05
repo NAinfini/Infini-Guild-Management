@@ -26,11 +26,6 @@ import "./MyProfilePage.css";
 
 type ProfileTab = "home" | "availability" | "account";
 
-/**
- * `profile` and `media` were separate tabs before they merged into `home`.
- * Links to them exist in chat logs and browser history, so they resolve rather
- * than silently falling through to the default.
- */
 function normalizeTab(raw: string | undefined): ProfileTab {
   if (raw === "availability" || raw === "account") return raw;
   return "home";

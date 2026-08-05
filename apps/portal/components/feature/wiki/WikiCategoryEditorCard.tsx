@@ -41,17 +41,9 @@ import {
 } from "@portal/utils/wiki-category-tree";
 
 /*
- * 分类目录就是这一棵树，没有第二份。
- *
- * 以前是一张平列表加一张只读树图：列表里每行挂一个「父分类」下拉，改完层级要挪眼睛
- * 到下面那张图上确认。同一件事两个地方说，改的地方和看结果的地方还不在一起。
- * 现在列表自己就是树——缩进即层级，拖到哪儿就是哪儿。
- *
- * 竖着拖排序，横着拖改层级。层级由 utils/wiki-category-tree 那边的投影夹在合法范围内：
- * 拖到头就不再缩进，用户当场看得见「到顶了」，而不是放手之后被服务端一个 400 顶回来。
- *
- * 键盘走另一条路：拖拽柄本身能用空格拿起、上下键挪位（dnd-kit 的键盘传感器），
- * 层级则交给每行的 ← →。原先那个下拉是唯一的键盘入口，删它就得先把这条补上。
+ * The editable list is the category tree: vertical movement reorders siblings
+ * and horizontal movement changes depth. Tree projection clamps invalid depth;
+ * keyboard users reorder through dnd-kit and change depth with arrow actions.
  */
 
 type WikiCategoryEditorCardProps = {

@@ -81,14 +81,14 @@ export function WarHistoryTable({
             className="war-history-filter war-history-filter--date"
             value={historyDateFrom}
             onChange={(event) => onHistoryDateFromChange(event.currentTarget.value)}
-            placeholder={t("history.datePlaceholder")}
+            placeholder={t("history.dateFromPlaceholder")}
             aria-label={t("history.aria.dateFrom")}
           />
           <NativeDateTimeInput
             className="war-history-filter war-history-filter--date"
             value={historyDateTo}
             onChange={(event) => onHistoryDateToChange(event.currentTarget.value)}
-            placeholder={t("history.datePlaceholder")}
+            placeholder={t("history.dateToPlaceholder")}
             aria-label={t("history.aria.dateTo")}
           />
           <HoverCard width={280} shadow="lg" withArrow arrowSize={10} openDelay={350} closeDelay={80} position="top">
@@ -124,9 +124,8 @@ export function WarHistoryTable({
             </Group>
 
             {filteredHistoryRows.length > 0 ? (
-              <div
+              <ul
                 className="war-history-rail"
-                role="list"
                 aria-label={t("history.warList")}
               >
                 {filteredHistoryRows.map((item) => {
@@ -138,9 +137,8 @@ export function WarHistoryTable({
                   ].filter(Boolean).join(" ");
 
                   return (
-                    <article
+                    <li
                       key={item.id}
-                      role="listitem"
                       className={itemClasses}
                     >
                       <UnstyledButton
@@ -184,10 +182,10 @@ export function WarHistoryTable({
                           </time>
                         </span>
                       </UnstyledButton>
-                    </article>
+                    </li>
                   );
                 })}
-              </div>
+              </ul>
             ) : (
               <div className="war-history-list-empty">
                 <EmptyState title={t("history.noWarHistories")} />

@@ -216,7 +216,7 @@ test("投票：先选后投才可提交，改投会把票挪到另一个选项�
     pollRow(modal, optionA).getByRole("button", { name: viewer.username, exact: true }),
     "投票人改为头像呈现后，身份仍必须通过头像按钮的无障碍名称可识别",
   ).toBeVisible();
-  await expect(modal.locator(".event-detail-modal__poll-total")).toHaveText("1 votes");
+  await expect(modal.locator(".event-detail-modal__poll-total")).toHaveText("1 vote");
 
   const updateButton = modal.getByRole("button", { name: "Update vote", exact: true });
   await expect(updateButton, "投过之后按钮要变成改投，否则用户以为再点一次是投第二票").toBeVisible();
@@ -232,7 +232,7 @@ test("投票：先选后投才可提交，改投会把票挪到另一个选项�
   const afterSecond = await readEvent(api, eventId);
   expect(afterSecond.poll?.options.find((option) => option.label === optionA)?.vote_count, "旧票必须被撤掉").toBe(0);
   expect(afterSecond.poll?.options.find((option) => option.label === optionB)?.vote_count).toBe(1);
-  await expect(modal.locator(".event-detail-modal__poll-total")).toHaveText("1 votes");
+  await expect(modal.locator(".event-detail-modal__poll-total")).toHaveText("1 vote");
   await expect(pollRow(modal, optionB).locator(".event-detail-modal__poll-percent")).toHaveText("100%");
 });
 
@@ -245,7 +245,7 @@ test("抽奖：取消不开奖，确认后按设定的人数抽出中奖者并�
 
   const modal = await openDetail(page, eventId);
   await expect(modal.getByText("2 in pool", { exact: true })).toBeVisible();
-  await expect(modal.getByText("2 winner(s) to be drawn", { exact: true })).toBeVisible();
+  await expect(modal.getByText("2 winners to be drawn", { exact: true })).toBeVisible();
 
   const drawButton = modal.getByRole("button", { name: "Draw Winners Now", exact: true });
 
@@ -254,7 +254,7 @@ test("抽奖：取消不开奖，确认后按设定的人数抽出中奖者并�
   await expect(
     cancelDialog,
     "确认框要把人数和奖池说清楚——开奖不可撤销，说错了就没有第二次机会",
-  ).toContainText("This will randomly select 2 winner(s) from 2 participants.");
+  ).toContainText("This will randomly select 2 winners from 2 participants.");
   await cancelDialog.getByRole("button", { name: "Cancel", exact: true }).click();
   expect((await readEvent(api, eventId)).raffle_winners, "取消后不该开奖").toEqual([]);
 
@@ -285,7 +285,7 @@ test("抽奖：取消不开奖，确认后按设定的人数抽出中奖者并�
     ).toBeVisible();
   }
   await expect(
-    membersSection(modal).getByRole("button", { name: "Leave", exact: true }),
+    membersSection(modal).getByRole("button", { name: "Cancel signup", exact: true }),
     "报名被锁上之后就不能再进出了",
   ).toBeDisabled();
 });

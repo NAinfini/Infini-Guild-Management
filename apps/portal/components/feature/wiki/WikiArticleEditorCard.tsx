@@ -19,7 +19,8 @@ import { useMemo } from "react";
 import { useTranslation } from "react-i18next";
 import { EmptyState } from "../../shared/EmptyState";
 import { notifyError } from "../../../utils/notifications";
-import { TipTapEditor, buildTipTapEditorLabels } from "@portal/components/shared/TipTapEditor";
+import { TipTapEditor } from "@portal/components/shared/TipTapEditor";
+import { buildTipTapEditorLabels } from "@portal/components/shared/tiptap-meta";
 
 function formatDateTime(iso: string): string {
   const date = new Date(iso);

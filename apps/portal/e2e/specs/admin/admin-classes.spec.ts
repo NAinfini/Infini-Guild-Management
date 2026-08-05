@@ -157,8 +157,7 @@ test("新建职业：没名字存不了；填完之后颜色、图标原样落�
   expect(saved.vector_icon, "选的是皇冠").toBe("crown");
   expect(saved.icon_type, "没传图片就该是矢量图标").toBe("vector");
   expect(saved.icon_key, "矢量图标不该在 R2 上留下对象").toBeNull();
-  /* 表单里已经没有「显示顺序」这个数字框了——顺序改由左栏拖拽决定。新建的一条由服务端
-     排到末尾（当前最大值 + 10），正好对上拖拽序里「新的在最后」。 */
+  /* 新建职业由服务端排到末尾；排序只通过左栏拖拽更新。 */
   expect(
     saved.sort_order,
     "新建的职业该排在所有已有职业后面",
@@ -340,7 +339,7 @@ test("删除职业：确认框取消什么都不做；确认之后清单、计�
   await classItem(page, item.label).click();
   const form = editor(page);
   await form.getByRole("button", { name: "Delete class", exact: true }).click();
-  const dialog = await confirmDialog(page, "Delete this class?");
+  const dialog = await confirmDialog(page, "Delete class from catalog?");
   await expect(dialog, "确认框要点名删的是哪一个").toContainText(item.label);
 
   await flow.clickWithoutApi(cancelButton(dialog));
@@ -349,7 +348,7 @@ test("删除职业：确认框取消什么都不做；确认之后清单、计�
   await expect(field(form, "Class name"), "取消删除不该顺手把编辑器也关了").toHaveValue(item.label);
 
   await form.getByRole("button", { name: "Delete class", exact: true }).click();
-  const again = await confirmDialog(page, "Delete this class?");
+  const again = await confirmDialog(page, "Delete class from catalog?");
   await flow.click(again.getByRole("button", { name: "Delete class", exact: true }), DELETE_CLASS);
   await expectNotified(page, "Class deleted");
 

@@ -40,7 +40,7 @@ function getClassCatalogService(c: Context): ClassCatalogService {
 }
 
 async function requireClassManagement(c: Context) {
-  return requirePermission(c, "admin.classes.manage", { freshPermissions: true });
+  return requirePermission(c, "admin.classes.manage");
 }
 
 classRoutes.get("/", async (c) => {

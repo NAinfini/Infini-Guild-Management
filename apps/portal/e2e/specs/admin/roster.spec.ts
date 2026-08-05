@@ -185,7 +185,6 @@ test("职业多选：结果集与服务端数据一致，条件写进 localStora
   const [classId, expectedNames] = top!;
   const outsider = roster.find((row) => !row.profile.classes.includes(classId));
   expect(outsider, "得有一个不属于该职业的成员，才能验证「滤掉」的方向").toBeTruthy();
-  /* 目录里没有的历史职业，选项文案就退回 id 本身——buildClassOptions 的 legacy 分支。 */
   const label = catalog.find((item) => item.id === classId)?.label ?? classId;
 
   await expectClientSideOnly(page, async () => {
@@ -392,7 +391,7 @@ test("成员卡片：打开资料弹窗，内容与服务端一致，关闭按�
   });
 
   const dialog = topDialog(page);
-  await expect(dialog.getByText(`${username} Profile`, { exact: true })).toBeVisible();
+  await expect(dialog.getByText(`Profile: ${username}`, { exact: true })).toBeVisible();
   await expect(
     dialog.getByText(String(target!.profile.power), { exact: true }),
     "弹窗里的战力必须是服务端那一份，对不上就是拿错了人的资料",

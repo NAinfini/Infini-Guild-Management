@@ -77,11 +77,7 @@ export function EventDetailPoll({
     const hiddenVoterCount = Math.max(0, voterEntries.length - visibleVoters.length);
     return (
       <div className="event-detail-modal__poll-voters">
-        {/*
-         * 一排光头像，名字和职业交给悬停卡（跟活动卡上那一排是同一个组件、同一张卡）。
-         * 名字原来写在头像旁边，一个选项十个人就是十枚长条，占掉的宽度比选项本身还多；
-         * 而投票这件事只需要认出「谁投的」，认脸就够了。
-         */}
+        {/* Avatar hover cards expose voter names and classes without expanding each option row. */}
         {visibleVoters.map((entry) => (
           <MemberRoleAvatar
             key={entry.user.id}

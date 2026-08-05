@@ -58,13 +58,7 @@ html:not([data-input-modality="pointer"]) :focus-visible {
     0 0 0 4px var(--brand-fill);
 }
 
-/* 按语言切字体栈的规则已随 --font-body 迁到 styles/scale.css，
- * 本文件不再重复定义 html[data-locale="zh"]。 */
-
-/* ── Text selection styling ──
- *
- * 原本浅色 30% / 深色 40% 两条。--accent-fill 在两个模式下是同一档，30% 的混色
- * 在纸底与近黑底上都读得出选中范围，故合并为一条，深色那 10% 的加强取消。 */
+/* 选区使用 30% 品牌色混合，在明暗主题中都保持文本和范围可辨。 */
 ::selection {
   background: color-mix(in srgb, var(--brand-fill) 30%, transparent);
   color: var(--text-primary);
@@ -115,19 +109,8 @@ html:not([data-input-modality="pointer"]) :focus-visible {
   }
 }
 
-/* ── router.tsx fallback screens ── (moved out of style={{}}, task-8 批 B) */
-
-/* main.tsx's total-bootstrap-failure fallback (the dynamic import("./bootstrap")
-   itself rejected, so ThemeProvider never mounted and never set [data-theme]
-   on <html>). semantic.css defines --surface-* / --status-* only under
-   [data-theme="light"/"dark"], so on THIS path these var()s never resolve —
-   not "may not". Keeping them as var() rather than carving bare hex into a
-   MIGRATED file is still the right call, but the old claim that the result is
-   "still legible" was wrong; see the OPEN DEFECT below for what actually
-   happens. */
-
-/* bootstrap 模块加载失败时，main.tsx 会先设置安全的深色主题并调用共享
- * dismissSplash()，因此此错误页不会再被启动遮罩或透明 root 隐藏。 */
+/* Router and bootstrap fallback screens. */
+/* main.tsx establishes theme variables and dismisses the splash before this renders. */
 .main-bootstrap-error {
   min-height: 100vh;
   display: grid;
@@ -139,15 +122,7 @@ html:not([data-input-modality="pointer"]) :focus-visible {
   text-align: center;
 }
 
-/* 正文不能继承容器的危险色。浅色下 --status-danger 压在自身 6% 淡底上实测
-   4.18:1（深色 6.15:1），标题是 24px 粗体、按大字文本 3:1 过线，但这段 16px
-   正文要 4.5:1，不过。改用 --text-primary 后 15.32:1。
-   四个数字由仓库 theme-tokens.test.ts 同一套 WCAG 算法、色值取自 tokens.css，
-   color-mix 按逐通道线性插值后四舍五入到整数通道再算。
-   迁移前这里是 #7f1d1d 压 #fff7f7 的 9.49:1，所以这是一次真回归，不是本来就临界。
-
-   ⚠️ 但这块 UI 在它自己的触发场景下**根本看不见**，见下方 OPEN DEFECT。
-   本规则修的是「万一它能显示出来」时的可读性，不是一个能观察到的现象。 */
+/* Body copy uses the neutral foreground to meet text contrast requirements. */
 .main-bootstrap-error p {
   color: var(--text-primary);
 }
@@ -200,8 +175,7 @@ html:not([data-input-modality="pointer"]) :focus-visible {
 .unsaved-changes-affix {
   --unsaved-affix-inline: var(--space-xl);
   --unsaved-affix-bottom: var(--space-lg);
-  /* 里面只有一个徽章加一个按钮，撑死 260px。原先写死 520px，右下角就永远摆着
-     一个大半是空白的框。改成按内容宽度，上限只用来兜住超长的按钮文案。 */
+  /* Size to content while constraining unusually long localized actions. */
   max-width: min(520px, calc(100vw - var(--sidebar-width) - var(--space-3xl)));
 }
 
@@ -252,8 +226,7 @@ html:not([data-input-modality="pointer"]) :focus-visible {
  * not enter Mantine's foundational controls.
  *
  * 特异性：Mantine 自己那条 `:root[data-mantine-color-scheme="light"]` 是 (0,2,0)
- * 且注入在本文件之后，打平会赢，所以这里保持原先的 (0,3,0)，只是把第三个部件
- * 从旧的 :not() 换成属性自我重复 —— 形状与原来一致，一眼能看出是同一处覆盖。 */
+ * 且注入在本文件之后，打平会赢，所以这里使用 (0,3,0) 的属性自我重复。 */
 :root[data-theme="light"][data-theme="light"] {
   --mantine-color-gray-light-color: var(--mantine-color-gray-7);
   --mantine-color-red-light-color: var(--palette-mantine-red-text);

@@ -89,7 +89,7 @@ async function listGallery(api: APIRequestContext, term: string): Promise<Stored
 }
 
 function items(page: Page): Locator {
-  return page.locator(".gallery-masonry__item");
+  return page.locator(".gallery-grid__item");
 }
 
 function itemByCaption(page: Page, caption: string): Locator {
@@ -295,7 +295,7 @@ test("批量删除：勾几条就删几条，服务端报的条数要对得上",
   await page.getByRole("button", { name: "Delete Selected", exact: true }).click();
   const dialog = await confirmDialog(page, "Delete selected items?");
   await expect(
-    dialog.getByText("Delete 2 item(s). This action cannot be undone."),
+    dialog.getByText("Delete 2 selected gallery items? This action cannot be undone."),
     "确认框要把条数说出来，用户才知道自己勾了多少",
   ).toBeVisible();
 
@@ -305,7 +305,7 @@ test("批量删除：勾几条就删几条，服务端报的条数要对得上",
   ) as { deleted: number };
   expect(result.deleted, "服务端报的删除条数必须和勾选数一致").toBe(2);
 
-  await expect(page.getByText("Deleted 2 item(s)")).toBeVisible();
+  await expect(page.getByText("Deleted 2 gallery items.")).toBeVisible();
   await expect(items(page), "没勾的那一条要留下").toHaveCount(1);
   await expect(itemByCaption(page, spared.caption)).toBeVisible();
 

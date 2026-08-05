@@ -85,7 +85,7 @@ describe("class tag routes", () => {
     expect(mocks.requirePermission).not.toHaveBeenCalled();
   });
 
-  it("guards every mutation with fresh admin.classes.manage permissions", async () => {
+  it("guards every mutation with admin.classes.manage", async () => {
     await post({ label: "治疗" });
     await patch("tag-1", { label: "坦克" });
     await reorderRequest({ order: ["tag-1"] });
@@ -94,7 +94,7 @@ describe("class tag routes", () => {
     expect(mocks.requirePermission).toHaveBeenCalledTimes(4);
     for (const call of mocks.requirePermission.mock.calls) {
       expect(call[1]).toBe("admin.classes.manage");
-      expect(call[2]).toEqual({ freshPermissions: true });
+      expect(call).toHaveLength(2);
     }
   });
 

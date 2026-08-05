@@ -1,5 +1,5 @@
 import { useCallback } from "react";
-import { Fieldset, SimpleGrid, Stack, Text, ThemeIcon, UnstyledButton } from "@mantine/core";
+import { Fieldset, Stack, Text, ThemeIcon, UnstyledButton } from "@mantine/core";
 import { LanguageIcon, MoonIcon, SunIcon } from "@portal/components/icons";
 import { useTranslation } from "react-i18next";
 
@@ -30,7 +30,11 @@ function OptionCard({ active, onClick, label, description, icon }: OptionCardPro
       {icon ? <ThemeIcon variant="light" radius="md" className="settings-option-card__icon">{icon}</ThemeIcon> : null}
       <div className="settings-option-card__content">
         <Text size="sm" fw={active ? 600 : 400}>{label}</Text>
-        {description ? <Text size="xs" c="dimmed">{description}</Text> : null}
+        {description ? (
+          <Text size="xs" c="dimmed" className="settings-option-card__description">
+            {description}
+          </Text>
+        ) : null}
       </div>
     </UnstyledButton>
   );
@@ -61,14 +65,14 @@ export function SettingsPage() {
 
   return (
     <PageLayout>
-      <Stack gap="xl">
+      <Stack gap="xl" className="settings-page">
         {/* ── Appearance ── */}
         <Fieldset legend={t("section.appearance")} className="settings-section">
           <Stack gap="lg">
             {/* Theme */}
             <div>
               <Text size="sm" fw={600} mb={8}>{t("field.theme")}</Text>
-              <SimpleGrid cols={{ base: 1, sm: 2 }} spacing="sm">
+              <div className="settings-choice-grid settings-choice-grid--binary">
                 <OptionCard
                   active={currentTheme === "light"}
                   onClick={() => setTheme("light")}
@@ -83,13 +87,13 @@ export function SettingsPage() {
                   description={t("theme.dark.desc")}
                   icon={<MoonIcon size={20} />}
                 />
-              </SimpleGrid>
+              </div>
             </div>
 
             {/* Accent */}
             <div>
               <Text size="sm" fw={600} mb={8}>{t("field.accent")}</Text>
-              <SimpleGrid cols={{ base: 2, sm: 4 }} spacing="sm">
+              <div className="settings-choice-grid settings-choice-grid--accent">
                 {ACCENT_OPTIONS.map((opt) => (
                   <OptionCard
                     key={opt.value}
@@ -100,7 +104,7 @@ export function SettingsPage() {
                     icon={<span className={`settings-accent-swatch settings-accent-swatch--${opt.value}`} />}
                   />
                 ))}
-              </SimpleGrid>
+              </div>
             </div>
           </Stack>
         </Fieldset>
@@ -111,7 +115,7 @@ export function SettingsPage() {
             {/* Language */}
             <div>
               <Text size="sm" fw={600} mb={8}>{t("field.locale")}</Text>
-              <SimpleGrid cols={{ base: 1, sm: 2 }} spacing="sm">
+              <div className="settings-choice-grid settings-choice-grid--binary">
                 <OptionCard
                   active={locale === "en"}
                   onClick={() => handleLocaleChange("en")}
@@ -126,7 +130,7 @@ export function SettingsPage() {
                   description={t("locale.zh.desc")}
                   icon={<LanguageIcon size={20} />}
                 />
-              </SimpleGrid>
+              </div>
             </div>
           </Stack>
         </Fieldset>

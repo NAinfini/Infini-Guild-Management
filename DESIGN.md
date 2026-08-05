@@ -121,42 +121,42 @@ components:
     typography: "{typography.body-strong}"
     rounded: "{rounded.control}"
     padding: "0 16px"
-    height: "44px"
+    height: "var(--control-height-regular)"
   primary-button-hover:
     backgroundColor: "{colors.brand-fill-hover}"
     textColor: "{colors.brand-on-fill-hover}"
     typography: "{typography.body-strong}"
     rounded: "{rounded.control}"
     padding: "0 16px"
-    height: "44px"
+    height: "var(--control-height-regular)"
   secondary-button-light:
     backgroundColor: "{colors.surface-raised-light}"
     textColor: "{colors.text-primary-light}"
     typography: "{typography.body-strong}"
     rounded: "{rounded.control}"
     padding: "0 16px"
-    height: "44px"
+    height: "var(--control-height-regular)"
   secondary-button-dark:
     backgroundColor: "{colors.surface-raised-dark}"
     textColor: "{colors.text-primary-dark}"
     typography: "{typography.body-strong}"
     rounded: "{rounded.control}"
     padding: "0 16px"
-    height: "44px"
+    height: "var(--control-height-regular)"
   input-light:
     backgroundColor: "{colors.surface-sunken-light}"
     textColor: "{colors.text-primary-light}"
     typography: "{typography.body}"
     rounded: "{rounded.control}"
     padding: "0 12px"
-    height: "44px"
+    height: "var(--control-height-regular)"
   input-dark:
     backgroundColor: "{colors.surface-sunken-dark}"
     textColor: "{colors.text-primary-dark}"
     typography: "{typography.body}"
     rounded: "{rounded.control}"
     padding: "0 12px"
-    height: "44px"
+    height: "var(--control-height-regular)"
   plate-light:
     backgroundColor: "{colors.surface-raised-light}"
     textColor: "{colors.text-primary-light}"
@@ -182,17 +182,17 @@ components:
     rounded: "{rounded.overlay}"
     padding: "16px"
   tab-active-light:
-    backgroundColor: "{colors.surface-base-light}"
+    backgroundColor: "transparent"
     textColor: "{colors.brand-text-light}"
     typography: "{typography.body-strong}"
-    rounded: "{rounded.control}"
-    height: "44px"
+    rounded: "0"
+    height: "var(--control-height-regular)"
   tab-active-dark:
-    backgroundColor: "{colors.surface-base-dark}"
+    backgroundColor: "transparent"
     textColor: "{colors.brand-text-dark}"
     typography: "{typography.body-strong}"
-    rounded: "{rounded.control}"
-    height: "44px"
+    rounded: "0"
+    height: "var(--control-height-regular)"
   secondary-copy-light:
     backgroundColor: "{colors.surface-base-light}"
     textColor: "{colors.text-secondary-light}"
@@ -341,8 +341,7 @@ components:
 
 # Portal Design System
 
-> Status: implemented and release-verified  
-> Date: 2026-07-29  
+> Status: maintained implementation contract
 > Governs: `apps/portal`, every page, light and dark themes, desktop and mobile  
 > Audience: implementers, reviewers, and coding agents
 
@@ -350,13 +349,9 @@ components:
 
 ### Contract and authority
 
-This file is the only foundational visual specification for the portal. The machine-readable frontmatter is a compact index of the target tokens; the prose defines how they are allowed to behave.
+This file is the foundational visual specification for the portal. The frontmatter is a compact index; exact implemented values live in `apps/portal/styles/tokens.css`, `semantic.css`, `scale.css`, and `apps/portal/providers/ThemeProvider.tsx`. If prose or frontmatter drifts from those files, source wins and this document must be corrected in the same change.
 
-`docs/plans/2026-07-29-portal-ui-architecture.md` governs navigation, component ownership, page templates, implementation phases, and validation. This file governs visual values and interaction presentation. If they disagree on a visual value, this file wins. A conflict outside visual presentation must be resolved in the architecture plan before implementation.
-
-The frontmatter is a compact index of the implemented contract. Any intentional
-deviation must be recorded in this document and the architecture plan before it
-is introduced in source.
+`AppShell`, `route-metadata.ts`, `SectionHeader`, and `ContentFilterToolbar` define the maintained shell, heading, and responsive-filter compositions. Intentional foundational changes update the relevant source, focused tests, and this document together.
 
 Normative words:
 
@@ -370,7 +365,7 @@ Normative words:
 - The portal is Chinese-first and bilingual. Long Chinese and English strings are both first-class test inputs.
 - Light and dark modes ship together.
 - Public and protected routes keep the same visual system; visual affordances must not weaken permission or session enforcement.
-- Mantine is the sole foundational component library. CSS Modules may style domain content, but may not recreate foundational component behavior.
+- Mantine is the sole foundational component library. Co-located or scoped CSS may style domain content, but may not recreate foundational component behavior.
 - Roster's existing member card, pointer response, hover treatment, and audio signature are protected product character.
 
 ### Direction: Forged Material
@@ -401,7 +396,7 @@ This distinction is load-bearing:
 | | Material | Effect |
 |---|---|---|
 | Definition | surface gradient, root grain, edge highlight, border, low-alpha tint | glow, colour dispersion, 3D tilt, specular sweep, spring motion |
-| Allowed location | shell, page field, plates, recesses, overlays | `MemberCard` only |
+| Allowed location | shell, page field, plates, recesses, overlays | `MemberCard` only; Gallery lightbox may use backdrop blur only |
 | State | static | pointer- or spring-driven |
 | Runtime cost | one bounded paint | compositing and continuous response |
 | Budget | only the recipes in this document | one component on one page |
@@ -425,7 +420,7 @@ The values in the frontmatter are sourced from the existing L1 palette. Implemen
 
 ### Action, personalisation, domain, and status
 
-The current `--accent-*` group combines personalisation and action semantics. The target system splits four independent roles:
+The implemented system keeps four independent colour roles:
 
 | Role | Prefix | User-selectable | Purpose |
 |---|---|---:|---|
@@ -501,7 +496,7 @@ A Latin display family has no CJK coverage. Chinese headings silently fall back 
 | Role | Family | Weight | Notes |
 |---|---|---|---|
 | UI, body, all CJK | existing `--font-body` stack | 400 / 600 / 700 | best platform CJK rendering, zero new body-font cost |
-| Display and numerals | Saira Semi Condensed | 600 / 700 | self-hosted OFL Latin subset only |
+| Display and numerals | Saira Semi Condensed | 700 | self-hosted OFL Latin subset only |
 
 Display font loading:
 
@@ -569,7 +564,7 @@ A page may place content directly on the workspace. A Plate exists only when it 
 
 ### Responsive shell contract
 
-`PortalShell` uses Mantine `AppShell` and owns all global offsets:
+`AppShell` uses Mantine `AppShell` and owns all global offsets:
 
 | Metric | Target |
 |---|---:|
@@ -591,7 +586,7 @@ The shell contract:
 - route content must not add a compensating top margin;
 - the shell owns scroll offset, safe-area padding, and the mobile navigation clearance.
 
-At viewport widths below 768px, the desktop sidebar is replaced by the bottom navigation. At 768px and above, the sidebar is available. The same route metadata generates both.
+At viewport widths up to 1023px, compact navigation replaces the desktop sidebar. The phone-specific header breakpoint remains 767px. The same route metadata generates the sidebar and compact navigation.
 
 ### Page padding and content width
 
@@ -644,10 +639,9 @@ The parent owns the gap between siblings. Children must not add top margin to re
 
 ### Density and responsive transformation
 
-- Text controls remain 32px compact, 44px regular, or 52px large.
-- Table rows are 44px on desktop and 56px on mobile.
-- At below 768px, dense tables transform into labelled rows, stacked records, or a focused detail Drawer. They do not rely on horizontal scrolling for primary actions.
-- Filters wrap into a deliberate two-row composition or move into a Drawer; they do not compress below usable control widths.
+- Text controls use 32px compact, 36px regular with a fine pointer, 44px regular with a coarse pointer, or 52px large. The shared hit-area token remains 44px.
+- On compact layouts, dense data transforms into labelled rows, stacked records, or focused detail overlays rather than hiding primary actions behind horizontal scrolling.
+- `ContentFilterToolbar` measures its own container: controls stay inline when space permits, move into a desktop Popover when compact, and use a bottom Drawer on phones. Search and primary information remain visible.
 - Desktop and mobile may use different compositions, but must expose the same task outcome and state.
 
 ## Elevation & Depth
@@ -671,12 +665,7 @@ Add one pre-baked 128×128 monochrome noise tile at opacity 0.03 in dark mode an
 The default Mantine `Paper`, `Card`, and panel treatment:
 
 ```css
-background:
-  linear-gradient(
-    160deg,
-    color-mix(in srgb, var(--surface-raised) 100%, white 2%),
-    var(--surface-raised)
-  );
+background: var(--surface-raised);
 border: 1px solid var(--border-subtle);
 box-shadow: var(--edge-top);
 ```
@@ -685,10 +674,14 @@ box-shadow: var(--edge-top);
 
 ```css
 /* dark */
---edge-top: inset 0 1px 0 rgb(255 255 255 / 0.06);
+--edge-top:
+  inset 0 1px 0 rgb(255 255 255 / 0.06),
+  0 1px 2px rgb(0 0 0 / 0.20);
 
 /* light */
---edge-top: inset 0 1px 0 rgb(255 255 255 / 0.90);
+--edge-top:
+  inset 0 1px 0 rgb(255 255 255 / 0.90),
+  0 1px 2px rgb(10 10 15 / 0.06);
 ```
 
 #### M4 — Recess
@@ -697,27 +690,25 @@ Inputs, wells, table headers, tracks, and drag targets:
 
 ```css
 background: var(--surface-sunken);
-box-shadow: inset 0 1px 2px rgb(0 0 0 / 0.18); /* dark */
-box-shadow: inset 0 1px 2px rgb(0 0 0 / 0.06); /* light */
+border: 1px solid var(--border-strong);
 ```
 
-#### M5 — Overlay glass
+#### M5 — Overlay
 
 Mantine `Modal`, `Drawer`, `Menu`, and `Popover`:
 
 ```css
 background: var(--surface-overlay);
-backdrop-filter: blur(12px) saturate(1.1);
-border: 1px solid var(--border-strong);
-box-shadow: var(--shadow-overlay), var(--edge-top);
+border: 1px solid var(--border-subtle);
+box-shadow: var(--shadow-overlay);
 ```
 
-A solid `--surface-overlay` fallback is mandatory when `backdrop-filter` is unsupported.
+Foundational overlays remain solid. Backdrop blur is reserved for the protected `MemberCard` treatment and the full-screen Gallery lightbox overlay.
 
 ### Material rules
 
 1. Material never decorates controls. Buttons, inputs, selections, tabs, and menu items are flat.
-2. Every surface gradient uses `160deg`; every highlight is on the top edge.
+2. Any linear material gradient uses `160deg`; every highlight is on the top edge.
 3. A surface gradient may not exceed a 6% luminance delta.
 4. Grain appears once at the root.
 5. A surface has at most two material layers: gradient plus edge.
@@ -731,9 +722,9 @@ Exactly two reusable elevation tokens exist:
 | Token | Value | Allowed use |
 |---|---|---|
 | `--edge-top` | M3 | every Plate and Overlay |
-| `--shadow-overlay` | dark `0 16px 48px rgb(0 0 0 / .40)`; light `0 12px 32px rgb(10 10 15 / .12)` | Modal, Drawer, Menu, Popover, Tooltip |
+| `--shadow-overlay` | dark `0 18px 44px rgb(0 0 0 / .42)`; light `0 16px 40px rgb(10 10 15 / .18)` | Modal, Drawer, Menu, Popover, Tooltip |
 
-Structural depth uses surface colour and border, not drop shadows. Delete `--shadow-xs/sm/md/lg` and `--shadow-accent-sm/md` after their consumers migrate. `MemberCard`'s protected effect shadows are not generic elevation tokens.
+Structural depth uses surface colour and border, not ad hoc drop shadows. `MemberCard`'s protected effect shadows are not generic elevation tokens.
 
 ### Light mode translation
 
@@ -743,8 +734,8 @@ Light mode is engraved plate in daylight, not a mechanical inversion of dark mod
 |---|---|---|
 | field | cool near-black | warm paper |
 | plate | lighter metal | white plate on warm paper |
-| edge | white inset at 0.06 | white inset at 0.90 plus a darker bottom border |
-| recess | dark inset | soft grey inset |
+| edge | white inset at 0.06 plus a low black edge | white inset at 0.90 plus a low dark edge |
+| recess | sunken surface with strong border | sunken surface with strong border |
 | root grain | 3% | 2% |
 | Roster effect | dispersion glow | soft coloured drop shadow, no halo |
 
@@ -785,7 +776,7 @@ Circles use `50%` only for avatars, indicators, and circular icon buttons. A 999
 | Size | Text control | Visible icon control | Minimum hit area |
 |---|---:|---:|---:|
 | compact | 32px | 22px | 44×44px |
-| regular | 44px | 28px | 44×44px |
+| regular | 36px fine pointer / 44px coarse pointer | 28px | 44×44px |
 | large | 52px | 40px | 52×52px |
 
 Dense icon controls may use a transparent hit expander. Expanded hit areas must not overlap adjacent controls or be clipped by an ancestor.
@@ -825,14 +816,9 @@ Pages use Mantine directly for foundational UI:
 - surfaces: `Paper`, `Card`, `Accordion`, `Collapse`, `Spoiler`;
 - data and state: `Table`, `Badge`, `Avatar`, `Indicator`, `Progress`, `RingProgress`, `Timeline`, `Alert`, `Notification`, `Skeleton`, `Loader`, `LoadingOverlay`.
 
-Mantine Styles API, component `.extend()`, theme CSS variables, and scoped CSS Modules are the supported styling paths. CSS may style content inside a domain component; it may not reimplement keyboard, focus, overlay, menu, selection, or form behavior.
+Mantine Styles API, component `.extend()`, theme CSS variables, co-located CSS, and CSS Modules are the supported styling paths. CSS may style content inside a domain component; it may not reimplement keyboard, focus, overlay, menu, selection, or form behavior.
 
-Mandatory removals:
-
-- `DepthButton` is deleted and replaced with Mantine `Button` or `ActionIcon`.
-- `InfiniMenu` is deleted and replaced with Mantine `Menu`.
-- Generic surface wrappers such as `PortalCard` or `PageLayout.Card` are removed when they add only styling; use `Paper` or `Card`.
-- A local wrapper is allowed only when it owns domain behavior, accessibility semantics, or two proven consumers that require the same composition.
+Foundational controls use Mantine directly. Parallel button, menu, and style-only surface wrappers are not permitted. A local component is justified only when it owns domain behavior, accessibility semantics, or a proven shared composition such as `SectionHeader` or `ContentFilterToolbar`.
 
 ### Component choice rules
 
@@ -933,7 +919,7 @@ ECharts remains the charting library:
 
 ### Don't
 
-1. Do not use glow, blur, dispersion, 3D tilt, or specular layers outside `MemberCard.css`.
+1. Do not use glow, blur, dispersion, 3D tilt, or specular layers outside `MemberCard.css`; only the full-screen Gallery lightbox may additionally use its guarded backdrop blur.
 2. Do not put gradients on buttons, inputs, selects, switches, tabs, or menu items.
 3. Do not use gradient text, gradient borders, animated backgrounds, or looping decoration.
 4. Do not define generic shadows outside `--edge-top` and `--shadow-overlay`.
@@ -974,7 +960,7 @@ For every page or component batch:
 |---|---|---|
 | A1 | exactly eight distinct font-size steps; max/min ratio at least 3.0 | token test |
 | A2 | exactly two generic elevation tokens and three general radius tokens | token test |
-| A3 | no blur, glow, perspective, or dispersion outside `MemberCard.css` | grep guard |
+| A3 | effects stay inside `MemberCard.css`, with only the guarded Gallery lightbox backdrop blur exception | architecture guard |
 | A4 | no gradient in a foundational control selector | grep guard |
 | A5 | `var(--accent-` appears only in allowlisted files | token guard |
 | A6 | every surface gradient uses 160deg | grep guard |
@@ -984,60 +970,33 @@ For every page or component batch:
 | A10 | focus ring is visible on every interactive primitive in both themes | a11y and visual test |
 | A11 | text and controls pass WCAG 2.2 AA across theme × accent | contrast test |
 | A12 | LCP at most 2.5s and CLS at most 0.1 after font load | production measurement |
-| A13 | no `DepthButton` or `InfiniMenu` source, import, or call site remains | repo search |
-| A14 | foundational behavior imports from Mantine rather than a parallel UI library | dependency and import audit |
-| A15 | Tabs use underline/default presentation and never global pills | theme and component test |
-| A16 | shell owns one header-to-content gap; pages add none | layout test |
-| A17 | page content does not duplicate route title or description | render test |
-| A18 | Roster pointer, keyboard, touch, audio, reduced-motion, light, and dark signatures remain | focused regression checklist |
+| A13 | foundational behavior imports from Mantine rather than a parallel UI library | dependency and import audit |
+| A14 | Tabs use underline/default presentation and never global pills | theme and component test |
+| A15 | shell owns one header-to-content gap; pages add none | layout test |
+| A16 | page content does not duplicate route title or description | render test |
+| A17 | Roster pointer, keyboard, touch, audio, reduced-motion, light, and dark signatures remain | focused regression checklist |
 
-### Token and component migration sequence
+### Maintenance and validation
 
-No page redesign should consume target tokens while those tokens are still moving.
+Foundational changes update the source token/theme layer, this document, and the focused guard or component test in one change. Token and theme values have one source; transitional duplicate systems are not permitted.
 
-1. **L1 palette:** add only missing fixed domain values and any approved warm-neutral adjustment.
-2. **L2 semantics:** add `--brand-*`, `--domain-*`, `--edge-top`, and `--shadow-overlay`.
-3. **L3 scale:** add the eight-step type scale, `--font-display`, tabular numeral utility, three radius tokens, and 48px spacing.
-4. **Mantine theme:** map shared component states and remove the global pill Tabs default.
-5. **Guards:** add accent allowlist, elevation/radius inventory, effect boundary, gradient, and title/gap checks.
-6. **Foundation cleanup:** delete `DepthButton`, `InfiniMenu`, and style-only generic wrappers.
-7. **Architecture phases:** migrate shell and pages in the approved plan order, reviewing both themes and both form factors per batch.
-8. **Cleanup:** delete obsolete shadow, radius, class, and wrapper definitions only after repo search proves zero consumers.
+For design-system work, run the relevant focused tests from:
 
-### Release verification — complete (2026-07-29)
+```bash
+pnpm test -- apps/portal/styles/theme-tokens.test.ts \
+  apps/portal/components/architecture-boundaries.test.ts \
+  apps/portal/components/layout/AppShellAccessibility.test.ts \
+  apps/portal/components/shared/SectionHeader.test.tsx \
+  apps/portal/components/shared/ContentFilterToolbar.test.tsx
+```
 
-Phase 8 is release-verified on Node 24.18.0 and pnpm 11.17.0.
-
-- Architecture and visual guards confirm the Mantine-only foundation, removed
-  wrapper/dependency boundaries, token contract, single route title, shell gap,
-  and protected Roster effects.
-- Chrome DevTools route checks cover 375×812, 390×844, 768×1024, 1024×768,
-  1440×900, 1920×1080, and a 720×450 DPR 2 approximation of 200% zoom. The
-  primary routes have one visible `h1`, no page-level horizontal overflow, and
-  a 12px compact / 16px desktop shell-owned content gap.
-- Roster was checked in light and dark themes; pointer, keyboard, touch,
-  reduced-motion, hover audio, profile opening, and the signature card visual
-  contract remain covered by focused regression tests.
-- Production-like Lighthouse scores are 100 for Accessibility, Best Practices,
-  and SEO on both desktop and mobile. The measured desktop LCP is 480ms, CLS is
-  0.00, and the Ctrl+K interaction INP is 84ms. The self-hosted display font is
-  11,476 bytes and is ready before it is consumed.
-- Strict CSP produces no browser violations: HTTP development uses `ws:`,
-  HTTPS production uses `wss:`, and Zod runs in documented jitless mode rather
-  than requiring `unsafe-eval`.
-- The final Impeccable pass was run once. Its actionable layout-transition
-  findings were removed and guarded; remaining advisories map to documented
-  domain components, test fixtures, or the reduced-motion-aware loading splash.
-- Final automation passes: typecheck; lint with zero errors and seven existing
-  size warnings; 171 test files / 945 tests; Portal production build; Worker
-  production dry-run with 184 assets; production configuration check; and
-  secret scan.
+Add `pnpm typecheck` and `pnpm build` when implementation code changes. Use `pnpm release:check` only for a release candidate. Review representative phone, tablet, desktop, and zoomed layouts in both themes and languages; include keyboard, coarse pointer, and reduced-motion behavior when affected.
 
 ### Known risks
 
 1. Forged Material becomes cheap-looking as soon as controls receive gradients, chrome becomes saturated, or multiple noise/effect layers accumulate.
 2. Light mode will fail first if implemented after dark rather than beside it.
 3. The display family has no CJK benefit; without the wider size hierarchy, typography work helps English only.
-4. Splitting action colour from personal accent is a visible behavior change: users on orange, indigo, or violet will see routine actions become fixed teal.
+4. Fixed action teal and user-selectable personal accents have distinct semantics; validation must ensure routine action states never inherit the personal accent.
 5. Root grain may cost paint time on large screens. If measurement shows a regression, remove grain before weakening the structural surface ladder.
-6. Mantine-only can be undermined by style-only wrappers that keep old behavior alive under new names; repo-level removal checks are required.
+6. Style-only wrappers can bypass Mantine keyboard, focus, and overlay behavior; foundational interactions must stay on Mantine primitives.

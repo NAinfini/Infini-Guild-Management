@@ -1,7 +1,7 @@
 import type { APIRequestContext, Locator, Page, Request } from "@playwright/test";
 import { SYSTEM_TEST_CONTENT_MARKER } from "@guild/shared/config/system-test";
 import { expect, readJson, test, type Flow } from "../../support/test";
-import { field } from "../../support/ui";
+import { ensureFiltersOpen, field, selectOption } from "../../support/ui";
 
 /*
  * 公告页左栏：筛选条（搜索 / 状态分段器 / 只看置顶 / 重置）、列表选中、以及地址栏联动。
@@ -99,13 +99,8 @@ function item(page: Page, title: string): Locator {
   return items(page).filter({ has: page.getByText(title, { exact: true }) });
 }
 
-function statusSegment(page: Page, label: string): Locator {
-  return page.locator("label.mantine-SegmentedControl-label").filter({ hasText: new RegExp(`^${label}$`) });
-}
-
-/** Mantine 的 SegmentedControl 把 radio 放在 label 之外，选中态只能从 input 上读。 */
-function statusRadio(page: Page, value: string): Locator {
-  return page.locator(`input[type="radio"][value="${value}"]`);
+function filterToolbar(page: Page): Locator {
+  return page.locator(".announcements-filter-toolbar");
 }
 
 function pinnedToggle(page: Page): Locator {
@@ -147,23 +142,26 @@ test("置顶排在最前：置顶的 Alpha 要压在同批公告上面", async (
   ).toContainText(alpha.title);
 });
 
-test("状态分段器：四个状态档各自成立，All 档不带 status", async ({ page, flow }) => {
+test("状态下拉：四个状态档各自成立，All 档不带 status", async ({ page, flow }) => {
   await searchThisRun(page, flow);
 
+  await ensureFiltersOpen(filterToolbar(page));
   const publishedRequest = nextListRequest(page);
-  await flow.act(() => statusSegment(page, "Published").click(), ANNOUNCEMENTS);
+  await flow.act(() => selectOption(page, "Filter status", "Published"), ANNOUNCEMENTS);
   expect(new URL((await publishedRequest).url()).searchParams.get("status")).toBe("published");
   await expect(item(page, alpha.title)).toBeVisible();
   await expect(items(page), "草稿和归档都该被滤掉").toHaveCount(1);
 
+  await ensureFiltersOpen(filterToolbar(page));
   const draftRequest = nextListRequest(page);
-  await flow.act(() => statusSegment(page, "Draft").click(), ANNOUNCEMENTS);
+  await flow.act(() => selectOption(page, "Filter status", "Draft"), ANNOUNCEMENTS);
   expect(new URL((await draftRequest).url()).searchParams.get("status")).toBe("draft");
   await expect(item(page, beta.title)).toBeVisible();
   await expect(items(page)).toHaveCount(1);
 
+  await ensureFiltersOpen(filterToolbar(page));
   const archivedRequest = nextListRequest(page);
-  await flow.act(() => statusSegment(page, "Archived").click(), ANNOUNCEMENTS);
+  await flow.act(() => selectOption(page, "Filter status", "Archived"), ANNOUNCEMENTS);
   const archivedUrl = new URL((await archivedRequest).url());
   expect(archivedUrl.searchParams.get("status")).toBe("archived");
   expect(archivedUrl.searchParams.get("archived"), "归档档要一并把 archived 打开，否则非管理员看不到这一档")
@@ -172,13 +170,16 @@ test("状态分段器：四个状态档各自成立，All 档不带 status", asy
   await expect(items(page)).toHaveCount(1);
 
   // All 档回到进页面时就取过的组合，命中缓存，所以这里只验结果集和选中态。
-  await statusSegment(page, "All").click();
+  await ensureFiltersOpen(filterToolbar(page));
+  await selectOption(page, "Filter status", "All");
   await expect(items(page), "All 档三条都要回来").toHaveCount(3);
-  await expect(statusRadio(page, "all")).toBeChecked();
+  await ensureFiltersOpen(filterToolbar(page));
+  await expect(field(page, "Filter status")).toHaveValue("All");
 });
 
 test("只看置顶：参数送出去，列表只剩置顶的一条，按钮自报状态", async ({ page, flow }) => {
   await searchThisRun(page, flow);
+  await ensureFiltersOpen(filterToolbar(page));
 
   const toggle = pinnedToggle(page);
   await expect(toggle).toHaveAttribute("aria-pressed", "false");
@@ -195,13 +196,16 @@ test("只看置顶：参数送出去，列表只剩置顶的一条，按钮自�
   ).toHaveAttribute("aria-pressed", "true");
 
   // 撤回到刚取过的组合，命中缓存，只验结果集回到三条。
+  await ensureFiltersOpen(filterToolbar(page));
   await toggle.click();
   await expect(items(page)).toHaveCount(3);
 });
 
 test("重置筛选：空结果时才给按钮，一次清掉三个条件", async ({ page, flow }) => {
   await searchThisRun(page, flow);
-  await flow.act(() => statusSegment(page, "Published").click(), ANNOUNCEMENTS);
+  await ensureFiltersOpen(filterToolbar(page));
+  await flow.act(() => selectOption(page, "Filter status", "Published"), ANNOUNCEMENTS);
+  await ensureFiltersOpen(filterToolbar(page));
   await flow.act(() => pinnedToggle(page).click(), ANNOUNCEMENTS);
   await flow.act(() => searchBox(page).fill(`nobody-${stamp}`), ANNOUNCEMENTS);
   await expect(items(page)).toHaveCount(0);
@@ -216,8 +220,9 @@ test("重置筛选：空结果时才给按钮，一次清掉三个条件", async
   await reset.click();
 
   await expect(searchBox(page), "搜索框要被一起清掉").toHaveValue("");
+  await ensureFiltersOpen(filterToolbar(page));
   await expect(pinnedToggle(page)).toHaveAttribute("aria-pressed", "false");
-  await expect(statusRadio(page, "all")).toBeChecked();
+  await expect(field(page, "Filter status")).toHaveValue("All");
   await expect(
     item(page, "Welcome to Infini Guild"),
     "重置之后要看得到本用例之外的公告，说明筛选真的撤了",

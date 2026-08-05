@@ -32,8 +32,7 @@
 /* ═══════════════════════════════════════════════════════════════
  * L3 · 尺寸标度 —— 不随模式或主色变化
  *
- * 这里合并原先散落在 styles.css / ThemeProvider 的尺寸，并承载新增的统一控件
- * 标度。组件只消费这里的名字，不再各自写一套像素高度。
+ * Components consume this shared scale instead of defining local control sizes.
  * ═══════════════════════════════════════════════════════════════ */
 :root {
   /* 布局 */
@@ -89,18 +88,13 @@
   --space-2xl: 32px;
   --space-3xl: 48px;
 
-  /* 卡片内边距。此前每个调用点各写各的，全站散着 `p="1.2rem"`（19.2px）和
-   * `p="1rem"`（16px）两种字面量，都不在上面的间距标度上。统一收到 16px：
-   * 它已经在标度里，且 19.2 本来就是「1.2rem 顺手一写」的产物，不是设计过的值。 */
+  /* Shared card padding belongs to the spacing scale. */
   --card-padding: var(--space-lg);
 
   /* 控件标度。文本控件统一为 32 / 36 / 52；图标控件保留 22 / 28 / 40
    * 的视觉密度，由独立的 44px 透明命中区补足触控面积。
    *
-   * regular 这一档原先是 44px——那是 iOS 的触控靶面尺寸，被直接当成了视觉
-   * 高度。图标控件那一半本来就做对了（视觉小 + 单独的 --control-hit-area），
-   * 文本控件这一半漏了这个拆分，于是全站 200 个 <Button> 里有 184 个是 44px，
-   * 比 Mantine 原生 sm（36px）高出一档，在标题旁这类紧凑位置明显过重。
+   * Visual control height is independent from the larger transparent touch target.
    *
    * 现在按指针精度分档：细指针取 36px（回到 Mantine 原生 sm），粗指针整档
    * 回到 44px。用 @media (pointer: coarse) 而不是站点自己的

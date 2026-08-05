@@ -199,9 +199,8 @@ export function projectCategoryMove({
   }
 
   /*
-   * 这一层里排第几：数落点前面有多少个同爹的行。被拖那行自己在 overIndex 上，
-   * 数不到；它的子级已经不在 items 里。所以前面这些行的父级都还是拖动前那个，
-   * 直接拿来数就是对的。
+   * Determine the sibling index from rows before the drop target. The moved
+   * row and its detached descendants are excluded from that count.
    */
   let index = 0;
   for (let cursor = 0; cursor < overIndex; cursor += 1) {
@@ -259,9 +258,8 @@ export function applyCategoryMove(
 
   const next = fromForest(forest);
   /*
-   * 原地放手（按一下拖拽柄就松开）也会走到这里，落点算出来跟原来一模一样。
-   * 此时不能返回新数组：fromForest 会把 sort_order 重排成密集下标，
-   * 于是「什么都没动」的一下点击把保存按钮点亮了。结构没变就原样退回。
+   * Preserve reference identity for a no-op drop. Rebuilding the forest would
+   * normalize sort_order and incorrectly mark an unchanged tree as dirty.
    */
   const unchanged = next.every(
     (item, index) => item.id === drafts[index]?.id && item.parent_id === (drafts[index]?.parent_id ?? ""),
@@ -286,7 +284,7 @@ export function getIndentMove(drafts: WikiCategoryDraft[], categoryId: string): 
   return { parentId: parent.draft.id, index: parent.childCount };
 }
 
-/** 键盘路径：把这一行提回顶层，排在原来那个爹的紧后面。已经在顶层就返回 null。 */
+/** Keyboard outdent: move a child immediately after its former root parent. */
 export function getOutdentMove(drafts: WikiCategoryDraft[], categoryId: string): CategoryMove | null {
   const flat = flattenCategoryDrafts(drafts);
   const entry = flat.find((item) => item.draft.id === categoryId);

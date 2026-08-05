@@ -151,6 +151,8 @@ describe("EventCardsView", () => {
     const progress = screen.getByRole("progressbar", { name: "quota.generic.label" });
     expect(progress).toHaveAttribute("aria-valuenow", "3");
     expect(progress).toHaveAttribute("aria-valuemax", "10");
+    expect(document.querySelector(".quota-bar__role-count")).toBeNull();
+    expect(screen.getAllByText("3/10")).toHaveLength(1);
   });
 
   it.each(["light", "dark"] as const)(
@@ -341,6 +343,54 @@ describe("EventCardsView", () => {
     const capacityPill = document.querySelector(".event-card__capacity");
     expect(capacityPill).not.toBeNull();
     expect(capacityPill!.textContent).toContain("9/10");
+    expect(capacityPill).not.toHaveAttribute("data-capacity-state");
+  });
+
+  it("puts the stronger over-capacity signal on the header count", () => {
+    renderCardsView(12);
+
+    const capacityPill = document.querySelector(".event-card__capacity");
+    expect(capacityPill).toHaveAttribute("data-capacity-state", "over");
+    expect(capacityPill).toHaveTextContent("12/10");
+    expect(screen.getAllByText("12/10")).toHaveLength(1);
+
+    const css = readFileSync(
+      resolve(process.cwd(), "apps/portal/components/feature/events/EventCardsView.css"),
+      "utf8",
+    );
+    const overRule = css.match(
+      /\.event-card__capacity\[data-capacity-state="over"\]\s*\{[^}]*\}/,
+    )?.[0] ?? "";
+    expect(overRule).toContain("color: var(--status-danger)");
+    expect(overRule).toContain("background: color-mix");
+  });
+
+  it("shows unlimited capacity as text without adding a second attendance count", () => {
+    renderCardsView(3, { eventOverrides: { capacity: null, class_quotas: [] } });
+
+    expect(document.querySelector(".event-card__capacity")).toHaveTextContent("3/∞");
+    expect(screen.getByText("quota.generic.unlimited")).toBeInTheDocument();
+    expect(screen.queryByRole("progressbar")).not.toBeInTheDocument();
+    expect(document.querySelector(".quota-bar__progress")).toBeNull();
+  });
+
+  it("keeps the 390px header shrinkable and uses a compact mobile density", () => {
+    const css = readFileSync(
+      resolve(process.cwd(), "apps/portal/components/feature/events/EventCardsView.css"),
+      "utf8",
+    );
+    const headerRule = css.match(/\.event-card__header\s*\{[^}]*\}/)?.[0] ?? "";
+    const headerLeftRule = css.match(/\.event-card__header-left\s*\{[^}]*\}/)?.[0] ?? "";
+
+    expect(headerRule).toContain("min-width: 0");
+    expect(headerLeftRule).toContain("flex: 1 1 auto");
+    expect(css).toContain("@media (max-width: 30rem)");
+    expect(css).toMatch(
+      /@media \(max-width: 30rem\)[\s\S]*\.event-card__header\s*\{[^}]*gap:\s*4px/,
+    );
+    expect(css).toMatch(
+      /@media \(max-width: 30rem\)[\s\S]*\.event-card__status-icon\s*\{[^}]*width:\s*18px[^}]*height:\s*18px/,
+    );
   });
 
   it("groups event state indicators separately from the event type header", () => {
@@ -376,6 +426,26 @@ describe("EventCardsView", () => {
     expect(stackRule).toContain("display: flex");
     expect(stackRule).toContain("flex-wrap: nowrap");
     expect(stackRule).not.toContain("grid-template-columns");
+  });
+
+  it("keeps adjacent interactive avatars at least 24px apart", () => {
+    const css = readFileSync(
+      resolve(process.cwd(), "apps/portal/components/shared/MemberAvatarStack.css"),
+      "utf8",
+    );
+    const source = readFileSync(
+      resolve(process.cwd(), "apps/portal/components/shared/MemberAvatarStack.tsx"),
+      "utf8",
+    );
+
+    const avatarSize = Number(source.match(/const AVATAR_SIZE = (\d+);/)?.[1]);
+    const overlapRatio = Number(
+      css.match(/margin-left:\s*calc\(var\(--member-avatar-stack-size\) \* -([0-9.]+)\)/)?.[1],
+    );
+
+    expect(avatarSize).toBeGreaterThan(0);
+    expect(overlapRatio).toBeLessThanOrEqual(0.25);
+    expect(avatarSize * (1 - overlapRatio)).toBeGreaterThanOrEqual(24);
   });
 
   it("allows event card avatar badges to render outside the avatar circle", () => {

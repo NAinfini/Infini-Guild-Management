@@ -22,10 +22,7 @@ export function updateAdminSiteConfig(payload: UpdateSiteConfigPayload): Promise
 }
 
 export async function uploadAdminSiteLogo(file: File): Promise<AdminSiteConfigResponse> {
-  /*
-   * 站点标志和别的上传走同一条转码入口。
-   * 这是全站每一页都要拉的一张图，原来却是唯一一条把原始文件直接塞进 R2 的路径。
-   */
+  // The logo shares the media conversion contract used by other image uploads.
   const converted = await convertFileForUpload(file);
   const formData = new FormData();
   formData.set("file", converted);

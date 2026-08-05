@@ -39,9 +39,7 @@
   opacity: 0.4;
 }
 
-/* 和职业编辑器同一条上限：单行控件不该跟着右栏无限长。原先是 1fr，2000px 的屏上
-   一个放「坦克」两个字的输入框横跨 1350px，标签在最左、光标在最左、右边一千像素
-   全是空的。 */
+/* Bound short single-line fields independently from the editor column width. */
 .admin-class-tags__name-field {
   max-inline-size: 24rem;
 }
@@ -53,7 +51,7 @@
   flex: 0 0 auto;
 }
 
-/* 编辑器主体自己就是一条填满高度的列，不再套外层滚动区（理由写在 tsx 上）。 */
+/* 编辑器主体填满可用高度，成员清单负责溢出滚动。 */
 .admin-class-tags__body {
   display: flex;
   flex-direction: column;
@@ -63,10 +61,7 @@
   overflow: hidden;
 }
 
-/*
- * 成员这一块高度跟着内容走，不再 flex:1 吃满剩余高度：十来个职业占着一块能放二十行
- * 的地方，底下大半屏是空的。flex-shrink 留着——清单长到超过右栏时由清单自己滚。
- */
+/* 成员区按内容取高、允许收缩，并限制阅读宽度。 */
 .admin-class-tags__members {
   display: flex;
   flex-direction: column;

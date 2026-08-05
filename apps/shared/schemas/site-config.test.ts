@@ -36,18 +36,15 @@ describe("site media policy", () => {
     expect(siteMediaPolicySchema.safeParse(policy).success).toBe(false);
   });
 
-  it("fills new logo and storage limits for legacy production policy JSON", () => {
-    const legacy = structuredClone(DEFAULT_SITE_MEDIA_POLICY) as {
+  it("requires every media limit in the persisted policy", () => {
+    const incomplete = structuredClone(DEFAULT_SITE_MEDIA_POLICY) as {
       max_file_size_bytes: Record<string, number>;
       quotas: typeof DEFAULT_SITE_MEDIA_POLICY.quotas;
     };
-    delete legacy.max_file_size_bytes.site_logo;
-    delete legacy.max_file_size_bytes.storage_image;
+    delete incomplete.max_file_size_bytes.site_logo;
+    delete incomplete.max_file_size_bytes.storage_image;
 
-    const parsed = siteMediaPolicySchema.parse(legacy);
-
-    expect(parsed.max_file_size_bytes.site_logo).toBe(LIMITS.media.maxFileSize.siteLogo);
-    expect(parsed.max_file_size_bytes.storage_image).toBe(LIMITS.media.maxFileSize.storageImage);
+    expect(siteMediaPolicySchema.safeParse(incomplete).success).toBe(false);
   });
 
   it("caps configurable quotas and content policies at hard application limits", () => {

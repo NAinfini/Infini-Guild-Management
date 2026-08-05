@@ -158,8 +158,7 @@ function parseValue(value: Record<string, unknown> | null): DayBlocks {
        * 结束时间落回本地时会跨过午夜：UTC+8 的「20:00–24:00」存成 12:00–16:00 UTC，
        * 读回来结束是次日 00:00，时钟上写作 "00:00"。当天的一段时间不可能结束得
        * 比开始还早，所以这里的 00:00 只可能是当天的 24:00。不还原的话
-       * normalizeBlocks 会因为 end <= start 把整条丢掉——原来的网格编辑器就是这么
-       * 悄悄吃掉每一段到午夜为止的时间的。
+       * normalizeBlocks 会把 end <= start 当成无效范围，因此午夜要恢复成 24:00。
        */
       const endMinutes = timeToMinutes(end);
       blocks.push({
@@ -184,17 +183,10 @@ function toPayload(days: DayBlocks): AvailabilityPayload {
   return { timezone, days: payloadDays };
 }
 
-/**
- * 一周在线时间：每天一行时段条，外加几个一键预设。
- *
- * 取代原先 7 天 × 48 格的拖涂网格。那个网格有两处硬伤：触屏上拖不动（手势被页面
- * 滚动占着，只能一格一格点，最坏 336 次），以及它把落库的 {start_utc, end_utc}
- * 拆成 48 个布尔、保存时再拼回去，中间这层转换纯属白饶。时段条和落库结构一一
- * 对应，而且一眼读得出「周三 20:00–24:00」。
- *
- * 不支持跨零点的单条时段（如 20:00–02:00）：数据是按天存的，跨零点只能拆成两天
- * 两条，存下去再读回来也是两条，界面上却显示成一条，就是骗人。要熬夜就在第二天
- * 补一条 00:00–03:00，「深夜档」预设做的正是这件事。
+/*
+ * Weekly availability maps one-to-one to stored time ranges. A range cannot
+ * cross midnight because persistence is partitioned by day; split it across
+ * adjacent days instead.
  */
 export function AvailabilityEditor({ value, onChange }: AvailabilityEditorProps) {
   const { t } = useTranslation("profile");
@@ -383,8 +375,6 @@ export function AvailabilityEditor({ value, onChange }: AvailabilityEditorProps)
 
             <Menu position="bottom-end" withArrow>
               <Menu.Target>
-                {/* 原先是一段 11px 的灰字，末尾还带个「…」，看着像被截断的文本
-                    而不是能点开的菜单。加上边框和箭头，说明它是个下拉。 */}
                 <button
                   type="button"
                   className="availability-day__copy"

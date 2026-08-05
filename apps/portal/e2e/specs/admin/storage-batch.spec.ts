@@ -187,13 +187,13 @@ test("复核抽屉：领取人必须显式选择，逐项移除和清空都会�
    * 所以初始状态必须是：字段空着、原因写在字段上、提交按钮按不动。
    */
   await expect(field(drawer, "Member")).toHaveValue("");
-  await expect(drawer.getByText("Choose the member this batch belongs to.", { exact: true }))
+  await expect(drawer.getByText("Select the member associated with this batch before submitting.", { exact: true }))
     .toBeVisible();
   await expect(drawer.getByRole("button", { name: "Submit 2 items", exact: true })).toBeDisabled();
 
   // 选了人之后才解锁提交。
   await selectOption(drawer, "Member", "member_01");
-  await expect(drawer.getByText("Choose the member this batch belongs to.", { exact: true }))
+  await expect(drawer.getByText("Select the member associated with this batch before submitting.", { exact: true }))
     .toHaveCount(0);
   await expect(drawer.getByRole("button", { name: "Submit 2 items", exact: true })).toBeEnabled();
 

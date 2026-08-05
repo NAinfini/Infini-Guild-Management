@@ -18,12 +18,14 @@ const SEEDED_SITE_ROW = {
   }),
   mediaPolicyJson: JSON.stringify({
     max_file_size_bytes: {
+      site_logo: 2097152,
       profile_image: 5242880,
       profile_audio: 20971520,
       announcement_image: 5242880,
       wiki_image: 5242880,
       event_image: 5242880,
       gallery_image: 10485760,
+      storage_image: 5242880,
     },
     quotas: {
       profile: 10,

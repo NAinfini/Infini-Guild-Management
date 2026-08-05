@@ -1,0 +1,54 @@
+.native-date-input {
+  --native-date-input-height: var(--control-height-regular);
+
+  position: relative;
+  display: grid;
+  min-width: 0;
+}
+
+.native-date-input[data-size="xs"] {
+  --native-date-input-height: var(--control-height-compact);
+}
+
+.native-date-input[data-size="lg"],
+.native-date-input[data-size="xl"] {
+  --native-date-input-height: var(--control-height-large);
+}
+
+.native-date-input__field {
+  width: 100%;
+  min-width: 0;
+}
+
+.native-date-input__field input[type="date"] {
+  color: transparent;
+  caret-color: transparent;
+  -webkit-text-fill-color: transparent;
+}
+
+.native-date-input__field input[type="date"]::-webkit-datetime-edit,
+.native-date-input__field input[type="date"]::-webkit-calendar-picker-indicator {
+  opacity: 0;
+}
+
+.native-date-input__display {
+  position: absolute;
+  z-index: 1;
+  inset-inline: var(--space-md);
+  inset-block-end: 0;
+  display: flex;
+  align-items: center;
+  height: var(--native-date-input-height);
+  min-width: 0;
+  overflow: hidden;
+  color: var(--text-primary);
+  font-size: var(--text-body);
+  line-height: var(--lh-tight);
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  pointer-events: none;
+}
+
+.native-date-input[data-empty] .native-date-input__display {
+  color: var(--text-muted);
+}

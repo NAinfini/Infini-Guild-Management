@@ -17,7 +17,7 @@ test("库存全流程：存入加库存、取出减库存，UI 与服务端必�
 
   await page.goto("/storage");
 
-  // ---- 新建物品 ----
+  // 新建物品
   await page.getByRole("button", { name: "New Item", exact: true }).first().click();
   const editor = topDialog(page);
   await editor.getByLabel("Item name", { exact: true }).fill(itemName);
@@ -28,7 +28,6 @@ test("库存全流程：存入加库存、取出减库存，UI 与服务端必�
   ) as { id: string; name: string; quantity: number };
 
   expect(created.name).toBe(itemName);
-  // 新物品必须从 0 起步，否则后面的加减断言就没有基准。
   expect(created.quantity).toBe(0);
 
   /*
@@ -45,7 +44,7 @@ test("库存全流程：存入加库存、取出减库存，UI 与服务端必�
   await expect(card).toHaveCount(1);
   expect(await readInteger(stock, "新建后的库存")).toBe(0);
 
-  // ---- 存入 10 ----
+  // 存入 10
   await card.getByRole("button", { name: "Deposit", exact: true }).click();
   const depositModal = topDialog(page);
   await depositModal.getByLabel("Quantity", { exact: true }).fill("10");
@@ -60,10 +59,9 @@ test("库存全流程：存入加库存、取出减库存，UI 与服务端必�
     "存入 10 之后服务端库存必须是 10",
   ).toBe(10);
 
-  // ---- 取出 3 ----
+  // 取出 3
   await card.getByRole("button", { name: "Withdraw", exact: true }).click();
   const withdrawModal = topDialog(page);
-  // 出库必须指定领取人，否则提交按钮是禁用的——这本身就是该控件的约束。
   await selectOption(withdrawModal, "Member", "member_01");
   await withdrawModal.getByLabel("Quantity", { exact: true }).fill("3");
   await flow.click(
@@ -77,7 +75,7 @@ test("库存全流程：存入加库存、取出减库存，UI 与服务端必�
     "取出 3 之后服务端库存必须是 7",
   ).toBe(7);
 
-  // ---- 流水必须两条都在，且方向正确 ----
+  // 核对服务端流水
   const ledger = await readJson(
     await api.get(`/api/storage/transactions?page=1&limit=20&item_id=${created.id}`),
     "回读流水",

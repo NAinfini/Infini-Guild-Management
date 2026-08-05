@@ -1,7 +1,7 @@
 import type { ClassCatalogItem, ClassVectorIconId } from "@guild/shared";
 import { create } from "zustand";
 
-const LEGACY_COLOR = "#8C94A3";
+const FALLBACK_COLOR = "#8C94A3";
 
 type ClassCatalogState = {
   items: ClassCatalogItem[];
@@ -13,8 +13,6 @@ export const useClassCatalogStore = create<ClassCatalogState>((set) => ({
   setItems: (items) => set({ items: [...items].sort(compareClassCatalogItems) }),
 }));
 
-export type ResolvedClassCatalogItem = ClassCatalogItem & { legacy: boolean };
-
 export function compareClassCatalogItems(
   left: Pick<ClassCatalogItem, "sort_order" | "label">,
   right: Pick<ClassCatalogItem, "sort_order" | "label">,
@@ -25,31 +23,33 @@ export function compareClassCatalogItems(
 export function resolveClassCatalogItem(
   id: string | null | undefined,
   items: readonly ClassCatalogItem[],
-): ResolvedClassCatalogItem {
+): ClassCatalogItem {
   const existing = id ? items.find((item) => item.id === id) : undefined;
-  if (existing) return { ...existing, legacy: false };
+  if (existing) return existing;
   const fallbackId = id || "unknown";
   return {
     id: fallbackId,
     label: id || "-",
-    color: LEGACY_COLOR,
+    color: FALLBACK_COLOR,
     icon_type: "vector",
     vector_icon: "sword" satisfies ClassVectorIconId,
     icon_key: null,
     sort_order: 100_000,
     created_at: "",
     updated_at: "",
-    legacy: true,
   };
 }
 
+// Catalog entries may be deleted while profiles and historical rosters still
+// reference their stable IDs. Keep those values visible without treating them
+// as selectable catalog entries for new records.
 export function buildClassOptions(
   items: readonly ClassCatalogItem[],
-  legacyIds: readonly string[] = [],
+  preservedIds: readonly string[] = [],
 ): Array<{ value: string; label: string }> {
   const options = items.map((item) => ({ value: item.id, label: item.label }));
   const known = new Set(items.map((item) => item.id));
-  for (const id of legacyIds) {
+  for (const id of preservedIds) {
     if (id && !known.has(id)) {
       known.add(id);
       options.push({ value: id, label: id });
