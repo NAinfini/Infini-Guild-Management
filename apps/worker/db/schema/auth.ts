@@ -41,9 +41,9 @@ export const users = sqliteTable(
   "users",
   {
     id: text("id").primaryKey(),
-    // The physical column is `COLLATE NOCASE` (see 0000_core_schema.sql); the
-    // Drizzle sqlite builder has no collation option, so the uniqueness here is
-    // only the case-sensitive half. Query with helpers.ts#usernameEquals.
+    // Drizzle's SQLite builder has no collation option, so this UNIQUE is
+    // case-sensitive. The versioned production lineage adds the 0001
+    // ux_users_username_nocase expression index; query with usernameEquals.
     username: text("username").notNull().unique(),
     role: text("role").notNull().default("member").references(() => roles.id),
     isActive: integer("is_active", { mode: "boolean" }).notNull().default(true),
@@ -98,8 +98,9 @@ export const inviteLinks = sqliteTable(
  * Keyed on the attempted username string, NOT on users.id, and deliberately so:
  * rows are created for usernames that do not exist too, otherwise the lockout
  * response would only ever appear for real accounts and would hand an attacker
- * a username-enumeration oracle. The physical column is `COLLATE NOCASE` (see
- * 0000_core_schema.sql) to match the users table.
+ * a username-enumeration oracle. The versioned production lineage creates this
+ * table in 0001 with `username COLLATE NOCASE`, matching usernameEquals lookup
+ * semantics and the users NOCASE expression index from the same migration.
  *
  * Growth is bounded by pruning stale rows — see services/login-lockout.ts.
  */

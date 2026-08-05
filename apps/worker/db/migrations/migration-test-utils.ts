@@ -15,8 +15,19 @@ export const migrationSql = migrationFiles.map((file) => ({
 
 export const finalSchemaSql = migrationSql.map(({ sql }) => sql).join("\n");
 
+export function applyMigration(db: DatabaseSync, sql: string): void {
+  db.exec("BEGIN;");
+  try {
+    db.exec(sql);
+    db.exec("COMMIT;");
+  } catch (error) {
+    db.exec("ROLLBACK;");
+    throw error;
+  }
+}
+
 export function applyMigrations(db: DatabaseSync): void {
-  for (const migration of migrationSql) db.exec(migration.sql);
+  for (const migration of migrationSql) applyMigration(db, migration.sql);
 }
 
 export function createMigratedDatabase(): DatabaseSync {

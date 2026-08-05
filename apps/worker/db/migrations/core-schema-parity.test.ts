@@ -48,8 +48,11 @@ function checkExpression(table: SQLiteTable, name: string): string {
 }
 
 describe("core schema Drizzle/SQL parity", () => {
-  it("boots from the single pre-release core schema", () => {
-    expect(migrationFiles).toEqual(["0000_core_schema.sql"]);
+  it("boots from the ordered production migration sequence", () => {
+    expect(migrationFiles).toEqual([
+      "0000_core_schema.sql",
+      "0001_release_schema_upgrade.sql",
+    ]);
   });
 
   it("keeps every runtime CHECK aligned with its named Drizzle check", () => {
@@ -147,8 +150,8 @@ describe("core schema Drizzle/SQL parity", () => {
       foreignKey.reference().columns.some((column) => column.name === "item_id"),
     );
     expect(fk?.onDelete).toBe("restrict");
-    expect(tableBlock("storage_transactions")).toContain(
-      "item_id TEXT NOT NULL REFERENCES storage_items(id) ON DELETE RESTRICT",
+    expect(tableBlock("storage_transactions")).toMatch(
+      /item_id TEXT NOT NULL REFERENCES "?storage_items"?\(id\) ON DELETE RESTRICT/,
     );
   });
 

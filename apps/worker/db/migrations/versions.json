@@ -1,8 +1,9 @@
 {
-  "mode": "pre-release-core",
-  "current_version": "0000",
+  "mode": "incremental",
+  "current_version": "0001",
   "baseline_schema": "0000_core_schema.sql",
   "migrations": [
-    "0000_core_schema.sql"
+    "0000_core_schema.sql",
+    "0001_release_schema_upgrade.sql"
   ]
 }

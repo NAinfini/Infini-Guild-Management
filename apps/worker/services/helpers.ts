@@ -9,8 +9,9 @@ export function escapeLikePattern(value: string): string {
  * Case-insensitive username match. Usernames are case-insensitive identifiers,
  * otherwise `Admin` and `admin` can coexist as two accounts and impersonate
  * each other. Every lookup and uniqueness check must use this, and the UNIQUE
- * index in `0000_core_schema.sql` uses the same `NOCASE` collation so the
- * database rejects duplicates even if a code path forgets.
+ * `ux_users_username_nocase` expression index added by migration 0001 uses the
+ * same `NOCASE` collation so the versioned production database rejects
+ * duplicates even if a code path forgets.
  */
 export function usernameEquals(value: string): SQL<unknown> {
   return sql`${users.username} = ${value} COLLATE NOCASE`;
