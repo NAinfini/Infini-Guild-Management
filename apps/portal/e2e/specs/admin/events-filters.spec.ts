@@ -5,7 +5,7 @@ import {
   clearButton,
   dialogTitled,
   ensureFiltersOpen,
-  selectOption,
+  field,
   selectSegmentedControlOption,
 } from "../../support/ui";
 
@@ -105,7 +105,10 @@ test("搜索框：命中项留下，其余滤掉，条件写进 URL", async ({ p
 test("类型下拉：只留下该类型，清空后两个都回来", async ({ page, flow }) => {
   await ensureFiltersOpen(page);
   await flow.act(
-    () => selectOption(page, "Filter events by type", "Other"),
+    async () => {
+      await field(page, "Filter events by type").click();
+      await page.getByRole("option", { name: "Other", exact: true }).click();
+    },
     EVENTS_REQUEST,
   );
   await expect(card(page, beta.title)).toHaveCount(1);
@@ -116,6 +119,7 @@ test("类型下拉：只留下该类型，清空后两个都回来", async ({ pa
    * 这条键几秒前刚填过，直接命中缓存不再发请求。所以只断言结果回到全量。
    */
   await ensureFiltersOpen(page);
+  await expect(field(page, "Filter events by type")).toHaveValue("Other");
   await clearButton(page, "Filter events by type").click();
   await expect(card(page, alpha.title)).toHaveCount(1);
   await expect(card(page, beta.title)).toHaveCount(1);

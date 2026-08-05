@@ -229,6 +229,7 @@ test("重置筛选：一次清掉搜索、类型和两个日期，列表回到�
   await reset.click();
 
   await expect(searchBox(page)).toHaveValue("");
+  await ensureFiltersOpen(filterToolbar(page));
   await expect(field(page, "Filter gallery by type")).toHaveValue("");
   await expect(dateFrom(page)).toHaveValue("");
   await expect(dateTo(page)).toHaveValue("");
