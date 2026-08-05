@@ -1,7 +1,7 @@
 import type { APIRequestContext, Locator, Page, Request } from "@playwright/test";
 import { SYSTEM_TEST_CONTENT_MARKER } from "@guild/shared/config/system-test";
 import { expect, readJson, test, type Flow } from "../../support/test";
-import { ensureFiltersOpen, field, selectOption } from "../../support/ui";
+import { ensureFiltersOpen, field, selectFilterOption } from "../../support/ui";
 
 /*
  * Wiki 页顶部的筛选条：搜索、分类多选、状态分段器、置顶开关、重置。
@@ -185,16 +185,20 @@ test("状态下拉：Active / Archived / All 三档各自成立", async ({ page,
   await searchThisRun(page, flow);
   await expect(item(page, gamma.title), "默认 Active 档不该显示归档文章").toHaveCount(0);
 
-  await ensureFiltersOpen(filterToolbar(page));
   const archivedRequest = nextArticlesRequest(page);
-  await flow.act(() => selectOption(page, "Article status", "Archived"), ARTICLES);
+  await flow.act(
+    () => selectFilterOption(page, filterToolbar(page), "Article status", "Archived"),
+    ARTICLES,
+  );
   expect(new URL((await archivedRequest).url()).searchParams.get("archived")).toBe("true");
   await expect(item(page, gamma.title)).toBeVisible();
   await expect(items(page), "未归档的两篇不该出现在 Archived 档").toHaveCount(1);
 
-  await ensureFiltersOpen(filterToolbar(page));
   const allRequest = nextArticlesRequest(page);
-  await flow.act(() => selectOption(page, "Article status", "All"), ARTICLES);
+  await flow.act(
+    () => selectFilterOption(page, filterToolbar(page), "Article status", "All"),
+    ARTICLES,
+  );
   expect(
     new URL((await allRequest).url()).searchParams.has("archived"),
     "All 档必须干脆不带 archived，带上任何一个值都会漏掉另一半",
@@ -228,8 +232,10 @@ test("置顶开关：按下只剩置顶文章，按钮状态跟着翻转", async
 
 test("重置筛选：一次清掉四个条件，列表回到全量", async ({ page, flow }) => {
   await searchThisRun(page, flow);
-  await ensureFiltersOpen(filterToolbar(page));
-  await flow.act(() => selectOption(page, "Article status", "All"), ARTICLES);
+  await flow.act(
+    () => selectFilterOption(page, filterToolbar(page), "Article status", "All"),
+    ARTICLES,
+  );
   await ensureFiltersOpen(filterToolbar(page));
   await flow.act(() => pinnedToggle(page, false).click(), ARTICLES);
   await ensureFiltersOpen(filterToolbar(page));

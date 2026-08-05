@@ -83,6 +83,24 @@ export async function ensureFiltersOpen(scope: Locator | Page): Promise<void> {
   await expect(toggle).toHaveAttribute("aria-expanded", "true");
 }
 
+/**
+ * 选中响应式筛选栏里的 Mantine Select 选项。
+ * 紧凑布局的选项 portal 在面板外，点击后可能让 Popover 关闭并卸载输入框；
+ * 必须按筛选栏作用域重开面板，再重新定位输入框确认值，不能把元素消失当成选中成功。
+ */
+export async function selectFilterOption(
+  page: Page,
+  toolbarScope: Locator | Page,
+  label: string,
+  optionText: string,
+): Promise<void> {
+  await ensureFiltersOpen(toolbarScope);
+  await field(page, label).click();
+  await page.getByRole("option", { name: optionText, exact: true }).click();
+  await ensureFiltersOpen(toolbarScope);
+  await expect(field(page, label)).toHaveValue(optionText);
+}
+
 /** 按 radio 语义和可访问名称取得 SegmentedControl 的选项，不依赖 Mantine 内部类名。 */
 export function segmentedControlOption(scope: Locator | Page, label: string): Locator {
   return scope.getByRole("radio", { name: label, exact: true });

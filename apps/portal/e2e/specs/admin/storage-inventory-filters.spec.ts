@@ -1,7 +1,7 @@
 import type { Page } from "@playwright/test";
 import { SYSTEM_TEST_CONTENT_MARKER } from "@guild/shared/config/system-test";
 import { expect, readJson, test } from "../../support/test";
-import { ensureFiltersOpen, field, selectOption } from "../../support/ui";
+import { ensureFiltersOpen, field, selectFilterOption } from "../../support/ui";
 
 /*
  * 库存面板上的四个筛选控件：分类导轨、移动端分类下拉、搜索框、库存下拉。
@@ -97,8 +97,7 @@ function card(page: Page, sample: Sample) {
 }
 
 async function pickStock(page: Page, option: string) {
-  await ensureFiltersOpen(page.locator(".storage-command"));
-  await selectOption(page, "Stock", option);
+  await selectFilterOption(page, page.locator(".storage-command"), "Stock", option);
 }
 
 test("搜索框按名称过滤：命中项留下，其余全部滤掉", async ({ page, flow }) => {
@@ -222,15 +221,24 @@ test("移动端分类下拉与导轨等效：窄屏下导轨隐藏，下拉照�
   await expect(mobileSelect).toBeVisible();
 
   await flow.act(
-    () => selectOption(page, "Filter by category", withdrawSample.categoryName),
+    () => selectFilterOption(
+      page,
+      page.locator(".storage-command"),
+      "Filter by category",
+      withdrawSample.categoryName,
+    ),
     ITEMS_REQUEST,
   );
   await expect(card(page, depositSample), "选到别的分类后样本必须消失").toHaveCount(0);
   await expect(card(page, withdrawSample)).toHaveCount(1);
 
-  await ensureFiltersOpen(page.locator(".storage-command"));
   await flow.act(
-    () => selectOption(page, "Filter by category", depositSample.categoryName),
+    () => selectFilterOption(
+      page,
+      page.locator(".storage-command"),
+      "Filter by category",
+      depositSample.categoryName,
+    ),
     ITEMS_REQUEST,
   );
   await expect(card(page, depositSample), "选回样本所在分类，样本必须回来").toHaveCount(1);

@@ -1,7 +1,7 @@
 import type { APIRequestContext, Locator, Page, Request } from "@playwright/test";
 import { SYSTEM_TEST_CONTENT_MARKER } from "@guild/shared/config/system-test";
 import { expect, readJson, test, type Flow } from "../../support/test";
-import { ensureFiltersOpen, field, selectOption } from "../../support/ui";
+import { ensureFiltersOpen, field, selectFilterOption } from "../../support/ui";
 
 /*
  * 公告页左栏：筛选条（搜索 / 状态分段器 / 只看置顶 / 重置）、列表选中、以及地址栏联动。
@@ -145,23 +145,29 @@ test("置顶排在最前：置顶的 Alpha 要压在同批公告上面", async (
 test("状态下拉：四个状态档各自成立，All 档不带 status", async ({ page, flow }) => {
   await searchThisRun(page, flow);
 
-  await ensureFiltersOpen(filterToolbar(page));
   const publishedRequest = nextListRequest(page);
-  await flow.act(() => selectOption(page, "Filter status", "Published"), ANNOUNCEMENTS);
+  await flow.act(
+    () => selectFilterOption(page, filterToolbar(page), "Filter status", "Published"),
+    ANNOUNCEMENTS,
+  );
   expect(new URL((await publishedRequest).url()).searchParams.get("status")).toBe("published");
   await expect(item(page, alpha.title)).toBeVisible();
   await expect(items(page), "草稿和归档都该被滤掉").toHaveCount(1);
 
-  await ensureFiltersOpen(filterToolbar(page));
   const draftRequest = nextListRequest(page);
-  await flow.act(() => selectOption(page, "Filter status", "Draft"), ANNOUNCEMENTS);
+  await flow.act(
+    () => selectFilterOption(page, filterToolbar(page), "Filter status", "Draft"),
+    ANNOUNCEMENTS,
+  );
   expect(new URL((await draftRequest).url()).searchParams.get("status")).toBe("draft");
   await expect(item(page, beta.title)).toBeVisible();
   await expect(items(page)).toHaveCount(1);
 
-  await ensureFiltersOpen(filterToolbar(page));
   const archivedRequest = nextListRequest(page);
-  await flow.act(() => selectOption(page, "Filter status", "Archived"), ANNOUNCEMENTS);
+  await flow.act(
+    () => selectFilterOption(page, filterToolbar(page), "Filter status", "Archived"),
+    ANNOUNCEMENTS,
+  );
   const archivedUrl = new URL((await archivedRequest).url());
   expect(archivedUrl.searchParams.get("status")).toBe("archived");
   expect(archivedUrl.searchParams.get("archived"), "归档档要一并把 archived 打开，否则非管理员看不到这一档")
@@ -170,11 +176,8 @@ test("状态下拉：四个状态档各自成立，All 档不带 status", async 
   await expect(items(page)).toHaveCount(1);
 
   // All 档回到进页面时就取过的组合，命中缓存，所以这里只验结果集和选中态。
-  await ensureFiltersOpen(filterToolbar(page));
-  await selectOption(page, "Filter status", "All");
+  await selectFilterOption(page, filterToolbar(page), "Filter status", "All");
   await expect(items(page), "All 档三条都要回来").toHaveCount(3);
-  await ensureFiltersOpen(filterToolbar(page));
-  await expect(field(page, "Filter status")).toHaveValue("All");
 });
 
 test("只看置顶：参数送出去，列表只剩置顶的一条，按钮自报状态", async ({ page, flow }) => {
@@ -203,8 +206,10 @@ test("只看置顶：参数送出去，列表只剩置顶的一条，按钮自�
 
 test("重置筛选：空结果时才给按钮，一次清掉三个条件", async ({ page, flow }) => {
   await searchThisRun(page, flow);
-  await ensureFiltersOpen(filterToolbar(page));
-  await flow.act(() => selectOption(page, "Filter status", "Published"), ANNOUNCEMENTS);
+  await flow.act(
+    () => selectFilterOption(page, filterToolbar(page), "Filter status", "Published"),
+    ANNOUNCEMENTS,
+  );
   await ensureFiltersOpen(filterToolbar(page));
   await flow.act(() => pinnedToggle(page).click(), ANNOUNCEMENTS);
   await flow.act(() => searchBox(page).fill(`nobody-${stamp}`), ANNOUNCEMENTS);

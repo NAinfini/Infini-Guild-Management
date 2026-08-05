@@ -6,7 +6,7 @@ import {
   clearButton,
   ensureFiltersOpen,
   field,
-  selectOption,
+  selectFilterOption,
   selectSegmentedControlOption,
 } from "../../support/ui";
 
@@ -159,10 +159,12 @@ test("搜索框：条件按归一化后的形态送到服务端，只留下命�
 
 test("类型下拉：只留下该类型，清除按钮把条件撤回", async ({ page, flow }) => {
   await searchThisRun(page, flow);
-  await ensureFiltersOpen(filterToolbar(page));
 
   const request = nextGalleryRequest(page);
-  await flow.act(() => selectOption(page, "Filter gallery by type", "Video"), GALLERY);
+  await flow.act(
+    () => selectFilterOption(page, filterToolbar(page), "Filter gallery by type", "Video"),
+    GALLERY,
+  );
 
   expect(new URL((await request).url()).searchParams.get("type")).toBe("video");
   await expect(items(page)).toHaveCount(2);
@@ -217,8 +219,10 @@ test("起止日期：两个条件分别送到服务端，清除按钮一次清�
 
 test("重置筛选：一次清掉搜索、类型和两个日期，列表回到全量", async ({ page, flow }) => {
   await searchThisRun(page, flow);
-  await ensureFiltersOpen(filterToolbar(page));
-  await flow.act(() => selectOption(page, "Filter gallery by type", "Video"), GALLERY);
+  await flow.act(
+    () => selectFilterOption(page, filterToolbar(page), "Filter gallery by type", "Video"),
+    GALLERY,
+  );
   await ensureFiltersOpen(filterToolbar(page));
   await flow.act(() => dateFrom(page).fill(dayOffset(1)), GALLERY);
   await expect(items(page), "起点定在明天，结果集应当是空的").toHaveCount(0);
