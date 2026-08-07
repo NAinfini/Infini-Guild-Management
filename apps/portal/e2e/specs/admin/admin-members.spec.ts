@@ -154,10 +154,16 @@ test("状态筛选：三段各自过滤可见行，而统计块按搜索结果�
 });
 
 test("分页：超过一页才出现分页条，末页行数对得上，改成每页 50 之后分页条整条消失", async ({ page, api }) => {
-  /* 默认每页 20，所以要先把总人数顶到 21 以上，分页条才会渲染出来。 */
+  /*
+   * 默认每页 20，总人数要先顶到 21 以上分页条才渲染得出来。
+   *
+   * 末页行数还得落在个位数：行是虚拟化的（文件头第 1 条），末页只要超过渲染
+   * 窗口，数出来的就是窗口大小而不是数据行数——之前这条用例撞上过末页 18 行
+   * 而窗口只挂了 15 行。所以补人一直补到末页余数是个位数为止。
+   */
   const PAGE_SIZE = 20;
   let total = await serverUserTotal(api);
-  while (total <= PAGE_SIZE) {
+  while (total <= PAGE_SIZE || total % PAGE_SIZE === 0 || total % PAGE_SIZE > 9) {
     await createThrowawayMember(api, uniqueTag("page"));
     total += 1;
   }
