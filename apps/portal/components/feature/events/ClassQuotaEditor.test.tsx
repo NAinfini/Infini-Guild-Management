@@ -138,7 +138,8 @@ describe("ClassQuotaEditor", () => {
 
     await user.click(screen.getByRole("button", { name: "quota.editor.pickClasses" }));
 
-    expect(screen.getByRole("checkbox", { name: "Class 1", hidden: true })).toBeEnabled();
+    /* 同上：下拉是过渡里挂进来的，第一次取必须等，之后同一批节点才能同步取。 */
+    expect(await screen.findByRole("checkbox", { name: "Class 1", hidden: true })).toBeEnabled();
     const extraClass = screen.getByRole("checkbox", {
       name: `Class ${MAX_CLASSES + 1}`,
       hidden: true,
