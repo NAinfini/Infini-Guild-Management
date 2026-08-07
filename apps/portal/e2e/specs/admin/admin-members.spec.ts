@@ -136,15 +136,15 @@ test("状态筛选：三段各自过滤可见行，而统计块按搜索结果�
   expect(await readStats(page)).toEqual(stats);
 
   await expectNoApiCalls(page, async () => {
-    await statusFilter(page, "active").click();
+    await statusFilter(page, "Enabled").click();
     await expect(memberRows(page)).toHaveCount(1);
   });
-  await expect(statusFilterInput(page, "active")).toBeChecked();
+  await expect(statusFilterInput(page, "Enabled")).toBeChecked();
   await expect(memberRow(page, running.username)).toBeVisible();
   expect(await readStats(page), "统计块的口径是搜索结果，状态筛选只是视图").toEqual(stats);
 
-  await statusFilter(page, "inactive").click();
-  await expect(statusFilterInput(page, "inactive")).toBeChecked();
+  await statusFilter(page, "Disabled").click();
+  await expect(statusFilterInput(page, "Disabled")).toBeChecked();
   await expect(memberRows(page)).toHaveCount(1);
   await expect(memberRow(page, paused.username)).toBeVisible();
 

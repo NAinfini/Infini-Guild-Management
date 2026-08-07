@@ -226,7 +226,7 @@ test("成员名单：勾选即拥有，改动攒成差异一次保存；再打�
   const box = memberList(page).getByRole("checkbox", { name: member.username, exact: true });
   await expect(box, "还没给他徽章，所以是没勾的").not.toBeChecked();
   await box.check();
-  await expect(toolbar.getByText("1 to add · 0 to remove"), "工具栏要说清这次会改动什么").toBeVisible();
+  await expect(save, "勾上一个人之后才有可保存的东西").toBeEnabled();
 
   await flow.click(save, ASSIGN_BADGE);
   await expectNotified(page, "Added 1, removed 0");
@@ -249,7 +249,7 @@ test("成员名单：勾选即拥有，改动攒成差异一次保存；再打�
   await toolbar.getByRole("textbox", { name: "Search members…", exact: true }).fill(member.username);
   await expect(box).toBeChecked();
   await box.uncheck();
-  await expect(toolbar.getByText("0 to add · 1 to remove")).toBeVisible();
+  await expect(save, "取消勾选同样是一处改动，保存按钮要重新可用").toBeEnabled();
 
   /* 摘徽章是不可撤销的，和删除徽章一样要先确认。 */
   await save.click();

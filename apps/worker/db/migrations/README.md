@@ -4,18 +4,17 @@ This directory is the runtime source for Cloudflare D1 migrations.
 
 ## Production sequence
 
-- `0000_core_schema.sql` is the immutable schema baseline captured from the
-  production schema-only export. It intentionally retains the production-only
-  `game_data`, `onboarding_config`, and `member_onboarding_state` tables.
-- `0001_release_schema_upgrade.sql` validates the legacy data before any table
-  replacement, then upgrades the baseline to the current runtime schema with
-  data-preserving shadow-table rebuilds.
-- `0002_dynamic_role_authority.sql` removes the historical built-in role flag,
-  adds an immutable invite-to-role assignment, and backfills existing invites
-  to the `member` seed without changing their codes, limits, counts, or dates.
-- The three production-only tables are not renamed, altered, updated, or
-  deleted by `0001`. Media reference backfills only insert references that
-  can be derived exactly from D1 rows; migrations never read or write R2.
+- `0000_core_schema.sql` is the immutable schema baseline: the squashed end
+  state of the historical chain (core schema → release schema upgrade →
+  dynamic role authority). It retains the production-only `game_data`,
+  `onboarding_config`, and `member_onboarding_state` tables.
+- Seed rows leave `created_at` / `updated_at` to the column default, so every
+  database records its own creation time rather than the day this file was
+  generated.
+
+Production is unaffected by the squash: `d1_migrations` still holds all three
+historical filenames, `0000_core_schema.sql` among them, so `migrations apply`
+finds nothing to run. A fresh database reaches the identical schema in one step.
 
 Every future schema change must use the next monotonically numbered SQL file.
 Never edit a migration after it has been applied to production.
@@ -37,10 +36,10 @@ pnpm exec wrangler d1 migrations apply guild-portal-db --local --config apps/wor
 ```
 
 Migration tests discover `NNNN_*.sql` files and apply them in filename order.
-`release-schema-upgrade.test.ts` and `role-authority-upgrade.test.ts` separately verify the production-shaped
-upgrade path, preflight failures, protected-table preservation, normalized
-relations, final constraints, foreign-key integrity, and a fresh `0000` to
-`0002` build.
+`core-schema-parity.test.ts`, `core-schema-constraints.test.ts`,
+`core-schema-indexes.test.ts`, and `core-schema-query-plans.test.ts` verify the
+resulting database against the Drizzle schema, the declared constraints, the
+declared indexes, and the query plans the runtime depends on.
 
 D1 has no automatic rollback. Back up production and test the exact incremental
 path locally before any remote migration is explicitly authorized.

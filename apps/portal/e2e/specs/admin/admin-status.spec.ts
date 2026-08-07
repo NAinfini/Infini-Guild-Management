@@ -19,9 +19,20 @@ import { expect, readJson, test } from "../../support/test";
 
 type StatusData = { db: string; r2: string; ws: string; crons: string };
 
+/*
+ * 健康面板按服务在界面上的说法定位，不用 D1/R2/WS 这些内部代号——
+ * 面板已经改成对使用者说话的名字，用例跟着这一层走才验得到人真正看到的东西。
+ */
+const SERVICE_LABEL = {
+  db: "Member and event data",
+  r2: "Media storage",
+  ws: "Live updates",
+  crons: "Scheduled jobs",
+} as const;
+
 function statusLabel(value: string): string {
   if (value === "ok") return "Verified";
-  if (value === "configured") return "Configured";
+  if (value === "configured") return "Configured only";
   return value.toUpperCase();
 }
 
@@ -71,10 +82,10 @@ test("健康面板：四个服务的状态和延迟都如实来自接口，不�
   const status = await serverStatus(api);
   await openStatus(page);
 
-  await expect(healthTile(page, "D1")).toContainText(statusLabel(status.db));
-  await expect(healthTile(page, "R2")).toContainText(statusLabel(status.r2));
-  await expect(healthTile(page, "WS")).toContainText(statusLabel(status.ws));
-  await expect(healthTile(page, "Crons")).toContainText(statusLabel(status.crons));
+  await expect(healthTile(page, SERVICE_LABEL.db)).toContainText(statusLabel(status.db));
+  await expect(healthTile(page, SERVICE_LABEL.r2)).toContainText(statusLabel(status.r2));
+  await expect(healthTile(page, SERVICE_LABEL.ws)).toContainText(statusLabel(status.ws));
+  await expect(healthTile(page, SERVICE_LABEL.crons)).toContainText(statusLabel(status.crons));
 
   /* 总览只看这四项服务；接口回包里还有延迟、时间戳之类的字段，不能一并拿去比。 */
   const values = [status.db, status.r2, status.ws, status.crons];
@@ -110,7 +121,7 @@ test("控制台默认折起：三块都收着，健康面板照常在；展开�
   await openStatus(page);
 
   /* 一进来最该看到的是四个服务的绿灯，而不是两屏控制台。 */
-  await expect(healthTile(page, "D1")).toBeVisible();
+  await expect(healthTile(page, SERVICE_LABEL.db)).toBeVisible();
   const healthLogCard = page.locator(".admin-status-card").filter({ has: page.locator(".admin-status-toggle") });
   for (const scope of [healthLogCard, apiConsole(page), debugConsole(page)]) {
     await expect(scope.locator(".admin-status-toggle")).toHaveAttribute("aria-expanded", "false");

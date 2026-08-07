@@ -188,9 +188,10 @@ test("行菜单复制这一行：剪贴板里拿到的是这一行的五个字�
   /*
    * 格式如实记录：用户名、职业、战力、角色、状态，逗号分隔，末尾一个换行。
    * 新建的成员没有职业、战力为 0，所以第二段是空的。
-   * 角色这一段应当复制 D1 中的展示名，不能泄漏内部 id。
+   * 角色和状态这两段复制的都是界面上看到的那个词——角色是 D1 里的展示名而不是内部 id，
+   * 状态是账号启用状态的文案而不是 is_active 的字面值。
    */
-  expect(copied).toBe(`${member.username}, , 0, ${member.role.name}, active\n`);
+  expect(copied).toBe(`${member.username}, , 0, ${member.role.name}, Enabled\n`);
 });
 
 test("成员详情弹窗：只改战力时只保存资料，不重复提交未变化的角色和状态", async ({ page, api, flow }) => {

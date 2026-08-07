@@ -24,6 +24,9 @@ const CREATE_CATEGORY = { method: "POST", path: /^\/api\/wiki\/categories$/ } as
 const SAVE_CATEGORIES = { method: "PATCH", path: /^\/api\/wiki\/categories\/batch$/ } as const;
 const DELETE_CATEGORY = { method: "DELETE", path: /^\/api\/wiki\/categories\/[^/]+$/ } as const;
 
+/* 新建不再要求先填名字，服务端拿到的就是这个默认名（i18n wiki.categoryEditor.defaultName）。 */
+const DEFAULT_CATEGORY_NAME = "New Category";
+
 type Category = { id: string; name: string; sort_order: number; parent_id: string | null };
 
 let stamp: number;
@@ -97,18 +100,16 @@ async function openCategoryEditor(page: Page): Promise<void> {
   await expect(categoryEditorTitle(page)).toBeVisible();
 }
 
-function nameField(page: Page): Locator {
-  return field(page, "Wiki category name");
+/** 每行的名字输入框；卡里只有这一种「Category name」字段。 */
+function draftNames(page: Page): Locator {
+  return field(page, "Category name");
 }
 
-/*
- * 每行的名字输入框。
- * 新建用的那个输入框有同一个可见标题「Category name」，只是另外挂了
- * aria-label「Wiki category name」；getByLabel 两种名字都认，会把它一起选进来，
- * 于是行下标整体错一位，且和父级下拉、删除按钮的下标对不上。按有没有 aria-label 排掉它。
- */
-function draftNames(page: Page): Locator {
-  return field(page, "Category name").and(page.locator("input:not([aria-label])"));
+/** 读出草稿列表里当前所有的名字，按行序。 */
+async function draftNameValues(page: Page): Promise<string[]> {
+  return await draftNames(page).evaluateAll(
+    (nodes) => nodes.map((node) => (node as HTMLInputElement).value),
+  );
 }
 
 /** 行尾的「设为上一个分类的子分类」按钮。 */
@@ -184,24 +185,23 @@ test("打开与关闭：铅笔进、Close 出，没改动时不问也不写", as
   await expect(categoryEditorTitle(page)).toHaveCount(0);
 });
 
-test("新建分类：名字空着按钮禁用，填上之后建出来并进列表和树图", async ({ page, flow, api }) => {
+test("新建分类：一键建出一条默认名的顶层分类，落库并当场进草稿列表", async ({ page, flow, api }) => {
   await openCategoryEditor(page);
 
+  /* 卡头那个「新建」不再依赖输入框：建的时候直接给默认名，改名走行内输入框那条路。 */
+  const before = await draftNameValues(page);
+  expect(before, "默认名不能已经被占用，否则下面按名字找行会找到别人那条").not.toContain(DEFAULT_CATEGORY_NAME);
+
   const create = page.getByRole("button", { name: "Create Category", exact: true });
-  await expect(create, "名字空着时不该能建").toBeDisabled();
-
-  const name = `${SYSTEM_TEST_CONTENT_MARKER} CatC ${stamp}`;
-  await nameField(page).fill(name);
-  await expect(create).toBeEnabled();
-
   const created = await flow.click(create, CREATE_CATEGORY) as Category;
   extraCategoryIds.push(created.id);
 
-  expect(created.name, "送出去的名字要原样落库").toBe(name);
+  expect(created.name, "建出来的就是那个默认名").toBe(DEFAULT_CATEGORY_NAME);
   expect((await readCategories(api)).some((category) => category.id === created.id)).toBe(true);
-  await expect(nameField(page), "建完输入框要清空，否则一不留神会连建两条").toHaveValue("");
-  const createdRow = await draftRowIndex(page, name);
-  await expect(draftNames(page).nth(createdRow)).toHaveValue(name);
+
+  await expect(draftNames(page), "新建的分类要当场落进草稿列表").toHaveCount(before.length + 1);
+  const createdRow = await draftRowIndex(page, DEFAULT_CATEGORY_NAME);
+  await expect(draftNames(page).nth(createdRow)).toHaveValue(DEFAULT_CATEGORY_NAME);
   await expect(
     outdentButtons(page).nth(createdRow),
     "新建的分类落在顶层，没有更外面一层可提",

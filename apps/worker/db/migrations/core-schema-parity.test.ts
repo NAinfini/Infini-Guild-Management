@@ -49,11 +49,7 @@ function checkExpression(table: SQLiteTable, name: string): string {
 
 describe("core schema Drizzle/SQL parity", () => {
   it("boots from the ordered production migration sequence", () => {
-    expect(migrationFiles).toEqual([
-      "0000_core_schema.sql",
-      "0001_release_schema_upgrade.sql",
-      "0002_dynamic_role_authority.sql",
-    ]);
+    expect(migrationFiles).toEqual(["0000_core_schema.sql"]);
   });
 
   it("keeps every runtime CHECK aligned with its named Drizzle check", () => {
