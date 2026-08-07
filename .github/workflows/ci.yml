@@ -84,8 +84,11 @@ jobs:
       - run: pnpm test:e2e
         env:
           # 运行器是 4 vCPU，每个槽位要养一个 workerd 加一个 chromium。
-          # 开满 4 槽会互相抢核，把超时压成随机红灯——那种红比慢更贵。
-          E2E_SLOTS: '2'
+          # 两槽仍然过订：连续三轮各红一条不同的用例，且都是资源症状而非功能
+          # 缺陷——一次本地 D1 读耗了 36 秒最后仍返回 200（trace 见
+          # guild-war-history 那条），另两次是成片的 "A network error occurred"。
+          # 单槽把进程数减半，整份 e2e 约 25 分钟，仍在本 job 的 45 分钟以内。
+          E2E_SLOTS: '1'
           WRANGLER_SEND_METRICS: 'false'
           # 临时取证开关：每条用例打一行「浏览器/回读通道各烧掉多少限流配额」。
           # 就是靠这行数据发现 CI 上的读配额是所有用例共用一个桶的
