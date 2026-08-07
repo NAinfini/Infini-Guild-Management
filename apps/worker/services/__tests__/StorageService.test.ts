@@ -133,11 +133,11 @@ function compileWhere(whereMock: ReturnType<typeof vi.fn>) {
 }
 
 function manager() {
-  return { id: "admin-1", roleId: "admin", role: "admin", permissions: new Set<Permission>(["admin.storage.manage"]) };
+  return { id: "admin-1", roleId: "admin", role: "admin", roleName: "Admin", roleColor: "red", roleLevel: 999, permissions: new Set<Permission>(["admin.storage.manage"]) };
 }
 
 function member() {
-  return { id: "member-1", roleId: "member", role: "member", permissions: new Set<Permission>() };
+  return { id: "member-1", roleId: "member", role: "member", roleName: "Member", roleColor: "gray", roleLevel: 100, permissions: new Set<Permission>() };
 }
 
 describe("StorageService.applyTransaction", () => {

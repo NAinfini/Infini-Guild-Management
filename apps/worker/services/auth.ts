@@ -8,7 +8,7 @@ import { drizzle } from "drizzle-orm/d1";
 import type { Context } from "hono";
 import { deleteCookie, getCookie, setCookie } from "hono/cookie";
 import { nanoid } from "nanoid";
-import { rolePermissions, sessions, users } from "../db/schema";
+import { rolePermissions, roles, sessions, users } from "../db/schema";
 import type { Bindings } from "../index";
 import { logger } from "../utils/logger";
 
@@ -22,6 +22,9 @@ export type SessionUser = {
   id: string;
   roleId: RoleId;
   role: string;
+  roleName: string;
+  roleColor: string | null;
+  roleLevel: number;
   permissions: ReadonlySet<Permission>;
 };
 
@@ -234,7 +237,7 @@ async function resolveSessionUncached(c: Context): Promise<ResolvedSession | nul
   const hashedToken = await hashSessionToken(rawToken);
   const db = getDb(c);
 
-  // Single query: JOIN sessions → users → role_permissions.
+  // Single query: JOIN sessions → users → roles → role_permissions.
   // Returns one row per permission (or one row with null permission if the role
   // has no entries). All session/user columns are identical across rows.
   const rows = await db
@@ -244,6 +247,9 @@ async function resolveSessionUncached(c: Context): Promise<ResolvedSession | nul
       sessionCreatedAt: sessions.createdAt,
       userId: users.id,
       roleId: users.role,
+      roleName: roles.name,
+      roleColor: roles.color,
+      roleLevel: roles.level,
       isActive: users.isActive,
       deletedAt: users.deletedAt,
       permission: rolePermissions.permission,
@@ -251,6 +257,7 @@ async function resolveSessionUncached(c: Context): Promise<ResolvedSession | nul
     })
     .from(sessions)
     .innerJoin(users, eq(sessions.userId, users.id))
+    .innerJoin(roles, eq(users.role, roles.id))
     .leftJoin(rolePermissions, eq(rolePermissions.roleId, users.role))
     .where(eq(sessions.id, hashedToken));
 
@@ -278,6 +285,9 @@ async function resolveSessionUncached(c: Context): Promise<ResolvedSession | nul
     id: first.userId,
     roleId: first.roleId,
     role: first.roleId,
+    roleName: first.roleName,
+    roleColor: first.roleColor,
+    roleLevel: first.roleLevel,
     permissions: buildPermissionSet(rows.map((r) => (r.permission !== null ? { permission: r.permission, granted: r.granted ?? false } : null))),
   };
 

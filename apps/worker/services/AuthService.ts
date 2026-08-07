@@ -3,6 +3,7 @@ import {
   memberProfileSchema,
   permissionSetToRecord,
   userSchema,
+  verifyInviteResponseSchema,
   type Permission,
 } from "@guild/shared";
 import { SYSTEM_TEST_USERNAME_PREFIX, isReservedSystemTestUsername } from "@guild/shared/config/system-test";
@@ -11,7 +12,7 @@ import type { PushEntityType, PushHint } from "@guild/shared/constants/push-hint
 import { eq, sql } from "drizzle-orm";
 import type { DrizzleD1Database } from "drizzle-orm/d1";
 import { nanoid } from "nanoid";
-import { memberProfiles, rolePermissions, userAuthPassword, users } from "../db/schema";
+import { memberProfiles, rolePermissions, roles, userAuthPassword, users } from "../db/schema";
 import { ok, err, type ServiceResult } from "./result";
 import { parseStringArray, parseRecord, usernameEquals } from "./helpers";
 import { clearLoginFailures, readLockout, recordLoginFailure } from "./login-lockout";
@@ -20,7 +21,7 @@ import { loadMemberClasses, loadMemberImages } from "./ordered-relations";
 
 type DrizzleDb = DrizzleD1Database<Record<string, never>>;
 
-type UserRow = { id: string; username: string; role: string; isActive: boolean; deletedAt: string | null; createdAt: string; updatedAt: string };
+type UserRow = { id: string; username: string; role: string; roleName: string; roleColor: string | null; roleLevel: number; isActive: boolean; deletedAt: string | null; createdAt: string; updatedAt: string };
 type ProfileRow = { id: string; userId: string; power: number; classes: string[]; titleHtml: string | null; bio: string | null; avatarKey: string | null; images: string[]; audioKey: string | null; videoUrls: string; availability: string | null; vacationStart: string | null; vacationEnd: string | null; notes: string | null; createdAt: string; updatedAt: string };
 
 export type AuthServiceDeps = {
@@ -40,6 +41,9 @@ function toUserPayload(user: UserRow, extra?: { permissions: Record<Permission, 
     id: user.id,
     username: user.username,
     role: user.role,
+    role_name: user.roleName,
+    role_color: user.roleColor,
+    role_level: user.roleLevel,
     permissions: extra?.permissions ?? Object.fromEntries(PERMISSIONS.map((p) => [p, false])),
     is_active: user.isActive,
     deleted_at: user.deletedAt,
@@ -67,7 +71,7 @@ function toProfilePayload(profile: ProfileRow) {
   return result.data;
 }
 
-const USER_COLS = { id: users.id, username: users.username, role: users.role, isActive: users.isActive, deletedAt: users.deletedAt, createdAt: users.createdAt, updatedAt: users.updatedAt } as const;
+const USER_COLS = { id: users.id, username: users.username, role: users.role, roleName: roles.name, roleColor: roles.color, roleLevel: roles.level, isActive: users.isActive, deletedAt: users.deletedAt, createdAt: users.createdAt, updatedAt: users.updatedAt } as const;
 // vacation_start/vacation_end are derived from the absence history (current-or-next absence).
 const PROFILE_COLS = { id: memberProfiles.id, userId: memberProfiles.userId, power: memberProfiles.power, titleHtml: memberProfiles.titleHtml, bio: memberProfiles.bio, avatarKey: memberProfiles.avatarKey, audioKey: memberProfiles.audioKey, videoUrls: memberProfiles.videoUrls, availability: memberProfiles.availability, vacationStart: sql<string | null>`(SELECT ma.start_date FROM member_absences ma WHERE ma.user_id = ${memberProfiles.userId} AND ma.end_date >= date('now') ORDER BY ma.start_date ASC LIMIT 1)`.as("derived_vacation_start"), vacationEnd: sql<string | null>`(SELECT ma.end_date FROM member_absences ma WHERE ma.user_id = ${memberProfiles.userId} AND ma.end_date >= date('now') ORDER BY ma.start_date ASC LIMIT 1)`.as("derived_vacation_end"), notes: memberProfiles.notes, createdAt: memberProfiles.createdAt, updatedAt: memberProfiles.updatedAt } as const;
 
@@ -169,7 +173,7 @@ export class AuthService {
       );
     }
 
-    const account = (await this.db.select({ ...USER_COLS, passwordHash: userAuthPassword.passwordHash, salt: userAuthPassword.salt }).from(users).innerJoin(userAuthPassword, eq(users.id, userAuthPassword.userId)).where(usernameEquals(username)).limit(1))[0];
+    const account = (await this.db.select({ ...USER_COLS, passwordHash: userAuthPassword.passwordHash, salt: userAuthPassword.salt }).from(users).innerJoin(roles, eq(users.role, roles.id)).innerJoin(userAuthPassword, eq(users.id, userAuthPassword.userId)).where(usernameEquals(username)).limit(1))[0];
     if (!account || !account.isActive || account.deletedAt !== null) {
       // Run password derivation with a dummy salt to prevent timing-based username enumeration
       await this.deps.verifyPassword(
@@ -207,13 +211,17 @@ export class AuthService {
     return ok({ available: !existing });
   }
 
-  async verifyInvite(code: string): Promise<ServiceResult<{ valid: boolean }>> {
+  async verifyInvite(code: string): Promise<ServiceResult<{ valid: false } | { valid: true; role_id: string; role_name: string; role_color: string | null; role_level: number }>> {
     if (!code) return ok({ valid: false });
-    const nowIso = new Date().toISOString();
+    const nowIso = this.now().toISOString();
     const row = (await this.deps.rawDb.prepare(
-      `SELECT id FROM invite_links WHERE code = ? AND revoked_at IS NULL AND used_count < max_uses AND (expires_at IS NULL OR expires_at > ?)`,
-    ).bind(code, nowIso).all()).results[0];
-    return ok({ valid: Boolean(row) });
+      `SELECT invite_links.role_id, roles.name AS role_name, roles.color AS role_color, roles.level AS role_level
+       FROM invite_links
+       INNER JOIN roles ON roles.id = invite_links.role_id
+       WHERE code = ? AND revoked_at IS NULL AND used_count < max_uses AND (expires_at IS NULL OR expires_at > ?)`,
+    ).bind(code, nowIso).all()).results[0] as Record<string, unknown> | undefined;
+    if (!row) return ok({ valid: false });
+    return ok(verifyInviteResponseSchema.parse({ valid: true, ...row }));
   }
 
   async register(inviteCode: string, username: string, password: string): Promise<ServiceResult<{ user: unknown; profile: unknown }>> {
@@ -221,7 +229,7 @@ export class AuthService {
       return err("VALIDATION_ERROR", `Usernames beginning with "${SYSTEM_TEST_USERNAME_PREFIX}" are reserved`);
     }
 
-    const nowIso = new Date().toISOString();
+    const nowIso = this.now().toISOString();
     const existing = (await this.db.select({ id: users.id }).from(users).where(usernameEquals(username)).limit(1))[0];
     if (existing) return err("CONFLICT", "Username already taken");
 
@@ -230,36 +238,43 @@ export class AuthService {
     const passwordRecord = await this.deps.createPasswordHash(password);
     const rawDb = this.deps.rawDb;
 
-    const redeemedInvite = await rawDb.prepare(
-      `UPDATE invite_links SET used_count = used_count + 1 WHERE code = ? AND revoked_at IS NULL AND used_count < max_uses AND (expires_at IS NULL OR expires_at > ?) RETURNING id`,
-    ).bind(inviteCode, nowIso).first<{ id: string }>();
-    if (!redeemedInvite) return err("CONFLICT", "Invite link is no longer available");
-
+    let batchResults: D1Result<unknown>[];
     try {
-      await rawDb.batch([
-        rawDb.prepare(`INSERT INTO users (id, username, role, is_active) VALUES (?, ?, 'member', 1)`).bind(userId, username),
+      batchResults = await rawDb.batch([
+        rawDb.prepare(
+          `UPDATE invite_links SET used_count = used_count + 1
+           WHERE code = ? AND revoked_at IS NULL AND used_count < max_uses
+             AND (expires_at IS NULL OR expires_at > ?)
+           RETURNING id, role_id`,
+        ).bind(inviteCode, nowIso),
+        rawDb.prepare(
+          `INSERT INTO users (id, username, role, is_active)
+           VALUES (?, ?, (SELECT role_id FROM invite_links WHERE code = ? AND changes() = 1), 1)`,
+        ).bind(userId, username, inviteCode),
         rawDb.prepare(`INSERT INTO user_auth_password (user_id, password_hash, salt) VALUES (?, ?, ?)`).bind(userId, passwordRecord.passwordHash, passwordRecord.salt),
         rawDb.prepare(`INSERT INTO member_profiles (id, user_id, power, video_urls) VALUES (?, ?, 0, '[]')`).bind(profileId, userId),
       ]);
     } catch (error) {
-      await rawDb.prepare(`UPDATE invite_links SET used_count = used_count - 1 WHERE code = ? AND used_count > 0`).bind(inviteCode).run();
       if (error instanceof Error && error.message.includes("UNIQUE constraint failed: users.username")) return err("CONFLICT", "Username already taken");
+      if (error instanceof Error && error.message.includes("NOT NULL constraint failed: users.role")) return err("CONFLICT", "Invite link is no longer available");
       throw error;
     }
+    const redeemedInvite = (batchResults[0]?.results?.[0] ?? null) as { id: string; role_id: string } | null;
+    if (!redeemedInvite) return err("SERVER_ERROR", "Invite redemption did not return an assignment");
 
-    const createdUser = (await this.db.select(USER_COLS).from(users).where(eq(users.id, userId)).limit(1))[0];
+    const createdUser = (await this.db.select(USER_COLS).from(users).innerJoin(roles, eq(users.role, roles.id)).where(eq(users.id, userId)).limit(1))[0];
     if (!createdUser) return err("SERVER_ERROR", "Failed to load created user");
     const createdProfile = await this.getProfileByUserId(userId);
     if (!createdProfile) return err("SERVER_ERROR", "Failed to load created member profile");
     await this.deps.createSession(userId);
     await this.deps.writeAuditLog({ entityType: "user", action: "register", actorId: userId, entityId: userId, diffTitle: username, detailText: JSON.stringify({ invite_id: redeemedInvite.id }) });
     await this.deps.publishEntityChanged?.({ entityType: "member_profile", entityId: userId, hint: "member_joined", displayName: createdUser.username });
-    const extra = await this.resolveUserPermissions("member");
+    const extra = await this.resolveUserPermissions(createdUser.role);
     return ok({ user: toUserPayload(createdUser, extra), profile: toProfilePayload(createdProfile) });
   }
 
   async getMe(userId: string, sessionId: string): Promise<ServiceResult<{ user: unknown; profile: unknown }>> {
-    const currentUser = (await this.db.select(USER_COLS).from(users).where(eq(users.id, userId)).limit(1))[0];
+    const currentUser = (await this.db.select(USER_COLS).from(users).innerJoin(roles, eq(users.role, roles.id)).where(eq(users.id, userId)).limit(1))[0];
     if (!currentUser || !currentUser.isActive || currentUser.deletedAt !== null) {
       logger.warn("Session invalid: user inactive or deleted", { userId });
       await this.deps.destroySessionById(sessionId);

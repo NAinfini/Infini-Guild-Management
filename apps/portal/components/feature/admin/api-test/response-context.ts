@@ -127,6 +127,12 @@ export function captureContextFromResponse(
     const profile = isRecord(payload.profile) ? payload.profile : null;
     next.meId = readString(user?.id) ?? next.meId;
     next.meUsername = readString(user?.username) ?? next.meUsername;
+    next.meRoleLevel = typeof user?.role_level === "number" ? user.role_level : next.meRoleLevel;
+    if (isRecord(user?.permissions)) {
+      next.mePermissions = Object.fromEntries(
+        Object.entries(user.permissions).filter((entry): entry is [string, boolean] => typeof entry[1] === "boolean"),
+      );
+    }
     const profileImages = Array.isArray(profile?.images) ? profile.images : [];
     const firstImage = profileImages.find((item): item is string => typeof item === "string");
     const profileImageKey = firstImage ?? null;
@@ -432,10 +438,18 @@ export function captureContextFromResponse(
 
   if (endpoint.path === "/api/admin/roles") {
     if (Array.isArray(payload)) {
-      const customRole = payload.find(
-        (item): item is Record<string, unknown> => isRecord(item) && item.is_builtin === false,
-      );
-      next.adminRoleId = readString(customRole?.id) ?? next.adminRoleId;
+      const assignableRole = payload
+        .filter((item): item is Record<string, unknown> => isRecord(item))
+        .filter((role) => {
+          if (typeof role.level !== "number" || role.level >= (next.meRoleLevel ?? 0) || !isRecord(role.permissions)) {
+            return false;
+          }
+          return Object.entries(role.permissions).every(
+            ([permission, granted]) => granted !== true || next.mePermissions?.[permission] === true,
+          );
+        })
+        .sort((left, right) => Number(right.level) - Number(left.level))[0];
+      next.adminRoleId = readString(assignableRole?.id) ?? next.adminRoleId;
     } else {
       const id = readString(payload.id);
       next.adminRoleId = id ?? next.adminRoleId;

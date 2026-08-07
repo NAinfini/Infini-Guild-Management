@@ -140,7 +140,8 @@ export function useRosterPageController() {
     const filteredRows = displayRows
       .filter((entry) => {
         if (!debouncedSearch) return true;
-        return entry.user.username.toLowerCase().includes(debouncedSearch);
+        return entry.user.username.toLowerCase().includes(debouncedSearch)
+          || entry.user.role_name.toLowerCase().includes(debouncedSearch);
       })
       .filter((entry) => {
         if (classFilter.length === 0) return true;

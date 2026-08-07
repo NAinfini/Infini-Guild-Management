@@ -58,8 +58,10 @@ function createProfileUploadSelect(profile: Record<string, unknown>) {
     .fn()
     .mockReturnValueOnce({
       from: vi.fn(() => ({
-        where: vi.fn(() => ({
-          limit: vi.fn().mockResolvedValue([{ role: "member", deletedAt: null, username: "Alpha" }]),
+        innerJoin: vi.fn(() => ({
+          where: vi.fn(() => ({
+            limit: vi.fn().mockResolvedValue([{ roleLevel: 100, deletedAt: null, username: "Alpha" }]),
+          })),
         })),
       })),
     })
@@ -125,7 +127,8 @@ describe("UserService", () => {
     const orderBy = vi.fn(() => ({ limit }));
     const where = vi.fn(() => ({ orderBy }));
     const leftJoin = vi.fn(() => ({ where }));
-    const from = vi.fn(() => ({ leftJoin }));
+    const innerJoin = vi.fn(() => ({ leftJoin }));
+    const from = vi.fn(() => ({ innerJoin }));
     const select = vi.fn(() => ({ from }));
     const service = new UserService({ select } as never, createDeps());
 
@@ -150,7 +153,8 @@ describe("UserService", () => {
       return { orderBy };
     });
     const leftJoin = vi.fn(() => ({ where }));
-    const from = vi.fn(() => ({ leftJoin }));
+    const innerJoin = vi.fn(() => ({ leftJoin }));
+    const from = vi.fn(() => ({ innerJoin }));
     const select = vi.fn(() => ({ from }));
     const service = new UserService({ select } as never, createDeps());
 
@@ -173,6 +177,9 @@ describe("UserService", () => {
       userId: "u-1",
       username: "Alpha",
       role: "member",
+      roleName: "Member",
+      roleColor: "gray",
+      roleLevel: 100,
       isActive: true,
       deletedAt: null,
       userCreatedAt: "2026-01-01T00:00:00.000Z",
@@ -196,7 +203,8 @@ describe("UserService", () => {
     const orderBy = vi.fn(() => ({ limit }));
     const where = vi.fn(() => ({ orderBy }));
     const leftJoin = vi.fn(() => ({ where }));
-    const from = vi.fn(() => ({ leftJoin }));
+    const innerJoin = vi.fn(() => ({ leftJoin }));
+    const from = vi.fn(() => ({ innerJoin }));
     const deps = createDeps({
       classes: { "u-1": ["warrior", "healer"] },
       images: { "u-1": ["members/u-1/images/one.webp", "members/u-1/images/two.webp"] },
@@ -214,6 +222,12 @@ describe("UserService", () => {
     expect(result.ok).toBe(true);
     if (!result.ok) return;
     expect(result.data.data[0]).toMatchObject({
+      user: {
+        role: "member",
+        role_name: "Member",
+        role_color: "gray",
+        role_level: 100,
+      },
       profile: {
         classes: ["warrior", "healer"],
         images: ["members/u-1/images/one.webp", "members/u-1/images/two.webp"],
@@ -228,8 +242,10 @@ describe("UserService", () => {
       .fn()
       .mockReturnValueOnce({
         from: vi.fn(() => ({
-          where: vi.fn(() => ({
-            limit: vi.fn().mockResolvedValue([{ role: "member", deletedAt: null, username: "Alpha" }]),
+          innerJoin: vi.fn(() => ({
+            where: vi.fn(() => ({
+              limit: vi.fn().mockResolvedValue([{ roleLevel: 100, deletedAt: null, username: "Alpha" }]),
+            })),
           })),
         })),
       })
@@ -280,7 +296,7 @@ describe("UserService", () => {
         imageKeys: string[],
       ): Promise<{ ok: true; data: { ok: true; deleted: number } }>;
     }).deleteProfileImages(
-      { id: "u-1", role: "member", permissions: new Set() },
+      { id: "u-1", role: "member", permissions: new Set() } as never,
       "u-1",
       ["members/u-1/images/one.webp", "members/u-1/images/two.webp"],
     );
@@ -314,8 +330,10 @@ describe("UserService", () => {
       .fn()
       .mockReturnValueOnce({
         from: vi.fn(() => ({
-          where: vi.fn(() => ({
-            limit: vi.fn().mockResolvedValue([{ role: "member", deletedAt: null, username: "Alpha" }]),
+          innerJoin: vi.fn(() => ({
+            where: vi.fn(() => ({
+              limit: vi.fn().mockResolvedValue([{ roleLevel: 100, deletedAt: null, username: "Alpha" }]),
+            })),
           })),
         })),
       })
@@ -332,7 +350,7 @@ describe("UserService", () => {
     const file = new File([new Uint8Array([1, 2, 3])], "bad.webp", { type: "image/webp" });
 
     const result = await service.uploadProfileImages(
-      { id: "u-1", role: "member", permissions: new Set() },
+      { id: "u-1", role: "member", permissions: new Set() } as never,
       "u-1",
       [file],
     );
@@ -355,7 +373,7 @@ describe("UserService", () => {
     } as never, deps);
 
     const result = await service.uploadProfileImages(
-      { id: "u-1", role: "member", permissions: new Set() },
+      { id: "u-1", role: "member", permissions: new Set() } as never,
       "u-1",
       [
         new File([new Uint8Array([1])], "one.webp", { type: "image/webp" }),
@@ -378,7 +396,7 @@ describe("UserService", () => {
     } as never, deps);
 
     await expect(service.uploadProfileImages(
-      { id: "u-1", role: "member", permissions: new Set() },
+      { id: "u-1", role: "member", permissions: new Set() } as never,
       "u-1",
       [new File([new Uint8Array([1])], "new.webp", { type: "image/webp" })],
     )).rejects.toBe(failure);
@@ -413,7 +431,7 @@ describe("UserService", () => {
     } as never, deps);
 
     await expect(service[method](
-      { id: "u-1", role: "member", permissions: new Set() },
+      { id: "u-1", role: "member", permissions: new Set() } as never,
       "u-1",
       file,
     )).rejects.toBe(failure);
@@ -427,8 +445,10 @@ describe("UserService", () => {
       .fn()
       .mockReturnValueOnce({
         from: vi.fn(() => ({
-          where: vi.fn(() => ({
-            limit: vi.fn().mockResolvedValue([{ role: "member", deletedAt: null, username: "Alpha" }]),
+          innerJoin: vi.fn(() => ({
+            where: vi.fn(() => ({
+              limit: vi.fn().mockResolvedValue([{ roleLevel: 100, deletedAt: null, username: "Alpha" }]),
+            })),
           })),
         })),
       });
@@ -453,7 +473,7 @@ describe("UserService", () => {
     const file = new File([new Uint8Array(5)], "large.webp", { type: "image/webp" });
 
     const result = await service.uploadProfileImages(
-      { id: "u-1", role: "member", permissions: new Set() },
+      { id: "u-1", role: "member", permissions: new Set() } as never,
       "u-1",
       [file],
     );
@@ -468,8 +488,10 @@ describe("UserService", () => {
       .fn()
       .mockReturnValueOnce({
         from: vi.fn(() => ({
-          where: vi.fn(() => ({
-            limit: vi.fn().mockResolvedValue([{ role: "member", deletedAt: null, username: "Alpha" }]),
+          innerJoin: vi.fn(() => ({
+            where: vi.fn(() => ({
+              limit: vi.fn().mockResolvedValue([{ roleLevel: 100, deletedAt: null, username: "Alpha" }]),
+            })),
           })),
         })),
       })

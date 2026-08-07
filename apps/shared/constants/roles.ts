@@ -1,5 +1,3 @@
-export const BUILTIN_ROLES = ["admin", "moderator", "member"] as const;
-
 export type Role = string;
 export type RoleId = string;
 
@@ -48,14 +46,6 @@ export const PERMISSIONS = [
 ] as const;
 
 export type Permission = (typeof PERMISSIONS)[number];
-
-export const HIGH_RISK_PERMISSIONS: readonly Permission[] = [
-  "admin.users.password",
-  "admin.users.role",
-  "admin.users.delete",
-  "admin.roles.manage",
-  "admin.audit.export",
-] as const;
 
 export function hasAnyPermission(granted: ReadonlySet<Permission>, required: readonly Permission[]): boolean {
   return required.some((p) => granted.has(p));

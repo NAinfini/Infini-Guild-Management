@@ -3,6 +3,8 @@ import type { AdminRole } from "@guild/shared";
 import { MantineProvider } from "@mantine/core";
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import type { ColumnDef } from "@tanstack/react-table";
 import { describe, expect, it, vi } from "vitest";
 import {
@@ -33,11 +35,19 @@ vi.mock("@tanstack/react-virtual", () => ({
   }),
 }));
 
+vi.mock("../../../stores/auth", () => ({
+  useAuthStore: (selector: (state: { user: { role_level: number } }) => unknown) =>
+    selector({ user: { role_level: 999 } }),
+}));
+
 const row = {
   user: {
     id: "user-1",
     username: "Alice",
     role: "member",
+    role_name: "Member",
+    role_color: null,
+    role_level: 10,
     permissions: {},
     is_active: true,
     deleted_at: null,
@@ -76,7 +86,6 @@ const roles = [{
   name: "Member",
   level: 10,
   color: null,
-  is_builtin: true,
   created_at: "2026-07-29T00:00:00.000Z",
   updated_at: "2026-07-29T00:00:00.000Z",
   permissions: {},
@@ -103,7 +112,11 @@ function renderUsers(
   const props: React.ComponentProps<typeof AdminUsersSection> = {
     usersLoading: false,
     usersError: false,
-    isAdmin: true,
+    canEditUsers: true,
+    canAssignUserRoles: true,
+    canActivateUsers: true,
+    canDeleteUsers: true,
+    canResetUserPasswords: true,
     onOpenCreateMember: vi.fn(),
     selectedUserIds: [],
     onBatchRole: vi.fn(),
@@ -140,6 +153,28 @@ function renderUsers(
 }
 
 describe("AdminUsersSection accessibility", () => {
+  it("explains that account status is separate from roster availability", () => {
+    renderUsers();
+
+    expect(screen.getByText("member.accountStatusDescription")).toBeInTheDocument();
+    expect(screen.getByRole("radio", { name: "member.status.active" })).toBeInTheDocument();
+    expect(screen.getByRole("radio", { name: "member.status.inactive" })).toBeInTheDocument();
+  });
+
+  it("uses Enabled and Disabled terminology in both admin locales", () => {
+    const load = (language: "en" | "zh") => JSON.parse(readFileSync(
+      resolve(process.cwd(), `apps/portal/i18n/${language}/admin.json`),
+      "utf8",
+    )) as Record<string, string>;
+
+    const en = load("en");
+    const zh = load("zh");
+    expect([en["member.status.active"], en["member.status.inactive"]]).toEqual(["Enabled", "Disabled"]);
+    expect([zh["member.status.active"], zh["member.status.inactive"]]).toEqual(["启用", "停用"]);
+    expect(en["member.accountStatusDescription"]).toContain("roster availability");
+    expect(zh["member.accountStatusDescription"]).toContain("名册");
+  });
+
   it("opens, selects, and exposes the action menu from the keyboard", async () => {
     const user = userEvent.setup();
     const onOpenMemberDetail = vi.fn();
@@ -227,6 +262,30 @@ describe("AdminUsersSection accessibility", () => {
     expect(within(bobMenu).getAllByRole("menuitem", { name: "member.deactivate", hidden: true })).toHaveLength(1);
     expect(within(bobMenu).getByRole("menuitem", { name: "member.resetPassword", hidden: true })).toBeEnabled();
     expect(within(bobMenu).getByRole("menuitem", { name: "member.resetLoginLock", hidden: true })).toBeEnabled();
+  });
+
+  it("gates each write action with its matching permission", async () => {
+    renderUsers({
+      canEditUsers: false,
+      canAssignUserRoles: false,
+      canActivateUsers: true,
+      canDeleteUsers: false,
+      canResetUserPasswords: false,
+    });
+
+    fireEvent.click(screen.getAllByRole("button", { name: "member.action.menu" })[0]!);
+    let menu: HTMLElement | null = null;
+    await waitFor(() => {
+      menu = document.querySelector("[data-admin-user-action-menu]");
+      expect(menu).not.toBeNull();
+    });
+    const actions = within(menu as unknown as HTMLElement);
+
+    expect(actions.getByRole("menuitem", { name: "member.context.changeRole", hidden: true })).toBeDisabled();
+    expect(actions.getByRole("menuitem", { name: "member.deactivate", hidden: true })).toBeEnabled();
+    expect(actions.getByRole("menuitem", { name: "member.context.delete", hidden: true })).toBeDisabled();
+    expect(actions.getByRole("menuitem", { name: "member.resetPassword", hidden: true })).toBeDisabled();
+    expect(actions.queryByRole("menuitem", { name: "member.context.createMember", hidden: true })).toBeNull();
   });
 
   it("limits context batch actions to selected members on the current filtered page", async () => {

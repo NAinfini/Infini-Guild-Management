@@ -1,4 +1,6 @@
+import type { AdminRole } from "@guild/shared";
 import type { APIRequestContext, Locator, Page } from "@playwright/test";
+import { readAssignableRole } from "../../support/members";
 import { expect, readJson, test } from "../../support/test";
 import { confirmDialog, dialogTitled, expectNoDialog, field, readInteger } from "../../support/ui";
 
@@ -32,6 +34,10 @@ type ServerInvite = {
   used_count: number;
   expires_at: string | null;
   revoked_at: string | null;
+  role_id: string;
+  role_name: string;
+  role_color: string | null;
+  role_level: number;
 };
 type InviteStats = { total: number; active: number; revoked: number; expired: number };
 type Visibility = "active" | "expired" | "revoked";
@@ -51,12 +57,14 @@ async function serverInvites(api: APIRequestContext, visibility: Visibility): Pr
 /** 建一个挂在本次运行名下的邀请码。expiresAt 传 null 表示永不过期。 */
 async function createInvite(
   api: APIRequestContext,
-  options: { maxUses?: number; expiresAt?: string | null } = {},
+  options: { maxUses?: number; expiresAt?: string | null; role?: AdminRole } = {},
 ): Promise<ServerInvite> {
+  const role = options.role ?? await readAssignableRole(api);
   return await readJson(
     await api.post("/api/admin/invite-links", {
       data: {
         max_uses: options.maxUses ?? 5,
+        role_id: role.id,
         ...(options.expiresAt === null || options.expiresAt === undefined
           ? {}
           : { expires_at: options.expiresAt }),
@@ -204,6 +212,7 @@ async function expectNoApiCalls(page: Page, action: () => Promise<void>): Promis
 
 test("新建邀请码：弹窗填的次数和到期时间一路落到库里，统计块和表格一起跟上", async ({ page, api, flow }) => {
   const before = await serverStats(api);
+  const role = await readAssignableRole(api);
   await openInvites(page);
   expect(await readStats(page), "统计块必须等于服务端的统计").toEqual(before);
 
@@ -212,6 +221,8 @@ test("新建邀请码：弹窗填的次数和到期时间一路落到库里，�
   await expect(dialog).toBeVisible();
 
   await field(dialog, "Invite max uses").fill("3");
+  await field(dialog, "Role assigned by this invite").click();
+  await page.getByRole("option", { name: role.name, exact: true }).click();
   /* 浏览器时区被固定成 UTC（playwright.config.ts），所以这个本地时间就是 UTC 时间，
      写进库里是 2031-03-07T05:09:00.000Z，表格里也照这个渲染。 */
   await field(dialog, "Invite expiration time").fill("2031-03-07T05:09");
@@ -225,12 +236,15 @@ test("新建邀请码：弹窗填的次数和到期时间一路落到库里，�
 
   expect(created.max_uses, "弹窗里填的次数必须原样送到服务端").toBe(3);
   expect(created.used_count).toBe(0);
+  expect(created.role_id, "邀请码必须嵌入选中的 D1 角色 id").toBe(role.id);
+  expect(created.role_name, "邀请码必须带回选中时的角色展示名").toBe(role.name);
   expect(created.expires_at, "到期时间要按 UTC 转成 ISO").toBe("2031-03-07T05:09:00.000Z");
 
   await searchInvites(page, created.code);
   const row = inviteRow(page, created.code);
   await expect(row).toHaveCount(1);
   await expect(row.locator("td[data-column-id='usage']"), "用量列显示 已用/上限").toContainText("0/3");
+  await expect(row.locator("td[data-column-id='role']")).toHaveText(role.name);
   await expect(row.locator("td[data-column-id='status']")).toHaveText("Valid");
   await expect(row.locator("td[data-column-id='expires']")).toHaveText("2031-03-07 05:09");
 

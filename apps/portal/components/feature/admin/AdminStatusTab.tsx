@@ -63,20 +63,24 @@ function SectionToggle({
 }
 
 type AdminStatusTabProps = {
+  onRunQuickCheck: () => void;
   onCopyConfigSummary: () => void;
   canCopyConfigSummary: boolean;
   statusLatencyMs: number | null;
   statusLoading: boolean;
+  statusChecking: boolean;
   statusError: boolean;
   statusData: StatusData | null;
   statusHealthLogs: StatusHealthLog[];
 };
 
 export function AdminStatusTab({
+  onRunQuickCheck,
   onCopyConfigSummary,
   canCopyConfigSummary,
   statusLatencyMs,
   statusLoading,
+  statusChecking,
   statusError,
   statusData,
   statusHealthLogs,
@@ -162,16 +166,29 @@ export function AdminStatusTab({
 
       <section className="admin-status-card">
         <div className="admin-status-card__head">
-          <Text fw={700} size="sm">{t("status.section.health")}</Text>
-          <Button
-            className="admin-status-card__action"
-            variant="default"
-            onClick={onCopyConfigSummary}
-            disabled={!canCopyConfigSummary}
-            leftSection={<ClipboardIcon size={14} />}
-          >
-            {t("status.copyConfig")}
-          </Button>
+          <div className="admin-status-card__heading">
+            <Text fw={700} size="sm">{t("status.section.health")}</Text>
+            <Text c="dimmed" size="xs">{t("status.quickCheckDescription")}</Text>
+          </div>
+          <div className="admin-status-card__actions">
+            <Button
+              className="admin-status-card__action"
+              onClick={onRunQuickCheck}
+              loading={statusChecking}
+              leftSection={<PlayIcon size={14} />}
+            >
+              {t("status.quickCheck")}
+            </Button>
+            <Button
+              className="admin-status-card__action"
+              variant="default"
+              onClick={onCopyConfigSummary}
+              disabled={!canCopyConfigSummary}
+              leftSection={<ClipboardIcon size={14} />}
+            >
+              {t("status.copyConfig")}
+            </Button>
+          </div>
         </div>
         <div className="admin-status-card__body">
           <AdminSystemSection
@@ -202,9 +219,9 @@ export function AdminStatusTab({
                   <thead>
                     <tr>
                       <th>{t("audit.table.time")}</th>
-                      <th>DB</th>
-                      <th>R2</th>
-                      <th>WS</th>
+                      <th>{t("status.service.db")}</th>
+                      <th>{t("status.service.r2")}</th>
+                      <th>{t("status.service.ws")}</th>
                       <th>{t("status.service.crons")}</th>
                       <th>{t("status.latency")}</th>
                     </tr>

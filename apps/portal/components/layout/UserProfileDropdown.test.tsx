@@ -28,6 +28,9 @@ const user: User = {
   id: "user-1",
   username: "Nielsen",
   role: "admin",
+  role_name: "Guild Administrator",
+  role_color: "#ef4444",
+  role_level: 999,
   permissions: {} as User["permissions"],
   is_active: true,
   deleted_at: null,
@@ -46,5 +49,16 @@ describe("UserProfileDropdown", () => {
     expect(
       screen.getByRole("button", { name: "Nielsen: Open profile menu" }),
     ).toBeInTheDocument();
+  });
+
+  it("shows the embedded D1 role name in the expanded trigger", () => {
+    render(
+      <MantineProvider>
+        <UserProfileDropdown user={user} onLogout={vi.fn()} />
+      </MantineProvider>,
+    );
+
+    expect(screen.getByText("Guild Administrator")).toBeInTheDocument();
+    expect(screen.queryByText("admin")).not.toBeInTheDocument();
   });
 });

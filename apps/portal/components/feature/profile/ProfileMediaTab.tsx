@@ -326,8 +326,7 @@ export function ProfileMediaTab({
         {section === "avatar" ? (
           <Group gap={16} align="center">
             <Avatar
-              size={64}
-              radius="xl"
+              size={96}
               src={avatarKey ? resolveProfileMediaUrl(avatarKey) : undefined}
               className="profile-media-avatar"
             >

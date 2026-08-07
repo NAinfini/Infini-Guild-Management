@@ -15,4 +15,11 @@ describe("buildSpaHtmlCsp", () => {
     expect(csp).toContain("connect-src 'self' wss://fanghuazhaoyun.com");
     expect(csp).not.toContain("ws://fanghuazhaoyun.com");
   });
+
+  it("allows the privacy-enhanced YouTube embed host without widening frame-src", () => {
+    const csp = buildSpaHtmlCsp("https://fanghuazhaoyun.com/gallery");
+
+    expect(csp).toContain("frame-src https://www.youtube-nocookie.com");
+    expect(csp).not.toContain("https://www.youtube.com");
+  });
 });

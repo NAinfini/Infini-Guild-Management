@@ -1,6 +1,8 @@
 // @vitest-environment jsdom
 import { MantineProvider } from "@mantine/core";
 import { fireEvent, render, screen } from "@testing-library/react";
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import type { ReactNode } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { AdminPage } from "./AdminPage";
@@ -26,8 +28,9 @@ const controller = vi.hoisted(() => ({
     status: true,
   },
   handleCopyConfigSummary: vi.fn(),
+  refreshStatus: vi.fn(),
   statusLatencyMs: null,
-  statusQuery: { data: null, isLoading: false, isError: false },
+  statusQuery: { data: null, isLoading: false, isFetching: false, isError: false },
   statusHealthLogs: [],
   selectedMemberDetail: null,
   memberDetailForm: {},
@@ -77,6 +80,10 @@ vi.mock("../layout/PageLayout", () => ({
 
 vi.mock("../feature/admin/AdminStatusTab", () => ({
   AdminStatusTab: () => <div>status-panel</div>,
+}));
+
+vi.mock("../feature/admin/AdminClassesPanel", () => ({
+  AdminClassesPanel: () => <div>classes-and-categories-panel</div>,
 }));
 
 vi.mock("../feature/admin/AdminMemberDetailModal", () => ({
@@ -132,6 +139,26 @@ describe("AdminPage responsive and permission states", () => {
       expect(responsive.queries).toContain("(max-width: 79.99em)");
     },
   );
+
+  it("keeps the tab panel from becoming a second vertical scroll container", () => {
+    const css = readFileSync(resolve(process.cwd(), "apps/portal/components/pages/AdminPage.css"), "utf8")
+      .replace(/\/\*[\s\S]*?\*\//g, "");
+    const panelRule = css.match(/\.admin-page__panel\s*\{([^}]*)\}/)?.[1] ?? "";
+
+    expect(panelRule).toContain("overflow-x: clip");
+    expect(panelRule).toContain("overflow-y: visible");
+    expect(panelRule).not.toMatch(/overflow-y:\s*(auto|scroll|hidden)/);
+  });
+
+  it("shows the shared classes and categories workspace when its permission gate allows it", async () => {
+    Object.assign(controller.tabAccess, { status: false, classes: true });
+    router.search = { tab: "classes" };
+
+    renderPage();
+
+    expect(screen.getByRole("tab", { name: /tab\.classes/ })).toBeInTheDocument();
+    expect(await screen.findByText("classes-and-categories-panel")).toBeInTheDocument();
+  });
 
   it("keeps the efficient vertical tab navigation at 1440px", () => {
     renderPage();

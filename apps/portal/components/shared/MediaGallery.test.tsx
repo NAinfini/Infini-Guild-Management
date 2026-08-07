@@ -46,6 +46,10 @@ describe("MediaGallery", () => {
     expect(screen.getByAltText("Localized media thumbnail 1")).toBeInTheDocument();
     expect(screen.getByAltText("Localized media thumbnail 2")).toBeInTheDocument();
     expect(screen.getByAltText("Localized video thumbnail 3")).toBeInTheDocument();
+    expect(screen.getByTitle("https://www.youtube.com/watch?v=dQw4w9WgXcQ")).toHaveAttribute(
+      "src",
+      "https://www.youtube-nocookie.com/embed/dQw4w9WgXcQ",
+    );
     expect(screen.queryByRole("button", { name: /\{\{index\}\}/ })).not.toBeInTheDocument();
   });
 });

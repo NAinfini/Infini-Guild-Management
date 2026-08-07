@@ -1,5 +1,10 @@
 import type { APIRequestContext, Locator, Page } from "@playwright/test";
-import { createThrowawayMember, uniqueTag } from "../../support/members";
+import {
+  createThrowawayMember,
+  readAssignableRole,
+  readAssignableRoles,
+  uniqueTag,
+} from "../../support/members";
 import { expect, readJson, test } from "../../support/test";
 import { dialogTitled, expectNoDialog, field, topDialog } from "../../support/ui";
 
@@ -21,7 +26,7 @@ const CREATE_MEMBER = { method: "POST", path: /^\/api\/admin\/users$/ } as const
 const SAVE_PROFILE = { method: "PATCH", path: /^\/api\/users\/[^/]+\/profile$/ } as const;
 
 type ServerMember = {
-  user: { id: string; username: string; role: string; is_active: boolean };
+  user: { id: string; username: string; role: string; role_name: string; is_active: boolean };
   profile: { power: number; notes: string | null };
 };
 
@@ -87,6 +92,7 @@ test.beforeEach(async ({ context }) => {
 
 test("新建成员弹窗：用户名太短当场退回、一个请求都不发；填对之后建号、给临时密码、备注一起落库", async ({ page, api, flow }) => {
   const tag = uniqueTag("new");
+  const role = await readAssignableRole(api);
   await openMembers(page, tag);
   await expect(page.getByRole("row", { name: /member row$/ })).toHaveCount(0);
 
@@ -96,6 +102,8 @@ test("新建成员弹窗：用户名太短当场退回、一个请求都不发�
 
   const submit = dialog.getByRole("button", { name: "Create", exact: true });
   await expect(submit, "用户名为空时提交按钮就是禁用的").toBeDisabled();
+  await field(dialog, "Role").click();
+  await page.getByRole("option", { name: role.name, exact: true }).click();
 
   /* 前端自己拦下的非法用户名不该惊动服务端。 */
   await field(dialog, "Username").fill("ab");
@@ -121,22 +129,27 @@ test("新建成员弹窗：用户名太短当场退回、一个请求都不发�
   const created = (await serverMembers(api)).find((row) => row.user.username === username);
   expect(created, "服务端必须真的多出这个成员").toBeTruthy();
   expect(created?.profile.notes, "备注框填的内容也要跟着落库").toBe("created by e2e");
-  expect(created?.user.role).toBe("member");
+  expect(created?.user.role).toBe(role.id);
+  expect(created?.user.role_name).toBe(role.name);
   expect(created?.user.is_active).toBe(true);
 });
 
 test("行菜单改角色：表格里的角色胶囊和服务端的角色一起变", async ({ page, api, flow }) => {
   const tag = uniqueTag("role");
-  const member = await createThrowawayMember(api, tag);
+  const roles = await readAssignableRoles(api);
+  const initialRole = roles[0];
+  const targetRole = roles.find((role) => role.id !== initialRole?.id);
+  if (!initialRole || !targetRole) throw new Error("改角色 E2E 至少需要两个可授予的 D1 角色");
+  const member = await createThrowawayMember(api, tag, initialRole);
   await openMembers(page, tag);
-  await expect(memberRow(page, member.username).locator(".admin-cell-role")).toHaveText("Member");
+  await expect(memberRow(page, member.username).locator(".admin-cell-role")).toHaveText(initialRole.name);
 
   await openRowMenu(page, member.username);
   await menuItem(page, "Change Role").click();
-  await flow.click(menuItem(page, "Moderator"), ROLE_CHANGE);
+  await flow.click(menuItem(page, targetRole.name), ROLE_CHANGE);
 
-  await expect(memberRow(page, member.username).locator(".admin-cell-role")).toHaveText("Moderator");
-  expect((await serverMember(api, member.id)).user.role, "服务端的角色必须真的改了").toBe("moderator");
+  await expect(memberRow(page, member.username).locator(".admin-cell-role")).toHaveText(targetRole.name);
+  expect((await serverMember(api, member.id)).user.role, "服务端的角色必须真的改了").toBe(targetRole.id);
 });
 
 test("行菜单停用再启用：状态列、菜单项和服务端三处始终一致", async ({ page, api, flow }) => {
@@ -175,13 +188,12 @@ test("行菜单复制这一行：剪贴板里拿到的是这一行的五个字�
   /*
    * 格式如实记录：用户名、职业、战力、角色、状态，逗号分隔，末尾一个换行。
    * 新建的成员没有职业、战力为 0，所以第二段是空的。
-   * 角色这一段复制出来的是内部 id（member），而表格里显示的是名称（Member）——
-   * 同一列在屏幕上和剪贴板里是两套写法，粘到别处对不上号。
+   * 角色这一段应当复制 D1 中的展示名，不能泄漏内部 id。
    */
-  expect(copied).toBe(`${member.username}, , 0, member, active\n`);
+  expect(copied).toBe(`${member.username}, , 0, ${member.role.name}, active\n`);
 });
 
-test("成员详情弹窗：改战力保存，资料确实落库；但状态那一步必定 409，整个保存被报成部分失败", async ({ page, api, flow }) => {
+test("成员详情弹窗：只改战力时只保存资料，不重复提交未变化的角色和状态", async ({ page, api, flow }) => {
   const tag = uniqueTag("detail");
   const member = await createThrowawayMember(api, tag);
   await openMembers(page, tag);
@@ -193,37 +205,14 @@ test("成员详情弹窗：改战力保存，资料确实落库；但状态那�
   ).toBeVisible();
 
   await field(dialog, "Power").fill("12345");
-  /*
-   * 保存是三个请求串起来的：资料 → 角色 → 启用状态（useAdminMutations.ts:227）。
-   * 这里等的是第一个；后两个的成败只体现在提示上，所以必须回读服务端确认。
-   */
   await flow.click(dialog.getByRole("button", { name: "Save Profile", exact: true }), SAVE_PROFILE);
-
-  /*
-   * 现状如实记录，这是一处缺陷，而且是每次保存都会撞上的：
-   * 第三步无条件按开关当前的值发一次请求——开关是「启用」就调 reactivate，
-   * 是「停用」就调 deactivate。可服务端对这两个接口都做了幂等拒绝
-   * （AdminService.ts:493 "User is already active" / :480 "User already deactivated"），
-   * 于是只要这次保存没有真的翻转状态，第三步必定 409。
-   * 结果就是：资料和角色明明存好了，管理员每次看到的都是一句「部分失败」，
-   * 外加一句全局的「Conflict detected. Please refresh and try again.」。
-   * 该修的是那一步——只在状态真的变了时才发请求。修好之后把下面两行换成
-   * 断言 "Member profile saved"。
-   */
-  await expectNotified(page, "Profile and role saved, but status update failed");
-  await expectNotified(page, "Conflict detected. Please refresh and try again.");
+  await expectNotified(page, "Member profile saved");
 
   const saved = await serverMember(api, member.id);
   expect(saved.profile.power, "第三步失败不该连累前两步：战力必须真的落库了").toBe(12345);
   expect(saved.user.is_active, "状态本来就没改，应当还是启用").toBe(true);
 
   await page.keyboard.press("Escape");
-  const unsavedDialog = dialogTitled(page, "Unsaved changes");
-  await expect(
-    unsavedDialog,
-    "复合保存有一步失败时表单仍是 dirty，关闭必须先让管理员确认，不能静默丢弃",
-  ).toBeVisible();
-  await flow.clickWithoutApi(unsavedDialog.getByRole("button", { name: "Leave", exact: true }));
   await expectNoDialog(page);
   await expect(
     memberRow(page, member.username).locator("td[data-column-id='power']"),

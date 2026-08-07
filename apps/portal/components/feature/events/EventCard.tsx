@@ -189,7 +189,7 @@ export function EventCard({
     </Menu>
   ) : null;
 
-  const footer = canInteract ? (
+  const participantAction = canInteract ? (
     <div onClick={(clickEvent) => clickEvent.stopPropagation()}>
       {isPoll ? (
         <Tooltip label={t(pollActionDisabledReasonKey ?? (isJoined ? "poll.update" : "poll.vote"))}>
@@ -241,7 +241,7 @@ export function EventCard({
       onOpenDetail={() => onOpenDetail(event)}
       headerActions={headerActions}
       menu={menu}
-      footer={footer}
+      participantAction={participantAction}
     />
   );
 }

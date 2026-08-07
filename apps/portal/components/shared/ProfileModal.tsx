@@ -1,7 +1,7 @@
 import type { MemberProfile, User } from "@guild/shared";
 import { Button, Group, Modal, Stack, Text } from "@mantine/core";
 import { PencilIcon } from "@portal/components/icons";
-import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
+import { useEffect, useMemo, useRef, useState, type CSSProperties, type KeyboardEvent } from "react";
 import { useTranslation } from "react-i18next";
 import { MediaGallery, buildMediaGalleryLabels } from "@portal/components/shared/MediaGallery";
 import { sanitizeTitleHtml } from "../../utils/sanitize";
@@ -45,7 +45,7 @@ export function ProfileModal({
     [profile?.title_html],
   );
   const avatarUrl = profile?.avatar_key ? resolveMediaUrl(profile.avatar_key) : null;
-  const activeTime = user?.updated_at ? new Date(user.updated_at).toLocaleString(i18n.language) : "-";
+  const accountUpdated = user?.updated_at ? new Date(user.updated_at).toLocaleString(i18n.language) : "-";
   const classItems = useMemo(
     () => (profile?.classes ?? []).map((id) => resolveClassCatalogItem(id, classCatalog)),
     [classCatalog, profile?.classes],
@@ -115,7 +115,9 @@ export function ProfileModal({
       title={
         user ? (
           <Group gap={12} wrap="nowrap" justify="space-between" style={{ flex: 1 }}>
-            <span>{t("profile.modalTitle", { name: user.username })}</span>
+            <Text component="span" fw={700} size="lg" className={styles.modalHeading}>
+              {t("profile.modalTitle", { name: user.username })}
+            </Text>
             {canEdit && onEdit ? (
               <Button
                 onClick={onEdit}
@@ -130,7 +132,7 @@ export function ProfileModal({
         ) : undefined
       }
       onClose={onClose}
-      classNames={{ content: styles.modalContent, title: styles.modalTitle }}
+      classNames={{ content: styles.modalContent, title: styles.modalTitle, body: styles.modalBody }}
       size="min(1180px, 96vw)"
       centered
       returnFocus
@@ -139,46 +141,55 @@ export function ProfileModal({
     >
       {!user || !profile ? null : (
         <div ref={bodyRef} onKeyDown={handleTrapFocus} tabIndex={-1}>
-          <Stack gap={16} w="100%">
+          <Stack gap="var(--space-xl)" w="100%">
             <div className={styles.header}>
               <div className={styles.avatarWrap}>
-              {avatarUrl && !avatarError ? (
-                <img
-                  src={avatarUrl}
-                  alt={t("a11y.avatar", { name: user.username })}
-                  loading="lazy"
-                  decoding="async"
-                  className={`${styles.avatar}${avatarLoaded ? ` ${styles.avatarLoaded}` : ""}`}
-                  onLoad={() => setAvatarLoaded(true)}
-                  onError={() => setAvatarError(true)}
-                />
-              ) : (
-                <div className={styles.avatarFallback} aria-hidden="true">
-                  {user.username.slice(0, 1).toUpperCase()}
-                </div>
-              )}
+                {avatarUrl && !avatarError ? (
+                  <img
+                    src={avatarUrl}
+                    alt={t("a11y.avatar", { name: user.username })}
+                    loading="lazy"
+                    decoding="async"
+                    className={`${styles.avatar}${avatarLoaded ? ` ${styles.avatarLoaded}` : ""}`}
+                    onLoad={() => setAvatarLoaded(true)}
+                    onError={() => setAvatarError(true)}
+                  />
+                ) : (
+                  <div className={styles.avatarFallback} aria-hidden="true">
+                    {user.username.slice(0, 1).toUpperCase()}
+                  </div>
+                )}
               </div>
               <div className={styles.infoGrid}>
                 <div className={styles.field}>
                   <span className={styles.fieldLabel}>{t("profile.field.name")}</span>
-                  <Text fw={700}>{user.username}</Text>
+                  <Text fw={700} className={styles.fieldValue}>{user.username}</Text>
                 </div>
                 <div className={styles.field}>
-                  <span className={styles.fieldLabel}>{t("profile.field.activeTime")}</span>
-                  <Text>{activeTime}</Text>
+                  <span className={styles.fieldLabel}>{t("profile.field.accountUpdated")}</span>
+                  <Text className={styles.fieldValue}>{accountUpdated}</Text>
+                </div>
+                <div className={styles.field}>
+                  <span className={styles.fieldLabel}>{t("profile.field.role")}</span>
+                  <Text
+                    className={`${styles.fieldValue} ${styles.roleValue}`}
+                    style={user.role_color ? ({ "--role-color": user.role_color } as CSSProperties) : undefined}
+                  >
+                    {user.role_name}
+                  </Text>
                 </div>
                 <div className={styles.field}>
                   <span className={styles.fieldLabel}>{t("profile.field.power")}</span>
-                  <Text>{profile.power}</Text>
+                  <Text className={styles.fieldValue}>{profile.power}</Text>
                 </div>
                 <div className={styles.field}>
                   <span className={styles.fieldLabel}>{t("profile.field.title")}</span>
-                  <span dangerouslySetInnerHTML={{ __html: safeTitleHtml || "-" }} />
+                  <span className={styles.fieldValue} dangerouslySetInnerHTML={{ __html: safeTitleHtml || "-" }} />
                 </div>
                 <div className={styles.field}>
                   <span className={styles.fieldLabel}>{t("profile.field.class")}</span>
                   {classItems.length > 0 ? (
-                    <Group gap={8} wrap="wrap">
+                    <Group gap={8} wrap="wrap" className={styles.fieldValue}>
                       {classItems.map((item) => (
                         <Group key={item.id} gap={4} wrap="nowrap">
                           <ClassIcon item={item} size={20} />
@@ -186,11 +197,11 @@ export function ProfileModal({
                         </Group>
                       ))}
                     </Group>
-                  ) : <Text>-</Text>}
+                  ) : <Text className={styles.fieldValue}>-</Text>}
                 </div>
                 <div className={styles.field}>
                   <span className={styles.fieldLabel}>{t("profile.field.bio")}</span>
-                  <Text>{profile.bio ?? "-"}</Text>
+                  <Text className={styles.fieldValue}>{profile.bio ?? "-"}</Text>
                 </div>
               </div>
             </div>

@@ -1,4 +1,6 @@
+import type { AdminRole, User } from "@guild/shared";
 import type { APIRequestContext } from "@playwright/test";
+import { isRoleAssignableToUser } from "../../utils/permissions";
 import { readJson } from "./test";
 
 /*
@@ -13,9 +15,37 @@ import { readJson } from "./test";
  * 审计行和 login_failures 一起清掉，所以怎么折腾都不留痕。
  */
 
-export type ThrowawayMember = { id: string; username: string; password: string };
+export type ThrowawayMember = { id: string; username: string; password: string; role: AdminRole };
 
 let counter = 0;
+const authorityByApi = new WeakMap<APIRequestContext, Promise<{ user: User; roles: AdminRole[] }>>();
+
+async function readAuthority(api: APIRequestContext): Promise<{ user: User; roles: AdminRole[] }> {
+  const cached = authorityByApi.get(api);
+  if (cached) return await cached;
+
+  const pending = Promise.all([
+    readJson(await api.get("/api/auth/me"), "读取当前管理员权限") as Promise<{ user: User }>,
+    readJson(await api.get("/api/admin/roles"), "读取 D1 角色列表") as Promise<AdminRole[]>,
+  ]).then(([me, roles]) => ({ user: me.user, roles }));
+  authorityByApi.set(api, pending);
+  return await pending;
+}
+
+/** 当前管理员可以唯一、完整授予的 D1 角色，按级别从低到高排列。 */
+export async function readAssignableRoles(api: APIRequestContext): Promise<AdminRole[]> {
+  const { user, roles } = await readAuthority(api);
+  return roles
+    .filter((role) => isRoleAssignableToUser(role, user))
+    .sort((left, right) => left.level - right.level || left.name.localeCompare(right.name));
+}
+
+/** 取一个真实可授予角色；没有合法角色时明确失败，不能退回静态角色 id。 */
+export async function readAssignableRole(api: APIRequestContext): Promise<AdminRole> {
+  const role = (await readAssignableRoles(api))[0];
+  if (!role) throw new Error("当前管理员没有可授予的 D1 角色");
+  return role;
+}
 
 /**
  * 一条用例专属的标签，同时充当搜索词。
@@ -31,12 +61,19 @@ export function uniqueTag(prefix: string): string {
 export async function createThrowawayMember(
   api: APIRequestContext,
   tag: string,
+  role?: AdminRole,
 ): Promise<ThrowawayMember> {
   counter += 1;
   const username = `e2e_${tag}_${counter}`;
+  const assignedRole = role ?? await readAssignableRole(api);
   const created = await readJson(
-    await api.post("/api/admin/users", { data: { username } }),
+    await api.post("/api/admin/users", { data: { username, role_id: assignedRole.id } }),
     `创建一次性成员 ${username}`,
   ) as { user_id: string; username: string; temporary_password: string };
-  return { id: created.user_id, username: created.username, password: created.temporary_password };
+  return {
+    id: created.user_id,
+    username: created.username,
+    password: created.temporary_password,
+    role: assignedRole,
+  };
 }

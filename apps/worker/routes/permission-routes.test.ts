@@ -434,6 +434,22 @@ describe("site config permission mapping", () => {
     expect(uploadResult.status).toBe(401);
     expect(mocks.requirePermission).toHaveBeenLastCalledWith(expect.anything(), "admin.siteConfig.manage");
   });
+
+  it("allows every legitimate role-metadata consumer to read the D1 role list", async () => {
+    const { adminRoutes } = await import("./admin");
+    mocks.requirePermission.mockRejectedValueOnce(new HTTPException(401));
+
+    const result = await adminRoutes.request("/roles", { method: "GET" }, { DB: {} });
+
+    expect(result.status).toBe(401);
+    expect(mocks.requirePermission).toHaveBeenLastCalledWith(expect.anything(), [
+      "admin.roles.view",
+      "admin.roles.manage",
+      "admin.invite.manage",
+      "admin.users.edit",
+      "admin.users.role",
+    ]);
+  });
 });
 
 describe("class catalog permission mapping", () => {

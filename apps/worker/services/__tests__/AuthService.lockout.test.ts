@@ -7,6 +7,9 @@ const ACCOUNT = {
   id: "user-1",
   username: "Victim",
   role: "member",
+  roleName: "Member",
+  roleColor: "gray",
+  roleLevel: 100,
   isActive: true,
   deletedAt: null,
   createdAt: "2026-01-01T00:00:00.000Z",
@@ -26,7 +29,7 @@ function createMockDb(lockRow: { failCount: number; lockedUntil: string | null }
       from: () => ({ where: () => ({ limit: () => Promise.resolve(lockRow ? [lockRow] : []) }) }),
     })
     .mockReturnValueOnce({
-      from: () => ({ innerJoin: () => ({ where: () => ({ limit: () => Promise.resolve(account ? [account] : []) }) }) }),
+      from: () => ({ innerJoin: () => ({ innerJoin: () => ({ where: () => ({ limit: () => Promise.resolve(account ? [account] : []) }) }) }) }),
     });
   return {
     select,

@@ -93,15 +93,15 @@ describe("useAdminMutations session revalidation", () => {
       await result.current.batchReactivateMutation.mutateAsync(["user-1"]);
       await result.current.updateMemberProfileMutation.mutateAsync({
         userId: "user-1",
-        form: {
+        profile: {
           power: 10,
           classes: ["warrior"],
           titleHtml: "",
           bio: "",
           notes: "",
-          role: "member",
-          isActive: true,
         },
+        role: "member",
+        isActive: true,
       });
       await result.current.createRoleMutation.mutateAsync({ name: "Raid Lead", level: 200 });
       await result.current.updateRoleConfigMutation.mutateAsync({ id: "raid-lead", payload: { level: 201 } });
@@ -110,6 +110,22 @@ describe("useAdminMutations session revalidation", () => {
 
     expect(revalidateSessionSnapshotMock).toHaveBeenCalledTimes(10);
     expect(revalidateSessionSnapshotMock.mock.calls.every(([client]) => client instanceof QueryClient)).toBe(true);
+  });
+
+  it("calls only the member endpoint represented by the submitted change", async () => {
+    const { result } = renderMutations();
+
+    await act(async () => {
+      await result.current.updateMemberProfileMutation.mutateAsync({
+        userId: "user-1",
+        role: "raid-lead",
+      });
+    });
+
+    expect(serviceMocks.updateAdminUserRole).toHaveBeenCalledWith("user-1", "raid-lead");
+    expect(serviceMocks.adminUpdateProfile).not.toHaveBeenCalled();
+    expect(serviceMocks.reactivateAdminUser).not.toHaveBeenCalled();
+    expect(serviceMocks.deactivateAdminUser).not.toHaveBeenCalled();
   });
 
   it("does not revalidate failed or unrelated invite and audit mutations", async () => {
@@ -123,7 +139,7 @@ describe("useAdminMutations session revalidation", () => {
       await expect(result.current.updateRoleMutation.mutateAsync({ userId: "user-1", role: "member" })).rejects.toThrow("role failed");
       await expect(result.current.deactivateMutation.mutateAsync("user-1")).rejects.toThrow("status failed");
       await expect(result.current.updateRoleConfigMutation.mutateAsync({ id: "member", payload: { level: 2 } })).rejects.toThrow("config failed");
-      await result.current.createInviteMutation.mutateAsync({ maxUses: 1, expiresAt: "" });
+      await result.current.createInviteMutation.mutateAsync({ roleId: "member", maxUses: 1, expiresAt: "" });
       await result.current.exportAuditLogMutation.mutateAsync("csv");
     });
 

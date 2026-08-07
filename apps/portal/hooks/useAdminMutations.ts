@@ -82,8 +82,14 @@ export function useAdminMutations({
     refreshSessionSnapshot();
   };
 
-  const invalidateRoleConfigAndSession = async () => {
-    await queryClient.invalidateQueries({ queryKey: queryKeys.admin.roles() });
+  const invalidateRoleAuthority = async () => {
+    await Promise.all([
+      queryClient.invalidateQueries({ queryKey: queryKeys.admin.roles() }),
+      queryClient.invalidateQueries({ queryKey: queryKeys.users.all }),
+      queryClient.invalidateQueries({ queryKey: queryKeys.myProfile.all }),
+      queryClient.invalidateQueries({ queryKey: queryKeys.cmdk.all }),
+      queryClient.invalidateQueries({ queryKey: queryKeys.admin.inviteLinksAll() }),
+    ]);
     refreshSessionSnapshot();
   };
 
@@ -97,7 +103,7 @@ export function useAdminMutations({
       updateAdminUserRole(userId, role),
     onSuccess: async () => {
       notifySuccess(t("message.roleUpdated"));
-      await invalidateAdminUsersAndSession();
+      await invalidateRoleAuthority();
     },
     onError: (error) => showError(error, t("message.roleUpdateFailed")),
   });
@@ -141,8 +147,9 @@ export function useAdminMutations({
     mutationFn: async (data: {
       username: string;
       notes: string;
+      roleId: string;
     }) => {
-      const result = await createAdminMember({ username: data.username });
+      const result = await createAdminMember({ username: data.username, role_id: data.roleId });
       if (data.notes) {
         await adminUpdateProfile(result.user_id, {
           ...(data.notes ? { notes: data.notes } : {}),
@@ -157,7 +164,11 @@ export function useAdminMutations({
       } catch {
         notifyError(t("message.memberCreatedPasswordNotCopied", { username: payload.username }));
       }
-      await invalidateAdminUsers();
+      await Promise.all([
+        invalidateAdminUsers(),
+        queryClient.invalidateQueries({ queryKey: queryKeys.admin.roles() }),
+        queryClient.invalidateQueries({ queryKey: queryKeys.cmdk.all }),
+      ]);
     },
     onError: (error) => showError(error, t("message.memberCreateFailed")),
   });
@@ -170,7 +181,7 @@ export function useAdminMutations({
       }),
     onSuccess: async () => {
       notifySuccess(t("message.batchRoleUpdated"));
-      await invalidateAdminUsersAndSession();
+      await invalidateRoleAuthority();
     },
     onError: (error) => showError(error, t("message.batchRoleUpdateFailed")),
   });
@@ -204,8 +215,9 @@ export function useAdminMutations({
   });
 
   const createInviteMutation = useMutation({
-    mutationFn: ({ maxUses, expiresAt }: { maxUses: number; expiresAt: string }) =>
+    mutationFn: ({ roleId, maxUses, expiresAt }: { roleId: string; maxUses: number; expiresAt: string }) =>
       createAdminInviteLink({
+        role_id: roleId,
         max_uses: maxUses,
         expires_at: toIsoOrUndefined(expiresAt),
       }),
@@ -256,50 +268,39 @@ export function useAdminMutations({
   const updateMemberProfileMutation = useMutation({
     mutationFn: async ({
       userId,
-      form,
+      profile,
+      role,
+      isActive,
     }: {
       userId: string;
-      form: MemberDetailFormState;
+      profile?: Pick<MemberDetailFormState, "power" | "classes" | "titleHtml" | "bio" | "notes">;
+      role?: string;
+      isActive?: boolean;
     }) => {
-      await adminUpdateProfile(userId, {
-        power: form.power,
-        classes: form.classes,
-        title_html: form.titleHtml || null,
-        bio: form.bio || null,
-        notes: form.notes || null,
-      });
-      try {
-        await updateAdminUserRole(userId, form.role);
-      } catch {
-        throw new Error("Profile saved but role update failed");
-      }
-      try {
-        if (form.isActive) {
-          await reactivateAdminUser(userId);
-        } else {
-          await deactivateAdminUser(userId);
-        }
-      } catch {
-        throw new Error("Profile and role saved but status update failed");
-      }
+      await Promise.all([
+        profile
+          ? adminUpdateProfile(userId, {
+              power: profile.power,
+              classes: profile.classes,
+              title_html: profile.titleHtml || null,
+              bio: profile.bio || null,
+              notes: profile.notes || null,
+            })
+          : Promise.resolve(),
+        role ? updateAdminUserRole(userId, role) : Promise.resolve(),
+        isActive === undefined
+          ? Promise.resolve()
+          : isActive
+            ? reactivateAdminUser(userId)
+            : deactivateAdminUser(userId),
+      ]);
     },
     onSuccess: async () => {
       notifySuccess(t("message.memberProfileSaved"));
-      await invalidateAdminUsers();
-      await queryClient.invalidateQueries({ queryKey: queryKeys.myProfile.all });
-      refreshSessionSnapshot();
+      await invalidateRoleAuthority();
     },
     onError: async (error) => {
-      await invalidateAdminUsers();
-      await queryClient.invalidateQueries({ queryKey: queryKeys.myProfile.all });
-      if (error instanceof Error && error.message === "Profile saved but role update failed") {
-        notifyError(t("message.memberProfileSavedRoleFailed"));
-        return;
-      }
-      if (error instanceof Error && error.message === "Profile and role saved but status update failed") {
-        notifyError(t("message.memberProfileSavedStatusFailed"));
-        return;
-      }
+      await invalidateRoleAuthority();
       showError(error, t("message.memberProfileSaveFailed"));
     },
   });
@@ -308,7 +309,7 @@ export function useAdminMutations({
     mutationFn: createRole,
     onSuccess: async () => {
       notifySuccess(t("message.roleCreated"));
-      await invalidateRoleConfigAndSession();
+      await invalidateRoleAuthority();
     },
     onError: (error) => showError(error, t("message.roleCreateFailed")),
   });
@@ -318,7 +319,7 @@ export function useAdminMutations({
       updateRole(id, payload),
     onSuccess: async () => {
       notifySuccess(t("message.roleConfigSaved"));
-      await invalidateRoleConfigAndSession();
+      await invalidateRoleAuthority();
     },
     onError: (error) => showError(error, t("message.roleConfigSaveFailed")),
   });
@@ -327,7 +328,7 @@ export function useAdminMutations({
     mutationFn: (id: string) => deleteRole(id),
     onSuccess: async () => {
       notifySuccess(t("message.roleDeleted"));
-      await invalidateRoleConfigAndSession();
+      await invalidateRoleAuthority();
     },
     onError: (error) => showError(error, t("message.roleDeleteFailed")),
   });
@@ -387,14 +388,14 @@ export function useAdminMutations({
     });
   };
 
-  const handleBatchRole = async (userIds: string[], role: string) => {
+  const handleBatchRole = async (userIds: string[], role: string, roleName: string) => {
     const targetIds = getCappedUserIds(userIds);
     const names = resolveNames(targetIds);
     const confirmed = await confirmBatchAction(
       targetIds,
       t("member.batchRoleConfirm", {
         count: targetIds.length,
-        role: t(`role.${role}`),
+        role: roleName,
       }),
       names,
     );

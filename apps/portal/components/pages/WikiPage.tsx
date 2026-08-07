@@ -132,13 +132,11 @@ export function WikiPage() {
       {controller.editorTab === "categories" ? (
         <WikiCategoryEditorCard
           canEdit={controller.canEdit}
-          categoryName={controller.categoryEditor.categoryName}
           categoryDrafts={controller.categoryEditor.categoryDrafts}
           isCreating={controller.categoryEditor.isCreating}
           isSavingDrafts={controller.categoryEditor.isSavingDrafts}
           canSaveDrafts={controller.categoryEditor.canSaveDrafts}
           deletingCategoryId={controller.categoryEditor.deletingCategoryId}
-          onCategoryNameChange={controller.categoryEditor.setCategoryName}
           onCreateCategory={controller.categoryEditor.createCategory}
           onSaveDrafts={controller.categoryEditor.saveCategoryDrafts}
           onCloseEditor={controller.handleCloseCategoryEditorWithoutSave}

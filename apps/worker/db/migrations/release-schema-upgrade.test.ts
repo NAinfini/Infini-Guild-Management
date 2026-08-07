@@ -96,6 +96,7 @@ describe("release schema upgrade", () => {
     expect(migrationFiles).toEqual([
       "0000_core_schema.sql",
       "0001_release_schema_upgrade.sql",
+      "0002_dynamic_role_authority.sql",
     ]);
 
     db = createBaselineDatabase();

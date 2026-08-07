@@ -113,18 +113,17 @@ describe("AdminClassTagsSection", () => {
     expect(toggleClass).toHaveBeenCalledWith("white-mage");
   });
 
-  it("adds every class the search left visible in one click", async () => {
+  it("keeps search and the limit guidance without bulk controls or a selected count", async () => {
     const user = userEvent.setup();
-    const setDraft = vi.fn();
-    renderSection({ setDraft });
+    renderSection();
 
     await user.type(screen.getByLabelText("classTags.members.searchPlaceholder"), "Dro");
     expect(screen.queryByRole("checkbox", { name: "White Mage" })).toBeNull();
-
-    await user.click(screen.getByRole("button", { name: "classTags.members.selectAll" }));
-    const updater = setDraft.mock.calls.at(-1)?.[0] as (d: unknown) => { classIds: string[] };
-    expect(updater({ id: "healer", label: "Healer", classIds: ["white-mage"] }).classIds)
-      .toEqual(["white-mage", "droid"]);
+    expect(screen.getByRole("checkbox", { name: "Droid" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "classTags.members.selectAll" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "classTags.members.clear" })).toBeNull();
+    expect(screen.queryByText(/^classTags\.members\.counter:/)).toBeNull();
+    expect(screen.getByText(/^classTags\.field\.membersDescription:/)).toBeInTheDocument();
   });
 
   it("refuses to save a tag nobody touched", () => {

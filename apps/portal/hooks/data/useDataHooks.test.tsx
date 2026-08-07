@@ -523,4 +523,52 @@ describe("portal data hooks", () => {
     expect(serviceMocks.fetchAdminSiteConfig).toHaveBeenCalled();
     expect(serviceMocks.fetchAdminInviteLinks).not.toHaveBeenCalled();
   });
+
+  it("loads role metadata for invite management without replacing session authority", async () => {
+    serviceMocks.fetchRoles.mockResolvedValueOnce([{
+      id: "other-role",
+      permissions: { "admin.roles.manage": true },
+    }]);
+    serviceMocks.fetchAdminInviteLinks.mockResolvedValueOnce({ data: [], next_cursor: null, total: 0 });
+    serviceMocks.fetchAdminInviteStats.mockResolvedValueOnce({});
+    const effectivePermissions = {
+      canAccessAdmin: true,
+      canViewUsers: false,
+      canViewInvites: true,
+      canViewAudit: false,
+      canExportAudit: false,
+      canViewRoles: false,
+      canManageRoles: false,
+      canViewStatus: false,
+      canManageBadges: false,
+      canManageSiteConfig: false,
+      canManageClasses: false,
+    };
+
+    const { result } = renderHook(
+      () => useAdminData({
+        isModerator: true,
+        userRole: "invite-manager",
+        activeTab: "invite",
+        effectivePermissions,
+        canReadRoleMetadata: true,
+        auditPage: 1,
+        auditSearch: "",
+        auditDateFrom: "",
+        auditDateTo: "",
+        auditEntityType: "",
+        auditActorId: "",
+        inviteVisibility: "active",
+        inviteSearch: "",
+      }),
+      { wrapper: createWrapper() },
+    );
+
+    await waitFor(() => {
+      expect(result.current.rolesQuery.isSuccess).toBe(true);
+      expect(result.current.inviteLinksQuery.isSuccess).toBe(true);
+    });
+    expect(serviceMocks.fetchRoles).toHaveBeenCalledOnce();
+    expect(result.current.permissions).toEqual(effectivePermissions);
+  });
 });

@@ -29,7 +29,7 @@ describe("AdminApiTestEngine request preparation", () => {
     const runId = "014f27f1-6ca1-4c5e-924f-f111b76b9efd";
     const fixtureId = "488488b7-b293-4149-88ba-5eef4f202dcb";
     const registerContext = contextWith({ runId, fixtureId, registerInviteCode: "INVITE" });
-    const adminContext = contextWith({ runId, fixtureId });
+    const adminContext = contextWith({ runId, fixtureId, adminRoleId: "raid-lead" });
 
     expect(parseJsonBody(prepareEndpointRequest(
       { label: "Register", method: "POST", path: "/api/auth/register/:inviteCode" },
@@ -42,7 +42,62 @@ describe("AdminApiTestEngine request preparation", () => {
       adminContext,
     ))).toMatchObject({
       username: "apitestadmin_488488b7b293414988ba5eef4f202dcb",
+      role_id: "raid-lead",
     });
+  });
+
+  it("uses the captured assignable D1 role in invite and member payloads", () => {
+    const context = contextWith({ adminRoleId: "raid-lead" });
+
+    expect(parseJsonBody(prepareEndpointRequest(
+      { label: "Create Invite", method: "POST", path: "/api/admin/invite-links" },
+      context,
+    ))).toMatchObject({ role_id: "raid-lead" });
+    expect(parseJsonBody(prepareEndpointRequest(
+      { label: "Create Member", method: "POST", path: "/api/admin/users" },
+      context,
+    ))).toMatchObject({ role_id: "raid-lead" });
+  });
+
+  it("captures only a lower D1 role whose grants are a subset of the actor's permissions", () => {
+    const actor = captureContextFromResponse(
+      createInitialTestRunContext(),
+      { label: "Current User", method: "GET", path: "/api/auth/me" },
+      {
+        status: 200,
+        latencyMs: 1,
+        body: "{}",
+        error: null,
+        ranAt: "2026-08-05T00:00:00.000Z",
+        parsedJson: {
+          user: {
+            id: "admin-1",
+            username: "admin",
+            role_level: 500,
+            permissions: { "admin.users.role": true, "admin.audit.view": false },
+          },
+          profile: null,
+        },
+      },
+    );
+    const next = captureContextFromResponse(
+      actor,
+      { label: "Roles", method: "GET", path: "/api/admin/roles" },
+      {
+        status: 200,
+        latencyMs: 1,
+        body: "{}",
+        error: null,
+        ranAt: "2026-08-05T00:00:00.000Z",
+        parsedJson: [
+          { id: "same-level", level: 500, permissions: {} },
+          { id: "over-granted", level: 400, permissions: { "admin.audit.view": true } },
+          { id: "assignable", level: 300, permissions: { "admin.users.role": true } },
+        ],
+      },
+    );
+
+    expect(next.adminRoleId).toBe("assignable");
   });
 
   it("uses the captured admin-created username for login smoke tests", () => {

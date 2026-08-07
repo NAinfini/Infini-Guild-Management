@@ -1,5 +1,6 @@
 import { readFileSync } from "node:fs";
 import type { APIRequestContext, Locator, Page } from "@playwright/test";
+import { readAssignableRole } from "../../support/members";
 import { expect, readJson, test } from "../../support/test";
 import { ensureFiltersOpen, field, selectSegmentedControlOption } from "../../support/ui";
 
@@ -143,8 +144,9 @@ async function openAudit(page: Page): Promise<AuditPage> {
 
 /** 做一件会被记账的事：建个邀请码，换回它在审计里的那行锚点。 */
 async function makeAuditedEvent(api: APIRequestContext): Promise<{ id: string; code: string }> {
+  const role = await readAssignableRole(api);
   return await readJson(
-    await api.post("/api/admin/invite-links", { data: { max_uses: 5 } }),
+    await api.post("/api/admin/invite-links", { data: { max_uses: 5, role_id: role.id } }),
     "创建邀请码以产生一行审计",
   ) as { id: string; code: string };
 }

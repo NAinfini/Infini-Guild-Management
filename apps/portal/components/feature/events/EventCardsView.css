@@ -1,4 +1,4 @@
-/* 卡片采用纵向伸展布局，正文吸收网格行的富余空间，使页脚贴底。 */
+/* 卡片采用纵向伸展布局，正文吸收网格行的富余空间。 */
 .event-card {
   --event-card-accent: var(--domain-event);
   display: flex;
@@ -99,7 +99,7 @@
   background: color-mix(in srgb, var(--text-primary) 10%, transparent);
 }
 
-/* 正文吸收网格伸展空间，使页脚保持贴底。 */
+/* 正文吸收网格伸展空间，使同排卡片保持等高。 */
 .event-card__body {
   flex: 1;
   padding: var(--space-sm) var(--space-md);
@@ -176,12 +176,26 @@
   color: color-mix(in srgb, var(--text-primary) 68%, transparent);
 }
 
-/* 谁来了。 */
+.event-card__participation-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+  min-width: 0;
+  padding: var(--space-xs) 0;
+}
+
+/* 谁来了；窄屏先压缩头像区，保留右侧主操作。 */
 .event-card__members-bar {
   display: flex;
   align-items: center;
+  flex: 1 1 auto;
+  min-width: 0;
   gap: 8px;
-  padding: var(--space-xs) 0;
+  overflow: hidden;
+}
+
+.event-card__participant-action {
+  flex: 0 0 auto;
 }
 
 /* Winner status remains an inline chip within the participation row. */
@@ -210,15 +224,6 @@
   display: flex;
   align-items: center;
   gap: 4px;
-}
-
-/* 页脚只放主操作按钮，右对齐，不满宽。「为什么按不了」由色带上的状态图标和按钮
-   自己的 Tooltip 讲，这里不再放第二份文字。 */
-.event-card__footer {
-  display: flex;
-  justify-content: flex-end;
-  padding: 8px var(--space-md);
-  border-top: 1px solid color-mix(in srgb, var(--text-primary) 8%, transparent);
 }
 
 .event-card__icon-muted {

@@ -223,6 +223,17 @@
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+.member-card__role {
+  --role-color: var(--text-secondary);
+  min-width: 0;
+  color: color-mix(in srgb, var(--role-color) 55%, var(--text-primary));
+  font-size: var(--text-meta);
+  font-weight: var(--fw-medium);
+  line-height: 1.3;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 .member-card__title {
   margin-top: 2px; min-height: 18px; line-height: 1.35;
   color: color-mix(in srgb, var(--text-primary) 65%, transparent);

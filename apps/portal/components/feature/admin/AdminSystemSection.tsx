@@ -22,16 +22,16 @@ type AdminSystemSectionProps = {
 type ServiceInfo = {
   key: keyof StatusData;
   icon: typeof DatabaseIcon;
-  label: string;
+  labelKey: string;
 };
 
 type ServiceState = "ok" | "configured" | "error";
 
 const SERVICES: ServiceInfo[] = [
-  { key: "db", icon: DatabaseIcon, label: "D1" },
-  { key: "r2", icon: CloudIcon, label: "R2" },
-  { key: "ws", icon: WifiIcon, label: "WS" },
-  { key: "crons", icon: ClockIcon, label: "Crons" },
+  { key: "db", icon: DatabaseIcon, labelKey: "status.service.db" },
+  { key: "r2", icon: CloudIcon, labelKey: "status.service.r2" },
+  { key: "ws", icon: WifiIcon, labelKey: "status.service.ws" },
+  { key: "crons", icon: ClockIcon, labelKey: "status.service.crons" },
 ];
 
 // WebSocket disconnections are recoverable and use warning severity; failed
@@ -78,7 +78,7 @@ export function AdminSystemSection({
     );
   }
 
-  if (statusError) {
+  if (statusError && !statusData) {
     return <Alert color="red" title={loadErrorMessage} />;
   }
 
@@ -111,6 +111,7 @@ export function AdminSystemSection({
         const state = serviceState(value);
         const isOk = state === "ok";
         const Icon = svc.icon;
+        const label = t(svc.labelKey);
         const tone = iconTone(state, svc.key);
         const badgeColor = isOk ? "green" : state === "configured" || svc.key === "ws" ? "yellow" : "red";
         const badgeLabel = value === "ok" || value === "configured"
@@ -124,7 +125,7 @@ export function AdminSystemSection({
                 <div className={`system-health-tile__icon system-health-tile__icon--${tone}`}>
                   <Icon size={22} />
                 </div>
-                <Text size="xs" fw={700} className="system-health-tile__label">{svc.label}</Text>
+                <Text size="xs" fw={700} className="system-health-tile__label">{label}</Text>
                 <Badge
                   size="sm"
                   variant="light"
@@ -141,7 +142,7 @@ export function AdminSystemSection({
                   <Icon size={16} />
                 </ThemeIcon>
                 <div style={{ minWidth: 0 }}>
-                  <Text size="sm" fw={700} lh={1.3} mb={4}>{svc.label}</Text>
+                  <Text size="sm" fw={700} lh={1.3} mb={4}>{label}</Text>
                   <Text size="xs" c="dimmed" lh={1.5}>{t(`status.tooltip.${svc.key}`)}</Text>
                 </div>
               </Group>

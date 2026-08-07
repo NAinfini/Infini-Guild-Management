@@ -15,6 +15,7 @@
 
 .admin-status-card__head {
   display: flex;
+  flex-wrap: wrap;
   gap: var(--space-sm);
   align-items: center;
   justify-content: space-between;
@@ -22,6 +23,18 @@
   padding: var(--space-sm) var(--space-md);
   border-bottom: 1px solid var(--border-subtle);
   background: var(--surface-sunken);
+}
+
+.admin-status-card__heading {
+  flex: 1 1 18rem;
+  min-width: 0;
+}
+
+.admin-status-card__actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: var(--space-sm);
 }
 
 .admin-status-card__body {
@@ -32,6 +45,16 @@
 /* Status actions retain a 44px touch target. */
 .admin-status-card__action {
   min-height: 44px;
+}
+
+@media (max-width: 30em) {
+  .admin-status-card__actions {
+    width: 100%;
+  }
+
+  .admin-status-card__action {
+    flex: 1 1 auto;
+  }
 }
 
 /* ── 折叠把手 ──────────────────────────────────

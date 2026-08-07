@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
 import type { ClassCatalogItem, ClassTag, EventClassQuotaInput } from "@guild/shared";
+import { LIMITS } from "@guild/shared/config/limits";
 import { MantineProvider } from "@mantine/core";
 import { useClassCatalogStore } from "@portal/stores/class-catalog";
 import { useClassTagStore } from "@portal/stores/class-tag";
@@ -36,6 +37,8 @@ const CATALOG = [
   catalogItem("dps-e", "DPS E", 7),
   catalogItem("loner", "Loner", 8),
 ];
+
+const MAX_CLASSES = LIMITS.content.classesPerTag.max;
 
 const TAGS: ClassTag[] = [
   {
@@ -104,24 +107,6 @@ describe("ClassQuotaEditor", () => {
     ]);
   });
 
-  it("brings in a whole saved group at once, skipping what is already picked", async () => {
-    const user = userEvent.setup();
-    const onChange = renderEditor([
-      { tag: { label: "Off-tanks", class_ids: ["healer-b"] }, required: 3 },
-    ]);
-
-    await user.click(screen.getByRole("button", { name: "quota.editor.pickClasses" }));
-    const [bringHealers] = await screen.findAllByRole("button", {
-      name: "quota.editor.bringGroup",
-      hidden: true,
-    });
-    await user.click(bringHealers!);
-
-    expect(onChange).toHaveBeenCalledWith([
-      { tag: { label: "Off-tanks", class_ids: ["healer-b", "healer-a"] }, required: 3 },
-    ]);
-  });
-
   it("narrows the checklist by search and says so when nothing matches", async () => {
     const user = userEvent.setup();
     renderEditor([{ tag: { label: "Off-tanks", class_ids: [] }, required: 1 }]);
@@ -136,5 +121,34 @@ describe("ClassQuotaEditor", () => {
     await user.clear(search);
     await user.type(search, "nobody");
     expect(screen.getByText("quota.editor.noClassMatch")).toBeInTheDocument();
+  });
+
+  it("enforces the cap without showing counts or batch controls", async () => {
+    const user = userEvent.setup();
+    const cappedCatalog = Array.from(
+      { length: MAX_CLASSES + 1 },
+      (_, index) => catalogItem(`class-${index}`, `Class ${index + 1}`, index),
+    );
+    const selectedClassIds = cappedCatalog.slice(0, MAX_CLASSES).map((item) => item.id);
+    useClassCatalogStore.setState({ items: cappedCatalog });
+    useClassTagStore.setState({ tags: [] });
+    const onChange = renderEditor([
+      { tag: { label: "Off-tanks", class_ids: selectedClassIds }, required: 1 },
+    ]);
+
+    await user.click(screen.getByRole("button", { name: "quota.editor.pickClasses" }));
+
+    expect(screen.getByRole("checkbox", { name: "Class 1", hidden: true })).toBeEnabled();
+    const extraClass = screen.getByRole("checkbox", {
+      name: `Class ${MAX_CLASSES + 1}`,
+      hidden: true,
+    });
+    expect(extraClass).toBeDisabled();
+    await user.click(extraClass);
+    expect(onChange).not.toHaveBeenCalled();
+
+    expect(screen.queryByText("quota.editor.selectionLimit")).not.toBeInTheDocument();
+    expect(screen.queryByText("quota.editor.selectedCount")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "quota.editor.bringGroup", hidden: true })).not.toBeInTheDocument();
   });
 });

@@ -37,6 +37,8 @@ import { DataTablePagination } from "../../shared/DataTablePagination";
 import type { UsersListResponse } from "../../../services/UserService";
 import { resolveClassCatalogItem, useClassCatalogStore } from "../../../stores/class-catalog";
 import type { AdminUserPendingAction } from "../../../hooks/useAdminMutations";
+import { useAuthStore } from "../../../stores/auth";
+import { canManageUserByRoleLevel, userCanAccessAdmin } from "../../../utils/permissions";
 
 export type AdminUserRow = UsersListResponse["data"][number];
 
@@ -50,10 +52,14 @@ type ActionMenuContext = {
 type AdminUsersSectionProps = {
   usersLoading: boolean;
   usersError: boolean;
-  isAdmin: boolean;
+  canEditUsers: boolean;
+  canAssignUserRoles: boolean;
+  canActivateUsers: boolean;
+  canDeleteUsers: boolean;
+  canResetUserPasswords: boolean;
   onOpenCreateMember: () => void;
   selectedUserIds: string[];
-  onBatchRole: (userIds: string[], role: string) => void;
+  onBatchRole: (userIds: string[], role: string, roleName: string) => void;
   onBatchActivate: (userIds: string[]) => void;
   onBatchDeactivate: (userIds: string[]) => void;
   onBatchDelete: (userIds: string[]) => void;
@@ -79,7 +85,11 @@ type AdminUsersSectionProps = {
 export function AdminUsersSection({
   usersLoading,
   usersError,
-  isAdmin,
+  canEditUsers,
+  canAssignUserRoles,
+  canActivateUsers,
+  canDeleteUsers,
+  canResetUserPasswords,
   onOpenCreateMember,
   selectedUserIds,
   onBatchRole,
@@ -108,6 +118,7 @@ export function AdminUsersSection({
   const { t: tc } = useTranslation("common");
   const classCatalog = useClassCatalogStore((state) => state.items);
   const clipboard = useClipboard();
+  const currentUser = useAuthStore((state) => state.user);
   const loadErrorMessage = tc("loadError");
   const [sorting, setSorting] = useState<SortingState>([]);
   const [pagination, setPagination] = useState<PaginationState>({ pageIndex: 0, pageSize: 20 });
@@ -122,12 +133,12 @@ export function AdminUsersSection({
      启用/停用这一层纯粹是视图筛选，不用再发请求。 */
   const memberStats = useMemo(() => {
     let active = 0;
-    let admins = 0;
+    let managementAccess = 0;
     for (const row of userRows) {
       if (row.user.is_active) active += 1;
-      if (row.user.role === "admin") admins += 1;
+      if (userCanAccessAdmin(row.user)) managementAccess += 1;
     }
-    return { total: userRows.length, active, inactive: userRows.length - active, admins };
+    return { total: userRows.length, active, inactive: userRows.length - active, managementAccess };
   }, [userRows]);
 
   const visibleRows = useMemo(() => {
@@ -145,10 +156,6 @@ export function AdminUsersSection({
     userId: string,
     event: ReactMouseEvent<HTMLElement> | ReactKeyboardEvent<HTMLElement>,
   ) => {
-    if (!isAdmin) {
-      return;
-    }
-
     event.preventDefault();
     event.stopPropagation();
     const userIds = selectedIdSet.has(userId) && selectedUserIds.length > 0
@@ -168,7 +175,7 @@ export function AdminUsersSection({
       y: openedFromContextMenu ? event.clientY : targetRect.bottom,
       returnFocusTo: openedFromContextMenu ? null : event.currentTarget,
     });
-  }, [isAdmin, onSelectionChange, selectedIdSet, selectedUserIds]);
+  }, [onSelectionChange, selectedIdSet, selectedUserIds]);
 
   useEffect(() => {
     if (!actionMenu) {
@@ -184,7 +191,6 @@ export function AdminUsersSection({
   }, [actionMenu]);
 
   const allColumns = useMemo(() => {
-    if (!isAdmin) return userColumns;
     const actionColumn: ColumnDef<AdminUserRow, unknown> = {
       header: "",
       id: "actions",
@@ -205,7 +211,7 @@ export function AdminUsersSection({
       ),
     };
     return [...userColumns, actionColumn];
-  }, [userColumns, isAdmin, openActionMenu, t]);
+  }, [userColumns, openActionMenu, t]);
 
   const table = useReactTable({
     data: visibleRows,
@@ -227,10 +233,6 @@ export function AdminUsersSection({
     userId: string,
     event: ReactMouseEvent<HTMLTableRowElement>,
   ) => {
-    if (!isAdmin) {
-      return;
-    }
-
     const orderedIndex = orderedRowIds.indexOf(userId);
     if (orderedIndex === -1) {
       return;
@@ -310,6 +312,9 @@ export function AdminUsersSection({
     .filter(Boolean) as AdminUserRow[];
   const isBatchContext = contextUserIds.length > 1;
   const contextSingleUserId = contextUserIds.length === 1 ? contextUserIds[0] ?? null : null;
+  const contextHasProtectedTarget = contextRows.some(
+    (row) => !canManageUserByRoleLevel(row.user, currentUser),
+  );
   const anyActiveInContext = contextRows.some((row) => row.user.is_active);
   const anyInactiveInContext = contextRows.some((row) => !row.user.is_active);
   const contextActionPending = (action: AdminUserPendingAction) =>
@@ -326,7 +331,7 @@ export function AdminUsersSection({
           .map((id) => resolveClassCatalogItem(id, classCatalog).label)
           .join(", "),
         String(row.profile.power),
-        row.user.role,
+        row.user.role_name,
         row.user.is_active ? t("member.status.active") : t("member.status.inactive"),
       ].join(", "),
     );
@@ -388,7 +393,9 @@ export function AdminUsersSection({
           </Menu.Item>
           <Menu.Sub>
             <Menu.Sub.Target>
-              <Menu.Sub.Item disabled={roleActionPending}>{t("member.context.changeRole")}</Menu.Sub.Item>
+              <Menu.Sub.Item disabled={!canAssignUserRoles || roleActionPending || contextHasProtectedTarget}>
+                {t("member.context.changeRole")}
+              </Menu.Sub.Item>
             </Menu.Sub.Target>
             <Menu.Sub.Dropdown>
               {roles
@@ -398,14 +405,11 @@ export function AdminUsersSection({
                   <Menu.Item
                     key={role.id}
                     disabled={
-                      (isBatchContext && role.id === "admin") ||
-                      roleActionPending
+                      !canAssignUserRoles || contextHasProtectedTarget || roleActionPending
                     }
                     onClick={() => {
                       if (isBatchContext) {
-                        if (role.id !== "admin") {
-                          onBatchRole(contextUserIds, role.id);
-                        }
+                        onBatchRole(contextUserIds, role.id, role.name);
                       } else if (contextSingleUserId) {
                         onSingleRoleChange(contextSingleUserId, role.id);
                       }
@@ -419,7 +423,7 @@ export function AdminUsersSection({
           {anyInactiveInContext ? (
             <Menu.Item
               leftSection={<PlayIcon size={14} />}
-              disabled={activateActionPending}
+              disabled={!canActivateUsers || activateActionPending || contextHasProtectedTarget}
               onClick={() => {
                 if (isBatchContext) {
                   onBatchActivate(contextUserIds);
@@ -434,7 +438,7 @@ export function AdminUsersSection({
           {anyActiveInContext ? (
             <Menu.Item
               leftSection={<PlayerPauseIcon size={14} />}
-              disabled={deactivateActionPending}
+              disabled={!canActivateUsers || deactivateActionPending || contextHasProtectedTarget}
               onClick={() => {
                 if (isBatchContext) {
                   onBatchDeactivate(contextUserIds);
@@ -450,14 +454,14 @@ export function AdminUsersSection({
             <>
               <Menu.Item
                 leftSection={<KeyIcon size={14} />}
-                disabled={contextActionPending("reset-password")}
+                disabled={!canResetUserPasswords || contextActionPending("reset-password") || contextHasProtectedTarget}
                 onClick={() => onSingleResetPassword(contextSingleUserId)}
               >
                 {t("member.resetPassword")}
               </Menu.Item>
               <Menu.Item
                 leftSection={<LockOpenIcon size={14} />}
-                disabled={contextActionPending("reset-login-lock")}
+                disabled={!canResetUserPasswords || contextActionPending("reset-login-lock") || contextHasProtectedTarget}
                 onClick={() => onSingleResetLoginLock(contextSingleUserId)}
               >
                 {t("member.resetLoginLock")}
@@ -465,13 +469,15 @@ export function AdminUsersSection({
             </>
           ) : null}
           <Menu.Divider />
-          <Menu.Item leftSection={<UserPlusIcon size={14} />} onClick={onOpenCreateMember}>
-            {t("member.context.createMember")}
-          </Menu.Item>
+          {canEditUsers ? (
+            <Menu.Item leftSection={<UserPlusIcon size={14} />} onClick={onOpenCreateMember}>
+              {t("member.context.createMember")}
+            </Menu.Item>
+          ) : null}
           <Menu.Item
             color="red"
             leftSection={<TrashIcon size={14} />}
-            disabled={batchDeletePending}
+            disabled={!canDeleteUsers || batchDeletePending || contextHasProtectedTarget}
             onClick={() => onBatchDelete(contextUserIds)}
           >
             {isBatchContext ? t("member.context.batchDelete") : t("member.context.delete")}
@@ -483,9 +489,7 @@ export function AdminUsersSection({
       {usersError ? <Alert color="red" title={loadErrorMessage} /> : null}
       {!usersLoading && !usersError ? (
         <>
-          {isAdmin ? (
-            <>
-              <div className="admin-toolbar">
+          <div className="admin-toolbar">
                 <TextInput
                   className="admin-toolbar__search"
                   value={memberSearch}
@@ -506,12 +510,16 @@ export function AdminUsersSection({
                   ]}
                 />
                 <div className="admin-toolbar__spacer" />
-                <Button size="sm" leftSection={<UserPlusIcon size={14} />} onClick={onOpenCreateMember}>
-                  {t("member.create.button")}
-                </Button>
-              </div>
+                {canEditUsers ? (
+                  <Button size="sm" leftSection={<UserPlusIcon size={14} />} onClick={onOpenCreateMember}>
+                    {t("member.create.button")}
+                  </Button>
+                ) : null}
+          </div>
 
-              <div className="admin-stats">
+          <Text c="dimmed" size="xs">{t("member.accountStatusDescription")}</Text>
+
+          <div className="admin-stats">
                 <div className="admin-stat">
                   <div className="admin-stat__value">{memberStats.total}</div>
                   <div className="admin-stat__label">{t("member.stat.total")}</div>
@@ -527,13 +535,10 @@ export function AdminUsersSection({
                   <div className="admin-stat__label">{t("member.stat.inactive")}</div>
                 </div>
                 <div className="admin-stat">
-                  <div className="admin-stat__value">{memberStats.admins}</div>
-                  <div className="admin-stat__label">{t("member.stat.admins")}</div>
+                  <div className="admin-stat__value">{memberStats.managementAccess}</div>
+                  <div className="admin-stat__label">{t("member.stat.managementAccess")}</div>
                 </div>
-              </div>
-
-            </>
-          ) : null}
+          </div>
 
           <Paper withBorder radius="md" className="admin-member-table-desktop admin-table-card admin-table-card--fill">
             <>
@@ -563,15 +568,12 @@ export function AdminUsersSection({
           </Paper>
 
           {/* 多选操作通过任意选中行的右键菜单或 Shift+F10 进入，并作用于全部选中成员。 */}
-          {isAdmin ? (
-            <Text c="dimmed" size="xs">{t("member.selectionHint")}</Text>
-          ) : null}
+          <Text c="dimmed" size="xs">{t("member.selectionHint")}</Text>
 
           <div className="admin-member-cards-mobile">
             {table.getRowModel().rows.map((row) => {
               const u = row.original.user;
               const p = row.original.profile;
-              const roleDef = roles.find((r) => r.id === u.role);
               return (
                 <Paper
                   key={u.id}
@@ -588,7 +590,7 @@ export function AdminUsersSection({
                     >
                         <Text fw={600} size="sm" truncate>{u.username}</Text>
                         <Group gap={6} mt={2}>
-                          <Badge size="xs" color={roleDef?.color ?? "gray"}>{u.role}</Badge>
+                          <Badge size="xs" color={u.role_color ?? "gray"}>{u.role_name}</Badge>
                           {u.is_active
                             ? <Badge size="xs" color="green">{t("member.status.active")}</Badge>
                             : <Badge size="xs" color="red">{t("member.status.inactive")}</Badge>
@@ -600,8 +602,7 @@ export function AdminUsersSection({
                           ) : null}
                         </Group>
                     </UnstyledButton>
-                    {isAdmin ? (
-                      <ActionIcon
+                    <ActionIcon
                         variant="subtle"
                         color="gray"
                         size={44}
@@ -612,7 +613,6 @@ export function AdminUsersSection({
                       >
                         <IconDotsVertical size={16} />
                       </ActionIcon>
-                    ) : null}
                   </Group>
                 </Paper>
               );

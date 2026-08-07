@@ -14,7 +14,7 @@ const DEFAULT_FORM: MemberDetailFormState = {
   titleHtml: "",
   bio: "",
   notes: "",
-  role: "member",
+  role: "",
   isActive: true,
 };
 

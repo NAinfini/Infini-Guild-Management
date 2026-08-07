@@ -20,6 +20,7 @@ type UseAdminDataOptions = {
   userRole: string;
   activeTab: string;
   effectivePermissions?: AdminCapabilities;
+  canReadRoleMetadata?: boolean;
   auditPage: number;
   auditSearch: string;
   auditDateFrom: string;
@@ -36,6 +37,7 @@ export function useAdminData(options: UseAdminDataOptions) {
     userRole,
     activeTab,
     effectivePermissions,
+    canReadRoleMetadata,
     auditPage,
     auditSearch,
     auditDateFrom,
@@ -49,13 +51,13 @@ export function useAdminData(options: UseAdminDataOptions) {
   const rolesQuery = useQuery({
     queryKey: queryKeys.admin.roles(),
     queryFn: fetchRoles,
-    enabled: effectivePermissions?.canViewRoles ?? isModerator,
+    enabled: canReadRoleMetadata ?? effectivePermissions?.canViewRoles ?? isModerator,
     staleTime: Infinity,
   });
 
   const roles = rolesQuery.data ?? [];
   const rolePermissions = getAdminCapabilities(roles, userRole);
-  const permissions = rolesQuery.isSuccess ? rolePermissions : effectivePermissions ?? rolePermissions;
+  const permissions = effectivePermissions ?? rolePermissions;
   const needsUsers =
     activeTab === "member" || activeTab === "audit" || activeTab === "badges";
   const normalizedAuditSearch = auditSearch.trim();

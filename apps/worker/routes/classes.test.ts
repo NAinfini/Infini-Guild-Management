@@ -1,4 +1,5 @@
 import { Hono } from "hono";
+import { HTTPException } from "hono/http-exception";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { handleAppError } from "../middleware/error-handler";
 
@@ -135,6 +136,25 @@ describe("class catalog routes", () => {
     await reorderRequest({ order: ["warden"] });
 
     expect(mocks.requirePermission).toHaveBeenCalledWith(
+      expect.anything(),
+      "admin.classes.manage",
+    );
+  });
+
+  it.each([
+    ["POST", "/classes"],
+    ["PATCH", "/classes/reorder"],
+    ["PATCH", "/classes/warden"],
+    ["POST", "/classes/warden/icon"],
+    ["DELETE", "/classes/warden/icon"],
+    ["DELETE", "/classes/warden"],
+  ] as const)("guards %s %s before any mutation", async (method, path) => {
+    mocks.requirePermission.mockRejectedValueOnce(new HTTPException(403));
+
+    const response = await createApp().request(path, { method }, { DB: {} });
+
+    expect(response.status).toBe(403);
+    expect(mocks.requirePermission).toHaveBeenLastCalledWith(
       expect.anything(),
       "admin.classes.manage",
     );

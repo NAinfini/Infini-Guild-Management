@@ -77,8 +77,8 @@
 .profile-overview__avatar {
   position: relative;
   flex: 0 0 auto;
-  inline-size: 64px;
-  block-size: 64px;
+  inline-size: 96px;
+  block-size: 96px;
   border-radius: 50%;
   overflow: visible;
   display: grid;
@@ -134,10 +134,11 @@
 }
 
 .profile-overview__role {
+  --role-color: var(--text-secondary);
   font-size: var(--text-micro);
   letter-spacing: 0.06em;
   text-transform: uppercase;
-  color: var(--text-muted);
+  color: var(--role-color);
 }
 
 .profile-overview__status {
@@ -743,6 +744,8 @@
 
 .profile-media-avatar {
   border: 2px solid var(--border-subtle);
+  border-radius: 50%;
+  overflow: hidden;
 }
 
 /* Static media rows use a neutral recessed surface rather than an active-state tint. */

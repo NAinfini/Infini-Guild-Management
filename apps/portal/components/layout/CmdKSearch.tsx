@@ -39,7 +39,9 @@ type SearchItem = {
   title: string;
   subtitle: string;
   category: SearchResult["type"];
-  role?: string;
+  roleName?: string;
+  roleColor?: string | null;
+  roleLevel?: number;
   to: string;
   entityId?: string;
 };
@@ -71,8 +73,6 @@ const CATEGORY_ICON = {
   gallery: <PictureOutlined />,
   war: <TeamOutlined />,
 } satisfies Record<SearchResultType, ReactNode>;
-
-const ROLE_BADGE_COLOR: Record<string, string> = { admin: "red", moderator: "orange" };
 
 export function CmdKSearch({ asIcon = false }: { asIcon?: boolean }) {
   const navigate = useNavigate();
@@ -117,7 +117,9 @@ export function CmdKSearch({ asIcon = false }: { asIcon?: boolean }) {
         title: entry.title,
         subtitle: entry.subtitle,
         category: entry.type,
-        role: entry.role,
+        roleName: entry.role_name,
+        roleColor: entry.role_color,
+        roleLevel: entry.role_level,
         to: entry.to,
         entityId: entry.entity_id,
       }));
@@ -178,8 +180,6 @@ export function CmdKSearch({ asIcon = false }: { asIcon?: boolean }) {
   const categoryLabel = (category: SearchItem["category"]) => t(CATEGORY_LABEL_KEY[category]);
 
   const categoryIcon = (category: SearchItem["category"]) => CATEGORY_ICON[category];
-
-  const roleBadgeColor = (role: string | undefined): string => ROLE_BADGE_COLOR[role ?? ""] ?? "blue";
 
   const handleSearchKeyDown = (event: KeyboardEvent<HTMLInputElement>) => {
     if (optionCount === 0) {
@@ -314,8 +314,8 @@ export function CmdKSearch({ asIcon = false }: { asIcon?: boolean }) {
                         description={<Highlight highlight={query}>{item.subtitle}</Highlight>}
                         leftSection={categoryIcon(item.category)}
                         rightSection={(
-                          <Badge color={item.category === "user" ? roleBadgeColor(item.role) : undefined}>
-                            {item.category === "user" && item.role ? item.role : categoryLabel(item.category)}
+                          <Badge color={item.category === "user" ? item.roleColor ?? "gray" : undefined}>
+                            {item.category === "user" ? item.roleName ?? categoryLabel(item.category) : categoryLabel(item.category)}
                           </Badge>
                         )}
                         onMouseEnter={() => setActiveIndex(itemIndex)}

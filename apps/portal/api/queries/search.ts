@@ -10,6 +10,9 @@ export type SearchResult = {
   to: string;
   entity_id?: string;
   role?: string;
+  role_name?: string;
+  role_color?: string | null;
+  role_level?: number;
 };
 
 export type SearchResponse = { data: SearchResult[] };

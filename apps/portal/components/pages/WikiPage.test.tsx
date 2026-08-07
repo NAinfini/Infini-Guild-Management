@@ -66,10 +66,18 @@ vi.mock("@portal/hooks/useConfirmDialog", () => ({
 }));
 
 vi.mock("../feature/wiki/WikiCategoryEditorCard", () => ({
-  WikiCategoryEditorCard: ({ onCloseEditor }: { onCloseEditor: () => void }) => (
-    <button type="button" onClick={onCloseEditor}>
-      editor.closeNoSave
-    </button>
+  WikiCategoryEditorCard: ({
+    onCreateCategory,
+    onCloseEditor,
+  }: {
+    onCreateCategory: () => void;
+    onCloseEditor: () => void;
+  }) => (
+    <div>
+      <button type="button" onClick={onCreateCategory}>categoryEditor.create</button>
+      <button type="button">articleEditor.save</button>
+      <button type="button" onClick={onCloseEditor}>editor.closeNoSave</button>
+    </div>
   ),
 }));
 
@@ -437,6 +445,17 @@ describe("WikiPage", () => {
     await waitFor(() => expect(resetCategoryDraftsMock).toHaveBeenCalledTimes(1));
   });
 
+  it("creates categories beside Save without a separate empty name field", async () => {
+    renderWikiPage();
+
+    fireEvent.click(await screen.findByRole("button", { name: "editor.editCategories" }));
+    const create = await screen.findByRole("button", { name: "categoryEditor.create" });
+    const save = screen.getByRole("button", { name: "articleEditor.save" });
+
+    expect(create.parentElement).toBe(save.parentElement);
+    expect(screen.queryByLabelText("aria.categoryName")).not.toBeInTheDocument();
+  });
+
   it("offers article creation when the resource is globally empty", async () => {
     paramsMock.slug = undefined;
     serviceMocks.fetchWikiArticleBySlug.mockResolvedValue(null);
@@ -611,14 +630,19 @@ describe("WikiPage", () => {
     expect(within(breadcrumb).getByText("Guides")).toBeInTheDocument();
 
     const css = readFileSync(resolve(process.cwd(), "apps/portal/components/pages/WikiPage.css"), "utf8");
+    const editorCss = readFileSync(resolve(process.cwd(), "apps/portal/components/shared/tiptap-editor.css"), "utf8");
     expect(css).toMatch(
-      /\.wiki-article-reader-content\s*\{[\s\S]*?max-width:\s*72ch/,
+      /\.wiki-article-reader-content\s*\{[\s\S]*?width:\s*100%[\s\S]*?max-width:\s*none[\s\S]*?margin-inline:\s*0/,
     );
     expect(css).toMatch(
       /\.wiki-article-reader-card\s*\{[\s\S]*?flex:\s*0 1 auto[\s\S]*?max-block-size:\s*100%/,
     );
-    expect(css).toMatch(
-      /\.wiki-article-reader-card \.infini-tiptap-toc\s*\{[\s\S]*?order:\s*-1[\s\S]*?position:\s*static[\s\S]*?width:\s*100%/,
+    expect(css).not.toMatch(/\.wiki-article-reader-card \.infini-tiptap-toc/);
+    expect(editorCss).toMatch(
+      /\.infini-tiptap-toc\s*\{[\s\S]*?position:\s*sticky[\s\S]*?width:\s*200px/,
+    );
+    expect(editorCss).toMatch(
+      /@media \(max-width: 768px\)[\s\S]*?\.infini-tiptap-layout\s*\{[\s\S]*?flex-direction:\s*column[\s\S]*?\.infini-tiptap-toc\s*\{[\s\S]*?position:\s*static[\s\S]*?width:\s*100%/,
     );
     expect(css).toMatch(
       /@media \(max-width: 767px\)[\s\S]*?\.wiki-article-item \+ \.wiki-article-item\s*\{[\s\S]*?border-block-start-color:\s*var\(--border-subtle\)/,

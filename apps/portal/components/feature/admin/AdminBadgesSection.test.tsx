@@ -77,7 +77,6 @@ function createController(
     openMembership: vi.fn(),
     closeMembership: vi.fn(),
     toggleDraftMember: vi.fn(),
-    setDraftMembers: vi.fn(),
     formValid: false,
     createBadge: vi.fn(),
     updateBadge: vi.fn(),
@@ -178,6 +177,10 @@ describe("AdminBadgesSection", () => {
 
     const save = screen.getByRole("button", { name: "badges.action.saveMembership" });
     expect(save, "勾选和现状一致时没有可保存的东西").toBeDisabled();
+    expect(screen.getByRole("button", { name: "badges.action.cancel" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "badges.membership.selectAll" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "badges.membership.clear" })).not.toBeInTheDocument();
+    expect(screen.queryByText("badges.membership.diff")).not.toBeInTheDocument();
 
     await user.click(within(list).getByRole("checkbox", { name: "Bob" }));
     expect(toggleDraftMember).toHaveBeenCalledWith("user-2");

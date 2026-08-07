@@ -77,13 +77,13 @@ export function toEmbedVideoUrl(url: string): string {
   if (hostMatches(host, ["youtu.be"])) {
     const id = pathname.slice(1).split("/")[0] ?? "";
     if (!id) return url;
-    return `https://www.youtube.com/embed/${id}`;
+    return `https://www.youtube-nocookie.com/embed/${id}`;
   }
 
   if (hostMatches(host, ["youtube.com"])) {
     const id = parsed.searchParams.get("v") ?? "";
     if (!id) return url;
-    return `https://www.youtube.com/embed/${id}`;
+    return `https://www.youtube-nocookie.com/embed/${id}`;
   }
 
   if (hostMatches(host, ["bilibili.com"])) {

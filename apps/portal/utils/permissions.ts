@@ -1,20 +1,6 @@
-import type { Permission, User } from "@guild/shared";
-import type { AdminRole } from "@guild/shared";
+import { PERMISSIONS, type AdminRole, type Permission, type User } from "@guild/shared";
 
-const ADMIN_ACCESS_PERMISSIONS: Permission[] = [
-  "admin.users.view",
-  "admin.invite.view",
-  "admin.audit.view",
-  "admin.status.view",
-  "admin.roles.view",
-  "admin.siteConfig.manage",
-  "admin.classes.manage",
-  "admin.badges.manage",
-  "admin.storage.structure",
-  "admin.storage.items",
-  "admin.storage.stock",
-  "admin.roles.manage",
-];
+const ADMIN_ACCESS_PERMISSIONS = PERMISSIONS.filter((permission) => permission.startsWith("admin."));
 
 export type AdminCapabilities = {
   canAccessAdmin: boolean;
@@ -119,4 +105,18 @@ export function userCanManageRoles(user: User | null): boolean {
 
 export function userCanViewStatus(user: User | null): boolean {
   return userHasPermission(user, "admin.status.view");
+}
+
+export function isRoleAssignableToUser(role: AdminRole, user: User | null): boolean {
+  if (!user || role.level >= user.role_level) {
+    return false;
+  }
+
+  return Object.entries(role.permissions).every(([permission, granted]) =>
+    !granted || user.permissions[permission as Permission] === true,
+  );
+}
+
+export function canManageUserByRoleLevel(target: User, user: User | null): boolean {
+  return Boolean(user && target.role_level < user.role_level);
 }

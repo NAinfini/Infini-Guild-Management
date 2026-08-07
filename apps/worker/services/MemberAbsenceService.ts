@@ -2,7 +2,6 @@ import {
   DEFAULT_SITE_ABSENCE_POLICY,
   createMemberAbsenceSchema,
   memberAbsenceSchema,
-  type Role,
   type SiteAbsencePolicy,
 } from "@guild/shared";
 import type { AuditEntityType, AuditAction } from "@guild/shared/constants/audit";
@@ -10,12 +9,11 @@ import type { PushEntityType, PushHint } from "@guild/shared/constants/push-hint
 import { and, eq, gte, lte, sql } from "drizzle-orm";
 import type { drizzle } from "drizzle-orm/d1";
 import { nanoid } from "nanoid";
-import { memberAbsences, users } from "../db/schema";
+import { memberAbsences, roles, users } from "../db/schema";
 import { ok, err, type ServiceResult } from "./result";
+import type { SessionUser } from "./auth";
 
 type DrizzleDb = ReturnType<typeof drizzle>;
-
-type SessionUser = { id: string; role: Role; permissions: ReadonlySet<string> };
 
 export type MemberAbsenceServiceDeps = {
   rawDb: D1Database;
@@ -41,6 +39,10 @@ function toAbsencePayload(row: {
   id: string;
   userId: string;
   username: string | null;
+  roleId: string;
+  roleName: string;
+  roleColor: string | null;
+  roleLevel: number;
   startDate: string;
   endDate: string;
   note: string | null;
@@ -50,6 +52,10 @@ function toAbsencePayload(row: {
     id: row.id,
     user_id: row.userId,
     username: row.username,
+    role_id: row.roleId,
+    role_name: row.roleName,
+    role_color: row.roleColor,
+    role_level: row.roleLevel,
     start_date: row.startDate,
     end_date: row.endDate,
     note: row.note,
@@ -69,12 +75,12 @@ export class MemberAbsenceService {
 
   private async canEditTarget(sessionUser: SessionUser, targetUserId: string): Promise<{ status: "allowed"; username: string } | { status: "forbidden" | "not_found"; username: null }> {
     const target = (
-      await this.db.select({ role: users.role, deletedAt: users.deletedAt, username: users.username }).from(users).where(eq(users.id, targetUserId)).limit(1)
+      await this.db.select({ roleLevel: roles.level, deletedAt: users.deletedAt, username: users.username }).from(users).innerJoin(roles, eq(users.role, roles.id)).where(eq(users.id, targetUserId)).limit(1)
     )[0];
     if (!target || target.deletedAt !== null) return { status: "not_found", username: null };
     if (sessionUser.id === targetUserId) return { status: "allowed", username: target.username };
     if (!sessionUser.permissions.has("admin.users.edit")) return { status: "forbidden", username: null };
-    if (target.role === "admin" && sessionUser.role !== "admin") return { status: "forbidden", username: null };
+    if (target.roleLevel >= sessionUser.roleLevel) return { status: "forbidden", username: null };
     return { status: "allowed", username: target.username };
   }
 
@@ -85,6 +91,10 @@ export class MemberAbsenceService {
         id: memberAbsences.id,
         userId: memberAbsences.userId,
         username: users.username,
+        roleId: users.role,
+        roleName: roles.name,
+        roleColor: roles.color,
+        roleLevel: roles.level,
         startDate: memberAbsences.startDate,
         endDate: memberAbsences.endDate,
         note: memberAbsences.note,
@@ -92,6 +102,7 @@ export class MemberAbsenceService {
       })
       .from(memberAbsences)
       .innerJoin(users, eq(users.id, memberAbsences.userId))
+      .innerJoin(roles, eq(users.role, roles.id))
       .where(and(gte(memberAbsences.endDate, from), lte(memberAbsences.startDate, to)))
       .orderBy(memberAbsences.startDate, memberAbsences.id);
     return ok({ data: rows.map(toAbsencePayload) });
@@ -103,6 +114,10 @@ export class MemberAbsenceService {
         id: memberAbsences.id,
         userId: memberAbsences.userId,
         username: users.username,
+        roleId: users.role,
+        roleName: roles.name,
+        roleColor: roles.color,
+        roleLevel: roles.level,
         startDate: memberAbsences.startDate,
         endDate: memberAbsences.endDate,
         note: memberAbsences.note,
@@ -110,6 +125,7 @@ export class MemberAbsenceService {
       })
       .from(memberAbsences)
       .innerJoin(users, eq(users.id, memberAbsences.userId))
+      .innerJoin(roles, eq(users.role, roles.id))
       .where(eq(memberAbsences.userId, targetUserId))
       .orderBy(sql`${memberAbsences.startDate} DESC`, memberAbsences.id);
     return ok({ data: rows.map(toAbsencePayload) });
@@ -163,6 +179,10 @@ export class MemberAbsenceService {
           id: memberAbsences.id,
           userId: memberAbsences.userId,
           username: users.username,
+          roleId: users.role,
+          roleName: roles.name,
+          roleColor: roles.color,
+          roleLevel: roles.level,
           startDate: memberAbsences.startDate,
           endDate: memberAbsences.endDate,
           note: memberAbsences.note,
@@ -170,6 +190,7 @@ export class MemberAbsenceService {
         })
         .from(memberAbsences)
         .innerJoin(users, eq(users.id, memberAbsences.userId))
+        .innerJoin(roles, eq(users.role, roles.id))
         .where(eq(memberAbsences.id, id))
         .limit(1)
     )[0];

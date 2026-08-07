@@ -28,9 +28,15 @@ export async function getRequestUser(c: Context): Promise<SessionUser | null> {
  * instead of returning a Response, so route handlers never need
  * `instanceof Response` checks.
  */
-export async function requirePermission(c: Context, permission: Permission): Promise<SessionUser> {
+export async function requirePermission(
+  c: Context,
+  permission: Permission | readonly Permission[],
+): Promise<SessionUser> {
   const user = (await resolveSession(c))?.user ?? null;
   if (!user) throw new HTTPException(401, { res: buildError(c, "UNAUTHORIZED", "Authentication required") });
-  if (!user.permissions.has(permission)) throw new HTTPException(403, { res: buildError(c, "FORBIDDEN", "Insufficient permission") });
+  const required = typeof permission === "string" ? [permission] : permission;
+  if (!required.some((candidate) => user.permissions.has(candidate))) {
+    throw new HTTPException(403, { res: buildError(c, "FORBIDDEN", "Insufficient permission") });
+  }
   return user;
 }

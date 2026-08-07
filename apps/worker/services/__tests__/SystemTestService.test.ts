@@ -326,7 +326,7 @@ describe("SystemTestService exact compensation", () => {
       insert("INSERT INTO sessions (id, user_id, expires_at) VALUES (?, ?, '2099-01-01T00:00:00.000Z')", ids.session, ids.user);
       insert("INSERT INTO login_failures (username, fail_count) VALUES (?, 2)", username);
       insert("INSERT INTO system_test_runs (id, actor_id) VALUES (?, 'admin-1')", ids.run);
-      insert("INSERT INTO invite_links (id, code, created_by, max_uses, used_count) VALUES (?, 'TESTCLEANUPCODE', 'admin-1', 1, 1)", ids.invite);
+      insert("INSERT INTO invite_links (id, code, created_by, role_id, max_uses, used_count) VALUES (?, 'TESTCLEANUPCODE', 'admin-1', 'member', 1, 1)", ids.invite);
       insert("INSERT INTO recurring_templates (id, type, title, start_time, recurrence_rule, created_by) VALUES (?, 'social', 'test', '12:00', '{}', 'admin-1')", ids.template);
       insert("INSERT INTO events (id, type, title, start_at, created_by) VALUES (?, 'poll', 'test', '2099-01-01T00:00:00.000Z', 'admin-1')", ids.event);
       insert("INSERT INTO events (id, type, title, start_at, created_by, series_id) VALUES (?, 'social', 'generated', '2099-01-02T00:00:00.000Z', 'admin-1', ?)", ids.generatedEvent, ids.template);

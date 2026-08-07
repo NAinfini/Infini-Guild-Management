@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import type { InviteLink } from "@guild/shared";
+import type { AdminRole, InviteLink } from "@guild/shared";
 import { MantineProvider } from "@mantine/core";
 import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
@@ -32,12 +32,27 @@ const revokedInvite: InviteLink = {
   id: "invite-1",
   code: "REVOKED",
   created_by: "admin-1",
+  role_id: "raid-lead",
+  role_name: "Raid Lead",
+  role_color: "#22c55e",
+  role_level: 100,
   max_uses: 5,
   used_count: 1,
   expires_at: null,
   created_at: "2026-07-28T00:00:00.000Z",
   revoked_at: "2026-07-28T01:00:00.000Z",
 };
+
+const roles = [{
+  id: "raid-lead",
+  name: "Raid Lead",
+  level: 100,
+  color: "#22c55e",
+  created_at: "2026-07-28T00:00:00.000Z",
+  updated_at: "2026-07-28T00:00:00.000Z",
+  assigned_user_count: 1,
+  permissions: {},
+}] as unknown as AdminRole[];
 
 const activeInvite: InviteLink = {
   ...revokedInvite,
@@ -55,6 +70,7 @@ function renderSection(
     inviteVisibility: "revoked",
     onInviteVisibilityChange: vi.fn(),
     onCreateInvite: vi.fn(),
+    roles,
     createInvitePending: false,
     inviteStatsLoading: false,
     inviteStats: null,
@@ -124,7 +140,7 @@ describe("AdminInviteSection", () => {
     expect(revokeItem.parentElement).toHaveAttribute("data-disabled-tooltip-target");
   });
 
-  it("resets the create form every time the modal opens", async () => {
+  it("resets the create form after every cancel path", async () => {
     const user = userEvent.setup();
     renderSection();
 
@@ -132,6 +148,9 @@ describe("AdminInviteSection", () => {
     const dialog = screen.getByRole("dialog");
     const maxUses = within(dialog).getByLabelText("invite.aria.maxUses");
     const expiresAt = within(dialog).getByLabelText("invite.aria.expiresAt");
+    const role = within(dialog).getByLabelText("invite.aria.role");
+    await user.click(role);
+    await user.click(await screen.findByRole("option", { name: "Raid Lead", hidden: true }));
     fireEvent.change(maxUses, { target: { value: "4" } });
     fireEvent.change(expiresAt, { target: { value: "2026-08-01T12:30" } });
 
@@ -141,6 +160,17 @@ describe("AdminInviteSection", () => {
 
     expect(within(reopenedDialog).getByLabelText("invite.aria.maxUses")).toHaveValue("10");
     expect(within(reopenedDialog).getByLabelText("invite.aria.expiresAt")).toHaveValue("");
+    expect(within(reopenedDialog).getByLabelText("invite.aria.role")).toHaveValue("");
+
+    await user.click(within(reopenedDialog).getByLabelText("invite.aria.role"));
+    await user.click(await screen.findByRole("option", { name: "Raid Lead", hidden: true }));
+    const closeButton = reopenedDialog.querySelector<HTMLButtonElement>(".mantine-Modal-close");
+    expect(closeButton).not.toBeNull();
+    await user.click(closeButton!);
+    await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+
+    await user.click(getToolbarCreateButton());
+    expect(within(screen.getByRole("dialog")).getByLabelText("invite.aria.role")).toHaveValue("");
   });
 
   it("closes only after the current create request succeeds", async () => {
@@ -150,10 +180,13 @@ describe("AdminInviteSection", () => {
 
     await user.click(getToolbarCreateButton());
     const dialog = screen.getByRole("dialog");
+    expect(within(dialog).getByRole("button", { name: "invite.create" })).toBeDisabled();
+    await user.click(within(dialog).getByLabelText("invite.aria.role"));
+    await user.click(await screen.findByRole("option", { name: "Raid Lead", hidden: true }));
     await user.click(within(dialog).getByRole("button", { name: "invite.create" }));
 
     expect(onCreateInvite).toHaveBeenCalledWith(
-      { maxUses: 10, expiresAt: "" },
+      { roleId: "raid-lead", maxUses: 10, expiresAt: "" },
       expect.any(Function),
     );
     expect(screen.getByRole("dialog")).toBeInTheDocument();
@@ -166,6 +199,9 @@ describe("AdminInviteSection", () => {
     await waitFor(() => {
       expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
     });
+
+    await user.click(getToolbarCreateButton());
+    expect(within(screen.getByRole("dialog")).getByLabelText("invite.aria.role")).toHaveValue("");
   });
 
   it("loads the next server page without client-side pagination", async () => {

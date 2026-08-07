@@ -43,8 +43,12 @@ export function UserProfileDropdown({ user, onLogout, compact = false }: UserPro
                 {user.username}
               </Text>
               {!compact ? (
-                <Text c="dimmed" size="xs" className="app-profile-role">
-                  {user.role}
+                <Text
+                  c={user.role_color ?? "dimmed"}
+                  size="xs"
+                  className="app-profile-role"
+                >
+                  {user.role_name}
                 </Text>
               ) : null}
             </div>

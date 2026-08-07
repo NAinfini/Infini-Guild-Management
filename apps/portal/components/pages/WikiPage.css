@@ -68,25 +68,12 @@
 
 .wiki-article-reader-content {
   width: 100%;
-  max-width: 72ch;
-  margin-inline: auto;
+  max-width: none;
+  margin-inline: 0;
   display: flex;
   flex-direction: column;
   gap: var(--space-md);
   min-width: 0;
-}
-
-.wiki-article-reader-card .infini-tiptap-layout {
-  flex-direction: column;
-  align-items: stretch;
-}
-
-.wiki-article-reader-card .infini-tiptap-toc {
-  order: -1;
-  position: static;
-  width: 100%;
-  max-height: none;
-  overflow-y: visible;
 }
 
 .wiki-article-reader-card .infini-tiptap-surface--readonly {

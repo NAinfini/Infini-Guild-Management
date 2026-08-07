@@ -174,27 +174,6 @@ export function AdminClassTagsSection() {
 
   const canSave = draft.label.trim().length > 0 && draft.classIds.length <= MAX_MEMBERS && dirty;
 
-  const atLimit = draft.classIds.length >= MAX_MEMBERS;
-
-  /* 批量按钮只作用于当前可见的那些行：搜索「破竹」再点全选，人要的是那三个，
-     不是整个目录。没搜索时可见即全部，跟直觉一致。 */
-  const visibleSelectedCount = visible.reduce((sum, item) => sum + (picked.has(item.id) ? 1 : 0), 0);
-
-  const selectVisible = () => controller.setDraft((current) => {
-    const next = new Set(current.classIds);
-    for (const item of visible) {
-      if (next.has(item.id)) continue;
-      if (next.size >= MAX_MEMBERS) break;
-      next.add(item.id);
-    }
-    return { ...current, classIds: [...next] };
-  });
-
-  const clearVisible = () => controller.setDraft((current) => {
-    const drop = new Set(visible.map((item) => item.id));
-    return { ...current, classIds: current.classIds.filter((id) => !drop.has(id)) };
-  });
-
   /* 键盘也要能排：只有指针传感器的话，手柄能聚焦却按不动，那是个假的可访问控件。 */
   const sensors = useSensors(
     useSensor(PointerSensor),
@@ -363,15 +342,7 @@ export function AdminClassTagsSection() {
 
               <div className="admin-class-tags__members">
                 <div className="admin-class-tags__members-intro">
-                  <Group gap={8} align="center" wrap="nowrap">
-                    <Text size="sm" fw={600}>{t("classTags.field.members")}</Text>
-                    <Badge size="xs" variant="light" color="gray">
-                      {t("classTags.members.counter", {
-                        count: draft.classIds.length,
-                        total: catalog.length,
-                      })}
-                    </Badge>
-                  </Group>
+                  <Text size="sm" fw={600}>{t("classTags.field.members")}</Text>
                   {controller.editing ? (
                     <Text size="xs" c="dimmed">
                       {t("classTags.field.membersDescription", { max: MAX_MEMBERS })}
@@ -415,25 +386,6 @@ export function AdminClassTagsSection() {
                       onChange: setQuery,
                       placeholder: t("classTags.members.searchPlaceholder"),
                     }}
-                    bulk={{
-                      selectAll: {
-                        label: t("classTags.members.selectAll"),
-                        /* 满了就不给加，而不是让人点完才发现存不进去：超出上限服务端
-                           会截断，界面先拦住。 */
-                        disabled: visibleSelectedCount === visible.length || atLimit,
-                        onClick: selectVisible,
-                      },
-                      clear: {
-                        label: t("classTags.members.clear"),
-                        disabled: visibleSelectedCount === 0,
-                        onClick: clearVisible,
-                      },
-                    }}
-                    status={atLimit ? (
-                      <Text size="xs" c="dimmed">
-                        {t("classTags.members.limitReached", { max: MAX_MEMBERS })}
-                      </Text>
-                    ) : null}
                   />
                 )}
               </div>

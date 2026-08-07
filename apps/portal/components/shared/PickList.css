@@ -7,7 +7,7 @@
   min-block-size: 0;
 }
 
-/* 搜索、批量勾选、计数、确认按钮挤在同一行。窄了就折行，不各自另起一块。 */
+/* 搜索和确认按钮挤在同一行。窄了就折行，不各自另起一块。 */
 .pick-list__toolbar {
   display: flex;
   flex-wrap: wrap;
@@ -18,12 +18,6 @@
 .pick-list__search {
   flex: 1 1 12rem;
   min-inline-size: 0;
-}
-
-/* 计数／差异贴右端，和左边的操作分开：一个是状态，一个是动作。 */
-.pick-list__status {
-  margin-inline-start: auto;
-  font-variant-numeric: tabular-nums;
 }
 
 /*
@@ -37,7 +31,6 @@
   flex-direction: column;
   min-block-size: 0;
   overflow: hidden auto;
-  overscroll-behavior: contain;
   border: 1px solid var(--border-subtle);
   border-radius: var(--radius-control);
   background: var(--surface-base);
@@ -150,7 +143,6 @@
   z-index: 1;
   display: flex;
   align-items: center;
-  justify-content: space-between;
   gap: var(--space-sm);
   padding: 4px var(--space-sm);
   border-block-end: 1px solid var(--border-subtle);

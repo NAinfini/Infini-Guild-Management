@@ -5,6 +5,12 @@ import { fireEvent, render, screen, waitFor, within } from "@testing-library/rea
 import { describe, expect, it, vi } from "vitest";
 import { AdminRolesSection } from "./AdminRolesSection";
 
+const confirmMock = vi.hoisted(() => vi.fn());
+
+vi.mock("@portal/hooks/useConfirmDialog", () => ({
+  useConfirmDialog: () => confirmMock,
+}));
+
 vi.mock("react-i18next", () => ({
   useTranslation: () => ({
     t: (key: string, options?: { defaultValue?: string; count?: number }) => options?.defaultValue ?? key,
@@ -18,6 +24,9 @@ vi.mock("../../../stores/auth", () => ({
         id: "admin-1",
         username: "admin",
         role: "admin",
+        role_name: "Guild Admin",
+        role_color: "#ef4444",
+        role_level: 999,
         permissions: { "admin.roles.manage": true } as Record<Permission, boolean>,
         is_active: true,
         deleted_at: null,
@@ -40,7 +49,6 @@ const roles: AdminRole[] = [{
   name: "Admin",
   level: 999,
   color: "red",
-  is_builtin: true,
   created_at: "2026-06-11T00:00:00.000Z",
   updated_at: "2026-06-11T00:00:00.000Z",
   assigned_user_count: 1,
@@ -53,7 +61,6 @@ const customRoles: AdminRole[] = [
     id: "raid-lead",
     name: "Raid Lead",
     level: 200,
-    is_builtin: false,
     assigned_user_count: 0,
   },
   {
@@ -61,7 +68,6 @@ const customRoles: AdminRole[] = [
     id: "diplomat",
     name: "Diplomat",
     level: 150,
-    is_builtin: false,
     assigned_user_count: 0,
   },
 ];
@@ -92,6 +98,14 @@ function renderRolesSection(
 }
 
 describe("AdminRolesSection storage permissions", () => {
+  it("lets every D1 role edit metadata and exposes server-authoritative deletion", () => {
+    renderRolesSection();
+
+    expect(screen.getByRole("textbox", { name: "roles.field.name" })).toBeEnabled();
+    expect(screen.getByRole("textbox", { name: "roles.field.level" })).toBeEnabled();
+    expect(screen.getAllByRole("button", { name: "roles.delete" })).toHaveLength(2);
+  });
+
   it("renders granular storage permission controls in the permissions page", () => {
     renderRolesSection();
 
@@ -99,7 +113,7 @@ describe("AdminRolesSection storage permissions", () => {
     expect(screen.getByText("admin.storage.structure")).toBeInTheDocument();
     expect(screen.getByText("admin.storage.items")).toBeInTheDocument();
     expect(screen.getByText("admin.storage.stock")).toBeInTheDocument();
-    expect(screen.queryByText("admin.storage.manage")).not.toBeInTheDocument();
+    expect(screen.getByText("admin.storage.manage")).toBeInTheDocument();
   });
 
   it("renders site config permission control in the system permission group", () => {
@@ -107,6 +121,29 @@ describe("AdminRolesSection storage permissions", () => {
 
     expect(screen.getByText("roles.category.adminSystem")).toBeInTheDocument();
     expect(screen.getByText("admin.siteConfig.manage")).toBeInTheDocument();
+    expect(screen.getByText("admin.badges.manage")).toBeInTheDocument();
+  });
+
+  it("requires explicit confirmation before removing a permission from the actor's current role", async () => {
+    const onUpdateRole = vi.fn().mockResolvedValue(true);
+    confirmMock.mockResolvedValueOnce(false).mockResolvedValueOnce(true);
+    renderRolesSection({ onUpdateRole });
+
+    fireEvent.click(screen.getByRole("button", { name: /admin\.roles\.manage/ }));
+    fireEvent.click(screen.getByRole("button", { name: "roles.save" }));
+
+    await waitFor(() => expect(confirmMock).toHaveBeenCalledWith(expect.objectContaining({
+      title: "roles.confirmSelfLockTitle",
+    })));
+    expect(onUpdateRole).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByRole("button", { name: "roles.save" }));
+    await waitFor(() => expect(onUpdateRole).toHaveBeenCalledWith(
+      "admin",
+      expect.objectContaining({
+        permissions: expect.objectContaining({ "admin.roles.manage": false }),
+      }),
+    ));
   });
 
   it("opens a focused, cancellable form and creates only after a valid name is submitted", async () => {

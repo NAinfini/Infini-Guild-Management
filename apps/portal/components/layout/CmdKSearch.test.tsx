@@ -62,6 +62,17 @@ describe("CmdKSearch", () => {
     vi.clearAllMocks();
     searchMock.mockResolvedValue({
       data: [
+        {
+          id: "user-1",
+          title: "Aster",
+          subtitle: "Raid coordinator",
+          type: "user",
+          to: "/roster?member=Aster",
+          role: "raid-lead",
+          role_name: "Raid Lead",
+          role_color: "#22c55e",
+          role_level: 100,
+        },
         { id: "war-1", title: "Guild War", subtitle: "win - 2026-03-01", type: "war", to: "/guild-war" },
         { id: "wiki-1", title: "war history", subtitle: "war-history", type: "wiki", to: "/wiki" },
       ],
@@ -137,6 +148,18 @@ describe("CmdKSearch", () => {
     expect(screen.getByRole("option", { name: /war.*history/i })).toBeInTheDocument();
   });
 
+  it("shows the embedded D1 role name instead of a raw role id", async () => {
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const user = userEvent.setup();
+    render(<CmdKSearch />, { wrapper: createWrapper(queryClient) });
+
+    await user.click(screen.getByRole("button", { name: "Search" }));
+    await user.type(await screen.findByPlaceholderText("Search everything"), "aster");
+
+    expect(await screen.findByText("Raid Lead")).toBeInTheDocument();
+    expect(screen.queryByText("raid-lead")).not.toBeInTheDocument();
+  });
+
   it("opens with the keyboard shortcut and supports keyboard result selection", async () => {
     const queryClient = new QueryClient({
       defaultOptions: {
@@ -151,9 +174,16 @@ describe("CmdKSearch", () => {
     await user.keyboard("{Control>}k{/Control}");
     const input = await screen.findByRole("combobox", { name: "Search input" });
     await user.type(input, "war");
-    await screen.findAllByRole("option");
+    const options = await screen.findAllByRole("option");
+    const target = options.find((option) => option.textContent?.includes("war history"));
+    const targetIndex = options.indexOf(target!);
 
-    await user.keyboard("{ArrowDown}{Enter}");
+    expect(target).toBeDefined();
+    expect(targetIndex).toBeGreaterThan(0);
+    await waitFor(() => expect(options[0]).toHaveAttribute("aria-selected", "true"));
+    await user.keyboard("{ArrowDown}".repeat(targetIndex));
+    await waitFor(() => expect(target).toHaveAttribute("aria-selected", "true"));
+    await user.keyboard("{Enter}");
 
     await waitFor(() => {
       expect(navigateMock).toHaveBeenCalledWith({ to: "/wiki" });

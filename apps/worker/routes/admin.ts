@@ -135,7 +135,7 @@ adminRoutes.post("/invite-links", async (c) => {
   const body = await parseJsonBody(c);
   const parsed = createInviteLinkSchema.safeParse(body);
   if (!parsed.success) return buildError(c, "VALIDATION_ERROR", "Invalid invite payload", parsed.error.flatten());
-  const result = await getAdminService(c).createInviteLink(sessionUser.id, parsed.data.max_uses, parsed.data.expires_at ?? null);
+  const result = await getAdminService(c).createInviteLink(sessionUser.id, parsed.data.role_id, parsed.data.max_uses, parsed.data.expires_at ?? null);
   return handleResult(c, result, 201);
 });
 
@@ -195,7 +195,7 @@ adminRoutes.post("/users", async (c) => {
   const body = await parseJsonBody(c);
   const parsed = createAdminMemberSchema.safeParse(body);
   if (!parsed.success) return buildError(c, "VALIDATION_ERROR", "Invalid create member payload", parsed.error.flatten());
-  const result = await getAdminService(c).createMember(sessionUser.id, parsed.data.username);
+  const result = await getAdminService(c).createMember(sessionUser.id, parsed.data.username, parsed.data.role_id);
   if (!result.ok) return handleResult(c, result);
   return c.json({ ok: true, ...result.data }, 201);
 });
@@ -248,7 +248,13 @@ adminRoutes.post("/users/:id/reset-login-lock", async (c) => {
 
 // Roles
 adminRoutes.get("/roles", async (c) => {
-  await requirePermission(c, "admin.roles.view");
+  await requirePermission(c, [
+    "admin.roles.view",
+    "admin.roles.manage",
+    "admin.invite.manage",
+    "admin.users.edit",
+    "admin.users.role",
+  ]);
   const result = await getAdminService(c).listRoles();
   return handleResult(c, result);
 });

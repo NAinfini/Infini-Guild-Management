@@ -20,6 +20,8 @@ export type TestRunContext = {
   fixtureId: string | null;
   meId: string | null;
   meUsername: string | null;
+  meRoleLevel: number | null;
+  mePermissions: Record<string, boolean> | null;
   registerInviteCode: string | null;
   userImageKey: string | null;
   userAudioKey: string | null;
@@ -124,6 +126,8 @@ export function createInitialTestRunContext(): TestRunContext {
     fixtureId: null,
     meId: null,
     meUsername: null,
+    meRoleLevel: null,
+    mePermissions: null,
     registerInviteCode: null,
     userImageKey: null,
     userAudioKey: null,

@@ -52,6 +52,7 @@ describe("core schema Drizzle/SQL parity", () => {
     expect(migrationFiles).toEqual([
       "0000_core_schema.sql",
       "0001_release_schema_upgrade.sql",
+      "0002_dynamic_role_authority.sql",
     ]);
   });
 
@@ -152,6 +153,16 @@ describe("core schema Drizzle/SQL parity", () => {
     expect(fk?.onDelete).toBe("restrict");
     expect(tableBlock("storage_transactions")).toMatch(
       /item_id TEXT NOT NULL REFERENCES "?storage_items"?\(id\) ON DELETE RESTRICT/,
+    );
+  });
+
+  it("keeps invite role assignment required and delete-restricted", () => {
+    const roleForeignKey = getTableConfig(inviteLinks).foreignKeys.find((foreignKey) =>
+      foreignKey.reference().columns.some((column) => column.name === "role_id"),
+    );
+    expect(roleForeignKey?.onDelete).toBe("restrict");
+    expect(tableBlock("invite_links")).toMatch(
+      /role_id TEXT NOT NULL REFERENCES "?roles"?\(id\) ON DELETE RESTRICT/,
     );
   });
 

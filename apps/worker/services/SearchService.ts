@@ -6,6 +6,7 @@ import {
   events,
   galleryItems,
   memberProfiles,
+  roles,
   users,
   warHistory,
   wikiArticles,
@@ -26,6 +27,9 @@ export type SearchResult = {
   to: string;
   entity_id?: string;
   role?: string;
+  role_name?: string;
+  role_color?: string | null;
+  role_level?: number;
 };
 
 type SearchInput = {
@@ -66,9 +70,13 @@ export class SearchService {
           id: users.id,
           username: users.username,
           role: users.role,
+          roleName: roles.name,
+          roleColor: roles.color,
+          roleLevel: roles.level,
           power: memberProfiles.power,
         })
         .from(users)
+        .innerJoin(roles, eq(users.role, roles.id))
         .leftJoin(memberProfiles, eq(memberProfiles.userId, users.id))
         .where(and(isNull(users.deletedAt), eq(users.isActive, true), sql`lower(${users.username}) LIKE ${pattern} ESCAPE '\\'`))
         .orderBy(users.username, users.id)
@@ -114,11 +122,14 @@ export class SearchService {
         ...userRows.map((row): SearchResult => ({
           id: row.id,
           title: row.username,
-          subtitle: `${row.role}${row.power ? ` · ${Math.round(row.power).toLocaleString()} power` : ""}`,
+          subtitle: `${row.roleName}${row.power ? ` · ${Math.round(row.power).toLocaleString()} power` : ""}`,
           type: "user",
           to: "/roster",
           entity_id: row.id,
           role: row.role,
+          role_name: row.roleName,
+          role_color: row.roleColor,
+          role_level: row.roleLevel,
         })),
         ...(features.events ? eventRows.map((row): SearchResult => ({
           id: row.id,

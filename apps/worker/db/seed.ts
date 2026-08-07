@@ -239,9 +239,9 @@ export async function seedDatabase(env: Bindings): Promise<void> {
   // ════════════════════════════════════════════
 
   const roleRows: Array<typeof roles.$inferInsert> = [
-    { id: "admin", name: "Admin", level: 999, color: "red", isBuiltin: true },
-    { id: "moderator", name: "Moderator", level: 500, color: "#756047", isBuiltin: true },
-    { id: "member", name: "Member", level: 100, color: "gray", isBuiltin: true },
+    { id: "admin", name: "Admin", level: 999, color: "red" },
+    { id: "moderator", name: "Moderator", level: 500, color: "#756047" },
+    { id: "member", name: "Member", level: 100, color: "gray" },
   ];
   await batchInsert(db, roles, roleRows, 3, { ignoreConflicts: true });
 
@@ -1670,6 +1670,7 @@ export async function seedDatabase(env: Bindings): Promise<void> {
       id: nanoid(),
       code: "SEEDLIVE",
       createdBy: adminId,
+      roleId: "member",
       maxUses: 100,
       usedCount: 18,
       expiresAt: addDays(now, 30),
@@ -1679,6 +1680,7 @@ export async function seedDatabase(env: Bindings): Promise<void> {
       id: nanoid(),
       code: "SEEDEXPR",
       createdBy: adminId,
+      roleId: "member",
       maxUses: 10,
       usedCount: 10,
       expiresAt: addDays(now, -1),
@@ -1688,6 +1690,7 @@ export async function seedDatabase(env: Bindings): Promise<void> {
       id: nanoid(),
       code: "SEEDREVOKED",
       createdBy: adminId,
+      roleId: "member",
       maxUses: 25,
       usedCount: 4,
       expiresAt: addDays(now, 12),
@@ -1697,6 +1700,7 @@ export async function seedDatabase(env: Bindings): Promise<void> {
       id: nanoid(),
       code: "SEEDFRESH",
       createdBy: moderatorIds[0]!,
+      roleId: "member",
       maxUses: 50,
       usedCount: 0,
       expiresAt: addDays(now, 60),

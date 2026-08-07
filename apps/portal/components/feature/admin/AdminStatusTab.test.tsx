@@ -45,9 +45,11 @@ vi.mock("../../../stores/notifications", () => ({
 }));
 
 type RenderStatusTabOptions = {
+  onRunQuickCheck?: () => void;
   canCopyConfigSummary?: boolean;
   statusLatencyMs?: number | null;
   statusLoading?: boolean;
+  statusChecking?: boolean;
   statusError?: boolean;
   statusData?: {
     db: string;
@@ -67,25 +69,31 @@ type RenderStatusTabOptions = {
 };
 
 function renderStatusTab(options: RenderStatusTabOptions = {}) {
+  const onRunQuickCheck = options.onRunQuickCheck ?? vi.fn();
   render(
     <MantineProvider>
       <AdminStatusTab
+        onRunQuickCheck={onRunQuickCheck}
         onCopyConfigSummary={vi.fn()}
         canCopyConfigSummary={options.canCopyConfigSummary ?? true}
         statusLatencyMs={options.statusLatencyMs ?? 12}
         statusLoading={options.statusLoading ?? false}
+        statusChecking={options.statusChecking ?? false}
         statusError={options.statusError ?? false}
-        statusData={options.statusData ?? {
-          db: "ok",
-          r2: "ok",
-          ws: "ok",
-          crons: "ok",
-          system_tests_enabled: true,
-        }}
+        statusData={"statusData" in options
+          ? options.statusData ?? null
+          : {
+              db: "ok",
+              r2: "ok",
+              ws: "ok",
+              crons: "ok",
+              system_tests_enabled: true,
+            }}
         statusHealthLogs={options.statusHealthLogs ?? []}
       />
     </MantineProvider>,
   );
+  return { onRunQuickCheck };
 }
 
 describe("AdminStatusTab", () => {
@@ -150,6 +158,35 @@ describe("AdminStatusTab", () => {
     expect(screen.queryByRole("button", { name: "status.api.runAll" })).not.toBeInTheDocument();
   });
 
+  it("runs the explicit quick check action", async () => {
+    const user = userEvent.setup();
+    const onRunQuickCheck = vi.fn();
+    renderStatusTab({ onRunQuickCheck });
+
+    await user.click(screen.getByRole("button", { name: "status.quickCheck" }));
+
+    expect(onRunQuickCheck).toHaveBeenCalledOnce();
+    expect(screen.getByText("status.quickCheckDescription")).toBeInTheDocument();
+  });
+
+  it("keeps the previous result visible while a quick check is in flight", () => {
+    renderStatusTab({
+      statusChecking: true,
+      statusData: {
+        db: "ok",
+        r2: "ok",
+        ws: "configured",
+        crons: "configured",
+        system_tests_enabled: false,
+      },
+    });
+
+    expect(screen.getByRole("button", { name: "status.quickCheck" })).toBeDisabled();
+    expect(screen.getByText("status.service.db")).toBeInTheDocument();
+    expect(screen.getAllByText("status.value.ok")).toHaveLength(2);
+    expect(screen.getAllByText("status.value.configured")).toHaveLength(2);
+  });
+
   it("distinguishes verified services from configured-only services", () => {
     renderStatusTab({
       statusData: {
@@ -162,10 +199,10 @@ describe("AdminStatusTab", () => {
     });
 
     expect(screen.getByText("status.section.health")).toBeInTheDocument();
-    expect(screen.getByText("D1")).toBeInTheDocument();
-    expect(screen.getByText("R2")).toBeInTheDocument();
-    expect(screen.getByText("WS")).toBeInTheDocument();
-    expect(screen.getByText("Crons")).toBeInTheDocument();
+    expect(screen.getByText("status.service.db")).toBeInTheDocument();
+    expect(screen.getByText("status.service.r2")).toBeInTheDocument();
+    expect(screen.getByText("status.service.ws")).toBeInTheDocument();
+    expect(screen.getByText("status.service.crons")).toBeInTheDocument();
     expect(screen.getAllByText("status.value.ok")).toHaveLength(2);
     expect(screen.getAllByText("status.value.configured")).toHaveLength(2);
     expect(screen.getByText("12")).toBeInTheDocument();
@@ -205,7 +242,7 @@ describe("AdminStatusTab", () => {
     expect(labels.some((text) => text?.includes("status.api.debugTitle"))).toBe(true);
 
     /* 健康面板不折叠：这一页最常做的事就是扫一眼四个服务，它必须一进来就在。 */
-    expect(screen.getByText("D1")).toBeVisible();
+    expect(screen.getByText("status.service.db")).toBeVisible();
 
     const healthLogs = disclosures.find((node) => node.textContent?.includes("status.healthLogs.title"));
     await user.click(healthLogs!);
@@ -237,9 +274,9 @@ describe("AdminStatusTab", () => {
        role 查询查不到隐藏节点——先真的展开，再断言表头。 */
     await user.click(screen.getByRole("button", { name: /status\.healthLogs\.title/ }));
     expect(screen.getByRole("columnheader", { name: "audit.table.time" })).toBeInTheDocument();
-    expect(screen.getByRole("columnheader", { name: "DB" })).toBeInTheDocument();
-    expect(screen.getByRole("columnheader", { name: "R2" })).toBeInTheDocument();
-    expect(screen.getByRole("columnheader", { name: "WS" })).toBeInTheDocument();
+    expect(screen.getByRole("columnheader", { name: "status.service.db" })).toBeInTheDocument();
+    expect(screen.getByRole("columnheader", { name: "status.service.r2" })).toBeInTheDocument();
+    expect(screen.getByRole("columnheader", { name: "status.service.ws" })).toBeInTheDocument();
     expect(screen.getByRole("columnheader", { name: "status.service.crons" })).toBeInTheDocument();
     expect(screen.getByRole("columnheader", { name: "status.latency" })).toBeInTheDocument();
     expect(screen.getByText("450ms")).toBeInTheDocument();
@@ -252,7 +289,7 @@ describe("AdminStatusTab", () => {
     });
 
     expect(screen.getByText("loadError")).toBeInTheDocument();
-    expect(screen.queryByText("D1")).not.toBeInTheDocument();
+    expect(screen.queryByText("status.service.db")).not.toBeInTheDocument();
   });
 
   it("hides system health and API tests from users without status permission", () => {

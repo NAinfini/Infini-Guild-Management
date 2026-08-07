@@ -92,7 +92,7 @@ function EventStatusIndicator({ children, color, icon, title, description }: Eve
  * 另写一份 JSX，它和线上卡片迟早会长得不一样——那张预览就成了谎言。所以两处共用
  * 这一个组件，模板那边传一个拼出来的 Event 和空成员列表，不传任何操作插槽。
  *
- * 交互全部走插槽（headerActions / menu / footer）。展示层不知道「报名」是什么，
+ * 交互全部走插槽（headerActions / menu / participantAction）。展示层不知道「报名」是什么，
  * 也不知道谁有权限——那些是容器的事。
  */
 type EventCardViewProps = {
@@ -108,8 +108,8 @@ type EventCardViewProps = {
   headerActions?: React.ReactNode;
   /** 色带最右的管理菜单。 */
   menu?: React.ReactNode;
-  /** 页脚。这里只放主操作按钮，不放文字：禁用原因由色带上的状态图标和按钮自己的 Tooltip 说。 */
-  footer?: React.ReactNode;
+  /** 参与者头像右侧的主操作；禁用原因由状态图标和按钮自己的 Tooltip 说明。 */
+  participantAction?: React.ReactNode;
 };
 
 export function EventCardView({
@@ -121,7 +121,7 @@ export function EventCardView({
   onOpenDetail,
   headerActions,
   menu,
-  footer,
+  participantAction,
 }: EventCardViewProps) {
   const { t, i18n } = useTranslation("events");
   const joinedCount = members.length;
@@ -270,25 +270,27 @@ export function EventCardView({
             {event.description || t("card.noDescription")}
           </Text>
 
-          {/* ── 参与状况：谁来了，还缺什么。来了多少在色带上。 ── */}
-          <div className="event-card__members-bar">
-            {raffleHasDrawn ? (
-              <span className="event-card__winners-tag">
-                <GiftIcon size={13} />
-                <span>{t("raffle.detail.winnersLabel")}</span>
-              </span>
-            ) : null}
-            <MemberAvatarStack members={members} />
-          </div>
-
           {/* 没配额也画：那时它是一条报名进度，「这场还收不收人」跟「缺哪个职业」在
               卡片上占同一个位置，不会因为活动类型不同而少一块。 */}
           <EventQuotaBar summary={quotaSummary} event={event} participantCount={joinedCount} />
+
+          {/* ── 参与状况：先看缺口，再在同一行看成员并完成报名操作。 ── */}
+          <div className="event-card__participation-row">
+            <div className="event-card__members-bar">
+              {raffleHasDrawn ? (
+                <span className="event-card__winners-tag">
+                  <GiftIcon size={13} />
+                  <span>{t("raffle.detail.winnersLabel")}</span>
+                </span>
+              ) : null}
+              <MemberAvatarStack members={members} />
+            </div>
+            {participantAction ? (
+              <div className="event-card__participant-action">{participantAction}</div>
+            ) : null}
+          </div>
         </Stack>
       </div>
-
-      {/* ── 页脚：你要不要去。只有一个右对齐的按钮，不放任何文字。 ── */}
-      {footer ? <div className="event-card__footer">{footer}</div> : null}
     </Paper>
   );
 }

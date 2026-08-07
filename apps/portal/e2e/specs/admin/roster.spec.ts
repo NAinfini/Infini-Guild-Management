@@ -1,4 +1,5 @@
 import type { APIRequestContext, Locator, Page, Response } from "@playwright/test";
+import { readAssignableRole } from "../../support/members";
 import { expect, readJson, test } from "../../support/test";
 import { field, topDialog } from "../../support/ui";
 
@@ -282,13 +283,16 @@ test("加载更多：首屏只渲染 20 张，点下去把剩下的补齐", asyn
 
   /*
    * 名册要超过一页才有「加载更多」，种子只有 19 个人，所以现造两个。
-   * POST /api/admin/users 只收用户名，临时密码由服务端生成——用例不碰口令。
+   * POST /api/admin/users 收用户名和当前管理员可授予的 D1 角色，临时密码由服务端生成。
    * 返回的 user_id 会被 system-test 中间件登记成 user 产物，收尾时硬删。
-   */
+  */
   const stamp = Date.now();
+  const role = await readAssignableRole(api);
   for (const suffix of ["a", "b"]) {
     const created = await readJson(
-      await api.post("/api/admin/users", { data: { username: `e2e_roster_${stamp}${suffix}` } }),
+      await api.post("/api/admin/users", {
+        data: { username: `e2e_roster_${stamp}${suffix}`, role_id: role.id },
+      }),
       "创建临时成员",
     ) as { user_id: string };
     expect(created.user_id, "创建接口必须回 user_id，否则收尾时无从定位").toBeTruthy();

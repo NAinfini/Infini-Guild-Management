@@ -45,6 +45,8 @@ type TitleSandboxModalProps = {
   onApply?: (html: string) => void;
 };
 
+type HtmlSource = "initial" | "generated" | "manual";
+
 export function TitleSandboxModal({ opened, onClose, initialHtml, onApply }: TitleSandboxModalProps) {
   const { t } = useTranslation("tools");
   const isExternalView = useExternalView();
@@ -59,15 +61,22 @@ export function TitleSandboxModal({ opened, onClose, initialHtml, onApply }: Tit
   const [fontSize, setFontSize] = useState(16);
   const [letterSpacing, setLetterSpacing] = useState(2);
   const [manualHtml, setManualHtml] = useState(initialHtml ?? "");
+  const [htmlSource, setHtmlSource] = useState<HtmlSource>(
+    initialHtml?.trim() ? "initial" : "generated",
+  );
+
+  const useGeneratedHtml = () => setHtmlSource("generated");
 
   const applyColor = (value: string) => {
     if (isExternalView) return;
     setColor(value);
+    useGeneratedHtml();
   };
 
   const commitColor = (value: string) => {
     if (isExternalView) return;
     setColor(value);
+    useGeneratedHtml();
     setRecentColors((current) => {
       const next = [value.toLowerCase(), ...current.filter((item) => item.toLowerCase() !== value.toLowerCase())];
       return next.slice(0, 5);
@@ -104,7 +113,12 @@ export function TitleSandboxModal({ opened, onClose, initialHtml, onApply }: Tit
     return `<span style="${styleParts.join("; ")}">${safeText}</span>`;
   }, [alpha, bold, fontSize, italic, letterSpacing, rgbaColor, strikethrough, titleText, underline]);
 
-  const safeHtml = useMemo(() => DOMPurify.sanitize(manualHtml.trim() || generatedHtml), [generatedHtml, manualHtml]);
+  const sourceHtml = htmlSource === "initial"
+    ? initialHtml ?? generatedHtml
+    : htmlSource === "manual"
+      ? manualHtml
+      : generatedHtml;
+  const safeHtml = useMemo(() => DOMPurify.sanitize(sourceHtml), [sourceHtml]);
   const previewMetaText = useMemo(() => {
     const segments = [
       color.toUpperCase(),
@@ -127,7 +141,10 @@ export function TitleSandboxModal({ opened, onClose, initialHtml, onApply }: Tit
               <Text size="xs" fw={600} c="dimmed" className="sandbox__section-label">{t("sandbox.section.titleText")}</Text>
               <TextInput
                 value={titleText}
-                onChange={(event) => setTitleText(event.currentTarget.value)}
+                onChange={(event) => {
+                  setTitleText(event.currentTarget.value);
+                  useGeneratedHtml();
+                }}
                 placeholder={t("sandbox.placeholder")}
                 aria-label={t("sandbox.aria.titleInput")}
                 disabled={isExternalView}
@@ -157,7 +174,18 @@ export function TitleSandboxModal({ opened, onClose, initialHtml, onApply }: Tit
 
                 <div className="sandbox__opacity-wrap">
                   <Text size="xs" c="dimmed">{t("sandbox.label.opacity")}</Text>
-                  <Slider min={0} max={100} value={opacity} onChange={setOpacity} aria-label={t("sandbox.aria.opacitySlider")} disabled={isExternalView} className="sandbox__opacity-slider" />
+                  <Slider
+                    min={0}
+                    max={100}
+                    value={opacity}
+                    onChange={(value) => {
+                      setOpacity(value);
+                      useGeneratedHtml();
+                    }}
+                    aria-label={t("sandbox.aria.opacitySlider")}
+                    disabled={isExternalView}
+                    className="sandbox__opacity-slider"
+                  />
                   <Text size="xs" fw={500} className="sandbox__opacity-value">{opacity}%</Text>
                 </div>
 
@@ -189,7 +217,10 @@ export function TitleSandboxModal({ opened, onClose, initialHtml, onApply }: Tit
                   <button
                     type="button"
                     className={`sandbox__typo-btn${bold ? " sandbox__typo-btn--active" : ""}`}
-                    onClick={() => setBold(!bold)}
+                    onClick={() => {
+                      setBold(!bold);
+                      useGeneratedHtml();
+                    }}
                     disabled={isExternalView}
                     aria-label={t("sandbox.aria.toggleBold")}
                   >
@@ -199,7 +230,10 @@ export function TitleSandboxModal({ opened, onClose, initialHtml, onApply }: Tit
                   <button
                     type="button"
                     className={`sandbox__typo-btn${italic ? " sandbox__typo-btn--active" : ""}`}
-                    onClick={() => setItalic(!italic)}
+                    onClick={() => {
+                      setItalic(!italic);
+                      useGeneratedHtml();
+                    }}
                     disabled={isExternalView}
                     aria-label={t("sandbox.aria.toggleItalic")}
                   >
@@ -209,7 +243,10 @@ export function TitleSandboxModal({ opened, onClose, initialHtml, onApply }: Tit
                   <button
                     type="button"
                     className={`sandbox__typo-btn${underline ? " sandbox__typo-btn--active" : ""}`}
-                    onClick={() => setUnderline(!underline)}
+                    onClick={() => {
+                      setUnderline(!underline);
+                      useGeneratedHtml();
+                    }}
                     disabled={isExternalView}
                     aria-label={t("sandbox.aria.toggleUnderline")}
                   >
@@ -219,7 +256,10 @@ export function TitleSandboxModal({ opened, onClose, initialHtml, onApply }: Tit
                   <button
                     type="button"
                     className={`sandbox__typo-btn${strikethrough ? " sandbox__typo-btn--active" : ""}`}
-                    onClick={() => setStrikethrough(!strikethrough)}
+                    onClick={() => {
+                      setStrikethrough(!strikethrough);
+                      useGeneratedHtml();
+                    }}
                     disabled={isExternalView}
                     aria-label={t("sandbox.aria.toggleStrikethrough")}
                   >
@@ -231,14 +271,34 @@ export function TitleSandboxModal({ opened, onClose, initialHtml, onApply }: Tit
                 <div className="sandbox__slider-row">
                   <TextSizeIcon size={15} className="sandbox__slider-icon" />
                   <Text size="xs" c="dimmed" className="sandbox__slider-label">{t("sandbox.label.size")}</Text>
-                  <Slider min={10} max={48} value={fontSize} onChange={setFontSize} disabled={isExternalView} className="sandbox__slider" />
+                  <Slider
+                    min={10}
+                    max={48}
+                    value={fontSize}
+                    onChange={(value) => {
+                      setFontSize(value);
+                      useGeneratedHtml();
+                    }}
+                    disabled={isExternalView}
+                    className="sandbox__slider"
+                  />
                   <Text size="xs" fw={500} className="sandbox__slider-value">{fontSize}px</Text>
                 </div>
 
                 <div className="sandbox__slider-row">
                   <LetterSpacingIcon size={15} className="sandbox__slider-icon" />
                   <Text size="xs" c="dimmed" className="sandbox__slider-label">{t("sandbox.label.spacing")}</Text>
-                  <Slider min={-5} max={20} value={letterSpacing} onChange={setLetterSpacing} disabled={isExternalView} className="sandbox__slider" />
+                  <Slider
+                    min={-5}
+                    max={20}
+                    value={letterSpacing}
+                    onChange={(value) => {
+                      setLetterSpacing(value);
+                      useGeneratedHtml();
+                    }}
+                    disabled={isExternalView}
+                    className="sandbox__slider"
+                  />
                   <Text size="xs" fw={500} className="sandbox__slider-value">{(letterSpacing / 100).toFixed(2)}em</Text>
                 </div>
               </div>
@@ -275,9 +335,12 @@ export function TitleSandboxModal({ opened, onClose, initialHtml, onApply }: Tit
                   </button>
                 </Group>
                 <Textarea
-                  value={manualHtml || generatedHtml}
+                  value={sourceHtml}
                   minRows={3}
-                  onChange={(event) => setManualHtml(event.currentTarget.value)}
+                  onChange={(event) => {
+                    setManualHtml(event.currentTarget.value);
+                    setHtmlSource("manual");
+                  }}
                   placeholder={t("sandbox.manualOverridePlaceholder")}
                   aria-label={t("sandbox.aria.customHtmlOverride")}
                   disabled={isExternalView}

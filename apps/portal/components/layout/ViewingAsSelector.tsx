@@ -22,7 +22,7 @@ export function ViewingAsSelector({ value, compact = false, roles, onChange }: V
       .sort((a, b) => b.level - a.level)
       .map((role) => ({
         value: role.id,
-        label: t(`admin:role.${role.id}`, { defaultValue: role.name }),
+        label: role.name,
       }));
 
     items.push({ value: "external", label: t("common:viewingAs.external") });

@@ -1,5 +1,10 @@
 import type { APIRequestContext, Locator, Page } from "@playwright/test";
-import { createThrowawayMember, uniqueTag, type ThrowawayMember } from "../../support/members";
+import {
+  createThrowawayMember,
+  readAssignableRoles,
+  uniqueTag,
+  type ThrowawayMember,
+} from "../../support/members";
 import { expect, readJson, test } from "../../support/test";
 import { confirmDialog, expectNoDialog } from "../../support/ui";
 
@@ -114,12 +119,14 @@ async function expectNoApiCalls(page: Page, action: () => Promise<void>): Promis
 
 test("批量改角色：取消什么都不改；确认之后选中的每一个人角色都变了", async ({ page, api, flow }) => {
   const [first, second] = await setUpPair(page, api);
+  const targetRole = (await readAssignableRoles(api)).find((role) => role.id !== first.role.id);
+  if (!targetRole) throw new Error("批量改角色 E2E 至少需要两个可授予的 D1 角色");
 
   await batchAction(page, "Change Role");
-  await page.getByRole("menuitem", { name: "Moderator", exact: true }).click();
+  await page.getByRole("menuitem", { name: targetRole.name, exact: true }).click();
   const dialog = await expectConfirm(
     page,
-    "Update 2 selected members to the Moderator role?",
+    `Update 2 selected members to the ${targetRole.name} role?`,
     [first.username, second.username],
   );
 
@@ -127,16 +134,16 @@ test("批量改角色：取消什么都不改；确认之后选中的每一个�
     await dialog.getByRole("button", { name: "Cancel", exact: true }).click();
     await expectNoDialog(page);
   });
-  expect((await serverMember(api, first.id)).user.role, "取消之后角色必须原封不动").toBe("member");
+  expect((await serverMember(api, first.id)).user.role, "取消之后角色必须原封不动").toBe(first.role.id);
 
   await batchAction(page, "Change Role");
-  await page.getByRole("menuitem", { name: "Moderator", exact: true }).click();
+  await page.getByRole("menuitem", { name: targetRole.name, exact: true }).click();
   const again = await confirmDialog(page, CONFIRM_TITLE);
   await flow.click(again.getByRole("button", { name: "Save", exact: true }), BATCH_ROLE);
 
   for (const member of [first, second]) {
-    await expect(memberRow(page, member.username).locator(".admin-cell-role")).toHaveText("Moderator");
-    expect((await serverMember(api, member.id)).user.role, `${member.username} 的角色`).toBe("moderator");
+    await expect(memberRow(page, member.username).locator(".admin-cell-role")).toHaveText(targetRole.name);
+    expect((await serverMember(api, member.id)).user.role, `${member.username} 的角色`).toBe(targetRole.id);
   }
 });
 
@@ -196,8 +203,9 @@ test("移除所选成员：确认后两行从成员列表消失，服务端列�
   }
 });
 
-test("多选时的行右键菜单：标题报出选中人数，只对单人有意义的项被禁用，批量不许改成管理员", async ({ page, api }) => {
+test("多选时的行右键菜单：标题报出选中人数，只对单人有意义的项被禁用，角色来自可授予的 D1 集合", async ({ page, api }) => {
   const [first] = await setUpPair(page, api);
+  const assignableRoles = await readAssignableRoles(api);
 
   await memberRow(page, first.username).getByRole("button", { name: "Actions", exact: true }).click();
   const menu = page.locator("[data-admin-user-action-menu]");
@@ -210,9 +218,10 @@ test("多选时的行右键菜单：标题报出选中人数，只对单人有�
   ).toBeDisabled();
 
   await page.getByRole("menuitem", { name: "Change Role", exact: true }).click();
-  await expect(
-    page.getByRole("menuitem", { name: "Admin", exact: true }),
-    "批量提权到管理员是不可逆的高风险操作，这一项必须禁用",
-  ).toBeDisabled();
-  await expect(page.getByRole("menuitem", { name: "Moderator", exact: true })).toBeEnabled();
+  for (const role of assignableRoles) {
+    await expect(
+      page.getByRole("menuitem", { name: role.name, exact: true }),
+      `${role.name} 应当作为真实可授予角色出现`,
+    ).toBeEnabled();
+  }
 });

@@ -85,7 +85,6 @@ export function useWikiCategoryEditor({ categories }: UseWikiCategoryEditorParam
   const queryClient = useQueryClient();
   const { showError } = useAppError();
 
-  const [categoryName, setCategoryName] = useState("");
   const [categoryDrafts, setCategoryDrafts] = useState<WikiCategoryDraft[]>(() => toCategoryDrafts(categories));
   const [deletingCategoryId, setDeletingCategoryId] = useState<string | null>(null);
   const previousCategoriesRef = useRef(categories);
@@ -130,10 +129,15 @@ export function useWikiCategoryEditor({ categories }: UseWikiCategoryEditorParam
 
   const createCategoryMutation = useMutation({
     mutationFn: createWikiCategory,
-    onSuccess: async () => {
+    onSuccess: async (createdCategory) => {
       notifySuccess(t("message.categoryCreated"));
+      queryClient.setQueryData<WikiCategory[]>(queryKeys.wiki.categories(), (current) => {
+        if (!current) return [createdCategory];
+        return current.some((category) => category.id === createdCategory.id)
+          ? current
+          : [...current, createdCategory];
+      });
       await queryClient.invalidateQueries({ queryKey: queryKeys.wiki.categories() });
-      setCategoryName("");
     },
     onError: (error) => {
       showError(error, t("message.categoryCreateFailed"));
@@ -207,7 +211,7 @@ export function useWikiCategoryEditor({ categories }: UseWikiCategoryEditorParam
 
   const createCategory = () => {
     createCategoryMutation.mutate({
-      name: categoryName.trim() || t("categoryEditor.defaultName"),
+      name: t("categoryEditor.defaultName"),
     });
   };
 
@@ -241,14 +245,12 @@ export function useWikiCategoryEditor({ categories }: UseWikiCategoryEditorParam
   };
 
   return {
-    categoryName,
-    setCategoryName,
     categoryDrafts,
     deletingCategoryId,
     isCreating: createCategoryMutation.isPending,
     isSavingDrafts: saveCategoryDraftsMutation.isPending,
     hasDraftChanges,
-    isDirty: categoryName.trim().length > 0 || hasDraftChanges,
+    isDirty: hasDraftChanges,
     canSaveDrafts: hasDraftChanges && !saveCategoryDraftsMutation.isPending,
     createCategory,
     setCategoryDraftName,

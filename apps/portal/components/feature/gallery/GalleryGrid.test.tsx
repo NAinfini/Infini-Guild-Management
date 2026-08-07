@@ -187,7 +187,7 @@ describe("GalleryGrid CSS contract", () => {
 
     expect(galleryCss.match(/\.gallery-grid\s*\{/g)).toHaveLength(1);
     expect(galleryCss).toContain(
-      "grid-template-columns: repeat(auto-fill, minmax(min(100%, 13.75rem), 1fr));",
+      "grid-template-columns: repeat(auto-fill, minmax(min(100%, 18rem), 1fr));",
     );
     expect(galleryCss).toMatch(/\.gallery-grid\s*\{[^}]*grid-auto-flow:\s*row;/s);
     expect(galleryCss).toMatch(/\.gallery-preview-media\s*\{[^}]*aspect-ratio:\s*4\s*\/\s*3;/s);

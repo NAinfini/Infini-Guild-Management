@@ -115,11 +115,17 @@ const PERMISSION_CATEGORIES: PermissionCategory[] = [
       "admin.roles.manage",
       "admin.siteConfig.manage",
       "admin.classes.manage",
+      "admin.badges.manage",
     ],
   },
   {
     labelKey: "roles.category.storage",
-    permissions: ["admin.storage.structure", "admin.storage.items", "admin.storage.stock"],
+    permissions: [
+      "admin.storage.structure",
+      "admin.storage.items",
+      "admin.storage.stock",
+      "admin.storage.manage",
+    ],
   },
   {
     labelKey: "roles.category.adminAnalytics",
@@ -167,6 +173,7 @@ const PERM_META: Record<string, PermMeta> = {
   "admin.roles.manage":    { icon: <ShieldIcon size={PERM_ICON_SIZE} />,             color: "red", danger: true },
   "admin.siteConfig.manage": { icon: <SettingsIcon size={PERM_ICON_SIZE} />,         color: "teal" },
   "admin.classes.manage":    { icon: <PaletteIcon size={PERM_ICON_SIZE} />,          color: "teal" },
+  "admin.badges.manage":     { icon: <ShieldIcon size={PERM_ICON_SIZE} />,           color: "teal" },
   "admin.analytics.view":  { icon: <EyeIcon size={PERM_ICON_SIZE} />,              color: "gray" },
   "admin.analytics.manage":{ icon: <SettingsIcon size={PERM_ICON_SIZE} />,           color: "teal" },
   "guildwar.teams.edit":   { icon: <SwordsIcon size={PERM_ICON_SIZE} />,             color: "orange" },
@@ -191,6 +198,7 @@ const PERM_META: Record<string, PermMeta> = {
   "admin.storage.structure": { icon: <WarehouseIcon size={PERM_ICON_SIZE} />,         color: "teal" },
   "admin.storage.items":     { icon: <PencilIcon size={PERM_ICON_SIZE} />,            color: "teal" },
   "admin.storage.stock":     { icon: <ClipboardIcon size={PERM_ICON_SIZE} />,         color: "orange" },
+  "admin.storage.manage":    { icon: <WarehouseIcon size={PERM_ICON_SIZE} />,         color: "teal" },
 };
 
 const DEFAULT_META: PermMeta = { icon: <SettingsIcon size={PERM_ICON_SIZE} />, color: "gray" };
@@ -285,8 +293,15 @@ export function AdminRolesSection({
       next[role.id] = roleToDraft(role);
     }
     setDrafts(next);
-    if (selectedRoleId === null && roles.length > 0 && roles[0]) {
-      setSelectedRoleId(roles[0].id);
+  }, [roles]);
+
+  useEffect(() => {
+    if (roles.length === 0) {
+      setSelectedRoleId(null);
+      return;
+    }
+    if (selectedRoleId === null || !roles.some((role) => role.id === selectedRoleId)) {
+      setSelectedRoleId(roles[0]?.id ?? null);
     }
   }, [roles, selectedRoleId]);
 
@@ -370,6 +385,32 @@ export function AdminRolesSection({
     });
   };
 
+  const handleSaveRole = async (role: AdminRole, draft: RoleDraft) => {
+    const removesCurrentPermission = role.id === user?.role && PERMISSIONS.some(
+      (permission) => role.permissions[permission] === true && draft.permissions[permission] !== true,
+    );
+
+    if (removesCurrentPermission) {
+      const confirmed = await confirm({
+        title: t("roles.confirmSelfLockTitle"),
+        description: t("roles.confirmSelfLockDescription"),
+        confirmLabel: t("roles.confirmSelfLockConfirm"),
+        cancelLabel: t("roles.cancel"),
+        intent: "danger",
+      });
+      if (!confirmed) {
+        return;
+      }
+    }
+
+    await onUpdateRole(role.id, {
+      name: draft.name.trim(),
+      level: draft.level,
+      color: draft.color.trim() || null,
+      permissions: draft.permissions,
+    });
+  };
+
   return (
     /* admin-fill：把 .admin-page__panel 给的高度原样传给下面的主从台。 */
     <Stack gap={12} className="admin-fill">
@@ -421,31 +462,27 @@ export function AdminRolesSection({
                           <ColorSwatch color="transparent" size={14} />
                         )}
                         <Text size="sm" fw={isSelected ? 700 : 500} truncate>
-                          {t(`role.${role.id}`, { defaultValue: role.name })}
+                          {role.name}
                         </Text>
                       </span>
                       <span className="admin-md__item-meta">
                         {dirty ? (
                           <Badge size="xs" variant="light" color="orange">*</Badge>
                         ) : null}
-                        {role.is_builtin ? (
-                          <Badge size="xs" variant="light" color="gray">{t("roles.builtin")}</Badge>
-                        ) : (
-                          <ActionIcon
-                            size="xs"
-                            variant="subtle"
-                            color="red"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              void handleDeleteRole(role);
-                            }}
-                            loading={isRoleDeletePending(role.id)}
-                            disabled={isRoleDeletePending(role.id)}
-                            aria-label={t("roles.delete")}
-                          >
-                            <XIcon size={12} />
-                          </ActionIcon>
-                        )}
+                        <ActionIcon
+                          size="xs"
+                          variant="subtle"
+                          color="red"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            void handleDeleteRole(role);
+                          }}
+                          loading={isRoleDeletePending(role.id)}
+                          disabled={isRoleDeletePending(role.id)}
+                          aria-label={t("roles.delete")}
+                        >
+                          <XIcon size={12} />
+                        </ActionIcon>
                       </span>
                     </UnstyledButton>
                   );
@@ -465,10 +502,9 @@ export function AdminRolesSection({
                       <TextInput
                         size="sm"
                         label={t("roles.field.name")}
-                        value={selectedRole.is_builtin ? t(`role.${selectedRole.id}`, { defaultValue: selectedDraft.name }) : selectedDraft.name}
+                        value={selectedDraft.name}
                         onChange={(event) => updateDraftField(selectedRole.id, "name", event.currentTarget.value)}
                         style={{ flex: 1, minWidth: 100, maxWidth: 200 }}
-                        disabled={selectedRole.is_builtin}
                       />
                       <NumberInput
                         size="sm"
@@ -479,7 +515,6 @@ export function AdminRolesSection({
                         max={998}
                         hideControls
                         style={{ width: 80 }}
-                        disabled={selectedRole.is_builtin}
                       />
                       <ColorInput
                         size="sm"
@@ -499,31 +534,22 @@ export function AdminRolesSection({
                       </Badge>
                     </Group>
                     <Group gap={8}>
-                      {!selectedRole.is_builtin ? (
-                        <ActionIcon
-                          color="red"
-                          variant="default"
-                          size="lg"
-                          onClick={() => { void handleDeleteRole(selectedRole); }}
-                          loading={isRoleDeletePending(selectedRole.id)}
-                          disabled={isRoleDeletePending(selectedRole.id)}
-                          aria-label={t("roles.delete")}
-                        >
-                          <TrashIcon size={16} />
-                        </ActionIcon>
-                      ) : null}
+                      <ActionIcon
+                        color="red"
+                        variant="default"
+                        size="lg"
+                        onClick={() => { void handleDeleteRole(selectedRole); }}
+                        loading={isRoleDeletePending(selectedRole.id)}
+                        disabled={isRoleDeletePending(selectedRole.id)}
+                        aria-label={t("roles.delete")}
+                      >
+                        <TrashIcon size={16} />
+                      </ActionIcon>
                       <ActionIcon
                         color="portal-brand"
                         variant="filled"
                         size="lg"
-                        onClick={() => {
-                          void onUpdateRole(selectedRole.id, {
-                            name: selectedDraft.name.trim(),
-                            level: selectedDraft.level,
-                            color: selectedDraft.color.trim() || null,
-                            permissions: selectedDraft.permissions,
-                          });
-                        }}
+                        onClick={() => { void handleSaveRole(selectedRole, selectedDraft); }}
                         loading={updateRolePending}
                         disabled={!isDirty}
                         aria-label={t("roles.save")}
@@ -542,7 +568,6 @@ export function AdminRolesSection({
                         <SectionHeader title={t(category.labelKey)} />
                         <div className="admin-roles-perm-grid">
                           {category.permissions.map((permission) => {
-                            const isReadOnly = selectedRole.is_builtin;
                             const isGranted = Boolean(selectedDraft.permissions[permission]);
                             const meta = PERM_META[permission] ?? DEFAULT_META;
                             const tooltipText = t(`roles.tooltip.${permission}`, { defaultValue: "" });
@@ -553,13 +578,8 @@ export function AdminRolesSection({
                                 aria-pressed={isGranted}
                                 variant={isGranted ? "light" : "default"}
                                 color={isGranted ? "portal-brand" : "gray"}
-                                onClick={() => {
-                                  if (!isReadOnly) {
-                                    togglePermission(selectedRole.id, permission);
-                                  }
-                                }}
+                                onClick={() => togglePermission(selectedRole.id, permission)}
                                 size="sm"
-                                disabled={isReadOnly}
                                 leftSection={
                                   isGranted ? (
                                     <CheckIcon size={14} className="admin-roles-perm-icon--granted" />

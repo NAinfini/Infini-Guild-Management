@@ -3,6 +3,7 @@ import { LIMITS } from "../config/limits";
 import { PERMISSIONS } from "../constants/roles";
 import { isAllowedVideoUrl } from "../utils/video";
 import { classIdSchema } from "./class-catalog";
+import { roleMetadataSchema } from "./role";
 
 const L = LIMITS.content;
 const permissionKeySchema = z.enum(PERMISSIONS);
@@ -26,7 +27,7 @@ export const userSchema = z.object({
   deleted_at: z.string().nullable(),
   created_at: z.string(),
   updated_at: z.string(),
-});
+}).extend(roleMetadataSchema.shape);
 
 export const memberProfileSchema = z.object({
   id: z.string(),

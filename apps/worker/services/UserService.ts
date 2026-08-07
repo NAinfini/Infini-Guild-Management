@@ -19,7 +19,7 @@ import type { PushEntityType, PushHint } from "@guild/shared/constants/push-hint
 import { and, eq, isNull, sql, type SQL } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/d1";
 import { nanoid } from "nanoid";
-import { memberProfileClasses, memberProfiles, sessions, userAuthPassword, users } from "../db/schema";
+import { memberProfileClasses, memberProfiles, roles, sessions, userAuthPassword, users } from "../db/schema";
 import { captureUploadValidation } from "./media";
 import { deleteUploadedMedia, rethrowAfterUploadFailure } from "./media-upload-compensation";
 import { parseMediaKey } from "./media-keys";
@@ -33,15 +33,17 @@ import {
 import { ok, err, type ServiceResult } from "./result";
 import { escapeLikePattern, parseStringArray, parseRecord, usernameEquals } from "./helpers";
 import { logger } from "../utils/logger";
+import type { SessionUser } from "./auth";
 
 type DrizzleDb = ReturnType<typeof drizzle>;
-
-type SessionUser = { id: string; role: Role; permissions: ReadonlySet<string> };
 
 type UserRow = {
   id: string;
   username: string;
   role: Role;
+  roleName: string;
+  roleColor: string | null;
+  roleLevel: number;
   isActive: boolean;
   deletedAt: string | null;
   createdAt: string;
@@ -212,6 +214,9 @@ function toUserPayload(user: UserRow) {
     id: user.id,
     username: user.username,
     role: user.role,
+    role_name: user.roleName,
+    role_color: user.roleColor,
+    role_level: user.roleLevel,
     permissions: Object.fromEntries(PERMISSIONS.map((p) => [p, false])) as Record<Permission, boolean>,
     is_active: user.isActive,
     deleted_at: user.deletedAt,
@@ -318,6 +323,9 @@ const userProfileSelect = {
   userId: users.id,
   username: users.username,
   role: users.role,
+  roleName: roles.name,
+  roleColor: roles.color,
+  roleLevel: roles.level,
   isActive: users.isActive,
   deletedAt: users.deletedAt,
   userCreatedAt: users.createdAt,
@@ -348,6 +356,9 @@ function rowToUserWithProfile(
       id: row.userId as string,
       username: row.username as string,
       role: row.role as Role,
+      roleName: row.roleName as string,
+      roleColor: (row.roleColor as string | null) ?? null,
+      roleLevel: row.roleLevel as number,
       isActive: row.isActive as boolean,
       deletedAt: (row.deletedAt as string | null) ?? null,
       createdAt: row.userCreatedAt as string,
@@ -387,6 +398,7 @@ export class UserService {
       await this.db
         .select(userProfileSelect)
         .from(users)
+        .innerJoin(roles, eq(users.role, roles.id))
         .leftJoin(memberProfiles, eq(memberProfiles.userId, users.id))
         .where(and(eq(users.id, userId), isNull(users.deletedAt)))
         .limit(1)
@@ -447,12 +459,12 @@ export class UserService {
 
   private async canEditTarget(sessionUser: SessionUser, targetUserId: string): Promise<{ status: "allowed"; username: string } | { status: "forbidden" | "not_found"; username: null }> {
     const target = (
-      await this.db.select({ role: users.role, deletedAt: users.deletedAt, username: users.username }).from(users).where(eq(users.id, targetUserId)).limit(1)
+      await this.db.select({ roleLevel: roles.level, deletedAt: users.deletedAt, username: users.username }).from(users).innerJoin(roles, eq(users.role, roles.id)).where(eq(users.id, targetUserId)).limit(1)
     )[0];
     if (!target || target.deletedAt !== null) return { status: "not_found", username: null };
     if (sessionUser.id === targetUserId) return { status: "allowed", username: target.username };
     if (!sessionUser.permissions.has("admin.users.edit")) return { status: "forbidden", username: null };
-    if (target.role === "admin" && sessionUser.role !== "admin") return { status: "forbidden", username: null };
+    if (target.roleLevel >= sessionUser.roleLevel) return { status: "forbidden", username: null };
     return { status: "allowed", username: target.username };
   }
 
@@ -466,6 +478,7 @@ export class UserService {
     }));
 
     const dataQuery = this.db.select(userProfileSelect).from(users)
+      .innerJoin(roles, eq(users.role, roles.id))
       .leftJoin(memberProfiles, eq(memberProfiles.userId, users.id))
       .where(whereClause).orderBy(users.createdAt, users.id)
       .limit(params.limit).offset(offset);

@@ -97,6 +97,10 @@ describe("AdminService role assignment guardrails", () => {
         id: "invite-3",
         code: "THREE",
         createdBy: "admin-1",
+        roleId: "member",
+        roleName: "Member",
+        roleColor: "gray",
+        roleLevel: 100,
         maxUses: 5,
         usedCount: 1,
         expiresAt: null,
@@ -107,6 +111,10 @@ describe("AdminService role assignment guardrails", () => {
         id: "invite-2",
         code: "TWO",
         createdBy: "admin-1",
+        roleId: "member",
+        roleName: "Member",
+        roleColor: "gray",
+        roleLevel: 100,
         maxUses: 5,
         usedCount: 0,
         expiresAt: null,
@@ -129,7 +137,7 @@ describe("AdminService role assignment guardrails", () => {
     });
     const select = vi
       .fn()
-      .mockReturnValueOnce({ from: vi.fn(() => ({ where: listWhere })) })
+      .mockReturnValueOnce({ from: vi.fn(() => ({ innerJoin: vi.fn(() => ({ where: listWhere })) })) })
       .mockReturnValueOnce({ from: vi.fn(() => ({ where: countWhere })) });
     const service = createService({ select });
 
@@ -214,6 +222,10 @@ describe("AdminService role assignment guardrails", () => {
       id: "invite-id-1",
       code: "SECRET-INVITE-CODE",
       createdBy: "admin-1",
+      roleId: "member",
+      roleName: "Member",
+      roleColor: "gray",
+      roleLevel: 100,
       maxUses: 2,
       usedCount: 0,
       expiresAt: null,
@@ -224,8 +236,19 @@ describe("AdminService role assignment guardrails", () => {
     const insert = vi.fn(() => ({ values }));
     const limit = vi.fn().mockResolvedValue([inviteRow]);
     const where = vi.fn(() => ({ limit }));
-    const from = vi.fn(() => ({ where }));
-    const select = vi.fn(() => ({ from }));
+    const select = vi
+      .fn()
+      .mockReturnValueOnce({
+        from: vi.fn(() => ({
+          innerJoin: vi.fn(() => ({
+            where: vi.fn(() => ({ limit: vi.fn().mockResolvedValue([{ roleId: "admin", level: 999 }]) })),
+          })),
+        })),
+      })
+      .mockReturnValueOnce({ from: vi.fn(() => ({ where: vi.fn(() => ({ limit: vi.fn().mockResolvedValue([{ level: 100 }]) })) })) })
+      .mockReturnValueOnce({ from: vi.fn(() => ({ where: vi.fn().mockResolvedValue([]) })) })
+      .mockReturnValueOnce({ from: vi.fn(() => ({ where: vi.fn().mockResolvedValue([]) })) })
+      .mockReturnValueOnce({ from: vi.fn(() => ({ innerJoin: vi.fn(() => ({ where })) })) });
     const writeAuditLog = vi.fn();
     const service = new AdminService({
       db: { insert, select } as never,
@@ -242,7 +265,7 @@ describe("AdminService role assignment guardrails", () => {
       envSiteLogoUrl: "/env-logo.webp",
     });
 
-    await service.createInviteLink("admin-1", 2, null);
+    await service.createInviteLink("admin-1", "member", 2, null);
 
     expect(writeAuditLog).toHaveBeenCalledWith(expect.objectContaining({
       entityId: "invite-id-1",
@@ -251,7 +274,7 @@ describe("AdminService role assignment guardrails", () => {
     expect(JSON.stringify(writeAuditLog.mock.calls)).not.toContain("SECRET-INVITE-CODE");
   });
 
-  it("reports built-in admin permissions from database rows without synthesizing missing grants", async () => {
+  it("reports seeded admin permissions from database rows without synthesizing missing grants", async () => {
     const select = vi
       .fn()
       .mockReturnValueOnce({
@@ -261,7 +284,6 @@ describe("AdminService role assignment guardrails", () => {
             name: "Admin",
             level: 999,
             color: "red",
-            isBuiltin: true,
             createdAt: "2026-06-12T00:00:00.000Z",
             updatedAt: "2026-06-12T00:00:00.000Z",
           }]),
@@ -390,7 +412,7 @@ describe("AdminService role assignment guardrails", () => {
     }));
   });
 
-  it("blocks non-admins from assigning roles with high-risk permissions", async () => {
+  it("blocks assigning a role with any permission the actor does not hold", async () => {
     const update = vi.fn();
     const select = vi
       .fn()
@@ -416,6 +438,11 @@ describe("AdminService role assignment guardrails", () => {
             { permission: "admin.users.role", granted: true },
           ]),
         })),
+      })
+      .mockReturnValueOnce({
+        from: vi.fn(() => ({
+          where: vi.fn().mockResolvedValue([]),
+        })),
       });
     const service = createService({ select, update });
 
@@ -424,7 +451,7 @@ describe("AdminService role assignment guardrails", () => {
     expect(result).toEqual({
       ok: false,
       code: "FORBIDDEN",
-      message: "Only admin can assign roles containing high-risk permissions",
+      message: "Cannot assign a role with permissions you do not hold: admin.users.role",
     });
     expect(update).not.toHaveBeenCalled();
   });
@@ -485,7 +512,6 @@ describe("AdminService role assignment guardrails", () => {
       name: "Helper",
       level: 10,
       color: null,
-      isBuiltin: false,
       createdAt: "2026-05-18T00:00:00.000Z",
       updatedAt: "2026-05-18T00:00:00.000Z",
     };
@@ -528,6 +554,132 @@ describe("AdminService role assignment guardrails", () => {
     expect(result.ok).toBe(true);
     expect(insert).toHaveBeenCalledTimes(1);
   });
+
+  it("rejects an invite target at the actor's own level", async () => {
+    const insert = vi.fn();
+    const select = vi
+      .fn()
+      .mockReturnValueOnce({
+        from: vi.fn(() => ({
+          innerJoin: vi.fn(() => ({
+            where: vi.fn(() => ({ limit: vi.fn().mockResolvedValue([{ roleId: "manager", level: 500 }]) })),
+          })),
+        })),
+      })
+      .mockReturnValueOnce({
+        from: vi.fn(() => ({ where: vi.fn(() => ({ limit: vi.fn().mockResolvedValue([{ level: 500 }]) })) })),
+      });
+    const service = createService({ select, insert });
+
+    const result = await service.createInviteLink("actor-1", "peer", 1, null);
+
+    expect(result).toMatchObject({ ok: false, code: "FORBIDDEN" });
+    expect(insert).not.toHaveBeenCalled();
+  });
+
+  it("applies the same level guard to batch reactivation", async () => {
+    const update = vi.fn();
+    const select = vi
+      .fn()
+      .mockReturnValueOnce({
+        from: vi.fn(() => ({
+          innerJoin: vi.fn(() => ({
+            where: vi.fn(() => ({ limit: vi.fn().mockResolvedValue([{ roleId: "manager", level: 500 }]) })),
+          })),
+        })),
+      })
+      .mockReturnValueOnce({
+        from: vi.fn(() => ({
+          innerJoin: vi.fn(() => ({
+            where: vi.fn().mockResolvedValue([{ id: "peer-1", username: "Peer", role: "peer", roleLevel: 500 }]),
+          })),
+        })),
+      });
+    const service = createService({ select, update });
+
+    const result = await service.batchReactivate("actor-1", ["peer-1"]);
+
+    expect(result).toMatchObject({ ok: false, code: "FORBIDDEN" });
+    expect(update).not.toHaveBeenCalled();
+  });
+
+  it("does not let an actor raise their own role level", async () => {
+    const update = vi.fn();
+    const select = vi
+      .fn()
+      .mockReturnValueOnce({
+        from: vi.fn(() => ({ where: vi.fn(() => ({ limit: vi.fn().mockResolvedValue([{ id: "manager", name: "Manager", level: 500, color: null }]) })) })),
+      })
+      .mockReturnValueOnce({
+        from: vi.fn(() => ({
+          innerJoin: vi.fn(() => ({
+            where: vi.fn(() => ({ limit: vi.fn().mockResolvedValue([{ roleId: "manager", level: 500 }]) })),
+          })),
+        })),
+      });
+    const service = createService({ select, update });
+
+    const result = await service.updateRole("actor-1", "manager", { level: 501 });
+
+    expect(result).toEqual({ ok: false, code: "VALIDATION_ERROR", message: "Cannot raise the level of your own role" });
+    expect(update).not.toHaveBeenCalled();
+  });
+
+  it("allows an actor to remove roles.manage from their own role", async () => {
+    const rawDb = createRawDb();
+    const updatedRole = {
+      id: "manager",
+      name: "Manager",
+      level: 500,
+      color: null,
+      createdAt: "2026-05-18T00:00:00.000Z",
+      updatedAt: "2026-05-18T00:00:00.000Z",
+    };
+    const currentPermissions = [
+      { permission: "admin.roles.manage", granted: true },
+      { permission: "events.create", granted: true },
+    ];
+    const select = vi
+      .fn()
+      .mockReturnValueOnce({ from: vi.fn(() => ({ where: vi.fn(() => ({ limit: vi.fn().mockResolvedValue([{ id: "manager", name: "Manager", level: 500, color: null }]) })) })) })
+      .mockReturnValueOnce({ from: vi.fn(() => ({ innerJoin: vi.fn(() => ({ where: vi.fn(() => ({ limit: vi.fn().mockResolvedValue([{ roleId: "manager", level: 500 }]) })) })) })) })
+      .mockReturnValueOnce({ from: vi.fn(() => ({ where: vi.fn().mockResolvedValue(currentPermissions) })) })
+      .mockReturnValueOnce({ from: vi.fn(() => ({ where: vi.fn().mockResolvedValue(currentPermissions) })) })
+      .mockReturnValueOnce({ from: vi.fn(() => ({ where: vi.fn(() => ({ limit: vi.fn().mockResolvedValue([updatedRole]) })) })) })
+      .mockReturnValueOnce({ from: vi.fn(() => ({ where: vi.fn().mockResolvedValue([{ permission: "admin.roles.manage", granted: false }, { permission: "events.create", granted: true }]) })) })
+      .mockReturnValueOnce({ from: vi.fn(() => ({ where: vi.fn(() => ({ limit: vi.fn().mockResolvedValue([{ count: 1 }]) })) })) });
+    const service = createService({ select }, rawDb);
+
+    const result = await service.updateRole("actor-1", "manager", {
+      permissions: { "admin.roles.manage": false },
+    });
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.data.permissions["admin.roles.manage"]).toBe(false);
+    expect(rawDb.batch).toHaveBeenCalledTimes(1);
+  });
+
+  it("returns CONFLICT before deleting a role referenced by invites", async () => {
+    const remove = vi.fn();
+    const select = vi
+      .fn()
+      .mockReturnValueOnce({ from: vi.fn(() => ({ where: vi.fn(() => ({ limit: vi.fn().mockResolvedValue([{ id: "helper", name: "Helper", level: 100 }]) })) })) })
+      .mockReturnValueOnce({ from: vi.fn(() => ({ innerJoin: vi.fn(() => ({ where: vi.fn(() => ({ limit: vi.fn().mockResolvedValue([{ roleId: "manager", level: 500 }]) })) })) })) })
+      .mockReturnValueOnce({ from: vi.fn(() => ({ where: vi.fn(() => ({ limit: vi.fn().mockResolvedValue([{ count: 0 }]) })) })) })
+      .mockReturnValueOnce({ from: vi.fn(() => ({ where: vi.fn(() => ({ limit: vi.fn().mockResolvedValue([{ count: 2 }]) })) })) });
+    const service = createService({ select, delete: remove });
+
+    const result = await service.deleteRole("actor-1", "helper");
+
+    expect(result).toEqual({
+      ok: false,
+      code: "CONFLICT",
+      message: "Role is assigned to invite links",
+      details: { invite_link_count: 2 },
+    });
+    expect(remove).not.toHaveBeenCalled();
+  });
 });
 
 describe("AdminService.createMember reserved system-test username", () => {
@@ -541,7 +693,7 @@ describe("AdminService.createMember reserved system-test username", () => {
     const rawDb = createRawDb();
     const service = createService({ select }, rawDb);
 
-    const result = await service.createMember("admin-1", "systemtest_hijack");
+    const result = await service.createMember("admin-1", "systemtest_hijack", "member");
 
     expect(result).toEqual({
       ok: false,
@@ -557,7 +709,7 @@ describe("AdminService.createMember reserved system-test username", () => {
     const select = vi.fn();
     const service = createService({ select }, createRawDb());
 
-    const result = await service.createMember("admin-1", "SystemTest_Hijack");
+    const result = await service.createMember("admin-1", "SystemTest_Hijack", "member");
 
     expect(result).toMatchObject({ ok: false, code: "VALIDATION_ERROR" });
   });

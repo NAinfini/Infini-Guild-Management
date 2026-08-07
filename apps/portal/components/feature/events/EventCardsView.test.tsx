@@ -59,6 +59,9 @@ function createMember(index: number): { user: User; profile: MemberProfile } {
       id: userId,
       username: `member-${index}`,
       role: "member",
+      role_name: "Member",
+      role_color: null,
+      role_level: 1,
       permissions: noPermissions,
       is_active: true,
       deleted_at: null,
@@ -99,7 +102,7 @@ function renderCardsView(
   const event = createEvent(options.eventOverrides);
   const members = Array.from({ length: memberCount }, (_, index) => createMember(index + 1));
 
-  render(
+  return render(
     <MantineProvider>
       <EventCardsView
         events={[event]}
@@ -137,6 +140,19 @@ function renderCardsView(
 }
 
 describe("EventCardsView", () => {
+  function expectParticipationLayout() {
+    const card = document.querySelector(".event-card");
+    const quota = card?.querySelector(".quota-bar");
+    const participation = card?.querySelector(".event-card__participation-row");
+
+    expect(quota).not.toBeNull();
+    expect(participation).not.toBeNull();
+    expect(quota!.compareDocumentPosition(participation!)).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
+    expect(participation?.querySelector(".event-card__members-bar")).not.toBeNull();
+    expect(participation?.querySelector(".event-card__participant-action button")).not.toBeNull();
+    expect(card?.querySelector(".event-card__footer")).toBeNull();
+  }
+
   it("uses semantic headings for event titles", () => {
     renderCardsView();
 
@@ -146,13 +162,36 @@ describe("EventCardsView", () => {
   });
 
   it("shows signup progress on a card without class quotas", () => {
-    renderCardsView(3, { eventOverrides: { capacity: 10, class_quotas: [] } });
+    renderCardsView(3, {
+      eventOverrides: { capacity: 10, class_quotas: [] },
+      canInteract: true,
+    });
 
     const progress = screen.getByRole("progressbar", { name: "quota.generic.label" });
     expect(progress).toHaveAttribute("aria-valuenow", "3");
     expect(progress).toHaveAttribute("aria-valuemax", "10");
     expect(document.querySelector(".quota-bar__role-count")).toBeNull();
     expect(screen.getAllByText("3/10")).toHaveLength(1);
+    expectParticipationLayout();
+  });
+
+  it("puts role quotas above the shared member and signup row", () => {
+    renderCardsView(3, {
+      eventOverrides: {
+        capacity: 4,
+        class_quotas: [{
+          tag_id: "damage",
+          label: "Damage",
+          class_ids: ["mage"],
+          required: 2,
+          one_time: false,
+        }],
+      },
+      canInteract: true,
+    });
+
+    expect(screen.getByRole("region", { name: "quota.roles.label" })).toBeInTheDocument();
+    expectParticipationLayout();
   });
 
   it.each(["light", "dark"] as const)(
@@ -366,12 +405,51 @@ describe("EventCardsView", () => {
   });
 
   it("shows unlimited capacity as text without adding a second attendance count", () => {
-    renderCardsView(3, { eventOverrides: { capacity: null, class_quotas: [] } });
+    renderCardsView(3, {
+      eventOverrides: { capacity: null, class_quotas: [] },
+      canInteract: true,
+    });
 
     expect(document.querySelector(".event-card__capacity")).toHaveTextContent("3/∞");
     expect(screen.getByText("quota.generic.unlimited")).toBeInTheDocument();
     expect(screen.queryByRole("progressbar")).not.toBeInTheDocument();
     expect(document.querySelector(".quota-bar__progress")).toBeNull();
+    expectParticipationLayout();
+  });
+
+  it("keeps joined and unavailable participant actions in the member row", () => {
+    const { unmount } = renderCardsView(1, {
+      canInteract: true,
+      currentUserId: "user-1",
+    });
+
+    const leave = screen.getByRole("button", { name: /button\.leave/i });
+    expect(leave.closest(".event-card__participation-row")).not.toBeNull();
+    unmount();
+
+    renderCardsView(0, {
+      eventOverrides: { signup_locked: true },
+      canInteract: true,
+      currentUserId: "user-1",
+    });
+    const join = screen.getByRole("button", { name: /button\.join/i });
+    expect(join).toBeDisabled();
+    expect(join.closest(".event-card__participation-row")).not.toBeNull();
+  });
+
+  it("lets the avatar area shrink without shrinking the participant action on phones", () => {
+    const css = readFileSync(
+      resolve(process.cwd(), "apps/portal/components/feature/events/EventCardsView.css"),
+      "utf8",
+    );
+    const rowRule = css.match(/\.event-card__participation-row\s*\{[^}]*\}/)?.[0] ?? "";
+    const membersRule = css.match(/\.event-card__members-bar\s*\{[^}]*\}/)?.[0] ?? "";
+    const actionRule = css.match(/\.event-card__participant-action\s*\{[^}]*\}/)?.[0] ?? "";
+
+    expect(rowRule).toContain("display: flex");
+    expect(membersRule).toContain("flex: 1 1 auto");
+    expect(membersRule).toContain("min-width: 0");
+    expect(actionRule).toContain("flex: 0 0 auto");
   });
 
   it("keeps the 390px header shrinkable and uses a compact mobile density", () => {

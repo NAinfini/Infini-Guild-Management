@@ -817,22 +817,33 @@ export function prepareEndpointRequest(endpoint: EndpointDef, context: TestRunCo
       return buildFormRequest(path, [["file", createTinyPngFile()]]);
 
     case "POST /api/admin/invite-links":
+      if (!context.adminRoleId) {
+        return skipEndpoint(path, "Missing assignable admin role id");
+      }
       return buildJsonRequest(path, {
+        role_id: context.adminRoleId,
         max_uses: 1,
       });
 
     case "POST /api/admin/users":
+      if (!context.adminRoleId) {
+        return skipEndpoint(path, "Missing assignable admin role id");
+      }
       return buildJsonRequest(path, {
         username: `apitestadmin_${nowId.slice(0, 32)}`,
+        role_id: context.adminRoleId,
       });
 
     case "PATCH /api/admin/users/batch/role":
       if (!context.adminCreatedUserId) {
         return skipEndpoint(path, "Missing created admin user id");
       }
+      if (!context.adminRoleId) {
+        return skipEndpoint(path, "Missing assignable admin role id");
+      }
       return buildJsonRequest(path, {
         user_ids: [context.adminCreatedUserId],
-        new_role: "member",
+        new_role: context.adminRoleId,
       });
 
     case "PATCH /api/admin/users/batch/deactivate":
@@ -860,8 +871,11 @@ export function prepareEndpointRequest(endpoint: EndpointDef, context: TestRunCo
       });
 
     case "PATCH /api/admin/users/:id/role":
+      if (!context.adminRoleId) {
+        return skipEndpoint(path, "Missing assignable admin role id");
+      }
       return buildJsonRequest(path, {
-        role: "member",
+        role: context.adminRoleId,
       });
 
     case "PATCH /api/admin/users/:id/deactivate":

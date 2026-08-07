@@ -1,11 +1,11 @@
-import { Button, Checkbox, Text, TextInput } from "@mantine/core";
+import { Checkbox, Text, TextInput } from "@mantine/core";
 import { SearchIcon } from "@portal/components/icons";
 import type { ReactNode } from "react";
 import "./PickList.css";
 
 /*
  * Shared checkbox semantics for selecting records from a list. Filtering stays
- * with the caller so bulk actions operate on the same visible option set.
+ * with the caller so every row reflects the same visible option set.
  */
 
 export type PickListOption = {
@@ -24,14 +24,6 @@ export type PickListSection = {
   key: string;
   label: string;
   options: readonly PickListOption[];
-  /** 分节标题右侧的动作，例如「整组带入」。 */
-  action?: ReactNode;
-};
-
-type BulkAction = {
-  label: string;
-  disabled?: boolean;
-  onClick: () => void;
 };
 
 type PickListProps = {
@@ -42,10 +34,7 @@ type PickListProps = {
   selected: ReadonlySet<string>;
   onToggle: (id: string) => void;
   search?: { value: string; onChange: (value: string) => void; placeholder: string };
-  bulk?: { selectAll?: BulkAction; clear?: BulkAction };
-  /** 计数或差异，贴在工具行右端。 */
-  status?: ReactNode;
-  /** 取消／保存之类，跟在 status 后面。 */
+  /** 取消／保存之类。 */
   actions?: ReactNode;
   /** 一行都没有时显示的话；调用方自己区分「目录本来就空」和「搜没搜到」。 */
   emptyLabel: string;
@@ -94,8 +83,6 @@ export function PickList({
   selected,
   onToggle,
   search,
-  bulk,
-  status,
   actions,
   emptyLabel,
   max,
@@ -118,7 +105,7 @@ export function PickList({
 
   return (
     <div className={className ? `pick-list ${className}` : "pick-list"}>
-      {search || bulk || status || actions ? (
+      {search || actions ? (
         <div className="pick-list__toolbar">
           {search ? (
             <TextInput
@@ -135,27 +122,6 @@ export function PickList({
               }}
             />
           ) : null}
-          {bulk?.selectAll ? (
-            <Button
-              variant="subtle"
-              size={size === "xs" ? "compact-xs" : "compact-sm"}
-              disabled={bulk.selectAll.disabled}
-              onClick={bulk.selectAll.onClick}
-            >
-              {bulk.selectAll.label}
-            </Button>
-          ) : null}
-          {bulk?.clear ? (
-            <Button
-              variant="subtle"
-              size={size === "xs" ? "compact-xs" : "compact-sm"}
-              disabled={bulk.clear.disabled}
-              onClick={bulk.clear.onClick}
-            >
-              {bulk.clear.label}
-            </Button>
-          ) : null}
-          {status ? <div className="pick-list__status">{status}</div> : null}
           {actions}
         </div>
       ) : null}
@@ -170,7 +136,6 @@ export function PickList({
             <div key={section.key} className="pick-list__section">
               <div className="pick-list__section-head">
                 <Text size="xs" fw={800} c="dimmed" truncate>{section.label}</Text>
-                {section.action}
               </div>
               {section.options.map(rowOf)}
             </div>

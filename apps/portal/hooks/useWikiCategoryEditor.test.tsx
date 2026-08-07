@@ -70,7 +70,11 @@ describe("useWikiCategoryEditor", () => {
   beforeEach(() => {
     for (const mock of Object.values(apiMocks)) mock.mockReset();
     showError.mockReset();
-    apiMocks.create.mockResolvedValue(undefined);
+    apiMocks.create.mockResolvedValue(category({
+      id: "new",
+      name: "categoryEditor.defaultName",
+      sort_order: 3,
+    }));
     apiMocks.remove.mockResolvedValue(undefined);
   });
 
@@ -99,11 +103,15 @@ describe("useWikiCategoryEditor", () => {
   });
 
   it("keeps existing drafts through create and delete refreshes", async () => {
-    const { result, rerender } = createHarness();
+    const { result, rerender, queryClient } = createHarness();
     act(() => result.current.setCategoryDraftName("guides", "Unsaved guides"));
 
     act(() => result.current.createCategory());
     await waitFor(() => expect(apiMocks.create).toHaveBeenCalledOnce());
+    expect(apiMocks.create.mock.calls[0]?.[0]).toEqual({ name: "categoryEditor.defaultName" });
+    await waitFor(() => expect(queryClient.getQueryData(queryKeys.wiki.categories())).toEqual([
+      expect.objectContaining({ id: "new", name: "categoryEditor.defaultName" }),
+    ]));
     rerender({ categories: [...CATEGORIES, category({ id: "new", name: "New", sort_order: 3 })] });
     expect(result.current.categoryDrafts.find((draft) => draft.id === "guides")?.name).toBe("Unsaved guides");
 

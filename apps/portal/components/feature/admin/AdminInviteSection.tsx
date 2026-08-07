@@ -1,5 +1,5 @@
-import type { InviteLink } from "@guild/shared";
-import { ActionIcon, Alert, Badge, Button, Group, HoverCard, Loader, Menu, Modal, NumberInput, Paper, SegmentedControl, Skeleton, Stack, Text, TextInput, ThemeIcon, Tooltip } from "@mantine/core";
+import type { AdminRole, InviteLink } from "@guild/shared";
+import { ActionIcon, Alert, Badge, Button, ColorSwatch, Group, HoverCard, Loader, Menu, Modal, NumberInput, Paper, SegmentedControl, Select, Skeleton, Stack, Text, TextInput, ThemeIcon, Tooltip } from "@mantine/core";
 import { AlertTriangleIcon, BanIcon, CircleCheckIcon, CircleXIcon, CopyIcon, DotsIcon, InfoCircleIcon, PlusIcon, SearchIcon, TrashIcon } from "@portal/components/icons";
 import { useConfirmDialog } from "@portal/hooks/useConfirmDialog";
 import {
@@ -20,6 +20,15 @@ import type { InviteLinkStatsSummary } from "../../../services/AdminService";
 
 type InviteRow = InviteLink;
 type InviteStats = InviteLinkStatsSummary;
+
+function InviteRole({ invite }: { invite: InviteRow }) {
+  return (
+    <Group gap={6} wrap="nowrap">
+      <ColorSwatch color={invite.role_color ?? "var(--mantine-color-gray-5)"} size={12} />
+      <Text size="sm" truncate>{invite.role_name}</Text>
+    </Group>
+  );
+}
 
 const INVITE_STATUS_PRESENTATION = {
   revoked: { color: "red", Icon: AlertTriangleIcon },
@@ -61,9 +70,10 @@ type AdminInviteSectionProps = {
   inviteVisibility: "active" | "expired" | "revoked";
   onInviteVisibilityChange: (value: "active" | "expired" | "revoked") => void;
   onCreateInvite: (
-    input: { maxUses: number; expiresAt: string },
+    input: { roleId: string; maxUses: number; expiresAt: string },
     onSuccess: () => void,
   ) => void;
+  roles: AdminRole[];
   createInvitePending: boolean;
   inviteStatsLoading: boolean;
   inviteStats: InviteStats | null;
@@ -86,6 +96,7 @@ export function AdminInviteSection({
   inviteVisibility,
   onInviteVisibilityChange,
   onCreateInvite,
+  roles,
   createInvitePending,
   inviteStatsLoading,
   inviteStats,
@@ -113,10 +124,12 @@ export function AdminInviteSection({
   const isCompactLayout = useMediaQuery("(max-width: 64em)");
   const [inviteMaxUses, setInviteMaxUses] = useState(10);
   const [inviteExpiresAt, setInviteExpiresAt] = useState("");
+  const [inviteRoleId, setInviteRoleId] = useState<string | null>(null);
 
   const resetCreateForm = useCallback(() => {
     setInviteMaxUses(10);
     setInviteExpiresAt("");
+    setInviteRoleId(null);
   }, []);
   const handleOpenCreateModal = useCallback(() => {
     resetCreateForm();
@@ -127,11 +140,14 @@ export function AdminInviteSection({
     resetCreateForm();
   }, [createModalHandlers, resetCreateForm]);
   const handleCreateInvite = useCallback(() => {
+    if (!inviteRoleId) {
+      return;
+    }
     onCreateInvite(
-      { maxUses: inviteMaxUses, expiresAt: inviteExpiresAt },
+      { roleId: inviteRoleId, maxUses: inviteMaxUses, expiresAt: inviteExpiresAt },
       handleCloseCreateModal,
     );
-  }, [handleCloseCreateModal, inviteExpiresAt, inviteMaxUses, onCreateInvite]);
+  }, [handleCloseCreateModal, inviteExpiresAt, inviteMaxUses, inviteRoleId, onCreateInvite]);
 
   const handleCopyInviteLink = useCallback((row: InviteRow) => {
     void copyPlainText(`${window.location.origin}/register/${row.code}`);
@@ -185,6 +201,13 @@ export function AdminInviteSection({
         accessorKey: "code",
       });
     }
+
+    cols.push({
+      header: t("invite.table.role"),
+      id: "role",
+      accessorFn: (row) => row.role_name,
+      cell: ({ row }) => <InviteRole invite={row.original} />,
+    });
 
     cols.push({
       header: t("invite.table.usage"),
@@ -427,6 +450,10 @@ export function AdminInviteSection({
 
                         <dl className="admin-invite-card__details">
                           <div>
+                            <dt>{t("invite.table.role")}</dt>
+                            <dd><InviteRole invite={row} /></dd>
+                          </div>
+                          <div>
                             <dt>{t("invite.table.usage")}</dt>
                             <dd>{row.used_count}/{row.max_uses}</dd>
                           </div>
@@ -527,6 +554,16 @@ export function AdminInviteSection({
         centered
       >
         <Stack gap={12}>
+          <Select
+            label={t("invite.role")}
+            placeholder={t("invite.rolePlaceholder")}
+            aria-label={t("invite.aria.role")}
+            value={inviteRoleId}
+            onChange={setInviteRoleId}
+            data={roles.map((role) => ({ value: role.id, label: role.name }))}
+            searchable
+            required
+          />
           <Group align="center" gap={6}>
             <Text size="sm" c="dimmed">{t("invite.maxUses")}</Text>
             <NumberInput
@@ -549,7 +586,7 @@ export function AdminInviteSection({
           <Button
             leftSection={<PlusIcon size={16} />}
             loading={createInvitePending}
-            disabled={createInvitePending}
+            disabled={createInvitePending || !inviteRoleId}
             onClick={handleCreateInvite}
             style={{ width: "100%" }}
           >

@@ -1,4 +1,3 @@
-import { type AdminRole } from "@guild/shared";
 import { Badge } from "@mantine/core";
 import { useNavigate, useSearch } from "@tanstack/react-router";
 import { createElement, type ComponentType, useCallback, useEffect, useMemo, useState } from "react";
@@ -7,7 +6,7 @@ import type { ColumnDef as TanStackColumnDef } from "@tanstack/react-table";
 import { usePageHeaderActions } from "../context/PageHeaderContext";
 import { useAuthStore } from "../stores/auth";
 import { copyPlainText } from "../utils/copy";
-import { userCanAccessAdmin } from "../utils/permissions";
+import { canManageUserByRoleLevel, isRoleAssignableToUser, userCanAccessAdmin } from "../utils/permissions";
 import { useAdminBadgesController } from "./useAdminBadgesController";
 import { useAdminAuditFilter } from "./useAdminAuditFilter";
 import { useAdminInviteController } from "./useAdminInviteController";
@@ -22,6 +21,13 @@ import { useSiteConfigMutations } from "./useSiteConfigMutations";
 import { resolveClassCatalogItem, useClassCatalogStore } from "../stores/class-catalog";
 
 export const BATCH_SELECTION_LIMIT = 50;
+const ROLE_METADATA_PERMISSIONS = [
+  "admin.roles.view",
+  "admin.roles.manage",
+  "admin.invite.manage",
+  "admin.users.edit",
+  "admin.users.role",
+] as const;
 
 const ADMIN_TABS = ["member", "invite", "audit", "roles", "siteConfig", "classes", "badges", "status"] as const;
 export type AdminTab = (typeof ADMIN_TABS)[number];
@@ -77,6 +83,9 @@ export function useAdminPageController() {
     canManageSiteConfig: canManagePermission(["admin.siteConfig.manage"]),
     canManageClasses: canManagePermission(["admin.classes.manage"]),
   }), [canManagePermission, user]);
+  const canReadRoleMetadata = Boolean(
+    user && ROLE_METADATA_PERMISSIONS.some((permission) => user.permissions[permission] === true),
+  );
 
   const {
     usersQuery,
@@ -93,6 +102,7 @@ export function useAdminPageController() {
     userRole: viewingAs,
     activeTab,
     effectivePermissions: effectiveAdminPermissions,
+    canReadRoleMetadata,
     auditPage: auditFilter.page,
     auditSearch: auditFilter.search,
     auditDateFrom: auditFilter.dateFrom,
@@ -132,33 +142,21 @@ export function useAdminPageController() {
   });
 
   const rolesLoaded = rolesQuery.isSuccess;
-  const isAdmin = rolesLoaded
-    ? permissions.canManageRoles || permissions.canViewStatus
-    : canManagePermission(["admin.roles.manage"]) || canManagePermission(["admin.status.view"]);
-  const canViewUsers = rolesLoaded
-    ? permissions.canViewUsers
-    : canManagePermission(["admin.users.view"]);
-  const canViewInvites = rolesLoaded
-    ? permissions.canViewInvites
-    : canManagePermission(["admin.invite.view"]);
-  const canViewAudit = rolesLoaded
-    ? permissions.canViewAudit
-    : canManagePermission(["admin.audit.view"]);
-  const canViewRoles = rolesLoaded
-    ? permissions.canViewRoles
-    : canManagePermission(["admin.roles.view", "admin.roles.manage"]);
-  const canViewStatus = rolesLoaded
-    ? permissions.canViewStatus
-    : canManagePermission(["admin.status.view"]);
-  const canManageBadges = rolesLoaded
-    ? permissions.canManageBadges
-    : canManagePermission(["admin.badges.manage"]);
-  const canManageSiteConfig = rolesLoaded
-    ? permissions.canManageSiteConfig
-    : canManagePermission(["admin.siteConfig.manage"]);
-  const canManageClasses = rolesLoaded
-    ? permissions.canManageClasses
-    : canManagePermission(["admin.classes.manage"]);
+  const {
+    canViewUsers,
+    canViewInvites,
+    canViewAudit,
+    canViewRoles,
+    canViewStatus,
+    canManageBadges,
+    canManageSiteConfig,
+    canManageClasses,
+  } = permissions;
+  const canEditUsers = canManagePermission(["admin.users.edit"]);
+  const canAssignUserRoles = canManagePermission(["admin.users.role"]);
+  const canActivateUsers = canManagePermission(["admin.users.activate"]);
+  const canDeleteUsers = canManagePermission(["admin.users.delete"]);
+  const canResetUserPasswords = canManagePermission(["admin.users.password"]);
   const tabAccess = useMemo<Record<AdminTab, boolean>>(() => ({
     member: canViewUsers,
     invite: canViewInvites,
@@ -208,10 +206,10 @@ export function useAdminPageController() {
     showError,
   });
 
-  const { statusLatencyMs, statusHealthLogs } = useAdminStatusController({
+  const { statusLatencyMs, statusHealthLogs, refreshStatus } = useAdminStatusController({
     statusQuery,
     activeTab,
-    isAdmin,
+    isAdmin: canViewStatus,
   });
 
   const userRows = useMemo(() => {
@@ -221,7 +219,7 @@ export function useAdminPageController() {
       return (
         row.user.username.toLowerCase().includes(q) ||
         (row.profile.notes ?? "").toLowerCase().includes(q) ||
-        row.user.role.toLowerCase().includes(q) ||
+        row.user.role_name.toLowerCase().includes(q) ||
         row.profile.classes.some((cls) =>
           cls.toLowerCase().includes(q)
           || resolveClassCatalogItem(cls, classCatalog).label.toLowerCase().includes(q)
@@ -230,26 +228,10 @@ export function useAdminPageController() {
     });
   }, [classCatalog, userRowsRaw, memberSearch]);
 
-  const rolesWithExternal = useMemo((): AdminRole[] => {
-    const apiRoles = rolesQuery.data ?? [];
-    const now = new Date().toISOString();
-    const externalRole: AdminRole = {
-      id: "external",
-      name: t("role.external"),
-      level: 0,
-      color: null,
-      is_builtin: true,
-      created_at: now,
-      updated_at: now,
-      permissions: Object.fromEntries(
-        apiRoles[0]
-          ? Object.keys(apiRoles[0].permissions).map((k) => [k, false])
-          : [],
-      ) as AdminRole["permissions"],
-      assigned_user_count: 0,
-    };
-    return [...apiRoles, externalRole];
-  }, [rolesQuery.data, t]);
+  const assignableRoles = useMemo(
+    () => (rolesQuery.data ?? []).filter((role) => isRoleAssignableToUser(role, user)),
+    [rolesQuery.data, user],
+  );
   const auditRows = auditLogQuery.data?.data ?? [];
 
   const userColumns = useMemo((): TanStackColumnDef<(typeof userRows)[number], unknown>[] => [
@@ -278,23 +260,22 @@ export function useAdminPageController() {
       header: t("member.table.notes"),
       id: "notes",
       enableSorting: false,
-      cell: ({ row }) => (isAdmin ? row.original.profile.notes ?? "-" : t("member.table.restricted")),
+      cell: ({ row }) => (canEditUsers ? row.original.profile.notes ?? "-" : t("member.table.restricted")),
     },
     {
       header: t("member.table.role"),
       id: "role",
-      accessorFn: (row) => row.user.role,
+      accessorFn: (row) => row.user.role_name,
       cell: ({ row }) => {
-        const roleId = row.original.user.role;
-        const roleDef = rolesQuery.data?.find((r) => r.id === roleId);
-        const color = roleDef?.color ?? "blue";
+        const role = row.original.user;
+        const color = role.role_color ?? "gray";
         /* filled 的实心胶囊每行都在喊；身份是背景信息，用 light 就够。
            颜色是管理员在角色页自己填的任意 hex（内置 moderator 就是 #756047 这种深棕），
            拿它当文字色一定会撞出读不清的组合，所以只让它管背景，文字锁在语义色上。 */
         return createElement(
           BadgeCell,
           { color, variant: "light", size: "sm", className: "admin-cell-role" },
-          t(`role.${roleId}`),
+          role.role_name,
         );
       },
     },
@@ -314,7 +295,7 @@ export function useAdminPageController() {
         );
       },
     },
-  ], [classCatalog, t, isAdmin, rolesQuery.data]);
+  ], [canEditUsers, classCatalog, t]);
 
   const handleCopyConfigSummary = useCallback(() => {
     const data = statusQuery.data;
@@ -336,17 +317,37 @@ export function useAdminPageController() {
     [setMemberDetailForm],
   );
   const saveSelectedMemberProfile = useCallback(() => {
-    if (!selectedMemberDetail) return;
+    if (!selectedMemberDetail || !canManageUserByRoleLevel(selectedMemberDetail.user, user)) return;
     const memberId = selectedMemberDetail.user.id;
     const savedForm = { ...memberDetailForm, classes: [...memberDetailForm.classes] };
-    adminMutations.updateMemberProfileMutation.mutate({
+    const profileChanged = memberDetailForm.power !== selectedMemberDetail.profile.power
+      || JSON.stringify(memberDetailForm.classes) !== JSON.stringify(selectedMemberDetail.profile.classes)
+      || memberDetailForm.titleHtml !== (selectedMemberDetail.profile.title_html ?? "")
+      || memberDetailForm.bio !== (selectedMemberDetail.profile.bio ?? "")
+      || memberDetailForm.notes !== (selectedMemberDetail.profile.notes ?? "");
+    const roleChanged = memberDetailForm.role !== selectedMemberDetail.user.role;
+    const statusChanged = memberDetailForm.isActive !== selectedMemberDetail.user.is_active;
+    const update = {
       userId: memberId,
-      form: savedForm,
-    }, {
+      profile: canEditUsers && profileChanged ? memberDetailForm : undefined,
+      role: canAssignUserRoles && roleChanged ? memberDetailForm.role : undefined,
+      isActive: canActivateUsers && statusChanged ? memberDetailForm.isActive : undefined,
+    };
+    if (!update.profile && !update.role && update.isActive === undefined) return;
+    adminMutations.updateMemberProfileMutation.mutate(update, {
       onSuccess: () => markMemberDetailSaved(memberId, savedForm),
     });
-  }, [adminMutations.updateMemberProfileMutation, markMemberDetailSaved, memberDetailForm, selectedMemberDetail]);
-  const createMember = useCallback(async (data: { username: string; notes: string }) => {
+  }, [
+    adminMutations.updateMemberProfileMutation,
+    canActivateUsers,
+    canAssignUserRoles,
+    canEditUsers,
+    markMemberDetailSaved,
+    memberDetailForm,
+    selectedMemberDetail,
+    user,
+  ]);
+  const createMember = useCallback(async (data: { username: string; notes: string; roleId: string }) => {
     const result = await adminMutations.createMemberMutation.mutateAsync(data);
     return result;
   }, [adminMutations.createMemberMutation]);
@@ -383,14 +384,18 @@ export function useAdminPageController() {
     inviteTotal,
     inviteStatsQuery,
     ...inviteController,
-    isAdmin,
     isModerator,
+    canEditUsers,
+    canAssignUserRoles,
+    canActivateUsers,
+    canDeleteUsers,
+    canResetUserPasswords,
     memberDetailForm,
     memberDetailIsDirty,
     memberMediaController,
     memberSearch,
     rolesQuery,
-    rolesWithExternal,
+    assignableRoles,
     selectedMemberDetail,
     setAuditDateFrom,
     setAuditDatePreset,
@@ -401,6 +406,7 @@ export function useAdminPageController() {
     setMemberSearch,
     statusHealthLogs,
     statusLatencyMs,
+    refreshStatus,
     statusQuery,
     siteConfigQuery,
     siteConfigMutations,

@@ -48,13 +48,11 @@ import {
 
 type WikiCategoryEditorCardProps = {
   canEdit: boolean;
-  categoryName: string;
   categoryDrafts: WikiCategoryDraft[];
   isCreating: boolean;
   isSavingDrafts: boolean;
   canSaveDrafts: boolean;
   deletingCategoryId: string | null;
-  onCategoryNameChange: (value: string) => void;
   onCreateCategory: () => void;
   onSaveDrafts: () => void;
   onCloseEditor: () => void;
@@ -102,15 +100,16 @@ function SortableCategoryRow({
       style={style}
       className={`wiki-category-editor-row${isDragging ? " wiki-category-editor-row--dragging" : ""}`}
     >
-      <Group gap={8} wrap="nowrap" align="end">
+      <Group gap={8} wrap="nowrap" align="center">
         <ActionIcon
           variant="default"
+          size="lg"
           aria-label={t("categoryEditor.dragHandle")}
           disabled={!canEdit}
           {...attributes}
           {...listeners}
         >
-          <IconGripVertical size={14} />
+          <IconGripVertical size={20} />
         </ActionIcon>
         <div
           className={`wiki-floating-field${draft.name.trim().length > 0 ? " wiki-floating-field--filled" : ""}`}
@@ -162,13 +161,11 @@ function SortableCategoryRow({
 
 export function WikiCategoryEditorCard({
   canEdit,
-  categoryName,
   categoryDrafts,
   isCreating,
   isSavingDrafts,
   canSaveDrafts,
   deletingCategoryId,
-  onCategoryNameChange,
   onCreateCategory,
   onSaveDrafts,
   onCloseEditor,
@@ -231,17 +228,27 @@ export function WikiCategoryEditorCard({
 
   return (
     <Paper withBorder radius="md" p="var(--card-padding)" className="wiki-category-editor-card">
-      {/* 保存/放弃和「新建分类」钉在卡头，只有分类树本身内滚——分类多起来时这两组控件
+      {/* 新建、保存和放弃钉在卡头，只有分类树本身内滚——分类多起来时这些控件
           不能跟着滚走。 */}
       <div className="wiki-card-body">
           <Group justify="space-between" align="center" wrap="wrap">
             <Text fw={700}>{t("categoryEditor.title")}</Text>
             <Group gap={8}>
               <Button
+                variant="default"
+                size="sm"
+                leftSection={<PlusIcon size={14} />}
+                onClick={onCreateCategory}
+                loading={isCreating}
+                disabled={isSavingDrafts}
+              >
+                {t("categoryEditor.create")}
+              </Button>
+              <Button
                 size="sm"
                 leftSection={<SaveIcon size={14} />}
                 onClick={onSaveDrafts}
-                disabled={!canSaveDrafts || isSavingDrafts}
+                disabled={!canSaveDrafts || isSavingDrafts || isCreating}
               >
                 {t("articleEditor.save")}
               </Button>
@@ -250,38 +257,11 @@ export function WikiCategoryEditorCard({
                 size="sm"
                 leftSection={<XIcon size={14} />}
                 onClick={onCloseEditor}
-                disabled={isSavingDrafts}
+                disabled={isSavingDrafts || isCreating}
               >
                 {t("editor.closeNoSave")}
               </Button>
             </Group>
-          </Group>
-
-          <Group gap={8} align="end" wrap="wrap">
-            <div
-              className={`wiki-floating-field${categoryName.trim().length > 0 ? " wiki-floating-field--filled" : ""}`}
-              style={{ flex: 1, minWidth: 240 }}
-            >
-              <TextInput
-                classNames={{
-                  root: "wiki-floating-root",
-                  input: "wiki-floating-input",
-                  label: "wiki-floating-label",
-                }}
-                label={t("categoryEditor.name")}
-                value={categoryName}
-                onChange={(event) => onCategoryNameChange(event.currentTarget.value)}
-                aria-label={t("aria.categoryName")}
-              />
-            </div>
-            <Button
-              size="sm"
-              leftSection={<PlusIcon size={14} />}
-              onClick={onCreateCategory}
-              disabled={categoryName.trim().length === 0 || isCreating}
-            >
-              {t("categoryEditor.create")}
-            </Button>
           </Group>
 
           <Stack gap={8} className="wiki-card-scroll">

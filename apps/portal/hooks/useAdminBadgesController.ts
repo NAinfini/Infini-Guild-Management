@@ -228,9 +228,6 @@ export function useAdminBadgesController(enabled: boolean) {
     });
   };
 
-  /** 面板里的「全选当前结果 / 清空」直接换掉整份草稿。 */
-  const setDraftMembers = (userIds: readonly string[]) => setDraftMemberIds(new Set(userIds));
-
   const draftAdded = useMemo(
     () => [...draftMemberIds].filter((id) => !assignedUserIds.has(id)),
     [draftMemberIds, assignedUserIds],
@@ -313,7 +310,6 @@ export function useAdminBadgesController(enabled: boolean) {
     openMembership,
     closeMembership,
     toggleDraftMember,
-    setDraftMembers,
     formValid,
     createBadge: () => createMutation.mutate(toCreateBadgePayload(form)),
     updateBadge: (id: string) => updateMutation.mutate({ id, payload: form }),

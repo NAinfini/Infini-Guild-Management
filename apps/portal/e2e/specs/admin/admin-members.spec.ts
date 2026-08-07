@@ -2,6 +2,7 @@ import type { APIRequestContext, Locator, Page } from "@playwright/test";
 import { createThrowawayMember, uniqueTag } from "../../support/members";
 import { expect, readJson, test } from "../../support/test";
 import { field, readInteger, topDialog } from "../../support/ui";
+import { canAccessAdmin } from "../../../utils/permissions";
 
 /*
  * 后台「成员管理」页签的取数控件：搜索、状态筛选、统计块、分页、选择条、键盘操作。
@@ -47,15 +48,20 @@ function pagination(page: Page): Locator {
   return page.locator(".admin-table-card__footer");
 }
 
-/** 四个统计块，顺序固定：总数、启用、停用、管理员。 */
-async function readStats(page: Page): Promise<{ total: number; active: number; inactive: number; admins: number }> {
+/** 四个统计块，顺序固定：总数、启用、停用、具备管理入口权限。 */
+async function readStats(page: Page): Promise<{
+  total: number;
+  active: number;
+  inactive: number;
+  managementAccess: number;
+}> {
   const values = page.locator(".admin-stat__value");
   await expect(values).toHaveCount(4);
   return {
     total: await readInteger(values.nth(0), "总成员数"),
     active: await readInteger(values.nth(1), "启用数"),
     inactive: await readInteger(values.nth(2), "停用数"),
-    admins: await readInteger(values.nth(3), "管理员数"),
+    managementAccess: await readInteger(values.nth(3), "具备管理入口权限人数"),
   };
 }
 
@@ -104,8 +110,8 @@ test("搜索框：缩到唯一一行，四个统计块跟着搜索结果重算�
   });
   await expect(memberRow(page, member.username)).toBeVisible();
 
-  /* 统计块算的是搜索结果，不是全站——新建的成员默认启用、默认非管理员。 */
-  expect(await readStats(page)).toEqual({ total: 1, active: 1, inactive: 0, admins: 0 });
+  const managementAccess = canAccessAdmin([member.role], member.role.id) ? 1 : 0;
+  expect(await readStats(page)).toEqual({ total: 1, active: 1, inactive: 0, managementAccess });
 
   await searchBox(page).fill("");
   expect(await readStats(page), "清空搜索必须完全回到原样").toEqual(before);
@@ -125,7 +131,8 @@ test("状态筛选：三段各自过滤可见行，而统计块按搜索结果�
   await searchBox(page).fill(tag);
   await expect(memberRows(page)).toHaveCount(2);
 
-  const stats = { total: 2, active: 1, inactive: 1, admins: 0 };
+  const managementAccess = canAccessAdmin([running.role], running.role.id) ? 2 : 0;
+  const stats = { total: 2, active: 1, inactive: 1, managementAccess };
   expect(await readStats(page)).toEqual(stats);
 
   await expectNoApiCalls(page, async () => {

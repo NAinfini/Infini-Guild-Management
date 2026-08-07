@@ -9,6 +9,7 @@ export * from "./constants/media";
 export * from "./constants/errors";
 
 export * from "./schemas/auth";
+export * from "./schemas/role";
 export * from "./schemas/user";
 export * from "./schemas/class-catalog";
 export * from "./schemas/class-tag";

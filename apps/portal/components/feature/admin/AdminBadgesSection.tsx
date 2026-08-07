@@ -135,7 +135,6 @@ export function AdminBadgesSection({ userRows, controller }: AdminBadgesSectionP
     openMembership,
     closeMembership,
     toggleDraftMember,
-    setDraftMembers,
     formValid,
     createBadge,
     updateBadge,
@@ -383,28 +382,6 @@ export function AdminBadgesSection({ userRows, controller }: AdminBadgesSectionP
                       onChange: setMemberSearch,
                       placeholder: t("badges.searchMembers"),
                     }}
-                    bulk={{
-                      selectAll: {
-                        label: t("badges.membership.selectAll"),
-                        disabled: filteredUsers.length === 0,
-                        onClick: () => setDraftMembers([
-                          ...new Set([...draftMemberIds, ...filteredUsers.map((r) => r.user.id)]),
-                        ]),
-                      },
-                      clear: {
-                        label: t("badges.membership.clear"),
-                        disabled: draftMemberIds.size === 0,
-                        onClick: () => setDraftMembers([]),
-                      },
-                    }}
-                    status={(
-                      <Text size="xs" c={membershipDirty ? undefined : "dimmed"}>
-                        {t("badges.membership.diff", {
-                          added: draftAdded.length,
-                          removed: draftRemoved.length,
-                        })}
-                      </Text>
-                    )}
                     actions={(
                       <>
                         <Button variant="default" size="sm" onClick={closeMembership}>

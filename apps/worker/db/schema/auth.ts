@@ -12,7 +12,6 @@ export const roles = sqliteTable(
     name: text("name").notNull(),
     level: integer("level").notNull(),
     color: text("color"),
-    isBuiltin: integer("is_builtin", { mode: "boolean" }).notNull().default(false),
     createdAt: text("created_at").notNull().default(nowUtc),
     updatedAt: text("updated_at").notNull().default(nowUtc),
   },
@@ -45,7 +44,7 @@ export const users = sqliteTable(
     // case-sensitive. The versioned production lineage adds the 0001
     // ux_users_username_nocase expression index; query with usernameEquals.
     username: text("username").notNull().unique(),
-    role: text("role").notNull().default("member").references(() => roles.id),
+    role: text("role").notNull().references(() => roles.id),
     isActive: integer("is_active", { mode: "boolean" }).notNull().default(true),
     deletedAt: text("deleted_at"),
     createdAt: text("created_at").notNull().default(nowUtc),
@@ -75,6 +74,9 @@ export const inviteLinks = sqliteTable(
     id: text("id").primaryKey(),
     code: text("code").notNull().unique(),
     createdBy: text("created_by").notNull().references(() => users.id),
+    roleId: text("role_id")
+      .notNull()
+      .references(() => roles.id, { onDelete: "restrict" }),
     maxUses: integer("max_uses").notNull(),
     usedCount: integer("used_count").notNull().default(0),
     expiresAt: text("expires_at"),

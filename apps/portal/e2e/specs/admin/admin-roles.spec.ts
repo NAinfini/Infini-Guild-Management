@@ -9,9 +9,8 @@ import { confirmDialog, dialogTitled, expectNoDialog, field } from "../../suppor
  * 这一页改的是全站的授权规则，验收必须落到服务端的权限记录上——界面里的勾选状态
  * 只是个草稿（drafts），不点保存永远不会落库，光看按钮亮没亮等于什么都没验。
  *
- * 靶子一律是本条用例自己建的自定义角色：内置角色（admin/moderator/member）改了
- * 不会被运行收尾还原，而收尾指纹只数行数，「行数没变、权限变了」这种污染查不出来，
- * 后面所有用例都会跑在一份被悄悄提权过的数据上。自建角色走 POST /api/admin/roles，
+ * 写操作靶子一律是本条用例自己建的角色：修改种子角色不会被运行收尾还原，而收尾
+ * 指纹只数行数，「行数没变、权限变了」这种污染查不出来。自建角色走 POST /api/admin/roles，
  * 会被登记进本次运行的清理注册表，收尾时按 id 删掉。
  */
 
@@ -27,7 +26,6 @@ type ServerRole = {
   name: string;
   level: number;
   color: string | null;
-  is_builtin: boolean;
   permissions: Record<string, boolean>;
   assigned_user_count: number;
 };
@@ -127,7 +125,6 @@ test("新建角色：名字为空提交不了，建成之后是一个级别 100�
   const saved = await serverRole(api, created.id);
   expect(saved.name, "服务端存的就是刚才填的名字").toBe(name);
   expect(saved.level, "新角色的默认级别").toBe(CUSTOM_LEVEL);
-  expect(saved.is_builtin, "自建角色不能被标成内置的，否则它自己就再也删不掉了").toBe(false);
   expect(
     Object.values(saved.permissions).some(Boolean),
     "新角色必须是零权限的——默认给权限等于凭空造出一个提权入口",
@@ -184,28 +181,16 @@ test("编辑角色：没改动时保存是禁用的；改完名字、级别和�
   await expect(permission(page, untouched)).toHaveAttribute("aria-pressed", "false");
 });
 
-test("内置角色只读：名称级别都不能改，权限按钮点不动，也没有删除入口", async ({ page }) => {
+test("D1 返回的角色一律可编辑：名称、级别、权限与删除入口都不受静态身份限制", async ({ page, api }) => {
+  const role = (await serverRoles(api))[0];
+  if (!role) throw new Error("角色 E2E 需要至少一个 D1 角色");
   await openRoles(page);
 
-  await roleItem(page, "Admin").first().click();
-  await expect(
-    roleItem(page, "Admin").first().getByText("Built-in"),
-    "清单上要标出这是内置角色",
-  ).toBeVisible();
-
-  await expect(field(detail(page), "Display Name"), "内置角色改名会让权限判定和界面对不上").toBeDisabled();
-  await expect(field(detail(page), "Level")).toBeDisabled();
-  await expect(
-    detail(page).getByRole("button", { name: "Delete", exact: true }),
-    "内置角色不该有删除入口——删掉 admin 就再也没人能进后台了",
-  ).toHaveCount(0);
-
-  const toggle = permission(page, "Manage roles");
-  await expect(toggle).toBeDisabled();
-  await expect(toggle).toHaveAttribute("aria-pressed", "true");
-  /* 禁用的按钮点了本就不该有反应，这里连带确认它没有偷偷发请求。 */
-  await expectNoApiCalls(page, () => toggle.click({ force: true }));
-  await expect(toggle, "点完还是原来的样子").toHaveAttribute("aria-pressed", "true");
+  await roleItem(page, role.name).first().click();
+  await expect(field(detail(page), "Display Name")).toBeEnabled();
+  await expect(field(detail(page), "Level")).toBeEnabled();
+  await expect(permission(page, "View member list")).toBeEnabled();
+  await expect(detail(page).getByRole("button", { name: "Delete", exact: true })).toBeVisible();
 });
 
 test("删除角色：确认框取消什么都不做；确认之后清单和服务端一起消失", async ({ page, api, flow }) => {
@@ -236,7 +221,7 @@ test("删除角色：确认框取消什么都不做；确认之后清单和服�
   ).toBe(false);
 });
 
-test("切换角色：右边跟着换人；但切走再切回来，没保存的改动被静默丢掉", async ({ page, api }) => {
+test("切换角色：右边跟着换人，切走再切回来仍保留每个角色自己的未保存草稿", async ({ page, api }) => {
   const first = await createServerRole(api, `E2E ${uniqueTag("swapA")}`);
   const second = await createServerRole(api, `E2E ${uniqueTag("swapB")}`);
   await openRoles(page);
@@ -256,20 +241,12 @@ test("切换角色：右边跟着换人；但切走再切回来，没保存的�
   ).toHaveValue(String(CUSTOM_LEVEL));
 
   await roleItem(page, first.name).click();
-  /*
-   * 现状如实记录，这是一处缺陷：
-   * 那个重建草稿的 effect 把 selectedRoleId 也列进了依赖（AdminRolesSection.tsx:282-291），
-   * 于是每选一次角色，所有角色的草稿都被服务端数据整个覆盖一遍。
-   * 结果就是：改了级别、勾了权限，只要手一滑点到清单里另一个角色，改动当场消失，
-   * 连那个专门用来提醒「有未保存改动」的星号也跟着没了——提醒和被提醒的东西一起被抹掉。
-   * 修的时候把 effect 的依赖收敛成 [roles]（选中项的兜底另用一个 effect），
-   * 然后把下面两行换成断言级别仍是 321、保存按钮仍可点。
-   */
   await expect(
     field(detail(page), "Level"),
-    "切回来时草稿已经被重置回服务端的值",
-  ).toHaveValue(String(CUSTOM_LEVEL));
-  await expect(saveButton(page), "改动没了，保存自然也就灰了").toBeDisabled();
+    "切回来时未保存草稿应当仍在",
+  ).toHaveValue("321");
+  await expect(saveButton(page)).toBeEnabled();
+  await expect(roleItem(page, first.name).getByText("*", { exact: true })).toBeVisible();
 
   /* 无论如何，这条用例没点过保存，服务端必须还是原样。 */
   expect((await serverRole(api, first.id)).level).toBe(CUSTOM_LEVEL);

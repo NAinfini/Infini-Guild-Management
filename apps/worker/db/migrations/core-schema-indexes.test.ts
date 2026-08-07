@@ -1,5 +1,5 @@
 import { DatabaseSync } from "node:sqlite";
-import { BUILTIN_ROLES, PERMISSIONS } from "@guild/shared";
+import { PERMISSIONS } from "@guild/shared";
 import { getTableConfig } from "drizzle-orm/sqlite-core";
 import { afterAll, describe, expect, it } from "vitest";
 import {
@@ -160,8 +160,8 @@ describe("core schema storage invariants", () => {
 });
 
 describe("core schema role baseline data", () => {
-  it("includes every built-in role and permission row", () => {
-    for (const role of BUILTIN_ROLES) {
+  it("includes every seeded role and permission row", () => {
+    for (const role of ["admin", "moderator", "member"]) {
       expect(migrated.prepare("SELECT 1 FROM roles WHERE id = ?").get(role)).toBeTruthy();
 
       for (const permission of PERMISSIONS) {

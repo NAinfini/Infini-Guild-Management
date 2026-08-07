@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { adminUpdateProfileSchema, memberProfileSchema, updateProfileSchema } from "./user";
+import { PERMISSIONS } from "../constants/roles";
+import { adminUpdateProfileSchema, memberProfileSchema, updateProfileSchema, userSchema } from "./user";
 
 describe("updateProfileSchema", () => {
   it("accepts catalog and persisted class IDs while rejecting duplicates", () => {
@@ -70,5 +71,28 @@ describe("adminUpdateProfileSchema", () => {
     });
 
     expect(parsed).toEqual({ notes: "trial member" });
+  });
+});
+
+describe("userSchema role metadata", () => {
+  it("requires the D1 role name, color, and level", () => {
+    const base = {
+      id: "user-1",
+      username: "Member",
+      role: "raider",
+      permissions: Object.fromEntries(PERMISSIONS.map((permission) => [permission, false])),
+      is_active: true,
+      deleted_at: null,
+      created_at: "2026-08-05T00:00:00.000Z",
+      updated_at: "2026-08-05T00:00:00.000Z",
+    };
+
+    expect(userSchema.safeParse(base).success).toBe(false);
+    expect(userSchema.safeParse({
+      ...base,
+      role_name: "Raider",
+      role_color: "#123456",
+      role_level: 200,
+    }).success).toBe(true);
   });
 });

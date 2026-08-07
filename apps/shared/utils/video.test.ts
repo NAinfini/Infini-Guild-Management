@@ -22,4 +22,21 @@ describe("video URL host validation", () => {
     const lookalike = "https://youtube.com.evil.example/watch?v=abc";
     expect(toEmbedVideoUrl(lookalike)).toBe(lookalike);
   });
+
+  it("uses the CSP-approved privacy-enhanced host for YouTube embeds", () => {
+    expect(toEmbedVideoUrl("https://youtube.com/watch?v=abc")).toBe(
+      "https://www.youtube-nocookie.com/embed/abc",
+    );
+    expect(toEmbedVideoUrl("https://youtu.be/abc")).toBe(
+      "https://www.youtube-nocookie.com/embed/abc",
+    );
+  });
+
+  it("leaves direct video URLs and other provider conversions unchanged", () => {
+    const directUrl = "https://cdn.example.com/raid.mp4";
+    expect(toEmbedVideoUrl(directUrl)).toBe(directUrl);
+    expect(toEmbedVideoUrl("https://vimeo.com/123")).toBe(
+      "https://player.vimeo.com/video/123",
+    );
+  });
 });

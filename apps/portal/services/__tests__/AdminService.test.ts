@@ -75,7 +75,7 @@ describe("AdminService mutations", () => {
 
   it("createAdminMember validates and sends POST", async () => {
     mockFetch.mockResolvedValueOnce(mockJsonResponse({ ok: true, user_id: "u-new", username: "newuser", temporary_password: "pass" }));
-    const result = await createAdminMember({ username: "newuser" });
+    const result = await createAdminMember({ username: "newuser", role_id: "member" });
     const [url, init] = mockFetch.mock.calls[0]!;
     expect(url).toContain("/api/admin/users");
     expect(init.method).toBe("POST");
@@ -83,7 +83,7 @@ describe("AdminService mutations", () => {
   });
 
   it("createAdminMember rejects empty username", () => {
-    expect(() => createAdminMember({ username: "" })).toThrow();
+    expect(() => createAdminMember({ username: "", role_id: "member" })).toThrow();
   });
 
   it("batchUpdateAdminUserRole sends batch role PATCH", async () => {
@@ -125,7 +125,7 @@ describe("AdminService mutations", () => {
 
   it("createAdminInviteLink sends POST with payload", async () => {
     mockFetch.mockResolvedValueOnce(mockJsonResponse({ id: "inv-1", code: "ABC" }));
-    await createAdminInviteLink({ max_uses: 10 });
+    await createAdminInviteLink({ role_id: "member", max_uses: 10 });
     const [url, init] = mockFetch.mock.calls[0]!;
     expect(url).toContain("/api/admin/invite-links");
     expect(init.method).toBe("POST");

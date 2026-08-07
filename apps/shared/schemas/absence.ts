@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { LIMITS } from "../config/limits";
+import { roleIdSchema, roleMetadataSchema } from "./role";
 
 const L = LIMITS.content;
 
@@ -9,11 +10,12 @@ export const memberAbsenceSchema = z.object({
   id: z.string(),
   user_id: z.string(),
   username: z.string().nullable(),
+  role_id: roleIdSchema,
   start_date: isoDateSchema,
   end_date: isoDateSchema,
   note: z.string().max(L.absenceNote.max).nullable(),
   created_at: z.string(),
-});
+}).extend(roleMetadataSchema.shape);
 
 export const createMemberAbsenceSchema = z
   .object({

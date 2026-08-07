@@ -23,6 +23,7 @@ export function buildApiCategories(t: (key: string) => string): CategoryDef[] {
       endpoints: [
         { label: t("status.api.ep.checkUsername"), method: "GET", path: "/api/auth/check-username?username=test" },
         { label: t("status.api.ep.currentUser"), method: "GET", path: "/api/auth/me" },
+        { label: t("status.api.ep.listRoles"), method: "GET", path: "/api/admin/roles" },
         { label: t("status.api.ep.registerInvitePrep"), method: "GET", path: "/api/admin/invite-links" },
         { label: t("status.api.ep.createInvite"), method: "POST", path: "/api/admin/invite-links" },
         { label: t("status.api.ep.verifyInvite"), method: "GET", path: "/api/auth/verify-invite/:code" },
@@ -214,6 +215,8 @@ export function buildApiCategories(t: (key: string) => string): CategoryDef[] {
       key: "adminInvites",
       label: t("status.api.cat.adminInvites"),
       endpoints: [
+        { label: t("status.api.ep.currentUser"), method: "GET", path: "/api/auth/me" },
+        { label: t("status.api.ep.listRoles"), method: "GET", path: "/api/admin/roles" },
         { label: t("status.api.ep.listInviteLinks"), method: "GET", path: "/api/admin/invite-links" },
         { label: t("status.api.ep.inviteStats"), method: "GET", path: "/api/admin/invite-links/stats" },
         { label: t("status.api.ep.createInvite"), method: "POST", path: "/api/admin/invite-links" },
@@ -236,6 +239,8 @@ export function buildApiCategories(t: (key: string) => string): CategoryDef[] {
       key: "adminUsers",
       label: t("status.api.cat.adminUsers"),
       endpoints: [
+        { label: t("status.api.ep.currentUser"), method: "GET", path: "/api/auth/me" },
+        { label: t("status.api.ep.listRoles"), method: "GET", path: "/api/admin/roles" },
         { label: t("status.api.ep.createMember"), method: "POST", path: "/api/admin/users" },
         { label: t("status.api.ep.changeUserRole"), method: "PATCH", path: "/api/admin/users/:id/role" },
         { label: t("status.api.ep.deactivateUser"), method: "PATCH", path: "/api/admin/users/:id/deactivate" },

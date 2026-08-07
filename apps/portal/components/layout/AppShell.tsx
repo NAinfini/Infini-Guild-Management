@@ -58,7 +58,7 @@ function normalizeViewingAs(role: string | null, isExternalView: boolean): strin
   if (isExternalView) {
     return "external";
   }
-  return role ?? "member";
+  return role ?? "external";
 }
 
 function syncViewSearch(nextRole: string) {
@@ -234,7 +234,8 @@ export function AppShell() {
     logoutMutation.mutate();
   };
 
-  const canSwitchView = user?.permissions["admin.roles.view"] === true;
+  const canSwitchView = user?.permissions["admin.roles.view"] === true
+    || user?.permissions["admin.roles.manage"] === true;
 
   const rolesQuery = useQuery({
     queryKey: queryKeys.admin.roles(),

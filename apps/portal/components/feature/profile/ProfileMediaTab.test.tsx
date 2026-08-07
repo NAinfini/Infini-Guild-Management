@@ -2,6 +2,8 @@
 import { MantineProvider } from "@mantine/core";
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import { describe, expect, it, vi } from "vitest";
 import { ProfileMediaTab } from "./ProfileMediaTab";
 
@@ -106,5 +108,24 @@ describe("ProfileMediaTab", () => {
     expect(screen.getByRole("radio", { name: "media.tab.videos" })).toBeInTheDocument();
     expect(screen.getByTestId("image-grid-editor")).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "media.uploadAvatar" })).not.toBeInTheDocument();
+  });
+
+  it("keeps overview and media avatars at 96px with a strict circular crop", () => {
+    const source = readFileSync(resolve(
+      process.cwd(),
+      "apps/portal/components/feature/profile/ProfileMediaTab.tsx",
+    ), "utf8");
+    const css = readFileSync(resolve(
+      process.cwd(),
+      "apps/portal/components/pages/MyProfilePage.css",
+    ), "utf8");
+
+    expect(source).toMatch(/<Avatar[\s\S]*?size=\{96\}[\s\S]*?className="profile-media-avatar"/);
+    expect(css).toMatch(
+      /\.profile-overview__avatar\s*\{[\s\S]*?inline-size:\s*96px[\s\S]*?block-size:\s*96px[\s\S]*?border-radius:\s*50%/,
+    );
+    expect(css).toMatch(
+      /\.profile-media-avatar\s*\{[\s\S]*?border-radius:\s*50%[\s\S]*?overflow:\s*hidden/,
+    );
   });
 });

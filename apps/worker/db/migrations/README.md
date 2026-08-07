@@ -10,6 +10,9 @@ This directory is the runtime source for Cloudflare D1 migrations.
 - `0001_release_schema_upgrade.sql` validates the legacy data before any table
   replacement, then upgrades the baseline to the current runtime schema with
   data-preserving shadow-table rebuilds.
+- `0002_dynamic_role_authority.sql` removes the historical built-in role flag,
+  adds an immutable invite-to-role assignment, and backfills existing invites
+  to the `member` seed without changing their codes, limits, counts, or dates.
 - The three production-only tables are not renamed, altered, updated, or
   deleted by `0001`. Media reference backfills only insert references that
   can be derived exactly from D1 rows; migrations never read or write R2.
@@ -34,10 +37,10 @@ pnpm exec wrangler d1 migrations apply guild-portal-db --local --config apps/wor
 ```
 
 Migration tests discover `NNNN_*.sql` files and apply them in filename order.
-`release-schema-upgrade.test.ts` separately verifies the production-shaped
+`release-schema-upgrade.test.ts` and `role-authority-upgrade.test.ts` separately verify the production-shaped
 upgrade path, preflight failures, protected-table preservation, normalized
 relations, final constraints, foreign-key integrity, and a fresh `0000` to
-`0001` build.
+`0002` build.
 
 D1 has no automatic rollback. Back up production and test the exact incremental
 path locally before any remote migration is explicitly authorized.

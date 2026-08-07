@@ -68,6 +68,9 @@ describe("resolveSession", () => {
         sessionCreatedAt: RECENT_SESSION_CREATED_AT,
         userId: "admin-1",
         roleId: "admin",
+        roleName: "Admin",
+        roleColor: "red",
+        roleLevel: 999,
         isActive: true,
         deletedAt: null,
         permission: "admin.users.view",
@@ -76,7 +79,8 @@ describe("resolveSession", () => {
     ];
     const where = vi.fn().mockResolvedValue(joinedRows);
     const leftJoin = vi.fn(() => ({ where }));
-    const innerJoin = vi.fn(() => ({ leftJoin }));
+    const secondInnerJoin = vi.fn(() => ({ leftJoin }));
+    const innerJoin = vi.fn(() => ({ innerJoin: secondInnerJoin }));
     const from = vi.fn(() => ({ innerJoin }));
     const select = vi.fn(() => ({ from }));
     mocks.drizzle.mockReturnValue({ select });
@@ -84,6 +88,7 @@ describe("resolveSession", () => {
     const resolved = await resolveSession(createContext() as never);
 
     expect(resolved?.user.roleId).toBe("admin");
+    expect(resolved?.user).toMatchObject({ roleName: "Admin", roleColor: "red", roleLevel: 999 });
     expect(resolved?.user.permissions.has("admin.users.view")).toBe(true);
     // Single query covers session + user + permissions
     expect(select).toHaveBeenCalledTimes(1);
@@ -97,6 +102,9 @@ describe("resolveSession", () => {
         sessionCreatedAt: RECENT_SESSION_CREATED_AT,
         userId: "admin-1",
         roleId: "admin",
+        roleName: "Admin",
+        roleColor: "red",
+        roleLevel: 999,
         isActive: true,
         deletedAt: null,
         permission: "admin.users.view",
@@ -105,7 +113,8 @@ describe("resolveSession", () => {
     ];
     const where = vi.fn().mockResolvedValue(joinedRows);
     const leftJoin = vi.fn(() => ({ where }));
-    const innerJoin = vi.fn(() => ({ leftJoin }));
+    const secondInnerJoin = vi.fn(() => ({ leftJoin }));
+    const innerJoin = vi.fn(() => ({ innerJoin: secondInnerJoin }));
     const from = vi.fn(() => ({ innerJoin }));
     const select = vi.fn(() => ({ from }));
     mocks.drizzle.mockReturnValue({ select });
@@ -126,6 +135,9 @@ describe("resolveSession", () => {
         sessionCreatedAt: RECENT_SESSION_CREATED_AT,
         userId: "mod-1",
         roleId: "moderator",
+        roleName: "Moderator",
+        roleColor: "#756047",
+        roleLevel: 500,
         isActive: true,
         deletedAt: null,
         permission: "events.create",
@@ -134,7 +146,8 @@ describe("resolveSession", () => {
     ];
     const where = vi.fn().mockResolvedValue(joinedRows);
     const leftJoin = vi.fn(() => ({ where }));
-    const innerJoin = vi.fn(() => ({ leftJoin }));
+    const secondInnerJoin = vi.fn(() => ({ leftJoin }));
+    const innerJoin = vi.fn(() => ({ innerJoin: secondInnerJoin }));
     const from = vi.fn(() => ({ innerJoin }));
     const select = vi.fn(() => ({ from }));
     mocks.drizzle.mockReturnValue({ select });

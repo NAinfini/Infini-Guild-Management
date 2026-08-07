@@ -2,6 +2,8 @@
 import { MantineProvider } from "@mantine/core";
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import { describe, expect, it, vi } from "vitest";
 import { PickList } from "./PickList";
 
@@ -62,8 +64,7 @@ describe("PickList", () => {
     expect(screen.queryByRole("checkbox")).toBeNull();
   });
 
-  /* 过滤在调用方那边做，组件只把搜索框的输入交回去——「全选可见的」和清单看到的
-     必须是同一份结果，两边各算一次早晚会对不上。 */
+  /* 过滤在调用方那边做，组件只把搜索框的输入交回去。 */
   it("hands typing back to the caller instead of filtering on its own", async () => {
     const onChange = vi.fn();
     renderList({ search: { value: "", onChange, placeholder: "search" } });
@@ -73,8 +74,7 @@ describe("PickList", () => {
     expect(screen.getAllByRole("checkbox")).toHaveLength(3);
   });
 
-  it("puts each section's own action next to its heading", async () => {
-    const bring = vi.fn();
+  it("keeps grouped options individually selectable", () => {
     render(
       <MantineProvider>
         <PickList
@@ -83,7 +83,6 @@ describe("PickList", () => {
               key: "healer",
               label: "Healer",
               options: [{ id: "a", label: "Alice" }],
-              action: <button type="button" onClick={bring}>bring group</button>,
             },
             { key: "rest", label: "Ungrouped", options: [{ id: "b", label: "Bob" }] },
           ]}
@@ -94,8 +93,34 @@ describe("PickList", () => {
       </MantineProvider>,
     );
 
-    await userEvent.click(screen.getByRole("button", { name: "bring group" }));
-    expect(bring).toHaveBeenCalled();
     expect(screen.getAllByRole("checkbox")).toHaveLength(2);
+  });
+
+  it("keeps caller save and cancel actions without exposing bulk or status APIs", () => {
+    const source = readFileSync(resolve(process.cwd(), "apps/portal/components/shared/PickList.tsx"), "utf8");
+
+    expect(source).not.toMatch(/\bbulk\?:/);
+    expect(source).not.toMatch(/\bstatus\?:/);
+    expect(source).not.toMatch(/\baction\?: ReactNode/);
+
+    renderList({
+      actions: (
+        <>
+          <button type="button">Cancel</button>
+          <button type="button">Save</button>
+        </>
+      ),
+    });
+
+    expect(screen.getByRole("button", { name: "Cancel" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Save" })).toBeInTheDocument();
+  });
+
+  it("lets a finished list hand wheel scrolling back to its native parent", () => {
+    const css = readFileSync(resolve(process.cwd(), "apps/portal/components/shared/PickList.css"), "utf8");
+    const bodyRule = css.match(/\.pick-list__body\s*\{([^}]*)\}/)?.[1] ?? "";
+
+    expect(bodyRule).toContain("overflow: hidden auto");
+    expect(bodyRule).not.toContain("overscroll-behavior");
   });
 });

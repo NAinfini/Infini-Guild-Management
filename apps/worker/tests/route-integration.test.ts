@@ -307,10 +307,11 @@ describe("Admin route auth guard", () => {
       return undefined;
     });
 
-    // Drizzle chain mock: select().from().innerJoin().leftJoin().where() => []
+    // Drizzle chain mock: select().from().innerJoin().innerJoin().leftJoin().where() => []
     const where = vi.fn().mockResolvedValue([]);
     const leftJoin = vi.fn(() => ({ where }));
-    const innerJoin = vi.fn(() => ({ leftJoin }));
+    const secondInnerJoin = vi.fn(() => ({ leftJoin }));
+    const innerJoin = vi.fn(() => ({ innerJoin: secondInnerJoin }));
     const from = vi.fn(() => ({ innerJoin }));
     const select = vi.fn(() => ({ from }));
     mocks.drizzle.mockReturnValue({ select });
@@ -930,13 +931,17 @@ describe("WebSocket routing", () => {
       sessionCreatedAt: new Date(now - 60_000).toISOString(),
       userId: "trusted-account-id",
       roleId: "member",
+      roleName: "Member",
+      roleColor: "gray",
+      roleLevel: 100,
       isActive: true,
       deletedAt: null,
       permission: null,
       granted: null,
     }]);
     const leftJoin = vi.fn(() => ({ where }));
-    const innerJoin = vi.fn(() => ({ leftJoin }));
+    const secondInnerJoin = vi.fn(() => ({ leftJoin }));
+    const innerJoin = vi.fn(() => ({ innerJoin: secondInnerJoin }));
     const from = vi.fn(() => ({ innerJoin }));
     mocks.drizzle.mockReturnValue({ select: vi.fn(() => ({ from })) });
     mocks.getCookie.mockImplementation((_c: unknown, name: string) => {

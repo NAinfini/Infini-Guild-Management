@@ -93,7 +93,12 @@ export function ProfileOverviewCard({
         <div className="profile-overview__who">
           <div className="profile-overview__name-row">
             <h2 className="profile-overview__name">{user.username}</h2>
-            <span className="profile-overview__role">{user.role}</span>
+            <span
+              className="profile-overview__role"
+              style={user.role_color ? ({ "--role-color": user.role_color } as CSSProperties) : undefined}
+            >
+              {user.role_name}
+            </span>
             <span className={`profile-overview__status profile-overview__status--${status}`}>
               {t(`overview.status.${status}`)}
             </span>

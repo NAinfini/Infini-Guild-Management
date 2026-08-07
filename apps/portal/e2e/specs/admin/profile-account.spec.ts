@@ -1,6 +1,7 @@
 import { request, type APIRequestContext, type BrowserContext, type Locator, type Page } from "@playwright/test";
 import { MUTATION_HEADERS } from "../../support/api";
 import { PORTAL_ORIGIN } from "../../support/config";
+import { readAssignableRole } from "../../support/members";
 import {
   createFlow,
   expect,
@@ -84,8 +85,9 @@ async function loginStatus(username: string, password: string): Promise<number> 
 test.beforeEach(async ({ api, browser, clientAddress, trackArtifacts }) => {
   sideChannelHeaders = { ...MUTATION_HEADERS, ...identityHeaders(clientAddress, trackArtifacts) };
   const username = throwawayUsername();
+  const role = await readAssignableRole(api);
   const created = await readJson(
-    await api.post("/api/admin/users", { data: { username } }),
+    await api.post("/api/admin/users", { data: { username, role_id: role.id } }),
     "创建一次性账号",
   ) as { user_id: string; username: string; temporary_password: string };
   account = { id: created.user_id, username: created.username, password: created.temporary_password };

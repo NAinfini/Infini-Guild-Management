@@ -176,6 +176,12 @@ export const MemberCard = memo(function MemberCard({
       >
         <span className="member-card__compact-username">{user.username}</span>
         <span
+          className="member-card__role"
+          style={user.role_color ? ({ "--role-color": user.role_color } as React.CSSProperties) : undefined}
+        >
+          {user.role_name}
+        </span>
+        <span
           className="member-card__compact-class"
           style={{ "--class-color": primaryClassItem.color } as React.CSSProperties}
         >
@@ -227,6 +233,12 @@ export const MemberCard = memo(function MemberCard({
         <div className="member-card__content">
           <div className="member-card__identity">
             <span className="member-card__username">{user.username}</span>
+            <span
+              className="member-card__role"
+              style={user.role_color ? ({ "--role-color": user.role_color } as React.CSSProperties) : undefined}
+            >
+              {user.role_name}
+            </span>
           </div>
           <div className="member-card__title" dangerouslySetInnerHTML={{ __html: titleHtml || "&nbsp;" }} />
         </div>

@@ -6,6 +6,9 @@ const routeMocks = vi.hoisted(() => ({
     id: "user-1",
     role: "member",
     roleId: "member",
+    roleName: "Member",
+    roleColor: "gray",
+    roleLevel: 100,
     permissions: new Set(),
   }),
 }));

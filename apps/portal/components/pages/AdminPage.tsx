@@ -128,8 +128,11 @@ export function AdminPage() {
     handleBatchDelete,
     handleBatchRole,
     handleCopyConfigSummary,
-    isAdmin,
-    isModerator,
+    canEditUsers,
+    canAssignUserRoles,
+    canActivateUsers,
+    canDeleteUsers,
+    canResetUserPasswords,
     memberDetailForm,
     memberDetailIsDirty,
     memberMediaController,
@@ -137,7 +140,7 @@ export function AdminPage() {
     patchMemberDetailForm,
     revokeInvite,
     rolesQuery,
-    rolesWithExternal,
+    assignableRoles,
     saveSelectedMemberProfile,
     selectedMemberDetail,
     selectedUserIds,
@@ -152,6 +155,7 @@ export function AdminPage() {
     setMemberSearch,
     statusHealthLogs,
     statusLatencyMs,
+    refreshStatus,
     statusQuery,
     siteConfigMutations,
     siteConfigQuery,
@@ -307,7 +311,11 @@ export function AdminPage() {
             <LazyAdminUsersSection
               usersLoading={usersQuery.isLoading}
               usersError={usersQuery.isError}
-              isAdmin={isAdmin}
+              canEditUsers={canEditUsers}
+              canAssignUserRoles={canAssignUserRoles}
+              canActivateUsers={canActivateUsers}
+              canDeleteUsers={canDeleteUsers}
+              canResetUserPasswords={canResetUserPasswords}
               onOpenCreateMember={createMemberModalHandlers.open}
               selectedUserIds={selectedUserIds}
               onBatchRole={handleBatchRole}
@@ -323,7 +331,7 @@ export function AdminPage() {
               userColumns={userColumns}
               onOpenMemberDetail={setMemberDetailId}
               onSelectionChange={applyUserSelection}
-              roles={rolesQuery.data ?? []}
+              roles={assignableRoles}
               memberSearch={memberSearch}
               onMemberSearchChange={setMemberSearch}
               onSingleRoleChange={changeUserRole}
@@ -347,6 +355,7 @@ export function AdminPage() {
               onCreateInvite={(input, onSuccess) => {
                 createInviteMutation.mutate(input, { onSuccess });
               }}
+              roles={assignableRoles}
               createInvitePending={createInviteMutation.isPending}
               inviteStatsLoading={inviteStatsQuery.isLoading}
               inviteStats={inviteStatsQuery.data ?? null}
@@ -411,7 +420,7 @@ export function AdminPage() {
             <LazyAdminRolesSection
               rolesLoading={rolesQuery.isLoading}
               rolesError={rolesQuery.isError}
-              roles={rolesWithExternal}
+              roles={rolesQuery.data ?? []}
               createRolePending={createRoleMutation.isPending}
               updateRolePending={updateRoleConfigMutation.isPending}
               isRoleDeletePending={isRoleDeletePending}
@@ -469,10 +478,12 @@ export function AdminPage() {
           <ErrorBoundary>
           <Suspense fallback={suspenseFallback}>
             <LazyAdminStatusTab
+              onRunQuickCheck={() => { void refreshStatus(); }}
               onCopyConfigSummary={handleCopyConfigSummary}
               canCopyConfigSummary={Boolean(statusQuery.data)}
               statusLatencyMs={statusLatencyMs}
               statusLoading={statusQuery.isLoading}
+              statusChecking={statusQuery.isFetching}
               statusError={statusQuery.isError}
               statusData={statusQuery.data ?? null}
               statusHealthLogs={statusHealthLogs}
@@ -492,14 +503,17 @@ export function AdminPage() {
           onFormChange={patchMemberDetailForm}
           onSaveProfile={saveSelectedMemberProfile}
           saveProfilePending={updateMemberProfileMutation.isPending}
-          roles={rolesQuery.data ?? []}
+          roles={assignableRoles}
+          canEditProfile={canEditUsers}
+          canAssignRole={canAssignUserRoles}
+          canActivate={canActivateUsers}
           mediaTab={
             selectedMemberDetail ? (
               <Suspense fallback={suspenseFallback}>
                 <LazyAdminMemberMediaTab
                   member={selectedMemberDetail}
-                  isAdmin={isAdmin}
-                  isModerator={isModerator}
+                  isAdmin={canEditUsers}
+                  isModerator={canEditUsers}
                   imageItems={memberMediaController.imageItems}
                   imageUploader={memberMediaController.imageUploader}
                   imageReorderPending={memberMediaController.imageReorderPending}
@@ -534,6 +548,7 @@ export function AdminPage() {
           onClose={createMemberModalHandlers.close}
           onCreateMember={createMember}
           creating={createMemberMutation.isPending}
+          roles={assignableRoles}
         />
       </Suspense>
     </PageLayout>
