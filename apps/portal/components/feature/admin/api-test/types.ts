@@ -71,7 +71,16 @@ export type TestRunContext = {
   createdBadgeId: string | null;
   createdClassId: string | null;
   createdClassIconKey: string | null;
+  createdClassTagId: string | null;
   createdAbsenceId: string | null;
+  /*
+   * 三个 reorder 接口都要求带上完整的 id 顺序（服务端整表核对）。这里存的是各自
+   * 列表 GET 抓到的服务端现序，reorder 用例原样回放它（外加本次运行新建的那一个），
+   * 于是写路径被完整走了一遍，而站上的相对顺序一个都不变。
+   */
+  badgeIdsInOrder: string[] | null;
+  classIdsInOrder: string[] | null;
+  classTagIdsInOrder: string[] | null;
   createdEventId: string | null;
   createdPollEventId: string | null;
   createdRaffleEventId: string | null;
@@ -176,7 +185,11 @@ export function createInitialTestRunContext(): TestRunContext {
     createdBadgeId: null,
     createdClassId: null,
     createdClassIconKey: null,
+    createdClassTagId: null,
     createdAbsenceId: null,
+    badgeIdsInOrder: null,
+    classIdsInOrder: null,
+    classTagIdsInOrder: null,
     createdEventId: null,
     createdPollEventId: null,
     createdRaffleEventId: null,

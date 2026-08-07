@@ -110,7 +110,7 @@ apps/
 | 每天 00:00 UTC | 审计归档、媒体孤儿扫描/清理、错误日志清理 |
 | 每 15 分钟 | 活动实例生成、抽奖开奖、会话清理、定时公告发布，随后执行活动自动归档 |
 
-生产默认保持 `MEDIA_ORPHAN_DELETE_MODE=report` 和 `ENABLE_PRODUCTION_SYSTEM_TESTS=false`。
+生产保持 `MEDIA_ORPHAN_DELETE_MODE=report`；`ENABLE_PRODUCTION_SYSTEM_TESTS=true` 让管理台的 API 测试控制台在生产可用：测试运行创建的每一个夹具都登记在服务端运行注册表里，运行结束时按精确 ID 删除。
 
 ## 安装与部署
 

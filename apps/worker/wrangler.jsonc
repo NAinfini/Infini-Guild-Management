@@ -93,7 +93,9 @@
         "ENVIRONMENT": "production",
         "PORTAL_ORIGIN": "https://fanghuazhaoyun.com",
         "MEDIA_ORPHAN_DELETE_MODE": "report",
-        "ENABLE_PRODUCTION_SYSTEM_TESTS": "false",
+        // 管理台的 API 测试控制台是给不写代码的管理员用的整站体检，长期开着。
+        // 夹具全部登记在服务端 run 注册表里、按精确 ID 清理（SystemTestService）。
+        "ENABLE_PRODUCTION_SYSTEM_TESTS": "true",
         "SITE_NAME": "芳华照云阙",
         "SITE_LOGO_URL": "/guild-logo.webp"
       },

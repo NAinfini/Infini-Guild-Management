@@ -156,6 +156,107 @@ describe("AdminApiTestEngine request preparation", () => {
     expect(body.icon).toBeUndefined();
   });
 
+  /*
+   * reorder 接口要求整表 id 列全，所以用例只能回放列表抓到的现序并把本次新建的
+   * 那一个补在末尾——断言的正是「现序 + 尾插」，多一位少一位都说明会改动线上顺序。
+   */
+  it("replays the captured server order and appends only this run's fixture on reorder endpoints", () => {
+    const ctx = contextWith({
+      badgeIdsInOrder: ["badge-1", "badge-2"],
+      createdBadgeId: "badge-3",
+      classIdsInOrder: ["class-1"],
+      createdClassId: "class-2",
+      classTagIdsInOrder: [],
+      createdClassTagId: "tag-1",
+    });
+
+    expect(parseJsonBody(prepareEndpointRequest(
+      { label: "Reorder Badges", method: "PATCH", path: "/api/badges/reorder" },
+      ctx,
+    ))).toEqual({ order: ["badge-1", "badge-2", "badge-3"] });
+    expect(parseJsonBody(prepareEndpointRequest(
+      { label: "Reorder Classes", method: "PATCH", path: "/api/classes/reorder" },
+      ctx,
+    ))).toEqual({ order: ["class-1", "class-2"] });
+    expect(parseJsonBody(prepareEndpointRequest(
+      { label: "Reorder Class Tags", method: "PATCH", path: "/api/class-tags/reorder" },
+      ctx,
+    ))).toEqual({ order: ["tag-1"] });
+  });
+
+  it("skips reorder endpoints until their list capture has run", () => {
+    const context = createInitialTestRunContext();
+
+    expect(prepareEndpointRequest(
+      { label: "Reorder Badges", method: "PATCH", path: "/api/badges/reorder" },
+      context,
+    ).skipReason).toContain("badge order");
+    expect(prepareEndpointRequest(
+      { label: "Reorder Classes", method: "PATCH", path: "/api/classes/reorder" },
+      context,
+    ).skipReason).toContain("class order");
+    expect(prepareEndpointRequest(
+      { label: "Reorder Class Tags", method: "PATCH", path: "/api/class-tags/reorder" },
+      context,
+    ).skipReason).toContain("class tag order");
+  });
+
+  it("captures the server order from the badge, class, and class-tag list responses", () => {
+    const listResult = (rows: unknown) => ({
+      status: 200,
+      latencyMs: 1,
+      body: "[]",
+      error: null,
+      ranAt: "2026-08-07T00:00:00.000Z",
+      parsedJson: rows,
+    });
+    let ctx = createInitialTestRunContext();
+
+    ctx = captureContextFromResponse(ctx, { label: "Badges", method: "GET", path: "/api/badges" }, listResult([{ id: "badge-1" }, { id: "badge-2" }]));
+    ctx = captureContextFromResponse(ctx, { label: "Classes", method: "GET", path: "/api/classes" }, listResult([{ id: "class-1" }]));
+    ctx = captureContextFromResponse(ctx, { label: "Tags", method: "GET", path: "/api/class-tags" }, listResult([]));
+
+    expect(ctx.badgeIdsInOrder).toEqual(["badge-1", "badge-2"]);
+    expect(ctx.classIdsInOrder).toEqual(["class-1"]);
+    expect(ctx.classTagIdsInOrder).toEqual([]);
+  });
+
+  it("runs class-tag mutations only against the tag created by this run", () => {
+    const created = captureContextFromResponse(
+      createInitialTestRunContext(),
+      { label: "Create Tag", method: "POST", path: "/api/class-tags" },
+      { status: 201, latencyMs: 1, body: "{}", error: null, ranAt: "2026-08-07T00:00:00.000Z", parsedJson: { id: "tag-1" } },
+    );
+
+    expect(prepareEndpointRequest(
+      { label: "Update Tag", method: "PATCH", path: "/api/class-tags/:id" },
+      createInitialTestRunContext(),
+    ).skipReason).toContain("created class tag id");
+    expect(resolveEndpointPath(
+      { label: "Delete Tag", method: "DELETE", path: "/api/class-tags/:id" },
+      created,
+    ).path).toBe("/api/class-tags/tag-1");
+
+    const cleared = captureContextFromResponse(
+      created,
+      { label: "Delete Tag", method: "DELETE", path: "/api/class-tags/:id" },
+      { status: 200, latencyMs: 1, body: "{}", error: null, ranAt: "2026-08-07T00:00:00.000Z", parsedJson: { deleted: true } },
+    );
+    expect(cleared.createdClassTagId).toBeNull();
+  });
+
+  it("batch-updates only the run-created wiki category and holds its position", () => {
+    expect(prepareEndpointRequest(
+      { label: "Batch Update Categories", method: "PATCH", path: "/api/wiki/categories/batch" },
+      createInitialTestRunContext(),
+    ).skipReason).toContain("created wiki category id");
+
+    expect(parseJsonBody(prepareEndpointRequest(
+      { label: "Batch Update Categories", method: "PATCH", path: "/api/wiki/categories/batch" },
+      contextWith({ createdWikiCategoryId: "cat-1" }),
+    ))).toEqual({ updates: [{ id: "cat-1", sort_order: 0 }] });
+  });
+
   it("uses the recurring-template contract and never writes a profile during auth read smoke tests", () => {
     const template = prepareEndpointRequest(
       { label: "Create Template", method: "POST", path: "/api/events/templates" },
@@ -865,10 +966,26 @@ describe("AdminApiTestEngine request preparation", () => {
       "GET /api/badges/:id",
       "POST /api/badges",
       "PATCH /api/badges/:id",
+      "PATCH /api/badges/reorder",
       "DELETE /api/badges/:id",
       "GET /api/badges/:id/assignments",
       "POST /api/badges/:id/assign",
       "POST /api/badges/:id/unassign",
+      "GET /api/classes",
+      "POST /api/classes",
+      "PATCH /api/classes/:id",
+      "PATCH /api/classes/reorder",
+      "POST /api/classes/:id/icon",
+      "GET /api/classes/icon",
+      "DELETE /api/classes/:id/icon",
+      "DELETE /api/classes/:id",
+      "GET /api/class-tags",
+      "POST /api/class-tags",
+      "PATCH /api/class-tags/:id",
+      "PATCH /api/class-tags/reorder",
+      "DELETE /api/class-tags/:id",
+      "PATCH /api/wiki/categories/batch",
+      "POST /api/admin/maintenance/media-orphan-cleanup",
       "GET /api/admin/invite-links",
       "GET /api/admin/invite-links/stats",
       "POST /api/admin/invite-links",

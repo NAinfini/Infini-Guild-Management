@@ -184,6 +184,7 @@ describe("system-test response extractor", () => {
     ["/api/storage/storages/storage-1/categories", { id: "storage-category-1" }, { type: "storage_category", key: "storage-category-1" }],
     ["/api/storage/items", { id: "storage-item-1" }, { type: "storage_item", key: "storage-item-1" }],
     ["/api/classes", { id: "class-1" }, { type: "class_catalog", key: "class-1" }],
+    ["/api/class-tags", { id: "tag-1" }, { type: "class_tag", key: "tag-1" }],
     ["/api/users/user-1/absences", { id: "absence-1" }, { type: "member_absence", key: "absence-1" }],
   ])("registers the exact root returned by %s", (path, body, expected) => {
     expect(extractSystemTestArtifacts("POST", path, body)).toContainEqual(expected);

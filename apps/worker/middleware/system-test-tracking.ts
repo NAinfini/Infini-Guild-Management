@@ -43,6 +43,7 @@ export function extractSystemTestArtifacts(method: string, path: string, body: u
   if (path === "/api/wiki/articles") return artifacts("wiki_article", [id]);
   if (path === "/api/badges") return artifacts("badge", [id]);
   if (path === "/api/classes") return artifacts("class_catalog", [id]);
+  if (path === "/api/class-tags") return artifacts("class_tag", [id]);
   /* 上传图标只改 class_catalog 的指针，行本身已由 POST /api/classes 登记；
      真正新增的是 R2 对象，它的键就在返回体的 icon_key 上。 */
   if (/^\/api\/classes\/[^/]+\/icon$/.test(path)) return artifacts("r2_key", [string(json?.icon_key)]);

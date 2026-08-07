@@ -110,7 +110,7 @@ Mutations require origin and `X-Requested-With` checks. The Worker also applies 
 | Daily at 00:00 UTC | Audit archive, media orphan scan/cleanup, and error-log cleanup |
 | Every 15 minutes | Event instance generation, raffle draws, session cleanup, and scheduled announcement publishing, followed by event auto-archive |
 
-Production defaults keep `MEDIA_ORPHAN_DELETE_MODE=report` and `ENABLE_PRODUCTION_SYSTEM_TESTS=false`.
+Production keeps `MEDIA_ORPHAN_DELETE_MODE=report`. `ENABLE_PRODUCTION_SYSTEM_TESTS=true` keeps the admin API test console available in production: every fixture a test run creates is registered in a server-side run registry and deleted by exact ID when the run ends.
 
 ## Setup and deployment
 

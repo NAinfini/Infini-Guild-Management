@@ -9,6 +9,12 @@ import {
   readString,
 } from "./types";
 
+function orderedIds(rows: readonly unknown[]): string[] {
+  return rows
+    .map((row) => (isRecord(row) ? readString(row.id) : null))
+    .filter((id): id is string => id !== null);
+}
+
 export function captureContextFromResponse(
   previous: TestRunContext,
   endpoint: EndpointDef,
@@ -101,6 +107,9 @@ export function captureContextFromResponse(
       next.createdClassId = null;
       next.createdClassIconKey = null;
     }
+    if (endpoint.path === "/api/class-tags/:id") {
+      next.createdClassTagId = null;
+    }
     if (endpoint.path === "/api/users/:id/absences/:absenceId") {
       next.createdAbsenceId = null;
     }
@@ -142,7 +151,21 @@ export function captureContextFromResponse(
   }
 
   if (endpoint.path === "/api/classes") {
-    next.createdClassId = readString(payload.id) ?? next.createdClassId;
+    /* 列表 GET 返回按 sort_order 排好的整个目录；reorder 用例要原样回放这份顺序。 */
+    if (Array.isArray(result.parsedJson)) {
+      next.classIdsInOrder = orderedIds(result.parsedJson);
+    } else {
+      next.createdClassId = readString(payload.id) ?? next.createdClassId;
+    }
+    return next;
+  }
+
+  if (endpoint.path === "/api/class-tags") {
+    if (Array.isArray(result.parsedJson)) {
+      next.classTagIdsInOrder = orderedIds(result.parsedJson);
+    } else if (endpoint.method === "POST") {
+      next.createdClassTagId = readString(payload.id) ?? next.createdClassTagId;
+    }
     return next;
   }
 
@@ -484,9 +507,11 @@ export function captureContextFromResponse(
     if (Array.isArray(payload.data)) {
       const first = firstArrayItem(payload.data);
       next.badgeId = readString(first?.id) ?? next.badgeId;
+      next.badgeIdsInOrder = orderedIds(payload.data);
     } else if (Array.isArray(payload)) {
       const first = payload.find((item): item is Record<string, unknown> => isRecord(item));
       next.badgeId = readString(first?.id) ?? next.badgeId;
+      next.badgeIdsInOrder = orderedIds(payload);
     } else {
       const id = readString(payload.id);
       next.badgeId = id ?? next.badgeId;

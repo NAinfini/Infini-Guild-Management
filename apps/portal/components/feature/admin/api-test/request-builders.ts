@@ -61,6 +61,31 @@ export function skipEndpoint(path: string, reason: string, optionalSkip = false)
   return { path, skipReason: reason, optionalSkip };
 }
 
+/*
+ * 徽章、职业、职业标签三个 reorder 接口共同的约定：请求体必须列全服务端现有的
+ * 每一个 id（整表核对，理由见 shared/schemas/class-catalog.ts）。所以这类用例没有
+ * 「只动本次夹具」的做法——原样回放列表 GET 抓到的服务端现序，把本次运行新建的
+ * 那一个补在末尾（创建时按 max+10 追加，末尾就是它的现位）。服务端照此把
+ * sort_order 规范化成下标 * 10：写路径完整走了一遍，站上的相对顺序一处不变。
+ */
+export function buildReorderRequest(
+  path: string,
+  capturedOrder: readonly string[] | null,
+  createdId: string | null,
+  missing: string,
+): PreparedEndpointRequest {
+  if (!capturedOrder) {
+    return skipEndpoint(path, `Missing ${missing}`);
+  }
+  const order = createdId && !capturedOrder.includes(createdId)
+    ? [...capturedOrder, createdId]
+    : [...capturedOrder];
+  if (order.length === 0) {
+    return skipEndpoint(path, "Nothing to reorder");
+  }
+  return buildJsonRequest(path, { order });
+}
+
 export function replacePathParam(path: string, key: string, value: string | null): string | null {
   if (!path.includes(key)) {
     return path;
@@ -136,6 +161,15 @@ export function resolveEndpointPath(endpoint: EndpointDef, context: TestRunConte
     const next = replacePathParam(path, ":id", context.createdClassId);
     if (!next) {
       return { path, missing: "created class id" };
+    }
+    path = next;
+  }
+
+  if (path.includes("/api/class-tags/:id")) {
+    /* 同职业：只动本次运行创建的标签，既有标签被活动配额引用。 */
+    const next = replacePathParam(path, ":id", context.createdClassTagId);
+    if (!next) {
+      return { path, missing: "created class tag id" };
     }
     path = next;
   }
@@ -514,8 +548,27 @@ export function prepareEndpointRequest(endpoint: EndpointDef, context: TestRunCo
         vector_icon: "shield",
       });
 
+    case "PATCH /api/classes/reorder":
+      return buildReorderRequest(path, context.classIdsInOrder, context.createdClassId, "class order (run the class list first)");
+
     case "POST /api/classes/:id/icon":
       return buildFormRequest(path, [["file", createTinyPngFile()]]);
+
+    case "POST /api/class-tags":
+      /* class_ids 留空：职业目录里那枚测试职业在自己那一类收尾时就删掉了，
+         标签的成员流转由 e2e 的管理页用例覆盖，这里只体检标签自身的写路径。 */
+      return buildJsonRequest(path, {
+        label: `[systemtest] API Tag ${nowId.slice(0, 24)}`,
+        class_ids: [],
+      });
+
+    case "PATCH /api/class-tags/:id":
+      return buildJsonRequest(path, {
+        label: `[systemtest] API Tag Updated ${nowId.slice(0, 16)}`,
+      });
+
+    case "PATCH /api/class-tags/reorder":
+      return buildReorderRequest(path, context.classTagIdsInOrder, context.createdClassTagId, "class tag order (run the class tag list first)");
 
     case "POST /api/users/:id/absences":
       return buildJsonRequest(path, {
@@ -797,6 +850,16 @@ export function prepareEndpointRequest(endpoint: EndpointDef, context: TestRunCo
         name: `[systemtest] API Category Updated ${nowId}`,
       });
 
+    case "PATCH /api/wiki/categories/batch":
+      /* 批量口收的是子集，所以只对本次创建的分类下手；sort_order 写回创建时的 0，
+         批量写路径走完，分类的位置一点不动。 */
+      if (!context.createdWikiCategoryId) {
+        return skipEndpoint(path, "Missing created wiki category id");
+      }
+      return buildJsonRequest(path, {
+        updates: [{ id: context.createdWikiCategoryId, sort_order: 0 }],
+      });
+
     case "POST /api/wiki/articles":
       if (!context.wikiArticleCategoryId && !context.wikiCategoryId) {
         return skipEndpoint(path, "Missing wiki category id");
@@ -994,6 +1057,9 @@ export function prepareEndpointRequest(endpoint: EndpointDef, context: TestRunCo
       return buildJsonRequest(path, {
         name: `[systemtest] API Badge Updated ${nowId}`,
       });
+
+    case "PATCH /api/badges/reorder":
+      return buildReorderRequest(path, context.badgeIdsInOrder, context.createdBadgeId, "badge order (run the badge list first)");
 
     case "POST /api/badges/:id/assign":
       if (!testMemberId) {

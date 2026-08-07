@@ -310,6 +310,7 @@ describe("SystemTestService exact compensation", () => {
       absence: "00000000-0000-4000-8000-000000000034",
       // 挂在既有成员身上的请假：users 的级联带不走它，只能靠显式登记。
       absenceOnExistingMember: "00000000-0000-4000-8000-000000000035",
+      classTag: "00000000-0000-4000-8000-000000000036",
     };
     const roleId = "systemtest_role_cleanup";
     const username = "systemtest_cleanup_user";
@@ -374,6 +375,11 @@ describe("SystemTestService exact compensation", () => {
       insert("INSERT INTO error_log (id, source, message) VALUES (?, 'request', 'test error')", ids.error);
       insert("INSERT INTO member_absences (id, user_id, start_date, end_date) VALUES (?, ?, '2099-01-01', '2099-01-03')", ids.absence, ids.user);
       insert("INSERT INTO member_absences (id, user_id, start_date, end_date) VALUES (?, 'admin-1', '2099-02-01', '2099-02-03')", ids.absenceOnExistingMember);
+      // 标签及其三张从表：成员行、活动配额、模板配额都要随标签一并被显式清掉。
+      insert("INSERT INTO class_tags (id, label, sort_order) VALUES (?, 'System test tag', 0)", ids.classTag);
+      insert("INSERT INTO class_tag_members (tag_id, class_id) VALUES (?, ?)", ids.classTag, ids.classCatalog);
+      insert("INSERT INTO event_class_quotas (event_id, tag_id, required) VALUES (?, ?, 1)", ids.event, ids.classTag);
+      insert("INSERT INTO recurring_template_class_quotas (template_id, tag_id, required) VALUES (?, ?, 1)", ids.template, ids.classTag);
       const mediaReferences: Array<[string, string, string]> = [
         ["member_profile", ids.user, mediaKeys[0]],
         ["event", ids.event, mediaKeys[1]],
@@ -406,6 +412,7 @@ describe("SystemTestService exact compensation", () => {
         ["audit_log", ids.audit], ["audit_log", ids.storageMarker],
         ["error_log", ids.error],
         ["class_catalog", ids.classCatalog],
+        ["class_tag", ids.classTag],
         ["member_absence", ids.absence], ["member_absence", ids.absenceOnExistingMember],
         ...mediaKeys.map((key): [string, string] => ["r2_key", key]),
       ];
@@ -464,6 +471,10 @@ describe("SystemTestService exact compensation", () => {
         ["audit_log", "id", ids.storageMarker],
         ["error_log", "id", ids.error],
         ["class_catalog", "id", ids.classCatalog],
+        ["class_tags", "id", ids.classTag],
+        ["class_tag_members", "tag_id", ids.classTag],
+        ["event_class_quotas", "tag_id", ids.classTag],
+        ["recurring_template_class_quotas", "tag_id", ids.classTag],
         ["member_absences", "id", ids.absence],
         ["member_absences", "id", ids.absenceOnExistingMember],
         ["media_upload_leases", "media_key", mediaKeys[3]],

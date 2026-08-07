@@ -144,6 +144,7 @@ export function buildApiCategories(t: (key: string) => string): CategoryDef[] {
         { label: t("status.api.ep.listCategories"), method: "GET", path: "/api/wiki/categories" },
         { label: t("status.api.ep.createCategory"), method: "POST", path: "/api/wiki/categories" },
         { label: t("status.api.ep.updateCategory"), method: "PATCH", path: "/api/wiki/categories/:id" },
+        { label: t("status.api.ep.batchUpdateCategories"), method: "PATCH", path: "/api/wiki/categories/batch" },
         { label: t("status.api.ep.listArticles"), method: "GET", path: "/api/wiki/articles?page=1&limit=5" },
         { label: t("status.api.ep.createArticle"), method: "POST", path: "/api/wiki/articles" },
         { label: t("status.api.ep.getArticle"), method: "GET", path: "/api/wiki/articles/:slug" },
@@ -192,6 +193,7 @@ export function buildApiCategories(t: (key: string) => string): CategoryDef[] {
         { label: t("status.api.ep.createBadge"), method: "POST", path: "/api/badges" },
         { label: t("status.api.ep.getBadge"), method: "GET", path: "/api/badges/:id" },
         { label: t("status.api.ep.updateBadge"), method: "PATCH", path: "/api/badges/:id" },
+        { label: t("status.api.ep.reorderBadges"), method: "PATCH", path: "/api/badges/reorder" },
         { label: t("status.api.ep.badgeAssignments"), method: "GET", path: "/api/badges/:id/assignments" },
         { label: t("status.api.ep.assignBadge"), method: "POST", path: "/api/badges/:id/assign" },
         { label: t("status.api.ep.unassignBadge"), method: "POST", path: "/api/badges/:id/unassign" },
@@ -205,10 +207,22 @@ export function buildApiCategories(t: (key: string) => string): CategoryDef[] {
         { label: t("status.api.ep.listClasses"), method: "GET", path: "/api/classes" },
         { label: t("status.api.ep.createClass"), method: "POST", path: "/api/classes" },
         { label: t("status.api.ep.updateClass"), method: "PATCH", path: "/api/classes/:id" },
+        { label: t("status.api.ep.reorderClasses"), method: "PATCH", path: "/api/classes/reorder" },
         { label: t("status.api.ep.uploadClassIcon"), method: "POST", path: "/api/classes/:id/icon" },
         { label: t("status.api.ep.getClassIcon"), method: "GET", path: "/api/classes/icon" },
         { label: t("status.api.ep.deleteClassIcon"), method: "DELETE", path: "/api/classes/:id/icon" },
         { label: t("status.api.ep.deleteClass"), method: "DELETE", path: "/api/classes/:id" },
+      ],
+    },
+    {
+      key: "classTags",
+      label: t("status.api.cat.classTags"),
+      endpoints: [
+        { label: t("status.api.ep.listClassTags"), method: "GET", path: "/api/class-tags" },
+        { label: t("status.api.ep.createClassTag"), method: "POST", path: "/api/class-tags" },
+        { label: t("status.api.ep.updateClassTag"), method: "PATCH", path: "/api/class-tags/:id" },
+        { label: t("status.api.ep.reorderClassTags"), method: "PATCH", path: "/api/class-tags/reorder" },
+        { label: t("status.api.ep.deleteClassTag"), method: "DELETE", path: "/api/class-tags/:id" },
       ],
     },
     {
@@ -280,6 +294,15 @@ export function buildApiCategories(t: (key: string) => string): CategoryDef[] {
         { label: t("status.api.ep.errorLog"), method: "GET", path: "/api/admin/error-log?page=1&limit=5" },
       ],
     },
+    {
+      key: "maintenance",
+      label: t("status.api.cat.maintenance"),
+      endpoints: [
+        /* 生产的 MEDIA_ORPHAN_DELETE_MODE 固定为 report：这一次调用只做 R2 与
+           媒体引用表的全量比对并回报孤儿数，不删任何对象——正是体检要的答案。 */
+        { label: t("status.api.ep.mediaOrphanCleanup"), method: "POST", path: "/api/admin/maintenance/media-orphan-cleanup" },
+      ],
+    },
   ];
 }
 
@@ -329,8 +352,12 @@ function permissionRequirementForEndpoint(endpoint: EndpointDef): EndpointPermis
   if (key === "GET /api/admin/status") return requiresAll("admin.status.view");
   if (endpoint.path.startsWith("/api/admin/site-config")) return requiresAll("admin.siteConfig.manage");
   /* GET /api/classes 和 GET /api/classes/icon 本身是公开读，但它们在这里只作为
-     创建-上传-删除链条的一环运行，没有管理权限时整条链都跑不起来。 */
+     创建-上传-删除链条的一环运行，没有管理权限时整条链都跑不起来。
+     职业标签与职业目录共用同一个权限（routes/class-tags.ts）。 */
   if (endpoint.path.startsWith("/api/classes")) return requiresAll("admin.classes.manage");
+  if (endpoint.path.startsWith("/api/class-tags")) return requiresAll("admin.classes.manage");
+  /* 手动维护触发器挂在最高一档管理权限上（routes/admin-maintenance.ts）。 */
+  if (endpoint.path.startsWith("/api/admin/maintenance")) return requiresAll("admin.roles.manage");
   if (endpoint.path.startsWith("/api/admin/error-log")) return requiresAll("admin.status.view");
   if (key === "GET /api/admin/analytics-settings") return requiresAll("admin.analytics.view");
   if (key === "PATCH /api/admin/analytics-settings") return requiresAll("admin.analytics.manage");

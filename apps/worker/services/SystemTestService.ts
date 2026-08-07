@@ -7,7 +7,8 @@ export const SYSTEM_TEST_ARTIFACT_TYPES = [
   "storage", "storage_category", "storage_item", "storage_item_image", "audit_log", "error_log", "r2_key",
   // member_absences 会随 users 级联删除，但请假也可以挂在既有成员身上；
   // class_catalog 由 member_profile_classes 引用；系统测试仍需显式登记并按依赖顺序清理。
-  "class_catalog", "member_absence",
+  // class_tag 的成员表和两张配额表按本仓库惯例手写级联（见 ClassTagService.delete）。
+  "class_catalog", "class_tag", "member_absence",
 ] as const;
 export type SystemTestArtifactType = (typeof SYSTEM_TEST_ARTIFACT_TYPES)[number];
 export type SystemTestArtifact = { type: SystemTestArtifactType; key: string };
@@ -169,6 +170,7 @@ export class SystemTestService {
       ]);
     }
     await deleteById("roles", "role");
+    await this.deleteClassTags(byType.get("class_tag") ?? []);
     await deleteById("class_catalog", "class_catalog");
     await this.deleteR2Keys(byType.get("r2_key") ?? []);
   }
@@ -318,6 +320,19 @@ export class SystemTestService {
     }
   }
 
+  /* 与 ClassTagService.delete 同一份手写级联：成员表和两张配额表都显式清，
+     不指望 D1 的外键级联替我们兜底。 */
+  private async deleteClassTags(tagIds: readonly string[]): Promise<void> {
+    for (const tagId of tagIds) {
+      await this.env.DB.batch([
+        this.env.DB.prepare("DELETE FROM event_class_quotas WHERE tag_id = ?").bind(tagId),
+        this.env.DB.prepare("DELETE FROM recurring_template_class_quotas WHERE tag_id = ?").bind(tagId),
+        this.env.DB.prepare("DELETE FROM class_tag_members WHERE tag_id = ?").bind(tagId),
+        this.env.DB.prepare("DELETE FROM class_tags WHERE id = ?").bind(tagId),
+      ]);
+    }
+  }
+
   private async deleteStorageItems(itemIds: readonly string[]): Promise<void> {
     for (const itemId of itemIds) {
       await this.env.DB.prepare("DELETE FROM storage_transactions WHERE item_id = ?").bind(itemId).run();
@@ -373,6 +388,8 @@ export class SystemTestService {
 
     await this.deleteRegisteredUsers(runId, keys("user"));
     await deleteById("roles", keys("role"));
+    // 标签先于职业删除：class_tag_members 引用 class_catalog，成员行随标签一并显式清掉。
+    await this.deleteClassTags(keys("class_tag"));
     // 测试职业只会在已登记测试用户清理后删除，避免 member_profile_classes 外键冲突。
     await deleteById("class_catalog", keys("class_catalog"));
 
