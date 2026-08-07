@@ -24,10 +24,12 @@
   min-width: 0;
 }
 
-/* 宽屏编辑区分为等宽双列，使表单字段保持可读量度。 */
+/* 宽屏编辑区分为等宽双列，使表单字段保持可读量度。
+   两列各自按内容收高：媒体卡比身份卡矮得多，拉平会在卡框内留出一大片空白。 */
 @media (min-width: 1200px) {
   .my-profile-split__editor--wide {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+    align-items: start;
   }
 }
 
@@ -40,196 +42,8 @@
   min-width: 0;
 }
 
-/* ── 概览条 ── */
-
-/* 主页屏顶上的全宽一条：左边「我是谁」，右边五个计数。它答的是「现在是什么」，
-   下面的表单答的是「改什么」——所以它是一条，不是又一张带标题的卡。 */
-.profile-overview {
-  /* 主职业色。组件按主职业内联覆盖这一个变量；这里声明的是「没有职业」时的
-     取值。必须是独立声明，不能写成 var() 的第二参数兜底——守卫 rule 1
-     不许任何 var() 兜底。 */
-  --overview-accent: var(--brand-fill);
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  align-items: center;
-  gap: var(--space-lg);
-  min-width: 0;
-  padding: var(--card-padding);
-  border: 1px solid var(--border-subtle);
-  border-radius: var(--radius-surface);
-  /* 左侧那道主职业色，是这一条和右栏名片预览之间唯一的视觉连线。 */
-  border-inline-start: 3px solid var(--overview-accent);
-  /* 160deg 是全站统一的材质角度（architecture-boundaries 守卫的那条）。 */
-  background: linear-gradient(
-    160deg,
-    color-mix(in srgb, var(--overview-accent) 9%, var(--surface-raised)) 0%,
-    var(--surface-raised) 70%
-  );
-}
-
-.profile-overview__identity {
-  display: flex;
-  align-items: center;
-  gap: var(--space-md);
-  min-width: 0;
-}
-
-.profile-overview__avatar {
-  position: relative;
-  flex: 0 0 auto;
-  inline-size: 96px;
-  block-size: 96px;
-  border-radius: 50%;
-  overflow: visible;
-  display: grid;
-  place-items: center;
-  border: 2px solid var(--surface-base);
-  background: var(--surface-sunken);
-  font-size: var(--text-h2);
-  font-weight: var(--fw-strong);
-  color: var(--text-muted);
-}
-
-.profile-overview__avatar img {
-  inline-size: 100%;
-  block-size: 100%;
-  border-radius: 50%;
-  object-fit: cover;
-}
-
-.profile-overview__dot {
-  position: absolute;
-  inset-inline-end: 0;
-  inset-block-end: 2px;
-  inline-size: 14px;
-  block-size: 14px;
-  border-radius: 50%;
-  border: 3px solid var(--surface-raised);
-}
-
-.profile-overview__dot--active { background: var(--status-success); }
-.profile-overview__dot--inactive { background: color-mix(in srgb, var(--text-primary) 35%, transparent); }
-.profile-overview__dot--vacation { background: var(--status-danger); }
-
-.profile-overview__who {
-  display: grid;
-  gap: var(--space-xs);
-  min-width: 0;
-}
-
-.profile-overview__name-row {
-  display: flex;
-  align-items: baseline;
-  flex-wrap: wrap;
-  gap: var(--space-sm);
-  min-width: 0;
-}
-
-.profile-overview__name {
-  margin: 0;
-  font-size: var(--text-h2);
-  font-weight: var(--fw-strong);
-  line-height: 1.15;
-  overflow-wrap: anywhere;
-}
-
-.profile-overview__role {
-  --role-color: var(--text-secondary);
-  font-size: var(--text-micro);
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-  color: var(--role-color);
-}
-
-.profile-overview__status {
-  padding: 1px 8px;
-  border-radius: var(--shape-pill);
-  font-size: var(--text-micro);
-  line-height: 1.6;
-}
-
-.profile-overview__status--active {
-  background: color-mix(in srgb, var(--status-success) 15%, transparent);
-  color: var(--status-success);
-}
-
-.profile-overview__status--inactive {
-  background: var(--surface-sunken);
-  color: var(--text-muted);
-}
-
-.profile-overview__status--vacation {
-  background: color-mix(in srgb, var(--status-danger) 14%, transparent);
-  color: var(--status-danger);
-}
-
-.profile-overview__title {
-  font-size: var(--text-meta);
-  line-height: 1.4;
-  overflow-wrap: anywhere;
-}
-
-.profile-overview__tags {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: var(--space-xs);
-}
-
-.profile-overview__class {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  padding: 2px 8px 2px 5px;
-  border-radius: var(--shape-pill);
-  font-size: var(--text-micro);
-  line-height: 1.5;
-  border: 1px solid var(--border-subtle);
-  background: var(--surface-sunken);
-}
-
-.profile-overview__meta {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--space-sm) var(--space-md);
-  font-size: var(--text-micro);
-  color: var(--text-muted);
-}
-
-/* 五个计数横排。auto-fit 会在窄屏上自己折成两行，不必再写一档断点。 */
-.profile-overview__stats {
-  display: grid;
-  grid-template-columns: repeat(5, minmax(72px, auto));
-  gap: var(--space-md) var(--space-lg);
-  margin: 0;
-}
-
-.profile-overview__stat {
-  display: grid;
-  gap: 2px;
-  min-width: 0;
-}
-
-.profile-overview__stat-label {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  font-size: var(--text-micro);
-  color: var(--text-muted);
-  white-space: nowrap;
-}
-
-.profile-overview__stat-icon {
-  display: inline-flex;
-  color: var(--overview-accent);
-}
-
-.profile-overview__stat-value {
-  margin: 0;
-  font-size: var(--text-h3);
-  line-height: 1.1;
-  color: var(--text-primary);
-}
+/* 概览条的样式随组件放在 apps/portal/components/shared/ProfileOverviewCard.css，
+   资料页与后台成员详情共用同一份。 */
 
 .profile-account {
   display: grid;
@@ -516,40 +330,7 @@
 
 /* ── 称号 ── */
 
-.profile-title {
-  display: grid;
-  gap: var(--space-xs);
-}
-
-.profile-title__label {
-  color: var(--text-primary);
-}
-
-.profile-title__row {
-  display: flex;
-  align-items: center;
-  gap: var(--space-xs);
-}
-
-.profile-title__input {
-  flex: 1 1 auto;
-  min-inline-size: 0;
-}
-
-/* 虚线边：带样式的称号只能看不能改，它和左边的战力输入框同宽同高，用实线就
-   读成「又一个可以打字的框」。 */
-.profile-title__render {
-  flex: 1 1 auto;
-  min-inline-size: 0;
-  min-block-size: 36px;
-  display: flex;
-  align-items: center;
-  padding: var(--space-xs) var(--space-sm);
-  border: 1px dashed var(--border-subtle);
-  border-radius: var(--radius-control);
-  background: var(--surface-sunken);
-  overflow-wrap: anywhere;
-}
+/* 称号那一栏的样式随组件走，见 shared/TitleField.css。 */
 
 /* ── 媒体切换 ── */
 
@@ -558,8 +339,11 @@
   font-size: var(--text-meta);
 }
 
+/* 三个分段的内容高度差很大，卡片随内容收高后切换会来回跳。给一个能装下
+   单行相册 / 单条视频 / 一首曲子的下限，常见状态之间切换就不再抖。 */
 .profile-media__body {
   margin-block-start: var(--space-md);
+  min-block-size: 160px;
   min-width: 0;
 }
 
@@ -571,19 +355,6 @@
 
   .my-profile-split__rail {
     position: static;
-  }
-}
-
-/* 概览条的两块（身份 / 计数）挤到一行放不下时改成上下两行，计数自己折。
-   断点比整页的 1199 早：这一条本来就是横向最吃宽度的一块。 */
-@media (max-width: 1399px) {
-  .profile-overview {
-    grid-template-columns: minmax(0, 1fr);
-    align-items: start;
-  }
-
-  .profile-overview__stats {
-    grid-template-columns: repeat(auto-fit, minmax(96px, max-content));
   }
 }
 
@@ -741,12 +512,6 @@
 }
 
 /* ── Profile Media Tab ── */
-
-.profile-media-avatar {
-  border: 2px solid var(--border-subtle);
-  border-radius: 50%;
-  overflow: hidden;
-}
 
 /* Static media rows use a neutral recessed surface rather than an active-state tint. */
 .profile-media-chip-row {

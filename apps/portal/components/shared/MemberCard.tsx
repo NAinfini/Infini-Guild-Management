@@ -66,6 +66,17 @@ type MemberCardProps = {
 
 type MemberStatus = "active" | "inactive" | "vacation";
 
+/* 请假窗口：起止都在、且此刻落在区间内。成员状态和后台详情里的请假摘要走同一条
+   判定，否则同一个人会在两处被说成两种情况。 */
+export function isOnVacation(profile: MemberProfile): boolean {
+  if (!profile.vacation_start || !profile.vacation_end) return false;
+  const start = Date.parse(profile.vacation_start);
+  const end = Date.parse(profile.vacation_end);
+  if (Number.isNaN(start) || Number.isNaN(end)) return false;
+  const now = Date.now();
+  return now >= start && now <= end;
+}
+
 /* 导出给资料页的名片预览用：那张卡的排版和这里不一样，但「在线 / 离线 / 休假」
    必须是同一套判定，否则同一个人在两处显示成两种状态。 */
 export function getMemberStatus(user: User, profile: MemberProfile): MemberStatus {
@@ -73,13 +84,8 @@ export function getMemberStatus(user: User, profile: MemberProfile): MemberStatu
     return "inactive";
   }
 
-  if (profile.vacation_start && profile.vacation_end) {
-    const now = Date.now();
-    const start = Date.parse(profile.vacation_start);
-    const end = Date.parse(profile.vacation_end);
-    if (!Number.isNaN(start) && !Number.isNaN(end) && now >= start && now <= end) {
-      return "vacation";
-    }
+  if (isOnVacation(profile)) {
+    return "vacation";
   }
 
   const rangesByDay = parseAvailabilityRanges(profile.availability);
@@ -176,12 +182,6 @@ export const MemberCard = memo(function MemberCard({
       >
         <span className="member-card__compact-username">{user.username}</span>
         <span
-          className="member-card__role"
-          style={user.role_color ? ({ "--role-color": user.role_color } as React.CSSProperties) : undefined}
-        >
-          {user.role_name}
-        </span>
-        <span
           className="member-card__compact-class"
           style={{ "--class-color": primaryClassItem.color } as React.CSSProperties}
         >
@@ -233,12 +233,6 @@ export const MemberCard = memo(function MemberCard({
         <div className="member-card__content">
           <div className="member-card__identity">
             <span className="member-card__username">{user.username}</span>
-            <span
-              className="member-card__role"
-              style={user.role_color ? ({ "--role-color": user.role_color } as React.CSSProperties) : undefined}
-            >
-              {user.role_name}
-            </span>
           </div>
           <div className="member-card__title" dangerouslySetInnerHTML={{ __html: titleHtml || "&nbsp;" }} />
         </div>

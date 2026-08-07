@@ -124,7 +124,7 @@ vi.mock("../shared/UnsavedChangesAffix", () => ({
   UnsavedChangesAffix: () => null,
 }));
 
-vi.mock("../feature/profile/ProfileOverviewCard", () => ({
+vi.mock("../shared/ProfileOverviewCard", () => ({
   ProfileOverviewCard: () => null,
 }));
 

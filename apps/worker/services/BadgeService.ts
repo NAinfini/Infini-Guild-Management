@@ -1,7 +1,7 @@
 import { memberBadgeSchema } from "@guild/shared";
 import type { WriteAuditLogInput as AuditLogInput } from "./audit";
 import type { PushEntityType, PushHint } from "@guild/shared/constants/push-hints";
-import { and, asc, eq, inArray } from "drizzle-orm";
+import { and, asc, eq, inArray, max } from "drizzle-orm";
 import type { DrizzleD1Database } from "drizzle-orm/d1";
 import { nanoid } from "nanoid";
 import { users } from "../db/schema/auth";
@@ -14,6 +14,8 @@ type EntityChangedInput = { entityType: PushEntityType; entityId: string; hint: 
 export type BadgeServiceDeps = {
   writeAuditLog: (input: AuditLogInput) => Promise<void>;
   publishEntityChanged: (input: EntityChangedInput) => Promise<void>;
+  /* 整表重排要在一次 batch 里改完所有行，drizzle 的 update 一次只发一条。 */
+  rawDb: D1Database;
 };
 
 type BadgeRow = {
@@ -168,13 +170,15 @@ export class BadgeService {
     if (!sanitized.ok) return sanitized;
     const safeData = sanitized.data;
     const badgeId = nanoid();
+    /* 不指定顺序就排到末尾：拖拽序里「新建的在最后」，插到队首会跟已有的号段撞上。 */
+    const maxSortRow = (await this.db.select({ value: max(memberBadges.sortOrder) }).from(memberBadges))[0];
     await this.db.insert(memberBadges).values({
       id: badgeId,
       name: safeData.name,
       labelHtml: safeData.label_html,
       color: safeData.color,
       description: safeData.description ?? null,
-      sortOrder: safeData.sort_order ?? 0,
+      sortOrder: safeData.sort_order ?? Number(maxSortRow?.value ?? -10) + 10,
     });
     const created = (await this.db.select(BADGE_COLS).from(memberBadges).where(eq(memberBadges.id, badgeId)).limit(1))[0];
     if (!created) return err("SERVER_ERROR", "Failed to create badge");
@@ -202,6 +206,44 @@ export class BadgeService {
     const diff = buildBadgeDiff(existing, safeData);
     await this.deps.writeAuditLog({ entityType: "member_badge", action: "update", actorId, entityId: badgeId, diffTitle: updated.name, detailText: diff ? JSON.stringify(diff) : null });
     return ok(toBadgePayload(updated));
+  }
+
+  /*
+   * 整表重排，和 ClassCatalogService.reorder 一模一样的形状：请求体必须列全所有
+   * 徽章，服务端按下标 * 10 重写。少一个就拒绝——顺序是全序，收下半张表就得去猜
+   * 剩下那些排在哪，而猜出来的结果客户端看不见。
+   */
+  async reorderBadges(actorId: string, order: string[]): Promise<ServiceResult<unknown[]>> {
+    const existingIds = (await this.db.select({ id: memberBadges.id }).from(memberBadges)).map((row) => row.id);
+
+    if (existingIds.length !== order.length) {
+      return err(
+        "CONFLICT",
+        `Badge order must list all ${existingIds.length} badges; received ${order.length}`,
+      );
+    }
+    const submitted = new Set(order);
+    const missing = existingIds.filter((id) => !submitted.has(id));
+    if (missing.length > 0) {
+      return err("CONFLICT", `Badge order is missing ${missing.length} badge(s)`);
+    }
+
+    const updatedAt = new Date().toISOString();
+    await this.deps.rawDb.batch(
+      order.map((id, index) => this.deps.rawDb
+        .prepare("UPDATE member_badges SET sort_order = ?, updated_at = ? WHERE id = ?")
+        .bind(index * 10, updatedAt, id)),
+    );
+    /* entityId 用 "batch"：这次改的是整张表，不是某一行。 */
+    await this.deps.writeAuditLog({
+      entityType: "member_badge",
+      action: "batch_update",
+      actorId,
+      entityId: "batch",
+      diffTitle: `${order.length} badges reordered`,
+      detailText: JSON.stringify({ count: order.length, order }),
+    });
+    return this.listBadges();
   }
 
   async deleteBadge(actorId: string, badgeId: string): Promise<ServiceResult<{ ok: true }>> {

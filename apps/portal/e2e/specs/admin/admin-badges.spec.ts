@@ -1,7 +1,7 @@
 import type { APIRequestContext, Locator, Page } from "@playwright/test";
 import { createThrowawayMember, uniqueTag } from "../../support/members";
 import { expect, readJson, test } from "../../support/test";
-import { confirmDialog, expectNoDialog, field } from "../../support/ui";
+import { confirmDialog, expectNoDialog, field, topDialog } from "../../support/ui";
 
 /*
  * 后台「徽章」页签：左边清单、右边详情的主从结构（和角色、职业共用 .admin-md），
@@ -18,6 +18,7 @@ const UPDATE_BADGE = { method: "PATCH", path: /^\/api\/badges\/[^/]+$/ } as cons
 const DELETE_BADGE = { method: "DELETE", path: /^\/api\/badges\/[^/]+$/ } as const;
 const ASSIGN_BADGE = { method: "POST", path: /^\/api\/badges\/[^/]+\/assign$/ } as const;
 const UNASSIGN_BADGE = { method: "POST", path: /^\/api\/badges\/[^/]+\/unassign$/ } as const;
+const REORDER_BADGES = { method: "PATCH", path: /^\/api\/badges\/reorder$/ } as const;
 
 type ServerBadge = {
   id: string;
@@ -39,6 +40,13 @@ function badgeItem(page: Page, name: string): Locator {
   return page.locator(".admin-md__item").filter({ hasText: name });
 }
 /*
+ * 详情的标题行。断言「右栏停在哪一枚」只认这里：正文里可能出现同名的标签预览，
+ * 整个右栏范围内按文本找会撞上它。
+ */
+function detailHead(page: Page): Locator {
+  return detail(page).locator(".admin-md__detail-head");
+}
+/*
  * 成员编辑没有独立面板：详情里那份名单换状态，标题行换成这条工具栏。
  * 它在查看态是不渲染的，所以断言「不存在」而不是「收起」。
  */
@@ -52,16 +60,18 @@ function memberRow(page: Page, username: string): Locator {
   return detail(page).locator(".pick-list__row").filter({ hasText: username });
 }
 /*
- * Mantine ColorInput 的预设色板在挂到 body 的下拉里，按钮的无障碍名就是色值本身。
- * 点完色板下拉不会自己关（closeOnColorSwatchClick 默认关闭），而它正好压在下面的
- * 提交按钮上——Esc 也收不掉，因为焦点这时在浮层里的色板按钮上，不在输入框上。
- * 只能点一下外面：详情标题栏离色板最远，点它不会误触任何控件。
+ * 标签和颜色只有样式编辑器这一个入口（成员称号用的是同一个弹窗）：文本、字号、
+ * 粗细在里面调，挑中的色号既拼进 label_html，也当徽章药丸的底色存下来。
+ * 色板按钮的无障碍名就是色值本身（Mantine ColorPicker 的 Swatches）。
  */
-async function pickPresetColor(page: Page, hex: string): Promise<void> {
-  await field(detail(page), "Color").click();
-  await page.locator(`button[aria-label="${hex}"]`).click();
-  await detail(page).locator(".admin-md__detail-head").click();
-  await expect(field(detail(page), "Color")).toHaveValue(hex);
+async function styleLabel(page: Page, text: string, hex: string): Promise<void> {
+  await detail(page).getByRole("button", { name: "Open style editor", exact: true }).click();
+  const editor = topDialog(page);
+  await expect(editor.getByRole("heading", { name: "Badge Label Editor", exact: true })).toBeVisible();
+  await field(editor, "Label text input").fill(text);
+  await editor.locator(`button[aria-label="${hex}"]`).click();
+  await editor.getByRole("button", { name: "Apply to badge", exact: true }).click();
+  await expect(page.getByRole("dialog"), "应用之后弹窗该自己关掉").toHaveCount(0);
 }
 /* 侧栏那个「+」和详情里的提交按钮共用同一句译文，只能靠作用域区分。 */
 function newBadgeButton(page: Page): Locator {
@@ -89,7 +99,8 @@ async function serverAssignments(api: APIRequestContext, id: string): Promise<Se
 async function createServerBadge(api: APIRequestContext, name: string): Promise<ServerBadge> {
   return await readJson(
     await api.post("/api/badges", {
-      data: { name, label_html: `★ ${name}`, color: "#D4A843", description: "e2e fixture", sort_order: 0 },
+      /* 不带 sort_order：服务端排到末尾，正好是拖拽序里「新建的在最后」。 */
+      data: { name, label_html: `★ ${name}`, color: "#D4A843", description: "e2e fixture" },
     }),
     `创建徽章 ${name}`,
   ) as ServerBadge;
@@ -120,14 +131,14 @@ test("新建徽章：名称和标签都填了才让提交；建完自动选中�
   await expect(submit, "两个必填都空着时不该能提交").toBeDisabled();
   await field(detail(page), "Badge Name").fill(name);
   await expect(submit, "只填名称、没有标签，提交出来会是一枚看不见的徽章").toBeDisabled();
-  await field(detail(page), "Label (HTML/Emoji)").fill(`★ ${name}`);
+
+  await styleLabel(page, `★ ${name}`, "#16a34a");
   await expect(submit).toBeEnabled();
 
   await field(detail(page), "Description (optional)").fill("e2e created");
-  await pickPresetColor(page, "#22c55e");
   await expect(
-    detail(page).locator(".admin-badge-preview__pill"),
-    "填了标签就该出现预览，否则管理员看不出这枚徽章长什么样",
+    detail(page).locator(".member-card__badge"),
+    "应用回来就该出现预览，否则管理员看不出这枚徽章长什么样",
   ).toHaveText(`★ ${name}`);
 
   const created = await flow.click(submit, CREATE_BADGE) as ServerBadge;
@@ -135,8 +146,9 @@ test("新建徽章：名称和标签都填了才让提交；建完自动选中�
 
   const saved = await serverBadge(api, created.id);
   expect(saved.name).toBe(name);
-  expect(saved.label_html).toBe(`★ ${name}`);
-  expect(saved.color, "点过的色板要真的落库").toBe("#22c55e");
+  expect(saved.label_html, "编辑器生成的是带内联样式的 span，文本要原样在里面").toContain(`★ ${name}`);
+  expect(saved.label_html, "字号是在编辑器里定的，落库的 HTML 里必须带着它").toMatch(/font-size:\s*\d+px/i);
+  expect(saved.color, "点过的色板既是文字色，也是徽章药丸的底色").toBe("#16a34a");
   expect(saved.description).toBe("e2e created");
 
   await expect(badgeItem(page, name), "建完要出现在左边清单里").toBeVisible();
@@ -147,17 +159,26 @@ test("新建徽章：名称和标签都填了才让提交；建完自动选中�
   await expect(detail(page).getByText("0 assigned", { exact: true })).toBeVisible();
 });
 
-test("新建取消：不发请求，右边回到未选中状态", async ({ page, api, flow }) => {
+test("新建取消：不发请求，右边落回清单里真实存在的那一枚", async ({ page, api, flow }) => {
   await openBadges(page);
-  const before = (await serverBadges(api)).length;
+  const before = await serverBadges(api);
+  /* 右栏的不变量是「永远停在一枚真实存在的徽章上」，进页面落在第一枚。
+     取消新建要回到的就是这个状态，所以清单不能是空的。 */
+  expect(before.length, "种子里至少要有一枚徽章，否则取消之后无处可落").toBeGreaterThan(0);
+  const firstName = before[0]!.name;
+  await expect(detailHead(page).getByText(firstName, { exact: true })).toBeVisible();
 
   await newBadgeButton(page).click();
   await field(detail(page), "Badge Name").fill("throwaway");
-  await field(detail(page), "Label (HTML/Emoji)").fill("throwaway");
+  await styleLabel(page, "throwaway", "#dc2626");
   await flow.clickWithoutApi(detail(page).getByRole("button", { name: "Cancel", exact: true }));
 
-  await expect(detail(page).getByText("Select a badge to manage")).toBeVisible();
-  expect((await serverBadges(api)).length, "取消不能留下任何一行").toBe(before);
+  await expect(submitCreateButton(page), "取消之后新建表单要收掉").toHaveCount(0);
+  await expect(
+    detailHead(page).getByText(firstName, { exact: true }),
+    "取消之后右栏落回第一枚，而不是停在空白详情上",
+  ).toBeVisible();
+  expect((await serverBadges(api)).length, "取消不能留下任何一行").toBe(before.length);
 });
 
 test("编辑徽章：点清单选中，改名和改描述都落到服务端，取消则不动", async ({ page, api, flow }) => {
@@ -180,6 +201,14 @@ test("编辑徽章：点清单选中，改名和改描述都落到服务端，�
     "打开编辑要带出现有值，而不是一张空表",
   ).toHaveValue(badge.name);
   await expect(field(detail(page), "Description (optional)")).toHaveValue("e2e fixture");
+
+  /* 改样式要从现有标签接着改：编辑器带出来的必须是这枚徽章现在的文本。 */
+  await detail(page).getByRole("button", { name: "Open style editor", exact: true }).click();
+  const editor = topDialog(page);
+  await expect(field(editor, "Label text input"), "打开编辑器要带出现有标签，而不是样例文案")
+    .toHaveValue(badge.label_html);
+  await page.keyboard.press("Escape");
+  await expectNoDialog(page);
 
   await field(detail(page), "Badge Name").fill(renamed);
   await field(detail(page), "Description (optional)").fill("e2e updated");
@@ -309,12 +338,77 @@ test("删除徽章：确认框取消什么都不做；确认之后清单、详�
   await expectNotified(page, "Badge deleted");
 
   await expect(badgeItem(page, badge.name)).toHaveCount(0);
+  const remaining = await serverBadges(api);
+  expect(remaining.some((row) => row.id === badge.id), "服务端也不能再查到它").toBe(false);
+  expect(remaining.length, "种子里的徽章还在，删完不该只剩空清单").toBeGreaterThan(0);
   await expect(
-    detail(page).getByText("Select a badge to manage"),
-    "删掉当前选中项之后，右边不能还停在一个已经不存在的徽章上",
+    detailHead(page).getByText(remaining[0]!.name, { exact: true }),
+    "删掉当前选中项之后，右栏落回第一枚，不能还停在一个已经不存在的徽章上",
   ).toBeVisible();
-  expect(
-    (await serverBadges(api)).some((row) => row.id === badge.id),
-    "服务端也不能再查到它",
-  ).toBe(false);
+});
+
+/*
+ * 拖拽排序走整表重排接口，和职业目录同一套约定：请求体带的是**完整**的徽章 id
+ * 顺序。用键盘（空格拿起 → 方向键 → 空格放下）而不是指针拖，理由写在
+ * admin-classes.spec.ts 那条上，两处不重复一遍。
+ *
+ * 顺序会改到既有徽章的 sort_order，而收尾指纹只数行数，「行数没变、顺序变了」
+ * 一条都查不出来，所以 finally 里必须把顺序放回去。
+ */
+test("拖拽排序：整张徽章表一次提交，顺序按下标重新发号落库；残缺的顺序一律回 409", async ({ page, api, flow }) => {
+  /* 自己造两枚，不指望种子里一定有两枚以上。 */
+  await createServerBadge(api, `E2E ${uniqueTag("sortA")}`);
+  await createServerBadge(api, `E2E ${uniqueTag("sortB")}`);
+  const before = (await serverBadges(api)).map((row) => row.id);
+  const expected = [before[1] as string, before[0] as string, ...before.slice(2)];
+
+  try {
+    await openBadges(page);
+    const rows = sidebar(page).locator(".admin-md__row");
+    await expect(rows).toHaveCount(before.length);
+
+    const firstRow = rows.first();
+    const transformOf = (row: Locator) => (
+      () => row.evaluate((el) => (el as HTMLElement).style.transform)
+    );
+    const handle = firstRow.locator(".admin-md__grip");
+
+    await handle.focus();
+    await page.keyboard.press("Space");
+    await expect(handle, "空格该把这一行拿起来").toHaveAttribute("aria-pressed", "true");
+    await expect.poll(transformOf(firstRow), "拖拽上下文该接管这一行的位移了").not.toBe("");
+
+    await page.keyboard.press("ArrowDown");
+    await expect
+      .poll(transformOf(rows.nth(1)), "第二行该被顶开，这才说明悬停目标定下来了")
+      .not.toMatch(/translate3d\(0px, 0px/);
+
+    const sent = await flow.act(
+      () => page.keyboard.press("Space"),
+      REORDER_BADGES,
+    ) as ServerBadge[];
+    await expect(handle, "再按一次空格该放下").not.toHaveAttribute("aria-pressed", "true");
+
+    expect(
+      sent.map((row) => row.id),
+      "响应体要按新顺序回整张表，前端就是拿它当真相刷新的",
+    ).toEqual(expected);
+    expect(
+      sent.map((row) => row.sort_order),
+      "重排后按下标 * 10 重新发号，中间留出手工插值的空位",
+    ).toEqual(expected.map((_, index) => index * 10));
+
+    const saved = await serverBadges(api);
+    expect(saved.map((row) => row.id), "刷新回来顺序还得是新的，不能只在内存里对").toEqual(expected);
+    await expect(rows.first(), "界面上第一行确实换人了").toContainText(saved[0]?.name as string);
+
+    const partial = await api.patch("/api/badges/reorder", { data: { order: expected.slice(1) } });
+    expect(partial.status(), "残缺的顺序要回 409，不能悄悄写进去").toBe(409);
+    expect(
+      (await serverBadges(api)).map((row) => row.id),
+      "被拒的那次不能改动任何一行",
+    ).toEqual(expected);
+  } finally {
+    await api.patch("/api/badges/reorder", { data: { order: before } });
+  }
 });

@@ -18,7 +18,12 @@ import type {
   adminRoleSchema,
   rolePermissionsSchema,
 } from "../schemas/admin";
-import type { memberBadgeSchema, userBadgeSchema, badgeAssignmentSchema } from "../schemas/badge";
+import type {
+  memberBadgeSchema,
+  userBadgeSchema,
+  badgeAssignmentSchema,
+  reorderMemberBadgesSchema,
+} from "../schemas/badge";
 
 export type User = z.infer<typeof userSchema>;
 export type MemberProfile = z.infer<typeof memberProfileSchema>;
@@ -48,6 +53,7 @@ export type RolePermissions = z.infer<typeof rolePermissionsSchema>;
 export type MemberBadge = z.infer<typeof memberBadgeSchema>;
 export type UserBadge = z.infer<typeof userBadgeSchema>;
 export type BadgeAssignment = z.infer<typeof badgeAssignmentSchema>;
+export type ReorderMemberBadgesInput = z.infer<typeof reorderMemberBadgesSchema>;
 
 export type PaginatedResponse<T> = {
   data: T[];

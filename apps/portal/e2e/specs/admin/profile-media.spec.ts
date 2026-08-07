@@ -4,9 +4,10 @@ import { wavUpload, webpUpload } from "../../support/files";
 import { confirmDialog, expectNoDialog, field } from "../../support/ui";
 
 /*
- * 个人资料页「主页」屏的媒体卡：相册 / 视频 / 音乐 / 头像 四组，收在一条内嵌切换里。
+ * 个人资料页「主页」屏的媒体卡：相册 / 视频 / 音乐 三组，收在一条内嵌切换里；
+ * 头像不在这张卡上——它的换/删入口长在顶上概览条的头像本身。
  *
- * 这四组走的不是同一条链路，用例的收尾方式也因此不同：
+ * 这几组走的不是同一条链路，用例的收尾方式也因此不同：
  *   - 相册、音乐、头像：控件直接调接口（上传 POST、删除 DELETE），点完就落库，
  *     不经过右下角的保存条。所以断言是「请求发出去 → 回读服务端，键真的多/少了一个」。
  *   - 视频：加/删/换序全是改本地草稿，只有保存按钮会写库。所以断言是
@@ -132,7 +133,7 @@ function videoRows(page: Page): Locator {
   return page.locator(".profile-video-row");
 }
 
-test("分组切换：四组各自换内容，全程不碰网络", async ({ page, flow }) => {
+test("分组切换：三组各自换内容，全程不碰网络", async ({ page, flow }) => {
   await expect(sectionInput(page, "images"), "默认停在相册").toBeChecked();
   await expect(imageTiles(page)).toHaveCount(original.images.length);
 
@@ -145,12 +146,9 @@ test("分组切换：四组各自换内容，全程不碰网络", async ({ page,
   await expect(sectionInput(page, "audio")).toBeChecked();
   await expect(page.getByRole("button", { name: "Select file", exact: true })).toBeVisible();
 
-  await flow.clickWithoutApi(sectionTab(page, "Avatar"));
-  await expect(sectionInput(page, "avatar")).toBeChecked();
-  await expect(page.getByRole("button", { name: "Upload avatar", exact: true })).toBeVisible();
   await expect(
-    page.getByRole("button", { name: "Remove avatar", exact: true }),
-    "种子里没有头像，就不该出现「移除头像」",
+    sectionTab(page, "Avatar"),
+    "头像的入口在概览条的头像上，这张卡里不该再有第二个",
   ).toHaveCount(0);
 });
 
@@ -285,7 +283,7 @@ test("音乐：WAV 上传前先在浏览器里转成 Opus，删除后键回到�
   await openSection(page, "Music", "audio");
   expect(original.audio_key, "种子里 admin 没有音乐，这条用例从空开始").toBeNull();
 
-  /* 选完就传，跟头像那一组一样，没有第二颗「上传」按钮可点。 */
+  /* 选完就传，没有第二颗「上传」按钮可点。 */
   const uploaded = await flow.act(
     () => page.locator(".my-profile-split__editor input[type='file']")
       .setInputFiles(wavUpload(`e2e-music-${Date.now()}.wav`)),
@@ -310,20 +308,24 @@ test("音乐：WAV 上传前先在浏览器里转成 Opus，删除后键回到�
   expect((await readProfile(api)).audio_key, "删除之后键必须回到空").toBeNull();
 });
 
-test("头像：上传后落库，移除后回到空", async ({ page, flow, api }) => {
-  await openSection(page, "Avatar", "avatar");
+test("头像：概览条上的入口上传后落库，移除后回到空", async ({ page, flow, api }) => {
   expect(original.avatar_key, "种子里 admin 没有头像，这条用例从空开始").toBeNull();
 
+  /* 入口长在概览条的头像上，平时收在 opacity:0 的一层里，鼠标移上去才显出来。 */
+  const avatar = page.locator(".profile-overview__avatar");
+  await avatar.hover();
+
   const uploaded = await flow.act(
-    () => page.locator(".my-profile-split__editor input[type='file']")
+    () => avatar.locator("input[type='file']")
       .setInputFiles(webpUpload(`e2e-avatar-${Date.now()}.webp`)),
     { method: "POST", path: AVATAR_API },
   ) as { key: string };
 
   expect((await readProfile(api)).avatar_key, "上传成功后资料上要挂上头像键").toBe(uploaded.key);
-  const removeAvatar = page.getByRole("button", { name: "Remove avatar", exact: true });
-  await expect(removeAvatar, "有头像之后才该出现「移除头像」").toBeVisible();
+  const removeAvatar = avatar.getByRole("button", { name: "Remove avatar", exact: true });
+  await expect(removeAvatar, "有头像之后才该出现「移除头像」").toHaveCount(1);
 
+  await avatar.hover();
   await removeAvatar.click();
   const confirm = await confirmDialog(page, "Remove avatar?");
   await flow.click(

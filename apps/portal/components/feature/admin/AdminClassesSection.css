@@ -1,43 +1,6 @@
 /* Class editing uses the shared admin master-detail workspace. */
 
-/* 清单行外壳：手柄 + .admin-md__item。手柄是独立按钮，不能嵌进那个按钮里。 */
-.admin-classes__row {
-  display: flex;
-  align-items: center;
-  gap: 2px;
-  min-inline-size: 0;
-}
-
-.admin-classes__grip {
-  display: grid;
-  place-items: center;
-  flex: 0 0 auto;
-  inline-size: 26px;
-  /* 44px 触控靶面，和 .admin-md__item 同一档。 */
-  min-block-size: 44px;
-  padding: 0;
-  border: 0;
-  border-radius: var(--radius-control);
-  background: transparent;
-  color: var(--text-muted);
-  cursor: grab;
-  touch-action: none;
-}
-
-.admin-classes__grip:hover {
-  color: var(--text-primary);
-  background: var(--surface-raised);
-}
-
-.admin-classes__grip:focus-visible {
-  outline: 2px solid var(--brand-fill);
-  outline-offset: 1px;
-}
-
-.admin-classes__grip:disabled {
-  cursor: default;
-  opacity: 0.4;
-}
+/* 拖拽清单行（.admin-md__row / .admin-md__grip）在 AdminPage.css，三张清单共用。 */
 
 /* Bound the form column so short controls retain readable proportions on wide screens. */
 .admin-classes__editor {

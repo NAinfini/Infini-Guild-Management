@@ -140,8 +140,9 @@ export function useRosterPageController() {
     const filteredRows = displayRows
       .filter((entry) => {
         if (!debouncedSearch) return true;
-        return entry.user.username.toLowerCase().includes(debouncedSearch)
-          || entry.user.role_name.toLowerCase().includes(debouncedSearch);
+        /* 只按用户名，和输入框自己写的「搜索用户名」一致——名册上已经看不到身份，
+           再拿身份去匹配就会搜出一批看不出为什么会命中的人。 */
+        return entry.user.username.toLowerCase().includes(debouncedSearch);
       })
       .filter((entry) => {
         if (classFilter.length === 0) return true;

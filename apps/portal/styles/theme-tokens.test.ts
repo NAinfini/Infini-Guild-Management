@@ -46,13 +46,14 @@ const TOKENIZED_CSS_FILES: string[] = [
   "apps/portal/components/feature/admin/AdminMemberDetailModal.module.css",
   /* Shared controls consume only L2/L3 variables. */
   "apps/portal/components/shared/SectionHeader.css",
+  "apps/portal/components/shared/TitleField.css",
   "apps/portal/components/shared/NativeDateTimeInput.css",
   "apps/portal/components/shared/ContentFilterToolbar.css",
   "apps/portal/components/shared/ClassIcon.css",
   "apps/portal/components/shared/ImageGridEditor.css",
-  /* 称号沙盒从工具页搬到资料页时，样式跟着组件一起从 ToolsPage.css 拆了出来，
-     内容是原样搬运，没有引入新的字面值。 */
-  "apps/portal/components/feature/profile/TitleSandboxModal.css",
+  /* 行内样式片段编辑器（称号与徽章标签共用）。样式当初随组件从 ToolsPage.css
+     拆出来时是原样搬运，没有引入新的字面值。 */
+  "apps/portal/components/shared/LabelStyleModal.css",
   /* 后台状态页签的外壳（Batch 4）。从建立起就只用 L2/L3 变量：
      卡片走 --surface-base / --border-subtle / --radius-surface，
      把手走 --text-secondary / --brand-text / --transition-normal。 */
@@ -71,6 +72,9 @@ const TOKENIZED_CSS_FILES: string[] = [
      AdminClassTagsSection.css 搬过来的，用的还是那两处的 --surface-* / --border-*；
      选中态那条色条走 --brand-fill。 */
   "apps/portal/components/shared/PickList.css",
+  /* 成员概览条，资料页与后台成员详情共用。样式从 MyProfilePage.css 原样搬来，
+     用的还是那里的 --surface-* / --status-* / --overview-accent。 */
+  "apps/portal/components/shared/ProfileOverviewCard.css",
 ];
 
 /** 唯一允许出现 hex 的文件。 */
@@ -122,17 +126,17 @@ const RUNTIME_INJECTED_VARS: string[] = [
   "--mantine-font-family-monospace",
   /* MemberAvatarStack injects its constant size on the stack root. */
   "--member-avatar-stack-size",
-  /* --badge-color：管理员自选的任意色号，运行期由内联 style 无条件写入
-   * （MemberCard.tsx:24 的 MemberBadge；AdminBadgesSection.tsx:102/194/231
-   * 的表单预览、侧栏列表徽章、详情大徽章）。三处消费值都经
-   * apps/shared/schemas/admin.ts 的 colorSchema 校验（min(1)，保证非空）。 */
+  /* --badge-color：管理员自选的任意色号，运行期由 MemberCard.tsx:24 的
+   * MemberBadge 在内联 style 上无条件写入（后台不再渲染药丸，标签的样子只在
+   * LabelStyleModal 里）。消费值经 apps/shared/schemas/admin.ts 的 colorSchema
+   * 校验（min(1)，保证非空）。 */
   "--badge-color",
   /* --class-color：管理员在职业目录中配置的任意十六进制色号。ClassIcon、
    * MemberCard 与职业管理预览都在同一元素上无条件注入该值。 */
   "--class-color",
   /* --swatch-color：色板/取色按钮各自的色号，来自 TipTapEditorToolbar.tsx /
-   * TipTapEditorContextMenu.tsx 的 TEXT_COLORS / HIGHLIGHT_COLORS、
-   * AdminBadgesSection.tsx 的 COLOR_PRESETS，以及 TitleSandboxModal.tsx 的
+   * TipTapEditorContextMenu.tsx 的 TEXT_COLORS / HIGHLIGHT_COLORS，
+   * 以及 LabelStyleModal.tsx 的
    * recentColors（localStorage 持久化的用户历史取色，等同 class-1 数据），
    * 运行期由这些色板/色点按钮无条件内联写入。 */
   "--swatch-color",
@@ -207,7 +211,7 @@ const LITERAL_COLOUR_EXEMPTIONS: Record<string, LiteralColourExemption[]> = {
       values: ["rgba(255, 255, 255, 0.95)", "rgba(255, 255, 255, 0.72)", "rgba(255, 255, 255, 0.72)", "rgba(255, 255, 255, 0.72)"],
     },
   ],
-  "apps/portal/components/feature/profile/TitleSandboxModal.css": [
+  "apps/portal/components/shared/LabelStyleModal.css": [
     {
       source: ".sandbox__recent-dot",
       reason: "给下面任意色号的 --swatch-color 描一圈固定轮廓，理由同 --swatch-color 本身（用户数据色，不随主题变化）。",

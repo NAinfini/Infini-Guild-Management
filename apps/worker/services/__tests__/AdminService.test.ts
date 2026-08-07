@@ -684,9 +684,9 @@ describe("AdminService role assignment guardrails", () => {
 
 describe("AdminService.createMember reserved system-test username", () => {
   /*
-   * system-test-cleanup permanently deletes users in this namespace, so an
+   * System-test cleanup permanently deletes users in this namespace, so an
    * admin-created account must never be able to land in it — the row would
-   * be gone a day later with no warning.
+   * be gone with the next cleanup and no warning.
    */
   it("refuses to create an account in the system-test namespace", async () => {
     const select = vi.fn();

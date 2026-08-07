@@ -562,6 +562,16 @@
   min-width: 0;
 }
 
+/* 创建邀请弹窗里「最大使用次数」「过期时间」两行：标签共用第一列，输入框共用
+   第二列，两个输入框的左右边缘才对得齐。行距和弹窗里其余字段一致。 */
+.admin-invite-form__fields {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  column-gap: 6px;
+  row-gap: 12px;
+}
+
 /* ── Responsive member table / cards ── */
 
 .admin-member-cards-mobile {
@@ -654,6 +664,46 @@
 .admin-md__list {
   flex: 1 1 0;
   min-block-size: 0;
+}
+
+/* 可拖拽清单行的外壳：手柄 + .admin-md__item。手柄是独立按钮，不能嵌进那个
+   按钮里，所以行外层多一层 div。职业、职业标签、徽章三张清单共用这一份。 */
+.admin-md__row {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  min-inline-size: 0;
+}
+
+.admin-md__grip {
+  display: grid;
+  place-items: center;
+  flex: 0 0 auto;
+  inline-size: 26px;
+  /* 44px 触控靶面，和 .admin-md__item 同一档。 */
+  min-block-size: 44px;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-control);
+  background: transparent;
+  color: var(--text-muted);
+  cursor: grab;
+  touch-action: none;
+}
+
+.admin-md__grip:hover {
+  color: var(--text-primary);
+  background: var(--surface-raised);
+}
+
+.admin-md__grip:focus-visible {
+  outline: 2px solid var(--brand-fill);
+  outline-offset: 1px;
+}
+
+.admin-md__grip:disabled {
+  cursor: default;
+  opacity: 0.4;
 }
 
 .admin-md__item {

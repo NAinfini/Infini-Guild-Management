@@ -438,6 +438,21 @@
   box-sizing: border-box;
 }
 
+/*
+ * 定高页把这一层的高度从「至少一屏」改成「正好一屏」。
+ *
+ * min-height 给不出上界：高度仍由内容决定，内容一长这层就跟着长，
+ * 下面 flex:1 的子级只会被撑大、永远不会被压回去，
+ * 于是 min-block-size:0 那条填充链名存实亡，滚动条落到了 .app-content 上。
+ * height 才让 flex 有确定的主轴尺寸可分配，列表内部的滚动区才收得住。
+ *
+ * 只有路由自己声明 fillsViewport 才加：按内容自然增高的页面锁死高度，
+ * 卡片会被压扁到 min-content。
+ */
+.app-main--fill {
+  height: 100%;
+}
+
 .app-banner {
   margin-inline: var(--shell-page-padding);
 }

@@ -78,6 +78,8 @@ export const LIMITS = {
     /* 一次重排请求里最多能带多少个职业 id。重排的请求体必须是完整目录，
        所以这同时也是职业目录的规模上限——超过这个数就该分页而不是整表重排。 */
     classCatalogSize: { max: 200 },
+    /* 徽章目录的规模上限，和 classCatalogSize 同一个理由：重排请求带的是整张表。 */
+    badgeCatalogSize: { max: 200 },
   },
   pagination: {
     admin: 50,

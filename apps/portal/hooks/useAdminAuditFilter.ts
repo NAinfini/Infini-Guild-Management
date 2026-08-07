@@ -1,6 +1,29 @@
 import { format, subDays } from "date-fns";
 import { useReducer } from "react";
 
+export type AuditDatePreset = "1d" | "7d" | "1m";
+
+/* 预设和天数的唯一对照表：正着用来算日期，反着用来认出手上这对日期出自哪个预设。
+   两个方向共用它，工具条上高亮的那一格才不可能和实际过滤的区间对不上。 */
+const PRESET_DAYS: Record<AuditDatePreset, number> = { "1d": 1, "7d": 7, "1m": 30 };
+
+export function auditDateRangeFor(preset: AuditDatePreset, today = new Date()) {
+  return {
+    from: format(subDays(today, PRESET_DAYS[preset]), "yyyy-MM-dd"),
+    to: format(today, "yyyy-MM-dd"),
+  };
+}
+
+/** 认不出来（含空区间、跨过零点的旧区间）就是自定义。 */
+export function matchAuditDatePreset(from: string, to: string): AuditDatePreset | null {
+  const today = new Date();
+  const presets = Object.keys(PRESET_DAYS) as AuditDatePreset[];
+  return presets.find((preset) => {
+    const range = auditDateRangeFor(preset, today);
+    return range.from === from && range.to === to;
+  }) ?? null;
+}
+
 export type AuditFilterState = {
   page: number;
   search: string;
@@ -32,24 +55,22 @@ function auditFilterReducer(state: AuditFilterState, action: AuditFilterAction):
 }
 
 export function useAdminAuditFilter() {
-  const [auditFilter, dispatch] = useReducer(auditFilterReducer, undefined, () => ({
-    page: 1,
-    search: "",
-    dateFrom: format(subDays(new Date(), 1), "yyyy-MM-dd"),
-    dateTo: format(new Date(), "yyyy-MM-dd"),
-    entityType: "",
-    actorId: "",
-  }));
-
-  const setAuditDatePreset = (preset: "1d" | "7d" | "1m") => {
-    const today = new Date();
-    const days = preset === "1d" ? 1 : preset === "7d" ? 7 : 30;
-    dispatch({
-      type: "SET_DATE_RANGE",
-      from: format(subDays(today, days), "yyyy-MM-dd"),
-      to: format(today, "yyyy-MM-dd"),
+  /* 进页面就落在最近一天：审计日志按时间倒序，不设区间等于把整本翻出来。 */
+  const [auditFilter, dispatch] = useReducer(auditFilterReducer, undefined, () => {
+    const initial = auditDateRangeFor("1d");
+    return {
       page: 1,
-    });
+      search: "",
+      dateFrom: initial.from,
+      dateTo: initial.to,
+      entityType: "",
+      actorId: "",
+    };
+  });
+
+  const setAuditDatePreset = (preset: AuditDatePreset) => {
+    const range = auditDateRangeFor(preset);
+    dispatch({ type: "SET_DATE_RANGE", from: range.from, to: range.to, page: 1 });
   };
 
   return {

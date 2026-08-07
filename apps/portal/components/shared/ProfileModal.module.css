@@ -18,6 +18,18 @@
   line-height: var(--lh-normal);
 }
 
+/*
+ * Mantine zeroes the body's top padding whenever a header exists, on the
+ * assumption that the header's own padding is the separation. This header
+ * carries an action button, so it renders as a solid sticky bar and the first
+ * row of field boxes ends up flush against its edge. The selector mirrors
+ * Mantine's own condition and outranks it on specificity — :where() there
+ * counts as zero, :not() here does not — so it wins regardless of source order.
+ */
+.modalBody:not(:only-child) {
+  padding-top: var(--space-md);
+}
+
 .header {
   display: grid;
   grid-template-columns: 116px minmax(0, 1fr);
@@ -25,10 +37,11 @@
   align-items: center;
 }
 
+/* 与右边那排字段格子同一个圆角，头像才像是和它们同一层的东西。 */
 .avatarWrap {
   width: 116px;
   height: 116px;
-  border-radius: 50%;
+  border-radius: var(--radius-surface);
   overflow: hidden;
   border: 1px solid var(--border-subtle);
   background: var(--surface-sunken);
@@ -86,12 +99,6 @@
   font-size: var(--text-body);
   line-height: var(--lh-normal);
 }
-
-.roleValue {
-  --role-color: var(--text-secondary);
-  color: var(--role-color);
-}
-
 
 @media (max-width: 900px) {
   .header {

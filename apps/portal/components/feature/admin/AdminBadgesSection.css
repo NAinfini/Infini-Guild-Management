@@ -1,61 +1,32 @@
 /*
  * 版式外框（.admin-badges-section / -sidebar / -detail / .admin-badge-item）已经
- * 并入 AdminPage.css 的 .admin-md 主从台，和角色、职业共用一套。取色控件
- * （.admin-badge-color-picker / -swatches / -swatch）随原生 <input type="color">
- * 一起删除，改用 Mantine ColorInput。这里只剩徽章本身的样子。
- */
-
-/*
+ * 并入 AdminPage.css 的 .admin-md 主从台，和角色、职业共用一套；可拖拽清单行
+ * （.admin-md__row / .admin-md__grip）也在那边。
+ *
+ * 徽章的样子不在这里定：标签的 HTML 和色号都由 shared/LabelStyleModal 生成，
+ * 长什么样在那个编辑器里实时可见，后台不再摆第二份药丸预览。
+ *
  * 成员名单（查看态和编辑态）都走 shared/PickList：行高、分隔线、勾选态、搜索和
- * 批量按钮的样子在那边定，这里只留徽章本身的东西。
+ * 批量按钮的样子在那边定。
  */
 
-.admin-badge-pill {
-  display: inline-flex;
-  align-items: center;
-  padding: 2px 8px;
-  border-radius: var(--shape-pill);
-  font-size: 12px;
-  line-height: 1.4;
-  /* --badge-color 运行期由 AdminBadgesSection.tsx 的内联 style 无条件写入
-   * （同 MemberCard.css 的理由，schema 保证非空），rule 1 不允许兜底。 */
-  background: color-mix(in srgb, var(--badge-color) 14%, transparent);
-  border: 1px solid color-mix(in srgb, var(--badge-color) 30%, transparent);
-  /* Same reasoning as .member-card__badge: --badge-color is arbitrary admin input
-   * and is unreadable on its own 14% tint until pulled toward the page text. */
-  color: color-mix(in srgb, var(--badge-color) 50%, var(--text-primary));
-  flex-shrink: 0;
-  max-width: 160px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.admin-badge-pill--lg {
-  font-size: 14px;
-  padding: 4px 12px;
-  max-width: 240px;
-}
-
-.admin-badge-preview {
+/* 标签一栏：字段名在上，下面是去样式编辑器的入口。 */
+.admin-badge-label {
   display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 8px 12px;
-  border-radius: var(--radius-control);
-  background: var(--surface-sunken);
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
 }
 
-.admin-badge-preview__pill {
+/* 名片上那枚是密排附注，这里是管理员正在打量的东西，放大一档看清楚。
+   药丸本体仍是 MemberCard 那一份，只有尺寸变量按场景给。 */
+.admin-badge-label__preview {
   display: inline-flex;
-  align-items: center;
-  padding: 4px 12px;
-  border-radius: var(--shape-pill);
-  font-size: 14px;
-  line-height: 1.4;
-  /* --badge-color 运行期由 BadgeFormFields 的内联 style 无条件写入
-   * （表单编辑中的 form.color，同上理由）。 */
-  background: color-mix(in srgb, var(--badge-color) 14%, transparent);
-  border: 1px solid color-mix(in srgb, var(--badge-color) 30%, transparent);
-  color: var(--badge-color);
+}
+
+/* 尺寸变量的默认值声明在药丸自己身上，元素自带的声明压得过继承来的值，
+   所以放大这一档必须落到药丸元素上，写在外层容器上不会生效。 */
+.admin-badge-label__preview .member-card__badge {
+  --badge-font-size: var(--text-body);
+  --badge-padding: 4px 12px;
 }

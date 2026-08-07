@@ -824,8 +824,8 @@ export class UserService {
     /*
      * Same reservation enforced at registration (AuthService.register) and at
      * admin-created accounts (AdminService.createMember): nothing legitimately
-     * renames an account into the system-test namespace, and the cleanup cron
-     * would permanently delete it a day later.
+     * renames an account into the system-test namespace, and system-test
+     * cleanup would permanently delete it with the run that owns it.
      */
     if (isReservedSystemTestUsername(parsed.data.newUsername)) {
       return err("VALIDATION_ERROR", `Usernames beginning with "${SYSTEM_TEST_USERNAME_PREFIX}" are reserved`);

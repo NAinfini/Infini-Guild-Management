@@ -3,6 +3,7 @@ import { Button, Group, Menu, SegmentedControl, Stack, Text, TextInput } from "@
 import { ArrowDownIcon, SearchIcon, XIcon } from "@portal/components/icons";
 import { ContentFilterToolbar } from "@portal/components/shared/ContentFilterToolbar";
 import { NativeDateTimeInput } from "@portal/components/shared/NativeDateTimeInput";
+import { matchAuditDatePreset, type AuditDatePreset } from "@portal/hooks/useAdminAuditFilter";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useAuthStore } from "../../../stores/auth";
@@ -20,7 +21,7 @@ type AdminAuditSectionProps = {
   auditDateTo: string;
   onAuditDateFromChange: (value: string) => void;
   onAuditDateToChange: (value: string) => void;
-  onSetDatePreset: (preset: "1d" | "7d" | "1m") => void;
+  onSetDatePreset: (preset: AuditDatePreset) => void;
   onDownloadFilteredCsv: () => void;
   onDownloadFilteredJson: () => void;
   exportAuditLogPending: boolean;
@@ -71,18 +72,23 @@ export function AdminAuditSection({
         canViewStatus(rolesData, user.role)),
   );
   const loadErrorMessage = tc("loadError");
-  /* 无从得知当前这对日期是哪个预设产生的，所以默认如实显示成「自定义」，
-     用户点了预设才切过去。 */
-  const [range, setRange] = useState<"1d" | "7d" | "1m" | "custom">("custom");
+  /*
+   * 高亮哪一格由手上这对日期反推，不另存一份 range：两份状态各说各话时，
+   * 工具条会指着「自定义」而实际过滤的是最近一天（进页面时的默认区间就是它）。
+   * customRange 记的是另一件事——用户要不要那两个手填框，认不出预设时也自动摊开。
+   */
+  const [customRange, setCustomRange] = useState(false);
+  const range = customRange
+    ? "custom"
+    : matchAuditDatePreset(auditDateFrom, auditDateTo) ?? "custom";
 
   const applyPreset = (value: string) => {
     if (value === "custom") {
-      setRange("custom");
+      setCustomRange(true);
       return;
     }
-    const preset = value as "1d" | "7d" | "1m";
-    setRange(preset);
-    onSetDatePreset(preset);
+    setCustomRange(false);
+    onSetDatePreset(value as AuditDatePreset);
   };
 
   const hasFilters = Boolean(auditSearch || auditDateFrom || auditDateTo);
@@ -178,7 +184,6 @@ export function AdminAuditSection({
               onClick={() => {
                 onAuditDateFromChange("");
                 onAuditDateToChange("");
-                setRange("custom");
               }}
             >
               {t("audit.filter.dateRange", {

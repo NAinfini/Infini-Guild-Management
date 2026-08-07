@@ -61,6 +61,21 @@ describe("SystemTestService exact compensation", () => {
       .toHaveLength(2);
   });
 
+  /*
+   * 废弃运行的回收挂在「开一次新测试」上，没有定时任务兜底了。
+   * 扫描必须发生在这一行插进去之前，否则新运行会被自己这一轮扫描看见。
+   */
+  it("sweeps abandoned runs before registering the new one", async () => {
+    const { env, statements } = createEnv();
+
+    await new SystemTestService(env as never).createRun("admin-1");
+
+    const sweep = statements.findIndex((statement) => statement.sql.includes("FROM system_test_runs WHERE (status ="));
+    const insert = statements.findIndex((statement) => statement.sql.startsWith("INSERT INTO system_test_runs"));
+    expect(sweep, "开新运行时要扫一遍废弃运行").toBeGreaterThanOrEqual(0);
+    expect(insert).toBeGreaterThan(sweep);
+  });
+
   it("deletes only registered exact IDs, media references, and R2 keys", async () => {
     const { env, statements, MEDIA } = createEnv();
     const mediaKey = "gallery/users/user-test-1/items/gallery-test-1/images/image.png";

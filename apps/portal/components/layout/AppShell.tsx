@@ -417,7 +417,7 @@ export function AppShell() {
         />
 
         <MantineAppShell.Main id="main-content" ref={scrollContainerRef} className={`app-content ${usesCompactNavigation ? "app-content-mobile" : ""}`}>
-          <div className="app-main">
+          <div className={`app-main${activeRoute.fillsViewport ? " app-main--fill" : ""}`}>
             {isExternalView ? (
               <Alert color="gray" variant="light" className="app-banner">
                 {t("nav.externalViewBanner")}

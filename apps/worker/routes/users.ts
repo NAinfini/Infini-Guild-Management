@@ -28,7 +28,10 @@ function getUserService(c: Context) {
 }
 
 function getBadgeService(c: Context) {
-  return new BadgeService(getDb(c), commonDeps(c));
+  return new BadgeService(getDb(c), {
+    ...commonDeps(c),
+    rawDb: (c.env as { DB: D1Database }).DB,
+  });
 }
 
 function getAbsenceService(c: Context) {

@@ -169,12 +169,13 @@ describe("MemberCard protected runtime interaction", () => {
     );
 
     const identity = container.querySelector(".member-card__identity");
-    const systemRole = container.querySelector(".member-card__system-role");
     const primaryClass = container.querySelector(".member-card__class-chip--primary");
     const metaRow = container.querySelector(".member-card__meta-row");
 
     expect(identity).toContainElement(screen.getByText("Aster"));
-    expect(systemRole).not.toBeInTheDocument();
+    /* 名片上只有这个人是谁，没有他在系统里有多大权限。 */
+    expect(container.querySelector(".member-card__role")).toBeNull();
+    expect(screen.queryByText(user.role_name)).not.toBeInTheDocument();
     expect(screen.queryByText("admin:role.moderator")).not.toBeInTheDocument();
     expect(primaryClass).toContainElement(screen.getByText("鸣金虹"));
     expect(metaRow).toContainElement(screen.getByText("Raid leader"));

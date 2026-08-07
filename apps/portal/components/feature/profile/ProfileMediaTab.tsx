@@ -2,9 +2,8 @@ import { ImageGridEditor } from "@portal/components/shared/ImageGridEditor";
 import type { ImageGridEditorItem } from "@portal/types/media";
 import { SectionHeader } from "../../shared/SectionHeader";
 import { useConfirmDialog } from "@portal/hooks/useConfirmDialog";
-import { ActionIcon, Avatar, Button, FileButton, Group, Paper, Progress, SegmentedControl, Stack, Text, TextInput, Tooltip } from "@mantine/core";
-import { ArrowDownIcon, ArrowUpIcon, PlusIcon, TrashIcon, UploadIcon, UserIcon, VideoIcon } from "@portal/components/icons";
-import { IMAGE_FILE_ACCEPT } from "@guild/shared";
+import { ActionIcon, Button, FileButton, Group, Paper, Progress, SegmentedControl, Stack, Text, TextInput, Tooltip } from "@mantine/core";
+import { ArrowDownIcon, ArrowUpIcon, PlusIcon, TrashIcon, UploadIcon, VideoIcon } from "@portal/components/icons";
 import { getVideoThumbnailUrl } from "@guild/shared/utils/video";
 import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
@@ -30,19 +29,15 @@ type UploaderState = {
   selectFiles: (source: FileList | File[] | null) => void;
 };
 
-type MediaSection = "images" | "videos" | "audio" | "avatar";
+type MediaSection = "images" | "videos" | "audio";
 
 type ProfileMediaTabProps = {
-  avatarKey: string | null;
   profileAudioKey: string | null;
   imageList: string[];
   videoDraft: string;
   videoList: string[];
   imageUploader: UploaderState;
   audioUploader: UploaderState;
-  avatarUploading: boolean;
-  onUploadAvatar: (file: File) => void;
-  onRemoveAvatar: () => void;
   onReorderImages: (nextImages: string[]) => void;
   onRemoveImage: (key: string) => void;
   removingImageKeys: ReadonlySet<string>;
@@ -55,18 +50,14 @@ type ProfileMediaTabProps = {
   onRemoveAudio: () => void;
 };
 
-/** Profile media workspace for images, video, audio, and avatar controls. */
+/** Profile media workspace for images, video, and audio. */
 export function ProfileMediaTab({
-  avatarKey,
   profileAudioKey,
   imageList,
   videoDraft,
   videoList,
   imageUploader,
   audioUploader,
-  avatarUploading,
-  onUploadAvatar,
-  onRemoveAvatar,
   onReorderImages,
   onRemoveImage,
   removingImageKeys,
@@ -88,7 +79,7 @@ export function ProfileMediaTab({
     alt: key,
   }));
 
-  const confirmDelete = async (scope: "removeAvatar" | "removeImage" | "removeAudio") =>
+  const confirmDelete = async (scope: "removeImage" | "removeAudio") =>
     confirm({
       title: t(`confirm.${scope}.title`),
       description: t(`confirm.${scope}.description`),
@@ -96,10 +87,6 @@ export function ProfileMediaTab({
       cancelLabel: t("common:action.cancel"),
       intent: "danger",
     });
-
-  const handleRemoveAvatar = async () => {
-    if (await confirmDelete("removeAvatar")) onRemoveAvatar();
-  };
 
   const handleRemoveImage = async (key: string) => {
     if (await confirmDelete("removeImage")) onRemoveImage(key);
@@ -141,7 +128,6 @@ export function ProfileMediaTab({
               { value: "images", label: t("media.tab.images", { count: imageList.length }) },
               { value: "videos", label: t("media.tab.videos", { count: videoList.length }) },
               { value: "audio", label: t(profileAudioKey ? "media.tab.audioSet" : "media.tab.audioEmpty") },
-              { value: "avatar", label: t("media.avatar") },
             ]}
           />
         }
@@ -321,35 +307,6 @@ export function ProfileMediaTab({
               </Group>
             ) : null}
           </>
-        ) : null}
-
-        {section === "avatar" ? (
-          <Group gap={16} align="center">
-            <Avatar
-              size={96}
-              src={avatarKey ? resolveProfileMediaUrl(avatarKey) : undefined}
-              className="profile-media-avatar"
-            >
-              <UserIcon size={28} />
-            </Avatar>
-            <Stack gap={8}>
-              <FileButton
-                onChange={(file) => { if (file) onUploadAvatar(file); }}
-                accept={IMAGE_FILE_ACCEPT}
-              >
-                {(props) => (
-                  <Button variant="default" size="xs" h={44} loading={avatarUploading} leftSection={<UploadIcon size={14} />} {...props}>
-                    {t("media.uploadAvatar")}
-                  </Button>
-                )}
-              </FileButton>
-              {avatarKey ? (
-                <Button color="red" size="xs" h={44} leftSection={<TrashIcon size={12} />} onClick={() => void handleRemoveAvatar()}>
-                  {t("media.removeAvatar")}
-                </Button>
-              ) : null}
-            </Stack>
-          </Group>
         ) : null}
       </div>
     </Paper>

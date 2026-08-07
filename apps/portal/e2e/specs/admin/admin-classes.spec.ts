@@ -265,7 +265,7 @@ test("拖拽排序：整张目录一次提交，顺序按下标重新发号落�
 
   try {
     await openClasses(page);
-    const rows = master(page).locator(".admin-classes__row");
+    const rows = master(page).locator(".admin-md__row");
     await expect(rows).toHaveCount(before.length);
 
     /*
@@ -278,7 +278,7 @@ test("拖拽排序：整张目录一次提交，顺序按下标重新发号落�
     const transformOf = (row: Locator) => (
       () => row.evaluate((el) => (el as HTMLElement).style.transform)
     );
-    const handle = firstRow.locator(".admin-classes__grip");
+    const handle = firstRow.locator(".admin-md__grip");
 
     await handle.focus();
     await page.keyboard.press("Space");

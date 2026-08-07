@@ -107,7 +107,7 @@ Mutations require origin and `X-Requested-With` checks. The Worker also applies 
 
 | Schedule | Current jobs |
 | --- | --- |
-| Daily at 00:00 UTC | Audit archive, media orphan scan/cleanup, error-log cleanup, and system-test cleanup |
+| Daily at 00:00 UTC | Audit archive, media orphan scan/cleanup, and error-log cleanup |
 | Every 15 minutes | Event instance generation, raffle draws, session cleanup, and scheduled announcement publishing, followed by event auto-archive |
 
 Production defaults keep `MEDIA_ORPHAN_DELETE_MODE=report` and `ENABLE_PRODUCTION_SYSTEM_TESTS=false`.

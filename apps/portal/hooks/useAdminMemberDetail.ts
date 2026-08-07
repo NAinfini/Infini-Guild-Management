@@ -129,6 +129,12 @@ export function useAdminMemberDetail({
     }
   }, [memberSearchParam, usersData]);
 
+  /* 放弃草稿：回到最后一次保存过的那份，而不是重新从 member 推一份——保存成功到
+     列表刷新之间有一小段时间，member 还是旧值，从它推会把刚存进去的改动又抹掉。 */
+  const resetMemberDetailForm = useCallback(() => {
+    setMemberDetailForm({ ...savedForm, classes: [...savedForm.classes] });
+  }, [savedForm]);
+
   const markMemberDetailSaved = useCallback((
     memberId: string,
     form: MemberDetailFormState,
@@ -160,6 +166,7 @@ export function useAdminMemberDetail({
     setMemberDetailId,
     memberDetailForm,
     setMemberDetailForm,
+    resetMemberDetailForm,
     isDirty,
     markMemberDetailSaved,
     selectedMemberDetail,

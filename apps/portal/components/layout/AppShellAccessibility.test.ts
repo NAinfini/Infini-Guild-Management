@@ -66,6 +66,18 @@ describe("App shell accessibility structure", () => {
     );
   });
 
+  /*
+   * 定高链的两头必须同时在：className 掉了 CSS 规则就成了死规则，
+   * 规则掉了成员表又会按整页行数铺开，把滚动条顶回外壳。
+   */
+  it("gives fixed-height routes a definite shell height instead of a lower bound", () => {
+    const appShell = readPortalFile("apps/portal/components/layout/AppShell.tsx");
+    const appShellCss = readPortalFile("apps/portal/components/layout/AppShell.css");
+
+    expect(appShell).toContain('activeRoute.fillsViewport ? " app-main--fill" : ""');
+    expect(appShellCss).toMatch(/\.app-main--fill\s*\{[^}]*height:\s*100%/);
+  });
+
   it("keeps the shell title compact and desktop workspaces broad", () => {
     const appShellCss = readPortalFile("apps/portal/components/layout/AppShell.css");
     const scale = readPortalFile("apps/portal/styles/scale.css");

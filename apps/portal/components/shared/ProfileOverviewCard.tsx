@@ -1,14 +1,17 @@
 import type { MemberProfile, User, UserBadge } from "@guild/shared";
-import { Text } from "@mantine/core";
-import { BoltIcon, PhotoIcon, ClockIcon, SwordsIcon, VideoIcon } from "@portal/components/icons";
+import { IMAGE_FILE_ACCEPT } from "@guild/shared";
+import { ActionIcon, FileButton, Text, Tooltip } from "@mantine/core";
+import { BoltIcon, PhotoIcon, ClockIcon, SwordsIcon, TrashIcon, UploadIcon, VideoIcon } from "@portal/components/icons";
 import { getMemberStatus, MemberBadgeChip } from "@portal/components/shared/MemberCard";
+import { useConfirmDialog } from "@portal/hooks/useConfirmDialog";
 import { resolveClassCatalogItem, useClassCatalogStore } from "@portal/stores/class-catalog";
 import { sanitizeTitleHtml } from "@portal/utils/sanitize";
 import { weeklyAvailableMinutes } from "@portal/utils/availability";
 import { useMemo, type CSSProperties, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
-import { ClassIcon } from "../../shared/ClassIcon";
-import { resolveProfileMediaUrl } from "../../../utils/media";
+import { ClassIcon } from "./ClassIcon";
+import { resolveProfileMediaUrl } from "../../utils/media";
+import "./ProfileOverviewCard.css";
 
 type ProfileOverviewCardProps = {
   user: User | null;
@@ -20,17 +23,22 @@ type ProfileOverviewCardProps = {
   imageList: string[];
   videoList: string[];
   availabilityData: Record<string, unknown> | null;
+  /* 头像操作是可选的：这一条本身只回答「这个人是什么样」。本人的资料页传回调，
+     后台成员详情只读地复用同一条，不传。 */
+  avatarUploading?: boolean;
+  onUploadAvatar?: (file: File) => void;
+  onRemoveAvatar?: () => void;
 };
 
 /**
- * 「主页」屏顶上的全宽概览条。
+ * 「这个人现在是什么样」的全宽概览条。
  *
- * 它答的问题和下面的表单不同：表单是「改什么」，这里是「现在是什么」——头像、
- * 在线状态、角色、加入时间、徽章，以及五个一眼看完的计数。
+ * 它答的问题和表单不同：表单是「改什么」，这里是「现在是什么」——头像、
+ * 在线状态、加入时间、徽章，以及五个一眼看完的计数。
  *
- * 计数取的是草稿（form 里的那几个数组），不是服务端的 profile：改完还没保存时，
- * 这条要跟着草稿动，否则它会和右栏的名片预览对不上。加入时间和资料更新时间没有
- * 草稿一说，取服务端的值。
+ * 计数取的是调用方给的值（资料页给草稿、后台给草稿或服务端值），不是自己去查
+ * profile：资料页改完还没保存时这条要跟着草稿动，否则它会和名片预览对不上。
+ * 加入时间和资料更新时间没有草稿一说，取服务端的值。
  */
 export function ProfileOverviewCard({
   user,
@@ -42,9 +50,13 @@ export function ProfileOverviewCard({
   imageList,
   videoList,
   availabilityData,
+  avatarUploading = false,
+  onUploadAvatar,
+  onRemoveAvatar,
 }: ProfileOverviewCardProps) {
   const { t, i18n } = useTranslation("profile");
   const classCatalog = useClassCatalogStore((state) => state.items);
+  const confirm = useConfirmDialog();
 
   const safeTitleHtml = useMemo(
     () => (titleHtml ? sanitizeTitleHtml(titleHtml) : ""),
@@ -59,6 +71,18 @@ export function ProfileOverviewCard({
   const avatarSrc = profile.avatar_key ? resolveProfileMediaUrl(profile.avatar_key) : null;
   const weekHours = Math.round(weeklyAvailableMinutes(availabilityData) / 60);
   const formatDay = (value: string) => new Date(value).toLocaleDateString(i18n.language);
+
+  const handleRemoveAvatar = async () => {
+    if (!onRemoveAvatar) return;
+    const confirmed = await confirm({
+      title: t("confirm.removeAvatar.title"),
+      description: t("confirm.removeAvatar.description"),
+      confirmLabel: t("common:action.delete"),
+      cancelLabel: t("common:action.cancel"),
+      intent: "danger",
+    });
+    if (confirmed) onRemoveAvatar();
+  };
 
   const stat = (key: string, icon: ReactNode, label: string, value: string) => (
     <div className="profile-overview__stat" key={key}>
@@ -88,17 +112,53 @@ export function ProfileOverviewCard({
             role="img"
             aria-label={t(`overview.status.${status}`)}
           />
+
+          {/* 换头像的入口就长在头像上，而不是媒体卡里的一个分组：要改的东西
+              和点的地方是同一个。只用 opacity 收起来，控件始终留在 tab 序列里，
+              :focus-within 让键盘也能把它翻出来。 */}
+          {onUploadAvatar || onRemoveAvatar ? (
+            <span className="profile-overview__avatar-actions">
+              {onUploadAvatar ? (
+                <FileButton onChange={(file) => { if (file) onUploadAvatar(file); }} accept={IMAGE_FILE_ACCEPT}>
+                  {(props) => (
+                    <Tooltip label={t("media.uploadAvatar")} withArrow>
+                      <ActionIcon
+                        size={44}
+                        radius="xl"
+                        variant="subtle"
+                        color="gray"
+                        aria-label={t("media.uploadAvatar")}
+                        loading={avatarUploading}
+                        className="profile-overview__avatar-upload"
+                        {...props}
+                      >
+                        <UploadIcon size={18} />
+                      </ActionIcon>
+                    </Tooltip>
+                  )}
+                </FileButton>
+              ) : null}
+              {avatarSrc && onRemoveAvatar ? (
+                <Tooltip label={t("media.removeAvatar")} withArrow>
+                  <ActionIcon
+                    size={44}
+                    radius="xl"
+                    variant="subtle"
+                    color="red"
+                    aria-label={t("media.removeAvatar")}
+                    onClick={() => void handleRemoveAvatar()}
+                  >
+                    <TrashIcon size={18} />
+                  </ActionIcon>
+                </Tooltip>
+              ) : null}
+            </span>
+          ) : null}
         </span>
 
         <div className="profile-overview__who">
           <div className="profile-overview__name-row">
             <h2 className="profile-overview__name">{user.username}</h2>
-            <span
-              className="profile-overview__role"
-              style={user.role_color ? ({ "--role-color": user.role_color } as CSSProperties) : undefined}
-            >
-              {user.role_name}
-            </span>
             <span className={`profile-overview__status profile-overview__status--${status}`}>
               {t(`overview.status.${status}`)}
             </span>

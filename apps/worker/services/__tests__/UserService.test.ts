@@ -581,9 +581,9 @@ describe("reserved system-test username namespace", () => {
   }
 
   /*
-   * system-test-cleanup permanently deletes users in this namespace, so an
-   * account must never be able to move into it — the row would be gone a day
-   * later with no warning.
+   * System-test cleanup permanently deletes users in this namespace, so an
+   * account must never be able to move into it — the row would be gone with
+   * the next cleanup and no warning.
    */
   it("refuses to rename an account into the system-test namespace", async () => {
     const { result, select } = await attemptRename("systemtest_hijack");

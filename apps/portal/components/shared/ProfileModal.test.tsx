@@ -78,8 +78,9 @@ describe("ProfileModal", () => {
     );
 
     expect(screen.getByText("profile.field.accountUpdated")).toBeInTheDocument();
-    expect(screen.getByText("profile.field.role")).toBeInTheDocument();
-    expect(screen.getByText("Guild Member")).toBeInTheDocument();
+    /* 身份不再出现在资料里：这是一个人的档案，不是权限面板。 */
+    expect(screen.queryByText("profile.field.role")).not.toBeInTheDocument();
+    expect(screen.queryByText("Guild Member")).not.toBeInTheDocument();
     expect(screen.queryByText("profile.field.activeTime")).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "profile.editProfile" })).toBeInTheDocument();
     expect(screen.getByTitle(youtubeUrl)).toHaveAttribute(
@@ -96,15 +97,19 @@ describe("ProfileModal", () => {
 
     expect(enCommon["profile.field.accountUpdated"]).toBe("Account updated");
     expect(zhCommon["profile.field.accountUpdated"]).toBe("账号更新时间");
-    expect(enCommon["profile.field.role"]).toBe("Role");
-    expect(zhCommon["profile.field.role"]).toBe("身份");
+    expect("profile.field.role" in enCommon).toBe(false);
+    expect("profile.field.role" in zhCommon).toBe(false);
     expect("profile.field.activeTime" in enCommon).toBe(false);
     expect("profile.field.activeTime" in zhCommon).toBe(false);
     expect(css).toMatch(
       /\.modalTitle\s*\{[\s\S]*?margin-inline-end:\s*var\(--space-md\)/,
     );
+    /* 头部是贴顶的 sticky 条，正文顶边必须自己留出间距，否则第一排格子贴着它。 */
     expect(css).toMatch(
-      /\.avatarWrap\s*\{[\s\S]*?width:\s*116px[\s\S]*?height:\s*116px[\s\S]*?border-radius:\s*50%/,
+      /\.modalBody:not\(:only-child\)\s*\{[\s\S]*?padding-top:\s*var\(--space-md\)/,
+    );
+    expect(css).toMatch(
+      /\.avatarWrap\s*\{[\s\S]*?width:\s*116px[\s\S]*?height:\s*116px[\s\S]*?border-radius:\s*var\(--radius-surface\)/,
     );
     expect(css).toMatch(
       /\.infoGrid\s*\{[\s\S]*?gap:\s*var\(--space-md\)/,

@@ -138,6 +138,7 @@ export function AdminPage() {
     memberMediaController,
     memberSearch,
     patchMemberDetailForm,
+    resetMemberDetailForm,
     revokeInvite,
     rolesQuery,
     assignableRoles,
@@ -501,6 +502,7 @@ export function AdminPage() {
           isDirty={memberDetailIsDirty}
           onClose={closeMemberDetail}
           onFormChange={patchMemberDetailForm}
+          onResetForm={resetMemberDetailForm}
           onSaveProfile={saveSelectedMemberProfile}
           saveProfilePending={updateMemberProfileMutation.isPending}
           roles={assignableRoles}

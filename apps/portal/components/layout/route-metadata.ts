@@ -32,6 +32,12 @@ export type PortalRouteMetadata = {
   group: PortalRouteGroup;
   icon: ComponentType<IconProps>;
   contentWidth: PortalContentWidth;
+  /*
+   * 定高页：整页高度锁在一屏，纵向滚动由页面内部的列表自己承担。
+   * 只有把滚动区做成 min-block-size:0 填充链的页面才配得上它——
+   * 普通页面按内容自然增高，锁死高度会把卡片压扁。
+   */
+  fillsViewport?: boolean;
   mobilePrimary?: number;
   requiresSession?: boolean;
   requiresModerator?: boolean;
@@ -147,6 +153,7 @@ export const PORTAL_ROUTES: readonly PortalRouteMetadata[] = [
     /* 和「设置」共用齿轮时，折叠成图标轨道后两项完全分不出来。 */
     icon: ShieldOutlined,
     contentWidth: "workbench",
+    fillsViewport: true,
     requiresSession: true,
     requiresModerator: true,
   },

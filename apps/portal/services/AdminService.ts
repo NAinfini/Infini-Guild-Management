@@ -27,6 +27,7 @@ export {
   assignBadge,
   createBadge,
   deleteBadge,
+  reorderBadges,
   unassignBadge,
   updateBadge,
 } from "../api/mutations/badges";

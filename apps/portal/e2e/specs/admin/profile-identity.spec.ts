@@ -120,16 +120,16 @@ test("称号：清除、纯文本输入、沙盒生成样式，三条路都能�
   await expect(field(page, "Title"), "清除按钮要把内容一起清空").toHaveValue("");
 
   /*
-   * 必须先清空再开沙盒：沙盒的「手写 HTML」初值取自当前称号，
-   * 而 safeHtml 是 `手写 || 生成`（TitleSandboxModal.tsx:107），
-   * 称号非空时样式控件生成的那一份会被整段盖掉。
+   * 清空之后再开沙盒，验的是「从零开始」这条路：这时文本框里该是样例文案，
+   * 控件也从默认值起步。带着现有称号进去是另一回事——那时文本和样式都会被读回
+   * 控件（LabelStyleModal.tsx 的 readLabelSeed），由组件单测盯着。
    */
   await page.getByRole("button", { name: "Set title", exact: true }).click();
   const sandbox = topDialog(page);
   await expect(sandbox.getByRole("heading", { name: "HTML Title Sandbox", exact: true })).toBeVisible();
 
   const styledText = `E2E Styled ${Date.now()}`;
-  await field(sandbox, "Title text preview input").fill(styledText);
+  await field(sandbox, "Label text input").fill(styledText);
   await sandbox.getByRole("button", { name: "Toggle italic", exact: true }).click();
   await sandbox.getByRole("button", { name: "Apply to my title", exact: true }).click();
 

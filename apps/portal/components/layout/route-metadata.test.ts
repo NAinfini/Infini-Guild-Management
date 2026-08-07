@@ -46,6 +46,17 @@ describe("portal route metadata", () => {
     expect(settingsRoute?.requiresSession).not.toBe(true);
   });
 
+  /*
+   * 控制台的成员表把纵向滚动收在表格内部，前提是外壳给出确定高度。
+   * 这个开关一旦丢了，表格会按整页行数铺开，滚动条重新落回外壳。
+   */
+  it("locks the admin console to one viewport and leaves every other route free to grow", () => {
+    expect(PORTAL_ROUTES.find((route) => route.to === "/admin")?.fillsViewport).toBe(true);
+    expect(
+      PORTAL_ROUTES.filter((route) => route.fillsViewport).map((route) => route.to),
+    ).toEqual(["/admin"]);
+  });
+
   it("preserves the approved navigation hierarchy without empty groups", () => {
     const groups = groupPortalRoutes(PORTAL_ROUTES);
 

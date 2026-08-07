@@ -1,0 +1,239 @@
+/* 「这个人现在是什么样」的全宽一条。资料页顶部与后台成员详情共用同一份实现，
+   所以样式随组件放在 shared，不再挂在 MyProfilePage.css 下。 */
+
+/* 左边「我是谁」，右边五个计数。它答的是「现在是什么」，表单答的是「改什么」
+   ——所以它是一条，不是又一张带标题的卡。 */
+.profile-overview {
+  /* 主职业色。组件按主职业内联覆盖这一个变量；这里声明的是「没有职业」时的
+     取值。必须是独立声明，不能写成 var() 的第二参数兜底——守卫 rule 1
+     不许任何 var() 兜底。 */
+  --overview-accent: var(--brand-fill);
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: var(--space-lg);
+  min-width: 0;
+  padding: var(--card-padding);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-surface);
+  /* 左侧那道主职业色，是这一条和名片预览之间唯一的视觉连线。 */
+  border-inline-start: 3px solid var(--overview-accent);
+  /* 160deg 是全站统一的材质角度（architecture-boundaries 守卫的那条）。 */
+  background: linear-gradient(
+    160deg,
+    color-mix(in srgb, var(--overview-accent) 9%, var(--surface-raised)) 0%,
+    var(--surface-raised) 70%
+  );
+}
+
+.profile-overview__identity {
+  display: flex;
+  align-items: center;
+  gap: var(--space-md);
+  min-width: 0;
+}
+
+.profile-overview__avatar {
+  position: relative;
+  flex: 0 0 auto;
+  inline-size: 96px;
+  block-size: 96px;
+  border-radius: 50%;
+  overflow: visible;
+  display: grid;
+  place-items: center;
+  border: 2px solid var(--surface-base);
+  background: var(--surface-sunken);
+  font-size: var(--text-h2);
+  font-weight: var(--fw-strong);
+  color: var(--text-muted);
+}
+
+/* 绝对定位，不做网格项。作为网格项时它的 block-size: 100% 和自动行高互为依赖：
+   浏览器只能先按图片自身比例撑开那一行，竖构图的头像于是被拉成椭圆并溢出
+   （外框 overflow 是 visible，得留给右下角的状态点）。脱离流之后百分比直接
+   对着 96px 的内边距框解析，圆形裁切才是稳的。 */
+.profile-overview__avatar img {
+  position: absolute;
+  inset: 0;
+  inline-size: 100%;
+  block-size: 100%;
+  border-radius: 50%;
+  object-fit: cover;
+}
+
+/* 头像上的换/删入口。用 opacity 收起来而不是 display:none —— 控件要一直留在
+   tab 序列里，:focus-within 才能在键盘走到它时把这一层显出来。两个 44px 的
+   命中区加 2px 间距共 90px，落在 96px 圆的中段弦内，不会越出圆形。 */
+.profile-overview__avatar-actions {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--surface-sunken) 78%, transparent);
+  opacity: 0;
+  transition: opacity var(--transition-normal);
+}
+
+.profile-overview__avatar:hover .profile-overview__avatar-actions,
+.profile-overview__avatar:focus-within .profile-overview__avatar-actions {
+  opacity: 1;
+}
+
+/* 指针设备之外没有 hover 可言，这一层就常驻。 */
+@media (hover: none) {
+  .profile-overview__avatar-actions {
+    opacity: 1;
+  }
+}
+
+/* 上传图标取正文色，不用 subtle 变体自带的灰：遮罩已经把底下的头像压暗了，
+   再叠一层弱化色在浅色头像上就读不出来。删除那颗保持危险色，不在此列。 */
+.profile-overview__avatar-upload {
+  color: var(--text-primary);
+}
+
+.profile-overview__dot {
+  position: absolute;
+  /* 状态点压在动作层之上：换头像时它说的「在线与否」并没有变。 */
+  z-index: 2;
+  inset-inline-end: 0;
+  inset-block-end: 2px;
+  inline-size: 14px;
+  block-size: 14px;
+  border-radius: 50%;
+  border: 3px solid var(--surface-raised);
+}
+
+.profile-overview__dot--active { background: var(--status-success); }
+.profile-overview__dot--inactive { background: color-mix(in srgb, var(--text-primary) 35%, transparent); }
+.profile-overview__dot--vacation { background: var(--status-danger); }
+
+.profile-overview__who {
+  display: grid;
+  gap: var(--space-xs);
+  min-width: 0;
+}
+
+.profile-overview__name-row {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: var(--space-sm);
+  min-width: 0;
+}
+
+.profile-overview__name {
+  margin: 0;
+  font-size: var(--text-h2);
+  font-weight: var(--fw-strong);
+  line-height: 1.15;
+  overflow-wrap: anywhere;
+}
+
+.profile-overview__status {
+  padding: 1px 8px;
+  border-radius: var(--shape-pill);
+  font-size: var(--text-micro);
+  line-height: 1.6;
+}
+
+.profile-overview__status--active {
+  background: color-mix(in srgb, var(--status-success) 15%, transparent);
+  color: var(--status-success);
+}
+
+.profile-overview__status--inactive {
+  background: var(--surface-sunken);
+  color: var(--text-muted);
+}
+
+.profile-overview__status--vacation {
+  background: color-mix(in srgb, var(--status-danger) 14%, transparent);
+  color: var(--status-danger);
+}
+
+.profile-overview__title {
+  font-size: var(--text-meta);
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}
+
+.profile-overview__tags {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-xs);
+}
+
+.profile-overview__class {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px 2px 5px;
+  border-radius: var(--shape-pill);
+  font-size: var(--text-micro);
+  line-height: 1.5;
+  border: 1px solid var(--border-subtle);
+  background: var(--surface-sunken);
+}
+
+.profile-overview__meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-sm) var(--space-md);
+  font-size: var(--text-micro);
+  color: var(--text-muted);
+}
+
+/* 五个计数横排。auto-fit 会在窄屏上自己折成两行，不必再写一档断点。 */
+.profile-overview__stats {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(72px, auto));
+  gap: var(--space-md) var(--space-lg);
+  margin: 0;
+}
+
+.profile-overview__stat {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.profile-overview__stat-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: var(--text-micro);
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
+.profile-overview__stat-icon {
+  display: inline-flex;
+  color: var(--overview-accent);
+}
+
+.profile-overview__stat-value {
+  margin: 0;
+  font-size: var(--text-h3);
+  line-height: 1.1;
+  color: var(--text-primary);
+}
+
+/* 两块（身份 / 计数）挤到一行放不下时改成上下两行，计数自己折。断点比资料页
+   整页的 1199 早：这一条本来就是横向最吃宽度的一块。 */
+@media (max-width: 1399px) {
+  .profile-overview {
+    grid-template-columns: minmax(0, 1fr);
+    align-items: start;
+  }
+
+  .profile-overview__stats {
+    grid-template-columns: repeat(auto-fit, minmax(96px, max-content));
+  }
+}

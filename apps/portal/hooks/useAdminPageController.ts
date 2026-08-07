@@ -194,6 +194,7 @@ export function useAdminPageController() {
     setMemberDetailId,
     memberDetailForm,
     setMemberDetailForm,
+    resetMemberDetailForm,
     isDirty: memberDetailIsDirty,
     markMemberDetailSaved,
     selectedMemberDetail,
@@ -418,6 +419,7 @@ export function useAdminPageController() {
     usersQuery,
     closeMemberDetail,
     patchMemberDetailForm,
+    resetMemberDetailForm,
     saveSelectedMemberProfile,
     ...adminMutations,
   };

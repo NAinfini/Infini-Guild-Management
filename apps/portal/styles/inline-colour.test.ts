@@ -79,8 +79,7 @@ type BareHexExemption = {
  *
  * 豁免粒度按「文件 + 该文件内已核实过的具体 hex 值」授予，不是整文件豁免——
  * 整文件豁免太粗，日后这个文件如果混入类 2/3/4 的裸 hex 也会被放过；也不是按
- * 行号豁免——行号会漂。TitleSandboxModal.tsx 的取色器初值没有具名常量，
- * 因而最窄稳定粒度是「文件 + 值」；新增字面量仍需显式扩表。
+ * 行号豁免——行号会漂。因而最窄稳定粒度是「文件 + 值」；新增字面量仍需显式扩表。
  */
 const BARE_HEX_EXEMPTIONS: Record<string, BareHexExemption[]> = {
   "apps/portal/components/shared/TipTapEditorToolbar.tsx": [
@@ -107,16 +106,11 @@ const BARE_HEX_EXEMPTIONS: Record<string, BareHexExemption[]> = {
       values: ["#fef08a", "#bbf7d0", "#bfdbfe", "#fecdd3", "#e9d5ff", "#fed7aa"],
     },
   ],
-  "apps/portal/components/feature/profile/TitleSandboxModal.tsx": [
+  "apps/portal/components/shared/LabelStyleModal.tsx": [
     {
       source: "PRESET_COLORS",
-      reason: "沙盒工具的文字色预设：选中值经 rgbaColor 拼进生成的 HTML 片段（`color: rgba(...)`），用户复制这段 HTML 到站外使用，不是站内主题。",
+      reason: "行内样式编辑器的文字色预设：选中值经 rgbaColor 拼进生成的 HTML 片段（`color: rgba(...)`），随称号 / 徽章标签落库，不是站内主题。",
       values: ["#1f6feb", "#16a34a", "#f59e0b", "#dc2626", "#7c3aed", "#ec4899", "#0891b2", "#334155"],
-    },
-    {
-      source: "useState(\"#1f6feb\")（取色器 color 状态的初值，与 PRESET_COLORS[0] 同值）",
-      reason: "同上：是同一个沙盒文字色状态的初值，最终同样拼进生成的 HTML 片段。",
-      values: ["#1f6feb"],
     },
   ],
   "apps/portal/components/feature/admin/AdminClassesSection.tsx": [
@@ -124,13 +118,6 @@ const BARE_HEX_EXEMPTIONS: Record<string, BareHexExemption[]> = {
       source: "COLOR_SWATCHES",
       reason: "职业颜色预设：选中值写进 GameClass.color 落库，再由 ClassIcon / MemberCard 以 --class-color 注入，与 --class-color 本身同一类（管理员配置的数据色，不随主题变化）。",
       values: ["#61B8AA", "#6EA8FE", "#A78BFA", "#E27676", "#D6A85F", "#E18BB6", "#75B86B", "#8594A8"],
-    },
-  ],
-  "apps/portal/components/feature/admin/AdminBadgesSection.tsx": [
-    {
-      source: "COLOR_PRESETS",
-      reason: "徽章颜色预设：选中值写进 BadgeForm.color，经 controller 提交后落库为 MemberBadge.color。",
-      values: ["#D4A843", "#ef4444", "#22c55e", "#f59e0b", "#8B7355", "#ec4899", "#C17F3E", "#f97316"],
     },
   ],
   "apps/portal/components/feature/admin/AdminRolesSection.tsx": [
@@ -185,7 +172,7 @@ describe(".tsx carries no bare hex outside the class-1 exemption table", () => {
     expect(bareHexOffenders("some/file.tsx", 'style={{ color: "#123456" }}')).toEqual([]);
     expect(
       bareHexOffenders(
-        "apps/portal/components/feature/profile/TitleSandboxModal.tsx",
+        "apps/portal/components/shared/LabelStyleModal.tsx",
         'const PRESET_COLORS = ["#1f6feb", "#16a34a", "#f59e0b", "#dc2626", "#7c3aed", "#ec4899", "#0891b2", "#334155"];',
       ),
     ).toEqual([]);

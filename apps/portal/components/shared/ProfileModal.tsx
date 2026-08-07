@@ -1,7 +1,7 @@
 import type { MemberProfile, User } from "@guild/shared";
-import { Button, Group, Modal, Stack, Text } from "@mantine/core";
+import { ActionIcon, Group, Modal, Stack, Text, Tooltip } from "@mantine/core";
 import { PencilIcon } from "@portal/components/icons";
-import { useEffect, useMemo, useRef, useState, type CSSProperties, type KeyboardEvent } from "react";
+import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
 import { useTranslation } from "react-i18next";
 import { MediaGallery, buildMediaGalleryLabels } from "@portal/components/shared/MediaGallery";
 import { sanitizeTitleHtml } from "../../utils/sanitize";
@@ -44,6 +44,8 @@ export function ProfileModal({
     () => sanitizeTitleHtml(profile?.title_html ?? ""),
     [profile?.title_html],
   );
+  /* 图标按钮没有可见文案，这句同时当 tooltip 和无障碍名，两处不能各写各的。 */
+  const editTitle = editLabel || t("profile.editProfile");
   const avatarUrl = profile?.avatar_key ? resolveMediaUrl(profile.avatar_key) : null;
   const accountUpdated = user?.updated_at ? new Date(user.updated_at).toLocaleString(i18n.language) : "-";
   const classItems = useMemo(
@@ -119,14 +121,21 @@ export function ProfileModal({
               {t("profile.modalTitle", { name: user.username })}
             </Text>
             {canEdit && onEdit ? (
-              <Button
-                onClick={onEdit}
-                variant="default"
-                size="sm"
-                leftSection={<PencilIcon size={14} />}
-              >
-                {editLabel || t("profile.editProfile")}
-              </Button>
+              /*
+               * 只留图标：这颗按钮和关闭叉共处一条标题栏，带文案时会把标题挤到
+               * 换行。size="md" 就是 Mantine 给关闭叉的尺寸（--cb-size-md），
+               * 写死像素只会在缩放设置变化时和旁边那颗对不齐。
+               */
+              <Tooltip label={editTitle} withArrow>
+                <ActionIcon
+                  onClick={onEdit}
+                  variant="default"
+                  size="md"
+                  aria-label={editTitle}
+                >
+                  <PencilIcon size={14} />
+                </ActionIcon>
+              </Tooltip>
             ) : null}
           </Group>
         ) : undefined
@@ -168,15 +177,6 @@ export function ProfileModal({
                 <div className={styles.field}>
                   <span className={styles.fieldLabel}>{t("profile.field.accountUpdated")}</span>
                   <Text className={styles.fieldValue}>{accountUpdated}</Text>
-                </div>
-                <div className={styles.field}>
-                  <span className={styles.fieldLabel}>{t("profile.field.role")}</span>
-                  <Text
-                    className={`${styles.fieldValue} ${styles.roleValue}`}
-                    style={user.role_color ? ({ "--role-color": user.role_color } as CSSProperties) : undefined}
-                  >
-                    {user.role_name}
-                  </Text>
                 </div>
                 <div className={styles.field}>
                   <span className={styles.fieldLabel}>{t("profile.field.power")}</span>

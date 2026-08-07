@@ -26,6 +26,11 @@ vi.mock("react-i18next", () => ({
   }),
 }));
 
+/* 样式编辑器要读路由 search 判断只读态，这一屏不挂路由。 */
+vi.mock("@portal/hooks/useExternalView", () => ({
+  useExternalView: () => false,
+}));
+
 const badge = {
   id: "badge-1",
   name: "Veteran",
@@ -42,7 +47,6 @@ function createController(
 ): AdminBadgesController {
   return {
     selectedBadgeId: null,
-    setSelectedBadgeId: vi.fn(),
     editingBadgeId: null,
     isCreating: false,
     form: EMPTY_BADGE_FORM,
@@ -83,6 +87,8 @@ function createController(
     deleteBadge: vi.fn(),
     saveMembership: vi.fn(),
     unassignBadge: vi.fn(),
+    reorderBadges: vi.fn(),
+    reorderPending: false,
     ...overrides,
   };
 }
@@ -119,6 +125,82 @@ describe("AdminBadgesSection", () => {
     const itemRule = css.match(/\.admin-md__item\s*\{([^}]+)\}/)?.[1];
 
     expect(itemRule).toMatch(/min-block-size:\s*44px/);
+  });
+
+  /*
+   * 标签和颜色只有样式编辑器这一个入口：手写 `<span style>` 的输入框和第二个
+   * 取色器已经删掉，应用回来的 HTML 与色号必须一次写进同一份表单。
+   */
+  it("writes the label markup and its colour back from the one style editor", async () => {
+    const user = userEvent.setup();
+    const setForm = vi.fn();
+    renderBadges(createController({ isCreating: true, setForm }));
+
+    await user.click(screen.getByRole("button", { name: "badges.action.openLabelEditor" }));
+    await user.click(screen.getByRole("button", { name: "badges.action.applyLabel" }));
+
+    const updater = setForm.mock.calls[0]?.[0] as (form: typeof EMPTY_BADGE_FORM) => typeof EMPTY_BADGE_FORM;
+    const next = updater(EMPTY_BADGE_FORM);
+    expect(next.label_html).toContain("badges.placeholder.label");
+    expect(next.color, "药丸底色跟着编辑器里挑的那一个走").toBe(EMPTY_BADGE_FORM.color);
+  });
+
+  /*
+   * 药丸只出现在编辑表单里那一处预览。左栏和详情头列的是徽章名字：
+   * 同一段 HTML 每多渲染一个地方，就多一份要跟着编辑器一起维护的清洗规则。
+   */
+  it("renders the badge markup only where the form previews it", () => {
+    const styled = { ...badge, label_html: '<span style="color:#f00">Veteran</span>' };
+    renderBadges(createController({
+      selectedBadgeId: styled.id,
+      badges: [styled],
+      selectedBadge: styled,
+    }));
+
+    expect(document.querySelectorAll("[style*='--badge-color']"), "不编辑时后台不渲染药丸")
+      .toHaveLength(0);
+    expect(screen.getAllByText("Veteran"), "留下的是徽章名字：左栏一处、详情头一处").toHaveLength(2);
+  });
+
+  /* 编辑器关掉之后表单只剩一个按钮，看不出这枚徽章现在长什么样。 */
+  it("previews the current label above the style editor button while editing", () => {
+    const styled = { ...badge, label_html: '<span style="color:#f00">Veteran</span>' };
+    renderBadges(createController({
+      selectedBadgeId: styled.id,
+      editingBadgeId: styled.id,
+      badges: [styled],
+      selectedBadge: styled,
+      form: { name: styled.name, label_html: styled.label_html, color: styled.color, description: "" },
+    }));
+
+    const pills = document.querySelectorAll("[style*='--badge-color']");
+    expect(pills, "预览只此一份，用的是成员卡那枚芯片").toHaveLength(1);
+    expect(pills[0]?.innerHTML).toContain("Veteran");
+  });
+
+  /* 新建时标签还是空的，空药丸就是一圈没有内容的描边。 */
+  it("shows no preview pill until the label has markup", () => {
+    renderBadges(createController({ isCreating: true, form: EMPTY_BADGE_FORM }));
+
+    expect(document.querySelectorAll("[style*='--badge-color']")).toHaveLength(0);
+    expect(screen.getByRole("button", { name: "badges.action.openLabelEditor" })).toBeTruthy();
+  });
+
+  /* 排序不再是一个数字输入框：左栏拖拽是唯一入口，手柄按行给。 */
+  it("reorders from the master list instead of a sort-order field", () => {
+    const second = { ...badge, id: "badge-2", name: "Champion" };
+    renderBadges(createController({ badges: [badge, second], isCreating: true }));
+
+    expect(screen.queryByText("badges.field.sortOrder"), "表单里不该再有排序数字")
+      .not.toBeInTheDocument();
+    expect(screen.getAllByRole("button", { name: "badges.aria.dragHandle" })).toHaveLength(2);
+  });
+
+  /* 上一次重排还在飞时手柄要锁住，否则两个 PATCH 的响应可能倒序回来。 */
+  it("locks the drag handles while a reorder is in flight", () => {
+    renderBadges(createController({ badges: [badge], reorderPending: true }));
+
+    expect(screen.getByRole("button", { name: "badges.aria.dragHandle" })).toBeDisabled();
   });
 
   /* 编辑成员是同一个网格换状态，不是另开一块面板：查看态里不该有任何勾选框。 */

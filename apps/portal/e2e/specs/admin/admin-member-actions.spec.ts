@@ -194,7 +194,7 @@ test("行菜单复制这一行：剪贴板里拿到的是这一行的五个字�
   expect(copied).toBe(`${member.username}, , 0, ${member.role.name}, Enabled\n`);
 });
 
-test("成员详情弹窗：只改战力时只保存资料，不重复提交未变化的角色和状态", async ({ page, api, flow }) => {
+test("成员详情弹窗：打开是只读屏，进编辑改战力保存后回到只读屏，且不重复提交未变化的角色和状态", async ({ page, api, flow }) => {
   const tag = uniqueTag("detail");
   const member = await createThrowawayMember(api, tag);
   await openMembers(page, tag);
@@ -205,9 +205,21 @@ test("成员详情弹窗：只改战力时只保存资料，不重复提交未�
     dialog.getByRole("heading", { name: `Member Detail · ${member.username}`, exact: true }),
   ).toBeVisible();
 
+  /* 打开就是一屏可读的事实：编辑是次级动作，得先点「Edit」才会出现输入控件。 */
+  await expect(field(dialog, "Power"), "只读屏不该摆着输入框").toHaveCount(0);
+  await expect(
+    dialog.getByRole("button", { name: "Save Profile", exact: true }),
+    "还没进编辑态，保存按钮不该存在",
+  ).toHaveCount(0);
+
+  await dialog.getByRole("button", { name: "Edit", exact: true }).click();
   await field(dialog, "Power").fill("12345");
   await flow.click(dialog.getByRole("button", { name: "Save Profile", exact: true }), SAVE_PROFILE);
   await expectNotified(page, "Member profile saved");
+
+  /* 存完回到只读屏，直接看到结果——不必再想一次「刚才那下存上了吗」。 */
+  await expect(dialog.getByRole("button", { name: "Edit", exact: true })).toBeVisible();
+  await expect(field(dialog, "Power")).toHaveCount(0);
 
   const saved = await serverMember(api, member.id);
   expect(saved.profile.power, "第三步失败不该连累前两步：战力必须真的落库了").toBe(12345);

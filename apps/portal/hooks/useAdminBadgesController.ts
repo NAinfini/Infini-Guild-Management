@@ -1,4 +1,5 @@
 import type { MemberBadge } from "@guild/shared";
+import { arrayMove } from "@dnd-kit/sortable";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
@@ -8,21 +9,24 @@ import {
   deleteBadge,
   fetchBadgeAssignments,
   fetchBadges,
+  reorderBadges,
   unassignBadge,
   updateBadge,
 } from "../services/AdminService";
 import type { CreateBadgePayload } from "../services/AdminService";
 import { queryKeys } from "../api/query-keys";
-import { notifySuccess } from "../utils/notifications";
+import { notifyError, notifySuccess } from "../utils/notifications";
 import { useAppError } from "./useAppError";
 import { useAdminPendingActions } from "./useAdminPendingActions";
 
+/* sort_order 不在表单里：顺序由左栏拖拽决定，走整表重排接口。留在表单里的话
+   同一份顺序有两个写入口——保存表单会把编辑器打开那一刻的旧数字写回去，把中间
+   发生过的拖拽抹掉。新建时也不传，服务端排到末尾。 */
 export type BadgeForm = {
   name: string;
   label_html: string;
   color: string;
   description: string;
-  sort_order: number;
 };
 
 export const EMPTY_BADGE_FORM: BadgeForm = {
@@ -30,7 +34,6 @@ export const EMPTY_BADGE_FORM: BadgeForm = {
   label_html: "",
   color: "#D4A843",
   description: "",
-  sort_order: 0,
 };
 
 function toCreateBadgePayload(form: BadgeForm): CreateBadgePayload {
@@ -39,7 +42,6 @@ function toCreateBadgePayload(form: BadgeForm): CreateBadgePayload {
     label_html: form.label_html,
     color: form.color,
     description: form.description || undefined,
-    sort_order: form.sort_order,
   };
 }
 
@@ -47,7 +49,7 @@ export function useAdminBadgesController(enabled: boolean) {
   const { t } = useTranslation("admin");
   const queryClient = useQueryClient();
   const { showError } = useAppError();
-  const [selectedBadgeId, setSelectedBadgeId] = useState<string | null>(null);
+  const [explicitBadgeId, setExplicitBadgeId] = useState<string | null>(null);
   const [editingBadgeId, setEditingBadgeId] = useState<string | null>(null);
   const [isCreating, setIsCreating] = useState(false);
   const [form, setForm] = useState<BadgeForm>(EMPTY_BADGE_FORM);
@@ -68,6 +70,9 @@ export function useAdminBadgesController(enabled: boolean) {
     staleTime: 5 * 60_000,
   });
 
+  const badges = badgesQuery.data ?? [];
+  const selectedBadgeId = explicitBadgeId;
+
   const assignmentsQuery = useQuery({
     queryKey: queryKeys.badges.assignments(selectedBadgeId ?? ""),
     queryFn: () => fetchBadgeAssignments(selectedBadgeId as string),
@@ -75,31 +80,47 @@ export function useAdminBadgesController(enabled: boolean) {
     staleTime: 2 * 60_000,
   });
 
-  const badges = badgesQuery.data ?? [];
   const assignments = assignmentsQuery.data ?? [];
   const selectedBadge = badges.find((badge) => badge.id === selectedBadgeId) ?? null;
   const assignedUserIds = useMemo(() => new Set(assignments.map((assignment) => assignment.user_id)), [assignments]);
 
+  /*
+   * 不变量：选中的永远是列表里真实存在的一枚。进页面、删掉一枚、别人删掉了我选的
+   * 那一枚，都落到第一枚——右栏不该停在空白详情上。列表空了才回到没有选中。
+   *
+   * 落一次就钉住，不是每次渲染都取第一枚：后者会让拖拽排序把选中项一起挪走，
+   * 明明只是换了顺序，右栏却换了内容。
+   *
+   * 新建期间不落：右栏此刻是新建表单，选中一枚只会让它在保存前先闪一下别的徽章。
+   */
   useEffect(() => {
-    if (selectedBadgeId && !badges.find((badge) => badge.id === selectedBadgeId)) {
-      setSelectedBadgeId(null);
-    }
-  }, [badges, selectedBadgeId]);
+    if (isCreating) return;
+    if (explicitBadgeId && badges.some((badge) => badge.id === explicitBadgeId)) return;
+    setExplicitBadgeId(badges[0]?.id ?? null);
+  }, [badges, explicitBadgeId, isCreating]);
 
-  const invalidateBadges = useCallback(async () => {
-    await queryClient.invalidateQueries({ queryKey: queryKeys.badges.all });
+  /* 徽章的样子和顺序都随成员一起发出去（名片上挂前两枚），改完徽章这两份缓存
+     也就过期了。 */
+  const invalidateBadgeConsumers = useCallback(async () => {
     await queryClient.invalidateQueries({ queryKey: queryKeys.users.all });
     await queryClient.invalidateQueries({ queryKey: queryKeys.myProfile.all });
   }, [queryClient]);
+
+  const invalidateBadges = useCallback(async () => {
+    await queryClient.invalidateQueries({ queryKey: queryKeys.badges.all });
+    await invalidateBadgeConsumers();
+  }, [queryClient, invalidateBadgeConsumers]);
 
   const createMutation = useMutation({
     mutationFn: createBadge,
     onSuccess: async (data) => {
       notifySuccess(t("badges.message.created"));
-      setIsCreating(false);
       setForm(EMPTY_BADGE_FORM);
       await invalidateBadges();
-      setSelectedBadgeId(data.id);
+      /* 先等目录刷新再一起落地：新徽章还没进列表就退出新建态的话，
+         选中会先掉回第一枚，右栏闪一下别人的详情。 */
+      setExplicitBadgeId(data.id);
+      setIsCreating(false);
     },
     onError: (error) => showError(error, t("badges.message.failed")),
   });
@@ -118,7 +139,7 @@ export function useAdminBadgesController(enabled: boolean) {
     mutationFn: deleteBadge,
     onSuccess: async () => {
       notifySuccess(t("badges.message.deleted"));
-      setSelectedBadgeId(null);
+      setExplicitBadgeId(null);
       await invalidateBadges();
     },
     onError: (error) => showError(error, t("badges.message.failed")),
@@ -164,6 +185,50 @@ export function useAdminBadgesController(enabled: boolean) {
   });
 
   /*
+   * 拖拽排序。乐观地把新顺序写进缓存，请求失败再回滚——不这么做的话，松手到
+   * 响应回来之间列表会停在旧顺序上，看着像「没拖动」。
+   *
+   * 失败路径两步都要留着：先回滚到松手前那份，让界面立刻不再撒谎；再作废缓存重拉。
+   * 服务端回 409 的典型原因就是本地这份目录已经过期（别人加/删了徽章），那时
+   * 「松手前那份」本身也是错的，只有重新拉才是真相。
+   */
+  const reorderMutation = useMutation({
+    mutationFn: (order: string[]) => reorderBadges(order),
+    onMutate: async (order: string[]) => {
+      await queryClient.cancelQueries({ queryKey: queryKeys.badges.list() });
+      const previous = queryClient.getQueryData<MemberBadge[]>(queryKeys.badges.list());
+      if (previous) {
+        const byId = new Map(previous.map((badge) => [badge.id, badge]));
+        queryClient.setQueryData(
+          queryKeys.badges.list(),
+          order.map((id) => byId.get(id)).filter((badge): badge is MemberBadge => Boolean(badge)),
+        );
+      }
+      return { previous };
+    },
+    onError: (error, _order, context) => {
+      if (context?.previous) {
+        queryClient.setQueryData(queryKeys.badges.list(), context.previous);
+      }
+      notifyError(error instanceof Error ? error.message : t("badges.message.reorderFailed"));
+      void invalidateBadges();
+    },
+    /* 响应体就是重排后的整张表，直接当新缓存用；再作废一次列表只是把同一份数据
+       又拉一遍。名片上挂哪两枚跟着顺序变，所以那两份缓存还是要作废。 */
+    onSuccess: async (list) => {
+      queryClient.setQueryData(queryKeys.badges.list(), list);
+      await invalidateBadgeConsumers();
+    },
+  });
+
+  const reorder = (activeId: string, overId: string) => {
+    const from = badges.findIndex((badge) => badge.id === activeId);
+    const to = badges.findIndex((badge) => badge.id === overId);
+    if (from < 0 || to < 0 || from === to) return;
+    reorderMutation.mutate(arrayMove([...badges], from, to).map((badge) => badge.id));
+  };
+
+  /*
    * 草稿只对「打开面板时选中的那一枚徽章」有意义：带着 A 的草稿切到 B，保存出去
    * 就是拿 A 的勾选去改 B 的成员。凡是会换掉详情内容的动作，一律先把面板收掉。
    */
@@ -177,7 +242,7 @@ export function useAdminBadgesController(enabled: boolean) {
     setIsCreating(true);
     setEditingBadgeId(null);
     setForm(EMPTY_BADGE_FORM);
-    setSelectedBadgeId(null);
+    setExplicitBadgeId(null);
     resetMembership();
   };
 
@@ -190,12 +255,11 @@ export function useAdminBadgesController(enabled: boolean) {
       label_html: badge.label_html,
       color: badge.color,
       description: badge.description ?? "",
-      sort_order: badge.sort_order,
     });
   };
 
   const selectBadge = (badgeId: string) => {
-    setSelectedBadgeId(badgeId);
+    setExplicitBadgeId(badgeId);
     setIsCreating(false);
     setEditingBadgeId(null);
     resetMembership();
@@ -271,7 +335,6 @@ export function useAdminBadgesController(enabled: boolean) {
 
   return {
     selectedBadgeId,
-    setSelectedBadgeId,
     editingBadgeId,
     isCreating,
     form,
@@ -296,6 +359,8 @@ export function useAdminBadgesController(enabled: boolean) {
     retryAssignments: () => {
       void assignmentsQuery.refetch();
     },
+    reorderBadges: reorder,
+    reorderPending: reorderMutation.isPending,
     createPending: createMutation.isPending,
     updatePending: updateMutation.isPending,
     deletePending: deleteMutation.isPending,

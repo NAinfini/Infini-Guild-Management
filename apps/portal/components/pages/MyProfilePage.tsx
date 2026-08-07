@@ -16,7 +16,7 @@ import { ProfileAccountTab } from "../feature/profile/ProfileAccountTab";
 import { ProfileAvailabilityTab } from "../feature/profile/ProfileAvailabilityTab";
 import { ProfileGapsCallout } from "../feature/profile/ProfileGapsCallout";
 import { ProfileMediaTab } from "../feature/profile/ProfileMediaTab";
-import { ProfileOverviewCard } from "../feature/profile/ProfileOverviewCard";
+import { ProfileOverviewCard } from "../shared/ProfileOverviewCard";
 import { ProfileProfileTab } from "../feature/profile/ProfileProfileTab";
 import { ProfileWeekSummary } from "../feature/profile/ProfileWeekSummary";
 import { EmptyState } from "../shared/EmptyState";
@@ -206,6 +206,9 @@ export function MyProfilePage() {
                 imageList={form.imageList}
                 videoList={form.videoList}
                 availabilityData={form.availabilityData}
+                avatarUploading={avatarUploadMutation.isPending}
+                onUploadAvatar={(file) => avatarUploadMutation.mutate(file)}
+                onRemoveAvatar={() => avatarDeleteMutation.mutate()}
               />
               <ProfileGapsCallout
                 avatarKey={profile?.avatar_key ?? null}
@@ -236,16 +239,12 @@ export function MyProfilePage() {
                   onBioChange={form.setBio}
                 />
                 <ProfileMediaTab
-                  avatarKey={profile?.avatar_key ?? null}
                   profileAudioKey={profile?.audio_key ?? null}
                   imageList={form.imageList}
                   videoDraft={form.videoDraft}
                   videoList={form.videoList}
                   imageUploader={imageUploader}
                   audioUploader={audioUploader}
-                  avatarUploading={avatarUploadMutation.isPending}
-                  onUploadAvatar={(file) => avatarUploadMutation.mutate(file)}
-                  onRemoveAvatar={() => avatarDeleteMutation.mutate()}
                   onReorderImages={form.setImageList}
                   onRemoveImage={mutations.removeImage}
                   removingImageKeys={mutations.removingImageKeys}

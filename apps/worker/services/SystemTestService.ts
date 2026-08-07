@@ -38,7 +38,14 @@ function uniqueArtifacts(artifacts: readonly SystemTestArtifact[]): SystemTestAr
 export class SystemTestService {
   constructor(private readonly env: Bindings) {}
 
+  /**
+   * 开一次新的测试运行，开始前先回收废弃的旧运行。
+   *
+   * 只有测试自己会留下废弃运行，而它们能被安全回收的时机就是下一次有人来跑测试：
+   * 扫描挂在这个入口上，测试不跑的日子就不用为它空转一遍定时任务。
+   */
   async createRun(actorId: string): Promise<string> {
+    await this.cleanupStaleRuns();
     const id = crypto.randomUUID();
     const timestamp = now();
     await this.env.DB.prepare(

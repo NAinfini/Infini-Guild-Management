@@ -564,17 +564,15 @@ export function AdminInviteSection({
             searchable
             required
           />
-          <Group align="center" gap={6}>
+          {/* 两个字段共用一个标签列。各自成行时标签宽度不同，输入框的左边缘会错开。 */}
+          <div className="admin-invite-form__fields">
             <Text size="sm" c="dimmed">{t("invite.maxUses")}</Text>
             <NumberInput
               min={1}
               value={inviteMaxUses}
               onChange={(value) => setInviteMaxUses(typeof value === "number" ? value : 1)}
               aria-label={t("invite.aria.maxUses")}
-              style={{ flex: 1 }}
             />
-          </Group>
-          <Stack gap={4}>
             <Text size="sm" c="dimmed">{t("invite.expiresAt")}</Text>
             <NativeDateTimeInput
               type="datetime-local"
@@ -582,7 +580,7 @@ export function AdminInviteSection({
               onChange={(event) => setInviteExpiresAt(event.currentTarget.value)}
               aria-label={t("invite.aria.expiresAt")}
             />
-          </Stack>
+          </div>
           <Button
             leftSection={<PlusIcon size={16} />}
             loading={createInvitePending}

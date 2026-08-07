@@ -75,7 +75,7 @@ function SortableTagRow({
   };
 
   return (
-    <div ref={setNodeRef} style={style} className="admin-class-tags__row">
+    <div ref={setNodeRef} style={style} className="admin-md__row">
       <UnstyledButton
         className={`admin-md__item ${active ? "admin-md__item--active" : ""}`}
         onClick={onOpen}
@@ -92,7 +92,7 @@ function SortableTagRow({
       <button
         type="button"
         ref={setActivatorNodeRef}
-        className="admin-class-tags__grip"
+        className="admin-md__grip"
         aria-label={t("classTags.aria.dragHandle", { name: tag.label })}
         disabled={disabled}
         {...attributes}
