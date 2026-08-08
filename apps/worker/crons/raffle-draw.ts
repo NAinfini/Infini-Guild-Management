@@ -1,6 +1,22 @@
 import type { Bindings } from "../index";
 import { nanoid } from "nanoid";
 
+/**
+ * Uniform random index in [0, bound) drawn from the platform CSPRNG. These
+ * picks decide raffle prizes, so Math.random() is out: V8's PRNG state can be
+ * recovered from a handful of outputs, letting an observer predict winners.
+ * Rejection sampling removes the modulo bias a plain `% bound` would add.
+ */
+function secureRandomIndex(bound: number): number {
+  const acceptBelow = Math.floor(0x1_0000_0000 / bound) * bound;
+  const buffer = new Uint32Array(1);
+  for (;;) {
+    crypto.getRandomValues(buffer);
+    const value = buffer[0]!;
+    if (value < acceptBelow) return value % bound;
+  }
+}
+
 export async function runRaffleDrawCron(env: Bindings): Promise<void> {
   const now = new Date().toISOString();
 
@@ -45,7 +61,7 @@ export async function runRaffleDrawCron(env: Bindings): Promise<void> {
     const remaining = [...pool];
     const stmts = [];
     for (let i = 0; i < winnerCount; i++) {
-      const idx = Math.floor(Math.random() * remaining.length);
+      const idx = secureRandomIndex(remaining.length);
       stmts.push(
         env.DB.prepare(
           "INSERT INTO event_raffle_winners (id, event_id, user_id, drawn_at) VALUES (?1, ?2, ?3, ?4)",
