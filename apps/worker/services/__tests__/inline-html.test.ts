@@ -9,6 +9,14 @@ describe("sanitizeInlineHtml", () => {
     expect(sanitizeInlineHtml("<b>A</b><i>B</i><br>")).toBe("<b>A</b><i>B</i><br>");
   });
 
+  it("keeps the full style block LabelStyleModal generates", () => {
+    // 编辑器的产物必须原样通过,否则称号/徽章一落库就丢样式。
+    const generated =
+      '<span style="color: rgba(22, 163, 74, 1.00); font-weight: 700; font-style: normal; '
+      + 'text-decoration: none; font-size: 24px; letter-spacing: 0.02em; display: inline-block">★ Rank</span>';
+    expect(sanitizeInlineHtml(generated)).toBe(generated);
+  });
+
   it("removes tags that are not on the allowlist and escapes their text", () => {
     expect(sanitizeInlineHtml("<script>alert(1)</script>")).toBe("alert(1)");
     expect(sanitizeInlineHtml('<img src=x onerror="alert(1)">')).toBe("");

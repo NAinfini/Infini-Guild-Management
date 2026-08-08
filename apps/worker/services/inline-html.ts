@@ -8,7 +8,23 @@ import { CSS_VALUE_DENYLIST, SAFE_CSS_VALUE_PATTERN } from "@guild/shared";
  */
 
 const ALLOWED_INLINE_TAGS = new Set(["span", "b", "strong", "i", "em", "u", "br"]);
-const STYLE_PROP_ALLOWLIST = new Set(["color", "font-weight", "font-style", "text-decoration", "background-color"]);
+/*
+ * Must admit every property LabelStyleModal generates (color, weight, style,
+ * decoration, font-size, letter-spacing, display: inline-block) — the editor's
+ * output has to survive this sanitizer byte-for-byte or saved labels lose
+ * their styling on the round trip.
+ */
+const STYLE_PROP_ALLOWLIST = new Set([
+  "color",
+  "background-color",
+  "font-weight",
+  "font-style",
+  "font-size",
+  "letter-spacing",
+  "text-decoration",
+  "text-decoration-line",
+  "display",
+]);
 
 function sanitizeStyleAttr(raw: string): string {
   const declarations = raw.split(";").map((d) => d.trim()).filter(Boolean);
