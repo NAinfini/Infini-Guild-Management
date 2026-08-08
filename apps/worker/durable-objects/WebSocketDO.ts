@@ -29,6 +29,28 @@ const WS_CLOSE_UNAUTHORIZED = 4401;
 export const WS_SESSION_ID_HEADER = "X-Internal-Session-Id";
 export const WS_ACCOUNT_ID_HEADER = "X-Internal-Account-Id";
 
+/**
+ * Compares the presented bearer token against the shared secret in constant
+ * time. Both sides are hashed first so neither the length nor a matching
+ * prefix of the real secret can be probed through response timing.
+ */
+async function bearerTokenMatches(authHeader: string, secret: string): Promise<boolean> {
+  if (!authHeader.startsWith("Bearer ")) return false;
+  const presented = authHeader.slice("Bearer ".length);
+  const encoder = new TextEncoder();
+  const [presentedDigest, secretDigest] = await Promise.all([
+    crypto.subtle.digest("SHA-256", encoder.encode(presented)),
+    crypto.subtle.digest("SHA-256", encoder.encode(secret)),
+  ]);
+  const presentedBytes = new Uint8Array(presentedDigest);
+  const secretBytes = new Uint8Array(secretDigest);
+  let difference = 0;
+  for (let i = 0; i < presentedBytes.length; i += 1) {
+    difference |= (presentedBytes[i] ?? 0) ^ (secretBytes[i] ?? 0);
+  }
+  return difference === 0;
+}
+
 type SocketAttachment = {
   /** Last heartbeat, epoch ms. */
   ts: number;
@@ -173,7 +195,7 @@ export class WebSocketDO {
 
     if (request.method === "POST" && url.pathname === "/publish") {
       const authHeader = request.headers.get("Authorization");
-      if (!authHeader || authHeader !== `Bearer ${this.env.SIGNING_SECRET}`) {
+      if (!authHeader || !(await bearerTokenMatches(authHeader, this.env.SIGNING_SECRET))) {
         return new Response("Unauthorized", { status: 401 });
       }
       let message: PushMessage;
