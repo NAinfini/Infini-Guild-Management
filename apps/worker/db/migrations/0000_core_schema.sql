@@ -1,4 +1,4 @@
--- Core schema baseline for guild-portal / fanghuazhaoyun-db.
+-- Core schema baseline for the guild portal worker.
 --
 -- This file is the squashed end state of the historical migration chain
 -- (core schema -> release schema upgrade -> dynamic role authority). Databases
@@ -743,8 +743,10 @@ INSERT OR IGNORE INTO "roles" ("id", "name", "level", "color") VALUES
   ('moderator', 'Moderator', 500, '#756047'),
   ('member', 'Member', 100, 'gray');
 
-INSERT OR IGNORE INTO "site_config" ("id", "site_name", "site_logo_url", "feature_flags_json", "media_policy_json", "storage_policy_json", "absence_policy_json", "analytics_settings_json") VALUES
-  ('default', 'Infini 公会', '/guild-logo.webp', '{"announcements":true,"events":true,"guildWar":true,"gallery":true,"wiki":true,"tools":true,"storage":true}', '{"max_file_size_bytes":{"site_logo":2097152,"profile_image":5242880,"profile_audio":20971520,"announcement_image":5242880,"wiki_image":5242880,"event_image":5242880,"gallery_image":10485760,"storage_image":5242880},"quotas":{"profile":10,"announcement":10,"gallery":20,"wiki":10}}', '{"images_per_item":5}', '{"max_span_days":366,"max_entries_per_user":20}', '{"reference_duration_minutes":30,"modifier_weights":{"kills":0.3,"towers":0.1,"base_hp":0.15,"credits":0.3,"distance":0.15}}');
+-- site_config is deliberately not seeded here: the worker creates the row on
+-- first use from the SITE_NAME / SITE_LOGO_URL vars and the shared policy
+-- defaults (SiteConfigService.ensureSiteRow), so deployment identity lives in
+-- wrangler.jsonc instead of being baked into the schema baseline.
 
 INSERT OR IGNORE INTO "role_permissions" ("role_id", "permission", "granted") VALUES
   ('admin', 'admin.users.view', 1),

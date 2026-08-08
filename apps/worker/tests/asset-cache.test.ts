@@ -10,7 +10,7 @@ describe("isImmutableBuildAssetPath", () => {
 
   it("does not mark non-hashed static paths immutable", () => {
     expect(isImmutableBuildAssetPath("/robots.txt")).toBe(false);
-    expect(isImmutableBuildAssetPath("/guild-logo.webp")).toBe(false);
+    expect(isImmutableBuildAssetPath("/guild-logo.svg")).toBe(false);
     expect(isImmutableBuildAssetPath("/assets/index.js")).toBe(false);
   });
 });
@@ -25,7 +25,7 @@ function createAssetEnv(response: Response): Bindings {
     ENVIRONMENT: "production",
     SIGNING_SECRET: "test-secret",
     SITE_NAME: "Guild",
-    SITE_LOGO_URL: "/guild-logo.webp",
+    SITE_LOGO_URL: "/guild-logo.svg",
   };
 }
 

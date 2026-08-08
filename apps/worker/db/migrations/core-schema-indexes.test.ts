@@ -204,7 +204,10 @@ describe("core schema site config data", () => {
     const siteConfigSql = schemaObjectSql(migrated, "table", "site_config");
     for (const column of expectedColumns) expect(siteConfigSql).toContain(column);
 
-    expect(migrated.prepare("SELECT 1 FROM site_config WHERE id = 'default'").get()).toBeTruthy();
+    // Deployment identity is not baked into the baseline: the worker seeds the
+    // row on first use from SITE_NAME / SITE_LOGO_URL and the shared policy
+    // defaults (SiteConfigService.ensureSiteRow).
+    expect(migrated.prepare("SELECT COUNT(*) AS n FROM site_config").get()).toEqual({ n: 0 });
     for (const removedTable of [
       "site_event_types",
       "site_guild_war_results",
@@ -216,12 +219,6 @@ describe("core schema site config data", () => {
       expect(schemaObjectSql(migrated, "table", removedTable)).toBe("");
     }
     expect(siteConfigSql).not.toContain("game_rules_json");
-    const config = migrated.prepare("SELECT feature_flags_json, analytics_settings_json FROM site_config WHERE id = 'default'").get() as {
-      feature_flags_json: string;
-      analytics_settings_json: string;
-    };
-    expect(JSON.parse(config.analytics_settings_json)).toMatchObject({ reference_duration_minutes: 30 });
-    expect(JSON.parse(config.feature_flags_json)).toMatchObject({ storage: true });
     expect(siteConfigSql).not.toContain("intake_batch");
   });
 });

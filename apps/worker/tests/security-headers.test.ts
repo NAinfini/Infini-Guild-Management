@@ -10,14 +10,14 @@ describe("buildSpaHtmlCsp", () => {
   });
 
   it("allows same-origin wss connections for HTTPS requests", () => {
-    const csp = buildSpaHtmlCsp("https://fanghuazhaoyun.com/dashboard");
+    const csp = buildSpaHtmlCsp("https://guild.example.com/dashboard");
 
-    expect(csp).toContain("connect-src 'self' wss://fanghuazhaoyun.com");
-    expect(csp).not.toContain("ws://fanghuazhaoyun.com");
+    expect(csp).toContain("connect-src 'self' wss://guild.example.com");
+    expect(csp).not.toContain("ws://guild.example.com");
   });
 
   it("allows the privacy-enhanced YouTube embed host without widening frame-src", () => {
-    const csp = buildSpaHtmlCsp("https://fanghuazhaoyun.com/gallery");
+    const csp = buildSpaHtmlCsp("https://guild.example.com/gallery");
 
     expect(csp).toContain("frame-src https://www.youtube-nocookie.com");
     expect(csp).not.toContain("https://www.youtube.com");

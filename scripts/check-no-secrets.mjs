@@ -33,16 +33,12 @@ function splitNull(value) {
 }
 
 export function isForbiddenTrackedFile(file) {
-  const normalized = file.replaceAll("\\", "/");
   const name = basename(file);
   if (/^\.env(?:\..+)?\.example$/i.test(name) || /^\.dev\.vars(?:\..+)?\.example$/i.test(name)) {
     return false;
   }
-  // This is the deployable, reviewed Worker manifest. It contains public
-  // resource identifiers, while actual credentials remain Wrangler secrets.
-  // Keep every other wrangler.jsonc forbidden and scan this file's contents
-  // with the same token/assignment rules as any other tracked config.
-  if (normalized === "apps/worker/wrangler.jsonc") return false;
+  // Every wrangler.jsonc is a deployment's private manifest (real resource IDs,
+  // domains); only the wrangler.example.jsonc template belongs in the repo.
   return (
     /^\.env(?:\.|$)/i.test(name) ||
     /^\.dev\.vars(?:\.|$)/i.test(name) ||

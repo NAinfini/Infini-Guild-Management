@@ -34,8 +34,8 @@ describe("portal Vite development HTML", () => {
       '<img src="{{SITE_LOGO_URL}}" alt="">',
     ].join("");
 
-    expect(replaceSiteConfigPlaceholders(html, "Infini Guild", "/guild-logo.webp")).toBe(
-      '<title>Infini Guild</title><img src="/guild-logo.webp" alt="">',
+    expect(replaceSiteConfigPlaceholders(html, "Infini Guild", "/guild-logo.svg")).toBe(
+      '<title>Infini Guild</title><img src="/guild-logo.svg" alt="">',
     );
   });
 });

@@ -330,8 +330,8 @@ export async function seedDatabase(env: Bindings): Promise<void> {
 
   await db.insert(siteConfig).values({
     id: "default",
-    siteName: "Infini 公会",
-    siteLogoUrl: "/guild-logo.webp",
+    siteName: "演示公会",
+    siteLogoUrl: "/guild-logo.svg",
     featureFlagsJson: JSON.stringify({
       announcements: true,
       events: true,

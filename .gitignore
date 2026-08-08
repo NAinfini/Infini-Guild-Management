@@ -29,7 +29,6 @@ apps/portal/e2e/.artifacts/
 !**/.dev.vars.example
 !**/.dev.vars.*.example
 **/wrangler.jsonc
-!apps/worker/wrangler.jsonc
 !**/wrangler.example.jsonc
 *.pem
 *.key
@@ -55,6 +54,9 @@ id_ed25519*
 backups/
 calculators/
 docs/plans/
+docs/superpowers/
+# 本部署自己的公会 logo；仓库只带中性的 guild-logo.svg 模板素材
+apps/portal/public/guild-logo.webp
 
 # Temporary files
 *.log

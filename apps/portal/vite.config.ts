@@ -100,7 +100,7 @@ export default defineConfig(({ mode }) => {
   );
   const workerWsTarget = toWsTarget(workerHttpTarget);
   const localSiteName = env.VITE_SITE_NAME?.trim() || "Infini Guild";
-  const localSiteLogoUrl = env.VITE_SITE_LOGO_URL?.trim() || "/guild-logo.webp";
+  const localSiteLogoUrl = env.VITE_SITE_LOGO_URL?.trim() || "/guild-logo.svg";
 
   return {
     root: portalDir,
@@ -223,6 +223,11 @@ export default defineConfig(({ mode }) => {
       ],
     },
     server: {
+      // The worker's CORS allowlist and PORTAL_ORIGIN pin this exact origin.
+      // Failing fast beats Vite silently hopping to 5174 and breaking every
+      // credentialed request.
+      port: 5173,
+      strictPort: true,
       proxy: {
         [API_PROXY_CONTEXT]: {
           target: workerHttpTarget,

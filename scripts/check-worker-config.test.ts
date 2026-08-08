@@ -22,10 +22,9 @@ function validConfig() {
         vars: {
           ENVIRONMENT: "production",
           SITE_NAME: "My Guild",
-          SITE_LOGO_URL: "/guild-logo.webp",
+          SITE_LOGO_URL: "/guild-logo.svg",
           PORTAL_ORIGIN: "",
           MEDIA_ORPHAN_DELETE_MODE: "report",
-          ENABLE_PRODUCTION_SYSTEM_TESTS: "false",
         },
         d1_databases: [{
           binding: "DB",
@@ -79,6 +78,61 @@ describe("worker config preflight", () => {
     ]));
   });
 
+  it("waives only placeholder findings in template mode, keeping structural rules", () => {
+    const config = validConfig();
+    config.env.production.d1_databases[0]!.database_id = "YOUR_D1_DATABASE_ID";
+    config.env.production.r2_buckets[0]!.bucket_name = "YOUR_R2_BUCKET_NAME";
+    expect(validateWorkerConfig(config, "production", { allowPlaceholders: true })).toEqual([]);
+
+    delete (config.env.production as { observability?: unknown }).observability;
+    expect(validateWorkerConfig(config, "production", { allowPlaceholders: true })).toEqual(expect.arrayContaining([
+      expect.stringContaining("observability.logs"),
+    ]));
+  });
+
+  it("requires PORTAL_ORIGIN to be a bare origin or the same-origin empty string", () => {
+    const config = validConfig();
+    const vars = config.env.production.vars as Record<string, string | undefined>;
+
+    vars.PORTAL_ORIGIN = "https://portal.example.com";
+    expect(validateWorkerConfig(config, "production")).toEqual([]);
+
+    // The worker compares Origin headers verbatim, and a browser never sends
+    // a trailing slash or path — these values would silently never match.
+    for (const rejected of [
+      "https://portal.example.com/",
+      "https://portal.example.com/app",
+      "portal.example.com",
+      "ftp://portal.example.com",
+    ]) {
+      vars.PORTAL_ORIGIN = rejected;
+      expect(validateWorkerConfig(config, "production")).toEqual([
+        expect.stringContaining("PORTAL_ORIGIN"),
+      ]);
+    }
+
+    delete vars.PORTAL_ORIGIN;
+    expect(validateWorkerConfig(config, "production")).toEqual([
+      expect.stringContaining("PORTAL_ORIGIN"),
+    ]);
+  });
+
+  it("rejects a malformed PBKDF2_ITERATIONS override but accepts a raised one", () => {
+    const config = validConfig();
+    (config.env.production.vars as Record<string, string>).PBKDF2_ITERATIONS = "600000";
+    expect(validateWorkerConfig(config, "production")).toEqual([]);
+
+    (config.env.production.vars as Record<string, string>).PBKDF2_ITERATIONS = "lots";
+    expect(validateWorkerConfig(config, "production")).toEqual([
+      expect.stringContaining("PBKDF2_ITERATIONS"),
+    ]);
+
+    (config.env.production.vars as Record<string, string>).PBKDF2_ITERATIONS = "999";
+    expect(validateWorkerConfig(config, "production")).toEqual([
+      expect.stringContaining("PBKDF2_ITERATIONS"),
+    ]);
+  });
+
   it("requires either workers.dev or a configured route", () => {
     const config = validConfig();
     config.env.production.workers_dev = false;
@@ -94,7 +148,6 @@ describe("worker config preflight", () => {
     delete config.env.production.assets;
     delete config.env.production.durable_objects;
     delete config.env.production.vars.MEDIA_ORPHAN_DELETE_MODE;
-    delete config.env.production.vars.ENABLE_PRODUCTION_SYSTEM_TESTS;
     config.triggers.crons = ["0 0 * * *"];
 
     expect(validateWorkerConfig(config, "production")).toEqual(expect.arrayContaining([
@@ -103,7 +156,6 @@ describe("worker config preflight", () => {
       expect.stringContaining("SPA assets"),
       expect.stringContaining('Durable Object binding "WS"'),
       expect.stringContaining("MEDIA_ORPHAN_DELETE_MODE"),
-      expect.stringContaining("ENABLE_PRODUCTION_SYSTEM_TESTS"),
       expect.stringContaining("*/15 * * * *"),
     ]));
   });

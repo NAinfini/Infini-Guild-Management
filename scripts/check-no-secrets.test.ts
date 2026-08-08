@@ -20,9 +20,9 @@ describe("secret scanner", () => {
   it("forbids sensitive tracked files while allowing examples", () => {
     expect(isForbiddenTrackedFile("apps/worker/.dev.vars")).toBe(true);
     expect(isForbiddenTrackedFile("deploy/.env.production")).toBe(true);
-    expect(isForbiddenTrackedFile("apps/worker/wrangler.jsonc")).toBe(false);
+    expect(isForbiddenTrackedFile("apps/worker/wrangler.jsonc")).toBe(true);
     expect(isForbiddenTrackedFile("apps/other/wrangler.jsonc")).toBe(true);
-    expect(isForbiddenTrackedFile("apps\\worker\\wrangler.jsonc")).toBe(false);
+    expect(isForbiddenTrackedFile("apps\\worker\\wrangler.jsonc")).toBe(true);
     expect(isForbiddenTrackedFile("certs/server.key")).toBe(true);
     expect(isForbiddenTrackedFile("apps/worker/.dev.vars.example")).toBe(false);
     expect(isForbiddenTrackedFile("apps/worker/wrangler.example.jsonc")).toBe(false);

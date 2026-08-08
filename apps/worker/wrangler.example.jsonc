@@ -22,7 +22,7 @@
     "ENVIRONMENT": "development",
     "PORTAL_ORIGIN": "http://localhost:5173",
     "SITE_NAME": "My Guild",
-    "SITE_LOGO_URL": "/guild-logo.webp"
+    "SITE_LOGO_URL": "/guild-logo.svg"
   },
   "d1_databases": [
     {
@@ -97,11 +97,13 @@
         // Keep production in report mode until the first full media-reference
         // scan has been reviewed. Change to "delete" only after that review.
         "MEDIA_ORPHAN_DELETE_MODE": "report",
-        // These routes create and delete fixtures. Keep them unavailable in
-        // production unless an operator explicitly opens a maintenance window.
-        "ENABLE_PRODUCTION_SYSTEM_TESTS": "false",
+        // Password-hashing cost for new hashes and login rehashes. The default
+        // (10000) fits the Workers free-plan CPU budget; on a paid plan raise it
+        // (OWASP recommends 600000 for PBKDF2-SHA256). Existing accounts upgrade
+        // to the new cost automatically on their next login.
+        // "PBKDF2_ITERATIONS": "600000",
         "SITE_NAME": "My Guild",
-        "SITE_LOGO_URL": "/guild-logo.webp"
+        "SITE_LOGO_URL": "/guild-logo.svg"
       },
       "r2_buckets": [
         {

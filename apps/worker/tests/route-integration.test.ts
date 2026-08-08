@@ -134,7 +134,7 @@ function createMockEnv(featureFlags?: Record<string, boolean>): Bindings {
     ENVIRONMENT: "test",
     SIGNING_SECRET: "test-secret",
     SITE_NAME: "Test Guild",
-    SITE_LOGO_URL: "/guild-logo.webp",
+    SITE_LOGO_URL: "/guild-logo.svg",
   } as unknown as Bindings;
 }
 
