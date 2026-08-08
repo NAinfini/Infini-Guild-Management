@@ -2,7 +2,7 @@
 
 ## Supported version
 
-Security fixes are made on the latest `main` branch. Until versioned releases are published, older commits are not separately supported.
+Security fixes land on the latest `main` branch and ship with the next tagged release. Older tags are not separately patched.
 
 ## Report a vulnerability privately
 
@@ -13,7 +13,7 @@ Do not open a public issue for a suspected vulnerability. Use this repository's 
 - whether credentials, private guild data, or real user data may be exposed;
 - a suggested fix, if available.
 
-Never include real passwords, session cookies, invite codes, `SIGNING_SECRET`, Cloudflare API tokens, private guild data, or production database exports. Resource names, D1/R2 identifiers, and public routes already present in the tracked `wrangler.jsonc` are configuration identifiers rather than authentication secrets, but a private fork may still redact identifiers it does not intend to publish.
+Never include real passwords, session cookies, invite codes, `SIGNING_SECRET`, Cloudflare API tokens, private guild data, or production database exports. Resource names, D1/R2 identifiers, and routes from your `wrangler.jsonc` are configuration identifiers rather than authentication secrets — and that file is untracked, so the repository never publishes them — but you may still redact identifiers you do not intend to disclose.
 
 Maintainers will acknowledge a complete report, assess severity, and coordinate remediation before public disclosure. Repository owners must enable GitHub private vulnerability reporting before making a fork public.
 
@@ -21,7 +21,8 @@ Maintainers will acknowledge a complete report, assess severity, and coordinate 
 
 - Backend permission checks are authoritative; client-side guards only shape the interface.
 - Sessions use HTTP-only cookies. Mutations require origin validation and `X-Requested-With`, and sensitive route groups have dedicated rate limits.
-- Rich text is sanitized and responses use CSP, HSTS, frame denial, `nosniff`, referrer, and permissions policies.
+- Passwords are stored as self-describing PBKDF2-SHA256 hashes. The iteration count defaults to 10,000 so logins fit the Workers free-plan CPU budget and is configurable via `PBKDF2_ITERATIONS`; paid-plan deployments should raise it toward the OWASP-recommended 600,000, and existing accounts rehash to the new cost on their next login.
+- Rich-text documents are validated server-side against a strict node/mark whitelist, member-authored inline HTML passes one shared sanitizer, and responses use CSP, HSTS, frame denial, `nosniff`, referrer, and permissions policies.
 - Persisted images are limited to WebP/GIF and profile audio to Ogg/Opus. The Worker compares declared MIME types with magic bytes, verifies the Opus codec, and rejects SVG.
 - `SIGNING_SECRET` protects audit archive download tokens and authenticates internal Worker-to-Durable-Object push publication. Rotate it if exposure is suspected.
 - Audit archives and their authoritative manifests share the single `MEDIA` R2 bucket with content media, but application keyspace checks keep content operations out of the archive prefix.
@@ -30,4 +31,4 @@ Maintainers will acknowledge a complete report, assess severity, and coordinate 
 
 [SETUP.md](./SETUP.md) is the canonical deployment and update guide. Self-hosters are responsible for protecting Cloudflare access, storing secrets only in Cloudflare secret storage, applying reviewed migrations, keeping dependencies current, and backing up data before authorized remote migrations.
 
-Keep `MEDIA_ORPHAN_DELETE_MODE=report` until an operator explicitly reviews and authorizes destructive cleanup. `ENABLE_PRODUCTION_SYSTEM_TESTS` is an operator decision: this deployment runs it as `true` so admins can health-check every API from the console; the run registry tracks each fixture and cleanup deletes by exact ID only, and admin permissions still gate every request. Never manually patch production D1 or rewrite/delete production R2 objects; use the application's reviewed migration, admin, and maintenance workflows.
+Keep `MEDIA_ORPHAN_DELETE_MODE=report` until an operator explicitly reviews and authorizes destructive cleanup. The admin system-test console is always available in production so operators can health-check every API without a code change; it is safe to expose because admin permissions gate every request, the run registry tracks each fixture, and cleanup deletes by exact ID only. Never manually patch production D1 or rewrite/delete production R2 objects; use the application's reviewed migration, admin, and maintenance workflows.

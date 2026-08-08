@@ -28,7 +28,7 @@ Use these locations as the source of truth:
 - `apps/worker/services/`: business rules, transactions, audit writes, and storage logic.
 - `apps/worker/db/schema/`: Drizzle model truth.
 - `apps/worker/db/migrations/`: executable D1 SQL and migration policy.
-- `apps/worker/wrangler.jsonc`: the tracked Worker configuration for assets, D1, R2, Durable Objects, variables, production bindings, and schedules. There is no root `wrangler.jsonc`.
+- `apps/worker/wrangler.jsonc`: the untracked per-deployment Worker configuration for assets, D1, R2, Durable Objects, variables, production bindings, and schedules; `wrangler.example.jsonc` is its tracked template. There is no root `wrangler.jsonc`.
 - `apps/portal/e2e/` and `playwright.config.ts`: end-to-end isolation and cleanup contract.
 
 Prefer directory-level discovery with `rg --files` and targeted symbol search. Do not maintain a second exhaustive file list here.
@@ -119,8 +119,8 @@ Game rules are source-owned application contracts, not runtime administration da
 - Validate untrusted input with shared schemas at the boundary. Do not trust client identifiers, MIME declarations, filenames, route permissions, or derived ownership.
 - Mutating domain operations must write the appropriate audit record. Use durable audit writes where the existing service requires failure to block success.
 - Keep CSP, HSTS, frame denial, content-type protection, referrer policy, and permissions policy intact unless the requested change explicitly changes the security model.
-- Never commit secrets or populated local secret files. `SIGNING_SECRET` is a Cloudflare secret, not a value for tracked JSON. A tracked `apps/worker/wrangler.jsonc` is expected; production binding changes still require review.
-- Keep production system tests disabled unless an explicitly authorized production diagnostic requires them.
+- Never commit secrets or populated local secret files. `SIGNING_SECRET` is a Cloudflare secret, not a value for tracked JSON. `apps/worker/wrangler.jsonc` is untracked by design — the repository tracks only `wrangler.example.jsonc`; template changes still require review.
+- The admin system-test console is permission-gated, always available, and cleans up its fixtures by exact ID; preserve the run registry and compensation behavior when touching it.
 
 ## Media and R2
 
@@ -138,9 +138,9 @@ R2 audit archives are integrity-checked and signed through existing services. Do
 
 ## D1 and migrations
 
-- Drizzle modules under `apps/worker/db/schema/` define the runtime model. `apps/worker/db/migrations/0000_core_schema.sql` must mirror that model plus SQLite-only details and required seed records.
-- Before the first production D1 database is created, `0000_core_schema.sql` is the only migration and the only fresh-database core SQL that may be synchronized or rebuilt in place. Keep `versions.json` in pre-production core mode.
-- As soon as the first production D1 database is created, freeze `0000_core_schema.sql` permanently. Every later schema change uses a new monotonic incremental file (`0001_...`, then `0002_...`) with an upgrade/data-preservation test.
+- Drizzle modules under `apps/worker/db/schema/` define the runtime model. The applied migration chain must produce a database that mirrors that model plus SQLite-only details and required seed records.
+- `apps/worker/db/migrations/0000_core_schema.sql` is the frozen schema baseline. Never edit or replace it, and never edit any migration a deployment has applied; `versions.json` stays in incremental mode.
+- Every schema change uses a new monotonic incremental file (`0001_...`, then `0002_...`) with an upgrade/data-preservation test.
 - Keep Drizzle checks, SQL checks, foreign keys, indexes, built-in roles/permissions, classes, and Site Config seed data aligned.
 - D1 has no automatic rollback. Never apply a remote migration without explicit authorization, a backup plan, and local verification of the exact path.
 - For current details and validation commands, read `apps/worker/db/migrations/README.md`.

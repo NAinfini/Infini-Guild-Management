@@ -110,13 +110,13 @@ Mutations require origin and `X-Requested-With` checks. The Worker also applies 
 | Daily at 00:00 UTC | Audit archive, media orphan scan/cleanup, and error-log cleanup |
 | Every 15 minutes | Event instance generation, raffle draws, session cleanup, and scheduled announcement publishing, followed by event auto-archive |
 
-Production keeps `MEDIA_ORPHAN_DELETE_MODE=report`. `ENABLE_PRODUCTION_SYSTEM_TESTS=true` keeps the admin API test console available in production: every fixture a test run creates is registered in a server-side run registry and deleted by exact ID when the run ends.
+Production starts with `MEDIA_ORPHAN_DELETE_MODE=report`, so destructive media cleanup stays opt-in until an operator reviews a full scan. The admin API test console is always available and gated by admin permissions: every fixture a test run creates is registered in a server-side run registry and deleted by exact ID when the run ends.
 
 ## Setup and deployment
 
 [SETUP.md](./SETUP.md) is the single source of truth for prerequisites, local development, first production initialization, Cloudflare resources, migrations, deployment, updates, and troubleshooting. Use [SETUP.zh.md](./SETUP.zh.md) for the matching Chinese guide.
 
-The repository is still before its first production initialization. The setup guide explains when the sole core migration may still be synchronized and when it must be frozen.
+The core migration is a frozen schema baseline; every schema change ships as a new incremental migration. The setup guide states the full policy, including how to run on the Workers free plan and what to raise after upgrading.
 
 ## Security
 

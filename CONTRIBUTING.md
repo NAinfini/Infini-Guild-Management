@@ -49,12 +49,12 @@ The repository does not enforce Conventional Commits in CI, so do not rewrite ot
 - Use `requirePermission()` for protected operations. Permissions are resolved from D1 per request and may be cached only within that request. Isolate-wide permission caches are forbidden.
 - Preserve the existing middleware order for request IDs, configuration checks, CORS, security headers, mutation-origin checks, rate limits, body limits, ETags, session handling, and feature gates.
 - Record audit entries for mutating operations using the established service dependencies.
-- The tracked Worker configuration is `apps/worker/wrangler.jsonc`. Secrets belong in Cloudflare secrets, not tracked JSON.
+- The Worker configuration template is `apps/worker/wrangler.example.jsonc`; each clone's `wrangler.jsonc` is untracked and created by `pnpm setup:local`. Secrets belong in Cloudflare secrets, not JSON.
 
 ### Database
 
 - Drizzle modules in `apps/worker/db/schema/` are the runtime model source of truth.
-- Follow [the migration policy](./apps/worker/db/migrations/README.md). Before the first production D1 database is created, `0000_core_schema.sql` may be synchronized or rebuilt in place. As soon as that database is created, freeze `0000` permanently; every later schema change uses monotonic incremental migrations starting at `0001_...`.
+- Follow [the migration policy](./apps/worker/db/migrations/README.md): `0000_core_schema.sql` is the frozen schema baseline, and every schema change uses monotonic incremental migrations starting at `0001_...`. Never edit a migration any deployment has applied.
 - Keep Drizzle and SQL checks, foreign keys, indexes, and required baseline rows aligned.
 - Do not apply remote migrations without explicit authorization.
 
@@ -116,7 +116,7 @@ pnpm config:check -- --env=production
 pnpm release:check
 ```
 
-`pnpm test:e2e` builds the portal and runs isolated Playwright slots against Worker-served production assets. Use it for cross-layer browser behavior, not as a substitute for focused tests.
+Before the first `pnpm test:e2e` on a machine, run `pnpm setup:local` (the Worker needs the untracked `wrangler.jsonc` and `.dev.vars` it creates) and `pnpm exec playwright install chromium`. `pnpm test:e2e` builds the portal and runs isolated Playwright slots against Worker-served production assets. Use it for cross-layer browser behavior, not as a substitute for focused tests; stop `pnpm dev` first, because the slots start their own Workers.
 
 ## Pull request checklist
 

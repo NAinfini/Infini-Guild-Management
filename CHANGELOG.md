@@ -1,10 +1,14 @@
 # Changelog
 
-All notable changes to this pre-release project are summarized here.
+All notable changes to this project are summarized here.
 
-The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Release versions will follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Release versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+
+## [0.1.0] - 2026-08-08
+
+First public release. The entries below describe the product as shipped.
 
 ### Added
 
@@ -29,18 +33,20 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Rel
 - Storage transactions and batch operations preserve ledger consistency and idempotency, while ordered relations and database constraints protect domain invariants.
 - Game rules are fixed source contracts rather than Site Config or D1-managed data: six event types, three guild-war results, shared stat definitions, and an unrounded KDA evaluator.
 - Upload paths share the same browser conversion and Worker validation contract, including server-normalized content types and validation before the first R2 write in a batch.
+- Media serving honors conditional requests (`304`) and byte ranges (`206`), and the daily media cleanup purges expired upload leases in both `report` and `delete` modes while destructive orphan deletion stays opt-in.
 
 ### Security
 
 - Worker middleware enforces request IDs, strict CORS, mutation origin and `X-Requested-With` checks, per-purpose rate limits, body-size limits, ETags, session and permission checks, feature gates, and structured error envelopes.
-- CSP, HSTS, frame denial, content-type protection, referrer policy, permissions policy, invite/login lockout behavior, hashed session tokens, and PBKDF2 password storage are covered by focused tests.
+- CSP, HSTS, frame denial, content-type protection, referrer policy, permissions policy, invite/login lockout behavior, hashed session tokens, and self-describing configurable-cost PBKDF2 password storage are covered by focused tests.
+- Announcement and wiki rich text is validated server-side against a strict node/mark whitelist, and member-authored inline HTML (profile titles, badge labels) passes one shared sanitizer.
 - Mutating operations emit audit records; aged audit data is archived to integrity-checked R2 objects with signed access rather than exposed directly.
-- Production configuration requires secrets outside tracked files and keeps production system tests disabled by default.
+- Production configuration requires secrets outside tracked files; the deployment manifest itself is untracked and generated from a template. The admin system-test console is always available, permission-gated, and cleans up its fixtures by exact ID.
 
 ### Database
 
-- Modular Drizzle schemas define the runtime D1 model, with mirrored named checks, foreign keys, indexes, ordered relation tables, and baseline role/permission, class, and Site Config records in `0000_core_schema.sql`.
-- Before the first production D1 database is created, `0000_core_schema.sql` remains the single fresh-database migration that may be synchronized or rebuilt in place. As soon as that database is created, `0000` freezes permanently; every later schema change uses monotonic incremental migrations starting at `0001_...`.
+- Modular Drizzle schemas define the runtime D1 model, with mirrored named checks, foreign keys, indexes, ordered relation tables, and baseline role/permission and class records in `0000_core_schema.sql`.
+- `0000_core_schema.sql` is the frozen schema baseline; every schema change uses monotonic incremental migrations starting at `0001_...`. Baseline seeds are deployment-neutral, and site identity comes from environment variables on first boot instead of being baked into the schema.
 - D1 media references and R2 lifecycle checks keep content rows, upload leases, cleanup checkpoints, and stored objects reconcilable.
 
 ### Tooling
