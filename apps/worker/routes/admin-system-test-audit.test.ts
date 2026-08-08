@@ -39,10 +39,9 @@ const env = {
   SIGNING_SECRET: "test-secret",
 };
 
-const productionDisabledEnv = {
+const productionEnv = {
   ...env,
   ENVIRONMENT: "production",
-  ENABLE_PRODUCTION_SYSTEM_TESTS: "false",
 };
 
 beforeEach(() => {
@@ -60,16 +59,17 @@ beforeEach(() => {
 describe("admin system test audit route", () => {
   it.each([
     "/status/system-test-runs",
-    "/status/system-test-runs/run-disabled/cleanup",
-    "/status/system-test-runs/run-disabled/finalize",
+    "/status/system-test-runs/run-prod/cleanup",
+    "/status/system-test-runs/run-prod/finalize",
     "/status/system-test-audit",
-  ])("does not expose %s when production system tests are disabled", async (path) => {
+  ])("serves %s in production with the permission check as the only gate", async (path) => {
     const { adminRoutes } = await import("./admin");
+    mocks.requirePermission.mockRejectedValueOnce(new HTTPException(401));
 
-    const result = await adminRoutes.request(path, { method: "POST" }, productionDisabledEnv);
+    const result = await adminRoutes.request(path, { method: "POST" }, productionEnv);
 
-    expect(result.status).toBe(404);
-    expect(mocks.requirePermission).not.toHaveBeenCalled();
+    expect(result.status).toBe(401);
+    expect(mocks.requirePermission).toHaveBeenCalledWith(expect.anything(), "admin.status.view");
     expect(mocks.createRun).not.toHaveBeenCalled();
     expect(mocks.finalizeRun).not.toHaveBeenCalled();
   });

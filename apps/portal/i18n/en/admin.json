@@ -263,8 +263,6 @@
   "status.api.progress": "Progress",
   "status.api.runCategory": "Test Category APIs",
   "status.api.runAll": "Test All APIs",
-  "status.api.disabledTitle": "Production API tests are disabled",
-  "status.api.disabledDescription": "Fixture-writing system tests are unavailable in production. Run the release suite in CI or explicitly open a controlled maintenance window.",
   "status.api.stop": "Stop tests",
   "status.api.pass": "pass",
   "status.api.fail": "fail",

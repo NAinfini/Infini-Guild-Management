@@ -263,8 +263,6 @@
   "status.api.progress": "进度",
   "status.api.runCategory": "测试本分类 API",
   "status.api.runAll": "测试全部 API",
-  "status.api.disabledTitle": "生产环境 API 测试已停用",
-  "status.api.disabledDescription": "会写入测试数据的系统测试在生产环境不可用。请在 CI 中运行发布测试，或由运维人员明确开启受控维护窗口。",
   "status.api.stop": "停止测试",
   "status.api.pass": "通过",
   "status.api.fail": "失败",

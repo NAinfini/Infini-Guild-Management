@@ -19,7 +19,7 @@ import { requirePermission } from "../middleware/rbac";
 import { writeAuditLog, writeAuditLogDurable } from "../services/audit";
 import { AdminService, type MediaLike } from "../services/AdminService";
 import { AdminAuditService, AuditLogQueryError } from "../services/AdminAuditService";
-import { createPasswordHash } from "../services/auth";
+import { createPasswordHash, resolvePbkdf2Iterations } from "../services/auth";
 import { errorLog } from "../db/schema/error-log";
 import { buildError, getDb, handleResult, parseJsonBody, parsePage } from "./_shared";
 import { getSiteConfigService } from "./site-config";
@@ -45,17 +45,6 @@ const systemTestSummarySchema = z.object({
   })).max(100),
 });
 
-export function areSystemTestsEnabled(
-  env: Pick<Bindings, "ENVIRONMENT" | "ENABLE_PRODUCTION_SYSTEM_TESTS">,
-): boolean {
-  return env.ENVIRONMENT !== "production" || env.ENABLE_PRODUCTION_SYSTEM_TESTS === "true";
-}
-
-function rejectDisabledSystemTests(c: Context): Response | null {
-  if (areSystemTestsEnabled(c.env as Bindings)) return null;
-  return buildError(c, "NOT_FOUND", "Not found");
-}
-
 function getAdminService(c: Context) {
   const env = c.env as Bindings;
   const db = getDb(c);
@@ -64,7 +53,7 @@ function getAdminService(c: Context) {
     media: env.MEDIA as unknown as MediaLike,
     writeAuditLog: (input) => writeAuditLog(c, input),
     writeAuditLogDurable: (input) => writeAuditLogDurable(c, input),
-    createPasswordHash,
+    createPasswordHash: (password) => createPasswordHash(password, resolvePbkdf2Iterations(env)),
     generateId: () => nanoid(),
     generateInviteCode: () => generateInviteCode(),
     generateTemporaryPassword: () => generateTemporaryPassword(),
@@ -314,24 +303,16 @@ adminRoutes.post("/site-config/logo", async (c) => {
 adminRoutes.get("/status", async (c) => {
   await requirePermission(c, "admin.status.view");
   const result = await getAdminService(c).getStatus();
-  if (!result.ok) return handleResult(c, result);
-  return c.json({
-    ...result.data,
-    system_tests_enabled: areSystemTestsEnabled(c.env as Bindings),
-  });
+  return handleResult(c, result);
 });
 
 adminRoutes.post("/status/system-test-runs", async (c) => {
-  const disabledResponse = rejectDisabledSystemTests(c);
-  if (disabledResponse) return disabledResponse;
   const sessionUser = await requirePermission(c, "admin.status.view");
   const runId = await new SystemTestService(c.env as Bindings).createRun(sessionUser.id);
   return c.json({ run_id: runId, fixture_id: crypto.randomUUID() }, 201);
 });
 
 adminRoutes.post("/status/system-test-runs/:runId/cleanup", async (c) => {
-  const disabledResponse = rejectDisabledSystemTests(c);
-  if (disabledResponse) return disabledResponse;
   const sessionUser = await requirePermission(c, "admin.status.view");
   try {
     const result = await new SystemTestService(c.env as Bindings).cleanupRun(c.req.param("runId"), sessionUser.id);
@@ -342,8 +323,6 @@ adminRoutes.post("/status/system-test-runs/:runId/cleanup", async (c) => {
 });
 
 adminRoutes.post("/status/system-test-runs/:runId/finalize", async (c) => {
-  const disabledResponse = rejectDisabledSystemTests(c);
-  if (disabledResponse) return disabledResponse;
   const sessionUser = await requirePermission(c, "admin.status.view");
   try {
     await new SystemTestService(c.env as Bindings).finalizeRun(c.req.param("runId"), sessionUser.id);
@@ -354,8 +333,6 @@ adminRoutes.post("/status/system-test-runs/:runId/finalize", async (c) => {
 });
 
 adminRoutes.post("/status/system-test-audit", async (c) => {
-  const disabledResponse = rejectDisabledSystemTests(c);
-  if (disabledResponse) return disabledResponse;
   const sessionUser = await requirePermission(c, "admin.status.view");
   const runId = c.req.header(SYSTEM_TEST_RUN_ID_HEADER) ?? getSystemTestRunId(c);
   if (!runId) return buildError(c, "FORBIDDEN", "A valid active system-test run is required");

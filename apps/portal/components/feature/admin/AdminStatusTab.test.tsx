@@ -56,7 +56,6 @@ type RenderStatusTabOptions = {
     r2: string;
     ws: string;
     crons: string;
-    system_tests_enabled?: boolean;
   } | null;
   statusHealthLogs?: Array<{
     at: string;
@@ -87,7 +86,6 @@ function renderStatusTab(options: RenderStatusTabOptions = {}) {
               r2: "ok",
               ws: "ok",
               crons: "ok",
-              system_tests_enabled: true,
             }}
         statusHealthLogs={options.statusHealthLogs ?? []}
       />
@@ -109,11 +107,11 @@ describe("AdminStatusTab", () => {
     };
   });
 
-  it("uses the server capability instead of the Vite build mode", () => {
+  it("never gates the console on the Vite build mode or a server capability flag", () => {
     const source = readFileSync(resolve(process.cwd(), "apps/portal/components/feature/admin/AdminStatusTab.tsx"), "utf8");
 
     expect(source).not.toContain("import.meta.env.DEV");
-    expect(source).toContain("system_tests_enabled");
+    expect(source).not.toContain("system_tests_enabled");
   });
 
   it("clears stale endpoint results before a single-category run", () => {
@@ -130,7 +128,7 @@ describe("AdminStatusTab", () => {
     expect(runCategoryBlock).toContain("finalizeServerRun");
   });
 
-  it("renders the API test console when the server enables it", () => {
+  it("always renders the API test console for status viewers", () => {
     renderStatusTab();
 
     expect(screen.getByText("status.section.apiTests")).toBeInTheDocument();
@@ -138,24 +136,6 @@ describe("AdminStatusTab", () => {
     expect(screen.getByRole("button", { name: "status.api.runAll" })).toHaveClass(
       "api-console__run-all",
     );
-  });
-
-  it("replaces the API test console with a clear notice when the server disables it", () => {
-    renderStatusTab({
-      statusData: {
-        db: "ok",
-        r2: "ok",
-        ws: "configured",
-        crons: "configured",
-        system_tests_enabled: false,
-      },
-    });
-
-    expect(screen.getByText("status.api.disabledTitle")).toBeInTheDocument();
-    expect(screen.getByText("status.api.disabledDescription")).toBeInTheDocument();
-    expect(screen.queryByText("status.section.apiTests")).not.toBeInTheDocument();
-    expect(screen.queryByText("status.api.debugTitle")).not.toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "status.api.runAll" })).not.toBeInTheDocument();
   });
 
   it("runs the explicit quick check action", async () => {
@@ -177,7 +157,6 @@ describe("AdminStatusTab", () => {
         r2: "ok",
         ws: "configured",
         crons: "configured",
-        system_tests_enabled: false,
       },
     });
 
@@ -194,7 +173,6 @@ describe("AdminStatusTab", () => {
         r2: "ok",
         ws: "configured",
         crons: "configured",
-        system_tests_enabled: true,
       },
     });
 

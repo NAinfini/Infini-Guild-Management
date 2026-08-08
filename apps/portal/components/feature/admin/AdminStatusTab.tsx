@@ -27,7 +27,6 @@ type StatusData = {
   r2: string;
   ws: string;
   crons: string;
-  system_tests_enabled?: boolean;
 };
 
 type StatusHealthLog = {
@@ -106,7 +105,6 @@ export function AdminStatusTab({
     stop,
   } = useAdminApiTestRunner(visibleApiCategories);
   const isRunning = runningAll || runningSet.size > 0;
-  const systemTestsEnabled = statusData?.system_tests_enabled === true;
 
   /*
    * 三块内容默认折起：这一页最常用的动作是「扫一眼四个服务是不是绿的」，
@@ -260,8 +258,6 @@ export function AdminStatusTab({
         </Collapse>
       </section>
 
-      {systemTestsEnabled ? (
-        <>
       {/* ── API Test Console ────────────────────────── */}
       <div className="api-console">
         <div className={`api-console__header${hasProgress ? " api-console__header--with-progress" : ""}`}>
@@ -343,12 +339,6 @@ export function AdminStatusTab({
         open={debugConsoleOpen}
         onToggle={() => setDebugConsoleOpen((open) => !open)}
       />
-        </>
-      ) : statusData ? (
-        <Alert color="yellow" title={t("status.api.disabledTitle")}>
-          {t("status.api.disabledDescription")}
-        </Alert>
-      ) : null}
     </Stack>
   );
 }
