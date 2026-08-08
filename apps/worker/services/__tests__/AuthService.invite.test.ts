@@ -81,6 +81,7 @@ function createMockDeps(inviteId: string | null) {
     },
     createPasswordHash: vi.fn().mockResolvedValue({ passwordHash: "hash", salt: "salt" }),
     verifyPassword: vi.fn(),
+    passwordHashTargetIterations: 10_000,
     createSession: vi.fn().mockResolvedValue(undefined),
     destroySessionById: vi.fn().mockResolvedValue(undefined),
     writeAuditLog: vi.fn().mockResolvedValue(undefined),

@@ -13,6 +13,7 @@ import { eq, sql } from "drizzle-orm";
 import type { DrizzleD1Database } from "drizzle-orm/d1";
 import { nanoid } from "nanoid";
 import { memberProfiles, rolePermissions, roles, userAuthPassword, users } from "../db/schema";
+import { getPasswordHashIterations } from "./auth";
 import { ok, err, type ServiceResult } from "./result";
 import { parseStringArray, parseRecord, usernameEquals } from "./helpers";
 import { clearLoginFailures, readLockout, recordLoginFailure } from "./login-lockout";
@@ -28,6 +29,8 @@ export type AuthServiceDeps = {
   rawDb: D1Database;
   createPasswordHash: (password: string) => Promise<{ passwordHash: string; salt: string }>;
   verifyPassword: (password: string, salt: string, hash: string) => Promise<boolean>;
+  /** Iteration count createPasswordHash writes; logins with an older count rehash to it. */
+  passwordHashTargetIterations: number;
   createSession: (userId: string, opts?: { stayLoggedIn?: boolean }) => Promise<void>;
   destroySessionById: (sessionId: string) => Promise<void>;
   enforceSessionLimit: (userId: string) => Promise<void>;
@@ -179,7 +182,7 @@ export class AuthService {
       await this.deps.verifyPassword(
         password,
         "AAAAAAAAAAAAAAAAAAAAAA==",
-        "pbkdf2-sha256$600000$AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=",
+        `pbkdf2-sha256$${this.deps.passwordHashTargetIterations}$AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=`,
       );
       await this.registerLoginFailure(attempted, account ? { id: account.id, username: account.username } : null, "unknown_or_inactive_account", clientIp, now);
       return err("UNAUTHORIZED", "Invalid credentials");
@@ -191,6 +194,14 @@ export class AuthService {
     }
     // Correct password resets the ladder, so a run of typos never accumulates.
     await clearLoginFailures(this.db, attempted);
+    // The login password is the only chance to re-derive at the current target
+    // strength, so stored hashes follow PBKDF2_ITERATIONS changes here.
+    if (getPasswordHashIterations(account.passwordHash) !== this.deps.passwordHashTargetIterations) {
+      const upgraded = await this.deps.createPasswordHash(password);
+      await this.db.update(userAuthPassword)
+        .set({ passwordHash: upgraded.passwordHash, salt: upgraded.salt })
+        .where(eq(userAuthPassword.userId, account.id));
+    }
     // Keeps at most MAX_SESSIONS_PER_USER logins alive; the oldest is evicted.
     await this.deps.enforceSessionLimit(account.id);
     await this.deps.createSession(account.id, { stayLoggedIn });

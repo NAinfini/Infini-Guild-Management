@@ -29,6 +29,8 @@ vi.mock("hono/cookie", () => ({
 const {
   createPasswordHash,
   destroySessionById,
+  getPasswordHashIterations,
+  resolvePbkdf2Iterations,
   resolveSession,
   SESSION_COOKIE_NAME,
   SESSION_MODE_COOKIE_NAME,
@@ -185,23 +187,38 @@ describe("destroySessionById", () => {
 });
 
 describe("password hashing", () => {
-  it("creates a self-describing current-strength hash", async () => {
+  it("creates a self-describing hash at the free-plan default strength", async () => {
     const record = await createPasswordHash("correct horse battery staple");
 
-    expect(record.passwordHash).toMatch(/^pbkdf2-sha256\$600000\$[A-Za-z0-9+/]+=*$/);
+    expect(record.passwordHash).toMatch(/^pbkdf2-sha256\$10000\$[A-Za-z0-9+/]+=*$/);
     await expect(verifyPassword("correct horse battery staple", record.salt, record.passwordHash)).resolves.toBe(true);
     await expect(verifyPassword("wrong password", record.salt, record.passwordHash)).resolves.toBe(false);
   });
 
-  it("rejects hashes outside the current format", async () => {
-    const unversionedHash = "d+gPm++1wHgP08FbNF4/XqcVr71FAp5Ti7pmoiY//S4=";
+  it("verifies a hash at whatever iteration count it carries", async () => {
+    const legacy = await createPasswordHash("correct horse battery staple", 600_000);
+
+    expect(legacy.passwordHash).toMatch(/^pbkdf2-sha256\$600000\$/);
+    expect(getPasswordHashIterations(legacy.passwordHash)).toBe(600_000);
+    await expect(verifyPassword("correct horse battery staple", legacy.salt, legacy.passwordHash)).resolves.toBe(true);
+    await expect(verifyPassword("wrong password", legacy.salt, legacy.passwordHash)).resolves.toBe(false);
+  });
+
+  it("rejects hashes outside the versioned format or sane iteration bounds", async () => {
+    const bareHash = "d+gPm++1wHgP08FbNF4/XqcVr71FAp5Ti7pmoiY//S4=";
     const zeroSalt = "AAAAAAAAAAAAAAAAAAAAAA==";
 
-    await expect(verifyPassword("correct horse battery staple", zeroSalt, unversionedHash)).resolves.toBe(false);
-    await expect(verifyPassword(
-      "correct horse battery staple",
-      zeroSalt,
-      "pbkdf2-sha256$10000$d+gPm++1wHgP08FbNF4/XqcVr71FAp5Ti7pmoiY//S4=",
-    )).resolves.toBe(false);
+    await expect(verifyPassword("correct horse battery staple", zeroSalt, bareHash)).resolves.toBe(false);
+    await expect(verifyPassword("correct horse battery staple", zeroSalt, `pbkdf2-sha256$1$${bareHash}`)).resolves.toBe(false);
+    expect(getPasswordHashIterations(bareHash)).toBeNull();
+    expect(getPasswordHashIterations(`pbkdf2-sha256$99999999999$${bareHash}`)).toBeNull();
+  });
+
+  it("reads the deployment override and defaults to the free-plan cost", () => {
+    expect(resolvePbkdf2Iterations({})).toBe(10_000);
+    expect(resolvePbkdf2Iterations({ PBKDF2_ITERATIONS: "" })).toBe(10_000);
+    expect(resolvePbkdf2Iterations({ PBKDF2_ITERATIONS: "600000" })).toBe(600_000);
+    expect(() => resolvePbkdf2Iterations({ PBKDF2_ITERATIONS: "lots" })).toThrow(/PBKDF2_ITERATIONS/);
+    expect(() => resolvePbkdf2Iterations({ PBKDF2_ITERATIONS: "999" })).toThrow(/PBKDF2_ITERATIONS/);
   });
 });

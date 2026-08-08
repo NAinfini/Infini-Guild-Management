@@ -6,7 +6,7 @@ import { LIMITS } from "@guild/shared/config/limits";
 import type { Context } from "hono";
 import { Hono } from "hono";
 import type { Bindings } from "../index";
-import { createPasswordHash, createSession, destroySessionById, enforceSessionLimit, resolveSession, verifyPassword } from "../services/auth";
+import { createPasswordHash, createSession, destroySessionById, enforceSessionLimit, resolvePbkdf2Iterations, resolveSession, verifyPassword } from "../services/auth";
 import { AuthService } from "../services/AuthService";
 import { createRateLimitMiddleware } from "../middleware/rate-limit";
 import { buildError, getDb, handleResult, parseJsonBody } from "./_shared";
@@ -29,10 +29,12 @@ function makeUsernameLoginLimiter(username: string) {
 
 function getService(c: Context): AuthService {
   const env = c.env as Bindings;
+  const passwordHashTargetIterations = resolvePbkdf2Iterations(env);
   return new AuthService(getDb(c), {
     rawDb: env.DB,
-    createPasswordHash,
+    createPasswordHash: (password) => createPasswordHash(password, passwordHashTargetIterations),
     verifyPassword,
+    passwordHashTargetIterations,
     createSession: async (userId, opts) => { await createSession(c, userId, opts); },
     destroySessionById: (sessionId) => destroySessionById(c, sessionId),
     enforceSessionLimit: (userId) => enforceSessionLimit(c, userId),

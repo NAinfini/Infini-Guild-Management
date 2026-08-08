@@ -52,6 +52,7 @@ function createDeps() {
     rawDb: {} as never,
     createPasswordHash: vi.fn(),
     verifyPassword: vi.fn().mockResolvedValue(false),
+    passwordHashTargetIterations: 10_000,
     createSession: vi.fn().mockResolvedValue(undefined),
     destroySessionById: vi.fn().mockResolvedValue(undefined),
     enforceSessionLimit: vi.fn().mockResolvedValue(undefined),

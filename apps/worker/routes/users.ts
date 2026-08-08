@@ -1,7 +1,7 @@
 import { deleteProfileImagesSchema, type Role } from "@guild/shared";
 import type { Context } from "hono";
 import { Hono } from "hono";
-import { clearSessionCookie, createPasswordHash, destroySession, verifyPassword } from "../services/auth";
+import { clearSessionCookie, createPasswordHash, destroySession, resolvePbkdf2Iterations, verifyPassword } from "../services/auth";
 import { deleteMediaObject, storeProfileAudio, storeProfileImage } from "../services/media";
 import { parseMediaKey } from "../services/media-keys";
 import { UserService } from "../services/UserService";
@@ -21,7 +21,7 @@ function getUserService(c: Context) {
     storeProfileAudio: (userId, file) => storeProfileAudio(c, userId, file),
     deleteMediaObject: (key) => deleteMediaObject(c, key),
     verifyPassword,
-    createPasswordHash,
+    createPasswordHash: (password) => createPasswordHash(password, resolvePbkdf2Iterations(c.env as { PBKDF2_ITERATIONS?: string })),
     destroySession: () => destroySession(c),
     clearSessionCookie: () => clearSessionCookie(c),
   });

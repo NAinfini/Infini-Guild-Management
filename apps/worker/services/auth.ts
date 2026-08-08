@@ -34,11 +34,32 @@ type ResolvedSession = {
   user: SessionUser;
 };
 
-const PBKDF2_ITERATIONS = 600_000;
+// Stored hashes are self-describing (`pbkdf2-sha256$<iterations>$<hash>`), so
+// the write-side target can change without invalidating existing credentials:
+// verification always uses the count embedded in the stored string, and logins
+// transparently rehash to the current target when the counts differ.
+// The 10k default keeps one login derivation inside the Workers free-plan CPU
+// budget; paid deployments should raise PBKDF2_ITERATIONS (OWASP recommends
+// 600k for PBKDF2-SHA256).
+export const DEFAULT_PBKDF2_ITERATIONS = 10_000;
+const MIN_PBKDF2_ITERATIONS = 1_000;
+const MAX_PBKDF2_ITERATIONS = 10_000_000;
 const PASSWORD_HASH_PREFIX = "pbkdf2-sha256";
 const PBKDF2_KEY_LENGTH_BITS = 256;
 const PBKDF2_SALT_BYTES = 16;
 const PBKDF2_HASH = "SHA-256";
+
+export function resolvePbkdf2Iterations(env: Pick<Bindings, "PBKDF2_ITERATIONS">): number {
+  const raw = env.PBKDF2_ITERATIONS;
+  if (raw === undefined || raw === "") return DEFAULT_PBKDF2_ITERATIONS;
+  const iterations = Number(raw);
+  if (!Number.isInteger(iterations) || iterations < MIN_PBKDF2_ITERATIONS || iterations > MAX_PBKDF2_ITERATIONS) {
+    throw new Error(
+      `PBKDF2_ITERATIONS must be an integer between ${MIN_PBKDF2_ITERATIONS} and ${MAX_PBKDF2_ITERATIONS}, got "${raw}"`,
+    );
+  }
+  return iterations;
+}
 
 const THIRTY_DAYS_IN_SECONDS = 30 * 24 * 60 * 60;
 const SESSION_TTL_MS = THIRTY_DAYS_IN_SECONDS * 1000;
@@ -161,29 +182,39 @@ function setSessionCookies(
   setCookie(c, SESSION_MODE_COOKIE_NAME, "0", cookieOptions);
 }
 
-export async function createPasswordHash(password: string): Promise<{ passwordHash: string; salt: string }> {
+export async function createPasswordHash(
+  password: string,
+  iterations: number = DEFAULT_PBKDF2_ITERATIONS,
+): Promise<{ passwordHash: string; salt: string }> {
   const saltBytes = crypto.getRandomValues(new Uint8Array(PBKDF2_SALT_BYTES));
-  const hashBytes = await derivePasswordHash(password, saltBytes, PBKDF2_ITERATIONS);
+  const hashBytes = await derivePasswordHash(password, saltBytes, iterations);
 
   return {
-    passwordHash: `${PASSWORD_HASH_PREFIX}$${PBKDF2_ITERATIONS}$${bytesToBase64(hashBytes)}`,
+    passwordHash: `${PASSWORD_HASH_PREFIX}$${iterations}$${bytesToBase64(hashBytes)}`,
     salt: bytesToBase64(saltBytes),
   };
 }
 
-function parsePasswordHash(passwordHash: string): string | null {
-  const match = /^pbkdf2-sha256\$600000\$([A-Za-z0-9+/]+=*)$/.exec(passwordHash);
-  return match?.[1] ?? null;
+function parsePasswordHash(passwordHash: string): { iterations: number; encodedHash: string } | null {
+  const match = /^pbkdf2-sha256\$(\d+)\$([A-Za-z0-9+/]+=*)$/.exec(passwordHash);
+  if (!match) return null;
+  const iterations = Number(match[1]);
+  if (!Number.isInteger(iterations) || iterations < MIN_PBKDF2_ITERATIONS || iterations > MAX_PBKDF2_ITERATIONS) return null;
+  return { iterations, encodedHash: match[2]! };
+}
+
+export function getPasswordHashIterations(passwordHash: string): number | null {
+  return parsePasswordHash(passwordHash)?.iterations ?? null;
 }
 
 export async function verifyPassword(password: string, salt: string, passwordHash: string): Promise<boolean> {
   try {
-    const encodedHash = parsePasswordHash(passwordHash);
-    if (!encodedHash) return false;
+    const parsed = parsePasswordHash(passwordHash);
+    if (!parsed) return false;
     const saltBytes = base64ToBytes(salt);
-    const expectedHashBytes = base64ToBytes(encodedHash);
+    const expectedHashBytes = base64ToBytes(parsed.encodedHash);
     if (saltBytes.length !== PBKDF2_SALT_BYTES || expectedHashBytes.length !== PBKDF2_KEY_LENGTH_BITS / 8) return false;
-    const actualHashBytes = await derivePasswordHash(password, saltBytes, PBKDF2_ITERATIONS);
+    const actualHashBytes = await derivePasswordHash(password, saltBytes, parsed.iterations);
     return await timingSafeEqual(actualHashBytes, expectedHashBytes);
   } catch (error) {
     logger.error("Password verification failed with unexpected error", { error: String(error) });

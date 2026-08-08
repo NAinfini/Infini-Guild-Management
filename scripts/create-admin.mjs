@@ -21,6 +21,12 @@ function encodeBase64(bytes) {
   return Buffer.from(bytes).toString("base64");
 }
 
+// Must stay verifiable by apps/worker/services/auth.ts: same derivation and the
+// same self-describing `pbkdf2-sha256$<iterations>$<hash>` format. The count
+// matches the Worker's free-plan default; deployments that raise
+// PBKDF2_ITERATIONS upgrade this hash automatically on the first login.
+const PBKDF2_ITERATIONS = 10_000;
+
 export async function createPasswordHash(password, salt = randomBytes(16)) {
   const keyMaterial = await webcrypto.subtle.importKey(
     "raw",
@@ -33,7 +39,7 @@ export async function createPasswordHash(password, salt = randomBytes(16)) {
     {
       name: "PBKDF2",
       salt,
-      iterations: 10_000,
+      iterations: PBKDF2_ITERATIONS,
       hash: "SHA-256",
     },
     keyMaterial,
@@ -41,7 +47,7 @@ export async function createPasswordHash(password, salt = randomBytes(16)) {
   );
 
   return {
-    passwordHash: encodeBase64(new Uint8Array(bits)),
+    passwordHash: `pbkdf2-sha256$${PBKDF2_ITERATIONS}$${encodeBase64(new Uint8Array(bits))}`,
     salt: encodeBase64(salt),
   };
 }

@@ -1,13 +1,14 @@
 import { describe, expect, it } from "vitest";
+import { verifyPassword } from "../apps/worker/services/auth";
 import { buildAdminSql, createPasswordHash, findCount } from "./create-admin.mjs";
 
 describe("first administrator setup", () => {
-  it("uses the same deterministic PBKDF2 shape as Worker authentication", async () => {
-    const salt = new Uint8Array(16);
-    const result = await createPasswordHash("correct horse battery staple", salt);
+  it("writes a hash the Worker login verifier accepts", async () => {
+    const result = await createPasswordHash("correct horse battery staple");
 
-    expect(result.salt).toBe("AAAAAAAAAAAAAAAAAAAAAA==");
-    expect(result.passwordHash).toMatch(/^[A-Za-z0-9+/]{43}=$/);
+    expect(result.passwordHash).toMatch(/^pbkdf2-sha256\$10000\$[A-Za-z0-9+/]{43}=$/);
+    await expect(verifyPassword("correct horse battery staple", result.salt, result.passwordHash)).resolves.toBe(true);
+    await expect(verifyPassword("wrong password", result.salt, result.passwordHash)).resolves.toBe(false);
   });
 
   it("escapes SQL values and only inserts into an empty users table", () => {

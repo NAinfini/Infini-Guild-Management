@@ -39,7 +39,7 @@ export type Bindings = {
   PORTAL_ORIGIN?: string;
   ENVIRONMENT?: string;
   MEDIA_ORPHAN_DELETE_MODE?: "report" | "delete";
-  ENABLE_PRODUCTION_SYSTEM_TESTS?: "true" | "false";
+  PBKDF2_ITERATIONS?: string;
   SIGNING_SECRET: string;
   SITE_NAME: string;
   SITE_LOGO_URL: string;
