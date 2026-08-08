@@ -6,6 +6,7 @@ import type { DrizzleD1Database } from "drizzle-orm/d1";
 import { nanoid } from "nanoid";
 import { users } from "../db/schema/auth";
 import { memberBadgeAssignments, memberBadges } from "../db/schema";
+import { sanitizeInlineHtml } from "./inline-html";
 import { ok, err, type ServiceResult } from "./result";
 
 type DrizzleDb = DrizzleD1Database<Record<string, never>>;
@@ -42,47 +43,6 @@ const BADGE_COLS = {
 
 const DEFAULT_BADGE_COLOR = "#3b82f6";
 const HEX_COLOR_PATTERN = /^#[0-9a-fA-F]{3}(?:[0-9a-fA-F]{3})?$/;
-const ALLOWED_INLINE_TAGS = new Set(["span", "b", "strong", "i", "em", "u", "br"]);
-
-function escapeHtml(value: string): string {
-  return value
-    .replaceAll("&", "&amp;")
-    .replaceAll("<", "&lt;")
-    .replaceAll(">", "&gt;")
-    .replaceAll('"', "&quot;")
-    .replaceAll("'", "&#39;");
-}
-
-function sanitizeBadgeLabelHtml(html: string): string {
-  const withoutBlockedElements = html.replace(/<(script|style)\b[^>]*>[\s\S]*?<\/\1>/gi, "");
-  let output = "";
-  const tokenPattern = /<[^>]*>/g;
-  let lastIndex = 0;
-
-  for (const match of withoutBlockedElements.matchAll(tokenPattern)) {
-    output += escapeHtml(withoutBlockedElements.slice(lastIndex, match.index));
-    const rawTag = match[0];
-    const tagMatch = /^<\/?\s*([a-zA-Z0-9-]+)([^>]*)>$/.exec(rawTag);
-    if (tagMatch) {
-      const tag = tagMatch[1]!.toLowerCase();
-      if (ALLOWED_INLINE_TAGS.has(tag)) {
-        const isClosing = /^<\//.test(rawTag);
-        if (tag === "br") {
-          output += "<br>";
-        } else if (isClosing) {
-          output += `</${tag}>`;
-        } else {
-          const styleMatch = /\bstyle\s*=\s*"([^"]*)"/.exec(tagMatch[2]!);
-          output += styleMatch ? `<${tag} style="${styleMatch[1]!}">` : `<${tag}>`;
-        }
-      }
-    }
-    lastIndex = match.index + rawTag.length;
-  }
-
-  output += escapeHtml(withoutBlockedElements.slice(lastIndex));
-  return output.trim();
-}
 
 function hasVisibleBadgeLabelContent(html: string): boolean {
   return html.replace(/<br>/g, "").replace(/<[^>]+>/g, "").trim().length > 0;
@@ -93,7 +53,7 @@ function normalizeBadgeColor(color?: string): string {
 }
 
 function sanitizeBadgeCreateInput(data: { name: string; label_html: string; color?: string; description?: string; sort_order?: number }) {
-  const labelHtml = sanitizeBadgeLabelHtml(data.label_html);
+  const labelHtml = sanitizeInlineHtml(data.label_html).trim();
   if (!hasVisibleBadgeLabelContent(labelHtml)) {
     return err("VALIDATION_ERROR", "Badge label must contain visible allowed content");
   }
@@ -107,7 +67,7 @@ function sanitizeBadgeCreateInput(data: { name: string; label_html: string; colo
 function sanitizeBadgeUpdateInput(data: { name?: string; label_html?: string; color?: string; description?: string; sort_order?: number }) {
   const patch = { ...data };
   if (data.label_html !== undefined) {
-    const labelHtml = sanitizeBadgeLabelHtml(data.label_html);
+    const labelHtml = sanitizeInlineHtml(data.label_html).trim();
     if (!hasVisibleBadgeLabelContent(labelHtml)) {
       return err("VALIDATION_ERROR", "Badge label must contain visible allowed content");
     }

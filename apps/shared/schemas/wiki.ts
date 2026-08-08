@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { LIMITS } from "../config/limits";
-import { jsonObjectStringSchema } from "./json";
+import { richTextDocumentStringSchema } from "./rich-text";
 
 const L = LIMITS.content;
 
@@ -76,7 +76,7 @@ export const createWikiArticleSchema = z.object({
   title: z.string().min(L.wikiArticleTitle.min).max(L.wikiArticleTitle.max),
   slug: z.string().optional(),
   category_id: z.string(),
-  body_json: jsonObjectStringSchema(
+  body_json: richTextDocumentStringSchema(
     z.string().min(L.wikiArticleBody.min).max(L.wikiArticleBody.max),
   ),
   sort_order: z.number().int().default(0),

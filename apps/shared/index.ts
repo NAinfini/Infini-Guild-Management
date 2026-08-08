@@ -16,6 +16,7 @@ export * from "./schemas/class-tag";
 export * from "./schemas/absence";
 export * from "./schemas/event";
 export * from "./schemas/announcement";
+export * from "./schemas/rich-text";
 export * from "./schemas/guild-war";
 export * from "./schemas/wiki";
 export * from "./schemas/gallery";

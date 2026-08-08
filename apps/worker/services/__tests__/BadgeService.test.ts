@@ -81,7 +81,9 @@ function createUnassignDb(assignments: { userId: string }[]) {
 
 describe("BadgeService", () => {
   it("sanitizes badge HTML and normalizes color before create", async () => {
-    const sanitizedRow = { ...badgeRow, labelHtml: "<span>Safe</span><br>", color: "#3b82f6" };
+    // Disallowed tags are removed and their text survives as escaped content —
+    // the same contract as profile titles (one shared sanitizer).
+    const sanitizedRow = { ...badgeRow, labelHtml: "<span>Safe</span>alert(1)<br>", color: "#3b82f6" };
     const { db, calls } = createBadgeDb([[sanitizedRow]]);
     const service = new BadgeService(db as never, createDeps());
 
@@ -94,9 +96,25 @@ describe("BadgeService", () => {
     expect(result.ok).toBe(true);
     expect(calls.values).toHaveBeenCalledWith(
       expect.objectContaining({
-        labelHtml: "<span>Safe</span><br>",
+        labelHtml: "<span>Safe</span>alert(1)<br>",
         color: "#3b82f6",
       }),
+    );
+  });
+
+  it("drops style values that could smuggle a URL or escape the attribute", async () => {
+    const sanitizedRow = { ...badgeRow, labelHtml: "<span>x</span>" };
+    const { db, calls } = createBadgeDb([[sanitizedRow]]);
+    const service = new BadgeService(db as never, createDeps());
+
+    const result = await service.createBadge("admin-1", {
+      name: "Hostile style",
+      label_html: '<span style="background-color: url(javascript:alert(1))">x</span>',
+    });
+
+    expect(result.ok).toBe(true);
+    expect(calls.values).toHaveBeenCalledWith(
+      expect.objectContaining({ labelHtml: "<span>x</span>" }),
     );
   });
 
@@ -123,7 +141,7 @@ describe("BadgeService", () => {
     const service = new BadgeService(db as never, createDeps());
 
     const result = await service.updateBadge("admin-1", "badge-1", {
-      label_html: "<script>alert(1)</script>",
+      label_html: '<img src=x onerror="alert(1)">',
     });
 
     expect(result).toEqual({

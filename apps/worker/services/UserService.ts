@@ -20,6 +20,7 @@ import { and, eq, isNull, sql, type SQL } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/d1";
 import { nanoid } from "nanoid";
 import { memberProfileClasses, memberProfiles, roles, sessions, userAuthPassword, users } from "../db/schema";
+import { sanitizeInlineHtml } from "./inline-html";
 import { captureUploadValidation } from "./media";
 import { deleteUploadedMedia, rethrowAfterUploadFailure } from "./media-upload-compensation";
 import { parseMediaKey } from "./media-keys";
@@ -155,60 +156,6 @@ function profileMediaKeys(userId: string, profile: Pick<ProfileRow, "images" | "
 
 // --- Helpers ---
 
-const TITLE_HTML_ALLOWED_TAGS = new Set(["span", "b", "strong", "i", "em", "u", "br"]);
-const STYLE_PROP_ALLOWLIST = new Set(["color", "font-weight", "font-style", "text-decoration", "background-color"]);
-const STYLE_VALUE_MAX_LENGTH = 64;
-// Colours, keywords and rgb()/hsl() functions only — no quotes, no semicolons,
-// nothing that could terminate the attribute we build around it.
-const STYLE_VALUE_PATTERN = /^[\w\s#,.%()/-]*$/;
-const STYLE_VALUE_DENYLIST = /url\s*\(|image\s*\(|expression\s*\(|\\/i;
-
-function sanitizeStyleAttr(raw: string): string {
-  const declarations = raw.split(";").map((d) => d.trim()).filter(Boolean);
-  const safe = declarations.filter((decl) => {
-    const colonIdx = decl.indexOf(":");
-    if (colonIdx === -1) return false;
-    const prop = decl.slice(0, colonIdx).trim().toLowerCase();
-    if (!STYLE_PROP_ALLOWLIST.has(prop)) return false;
-    const value = decl.slice(colonIdx + 1).trim();
-    if (!value || value.length > STYLE_VALUE_MAX_LENGTH) return false;
-    if (!STYLE_VALUE_PATTERN.test(value)) return false;
-    return !STYLE_VALUE_DENYLIST.test(value);
-  });
-  return safe.join("; ");
-}
-
-function escapeHtml(value: string): string {
-  return value.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
-}
-
-/**
- * Escape-then-reconstruct sanitizer.
- *
- * Every `&`, `<` and `>` in the input is escaped first, so the only markup the
- * output can contain is markup this function emits itself from the fixed
- * allowlist below. A subtractive sanitizer (regex that strips disallowed tags)
- * is structurally unsafe here: anything its pattern fails to match — unclosed
- * tags, comment tricks, malformed attributes — survives into the output.
- *
- * Rendering code still sanitizes with DOMPurify; this keeps the *stored* value
- * trustworthy so any future consumer (export, digest mail, SSR) is safe too.
- */
-export function sanitizeTitleHtml(html: string): string {
-  return escapeHtml(html).replace(
-    /&lt;(\/?)([a-zA-Z][a-zA-Z0-9]*)((?:[^&]|&(?!gt;))*)&gt;/g,
-    (_match, slash: string, tagName: string, attrs: string) => {
-      const tag = tagName.toLowerCase();
-      if (!TITLE_HTML_ALLOWED_TAGS.has(tag)) return "";
-      if (tag === "br") return "<br>";
-      if (slash) return `</${tag}>`;
-      const styleMatch = attrs.match(/\sstyle\s*=\s*"([^"]*)"/i);
-      const safeStyle = styleMatch ? sanitizeStyleAttr(styleMatch[1]!) : "";
-      return safeStyle ? `<${tag} style="${safeStyle}">` : `<${tag}>`;
-    },
-  );
-}
-
 function toUserPayload(user: UserRow) {
   const result = userSchema.safeParse({
     id: user.id,
@@ -260,7 +207,7 @@ function buildProfilePatch(
 ): ProfilePatch {
   const patch: ProfilePatch = {};
   if (payload.power !== undefined) patch.power = payload.power;
-  if (payload.title_html !== undefined) patch.titleHtml = payload.title_html === null ? null : sanitizeTitleHtml(payload.title_html);
+  if (payload.title_html !== undefined) patch.titleHtml = payload.title_html === null ? null : sanitizeInlineHtml(payload.title_html);
   if (payload.bio !== undefined) patch.bio = payload.bio;
   if (payload.video_urls !== undefined) patch.videoUrls = JSON.stringify(payload.video_urls);
   if (payload.availability !== undefined) {
