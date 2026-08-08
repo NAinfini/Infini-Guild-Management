@@ -54,6 +54,11 @@ const ENTITY_QUERY_KEYS = {
   member_badge: [queryKeys.users.all, queryKeys.myProfile.all],
 } satisfies Record<PushEntityType, readonly (readonly string[])[]>;
 
+// Push messages arrive in bursts (batch admin actions, reconnect catch-up).
+// Invalidating per message refetches the same queries once per burst entry,
+// so invalidations collect for this long and flush as a single round.
+const PUSH_INVALIDATION_WINDOW_MS = 300;
+
 function normalizeViewingAs(role: string | null, isExternalView: boolean): string {
   if (isExternalView) {
     return "external";
@@ -195,22 +200,35 @@ export function AppShell() {
     return () => window.removeEventListener("focus", revalidateSession);
   }, [revalidateSession, user?.id]);
 
+  const pendingInvalidationsRef = useRef(new Map<string, readonly unknown[]>());
+  const invalidationTimerRef = useRef<number | null>(null);
+  useEffect(() => () => {
+    if (invalidationTimerRef.current !== null) window.clearTimeout(invalidationTimerRef.current);
+  }, []);
+
+  const queueInvalidations = useCallback(
+    (keys: readonly (readonly unknown[])[]) => {
+      for (const key of keys) pendingInvalidationsRef.current.set(JSON.stringify(key), key);
+      invalidationTimerRef.current ??= window.setTimeout(() => {
+        invalidationTimerRef.current = null;
+        const pending = [...pendingInvalidationsRef.current.values()];
+        pendingInvalidationsRef.current.clear();
+        for (const queryKey of pending) void queryClient.invalidateQueries({ queryKey });
+      }, PUSH_INVALIDATION_WINDOW_MS);
+    },
+    [queryClient],
+  );
+
   const handlePushMessage = useCallback(
     (message: PushMessage) => {
       if (message.type === "entity_changed") {
-        void queryClient.invalidateQueries({ queryKey: queryKeys.cmdk.all });
-        const keys = ENTITY_QUERY_KEYS[message.entity_type];
-        if (keys) {
-          for (const key of keys) {
-            void queryClient.invalidateQueries({ queryKey: key });
-          }
-        }
+        queueInvalidations([queryKeys.cmdk.all, ...(ENTITY_QUERY_KEYS[message.entity_type] ?? [])]);
       }
       if (message.type === "announcement_published") {
-        void queryClient.invalidateQueries({ queryKey: queryKeys.announcements.all });
+        queueInvalidations([queryKeys.announcements.all]);
       }
     },
-    [queryClient],
+    [queueInvalidations],
   );
 
   useNotificationSync({

@@ -1,14 +1,3 @@
-import {
-  ALL_FORMATS,
-  BlobSource,
-  BufferTarget,
-  Conversion,
-  Input,
-  OggOutputFormat,
-  Output,
-  canEncodeAudio,
-} from "mediabunny";
-
 export const DEFAULT_IMAGE_WEBP_QUALITY = 0.8;
 
 /* 存储契约固定为 Ogg 容器、Opus 编码、单声道 16 kHz。 */
@@ -257,6 +246,13 @@ export async function convertAudioToOpus(
   if (!support.supported) {
     throw new Error(support.reason);
   }
+
+  /*
+   * mediabunny 只有音频转码用得到，但静态 import 会把它整个打进首屏公共包。
+   * 动态加载让它变成独立 chunk，只在用户真的上传音频时才下载。
+   */
+  const { ALL_FORMATS, BlobSource, BufferTarget, Conversion, Input, OggOutputFormat, Output, canEncodeAudio } =
+    await import("mediabunny");
 
   const input = new Input({ source: new BlobSource(file), formats: ALL_FORMATS });
 
