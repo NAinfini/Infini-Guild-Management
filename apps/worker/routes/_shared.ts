@@ -27,14 +27,47 @@ export function collectFiles(form: FormData): File[] {
 }
 
 export async function serveR2Object(c: Context, key: string, notFoundMessage: string): Promise<Response> {
-  const object = await (c.env as Bindings).MEDIA.get(key);
-  if (!object?.body) return buildError(c, "NOT_FOUND", notFoundMessage);
+  const bucket = (c.env as Bindings).MEDIA;
+  const requestHeaders = c.req.raw.headers;
+  const wantsRange = requestHeaders.has("Range");
+
+  // R2 evaluates If-None-Match / If-Modified-Since (onlyIf) and Range natively.
+  let object = wantsRange
+    ? await bucket.get(key, { onlyIf: requestHeaders, range: requestHeaders }).catch(() => null)
+    : await bucket.get(key, { onlyIf: requestHeaders });
+  if (wantsRange && object === null) {
+    // Unsatisfiable or malformed Range: a server may ignore Range and answer
+    // with the full representation, which is also the cheapest recovery here.
+    object = await bucket.get(key, { onlyIf: requestHeaders });
+  }
+  if (!object) return buildError(c, "NOT_FOUND", notFoundMessage);
+
   const headers = new Headers();
   object.writeHttpMetadata(headers);
   headers.set("Content-Type", headers.get("Content-Type") ?? "application/octet-stream");
   headers.set("Cache-Control", MEDIA_CACHE_CONTROL);
   headers.set("ETag", object.httpEtag);
-  return new Response(object.body, { headers });
+  headers.set("Accept-Ranges", "bytes");
+
+  // Precondition matched: R2 returns a bodyless R2Object — answer 304 so the
+  // browser keeps its cached copy instead of re-downloading media. Property
+  // presence is R2's documented discriminator; the cast is needed because TS
+  // cannot narrow `in` checks across the R2Object class hierarchy.
+  const body = "body" in object ? (object as R2ObjectBody).body : null;
+  if (!body) {
+    return new Response(null, { status: 304, headers });
+  }
+
+  const range = object.range;
+  if (range) {
+    const offset = "suffix" in range ? object.size - range.suffix : (range.offset ?? 0);
+    const length = "suffix" in range ? range.suffix : (range.length ?? object.size - offset);
+    headers.set("Content-Range", `bytes ${offset}-${offset + length - 1}/${object.size}`);
+    headers.set("Content-Length", String(length));
+    return new Response(body, { status: 206, headers });
+  }
+
+  return new Response(body, { headers });
 }
 
 export function buildError(c: Context, code: ErrorCode, message: string, details?: unknown): Response {
