@@ -4,12 +4,20 @@ import { describe, expect, it } from "vitest";
 
 const repoRoot = process.cwd();
 
+// dist is build output and dot-directories hold tool state and test output —
+// e2e/.artifacts traces carry copies of rendered page CSS that would otherwise
+// trip every style rule after an aborted Playwright run.
+function shouldSkipDirectory(entry: string): boolean {
+  return entry === "dist" || entry === "node_modules" || entry.startsWith(".");
+}
+
 function listSourceFiles(root: string): string[] {
   const result: string[] = [];
   for (const entry of readdirSync(root)) {
     const fullPath = join(root, entry);
     const stat = statSync(fullPath);
     if (stat.isDirectory()) {
+      if (shouldSkipDirectory(entry)) continue;
       result.push(...listSourceFiles(fullPath));
       continue;
     }
@@ -30,7 +38,7 @@ function listStyleFiles(root: string): string[] {
     const fullPath = join(root, entry);
     const stat = statSync(fullPath);
     if (stat.isDirectory()) {
-      if (entry === "dist") continue;
+      if (shouldSkipDirectory(entry)) continue;
       result.push(...listStyleFiles(fullPath));
       continue;
     }
