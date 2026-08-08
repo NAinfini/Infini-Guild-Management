@@ -332,7 +332,13 @@ export async function runMediaOrphanCleanupCron(env: Bindings): Promise<MediaCle
     }
   }
 
-  const expiredLeaseObjectsDeleted = mode === "delete" ? await purgeExpiredUploadLeases(env) : 0;
+  // Lease purge runs in report mode too: it only touches keys whose upload
+  // lease expired without ever gaining a media_references row, so it cannot
+  // delete live content. The opt-in gate protects the R2-wide orphan scan
+  // below, whose safety depends on the reference backfill being complete —
+  // leaving leases gated with it just let half-finished uploads pile up
+  // forever on report-mode deployments.
+  const expiredLeaseObjectsDeleted = await purgeExpiredUploadLeases(env);
   const deletedUserMediaKeys = mode === "delete" ? await purgeSoftDeletedUserMedia(env) : 0;
   const graceMs = GRACE_HOURS * 60 * 60 * 1000;
   const now = Date.now();

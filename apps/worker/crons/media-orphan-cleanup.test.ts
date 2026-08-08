@@ -230,6 +230,25 @@ describe("runMediaOrphanCleanupCron", () => {
     expect(env.MEDIA.delete).not.toHaveBeenCalled();
   });
 
+  it("purges expired leases even in report mode", async () => {
+    // The report/delete gate protects the R2-wide orphan scan, not lease
+    // hygiene: an expired lease whose key never gained a media_references row
+    // is a half-finished upload, and report-mode deployments would otherwise
+    // accumulate them forever.
+    const orphanKey = "announcement/staged-1/images/orphan.webp";
+    const env = createEnv({
+      expiredLeaseRows: [{ media_key: orphanKey }],
+      expiredLeaseOrphanKeys: [orphanKey],
+    });
+    env.MEDIA_ORPHAN_DELETE_MODE = "report";
+
+    const result = await runMediaOrphanCleanupCron(env as never);
+
+    expect(result.mode).toBe("report");
+    expect(result.expiredLeaseObjectsDeleted).toBe(1);
+    expect(env.MEDIA.delete).toHaveBeenCalledWith([orphanKey]);
+  });
+
   it("purges expired leases without deleting objects that gained a persistent reference", async () => {
     const referencedKey = "announcement/staged-1/images/referenced.webp";
     const orphanKey = "announcement/staged-1/images/orphan.webp";
