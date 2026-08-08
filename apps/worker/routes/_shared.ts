@@ -35,10 +35,15 @@ export async function serveR2Object(c: Context, key: string, notFoundMessage: st
   let object = wantsRange
     ? await bucket.get(key, { onlyIf: requestHeaders, range: requestHeaders }).catch(() => null)
     : await bucket.get(key, { onlyIf: requestHeaders });
+  // Tracks whether the get we ultimately answered from carried the Range —
+  // local R2 (workerd) populates object.range even on full reads, so the
+  // object alone cannot tell us whether a 206 is warranted.
+  let servedRange = wantsRange;
   if (wantsRange && object === null) {
     // Unsatisfiable or malformed Range: a server may ignore Range and answer
     // with the full representation, which is also the cheapest recovery here.
     object = await bucket.get(key, { onlyIf: requestHeaders });
+    servedRange = false;
   }
   if (!object) return buildError(c, "NOT_FOUND", notFoundMessage);
 
@@ -58,7 +63,7 @@ export async function serveR2Object(c: Context, key: string, notFoundMessage: st
     return new Response(null, { status: 304, headers });
   }
 
-  const range = object.range;
+  const range = servedRange ? object.range : undefined;
   if (range) {
     const offset = "suffix" in range ? object.size - range.suffix : (range.offset ?? 0);
     const length = "suffix" in range ? range.suffix : (range.length ?? object.size - offset);

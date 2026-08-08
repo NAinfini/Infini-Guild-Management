@@ -87,10 +87,25 @@ describe("serveR2Object", () => {
     expect(response.headers.get("Content-Length")).toBe("4");
   });
 
+  it("ignores a store-reported range when the request never asked for one", async () => {
+    /* 本地 R2(workerd)在完整读取时也会把 object.range 填上;只有请求真带了
+       Range 头才允许回 206,否则普通 GET 会拿到部分响应语义。 */
+    const get = vi.fn().mockResolvedValue(
+      fakeObject({ body: "0123456789", range: { offset: 0, length: 10 } }),
+    );
+
+    const response = await serveR2Object(createContext({ get }), "media/a", "missing");
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get("Content-Range")).toBeNull();
+    expect(await response.text()).toBe("0123456789");
+  });
+
   it("falls back to the full object when R2 rejects the requested range", async () => {
     const get = vi.fn()
       .mockRejectedValueOnce(new Error("range not satisfiable"))
-      .mockResolvedValueOnce(fakeObject({ body: "0123456789" }));
+      /* 重试后的完整读取同样可能带着 store 自己填的 range,不能因此变成 206。 */
+      .mockResolvedValueOnce(fakeObject({ body: "0123456789", range: { offset: 0, length: 10 } }));
 
     const response = await serveR2Object(
       createContext({ get }, { Range: "bytes=98-99" }),
