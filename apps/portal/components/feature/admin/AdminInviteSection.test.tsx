@@ -1,10 +1,20 @@
 // @vitest-environment jsdom
-import type { InviteLink } from "@guild/shared";
+import type { AdminRole, InviteLink } from "@guild/shared";
 import { MantineProvider } from "@mantine/core";
 import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { AdminInviteSection } from "./AdminInviteSection";
+
+const responsive = vi.hoisted(() => ({ compact: false }));
+
+vi.mock("@mantine/hooks", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@mantine/hooks")>();
+  return {
+    ...actual,
+    useMediaQuery: () => responsive.compact,
+  };
+});
 
 vi.mock("react-i18next", () => ({
   useTranslation: () => ({
@@ -22,11 +32,35 @@ const revokedInvite: InviteLink = {
   id: "invite-1",
   code: "REVOKED",
   created_by: "admin-1",
+  role_id: "raid-lead",
+  role_name: "Raid Lead",
+  role_color: "#22c55e",
+  role_level: 100,
   max_uses: 5,
   used_count: 1,
   expires_at: null,
   created_at: "2026-07-28T00:00:00.000Z",
   revoked_at: "2026-07-28T01:00:00.000Z",
+};
+
+const roles = [{
+  id: "raid-lead",
+  name: "Raid Lead",
+  level: 100,
+  color: "#22c55e",
+  created_at: "2026-07-28T00:00:00.000Z",
+  updated_at: "2026-07-28T00:00:00.000Z",
+  assigned_user_count: 1,
+  permissions: {},
+}] as unknown as AdminRole[];
+
+const activeInvite: InviteLink = {
+  ...revokedInvite,
+  id: "invite-2",
+  code: "ACTIVE",
+  used_count: 2,
+  expires_at: "2026-08-28T00:00:00.000Z",
+  revoked_at: null,
 };
 
 function renderSection(
@@ -36,6 +70,7 @@ function renderSection(
     inviteVisibility: "revoked",
     onInviteVisibilityChange: vi.fn(),
     onCreateInvite: vi.fn(),
+    roles,
     createInvitePending: false,
     inviteStatsLoading: false,
     inviteStats: null,
@@ -49,6 +84,7 @@ function renderSection(
     inviteSearch: "",
     onInviteSearchChange: vi.fn(),
     isInviteInactive: () => true,
+    isInviteActionPending: () => false,
     onRevokeInvite: vi.fn(),
     onDeleteInvite: vi.fn(),
     ...overrides,
@@ -70,6 +106,10 @@ function getToolbarCreateButton() {
 }
 
 describe("AdminInviteSection", () => {
+  beforeEach(() => {
+    responsive.compact = false;
+  });
+
   it("shows invite status to administrators", () => {
     renderSection();
 
@@ -82,18 +122,25 @@ describe("AdminInviteSection", () => {
     renderSection();
 
     const copyButton = screen.getByRole("button", { name: "invite.copy" });
-    const revokeButton = screen.getByRole("button", { name: "invite.revoke" });
 
     expect(copyButton).toBeDisabled();
     expect(copyButton.parentElement).toHaveAttribute("data-disabled-tooltip-target");
-    expect(revokeButton).toBeDisabled();
-    expect(revokeButton.parentElement).toHaveAttribute("data-disabled-tooltip-target");
 
     await user.hover(copyButton.parentElement!);
     expect(await screen.findByText("invite.tooltip.revoked")).toBeInTheDocument();
+
+    // 撤销/删除收进了行尾的 ⋮ 菜单，置灰的撤销项同样要带上原因。
+    fireEvent.click(screen.getByRole("button", { name: "invite.table.actions" }));
+    /* hidden: true 的理由同 AvailabilityEditor.test.tsx：jsdom 没有布局，
+       floating-ui 的 hide 中间件会异步给已打开的浮层盖上 display: none。 */
+    const dropdown = await screen.findByRole("menu", { hidden: true });
+    const revokeItem = within(dropdown).getByText("invite.revoke").closest("button")!;
+
+    expect(revokeItem).toBeDisabled();
+    expect(revokeItem.parentElement).toHaveAttribute("data-disabled-tooltip-target");
   });
 
-  it("resets the create form every time the modal opens", async () => {
+  it("resets the create form after every cancel path", async () => {
     const user = userEvent.setup();
     renderSection();
 
@@ -101,6 +148,9 @@ describe("AdminInviteSection", () => {
     const dialog = screen.getByRole("dialog");
     const maxUses = within(dialog).getByLabelText("invite.aria.maxUses");
     const expiresAt = within(dialog).getByLabelText("invite.aria.expiresAt");
+    const role = within(dialog).getByLabelText("invite.aria.role");
+    await user.click(role);
+    await user.click(await screen.findByRole("option", { name: "Raid Lead", hidden: true }));
     fireEvent.change(maxUses, { target: { value: "4" } });
     fireEvent.change(expiresAt, { target: { value: "2026-08-01T12:30" } });
 
@@ -110,6 +160,17 @@ describe("AdminInviteSection", () => {
 
     expect(within(reopenedDialog).getByLabelText("invite.aria.maxUses")).toHaveValue("10");
     expect(within(reopenedDialog).getByLabelText("invite.aria.expiresAt")).toHaveValue("");
+    expect(within(reopenedDialog).getByLabelText("invite.aria.role")).toHaveValue("");
+
+    await user.click(within(reopenedDialog).getByLabelText("invite.aria.role"));
+    await user.click(await screen.findByRole("option", { name: "Raid Lead", hidden: true }));
+    const closeButton = reopenedDialog.querySelector<HTMLButtonElement>(".mantine-Modal-close");
+    expect(closeButton).not.toBeNull();
+    await user.click(closeButton!);
+    await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+
+    await user.click(getToolbarCreateButton());
+    expect(within(screen.getByRole("dialog")).getByLabelText("invite.aria.role")).toHaveValue("");
   });
 
   it("closes only after the current create request succeeds", async () => {
@@ -119,10 +180,13 @@ describe("AdminInviteSection", () => {
 
     await user.click(getToolbarCreateButton());
     const dialog = screen.getByRole("dialog");
+    expect(within(dialog).getByRole("button", { name: "invite.create" })).toBeDisabled();
+    await user.click(within(dialog).getByLabelText("invite.aria.role"));
+    await user.click(await screen.findByRole("option", { name: "Raid Lead", hidden: true }));
     await user.click(within(dialog).getByRole("button", { name: "invite.create" }));
 
     expect(onCreateInvite).toHaveBeenCalledWith(
-      { maxUses: 10, expiresAt: "" },
+      { roleId: "raid-lead", maxUses: 10, expiresAt: "" },
       expect.any(Function),
     );
     expect(screen.getByRole("dialog")).toBeInTheDocument();
@@ -135,6 +199,9 @@ describe("AdminInviteSection", () => {
     await waitFor(() => {
       expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
     });
+
+    await user.click(getToolbarCreateButton());
+    expect(within(screen.getByRole("dialog")).getByLabelText("invite.aria.role")).toHaveValue("");
   });
 
   it("loads the next server page without client-side pagination", async () => {
@@ -150,5 +217,91 @@ describe("AdminInviteSection", () => {
     await user.click(screen.getByRole("button", { name: "invite.loadMore" }));
 
     expect(onLoadMoreInvites).toHaveBeenCalledOnce();
+  });
+
+  it("uses a complete, keyboard-reachable invite card at compact widths", () => {
+    responsive.compact = true;
+    renderSection({
+      inviteVisibility: "active",
+      inviteRows: [activeInvite],
+      isInviteInactive: () => false,
+    });
+
+    expect(screen.queryByRole("table")).not.toBeInTheDocument();
+    const card = screen.getByRole("article", { name: "invite.cardAria" });
+    expect(within(card).getByText("ACTIVE")).toBeInTheDocument();
+    expect(within(card).getByText("2/5")).toBeInTheDocument();
+    expect(within(card).getByText("invite.status.active")).toBeInTheDocument();
+    expect(within(card).getByText("invite.table.expires")).toBeInTheDocument();
+    expect(within(card).getByText("invite.table.created")).toBeInTheDocument();
+    expect(card.querySelectorAll("time")).toHaveLength(2);
+
+    const copyButton = within(card).getByRole("button", { name: "invite.copy" });
+    expect(copyButton).toBeEnabled();
+    expect(within(card).getByRole("button", { name: "invite.revoke" })).toBeEnabled();
+    expect(within(card).getByRole("button", { name: "invite.delete" })).toBeEnabled();
+    copyButton.focus();
+    expect(copyButton).toHaveFocus();
+  });
+
+  it.each([
+    ["desktop", false],
+    ["compact", true],
+  ] as const)("scopes destructive pending by invite id in the %s layout", async (_label, compact) => {
+    responsive.compact = compact;
+    const user = userEvent.setup();
+    const onRevokeInvite = vi.fn();
+    const onDeleteInvite = vi.fn();
+    const otherInvite: InviteLink = {
+      ...activeInvite,
+      id: "invite-3",
+      code: "OTHER",
+    };
+    renderSection({
+      inviteVisibility: "active",
+      inviteRows: [activeInvite, otherInvite],
+      inviteTotal: 2,
+      isInviteInactive: () => false,
+      isInviteActionPending: (inviteId) => inviteId === activeInvite.id,
+      onRevokeInvite,
+      onDeleteInvite,
+    });
+
+    if (compact) {
+      const cards = screen.getAllByRole("article", { name: "invite.cardAria" });
+      const targetRevoke = within(cards[0]!).getByRole("button", { name: "invite.revoke" });
+      const targetDelete = within(cards[0]!).getByRole("button", { name: "invite.delete" });
+      expect(targetRevoke).toBeDisabled();
+      expect(targetDelete).toBeDisabled();
+      expect(within(cards[1]!).getByRole("button", { name: "invite.revoke" })).toBeEnabled();
+      expect(within(cards[1]!).getByRole("button", { name: "invite.delete" })).toBeEnabled();
+
+      await user.click(targetRevoke);
+      await user.click(targetRevoke);
+      await user.click(targetDelete);
+      await user.click(targetDelete);
+    } else {
+      const actionButtons = screen.getAllByRole("button", { name: "invite.table.actions" });
+      await user.click(actionButtons[0]!);
+      let dropdown = await screen.findByRole("menu", { hidden: true });
+      const targetRevoke = within(dropdown).getByText("invite.revoke").closest("button")!;
+      const targetDelete = within(dropdown).getByText("invite.delete").closest("button")!;
+      expect(targetRevoke).toBeDisabled();
+      expect(targetDelete).toBeDisabled();
+
+      await user.click(targetRevoke);
+      await user.click(targetDelete);
+      await user.keyboard("{Escape}");
+      await waitFor(() => {
+        expect(screen.queryByRole("menu", { hidden: true })).not.toBeInTheDocument();
+      });
+      await user.click(actionButtons[1]!);
+      dropdown = await screen.findByRole("menu", { hidden: true });
+      expect(within(dropdown).getByText("invite.revoke").closest("button")).toBeEnabled();
+      expect(within(dropdown).getByText("invite.delete").closest("button")).toBeEnabled();
+    }
+
+    expect(onRevokeInvite).not.toHaveBeenCalled();
+    expect(onDeleteInvite).not.toHaveBeenCalled();
   });
 });

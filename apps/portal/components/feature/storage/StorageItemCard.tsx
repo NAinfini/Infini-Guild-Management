@@ -1,15 +1,26 @@
 import type { StorageCategory, StorageItem } from "@guild/shared";
-import { ActionIcon, Badge, Button, Group, Image, Text } from "@mantine/core";
-import { ArrowDownIcon, ArrowUpIcon, PencilIcon, PhotoOffIcon } from "@portal/components/icons";
+import {
+  ActionIcon,
+  Badge,
+  Button,
+  Group,
+  Image,
+  Text,
+  UnstyledButton,
+} from "@mantine/core";
+import {
+  PencilIcon,
+  PhotoOffIcon,
+} from "@portal/components/icons";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
-import { PortalCard } from "../../shared/PortalCard";
 
 type StorageItemCardProps = {
   item: StorageItem;
   category?: StorageCategory;
   imageUrl?: string;
   canEditItems: boolean;
+  canManageStock: boolean;
   batch?: {
     type: "intake" | "distribute";
     quantity: number;
@@ -28,6 +39,7 @@ export function StorageItemCard({
   category,
   imageUrl,
   canEditItems,
+  canManageStock,
   batch,
   onOpen,
   onDeposit,
@@ -47,93 +59,130 @@ export function StorageItemCard({
     && batchQuantity < batchMax
     && (!batch?.limitReached || batchQuantity > 0);
   const setBatchQuantity = (quantity: number) => batch?.onChange(quantity);
+  const canDeposit = canManageStock || item.allow_member_deposit;
+  const canWithdraw = canManageStock || item.allow_member_withdraw;
 
   return (
-    <PortalCard className="storage-item-card" interactive={false}>
-      {/*
-        * Image on demand: an item without a picture gets no thumbnail slot at all
-        * rather than an empty placeholder box. A broken URL still shows the
-        * fallback, because that is a state worth seeing.
-        */}
-      {imageUrl ? (
-        <button type="button" className="storage-item-card__preview" onClick={() => onOpen(item)} aria-label={item.name}>
-          {imageFailed ? (
-            <span className="storage-item-card__placeholder storage-item-card__placeholder--broken"><PhotoOffIcon size={18} /></span>
+    <article className="storage-item-card">
+      <UnstyledButton
+        type="button"
+        className="storage-item-card__main"
+        aria-label={item.name}
+        onClick={() => onOpen(item)}
+      >
+        <span className="storage-item-card__preview" aria-hidden>
+          {imageUrl && !imageFailed ? (
+            <Image
+              src={imageUrl}
+              alt=""
+              fit="cover"
+              className="storage-item-card__image"
+              onError={() => setImageFailed(true)}
+            />
           ) : (
-            <Image src={imageUrl} alt={item.name} fit="cover" className="storage-item-card__image" onError={() => setImageFailed(true)} />
-          )}
-        </button>
-      ) : null}
-      <div className="storage-item-card__body">
-        <div className="storage-item-card__main">
-          <div className="storage-item-card__title-row">
-            <Text fw={600} lineClamp={1}>{item.name}</Text>
-            <span className={`storage-item-card__stock ${item.quantity > 0 ? "storage-item-card__stock--available" : ""}`}>
-              {item.quantity}
+            <span
+              className={`storage-item-card__placeholder ${imageFailed ? "storage-item-card__placeholder--broken" : ""}`}
+            >
+              <PhotoOffIcon size={18} />
             </span>
-          </div>
-          <Group gap={6} className="storage-item-card__badges">
-            <Badge variant="light" color="gray">{category?.name ?? t("category.uncategorized")}</Badge>
-            {item.allow_member_deposit ? <Badge variant="light" color="green">{t("badge.depositEnabled")}</Badge> : null}
-            {item.allow_member_withdraw ? <Badge variant="light" color="teal">{t("badge.withdrawEnabled")}</Badge> : null}
-            {!item.allow_member_deposit && !item.allow_member_withdraw ? <Badge variant="light" color="gray">{t("badge.closed")}</Badge> : null}
+          )}
+        </span>
+
+        <span className="storage-item-card__identity">
+          <Text component="span" fw={700} lineClamp={1}>{item.name}</Text>
+          <Group component="span" gap={6} wrap="wrap" className="storage-item-card__badges">
+            <Text component="span" size="xs" c="dimmed">
+              {category?.name ?? t("category.uncategorized")}
+            </Text>
+            {item.allow_member_deposit ? (
+              <Badge component="span" variant="light" size="xs">{t("badge.depositEnabled")}</Badge>
+            ) : null}
+            {item.allow_member_withdraw ? (
+              <Badge component="span" variant="light" size="xs">{t("badge.withdrawEnabled")}</Badge>
+            ) : null}
+            {!item.allow_member_deposit && !item.allow_member_withdraw ? (
+              <Badge component="span" variant="light" color="gray" size="xs">{t("badge.closed")}</Badge>
+            ) : null}
           </Group>
-        </div>
-        <Group gap={6} className="storage-item-card__actions">
-          {batch ? (
-            <div className="storage-item-card__batch">
-              {batchAllowed ? (
-                <Group gap={4} wrap="nowrap">
-                  <ActionIcon
-                    size={28}
-                    variant="default"
-                    aria-label={t("action.decreaseBatchItem", { item: item.name })}
-                    onClick={() => setBatchQuantity(Math.max(0, batchQuantity - 1))}
-                    disabled={batchQuantity <= 0}
-                  >
-                    <span aria-hidden="true">−</span>
-                  </ActionIcon>
-                  <Text
-                    component="span"
-                    size="sm"
-                    fw={800}
-                    className="storage-item-card__batch-quantity"
-                    aria-label={t("batch.quantityFor", { item: item.name })}
-                  >
-                    {batchQuantity}
-                  </Text>
-                  <ActionIcon
-                    size={28}
-                    variant="default"
-                    aria-label={t("action.increaseBatchItem", { item: item.name })}
-                    onClick={() => setBatchQuantity(Math.min(batchMax, batchQuantity + 1))}
-                    disabled={!canIncreaseBatch}
-                  >
-                    <span aria-hidden="true">+</span>
-                  </ActionIcon>
-                </Group>
-              ) : (
-                <Text size="xs" c="dimmed">{t("batch.unavailable")}</Text>
-              )}
-            </div>
-          ) : null}
-          {item.allow_member_deposit ? (
-            <Button size="compact-xs" variant="default" leftSection={<ArrowDownIcon size={13} />} onClick={() => onDeposit(item)}>
-              {t("action.deposit")}
-            </Button>
-          ) : null}
-          {item.allow_member_withdraw ? (
-            <Button size="compact-xs" variant="default" leftSection={<ArrowUpIcon size={13} />} onClick={() => onWithdraw(item)} disabled={item.quantity <= 0}>
-              {t("action.withdraw")}
-            </Button>
-          ) : null}
-          {canEditItems ? (
-            <ActionIcon size={30} variant="subtle" onClick={() => onEdit(item)} aria-label={t("action.edit")}>
-              <PencilIcon size={15} />
-            </ActionIcon>
-          ) : null}
-        </Group>
-      </div>
-    </PortalCard>
+        </span>
+
+        <span
+          className={`storage-item-card__stock ${item.quantity > 0 ? "storage-item-card__stock--available" : ""}`}
+        >
+          <Text component="span" size="xs" c="dimmed">{t("field.stock")}</Text>
+          <Text component="span" className="storage-item-card__stock-value">{item.quantity}</Text>
+        </span>
+      </UnstyledButton>
+
+      <Group gap={6} wrap="nowrap" className="storage-item-card__actions">
+        {batch ? (
+          batchAllowed ? (
+            <Group gap={4} wrap="nowrap" className="storage-item-card__batch">
+              <ActionIcon
+                size={40}
+                variant="default"
+                aria-label={t("action.decreaseBatchItem", { item: item.name })}
+                onClick={() => setBatchQuantity(Math.max(0, batchQuantity - 1))}
+                disabled={batchQuantity <= 0}
+              >
+                <span aria-hidden="true">−</span>
+              </ActionIcon>
+              <Text
+                component="span"
+                fw={800}
+                className="storage-item-card__batch-quantity"
+                aria-label={t("batch.quantityFor", { item: item.name })}
+              >
+                {batchQuantity}
+              </Text>
+              <ActionIcon
+                size={40}
+                variant="default"
+                aria-label={t("action.increaseBatchItem", { item: item.name })}
+                onClick={() => setBatchQuantity(Math.min(batchMax, batchQuantity + 1))}
+                disabled={!canIncreaseBatch}
+              >
+                <span aria-hidden="true">+</span>
+              </ActionIcon>
+            </Group>
+          ) : (
+            <Text size="xs" c="dimmed">{t("batch.unavailable")}</Text>
+          )
+        ) : (
+          <>
+            {canDeposit ? (
+              <Button
+                size="compact-sm"
+                variant="default"
+                leftSection={<span className="storage-direction-glyph" aria-hidden>↓</span>}
+                onClick={() => onDeposit(item)}
+              >
+                {t("action.deposit")}
+              </Button>
+            ) : null}
+            {canWithdraw ? (
+              <Button
+                size="compact-sm"
+                leftSection={<span className="storage-direction-glyph" aria-hidden>↑</span>}
+                onClick={() => onWithdraw(item)}
+                disabled={item.quantity <= 0}
+              >
+                {t("action.withdraw")}
+              </Button>
+            ) : null}
+            {canEditItems ? (
+              <ActionIcon
+                size={40}
+                variant="subtle"
+                onClick={() => onEdit(item)}
+                aria-label={t("action.edit")}
+              >
+                <PencilIcon size={16} />
+              </ActionIcon>
+            ) : null}
+          </>
+        )}
+      </Group>
+    </article>
   );
 }

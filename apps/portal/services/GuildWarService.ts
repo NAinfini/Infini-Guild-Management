@@ -1,7 +1,6 @@
 import type { QueryClient } from "@tanstack/react-query";
 import {
   batchUpdateGuildWarMemberStats,
-  batchDeleteGuildWarHistory,
   concludeGuildWar,
   deleteGuildWarHistory,
   moveGuildWarMember,
@@ -24,7 +23,6 @@ import {
 } from "../api/queries/guild-war";
 
 export {
-  batchDeleteGuildWarHistory,
   batchUpdateGuildWarMemberStats,
   concludeGuildWar,
   deleteGuildWarHistory,
@@ -46,7 +44,7 @@ export const usersQueryKeys = queryKeys.users;
 export const absenceQueryKeys = queryKeys.absences;
 
 export const ANALYTICS_SELECTION_SOFT_CAP = 10;
-const ANALYTICS_SELECTION_HARD_CAP = 20;
+export const ANALYTICS_SELECTION_HARD_CAP = 20;
 
 type GuildWarTeam = GuildWarActiveResponse["teams"][number];
 type GuildWarPoolMember = GuildWarActiveResponse["pool"][number];
@@ -84,6 +82,7 @@ export class GuildWarService {
     return {
       event_id: input.eventId,
       teams: input.teams.map((team, teamIndex) => ({
+        ...(team.id.startsWith("new:") ? {} : { id: team.id }),
         team_name: (input.teamDraftNames[team.id] ?? team.team_name).trim() || team.team_name,
         sort_order: teamIndex,
         notes: (input.teamDraftNotes[team.id] ?? team.notes ?? "").trim() || undefined,

@@ -7,7 +7,7 @@ export type DashboardParticipant = {
   role: string;
   classes: string[];
   power: number;
-  avatar_key: string | null;
+  avatar_media_id: string | null;
 };
 
 export type DashboardEvent = Event & {

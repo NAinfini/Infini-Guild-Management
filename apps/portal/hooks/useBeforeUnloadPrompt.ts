@@ -1,4 +1,4 @@
-import { useConfirmDialog } from "@portal/components/shared/ConfirmDialog";
+import { useConfirmDialog } from "@portal/hooks/useConfirmDialog";
 import { useBlocker } from "@tanstack/react-router";
 import { useTranslation } from "react-i18next";
 

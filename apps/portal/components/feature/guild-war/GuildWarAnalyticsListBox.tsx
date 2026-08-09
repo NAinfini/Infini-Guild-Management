@@ -15,6 +15,7 @@ type GuildWarAnalyticsListBoxProps = {
   maxSelect?: number;
   searchable?: boolean;
   searchPlaceholder?: string;
+  ariaLabel?: string;
   renderItem?: (item: AnalyticsListBoxItem, checked: boolean) => ReactNode;
 };
 
@@ -25,6 +26,7 @@ export function GuildWarAnalyticsListBox({
   maxSelect,
   searchable,
   searchPlaceholder,
+  ariaLabel,
   renderItem,
 }: GuildWarAnalyticsListBoxProps) {
   const [search, setSearch] = useState("");
@@ -56,14 +58,23 @@ export function GuildWarAnalyticsListBox({
           className="gwa-listbox__search"
         />
       ) : null}
-      <div className="gwa-listbox__items">
+      <div
+        className="gwa-listbox__items"
+        role="listbox"
+        aria-label={ariaLabel}
+        aria-multiselectable="true"
+      >
         {filtered.map((item) => {
           const checked = selected.includes(item.value);
+          const disabled = Boolean(maxSelect && selected.length >= maxSelect && !checked);
           return (
             <UnstyledButton
               key={item.value}
               onClick={() => toggle(item.value)}
               className={`gwa-listbox__item ${checked ? "gwa-listbox__item--selected" : ""}`}
+              role="option"
+              aria-selected={checked}
+              disabled={disabled}
             >
               {renderItem ? renderItem(item, checked) : <DefaultListBoxItem item={item} checked={checked} />}
             </UnstyledButton>

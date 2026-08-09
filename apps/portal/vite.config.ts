@@ -1,4 +1,3 @@
-import tailwindcss from "@tailwindcss/vite";
 import react from "@vitejs/plugin-react";
 import { Buffer } from "node:buffer";
 import { dirname, resolve } from "node:path";
@@ -21,6 +20,12 @@ export type LogicalChunkSize = {
   rawBytes: number;
   gzipBytes: number;
 };
+
+export function portalLocaleChunkName(id: string): string | undefined {
+  const normalizedId = id.replace(/\\/g, "/");
+  const match = /\/apps\/portal\/i18n\/(en|zh)\//.exec(normalizedId);
+  return match ? `portal-i18n-${match[1]}` : undefined;
+}
 
 export function findEChartsChunkBudgetViolation(
   chunks: readonly LogicalChunkSize[],
@@ -95,7 +100,7 @@ export default defineConfig(({ mode }) => {
   );
   const workerWsTarget = toWsTarget(workerHttpTarget);
   const localSiteName = env.VITE_SITE_NAME?.trim() || "Infini Guild";
-  const localSiteLogoUrl = env.VITE_SITE_LOGO_URL?.trim() || "/guild-logo.webp";
+  const localSiteLogoUrl = env.VITE_SITE_LOGO_URL?.trim() || "/guild-logo.svg";
 
   return {
     root: portalDir,
@@ -108,7 +113,6 @@ export default defineConfig(({ mode }) => {
         },
       },
       echartsBundleBudgetPlugin(),
-      tailwindcss(),
       react(),
     ],
     build: {
@@ -119,9 +123,8 @@ export default defineConfig(({ mode }) => {
           manualChunks(id) {
             const normalizedId = id.replace(/\\/g, "/");
 
-            if (normalizedId.includes("/apps/portal/i18n/")) {
-              return "portal-i18n";
-            }
+            const localeChunk = portalLocaleChunkName(normalizedId);
+            if (localeChunk) return localeChunk;
             if (normalizedId.includes("/apps/shared/schema")) {
               return "shared-schema";
             }
@@ -217,10 +220,14 @@ export default defineConfig(({ mode }) => {
         "react-dom",
         "@mantine/core",
         "@mantine/hooks",
-        "mantine-contextmenu",
       ],
     },
     server: {
+      // The worker's CORS allowlist and PORTAL_ORIGIN pin this exact origin.
+      // Failing fast beats Vite silently hopping to 5174 and breaking every
+      // credentialed request.
+      port: 5173,
+      strictPort: true,
       proxy: {
         [API_PROXY_CONTEXT]: {
           target: workerHttpTarget,

@@ -1,5 +1,5 @@
 import {
-  ALLOWED_IMAGE_TYPES,
+  batchUpdateWikiCategoriesSchema,
   createWikiArticleSchema,
   createWikiCategorySchema,
   updateWikiCategorySchema,
@@ -8,27 +8,29 @@ import {
 import type { Context } from "hono";
 import { Hono } from "hono";
 import { requirePermission } from "../middleware/rbac";
-import { WikiService } from "../services/WikiService";
-import { buildError, collectFiles, getDb, handleResult, parseBoolean, parseJsonBody, parsePage, safeFormData, serveR2Object } from "./_shared";
-import { hasMediaQuotaCapacity, withMedia } from "./service-factory";
+import { buildAuditLogStatements } from "../services/audit";
+import { MediaValidationError, parseImageMediaFormData } from "../services/MediaService";
+import { WikiService, type WikiSort } from "../services/WikiService";
+import { buildError, getDb, handleResult, parseBoolean, parseJsonBody, parsePage, safeFormData } from "./_shared";
+import { withMedia } from "./service-factory";
 
 export const wikiRoutes = new Hono();
 
+function parseWikiSort(value: string | undefined): WikiSort | null {
+  if (value === undefined) return "curated";
+  return value === "curated" || value === "updated_desc" || value === "updated_asc" ? value : null;
+}
+
 function getService(c: Context): WikiService {
-  return new WikiService(getDb(c), withMedia(c));
+  return new WikiService(getDb(c), {
+    ...withMedia(c),
+    buildAuditLogStatements: (input, condition) => buildAuditLogStatements(c, input, condition),
+  });
 }
 
 async function requireWikiArticlesCreate(c: Context) { return requirePermission(c, "wiki.articles.create"); }
 async function requireWikiArticlesEdit(c: Context) { return requirePermission(c, "wiki.articles.edit"); }
 async function requireWikiCategoriesManage(c: Context) { return requirePermission(c, "wiki.categories.manage"); }
-
-wikiRoutes.get("/image", async (c) => {
-  const key = c.req.query("key");
-  if (!key) return buildError(c, "VALIDATION_ERROR", "key query parameter required");
-  if (!key.startsWith("wiki/")) return buildError(c, "FORBIDDEN", "Invalid wiki image key");
-
-  return serveR2Object(c, key, "Wiki image not found");
-});
 
 // --- Category routes ---
 
@@ -47,6 +49,16 @@ wikiRoutes.post("/categories", async (c) => {
   return c.json(result.data, 201);
 });
 
+/* 必须排在 `/categories/:id` 之前：Hono 按注册顺序匹配，否则 "batch" 会被当成一个分类 id。 */
+wikiRoutes.patch("/categories/batch", async (c) => {
+  const sessionUser = await requireWikiCategoriesManage(c);
+  const body = await parseJsonBody(c);
+  const parsed = batchUpdateWikiCategoriesSchema.safeParse(body);
+  if (!parsed.success) return buildError(c, "VALIDATION_ERROR", "Invalid wiki category batch payload", parsed.error.flatten());
+  const result = await getService(c).batchUpdateCategories(sessionUser.id, parsed.data.updates);
+  return handleResult(c, result);
+});
+
 wikiRoutes.patch("/categories/:id", async (c) => {
   const sessionUser = await requireWikiCategoriesManage(c);
   const body = await parseJsonBody(c);
@@ -57,7 +69,7 @@ wikiRoutes.patch("/categories/:id", async (c) => {
 });
 
 wikiRoutes.delete("/categories/:id", async (c) => {
-  const sessionUser = await requirePermission(c, "wiki.categories.manage", { freshPermissions: true });
+  const sessionUser = await requirePermission(c, "wiki.categories.manage");
   const result = await getService(c).deleteCategory(sessionUser.id, c.req.param("id"));
   return handleResult(c, result);
 });
@@ -66,6 +78,8 @@ wikiRoutes.delete("/categories/:id", async (c) => {
 
 wikiRoutes.get("/articles", async (c) => {
   const query = c.req.query();
+  const sort = parseWikiSort(query.sort);
+  if (!sort) return buildError(c, "VALIDATION_ERROR", "Invalid wiki sort");
   const categoryIds = [...new Set(
     (c.req.queries("category_id") ?? [])
       .flatMap((value) => value.split(","))
@@ -84,6 +98,7 @@ wikiRoutes.get("/articles", async (c) => {
     archived: parseBoolean(query.archived),
     pinned: parseBoolean(query.pinned),
     search: (query.search ?? "").trim() || undefined,
+    sort,
   });
   return handleResult(c, result);
 });
@@ -145,7 +160,7 @@ wikiRoutes.delete("/articles/:id", async (c) => {
 });
 
 wikiRoutes.delete("/articles/:id/permanent", async (c) => {
-  const sessionUser = await requirePermission(c, "wiki.articles.delete", { freshPermissions: true });
+  const sessionUser = await requirePermission(c, "wiki.articles.delete");
   const result = await getService(c).permanentDeleteArticle(sessionUser.id, c.req.param("id"));
   return handleResult(c, result);
 });
@@ -154,27 +169,17 @@ wikiRoutes.post("/articles/:id/images", async (c) => {
   const sessionUser = await requireWikiArticlesEdit(c);
 
   const form = await safeFormData(c);
-  const files = collectFiles(form);
-
-  if (files.length === 0) return buildError(c, "VALIDATION_ERROR", "No files provided");
+  let uploads;
+  try {
+    uploads = await parseImageMediaFormData(form);
+  } catch (error) {
+    if (error instanceof MediaValidationError) return buildError(c, "VALIDATION_ERROR", error.message);
+    throw error;
+  }
   const mediaPolicy = await withMedia(c).getMediaPolicy();
-  if (files.length > mediaPolicy.quotas.wiki) {
+  if (uploads.length > mediaPolicy.quotas.wiki) {
     return buildError(c, "VALIDATION_ERROR", `Maximum ${mediaPolicy.quotas.wiki} wiki images per upload`);
   }
-  for (const file of files) {
-    if (!ALLOWED_IMAGE_TYPES.includes(file.type as typeof ALLOWED_IMAGE_TYPES[number])) return buildError(c, "VALIDATION_ERROR", `Invalid file type: ${file.name}`);
-    if (file.size > mediaPolicy.max_file_size_bytes.wiki_image) return buildError(c, "VALIDATION_ERROR", `File too large: ${file.name}`);
-  }
-  if (!await hasMediaQuotaCapacity(
-    c,
-    `wiki/${c.req.param("id")}/images/`,
-    files.length,
-    mediaPolicy.quotas.wiki,
-  )) {
-    return buildError(c, "VALIDATION_ERROR", `Wiki image quota is ${mediaPolicy.quotas.wiki}`);
-  }
-
-  const fileData = await Promise.all(files.map(async (f) => ({ data: await f.arrayBuffer(), contentType: f.type || "application/octet-stream" })));
-  const result = await getService(c).uploadArticleImages(sessionUser.id, c.req.param("id"), fileData);
+  const result = await getService(c).uploadArticleImages(sessionUser.id, c.req.param("id"), uploads, mediaPolicy.quotas.wiki, mediaPolicy.max_file_size_bytes.wiki_image);
   return handleResult(c, result);
 });

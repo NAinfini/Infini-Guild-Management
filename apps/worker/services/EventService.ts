@@ -8,17 +8,16 @@ import type {
   DatabaseLike,
   EventRow,
   EventServiceDeps,
-  MediaLike,
   RawDbLike,
   UpdateEventInput,
 } from "./events/EventCrudService";
 import type { EventParticipantRow } from "./events/EventParticipantService";
 import type { RaffleWinnerRow } from "./events/EventCrudService";
 import type { ServiceResult } from "./result";
+import type { ParsedImageMediaUpload } from "./MediaService";
 
 export {
   parseAttachments,
-  parseRecurrenceRule,
   toEventPayload,
   toRaffleWinnerPayload,
   type EventRow,
@@ -33,8 +32,8 @@ export class EventService {
   private readonly templates: EventTemplateService;
   private readonly pollRaffle: EventPollRaffleService;
 
-  constructor(db: DatabaseLike, rawDb: RawDbLike, media: MediaLike, deps: EventServiceDeps, templateDeps: TemplateServiceDeps) {
-    this.crud = new EventCrudService(db, rawDb, media, deps);
+  constructor(db: DatabaseLike, rawDb: RawDbLike, deps: EventServiceDeps, templateDeps: TemplateServiceDeps) {
+    this.crud = new EventCrudService(db, rawDb, deps);
     this.participants = new EventParticipantService(db, rawDb, deps);
     this.templates = new EventTemplateService(db, rawDb, templateDeps);
     this.pollRaffle = new EventPollRaffleService(db, rawDb, deps);
@@ -42,8 +41,8 @@ export class EventService {
 
   static buildEventsWhereFilters = EventCrudService.buildEventsWhereFilters;
 
-  createEvent(actorId: string, data: CreateEventInput, files: File[] = []): Promise<ServiceResult<EventRow>> {
-    return this.crud.createEvent(actorId, data, files);
+  createEvent(actorId: string, data: CreateEventInput, uploads: readonly ParsedImageMediaUpload[] = []): Promise<ServiceResult<EventRow>> {
+    return this.crud.createEvent(actorId, data, uploads);
   }
 
   updateEvent(actorId: string, eventId: string, existing: EventRow, data: UpdateEventInput): Promise<ServiceResult<EventRow>> {
@@ -58,8 +57,8 @@ export class EventService {
     return this.crud.destroyEvent(actorId, eventId, existing);
   }
 
-  uploadEventImages(actorId: string, eventId: string, existing: EventRow, files: File[]) {
-    return this.crud.uploadEventImages(actorId, eventId, existing, files);
+  uploadEventImages(actorId: string, eventId: string, existing: EventRow, uploads: readonly ParsedImageMediaUpload[]) {
+    return this.crud.uploadEventImages(actorId, eventId, existing, uploads);
   }
 
   joinEvent(actorId: string, eventId: string): Promise<

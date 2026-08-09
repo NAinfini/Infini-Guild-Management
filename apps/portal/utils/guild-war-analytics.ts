@@ -1,22 +1,20 @@
-import { activeGame } from "@guild/shared/games";
 import type { AnalyticsAggregation, AnalyticsMetricKey } from "../types/guild-war";
+import {
+  getCurrentGameRules,
+  getGuildWarMemberStatLabel,
+  getGuildWarMetricValue,
+  getGuildWarMetricValueOrNull,
+  getGuildWarTeamStatLabel,
+} from "./game-rules";
 
 export type { AnalyticsAggregation, AnalyticsMetricKey } from "../types/guild-war";
 
-const METRIC_LABEL_MAP: Record<string, string> = Object.fromEntries(
-  activeGame.war.memberStats.map((stat) => [stat.key, stat.label.replace(/^guild-war:/, "")]),
-);
-
-const LOWER_IS_BETTER_METRICS: Set<string> = new Set(
-  [
-    ...activeGame.war.memberStats.filter((stat) => stat.lowerIsBetter).map((stat) => stat.key),
-    ...(activeGame.war.computedStats?.filter((stat) => stat.lowerIsBetter).map((stat) => stat.key) ?? []),
-  ],
-);
+export function getTeamObjectiveLabelKey(objective: string): string {
+  return getGuildWarTeamStatLabel(objective);
+}
 
 export function getMetricLabelKey(metric: AnalyticsMetricKey): string {
-  if (metric === "kda") return "analytics.metric.kda";
-  return METRIC_LABEL_MAP[metric] ?? metric;
+  return getGuildWarMemberStatLabel(metric);
 }
 
 export function metricValueFromWarMember(
@@ -25,16 +23,7 @@ export function metricValueFromWarMember(
   },
   metric: AnalyticsMetricKey,
 ): number {
-  const stats = row.stats ?? {};
-  const computedDef = activeGame.war.computedStats?.find((computed) => computed.key === metric);
-  if (computedDef) {
-    const resolved: Record<string, number> = {};
-    for (const stat of activeGame.war.memberStats) {
-      resolved[stat.key] = stats[stat.key] ?? 0;
-    }
-    return computedDef.compute(resolved);
-  }
-  return stats[metric] ?? 0;
+  return getGuildWarMetricValue(row.stats, metric);
 }
 
 export function metricValueOrNullFromWarMember(
@@ -43,15 +32,7 @@ export function metricValueOrNullFromWarMember(
   },
   metric: AnalyticsMetricKey,
 ): number | null {
-  const computedDef = activeGame.war.computedStats?.find((computed) => computed.key === metric);
-  if (computedDef) {
-    const stats = row.stats ?? {};
-    const hasAny = activeGame.war.memberStats.some((stat) => stats[stat.key] !== null && stats[stat.key] !== undefined);
-    if (!hasAny) return null;
-    return metricValueFromWarMember(row, metric);
-  }
-  const value = row.stats?.[metric];
-  return value === null || value === undefined ? null : value;
+  return getGuildWarMetricValueOrNull(row.stats, metric);
 }
 
 export function normalizeMetricValue(
@@ -66,7 +47,9 @@ export function normalizeMetricValue(
     timeNormalized = (rawValue / durationMinutes) * referenceDuration;
   }
   if (modifier !== 1 && modifier > 0) {
-    if (LOWER_IS_BETTER_METRICS.has(metric)) {
+    const lowerIsBetter = getCurrentGameRules().guild_war.member_stats
+      .find((definition) => definition.key === metric)?.lower_is_better ?? false;
+    if (lowerIsBetter) {
       timeNormalized /= modifier;
     } else {
       timeNormalized *= modifier;

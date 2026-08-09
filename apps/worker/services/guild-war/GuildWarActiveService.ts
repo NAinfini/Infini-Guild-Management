@@ -1,4 +1,4 @@
-import { eventSchema } from "@guild/shared";
+import { eventSchema, getEventBehavior } from "@guild/shared";
 import { and, eq, inArray, sql } from "drizzle-orm";
 import { nanoid } from "nanoid";
 import type { z } from "zod";
@@ -45,6 +45,7 @@ export class GuildWarActiveService extends GuildWarCoreService {
   private async getEventPayload(eventId: string, canManage: boolean): Promise<EventPayload> {
     const eventRow = (await this.db.select({ id: events.id, type: events.type, title: events.title, description: events.description, startAt: events.startAt, endAt: events.endAt, capacity: events.capacity, pinned: events.pinned, signupLocked: events.signupLocked, autoArchive: events.autoArchive, autoArchived: events.autoArchived, visibleAt: events.visibleAt, archivedAt: events.archivedAt, createdBy: events.createdBy, updatedBy: events.updatedBy, seriesId: events.seriesId, instanceDate: events.instanceDate, createdAt: events.createdAt, updatedAt: events.updatedAt }).from(events).where(eq(events.id, eventId)).limit(1))[0];
     if (!eventRow) return null;
+    if (getEventBehavior(await this.getGameRules(), eventRow.type) !== "guild_war") return null;
     if (!canManage && !isEventPubliclyVisible(eventRow.visibleAt, new Date().toISOString())) return null;
     return eventSchema.parse({ id: eventRow.id, type: eventRow.type, title: eventRow.title, description: eventRow.description, start_at: eventRow.startAt, end_at: eventRow.endAt ?? null, capacity: eventRow.capacity ?? null, pinned: eventRow.pinned, signup_locked: eventRow.signupLocked, auto_archive: eventRow.autoArchive, auto_archived: eventRow.autoArchived, visible_at: eventRow.visibleAt ?? null, archived_at: eventRow.archivedAt ?? null, created_by: eventRow.createdBy, updated_by: eventRow.updatedBy ?? null, series_id: eventRow.seriesId ?? null, instance_date: eventRow.instanceDate ?? null, created_at: eventRow.createdAt, updated_at: eventRow.updatedAt });
   }
@@ -54,9 +55,31 @@ export class GuildWarActiveService extends GuildWarCoreService {
     return rows.map((r) => r.userId);
   }
 
-  async replaceEventTeams(eventId: string, snapshot: WarTemplateSnapshot): Promise<void> {
+  async replaceEventTeams(eventId: string, snapshot: WarTemplateSnapshot): Promise<ServiceResult<{ ok: true }>> {
     const { rawDb } = this.deps;
     const existingTeams = await this.getTeamsForEvent(eventId);
+    const existingTeamIds = new Set(existingTeams.map((team) => team.id));
+    const retainedTeamIds = new Set<string>();
+
+    for (const team of snapshot.teams) {
+      if (!team.id) continue;
+      if (!existingTeamIds.has(team.id)) {
+        return err(
+          "VALIDATION_ERROR",
+          "Team does not belong to this guild war event",
+          { team_id: team.id },
+        );
+      }
+      if (retainedTeamIds.has(team.id)) {
+        return err(
+          "VALIDATION_ERROR",
+          "Team id appears more than once in the guild war snapshot",
+          { team_id: team.id },
+        );
+      }
+      retainedTeamIds.add(team.id);
+    }
+
     const stmts: D1PreparedStatement[] = [];
 
     for (const team of existingTeams) {
@@ -66,7 +89,7 @@ export class GuildWarActiveService extends GuildWarCoreService {
     stmts.push(rawDb.prepare("DELETE FROM war_pool_members WHERE event_id = ?1").bind(eventId));
 
     for (const team of snapshot.teams) {
-      const teamId = nanoid();
+      const teamId = team.id ?? nanoid();
       stmts.push(rawDb.prepare("INSERT INTO war_teams (id, event_id, team_name, sort_order, notes, is_locked) VALUES (?1, ?2, ?3, ?4, ?5, ?6)").bind(teamId, eventId, team.team_name, team.sort_order, team.notes ?? null, team.is_locked ? 1 : 0));
       for (const member of team.members) {
         stmts.push(rawDb.prepare("INSERT INTO war_team_members (id, war_team_id, user_id, role_tag, sort_order) VALUES (?1, ?2, ?3, ?4, ?5)").bind(nanoid(), teamId, member.user_id, member.role_tag ?? null, member.sort_order));
@@ -78,6 +101,7 @@ export class GuildWarActiveService extends GuildWarCoreService {
     }
 
     await rawDb.batch(stmts);
+    return ok({ ok: true });
   }
 
   async getActive(eventId?: string, canManage = false): Promise<ServiceResult<unknown>> {
@@ -128,9 +152,10 @@ export class GuildWarActiveService extends GuildWarCoreService {
       if (conditionalEtag !== expectedEtag) return err("CONFLICT", "Guild war roster changed, refresh and retry", { expected_etag: expectedEtag });
     }
     const snapshot: WarTemplateSnapshot = { teams: payload.teams, pool_members: payload.pool_members };
-    await this.replaceEventTeams(eventId, snapshot);
+    const replaceResult = await this.replaceEventTeams(eventId, snapshot);
+    if (!replaceResult.ok) return replaceResult;
     const eventRow = (await this.db.select({ title: events.title }).from(events).where(eq(events.id, eventId)).limit(1))[0];
-    await this.deps.writeAuditLog({ entityType: "guild_war", action: "save_teams", actorId, entityId: eventId, diffTitle: eventRow?.title ?? null, detailText: JSON.stringify({ event_id: eventId, event_name: eventRow?.title ?? null }) });
+    await this.deps.writeAuditLog({ entityType: "guild_war", action: "save_teams", actorId, entityId: eventId, diffTitle: eventRow?.title ?? null, detail: { event_id: eventId, event_name: eventRow?.title ?? null } });
     await this.deps.publishEntityChanged({ entityType: "guild_war", entityId: eventId, hint: "teams_saved" });
     return ok({ ok: true });
   }
@@ -216,10 +241,10 @@ export class GuildWarActiveService extends GuildWarCoreService {
       actorId,
       entityId: eventId,
       diffTitle: targetUsers.map((user) => user.username).join(", ") || null,
-      detailText: JSON.stringify({
+      detail: {
         count: moves.length,
         moves: moves.map((move) => ({ ...move, username: usernamesById.get(move.user_id) ?? null })),
-      }),
+      },
     });
     await this.deps.publishEntityChanged({ entityType: "guild_war", entityId: eventId, hint: "members_moved" });
     return ok({ ok: true });
@@ -261,14 +286,14 @@ export class GuildWarActiveService extends GuildWarCoreService {
       actorId,
       entityId: eventId,
       diffTitle: targetUsers.map((user) => user.username).join(", ") || null,
-      detailText: JSON.stringify({
+      detail: {
         count: updates.length,
         updates: updates.map((update) => ({
           user_id: update.user_id,
           username: usernamesById.get(update.user_id) ?? null,
           role_tag: typeof update.role_tag === "string" && update.role_tag.trim().length > 0 ? update.role_tag.trim() : null,
         })),
-      }),
+      },
     });
     await this.deps.publishEntityChanged({ entityType: "guild_war", entityId: eventId, hint: "role_tags_updated" });
     return ok({ ok: true, updated: updates.length });

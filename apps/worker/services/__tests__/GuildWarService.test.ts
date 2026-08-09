@@ -8,7 +8,6 @@ import {
   toMemberPayload,
   buildWarEtag,
 } from "../GuildWarService";
-import { parseRecurrenceRule } from "../EventService";
 
 const historyRow = {
   id: "war-1",
@@ -16,8 +15,16 @@ const historyRow = {
   warName: "War 1",
   enemyName: "Enemy",
   result: null,
-  ownStats: null,
-  enemyStats: null,
+  ownKills: null,
+  ownTowers: null,
+  ownBaseHp: null,
+  ownCredits: null,
+  ownDistance: null,
+  enemyKills: null,
+  enemyTowers: null,
+  enemyBaseHp: null,
+  enemyCredits: null,
+  enemyDistance: null,
   durationMinutes: null,
   notes: null,
   createdBy: "mod-1",
@@ -63,7 +70,14 @@ function createConcludeService(batch: ReturnType<typeof vi.fn>) {
       userId: "user-1",
       roleTag: null,
       sortOrder: 0,
-      stats: null,
+      kills: null,
+      deaths: null,
+      assists: null,
+      damage: null,
+      healing: null,
+      buildingDamage: null,
+      credits: null,
+      damageTaken: null,
       note: null,
     },
   ]);
@@ -71,14 +85,98 @@ function createConcludeService(batch: ReturnType<typeof vi.fn>) {
 }
 
 describe("GuildWarService helpers", () => {
-  it("toWarHistoryPayload maps camelCase to snake_case", () => {
-    const payload = toWarHistoryPayload(historyRow);
+  it("preserves event-owned team ids, generates ids for new teams, and rejects foreign ids", async () => {
+    const batch = vi.fn().mockResolvedValue([]);
+    const prepare = vi.fn((sql: string) => ({
+      sql,
+      bind: vi.fn((...bindings: unknown[]) => ({ sql, bindings })),
+    }));
+    const service = new GuildWarService({} as never, {
+      media: { get: vi.fn() },
+      writeAuditLog: vi.fn(),
+      publishEntityChanged: vi.fn(),
+      rawDb: { prepare, batch } as never,
+    });
+    vi.spyOn(service, "getTeamsForEvent").mockResolvedValue([
+      {
+        id: "team-owned",
+        warHistoryId: null,
+        eventId: "event-1",
+        teamName: "Alpha",
+        sortOrder: 0,
+        notes: null,
+        isLocked: false,
+      },
+    ]);
+
+    const result = await service.replaceEventTeams("event-1", {
+      teams: [
+        {
+          id: "team-owned",
+          team_name: "Alpha Prime",
+          sort_order: 0,
+          members: [],
+        },
+        {
+          team_name: "Bravo",
+          sort_order: 1,
+          members: [],
+        },
+      ],
+      pool_members: [],
+    });
+
+    expect(result).toEqual({ ok: true, data: { ok: true } });
+    const statements = batch.mock.calls[0]?.[0] as Array<{ sql: string; bindings: unknown[] }>;
+    const teamInserts = statements.filter((statement) => statement.sql.includes("INSERT INTO war_teams"));
+    expect(teamInserts[0]?.bindings[0]).toBe("team-owned");
+    expect(teamInserts[1]?.bindings[0]).toEqual(expect.any(String));
+    expect(teamInserts[1]?.bindings[0]).not.toBe("team-owned");
+
+    batch.mockClear();
+    const rejected = await service.replaceEventTeams("event-1", {
+      teams: [
+        {
+          id: "team-from-another-event",
+          team_name: "Injected",
+          sort_order: 0,
+          members: [],
+        },
+      ],
+      pool_members: [],
+    });
+
+    expect(rejected).toEqual({
+      ok: false,
+      code: "VALIDATION_ERROR",
+      message: "Team does not belong to this guild war event",
+      details: { team_id: "team-from-another-event" },
+    });
+    expect(batch).not.toHaveBeenCalled();
+  });
+
+  it("toWarHistoryPayload omits SQL nulls and preserves recorded zeroes", () => {
+    const payload = toWarHistoryPayload({
+      ...historyRow,
+      ownKills: 5,
+      ownTowers: 0,
+      ownDistance: 1234.5,
+      enemyKills: 3,
+    });
     expect(payload).toEqual(
       expect.objectContaining({
         id: "war-1",
         event_id: "event-1",
         war_name: "War 1",
         enemy_name: "Enemy",
+        own_stats: {
+          kills: 5,
+          towers: 0,
+          distance: 1234.5,
+        },
+        enemy_stats: {
+          kills: 3,
+        },
         created_by: "mod-1",
       }),
     );
@@ -111,7 +209,14 @@ describe("GuildWarService helpers", () => {
       userId: "u-1",
       roleTag: "tank",
       sortOrder: 0,
-      stats: { kills: 5, deaths: 2, assists: 3, damage: 1000, healing: 500, building_damage: 200, credits: 100, damage_taken: 800 },
+      kills: 5,
+      deaths: 2,
+      assists: 3,
+      damage: 1000,
+      healing: 500,
+      buildingDamage: 200,
+      credits: 100,
+      damageTaken: 800,
       note: null,
     });
     expect(payload).toEqual(
@@ -129,6 +234,52 @@ describe("GuildWarService helpers", () => {
     expect(typeof etag).toBe("string");
     expect(etag).toBe(buildWarEtag("war-1", "2026-03-08T12:00:00.000Z"));
     expect(etag).not.toBe(buildWarEtag("war-2", "2026-03-08T12:00:00.000Z"));
+  });
+
+  it("returns D1 analytics settings even when there is no war history", async () => {
+    const configuredSettings = {
+      reference_duration_minutes: 45,
+      modifier_weights: { kills: 0.6, towers: 0.2, base_hp: 0.1, credits: 0.05, distance: 0.05 },
+    };
+    const select = vi.fn()
+      .mockReturnValueOnce({
+        from: vi.fn(() => ({
+          where: vi.fn(() => ({
+            limit: vi.fn().mockResolvedValue([
+              {
+                referenceDurationMinutes: 45,
+                killsWeight: 0.6,
+                towersWeight: 0.2,
+                baseHpWeight: 0.1,
+                creditsWeight: 0.05,
+                distanceWeight: 0.05,
+              },
+            ]),
+          })),
+        })),
+      })
+      .mockReturnValueOnce({
+        from: vi.fn(() => ({
+          where: vi.fn(() => ({
+            orderBy: vi.fn(() => ({
+              limit: vi.fn().mockResolvedValue([]),
+            })),
+          })),
+        })),
+      });
+    const service = new GuildWarService({ select } as never, {
+      media: { get: vi.fn() },
+      writeAuditLog: vi.fn(),
+      publishEntityChanged: vi.fn(),
+      rawDb: {} as D1Database,
+    });
+
+    const result = await service.getAnalytics([], []);
+
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.data.analytics_settings).toMatchObject(configuredSettings);
+    }
   });
 
   it("filters history rows and totals with one escaped server-side search", async () => {
@@ -164,14 +315,6 @@ describe("GuildWarService helpers", () => {
     expect(rowQuery.params).toContain("%100\\%\\_win%");
     expect(countQuery.sql).toBe(rowQuery.sql);
     expect(countQuery.params).toEqual(rowQuery.params);
-  });
-
-  it("parseRecurrenceRule handles null and json", () => {
-    expect(parseRecurrenceRule(null)).toBeNull();
-    expect(parseRecurrenceRule(undefined as unknown as string | null)).toBeNull();
-    const rule = { freq: "weekly", interval: 1 };
-    expect(parseRecurrenceRule(JSON.stringify(rule))).toEqual(rule);
-    expect(parseRecurrenceRule("not json")).toBeNull();
   });
 
   it("hides the active board when its event is not publicly visible yet", async () => {
@@ -312,7 +455,7 @@ describe("GuildWarService helpers", () => {
     expect(prepare).toHaveBeenCalledWith(expect.stringContaining("user_id IN"));
     expect(writeAuditLog).toHaveBeenCalledWith(expect.objectContaining({
       action: "move_member",
-      detailText: expect.stringContaining("\"count\":2"),
+      detail: expect.objectContaining({ count: 2 }),
     }));
   });
 
@@ -342,6 +485,47 @@ describe("GuildWarService helpers", () => {
     });
     expect(getTeamsForEvent).not.toHaveBeenCalled();
     expect(batch).not.toHaveBeenCalled();
+  });
+
+  it("splits concluded team and member stats into fixed columns", async () => {
+    const batch = vi.fn().mockResolvedValue([]);
+    const service = createConcludeService(batch);
+    vi.spyOn(service, "getLatestWarHistory").mockResolvedValue(null);
+
+    const result = await service.concludeWar("mod-1", "event-1", {
+      result: "win",
+      own_stats: { kills: 10, towers: 4, base_hp: 50, credits: 1200, distance: 345.5 },
+      enemy_stats: { kills: 8, towers: 2, base_hp: 0, credits: 900, distance: 300 },
+    }, [{
+      user_id: "user-1",
+      stats: {
+        kills: 5,
+        deaths: 2,
+        assists: 7,
+        damage: 1000,
+        healing: 250,
+        building_damage: 125,
+        credits: 600,
+        damage_taken: 800,
+      },
+    }]);
+
+    expect(result.ok).toBe(true);
+    const statements = batch.mock.calls[0]?.[0] as Array<{ sql: string; bindings: unknown[] }>;
+    const historyInsert = statements.find((statement) => statement.sql.includes("INSERT INTO war_history"));
+    expect(historyInsert?.sql).toContain("own_kills");
+    expect(historyInsert?.sql).toContain("enemy_distance");
+    expect(historyInsert?.sql).not.toMatch(/\b(?:own_stats|enemy_stats)\b/);
+    expect(historyInsert?.bindings.slice(5, 15)).toEqual([
+      10, 4, 50, 1200, 345.5,
+      8, 2, 0, 900, 300,
+    ]);
+
+    const memberUpdate = statements.find((statement) => statement.sql.includes("UPDATE war_team_members SET"));
+    expect(memberUpdate?.sql).toContain("building_damage");
+    expect(memberUpdate?.sql).toContain("damage_taken");
+    expect(memberUpdate?.sql).not.toMatch(/\bstats\s*=/);
+    expect(memberUpdate?.bindings).toEqual([5, 2, 7, 1000, 250, 125, 600, 800, "member-1"]);
   });
 
   it("maps a concurrent conclude unique violation to a conflict without leaking database errors", async () => {
@@ -471,7 +655,7 @@ describe("GuildWarService helpers", () => {
     expect(prepare).toHaveBeenCalledWith(expect.stringContaining("UPDATE war_team_members SET role_tag"));
     expect(writeAuditLog).toHaveBeenCalledWith(expect.objectContaining({
       action: "set_role_tag",
-      detailText: expect.stringContaining("\"count\":2"),
+      detail: expect.objectContaining({ count: 2 }),
     }));
   });
 
@@ -488,7 +672,11 @@ describe("GuildWarService helpers", () => {
       { id: "event-team-1", warHistoryId: null, eventId: "event-1", teamName: "Alpha", sortOrder: 0, notes: "front", isLocked: true },
     ]);
     vi.spyOn(service, "getMembersForTeams").mockResolvedValue([
-      { id: "member-1", warTeamId: "event-team-1", userId: "user-1", roleTag: "tank", sortOrder: 0, stats: null, note: null },
+      {
+        id: "member-1", warTeamId: "event-team-1", userId: "user-1", roleTag: "tank", sortOrder: 0,
+        kills: null, deaths: null, assists: null, damage: null, healing: null,
+        buildingDamage: null, credits: null, damageTaken: null, note: null,
+      },
     ]);
     vi.spyOn(service, "getPoolMembersForEvent").mockResolvedValue([
       { id: "pool-1", warHistoryId: null, eventId: "event-1", userId: "user-2" },

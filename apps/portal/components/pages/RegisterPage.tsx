@@ -1,11 +1,9 @@
 import { registerSchema } from "@guild/shared";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { useMutation, useQuery } from "@tanstack/react-query";
-import { useNavigate, useParams } from "@tanstack/react-router";
-import { BubbleBackground, GlassEffect, GradientText, LampHeading, MagneticElement } from "@portal/components/effects";
-import { DepthButton } from "@portal/components/shared/DepthButton";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { Link, useNavigate, useParams } from "@tanstack/react-router";
 import { ArrowLeftIcon, EyeIcon, EyeOffIcon, KeyboardIcon } from "@portal/components/icons";
-import { Alert, Anchor, Loader, Stack, Text, TextInput } from "@mantine/core";
+import { Alert, Anchor, Button, Loader, Paper, Stack, Text, TextInput, Title } from "@mantine/core";
 import { useDebouncedValue, useDisclosure } from "@mantine/hooks";
 import { useState } from "react";
 import { useForm } from "react-hook-form";
@@ -18,8 +16,8 @@ import {
   register as requestRegister,
   verifyInvite,
 } from "../../services/AuthService";
-import { useAuthStore } from "../../stores/auth";
 import { useSiteConfigStore } from "../../stores/site-config";
+import { transitionSession } from "../../session-transition";
 import "./AuthPages.css";
 
 type RegisterFormValues = z.infer<typeof registerSchema>;
@@ -62,11 +60,7 @@ function parseValidationFieldErrors(details: unknown): FieldErrorMap {
   return mapped;
 }
 
-/* 后端 checkUsername（AuthService.ts:199）会给出「不可用」的具体原因，此前 UI 一律
- * 显示 usernameUnavailable（「用户名已被占用」）—— 对格式非法和系统保留前缀两种情况
- * 都是假话。这里按 reason 分发到对应文案。
- * reason 缺省表示真的被占用；出现未知 reason 时落到 Generic 而不是「已被占用」，
- * 否则后端新增一种原因就会无声地把假话说回去。 */
+/* Map known server reasons precisely; unknown reasons must not be misreported as collisions. */
 const USERNAME_UNAVAILABLE_KEY: Record<string, string> = {
   invalid_format: "usernameInvalidFormat",
   reserved_prefix: "usernameReserved",
@@ -88,7 +82,7 @@ export function RegisterPage() {
   const [inviteCodeDraft, setInviteCodeDraft] = useState("");
   const [inviteCodeError, setInviteCodeError] = useState<string | null>(null);
   const inviteCode = params.inviteCode ?? typedInviteCode;
-  const setSession = useAuthStore((state) => state.setSession);
+  const queryClient = useQueryClient();
   const siteName = useSiteConfigStore((s) => s.siteName);
   const siteLogoUrl = useSiteConfigStore((s) => s.siteLogoUrl);
 
@@ -134,7 +128,7 @@ export function RegisterPage() {
   const registerMutation = useMutation({
     mutationFn: (values: RegisterFormValues) => requestRegister(inviteCode, values),
     onSuccess: (session) => {
-      setSession(session.user, session.profile);
+      transitionSession(queryClient, session);
       void navigate({ to: "/" });
     },
     onError: (error) => {
@@ -183,33 +177,20 @@ export function RegisterPage() {
 
   return (
     <div className="login-page">
-      <div className="login-page__bg" />
-      <BubbleBackground
-        count={24}
-        minSize={4}
-        maxSize={40}
-        speed={0.6}
-        className="login-page__bubbles"
-      />
-
       <div className="login-page__content">
-        <div className="login-page__heading">
-          <LampHeading coneWidth={320} coneHeight={140} animated>
-            <div className="login-page__brand">
-              {siteLogoUrl ? (
-                <img src={siteLogoUrl} alt="" aria-hidden className="login-page__brand-logo" />
-              ) : null}
-              <GradientText animated duration={4} className="login-page__brand-text">
-                {siteName}
-              </GradientText>
-            </div>
-          </LampHeading>
+        <header className="login-page__heading">
+          <div className="login-page__brand">
+            {siteLogoUrl ? (
+              <img src={siteLogoUrl} alt="" aria-hidden className="login-page__brand-logo" />
+            ) : null}
+            <Title order={1} className="login-page__brand-text">{siteName}</Title>
+          </div>
           <Text c="dimmed" size="sm" ta="center" className="login-page__subtitle">
             {t("register.brand.subtitle")}
           </Text>
-        </div>
+        </header>
 
-        <GlassEffect className="login-page__card">
+        <Paper withBorder shadow="sm" radius="md" className="login-page__card">
           {inviteCode.length === 0 ? (
             <Stack gap={20}>
               <Text c="dimmed" size="sm">
@@ -234,11 +215,12 @@ export function RegisterPage() {
                   autoFocus
                 />
               </div>
-              <DepthButton onClick={submitInviteCode}>{t("button.continue")}</DepthButton>
+              <Button onClick={submitInviteCode}>{t("button.continue")}</Button>
               <div className="login-page__back-link">
                 <Anchor
+                  component={Link}
+                  to="/login"
                   underline="hover"
-                  onClick={() => void navigate({ to: "/login" })}
                   className="login-page__back-anchor"
                 >
                   <ArrowLeftIcon size={14} />
@@ -248,28 +230,32 @@ export function RegisterPage() {
             </Stack>
           ) : inviteQuery.isLoading ? (
             <Stack align="center" py="xl">
-              <Loader color="var(--accent-fill)" />
+              <Loader color="var(--brand-fill)" />
             </Stack>
           ) : !inviteQuery.data?.valid ? (
             <Stack align="center" gap="md">
               <Alert color="red" title={t("inviteInvalid")} w="100%" />
               <div className="login-page__back-link">
-                <Anchor
-                  underline="hover"
-                  onClick={() => {
-                    // A code typed here can just be retyped; one that came from
-                    // an invite link is part of the URL, so leave the page.
-                    if (params.inviteCode) {
-                      void navigate({ to: "/login" });
-                      return;
-                    }
-                    setTypedInviteCode("");
-                  }}
-                  className="login-page__back-anchor"
-                >
-                  <ArrowLeftIcon size={14} />
-                  {params.inviteCode ? t("button.backToLogin") : t("button.retryInviteCode")}
-                </Anchor>
+                {params.inviteCode ? (
+                  <Anchor
+                    component={Link}
+                    to="/login"
+                    underline="hover"
+                    className="login-page__back-anchor"
+                  >
+                    <ArrowLeftIcon size={14} />
+                    {t("button.backToLogin")}
+                  </Anchor>
+                ) : (
+                  <button
+                    type="button"
+                    className="login-page__back-anchor login-page__back-button"
+                    onClick={() => setTypedInviteCode("")}
+                  >
+                    <ArrowLeftIcon size={14} />
+                    {t("button.retryInviteCode")}
+                  </button>
+                )}
               </div>
             </Stack>
           ) : (
@@ -316,7 +302,7 @@ export function RegisterPage() {
                       value={passwordValue}
                       onChange={(event: React.ChangeEvent<HTMLInputElement>) => setValue("password", event.currentTarget.value)}
                       error={passwordError}
-                      classNames={{ root: "login-floating-root", input: "login-floating-input", label: "login-floating-label" }}
+                      classNames={{ root: "login-floating-root", input: "login-floating-input login-page__password-input", label: "login-floating-label" }}
                       autoComplete="new-password"
                     />
                     <div className="login-page__password-actions">
@@ -327,8 +313,8 @@ export function RegisterPage() {
                         type="button"
                         className="login-page__eye-btn"
                         onClick={showPasswordHandlers.toggle}
-                        tabIndex={-1}
                         aria-label={showPassword ? t("aria.hidePassword") : t("aria.showPassword")}
+                        aria-pressed={showPassword}
                       >
                         {showPassword ? <EyeOffIcon size={18} /> : <EyeIcon size={18} />}
                       </button>
@@ -347,7 +333,7 @@ export function RegisterPage() {
                       value={confirmPasswordValue}
                       onChange={(event: React.ChangeEvent<HTMLInputElement>) => setValue("confirmPassword", event.currentTarget.value)}
                       error={confirmPasswordError}
-                      classNames={{ root: "login-floating-root", input: "login-floating-input", label: "login-floating-label" }}
+                      classNames={{ root: "login-floating-root", input: "login-floating-input login-page__password-input", label: "login-floating-label" }}
                       autoComplete="new-password"
                     />
                     <div className="login-page__password-actions">
@@ -358,33 +344,34 @@ export function RegisterPage() {
                         type="button"
                         className="login-page__eye-btn"
                         onClick={showConfirmPasswordHandlers.toggle}
-                        tabIndex={-1}
-                        aria-label={showConfirmPassword ? t("aria.hidePassword") : t("aria.showPassword")}
+                        aria-label={showConfirmPassword ? t("aria.hideConfirmPassword") : t("aria.showConfirmPassword")}
+                        aria-pressed={showConfirmPassword}
                       >
                         {showConfirmPassword ? <EyeOffIcon size={18} /> : <EyeIcon size={18} />}
                       </button>
                     </div>
                   </div>
 
-                  <DepthButton htmlType="submit" disabled={registerMutation.isPending}>
+                  <Button type="submit" loading={registerMutation.isPending}>
                     {t("button.register")}
-                  </DepthButton>
+                  </Button>
 
-                  <MagneticElement strength={0.3} className="login-page__back-link">
+                  <div className="login-page__back-link">
                     <Anchor
+                      component={Link}
+                      to="/login"
                       underline="hover"
-                      onClick={() => void navigate({ to: "/login" })}
                       className="login-page__back-anchor"
                     >
                       <ArrowLeftIcon size={14} />
                       {t("button.backToLogin")}
                     </Anchor>
-                  </MagneticElement>
+                  </div>
                 </Stack>
               </form>
             </>
           )}
-        </GlassEffect>
+        </Paper>
       </div>
     </div>
   );

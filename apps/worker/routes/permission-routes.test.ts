@@ -25,7 +25,10 @@ vi.mock("../middleware/rbac", () => ({
   getRequestUser: mocks.getRequestUser,
 }));
 
-vi.mock("../services/audit", () => ({ writeAuditLog: vi.fn() }));
+vi.mock("../services/audit", () => ({
+  buildAuditLogStatements: vi.fn(() => []),
+  writeAuditLog: vi.fn(),
+}));
 vi.mock("../services/push", () => ({
   publishAnnouncementPublished: vi.fn(),
   publishEntityChanged: vi.fn(),
@@ -96,7 +99,31 @@ function createPolicyDb() {
   return {
     prepare: vi.fn(() => ({
       bind: vi.fn(() => ({
-        first: vi.fn().mockResolvedValue(null),
+        first: vi.fn().mockResolvedValue({
+          feature_announcements_enabled: 1,
+          feature_events_enabled: 1,
+          feature_guild_war_enabled: 1,
+          feature_gallery_enabled: 1,
+          feature_wiki_enabled: 1,
+          feature_tools_enabled: 1,
+          feature_storage_enabled: 1,
+          media_site_logo_max_bytes: 2 * 1024 * 1024,
+          media_class_icon_max_bytes: 512 * 1024,
+          media_profile_image_max_bytes: 5 * 1024 * 1024,
+          media_profile_audio_max_bytes: 20 * 1024 * 1024,
+          media_announcement_image_max_bytes: 5 * 1024 * 1024,
+          media_wiki_image_max_bytes: 5 * 1024 * 1024,
+          media_event_image_max_bytes: 5 * 1024 * 1024,
+          media_gallery_image_max_bytes: 10 * 1024 * 1024,
+          media_storage_image_max_bytes: 5 * 1024 * 1024,
+          media_profile_quota: 10,
+          media_announcement_quota: 10,
+          media_gallery_quota: 20,
+          media_wiki_quota: 10,
+          storage_images_per_item: 5,
+          absence_max_span_days: 366,
+          absence_max_entries_per_user: 20,
+        }),
       })),
     })),
   };
@@ -120,11 +147,11 @@ beforeEach(() => {
 });
 
 describe("announcement and wiki permission mapping", () => {
-  it("uses announcements.create for image staging", async () => {
+  it("uses announcements.create for pending image uploads", async () => {
     const { announcementsRoutes } = await import("./announcements");
     mocks.requirePermission.mockRejectedValueOnce(new HTTPException(401));
 
-    const result = await announcementsRoutes.request("/images/stage", { method: "POST" });
+    const result = await announcementsRoutes.request("/images", { method: "POST" });
 
     expect(result.status).toBe(401);
     expect(mocks.requirePermission).toHaveBeenCalledWith(expect.anything(), "announcements.create");
@@ -167,22 +194,24 @@ describe("announcement and wiki permission mapping", () => {
 });
 
 describe("gallery permission mapping", () => {
-  it("rejects staged announcement files whose bytes do not match the declared image type", async () => {
+  it("rejects malformed pending announcement image multipart", async () => {
     const { announcementsRoutes } = await import("./announcements");
     mocks.requirePermission.mockResolvedValueOnce({ id: "u-1", permissions: new Set(["announcements.create"]) });
     const form = new FormData();
-    form.append("files", new File(["<html>not an image</html>"], "fake.png", { type: "image/png" }));
+    form.append("full", new File(["not webp"], "full.png", { type: "image/png" }));
+    form.append("view", new File(["not webp"], "view.webp", { type: "image/webp" }));
 
-    const result = await announcementsRoutes.request("/images/stage", { method: "POST", body: form }, { DB: createPolicyDb(), MEDIA: {} });
+    const result = await announcementsRoutes.request("/images", { method: "POST", body: form }, { DB: createPolicyDb(), MEDIA: {} });
 
     expect(result.status).toBe(400);
   });
 
-  it("rejects files whose bytes do not match the declared image type", async () => {
+  it("rejects image multipart with a non-WebP variant", async () => {
     const { galleryRoutes } = await import("./gallery");
     mocks.requirePermission.mockResolvedValueOnce({ id: "u-1", permissions: new Set(["gallery.upload"]) });
     const form = new FormData();
-    form.append("files", new File(["<html>not an image</html>"], "fake.png", { type: "image/png" }));
+    form.append("full", new File(["not webp"], "full.png", { type: "image/png" }));
+    form.append("view", new File(["not webp"], "view.webp", { type: "image/webp" }));
 
     const result = await galleryRoutes.request("/images", { method: "POST", body: form }, { DB: createPolicyDb(), MEDIA: {} });
 
@@ -231,15 +260,15 @@ describe("guild-war permission mapping", () => {
     ["GET /active", "/active", { method: "GET" }],
     ["GET /history", "/history", { method: "GET" }],
     [
-      "POST /history/batch",
-      "/history/batch",
-      { method: "POST", body: JSON.stringify({ ids: ["war-1"] }), headers: { "Content-Type": "application/json" } },
+      "GET /history/batch",
+      "/history/batch?ids=war-1,war-2",
+      { method: "GET" },
     ],
     ["GET /history/:id", "/history/war-1", { method: "GET" }],
     ["GET /analytics", "/analytics?war_ids=war-1&user_ids=user-1", { method: "GET" }],
   ] as const;
 
-  it.each(anonymousGuildWarReadRoutes)("allows anonymous guild-war read access for %s", async (_label, path, init) => {
+  it.each(anonymousGuildWarReadRoutes)("allows anonymous guild-war read access for %s", async (label, path, init) => {
     const { guildWarRoutes } = await import("./guild-war");
     mocks.getRequestUser.mockResolvedValueOnce(null);
 
@@ -248,6 +277,9 @@ describe("guild-war permission mapping", () => {
     expect(result.status).toBe(200);
     if (path === "/active") {
       expect(guildWarServiceMethods.getActive).toHaveBeenCalledWith(undefined, false);
+    }
+    if (label === "GET /history/batch") {
+      expect(guildWarServiceMethods.batchHistory).toHaveBeenCalledWith(["war-1", "war-2"]);
     }
   });
 
@@ -337,7 +369,6 @@ describe("site config permission mapping", () => {
     const result = await app.request("/api/site-config", { method: "GET" }, {
       DB: {},
       SIGNING_SECRET: "test-secret",
-      SITE_NAME: "Test Guild",
       SITE_LOGO_URL: "/test-logo.webp",
     });
     const body = await result.json() as { site_name: string; site_logo_url: string };
@@ -361,7 +392,6 @@ describe("site config permission mapping", () => {
     const result = await app.request("/api/site-config", { method: "GET" }, {
       DB: {},
       SIGNING_SECRET: "test-secret",
-      SITE_NAME: "Test Guild",
       SITE_LOGO_URL: "/test-logo.webp",
     });
     const body = await result.json() as { error_code: string };
@@ -387,7 +417,7 @@ describe("site config permission mapping", () => {
     }, { DB: {} });
 
     expect(writeResult.status).toBe(401);
-    expect(mocks.requirePermission).toHaveBeenLastCalledWith(expect.anything(), "admin.siteConfig.manage", { freshPermissions: true });
+    expect(mocks.requirePermission).toHaveBeenLastCalledWith(expect.anything(), "admin.siteConfig.manage");
 
     mocks.requirePermission.mockRejectedValueOnce(new HTTPException(401));
     const form = new FormData();
@@ -398,6 +428,46 @@ describe("site config permission mapping", () => {
     }, { DB: {} });
 
     expect(uploadResult.status).toBe(401);
-    expect(mocks.requirePermission).toHaveBeenLastCalledWith(expect.anything(), "admin.siteConfig.manage", { freshPermissions: true });
+    expect(mocks.requirePermission).toHaveBeenLastCalledWith(expect.anything(), "admin.siteConfig.manage");
+  });
+
+  it("allows every legitimate role-metadata consumer to read the D1 role list", async () => {
+    const { adminRoutes } = await import("./admin");
+    mocks.requirePermission.mockRejectedValueOnce(new HTTPException(401));
+
+    const result = await adminRoutes.request("/roles", { method: "GET" }, { DB: {} });
+
+    expect(result.status).toBe(401);
+    expect(mocks.requirePermission).toHaveBeenLastCalledWith(expect.anything(), [
+      "admin.roles.view",
+      "admin.roles.manage",
+      "admin.invite.manage",
+      "admin.users.edit",
+      "admin.users.role",
+    ]);
+  });
+});
+
+describe("class catalog permission mapping", () => {
+  it("requires admin.classes.manage for every catalog mutation", async () => {
+    const { classRoutes } = await import("./classes");
+    const mutations = [
+      { path: "/", method: "POST" },
+      { path: "/class-1", method: "PATCH" },
+      { path: "/class-1/icon", method: "POST" },
+      { path: "/class-1/icon", method: "DELETE" },
+      { path: "/class-1", method: "DELETE" },
+    ] as const;
+
+    for (const mutation of mutations) {
+      mocks.requirePermission.mockRejectedValueOnce(new HTTPException(401));
+      const result = await classRoutes.request(mutation.path, { method: mutation.method });
+
+      expect(result.status).toBe(401);
+      expect(mocks.requirePermission).toHaveBeenLastCalledWith(
+        expect.anything(),
+        "admin.classes.manage",
+      );
+    }
   });
 });

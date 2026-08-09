@@ -4,6 +4,7 @@ import { TrashIcon } from "@portal/components/icons";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useMemberAbsences } from "../../hooks/useMemberAbsences";
+import { NativeDateTimeInput } from "./NativeDateTimeInput";
 
 type AbsenceManagerCardProps = {
   userId: string | undefined;
@@ -91,16 +92,14 @@ export function AbsenceManagerCard({ userId }: AbsenceManagerCardProps) {
       <Group wrap="wrap" align="flex-end" mt={12}>
         <Stack gap={4}>
           <Text c="dimmed" size="sm">{t("absence.startDate")}</Text>
-          <TextInput
-            type="date"
+          <NativeDateTimeInput
             value={startDate}
             onChange={(event) => setStartDate(event.currentTarget.value)}
           />
         </Stack>
         <Stack gap={4}>
           <Text c="dimmed" size="sm">{t("absence.endDate")}</Text>
-          <TextInput
-            type="date"
+          <NativeDateTimeInput
             value={endDate}
             onChange={(event) => setEndDate(event.currentTarget.value)}
           />

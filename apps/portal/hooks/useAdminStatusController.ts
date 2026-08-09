@@ -34,7 +34,6 @@ export function useAdminStatusController({
   const [statusLatencyMs, setStatusLatencyMs] = useState<number | null>(null);
   const [statusHealthLogs, setStatusHealthLogs] = useState<StatusHealthLog[]>([]);
 
-  // Load persisted health logs on mount
   useEffect(() => {
     try {
       const raw = localStorage.getItem(STORAGE_KEY);
@@ -45,16 +44,15 @@ export function useAdminStatusController({
         setStatusHealthLogs(next);
       }
     } catch {
-      // ignore invalid persisted logs
+      // Health history is optional and must not block the status page.
     }
   }, []);
 
-  // Persist health logs to localStorage
   useEffect(() => {
     try {
       localStorage.setItem(STORAGE_KEY, JSON.stringify(statusHealthLogs.slice(0, LOG_LIMIT)));
     } catch {
-      // ignore storage write errors
+      // Health history is optional and must not block live status checks.
     }
   }, [statusHealthLogs]);
 

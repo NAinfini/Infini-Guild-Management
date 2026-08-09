@@ -1,6 +1,9 @@
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import { describe, expect, it, vi } from "vitest";
 import {
   DASHBOARD_EVENTS_REFETCH_INTERVAL_MS,
+  DASHBOARD_MOBILE_MEDIA_QUERY,
   orderDashboardUpcomingRows,
   participantToDashboardMember,
   roundDashboardNow,
@@ -19,6 +22,30 @@ vi.mock("../../api/client", () => ({
 const { apiRequest } = await import("../../api/client");
 
 describe("DashboardPage upcoming event query", () => {
+  it("uses the shared mobile breakpoint for the action-first composition", () => {
+    expect(DASHBOARD_MOBILE_MEDIA_QUERY).toBe("(max-width: 47.99em)");
+  });
+
+  it("renders mobile actions before member stats and the last war", () => {
+    const source = readFileSync(
+      resolve(process.cwd(), "apps/portal/components/pages/DashboardPage.tsx"),
+      "utf8",
+    );
+    const mobileBranchStart = source.indexOf("{isMobileDashboard ? (");
+    const mobileBranch = source.slice(
+      mobileBranchStart,
+      source.indexOf(") : (", mobileBranchStart),
+    );
+    const sectionPositions = [
+      mobileBranch.indexOf("{actionsColumn ?"),
+      mobileBranch.indexOf("{activeMembersCard}"),
+      mobileBranch.indexOf("{lastWarCard ?"),
+    ];
+
+    expect(sectionPositions.every((position) => position >= 0)).toBe(true);
+    expect(sectionPositions).toEqual([...sectionPositions].sort((left, right) => left - right));
+  });
+
   it("rounds the dashboard clock without retaining mutable module state", () => {
     const input = new Date("2026-05-06T16:17:42.000Z");
     const rounded = roundDashboardNow(input);
@@ -56,7 +83,7 @@ describe("DashboardPage upcoming event query", () => {
         role: "member",
         classes: ["tank"],
         power: 4200,
-        avatar_key: "members/user-1/avatar.webp",
+        avatar_media_id: "avatar1234567890abcde",
       }),
     ).toEqual({
       user: {
@@ -66,7 +93,7 @@ describe("DashboardPage upcoming event query", () => {
       profile: {
         classes: ["tank"],
         power: 4200,
-        avatar_key: "members/user-1/avatar.webp",
+        avatar_media_id: "avatar1234567890abcde",
       },
     });
   });

@@ -1,9 +1,15 @@
-import { eventRaffleWinnerSchema } from "@guild/shared";
+import {
+  DEFAULT_GAME_RULES,
+  eventRaffleWinnerSchema,
+  getEventBehavior,
+  type EventBehavior,
+  type GameRules,
+} from "@guild/shared";
 import { eq } from "drizzle-orm";
 import { nanoid } from "nanoid";
 import { eventParticipants, eventRaffleWinners } from "../../db/schema";
 import { err, type ServiceErr } from "../result";
-import type { CreateEventInput, DatabaseLike, EventRow, EventServiceDeps, RawDbLike, UpdateEventInput } from "./EventCrudService";
+import type { CreateEventInput, DatabaseLike, EventServiceDeps, RawDbLike, UpdateEventInput } from "./EventCrudService";
 
 export type RaffleWinnerRow = {
   id: string;
@@ -61,7 +67,7 @@ export class EventPollRaffleService {
 
     const eventRow = await this.deps.getEventById(eventId);
     if (!eventRow) return { ok: false, code: "NOT_FOUND", message: "Event not found" };
-    if (eventRow.type !== "poll") return { ok: false, code: "CONFLICT", message: "Event is not a poll" };
+    if (await this.getBehavior(eventRow.type) !== "poll") return { ok: false, code: "CONFLICT", message: "Event is not a poll" };
     if (eventRow.archivedAt !== null) return { ok: false, code: "CONFLICT", message: "Event is archived" };
     if (!eventRow.endAt) return { ok: false, code: "CONFLICT", message: "Poll has no close time" };
     if (eventRow.endAt <= this.now()) return { ok: false, code: "CONFLICT", message: "Poll is closed" };
@@ -78,8 +84,8 @@ export class EventPollRaffleService {
     const deleteStmt = this.rawDb.prepare("DELETE FROM event_poll_votes WHERE event_id = ?1 AND user_id = ?2").bind(eventId, actorId);
     const insertStmts = uniqueOptionIds.map((optionId) =>
       this.rawDb
-        .prepare("INSERT INTO event_poll_votes (id, event_id, option_id, user_id, created_at) VALUES (?1, ?2, ?3, ?4, ?5)")
-        .bind(this.deps.createId?.() ?? nanoid(), eventId, optionId, actorId, now),
+        .prepare("INSERT INTO event_poll_votes (event_id, option_id, user_id, created_at) VALUES (?1, ?2, ?3, ?4)")
+        .bind(eventId, optionId, actorId, now),
     );
     await this.rawDb.batch([deleteStmt, ...insertStmts]);
 
@@ -89,7 +95,7 @@ export class EventPollRaffleService {
       actorId,
       entityId: `${eventId}:${actorId}`,
       diffTitle: eventRow.title,
-      detailText: JSON.stringify({ option_count: uniqueOptionIds.length }),
+      detail: { option_count: uniqueOptionIds.length },
     });
     await this.deps.publishEntityChanged({ entityType: "event", entityId: eventId, hint: "poll_voted" });
     return { ok: true };
@@ -101,7 +107,7 @@ export class EventPollRaffleService {
   > {
     const eventRow = await this.deps.getEventById(eventId);
     if (!eventRow) return { ok: false, code: "NOT_FOUND", message: "Event not found" };
-    if (eventRow.type !== "raffle") return { ok: false, code: "CONFLICT", message: "Event is not a raffle" };
+    if (await this.getBehavior(eventRow.type) !== "raffle") return { ok: false, code: "CONFLICT", message: "Event is not a raffle" };
     if (eventRow.archivedAt !== null) return { ok: false, code: "CONFLICT", message: "Event is archived" };
     if (!eventRow.winnerCount || eventRow.winnerCount < 1) return { ok: false, code: "VALIDATION_ERROR", message: "Raffle has no winner_count configured" };
 
@@ -150,7 +156,7 @@ export class EventPollRaffleService {
       actorId,
       entityId: eventId,
       diffTitle: eventRow.title,
-      detailText: JSON.stringify({ winner_count: winners.length, winner_user_ids: selectedIds }),
+      detail: { winner_count: winners.length, winner_user_ids: selectedIds },
     });
 
     await this.deps.publishEntityChanged({
@@ -179,7 +185,8 @@ export class EventPollRaffleService {
   }
 
   async attachRaffleWinners<T extends { id: string; type: string }>(eventPayloads: T[]): Promise<(T & { raffle_winners?: Array<{ id: string; event_id: string; user_id: string; drawn_at: string }> })[]> {
-    const raffleIds = eventPayloads.filter((e) => e.type === "raffle").map((e) => e.id);
+    const rules = await this.getGameRules();
+    const raffleIds = eventPayloads.filter((e) => this.requireBehavior(rules, e.type) === "raffle").map((e) => e.id);
     if (raffleIds.length === 0) return eventPayloads;
 
     const placeholders = raffleIds.map((_, i) => `?${i + 1}`).join(", ");
@@ -198,36 +205,62 @@ export class EventPollRaffleService {
     }
 
     return eventPayloads.map((e) => {
-      if (e.type !== "raffle") return e;
+      if (this.requireBehavior(rules, e.type) !== "raffle") return e;
       return { ...e, raffle_winners: (winnersByEvent.get(e.id) ?? []).map(toRaffleWinnerPayload) };
     });
   }
 
-  validatePollEventInput(data: CreateEventInput): ServiceErr | null {
-    if (data.type !== "poll") return null;
+  validatePollEventInput(data: CreateEventInput, behavior: EventBehavior): ServiceErr | null {
+    if (behavior !== "poll") {
+      if (data.poll) return err("VALIDATION_ERROR", "Only poll events can include poll settings");
+      return null;
+    }
     if (!data.end_at) return err("VALIDATION_ERROR", "Poll events require end_at");
     if (!data.poll) return err("VALIDATION_ERROR", "Poll events require poll settings");
     return null;
   }
 
-  validateRaffleEventInput(data: CreateEventInput): ServiceErr | null {
-    if (data.type !== "raffle") return null;
+  validateRaffleEventInput(data: CreateEventInput, behavior: EventBehavior): ServiceErr | null {
+    if (behavior !== "raffle") {
+      if (data.winner_count !== undefined) return err("VALIDATION_ERROR", "Only raffle events can include winner_count");
+      return null;
+    }
     if (!data.end_at) return err("VALIDATION_ERROR", "Raffle events require end_at");
     if (!data.winner_count || data.winner_count < 1) return err("VALIDATION_ERROR", "Raffle events require winner_count");
     return null;
   }
 
-  validatePollEventUpdate(existing: EventRow, data: UpdateEventInput, effectiveEndAt: string | null): ServiceErr | null {
-    const effectiveType = data.type ?? existing.type;
-    if (effectiveType !== "poll") {
+  validatePollEventUpdate(
+    data: UpdateEventInput,
+    effectiveEndAt: string | null,
+    previousBehavior: EventBehavior,
+    behavior: EventBehavior,
+  ): ServiceErr | null {
+    if (behavior !== "poll") {
       if (data.poll) return err("VALIDATION_ERROR", "Only poll events can include poll settings");
       return null;
     }
     if (!effectiveEndAt) return err("VALIDATION_ERROR", "Poll events require end_at");
+    if (previousBehavior !== "poll" && !data.poll) return err("VALIDATION_ERROR", "Poll events require poll settings");
     return null;
   }
 
-  async createPoll(eventId: string, poll: NonNullable<CreateEventInput["poll"]>) {
+  validateRaffleEventUpdate(
+    data: UpdateEventInput,
+    effectiveEndAt: string | null,
+    effectiveWinnerCount: number | null,
+    behavior: EventBehavior,
+  ): ServiceErr | null {
+    if (behavior !== "raffle") {
+      if (data.winner_count !== undefined) return err("VALIDATION_ERROR", "Only raffle events can include winner_count");
+      return null;
+    }
+    if (!effectiveEndAt) return err("VALIDATION_ERROR", "Raffle events require end_at");
+    if (!effectiveWinnerCount || effectiveWinnerCount < 1) return err("VALIDATION_ERROR", "Raffle events require winner_count");
+    return null;
+  }
+
+  buildCreatePollStatements(eventId: string, poll: NonNullable<CreateEventInput["poll"]>) {
     const now = this.now();
     const pollStmt = this.rawDb
       .prepare("INSERT INTO event_polls (event_id, results_visibility, show_voter_names, created_at, updated_at) VALUES (?1, ?2, ?3, ?4, ?5)")
@@ -237,11 +270,10 @@ export class EventPollRaffleService {
         .prepare("INSERT INTO event_poll_options (id, event_id, label, sort_order, created_at) VALUES (?1, ?2, ?3, ?4, ?5)")
         .bind(this.deps.createId?.() ?? nanoid(), eventId, label.trim(), index, now),
     );
-    await this.rawDb.batch([pollStmt, ...optionStmts]);
+    return [pollStmt, ...optionStmts];
   }
 
-  async updatePoll(eventId: string, poll: NonNullable<CreateEventInput["poll"]>, knownHasVotes?: boolean): Promise<ServiceErr | null> {
-    const hasVotes = knownHasVotes ?? await this.pollHasVotes(eventId);
+  buildUpdatePollStatements(eventId: string, poll: NonNullable<CreateEventInput["poll"]>, hasVotes: boolean) {
     const now = this.now();
     const stmts = [
       this.rawDb
@@ -255,11 +287,8 @@ export class EventPollRaffleService {
           .prepare("INSERT INTO event_poll_options (id, event_id, label, sort_order, created_at) VALUES (?1, ?2, ?3, ?4, ?5)")
           .bind(this.deps.createId?.() ?? nanoid(), eventId, label.trim(), index, now),
       ));
-    } else if (await this.pollOptionsChanged(eventId, poll.options)) {
-      return err("VALIDATION_ERROR", "Poll options cannot be changed after voting starts");
     }
-    await this.rawDb.batch(stmts);
-    return null;
+    return stmts;
   }
 
   async pollOptionsChanged(eventId: string, nextOptions: string[]): Promise<boolean> {
@@ -271,7 +300,7 @@ export class EventPollRaffleService {
   }
 
   async pollHasVotes(eventId: string): Promise<boolean> {
-    const statement = this.rawDb.prepare("SELECT id FROM event_poll_votes WHERE event_id = ?1 LIMIT 1").bind(eventId);
+    const statement = this.rawDb.prepare("SELECT 1 FROM event_poll_votes WHERE event_id = ?1 LIMIT 1").bind(eventId);
     const result = await statement.all?.();
     const rows = Array.isArray(result) ? result : result?.results;
     return Array.isArray(rows) && rows.length > 0;
@@ -282,7 +311,8 @@ export class EventPollRaffleService {
     viewerId: string | null,
     canManage: boolean,
   ): Promise<Array<T & { poll?: unknown }>> {
-    const pollEvents = eventPayloads.filter((event) => event.type === "poll");
+    const rules = await this.getGameRules();
+    const pollEvents = eventPayloads.filter((event) => this.requireBehavior(rules, event.type) === "poll");
     if (pollEvents.length === 0) return eventPayloads;
     const pollMap = await this.loadPollsForEvents(pollEvents, viewerId, canManage);
     return eventPayloads.map((event) => ({
@@ -298,6 +328,20 @@ export class EventPollRaffleService {
     return Array.isArray(rows) ? rows as PollOptionRow[] : [];
   }
 
+  private getGameRules(): Promise<GameRules> {
+    return this.deps.getGameRules?.() ?? Promise.resolve(DEFAULT_GAME_RULES);
+  }
+
+  private requireBehavior(rules: GameRules, eventType: string): EventBehavior {
+    const behavior = getEventBehavior(rules, eventType);
+    if (!behavior) throw new Error(`Unknown configured event type: ${eventType}`);
+    return behavior;
+  }
+
+  private async getBehavior(eventType: string): Promise<EventBehavior> {
+    return this.requireBehavior(await this.getGameRules(), eventType);
+  }
+
   private async loadPollsForEvents(
     pollEvents: Array<{ id: string; end_at: string | null }>,
     viewerId: string | null,
@@ -310,7 +354,7 @@ export class EventPollRaffleService {
                 o.id as option_id, o.label, o.sort_order, v.user_id as voter_id
          FROM event_polls p
          JOIN event_poll_options o ON o.event_id = p.event_id
-         LEFT JOIN event_poll_votes v ON v.option_id = o.id
+         LEFT JOIN event_poll_votes v ON v.event_id = o.event_id AND v.option_id = o.id
          WHERE p.event_id IN (${placeholders})
          ORDER BY p.event_id, o.sort_order, o.id`,
       )

@@ -30,8 +30,7 @@
       "@hookform/resolvers/*": ["./node_modules/@hookform/resolvers/*"],
       "zod": ["./node_modules/zod"],
       "dompurify": ["./node_modules/dompurify"],
-      "lowlight": ["./node_modules/lowlight"],
-      "cmdk": ["./node_modules/cmdk"]
+      "lowlight": ["./node_modules/lowlight"]
     },
     "noEmit": true
   },
@@ -41,6 +40,7 @@
     "apps/portal/**/*.ts",
     "apps/portal/**/*.tsx",
     "apps/portal/vite.config.ts",
+    "playwright.config.ts",
     "apps/worker/**/*.ts",
     "apps/worker/drizzle.config.ts"
   ]

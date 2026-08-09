@@ -4,11 +4,12 @@ export const AUDIT_ENTITY_TYPES = [
   "audit_archive_export",
   "audit_log_export",
   "badge",
+  "class_catalog",
+  "class_tag",
   "event",
   "event_participant",
   "event_poll_vote",
   "gallery",
-  "game_data",
   "gallery_item",
   "guild_war",
   "guild_war_history",
@@ -18,13 +19,6 @@ export const AUDIT_ENTITY_TYPES = [
   "member_absence",
   "member_badge",
   "member_profile",
-  // No code writes these two any more — the member onboarding feature was
-  // removed. They stay listed because auditLogSchema validates stored rows
-  // with `z.enum(AUDIT_ENTITY_TYPES)`, so dropping them would make any
-  // historical onboarding audit row unparseable and take the whole audit log
-  // page down. Safe to delete once you are certain no such rows exist.
-  "onboarding",
-  "onboarding_ack",
   "recurring_template",
   "role",
   "seed",
@@ -90,17 +84,13 @@ export const AUDIT_ACTIONS = [
   "revoke",
   "save_teams",
   "set_role_tag",
+  "share_video",
   "unassign",
   "update",
   "update_role",
   "upload",
   "upload_audio",
   "upload_avatar",
-  // No code writes this any more — the game-data icon upload endpoint was
-  // removed. It stays listed because auditLogSchema validates stored rows with
-  // `z.enum(AUDIT_ACTIONS)`, so dropping it would make any historical row
-  // unparseable and take the whole audit log page down. Safe to delete once you
-  // are certain no `upload_icon` rows exist.
   "upload_icon",
   "upload_images",
   "vote",

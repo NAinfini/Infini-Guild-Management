@@ -26,15 +26,77 @@ export function collectFiles(form: FormData): File[] {
   return files;
 }
 
-export async function serveR2Object(c: Context, key: string, notFoundMessage: string): Promise<Response> {
-  const object = await (c.env as Bindings).MEDIA.get(key);
-  if (!object?.body) return buildError(c, "NOT_FOUND", notFoundMessage);
+/*
+ * R2Range is a union in the type definitions, but the runtime hands back one
+ * object carrying all three fields with the unused ones set to undefined, so
+ * `"suffix" in range` matches every range and cannot discriminate it. Decide by
+ * value instead. A suffix range counts backwards from the end and, per RFC 9110,
+ * degenerates to the whole representation once it reaches past the start;
+ * otherwise the window opens at offset and runs for length, each of which is
+ * absent when the request left that side open.
+ */
+function resolveServedRange(range: R2Range, size: number): { offset: number; length: number } {
+  const { offset, length, suffix } = range as { offset?: number; length?: number; suffix?: number };
+  if (typeof suffix === "number") {
+    const served = Math.min(suffix, size);
+    return { offset: size - served, length: served };
+  }
+  const start = offset ?? 0;
+  return { offset: start, length: length ?? size - start };
+}
+
+export async function serveR2Object(
+  c: Context,
+  key: string,
+  notFoundMessage: string,
+  expectedContentType?: string,
+): Promise<Response> {
+  const bucket = (c.env as Bindings).MEDIA;
+  const requestHeaders = c.req.raw.headers;
+  const wantsRange = requestHeaders.has("Range");
+
+  // R2 evaluates If-None-Match / If-Modified-Since (onlyIf) and Range natively.
+  let object = wantsRange
+    ? await bucket.get(key, { onlyIf: requestHeaders, range: requestHeaders }).catch(() => null)
+    : await bucket.get(key, { onlyIf: requestHeaders });
+  // Tracks whether the get we ultimately answered from carried the Range —
+  // local R2 (workerd) populates object.range even on full reads, so the
+  // object alone cannot tell us whether a 206 is warranted.
+  let servedRange = wantsRange;
+  if (wantsRange && object === null) {
+    // Unsatisfiable or malformed Range: a server may ignore Range and answer
+    // with the full representation, which is also the cheapest recovery here.
+    object = await bucket.get(key, { onlyIf: requestHeaders });
+    servedRange = false;
+  }
+  if (!object) return buildError(c, "NOT_FOUND", notFoundMessage);
+
   const headers = new Headers();
   object.writeHttpMetadata(headers);
-  headers.set("Content-Type", headers.get("Content-Type") ?? "application/octet-stream");
+  headers.set("Content-Type", expectedContentType ?? headers.get("Content-Type") ?? "application/octet-stream");
   headers.set("Cache-Control", MEDIA_CACHE_CONTROL);
   headers.set("ETag", object.httpEtag);
-  return new Response(object.body, { headers });
+  headers.set("Accept-Ranges", "bytes");
+
+  // Precondition matched: R2 returns a bodyless R2Object — answer 304 so the
+  // browser keeps its cached copy instead of re-downloading media. What decides
+  // is the value, not the property: the runtime materializes absent fields as
+  // undefined, so `in` alone would match either shape. The cast is only there
+  // because TS cannot narrow across the R2Object class hierarchy.
+  const body = "body" in object ? (object as R2ObjectBody).body : null;
+  if (!body) {
+    return new Response(null, { status: 304, headers });
+  }
+
+  const range = servedRange ? object.range : undefined;
+  if (range) {
+    const { offset, length } = resolveServedRange(range, object.size);
+    headers.set("Content-Range", `bytes ${offset}-${offset + length - 1}/${object.size}`);
+    headers.set("Content-Length", String(length));
+    return new Response(body, { status: 206, headers });
+  }
+
+  return new Response(body, { headers });
 }
 
 export function buildError(c: Context, code: ErrorCode, message: string, details?: unknown): Response {

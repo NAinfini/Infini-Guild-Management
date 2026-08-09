@@ -1,7 +1,8 @@
 // Domain: Member Badges
 // Tables: member_badges, member_badge_assignments
 // Dependencies: auth.users
-import { index, integer, sqliteTable, text, uniqueIndex } from "drizzle-orm/sqlite-core";
+import { sql } from "drizzle-orm";
+import { check, index, integer, sqliteTable, text, uniqueIndex } from "drizzle-orm/sqlite-core";
 import { users } from "./auth";
 import { nowUtc } from "./shared";
 
@@ -19,6 +20,7 @@ export const memberBadges = sqliteTable(
   },
   (table) => ({
     idxSort: index("idx_member_badges_sort").on(table.sortOrder, table.id),
+    sortNonnegative: check("member_badges_sort_nonnegative", sql`${table.sortOrder} >= 0`),
   }),
 );
 
@@ -33,5 +35,6 @@ export const memberBadgeAssignments = sqliteTable(
   (table) => ({
     uxBadgeUser: uniqueIndex("ux_member_badge_assignments_badge_user").on(table.badgeId, table.userId),
     idxUser: index("idx_member_badge_assignments_user").on(table.userId),
+    idxAssignedBy: index("idx_member_badge_assignments_assigned_by").on(table.assignedBy),
   }),
 );

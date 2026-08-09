@@ -1,7 +1,8 @@
 import type { WikiArticle, WikiCategory } from "@guild/shared";
 import { TIPTAP_DEFAULT_JSON } from "@portal/components/shared/tiptap-meta";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { flushSync } from "react-dom";
 import { useDisclosure } from "@mantine/hooks";
 import { useTranslation } from "react-i18next";
 import { useAppError } from "./useAppError";
@@ -15,6 +16,7 @@ import {
   deleteWikiArticle,
 } from "../services/WikiService";
 import { queryKeys } from "../api/query-keys";
+import { resolveMediaUrl } from "../utils/media";
 
 type UseWikiArticleEditorParams = {
   canEdit: boolean;
@@ -44,6 +46,7 @@ export function useWikiArticleEditor({
   const { t } = useTranslation("wiki");
   const queryClient = useQueryClient();
   const { showError } = useAppError();
+  const deletePendingRef = useRef(false);
 
   const [articleTitle, setArticleTitle] = useState("");
   const [articleBody, setArticleBody] = useState(TIPTAP_DEFAULT_JSON);
@@ -73,12 +76,30 @@ export function useWikiArticleEditor({
     setArticleCategoryId(selectedArticle.category_id);
   }, [selectedArticle]);
 
+  /** 把编辑器恢复成 base 的原样（base 为 null 就是清空），并撤掉两个待保存意图。 */
+  const resetDraft = (base: WikiArticle | null) => {
+    setArticleTitle(base?.title ?? "");
+    setArticleBody(base?.body_json ?? TIPTAP_DEFAULT_JSON);
+    setArticleSortOrder(base?.sort_order ?? 0);
+    setArticleCategoryId(base?.category_id ?? "");
+    isCreatingArticleHandlers.close();
+    setPinnedIntent("none");
+    setArchiveIntent("none");
+  };
+
   const createArticleMutation = useMutation({
     mutationFn: createWikiArticle,
     onSuccess: async (created) => {
       notifySuccess(t("message.articleCreated"));
       await queryClient.invalidateQueries({ queryKey: queryKeys.wiki.all });
-      isCreatingArticleHandlers.close();
+      /*
+       * 先把草稿清干净再跳转。跳转要经过未保存改动拦截器（useBeforeUnloadPrompt），
+       * 草稿还在的话，用户刚点完「创建」就会被问「有未保存的改动，确定离开吗」；
+       * 选 Stay 更糟——列表里新文章已经是选中态，地址栏却停在 ?selection=none，
+       * 刷新一下选中就没了。flushSync 是为了让拦截器在这次跳转被评估之前
+       * 就看到已经不脏的状态，否则 setState 还没落地，拦截器读到的仍是旧值。
+       */
+      flushSync(() => resetDraft(null));
       onArticleCreated(created.slug);
     },
     onError: (error) => {
@@ -111,6 +132,9 @@ export function useWikiArticleEditor({
     },
     onError: (error) => {
       showError(error, t("message.articleDeleteFailed"));
+    },
+    onSettled: () => {
+      deletePendingRef.current = false;
     },
   });
 
@@ -162,20 +186,7 @@ export function useWikiArticleEditor({
   };
 
   const exitEditor = () => {
-    if (selectedArticle) {
-      setArticleTitle(selectedArticle.title);
-      setArticleBody(selectedArticle.body_json);
-      setArticleSortOrder(selectedArticle.sort_order);
-      setArticleCategoryId(selectedArticle.category_id);
-    } else {
-      setArticleTitle("");
-      setArticleBody(TIPTAP_DEFAULT_JSON);
-      setArticleSortOrder(0);
-      setArticleCategoryId("");
-    }
-    isCreatingArticleHandlers.close();
-    setPinnedIntent("none");
-    setArchiveIntent("none");
+    resetDraft(selectedArticle);
   };
 
   const saveSelectedArticle = () => {
@@ -244,6 +255,8 @@ export function useWikiArticleEditor({
   };
 
   const deleteArticle = (id: string) => {
+    if (deletePendingRef.current) return;
+    deletePendingRef.current = true;
     deleteArticleMutation.mutate(id);
   };
 
@@ -252,13 +265,11 @@ export function useWikiArticleEditor({
       throw new Error("Save article first before uploading images");
     }
     const uploaded = await uploadWikiArticleImages(selectedArticle.id, [file]);
-    const key = uploaded.keys[0];
-    if (!key) {
-      throw new Error("Image upload returned no key");
+    const mediaId = uploaded.media_ids[0];
+    if (!mediaId) {
+      throw new Error("Image upload returned no media id");
     }
-    if (/^(?:https?:)?\/\//i.test(key) || key.startsWith("data:")) return key;
-    const path = `/api/wiki/image?key=${encodeURIComponent(key)}`;
-    return new URL(path, window.location.origin).toString();
+    return resolveMediaUrl(mediaId);
   };
 
   return {
@@ -276,6 +287,7 @@ export function useWikiArticleEditor({
     isDirty,
     isSaving: updateArticleMutation.isPending,
     isCreating: createArticleMutation.isPending,
+    isDeleting: deleteArticleMutation.isPending,
     canCreateArticle,
     startCreateArticle,
     exitEditor,

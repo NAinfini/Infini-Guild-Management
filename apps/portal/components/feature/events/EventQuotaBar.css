@@ -1,0 +1,162 @@
+.quota-bar {
+  display: grid;
+  min-width: 0;
+  font-variant-numeric: tabular-nums;
+}
+
+.quota-bar__slots,
+.quota-bar__generic,
+.quota-bar__unlimited-state {
+  min-height: var(--control-icon-size-regular);
+}
+
+.quota-bar__slot-header {
+  display: flex;
+  align-items: center;
+  gap: var(--space-xs);
+  min-width: 0;
+}
+
+.quota-bar__slots {
+  --quota-slot-count: 1;
+  display: grid;
+  grid-template-columns: repeat(var(--quota-slot-count), minmax(0, 1fr));
+  gap: var(--space-sm);
+  min-width: 0;
+}
+
+.quota-bar__slot {
+  display: grid;
+  gap: var(--space-xs);
+  min-width: 0;
+}
+
+.quota-bar__generic {
+  display: grid;
+  gap: var(--space-xs);
+  min-width: 0;
+}
+
+.quota-bar__unlimited-state {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+}
+
+.quota-bar__slot-header {
+  justify-content: space-between;
+}
+
+.quota-bar__role-name,
+.quota-bar__generic-label {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--text-primary);
+  font-size: var(--text-micro);
+  font-weight: 800;
+  line-height: 1.35;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.quota-bar__role-count {
+  flex: 0 0 auto;
+  color: var(--text-primary);
+  font-size: var(--text-micro);
+  font-weight: 800;
+  line-height: 1.35;
+}
+
+/* The unfilled track must remain visible on every surface and theme. */
+.quota-bar__progress {
+  /* 6px → 8px：一格现在有自己的色相，条子得有够读出色相的面积。
+     仍然是一条带子而不是一个色块，卡片上的行高只多 2px。 */
+  height: 8px;
+  overflow: hidden;
+  border-radius: var(--radius-control);
+  background: color-mix(in srgb, var(--text-primary) 14%, transparent);
+}
+
+.quota-bar__progress-fill {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--quota-state-color);
+}
+
+/* Unlimited is a text state, not a track: there is no truthful maximum to visualize. */
+.quota-bar__unlimited-label {
+  display: inline-flex;
+  align-items: center;
+  max-width: 100%;
+  padding: 2px var(--space-sm);
+  border: 1px solid color-mix(in srgb, var(--text-primary) 12%, transparent);
+  border-radius: var(--shape-pill);
+  background: color-mix(in srgb, var(--text-primary) 6%, transparent);
+  color: var(--text-secondary);
+  font-size: var(--text-micro);
+  font-weight: 800;
+  line-height: 1.35;
+  white-space: nowrap;
+}
+
+/* 色相编码岗位分类，长度编码容量使用率，计数字色编码是否满足；无岗位时使用跨主题可辨的中性色。 */
+.quota-bar__generic {
+  --quota-state-color: var(--text-secondary);
+}
+
+/* 分类色序取自 semantic.css 的 --series-*，那边只定义了四位，超过四个岗位由
+   EventQuotaBar.tsx 取模循环回第一位。序列里没有绿/黄/红：那三个色相归状态。 */
+.quota-bar__slot[data-quota-series="0"] {
+  --quota-state-color: var(--series-1);
+}
+
+.quota-bar__slot[data-quota-series="1"] {
+  --quota-state-color: var(--series-2);
+}
+
+.quota-bar__slot[data-quota-series="2"] {
+  --quota-state-color: var(--series-3);
+}
+
+.quota-bar__slot[data-quota-series="3"] {
+  --quota-state-color: var(--series-4);
+}
+
+/* 「其他」不是岗位，是配额之外剩下的容量，所以它不参与分类色序。用次要文字的
+   中性色保持进度可读，又不会像完整 ops 文字色那样在深色卡片上抢过真实岗位。 */
+.quota-bar__slot[data-quota-series="other"] {
+  --quota-state-color: var(--text-muted);
+}
+
+/* 唯一会盖掉分类色的一种情况：人数越过容量。红在这条带子上从此只有这一个意思，
+   所以它必须写在分类色之后——超员是要处理的事，压过「这是第几格」。 */
+.quota-bar__slot[data-quota-state="over"],
+.quota-bar__generic[data-quota-state="over"] {
+  --quota-state-color: color-mix(in srgb, var(--status-danger) 64%, var(--text-secondary));
+}
+
+/* 「够员了」不靠条子变绿，靠右上角那个计数变绿：一句话大小的绿点名，不会在一排
+   活动卡上堆成一片色块。这也跟详情弹窗名单里的 .quota-status-text 对上了口径。 */
+.quota-bar__slot[data-quota-state="ready"] .quota-bar__role-count {
+  color: var(--status-success);
+}
+
+.quota-bar__slot[data-quota-state="over"] .quota-bar__role-count {
+  color: var(--status-danger);
+}
+
+/* The detail roster keeps its assigned-member count; flexible coverage is no longer a warning. */
+.quota-status-text[data-quota-status="filled"],
+.quota-status-text[data-quota-status="flex"] {
+  --quota-status-text-color: var(--status-success);
+}
+
+.quota-status-text[data-quota-status="short"] {
+  --quota-status-text-color: var(--status-danger);
+}
+
+.quota-status-text {
+  color: var(--quota-status-text-color);
+  font-variant-numeric: tabular-nums;
+}

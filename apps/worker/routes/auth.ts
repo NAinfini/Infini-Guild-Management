@@ -6,11 +6,11 @@ import { LIMITS } from "@guild/shared/config/limits";
 import type { Context } from "hono";
 import { Hono } from "hono";
 import type { Bindings } from "../index";
-import { createPasswordHash, createSession, destroySession, enforceSessionLimit, resolveSession, verifyPassword } from "../services/auth";
+import { createPasswordHash, createSession, destroySessionById, enforceSessionLimit, resolvePbkdf2Iterations, resolveSession, verifyPassword } from "../services/auth";
 import { AuthService } from "../services/AuthService";
 import { createRateLimitMiddleware } from "../middleware/rate-limit";
 import { buildError, getDb, handleResult, parseJsonBody } from "./_shared";
-import { commonDeps } from "./service-factory";
+import { withMedia } from "./service-factory";
 
 export const authRoutes = new Hono();
 
@@ -29,14 +29,15 @@ function makeUsernameLoginLimiter(username: string) {
 
 function getService(c: Context): AuthService {
   const env = c.env as Bindings;
+  const passwordHashTargetIterations = resolvePbkdf2Iterations(env);
   return new AuthService(getDb(c), {
-    rawDb: env.DB,
-    createPasswordHash,
+    ...withMedia(c),
+    createPasswordHash: (password) => createPasswordHash(password, passwordHashTargetIterations),
     verifyPassword,
+    passwordHashTargetIterations,
     createSession: async (userId, opts) => { await createSession(c, userId, opts); },
-    destroySession: (sessionId) => destroySession(c, sessionId),
+    destroySessionById: (sessionId) => destroySessionById(c, sessionId),
     enforceSessionLimit: (userId) => enforceSessionLimit(c, userId),
-    ...commonDeps(c),
   });
 }
 

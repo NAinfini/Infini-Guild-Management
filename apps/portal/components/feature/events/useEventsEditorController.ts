@@ -1,14 +1,15 @@
-import { EVENT_TYPES, type Event } from "@guild/shared";
-import { useConfirmDialog } from "@portal/components/shared/ConfirmDialog";
+import type { Event, EventClassQuotaInput, EventType } from "@guild/shared";
+import { useConfirmDialog } from "@portal/hooks/useConfirmDialog";
 import { useCallback, useState } from "react";
 import { useDisclosure } from "@mantine/hooks";
 import { useTranslation } from "react-i18next";
 import { useBeforeUnloadPrompt } from "../../../hooks/useBeforeUnloadPrompt";
+import { toClassQuotaInputs } from "./class-quota-view";
 
 type EditorSnapshot = {
   mode: "create" | "edit";
   editingEventId: string | null;
-  type: string;
+  type: EventType | "";
   title: string;
   description: string;
   startAt: string;
@@ -21,6 +22,7 @@ type EditorSnapshot = {
   pollResultsVisibility: "always" | "after_vote" | "after_close";
   pollShowVoterNames: boolean;
   winnerCount: string;
+  classQuotas: EventClassQuotaInput[];
   attachmentSnapshot: string;
 };
 
@@ -59,7 +61,7 @@ export function useEventsEditorController({ attachmentSnapshot }: UseEventsEdito
   const [editorTouched, setEditorTouched] = useState(false);
   const [editorMode, setEditorMode] = useState<"create" | "edit">("create");
   const [editingEventId, setEditingEventId] = useState<string | null>(null);
-  const [editorType, setEditorType] = useState<(typeof EVENT_TYPES)[number] | "">("");
+  const [editorType, setEditorType] = useState<EventType | "">("");
   const [editorTitle, setEditorTitle] = useState("");
   const [editorDescription, setEditorDescription] = useState("");
   const [editorStartAt, setEditorStartAt] = useState("");
@@ -72,6 +74,7 @@ export function useEventsEditorController({ attachmentSnapshot }: UseEventsEdito
   const [editorPollResultsVisibility, setEditorPollResultsVisibility] = useState<"always" | "after_vote" | "after_close">("after_vote");
   const [editorPollShowVoterNames, setEditorPollShowVoterNames] = useState(false);
   const [editorWinnerCount, setEditorWinnerCount] = useState("");
+  const [editorClassQuotas, setEditorClassQuotas] = useState<EventClassQuotaInput[]>([]);
   const [editorBaseline, setEditorBaseline] = useState<string | null>(null);
 
   const editorStartIso = toIso(editorStartAt);
@@ -93,6 +96,7 @@ export function useEventsEditorController({ attachmentSnapshot }: UseEventsEdito
     pollResultsVisibility: editorPollResultsVisibility,
     pollShowVoterNames: editorPollShowVoterNames,
     winnerCount: editorWinnerCount,
+    classQuotas: editorClassQuotas,
     attachmentSnapshot,
   });
   const isEditorDirty = editorOpen && editorBaseline !== null && editorTouched && editorCurrentSnapshot !== editorBaseline;
@@ -102,7 +106,7 @@ export function useEventsEditorController({ attachmentSnapshot }: UseEventsEdito
     setEditorTouched(true);
   }, []);
 
-  const handleEditorTypeChange = useCallback((value: (typeof EVENT_TYPES)[number] | "") => {
+  const handleEditorTypeChange = useCallback((value: EventType | "") => {
     setEditorTouched(true);
     setEditorType(value);
   }, []);
@@ -132,6 +136,16 @@ export function useEventsEditorController({ attachmentSnapshot }: UseEventsEdito
     setEditorCapacity(value);
   }, []);
 
+  const handleEditorPinnedChange = useCallback((value: boolean) => {
+    setEditorTouched(true);
+    setEditorPinned(value);
+  }, []);
+
+  const handleEditorSignupLockedChange = useCallback((value: boolean) => {
+    setEditorTouched(true);
+    setEditorSignupLocked(value);
+  }, []);
+
   const handleEditorAutoArchiveChange = useCallback((value: boolean) => {
     setEditorTouched(true);
     setEditorAutoArchive(value);
@@ -155,6 +169,11 @@ export function useEventsEditorController({ attachmentSnapshot }: UseEventsEdito
   const handleEditorWinnerCountChange = useCallback((value: string) => {
     setEditorTouched(true);
     setEditorWinnerCount(value);
+  }, []);
+
+  const handleEditorClassQuotasChange = useCallback((value: EventClassQuotaInput[]) => {
+    setEditorTouched(true);
+    setEditorClassQuotas(value);
   }, []);
 
   const openCreateEditor = useCallback((initialDateKey?: string) => {
@@ -185,6 +204,7 @@ export function useEventsEditorController({ attachmentSnapshot }: UseEventsEdito
     setEditorPollResultsVisibility("after_vote");
     setEditorPollShowVoterNames(false);
     setEditorWinnerCount("");
+    setEditorClassQuotas([]);
     setEditorBaseline(
       buildEditorSnapshot({
         mode: "create",
@@ -202,6 +222,7 @@ export function useEventsEditorController({ attachmentSnapshot }: UseEventsEdito
         pollResultsVisibility: "after_vote",
         pollShowVoterNames: false,
         winnerCount: "",
+        classQuotas: [],
         attachmentSnapshot: "[]",
       }),
     );
@@ -230,6 +251,9 @@ export function useEventsEditorController({ attachmentSnapshot }: UseEventsEdito
     setEditorPollShowVoterNames(event.poll?.show_voter_names ?? false);
     const winnerCountStr = event.winner_count != null ? String(event.winner_count) : "";
     setEditorWinnerCount(winnerCountStr);
+    /* 服务端已经按标签顺序排好，这里原样接住——顺序变化也算改动，不该被悄悄抹平。 */
+    const classQuotas = toClassQuotaInputs(event.class_quotas);
+    setEditorClassQuotas(classQuotas);
     setEditorBaseline(
       buildEditorSnapshot({
         mode: "edit",
@@ -247,6 +271,7 @@ export function useEventsEditorController({ attachmentSnapshot }: UseEventsEdito
         pollResultsVisibility: event.poll?.results_visibility ?? "after_vote",
         pollShowVoterNames: event.poll?.show_voter_names ?? false,
         winnerCount: winnerCountStr,
+        classQuotas,
         attachmentSnapshot: initialAttachmentSnapshot ?? "[]",
       }),
     );
@@ -258,7 +283,7 @@ export function useEventsEditorController({ attachmentSnapshot }: UseEventsEdito
       const confirmed = await confirm({
         title: t("confirm.discardUnsaved.title"),
         description: t("confirm.discardUnsaved.description"),
-        confirmLabel: t("common:action.delete"),
+        confirmLabel: t("common:action.discard"),
         cancelLabel: t("common:action.cancel"),
         intent: "warning",
       });
@@ -294,6 +319,7 @@ export function useEventsEditorController({ attachmentSnapshot }: UseEventsEdito
     editorPollResultsVisibility,
     editorPollShowVoterNames,
     editorWinnerCount,
+    editorClassQuotas,
     editorStartIso,
     editorEndIso,
     isEditorDirty,
@@ -304,13 +330,14 @@ export function useEventsEditorController({ attachmentSnapshot }: UseEventsEdito
     setEditorEndAt: handleEditorEndAtChange,
     setEditorCapacity: handleEditorCapacityChange,
     markEditorTouched,
-    setEditorPinned,
-    setEditorSignupLocked,
+    setEditorPinned: handleEditorPinnedChange,
+    setEditorSignupLocked: handleEditorSignupLockedChange,
     setEditorAutoArchive: handleEditorAutoArchiveChange,
     setEditorPollOptions: handleEditorPollOptionsChange,
     setEditorPollResultsVisibility: handleEditorPollResultsVisibilityChange,
     setEditorPollShowVoterNames: handleEditorPollShowVoterNamesChange,
     setEditorWinnerCount: handleEditorWinnerCountChange,
+    setEditorClassQuotas: handleEditorClassQuotasChange,
     openCreateEditor,
     openEditEditor,
     closeEditor,

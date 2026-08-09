@@ -1,10 +1,10 @@
 import type { Event as GuildEvent } from "@guild/shared";
-import { EVENT_TYPE_COLORS, UNKNOWN_EVENT_TYPE_COLOR } from "@portal/utils/event-colors";
-import { PortalCard } from "../../shared/PortalCard";
-import { Badge, Button, Group, HoverCard, Popover, Stack, Text, ThemeIcon } from "@mantine/core";
+import { eventTypeColor } from "@portal/utils/event-colors";
+import { Badge, Button, Group, HoverCard, Paper, Popover, Stack, Text, ThemeIcon, UnstyledButton } from "@mantine/core";
 import { addDays, format, getDate, getDay, getMonth, isSameDay, startOfMonth, startOfWeek } from "date-fns";
 import type { CSSProperties, ReactNode } from "react";
 import { useTranslation } from "react-i18next";
+import { getEventTypeLabel } from "@portal/utils/game-rules";
 import { CalendarEventIcon } from "@portal/components/icons";
 import "./EventMonthView.css";
 
@@ -63,18 +63,16 @@ function MonthCalendar({ onSelect, cellRender, value }: MonthCalendarProps) {
           return (
             <div
               key={day.toISOString()}
-              role="button"
-              tabIndex={0}
               className={cellClass}
-              onClick={() => onSelect(day)}
-              onKeyDown={(event) => {
-                if (event.key === "Enter" || event.key === " ") {
-                  event.preventDefault();
-                  onSelect(day);
-                }
-              }}
             >
-              <div className="month-calendar__date">{getDate(day)}</div>
+              <UnstyledButton
+                type="button"
+                className="month-calendar__date-button"
+                onClick={() => onSelect(day)}
+                aria-label={t("month.selectAria", { date: format(day, "yyyy-MM-dd") })}
+              >
+                <span className="month-calendar__date">{getDate(day)}</span>
+              </UnstyledButton>
               <div className="month-calendar__cell-body">{cellRender(day)}</div>
             </div>
           );
@@ -108,8 +106,9 @@ export function EventMonthView({
   const { t } = useTranslation("events");
 
   return (
-    <PortalCard interactive={false}>
-      <MonthCalendar
+    <Paper withBorder radius="md">
+      <div>
+        <MonthCalendar
         onSelect={(value) => onSelectDate(format(value, "yyyy-MM-dd"))}
         cellRender={(value: Date) => {
           const key = format(value, "yyyy-MM-dd");
@@ -132,18 +131,15 @@ export function EventMonthView({
               return emptyCell;
             }
             return (
-              <button
+              <UnstyledButton
                 type="button"
                 className="month-calendar__create-btn"
-                onClick={(event) => {
-                  event.stopPropagation();
-                  onCreateEvent(key);
-                }}
+                onClick={() => onCreateEvent(key)}
                 aria-label={t("month.createAria", { date: key })}
               >
                 + {t("month.create")}
                 {emptyCell}
-              </button>
+              </UnstyledButton>
             );
           }
           return (
@@ -154,24 +150,26 @@ export function EventMonthView({
               <Stack gap={2} style={{ width: "100%" }}>
                 {dayEvents.slice(0, 3).map((event) => {
                   const isMuted = isMutedMonthEvent(event);
-                  const eventColor = isMuted ? "gray" : EVENT_TYPE_COLORS[event.type] ?? UNKNOWN_EVENT_TYPE_COLOR;
+                  const eventColor = isMuted ? "gray" : eventTypeColor(event.type);
                   return (
                     <HoverCard key={event.id} width={260} shadow="lg" withArrow arrowSize={10} openDelay={350} closeDelay={80} position="top">
                       <HoverCard.Target>
-                        <Badge
-                          variant="light"
-                          color={eventColor}
-                          size="xs"
-                          className={isMuted ? "month-calendar__event-badge--muted" : undefined}
-                          style={{ cursor: "pointer" }}
-                          data-animate-icon-trigger
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            (onViewEvent ?? onEditEvent)(event);
-                          }}
+                        <UnstyledButton
+                          type="button"
+                          className="month-calendar__event-button"
+                          aria-label={t("month.openEventAria", { title: event.title })}
+                          onClick={() => (onViewEvent ?? onEditEvent)(event)}
                         >
-                          {event.title}
-                        </Badge>
+                          <Badge
+                            variant="light"
+                            color={eventColor}
+                            size="xs"
+                            className={isMuted ? "month-calendar__event-badge--muted" : undefined}
+                            data-animate-icon-trigger
+                          >
+                            {event.title}
+                          </Badge>
+                        </UnstyledButton>
                       </HoverCard.Target>
                       <HoverCard.Dropdown p="sm" style={{ borderRadius: 10 }}>
                         <Group gap={10} wrap="nowrap" align="flex-start">
@@ -181,7 +179,7 @@ export function EventMonthView({
                           <div style={{ minWidth: 0 }}>
                             <Text size="sm" fw={700} lh={1.3}>{event.title}</Text>
                             <Group gap={4} mt={4}>
-                              <Text size="xs">{t(`common:eventType.${event.type}`)}</Text>
+                              <Text size="xs">{getEventTypeLabel(event.type)}</Text>
                               <Text size="xs" c="dimmed">{format(new Date(event.start_at), "HH:mm")}</Text>
                             </Group>
                             {event.description ? (
@@ -196,9 +194,11 @@ export function EventMonthView({
                 {dayEvents.length > 3 ? (
                   <Popover withinPortal>
                     <Popover.Target>
-                      <Badge color="gray" variant="light" size="xs" style={{ cursor: "pointer" }}>
-                        +{dayEvents.length - 3} {t("month.more")}
-                      </Badge>
+                      <UnstyledButton type="button" className="month-calendar__event-button">
+                        <Badge color="gray" variant="light" size="xs">
+                          +{dayEvents.length - 3} {t("month.more")}
+                        </Badge>
+                      </UnstyledButton>
                     </Popover.Target>
                     <Popover.Dropdown>
                       <Stack gap={4}>
@@ -221,7 +221,8 @@ export function EventMonthView({
             </div>
           );
         }}
-      />
-    </PortalCard>
+        />
+      </div>
+    </Paper>
   );
 }

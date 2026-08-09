@@ -7,6 +7,7 @@ import { ok, err, type ServiceResult } from "./result";
 import { escapeLikePattern, likeEscaped } from "./helpers";
 import { neutralizeSpreadsheetFormula } from "../utils/csv";
 import { parsePage } from "../utils/pagination";
+import { parseJsonObject, serializeJsonObject } from "./json-object-codec";
 
 type DrizzleDb = ReturnType<typeof drizzle>;
 
@@ -144,7 +145,7 @@ function serializeAuditLogRow(row: AuditLogRow) {
     actor_username: row.actorUsername,
     entity_id: row.entityId,
     diff_title: row.diffTitle,
-    detail_text: row.detailText,
+    detail: parseJsonObject(row.detailText),
     created_at: row.createdAt,
   });
 }
@@ -352,7 +353,7 @@ export class AdminAuditService {
         .from(auditLog)
         .leftJoin(users, eq(auditLog.actorId, users.id))
         .where(where)
-        .orderBy(desc(auditLog.createdAt))
+        .orderBy(desc(auditLog.createdAt), desc(auditLog.id))
         .limit(query.limit)
         .offset(query.offset),
       this.deps.db.select({ count: sql<number>`count(*)` }).from(auditLog).where(where),
@@ -389,7 +390,7 @@ export class AdminAuditService {
       .from(auditLog)
       .leftJoin(users, eq(auditLog.actorId, users.id))
       .where(where)
-      .orderBy(desc(auditLog.createdAt));
+      .orderBy(desc(auditLog.createdAt), desc(auditLog.id));
     const serializedRows = rows.map(serializeAuditLogRow);
     const rangeStartLabel = query.startAt.slice(0, 10);
     const rangeEndLabel = query.endAt.slice(0, 10);
@@ -401,7 +402,7 @@ export class AdminAuditService {
       actorId,
       entityId: "audit-log",
       diffTitle: `${rangeStartLabel} ~ ${rangeEndLabel}`,
-      detailText: JSON.stringify({
+      detail: {
         format: query.format,
         start_at: query.startAt,
         end_at: query.endAt,
@@ -411,7 +412,7 @@ export class AdminAuditService {
           actor_id: query.actorId || null,
           search: query.search || null,
         },
-      }),
+      },
     });
 
     if (query.format === "json") {
@@ -428,9 +429,9 @@ export class AdminAuditService {
       };
     }
 
-    const header = ["id", "entity_type", "action", "actor_id", "actor_username", "entity_id", "diff_title", "detail_text", "created_at"].join(",");
+    const header = ["id", "entity_type", "action", "actor_id", "actor_username", "entity_id", "diff_title", "detail", "created_at"].join(",");
     const lines = serializedRows.map((row) =>
-      [csvCell(row.id), csvCell(row.entity_type), csvCell(row.action), csvCell(row.actor_id), csvCell(row.actor_username ?? null), csvCell(row.entity_id), csvCell(row.diff_title), csvCell(row.detail_text), csvCell(row.created_at)].join(","),
+      [csvCell(row.id), csvCell(row.entity_type), csvCell(row.action), csvCell(row.actor_id), csvCell(row.actor_username ?? null), csvCell(row.entity_id), csvCell(row.diff_title), csvCell(serializeJsonObject(row.detail)), csvCell(row.created_at)].join(","),
     );
 
     return {
@@ -463,7 +464,7 @@ export class AdminAuditService {
       const token = await signArchiveDownloadToken(this.deps.signingSecret, { key: file.key, month, actor_id: actorId, exp: expiresAtEpochSeconds, nonce: this.deps.generateId().slice(0, 10) });
       return { key: file.key, row_count: file.row_count, size_bytes: file.size_bytes, expires_at: new Date(expiresAtEpochSeconds * 1000).toISOString(), url: buildDownloadUrl(token) };
     }));
-    await this.deps.writeAuditLog({ entityType: "audit_archive_export", action: "download_raw_ndjson_gz", actorId, entityId: month, diffTitle: month, detailText: JSON.stringify({ file_count: downloadFiles.length, ttl_seconds: AUDIT_ARCHIVE_DOWNLOAD_TTL_SECONDS }) });
+    await this.deps.writeAuditLog({ entityType: "audit_archive_export", action: "download_raw_ndjson_gz", actorId, entityId: month, diffTitle: month, detail: { file_count: downloadFiles.length, ttl_seconds: AUDIT_ARCHIVE_DOWNLOAD_TTL_SECONDS } });
     return ok({ month, expires_in_seconds: AUDIT_ARCHIVE_DOWNLOAD_TTL_SECONDS, files: downloadFiles });
   }
 
@@ -476,7 +477,7 @@ export class AdminAuditService {
     if (!payload.key.startsWith(`${AUDIT_ARCHIVE_PREFIX}/`)) return err("FORBIDDEN", "Invalid archive object key");
     const object = await this.deps.media.get(payload.key);
     if (!object || !object.body) return err("NOT_FOUND", "Archive file not found");
-    await this.deps.writeAuditLog({ entityType: "audit_archive_export", action: "download_raw_ndjson_gz", actorId: payload.actor_id, entityId: payload.month, diffTitle: payload.month, detailText: JSON.stringify({ key: payload.key }) });
+    await this.deps.writeAuditLog({ entityType: "audit_archive_export", action: "download_raw_ndjson_gz", actorId: payload.actor_id, entityId: payload.month, diffTitle: payload.month, detail: { key: payload.key } });
     return ok({ body: object.body, contentType: object.httpMetadata?.contentType ?? "application/octet-stream", contentEncoding: object.httpMetadata?.contentEncoding, filename: payload.key.split("/").at(-1) ?? "archive.bin", actorId: payload.actor_id, month: payload.month, key: payload.key });
   }
 }

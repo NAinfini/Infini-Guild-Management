@@ -2,19 +2,105 @@ import { z } from "zod";
 import { LIMITS } from "../config/limits";
 import { EVENT_TYPES } from "../constants/event-types";
 import { RECURRENCE_FREQUENCIES, POLL_RESULTS_VISIBILITIES } from "../constants/events";
+import { classTagLabelSchema, classTagMembersSchema } from "./class-tag";
+import { mediaIdSchema } from "./media";
 
 const L = LIMITS.content;
 
-const recurrenceRuleSchema = z.object({
-  frequency: z.enum(RECURRENCE_FREQUENCIES),
-  interval: z.number().int().positive(),
-  daysOfWeek: z.array(z.number().int().min(0).max(6)).optional(),
-  dayOfMonth: z.number().int().min(1).max(31).optional(),
+const recurrenceEndFields = {
   endAfter: z.number().int().positive().optional(),
   endDate: z.string().datetime().optional(),
+};
+
+const dailyRecurrenceSchema = z.object({
+  frequency: z.literal(RECURRENCE_FREQUENCIES[0]),
+  interval: z.number().int().positive(),
+  ...recurrenceEndFields,
+}).strict();
+
+const weeklyRecurrenceSchema = z.object({
+  frequency: z.literal(RECURRENCE_FREQUENCIES[1]),
+  interval: z.number().int().positive(),
+  daysOfWeek: z.array(z.number().int().min(0).max(6)).min(1).refine(
+    (weekdays) => new Set(weekdays).size === weekdays.length,
+    "Weekly recurrence weekdays must be unique",
+  ),
+  ...recurrenceEndFields,
+}).strict();
+
+const monthlyRecurrenceSchema = z.object({
+  frequency: z.literal(RECURRENCE_FREQUENCIES[2]),
+  interval: z.number().int().positive(),
+  dayOfMonth: z.number().int().min(1).max(31),
+  ...recurrenceEndFields,
+}).strict();
+
+export const recurrenceRuleSchema = z.discriminatedUnion("frequency", [
+  dailyRecurrenceSchema,
+  weeklyRecurrenceSchema,
+  monthlyRecurrenceSchema,
+]).superRefine((rule, ctx) => {
+  if (rule.endAfter !== undefined && rule.endDate !== undefined) {
+    ctx.addIssue({
+      code: "custom",
+      path: ["endDate"],
+      message: "endAfter and endDate are mutually exclusive",
+    });
+  }
 });
-const eventAttachmentsSchema = z.array(z.string().min(1)).max(L.eventAttachments.max);
+const eventAttachmentsSchema = z.array(mediaIdSchema).max(L.eventAttachments.max);
 const pollResultsVisibilitySchema = z.enum(POLL_RESULTS_VISIBILITIES);
+const eventTypeIdSchema = z.enum(EVENT_TYPES);
+
+/*
+ * 每一格配额指向一个职业标签，说的是「这一格要 N 个人，标签里的职业都算数」。只要
+ * 一个职业的旧写法就是一个只装了它自己的标签。
+ *
+ * 配额只是可视化信号，服务端不会拿它拦报名——报名的硬上限只有 capacity 一个。
+ * required 不设与 capacity 的联动校验：配额是 capacity 的子集，两者独立，管理员完全
+ * 可以先配好职业需求再决定放多少人。
+ */
+export const eventClassQuotaSchema = z.object({
+  tag_id: z.string().min(1),
+  /*
+   * 标签的名字和成员随活动一起返回，卡片画筹码不用再单独请求一次标签表。
+   * label 允许为空是给悬空配额留的口子：标签被删干净了、配额行却还在，这时把它照原样
+   * 露出来（展示层显示成未知标签），而不是 JOIN 一滤了事——那是 bug，得看得见。
+   */
+  label: z.string().nullable(),
+  class_ids: z.array(z.string().min(1)),
+  required: z.number().int().positive(),
+  /*
+   * 这一格用的是活动自己的一次性组，还是目录里的公用标签。
+   * 编辑器靠它决定回传哪一种写法：一次性组每次保存都是重建，把它的 tag_id 当公用标签
+   * 回传会指向一个下一秒就被删掉的行，所以服务端干脆不认这种 id（见
+   * findUnknownTagIds），这一位就是让客户端不至于撞上那道墙。
+   */
+  one_time: z.boolean(),
+});
+const eventClassQuotasSchema = z.array(eventClassQuotaSchema).max(L.eventClassQuotas.max);
+
+/*
+ * 写入时一格有两种写法：
+ *   { tag_id } —— 指着职业目录里的公用标签，名字和成员归标签自己管。
+ *   { tag }    —— 就地造一个一次性组，只服务这一个活动／模板，不进目录、不占用名字。
+ * 一次性组没有值得保留的身份：每次保存都整组重建（跟配额行本身一样是整组替换），所以
+ * 它没有 id 这一说，客户端也不必替它记住什么。
+ */
+export const eventClassQuotaInputSchema = z.union([
+  z.object({
+    tag_id: z.string().min(1),
+    required: z.number().int().positive(),
+  }).strict(),
+  z.object({
+    tag: z.object({ label: classTagLabelSchema, class_ids: classTagMembersSchema }).strict(),
+    required: z.number().int().positive(),
+  }).strict(),
+]);
+const eventClassQuotaInputsSchema = z.array(eventClassQuotaInputSchema).max(L.eventClassQuotas.max);
+
+/** superRefine 拿到的是解析后的联合，两个分支只有一个字段在，所以两个都是可选的。 */
+type ClassQuotaInputLike = { tag_id?: string; required: number };
 
 const eventPollOptionSchema = z.object({
   id: z.string(),
@@ -51,7 +137,7 @@ export const eventRaffleWinnerSchema = z.object({
 
 export const eventSchema = z.object({
   id: z.string(),
-  type: z.enum(EVENT_TYPES),
+  type: eventTypeIdSchema,
   title: z.string(),
   description: z.string().nullable(),
   start_at: z.string(),
@@ -66,6 +152,7 @@ export const eventSchema = z.object({
   created_by: z.string(),
   updated_by: z.string().nullable(),
   attachments: eventAttachmentsSchema.default([]),
+  class_quotas: eventClassQuotasSchema.default([]),
   series_id: z.string().nullable(),
   instance_date: z.string().nullable(),
   poll: eventPollSchema.nullable().optional(),
@@ -76,17 +163,47 @@ export const eventSchema = z.object({
 });
 
 const eventMutationSchema = z.object({
-  type: z.enum(EVENT_TYPES),
+  type: eventTypeIdSchema,
   title: z.string().min(L.eventTitle.min).max(L.eventTitle.max),
   description: z.string().max(L.eventDescription.max).optional(),
   start_at: z.string().datetime(),
   end_at: z.string().datetime().optional(),
   capacity: z.number().int().positive().optional(),
   attachments: eventAttachmentsSchema.optional(),
+  class_quotas: eventClassQuotaInputsSchema.optional(),
   auto_archive: z.boolean().optional(),
   poll: pollSettingsSchema.optional(),
   winner_count: z.number().int().positive().optional(),
 });
+
+/*
+ * 配额自己的规则，活动和周期模板共用一份：模板生成出来的活动会原样继承配额，
+ * 两边校验若不一致，模板就能种下一批活动侧拒收的数据。
+ * 投票的「参与者」是投票人，抽奖的是抽签池，两者都不是一支队伍——职业配额在这两种
+ * 类型下没有含义，宁可报错也不要静默丢弃。
+ */
+function refineClassQuotas(
+  value: { type?: string; class_quotas?: ClassQuotaInputLike[] },
+  ctx: z.RefinementCtx,
+): void {
+  if (!value.class_quotas || value.class_quotas.length === 0) {
+    return;
+  }
+  if (value.type === "poll" || value.type === "raffle") {
+    ctx.addIssue({ code: "custom", path: ["class_quotas"], message: `${value.type} events do not use class quotas` });
+  }
+  /* 同一个标签占两格没有意义，两格加起来就是一格。重叠的**不同**标签是允许的。
+     一次性组不参与这条：它们每个都是新造的，天生不会重复，两个同名的一次性组是
+     管理员的自由（名字冲突的唯一索引只管目录标签）。 */
+  const seen = new Set<string>();
+  value.class_quotas.forEach((quota, index) => {
+    if (quota.tag_id === undefined) return;
+    if (seen.has(quota.tag_id)) {
+      ctx.addIssue({ code: "custom", path: ["class_quotas", index, "tag_id"], message: "Duplicate class quota" });
+    }
+    seen.add(quota.tag_id);
+  });
+}
 
 function refineEventRules(
   value: {
@@ -96,10 +213,12 @@ function refineEventRules(
     poll?: unknown;
     capacity?: unknown;
     winner_count?: unknown;
+    class_quotas?: ClassQuotaInputLike[];
   },
   ctx: z.RefinementCtx,
   isUpdate: boolean,
 ): void {
+  refineClassQuotas(value, ctx);
   if (value.start_at && value.end_at && value.end_at <= value.start_at) {
     ctx.addIssue({ code: "custom", path: ["end_at"], message: "end_at must be after start_at" });
   }
@@ -151,7 +270,7 @@ export const eventParticipantsBatchSchema = z.object({
 
 export const recurringTemplateSchema = z.object({
   id: z.string(),
-  type: z.enum(EVENT_TYPES),
+  type: eventTypeIdSchema,
   title: z.string(),
   description: z.string().nullable(),
   start_time: z.string(),
@@ -161,6 +280,7 @@ export const recurringTemplateSchema = z.object({
   visibility_offset_minutes: z.number().int(),
   auto_archive: z.boolean(),
   attachments: eventAttachmentsSchema.default([]),
+  class_quotas: eventClassQuotasSchema.default([]),
   paused: z.boolean(),
   created_by: z.string(),
   last_generated_date: z.string().nullable(),
@@ -169,18 +289,24 @@ export const recurringTemplateSchema = z.object({
   updated_at: z.string(),
 });
 
-export const createTemplateSchema = z.object({
-  type: z.enum(EVENT_TYPES),
+const templateMutationSchema = z.object({
+  type: eventTypeIdSchema,
   title: z.string().min(L.eventTitle.min).max(L.eventTitle.max),
   description: z.string().max(L.eventDescription.max).optional(),
   // UTC wall-clock time "HH:mm" — the portal converts local input to UTC
   // before submitting (see shared/utils/recurrence.ts contract).
-  start_time: z.string().regex(/^\d{2}:\d{2}$/),
+  start_time: z.string().regex(/^(?:[01]\d|2[0-3]):[0-5]\d$/),
   duration_minutes: z.number().int().min(0).optional(),
   capacity: z.number().int().positive().optional(),
   recurrence_rule: recurrenceRuleSchema,
   visibility_offset_minutes: z.number().int().min(0).optional(),
   auto_archive: z.boolean().optional(),
-});
+  attachments: eventAttachmentsSchema.optional(),
+  class_quotas: eventClassQuotaInputsSchema.optional(),
+}).strict();
 
-export const updateTemplateSchema = createTemplateSchema.partial();
+export const createTemplateSchema = templateMutationSchema.superRefine(refineClassQuotas);
+
+export const updateTemplateSchema = templateMutationSchema.partial().superRefine(refineClassQuotas);
+
+export type RecurrenceRule = z.infer<typeof recurrenceRuleSchema>;

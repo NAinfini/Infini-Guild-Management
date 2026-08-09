@@ -54,6 +54,12 @@ export type TipTapEditorLabels = {
   imageInserted: string;
   imageUploadFailed: string;
   uploading: string;
+  lightboxTitle: string;
+  lightboxPreview: string;
+  lightboxZoomOut: string;
+  lightboxZoomReset: string;
+  lightboxZoomIn: string;
+  lightboxZoomLevel: string;
   youtube: string;
   bilibili: string;
   videoUrl: string;
@@ -114,6 +120,12 @@ export function buildTipTapEditorLabels(t: (key: string) => string): TipTapEdito
     imageInserted: t("message.imageInserted"),
     imageUploadFailed: t("message.imageUploadFailed"),
     uploading: t("upload.uploading"),
+    lightboxTitle: t("lightbox.title"),
+    lightboxPreview: t("lightbox.preview"),
+    lightboxZoomOut: t("lightbox.zoomOut"),
+    lightboxZoomReset: t("lightbox.zoomReset"),
+    lightboxZoomIn: t("lightbox.zoomIn"),
+    lightboxZoomLevel: t("lightbox.zoomLevel"),
     youtube: t("toolbar.youtube"),
     bilibili: t("toolbar.bilibili"),
     videoUrl: t("toolbar.videoUrl"),

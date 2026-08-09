@@ -1,13 +1,11 @@
-import { Paper, Text, Title, type PaperProps } from "@mantine/core";
+import { Container, Group, Stack, Title } from "@mantine/core";
 import type { CSSProperties, ReactElement, ReactNode } from "react";
+import { useTranslation } from "react-i18next";
 import "./PageLayout.css";
 
 type PageLayoutProps = {
-  title?: ReactNode;
-  subtitle?: ReactNode;
   actions?: ReactNode;
   breadcrumbs?: ReactNode;
-  icon?: ReactNode;
   children: ReactNode;
   className?: string;
 };
@@ -34,67 +32,48 @@ type PageLayoutGridProps = {
   style?: CSSProperties;
 };
 
-type PageLayoutCardProps = PaperProps & {
-  children?: ReactNode;
-  hoverable?: boolean;
-  onClick?: () => void;
-};
-
 type PageLayoutCompound = ((props: PageLayoutProps) => ReactElement) & {
   Section: (props: PageLayoutSectionProps) => ReactElement;
   Grid: (props: PageLayoutGridProps) => ReactElement;
-  Card: (props: PageLayoutCardProps) => ReactElement;
   Divider: () => ReactElement;
 };
 
 function PageLayoutRoot({
-  title,
-  subtitle,
   actions,
   breadcrumbs,
-  icon,
   children,
   className,
 }: PageLayoutProps) {
-  const hasHeader = Boolean(title || subtitle || actions || breadcrumbs || icon);
+  const { t } = useTranslation("common");
+  const hasHeader = Boolean(actions || breadcrumbs);
 
   return (
-    <div className={`page-layout ${className ?? ""}`.trim()}>
+    <Container
+      fluid
+      px="var(--shell-page-padding)"
+      className={`page-layout ${className ?? ""}`.trim()}
+      data-page-layout="content"
+    >
+      <Stack gap="xl" className="page-layout__content">
       {hasHeader ? (
-        <header className="page-layout__header">
+        <Group
+          className="page-layout__action-row"
+          justify="space-between"
+          align="center"
+          wrap="wrap"
+        >
           {breadcrumbs ? (
-            <nav className="page-layout__breadcrumbs" aria-label="Breadcrumb">
+            <nav className="page-layout__breadcrumbs" aria-label={t("nav.breadcrumbs")}>
               {breadcrumbs}
             </nav>
           ) : null}
 
-          <div className="page-layout__heading-row">
-            <div className="page-layout__heading">
-              {icon ? (
-                <span className="page-layout__icon" aria-hidden="true">
-                  {icon}
-                </span>
-              ) : null}
-              <div className="page-layout__heading-copy">
-                {title ? (
-                  <Title order={1} className="page-layout__title">
-                    {title}
-                  </Title>
-                ) : null}
-                {subtitle ? (
-                  <Text component="div" className="page-layout__subtitle">
-                    {subtitle}
-                  </Text>
-                ) : null}
-              </div>
-            </div>
-
-            {actions ? <div className="page-layout__primary-action">{actions}</div> : null}
-          </div>
-        </header>
+          {actions ? <div className="page-layout__primary-action">{actions}</div> : null}
+        </Group>
       ) : null}
-      <div className="page-layout__content">{children}</div>
-    </div>
+      {children}
+      </Stack>
+    </Container>
   );
 }
 
@@ -135,16 +114,6 @@ function PageLayoutGrid({
   );
 }
 
-function PageLayoutCard({ className, hoverable, ...cardProps }: PageLayoutCardProps) {
-  return (
-    <Paper
-      {...cardProps}
-      withBorder
-      className={`page-layout__card ${hoverable ? "infini-card-hover" : ""} ${className ?? ""}`.trim()}
-    />
-  );
-}
-
 function PageLayoutDivider() {
   return <div className="page-layout__divider" aria-hidden />;
 }
@@ -152,5 +121,4 @@ function PageLayoutDivider() {
 export const PageLayout = PageLayoutRoot as PageLayoutCompound;
 PageLayout.Section = PageLayoutSection;
 PageLayout.Grid = PageLayoutGrid;
-PageLayout.Card = PageLayoutCard;
 PageLayout.Divider = PageLayoutDivider;

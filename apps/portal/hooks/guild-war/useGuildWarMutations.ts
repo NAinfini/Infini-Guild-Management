@@ -4,7 +4,6 @@ import {
   deleteGuildWarHistory,
   downloadGuildWarExport,
   batchUpdateGuildWarMemberStats,
-  batchDeleteGuildWarHistory,
   updateGuildWarRoleTags,
 } from "../../services/GuildWarService";
 import { useAppError } from "../useAppError";
@@ -119,23 +118,6 @@ export function useGuildWarMutations({
     },
   });
 
-  const batchDeleteHistoryMutation = useMutation({
-    mutationFn: batchDeleteGuildWarHistory,
-    onSuccess: async (_data, ids) => {
-      notifySuccess(t("history.bulkDeleteSuccess", { count: ids.length }));
-      setSelectedHistoryId("");
-      await queryClient.invalidateQueries({
-        queryKey: queryKeys.guildWar.historyAll(),
-      });
-      await queryClient.invalidateQueries({
-        queryKey: queryKeys.guildWar.analyticsDetailsAll(),
-      });
-    },
-    onError: (error) => {
-      showError(error, t("history.bulkDeleteFailed"));
-    },
-  });
-
   const saveHistoryMemberStats = async (updates: HistoryMemberStatsUpdate[]) => {
     if (!selectedHistoryId || updates.length === 0) {
       return;
@@ -151,7 +133,6 @@ export function useGuildWarMutations({
     exportHistoryMutation,
     updateMemberStatsMutation,
     deleteHistoryMutation,
-    batchDeleteHistoryMutation,
     saveHistoryMemberStats,
   };
 }

@@ -1,8 +1,76 @@
+.gallery-filters__controls,
+.gallery-filters__choice-row,
+.gallery-filters__date-row {
+  min-width: 0;
+}
+
+.gallery-filters__controls {
+  display: flex;
+  flex: 1 1 auto;
+  align-items: center;
+  gap: var(--space-xs);
+}
+
+.gallery-filters__choice-row,
+.gallery-filters__date-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-xs);
+}
+
+.gallery-filters__choice-row {
+  flex: 0 1 auto;
+}
+
+.gallery-filters__type {
+  flex: 1 1 180px;
+  min-width: 0;
+}
+
+.gallery-filters__sort {
+  flex: 0 0 auto;
+}
+
+.gallery-filters__date-row {
+  flex: 1 1 320px;
+}
+
+.gallery-filters__date {
+  flex: 1 1 0;
+  min-width: 0;
+}
+
+.content-filter-toolbar__panel .gallery-filters__controls {
+  display: grid;
+  gap: var(--space-sm);
+}
+
+.content-filter-toolbar__panel .gallery-filters__choice-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+}
+
+.content-filter-toolbar__panel .gallery-filters__date-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) var(--control-height-regular);
+}
+
+@media (min-width: 1200px) {
+  .gallery-filters__controls {
+    display: grid;
+    grid-template-columns: minmax(260px, 300px) minmax(0, 1fr);
+  }
+
+  .gallery-filters__actions {
+    flex-wrap: nowrap;
+  }
+}
+
 .gallery-dropzone {
   min-width: 260px;
   min-height: 92px;
   border: 1px dashed color-mix(in srgb, var(--text-primary) 22%, transparent);
-  border-radius: var(--radius-md);
+  border-radius: var(--radius-surface);
   background: color-mix(in srgb, var(--surface-base) 92%, transparent);
   display: grid;
   place-items: center;
@@ -24,31 +92,63 @@
 
 .gallery-dropzone input[type="file"] { width: 100%; }
 
-/* ── Masonry grid ── */
-.gallery-masonry { column-count: 2; column-gap: 12px; }
-.gallery-masonry__item { break-inside: avoid; margin-bottom: 12px; }
+/* ── Row-first media grid ── */
+.gallery-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 18rem), 1fr));
+  grid-auto-flow: row;
+  align-items: stretch;
+  gap: var(--space-md);
+  min-width: 0;
+}
 
-.gallery-masonry__item--animated {
-  opacity: 0;
-  animation: gallery-fade-slide-up 260ms ease forwards;
-  animation-delay: calc(min(var(--stagger-index), 24) * 60ms);
+.gallery-grid__item {
+  min-width: 0;
+  height: 100%;
 }
 
 /* ── Gallery card ── */
+.gallery-card {
+  height: 100%;
+  overflow: hidden;
+}
+
+.gallery-card__inner {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+.gallery-card__skeleton-media {
+  width: 100%;
+  height: auto;
+  aspect-ratio: 4 / 3;
+  flex: 0 0 auto;
+}
+
 .gallery-card .gallery-preview-button {
-  display: block; width: 100%; padding: 0;
-  border: none; background: transparent; cursor: zoom-in; border-radius: var(--radius-md) var(--radius-md) 0 0;
+  display: block;
+  width: 100%;
+  padding: 0;
+  flex: 0 0 auto;
+  border: none;
+  background: transparent;
+  cursor: zoom-in;
+  border-radius: var(--radius-surface) var(--radius-surface) 0 0;
   overflow: hidden;
 }
 
 .gallery-preview-media {
   position: relative;
+  width: 100%;
+  aspect-ratio: 4 / 3;
   overflow: hidden;
+  background: var(--surface-sunken);
 }
 
 .gallery-preview-img {
   width: 100%;
-  max-height: 320px;
+  height: 100%;
   object-fit: cover;
   display: block;
   transition: transform 240ms ease;
@@ -58,25 +158,82 @@
   transform: scale(1.03);
 }
 
-/* mode-independent literal: the video-thumb placeholder background is a fixed
-   Mantine dark swatch (--mantine-color-dark-6) regardless of [data-theme] —
-   same "always near-black" precedent as the lightbox overlay below — so its
-   icon colour (and the hover variant right below) stays a fixed white-alpha
-   too rather than a surface/text token that would go invisible against it in
-   light mode. */
+.gallery-preview-button:focus-visible {
+  outline: 2px solid var(--brand-fill);
+  outline-offset: -3px;
+}
+
+/* This play control overlays arbitrary thumbnail imagery, so its white-alpha
+   backing stays mode-independent while the icon itself carries the brand. */
+.gallery-video-cover-play {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  z-index: 1;
+  width: var(--control-hit-area);
+  height: var(--control-hit-area);
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  color: var(--brand-fill);
+  background: rgba(255, 255, 255, 0.55);
+  pointer-events: none;
+  transform: translate(-50%, -50%);
+  transition: background 200ms ease, color 200ms ease;
+}
+
+.gallery-preview-button:hover .gallery-video-cover-play {
+  color: var(--brand-fill-hover);
+  background: rgba(255, 255, 255, 0.85);
+}
+
 .gallery-video-thumb {
   width: 100%;
-  height: 180px;
-  display: flex;
+  height: 100%;
+  display: grid;
+  place-content: center;
+  justify-items: center;
+  color: var(--brand-fill);
+  background: color-mix(in srgb, var(--brand-fill) 14%, var(--surface-sunken));
+  transition: background 200ms ease, color 200ms ease;
+}
+
+.gallery-video-thumb__mark {
+  width: 52px;
+  height: 52px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  color: var(--brand-on-fill);
+  background: var(--brand-fill);
+  transition: background 200ms ease, color 200ms ease;
+}
+
+.gallery-video-type-badge {
+  position: absolute;
+  bottom: var(--space-sm);
+  left: var(--space-sm);
+  display: inline-flex;
   align-items: center;
-  justify-content: center;
-  background: var(--mantine-color-dark-6);
-  color: rgba(255, 255, 255, 0.55);
-  transition: color 200ms ease;
+  padding: 3px var(--space-sm);
+  border: 1px solid color-mix(in srgb, var(--brand-on-fill) 18%, transparent);
+  border-radius: var(--shape-pill);
+  color: var(--brand-on-fill);
+  background: var(--brand-fill);
+  font-size: var(--text-micro);
+  line-height: var(--lh-tight);
+  font-weight: var(--fw-strong);
+  pointer-events: none;
 }
 
 .gallery-preview-button:hover .gallery-video-thumb {
-  color: rgba(255, 255, 255, 0.85);
+  color: var(--brand-fill-hover);
+  background: color-mix(in srgb, var(--brand-fill) 20%, var(--surface-sunken));
+}
+
+.gallery-preview-button:hover .gallery-video-thumb__mark {
+  color: var(--brand-on-fill-hover);
+  background: var(--brand-fill-hover);
 }
 
 /* mode-independent literal: this uploader-name chip overlays an arbitrary photo
@@ -86,21 +243,22 @@
    same reasoning as the lightbox controls below. */
 .gallery-preview-uploader {
   position: absolute; top: 8px; left: 8px; z-index: 1;
-  max-width: calc(100% - 16px); border-radius: var(--radius-pill); padding: 2px 8px;
+  max-width: calc(100% - 16px); border-radius: var(--shape-pill); padding: 2px 8px;
   font-size: 12px; line-height: 1.4; color: rgb(255 255 255);
   background: color-mix(in srgb, black 58%, transparent);
-  backdrop-filter: blur(4px);
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
   opacity: 0;
   transition: opacity 200ms ease;
 }
 
-.gallery-preview-button:hover .gallery-preview-uploader {
+.gallery-preview-button:hover .gallery-preview-uploader,
+.gallery-preview-button:focus-visible .gallery-preview-uploader {
   opacity: 1;
 }
 
 .gallery-card__footer {
   display: flex;
+  flex: 1;
   align-items: flex-start;
   justify-content: space-between;
   gap: 8px;
@@ -124,15 +282,21 @@
    buttons, caption bar) sits on this same fixed-dark backdrop and follows the
    same rationale. */
 .gallery-lb-overlay {
-  position: fixed;
-  inset: 0;
-  z-index: 1000;
   background: rgba(0, 0, 0, 0.92);
   backdrop-filter: blur(12px);
-  display: flex;
-  align-items: center;
-  justify-content: center;
   animation: gallery-lb-fade-in 180ms ease;
+}
+
+/* 灯箱只靠上面那层遮罩画底色：内容层自己不画表面，正文铺满且不留内边距。
+   两条都是覆盖 Mantine Modal 的默认值，靠样式表顺序生效（组件 CSS 在
+   @mantine/core/styles.css 之后加载，同特异度后来者胜）。 */
+.gallery-lb-content {
+  background: transparent;
+}
+
+.gallery-lb-body {
+  height: 100%;
+  padding: 0;
 }
 
 .gallery-lb {
@@ -152,13 +316,12 @@
   top: 16px;
   right: 16px;
   z-index: 10;
-  width: var(--control-icon-size-large);
-  height: var(--control-icon-size-large);
+  width: var(--control-hit-area);
+  height: var(--control-hit-area);
   border-radius: 50%;
-  border: none;
-  background: rgba(255, 255, 255, 0.1);
-  backdrop-filter: blur(8px);
-  color: rgba(255, 255, 255, 0.8);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(255, 255, 255, 0.2);
+  color: rgb(255 255 255);
   cursor: pointer;
   display: flex;
   align-items: center;
@@ -167,8 +330,12 @@
 }
 
 .gallery-lb__close:hover {
-  background: rgba(255, 255, 255, 0.2);
-  color: rgb(255 255 255);
+  background: color-mix(in srgb, var(--mantine-color-white) 28%, transparent);
+}
+
+.gallery-lb__close:focus-visible {
+  outline: 2px solid rgba(255, 255, 255, 0.8);
+  outline-offset: 3px;
 }
 
 /* mode-independent literal, same rationale as .gallery-lb__close above: fixed
@@ -181,10 +348,9 @@
   width: var(--control-hit-area);
   height: var(--control-hit-area);
   border-radius: 50%;
-  border: none;
-  background: rgba(255, 255, 255, 0.08);
-  backdrop-filter: blur(8px);
-  color: rgba(255, 255, 255, 0.7);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.18);
+  color: rgb(255 255 255);
   cursor: pointer;
   display: flex;
   align-items: center;
@@ -193,8 +359,12 @@
 }
 
 .gallery-lb__nav:hover {
-  background: rgba(255, 255, 255, 0.18);
-  color: rgb(255 255 255);
+  background: color-mix(in srgb, var(--mantine-color-white) 26%, transparent);
+}
+
+.gallery-lb__nav:focus-visible {
+  outline: 2px solid rgba(255, 255, 255, 0.7);
+  outline-offset: 3px;
 }
 
 .gallery-lb__nav--prev { left: 16px; }
@@ -212,9 +382,10 @@
   overflow: hidden;
 }
 
+/* Media follows the flex-owned viewport remainder instead of estimating chrome height. */
 .gallery-lb__img-wrap {
   max-width: 100%;
-  max-height: 100%;
+  block-size: 100%;
   overflow: auto;
   display: flex;
   align-items: center;
@@ -224,20 +395,20 @@
 
 .gallery-lb__img {
   max-width: 100%;
-  max-height: calc(100vh - 120px);
+  max-block-size: 100%;
   object-fit: contain;
   transform-origin: center center;
   transition: transform 120ms ease;
-  border-radius: 4px;
+  border-radius: var(--radius-control);
   user-select: none;
 }
 
 .gallery-lb__video {
   width: 100%;
   max-width: 960px;
-  height: calc(100vh - 140px);
+  block-size: 100%;
   border: none;
-  border-radius: 8px;
+  border-radius: var(--radius-surface);
 }
 
 .gallery-lb__info {
@@ -249,40 +420,66 @@
   flex-shrink: 0;
 }
 
-/* Lightbox info-bar text, moved out of style={{}} (task-8 批 B). Same
-   mode-independent-literal precedent as .gallery-lb__close/.gallery-lb__nav
-   above: the lightbox overlay is always near-black regardless of
-   [data-theme], so these stay literal white-alpha rather than a surface/text
-   token. Each class targets a distinct <Text>, no other rule in this file
-   sets `color` on these elements. */
+/* The lightbox overlay is always near-black, so its text uses fixed white-alpha values. */
 .gallery-lb__caption {
   color: rgba(255, 255, 255, 0.95);
 }
 
 .gallery-lb__uploader {
-  color: rgba(255, 255, 255, 0.6);
+  color: rgba(255, 255, 255, 0.72);
 }
 
 .gallery-lb__date {
-  color: rgba(255, 255, 255, 0.4);
+  color: rgba(255, 255, 255, 0.72);
 }
 
 .gallery-lb__count {
-  color: rgba(255, 255, 255, 0.5);
+  color: rgba(255, 255, 255, 0.72);
 }
 
 .gallery-object-placeholder {
-  width: 100%; min-height: 140px; border-radius: var(--radius-sm);
+  width: 100%; min-height: 140px; border-radius: var(--radius-control);
   border: 1px dashed color-mix(in srgb, var(--text-primary) 22%, transparent);
   background: color-mix(in srgb, var(--surface-base) 92%, transparent);
   display: grid; gap: 8px; place-items: center; padding: 12px; text-align: center;
 }
 
-@media (min-width: 576px) { .gallery-masonry { column-count: 3; } }
 @media (max-width: 767px) {
+  .gallery-filters__controls {
+    width: 100%;
+    min-width: 0;
+  }
+
+  .gallery-filters__controls {
+    display: grid;
+    gap: var(--space-sm);
+  }
+
+  .gallery-filters__choice-row {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+
+  .gallery-filters__date-row {
+    display: grid;
+    grid-template-columns:
+      minmax(0, 1fr)
+      minmax(0, 1fr)
+      var(--control-height-regular);
+  }
+
+  .gallery-filters__type,
+  .gallery-filters__date {
+    width: 100%;
+    min-width: 0;
+  }
+
+  .gallery-filters__actions {
+    width: 100%;
+  }
+
   .gallery-video-url-input, .gallery-video-caption-input { width: 100%; }
   .gallery-dropzone { min-width: 0; width: 100%; }
-  .gallery-masonry { column-count: 2; }
   .gallery-card__footer { flex-wrap: wrap; }
   .gallery-card__actions {
     flex-basis: 100%;
@@ -292,7 +489,7 @@
   .gallery-card__select-target {
     width: 44px;
     height: 44px;
-    border-radius: var(--radius-sm);
+    border-radius: var(--radius-control);
     display: grid;
     place-items: center;
     cursor: pointer;
@@ -308,19 +505,16 @@
   .gallery-lb__nav--prev { left: 8px; }
   .gallery-lb__nav--next { right: 8px; }
 }
-@media (min-width: 992px) { .gallery-masonry { column-count: 4; } }
-@media (min-width: 1200px) { .gallery-masonry { column-count: 5; } }
-@keyframes gallery-fade-slide-up {
-  from { opacity: 0; transform: translateY(12px); }
-  to { opacity: 1; transform: translateY(0); }
+@media (hover: none) {
+  .gallery-preview-uploader {
+    opacity: 1;
+  }
 }
-
 @keyframes gallery-lb-fade-in {
   from { opacity: 0; }
   to { opacity: 1; }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .gallery-masonry__item--animated { opacity: 1; animation: none; }
   .gallery-lb-overlay { animation: none; }
 }

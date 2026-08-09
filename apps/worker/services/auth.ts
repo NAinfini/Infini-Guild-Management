@@ -8,7 +8,7 @@ import { drizzle } from "drizzle-orm/d1";
 import type { Context } from "hono";
 import { deleteCookie, getCookie, setCookie } from "hono/cookie";
 import { nanoid } from "nanoid";
-import { rolePermissions, sessions, users } from "../db/schema";
+import { rolePermissions, roles, sessions, users } from "../db/schema";
 import type { Bindings } from "../index";
 import { logger } from "../utils/logger";
 
@@ -22,6 +22,9 @@ export type SessionUser = {
   id: string;
   roleId: RoleId;
   role: string;
+  roleName: string;
+  roleColor: string | null;
+  roleLevel: number;
   permissions: ReadonlySet<Permission>;
 };
 
@@ -31,11 +34,32 @@ type ResolvedSession = {
   user: SessionUser;
 };
 
-// Cloudflare Workers caps PBKDF2 at 10,000 iterations (runtime limit).
-const PBKDF2_ITERATIONS = 10_000;
+// Stored hashes are self-describing (`pbkdf2-sha256$<iterations>$<hash>`), so
+// the write-side target can change without invalidating existing credentials:
+// verification always uses the count embedded in the stored string, and logins
+// transparently rehash to the current target when the counts differ.
+// The 10k default keeps one login derivation inside the Workers free-plan CPU
+// budget; paid deployments should raise PBKDF2_ITERATIONS (OWASP recommends
+// 600k for PBKDF2-SHA256).
+export const DEFAULT_PBKDF2_ITERATIONS = 10_000;
+const MIN_PBKDF2_ITERATIONS = 1_000;
+const MAX_PBKDF2_ITERATIONS = 10_000_000;
+const PASSWORD_HASH_PREFIX = "pbkdf2-sha256";
 const PBKDF2_KEY_LENGTH_BITS = 256;
 const PBKDF2_SALT_BYTES = 16;
 const PBKDF2_HASH = "SHA-256";
+
+export function resolvePbkdf2Iterations(env: Pick<Bindings, "PBKDF2_ITERATIONS">): number {
+  const raw = env.PBKDF2_ITERATIONS;
+  if (raw === undefined || raw === "") return DEFAULT_PBKDF2_ITERATIONS;
+  const iterations = Number(raw);
+  if (!Number.isInteger(iterations) || iterations < MIN_PBKDF2_ITERATIONS || iterations > MAX_PBKDF2_ITERATIONS) {
+    throw new Error(
+      `PBKDF2_ITERATIONS must be an integer between ${MIN_PBKDF2_ITERATIONS} and ${MAX_PBKDF2_ITERATIONS}, got "${raw}"`,
+    );
+  }
+  return iterations;
+}
 
 const THIRTY_DAYS_IN_SECONDS = 30 * 24 * 60 * 60;
 const SESSION_TTL_MS = THIRTY_DAYS_IN_SECONDS * 1000;
@@ -56,7 +80,7 @@ function isSecureRequest(c: Context): boolean {
 }
 
 function buildPermissionSet(
-  permissionRows: Array<{ permission: string; granted: boolean } | null>,
+  permissionRows: Array<{ permission: string } | null>,
 ): ReadonlySet<Permission> {
   const perms = new Set<Permission>();
 
@@ -64,7 +88,7 @@ function buildPermissionSet(
     if (row === null) continue;
     if (!(PERMISSIONS as readonly string[]).includes(row.permission)) continue;
     const p = row.permission as Permission;
-    if (row.granted) perms.add(p);
+    perms.add(p);
   }
 
   return perms;
@@ -97,7 +121,7 @@ async function timingSafeEqual(a: Uint8Array, b: Uint8Array): Promise<boolean> {
   return diff === 0;
 }
 
-async function derivePasswordHash(password: string, saltBytes: Uint8Array): Promise<Uint8Array> {
+async function derivePasswordHash(password: string, saltBytes: Uint8Array, iterations: number): Promise<Uint8Array> {
   const keyMaterial = await crypto.subtle.importKey("raw", textEncoder.encode(password), "PBKDF2", false, [
     "deriveBits",
   ]);
@@ -105,7 +129,7 @@ async function derivePasswordHash(password: string, saltBytes: Uint8Array): Prom
     {
       name: "PBKDF2",
       salt: saltBytes as unknown as BufferSource,
-      iterations: PBKDF2_ITERATIONS,
+      iterations,
       hash: PBKDF2_HASH,
     },
     keyMaterial,
@@ -115,7 +139,7 @@ async function derivePasswordHash(password: string, saltBytes: Uint8Array): Prom
   return new Uint8Array(bits);
 }
 
-function clearSessionCookie(c: Context): void {
+export function clearSessionCookie(c: Context): void {
   deleteCookie(c, SESSION_COOKIE_NAME, {
     path: "/",
     httpOnly: true,
@@ -158,21 +182,39 @@ function setSessionCookies(
   setCookie(c, SESSION_MODE_COOKIE_NAME, "0", cookieOptions);
 }
 
-export async function createPasswordHash(password: string): Promise<{ passwordHash: string; salt: string }> {
+export async function createPasswordHash(
+  password: string,
+  iterations: number = DEFAULT_PBKDF2_ITERATIONS,
+): Promise<{ passwordHash: string; salt: string }> {
   const saltBytes = crypto.getRandomValues(new Uint8Array(PBKDF2_SALT_BYTES));
-  const hashBytes = await derivePasswordHash(password, saltBytes);
+  const hashBytes = await derivePasswordHash(password, saltBytes, iterations);
 
   return {
-    passwordHash: bytesToBase64(hashBytes),
+    passwordHash: `${PASSWORD_HASH_PREFIX}$${iterations}$${bytesToBase64(hashBytes)}`,
     salt: bytesToBase64(saltBytes),
   };
 }
 
+function parsePasswordHash(passwordHash: string): { iterations: number; encodedHash: string } | null {
+  const match = /^pbkdf2-sha256\$(\d+)\$([A-Za-z0-9+/]+=*)$/.exec(passwordHash);
+  if (!match) return null;
+  const iterations = Number(match[1]);
+  if (!Number.isInteger(iterations) || iterations < MIN_PBKDF2_ITERATIONS || iterations > MAX_PBKDF2_ITERATIONS) return null;
+  return { iterations, encodedHash: match[2]! };
+}
+
+export function getPasswordHashIterations(passwordHash: string): number | null {
+  return parsePasswordHash(passwordHash)?.iterations ?? null;
+}
+
 export async function verifyPassword(password: string, salt: string, passwordHash: string): Promise<boolean> {
   try {
+    const parsed = parsePasswordHash(passwordHash);
+    if (!parsed) return false;
     const saltBytes = base64ToBytes(salt);
-    const expectedHashBytes = base64ToBytes(passwordHash);
-    const actualHashBytes = await derivePasswordHash(password, saltBytes);
+    const expectedHashBytes = base64ToBytes(parsed.encodedHash);
+    if (saltBytes.length !== PBKDF2_SALT_BYTES || expectedHashBytes.length !== PBKDF2_KEY_LENGTH_BITS / 8) return false;
+    const actualHashBytes = await derivePasswordHash(password, saltBytes, parsed.iterations);
     return await timingSafeEqual(actualHashBytes, expectedHashBytes);
   } catch (error) {
     logger.error("Password verification failed with unexpected error", { error: String(error) });
@@ -211,9 +253,7 @@ export async function createSession(
   return { sessionId: hashedToken, expiresAt };
 }
 
-export async function resolveSession(c: Context, _options: { freshPermissions?: boolean } = {}): Promise<ResolvedSession | null> {
-  // freshPermissions is now a no-op: the joined query is always fresh.
-  // Both fresh and non-fresh paths share the same per-request dedup cache.
+export async function resolveSession(c: Context): Promise<ResolvedSession | null> {
   const carrier = c as ContextWithSessionCache;
   carrier[RESOLVED_SESSION_PROMISE] ??= resolveSessionUncached(c);
   return await carrier[RESOLVED_SESSION_PROMISE];
@@ -228,7 +268,7 @@ async function resolveSessionUncached(c: Context): Promise<ResolvedSession | nul
   const hashedToken = await hashSessionToken(rawToken);
   const db = getDb(c);
 
-  // Single query: JOIN sessions → users → role_permissions.
+  // Single query: JOIN sessions → users → roles → role_permissions.
   // Returns one row per permission (or one row with null permission if the role
   // has no entries). All session/user columns are identical across rows.
   const rows = await db
@@ -238,13 +278,16 @@ async function resolveSessionUncached(c: Context): Promise<ResolvedSession | nul
       sessionCreatedAt: sessions.createdAt,
       userId: users.id,
       roleId: users.role,
+      roleName: roles.name,
+      roleColor: roles.color,
+      roleLevel: roles.level,
       isActive: users.isActive,
       deletedAt: users.deletedAt,
       permission: rolePermissions.permission,
-      granted: rolePermissions.granted,
     })
     .from(sessions)
     .innerJoin(users, eq(sessions.userId, users.id))
+    .innerJoin(roles, eq(users.role, roles.id))
     .leftJoin(rolePermissions, eq(rolePermissions.roleId, users.role))
     .where(eq(sessions.id, hashedToken));
 
@@ -272,7 +315,10 @@ async function resolveSessionUncached(c: Context): Promise<ResolvedSession | nul
     id: first.userId,
     roleId: first.roleId,
     role: first.roleId,
-    permissions: buildPermissionSet(rows.map((r) => (r.permission !== null ? { permission: r.permission, granted: r.granted ?? false } : null))),
+    roleName: first.roleName,
+    roleColor: first.roleColor,
+    roleLevel: first.roleLevel,
+    permissions: buildPermissionSet(rows.map((r) => (r.permission !== null ? { permission: r.permission } : null))),
   };
 
   const stayLoggedIn = getCookie(c, SESSION_MODE_COOKIE_NAME) === "1";
@@ -334,13 +380,19 @@ export async function isSessionStillValid(db: D1Database, sessionId: string, now
   return Boolean(row.isActive) && row.deletedAt === null;
 }
 
-export async function destroySession(c: Context, sessionId?: string): Promise<void> {
-  const rawToken = sessionId ?? getCookie(c, SESSION_COOKIE_NAME);
+export async function destroySession(c: Context): Promise<void> {
+  const rawToken = getCookie(c, SESSION_COOKIE_NAME);
   if (rawToken) {
     const db = getDb(c);
     const hashed = await hashSessionToken(rawToken);
     await db.delete(sessions).where(eq(sessions.id, hashed));
   }
+  clearSessionCookie(c);
+}
+
+export async function destroySessionById(c: Context, sessionId: string): Promise<void> {
+  const db = getDb(c);
+  await db.delete(sessions).where(eq(sessions.id, sessionId));
   clearSessionCookie(c);
 }
 

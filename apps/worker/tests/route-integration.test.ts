@@ -91,6 +91,13 @@ vi.mock("../services/GuildWarService", () => ({
     this.getHistoryDetail = mocks.guildWarGetHistoryDetail;
     this.getAnalytics = mocks.guildWarGetAnalytics;
   }),
+  WAR_HISTORY_FIELDS: {},
+  WAR_TEAM_MEMBER_STAT_FIELDS: {},
+  toMemberStats: (row: { damageTaken?: number | null }) => (
+    row.damageTaken === null || row.damageTaken === undefined
+      ? null
+      : { damage_taken: row.damageTaken }
+  ),
   toWarHistoryPayload: (row: unknown) => row,
 }));
 vi.mock("../services/SearchService", () => ({
@@ -107,20 +114,84 @@ type Bindings = import("../index").Bindings;
 
 let app: Hono<{ Bindings: Bindings; Variables: { requestId: string; user: unknown } }>;
 
+const SITE_CONFIG_ROW = {
+  id: "default",
+  siteName: "D1 Guild",
+  featureAnnouncementsEnabled: true,
+  featureEventsEnabled: true,
+  featureGuildWarEnabled: true,
+  featureGalleryEnabled: true,
+  featureWikiEnabled: true,
+  featureToolsEnabled: true,
+  featureStorageEnabled: true,
+  mediaSiteLogoMaxBytes: 2 * 1024 * 1024,
+  mediaClassIconMaxBytes: 512 * 1024,
+  mediaProfileImageMaxBytes: 5 * 1024 * 1024,
+  mediaProfileAudioMaxBytes: 20 * 1024 * 1024,
+  mediaAnnouncementImageMaxBytes: 5 * 1024 * 1024,
+  mediaWikiImageMaxBytes: 5 * 1024 * 1024,
+  mediaEventImageMaxBytes: 5 * 1024 * 1024,
+  mediaGalleryImageMaxBytes: 10 * 1024 * 1024,
+  mediaStorageImageMaxBytes: 5 * 1024 * 1024,
+  mediaProfileQuota: 10,
+  mediaAnnouncementQuota: 10,
+  mediaGalleryQuota: 20,
+  mediaWikiQuota: 10,
+  storageImagesPerItem: 5,
+  absenceMaxSpanDays: 366,
+  absenceMaxEntriesPerUser: 20,
+  analyticsReferenceDurationMinutes: 30,
+  analyticsKillsWeight: 0.3,
+  analyticsTowersWeight: 0.1,
+  analyticsBaseHpWeight: 0.15,
+  analyticsCreditsWeight: 0.3,
+  analyticsDistanceWeight: 0.15,
+  createdAt: "2026-08-08T00:00:00.000Z",
+  updatedAt: "2026-08-08T00:00:00.000Z",
+};
+
 /** Minimal mock bindings that satisfy the Bindings type. */
 function createMockEnv(featureFlags?: Record<string, boolean>): Bindings {
-  // Shape matches the single site_config row read by routes/service-factory.ts.
+  const flags = {
+    announcements: true,
+    events: true,
+    guildWar: true,
+    gallery: true,
+    wiki: true,
+    tools: true,
+    storage: true,
+    ...featureFlags,
+  };
+  // Shape matches the single relational site_config row read by service-factory.
   const db = {
     prepare: () => ({
       bind: () => ({
-        first: async () => featureFlags
-          ? {
-              absence_policy_json: null,
-              feature_flags_json: JSON.stringify(featureFlags),
-              media_policy_json: null,
-              storage_policy_json: null,
-            }
-          : null,
+        first: async () => ({
+          feature_announcements_enabled: Number(flags.announcements),
+          feature_events_enabled: Number(flags.events),
+          feature_guild_war_enabled: Number(flags.guildWar),
+          feature_gallery_enabled: Number(flags.gallery),
+          feature_wiki_enabled: Number(flags.wiki),
+          feature_tools_enabled: Number(flags.tools),
+          feature_storage_enabled: Number(flags.storage),
+          media_site_logo_max_bytes: 2 * 1024 * 1024,
+          media_class_icon_max_bytes: 512 * 1024,
+          media_profile_image_max_bytes: 5 * 1024 * 1024,
+          media_profile_audio_max_bytes: 20 * 1024 * 1024,
+          media_announcement_image_max_bytes: 5 * 1024 * 1024,
+          media_wiki_image_max_bytes: 5 * 1024 * 1024,
+          media_event_image_max_bytes: 5 * 1024 * 1024,
+          media_gallery_image_max_bytes: 10 * 1024 * 1024,
+          media_storage_image_max_bytes: 5 * 1024 * 1024,
+          media_profile_quota: 10,
+          media_announcement_quota: 10,
+          media_gallery_quota: 20,
+          media_wiki_quota: 10,
+          storage_images_per_item: 5,
+          absence_max_span_days: 366,
+          absence_max_entries_per_user: 20,
+        }),
+        all: async () => ({ results: [] }),
       }),
     }),
   };
@@ -132,8 +203,7 @@ function createMockEnv(featureFlags?: Record<string, boolean>): Bindings {
     PORTAL_ORIGIN: "https://portal.example.com",
     ENVIRONMENT: "test",
     SIGNING_SECRET: "test-secret",
-    SITE_NAME: "Test Guild",
-    SITE_LOGO_URL: "/guild-logo.webp",
+    SITE_LOGO_URL: "/guild-logo.svg",
   } as unknown as Bindings;
 }
 
@@ -148,10 +218,6 @@ async function appRequest(
 ): Promise<Response> {
   return app.request(path, init, createMockEnv());
 }
-
-// ---------------------------------------------------------------------------
-// Setup
-// ---------------------------------------------------------------------------
 
 beforeAll(async () => {
   // Default: no session cookie
@@ -168,7 +234,6 @@ beforeAll(async () => {
 
 describe("GET /api/health", () => {
   it("returns 200 with ok:true when DB is healthy", async () => {
-    // Mock DB.prepare().first() to return { ok: 1 }
     const mockEnv = createMockEnv();
     (mockEnv.DB as unknown as Record<string, unknown>).prepare = () => ({
       bind: () => ({
@@ -311,10 +376,11 @@ describe("Admin route auth guard", () => {
       return undefined;
     });
 
-    // Drizzle chain mock: select().from().innerJoin().leftJoin().where() => []
+    // Drizzle chain mock: select().from().innerJoin().innerJoin().leftJoin().where() => []
     const where = vi.fn().mockResolvedValue([]);
     const leftJoin = vi.fn(() => ({ where }));
-    const innerJoin = vi.fn(() => ({ leftJoin }));
+    const secondInnerJoin = vi.fn(() => ({ leftJoin }));
+    const innerJoin = vi.fn(() => ({ innerJoin: secondInnerJoin }));
     const from = vi.fn(() => ({ innerJoin }));
     const select = vi.fn(() => ({ from }));
     mocks.drizzle.mockReturnValue({ select });
@@ -399,7 +465,7 @@ describe("Origin / CSRF protection", () => {
 
 describe("GET /api/site-config", () => {
   it("returns site configuration without authentication", async () => {
-    const limit = vi.fn().mockResolvedValue([]);
+    const limit = vi.fn().mockResolvedValue([SITE_CONFIG_ROW]);
     const where = vi.fn(() => ({ limit }));
     const from = vi.fn(() => ({ where }));
     const select = vi.fn(() => ({ from }));
@@ -409,7 +475,7 @@ describe("GET /api/site-config", () => {
     expect(res.status).toBe(200);
 
     const body = (await res.json()) as { site_name: string; features: Record<string, boolean> };
-    expect(body.site_name).toBe("Test Guild");
+    expect(body.site_name).toBe("D1 Guild");
     expect(body.features).toBeDefined();
     expect(body.features.announcements).toBe(true);
   });
@@ -435,9 +501,13 @@ describe("API request body limits", () => {
     const { getApiRequestBodyLimit } = await import("../index");
 
     expect(getApiRequestBodyLimit("/api/gallery/images")).toBe(32 * 1024 * 1024);
-    expect(getApiRequestBodyLimit("/api/announcements/images/stage")).toBe(32 * 1024 * 1024);
+    expect(getApiRequestBodyLimit("/api/announcements/images")).toBe(32 * 1024 * 1024);
+    expect(getApiRequestBodyLimit("/api/announcements/announcement-1/images")).toBe(32 * 1024 * 1024);
     expect(getApiRequestBodyLimit("/api/events")).toBe(32 * 1024 * 1024);
-    expect(getApiRequestBodyLimit("/api/game-data")).toBe(32 * 1024 * 1024);
+    expect(getApiRequestBodyLimit("/api/events/event-1/images")).toBe(32 * 1024 * 1024);
+    expect(getApiRequestBodyLimit("/api/wiki/articles/article-1/images")).toBe(32 * 1024 * 1024);
+    expect(getApiRequestBodyLimit("/api/storage/items/item-1/images")).toBe(32 * 1024 * 1024);
+    expect(getApiRequestBodyLimit("/api/classes/class-1/icon")).toBe(32 * 1024 * 1024);
     expect(getApiRequestBodyLimit("/api/users/user-1/media/avatar")).toBe(32 * 1024 * 1024);
     expect(getApiRequestBodyLimit("/api/auth/login")).toBe(1024 * 1024);
     expect(getApiRequestBodyLimit("/api/not-real/gallery/images")).toBe(1024 * 1024);
@@ -518,7 +588,6 @@ describe("Guest read API access", () => {
       gallery: true,
       wiki: true,
       tools: true,
-      equipmentCalc: true,
       storage: true,
     });
 
@@ -643,6 +712,100 @@ describe("Guest read API access", () => {
       recent_war_mvps: [],
     });
   });
+
+  it("ranks only finite present MVP values and returns no candidate when none exist", async () => {
+    mocks.getCookie.mockReturnValue(undefined);
+    const warRows = [
+      {
+        id: "war-1",
+        eventId: null,
+        warName: "First war",
+        enemyName: "Enemy",
+        result: "win",
+        ownKills: null,
+        ownTowers: null,
+        ownBaseHp: null,
+        ownCredits: null,
+        ownDistance: null,
+        enemyKills: null,
+        enemyTowers: null,
+        enemyBaseHp: null,
+        enemyCredits: null,
+        enemyDistance: null,
+        durationMinutes: 30,
+        notes: null,
+        createdBy: "admin-1",
+        updatedBy: null,
+        createdAt: "2026-07-02T00:00:00.000Z",
+        updatedAt: "2026-07-02T00:00:00.000Z",
+      },
+      {
+        id: "war-2",
+        eventId: null,
+        warName: "Second war",
+        enemyName: "Enemy",
+        result: "loss",
+        ownKills: null,
+        ownTowers: null,
+        ownBaseHp: null,
+        ownCredits: null,
+        ownDistance: null,
+        enemyKills: null,
+        enemyTowers: null,
+        enemyBaseHp: null,
+        enemyCredits: null,
+        enemyDistance: null,
+        durationMinutes: 30,
+        notes: null,
+        createdBy: "admin-1",
+        updatedBy: null,
+        createdAt: "2026-07-01T00:00:00.000Z",
+        updatedAt: "2026-07-01T00:00:00.000Z",
+      },
+    ];
+    const memberRows = [
+      { warHistoryId: "war-1", userId: "missing", username: "Missing", damageTaken: null },
+      { warHistoryId: "war-1", userId: "bob", username: "Bob", damageTaken: 12 },
+      { warHistoryId: "war-1", userId: "infinite", username: "Infinite", damageTaken: Number.POSITIVE_INFINITY },
+      { warHistoryId: "war-1", userId: "null", username: "Null", damageTaken: null },
+      { warHistoryId: "war-2", userId: "empty", username: "Empty", damageTaken: null },
+    ];
+    let selectCall = 0;
+    const select = vi.fn(() => {
+      selectCall += 1;
+      if (selectCall === 1) {
+        return { from: vi.fn(() => ({ orderBy: vi.fn(() => ({ limit: vi.fn().mockResolvedValue(warRows) })) })) };
+      }
+      if (selectCall === 2) {
+        return { from: vi.fn(() => ({ where: vi.fn().mockResolvedValue([{ total: 2, wins: 1 }]) })) };
+      }
+      return {
+        from: vi.fn(() => ({
+          innerJoin: vi.fn(() => ({
+            innerJoin: vi.fn(() => ({
+              where: vi.fn().mockResolvedValue(memberRows),
+            })),
+          })),
+        })),
+      };
+    });
+    mocks.drizzle.mockReturnValueOnce({ select });
+
+    const res = await appRequest("/api/dashboard/wars");
+    const body = await res.json() as { recent_war_mvps: unknown };
+
+    expect(res.status).toBe(200);
+    expect(body.recent_war_mvps).toEqual([
+      [{
+        category: "damage_taken",
+        label: "damage_taken",
+        name: "Bob",
+        initials: "BO",
+        value: 12,
+      }],
+      null,
+    ]);
+  });
 });
 
 // =========================================================================
@@ -701,8 +864,45 @@ describe("Rate limiting", () => {
     expect(body.request_id).toBeDefined();
     expect(res.headers.get("Retry-After")).toBeTruthy();
 
-    // Cleanup
     fakeCacheStore.delete(cacheKey);
+  });
+
+  it("counts HEAD requests against the read quota and rejects the request after the quota is spent", async () => {
+    const windowMs = 60_000;
+    const now = Date.now();
+    const nowSpy = vi.spyOn(Date, "now").mockReturnValue(now);
+    const windowId = Math.floor(now / windowMs);
+    const cacheKey = `https://rate-limit-v1/read/unknown/${windowId}`;
+    fakeCacheStore.set(cacheKey, new Response(JSON.stringify({
+      count: 119,
+      resetAt: (windowId + 1) * windowMs,
+    }), {
+      headers: { "Content-Type": "application/json" },
+    }));
+
+    const limit = vi.fn().mockResolvedValue([SITE_CONFIG_ROW]);
+    const where = vi.fn(() => ({ limit }));
+    const from = vi.fn(() => ({ where }));
+    mocks.drizzle.mockReturnValue({ select: vi.fn(() => ({ from })) });
+    const mockEnv = createMockEnv();
+
+    try {
+      const allowed = await app.request("/api/site-config", { method: "HEAD" }, mockEnv);
+      expect(allowed.status).toBe(200);
+      expect(allowed.headers.get("X-RateLimit-Scope")).toBe("read");
+      expect(allowed.headers.get("X-RateLimit-Remaining")).toBe("0");
+
+      const rejected = await app.request("/api/site-config", { method: "HEAD" }, mockEnv);
+      expect(rejected.status).toBe(429);
+      expect(rejected.headers.get("X-RateLimit-Scope")).toBe("read");
+      expect(rejected.headers.get("X-RateLimit-Limit")).toBe("120");
+      expect(rejected.headers.get("X-RateLimit-Remaining")).toBe("0");
+      expect(rejected.headers.get("Retry-After")).toBeTruthy();
+    } finally {
+      nowSpy.mockRestore();
+      fakeCacheStore.delete(cacheKey);
+      mocks.drizzle.mockReturnValue({});
+    }
   });
 
   it("can defer successful read counter writes without blocking the response", async () => {
@@ -806,6 +1006,64 @@ describe("Rate limiting", () => {
     } finally {
       callRelease(releasePut);
       fakeCachePut = previousPut;
+    }
+  });
+});
+
+describe("WebSocket routing", () => {
+  it("overwrites client-supplied internal identities with the resolved session and account ids", async () => {
+    const { WS_ACCOUNT_ID_HEADER, WS_SESSION_ID_HEADER } = await import("../durable-objects/WebSocketDO");
+    const now = Date.now();
+    const where = vi.fn().mockResolvedValue([{
+      sessionId: "trusted-session-id",
+      expiresAt: new Date(now + 20 * 24 * 60 * 60_000).toISOString(),
+      sessionCreatedAt: new Date(now - 60_000).toISOString(),
+      userId: "trusted-account-id",
+      roleId: "member",
+      roleName: "Member",
+      roleColor: "gray",
+      roleLevel: 100,
+      isActive: true,
+      deletedAt: null,
+      permission: null,
+    }]);
+    const leftJoin = vi.fn(() => ({ where }));
+    const secondInnerJoin = vi.fn(() => ({ leftJoin }));
+    const innerJoin = vi.fn(() => ({ innerJoin: secondInnerJoin }));
+    const from = vi.fn(() => ({ innerJoin }));
+    mocks.drizzle.mockReturnValue({ select: vi.fn(() => ({ from })) });
+    mocks.getCookie.mockImplementation((_c: unknown, name: string) => {
+      if (name === "ig_session") return "raw-session-token";
+      if (name === "ig_session_mode") return "0";
+      return undefined;
+    });
+
+    const forwardedFetch = vi.fn().mockResolvedValue(new Response(null, { status: 200 }));
+    const env = createMockEnv();
+    env.WS = {
+      idFromName: vi.fn().mockReturnValue({}),
+      get: vi.fn().mockReturnValue({ fetch: forwardedFetch }),
+    } as unknown as DurableObjectNamespace;
+
+    try {
+      const response = await app.request("/ws", {
+        headers: {
+          Upgrade: "websocket",
+          Origin: "https://portal.example.com",
+          [WS_ACCOUNT_ID_HEADER]: "forged-account-id",
+          [WS_SESSION_ID_HEADER]: "forged-session-id",
+        },
+      }, env);
+
+      expect(response.status).toBe(200);
+      expect(forwardedFetch).toHaveBeenCalledOnce();
+      const [, init] = forwardedFetch.mock.calls[0]!;
+      const forwardedHeaders = new Headers(init?.headers);
+      expect(forwardedHeaders.get(WS_ACCOUNT_ID_HEADER)).toBe("trusted-account-id");
+      expect(forwardedHeaders.get(WS_SESSION_ID_HEADER)).toBe("trusted-session-id");
+    } finally {
+      mocks.getCookie.mockReturnValue(undefined);
+      mocks.drizzle.mockReturnValue({});
     }
   });
 });

@@ -5,9 +5,11 @@ import {
   type CreateWarHistoryInput,
   type DrizzleDb,
   type GuildWarServiceDeps,
+  type MemberStatsInput,
   type MoveMembersInput,
   type RoleTagUpdatesInput,
   type SaveTeamsInput,
+  type TeamStatsInput,
   type UpdateWarHistoryInput,
 } from "./guild-war/GuildWarCoreService";
 import { GuildWarExportService } from "./guild-war/GuildWarExportService";
@@ -20,6 +22,10 @@ import type { updateMemberStatsSchema } from "@guild/shared";
 export {
   buildActiveEtag,
   buildWarEtag,
+  WAR_HISTORY_FIELDS,
+  WAR_TEAM_MEMBER_FIELDS,
+  WAR_TEAM_MEMBER_STAT_FIELDS,
+  toMemberStats,
   toMemberPayload,
   toTeamPayload,
   toWarHistoryPayload,
@@ -100,8 +106,8 @@ export class GuildWarService {
   concludeWar(
     actorId: string,
     eventId: string,
-    warInfo: { enemy_name?: string; result: string; duration_minutes?: number | null; own_stats?: Record<string, number | null>; enemy_stats?: Record<string, number | null> },
-    memberStats?: Array<{ user_id: string; stats: Record<string, number> }>,
+    warInfo: { enemy_name?: string; result: string; duration_minutes?: number | null; own_stats?: TeamStatsInput; enemy_stats?: TeamStatsInput },
+    memberStats?: Array<{ user_id: string; stats: MemberStatsInput }>,
   ) {
     return this.history.concludeWar(actorId, eventId, warInfo, memberStats);
   }

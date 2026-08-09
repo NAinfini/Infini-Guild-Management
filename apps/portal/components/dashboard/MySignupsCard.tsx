@@ -1,17 +1,19 @@
 import type { Event } from "@guild/shared";
-import { PortalCard } from "../shared/PortalCard";
-import { HoverCard, ThemeIcon, Text, Badge, Group } from "@mantine/core";
+import { Badge, Button, Group, HoverCard, Paper, Text, ThemeIcon } from "@mantine/core";
 import { CalendarEventIcon } from "@portal/components/icons";
 import { memo, useMemo } from "react";
 import { useTranslation } from "react-i18next";
 import { UserCheckOutlined } from "../../utils/icons";
 import { EmptyState } from "../shared/EmptyState";
 import { cardHeading, eventTypeTagColor, formatDateTime, type DashboardMySignupEvent } from "./shared";
+import { getEventTypeLabel } from "@portal/utils/game-rules";
+import { useSiteConfigStore } from "@portal/stores/site-config";
 
 type MySignupsCardProps = {
   mySignupEvents: DashboardMySignupEvent[];
   now: Date;
   onOpenEvent: (event: Pick<Event, "id" | "title">) => void;
+  onBrowseEvents: () => void;
 };
 
 function isSameDay(a: Date, b: Date): boolean {
@@ -23,8 +25,14 @@ function formatTime(dateStr: string): string {
   return d.toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit", hour12: false });
 }
 
-export const MySignupsCard = memo(function MySignupsCard({ mySignupEvents, now, onOpenEvent }: MySignupsCardProps) {
+export const MySignupsCard = memo(function MySignupsCard({
+  mySignupEvents,
+  now,
+  onOpenEvent,
+  onBrowseEvents,
+}: MySignupsCardProps) {
   const { t, i18n } = useTranslation("dashboard");
+  const gameRules = useSiteConfigStore((state) => state.gameRules);
 
   const days = useMemo(() => {
     const result: { date: Date; label: string; dayLabel: string; isYesterday: boolean; events: DashboardMySignupEvent[] }[] = [];
@@ -49,12 +57,28 @@ export const MySignupsCard = memo(function MySignupsCard({ mySignupEvents, now, 
   const isToday = (date: Date) => isSameDay(date, now);
 
   return (
-    <PortalCard className="dashboard-card" interactive={false}>
-      {cardHeading(t("card.mySignups.title"), <UserCheckOutlined size={18} />)}
+    <Paper withBorder radius="md" className="dashboard-card">
+      <div>
+        {cardHeading(t("card.mySignups.title"), <UserCheckOutlined size={18} />)}
       {/* With no signups the strip was eight identical boxes of "—" taking a full
           card of vertical space and saying nothing. */}
       {mySignupEvents.length === 0 ? (
-        <EmptyState title={t("card.mySignups.empty")} />
+        <EmptyState
+          className="dashboard-signups-empty"
+          icon={(
+            <CalendarEventIcon
+              aria-hidden="true"
+              className="dashboard-signups-empty__icon"
+              size={28}
+            />
+          )}
+          title={t("card.mySignups.empty")}
+          actions={(
+            <Button onClick={onBrowseEvents}>
+              {t("card.mySignups.browseEvents")}
+            </Button>
+          )}
+        />
       ) : (
       <div className="signup-boxes">
         {days.map((day) => {
@@ -72,7 +96,7 @@ export const MySignupsCard = memo(function MySignupsCard({ mySignupEvents, now, 
                   <span className="signup-box-empty">—</span>
                 ) : (
                   day.events.map((item) => {
-                    const color = `var(--mantine-color-${eventTypeTagColor(item.event.type)}-5, var(--accent-fill))`;
+                    const color = eventTypeTagColor(item.event.type);
 
                     return (
                       <HoverCard key={item.event.id} width={280} shadow="lg" withArrow arrowSize={10} openDelay={350} closeDelay={80} position="top">
@@ -99,7 +123,7 @@ export const MySignupsCard = memo(function MySignupsCard({ mySignupEvents, now, 
                               <Text size="sm" fw={700} lh={1.3}>{item.event.title}</Text>
                               <Group gap={4} mt={4}>
                                 <Badge size="xs" color={eventTypeTagColor(item.event.type)} variant="light">
-                                  {t(`common:eventType.${item.event.type}`)}
+                                  {getEventTypeLabel(item.event.type, i18n.language, gameRules)}
                                 </Badge>
                                 <Text size="xs" c="dimmed">{formatDateTime(item.event.start_at)}</Text>
                               </Group>
@@ -118,7 +142,8 @@ export const MySignupsCard = memo(function MySignupsCard({ mySignupEvents, now, 
           );
         })}
       </div>
-      )}
-    </PortalCard>
+        )}
+      </div>
+    </Paper>
   );
 });

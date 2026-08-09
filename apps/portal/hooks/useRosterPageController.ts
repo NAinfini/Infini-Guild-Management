@@ -1,6 +1,4 @@
 import type { MemberProfile, User, UserBadge } from "@guild/shared";
-import { CLASS_NAMES } from "@guild/shared";
-import { activeGame } from "@guild/shared/games";
 import { useQuery } from "@tanstack/react-query";
 import { useLocalStorage } from "@mantine/hooks";
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -10,18 +8,15 @@ import { useEffectivePermissions } from "./useEffectivePermissions";
 import { queryKeys } from "../api/query-keys";
 import { fetchAllUsersListWithOptions } from "../services/UserService";
 import { useAuthStore } from "../stores/auth";
-import { resolveProfileMediaUrl } from "../utils/media";
+import { resolveClassCatalogItem, useClassCatalogStore } from "../stores/class-catalog";
+import { resolveMediaUrl } from "../utils/media";
 import { playAudio, stopAudio, setAudioVolume, setAudioMuted, isAudioPlaying, getAudioSrc } from "../utils/audio-player";
 
 export type RosterEntry = { user: User; profile: MemberProfile; badges?: UserBadge[] };
 
 const ROSTER_FILTERS_KEY = "roster.filters";
 
-const ROSTER_SORT_MODES = [
-  ...activeGame.profileStats.filter((s) => s.sortable).map((s) => s.key),
-  "username",
-  "class",
-] as const;
+const ROSTER_SORT_MODES = ["power", "username", "class"] as const;
 
 export type RosterSortMode = (typeof ROSTER_SORT_MODES)[number];
 
@@ -35,7 +30,8 @@ function readStoredClassFilter(): string[] {
     if (!Array.isArray(list)) return [];
     return list
       .filter((value): value is string => typeof value === "string")
-      .filter((value) => CLASS_NAMES.includes(value as (typeof CLASS_NAMES)[number]));
+      .map((value) => value.trim())
+      .filter((value) => value.length > 0 && value.length <= 128);
   } catch {
     return [];
   }
@@ -58,6 +54,7 @@ function readStoredSortMode(): RosterSortMode {
 export function useRosterPageController() {
   const isExternalView = useExternalView();
   const sessionUser = useAuthStore((state) => state.user);
+  const classCatalog = useClassCatalogStore((state) => state.items);
   const { canManage: canManagePermission } = useEffectivePermissions();
   const { search, setSearch, debouncedSearch: debouncedSearchRaw } = useDebouncedSearch();
   const debouncedSearch = debouncedSearchRaw.trim().toLowerCase();
@@ -68,8 +65,9 @@ export function useRosterPageController() {
   const [audioVolume, setAudioVolumeState] = useLocalStorage<number>({ key: "roster.audio.volume", defaultValue: 20 });
   const hoverAudioDebounceRef = useRef<number | null>(null);
   const hoverAudioStopDebounceRef = useRef<number | null>(null);
-  const [selected, setSelected] = useState<RosterEntry | null>(null);
-  const selectedRef = useRef(selected);
+  const [selectedUserId, setSelectedUserId] = useState<string | null>(null);
+  const selectedUserIdRef = useRef(selectedUserId);
+  selectedUserIdRef.current = selectedUserId;
 
   const usersQuery = useQuery({
     queryKey: queryKeys.users.roster(isExternalView ? "external" : "default"),
@@ -96,12 +94,11 @@ export function useRosterPageController() {
 
   useEffect(() => {
     setVisibleCount(20);
-    if (selectedRef.current) {
+    if (selectedUserIdRef.current) {
       closeMemberProfile();
     }
     // closeMemberProfile is defined in the same render scope and reads/writes
-    // selectedRef (a stable ref), so it does not need to be in deps.
-    // Using selectedRef.current avoids capturing stale `selected` state.
+    // selectedUserIdRef (a stable ref), so it does not need to be in deps.
      
   }, [debouncedSearch, classFilter]);
 
@@ -118,18 +115,33 @@ export function useRosterPageController() {
   }, [classFilter, sortMode]);
 
   const rows = usersQuery.data?.data ?? [];
-
-  const sortedRows = useMemo(() => {
-    const displayRows = isExternalView
+  const displayRows = useMemo(
+    () => isExternalView
       ? rows.map((entry) => ({
           ...entry,
           profile: { ...entry.profile, notes: null },
         }))
-      : rows;
+      : rows,
+    [isExternalView, rows],
+  );
+  const selected = selectedUserId
+    ? displayRows.find((entry) => entry.user.id === selectedUserId) ?? null
+    : null;
+  const loadedClassIds = useMemo(
+    () => [...new Set(
+      rows.flatMap((entry) => entry.profile.classes)
+        .map((id) => id.trim())
+        .filter(Boolean),
+    )],
+    [rows],
+  );
 
+  const sortedRows = useMemo(() => {
     const filteredRows = displayRows
       .filter((entry) => {
         if (!debouncedSearch) return true;
+        /* 只按用户名，和输入框自己写的「搜索用户名」一致——名册上已经看不到身份，
+           再拿身份去匹配就会搜出一批看不出为什么会命中的人。 */
         return entry.user.username.toLowerCase().includes(debouncedSearch);
       })
       .filter((entry) => {
@@ -139,16 +151,28 @@ export function useRosterPageController() {
 
     return [...filteredRows].sort((left, right) => {
       if (sortMode === "username") return left.user.username.localeCompare(right.user.username);
-      if (sortMode === "class") return (left.profile.classes[0] ?? "").localeCompare(right.profile.classes[0] ?? "");
+      if (sortMode === "class") {
+        return resolveClassCatalogItem(left.profile.classes[0], classCatalog).label.localeCompare(
+          resolveClassCatalogItem(right.profile.classes[0], classCatalog).label,
+        );
+      }
       return right.profile.power - left.profile.power;
     });
-  }, [rows, isExternalView, debouncedSearch, classFilter, sortMode]);
+  }, [classCatalog, displayRows, debouncedSearch, classFilter, sortMode]);
+
+  useEffect(() => {
+    if (selectedUserId && usersQuery.data && !selected) {
+      selectedUserIdRef.current = null;
+      setSelectedUserId(null);
+      stopAudio();
+    }
+  }, [selected, selectedUserId, usersQuery.data]);
 
   const playHoverAudio = (entry: { user: User; profile: MemberProfile }) => {
     if (audioMuted) return;
-    const key = entry.profile.audio_key;
-    if (!key) return;
-    const resolvedSrc = resolveProfileMediaUrl(key);
+    const mediaId = entry.profile.audio_media_id;
+    if (!mediaId) return;
+    const resolvedSrc = resolveMediaUrl(mediaId, "full");
     if (hoverAudioStopDebounceRef.current !== null) {
       window.clearTimeout(hoverAudioStopDebounceRef.current);
       hoverAudioStopDebounceRef.current = null;
@@ -172,12 +196,12 @@ export function useRosterPageController() {
       window.clearTimeout(hoverAudioDebounceRef.current);
       hoverAudioDebounceRef.current = null;
     }
-    if (selectedRef.current) return;
+    if (selectedUserIdRef.current) return;
     if (hoverAudioStopDebounceRef.current !== null) {
       window.clearTimeout(hoverAudioStopDebounceRef.current);
     }
     hoverAudioStopDebounceRef.current = window.setTimeout(() => {
-      if (!selectedRef.current) {
+      if (!selectedUserIdRef.current) {
         stopAudio();
       }
       hoverAudioStopDebounceRef.current = null;
@@ -185,13 +209,13 @@ export function useRosterPageController() {
   };
 
   const openMemberProfile = (entry: RosterEntry) => {
-    selectedRef.current = entry;
-    setSelected(entry);
+    selectedUserIdRef.current = entry.user.id;
+    setSelectedUserId(entry.user.id);
   };
 
   const closeMemberProfile = () => {
-    selectedRef.current = null;
-    setSelected(null);
+    selectedUserIdRef.current = null;
+    setSelectedUserId(null);
     stopAudio();
   };
 
@@ -214,6 +238,7 @@ export function useRosterPageController() {
     setAudioVolumeState,
     selected,
     usersQuery,
+    loadedClassIds,
     sortedRows,
     playHoverAudio,
     stopHoverAudio,

@@ -18,7 +18,10 @@ vi.mock("react-i18next", () => ({
   useTranslation: () => ({ t: (key: string) => key }),
 }));
 
-const item = (id: string): StorageItem => ({
+const item = (
+  id: string,
+  images: StorageItem["images"] = [],
+): StorageItem => ({
   id,
   storage_id: "storage-1",
   category_id: null,
@@ -27,7 +30,7 @@ const item = (id: string): StorageItem => ({
   quantity: 10,
   allow_member_deposit: true,
   allow_member_withdraw: true,
-  images: [],
+  images,
   created_at: "2026-07-28T00:00:00.000Z",
   updated_at: "2026-07-28T00:00:00.000Z",
 });
@@ -49,7 +52,16 @@ const transaction = (id: string): StorageTransaction => ({
 function renderModal(currentItem: StorageItem) {
   return render(
     <MantineProvider>
-      <StorageItemDetailModal opened item={currentItem} onClose={vi.fn()} />
+      <StorageItemDetailModal
+        opened
+        item={currentItem}
+        canEditItem={false}
+        canManageStock={false}
+        onClose={vi.fn()}
+        onDeposit={vi.fn()}
+        onWithdraw={vi.fn()}
+        onEdit={vi.fn()}
+      />
     </MantineProvider>,
   );
 }
@@ -90,7 +102,16 @@ describe("StorageItemDetailModal ledger pagination", () => {
 
     view.rerender(
       <MantineProvider>
-        <StorageItemDetailModal opened item={item("item-2")} onClose={vi.fn()} />
+        <StorageItemDetailModal
+          opened
+          item={item("item-2")}
+          canEditItem={false}
+          canManageStock={false}
+          onClose={vi.fn()}
+          onDeposit={vi.fn()}
+          onWithdraw={vi.fn()}
+          onEdit={vi.fn()}
+        />
       </MantineProvider>,
     );
 
@@ -120,5 +141,85 @@ describe("StorageItemDetailModal ledger pagination", () => {
 
     expect(screen.getByText("ledger.empty")).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "pagination.2" })).not.toBeInTheDocument();
+  });
+
+  it("labels image navigation and disables controls at the accurate boundary", async () => {
+    const user = userEvent.setup();
+    renderModal(item("item-1", [
+      { media_id: "image1234567890abcdef" },
+      { media_id: "second1234567890abcde" },
+    ]));
+
+    const previous = screen.getByRole("button", { name: "detail.previousImage" });
+    const next = screen.getByRole("button", { name: "detail.nextImage" });
+    expect(previous).toBeDisabled();
+    expect(next).toBeEnabled();
+
+    await user.click(next);
+
+    expect(screen.getByText("2 / 2")).toBeInTheDocument();
+    expect(previous).toBeEnabled();
+    expect(next).toBeDisabled();
+  });
+
+  it("keeps the detail preview inside a 390px viewport", () => {
+    const { container } = renderModal(item("item-1"));
+    const modal = container.ownerDocument.querySelector(".storage-detail-drawer");
+    const preview = container.ownerDocument.querySelector(".storage-detail-media");
+
+    expect(modal).toBeInTheDocument();
+    expect(preview).toHaveStyle({ minWidth: "0" });
+  });
+
+  it("offers direct deposit and withdraw actions from item detail", async () => {
+    const user = userEvent.setup();
+    const onDeposit = vi.fn();
+    const onWithdraw = vi.fn();
+    const currentItem = item("item-1");
+
+    render(
+      <MantineProvider>
+        <StorageItemDetailModal
+          opened
+          item={currentItem}
+          canEditItem={false}
+          canManageStock={false}
+          onClose={vi.fn()}
+          onDeposit={onDeposit}
+          onWithdraw={onWithdraw}
+          onEdit={vi.fn()}
+        />
+      </MantineProvider>,
+    );
+
+    await user.click(screen.getByRole("button", { name: "action.deposit" }));
+    await user.click(screen.getByRole("button", { name: "action.withdraw" }));
+
+    expect(onDeposit).toHaveBeenCalledWith(currentItem);
+    expect(onWithdraw).toHaveBeenCalledWith(currentItem);
+  });
+
+  it("offers direct stock actions to managers when member self-service is closed", () => {
+    render(
+      <MantineProvider>
+        <StorageItemDetailModal
+          opened
+          item={{
+            ...item("item-1"),
+            allow_member_deposit: false,
+            allow_member_withdraw: false,
+          }}
+          canEditItem
+          canManageStock
+          onClose={vi.fn()}
+          onDeposit={vi.fn()}
+          onWithdraw={vi.fn()}
+          onEdit={vi.fn()}
+        />
+      </MantineProvider>,
+    );
+
+    expect(screen.getByRole("button", { name: "action.deposit" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "action.withdraw" })).toBeInTheDocument();
   });
 });

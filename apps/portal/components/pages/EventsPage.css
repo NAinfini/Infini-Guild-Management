@@ -1,29 +1,26 @@
-.events-filter-card.events-filter-card {
-  position: sticky;
-  top: 0;
-  z-index: var(--z-sticky);
-  margin-bottom: 12px;
-  overflow: visible;
-}
-
 .events-filter-search {
   width: 100%;
 }
 
-.events-filter-status {
-  min-width: 250px;
-}
-
+/* 容器足够宽时类型筛选保持紧凑；空间不足由共享工具栏整体收进筛选面板。 */
 .events-filter-type {
-  width: 200px;
+  width: 150px;
 }
 
-/* ── Recurring Templates Tab ── (moved out of style={{}}, task-8 批 B) */
+/* ── Recurring Templates Tab ── */
+
+.recurring-template-filter-search {
+  width: 100%;
+}
+
+.recurring-template-filter-type {
+  width: 150px;
+}
 
 .recurring-template-icon-wrap {
   width: 40px;
   height: 40px;
-  border-radius: 8px;
+  border-radius: var(--radius-surface);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -46,12 +43,14 @@
 
 .recurring-template-lifecycle-accent {
   font-variant-numeric: tabular-nums;
-  color: var(--accent-text);
+  color: var(--brand-text);
 }
 
 @media (max-width: 767px) {
   .events-filter-status,
-  .events-filter-type {
+  .events-filter-type,
+  .recurring-template-filter-status,
+  .recurring-template-filter-type {
     width: 100%;
   }
 

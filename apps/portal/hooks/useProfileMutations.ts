@@ -1,9 +1,10 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
+import { useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useAppError } from "./useAppError";
 import type { UseMediaUploadState } from "./useMediaUpload";
-import type { ProfileFormStateController } from "./useProfileFormState";
+import type { ProfileDraftSnapshot, ProfileFormStateController } from "./useProfileFormState";
 import { queryKeys } from "../api/query-keys";
 import { logout as requestLogout } from "../services/AuthService";
 import {
@@ -15,6 +16,7 @@ import {
 } from "../services/UserService";
 import { useAuthStore } from "../stores/auth";
 import { notifySuccess } from "../utils/notifications";
+import { transitionSession } from "../session-transition";
 
 type UseProfileMutationsParams = {
   form: ProfileFormStateController;
@@ -27,28 +29,44 @@ export function useProfileMutations({ form, imageUploader, audioUploader }: UseP
   const navigate = useNavigate();
   const user = useAuthStore((state) => state.user);
   const setProfile = useAuthStore((state) => state.setProfile);
-  const clearSession = useAuthStore((state) => state.clearSession);
   const queryClient = useQueryClient();
   const { showError } = useAppError();
+  const removingImageIdsRef = useRef(new Set<string>());
+  const [removingImageIds, setRemovingImageIds] = useState<ReadonlySet<string>>(new Set());
 
   const saveProfileMutation = useMutation({
     mutationFn: async () => {
       if (!user) throw new Error("Missing user session");
-      return updateMyProfile(user.id, {
-        bio: form.bio || null,
-        title_html: form.titleHtml || null,
+      /* 连同这次送出去的草稿快照一起回传：服务端会规范化字段（称号 HTML 要过
+         白名单清洗），acceptServerProfile 靠它区分「该校准」和「用户刚改过、
+         不能覆盖」的字段。 */
+      const submitted: ProfileDraftSnapshot = {
+        bio: form.bio,
+        titleHtml: form.titleHtml,
         power: form.power,
-        classes: form.classList,
-        video_urls: form.videoList,
-        images: form.imageList,
-        availability: form.availabilityData,
+        classList: form.classList,
+        videoList: form.videoList,
+        imageList: form.imageList,
+        availabilityData: form.availabilityData,
+      };
+      const profile = await updateMyProfile(user.id, {
+        bio: submitted.bio || null,
+        title_html: submitted.titleHtml || null,
+        power: submitted.power,
+        classes: submitted.classList,
+        video_urls: submitted.videoList,
+        images: submitted.imageList,
+        availability: submitted.availabilityData,
       });
+      return { profile, submitted };
     },
-    onSuccess: async (updatedProfile) => {
-      form.acceptServerProfile(updatedProfile);
+    onSuccess: ({ profile: updatedProfile, submitted }) => {
+      form.acceptServerProfile(updatedProfile, submitted);
       setProfile(updatedProfile);
-      await queryClient.invalidateQueries({ queryKey: queryKeys.myProfile.detail(user?.id) });
-      await queryClient.invalidateQueries({ queryKey: queryKeys.users.all });
+      /* PATCH 已经返回了权威资料；后续 refetch 只负责同步缓存，不能继续占用
+         saving 状态。CI 上一次慢 GET 因此让保存条多留了 10 秒。 */
+      void queryClient.invalidateQueries({ queryKey: queryKeys.myProfile.detail(user?.id) });
+      void queryClient.invalidateQueries({ queryKey: queryKeys.users.all });
       notifySuccess(t("message.profileSaved"));
     },
     onError: (error) => {
@@ -57,17 +75,21 @@ export function useProfileMutations({ form, imageUploader, audioUploader }: UseP
   });
 
   const removeImageMutation = useMutation({
-    mutationFn: (key: string) => {
+    mutationFn: (mediaId: string) => {
       if (!user) throw new Error("Missing user session");
-      return deleteProfileImage(user.id, key);
+      return deleteProfileImage(user.id, mediaId);
     },
-    onSuccess: async (_data, key) => {
-      form.setImageList((current) => current.filter((item) => item !== key));
+    onSuccess: async (_data, mediaId) => {
+      form.setImageList((current) => current.filter((item) => item !== mediaId));
       await queryClient.invalidateQueries({ queryKey: queryKeys.myProfile.detail(user?.id) });
       notifySuccess(t("message.imageRemoved"));
     },
     onError: (error) => {
       showError(error, t("message.imageRemoveFailed"));
+    },
+    onSettled: (_data, _error, mediaId) => {
+      removingImageIdsRef.current.delete(mediaId);
+      setRemovingImageIds(new Set(removingImageIdsRef.current));
     },
   });
 
@@ -99,8 +121,7 @@ export function useProfileMutations({ form, imageUploader, audioUploader }: UseP
       form.setNewPassword("");
       form.setConfirmNewPassword("");
       notifySuccess(t("message.passwordChanged"));
-      clearSession();
-      queryClient.clear();
+      transitionSession(queryClient, null);
       void navigate({ to: "/login", search: { reason: "expired" } });
     },
     onError: (error) => {
@@ -120,7 +141,7 @@ export function useProfileMutations({ form, imageUploader, audioUploader }: UseP
       notifySuccess(t("message.usernameChanged"));
       form.setCurrentPasswordForUsername("");
       form.setNewUsername("");
-      clearSession();
+      transitionSession(queryClient, null);
       void navigate({ to: "/login" });
     },
     onError: (error) => {
@@ -131,7 +152,7 @@ export function useProfileMutations({ form, imageUploader, audioUploader }: UseP
   const logoutMutation = useMutation({
     mutationFn: requestLogout,
     onSettled: () => {
-      clearSession();
+      transitionSession(queryClient, null);
       void navigate({ to: "/login" });
     },
   });
@@ -165,9 +186,11 @@ export function useProfileMutations({ form, imageUploader, audioUploader }: UseP
     }
   };
 
-  const removeImage = (key: string) => {
-    if (!user) return;
-    removeImageMutation.mutate(key);
+  const removeImage = (mediaId: string) => {
+    if (!user || removingImageIdsRef.current.has(mediaId)) return;
+    removingImageIdsRef.current.add(mediaId);
+    setRemovingImageIds(new Set(removingImageIdsRef.current));
+    removeImageMutation.mutate(mediaId);
   };
 
   const removeAudio = () => {
@@ -197,6 +220,7 @@ export function useProfileMutations({ form, imageUploader, audioUploader }: UseP
     uploadImages,
     uploadAudio,
     removeImage,
+    removingImageIds,
     removeAudio,
     changePassword,
     changeUsername,

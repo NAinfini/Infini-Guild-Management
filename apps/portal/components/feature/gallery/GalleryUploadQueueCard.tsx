@@ -1,5 +1,4 @@
-import { PortalCard } from "../../shared/PortalCard";
-import { Button, Group, Progress, Stack, Text, TextInput } from "@mantine/core";
+import { Button, Group, Paper, Progress, Stack, Text, TextInput } from "@mantine/core";
 import { useTranslation } from "react-i18next";
 import { RefreshCwIcon, XIcon } from "@portal/components/icons";
 import type { UploadStatus, UploadTask } from "@portal/types/media";
@@ -49,8 +48,8 @@ export function GalleryUploadQueueCard({
   }
 
   return (
-    <PortalCard interactive={false}>
-      <div style={{ padding: "1.2rem" }}>
+    <Paper withBorder radius="md" p="var(--card-padding)">
+      <div>
         <Stack gap={8}>
           <Text fw={600}>{uploadQueueTitle}</Text>
           <Text c="dimmed" size="sm">
@@ -114,7 +113,7 @@ export function GalleryUploadQueueCard({
           ))}
         </Stack>
       </div>
-    </PortalCard>
+    </Paper>
   );
 }
 

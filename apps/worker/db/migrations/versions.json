@@ -1,5 +1,8 @@
 {
-  "mode": "v1-dev-baseline",
-  "current_version": "1.x-dev",
-  "baseline_schema": "0000_core_schema.sql"
+  "mode": "incremental",
+  "current_version": "0000",
+  "baseline_schema": "0000_core_schema.sql",
+  "migrations": [
+    "0000_core_schema.sql"
+  ]
 }

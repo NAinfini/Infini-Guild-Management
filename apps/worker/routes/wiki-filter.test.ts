@@ -38,6 +38,37 @@ describe("wiki article filters", () => {
       archived: undefined,
       pinned: undefined,
       search: undefined,
+      sort: "curated",
     });
+  });
+
+  it.each(["updated_desc", "updated_asc"] as const)(
+    "passes the %s article sort to the service",
+    async (sort) => {
+      const { wikiRoutes } = await import("./wiki");
+      const response = await wikiRoutes.request(
+        `/articles?sort=${sort}`,
+        { method: "GET" },
+        { DB: {}, MEDIA: {} },
+      );
+
+      expect(response.status).toBe(200);
+      expect(listArticles).toHaveBeenCalledWith(expect.objectContaining({ sort }));
+    },
+  );
+
+  it("rejects an unsupported article sort", async () => {
+    const { wikiRoutes } = await import("./wiki");
+    const response = await wikiRoutes.request(
+      "/articles?sort=recent",
+      { method: "GET" },
+      { DB: {}, MEDIA: {} },
+    );
+
+    expect(response.status).toBe(400);
+    expect(await response.json()).toMatchObject({
+      error_code: "VALIDATION_ERROR",
+    });
+    expect(listArticles).not.toHaveBeenCalled();
   });
 });

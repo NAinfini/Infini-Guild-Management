@@ -1,5 +1,5 @@
 import { type PaginatedResponse, type WikiArticle } from "@guild/shared";
-import { useConfirmDialog } from "@portal/components/shared/ConfirmDialog";
+import { useConfirmDialog } from "@portal/hooks/useConfirmDialog";
 import { useDisclosure, useMediaQuery } from "@mantine/hooks";
 import { useDebouncedSearch } from "./useDebouncedSearch";
 import {
@@ -8,7 +8,7 @@ import {
   type InfiniteData,
 } from "@tanstack/react-query";
 import { useNavigate, useParams, useSearch } from "@tanstack/react-router";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import {
   fetchWikiArticleBySlug,
@@ -23,6 +23,7 @@ import { queryKeys } from "../api/query-keys";
 import { useEffectivePermissions } from "./useEffectivePermissions";
 
 type WikiArchivedMode = "active" | "archived" | "all";
+type WikiSort = "curated" | "updated_desc" | "updated_asc";
 type WikiSelection =
   | { kind: "auto" }
   | { kind: "none" }
@@ -80,6 +81,7 @@ export function useWikiPageController() {
   const { search, setSearch, debouncedSearch: debouncedSearchRaw } = useDebouncedSearch();
   const debouncedSearch = debouncedSearchRaw.trim();
   const [pinnedOnly, setPinnedOnly] = useState(false);
+  const [sortOrder, setSortOrder] = useState<WikiSort>("curated");
   const [archivedMode, setArchivedMode] = useState<WikiArchivedMode>("active");
   const [selectedCategoryId, setSelectedCategoryId] = useState<string | undefined>(undefined);
   const [selectedCategoryIds, setSelectedCategoryIds] = useState<string[]>([]);
@@ -92,6 +94,16 @@ export function useWikiPageController() {
   const [showHistory, historyHandlers] = useDisclosure(false);
   const isEditorPaneVisible = canEdit && showEditorPane;
   const isHistoryOpen = canEdit && showHistory;
+  const selectionRef = useRef(selection);
+  const articleEditorRef = useRef<ReturnType<typeof useWikiArticleEditor> | null>(null);
+  const isMobileRef = useRef(isMobile);
+  const editorPaneVisibleRef = useRef(isEditorPaneVisible);
+  const closeEditorPaneRef = useRef(editorPaneHandlers.close);
+  const routeSelectionProcessedRef = useRef(false);
+  selectionRef.current = selection;
+  isMobileRef.current = isMobile;
+  editorPaneVisibleRef.current = isEditorPaneVisible;
+  closeEditorPaneRef.current = editorPaneHandlers.close;
 
   const categoriesQuery = useQuery({
     queryKey: queryKeys.wiki.categories(),
@@ -103,7 +115,7 @@ export function useWikiPageController() {
     selectedCategoryIds.length === 0 ? "all" : [...selectedCategoryIds].sort().join(",");
 
   const articlesQuery = useInfiniteQuery({
-    queryKey: queryKeys.wiki.articles(selectedCategoryFilterKey, debouncedSearch, archivedMode, pinnedOnly),
+    queryKey: queryKeys.wiki.articles(selectedCategoryFilterKey, debouncedSearch, archivedMode, pinnedOnly, sortOrder),
     queryFn: ({ pageParam }) =>
       fetchWikiArticles({
         page: pageParam,
@@ -112,6 +124,7 @@ export function useWikiPageController() {
         search: debouncedSearch || undefined,
         archived: toArchivedParam(archivedMode),
         pinned: pinnedOnly ? true : undefined,
+        sort: sortOrder,
       }),
     initialPageParam: 1,
     getNextPageParam: (lastPage) =>
@@ -178,10 +191,25 @@ export function useWikiPageController() {
     selectedCategoryIds,
     onArticleCreated: handleArticleCreated,
   });
+  articleEditorRef.current = articleEditor;
   const categoryEditor = useWikiCategoryEditor({ categories });
 
   useEffect(() => {
     const next = selectionFromRoute(routeSlug, routeSearch);
+    const routeChangedExternally = !routeSelectionProcessedRef.current
+      || !sameSelection(selectionRef.current, next);
+    routeSelectionProcessedRef.current = true;
+    if (routeChangedExternally) {
+      if (articleEditorRef.current?.isCreatingArticle) {
+        articleEditorRef.current.exitEditor();
+      }
+      if (editorPaneVisibleRef.current) {
+        closeEditorPaneRef.current();
+      }
+      if (isMobileRef.current) {
+        setMobilePane(next.kind === "selected" ? "article" : "list");
+      }
+    }
     setSelection((current) => sameSelection(current, next) ? current : next);
   }, [routeSearch.selection, routeSlug]);
 
@@ -266,11 +294,12 @@ export function useWikiPageController() {
         intent: "danger",
       });
       if (!confirmed) {
-        return;
+        return false;
       }
     }
     articleEditor.exitEditor();
     editorPaneHandlers.close();
+    return true;
   }, [articleEditor, confirm, editorPaneHandlers, t]);
 
   const handleCategoryFilterChange = useCallback((values: string[]) => {
@@ -287,10 +316,11 @@ export function useWikiPageController() {
         cancelLabel: t("common:action.cancel"),
         intent: "danger",
       });
-      if (!confirmed) return;
+      if (!confirmed) return false;
     }
     categoryEditor.resetCategoryDrafts();
     editorPaneHandlers.close();
+    return true;
   }, [categoryEditor, confirm, editorPaneHandlers, t]);
 
   const handleDeleteCategory = useCallback(async (categoryId: string) => {
@@ -321,6 +351,8 @@ export function useWikiPageController() {
     setSearch,
     pinnedOnly,
     setPinnedOnly,
+    sortOrder,
+    setSortOrder,
     archivedMode,
     setArchivedMode,
     selectedCategoryIds,

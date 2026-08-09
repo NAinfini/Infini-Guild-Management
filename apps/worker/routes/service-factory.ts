@@ -1,9 +1,5 @@
-import type { Context } from "hono";
 import {
-  DEFAULT_FEATURE_FLAGS,
-  DEFAULT_SITE_ABSENCE_POLICY,
-  DEFAULT_SITE_MEDIA_POLICY,
-  DEFAULT_SITE_STORAGE_POLICY,
+  DEFAULT_GAME_RULES,
   featureFlagsSchema,
   siteAbsencePolicySchema,
   siteMediaPolicySchema,
@@ -13,94 +9,124 @@ import {
   type SiteMediaPolicy,
   type SiteStoragePolicy,
 } from "@guild/shared";
-import type { Bindings } from "../index";
-import { logger } from "../utils/logger";
-import { writeAuditLog, type WriteAuditLogInput } from "../services/audit";
-import { publishEntityChanged, publishAnnouncementPublished } from "../services/push";
 import type { PushEntityType, PushHint } from "@guild/shared/constants/push-hints";
+import type { Context } from "hono";
+import type { Bindings } from "../index";
+import { MediaService } from "../services/MediaService";
+import { getSystemTestRunId } from "../services/SystemTestService";
+import { writeAuditLog, type WriteAuditLogInput } from "../services/audit";
+import { publishAnnouncementPublished, publishEntityChanged } from "../services/push";
 
-type PolicyColumn = "absence_policy_json" | "feature_flags_json" | "media_policy_json" | "storage_policy_json";
-type SitePolicyRow = Record<PolicyColumn, string | null>;
+type SitePolicyRow = {
+  feature_announcements_enabled: number;
+  feature_events_enabled: number;
+  feature_guild_war_enabled: number;
+  feature_gallery_enabled: number;
+  feature_wiki_enabled: number;
+  feature_tools_enabled: number;
+  feature_storage_enabled: number;
+  media_site_logo_max_bytes: number;
+  media_class_icon_max_bytes: number;
+  media_profile_image_max_bytes: number;
+  media_profile_audio_max_bytes: number;
+  media_announcement_image_max_bytes: number;
+  media_wiki_image_max_bytes: number;
+  media_event_image_max_bytes: number;
+  media_gallery_image_max_bytes: number;
+  media_storage_image_max_bytes: number;
+  media_profile_quota: number;
+  media_announcement_quota: number;
+  media_gallery_quota: number;
+  media_wiki_quota: number;
+  storage_images_per_item: number;
+  absence_max_span_days: number;
+  absence_max_entries_per_user: number;
+};
 
-/**
- * One D1 read per request for the whole policy row, memoised on the request's
- * Context. `featureGateMiddleware` runs on every content API call, so each of
- * those requests used to pay an extra round-trip, and an upload that needs both
- * the feature flags and the media policy paid for the same row twice.
- *
- * Deliberately NOT cached across requests: the Cache API is per-colo, so a
- * `delete` on config change would not reach other colos and an admin toggling a
- * feature would see it apply unevenly. One D1 read per request is the cheaper
- * mistake at guild scale.
- */
-const sitePolicyRowByRequest = new WeakMap<Context, Promise<SitePolicyRow | null>>();
+const sitePolicyRowByRequest = new WeakMap<Context, Promise<SitePolicyRow>>();
 
-function loadSitePolicyRow(c: Context): Promise<SitePolicyRow | null> {
+function loadSitePolicyRow(c: Context): Promise<SitePolicyRow> {
   const pending = sitePolicyRowByRequest.get(c);
   if (pending) return pending;
   const query = (c.env as Bindings).DB
     .prepare(
-      "SELECT absence_policy_json, feature_flags_json, media_policy_json, storage_policy_json FROM site_config WHERE id = ?1",
+      `SELECT
+        feature_announcements_enabled, feature_events_enabled, feature_guild_war_enabled,
+        feature_gallery_enabled, feature_wiki_enabled, feature_tools_enabled, feature_storage_enabled,
+        media_site_logo_max_bytes, media_class_icon_max_bytes, media_profile_image_max_bytes,
+        media_profile_audio_max_bytes, media_announcement_image_max_bytes, media_wiki_image_max_bytes,
+        media_event_image_max_bytes, media_gallery_image_max_bytes, media_storage_image_max_bytes,
+        media_profile_quota, media_announcement_quota, media_gallery_quota, media_wiki_quota,
+        storage_images_per_item, absence_max_span_days, absence_max_entries_per_user
+       FROM site_config WHERE id = ?1`,
     )
     .bind("default")
-    .first<SitePolicyRow>();
+    .first<SitePolicyRow>()
+    .then((row) => {
+      if (!row) throw new Error('Required site_config singleton "default" is missing');
+      return row;
+    });
   sitePolicyRowByRequest.set(c, query);
   return query;
 }
 
-async function readSitePolicy<T>(
-  c: Context,
-  column: PolicyColumn,
-  schema: { parse(input: unknown): T },
-  fallback: T,
-): Promise<T> {
+function readBoolean(value: number, column: string): boolean {
+  if (value === 0) return false;
+  if (value === 1) return true;
+  throw new Error(`Invalid boolean value in site_config.${column}`);
+}
+
+export async function getAbsencePolicy(c: Context): Promise<SiteAbsencePolicy> {
   const row = await loadSitePolicyRow(c);
-  const value = row?.[column];
-  // Missing row or column is the legitimate pre-seed default, not an error.
-  if (!value) return fallback;
-  try {
-    return schema.parse(JSON.parse(value) as unknown);
-  } catch (error) {
-    // Deliberate fail-open, and the ONLY reason it is acceptable is that this
-    // line is loud. A corrupt blob used to silently re-enable every feature
-    // flag with no trace at all — the flags gate whole API prefixes, so that
-    // quietly re-opened features an admin had turned off. Failing closed
-    // instead would turn a data-integrity glitch into a full site outage,
-    // which is the worse failure mode. To flip the policy, throw here instead
-    // of returning the fallback.
-    logger.error("site_config policy column is corrupt; serving defaults", {
-      column,
-      requestId: c.get("requestId") as string | undefined,
-      reason: error instanceof Error ? error.message : String(error),
-    });
-    return fallback;
-  }
+  return siteAbsencePolicySchema.parse({
+    max_span_days: row.absence_max_span_days,
+    max_entries_per_user: row.absence_max_entries_per_user,
+  });
 }
 
-export function getAbsencePolicy(c: Context): Promise<SiteAbsencePolicy> {
-  return readSitePolicy(c, "absence_policy_json", siteAbsencePolicySchema, DEFAULT_SITE_ABSENCE_POLICY);
+export async function getFeatureFlags(c: Context): Promise<FeatureFlags> {
+  const row = await loadSitePolicyRow(c);
+  return featureFlagsSchema.parse({
+    announcements: readBoolean(row.feature_announcements_enabled, "feature_announcements_enabled"),
+    events: readBoolean(row.feature_events_enabled, "feature_events_enabled"),
+    guildWar: readBoolean(row.feature_guild_war_enabled, "feature_guild_war_enabled"),
+    gallery: readBoolean(row.feature_gallery_enabled, "feature_gallery_enabled"),
+    wiki: readBoolean(row.feature_wiki_enabled, "feature_wiki_enabled"),
+    tools: readBoolean(row.feature_tools_enabled, "feature_tools_enabled"),
+    storage: readBoolean(row.feature_storage_enabled, "feature_storage_enabled"),
+  });
 }
 
-export function getFeatureFlags(c: Context): Promise<FeatureFlags> {
-  return readSitePolicy(c, "feature_flags_json", featureFlagsSchema, DEFAULT_FEATURE_FLAGS);
+export async function getMediaPolicy(c: Context): Promise<SiteMediaPolicy> {
+  const row = await loadSitePolicyRow(c);
+  return siteMediaPolicySchema.parse({
+    max_file_size_bytes: {
+      site_logo: row.media_site_logo_max_bytes,
+      class_icon: row.media_class_icon_max_bytes,
+      profile_image: row.media_profile_image_max_bytes,
+      profile_audio: row.media_profile_audio_max_bytes,
+      announcement_image: row.media_announcement_image_max_bytes,
+      wiki_image: row.media_wiki_image_max_bytes,
+      event_image: row.media_event_image_max_bytes,
+      gallery_image: row.media_gallery_image_max_bytes,
+      storage_image: row.media_storage_image_max_bytes,
+    },
+    quotas: {
+      profile: row.media_profile_quota,
+      announcement: row.media_announcement_quota,
+      gallery: row.media_gallery_quota,
+      wiki: row.media_wiki_quota,
+    },
+  });
 }
 
-export function getMediaPolicy(c: Context): Promise<SiteMediaPolicy> {
-  return readSitePolicy(c, "media_policy_json", siteMediaPolicySchema, DEFAULT_SITE_MEDIA_POLICY);
+export async function getStoragePolicy(c: Context): Promise<SiteStoragePolicy> {
+  const row = await loadSitePolicyRow(c);
+  return siteStoragePolicySchema.parse({ images_per_item: row.storage_images_per_item });
 }
 
-export function getStoragePolicy(c: Context): Promise<SiteStoragePolicy> {
-  return readSitePolicy(c, "storage_policy_json", siteStoragePolicySchema, DEFAULT_SITE_STORAGE_POLICY);
-}
-
-export async function hasMediaQuotaCapacity(
-  c: Context,
-  prefix: string,
-  incomingCount: number,
-  quota: number,
-): Promise<boolean> {
-  const result = await (c.env as Bindings).MEDIA.list({ prefix, limit: quota });
-  return result.objects.length + incomingCount <= quota;
+export function getGameRules(_c: Context) {
+  return Promise.resolve(DEFAULT_GAME_RULES);
 }
 
 export function commonDeps(c: Context) {
@@ -109,14 +135,18 @@ export function commonDeps(c: Context) {
     publishEntityChanged: (payload: { entityType: PushEntityType; entityId: string; hint: PushHint; displayName?: string }) =>
       publishEntityChanged(c, payload),
     getAbsencePolicy: () => getAbsencePolicy(c),
+    getGameRules: () => getGameRules(c),
   };
 }
 
 export function withMedia(c: Context) {
+  const env = c.env as Bindings;
   return {
     ...commonDeps(c),
-    media: (c.env as Bindings).MEDIA,
-    rawDb: (c.env as Bindings).DB,
+    media: env.MEDIA,
+    mediaService: new MediaService(env.DB, env.MEDIA),
+    rawDb: env.DB,
+    systemTestRunId: getSystemTestRunId(c),
     getMediaPolicy: () => getMediaPolicy(c),
     getStoragePolicy: () => getStoragePolicy(c),
   };
@@ -127,6 +157,5 @@ export function withMediaAndPublishAnnouncement(c: Context) {
     ...withMedia(c),
     publishAnnouncementPublished: (payload: { announcementId: string; title: string; publishedAt?: string }) =>
       publishAnnouncementPublished(c, payload),
-    signingSecret: (c.env as Bindings).SIGNING_SECRET,
   };
 }

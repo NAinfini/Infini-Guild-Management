@@ -1,39 +1,14 @@
-export const DEFAULT_IMAGE_WEBP_QUALITY = 0.8;
-/*
- * Opus is the codec; the container is whatever the browser will encode into.
- * Chromium only offers Opus inside WebM (verified on Chrome 148:
- * isTypeSupported("audio/ogg;codecs=opus") === false, "audio/webm;codecs=opus"
- * === true), while Firefox offers Ogg. Demanding Ogg alone made this converter
- * unusable on the majority of browsers, which is why both call sites had the
- * conversion switched off. The worker accepts audio/ogg and audio/webm alike, so
- * negotiating the container costs nothing and the bytes are Opus either way.
- */
-type OpusContainer = {
-  /** Passed to MediaRecorder, which needs the codec spelled out. */
-  recorderMimeType: string;
-  /*
-   * Stored on the File, and therefore the Content-Type the worker validates and
-   * R2 serves. It must stay a bare container type: the upload validator compares
-   * the declared type against an exact allow-list, so "audio/webm;codecs=opus"
-   * is rejected as an unsupported file type.
-   */
-  fileMimeType: string;
-  extension: string;
-};
+import { getMediaViewDimensions, SELECTABLE_IMAGE_TYPES } from "../constants/media";
 
-const OPUS_CONTAINERS: readonly OpusContainer[] = [
-  { recorderMimeType: "audio/ogg;codecs=opus", fileMimeType: "audio/ogg", extension: "ogg" },
-  { recorderMimeType: "audio/webm;codecs=opus", fileMimeType: "audio/webm", extension: "webm" },
-];
+export const FULL_IMAGE_WEBP_QUALITY = 0.92;
+export const VIEW_IMAGE_WEBP_QUALITY = 0.8;
+
+/* 存储契约固定为 Ogg 容器、Opus 编码、单声道 16 kHz。 */
+const OPUS_FILE_MIME_TYPE = "audio/ogg";
+const OPUS_FILE_EXTENSION = "ogg";
 const OPUS_TARGET_SAMPLE_RATE = 16_000;
 const OPUS_TARGET_BITRATE = 48_000;
-
-function resolveOpusContainer(): OpusContainer | null {
-  if (typeof MediaRecorder === "undefined") {
-    return null;
-  }
-  return OPUS_CONTAINERS.find((candidate) => MediaRecorder.isTypeSupported(candidate.recorderMimeType)) ?? null;
-}
+const OPUS_TARGET_CHANNELS = 1;
 
 function createCanvas(width: number, height: number): HTMLCanvasElement {
   const canvas = document.createElement("canvas");
@@ -49,7 +24,7 @@ function fileNameWithExtension(name: string, extension: string): string {
 
 function clampQuality(value: number): number {
   if (!Number.isFinite(value)) {
-    return DEFAULT_IMAGE_WEBP_QUALITY;
+    return VIEW_IMAGE_WEBP_QUALITY;
   }
   if (value < 0.1) {
     return 0.1;
@@ -60,208 +35,123 @@ function clampQuality(value: number): number {
   return value;
 }
 
-type ImageConversionOptions = {
-  quality?: number;
+export type ImageUploadVariants = {
+  full: File;
+  view: File;
+  fullWidth: number;
+  fullHeight: number;
+  viewWidth: number;
+  viewHeight: number;
 };
 
-type AudioContextLikeCtor = new (contextOptions?: AudioContextOptions) => AudioContext;
-type OfflineAudioContextLikeCtor = new (
-  numberOfChannels: number,
-  length: number,
-  sampleRate: number,
-) => OfflineAudioContext;
-
-function resolveAudioContextCtor(): AudioContextLikeCtor | null {
-  if (typeof window === "undefined") {
-    return null;
-  }
-
-  const ctor = window.AudioContext ?? (window as Window & { webkitAudioContext?: AudioContextLikeCtor }).webkitAudioContext;
-  return ctor ?? null;
-}
-
-function resolveOfflineAudioContextCtor(): OfflineAudioContextLikeCtor | null {
-  if (typeof window === "undefined") {
-    return null;
-  }
-
-  const ctor =
-    window.OfflineAudioContext ??
-    (window as Window & { webkitOfflineAudioContext?: OfflineAudioContextLikeCtor }).webkitOfflineAudioContext;
-  return ctor ?? null;
-}
+export type ImageUploadConversionOptions = {
+  fullQuality?: number;
+  viewQuality?: number;
+  onProgress?: (percent: number) => void;
+};
 
 export type AudioConversionSupport =
   | { supported: true }
   | { supported: false; reason: string };
 
+/*
+ * 同步的门槛检查，界面在用户选文件之前就要给出答复，所以只能查「有没有 WebCodecs」
+ * 这个可以同步问的条件。「这个浏览器能不能编 Opus」必须 await，留给
+ * convertAudioToOpus 在真正开工前问一次——那里是异步的，问得起。
+ */
 export function getAudioConversionSupport(): AudioConversionSupport {
   if (typeof window === "undefined") {
     return { supported: false, reason: "Audio conversion is only available in browser runtime." };
   }
 
-  if (!resolveAudioContextCtor()) {
-    return { supported: false, reason: "This browser does not support AudioContext." };
-  }
-
-  if (!resolveOfflineAudioContextCtor()) {
-    return { supported: false, reason: "This browser does not support OfflineAudioContext." };
-  }
-
-  if (typeof MediaRecorder === "undefined") {
-    return { supported: false, reason: "This browser does not support MediaRecorder." };
-  }
-
-  if (!resolveOpusContainer()) {
+  if (typeof AudioEncoder === "undefined") {
     return {
       supported: false,
-      reason: "This browser cannot encode Opus audio. Please use Chrome, Edge, or Firefox.",
+      reason: "This browser does not support WebCodecs audio encoding. Please use Chrome, Edge, or Firefox.",
     };
   }
 
   return { supported: true };
 }
 
-function createAudioContext(options?: AudioContextOptions): AudioContext {
-  const ctor = resolveAudioContextCtor();
-  if (!ctor) {
-    throw new Error("AudioContext is unavailable");
-  }
-
-  return new ctor(options);
-}
-
-async function renderMonoAudioAtTargetRate(input: AudioBuffer): Promise<AudioBuffer> {
-  const offlineCtor = resolveOfflineAudioContextCtor();
-  if (!offlineCtor) {
-    throw new Error("OfflineAudioContext is unavailable");
-  }
-
-  const frameCount = Math.max(1, Math.ceil(input.duration * OPUS_TARGET_SAMPLE_RATE));
-  const offlineContext = new offlineCtor(1, frameCount, OPUS_TARGET_SAMPLE_RATE);
-  const source = offlineContext.createBufferSource();
-  source.buffer = input;
-  source.connect(offlineContext.destination);
-  source.start(0);
-  return offlineContext.startRendering();
-}
-
-export async function convertImageToWebP(
-  file: File,
-  onProgress?: (percent: number) => void,
-  options: ImageConversionOptions = {},
+async function encodeWebP(
+  bitmap: ImageBitmap,
+  width: number,
+  height: number,
+  quality: number,
+  name: string,
 ): Promise<File> {
-  if (!file.type.startsWith("image/")) {
-    throw new Error("Image conversion requires an image file");
-  }
-
-  if (file.type === "image/webp") {
-    onProgress?.(100);
-    return file;
-  }
-
-  /*
-   * GIFs pass through untouched: createImageBitmap decodes only the first frame,
-   * so re-encoding an animated GIF silently throws the animation away. Leaving
-   * it alone costs some R2 space but never destroys the image.
-   */
-  if (file.type === "image/gif") {
-    onProgress?.(100);
-    return file;
-  }
-
-  onProgress?.(10);
-  const bitmap = await createImageBitmap(file);
-  onProgress?.(35);
-  const canvas = createCanvas(bitmap.width, bitmap.height);
+  const canvas = createCanvas(width, height);
   const context = canvas.getContext("2d");
-  if (!context) {
-    throw new Error("Unable to create canvas context for image conversion");
-  }
-
-  context.drawImage(bitmap, 0, 0, bitmap.width, bitmap.height);
-  bitmap.close();
-  onProgress?.(70);
-
+  if (!context) throw new Error("Unable to create canvas context for image conversion");
+  context.drawImage(bitmap, 0, 0, width, height);
   const blob = await new Promise<Blob>((resolve, reject) => {
-    canvas.toBlob(
-      (nextBlob) => {
-        if (!nextBlob) {
-          reject(new Error("Failed to encode WebP image"));
-          return;
-        }
-        resolve(nextBlob);
-      },
-      "image/webp",
-      clampQuality(options.quality ?? DEFAULT_IMAGE_WEBP_QUALITY),
-    );
+    canvas.toBlob((nextBlob) => {
+      if (nextBlob) resolve(nextBlob);
+      else reject(new Error("Failed to encode WebP image"));
+    }, "image/webp", clampQuality(quality));
   });
-  /*
-   * Re-encoding can make a file bigger — an already-optimised JPEG, or a flat
-   * PNG with few colours. The whole point is to save R2 space, so keep whichever
-   * is actually smaller rather than assuming WebP always wins.
-   */
-  if (blob.size >= file.size) {
-    onProgress?.(100);
-    return file;
-  }
-
-  onProgress?.(100);
-
-  return new File([blob], fileNameWithExtension(file.name, "webp"), {
-    type: "image/webp",
-    lastModified: Date.now(),
-  });
+  return new File([blob], name, { type: "image/webp", lastModified: Date.now() });
 }
 
-export type UploadConversionOptions = {
-  /** WebP quality for images. Defaults to DEFAULT_IMAGE_WEBP_QUALITY. */
-  imageQuality?: number;
-  /** Overall progress across the whole batch, 0-100. */
-  onProgress?: (percent: number) => void;
-};
-
-/**
- * The single conversion entry point for uploads: an image becomes WebP, audio
- * becomes Opus, anything else passes through untouched.
- *
- * Every upload path goes through here rather than reaching for a per-format
- * converter. Two implementations of this logic used to sit side by side, which is
- * how the audio path ended up producing files named `.opus` that were really
- * WebM, and how different flows drifted onto different WebP quality settings.
- */
-export async function convertFileForUpload(
+export async function convertImageForUpload(
   file: File,
-  options: UploadConversionOptions = {},
-): Promise<File> {
-  if (file.type.startsWith("image/")) {
-    return convertImageToWebP(file, options.onProgress, { quality: options.imageQuality });
+  options: ImageUploadConversionOptions = {},
+): Promise<ImageUploadVariants> {
+  if (!(SELECTABLE_IMAGE_TYPES as readonly string[]).includes(file.type)) {
+    throw new Error("Image uploads must be JPEG, PNG, AVIF, or WebP");
   }
-  if (file.type.startsWith("audio/")) {
-    return convertAudioToOpus(file, options.onProgress);
+
+  options.onProgress?.(10);
+  const bitmap = await createImageBitmap(file);
+  try {
+    const baseName = fileNameWithExtension(file.name, "").replace(/\.$/, "");
+    const fullName = `${baseName}.full.webp`;
+    const viewName = `${baseName}.view.webp`;
+    const viewSize = getMediaViewDimensions(bitmap.width, bitmap.height);
+    const full = file.type === "image/webp"
+      ? new File([file], fullName, { type: "image/webp", lastModified: file.lastModified })
+      : await encodeWebP(
+          bitmap,
+          bitmap.width,
+          bitmap.height,
+          options.fullQuality ?? FULL_IMAGE_WEBP_QUALITY,
+          fullName,
+        );
+    options.onProgress?.(55);
+    const view = await encodeWebP(
+      bitmap,
+      viewSize.width,
+      viewSize.height,
+      options.viewQuality ?? VIEW_IMAGE_WEBP_QUALITY,
+      viewName,
+    );
+    options.onProgress?.(100);
+    return {
+      full,
+      view,
+      fullWidth: bitmap.width,
+      fullHeight: bitmap.height,
+      viewWidth: viewSize.width,
+      viewHeight: viewSize.height,
+    };
+  } finally {
+    bitmap.close();
   }
-  options.onProgress?.(100);
-  return file;
 }
 
-/**
- * Batch form of {@link convertFileForUpload}, reporting progress across the whole
- * batch.
- *
- * Sequential on purpose: each image costs a full canvas decode and each audio
- * file a real-time render, so converting a batch in parallel only multiplies peak
- * memory for no wall-clock gain.
- */
-export async function convertFilesForUpload(
+/** Sequential conversion keeps peak canvas memory bounded for large batches. */
+export async function convertImagesForUpload(
   files: readonly File[],
-  options: UploadConversionOptions = {},
-): Promise<File[]> {
-  const converted: File[] = [];
-  const total = files.length;
+  options: ImageUploadConversionOptions = {},
+): Promise<ImageUploadVariants[]> {
+  const converted: ImageUploadVariants[] = [];
+  const total = Math.max(files.length, 1);
 
   for (const [index, file] of files.entries()) {
-    converted.push(await convertFileForUpload(file, {
-      imageQuality: options.imageQuality,
+    converted.push(await convertImageForUpload(file, {
+      fullQuality: options.fullQuality,
+      viewQuality: options.viewQuality,
       onProgress: (percent) => {
         options.onProgress?.(Math.min(100, Math.round(((index + percent / 100) / total) * 100)));
       },
@@ -272,6 +162,13 @@ export async function convertFilesForUpload(
   return converted;
 }
 
+export function appendImageUploadVariants(formData: FormData, variants: readonly ImageUploadVariants[]): void {
+  for (const image of variants) {
+    formData.append("full", image.full);
+    formData.append("view", image.view);
+  }
+}
+
 export async function convertAudioToOpus(
   file: File,
   onProgress?: (percent: number) => void,
@@ -280,94 +177,73 @@ export async function convertAudioToOpus(
     throw new Error("Audio conversion requires an audio file");
   }
 
-  /*
-   * Prefix tests, because this function's own output is
-   * "audio/ogg;codecs=opus" or "audio/webm;codecs=opus" — an equality check
-   * against "audio/ogg" did not recognise it and re-encoded an already-converted
-   * file, costing a second lossy pass and another real-time render. Both
-   * containers essentially only ever carry Opus or Vorbis here, so passing them
-   * through is a fair trade for never double-encoding.
-   */
-  if (file.type.startsWith("audio/ogg") || file.type.startsWith("audio/webm")) {
-    onProgress?.(100);
-    return file;
-  }
-
   const support = getAudioConversionSupport();
   if (!support.supported) {
     throw new Error(support.reason);
   }
 
-  const container = resolveOpusContainer();
-  if (!container) {
-    throw new Error("This browser cannot encode Opus audio.");
+  /*
+   * mediabunny 只有音频转码用得到，但静态 import 会把它整个打进首屏公共包。
+   * 动态加载让它变成独立 chunk，只在用户真的上传音频时才下载。
+   */
+  const { ALL_FORMATS, BlobSource, BufferTarget, Conversion, Input, OggOutputFormat, Output, canEncodeAudio } =
+    await import("mediabunny");
+
+  const input = new Input({ source: new BlobSource(file), formats: ALL_FORMATS });
+
+  /* 必须读取实际音轨编码；只有 Ogg 容器中的 Opus 轨道可以直接复用。 */
+  const track = await input.getPrimaryAudioTrack();
+  if (!track) {
+    throw new Error("This file contains no audio track.");
   }
-
-  let decodeContext: AudioContext | null = null;
-  let streamContext: AudioContext | null = null;
-
-  try {
-    onProgress?.(10);
-    const audioData = await file.arrayBuffer();
-    decodeContext = createAudioContext();
-    const decodedAudio = await decodeContext.decodeAudioData(audioData.slice(0));
-    onProgress?.(35);
-
-    const renderedAudio = await renderMonoAudioAtTargetRate(decodedAudio);
-    onProgress?.(55);
-
-    streamContext = createAudioContext({ sampleRate: OPUS_TARGET_SAMPLE_RATE });
-    const destination = streamContext.createMediaStreamDestination();
-    const source = streamContext.createBufferSource();
-    source.buffer = renderedAudio;
-    source.connect(destination);
-
-    const recorder = new MediaRecorder(destination.stream, {
-      mimeType: container.recorderMimeType,
-      audioBitsPerSecond: OPUS_TARGET_BITRATE,
-    });
-
-    const chunks: BlobPart[] = [];
-    recorder.ondataavailable = (event) => {
-      if (event.data.size > 0) {
-        chunks.push(event.data);
-      }
-    };
-
-    const recording = new Promise<void>((resolve) => {
-      recorder.onstop = () => resolve();
-    });
-
-    recorder.start(200);
-    onProgress?.(75);
-    source.start();
-    source.onended = () => {
-      recorder.stop();
-    };
-    await recording;
-    onProgress?.(95);
-
-    source.disconnect();
-    destination.disconnect();
-
-    if (chunks.length === 0) {
-      throw new Error("Audio conversion produced empty output.");
-    }
-
-    const blob = new Blob(chunks, { type: container.fileMimeType });
+  if ((await track.getCodec()) === "opus" && file.type.startsWith(OPUS_FILE_MIME_TYPE)) {
     onProgress?.(100);
-
-    // Extension has to follow the container actually produced, not a fixed guess.
-    return new File([blob], fileNameWithExtension(file.name, container.extension), {
-      type: container.fileMimeType,
-      lastModified: Date.now(),
-    });
-  } finally {
-    if (decodeContext) {
-      await decodeContext.close().catch(() => undefined);
-    }
-    if (streamContext) {
-      await streamContext.close().catch(() => undefined);
-    }
+    return file;
   }
+
+  if (!(await canEncodeAudio("opus", {
+    numberOfChannels: OPUS_TARGET_CHANNELS,
+    sampleRate: OPUS_TARGET_SAMPLE_RATE,
+    bitrate: OPUS_TARGET_BITRATE,
+  }))) {
+    throw new Error("This browser cannot encode Opus audio. Please use Chrome, Edge, or Firefox.");
+  }
+
+  const target = new BufferTarget();
+  const output = new Output({ format: new OggOutputFormat(), target });
+  const conversion = await Conversion.init({
+    input,
+    output,
+    audio: {
+      codec: "opus",
+      numberOfChannels: OPUS_TARGET_CHANNELS,
+      sampleRate: OPUS_TARGET_SAMPLE_RATE,
+      bitrate: OPUS_TARGET_BITRATE,
+      /*
+       * 能走到这里只有两种情况：编码根本不是 Opus，或者是 Opus 但装错了容器
+       * （比如 WebM/Opus）。后一种只需要换个封装，参数对得上时 mediabunny 会
+       * 直接搬运数据包而不重编——省掉一次没有必要的有损。写死 true 的话，
+       * 每一个 WebM/Opus 都要白白再压一遍。
+       */
+      forceTranscode: false,
+    },
+  });
+  if (!conversion.isValid) {
+    throw new Error("This audio file cannot be converted to Opus.");
+  }
+
+  /* 必须在 execute 之前挂上，否则 mediabunny 根本不计算进度。 */
+  conversion.onProgress = (progress: number) => onProgress?.(Math.min(99, Math.round(progress * 100)));
+  await conversion.execute();
+
+  const buffer = target.buffer;
+  if (!buffer || buffer.byteLength === 0) {
+    throw new Error("Audio conversion produced empty output.");
+  }
+
+  onProgress?.(100);
+  return new File([buffer], fileNameWithExtension(file.name, OPUS_FILE_EXTENSION), {
+    type: OPUS_FILE_MIME_TYPE,
+    lastModified: Date.now(),
+  });
 }

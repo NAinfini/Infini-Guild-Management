@@ -1,7 +1,7 @@
 import type { z } from "zod";
 import type { PushEntityType, PushHint } from "../constants/push-hints";
 import type { userSchema, memberProfileSchema } from "../schemas/user";
-import type { eventSchema, eventParticipantSchema, eventPollSchema, eventRaffleWinnerSchema, recurringTemplateSchema } from "../schemas/event";
+import type { eventSchema, eventClassQuotaSchema, eventClassQuotaInputSchema, eventParticipantSchema, eventPollSchema, eventRaffleWinnerSchema, recurringTemplateSchema } from "../schemas/event";
 import type { announcementSchema } from "../schemas/announcement";
 import type {
   guildWarActiveResponseSchema,
@@ -18,12 +18,20 @@ import type {
   adminRoleSchema,
   rolePermissionsSchema,
 } from "../schemas/admin";
-import type { memberBadgeSchema, userBadgeSchema, badgeAssignmentSchema } from "../schemas/badge";
+import type {
+  memberBadgeSchema,
+  userBadgeSchema,
+  badgeAssignmentSchema,
+  reorderMemberBadgesSchema,
+} from "../schemas/badge";
 
 export type User = z.infer<typeof userSchema>;
 export type MemberProfile = z.infer<typeof memberProfileSchema>;
 export type Event = z.infer<typeof eventSchema>;
 export type EventParticipant = z.infer<typeof eventParticipantSchema>;
+export type EventClassQuota = z.infer<typeof eventClassQuotaSchema>;
+/** 提交给服务端的那一格：只有标签 id 和人数，标签本身的内容不在这里复制。 */
+export type EventClassQuotaInput = z.infer<typeof eventClassQuotaInputSchema>;
 export type EventPoll = z.infer<typeof eventPollSchema>;
 export type EventRaffleWinner = z.infer<typeof eventRaffleWinnerSchema>;
 export type RecurringTemplate = z.infer<typeof recurringTemplateSchema>;
@@ -45,6 +53,7 @@ export type RolePermissions = z.infer<typeof rolePermissionsSchema>;
 export type MemberBadge = z.infer<typeof memberBadgeSchema>;
 export type UserBadge = z.infer<typeof userBadgeSchema>;
 export type BadgeAssignment = z.infer<typeof badgeAssignmentSchema>;
+export type ReorderMemberBadgesInput = z.infer<typeof reorderMemberBadgesSchema>;
 
 export type PaginatedResponse<T> = {
   data: T[];

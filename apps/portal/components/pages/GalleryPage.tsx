@@ -1,7 +1,7 @@
 import { PhotoIcon } from "@portal/components/icons";
-import { DepthButton } from "@portal/components/shared/DepthButton";
 import { Button, Group, Modal, Stack, Tabs, Text, TextInput } from "@mantine/core";
-import { Dropzone, IMAGE_MIME_TYPE } from "@mantine/dropzone";
+import { Dropzone } from "@mantine/dropzone";
+import { SELECTABLE_IMAGE_TYPES } from "@guild/shared";
 import { useIntersection } from "@mantine/hooks";
 import { useEffect } from "react";
 import { useTranslation } from "react-i18next";
@@ -12,8 +12,6 @@ import { GalleryLightboxModal } from "../feature/gallery/GalleryLightboxModal";
 import { GalleryUploadQueueCard } from "../feature/gallery/GalleryUploadQueueCard";
 import { PageLayout } from "../layout/PageLayout";
 import "./GalleryPage.css";
-
-const MAX_GALLERY_IMAGE_SIZE_BYTES = 10 * 1024 * 1024;
 
 export function GalleryPage() {
   const { t } = useTranslation("gallery");
@@ -34,7 +32,7 @@ export function GalleryPage() {
   const addVideoLabel = t("action.addVideo");
 
   return (
-    <PageLayout title={t("title")} subtitle={t("subtitle")} icon={<PhotoIcon size={22} />} className="gallery-page">
+    <PageLayout className="gallery-page">
       <Modal
         opened={c.addMediaModalOpen}
         onClose={c.addMediaModalHandlers.close}
@@ -52,8 +50,8 @@ export function GalleryPage() {
               <Dropzone
                 onDrop={(files) => c.selectFiles(files)}
                 onReject={(rejections) => c.selectFiles(rejections.map(({ file }) => file))}
-                accept={IMAGE_MIME_TYPE}
-                maxSize={MAX_GALLERY_IMAGE_SIZE_BYTES}
+                accept={[...SELECTABLE_IMAGE_TYPES]}
+                maxFiles={c.galleryImageQuota}
                 className="gallery-dropzone gallery-dropzone--modal"
               >
                 <Group justify="center" gap="xl" style={{ pointerEvents: "none" }}>
@@ -63,8 +61,7 @@ export function GalleryPage() {
               </Dropzone>
               <Group gap={8} wrap="wrap" justify="space-between">
                 <Group gap={8} wrap="wrap">
-                  <DepthButton
-                    type="primary"
+                  <Button
                     onClick={() => {
                       void c.runUploadQueue();
                     }}
@@ -72,7 +69,7 @@ export function GalleryPage() {
                     disabled={c.queuedCount === 0}
                   >
                     {uploadImagesLabel}
-                  </DepthButton>
+                  </Button>
                   {c.uploadingCount > 0 ? (
                     <Button variant="light" onClick={c.cancelUploadQueue}>
                       {t("action.cancelUpload")}
@@ -125,19 +122,20 @@ export function GalleryPage() {
                 onChange={(event) => c.setVideoCaption(event.currentTarget.value)}
               />
               <Group justify="flex-end">
-                <DepthButton
+                <Button
                   onClick={c.handleAddVideo}
                   loading={c.createVideoMutation.isPending}
                   disabled={!c.videoUrl.trim()}
                 >
                   {addVideoLabel}
-                </DepthButton>
+                </Button>
               </Group>
             </Stack>
           </Tabs.Panel>
         </Tabs>
       </Modal>
 
+      <Stack gap={16}>
       <GalleryFiltersCard
         typeFilter={c.typeFilter}
         onTypeFilterChange={c.setTypeFilter}
@@ -171,7 +169,6 @@ export function GalleryPage() {
         isExternalView={c.isExternalView}
         canModerate={c.canModerate}
         selectedIds={c.selectedIds}
-        deletePending={c.deleteMutation.isPending}
         emptyTitle={c.emptyTitle}
         emptyDescription={c.emptyDescription}
         errorTitle={t("empty.error")}
@@ -202,16 +199,19 @@ export function GalleryPage() {
 
       <div ref={loadMoreRef} style={{ height: 1 }} />
       {c.galleryQuery.hasNextPage ? (
-        <Button
-          fullWidth
-          onClick={() => {
-            void c.galleryQuery.fetchNextPage();
-          }}
-          loading={c.galleryQuery.isFetchingNextPage}
-        >
-          {t("loadMore")}
-        </Button>
+        <Group justify="center">
+          <Button
+            variant="default"
+            onClick={() => {
+              void c.galleryQuery.fetchNextPage();
+            }}
+            loading={c.galleryQuery.isFetchingNextPage}
+          >
+            {t("loadMore")}
+          </Button>
+        </Group>
       ) : null}
+      </Stack>
 
       <GalleryLightboxModal
         open={Boolean(c.lightboxItem)}

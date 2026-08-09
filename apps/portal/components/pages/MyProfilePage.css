@@ -1,13 +1,355 @@
-.my-profile-sortable-row {
-  opacity: 1;
-  background: transparent;
-  border-radius: var(--radius-sm);
-  padding: 2px 4px;
+/* 三屏共用的外壳：同宽、同起点。切页签时卡片的左边缘不跳。 */
+.my-profile-shell {
+  max-inline-size: 1680px;
+  margin-inline: auto;
+  display: grid;
+  gap: var(--space-md);
+  min-width: 0;
 }
 
-.my-profile-sortable-row--dragging {
+/* 只有时间屏是「左编辑 / 右预览」——本周热力图答的是编辑器里数不出来的问题。
+   主页和账号屏没有侧栏。 */
+.my-profile-split {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 320px;
+  gap: var(--space-lg);
+  align-items: start;
+  min-width: 0;
+}
+
+.my-profile-split__editor {
+  display: grid;
+  gap: var(--space-md);
+  align-content: start;
+  min-width: 0;
+}
+
+/* 宽屏编辑区分为等宽双列，使表单字段保持可读量度。
+   两列各自按内容收高：媒体卡比身份卡矮得多，拉平会在卡框内留出一大片空白。 */
+@media (min-width: 1200px) {
+  .my-profile-split__editor--wide {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    align-items: start;
+  }
+}
+
+.my-profile-split__rail {
+  position: sticky;
+  top: var(--space-md);
+  display: grid;
+  gap: var(--space-sm);
+  align-content: start;
+  min-width: 0;
+}
+
+/* 概览条的样式随组件放在 apps/portal/components/shared/ProfileOverviewCard.css，
+   资料页与后台成员详情共用同一份。 */
+
+.profile-account {
+  display: grid;
+  gap: var(--space-md);
+}
+
+/* 三张卡（账号事实 / 改密码 / 改用户名）等宽并排：它们是同一层级的三件事，
+   竖着排会让下面那张看起来像上面那张的后续步骤。auto-fit 让窄屏自己折。 */
+.profile-account__cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  gap: var(--space-md);
+  align-items: start;
+}
+
+/* 只读的账号事实：标签一列、值一列，两列贴着走，不是表单那种上下结构——
+   它没有输入框，撑成表单的行高会让人以为能点进去改。 */
+.profile-account__facts {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: var(--space-xs) var(--space-md);
+  margin: 0;
+  margin-block-start: var(--space-md);
+}
+
+.profile-account__fact {
+  display: contents;
+}
+
+.profile-account__fact-label {
+  font-size: var(--text-meta);
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
+.profile-account__fact-value {
+  margin: 0;
+  font-size: var(--text-meta);
+  color: var(--text-primary);
+  overflow-wrap: anywhere;
+}
+
+.profile-account__exit {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-md);
+  flex-wrap: wrap;
+  padding: var(--card-padding);
+  border: 1px solid color-mix(in srgb, var(--status-danger) 30%, transparent);
+  border-radius: var(--radius-surface);
+  background: color-mix(in srgb, var(--status-danger) 6%, transparent);
+}
+
+@media (max-width: 767px) {
+  .profile-account__cards {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+/* 页签沿用全站下划线样式，并与资料内容保持同宽以避免切换位移。 */
+.my-profile-tabbar {
+  display: flex;
+  align-items: center;
+  gap: var(--space-md);
+  flex-wrap: wrap;
+  max-inline-size: 1680px;
+  margin-inline: auto;
+}
+
+.my-profile-tabbar__hint {
+  margin-inline-start: auto;
+}
+
+/* 只留 flex：底边颜色主题的 .tabsList 已经给了同一个值。 */
+.my-profile-page__tabs .mantine-Tabs-list {
+  flex: 1 1 auto;
+}
+
+.my-profile-tab-label {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-xs);
+}
+
+/* 切走之后还能看到哪一屏有未保存改动。 */
+.my-profile-tab-label__dot {
+  inline-size: 7px;
+  block-size: 7px;
+  border-radius: 50%;
+  background: var(--status-warning);
+}
+
+.profile-rail__label {
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+/* ── 空值点名 ── */
+
+/* 一行，不是一块告示牌：它只报「哪几栏空着」，撑成带标题的警告卡会比它下面
+   真正要填的表单还显眼。 */
+.profile-gaps {
+  display: flex;
+  align-items: center;
+  gap: var(--space-xs);
+  padding: var(--space-xs) var(--space-sm);
+  border: 1px solid color-mix(in srgb, var(--status-warning) 35%, transparent);
+  border-radius: var(--radius-control);
+  background: color-mix(in srgb, var(--status-warning) 7%, transparent);
+}
+
+.profile-gaps__icon {
+  flex: 0 0 auto;
+  color: var(--status-warning);
+}
+
+/* ── 本周可见度 ── */
+
+.profile-week {
+  display: grid;
+  gap: var(--space-sm);
+  padding: var(--card-padding);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-surface);
+  background: var(--surface-raised);
+  min-width: 0;
+}
+
+.profile-week__total {
+  display: grid;
+  gap: 2px;
+}
+
+/* 热力图按 7 天 × 12 个两小时时段显示可用时间。 */
+.profile-week__map {
+  display: grid;
+  gap: 3px;
+}
+
+.profile-week__ticks,
+.profile-week__day-row {
+  display: grid;
+  grid-template-columns: 1.6rem repeat(12, minmax(0, 1fr));
+  align-items: center;
+  gap: 2px;
+}
+
+.profile-week__ticks {
+  font-size: var(--text-micro);
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+  /* 第一列是星期名的位置，刻度从第二列起算。 */
+  padding-inline-start: 0;
+}
+
+.profile-week__tick {
+  grid-row: 1;
+}
+
+.profile-week__day {
+  font-size: var(--text-micro);
+  color: var(--text-muted);
+}
+
+.profile-week__cells {
+  grid-column: 2 / -1;
+  display: grid;
+  grid-template-columns: repeat(12, minmax(0, 1fr));
+  gap: 2px;
+}
+
+.profile-week__cell {
+  block-size: 12px;
+  border-radius: 2px;
+  background: var(--surface-sunken);
+}
+
+.profile-week__cell[data-on] {
+  background: var(--brand-fill);
+}
+
+/* ── 身份卡字段网格 ── */
+
+/* 战力和称号并排，职业和简介各占满一行。竖着堆四栏时，战力那一行右边有
+   1200px 是空的，而下面的简介本来就该宽。 */
+.profile-identity {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-md);
+  align-items: start;
+}
+
+.profile-identity__wide {
+  grid-column: 1 / -1;
+  min-inline-size: 0;
+}
+
+@media (max-width: 767px) {
+  .profile-identity {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+/* ── 职业 ── */
+
+.profile-class {
+  display: grid;
+  gap: var(--space-xs);
+}
+
+.profile-class__label {
+  color: var(--text-primary);
+}
+
+/* 职业胶囊可换行，同时保留拖拽、主职业和删除控件。 */
+.profile-class__pills {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-xs);
+}
+
+/* 胶囊里的三个控件（拖柄、图标、删除）尺寸写死在这里，不吃 ActionIcon 的
+   尺寸档：那套档位是给独立按钮用的，最小一档也比一枚胶囊该有的高度还高，
+   套进来整枚胶囊会被撑到跟输入框一样高。点击热区由主题的 ::before 负责，
+   是绝对定位的，不受这里的尺寸影响。 */
+.profile-class__pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-block-size: 26px;
+  padding-inline: 6px 6px;
+  border: 1px solid var(--border-subtle);
+  border-radius: 999px;
+  background: var(--surface-sunken);
+}
+
+.profile-class__pill .mantine-ActionIcon-root {
+  --ai-size: 16px;
+  inline-size: 16px;
+  min-inline-size: 16px;
+  min-block-size: 16px;
+}
+
+/* 虚线＝这里还没有东西，点了才有；和它左边那些实线胶囊（已经选好的职业）
+   一眼就分得开。 */
+.profile-class__add {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  min-block-size: 26px;
+  padding-inline: 10px;
+  /* line-height: 1 —— 「＋」字形的行框比字号高出一截，跟着行高走会把整行内容
+     顶得偏上，看起来就是加号没对齐。 */
+  line-height: 1;
+  font-size: var(--text-meta);
+  color: var(--text-secondary);
+  border: 1px dashed var(--border-subtle);
+  border-radius: 999px;
+  background: transparent;
+  cursor: pointer;
+}
+
+.profile-class__add:hover {
+  color: var(--text-primary);
+  border-color: var(--brand-fill);
+}
+
+/* 第一个＝主职业，名册卡只用它上色，所以它必须看得出来和后面的不同。 */
+.profile-class__pill--primary {
+  border-color: color-mix(in srgb, var(--brand-fill) 55%, transparent);
+  background: color-mix(in srgb, var(--brand-fill) 13%, transparent);
+}
+
+.profile-class__pill-label {
+  white-space: nowrap;
+}
+
+.profile-class__pill--dragging {
   opacity: 0.7;
-  background: color-mix(in srgb, var(--accent-fill) 10%, transparent);
+}
+
+/* ── 称号 ── */
+
+/* 称号那一栏的样式随组件走，见 shared/TitleField.css。 */
+
+/* ── 媒体 ── */
+
+/* 相册、视频、音乐三组同时摊开，各自是一个 Fieldset。卡片标题和第一组之间留出
+   和组间一致的间距，读起来才是三个并列的组，而不是标题黏着第一组。 */
+.profile-media__groups {
+  margin-block-start: var(--space-md);
+  min-width: 0;
+}
+
+@media (max-width: 1199px) {
+  /* 热力图折到编辑区下面，而不是继续压缩：再窄下去一天 12 格就糊成一条。 */
+  .my-profile-split {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .my-profile-split__rail {
+    position: static;
+  }
 }
 
 @media (max-width: 991px) {
@@ -17,94 +359,215 @@
   }
 }
 
-/* ── Profile Preview Card ── (moved out of style={{}}, task-8 批 B) */
+/* ── Weekly availability editor, owned by the profile page ── */
 
-.profile-preview-avatar {
-  border: 2px solid var(--border-subtle);
+.availability-presets {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-sm);
 }
 
-.profile-preview-stats-row {
-  background: var(--accent-tint);
-  border-radius: var(--radius-sm);
-  padding: 12px 8px;
-}
-
-.profile-preview-divider {
-  width: 1px;
-  height: 36px;
-  background: var(--border-subtle);
-}
-
-.profile-preview-stat-icon--image {
-  color: var(--accent-fill);
-}
-
-/* 旧品牌辅色（古铜色），随 task-9-addendum.md D 节迁到 L2 --brand-secondary。
-   同 EquipmentCalcModal.css 的 .ecm__stats__card--intent 一处。 */
-.profile-preview-stat-icon--video {
-  color: var(--brand-secondary);
-}
-
-/* ── Availability Grid Editor ── (moved out of style={{}}, task-8 批 B).
-   --mantine-color-body / --mantine-color-dimmed / --mantine-color-default-border
-   are Mantine's own dynamic vars, exempt from the token-resolution guard
-   (theme-tokens.test.ts RUNTIME_INJECTED_VARS), same as the file's existing
-   uses of --mantine-color-*. */
-
-.availability-grid__corner {
-  position: sticky;
-  left: 0;
-  z-index: 2;
-  background: var(--mantine-color-body);
-}
-
-.availability-grid__hour-label {
-  font-size: 0.7rem;
-  color: var(--mantine-color-dimmed);
-  text-align: right;
-  vertical-align: top;
-  position: sticky;
-  left: 0;
-  z-index: 1;
-  background: var(--mantine-color-body);
-  line-height: 1;
-}
-
-.availability-grid__cell {
-  background: transparent;
+/* 预设是「往里加」的动作，不是当前状态，所以做成中性描边而不是选中态填色。 */
+.availability-preset {
+  padding: var(--space-xs) var(--space-sm);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--shape-pill);
+  background: var(--surface-sunken);
+  color: var(--text-secondary);
+  font-size: var(--text-micro);
   cursor: pointer;
-  transition: background 0.05s;
+  transition: border-color var(--transition-smooth), color var(--transition-smooth);
 }
 
-/* Runtime-toggled active state (a slot is on/off): switches a class instead of
-   string-concatenating a colour, per task-8-brief.md Step 3.4. */
-.availability-grid__cell--active {
-  background: var(--accent-fill);
+.availability-preset:hover {
+  border-color: var(--border-strong);
+  color: var(--text-primary);
 }
 
-.availability-grid__cell--top {
-  border-top: 1px solid var(--mantine-color-default-border);
-  border-left: 1px solid var(--mantine-color-default-border);
-  border-right: 1px solid var(--mantine-color-default-border);
+.availability-days {
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-control);
+  overflow: hidden;
 }
 
-.availability-grid__cell--bottom {
-  border-left: 1px solid var(--mantine-color-default-border);
-  border-right: 1px solid var(--mantine-color-default-border);
+.availability-day {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+  padding: var(--space-sm) var(--space-md);
+  border-block-end: 1px solid var(--border-subtle);
 }
 
-.availability-grid__cell--bottom-edge {
-  border-bottom: 1px solid var(--mantine-color-default-border);
+.availability-day:last-child {
+  border-block-end: none;
 }
 
-/* ── Profile Media Tab ── (moved out of style={{}}, task-8 批 B) */
-
-.profile-media-avatar {
-  border: 2px solid var(--border-subtle);
+/* 固定宽度，七行的时段条才会左对齐成一列——否则「周一」和「周三」长度不同，
+   每行的起点都错开一点。 */
+.availability-day__name {
+  flex: 0 0 auto;
+  inline-size: 48px;
+  font-size: var(--text-sm);
+  font-weight: var(--fw-medium);
+  color: var(--text-secondary);
 }
 
+.availability-day__blocks {
+  flex: 1 1 auto;
+  min-inline-size: 0;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-xs);
+}
+
+.availability-day__empty {
+  font-size: var(--text-micro);
+  color: var(--text-muted);
+}
+
+.availability-block {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-xs);
+  padding-inline: var(--space-sm);
+  padding-block: 2px;
+  border-radius: var(--shape-pill);
+  background: color-mix(in srgb, var(--brand-fill) 16%, transparent);
+  color: var(--brand-text);
+  font-size: var(--text-micro);
+  font-variant-numeric: tabular-nums;
+}
+
+.availability-day__add {
+  display: grid;
+  place-items: center;
+  inline-size: 24px;
+  block-size: 24px;
+  padding: 0;
+  border: 1px dashed var(--border-subtle);
+  border-radius: 50%;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: border-color var(--transition-smooth), color var(--transition-smooth);
+}
+
+/* Normalize the icon wrapper so the add glyph centers within the native button box. */
+.availability-day__add > * {
+  display: flex;
+}
+
+.availability-day__add:hover {
+  border-color: var(--border-strong);
+  color: var(--text-primary);
+}
+
+/* Give the copy menu an explicit control affordance. */
+.availability-day__copy {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-xs);
+  white-space: nowrap;
+  padding-inline: var(--space-sm);
+  padding-block: 3px;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-control);
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: var(--text-meta);
+  cursor: pointer;
+  transition: border-color var(--transition-smooth), color var(--transition-smooth);
+}
+
+.availability-day__copy:hover:not(:disabled) {
+  border-color: var(--border-strong);
+  color: var(--text-primary);
+}
+
+.availability-day__copy:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+@media (max-width: 575px) {
+  /* 窄屏上一行三段（星期 / 时段 / 复制到）挤不下，复制到换行占满一行。 */
+  .availability-day {
+    flex-wrap: wrap;
+  }
+
+  .availability-day__copy {
+    inline-size: 100%;
+    justify-content: center;
+  }
+}
+
+/* ── Profile Media Tab ── */
+
+/* Static media rows use a neutral recessed surface rather than an active-state tint. */
 .profile-media-chip-row {
-  padding: 4px 8px;
-  border-radius: var(--radius-sm);
-  background: var(--accent-tint);
+  padding: var(--space-xs) var(--space-sm);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-control);
+  background: var(--surface-sunken);
 }
+
+/* ── 视频列表 ── */
+
+.profile-video-row {
+  padding: var(--space-xs);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-control);
+  background: var(--surface-sunken);
+}
+
+.profile-video-row__thumb {
+  flex: 0 0 auto;
+  display: grid;
+  place-items: center;
+  inline-size: 88px;
+  block-size: 50px;
+  overflow: hidden;
+  border-radius: var(--radius-control);
+  background: var(--surface-raised);
+  color: var(--text-muted);
+}
+
+.profile-video-row__thumb img {
+  inline-size: 100%;
+  block-size: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.profile-video-row__meta {
+  flex: 1 1 auto;
+  min-inline-size: 0;
+  display: grid;
+  gap: 2px;
+}
+
+.profile-video-row__host {
+  font-size: var(--text-sm);
+  font-weight: var(--fw-medium);
+  color: var(--text-primary);
+}
+
+/* 链接单行截断：它是「确认粘对了没」用的，不是正文。完整值在 title 里。 */
+.profile-video-row__url {
+  font-size: var(--text-micro);
+  color: var(--text-muted);
+  text-decoration: none;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.profile-video-row__url:hover {
+  color: var(--text-secondary);
+  text-decoration: underline;
+}
+

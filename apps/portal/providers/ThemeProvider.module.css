@@ -1,0 +1,255 @@
+.buttonRoot {
+  --button-height-xs: var(--control-height-compact);
+  --button-height-sm: var(--control-height-regular);
+  --button-height-md: var(--control-height-regular);
+  --button-height-lg: var(--control-height-large);
+  --button-height-xl: var(--control-height-large);
+  --button-height-compact-xs: var(--control-height-compact);
+  --button-height-compact-sm: var(--control-height-compact);
+  --button-height-compact-md: var(--control-height-compact);
+  --button-height-compact-lg: var(--control-height-regular);
+  --button-height-compact-xl: var(--control-height-large);
+  font-weight: var(--fw-medium);
+  transition:
+    background-color var(--motion-state),
+    border-color var(--motion-state),
+    color var(--motion-state),
+    transform var(--motion-state);
+}
+
+/* Hover text color remains owned by Mantine's per-variant button variables. */
+.buttonRoot:active:not(:disabled, [data-disabled]) {
+  transform: translateY(1px);
+}
+
+.actionIconRoot {
+  --ai-size-xs: var(--control-icon-size-compact);
+  --ai-size-sm: var(--control-icon-size-compact);
+  --ai-size-md: var(--control-icon-size-regular);
+  --ai-size-lg: var(--control-icon-size-regular);
+  --ai-size-xl: var(--control-icon-size-large);
+  --ai-size-input-xs: var(--control-height-compact);
+  --ai-size-input-sm: var(--control-height-regular);
+  --ai-size-input-md: var(--control-height-regular);
+  --ai-size-input-lg: var(--control-height-large);
+  --ai-size-input-xl: var(--control-height-large);
+  position: relative;
+  overflow: visible;
+  transition:
+    background-color var(--motion-state),
+    border-color var(--motion-state),
+    color var(--motion-state),
+    transform var(--motion-state);
+}
+
+.actionIconRoot::before {
+  content: "";
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: max(var(--control-hit-area), 100%);
+  height: max(var(--control-hit-area), 100%);
+  background: transparent;
+  transform: translate(-50%, -50%);
+}
+
+.actionIconRoot:active:not(:disabled, [data-disabled]) {
+  transform: translateY(1px);
+}
+
+.inputWrapper {
+  /* Keep xs text controls aligned with xs buttons and action icons. */
+  --input-height-xs: var(--control-height-compact);
+  --input-height-sm: var(--control-height-regular);
+  --input-height-md: var(--control-height-regular);
+  --input-height-lg: var(--control-height-large);
+  --input-height-xl: var(--control-height-large);
+}
+
+.input {
+  background: var(--surface-sunken);
+  border-color: var(--border-strong);
+  color: var(--text-primary);
+  transition:
+    background-color var(--motion-state),
+    border-color var(--motion-state),
+    box-shadow var(--motion-state);
+}
+
+:global(html:not([data-input-modality="pointer"])) .input:focus-visible,
+:global(html:not([data-input-modality="pointer"])) .input:has(:focus-visible) {
+  border-color: var(--brand-fill);
+  box-shadow:
+    0 0 0 2px var(--surface-base),
+    0 0 0 4px var(--brand-fill);
+}
+
+.paperRoot,
+.cardRoot {
+  background: var(--surface-raised);
+  border-color: var(--border-subtle);
+  box-shadow: var(--edge-top);
+}
+
+.badgeRoot {
+  border-radius: var(--shape-pill);
+  font-weight: var(--fw-medium);
+}
+
+.skeletonRoot {
+  background: var(--surface-sunken);
+}
+
+.tabsList {
+  gap: var(--space-lg);
+  border-bottom-color: var(--border-subtle);
+}
+
+/* Theme-level padding gives every standard tab a consistent pointer target. */
+.tabsTab {
+  min-height: var(--control-height-regular);
+  padding-inline: var(--space-lg);
+  border-radius: 0;
+  border-bottom-width: 2px;
+  color: var(--text-muted);
+  font-size: var(--text-body);
+  font-weight: var(--fw-medium);
+  transition:
+    border-color var(--motion-state),
+    color var(--motion-state);
+}
+
+.tabsTab:hover:not([data-active]) {
+  background: transparent;
+  color: var(--text-primary);
+}
+
+.tabsTab[data-active] {
+  background: transparent;
+  border-color: var(--brand-fill);
+  color: var(--brand-text);
+}
+
+.overlaySurface {
+  min-width: 200px;
+  background: var(--surface-overlay);
+  border: 1px solid var(--border-subtle);
+  box-shadow: var(--shadow-overlay);
+}
+
+.menuItem {
+  min-height: var(--control-height-regular);
+  color: var(--text-primary);
+  font-size: var(--text-body);
+  transition:
+    background-color var(--motion-state),
+    color var(--motion-state);
+}
+
+.menuItem:hover,
+.menuItem:focus,
+.menuItem[data-hovered] {
+  background: var(--brand-tint);
+}
+
+.menuLabel {
+  color: var(--text-muted);
+  font-size: var(--text-meta);
+  font-weight: var(--fw-medium);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.menuDivider {
+  border-color: var(--border-subtle);
+}
+
+.tooltip {
+  background: var(--surface-overlay);
+  border: 1px solid var(--border-subtle);
+  box-shadow: var(--shadow-overlay);
+  color: var(--text-primary);
+}
+
+.table {
+  color: var(--text-primary);
+}
+
+.tableHeaderCell {
+  border-bottom-color: var(--border-strong);
+  color: var(--text-secondary);
+  font-size: var(--text-meta);
+  font-weight: var(--fw-strong);
+  letter-spacing: 0.04em;
+}
+
+.tableRow {
+  transition: background-color var(--motion-state);
+}
+
+.paginationControl {
+  min-width: var(--control-height-regular);
+  min-height: var(--control-height-regular);
+  border-color: var(--border-subtle);
+}
+
+.alertRoot {
+  border: 1px solid var(--border-subtle);
+  box-shadow: var(--edge-top);
+}
+
+.modalOverlay {
+  background: color-mix(in srgb, var(--surface-sunken) 72%, transparent);
+}
+
+.modalContent,
+.drawerContent,
+.notificationRoot {
+  background: var(--surface-overlay);
+  border: 1px solid var(--border-subtle);
+  box-shadow: var(--shadow-overlay);
+}
+
+.modalHeader {
+  background: var(--surface-overlay);
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.modalTitle {
+  color: var(--text-primary);
+  font-size: var(--text-card);
+  font-weight: var(--fw-strong);
+}
+
+.modalClose {
+  border-radius: var(--radius-control);
+}
+
+@media (max-width: 47.99em) {
+  .tabsList {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    overflow-y: hidden;
+    scrollbar-width: none;
+  }
+
+  .tabsList::-webkit-scrollbar {
+    display: none;
+  }
+
+  .tabsTab {
+    flex-shrink: 0;
+    white-space: nowrap;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .buttonRoot,
+  .actionIconRoot,
+  .input,
+  .tabsTab,
+  .menuItem,
+  .tableRow {
+    transition: none;
+  }
+}

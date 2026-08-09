@@ -1,8 +1,8 @@
-import type { AuditLogEntry } from "@guild/shared";
+import type { AuditLogEntry, JsonObject } from "@guild/shared";
 import type { AuditAction, AuditEntityType } from "@guild/shared/constants/audit";
 import { Alert, Badge, Group, NumberInput, Pagination, Skeleton, Stack, Text, Tooltip } from "@mantine/core";
 import { ArrowRightIcon, ChevronDownIcon } from "@portal/components/icons";
-import { useMemo, useState } from "react";
+import { useId, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import "./AuditLogViewer.css";
 
@@ -33,6 +33,47 @@ type DetailData =
 const ISO_DATE_RE = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/;
 
 const DAY_KEYS = ["sun", "mon", "tue", "wed", "thu", "fri", "sat"];
+const AUDIT_VALUE_PREVIEW_LENGTH = 360;
+
+type AuditValueProps = {
+  value: string;
+  className: string;
+  t: (key: string, opts?: Record<string, unknown>) => string;
+};
+
+function AuditValue({ value, className, t }: AuditValueProps) {
+  const [expanded, setExpanded] = useState(false);
+  const contentId = useId();
+
+  if (value.length <= AUDIT_VALUE_PREVIEW_LENGTH) {
+    return <span className={className}>{value}</span>;
+  }
+
+  return (
+    <span className="audit-detail-value">
+      <span
+        id={contentId}
+        className={`${className} audit-detail-value__content ${expanded ? "audit-detail-value__content--expanded" : ""}`.trim()}
+      >
+        {expanded ? value : (
+          <>
+            {value.slice(0, AUDIT_VALUE_PREVIEW_LENGTH)}
+            <span className="audit-detail-value__truncated">{t("audit.detail.truncated")}</span>
+          </>
+        )}
+      </span>
+      <button
+        type="button"
+        className="audit-detail-value__toggle"
+        aria-controls={contentId}
+        aria-expanded={expanded}
+        onClick={() => setExpanded((current) => !current)}
+      >
+        {t(expanded ? "audit.detail.showLess" : "audit.detail.showFull")}
+      </button>
+    </span>
+  );
+}
 
 function formatDiffValue(
   value: unknown,
@@ -102,57 +143,45 @@ function formatInfoValue(value: unknown, userMap?: Map<string, string>): string 
   return str;
 }
 
-function parseDetailData(
-  detailText: string | null,
+function buildDetailData(
+  detail: JsonObject | null,
   t?: (key: string, opts?: Record<string, unknown>) => string,
   userMap?: Map<string, string>,
 ): DetailData {
-  if (!detailText) return null;
+  if (!detail) return null;
   const HIDDEN_FIELDS = new Set(["password", "body_json"]);
-  try {
-    const parsed = JSON.parse(detailText) as unknown;
-    if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
-      const entries = Object.entries(parsed as Record<string, unknown>)
-        .filter(([field]) => !HIDDEN_FIELDS.has(field));
-      if (entries.length === 0) return null;
+  const entries = Object.entries(detail).filter(([field]) => !HIDDEN_FIELDS.has(field));
+  if (entries.length === 0) return null;
 
-      const isDiffFormat = entries.every(
-        ([, v]) => v && typeof v === "object" && !Array.isArray(v) && "from" in (v as object) && "to" in (v as object),
-      );
+  const isDiffFormat = entries.every(
+    ([, value]) => value && typeof value === "object" && !Array.isArray(value) && "from" in value && "to" in value,
+  );
 
-      if (isDiffFormat) {
-        return {
-          kind: "diff",
-          entries: entries.map(([field, val]) => {
-            const { from, to } = val as { from: unknown; to: unknown };
-            const label = t?.(`audit.field.${field}`, { defaultValue: field }) ?? field;
-            return { field: label, from: formatDiffValue(from, field, t, userMap), to: formatDiffValue(to, field, t, userMap) };
-          }),
-        };
-      }
-
-      const obj = parsed as Record<string, unknown>;
-      const hiddenFields = new Set<string>();
-      if ("usernames" in obj) hiddenFields.add("user_ids");
-      if ("event_name" in obj) hiddenFields.add("event_id");
-      if ("username" in obj) hiddenFields.add("user_id");
-
-      return {
-        kind: "info",
-        entries: entries
-          .filter(([field]) => !hiddenFields.has(field))
-          .map(([field, val]) => {
-            const label = t?.(`audit.field.${field}`, { defaultValue: field }) ?? field;
-            return { field: label, value: formatInfoValue(val, userMap) };
-          }),
-      };
-    }
-  } catch {
-    if (detailText.trim().length > 0) {
-      return { kind: "info", entries: [{ field: "detail", value: detailText }] };
-    }
+  if (isDiffFormat) {
+    return {
+      kind: "diff",
+      entries: entries.map(([field, value]) => {
+        const { from, to } = value as { from: unknown; to: unknown };
+        const label = t?.(`audit.field.${field}`, { defaultValue: field }) ?? field;
+        return { field: label, from: formatDiffValue(from, field, t, userMap), to: formatDiffValue(to, field, t, userMap) };
+      }),
+    };
   }
-  return null;
+
+  const hiddenFields = new Set<string>();
+  if ("usernames" in detail) hiddenFields.add("user_ids");
+  if ("event_name" in detail) hiddenFields.add("event_id");
+  if ("username" in detail) hiddenFields.add("user_id");
+
+  return {
+    kind: "info",
+    entries: entries
+      .filter(([field]) => !hiddenFields.has(field))
+      .map(([field, value]) => {
+        const label = t?.(`audit.field.${field}`, { defaultValue: field }) ?? field;
+        return { field: label, value: formatInfoValue(value, userMap) };
+      }),
+  };
 }
 
 type ActionColor = "blue" | "green" | "red" | "yellow" | "grape" | "cyan" | "orange" | "gray" | "teal";
@@ -162,6 +191,7 @@ const ACTION_COLOR_MAP = {
   init: "green",
   admin_create_member: "green",
   create_video: "green",
+  share_video: "green",
   register: "green",
   complete: "green",
   resume: "green",
@@ -223,10 +253,11 @@ const ENTITY_COLOR_MAP = {
   recurring_template: "grape",
   gallery: "grape",
   gallery_item: "grape",
+  class_catalog: "grape",
+  class_tag: "grape",
   member_absence: "orange",
   member_badge: "grape",
   badge: "grape",
-  game_data: "grape",
   announcement: "cyan",
   wiki_article: "cyan",
   wiki_category: "cyan",
@@ -244,8 +275,6 @@ const ENTITY_COLOR_MAP = {
   seed: "gray",
   system_test: "gray",
   site_config: "teal",
-  onboarding: "teal",
-  onboarding_ack: "green",
   storage: "cyan",
   storage_category: "cyan",
   storage_item: "cyan",
@@ -336,7 +365,7 @@ export function AuditLogViewer({
     };
 
     return auditRows.map((row) => {
-      const detailData = parseDetailData(row.detail_text, t, userMap);
+      const detailData = buildDetailData(row.detail, t, userMap);
       const resolvedAction = resolveAction(row.action);
       const resolvedEntityType = resolveEntityType(row.entity_type);
       const resolvedActor = resolveActor(String(row.actor_id ?? ""), row.actor_username);
@@ -418,7 +447,7 @@ export function AuditLogViewer({
                         {row.summary}
                       </Text>
                       {row.entityName ? (
-                        <Text size="xs" fw={600} c="var(--accent-text)" lineClamp={1} className="audit-log-row__entity-name">
+                        <Text size="xs" fw={600} c="var(--brand-text)" lineClamp={1} className="audit-log-row__entity-name">
                           {row.entityName}
                         </Text>
                       ) : null}
@@ -465,9 +494,9 @@ export function AuditLogViewer({
                           {row.detailData!.entries.map((entry) => (
                             <div key={entry.field} className="audit-diff-entry">
                               <span className="audit-diff-entry__field">{entry.field}</span>
-                              <span className="audit-diff-entry__from">{(entry as DiffEntry).from}</span>
+                              <AuditValue className="audit-diff-entry__from" value={(entry as DiffEntry).from} t={t} />
                               <ArrowRightIcon size={12} className="audit-diff-entry__arrow" />
-                              <span className="audit-diff-entry__to">{(entry as DiffEntry).to}</span>
+                              <AuditValue className="audit-diff-entry__to" value={(entry as DiffEntry).to} t={t} />
                             </div>
                           ))}
                         </div>
@@ -476,7 +505,7 @@ export function AuditLogViewer({
                           {row.detailData!.entries.map((entry) => (
                             <div key={entry.field} className="audit-info-entry">
                               <span className="audit-info-entry__field">{entry.field}</span>
-                              <span className="audit-info-entry__value">{(entry as InfoEntry).value}</span>
+                              <AuditValue className="audit-info-entry__value" value={(entry as InfoEntry).value} t={t} />
                             </div>
                           ))}
                         </div>
@@ -504,7 +533,7 @@ export function AuditLogViewer({
             />
             <NumberInput
               aria-label={tCommon("pagination.page")}
-              size="xs"
+              size="sm"
               min={1}
               max={totalPages}
               value={auditPageCurrent}

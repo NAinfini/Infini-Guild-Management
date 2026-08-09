@@ -1,27 +1,35 @@
 import {
   Alert,
   Badge,
+  Button,
   Group,
-  Modal,
   SegmentedControl,
   Select,
   Skeleton,
   Stack,
   Text,
-  Tooltip,
 } from "@mantine/core";
-import { CrownOutlined, ShieldOutlined, SwordsOutlined, TargetOutlined } from "@portal/utils/icons";
+import { useMediaQuery } from "@mantine/hooks";
+import { DEFAULT_GAME_RULES } from "@guild/shared";
+import {
+  ArrowLeftIcon,
+  PencilIcon,
+  SaveIcon,
+  TrashIcon,
+} from "@portal/components/icons";
+import { DataTableAdapter } from "@portal/components/shared/DataTableAdapter";
+import { EmptyState } from "@portal/components/shared/EmptyState";
+import { SectionHeader } from "@portal/components/shared/SectionHeader";
 import { resolveResultTagColor } from "@portal/utils/guild-war";
-import { InfiniTable, useReactTable } from "@portal/components/shared/InfiniTable";
+import { useSiteConfigStore } from "@portal/stores/site-config";
+import { flexRender, useReactTable } from "@tanstack/react-table";
 import ReactEChartsCore from "echarts-for-react/esm/core";
 import { BarChart, LineChart } from "echarts/charts";
 import { GridComponent, LegendComponent, TooltipComponent } from "echarts/components";
 import * as echarts from "echarts/core";
 import { CanvasRenderer } from "echarts/renderers";
+import { useEffect } from "react";
 import { useTranslation } from "react-i18next";
-import { useEffect, type ReactNode } from "react";
-import { DepthButton } from "@portal/components/shared/DepthButton";
-import { CompareBar } from "../../shared/CompareBar";
 import type { EChartsThemeConfig } from "../../../theme/echarts";
 import type {
   AnalyticsMetricKey,
@@ -30,6 +38,10 @@ import type {
   HistoryMvpSummary,
   HistoryViewMode,
 } from "@portal/types/guild-war";
+import {
+  getGuildWarResultLabel,
+  getGuildWarTeamStatLabel,
+} from "@portal/utils/game-rules";
 
 echarts.use([
   BarChart,
@@ -41,8 +53,7 @@ echarts.use([
 ]);
 
 type WarHistoryDetailProps = {
-  opened: boolean;
-  onClose: () => void;
+  onBackToList: () => void;
   historyDetail: HistoryDetailData | null;
   historyDetailTitle: string;
   historyDetailLoading: boolean;
@@ -54,6 +65,9 @@ type WarHistoryDetailProps = {
   detailTable: ReturnType<typeof useReactTable<HistoryMemberStat>>;
   canManage: boolean;
   hasUnsavedMemberChanges: boolean;
+  isEditingMemberStats: boolean;
+  onBeginEditMemberStats: () => void;
+  onCancelEditMemberStats: () => void;
   saveMemberStatsPending: boolean;
   deleteHistoryPending: boolean;
   exportPending: boolean;
@@ -73,9 +87,15 @@ type WarHistoryDetailProps = {
   metricValueOrNullFromWarMember: (row: HistoryMemberStat, metric: AnalyticsMetricKey) => number | null;
 };
 
+type ComparisonMetric = {
+  id: string;
+  label: string;
+  own: number;
+  enemy: number;
+};
+
 export function WarHistoryDetail({
-  opened,
-  onClose,
+  onBackToList,
   historyDetail,
   historyDetailTitle,
   historyDetailLoading,
@@ -87,6 +107,9 @@ export function WarHistoryDetail({
   detailTable,
   canManage,
   hasUnsavedMemberChanges,
+  isEditingMemberStats,
+  onBeginEditMemberStats,
+  onCancelEditMemberStats,
   saveMemberStatsPending,
   deleteHistoryPending,
   exportPending,
@@ -106,224 +129,417 @@ export function WarHistoryDetail({
   metricValueOrNullFromWarMember,
 }: WarHistoryDetailProps) {
   const { t } = useTranslation("guild-war");
+  const siteName = useSiteConfigStore((state) => state.siteName);
+  const gameRules = DEFAULT_GAME_RULES;
+  const isMobileMemberLayout = useMediaQuery("(max-width: 767px)") ?? false;
 
   useEffect(() => {
     echarts.registerTheme(chartThemeName, chartThemeConfig);
   }, [chartThemeConfig, chartThemeName]);
 
-  const resultColor = historyDetail ? resolveResultTagColor(historyDetail.result) : "gray";
-  const modalTitle = historyDetail
+  const detailTitle = historyDetail
     ? `${historyDetail.war_name}${historyDetail.enemy_name ? ` ${t("history.versus")} ${historyDetail.enemy_name}` : ""}`
-    : opened ? historyDetailTitle : undefined;
+    : historyDetailTitle;
+  const ownLabel = siteName || t("history.compare.us");
+  const enemyLabel = historyDetail?.enemy_name ?? t("history.compare.enemy");
+  const resultKey = historyDetail?.result ?? null;
+  const resultColor = resolveResultTagColor(resultKey);
+  const comparisonMetrics: ComparisonMetric[] = historyDetail
+    ? gameRules.guild_war.team_stats.map((definition) => ({
+        id: definition.key,
+        label: getGuildWarTeamStatLabel(definition.key),
+        own: historyDetail.own_stats?.[definition.key] ?? 0,
+        enemy: historyDetail.enemy_stats?.[definition.key] ?? 0,
+      }))
+    : [];
+  // The scoreboard headline is explicitly the kills column, not an abstract
+  // "score" — the label stays visible so the number never claims to be the
+  // thing that decided the war.
+  const primaryStat = gameRules.guild_war.team_stats.find((definition) => definition.dashboard === "primary")
+    ?? gameRules.guild_war.team_stats[0];
+  const headline = comparisonMetrics.find((metric) => metric.id === primaryStat?.key) ?? comparisonMetrics[0] ?? null;
 
   return (
-    <Modal
-      opened={opened}
-      onClose={onClose}
-      title={modalTitle}
-      size="min(1400px, calc(100vw - 2rem))"
+    <section
+      className="war-history-detail-panel"
+      aria-label={detailTitle}
+      data-testid="war-history-inline-detail"
     >
-      <Stack gap={16}>
-        {historyDetailLoading ? <Stack gap={8}><Skeleton height={20} width="40%" />{Array.from({ length: 3 }).map((_, i) => <Skeleton key={i} height={16} />)}</Stack> : null}
+      <div className="war-history-detail-panel__mobile-nav">
+        <Button
+          variant="subtle"
+          color="gray"
+          leftSection={<ArrowLeftIcon size={16} />}
+          onClick={onBackToList}
+        >
+          {t("history.backToList")}
+        </Button>
+      </div>
+
+      <div className="war-history-detail-panel__body">
+        {historyDetailLoading ? (
+          <Stack gap={8} className="war-history-detail-panel__loading">
+            <Skeleton height={96} />
+            <Skeleton height={72} />
+            <Skeleton height={220} />
+          </Stack>
+        ) : null}
+
         {historyDetailError ? <Alert color="red">{loadErrorMessage}</Alert> : null}
+
+        {!historyDetailLoading && !historyDetailError && !historyDetail ? (
+          <div className="whd-placeholder">
+            <EmptyState title={t("history.selectRecordHint")} />
+          </div>
+        ) : null}
+
         {!historyDetailLoading && !historyDetailError && historyDetail ? (
-          <Stack gap={20}>
-            {/* Hero header */}
-            <div className="whd-hero">
-              <div className="whd-hero__main">
-                <Badge size="lg" color={resultColor} className="whd-hero__badge">
-                  {(historyDetail.result ?? t("history.unknownResult")).toUpperCase()}
-                </Badge>
-                <div className="whd-hero__info">
-                  <Text fw={700} size="lg" className="whd-hero__title">{historyDetail.war_name}</Text>
-                  {historyDetail.enemy_name ? (
-                    <Text size="sm" c="dimmed">{t("history.versus")} {historyDetail.enemy_name}</Text>
+          <Stack gap={0}>
+            <header
+              className="whd-board"
+              data-testid="war-history-scoreboard"
+            >
+              <div className="whd-board__side">
+                <span className="whd-board__who">{t("history.compare.us")}</span>
+                <span className="whd-board__name">{ownLabel}</span>
+              </div>
+
+              <div className="whd-board__center">
+                <div className="whd-board__score">
+                  <span className="whd-board__value tabular-nums">{headline?.own ?? 0}</span>
+                  <span className="whd-board__dash" aria-hidden="true">—</span>
+                  <span className="whd-board__value whd-board__value--enemy tabular-nums">
+                    {headline?.enemy ?? 0}
+                  </span>
+                </div>
+                <div className="whd-board__caption">
+                  <span className="whd-board__metric">{headline?.label}</span>
+                  <Badge size="sm" color={resultColor} variant="light">
+                    {historyDetail.result
+                      ? getGuildWarResultLabel(historyDetail.result)
+                      : t("history.unknownResult")}
+                  </Badge>
+                </div>
+              </div>
+
+              <div className="whd-board__side whd-board__side--enemy">
+                <span className="whd-board__who">{t("history.compare.enemy")}</span>
+                <span className="whd-board__name">{enemyLabel}</span>
+              </div>
+            </header>
+
+            <div className="whd-identity">
+              <div className="whd-identity__copy">
+                <h2 className="whd-identity__title">{historyDetail.war_name}</h2>
+                <div className="whd-identity__meta">
+                  <span>{t("history.membersCount", { count: historyDetail.member_stats.length })}</span>
+                  <span className="whd-identity__sep" aria-hidden="true" />
+                  <span>{t("history.teamsCount", { count: historyDetail.teams.length })}</span>
+                  {historyDetail.notes ? (
+                    <>
+                      <span className="whd-identity__sep" aria-hidden="true" />
+                      <span className="whd-identity__note">{historyDetail.notes}</span>
+                    </>
+                  ) : null}
+                  {hasUnsavedMemberChanges ? (
+                    <Badge color="orange" variant="light" size="sm">
+                      {t("history.unsavedChanges")}
+                    </Badge>
                   ) : null}
                 </div>
               </div>
-              <div className="whd-hero__meta">
-                <span>{t("history.membersCount", { count: historyDetail.member_stats.length })}</span>
-                <span className="whd-hero__meta-sep" />
-                <span>{t("history.teamsCount", { count: historyDetail.teams.length })}</span>
-                {historyDetail.notes ? (
-                  <>
-                    <span className="whd-hero__meta-sep" />
-                    <Tooltip label={historyDetail.notes} multiline maw={300}>
-                      <span className="whd-hero__meta-note">{historyDetail.notes}</span>
-                    </Tooltip>
-                  </>
-                ) : null}
-              </div>
+              <Group gap={8} wrap="wrap" className="whd-identity__exports">
+                <Button
+                  variant="default"
+                  onClick={() => onExport("csv")}
+                  loading={exportPending}
+                  disabled={historyRows.length === 0}
+                  aria-label={`${exportCsvLabel}: ${historyDetail.war_name}`}
+                >
+                  {exportCsvLabel}
+                </Button>
+                <Button
+                  variant="default"
+                  onClick={() => onExport("json")}
+                  loading={exportPending}
+                  disabled={historyRows.length === 0}
+                  aria-label={`${exportJsonLabel}: ${historyDetail.war_name}`}
+                >
+                  {exportJsonLabel}
+                </Button>
+              </Group>
             </div>
 
-            {/* Compare section */}
-            <div className="whd-compare">
-              <div className="war-history-compare-header">
-                <span className="war-history-compare-team war-history-compare-team--us">{t("history.compare.us")}</span>
-                <SwordsOutlined size={14} />
-                <span className="war-history-compare-team war-history-compare-team--enemy">
-                  {historyDetail.enemy_name ?? t("history.compare.enemy")}
-                </span>
-              </div>
-              <div className="war-history-compare-section">
-                <CompareBar classPrefix="war-history-compare-" icon={<TargetOutlined size={13} />} label={t("history.kills")} own={historyDetail.own_stats?.kills ?? 0} enemy={historyDetail.enemy_stats?.kills ?? 0} />
-                <CompareBar classPrefix="war-history-compare-" icon={<ShieldOutlined size={13} />} label={t("history.towers")} own={historyDetail.own_stats?.towers ?? 0} enemy={historyDetail.enemy_stats?.towers ?? 0} />
-                <CompareBar classPrefix="war-history-compare-" icon={<ShieldOutlined size={13} />} label={t("history.baseHp")} own={historyDetail.own_stats?.base_hp ?? 0} enemy={historyDetail.enemy_stats?.base_hp ?? 0} />
-                <CompareBar classPrefix="war-history-compare-" icon={<TargetOutlined size={13} />} label={t("history.distance")} own={historyDetail.own_stats?.distance ?? 0} enemy={historyDetail.enemy_stats?.distance ?? 0} />
-                <CompareBar classPrefix="war-history-compare-" icon={<CrownOutlined size={13} />} label={t("history.credits")} own={historyDetail.own_stats?.credits ?? 0} enemy={historyDetail.enemy_stats?.credits ?? 0} />
-              </div>
+            <div className="whd-strip" aria-label={t("history.comparison")}>
+              {comparisonMetrics.map((metric) => (
+                <MetricColumn key={metric.id} {...metric} enemyLabel={enemyLabel} />
+              ))}
             </div>
 
-            {/* MVP + Team snapshot side by side */}
             <div className="whd-split">
               {historyMvp ? (
-                <div className="whd-mvp">
-                  <Text size="xs" fw={700} tt="uppercase" c="dimmed" mb={8}>{t("history.mvpHighlights")}</Text>
-                  <div className="whd-mvp__grid">
-                    <MvpEntry icon={<TargetOutlined size={13} />} label={t("analytics.metric.damage")} value={historyMvp.damage} />
-                    <MvpEntry icon={<ShieldOutlined size={13} />} label={t("analytics.metric.healing")} value={historyMvp.healing} />
-                    <MvpEntry icon={<CrownOutlined size={13} />} label={t("analytics.metric.buildingDamage")} value={historyMvp.building} />
-                    <MvpEntry icon={<ShieldOutlined size={13} />} label={t("analytics.metric.damageTaken")} value={historyMvp.damageTaken} />
+                <section className="whd-panel">
+                  <SectionHeader title={t("history.mvpHighlights")} />
+                  <div className="whd-mvp">
+                    {historyMvp.map((entry) => (
+                      <MvpRow key={entry.key} label={entry.label} value={entry.value} />
+                    ))}
                   </div>
-                </div>
+                </section>
               ) : null}
 
               {historyDetail.teams.length > 0 ? (
-                <div className="whd-teams">
-                  <Text size="xs" fw={700} tt="uppercase" c="dimmed" mb={8}>{t("history.teamSnapshot")}</Text>
-                  <Stack gap={6}>
+                <section className="whd-panel">
+                  <SectionHeader title={t("history.teamSnapshot")} />
+                  <Stack gap={12}>
                     {historyDetail.teams.map((team) => (
-                      <div key={team.id} className="whd-team-row">
-                        <Text size="sm" fw={600}>{team.team_name}</Text>
-                        {team.notes ? <Text size="xs" c="dimmed">{team.notes}</Text> : null}
-                        <Text size="xs" c="dimmed">
-                          {team.members
-                            .map((m) => `${m.username ?? m.user_id}${m.role_tag ? ` [${m.role_tag}]` : ""}`)
-                            .join(", ") || "-"}
-                        </Text>
+                      <div key={team.id} className="whd-team">
+                        <div className="whd-team__name">
+                          <Text size="sm" fw={600}>{team.team_name}</Text>
+                          {team.notes ? <Text size="xs" c="dimmed">{team.notes}</Text> : null}
+                        </div>
+                        {team.members.length > 0 ? (
+                          <div className="whd-team__chips">
+                            {team.members.map((member) => (
+                              <span
+                                key={member.user_id}
+                                className="whd-chip"
+                                data-role={member.role_tag ?? "none"}
+                              >
+                                {member.username ?? member.user_id}
+                                {member.role_tag ? <em>{member.role_tag}</em> : null}
+                              </span>
+                            ))}
+                          </div>
+                        ) : (
+                          <Text size="xs" c="dimmed">{t("history.emptyTeam")}</Text>
+                        )}
                       </div>
                     ))}
                   </Stack>
-                </div>
+                </section>
               ) : null}
             </div>
 
-            {/* Stats table or chart */}
-            <Group justify="space-between" align="center">
-              <SegmentedControl
-                value={historyViewMode}
-                onChange={(value) => onHistoryViewModeChange(value as HistoryViewMode)}
-                data={[
-                  { value: "table", label: t("history.view.table") },
-                  { value: "chart", label: t("history.view.chart") },
-                ]}
-              />
-              {historyViewMode === "chart" ? (
-                <Select
-                  value={historyChartMetric}
-                  onChange={(value) => {
-                    if (value) onHistoryChartMetricChange(value);
-                  }}
-                  data={detailTable
-                    .getAllLeafColumns()
-                    .filter((column) => !["user_id", "role_tag", "missing"].includes(column.id))
-                    .map((column) => ({ value: column.id, label: String(column.columnDef.header ?? column.id) }))}
-                  aria-label={t("history.chartMetric")}
-                  style={{ width: 220 }}
-                  allowDeselect={false}
-                />
-              ) : null}
-            </Group>
-            {historyViewMode === "table" ? (
-              <>
-                {canManage ? (
-                  <Text size="xs" c="dimmed">
-                    {t("history.keyboardHint")}
-                  </Text>
-                ) : null}
-                <div className="war-history-detail-table-wrap">
-                  <InfiniTable table={detailTable} />
-                </div>
-              </>
-            ) : (
-              <div className="whd-chart-wrap">
-                <Text size="xs" fw={700} tt="uppercase" c="dimmed" mb={8}>{t("history.chartTitle", { metric: getMetricLabel(historyChartMetric) })}</Text>
-                <ReactEChartsCore
-                  echarts={echarts}
-                  theme={chartThemeName}
-                  style={{ width: "100%", height: Math.max(200, historyDetail.member_stats.length * 32 + 60) }}
-                  option={{
-                    tooltip: { trigger: "axis" },
-                    grid: { left: 100, right: 20, top: 10, bottom: 30 },
-                    xAxis: { type: "value" },
-                    yAxis: {
-                      type: "category",
-                      data: historyDetail.member_stats.map((item) => item.username ?? item.user_id),
-                      axisLabel: { fontSize: 11 },
-                    },
-                    series: [
-                      {
-                        type: "bar",
-                        name: getMetricLabel(historyChartMetric),
-                        barMaxWidth: 20,
-                        data: historyDetail.member_stats.map((item) => ({
-                          value: metricValueOrNullFromWarMember(item, historyChartMetric),
-                          itemStyle: { color: hashToPaletteColor(item.user_id, chartPalette) },
-                        })),
-                      },
-                    ],
-                  }}
-                />
+            <section className="whd-data">
+              <div className="whd-data__toolbar">
+                <SectionHeader title={t("history.memberData")} />
+                <Group gap={8} wrap="nowrap">
+                  {historyViewMode === "chart" ? (
+                    <Select
+                      className="whd-data__metric"
+                      value={historyChartMetric}
+                      onChange={(value) => {
+                        if (value) onHistoryChartMetricChange(value);
+                      }}
+                      data={detailTable
+                        .getAllLeafColumns()
+                        .filter((column) => !["user_id", "role_tag", "missing"].includes(column.id))
+                        .map((column) => ({ value: column.id, label: String(column.columnDef.header ?? column.id) }))}
+                      aria-label={t("history.chartMetric")}
+                      allowDeselect={false}
+                    />
+                  ) : null}
+                  <SegmentedControl
+                    size="xs"
+                    value={historyViewMode}
+                    onChange={(value) => onHistoryViewModeChange(value as HistoryViewMode)}
+                    data={[
+                      { value: "table", label: t("history.view.table") },
+                      { value: "chart", label: t("history.view.chart") },
+                    ]}
+                  />
+                </Group>
               </div>
-            )}
 
-            {/* Actions footer */}
-            <Group justify="flex-end" gap={8} className="whd-actions">
-              {canManage ? (
-                <DepthButton
-                  type="danger"
-                  size="xs"
-                  onClick={onDeleteHistory}
-                  loading={deleteHistoryPending}
-                  disabled={historyDetailLoading}
-                >
-                  {t("common:action.delete")}
-                </DepthButton>
-              ) : null}
-              {canManage ? (
-                <DepthButton
-                  type="primary"
-                  size="xs"
-                  onClick={onSaveMemberStats}
-                  loading={saveMemberStatsPending}
-                  disabled={!hasUnsavedMemberChanges || historyDetailLoading}
-                  className={hasUnsavedMemberChanges ? "war-history-save-button--ready" : undefined}
-                >
-                  {t("history.saveChanges")}
-                </DepthButton>
-              ) : null}
-              <DepthButton type="secondary" size="xs" onClick={() => onExport("csv")} loading={exportPending} disabled={historyRows.length === 0}>
-                {exportCsvLabel}
-              </DepthButton>
-              <DepthButton type="secondary" size="xs" onClick={() => onExport("json")} loading={exportPending} disabled={historyRows.length === 0}>
-                {exportJsonLabel}
-              </DepthButton>
-            </Group>
+              {historyViewMode === "table" ? (
+                <>
+                  {/* 键盘导航提示只在真的能打字的时候才有意义。 */}
+                  {canManage && isEditingMemberStats ? (
+                    <Text size="xs" c="dimmed">
+                      {t("history.keyboardHint")}
+                    </Text>
+                  ) : null}
+                  {isMobileMemberLayout ? (
+                    <WarHistoryMemberCards
+                      detailTable={detailTable}
+                      label={t("history.memberData")}
+                    />
+                  ) : (
+                    <div className="war-history-detail-table-wrap">
+                      <DataTableAdapter table={detailTable} />
+                    </div>
+                  )}
+                </>
+              ) : (
+                <div className="whd-chart-wrap">
+                  <ReactEChartsCore
+                    echarts={echarts}
+                    theme={chartThemeName}
+                    style={{
+                      width: "100%",
+                      height: Math.min(520, Math.max(240, historyDetail.member_stats.length * 32 + 60)),
+                    }}
+                    option={{
+                      tooltip: { trigger: "axis" },
+                      grid: { left: 100, right: 20, top: 10, bottom: 30 },
+                      xAxis: { type: "value" },
+                      yAxis: {
+                        type: "category",
+                        data: historyDetail.member_stats.map((item) => item.username ?? item.user_id),
+                        axisLabel: { fontSize: 11 },
+                      },
+                      series: [
+                        {
+                          type: "bar",
+                          name: getMetricLabel(historyChartMetric),
+                          barMaxWidth: 20,
+                          data: historyDetail.member_stats.map((item) => ({
+                            value: metricValueOrNullFromWarMember(item, historyChartMetric),
+                            itemStyle: { color: hashToPaletteColor(item.user_id, chartPalette) },
+                          })),
+                        },
+                      ],
+                    }}
+                  />
+                </div>
+              )}
+            </section>
+
+            {canManage ? (
+              <footer className="whd-actions">
+                <div>
+                  <Button
+                    color="red"
+                    variant="subtle"
+                    leftSection={<TrashIcon size={15} />}
+                    onClick={onDeleteHistory}
+                    loading={deleteHistoryPending}
+                    /* 编辑期间不给删除入口：手上有未保存的改动时删掉整条记录只会更乱。 */
+                    disabled={historyDetailLoading || isEditingMemberStats}
+                  >
+                    {t("common:action.delete")}
+                  </Button>
+                </div>
+                <Group gap={8} justify="flex-end">
+                  {/* 点「编辑」进入编辑态，点「保存改动」写回并退出；没改动时保存等于直接退出。 */}
+                  {!isEditingMemberStats ? (
+                    <Button
+                      variant="default"
+                      leftSection={<PencilIcon size={15} />}
+                      onClick={onBeginEditMemberStats}
+                      disabled={historyDetailLoading || historyRows.length === 0}
+                    >
+                      {t("history.editMemberData")}
+                    </Button>
+                  ) : (
+                    <>
+                      {hasUnsavedMemberChanges ? (
+                        <Text size="xs" c="dimmed">{t("history.unsavedChanges")}</Text>
+                      ) : null}
+                      <Button
+                        variant="subtle"
+                        onClick={onCancelEditMemberStats}
+                        disabled={saveMemberStatsPending}
+                      >
+                        {t("common:action.cancel")}
+                      </Button>
+                      <Button
+                        leftSection={<SaveIcon size={15} />}
+                        onClick={onSaveMemberStats}
+                        loading={saveMemberStatsPending}
+                        disabled={historyDetailLoading}
+                      >
+                        {t("history.saveChanges")}
+                      </Button>
+                    </>
+                  )}
+                </Group>
+              </footer>
+            ) : null}
           </Stack>
         ) : null}
-      </Stack>
-    </Modal>
+      </div>
+    </section>
   );
 }
 
-function MvpEntry({ icon, label, value }: { icon: ReactNode; label: string; value: string }) {
+function WarHistoryMemberCards({
+  detailTable,
+  label,
+}: {
+  detailTable: ReturnType<typeof useReactTable<HistoryMemberStat>>;
+  label: string;
+}) {
+  const headersByColumnId = new Map(
+    detailTable.getFlatHeaders().map((header) => [header.column.id, header]),
+  );
+
   return (
-    <div className="whd-mvp__entry">
-      <span className="whd-mvp__icon">{icon}</span>
-      <div>
-        <Text size="xs" c="dimmed" lh={1.2}>{label}</Text>
-        <Text size="sm" fw={600} lh={1.2}>{value}</Text>
-      </div>
+    <div className="whd-member-cards" role="list" aria-label={label}>
+      {detailTable.getRowModel().rows.map((row) => (
+        <article
+          key={row.id}
+          className="whd-member-card"
+          role="listitem"
+          data-testid={`war-history-member-card-${row.original.user_id}`}
+        >
+          <dl className="whd-member-card__fields">
+            {row.getVisibleCells().map((cell) => {
+              const header = headersByColumnId.get(cell.column.id);
+              return (
+                <div
+                  key={cell.id}
+                  className="whd-member-card__field"
+                  data-column-id={cell.column.id}
+                >
+                  <dt className="whd-member-card__label">
+                    {header && !header.isPlaceholder
+                      ? flexRender(header.column.columnDef.header, header.getContext())
+                      : cell.column.id}
+                  </dt>
+                  <dd className="whd-member-card__value">
+                    {flexRender(cell.column.columnDef.cell, cell.getContext())}
+                  </dd>
+                </div>
+              );
+            })}
+          </dl>
+        </article>
+      ))}
+    </div>
+  );
+}
+
+function MetricColumn({
+  label,
+  own,
+  enemy,
+  enemyLabel,
+}: ComparisonMetric & { enemyLabel: string }) {
+  const margin = own - enemy;
+  const outcome = margin > 0 ? "positive" : margin < 0 ? "negative" : "neutral";
+  const formattedMargin = margin > 0 ? `+${margin.toLocaleString()}` : margin.toLocaleString();
+
+  return (
+    <article className="whd-strip__cell">
+      <span className="whd-strip__label">{label}</span>
+      <span className="whd-strip__values">
+        <strong className="tabular-nums">{own.toLocaleString()}</strong>
+        <span className="tabular-nums" title={enemyLabel}>/ {enemy.toLocaleString()}</span>
+      </span>
+      <span className={`whd-strip__margin whd-strip__margin--${outcome} tabular-nums`}>
+        {formattedMargin}
+      </span>
+    </article>
+  );
+}
+
+function MvpRow({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="whd-mvp__row">
+      <span className="whd-mvp__label">{label}</span>
+      <span className="whd-mvp__value">{value}</span>
     </div>
   );
 }

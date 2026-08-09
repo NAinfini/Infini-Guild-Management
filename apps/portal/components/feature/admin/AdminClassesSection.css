@@ -1,0 +1,131 @@
+/* Class editing uses the shared admin master-detail workspace. */
+
+/* 拖拽清单行（.admin-md__row / .admin-md__grip）在 AdminPage.css，三张清单共用。 */
+
+/* Bound the form column so short controls retain readable proportions on wide screens. */
+.admin-classes__editor {
+  display: grid;
+  grid-template-columns: 180px minmax(0, 40rem);
+  gap: var(--space-xl);
+}
+
+.admin-classes__preview-panel {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  align-self: start;
+  gap: var(--space-sm);
+  padding: var(--space-lg);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-surface);
+  background:
+    linear-gradient(160deg, color-mix(in srgb, var(--brand-fill) 10%, transparent), transparent 55%),
+    var(--surface-sunken);
+}
+
+.admin-classes__preview-icon {
+  display: grid;
+  place-items: center;
+  width: 88px;
+  height: 88px;
+  margin-block: var(--space-md) var(--space-sm);
+}
+
+.admin-classes__local-preview {
+  width: 72px;
+  height: 72px;
+  padding: 3px;
+  border: 1px solid var(--border-strong);
+  border-radius: 50%;
+  background: var(--surface-raised);
+  object-fit: contain;
+}
+
+/* A short color value does not need the full form-column width. */
+.admin-classes__color-field {
+  max-inline-size: 20rem;
+}
+
+/* 图标格保持 44–56px 触控尺寸，列数随容器自动调整。 */
+.admin-classes__icon-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(44px, 56px));
+  gap: 6px;
+}
+
+.admin-classes__icon-option {
+  display: grid;
+  place-items: center;
+  aspect-ratio: 1;
+  min-width: 0;
+  padding: 0;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-control);
+  background: var(--surface-sunken);
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition:
+    color var(--motion-state),
+    border-color var(--motion-state),
+    background-color var(--motion-state),
+    transform var(--motion-state);
+}
+
+.admin-classes__icon-option:hover {
+  color: var(--text-primary);
+  border-color: var(--border-strong);
+  transform: translateY(-1px);
+}
+
+.admin-classes__icon-option--selected {
+  color: var(--brand-text);
+  border-color: var(--brand-fill);
+  background: color-mix(in srgb, var(--brand-fill) 15%, var(--surface-raised));
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--brand-fill) 32%, transparent);
+}
+
+/* 上传进度条挪进了常驻页脚，跟提交按钮同一行，所以要给它一个不抢位置的宽度。 */
+.admin-classes__save-progress {
+  flex: 1 1 auto;
+  align-self: center;
+  max-inline-size: 220px;
+}
+
+.admin-classes__upload-box {
+  padding: var(--space-md);
+  border: 1px dashed var(--border-strong);
+  border-radius: var(--radius-control);
+  background: var(--surface-sunken);
+}
+
+@media (max-width: 47.99em) {
+  .admin-classes__editor {
+    grid-template-columns: 1fr;
+  }
+
+  .admin-classes__preview-panel {
+    display: grid;
+    grid-template-columns: auto 1fr;
+    justify-items: start;
+    text-align: start;
+  }
+
+  .admin-classes__preview-panel > :first-child {
+    grid-column: 1 / -1;
+  }
+
+  .admin-classes__preview-icon {
+    grid-row: span 2;
+    width: 76px;
+    height: 76px;
+    margin: 0;
+  }
+
+  /* 图标格这里不用再压列数：auto-fill 本来就按容器宽算得出来。 */
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .admin-classes__icon-option {
+    transition: none;
+  }
+}

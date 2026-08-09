@@ -33,10 +33,45 @@ vi.mock("react-i18next", () => ({
       };
       return labels[key] ?? key;
     },
+    // 右栏那张产物卡走的是真的 EventCardView，它按 i18n.language 格式化日期。
+    i18n: { language: "en" },
   }),
 }));
 
 describe("RecurringTemplateFormModal", () => {
+  it("disables submission until title, start time, and event type are valid", async () => {
+    const user = userEvent.setup();
+
+    render(
+      <MantineProvider>
+        <RecurringTemplateFormModal
+          open
+          mode="create"
+          template={null}
+          confirmLoading={false}
+          onCancel={() => {}}
+          onSave={() => {}}
+        />
+      </MantineProvider>,
+    );
+
+    const createButton = screen.getByRole("button", { name: "Create recurring template" });
+    expect(createButton).toBeDisabled();
+
+    await user.type(screen.getByLabelText("Title"), "Daily Run");
+    expect(createButton).toBeDisabled();
+
+    await user.click(screen.getAllByLabelText("Type")[0]!);
+    await user.click(await screen.findByText("Social"));
+    expect(createButton).toBeEnabled();
+
+    await user.clear(screen.getByLabelText("Start Time"));
+    expect(createButton).toBeDisabled();
+
+    await user.type(screen.getByLabelText("Start Time"), "10:00");
+    expect(createButton).toBeEnabled();
+  });
+
   it("resets form fields when editing a different template", async () => {
     const user = userEvent.setup();
     const firstTemplate = {
@@ -124,7 +159,7 @@ describe("RecurringTemplateFormModal", () => {
 
     await user.type(screen.getByLabelText("Title"), "Daily Run");
     await user.click(screen.getAllByLabelText("Type")[0]!);
-    await user.click(await screen.findByText("common:eventType.social"));
+    await user.click(await screen.findByText("Social"));
     await user.type(screen.getByLabelText("Start Time"), "10:00");
     await user.click(screen.getByText("Auto archive"));
     await user.click(screen.getByRole("button", { name: "Create recurring template" }));

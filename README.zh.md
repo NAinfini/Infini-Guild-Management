@@ -2,18 +2,18 @@
 
 # Infini 公会管理门户
 
-**自托管的公会门户，用来管理成员、活动、战报、百科、媒体和后台工具。**
+**面向成员、活动、公会战、知识库、媒体、仓储与后台运营的自托管公会门户。**
 
-一个 Cloudflare Worker 加一个 React 应用，前后端共用 TypeScript 契约。
+React 门户与 Hono API 共用 TypeScript 契约，并一起部署到 Cloudflare Workers。
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](./LICENSE)
 [![TypeScript](https://img.shields.io/badge/TypeScript-6-blue?logo=typescript)](https://www.typescriptlang.org/)
-[![React](https://img.shields.io/badge/React-19-61dafb?logo=react)](https://react.dev/)
+[![React](https://img.shields.io/badge/React-19.2-61dafb?logo=react)](https://react.dev/)
 [![Cloudflare Workers](https://img.shields.io/badge/Cloudflare-Workers-f38020?logo=cloudflare)](https://workers.cloudflare.com/)
 
 [English](./README.md) | [中文](./README.zh.md)
 
-[安装指南](./SETUP.zh.md) · [贡献指南](./CONTRIBUTING.md) · [安全政策](./SECURITY.md)
+[安装指南](./SETUP.zh.md) · [产品边界](./PRODUCT.md) · [贡献指南](./CONTRIBUTING.md) · [安全政策](./SECURITY.md)
 
 </div>
 
@@ -21,295 +21,111 @@
 
 ## 项目概览
 
-Infini Guild Management 是一个面向游戏公会的全栈管理门户。它把成员资料、活动报名、公告、战报、百科、媒体和后台管理放在一个系统里，避免核心信息散落在表格、聊天置顶和临时工具中。
+Infini Guild Management 把公会日常工作集中在一个双语、响应式门户中，不再让信息散落在表格、聊天置顶、媒体目录和临时工具里。Worker 同时提供 SPA 与 API，因此常规部署只使用一个来源和一个公开网址。
 
-项目围绕“游戏定义”设计。职业、角色定位、成员属性、活动类型、战报指标和界面标签都尽量放在共享 TypeScript 配置里，而不是硬编码到各处。这样换游戏或调整规则时，改动范围更小，也更容易维护。
+## 面向用户的能力
 
-部署方式也比较直接：React 前端会打包成静态资源，由同一个 Cloudflare Worker 提供 API 和页面。一次部署，一个访问地址。
-
-## 功能
-
-| 模块 | 内容 |
+| 模块 | 当前能力 |
 | --- | --- |
-| 成员花名册 | 成员资料、职业、属性、简介、媒体和可用时间 |
-| 活动 | 周期活动、人数上限、报名锁定和参与者管理 |
-| 公告 | 富文本草稿、定时发布、归档状态和置顶 |
-| 公会战 | 战史、分队工具、成员数据、模板和分析 |
-| 百科 | 分类和富文本文章，用于沉淀公会资料 |
-| 相册 | 基于云存储的媒体上传和说明文字 |
-| 管理后台 | 角色、权限、邀请链接、审计日志和系统状态 |
-| 工具 | 头衔样式工具、骰子工具，以及开发中的装备毕业率计算器 |
-| 搜索 | `Cmd+K` / `Ctrl+K` 搜索门户内容 |
-| 实时推送 | 通过 Cloudflare Durable Objects 提供 WebSocket 更新 |
-| 本地化 | 内置英文和中文 |
-| 功能开关 | 在管理后台的站点配置中控制各模块 |
+| 仪表盘与花名册 | 公开仪表盘摘要；可搜索的成员卡片；职业、徽章、属性、可用时间、资料、图片、视频链接、头像和可选资料音频 |
+| 账号与个人资料 | 邀请注册、Cookie 会话、用户名/密码修改、资料编辑、缺席记录、媒体管理和资料称号样式 |
+| 活动 | 六种固定活动类型、周期模板、附件、人数与职业配额、报名、参与者管理、投票、抽奖和自动归档 |
+| 公告 | 带待关联行内媒体的富文本草稿、定时发布、置顶、归档和永久删除流程 |
+| 公会战 | 进行中的分队与候选池、成员移动和角色标签、结算、战史、批量编辑、导出和分析 |
+| 百科与图库 | 带修订和恢复能力的分类富文本文章；图库图片、外部视频、说明文字和管理操作 |
+| 仓储 | 登录后使用的仓库结构、分类、物品、图片、数量与出入库记录 |
+| 工具与设置 | 公开设置页和带骰子工具的工具页 |
+| 管理后台 | 成员、邀请、角色与权限、审计归档/日志、错误与服务状态、站点配置、职业、职业标签、徽章和维护操作 |
+| 搜索与更新 | 命令搜索，以及通过 Durable Object 提供的登录态 WebSocket 更新提示 |
 
-## 项目结构
+### 页面访问边界
+
+访客可读页面为 `/`、`/events`、`/roster`、`/announcements`、`/guild-war`、`/gallery`、`/wiki`、`/settings` 和 `/tools`。登录与邀请注册使用 `/login` 和 `/register`。`/profile`、`/storage`、`/storage/manage` 与 `/admin` 需要会话，所有高权限操作还会由 API 再次校验。
+
+## 配置边界
+
+“管理后台 → 站点配置”及其 API 契约负责站点名称与 Logo、功能开关、媒体策略、仓储策略和缺席策略。当前模块开关严格只有：
+
+```text
+announcements, events, guildWar, gallery, wiki, tools, storage
+```
+
+公会战分析设置使用单独的管理端点。
+
+会影响已持久化活动与公会战数据的规则由源码拥有：
+
+- 活动类型严格为 `weekly_mission`、`guild_war`、`social`、`poll`、`raffle`、`other`。
+- 公会战战果严格为 `win`、`loss`、`draw`。
+- KDA 公式为 `(kills + assists) / max(deaths, 1)`，消费者格式化前不会预先舍入。
+- 团队与成员战绩定义只有一个源码拥有的 `name`，没有本地化 `labels` 或 `precision` 设置。
+
+管理后台与站点配置都不能编辑这些规则。D1 不包含运行时游戏规则列或表。修改已持久化契约需要协调代码与数据迁移。
+
+## 架构与技术栈
 
 ```text
 apps/
-├── shared/   Zod schema、共享类型、常量、游戏配置、API 契约
+├── shared/   Zod schema、共享类型、限制与源码拥有的领域契约
 ├── worker/   Cloudflare Workers 上的 Hono API，使用 D1、R2、Durable Objects
 └── portal/   React SPA，使用 TanStack Router、TanStack Query、Mantine、Zustand
 ```
 
-`shared` 是前后端的契约层。后端路由使用共享 Zod schema 校验数据，前端查询使用同一套类型，游戏相关逻辑也集中在这里。
-
-## 技术栈
-
-| 层 | 技术 |
+| 层 | 当前技术 |
 | --- | --- |
-| 前端 | React 19、Vite 8、TanStack Router、TanStack Query、Mantine 8、Tailwind CSS 4、Zustand 5 |
-| 富文本和图表 | TipTap 3、ECharts 6 |
-| 后端 | Cloudflare Workers 上的 Hono、Drizzle ORM、Cloudflare D1 |
-| 存储 | Cloudflare R2，用于媒体和审计归档 |
-| 实时通信 | Cloudflare Durable Objects + WebSocket |
-| 校验 | Zod 4，前后端共用 |
-| 表单 | react-hook-form + Zod resolvers |
-| 本地化 | i18next 和 react-i18next |
+| 前端 | React 19.2、Vite 8.2、Mantine 9.5、TanStack Router/Query、Zustand 5、原生 CSS + 自定义属性；不使用 Tailwind |
+| 语言与校验 | 门户和 Worker 共用 TypeScript 6 与 Zod 4 |
+| 内容与图表 | TipTap 3、ECharts 6 |
+| 后端与数据 | Hono、Drizzle ORM、Cloudflare Workers、D1 |
+| 对象与实时通信 | 一个 R2 `MEDIA` 存储桶和一个 WebSocket Durable Object |
 
-## 快速开始
+唯一的 `MEDIA` 存储桶同时保存持久化内容媒体与审计归档。每个月的审计归档都由同一桶中的权威 `audit-archive/.../manifest.json` 提交；不存在第二个归档桶。
 
-### 环境要求
+持久化图片必须同时具备 WebP `full` 与 `view` 变体，资料音频使用 Ogg/Opus。Worker 会在关联前验证字节、尺寸和完整变体；SVG 与 GIF 不作为图片接收。完整的 D1/R2 契约见 [媒体架构](./docs/media-architecture.md)。
 
-- Node.js 24 LTS（24.18.0 或更高版本）
-- pnpm 11.17.0
-- Cloudflare 账号，仅部署环境需要
+由媒体支持的领域对象会先创建所属父记录和业务子记录，再关联媒体；关联失败时通过删除该父记录进行补偿。删除时先处理非媒体关系，再直接删除父记录，由 D1 生命周期触发器移除关联并安排资产过期。R2 对象键只从不透明的媒体 ID 与固定的 `full`/`view` 变体名派生，绝不使用领域 ID、文件名或上传路径。
 
-本地开发不需要 Cloudflare 账号。
+## API 范围
 
-### 本地运行
+所有 HTTP API 都位于 `/api/` 下；登录态使用 HTTP-only session cookie。
 
-```bash
-pnpm install
-pnpm setup:local
-pnpm dev
-```
-
-`pnpm setup:local` 会创建已被 Git 忽略的本地配置和随机开发密钥，且不会覆盖已有文件。`pnpm dev` 随后会重建本地 D1 数据库，启动 Worker 和前端开发服务器，并写入 mock 数据。
-
-打开 `http://localhost:5173`，使用下面任意账号登录：
-
-| 用户名 | 密码 | 角色 |
-| --- | --- | --- |
-| `admin` | `admin123` | 管理员 |
-| `mod_1` | `moderator123` | 管理组 |
-| `member_01` | `member1234` | 普通成员 |
-
-## 常用命令
-
-| 命令 | 用途 |
+| 前缀 | 能力 |
 | --- | --- |
-| `pnpm setup:local` | 安全创建本地私人配置和随机密钥 |
-| `pnpm setup:admin -- --env=production` | 在空的生产数据库创建首位管理员 |
-| `pnpm config:check -- --env=production` | 部署前检查绑定和占位符 |
-| `pnpm dev` | 重建本地数据库，启动 Worker 和前端，并灌入数据 |
-| `pnpm dev:all` | 只启动 Worker 和前端，不重建或灌数据 |
-| `pnpm dev:worker` | 启动 Worker API，地址为 `http://127.0.0.1:8787` |
-| `pnpm dev:portal` | 启动 Vite 前端开发服务器 |
-| `pnpm build` | 构建前端 SPA |
-| `pnpm build:worker` | 预演 Worker 部署 |
-| `pnpm deploy:production` | 预检、构建并部署生产站点 |
-| `pnpm typecheck` | 运行 TypeScript 检查 |
-| `pnpm lint` | 检查 portal 和 worker 代码 |
-| `pnpm test` | 运行 Vitest |
-| `pnpm test:worker` | 运行带种子数据的 Worker 集成测试 |
-| `pnpm smoke:pages` | 启动 Worker 和前端后，对关键页面做冒烟测试 |
-| `pnpm db:generate` | 生成 Drizzle 迁移 |
-| `pnpm db:studio` | 打开 Drizzle Studio |
-| `pnpm db:mock:rebuild` | 删除并重建本地 D1 数据库 |
-| `pnpm db:mock:init` | 给本地 D1 应用迁移 |
-| `pnpm db:mock:seed` | 通过运行中的 Worker 写入本地测试数据 |
+| `/api/health`、`/api/site-config` | 健康检查与公开站点元数据/Logo |
+| `/api/auth` | 登录、退出、邀请校验/注册、会话和用户名检查 |
+| `/api/dashboard`、`/api/search` | 仪表盘摘要与门户搜索 |
+| `/api/users` | 花名册、资料、属性、缺席、凭据和资料媒体 |
+| `/api/events` | 活动、周期模板、附件、报名、投票、抽奖和参与者 |
+| `/api/announcements` | 公告内容、图片、发布、归档和删除 |
+| `/api/guild-war` | 当前战况、分队、战史、成员数据、导出和分析 |
+| `/api/wiki`、`/api/gallery` | 百科分类/文章/修订/媒体，以及图库图片/视频 |
+| `/api/media` | 经 D1 授权的规范 R2 媒体 `view`/`full` 变体读取 |
+| `/api/storage` | 仓库结构、物品、图片、数量和出入库记录 |
+| `/api/classes`、`/api/class-tags`、`/api/badges` | 运行时目录和徽章授予 |
+| `/api/admin`、`/api/admin/maintenance` | 用户、邀请、角色、站点配置、分析设置、审计/错误/状态数据、系统测试和维护 |
+| `/ws` | Durable Object 支持的登录态 WebSocket 入口 |
 
-## 适配其他游戏
+写操作必须通过来源与 `X-Requested-With` 检查。Worker 还会分别限制认证、读取、写入、上传和凭据修改的请求速率。
 
-大部分游戏相关行为都从 active game definition 开始。复制现有游戏定义，改成你的规则，再把它导出为 active game。
+## 定时维护
 
-### 1. 创建游戏定义
-
-复制 `apps/shared/games/definitions/yan-yun.ts`，例如新建：
-
-```typescript
-// apps/shared/games/definitions/my-game.ts
-import type { GameDefinition } from "../types";
-
-export const myGame: GameDefinition = {
-  id: "my-game",
-  name: "我的游戏",
-
-  classes: [
-    { id: "warrior", label: "战士", colorGroup: "red", role: "tank" },
-    { id: "mage", label: "法师", colorGroup: "blue", role: "dps" },
-    { id: "priest", label: "牧师", colorGroup: "green", role: "healer" },
-  ],
-
-  classColorMapping: {
-    warrior: "var(--mantine-color-red-6)",
-    mage: "var(--mantine-color-blue-6)",
-    priest: "var(--mantine-color-green-6)",
-  },
-
-  roles: [
-    { id: "tank", label: "坦克", color: "blue", avatarColor: "#4dabf7", icon: "IconShield" },
-    { id: "dps", label: "输出", color: "red", avatarColor: "#ff6b6b", icon: "IconSword" },
-    { id: "healer", label: "治疗", color: "green", avatarColor: "#51cf66", icon: "IconHeart" },
-  ],
-  defaultRole: "dps",
-
-  profileStats: [
-    { key: "power", label: "战力", type: "number", sortable: true },
-  ],
-
-  war: {
-    enabled: true,
-    featureLabel: "guild-war:title",
-    resultOptions: ["victory", "defeat", "draw"],
-    teamObjectives: [
-      { key: "score", label: "guild-war:conclude.score", hasBothSides: true },
-    ],
-    memberStats: [
-      { key: "kills", label: "guild-war:stats.kills", aggregations: ["total", "average", "best"] },
-      { key: "deaths", label: "guild-war:stats.deaths", aggregations: ["total", "average", "best"], lowerIsBetter: true },
-      { key: "damage", label: "guild-war:stats.damage", aggregations: ["total", "average", "best"] },
-      { key: "healing", label: "guild-war:stats.healing", aggregations: ["total", "average", "best"] },
-    ],
-    computedStats: [
-      {
-        key: "kda",
-        label: "guild-war:stats.kda",
-        compute: (s) => (s.kills + (s.assists ?? 0)) / Math.max(s.deaths, 1),
-      },
-    ],
-    mvpCategories: ["kills", "damage", "healing"],
-    defaultTeamNames: ["甲队", "乙队"],
-    modifierWeights: { kills: 1, damage: 1, healing: 1 },
-  },
-
-  eventTypes: [
-    { id: "guild_war", label: "公会战", icon: "IconSwords", color: "red" },
-    { id: "raid", label: "副本", icon: "IconTarget", color: "orange" },
-    { id: "social", label: "日常", icon: "IconUsers", color: "blue" },
-  ],
-};
-```
-
-### 2. 切换 active game
-
-```typescript
-// apps/shared/games/index.ts
-export { myGame as activeGame } from "./definitions/my-game";
-```
-
-### 3. 补充翻译
-
-把游戏定义里用到的标签补到相关 i18n 文件，例如：
-
-- `apps/portal/i18n/en/guild-war.json`
-- `apps/portal/i18n/zh/guild-war.json`
-
-### 4. 修改品牌信息
-
-在本地 `apps/worker/wrangler.jsonc` 中设置站点名称、Logo 路径和前端来源（先从 `wrangler.example.jsonc` 复制）：
-
-```jsonc
-"vars": {
-  "SITE_NAME": "你的公会名",
-  "SITE_LOGO_URL": "/your-logo.webp",
-  "PORTAL_ORIGIN": "https://your-domain.com"
-}
-```
-
-Logo 可以放在 `apps/portal/public/` 下，也可以替换现有的 `guild-logo.webp`。
-
-### 5. 关闭不需要的模块
-
-站点管理员无需改代码。登录后进入 **管理后台 → 站点配置 → 功能** 即可修改模块开关。
-
-新数据库记录使用的代码默认值位于 `apps/shared/config/features.ts`：
-
-```typescript
-export const DEFAULT_FEATURE_FLAGS: FeatureFlags = {
-  announcements: true,
-  events: true,
-  guildWar: true,
-  gallery: true,
-  wiki: true,
-  tools: true,
-  equipmentCalc: true,
-  storage: true,
-};
-```
-
-## 部署
-
-请按面向新手的[自托管安装指南](./SETUP.zh.md)操作。指南包含 Cloudflare 登录、D1/R2、密钥、数据库迁移、首位管理员、`workers.dev`、自定义域名、更新和故障排查。
-
-首次设置完成后，生产更新使用：
-
-```bash
-pnpm exec wrangler d1 migrations apply DB --remote --env production --config apps/worker/wrangler.jsonc
-pnpm deploy:production
-```
-
-项目不会创建任何默认生产密码。迁移完成后，仅运行一次 `pnpm setup:admin -- --env=production` 来安全创建首位管理员。
-
-## 环境变量
-
-### Worker (`apps/worker/wrangler.example.jsonc`)
-
-| 变量 | 说明 |
+| 周期 | 当前任务 |
 | --- | --- |
-| `ENVIRONMENT` | `development`、`staging` 或 `production` |
-| `PORTAL_ORIGIN` | 单独托管前端时允许的来源；同域部署请留空 |
-| `SIGNING_SECRET` | 审计归档下载 token 的 HMAC 密钥 |
-| `SITE_NAME` | UI 中显示的公会名称 |
-| `SITE_LOGO_URL` | 前端提供的 Logo 图片路径 |
+| 每天 00:00 UTC | 审计归档、错误日志清理 |
+| 每 15 分钟 | 活动实例生成、抽奖开奖、会话清理、定时公告发布、活动自动归档，以及过期无关联媒体清理 |
 
-### Portal (`apps/portal/.env.local`)
+媒体清理由定时维护执行：只选择 D1 中已过期且没有关联的资产，并按 `media_variants` 记录的精确 R2 键删除；不会从路径猜测归属，也不会把桶扫描结果当成授权依据。管理台的 API 测试控制台始终可用，由管理员权限把关：测试运行创建的每一个夹具都登记在服务端运行注册表里，运行结束时按精确 ID 删除。
 
-| 变量 | 默认值 | 说明 |
-| --- | --- | --- |
-| `VITE_WORKER_API_ORIGIN` | `http://127.0.0.1:8787` | Vite 开发代理使用的 Worker API 来源 |
+## 安装与部署
 
-## API 概览
+[SETUP.zh.md](./SETUP.zh.md) 是环境要求、本地开发、首次生产初始化、Cloudflare 资源、迁移、部署、更新与故障排查的唯一事实源。对应英文指南为 [SETUP.md](./SETUP.md)。
 
-所有 API 都在 `/api/` 下。登录态使用 HTTP-only session cookie。
+核心迁移是全新的预发布 schema 基线。首次发布前，获准的 schema 变更直接收敛到该基线；发布后的变更才通过不可修改的增量迁移交付。完整政策见安装指南，包括如何在 Workers 免费版上运行、升级后应调高哪些配置。
 
-| 路由 | 说明 |
-| --- | --- |
-| `/api/auth` | 登录、邀请注册、会话检查、用户名检查 |
-| `/api/users` | 成员花名册、个人资料和资料媒体 |
-| `/api/events` | 活动、周期规则、报名、投票和参与者 |
-| `/api/announcements` | 富文本公告和发布状态 |
-| `/api/guild-war` | 战史、分队、数据、分析和模板 |
-| `/api/wiki` | 百科分类和文章 |
-| `/api/gallery` | 相册条目和媒体上传 |
-| `/api/admin` | 用户、角色、邀请、审计日志和状态 |
-| `/api/game-data` | 装备计算器游戏数据和管理员版本管理 |
-| `/ws` | Durable Object 支持的 WebSocket 入口 |
+## 安全
 
-角色默认顺序为 `admin` > `moderator` > `member`。管理后台也支持自定义角色。
+服务端权限校验是权威来源。会话使用 HTTP-only Cookie；富文本经过清洗；安全响应头包含 CSP、HSTS、禁止嵌入与 `nosniff`。`SIGNING_SECRET` 同时保护审计归档下载 token 和 Worker 到 Durable Object 的内部推送发布。
 
-限流按路由组划分：认证、写操作、上传和 API 读取有各自的限制。
-
-## 安全说明
-
-- 会话保存在 HTTP-only cookie 中。
-- 前端 RBAC 只负责交互体验，后端 RBAC 才是权威校验。
-- 写操作需要 `X-Requested-With` CSRF 请求头。
-- 密码输入限制为 128 字符，避免 PBKDF2 被滥用。
-- 富文本 HTML 展示前会经过清洗。
-- 登录失败返回通用错误，避免用户名枚举。
-- 安全响应头包括 HSTS、CSP、`X-Frame-Options: DENY` 和 `nosniff`。
-
-发现安全漏洞时，请按 [SECURITY.md](./SECURITY.md) 私下报告。
-
-## 定时任务
-
-| 周期 | 任务 |
-| --- | --- |
-| 每天 00:00 UTC | 生成未来活动实例、清理会话、归档审计日志、删除孤立媒体 |
-| 每 15 分钟 | 自动归档过期活动、发布定时公告、过期旧公告 |
+发现漏洞时，请按 [SECURITY.md](./SECURITY.md) 私下报告。
 
 ## 开源协议
 

@@ -1,7 +1,7 @@
 import { type Event, type EventParticipant, type EventRaffleWinner, type RecurringTemplate, createEventSchema, createTemplateSchema, eventParticipantsBatchSchema, pollVoteSchema, updateEventSchema, updateTemplateSchema } from "@guild/shared";
 import type { z } from "zod";
 import { apiRequest } from "../client";
-import { convertFilesForUpload } from "@guild/shared/utils/media";
+import { appendImageUploadVariants, convertImagesForUpload } from "@guild/shared/utils/media";
 
 export type CreateEventPayload = z.input<typeof createEventSchema>;
 export type UpdateEventPayload = z.input<typeof updateEventSchema>;
@@ -36,12 +36,10 @@ export async function createEvent(payload: CreateEventPayload, files?: File[]): 
       bodyJson,
     });
   }
-  const converted = await convertFilesForUpload(files);
+  const converted = await convertImagesForUpload(files);
   const formData = new FormData();
   formData.append("data", JSON.stringify(bodyJson));
-  for (const file of converted) {
-    formData.append("files", file);
-  }
+  appendImageUploadVariants(formData, converted);
   return apiRequest<Event>("/api/events", {
     method: "POST",
     body: formData,
@@ -68,13 +66,11 @@ export function deleteEvent(eventId: string): Promise<{ ok: true }> {
   });
 }
 
-export async function uploadEventImages(eventId: string, files: File[]): Promise<{ keys: string[]; attachments: string[] }> {
-  const converted = await convertFilesForUpload(files);
+export async function uploadEventImages(eventId: string, files: File[]): Promise<{ media_ids: string[] }> {
+  const converted = await convertImagesForUpload(files);
   const formData = new FormData();
-  for (const file of converted) {
-    formData.append("files", file);
-  }
-  return apiRequest<{ keys: string[]; attachments: string[] }>(`/api/events/${eventId}/images`, {
+  appendImageUploadVariants(formData, converted);
+  return apiRequest<{ media_ids: string[] }>(`/api/events/${eventId}/images`, {
     method: "POST",
     body: formData,
   });

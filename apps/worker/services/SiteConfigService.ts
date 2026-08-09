@@ -1,106 +1,127 @@
 import {
-  DEFAULT_FEATURE_FLAGS,
-  DEFAULT_SITE_ABSENCE_POLICY,
-  DEFAULT_SITE_ANALYTICS_SETTINGS,
-  DEFAULT_SITE_MEDIA_POLICY,
-  DEFAULT_SITE_STORAGE_POLICY,
   adminSiteConfigResponseSchema,
+  analyticsSettingsSchema,
   publicSiteConfigSchema,
-  siteAbsencePolicySchema,
   siteAnalyticsSettingsSchema,
   siteConfigSchema,
-  siteMediaPolicySchema,
-  siteStoragePolicySchema,
   updateSiteConfigSchema,
   type AdminSiteConfigResponse,
+  type FeatureFlags,
+  type JsonValue,
   type PublicSiteConfig,
+  type SiteAbsencePolicy,
+  type SiteAnalyticsSettings,
+  type SiteMediaPolicy,
+  type SiteStoragePolicy,
   type UpdateSiteConfigPayload,
 } from "@guild/shared";
-import { featureFlagsSchema } from "@guild/shared/config/features";
 import { eq } from "drizzle-orm";
 import type { DrizzleD1Database } from "drizzle-orm/d1";
 import { siteConfig } from "../db/schema";
-import { logger } from "../utils/logger";
 import type { WriteAuditLogInput } from "./audit";
-import { captureUploadValidation } from "./media";
+import type { MediaService, ParsedImageMediaUpload } from "./MediaService";
+import { MediaValidationError } from "./MediaService";
 import { err, ok, type ServiceResult } from "./result";
 
 type DrizzleDb = DrizzleD1Database<Record<string, unknown>>;
+type SiteConfigRow = typeof siteConfig.$inferSelect;
 
 type SiteConfigDeps = {
+  mediaService: MediaService;
   writeAuditLog: (input: WriteAuditLogInput) => Promise<void>;
-  storeSiteLogo?: (file: File) => Promise<string>;
-  deleteMediaObject?: (key: string) => Promise<void>;
   now?: () => Date;
-  envSiteName: string;
   envSiteLogoUrl: string;
 };
 
 const DEFAULT_ID = "default";
-const SITE_LOGO_ROUTE = "/api/site-config/logo";
-type SiteConfigRow = typeof siteConfig.$inferSelect;
 
-function parseJsonOrDefault<T>(
-  value: string | undefined | null,
-  schema: { parse(input: unknown): T },
-  fallback: T,
-  field: string,
-): T {
-  // Missing value is the legitimate pre-seed default, not an error.
-  if (!value) return fallback;
-  try {
-    return schema.parse(JSON.parse(value) as unknown);
-  } catch (error) {
-    // Logged rather than swallowed: without this, the admin console silently
-    // renders defaults over a corrupt row, and the next save writes those
-    // defaults back — destroying whatever the real values were.
-    logger.error("site_config column is corrupt; serving defaults", {
-      field,
-      reason: error instanceof Error ? error.message : String(error),
-    });
-    return fallback;
-  }
-}
-
-function mapSiteConfig(row: SiteConfigRow | null, deps: SiteConfigDeps) {
-  return siteConfigSchema.parse({
-    site_name: row?.siteName ?? deps.envSiteName,
-    site_logo_url: row?.siteLogoUrl ?? deps.envSiteLogoUrl,
-    features: parseJsonOrDefault(row?.featureFlagsJson, featureFlagsSchema, DEFAULT_FEATURE_FLAGS, "feature_flags_json"),
-    media_policy: parseJsonOrDefault(row?.mediaPolicyJson, siteMediaPolicySchema, DEFAULT_SITE_MEDIA_POLICY, "media_policy_json"),
-    storage_policy: parseJsonOrDefault(row?.storagePolicyJson, siteStoragePolicySchema, DEFAULT_SITE_STORAGE_POLICY, "storage_policy_json"),
-    absence_policy: parseJsonOrDefault(row?.absencePolicyJson, siteAbsencePolicySchema, DEFAULT_SITE_ABSENCE_POLICY, "absence_policy_json"),
-    analytics_settings: parseJsonOrDefault(row?.analyticsSettingsJson, siteAnalyticsSettingsSchema, DEFAULT_SITE_ANALYTICS_SETTINGS, "analytics_settings_json"),
-    created_at: row?.createdAt ?? null,
-    updated_at: row?.updatedAt ?? null,
-  });
-}
-
-function normalizeAnalyticsWeights(settings: ReturnType<typeof siteAnalyticsSettingsSchema.parse>) {
-  const weightSum = Object.values(settings.modifier_weights).reduce((sum, value) => sum + value, 0);
-  if (weightSum <= 0) return settings;
+function mapFeatureFlags(row: SiteConfigRow): FeatureFlags {
   return {
-    ...settings,
-    modifier_weights: Object.fromEntries(
-      Object.entries(settings.modifier_weights).map(([key, value]) => [key, Number((value / weightSum).toFixed(4))]),
-    ),
+    announcements: row.featureAnnouncementsEnabled,
+    events: row.featureEventsEnabled,
+    guildWar: row.featureGuildWarEnabled,
+    gallery: row.featureGalleryEnabled,
+    wiki: row.featureWikiEnabled,
+    tools: row.featureToolsEnabled,
+    storage: row.featureStorageEnabled,
   };
 }
 
-function siteLogoUrlForKey(key: string): string {
-  return `${SITE_LOGO_ROUTE}?key=${encodeURIComponent(key)}`;
+function mapMediaPolicy(row: SiteConfigRow): SiteMediaPolicy {
+  return {
+    max_file_size_bytes: {
+      site_logo: row.mediaSiteLogoMaxBytes,
+      class_icon: row.mediaClassIconMaxBytes,
+      profile_image: row.mediaProfileImageMaxBytes,
+      profile_audio: row.mediaProfileAudioMaxBytes,
+      announcement_image: row.mediaAnnouncementImageMaxBytes,
+      wiki_image: row.mediaWikiImageMaxBytes,
+      event_image: row.mediaEventImageMaxBytes,
+      gallery_image: row.mediaGalleryImageMaxBytes,
+      storage_image: row.mediaStorageImageMaxBytes,
+    },
+    quotas: {
+      profile: row.mediaProfileQuota,
+      announcement: row.mediaAnnouncementQuota,
+      gallery: row.mediaGalleryQuota,
+      wiki: row.mediaWikiQuota,
+    },
+  };
 }
 
-function siteLogoKeyFromUrl(url: string | null | undefined): string | null {
-  if (!url) return null;
-  try {
-    const parsed = new URL(url, "https://guild.local");
-    if (parsed.pathname !== SITE_LOGO_ROUTE) return null;
-    const key = parsed.searchParams.get("key");
-    return key?.startsWith("site/logo/") ? key : null;
-  } catch {
-    return null;
-  }
+function mapStoragePolicy(row: SiteConfigRow): SiteStoragePolicy {
+  return { images_per_item: row.storageImagesPerItem };
+}
+
+function mapAbsencePolicy(row: SiteConfigRow): SiteAbsencePolicy {
+  return {
+    max_span_days: row.absenceMaxSpanDays,
+    max_entries_per_user: row.absenceMaxEntriesPerUser,
+  };
+}
+
+function mapAnalyticsSettings(row: SiteConfigRow): SiteAnalyticsSettings {
+  return siteAnalyticsSettingsSchema.parse({
+    reference_duration_minutes: row.analyticsReferenceDurationMinutes,
+    modifier_weights: {
+      kills: row.analyticsKillsWeight,
+      towers: row.analyticsTowersWeight,
+      base_hp: row.analyticsBaseHpWeight,
+      credits: row.analyticsCreditsWeight,
+      distance: row.analyticsDistanceWeight,
+    },
+  });
+}
+
+function mapSiteConfig(row: SiteConfigRow, deps: SiteConfigDeps, logoMediaId: string | null) {
+  return siteConfigSchema.parse({
+    site_name: row.siteName,
+    site_logo_media_id: logoMediaId,
+    default_site_logo_url: deps.envSiteLogoUrl,
+    features: mapFeatureFlags(row),
+    media_policy: mapMediaPolicy(row),
+    storage_policy: mapStoragePolicy(row),
+    absence_policy: mapAbsencePolicy(row),
+    analytics_settings: mapAnalyticsSettings(row),
+    created_at: row.createdAt,
+    updated_at: row.updatedAt,
+  });
+}
+
+function normalizeAnalyticsWeights(settings: SiteAnalyticsSettings): SiteAnalyticsSettings {
+  const weights = settings.modifier_weights;
+  const total = weights.kills + weights.towers + weights.base_hp + weights.credits + weights.distance;
+  const normalized = (weight: number) => Number((weight / total).toFixed(4));
+  return {
+    ...settings,
+    modifier_weights: {
+      kills: normalized(weights.kills),
+      towers: normalized(weights.towers),
+      base_hp: normalized(weights.base_hp),
+      credits: normalized(weights.credits),
+      distance: normalized(weights.distance),
+    },
+  };
 }
 
 export class SiteConfigService {
@@ -108,48 +129,59 @@ export class SiteConfigService {
 
   async getPublicConfig(): Promise<ServiceResult<PublicSiteConfig>> {
     const row = await this.getSiteRow();
-    return ok(publicSiteConfigSchema.parse(mapSiteConfig(row, this.deps)));
+    const logoMediaId = (await this.deps.mediaService.listLinkedMediaIds("site_config", DEFAULT_ID, "logo"))[0] ?? null;
+    return ok(publicSiteConfigSchema.parse(mapSiteConfig(row, this.deps, logoMediaId)));
   }
 
   async getAdminConfig(): Promise<ServiceResult<AdminSiteConfigResponse>> {
-    const siteRow = await this.getSiteRow();
+    const row = await this.getSiteRow();
+    const logoMediaId = (await this.deps.mediaService.listLinkedMediaIds("site_config", DEFAULT_ID, "logo"))[0] ?? null;
     return ok(adminSiteConfigResponseSchema.parse({
-      site: mapSiteConfig(siteRow, this.deps),
+      site: mapSiteConfig(row, this.deps, logoMediaId),
     }));
   }
 
-  async getAnalyticsSettings() {
-    const row = await this.getSiteRow();
-    return ok(mapSiteConfig(row, this.deps).analytics_settings);
+  async getAnalyticsSettings(): Promise<ServiceResult<SiteAnalyticsSettings>> {
+    return ok(mapAnalyticsSettings(await this.getSiteRow()));
   }
 
-  async updateAnalyticsSettings(actorId: string, input: Record<string, unknown>) {
-    const previous = await this.getAnalyticsSettings();
-    const parsed = siteAnalyticsSettingsSchema.partial().safeParse(input);
+  async updateAnalyticsSettings(
+    actorId: string,
+    input: Record<string, unknown>,
+  ): Promise<ServiceResult<SiteAnalyticsSettings>> {
+    const previous = mapAnalyticsSettings(await this.getSiteRow());
+    const parsed = analyticsSettingsSchema.safeParse(input);
     if (!parsed.success) return err("VALIDATION_ERROR", "Invalid analytics settings payload", parsed.error.flatten());
-    const defaults = previous.ok ? previous.data : DEFAULT_SITE_ANALYTICS_SETTINGS;
-    const next = normalizeAnalyticsWeights(siteAnalyticsSettingsSchema.parse({
-      reference_duration_minutes: parsed.data.reference_duration_minutes ?? defaults.reference_duration_minutes,
+
+    const merged = siteAnalyticsSettingsSchema.safeParse({
+      reference_duration_minutes: parsed.data.reference_duration_minutes ?? previous.reference_duration_minutes,
       modifier_weights: {
-        ...defaults.modifier_weights,
+        ...previous.modifier_weights,
         ...(parsed.data.modifier_weights ?? {}),
       },
-    }));
-    const nowIso = this.nowIso();
-    await this.ensureSiteRow();
+    });
+    if (!merged.success) return err("VALIDATION_ERROR", "Invalid analytics settings payload", merged.error.flatten());
+    const next = normalizeAnalyticsWeights(merged.data);
+
     await this.db.update(siteConfig).set({
-      analyticsSettingsJson: JSON.stringify(next),
-      updatedAt: nowIso,
+      analyticsReferenceDurationMinutes: next.reference_duration_minutes,
+      analyticsKillsWeight: next.modifier_weights.kills,
+      analyticsTowersWeight: next.modifier_weights.towers,
+      analyticsBaseHpWeight: next.modifier_weights.base_hp,
+      analyticsCreditsWeight: next.modifier_weights.credits,
+      analyticsDistanceWeight: next.modifier_weights.distance,
+      updatedAt: this.nowIso(),
     }).where(eq(siteConfig.id, DEFAULT_ID));
 
-    const oldSettings = previous.ok ? previous.data : null;
-    const diff: Record<string, { from: unknown; to: unknown }> = {};
-    if (oldSettings) {
-      for (const key of Object.keys(next) as Array<keyof typeof next>) {
-        if (JSON.stringify(oldSettings[key]) !== JSON.stringify(next[key])) {
-          diff[key] = { from: oldSettings[key], to: next[key] };
-        }
-      }
+    const diff: Record<string, { from: JsonValue; to: JsonValue }> = {};
+    if (previous.reference_duration_minutes !== next.reference_duration_minutes) {
+      diff.reference_duration_minutes = {
+        from: previous.reference_duration_minutes,
+        to: next.reference_duration_minutes,
+      };
+    }
+    if (JSON.stringify(previous.modifier_weights) !== JSON.stringify(next.modifier_weights)) {
+      diff.modifier_weights = { from: previous.modifier_weights, to: next.modifier_weights };
     }
     await this.deps.writeAuditLog({
       entityType: "analytics_settings",
@@ -157,155 +189,135 @@ export class SiteConfigService {
       actorId,
       entityId: DEFAULT_ID,
       diffTitle: "Analytics",
-      detailText: Object.keys(diff).length > 0 ? JSON.stringify(diff) : null,
+      detail: Object.keys(diff).length > 0 ? diff : null,
     });
     return ok(next);
   }
 
-  async updateAdminConfig(actorId: string, input: UpdateSiteConfigPayload): Promise<ServiceResult<AdminSiteConfigResponse>> {
-    const siteInput = {
-      ...(input.site_name !== undefined ? { site_name: input.site_name } : {}),
-      ...(input.features !== undefined ? { features: input.features } : {}),
-      ...(input.media_policy !== undefined ? { media_policy: input.media_policy } : {}),
-      ...(input.storage_policy !== undefined ? { storage_policy: input.storage_policy } : {}),
-      ...(input.absence_policy !== undefined ? { absence_policy: input.absence_policy } : {}),
-    };
-    const siteFieldCount = Object.keys(siteInput).length;
-    if (siteFieldCount > 0) {
-      const sitePatchInput = updateSiteConfigSchema.safeParse(siteInput);
-      if (!sitePatchInput.success) return err("VALIDATION_ERROR", "Invalid site config payload", sitePatchInput.error.flatten());
-    }
+  async updateAdminConfig(
+    actorId: string,
+    input: UpdateSiteConfigPayload,
+  ): Promise<ServiceResult<AdminSiteConfigResponse>> {
+    const parsed = updateSiteConfigSchema.safeParse(input);
+    if (!parsed.success) return err("VALIDATION_ERROR", "Invalid site config payload", parsed.error.flatten());
+
     const previous = await this.getSiteRow();
-    const nowIso = this.nowIso();
-    const sitePatch: Partial<typeof siteConfig.$inferInsert> = { updatedAt: nowIso };
-    if (input.site_name !== undefined) sitePatch.siteName = input.site_name.trim();
-    if (input.features !== undefined) {
-      const current = mapSiteConfig(previous, this.deps);
-      sitePatch.featureFlagsJson = JSON.stringify({ ...current.features, ...input.features });
+    const logoMediaId = (await this.deps.mediaService.listLinkedMediaIds("site_config", DEFAULT_ID, "logo"))[0] ?? null;
+    const current = mapSiteConfig(previous, this.deps, logoMediaId);
+    const sitePatch: Partial<typeof siteConfig.$inferInsert> = { updatedAt: this.nowIso() };
+
+    if (parsed.data.site_name !== undefined) sitePatch.siteName = parsed.data.site_name;
+    if (parsed.data.features !== undefined) {
+      const features = { ...current.features, ...parsed.data.features };
+      Object.assign(sitePatch, {
+        featureAnnouncementsEnabled: features.announcements,
+        featureEventsEnabled: features.events,
+        featureGuildWarEnabled: features.guildWar,
+        featureGalleryEnabled: features.gallery,
+        featureWikiEnabled: features.wiki,
+        featureToolsEnabled: features.tools,
+        featureStorageEnabled: features.storage,
+      });
     }
-    if (input.media_policy !== undefined) {
-      const current = mapSiteConfig(previous, this.deps);
-      sitePatch.mediaPolicyJson = JSON.stringify({
-        ...current.media_policy,
-        ...input.media_policy,
+    if (parsed.data.media_policy !== undefined) {
+      const mediaPolicy = {
         max_file_size_bytes: {
           ...current.media_policy.max_file_size_bytes,
-          ...(input.media_policy.max_file_size_bytes ?? {}),
+          ...(parsed.data.media_policy.max_file_size_bytes ?? {}),
         },
         quotas: {
           ...current.media_policy.quotas,
-          ...(input.media_policy.quotas ?? {}),
+          ...(parsed.data.media_policy.quotas ?? {}),
         },
+      };
+      Object.assign(sitePatch, {
+        mediaSiteLogoMaxBytes: mediaPolicy.max_file_size_bytes.site_logo,
+        mediaClassIconMaxBytes: mediaPolicy.max_file_size_bytes.class_icon,
+        mediaProfileImageMaxBytes: mediaPolicy.max_file_size_bytes.profile_image,
+        mediaProfileAudioMaxBytes: mediaPolicy.max_file_size_bytes.profile_audio,
+        mediaAnnouncementImageMaxBytes: mediaPolicy.max_file_size_bytes.announcement_image,
+        mediaWikiImageMaxBytes: mediaPolicy.max_file_size_bytes.wiki_image,
+        mediaEventImageMaxBytes: mediaPolicy.max_file_size_bytes.event_image,
+        mediaGalleryImageMaxBytes: mediaPolicy.max_file_size_bytes.gallery_image,
+        mediaStorageImageMaxBytes: mediaPolicy.max_file_size_bytes.storage_image,
+        mediaProfileQuota: mediaPolicy.quotas.profile,
+        mediaAnnouncementQuota: mediaPolicy.quotas.announcement,
+        mediaGalleryQuota: mediaPolicy.quotas.gallery,
+        mediaWikiQuota: mediaPolicy.quotas.wiki,
       });
     }
-    if (input.storage_policy !== undefined) {
-      const current = mapSiteConfig(previous, this.deps);
-      sitePatch.storagePolicyJson = JSON.stringify({ ...current.storage_policy, ...input.storage_policy });
+    if (parsed.data.storage_policy !== undefined) {
+      sitePatch.storageImagesPerItem = parsed.data.storage_policy.images_per_item
+        ?? current.storage_policy.images_per_item;
     }
-    if (input.absence_policy !== undefined) {
-      const current = mapSiteConfig(previous, this.deps);
-      sitePatch.absencePolicyJson = JSON.stringify({ ...current.absence_policy, ...input.absence_policy });
-    }
-    if (siteFieldCount > 0) {
-      if (previous) {
-        await this.db.update(siteConfig).set(sitePatch).where(eq(siteConfig.id, DEFAULT_ID));
-      } else {
-        await this.db.insert(siteConfig).values({
-          id: DEFAULT_ID,
-          siteName: sitePatch.siteName ?? this.deps.envSiteName,
-          siteLogoUrl: sitePatch.siteLogoUrl ?? this.deps.envSiteLogoUrl,
-          featureFlagsJson: sitePatch.featureFlagsJson ?? JSON.stringify(DEFAULT_FEATURE_FLAGS),
-          mediaPolicyJson: sitePatch.mediaPolicyJson ?? JSON.stringify(DEFAULT_SITE_MEDIA_POLICY),
-          storagePolicyJson: sitePatch.storagePolicyJson ?? JSON.stringify(DEFAULT_SITE_STORAGE_POLICY),
-          absencePolicyJson: sitePatch.absencePolicyJson ?? JSON.stringify(DEFAULT_SITE_ABSENCE_POLICY),
-          analyticsSettingsJson: sitePatch.analyticsSettingsJson ?? JSON.stringify(DEFAULT_SITE_ANALYTICS_SETTINGS),
-          createdAt: nowIso,
-          updatedAt: nowIso,
-        });
-      }
-
-      await this.deps.writeAuditLog({
-        entityType: "site_config",
-        action: "update",
-        actorId,
-        entityId: DEFAULT_ID,
-        diffTitle: "Site Config",
-        detailText: JSON.stringify({ fields: Object.keys(sitePatch).filter((key) => key !== "updatedAt") }),
-      });
+    if (parsed.data.absence_policy !== undefined) {
+      sitePatch.absenceMaxSpanDays = parsed.data.absence_policy.max_span_days
+        ?? current.absence_policy.max_span_days;
+      sitePatch.absenceMaxEntriesPerUser = parsed.data.absence_policy.max_entries_per_user
+        ?? current.absence_policy.max_entries_per_user;
     }
 
-    return this.getAdminConfig();
-  }
-
-  async uploadSiteLogo(actorId: string, file: File): Promise<ServiceResult<AdminSiteConfigResponse>> {
-    if (!this.deps.storeSiteLogo) return err("SERVER_ERROR", "Site logo storage is not configured");
-    const allowedTypes = ["image/jpeg", "image/png", "image/gif", "image/webp", "image/avif"];
-    if (!allowedTypes.includes(file.type)) return err("VALIDATION_ERROR", `Invalid file type: ${file.name}`);
-    const siteRow = await this.getSiteRow();
-    const maxLogoBytes = mapSiteConfig(siteRow, this.deps).media_policy.max_file_size_bytes.site_logo;
-    if (file.size > maxLogoBytes) return err("VALIDATION_ERROR", `Logo exceeds ${maxLogoBytes} bytes`);
-    const stored = await captureUploadValidation(() => this.deps.storeSiteLogo!(file));
-    if (!stored.ok) return stored;
-
-    const previousKey = siteLogoKeyFromUrl(siteRow?.siteLogoUrl ?? this.deps.envSiteLogoUrl);
-    const nextUrl = siteLogoUrlForKey(stored.data);
-    const updated = await this.updateSiteLogoUrl(actorId, nextUrl);
-    if (!updated.ok) {
-      if (this.deps.deleteMediaObject) await this.deps.deleteMediaObject(stored.data);
-      return updated;
-    }
-
-    if (previousKey && previousKey !== stored.data && this.deps.deleteMediaObject) {
-      await this.deps.deleteMediaObject(previousKey);
-    }
-    return updated;
-  }
-
-  private async getSiteRow(): Promise<SiteConfigRow | null> {
-    const rows = await (this.db.select().from(siteConfig) as { where: (where: unknown) => { limit: (limit: number) => Promise<SiteConfigRow[]> } })
-      .where(eq(siteConfig.id, DEFAULT_ID))
-      .limit(1);
-    return rows[0] ?? null;
-  }
-
-  private async ensureSiteRow(): Promise<SiteConfigRow | null> {
-    const existing = await this.getSiteRow();
-    if (existing) return existing;
-    const nowIso = this.nowIso();
-    await this.db.insert(siteConfig).values({
-      id: DEFAULT_ID,
-      siteName: this.deps.envSiteName,
-      siteLogoUrl: this.deps.envSiteLogoUrl,
-      featureFlagsJson: JSON.stringify(DEFAULT_FEATURE_FLAGS),
-      mediaPolicyJson: JSON.stringify(DEFAULT_SITE_MEDIA_POLICY),
-      storagePolicyJson: JSON.stringify(DEFAULT_SITE_STORAGE_POLICY),
-      absencePolicyJson: JSON.stringify(DEFAULT_SITE_ABSENCE_POLICY),
-      analyticsSettingsJson: JSON.stringify(DEFAULT_SITE_ANALYTICS_SETTINGS),
-      createdAt: nowIso,
-      updatedAt: nowIso,
-    });
-    return this.getSiteRow();
-  }
-
-  private async updateSiteLogoUrl(actorId: string, siteLogoUrl: string): Promise<ServiceResult<AdminSiteConfigResponse>> {
-    await this.ensureSiteRow();
-    await this.db.update(siteConfig).set({
-      siteLogoUrl,
-      updatedAt: this.nowIso(),
-    }).where(eq(siteConfig.id, DEFAULT_ID));
+    await this.db.update(siteConfig).set(sitePatch).where(eq(siteConfig.id, DEFAULT_ID));
     await this.deps.writeAuditLog({
       entityType: "site_config",
       action: "update",
       actorId,
       entityId: DEFAULT_ID,
       diffTitle: "Site Config",
-      detailText: JSON.stringify({ fields: ["siteLogoUrl"] }),
+      detail: { fields: Object.keys(sitePatch).filter((key) => key !== "updatedAt") },
     });
     return this.getAdminConfig();
+  }
+
+  async uploadSiteLogo(
+    actorId: string,
+    upload: ParsedImageMediaUpload,
+  ): Promise<ServiceResult<AdminSiteConfigResponse>> {
+    const now = this.nowIso();
+    try {
+      const row = await this.getSiteRow();
+      const created = await this.deps.mediaService.createImages({
+        ownerUserId: actorId,
+        purpose: "site_logo",
+        uploads: [upload],
+        now,
+        maxBytes: row.mediaSiteLogoMaxBytes,
+      });
+      await this.deps.mediaService.replace({
+        entityType: "site_config",
+        entityId: DEFAULT_ID,
+        slot: "logo",
+        media: [{ mediaId: created.mediaIds[0]!, sortOrder: 0 }],
+        ownerUserId: actorId,
+        now,
+      });
+    } catch (error) {
+      if (error instanceof MediaValidationError) return err("VALIDATION_ERROR", error.message);
+      throw error;
+    }
+    await this.deps.writeAuditLog({
+      entityType: "site_config",
+      action: "update",
+      actorId,
+      entityId: DEFAULT_ID,
+      diffTitle: "Site Config",
+      detail: { fields: ["siteLogoMediaId"] },
+    });
+    return this.getAdminConfig();
+  }
+
+  private async getSiteRow(): Promise<SiteConfigRow> {
+    const rows = await (this.db.select().from(siteConfig) as {
+      where: (where: unknown) => { limit: (limit: number) => Promise<SiteConfigRow[]> };
+    })
+      .where(eq(siteConfig.id, DEFAULT_ID))
+      .limit(1);
+    const row = rows[0];
+    if (!row) throw new Error(`Required site_config singleton "${DEFAULT_ID}" is missing`);
+    return row;
   }
 
   private nowIso(): string {
     return (this.deps.now?.() ?? new Date()).toISOString();
   }
-
 }

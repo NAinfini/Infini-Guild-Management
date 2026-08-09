@@ -1,8 +1,5 @@
 import type { Announcement } from "@guild/shared";
-import { useConfirmDialog } from "@portal/components/shared/ConfirmDialog";
-import { DepthButton } from "@portal/components/shared/DepthButton";
-import { DepthToggle } from "@portal/components/shared/DepthToggle";
-import { PortalCard } from "../../shared/PortalCard";
+import { useConfirmDialog } from "@portal/hooks/useConfirmDialog";
 import {
   ActionIcon,
   Alert,
@@ -12,10 +9,13 @@ import {
   Divider,
   Group,
   Menu,
+  Paper,
   Skeleton,
   Stack,
   Text,
   TextInput,
+  Tooltip,
+  Title,
 } from "@mantine/core";
 import { useDisclosure } from "@mantine/hooks";
 import { format } from "date-fns";
@@ -25,6 +25,7 @@ import { ArchiveIcon, CalendarTimeIcon, ChevronDownIcon, NoteIcon, PinIcon, Send
 import { notifyError } from "../../../utils/notifications";
 import { PencilOutlined } from "@portal/utils/icons";
 import { EmptyState } from "../../shared/EmptyState";
+import { NativeDateTimeInput } from "../../shared/NativeDateTimeInput";
 import { buildTipTapEditorLabels } from "@portal/components/shared/tiptap-meta";
 
 const LazyTipTapEditor = lazy(() =>
@@ -77,6 +78,7 @@ type AnnouncementDetailCardProps = {
   onArchivedChange: (value: boolean) => void;
   onImageUpload: (file: File) => Promise<string>;
   isDirty: boolean;
+  isPublishReady: boolean;
   emptyTitle: ReactNode;
 };
 
@@ -107,6 +109,7 @@ export function AnnouncementDetailCard({
   onArchivedChange,
   onImageUpload,
   isDirty,
+  isPublishReady,
   emptyTitle,
 }: AnnouncementDetailCardProps) {
   const { t } = useTranslation("announcements");
@@ -126,6 +129,8 @@ export function AnnouncementDetailCard({
   }, [isCreateMode]);
 
   const validateAndFinish = (mode: StatusMode) => {
+    if (!isPublishReady) return;
+
     if (mode === "scheduled" && publishAt) {
       const scheduledDate = new Date(publishAt.replace(" ", "T"));
       if (!Number.isNaN(scheduledDate.getTime()) && scheduledDate <= new Date()) {
@@ -160,22 +165,41 @@ export function AnnouncementDetailCard({
   };
 
   return (
-    <PortalCard className="announcements-detail-card" interactive={false}>
-      <div style={{ padding: "1.2rem" }}>
-        <Stack gap={12}>
+    <Paper withBorder className="announcements-detail-card">
+      {/* 正文卡整块内滚：标题、徽标和正文是一篇东西，一起滚才对
+          （和 wiki-article-reader-card 同一处理）。 */}
+      <div className="announcements-card-body" style={{ padding: "var(--card-padding)" }}>
+        <Stack gap={12} className="announcements-card-scroll">
           {/* ── Header ── */}
-          <Group justify="space-between" align="center">
-            <Text fw={600}>{title}</Text>
+          <Group
+            component="header"
+            justify="space-between"
+            align="center"
+            className={!editing && selected ? "announcement-reader-header" : undefined}
+          >
+            {!editing && selected ? (
+              <Title order={2} className="announcement-reader-title">
+                {selected.title}
+              </Title>
+            ) : (
+              <Text fw={600}>{title}</Text>
+            )}
             {canEdit && (selectedId && selected || isCreateMode) ? (
               editing ? (
                 <Group gap={8}>
-                  {isDirty ? <Badge color="orange">{t("status.unsaved")}</Badge> : <Badge color="green">{t("status.saved")}</Badge>}
+                  {!isPublishReady ? (
+                    <Badge color="gray">{t("status.notReady")}</Badge>
+                  ) : isDirty ? (
+                    <Badge color="orange">{t("status.unsaved")}</Badge>
+                  ) : (
+                    <Badge color="green">{t("status.saved")}</Badge>
+                  )}
                   <Button.Group>
                     <Button
                       size="sm"
-                      color="portal-accent"
+                      color="portal-brand"
                       onClick={() => validateAndFinish("none")}
-                      disabled={savePending}
+                      disabled={savePending || !isPublishReady}
                       leftSection={<SendIcon size={14} />}
                     >
                       {t("action.publish")}
@@ -184,8 +208,8 @@ export function AnnouncementDetailCard({
                       <Menu.Target>
                         <Button
                           size="sm"
-                          color="portal-accent"
-                          disabled={savePending}
+                          color="portal-brand"
+                          disabled={savePending || !isPublishReady}
                           px={8}
                         >
                           <ChevronDownIcon size={14} />
@@ -207,24 +231,24 @@ export function AnnouncementDetailCard({
                       </Menu.Dropdown>
                     </Menu>
                   </Button.Group>
-                  <DepthButton
+                  <Button
                     onClick={handleCloseEditor}
-                    type="secondary"
+                    variant="default"
                     size="sm"
-                    before={<XIcon size={14} />}
+                    leftSection={<XIcon size={14} />}
                   >
                     {t("action.cancel")}
-                  </DepthButton>
+                  </Button>
                 </Group>
               ) : (
-                <DepthButton
+                <Button
                   onClick={editingHandlers.open}
-                  type="secondary"
+                  variant="default"
                   size="sm"
-                  before={<PencilOutlined size={14} />}
+                  leftSection={<PencilOutlined size={14} />}
                 >
                   {t("action.edit")}
-                </DepthButton>
+                </Button>
               )
             ) : null}
           </Group>
@@ -243,11 +267,6 @@ export function AnnouncementDetailCard({
           {/* ── Reader View (default for everyone) ── */}
           {!isLoading && !isError && selected && !editing ? (
             <Stack gap={12}>
-              {/* Title */}
-              <Text fw={700} size="xl" className="announcement-reader-title">
-                {selected.title}
-              </Text>
-
               {/* Meta badges */}
               <Group gap={8} wrap="wrap">
                 {canEdit && selected.status === "scheduled" && selected.publish_at ? (
@@ -291,6 +310,8 @@ export function AnnouncementDetailCard({
                       value={bodyJson}
                       onChange={onBodyJsonChange}
                       placeholder={t("field.body")}
+                      /* 正文是 contenteditable 的 role="textbox"，不给名字读屏只会念「文本框」。 */
+                      ariaLabel={t("field.body")}
                       editable={true}
                       onImageUpload={onImageUpload}
                       labels={editorLabels}
@@ -304,29 +325,31 @@ export function AnnouncementDetailCard({
                 <Stack gap={16}>
                   {/* Pin | Archive | Delete */}
                   <Group gap={8} wrap="nowrap">
-                    <DepthToggle
-                        pressed={pinned}
-                        onToggle={onPinnedChange}
-                        type="primary"
-                        iconOnly
+                    <Tooltip label={pinned ? t("action.unpin") : t("action.pin")} withArrow>
+                      <ActionIcon
+                        aria-pressed={pinned}
+                        onClick={() => onPinnedChange(!pinned)}
+                        color="portal-brand"
+                        variant={pinned ? "light" : "default"}
                         size="sm"
                         aria-label={pinned ? t("action.unpin") : t("action.pin")}
-                        tooltip={{ label: pinned ? t("action.unpin") : t("action.pin"), withArrow: true }}
                       >
                         <PinIcon size={16} />
-                      </DepthToggle>
+                      </ActionIcon>
+                    </Tooltip>
                     {!isCreateMode ? (
-                      <DepthToggle
-                        pressed={archived}
-                        onToggle={onArchivedChange}
-                        type="primary"
-                        iconOnly
-                        size="sm"
-                        aria-label={t("action.archive")}
-                        tooltip={{ label: t("action.archive"), withArrow: true }}
-                      >
-                        <ArchiveIcon size={16} />
-                      </DepthToggle>
+                      <Tooltip label={t("action.archive")} withArrow>
+                        <ActionIcon
+                          aria-pressed={archived}
+                          onClick={() => onArchivedChange(!archived)}
+                          color="portal-brand"
+                          variant={archived ? "light" : "default"}
+                          size="sm"
+                          aria-label={t("action.archive")}
+                        >
+                          <ArchiveIcon size={16} />
+                        </ActionIcon>
+                      </Tooltip>
                     ) : null}
                     {!isCreateMode ? (
                         <ActionIcon
@@ -348,7 +371,7 @@ export function AnnouncementDetailCard({
                   <Stack gap={8}>
                     <div>
                       <Text size="xs" c="dimmed">{t("field.publishAt")}</Text>
-                      <TextInput
+                      <NativeDateTimeInput
                         type="datetime-local"
                         value={toDateTimeLocalValue(publishAt) || undefined}
                         onChange={(event) => onPublishAtChange(fromDateTimeLocalValue(event.currentTarget.value))}
@@ -375,6 +398,6 @@ export function AnnouncementDetailCard({
         </Stack>
       </div>
 
-    </PortalCard>
+    </Paper>
   );
 }

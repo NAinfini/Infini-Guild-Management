@@ -1,5 +1,6 @@
 import { create } from "zustand";
-import { activeGame } from "@guild/shared/games";
+import { DEFAULT_GAME_RULES, DEFAULT_SITE_ANALYTICS_SETTINGS } from "@guild/shared";
+import type { SiteAnalyticsSettings } from "@guild/shared";
 import type {
   AnalyticsAggregation,
   AnalyticsDatePreset,
@@ -9,11 +10,13 @@ import type {
   TeamAggregation,
 } from "../types/guild-war";
 
-type ModifierWeights = Record<string, number>;
+type ModifierWeights = SiteAnalyticsSettings["modifier_weights"];
 
 export type { AnalyticsDatePreset, HistoryViewMode } from "../types/guild-war";
 
-const DEFAULT_GUILD_WAR_MODIFIER_WEIGHTS: ModifierWeights = { ...activeGame.war.modifierWeights };
+const DEFAULT_GUILD_WAR_MODIFIER_WEIGHTS: ModifierWeights = {
+  ...DEFAULT_SITE_ANALYTICS_SETTINGS.modifier_weights,
+};
 
 type GuildWarStoreState = {
   selectedEventId: string | undefined;
@@ -68,9 +71,12 @@ type GuildWarStoreState = {
   setHistoryDateTo: (historyDateTo: string) => void;
   setHistoryPage: (historyPage: number) => void;
   setHistoryPerPage: (historyPerPage: number) => void;
+  resetSessionState: () => void;
 };
 
-const defaultMetric = activeGame.war.memberStats[3]?.key ?? "damage";
+const defaultMetric = DEFAULT_GAME_RULES.guild_war.default_member_stat_key;
+const defaultTeamStat = DEFAULT_GAME_RULES.guild_war.team_stats.find((definition) => definition.dashboard === "primary")?.key
+  ?? DEFAULT_GAME_RULES.guild_war.team_stats[0]!.key;
 
 export const useGuildWarStore = create<GuildWarStoreState>((set) => ({
   selectedEventId: undefined,
@@ -81,7 +87,7 @@ export const useGuildWarStore = create<GuildWarStoreState>((set) => ({
   analyticsDatePreset: "10",
   analyticsSelectedWarIds: [],
   analyticsSelectedUsers: [],
-  analyticsWarStat: activeGame.war.teamObjectives[0]?.key ?? "kills",
+  analyticsWarStat: defaultTeamStat,
   analyticsAggregation: "total",
   analyticsMinParticipation: 1,
   analyticsTopN: 10,
@@ -125,4 +131,32 @@ export const useGuildWarStore = create<GuildWarStoreState>((set) => ({
   setHistoryDateTo: (historyDateTo) => set({ historyDateTo, historyPage: 1 }),
   setHistoryPage: (historyPage) => set({ historyPage }),
   setHistoryPerPage: (historyPerPage) => set({ historyPerPage, historyPage: 1 }),
+  resetSessionState: () => set({
+    selectedEventId: undefined,
+    selectedHistoryId: null,
+    analyticsMode: "player",
+    analyticsSelectedMetrics: [defaultMetric],
+    analyticsOnlyParticipated: true,
+    analyticsDatePreset: "10",
+    analyticsSelectedWarIds: [],
+    analyticsSelectedUsers: [],
+    analyticsWarStat: defaultTeamStat,
+    analyticsAggregation: "total",
+    analyticsMinParticipation: 1,
+    analyticsTopN: 10,
+    analyticsSelectedTeams: [],
+    analyticsTeamAggregation: "total",
+    analyticsNormEnabled: true,
+    analyticsShowDeviation: false,
+    analyticsShowContribution: false,
+    analyticsHeatmapEnabled: false,
+    modifierWeights: { ...DEFAULT_GUILD_WAR_MODIFIER_WEIGHTS },
+    modifierWeightsInitialized: false,
+    historyViewMode: "table",
+    historyChartMetric: defaultMetric,
+    historyDateFrom: "",
+    historyDateTo: "",
+    historyPage: 1,
+    historyPerPage: 20,
+  }),
 }));

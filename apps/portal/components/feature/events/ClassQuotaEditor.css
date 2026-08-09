@@ -1,0 +1,109 @@
+/*
+ * 一格配额 = 一行：名称、职业、人数、删除。
+ *
+ * Fixed columns align fields across quota rows for rapid comparison.
+ *
+ * 断点走容器查询而不是媒体查询：这个编辑器住在活动表单的右栏里，栏宽比视口窄得多，
+ * 按视口判断的话桌面上永远是宽版四列，而它实际只有四百来像素，图标会被切掉。
+ */
+.quota-editor {
+  container-type: inline-size;
+  /* 表单那一列的 Stack 只给 8px，标题跟上一格的输入框贴在一起，看着像同一组。 */
+  margin-top: var(--space-sm);
+}
+
+/* 标题跟第一行之间要比行与行之间宽，否则「职业配额」读起来像第一行的一部分。 */
+.quota-editor__label {
+  margin-bottom: var(--space-xs);
+}
+
+.quota-editor__row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) 96px auto;
+  align-items: center;
+  gap: var(--space-sm);
+}
+
+.quota-editor__name,
+.quota-editor__count {
+  min-width: 0;
+}
+
+/*
+ * 职业格：跟左右两边的输入框同高同圆角，但它自己不是输入框。
+ * 实线＋角标是能点的（一次性组），虚线是只读的（目录标签，只能去后台职业页改）。
+ */
+.quota-editor__cell {
+  display: flex;
+  align-items: center;
+  gap: var(--space-xs);
+  min-width: 0;
+  min-height: var(--control-height-regular);
+  padding: 0 var(--space-sm);
+  border-radius: var(--radius-control);
+  overflow: hidden;
+}
+
+.quota-editor__cell--picker {
+  justify-content: space-between;
+  width: 100%;
+  border: 1px solid var(--border-strong);
+  background: var(--surface-base);
+  cursor: pointer;
+}
+
+.quota-editor__cell--picker:hover:not(:disabled) {
+  border-color: var(--brand-fill);
+}
+
+.quota-editor__cell--picker:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+.quota-editor__cell--readonly {
+  border: 1px dashed var(--border-subtle);
+  background: color-mix(in srgb, var(--text-primary) 3%, transparent);
+}
+
+.quota-editor__caret {
+  flex-shrink: 0;
+  color: var(--text-muted);
+}
+
+.quota-editor__strip {
+  display: flex;
+  align-items: center;
+  flex-wrap: nowrap;
+  gap: var(--space-xs);
+  min-width: 0;
+}
+
+.quota-editor__strip-more {
+  flex-shrink: 0;
+  color: var(--text-muted);
+  font-size: 11px;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+}
+
+.quota-editor__strip-empty {
+  color: var(--text-muted);
+  font-size: 12px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* 下拉里的清单封个高度，免得目录一长就把下拉撑到屏幕外（行的样子在 shared/PickList.css）。 */
+.quota-editor__picker .pick-list__body {
+  max-block-size: 280px;
+}
+
+/* Compact rows preserve four-column alignment; the number input retains a usable 72px target. */
+@container (max-width: 620px) {
+  .quota-editor__row {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) 72px auto;
+    gap: var(--space-xs);
+  }
+}

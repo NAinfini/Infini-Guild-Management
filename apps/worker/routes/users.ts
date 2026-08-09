@@ -1,47 +1,45 @@
 import { deleteProfileImagesSchema, type Role } from "@guild/shared";
 import type { Context } from "hono";
 import { Hono } from "hono";
-import { createPasswordHash, destroySession, verifyPassword } from "../services/auth";
-import { deleteMediaObject, storeProfileAudio, storeProfileImage } from "../services/media";
+import { clearSessionCookie, createPasswordHash, destroySession, resolvePbkdf2Iterations, verifyPassword } from "../services/auth";
+import { MediaValidationError, parseImageMediaFormData } from "../services/MediaService";
 import { UserService } from "../services/UserService";
 import { BadgeService } from "../services/BadgeService";
 import { MemberAbsenceService } from "../services/MemberAbsenceService";
 import { getRequestUser } from "../middleware/rbac";
-import { buildError, collectFiles, getDb, handleResult, parseBoolean, parseJsonBody, parsePage, requireSessionUser, serveR2Object } from "./_shared";
-import { commonDeps } from "./service-factory";
+import { buildError, getDb, handleResult, parseBoolean, parseJsonBody, parsePage, requireSessionUser, safeFormData } from "./_shared";
+import { commonDeps, withMedia } from "./service-factory";
 
 export const usersRoutes = new Hono();
 
 function getUserService(c: Context) {
   return new UserService(getDb(c), {
-    ...commonDeps(c),
-    storeProfileImage: (userId, file) => storeProfileImage(c, userId, file),
-    storeProfileAudio: (userId, file) => storeProfileAudio(c, userId, file),
-    deleteMediaObject: (key) => deleteMediaObject(c, key),
+    ...withMedia(c),
+    rawDb: (c.env as { DB: D1Database }).DB,
     verifyPassword,
-    createPasswordHash,
+    createPasswordHash: (password) => createPasswordHash(password, resolvePbkdf2Iterations(c.env as { PBKDF2_ITERATIONS?: string })),
     destroySession: () => destroySession(c),
+    clearSessionCookie: () => clearSessionCookie(c),
   });
 }
 
 function getBadgeService(c: Context) {
-  return new BadgeService(getDb(c), commonDeps(c));
+  return new BadgeService(getDb(c), {
+    ...commonDeps(c),
+    rawDb: (c.env as { DB: D1Database }).DB,
+  });
 }
 
 function getAbsenceService(c: Context) {
-  return new MemberAbsenceService(getDb(c), commonDeps(c));
+  return new MemberAbsenceService(getDb(c), {
+    ...commonDeps(c),
+    rawDb: (c.env as { DB: D1Database }).DB,
+  });
 }
 
 const ISO_DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 
 // --- Routes ---
-
-usersRoutes.get("/image", async (c) => {
-  const key = c.req.query("key");
-  if (!key) return buildError(c, "VALIDATION_ERROR", "key query parameter required");
-  if (!key.startsWith("members/")) return buildError(c, "FORBIDDEN", "Invalid profile media key");
-  return serveR2Object(c, key, "Profile media not found");
-});
 
 usersRoutes.get("/", async (c) => {
   // Guest-visible read route: public visitors may browse the roster, while
@@ -128,13 +126,14 @@ usersRoutes.delete("/:id/absences/:absenceId", async (c) => {
 usersRoutes.post("/:id/media/images", async (c) => {
   const sessionUser = await requireSessionUser(c);
 
-  let form: FormData;
-  try { form = await c.req.formData(); } catch {
-    return buildError(c, "VALIDATION_ERROR", "Request must be multipart/form-data");
+  const form = await safeFormData(c);
+  try {
+    const uploads = await parseImageMediaFormData(form);
+    return handleResult(c, await getUserService(c).uploadProfileImages(sessionUser, c.req.param("id"), uploads));
+  } catch (error) {
+    if (error instanceof MediaValidationError) return buildError(c, "VALIDATION_ERROR", error.message);
+    throw error;
   }
-  const files = collectFiles(form);
-
-  return handleResult(c, await getUserService(c).uploadProfileImages(sessionUser, c.req.param("id"), files));
 });
 
 usersRoutes.delete("/:id/media/images", async (c) => {
@@ -142,20 +141,21 @@ usersRoutes.delete("/:id/media/images", async (c) => {
   const body = await parseJsonBody(c);
   const parsed = deleteProfileImagesSchema.safeParse(body);
   if (!parsed.success) return buildError(c, "VALIDATION_ERROR", "Invalid image delete payload", parsed.error.flatten());
-  return handleResult(c, await getUserService(c).deleteProfileImages(sessionUser, c.req.param("id"), parsed.data.keys));
+  return handleResult(c, await getUserService(c).deleteProfileImages(sessionUser, c.req.param("id"), parsed.data.media_ids));
 });
 
 usersRoutes.post("/:id/media/avatar", async (c) => {
   const sessionUser = await requireSessionUser(c);
 
-  let form: FormData;
-  try { form = await c.req.formData(); } catch {
-    return buildError(c, "VALIDATION_ERROR", "Request must be multipart/form-data");
+  const form = await safeFormData(c);
+  try {
+    const uploads = await parseImageMediaFormData(form);
+    if (uploads.length !== 1) return buildError(c, "VALIDATION_ERROR", "Exactly one avatar is required");
+    return handleResult(c, await getUserService(c).uploadAvatar(sessionUser, c.req.param("id"), uploads[0]!));
+  } catch (error) {
+    if (error instanceof MediaValidationError) return buildError(c, "VALIDATION_ERROR", error.message);
+    throw error;
   }
-  const file = form.get("file");
-  if (!(file instanceof File)) return buildError(c, "VALIDATION_ERROR", "Avatar file is required");
-
-  return handleResult(c, await getUserService(c).uploadAvatar(sessionUser, c.req.param("id"), file));
 });
 
 usersRoutes.delete("/:id/media/avatar", async (c) => {

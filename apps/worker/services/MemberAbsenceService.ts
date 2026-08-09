@@ -1,33 +1,24 @@
 import {
-  DEFAULT_SITE_ABSENCE_POLICY,
   createMemberAbsenceSchema,
   memberAbsenceSchema,
-  type Role,
   type SiteAbsencePolicy,
 } from "@guild/shared";
-import type { AuditEntityType, AuditAction } from "@guild/shared/constants/audit";
 import type { PushEntityType, PushHint } from "@guild/shared/constants/push-hints";
 import { and, eq, gte, lte, sql } from "drizzle-orm";
 import type { drizzle } from "drizzle-orm/d1";
 import { nanoid } from "nanoid";
-import { memberAbsences, users } from "../db/schema";
+import { memberAbsences, roles, users } from "../db/schema";
 import { ok, err, type ServiceResult } from "./result";
+import type { SessionUser } from "./auth";
+import type { WriteAuditLogInput } from "./audit";
 
 type DrizzleDb = ReturnType<typeof drizzle>;
 
-type SessionUser = { id: string; role: Role; permissions: ReadonlySet<string> };
-
 export type MemberAbsenceServiceDeps = {
-  writeAuditLog: (input: {
-    entityType: AuditEntityType;
-    action: AuditAction;
-    actorId: string;
-    entityId: string;
-    diffTitle?: string | null;
-    detailText?: string | null;
-  }) => Promise<void>;
+  rawDb: D1Database;
+  writeAuditLog: (input: WriteAuditLogInput) => Promise<void>;
   publishEntityChanged: (input: { entityType: PushEntityType; entityId: string; hint: PushHint }) => Promise<void>;
-  getAbsencePolicy?: () => Promise<SiteAbsencePolicy>;
+  getAbsencePolicy: () => Promise<SiteAbsencePolicy>;
 };
 
 function daysInclusive(startDate: string, endDate: string): number {
@@ -40,6 +31,10 @@ function toAbsencePayload(row: {
   id: string;
   userId: string;
   username: string | null;
+  roleId: string;
+  roleName: string;
+  roleColor: string | null;
+  roleLevel: number;
   startDate: string;
   endDate: string;
   note: string | null;
@@ -49,6 +44,10 @@ function toAbsencePayload(row: {
     id: row.id,
     user_id: row.userId,
     username: row.username,
+    role_id: row.roleId,
+    role_name: row.roleName,
+    role_color: row.roleColor,
+    role_level: row.roleLevel,
     start_date: row.startDate,
     end_date: row.endDate,
     note: row.note,
@@ -68,12 +67,12 @@ export class MemberAbsenceService {
 
   private async canEditTarget(sessionUser: SessionUser, targetUserId: string): Promise<{ status: "allowed"; username: string } | { status: "forbidden" | "not_found"; username: null }> {
     const target = (
-      await this.db.select({ role: users.role, deletedAt: users.deletedAt, username: users.username }).from(users).where(eq(users.id, targetUserId)).limit(1)
+      await this.db.select({ roleLevel: roles.level, deletedAt: users.deletedAt, username: users.username }).from(users).innerJoin(roles, eq(users.role, roles.id)).where(eq(users.id, targetUserId)).limit(1)
     )[0];
     if (!target || target.deletedAt !== null) return { status: "not_found", username: null };
     if (sessionUser.id === targetUserId) return { status: "allowed", username: target.username };
     if (!sessionUser.permissions.has("admin.users.edit")) return { status: "forbidden", username: null };
-    if (target.role === "admin" && sessionUser.role !== "admin") return { status: "forbidden", username: null };
+    if (target.roleLevel >= sessionUser.roleLevel) return { status: "forbidden", username: null };
     return { status: "allowed", username: target.username };
   }
 
@@ -84,6 +83,10 @@ export class MemberAbsenceService {
         id: memberAbsences.id,
         userId: memberAbsences.userId,
         username: users.username,
+        roleId: users.role,
+        roleName: roles.name,
+        roleColor: roles.color,
+        roleLevel: roles.level,
         startDate: memberAbsences.startDate,
         endDate: memberAbsences.endDate,
         note: memberAbsences.note,
@@ -91,6 +94,7 @@ export class MemberAbsenceService {
       })
       .from(memberAbsences)
       .innerJoin(users, eq(users.id, memberAbsences.userId))
+      .innerJoin(roles, eq(users.role, roles.id))
       .where(and(gte(memberAbsences.endDate, from), lte(memberAbsences.startDate, to)))
       .orderBy(memberAbsences.startDate, memberAbsences.id);
     return ok({ data: rows.map(toAbsencePayload) });
@@ -102,6 +106,10 @@ export class MemberAbsenceService {
         id: memberAbsences.id,
         userId: memberAbsences.userId,
         username: users.username,
+        roleId: users.role,
+        roleName: roles.name,
+        roleColor: roles.color,
+        roleLevel: roles.level,
         startDate: memberAbsences.startDate,
         endDate: memberAbsences.endDate,
         note: memberAbsences.note,
@@ -109,6 +117,7 @@ export class MemberAbsenceService {
       })
       .from(memberAbsences)
       .innerJoin(users, eq(users.id, memberAbsences.userId))
+      .innerJoin(roles, eq(users.role, roles.id))
       .where(eq(memberAbsences.userId, targetUserId))
       .orderBy(sql`${memberAbsences.startDate} DESC`, memberAbsences.id);
     return ok({ data: rows.map(toAbsencePayload) });
@@ -122,32 +131,36 @@ export class MemberAbsenceService {
     const parsed = createMemberAbsenceSchema.safeParse(body);
     if (!parsed.success) return err("VALIDATION_ERROR", "Invalid absence payload", parsed.error.flatten());
 
-    const policy = await (this.deps.getAbsencePolicy?.() ?? Promise.resolve(DEFAULT_SITE_ABSENCE_POLICY));
+    const policy = await this.deps.getAbsencePolicy();
     const spanDays = daysInclusive(parsed.data.start_date, parsed.data.end_date);
     if (spanDays > policy.max_span_days) {
       return err("VALIDATION_ERROR", `Absence cannot span more than ${policy.max_span_days} days`);
     }
 
-    const countRow = (
-      await this.db.select({ count: sql<number>`count(*)` }).from(memberAbsences).where(eq(memberAbsences.userId, targetUserId))
-    )[0];
-    if (Number(countRow?.count ?? 0) >= policy.max_entries_per_user) {
+    const id = nanoid();
+    const insertResult = await this.deps.rawDb
+      .prepare(
+        `INSERT INTO member_absences (id, user_id, start_date, end_date, note)
+         SELECT ?1, ?2, ?3, ?4, ?5
+         WHERE (SELECT COUNT(*) FROM member_absences WHERE user_id = ?2) < ?6`,
+      )
+      .bind(
+        id,
+        targetUserId,
+        parsed.data.start_date,
+        parsed.data.end_date,
+        parsed.data.note ? parsed.data.note : null,
+        policy.max_entries_per_user,
+      )
+      .run();
+    if ((insertResult.meta?.changes ?? 0) !== 1) {
       return err("VALIDATION_ERROR", `Absence limit reached (max ${policy.max_entries_per_user}); delete old entries first`);
     }
-
-    const id = nanoid();
-    await this.db.insert(memberAbsences).values({
-      id,
-      userId: targetUserId,
-      startDate: parsed.data.start_date,
-      endDate: parsed.data.end_date,
-      note: parsed.data.note ? parsed.data.note : null,
-    });
 
     await this.deps.writeAuditLog({
       entityType: "member_absence", action: "create", actorId: sessionUser.id,
       entityId: id, diffTitle: access.username,
-      detailText: JSON.stringify({ user_id: targetUserId, start_date: parsed.data.start_date, end_date: parsed.data.end_date }),
+      detail: { user_id: targetUserId, start_date: parsed.data.start_date, end_date: parsed.data.end_date },
     });
     const hint = sessionUser.id === targetUserId ? "profile_updated" : "profile_moderated";
     await this.deps.publishEntityChanged({ entityType: "member_profile", entityId: targetUserId, hint });
@@ -158,6 +171,10 @@ export class MemberAbsenceService {
           id: memberAbsences.id,
           userId: memberAbsences.userId,
           username: users.username,
+          roleId: users.role,
+          roleName: roles.name,
+          roleColor: roles.color,
+          roleLevel: roles.level,
           startDate: memberAbsences.startDate,
           endDate: memberAbsences.endDate,
           note: memberAbsences.note,
@@ -165,6 +182,7 @@ export class MemberAbsenceService {
         })
         .from(memberAbsences)
         .innerJoin(users, eq(users.id, memberAbsences.userId))
+        .innerJoin(roles, eq(users.role, roles.id))
         .where(eq(memberAbsences.id, id))
         .limit(1)
     )[0];
@@ -191,7 +209,7 @@ export class MemberAbsenceService {
     await this.deps.writeAuditLog({
       entityType: "member_absence", action: "delete", actorId: sessionUser.id,
       entityId: absenceId, diffTitle: access.username,
-      detailText: JSON.stringify({ user_id: targetUserId, start_date: existing.startDate, end_date: existing.endDate }),
+      detail: { user_id: targetUserId, start_date: existing.startDate, end_date: existing.endDate },
     });
     const hint = sessionUser.id === targetUserId ? "profile_updated" : "profile_moderated";
     await this.deps.publishEntityChanged({ entityType: "member_profile", entityId: targetUserId, hint });

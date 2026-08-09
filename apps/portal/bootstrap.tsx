@@ -3,65 +3,36 @@ import "@mantine/notifications/styles.css";
 import "@mantine/carousel/styles.css";
 import "@mantine/dropzone/styles.css";
 import "@mantine/nprogress/styles.css";
-import { ContextMenuProvider } from "mantine-contextmenu";
-import "mantine-contextmenu/styles.css";
 import React, { StrictMode } from "react";
 import type { Root } from "react-dom/client";
-import { DEFAULT_FEATURE_FLAGS, type FeatureFlags } from "@guild/shared/config/features";
+import { publicSiteConfigSchema } from "@guild/shared";
 import { i18nReady } from "./i18n";
 import { ErrorBoundary } from "./components/effects/ErrorBoundary";
 import { PortalThemeProvider } from "./providers/ThemeProvider";
+import { dismissSplash } from "./splash";
 import { AppRouter } from "./router";
 import { useSiteConfigStore } from "./stores/site-config";
-
-type BootstrapSiteConfig = {
-  site_name: string;
-  site_logo_url: string;
-  features?: Partial<FeatureFlags>;
-};
-
-function parseBootstrapSiteConfig(value: unknown): BootstrapSiteConfig {
-  if (!value || typeof value !== "object" || Array.isArray(value)) {
-    throw new Error("Invalid site config response");
-  }
-  const data = value as Record<string, unknown>;
-  if (typeof data.site_name !== "string" || typeof data.site_logo_url !== "string") {
-    throw new Error("Invalid site config identity fields");
-  }
-  const parsed: BootstrapSiteConfig = {
-    site_name: data.site_name,
-    site_logo_url: data.site_logo_url,
-  };
-  if (data.features !== undefined) {
-    if (!data.features || typeof data.features !== "object" || Array.isArray(data.features)) {
-      throw new Error("Invalid site config feature flags");
-    }
-    const featureFlags: Partial<FeatureFlags> = {};
-    for (const key of Object.keys(DEFAULT_FEATURE_FLAGS) as (keyof FeatureFlags)[]) {
-      const flag = (data.features as Partial<Record<keyof FeatureFlags, unknown>>)[key];
-      if (flag !== undefined) {
-        if (typeof flag !== "boolean") throw new Error(`Invalid site config feature flag: ${key}`);
-        featureFlags[key] = flag;
-      }
-    }
-    parsed.features = featureFlags;
-  }
-  return parsed;
-}
+import { fetchClassCatalog } from "./api/queries/classes";
+import { fetchClassTags } from "./api/queries/class-tags";
+import { useClassCatalogStore } from "./stores/class-catalog";
+import { useClassTagStore } from "./stores/class-tag";
+import { resolveMediaUrl } from "./utils/media";
 
 async function loadSiteConfig(): Promise<void> {
   const response = await fetch("/api/site-config");
   if (!response.ok) {
     throw new Error(`Site config request failed: ${response.status}`);
   }
-  const data = parseBootstrapSiteConfig(await response.json());
+  const data = publicSiteConfigSchema.parse(await response.json());
+  const siteLogoUrl = data.site_logo_media_id
+    ? resolveMediaUrl(data.site_logo_media_id)
+    : data.default_site_logo_url;
   useSiteConfigStore.getState().setSiteConfig({
     siteName: data.site_name,
-    siteLogoUrl: data.site_logo_url,
+    siteLogoUrl,
+    mediaPolicy: data.media_policy,
   });
-  if (data.features) {
-    useSiteConfigStore.getState().setFeatures(data.features);
-  }
+  useSiteConfigStore.getState().setFeatures(data.features);
   document.title = data.site_name;
   const splashTitle = document.getElementById("splash-title");
   if (splashTitle) splashTitle.textContent = data.site_name;
@@ -69,49 +40,39 @@ async function loadSiteConfig(): Promise<void> {
   if (splashSub) splashSub.textContent = data.site_name;
   const link = document.querySelector<HTMLLinkElement>("link[rel='icon']");
   if (link) {
-    link.href = data.site_logo_url;
+    link.href = siteLogoUrl;
     link.type = "image/webp";
   }
 }
 
-function dismissSplash(): void {
-  const splash = document.getElementById("splash");
-  const rootEl = document.getElementById("root");
-  if (splash) {
-    splash.remove();
-    (window as unknown as { __splashCleanup?: () => void }).__splashCleanup?.();
-  }
-  if (rootEl) {
-    rootEl.style.opacity = "1";
-    rootEl.style.position = "";
-    rootEl.style.inset = "";
-  }
-  document.documentElement.classList.add("splash-done");
+async function loadClassCatalog(): Promise<void> {
+  const items = await fetchClassCatalog();
+  useClassCatalogStore.getState().setItems(items);
+}
+
+async function loadClassTags(): Promise<void> {
+  const tags = await fetchClassTags();
+  useClassTagStore.getState().setTags(tags);
 }
 
 export async function mountApp(root: Root): Promise<void> {
   await i18nReady;
-  try {
-    await loadSiteConfig();
-  } catch (error: unknown) {
-    console.error("[bootstrap] Failed to load site config", error);
-  }
+  await Promise.all([
+    loadSiteConfig().catch((error: unknown) => {
+      console.error("[bootstrap] Failed to load site config", error);
+    }),
+    loadClassCatalog().catch((error: unknown) => {
+      console.error("[bootstrap] Failed to load class catalog", error);
+    }),
+    loadClassTags().catch((error: unknown) => {
+      console.error("[bootstrap] Failed to load class tags", error);
+    }),
+  ]);
   root.render(
     <StrictMode>
       <ErrorBoundary>
         <PortalThemeProvider>
-          <ContextMenuProvider
-            borderRadius="md"
-            classNames={{
-              root: "infini-context-menu-root",
-              item: "infini-context-menu-item",
-              divider: "infini-context-menu-divider",
-            }}
-            shadow="md"
-            submenuDelay={160}
-          >
-            <AppRouter />
-          </ContextMenuProvider>
+          <AppRouter />
         </PortalThemeProvider>
       </ErrorBoundary>
     </StrictMode>,

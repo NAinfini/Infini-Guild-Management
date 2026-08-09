@@ -10,7 +10,11 @@ import {
 } from "@guild/shared";
 import type { z } from "zod";
 import { apiRequest } from "../client";
-import { convertFileForUpload, convertFilesForUpload } from "@guild/shared/utils/media";
+import {
+  appendImageUploadVariants,
+  convertImageForUpload,
+  convertImagesForUpload,
+} from "@guild/shared/utils/media";
 
 export type UpdateMyProfilePayload = z.input<typeof updateProfileSchema>;
 export type ChangeMyPasswordPayload = z.input<typeof changePasswordSchema>;
@@ -24,36 +28,34 @@ export function updateMyProfile(userId: string, payload: UpdateMyProfilePayload)
   });
 }
 
-export async function uploadProfileImages(userId: string, files: File[]): Promise<{ keys: string[] }> {
-  const converted = await convertFilesForUpload(files);
+export async function uploadProfileImages(userId: string, files: File[]): Promise<{ media_ids: string[] }> {
+  const converted = await convertImagesForUpload(files);
   const formData = new FormData();
-  for (const file of converted) {
-    formData.append("files", file);
-  }
+  appendImageUploadVariants(formData, converted);
 
-  return apiRequest<{ keys: string[] }>(`/api/users/${userId}/media/images`, {
+  return apiRequest<{ media_ids: string[] }>(`/api/users/${userId}/media/images`, {
     method: "POST",
     body: formData,
   });
 }
 
-export async function uploadProfileAudio(userId: string, file: File): Promise<{ key: string }> {
-  const converted = await convertFileForUpload(file);
+/** Uploads the canonical Ogg/Opus file produced by useMediaUpload's audio preprocessing. */
+export async function uploadProfileAudio(userId: string, canonicalAudioFile: File): Promise<{ media_id: string }> {
   const formData = new FormData();
-  formData.append("file", converted);
+  formData.append("file", canonicalAudioFile);
 
-  return apiRequest<{ key: string }>(`/api/users/${userId}/media/audio`, {
+  return apiRequest<{ media_id: string }>(`/api/users/${userId}/media/audio`, {
     method: "POST",
     body: formData,
   });
 }
 
-export async function uploadAvatar(userId: string, file: File): Promise<{ key: string }> {
-  const converted = await convertFileForUpload(file);
+export async function uploadAvatar(userId: string, file: File): Promise<{ media_id: string }> {
+  const converted = await convertImageForUpload(file);
   const formData = new FormData();
-  formData.append("file", converted);
+  appendImageUploadVariants(formData, [converted]);
 
-  return apiRequest<{ key: string }>(`/api/users/${userId}/media/avatar`, {
+  return apiRequest<{ media_id: string }>(`/api/users/${userId}/media/avatar`, {
     method: "POST",
     body: formData,
   });
@@ -65,12 +67,12 @@ export function deleteAvatar(userId: string): Promise<{ ok: true }> {
   });
 }
 
-export function deleteProfileImage(userId: string, key: string): Promise<{ ok: true }> {
-  return deleteProfileImages(userId, [key]).then(() => ({ ok: true as const }));
+export function deleteProfileImage(userId: string, mediaId: string): Promise<{ ok: true }> {
+  return deleteProfileImages(userId, [mediaId]).then(() => ({ ok: true as const }));
 }
 
-export function deleteProfileImages(userId: string, keys: string[]): Promise<{ ok: true; deleted: number }> {
-  const bodyJson = deleteProfileImagesSchema.parse({ keys });
+export function deleteProfileImages(userId: string, mediaIds: string[]): Promise<{ ok: true; deleted: number }> {
+  const bodyJson = deleteProfileImagesSchema.parse({ media_ids: mediaIds });
   return apiRequest<{ ok: true; deleted: number }>(`/api/users/${userId}/media/images`, {
     method: "DELETE",
     bodyJson,

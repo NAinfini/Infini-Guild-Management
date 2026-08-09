@@ -1,406 +1,116 @@
-.tools-readonly {
-  pointer-events: none;
-  opacity: 0.72;
+.tools-page {
+  width: 100%;
 }
 
-.tool-card {
-  position: relative;
+.tools-page__description {
+  max-width: 65ch;
+  margin-inline: auto;
+  text-align: center;
 }
 
-.tool-card__btn {
+.tools-page__utility {
+  width: 100%;
+  max-width: 46rem;
+  margin-inline: auto;
+}
+
+.tool-launch-panel__button {
   all: unset;
   box-sizing: border-box;
-  cursor: pointer;
   width: 100%;
-  min-height: 108px;
-  display: flex;
-  flex-direction: row;
+  min-height: 9rem;
+  display: grid;
+  grid-template-columns: var(--control-height-large) minmax(0, 1fr);
   align-items: center;
-  justify-content: space-between;
-  text-align: left;
-  padding: 20px 24px;
-  gap: 12px;
+  gap: var(--space-xl);
+  padding: var(--space-2xl);
+  border-radius: inherit;
+  color: inherit;
+  cursor: pointer;
 }
 
-.tool-card__content {
-  flex: 1;
+.tool-launch-panel__button:focus-visible {
+  box-shadow:
+    0 0 0 2px var(--surface-base),
+    0 0 0 4px var(--brand-fill);
+}
+
+.tool-launch-panel__button:disabled {
+  cursor: not-allowed;
+}
+
+.tool-launch-panel__content {
   min-width: 0;
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  align-items: flex-start;
+  gap: var(--space-xs);
 }
 
-.tool-card__icon-wrap {
-  flex-shrink: 0;
-  display: flex;
-  align-items: center;
-}
-
-.tool-card__icon {
-  width: 56px;
-  height: 56px;
-  flex-shrink: 0;
+.tool-launch-panel__icon {
+  width: var(--control-height-large);
+  height: var(--control-height-large);
   display: grid;
   place-items: center;
-  font-size: 28px;
-  line-height: 1;
-  border-radius: var(--radius-md);
-  /* Neutral tile: three gold squares on a page of three cards made the icons
-     shout louder than the tool names they belong to. */
+  border-radius: var(--radius-surface);
   background: color-mix(in srgb, var(--text-primary) 5%, transparent);
   color: var(--text-muted);
   border: 1px solid var(--border-subtle);
   transition: background var(--transition-normal), color var(--transition-normal);
 }
 
-.tool-card:hover .tool-card__icon {
+.tool-launch-panel__button:hover:not(:disabled) .tool-launch-panel__icon {
   background: color-mix(in srgb, var(--text-primary) 9%, transparent);
   color: var(--text-primary);
 }
 
-.tool-card__title.tool-card__title {
+.tool-launch-panel__title.tool-launch-panel__title {
   margin: 0;
-  font-size: 16px;
+  font-size: var(--text-section);
 }
 
-.tool-card__description {
-  font-size: 13px;
-  line-height: 1.5;
+.tool-launch-panel__description {
+  max-width: 58ch;
+  font-size: var(--text-sm);
+  line-height: var(--lh-normal);
 }
 
-.tool-card__meta {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  min-width: 0;
-  margin-top: 2px;
+.tool-launch-panel__action {
+  margin-top: var(--space-sm);
+  color: var(--brand-text);
+  font-size: var(--text-sm);
+  font-weight: var(--fw-medium);
 }
 
-/*
- * The label must never be the element that gives: in a narrow card the flex
- * default (shrink to min-content) breaks "数据版本" into one CJK glyph per line.
- * The value wraps at any character so long version identifiers remain readable.
- */
-.tool-card__meta .mantine-Text-root:first-child {
-  flex-shrink: 0;
-  white-space: nowrap;
+.tool-launch-panel__button:disabled .tool-launch-panel__action {
+  color: var(--text-muted);
 }
 
-.tool-card__meta .mantine-Text-root:last-child {
-  min-width: 0;
-  max-width: 100%;
-  overflow-wrap: anywhere;
-  font-variant-numeric: tabular-nums;
-}
-
-.tool-card__external-icon {
-  display: inline-block;
-  vertical-align: middle;
-  margin-left: 6px;
-  opacity: 0.5;
-}
-
-a.tool-card__btn {
-  text-decoration: none;
-  color: inherit;
-}
-
-.sandbox {
-  display: flex;
-  flex-direction: column;
-  gap: 14px;
-}
-
-.sandbox__topbar {
-  padding: 14px;
-  border: 1px solid color-mix(in srgb, var(--text-primary) 8%, transparent);
-  border-radius: var(--radius-md);
-  background: color-mix(in srgb, var(--text-primary) 2%, transparent);
-}
-
-.sandbox__workspace {
-  display: grid;
-  grid-template-columns: minmax(320px, 0.9fr) minmax(420px, 1.1fr);
-  gap: 14px;
-  align-items: start;
-}
-
-.sandbox__panel {
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
-  min-width: 0;
-  padding: 14px;
-  border: 1px solid color-mix(in srgb, var(--text-primary) 8%, transparent);
-  border-radius: var(--radius-md);
-  background: color-mix(in srgb, var(--surface-base) 74%, transparent);
-}
-
-.sandbox__panel--output {
-  position: sticky;
-  top: 12px;
-}
-
-.sandbox__controls,
-.sandbox__output {
-  display: flex;
-  flex-direction: column;
-  gap: 20px;
-}
-
-.sandbox__section {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-
-.sandbox__section-label {
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-  display: flex;
-  align-items: center;
-}
-
-.sandbox__title-section {
-  max-width: 560px;
-}
-
-.sandbox__opacity-wrap {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-}
-
-.sandbox__opacity-slider {
-  flex: 1;
-  min-width: 0;
-}
-
-.sandbox__opacity-value {
-  min-width: 36px;
-  text-align: right;
-  font-variant-numeric: tabular-nums;
-}
-
-.sandbox__recent {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-
-.sandbox__recent-list {
-  display: flex;
-  gap: 4px;
-  flex-wrap: wrap;
-}
-
-.sandbox__recent-btn {
-  all: unset;
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  padding: 2px 8px 2px 4px;
-  border-radius: var(--radius-pill);
-  cursor: pointer;
-  font-size: 11px;
-  color: color-mix(in srgb, var(--text-primary) 70%, transparent);
-  background: color-mix(in srgb, var(--text-primary) 5%, transparent);
-  border: 1px solid color-mix(in srgb, var(--text-primary) 10%, transparent);
-  transition: background 100ms ease;
-}
-
-.sandbox__recent-btn:hover {
-  background: color-mix(in srgb, var(--text-primary) 10%, transparent);
-}
-
-.sandbox__recent-dot {
-  width: 12px;
-  height: 12px;
-  border-radius: 50%;
-  flex-shrink: 0;
-  /* 与模式无关的字面黑：这条描边只是给下面任意色号的 --swatch-color 描一圈轮廓，
-     好让浅色色块在浅色表面上也能看出边界，不属于替换表任何一行，理由同下面
-     --swatch-color 本身（数据色，不随主题变化）。 */
-  border: 1px solid rgba(0, 0, 0, 0.1);
-  /* --swatch-color：复用 tiptap-editor.css / AdminBadgesSection.css 同名
-     channel，这里的值来自用户自己在沙盒里挑过的 recentColors（localStorage
-     持久化，等同 class-1 数据），由 ToolsPage.tsx 无条件内联写入。 */
-  background: var(--swatch-color);
-}
-
-.sandbox__typo-toggles {
-  display: flex;
-  gap: 6px;
-  flex-wrap: wrap;
-}
-
-.sandbox__typo-btn {
-  all: unset;
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  padding: 6px 14px;
-  border-radius: var(--radius-sm);
-  cursor: pointer;
-  font-size: 13px;
-  font-weight: 500;
-  color: color-mix(in srgb, var(--text-primary) 65%, transparent);
-  background: color-mix(in srgb, var(--text-primary) 5%, transparent);
-  border: 1px solid color-mix(in srgb, var(--text-primary) 10%, transparent);
-  transition:
-    background var(--transition-fast),
-    border-color var(--transition-fast),
-    color var(--transition-fast),
-    box-shadow var(--transition-fast),
-    transform var(--transition-fast);
-}
-
-.sandbox__typo-btn:hover {
-  background: color-mix(in srgb, var(--accent-fill) 10%, transparent);
-  border-color: color-mix(in srgb, var(--accent-fill) 25%, transparent);
-  color: var(--accent-text);
-}
-
-.sandbox__typo-btn--active {
-  background: color-mix(in srgb, var(--accent-fill) 14%, transparent);
-  border-color: color-mix(in srgb, var(--accent-fill) 35%, transparent);
-  color: var(--accent-text);
-}
-
-.sandbox__slider-row {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin-top: 4px;
-}
-
-.sandbox__section-icon {
-  margin-right: var(--space-xs);
-  vertical-align: middle;
-}
-
-.sandbox__opacity-wrap {
-  margin-top: var(--space-md);
-}
-
-.sandbox__slider-icon {
-  color: color-mix(in srgb, var(--text-primary) 65%, transparent);
-  flex-shrink: 0;
-}
-
-.sandbox__slider-label {
-  min-width: 48px;
-  flex-shrink: 0;
-}
-
-.sandbox__slider {
-  flex: 1;
-  min-width: 0;
-}
-
-.sandbox__slider-value {
-  min-width: 44px;
-  text-align: right;
-  font-variant-numeric: tabular-nums;
-  flex-shrink: 0;
-}
-
-.sandbox__preview-card {
-  border-radius: var(--radius-md);
-  overflow: hidden;
-  border: 1px solid color-mix(in srgb, var(--text-primary) 10%, transparent);
-}
-
-.sandbox__preview-bg {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  min-height: 156px;
-  padding: 24px 20px;
-  background:
-    repeating-conic-gradient(
-      color-mix(in srgb, var(--text-primary) 6%, transparent) 0% 25%,
-      transparent 0% 50%
-    ) 0 0 / 16px 16px;
-}
-
-.sandbox__preview-rendered {
-  font-size: 28px;
-  text-align: center;
-  word-break: break-word;
-}
-
-.sandbox__preview-meta {
-  padding: 8px 14px;
-  border-top: 1px solid color-mix(in srgb, var(--text-primary) 8%, transparent);
-  background: color-mix(in srgb, var(--text-primary) 3%, transparent);
-}
-
-.sandbox__code-block {
-  position: relative;
-  padding: 12px 40px 12px 14px;
-  border-radius: var(--radius-sm);
-  background: color-mix(in srgb, var(--text-primary) 5%, transparent);
-  border: 1px solid color-mix(in srgb, var(--text-primary) 8%, transparent);
-  overflow-x: auto;
-}
-
-.sandbox__code-text {
-  font-family: "SF Mono", "Fira Code", "JetBrains Mono", monospace;
-  font-size: 12px;
-  line-height: 1.6;
-  word-break: break-all;
-  color: color-mix(in srgb, var(--text-primary) 80%, transparent);
-}
-
-.sandbox__override-textarea textarea {
-  font-family: "SF Mono", "Fira Code", "JetBrains Mono", monospace;
-  font-size: 12px;
-  min-height: 108px;
-}
-
-.sandbox__copy-icon-btn {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: var(--control-icon-size-compact);
-  height: var(--control-icon-size-compact);
-  padding: 0;
-  border: 1px solid color-mix(in srgb, var(--text-primary) 16%, transparent);
-  border-radius: var(--radius-sm);
-  background: transparent;
-  color: color-mix(in srgb, var(--text-primary) 65%, transparent);
-  cursor: pointer;
-  transition: background 120ms ease, color 120ms ease;
-}
-
-.sandbox__copy-icon-btn:hover {
-  background: color-mix(in srgb, var(--accent-fill) 12%, transparent);
-  color: var(--accent-text);
-}
-
-@media (max-width: 900px) {
-  .sandbox__workspace {
-    grid-template-columns: 1fr;
+@media (max-width: 40rem) {
+  .tools-page__description {
+    text-align: left;
   }
 
-  .sandbox__panel--output {
-    position: static;
+  .tool-launch-panel__button {
+    min-height: 0;
+    gap: var(--space-md);
+    padding: var(--space-lg);
   }
 }
+
 
 /* ── Dice Roller ── */
 
 .dice {
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: var(--space-lg);
 }
 
 .dice__config {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: 12px;
+  gap: var(--space-md);
 }
 
 .dice__input {
@@ -411,28 +121,28 @@ a.tool-card__btn {
   display: none;
 }
 
+/* Primary roll action spans the input panel. */
 .dice__roll-btn {
   all: unset;
   box-sizing: border-box;
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 8px;
-  align-self: center;
-  padding: 8px 32px;
-  border-radius: var(--radius-md);
+  gap: var(--space-sm);
+  block-size: var(--control-height-regular);
+  border-radius: var(--radius-surface);
   cursor: pointer;
-  font-size: 14px;
-  font-weight: 600;
-  color: var(--accent-on-fill);
-  background: var(--accent-fill);
-  transition: background 150ms ease, transform 100ms ease, box-shadow 150ms ease;
+  font-size: var(--text-body);
+  font-weight: var(--fw-medium);
+  color: var(--brand-on-fill);
+  background: var(--brand-fill);
+  transition: transform var(--transition-fast), box-shadow var(--transition-smooth);
 }
 
 .dice__roll-btn:hover:not(:disabled) {
   /* State signal comes from shadow, not a darkened fill: dimming the fill drags
      --accent-on-fill (calibrated for accent-500 only) below AA. See theme-tokens.test.ts. */
-  box-shadow: var(--shadow-accent-md);
+  box-shadow: var(--shadow-overlay);
 }
 
 .dice__roll-btn:active:not(:disabled) {
@@ -463,18 +173,30 @@ a.tool-card__btn {
   to { transform: rotate(360deg); }
 }
 
-.dice__results {
+/* 常驻的投掷台。骰位、骰式和总计都固定在这里，投掷只换内容不改布局。 */
+.dice__stage {
+  position: relative;
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 12px;
-  padding: 20px 16px;
-  border-radius: var(--radius-md);
-  background: color-mix(in srgb, var(--text-primary) 3%, transparent);
-  border: 1px solid color-mix(in srgb, var(--text-primary) 8%, transparent);
+  gap: var(--space-md);
+  padding: var(--space-xl) var(--space-lg);
+  border-radius: var(--radius-overlay);
+  background: color-mix(in srgb, var(--brand-fill) 5%, var(--surface-raised));
+  border: 1px solid var(--border-subtle);
 }
 
-.dice__results--rolling {
+/* 骰式（3d6）说明这一台摆的是什么，跟着上面两个输入框实时变。 */
+.dice__notation {
+  font-size: var(--text-meta);
+  font-weight: var(--fw-medium);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.dice__stage--rolling {
   animation: dice-shake 120ms linear infinite;
 }
 
@@ -488,7 +210,7 @@ a.tool-card__btn {
 
 .dice__results-dice {
   display: flex;
-  gap: 10px;
+  gap: var(--space-sm);
   flex-wrap: wrap;
   justify-content: center;
 }
@@ -496,22 +218,31 @@ a.tool-card__btn {
 .dice__die {
   display: grid;
   place-items: center;
-  width: 52px;
-  height: 52px;
-  border-radius: var(--radius-md);
-  font-size: 20px;
-  font-weight: 700;
+  inline-size: var(--control-height-large);
+  block-size: var(--control-height-large);
+  border-radius: var(--radius-surface);
+  font-size: var(--text-h2);
+  font-weight: var(--fw-strong);
   font-variant-numeric: tabular-nums;
-  color: var(--accent-text);
+  color: var(--brand-text);
   background: var(--surface-base);
-  border: 2px solid color-mix(in srgb, var(--accent-fill) 30%, transparent);
-  box-shadow: var(--shadow-sm);
-  transition: transform 200ms ease, border-color 200ms ease;
+  border: 2px solid color-mix(in srgb, var(--brand-fill) 30%, transparent);
+  box-shadow: var(--edge-top);
+  transition: transform var(--transition-smooth), border-color var(--transition-smooth);
+}
+
+/* 还没投过的空骰位：留出位置但不假装有结果。 */
+.dice__die--empty {
+  color: var(--text-muted);
+  background: transparent;
+  border-style: dashed;
+  border-color: var(--border-subtle);
+  box-shadow: none;
 }
 
 .dice__die--spinning {
   animation: dice-die-bounce 120ms ease-in-out infinite alternate;
-  border-color: color-mix(in srgb, var(--accent-fill) 50%, transparent);
+  border-color: color-mix(in srgb, var(--brand-fill) 50%, transparent);
 }
 
 @keyframes dice-die-bounce {
@@ -521,16 +252,23 @@ a.tool-card__btn {
 
 .dice__total {
   display: flex;
-  align-items: center;
-  gap: 8px;
+  align-items: baseline;
+  gap: var(--space-sm);
+}
+
+.dice__total-value {
+  font-size: var(--text-h2);
+  font-weight: var(--fw-strong);
+  font-variant-numeric: tabular-nums;
+  color: var(--text-primary);
 }
 
 .dice__history-section {
   display: flex;
   flex-direction: column;
-  gap: 8px;
-  border-top: 1px solid color-mix(in srgb, var(--text-primary) 8%, transparent);
-  padding-top: 12px;
+  gap: var(--space-sm);
+  border-top: 1px solid var(--border-subtle);
+  padding-top: var(--space-md);
 }
 
 .dice__section-label {
@@ -542,37 +280,75 @@ a.tool-card__btn {
   all: unset;
   display: inline-flex;
   align-items: center;
-  gap: 4px;
-  padding: 2px 8px;
-  border-radius: var(--radius-sm);
+  gap: var(--space-xs);
+  padding: 2px var(--space-sm);
+  border-radius: var(--radius-control);
   cursor: pointer;
-  font-size: 12px;
-  color: color-mix(in srgb, var(--text-primary) 65%, transparent);
-  transition: color 120ms ease;
+  font-size: var(--text-meta);
+  color: var(--text-muted);
+  transition: color var(--transition-fast);
 }
 
 .dice__clear-btn:hover {
   color: var(--status-danger);
 }
 
+/* The dashed surface distinguishes an intentional empty history. */
+.dice__history-empty {
+  display: grid;
+  place-items: center;
+  padding: var(--space-xl);
+  border: 1px dashed var(--border-subtle);
+  border-radius: var(--radius-surface);
+}
+
 .dice__history-list {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: var(--space-xs);
   max-height: 200px;
   overflow-y: auto;
   scrollbar-width: thin;
 }
 
+/* Fixed columns align expression, rolls, and total across history rows. */
 .dice__history-item {
-  padding: 6px 10px;
-  border-radius: var(--radius-sm);
-  background: color-mix(in srgb, var(--text-primary) 3%, transparent);
+  display: grid;
+  grid-template-columns: 4.5rem 1fr auto;
+  align-items: center;
+  gap: var(--space-sm);
+  padding: var(--space-xs) var(--space-sm);
+  border-radius: var(--radius-control);
+  background: var(--surface-raised);
   animation: dice-history-in 200ms ease-out;
 }
 
 .dice__history-item:first-child {
-  background: color-mix(in srgb, var(--accent-fill) 8%, transparent);
+  background: color-mix(in srgb, var(--brand-fill) 8%, transparent);
+}
+
+.dice__history-notation {
+  font-size: var(--text-meta);
+  font-weight: var(--fw-medium);
+  font-variant-numeric: tabular-nums;
+  color: var(--brand-text);
+}
+
+.dice__history-rolls {
+  min-inline-size: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--text-meta);
+  font-variant-numeric: tabular-nums;
+  color: var(--text-muted);
+}
+
+.dice__history-total {
+  font-size: var(--text-sm);
+  font-weight: var(--fw-strong);
+  font-variant-numeric: tabular-nums;
+  color: var(--text-primary);
 }
 
 @keyframes dice-history-in {
@@ -585,3 +361,13 @@ a.tool-card__btn {
     transform: translateY(0);
   }
 }
+
+@media (prefers-reduced-motion: reduce) {
+  .dice__icon-spin,
+  .dice__stage--rolling,
+  .dice__die--spinning,
+  .dice__history-item {
+    animation: none;
+  }
+}
+

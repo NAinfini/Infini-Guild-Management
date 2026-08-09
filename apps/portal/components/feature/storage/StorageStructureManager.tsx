@@ -1,6 +1,8 @@
 import type { CreateStorageCategoryPayload, CreateStoragePayload, Storage } from "@guild/shared";
-import { ActionIcon, Badge, Button, Group, Stack, Text, TextInput, Textarea } from "@mantine/core";
+import { ActionIcon, Badge, Button, Drawer, Group, Stack, Text, TextInput, Textarea } from "@mantine/core";
+import { useMediaQuery } from "@mantine/hooks";
 import { PlusIcon, TrashIcon } from "@portal/components/icons";
+import { useKeyedPending } from "@portal/hooks/useKeyedPending";
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 
@@ -12,24 +14,26 @@ type StorageStructureManagerProps = {
   storages: Storage[];
   selectedStorage: Storage | null;
   selectedCategoryId: string | null;
-  isSaving: boolean;
-  isDeleting: boolean;
   onSelectStorage: (id: string) => void;
   onSelectCategory: (storageId: string, categoryId: string) => void;
-  onCreateStorage: (payload: CreateStoragePayload, onSuccess: () => void) => void;
-  onUpdateStorage: (id: string, payload: Partial<CreateStoragePayload>) => void;
-  onDeleteStorage: (id: string) => void;
-  onCreateCategory: (storageId: string, payload: CreateStorageCategoryPayload, onSuccess: () => void) => void;
-  onUpdateCategory: (storageId: string, categoryId: string, payload: CreateStorageCategoryPayload) => void;
-  onDeleteCategory: (storageId: string, categoryId: string) => void;
+  onCreateStorage: (payload: CreateStoragePayload) => Promise<boolean>;
+  onUpdateStorage: (id: string, payload: Partial<CreateStoragePayload>) => Promise<boolean>;
+  onDeleteStorage: (id: string) => Promise<boolean>;
+  onCreateCategory: (storageId: string, payload: CreateStorageCategoryPayload) => Promise<boolean>;
+  onUpdateCategory: (storageId: string, categoryId: string, payload: CreateStorageCategoryPayload) => Promise<boolean>;
+  onDeleteCategory: (storageId: string, categoryId: string) => Promise<boolean>;
 };
+
+type StructureAction = "create" | "update" | "delete";
+type StructureResource = "storage" | "category";
+
+const pendingKey = (action: StructureAction, resource: StructureResource, id: string) =>
+  `${action}:${resource}:${id}`;
 
 export function StorageStructureManager({
   storages,
   selectedStorage,
   selectedCategoryId,
-  isSaving,
-  isDeleting,
   onSelectStorage,
   onSelectCategory,
   onCreateStorage,
@@ -59,11 +63,17 @@ export function StorageStructureManager({
     saveCategory: t("action.saveCategory"),
     deleteCategory: t("action.deleteCategory"),
     noCategories: t("empty.noCategories"),
+    selectStructure: t("manageStorage.selectStructure"),
+    changeSelection: t("manageStorage.changeSelection"),
+    mobileHint: t("manageStorage.mobileHint"),
   };
+  const isMobile = useMediaQuery("(max-width: 53.74em)");
   const [editName, setEditName] = useState("");
   const [editDescription, setEditDescription] = useState("");
   const [editCategoryName, setEditCategoryName] = useState("");
   const [creationDraft, setCreationDraft] = useState<CreationDraft | null>(null);
+  const [treeOpened, setTreeOpened] = useState(false);
+  const { pendingKeys, runPending } = useKeyedPending();
 
   const selectedCategory = selectedStorage?.categories.find((category) => category.id === selectedCategoryId) ?? null;
   const draftCategoryStorage = creationDraft?.type === "category"
@@ -104,12 +114,14 @@ export function StorageStructureManager({
     setCreationDraft({ type: "storage" });
     setEditName("");
     setEditDescription("");
+    setTreeOpened(false);
   };
 
   const handleBeginCreateCategory = (storageId: string) => {
     setCreationDraft({ type: "category", storageId });
     setEditCategoryName("");
     onSelectStorage(storageId);
+    setTreeOpened(false);
   };
 
   const handleSaveStorage = () => {
@@ -117,32 +129,44 @@ export function StorageStructureManager({
     if (!name) return;
     const payload = { name, description: editDescription.trim() || null };
     if (isCreatingStorage) {
-      onCreateStorage(payload, () => setCreationDraft(null));
+      void runPending(pendingKey("create", "storage", "new"), async () => {
+        if (await onCreateStorage(payload)) setCreationDraft(null);
+      });
       return;
     }
     if (!selectedStorage) return;
-    onUpdateStorage(selectedStorage.id, payload);
+    void runPending(
+      pendingKey("update", "storage", selectedStorage.id),
+      () => onUpdateStorage(selectedStorage.id, payload),
+    );
   };
 
   const handleSaveCategory = () => {
     const name = editCategoryName.trim();
     if (!name) return;
     if (creationDraft?.type === "category") {
-      onCreateCategory(creationDraft.storageId, { name }, () => setCreationDraft(null));
+      void runPending(pendingKey("create", "category", creationDraft.storageId), async () => {
+        if (await onCreateCategory(creationDraft.storageId, { name })) setCreationDraft(null);
+      });
       return;
     }
     if (!selectedStorage || !selectedCategory) return;
-    onUpdateCategory(selectedStorage.id, selectedCategory.id, { name });
+    void runPending(
+      pendingKey("update", "category", `${selectedStorage.id}/${selectedCategory.id}`),
+      () => onUpdateCategory(selectedStorage.id, selectedCategory.id, { name }),
+    );
   };
 
   const handleSelectStorage = (storageId: string) => {
     setCreationDraft(null);
     onSelectStorage(storageId);
+    setTreeOpened(false);
   };
 
   const handleSelectCategory = (storageId: string, categoryId: string) => {
     setCreationDraft(null);
     onSelectCategory(storageId, categoryId);
+    setTreeOpened(false);
   };
 
   const handleCancel = () => {
@@ -152,57 +176,109 @@ export function StorageStructureManager({
     setEditCategoryName(selectedCategory?.name ?? "");
   };
 
+  const treePanel = (
+    <Stack gap="xs" className="storage-management-modal__tree">
+      <Group justify="space-between" gap="xs" wrap="nowrap" className="storage-management-modal__tree-header">
+        <Text fw={700}>{labels.storageList}</Text>
+        <Button size="compact-xs" variant="light" leftSection={<PlusIcon size={13} />} onClick={handleBeginCreateStorage}>
+          {labels.create}
+        </Button>
+      </Group>
+
+      {storages.length === 0 ? <Text size="sm" c="dimmed">{labels.noStorages}</Text> : null}
+
+      {storages.map((storage) => (
+        <div key={storage.id} className="storage-management-modal__tree-group">
+          <div className={`storage-management-modal__tree-row storage-management-modal__tree-row--storage ${selectedNodeType === "storage" && selectedStorage?.id === storage.id ? "storage-management-modal__tree-row--active" : ""}`}>
+            <button type="button" className="storage-management-modal__tree-node" onClick={() => handleSelectStorage(storage.id)}>
+              <span>
+                <Text fw={800} lineClamp={1}>{storage.name}</Text>
+                <Text size="xs" c="dimmed" lineClamp={1}>{storage.description || labels.emptyDescription}</Text>
+              </span>
+              <Badge size="xs" variant="light">{storage.categories.length}</Badge>
+            </button>
+            <Group gap={2} wrap="nowrap" className="storage-management-modal__node-actions">
+              <ActionIcon size="sm" variant="subtle" aria-label={labels.createCategory} onClick={() => handleBeginCreateCategory(storage.id)}>
+                <PlusIcon size={13} />
+              </ActionIcon>
+              <ActionIcon
+                size="sm"
+                color="red"
+                variant="subtle"
+                aria-label={labels.delete}
+                loading={pendingKeys.has(pendingKey("delete", "storage", storage.id))}
+                onClick={() => {
+                  void runPending(
+                    pendingKey("delete", "storage", storage.id),
+                    () => onDeleteStorage(storage.id),
+                  );
+                }}
+              >
+                <TrashIcon size={13} />
+              </ActionIcon>
+            </Group>
+          </div>
+
+          <div className="storage-management-modal__tree-children">
+            {storage.categories.length === 0 ? <Text size="xs" c="dimmed" className="storage-management-modal__tree-empty">{labels.noCategories}</Text> : null}
+            {storage.categories.map((category) => (
+              <div
+                key={category.id}
+                className={`storage-management-modal__tree-row storage-management-modal__tree-row--category ${selectedNodeType === "category" && selectedCategory?.id === category.id ? "storage-management-modal__tree-row--active" : ""}`}
+              >
+                <button type="button" className="storage-management-modal__tree-node" onClick={() => handleSelectCategory(storage.id, category.id)}>
+                  <Text size="sm" fw={700} lineClamp={1}>{category.name}</Text>
+                </button>
+                <ActionIcon
+                  size="sm"
+                  color="red"
+                  variant="subtle"
+                  aria-label={labels.deleteCategory}
+                  loading={pendingKeys.has(pendingKey("delete", "category", `${storage.id}/${category.id}`))}
+                  onClick={() => {
+                    void runPending(
+                      pendingKey("delete", "category", `${storage.id}/${category.id}`),
+                      () => onDeleteCategory(storage.id, category.id),
+                    );
+                  }}
+                >
+                  <TrashIcon size={13} />
+                </ActionIcon>
+              </div>
+            ))}
+          </div>
+        </div>
+      ))}
+    </Stack>
+  );
+
   return (
     <div className="storage-management-modal">
-        <Stack gap="xs" className="storage-management-modal__tree">
-          <Group justify="space-between" gap="xs" wrap="nowrap" className="storage-management-modal__tree-header">
-            <Text fw={700}>{labels.storageList}</Text>
-            <Button size="compact-xs" variant="light" leftSection={<PlusIcon size={13} />} loading={isSaving} onClick={handleBeginCreateStorage}>
-              {labels.create}
-            </Button>
-          </Group>
-
-          {storages.length === 0 ? <Text size="sm" c="dimmed">{labels.noStorages}</Text> : null}
-
-          {storages.map((storage) => (
-            <div key={storage.id} className="storage-management-modal__tree-group">
-              <div className={`storage-management-modal__tree-row storage-management-modal__tree-row--storage ${selectedNodeType === "storage" && selectedStorage?.id === storage.id ? "storage-management-modal__tree-row--active" : ""}`}>
-                <button type="button" className="storage-management-modal__tree-node" onClick={() => handleSelectStorage(storage.id)}>
-                  <span>
-                    <Text fw={800} lineClamp={1}>{storage.name}</Text>
-                    <Text size="xs" c="dimmed" lineClamp={1}>{storage.description || labels.emptyDescription}</Text>
-                  </span>
-                  <Badge size="xs" variant="light">{storage.categories.length}</Badge>
-                </button>
-                <Group gap={2} wrap="nowrap" className="storage-management-modal__node-actions">
-                  <ActionIcon size="sm" variant="subtle" aria-label={labels.createCategory} loading={isSaving} onClick={() => handleBeginCreateCategory(storage.id)}>
-                    <PlusIcon size={13} />
-                  </ActionIcon>
-                  <ActionIcon size="sm" color="red" variant="subtle" aria-label={labels.delete} loading={isDeleting} onClick={() => onDeleteStorage(storage.id)}>
-                    <TrashIcon size={13} />
-                  </ActionIcon>
-                </Group>
+        {isMobile ? (
+          <>
+            <Stack gap="sm" className="storage-management-mobile-flow">
+              <Text size="sm" c="dimmed">{labels.mobileHint}</Text>
+              <div className="storage-management-mobile-flow__selection">
+                <span>
+                  <Text size="xs" c="dimmed">{labels.selectStructure}</Text>
+                  <Text fw={700} lineClamp={1}>{selectedContextName}</Text>
+                </span>
+                <Button variant="default" onClick={() => setTreeOpened(true)}>
+                  {labels.changeSelection}
+                </Button>
               </div>
-
-              <div className="storage-management-modal__tree-children">
-                {storage.categories.length === 0 ? <Text size="xs" c="dimmed" className="storage-management-modal__tree-empty">{labels.noCategories}</Text> : null}
-                {storage.categories.map((category) => (
-                  <div
-                    key={category.id}
-                    className={`storage-management-modal__tree-row storage-management-modal__tree-row--category ${selectedNodeType === "category" && selectedCategory?.id === category.id ? "storage-management-modal__tree-row--active" : ""}`}
-                  >
-                    <button type="button" className="storage-management-modal__tree-node" onClick={() => handleSelectCategory(storage.id, category.id)}>
-                      <Text size="sm" fw={700} lineClamp={1}>{category.name}</Text>
-                    </button>
-                    <ActionIcon size="sm" color="red" variant="subtle" aria-label={labels.deleteCategory} loading={isDeleting} onClick={() => onDeleteCategory(storage.id, category.id)}>
-                      <TrashIcon size={13} />
-                    </ActionIcon>
-                  </div>
-                ))}
-              </div>
-            </div>
-          ))}
-        </Stack>
+            </Stack>
+            <Drawer
+              opened={treeOpened}
+              onClose={() => setTreeOpened(false)}
+              title={labels.selectStructure}
+              position="left"
+              size={340}
+            >
+              {treePanel}
+            </Drawer>
+          </>
+        ) : treePanel}
 
         <div className="storage-management-modal__workspace">
           {selectedNodeType === "category" || selectedNodeType === "new-category" ? (
@@ -231,7 +307,13 @@ export function StorageStructureManager({
                         || editCategoryName.trim() === selectedCategory.name
                       ))
                     }
-                    loading={isSaving}
+                    loading={pendingKeys.has(pendingKey(
+                      isCreatingCategory ? "create" : "update",
+                      "category",
+                      isCreatingCategory
+                        ? creationDraft.storageId
+                        : `${selectedStorage?.id}/${selectedCategory?.id}`,
+                    ))}
                   >
                     {isCreatingCategory ? labels.createCategory : labels.saveCategory}
                   </Button>
@@ -255,7 +337,15 @@ export function StorageStructureManager({
               <Group justify="flex-end" className="storage-modal-actions">
                 <Group>
                   <Button variant="default" onClick={handleCancel}>{labels.cancel}</Button>
-                  <Button onClick={handleSaveStorage} disabled={!editName.trim() || (!isCreatingStorage && !selectedStorage)} loading={isSaving}>
+                  <Button
+                    onClick={handleSaveStorage}
+                    disabled={!editName.trim() || (!isCreatingStorage && !selectedStorage)}
+                    loading={pendingKeys.has(pendingKey(
+                      isCreatingStorage ? "create" : "update",
+                      "storage",
+                      isCreatingStorage ? "new" : selectedStorage?.id ?? "",
+                    ))}
+                  >
                     {isCreatingStorage ? labels.create : labels.save}
                   </Button>
                 </Group>

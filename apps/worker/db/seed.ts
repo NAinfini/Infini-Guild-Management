@@ -1,10 +1,23 @@
 import { sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/d1";
 import { nanoid } from "nanoid";
-import { PERMISSIONS } from "@guild/shared";
+import {
+  DEFAULT_FEATURE_FLAGS,
+  DEFAULT_SITE_ABSENCE_POLICY,
+  DEFAULT_SITE_ANALYTICS_SETTINGS,
+  DEFAULT_SITE_MEDIA_POLICY,
+  DEFAULT_SITE_STORAGE_POLICY,
+  PERMISSIONS,
+  type ClassVectorIconId,
+} from "@guild/shared";
+import { serializeJsonObject } from "../services/json-object-codec";
 import {
   announcements,
   auditLog,
+  classCatalog,
+  classTagMembers,
+  classTags,
+  eventClassQuotas,
   eventPollOptions,
   eventPolls,
   eventPollVotes,
@@ -14,12 +27,16 @@ import {
   galleryItems,
   inviteLinks,
   memberAbsences,
+  memberAvailabilityWindows,
   memberBadgeAssignments,
   memberBadges,
   memberProfileClasses,
   memberProfiles,
+  memberProfileVideos,
   rolePermissions,
   roles,
+  recurringTemplateClassQuotas,
+  recurringTemplateWeekdays,
   recurringTemplates,
   sessions,
   storageCategories,
@@ -34,67 +51,95 @@ import {
   warTeams,
   wikiArticles,
   wikiCategories,
-  gameData,
   siteConfig,
 } from "./schema";
-import seedGameData from "@guild/shared/calculator/seed-data.json";
 import type { Bindings } from "../index";
 import { createPasswordHash } from "../services/auth";
+import { seedLocalMedia } from "./seed-media";
 
-const ALL_TABLES = [
+export const SEED_CLEAR_TABLES = [
+  "system_test_artifacts",
+  "media_links",
+  "media_assets",
+  "media_variants",
   "storage_transactions",
-  "storage_item_images",
+  "storage_batches",
   "storage_items",
   "storage_categories",
   "storages",
-  "game_data",
-  "audit_log",
-  "error_log",
-  "gallery_items",
+  "wiki_revisions",
   "wiki_articles",
   "wiki_categories",
-  "war_pool_members",
-  "war_team_members",
-  "war_teams",
-  "war_history",
-  "recurring_templates",
-  "event_raffle_winners",
   "event_poll_votes",
   "event_poll_options",
   "event_polls",
+  "event_raffle_winners",
   "event_participants",
+  "war_team_members",
+  "war_pool_members",
+  "war_teams",
+  "war_history",
+  /* 配额行先走，它们指着活动／模板和标签；然后才轮得到标签和职业目录。 */
+  "recurring_template_class_quotas",
+  "recurring_template_weekdays",
+  "event_class_quotas",
+  "recurring_templates",
   "events",
+  "class_tag_members",
+  "class_tags",
+  "class_catalog",
+  "audit_log",
+  "error_log",
+  "gallery_items",
   "invite_links",
   "announcements",
   "member_badge_assignments",
   "member_badges",
   "member_absences",
+  "member_profile_videos",
   "member_profile_classes",
+  "member_availability_windows",
   "member_profiles",
-  "member_onboarding_state",
-  "onboarding_config",
   "site_config",
+  "system_test_runs",
   "sessions",
-  "role_permissions",
-  "roles",
+  "login_failures",
   "user_auth_password",
   "users",
+  "role_permissions",
+  "roles",
 ] as const;
 
 export async function clearAllData(env: Bindings): Promise<void> {
-  const db = drizzle(env.DB);
-  for (const table of ALL_TABLES) {
-    try {
-      await db.run(sql.raw(`DELETE FROM ${table}`));
-    } catch {
-      // Table may not exist in a fresh or partially-migrated database
-    }
+  for (const table of SEED_CLEAR_TABLES) {
+    await env.DB.prepare(`DELETE FROM ${table}`).run();
   }
 }
 
-import { activeGame } from "@guild/shared/games";
+type SeedClassCatalogItem = {
+  id: string;
+  label: string;
+  color: string;
+  vectorIcon: ClassVectorIconId;
+  sortOrder: number;
+};
 
-const CLASSES = activeGame.classes.map((c) => c.id);
+/** Local development fixture; production class data comes from D1 class_catalog. */
+const SEEDED_CLASS_CATALOG = [
+  { id: "鸣金虹", label: "鸣金虹", color: "#6EA8FE", vectorIcon: "sword", sortOrder: 0 },
+  { id: "鸣金影", label: "鸣金影", color: "#79A7F2", vectorIcon: "target-arrow", sortOrder: 10 },
+  { id: "牵丝玉", label: "牵丝玉", color: "#58C7A6", vectorIcon: "sparkles", sortOrder: 20 },
+  { id: "牵丝霖", label: "牵丝霖", color: "#54C39B", vectorIcon: "heartbeat", sortOrder: 30 },
+  { id: "牵丝翊", label: "牵丝翊", color: "#62BEA7", vectorIcon: "pendant", sortOrder: 40 },
+  { id: "破竹风", label: "破竹风", color: "#A78BFA", vectorIcon: "bolt", sortOrder: 50 },
+  { id: "破竹尘", label: "破竹尘", color: "#9B8AE8", vectorIcon: "shield", sortOrder: 60 },
+  { id: "破竹鸢", label: "破竹鸢", color: "#B18CF1", vectorIcon: "target", sortOrder: 70 },
+  { id: "裂石威", label: "裂石威", color: "#E27676", vectorIcon: "shield", sortOrder: 80 },
+  { id: "裂石钧", label: "裂石钧", color: "#DB7770", vectorIcon: "hammer", sortOrder: 90 },
+] as const satisfies readonly SeedClassCatalogItem[];
+
+const CLASSES = SEEDED_CLASS_CATALOG.map((item) => item.id);
+const SEEDED_IMAGE_CLASS_ID = SEEDED_CLASS_CATALOG[0].id;
 
 const MODERATOR_GRANTED_PERMISSIONS = new Set<string>([
   "admin.users.view",
@@ -164,10 +209,6 @@ function addMinutes(base: Date | string, minutes: number): string {
   return next.toISOString();
 }
 
-function seedMockAsset(kind: "portrait" | "scene", index: number): string {
-  return `/mock/${kind}-${(index % 2) + 1}.svg`;
-}
-
 function pickClasses(index: number): string[] {
   const first = CLASSES[index % CLASSES.length]!;
   const second = CLASSES[(index + 3) % CLASSES.length]!;
@@ -180,10 +221,12 @@ async function batchInsert<T extends Record<string, unknown>>(
   table: Parameters<ReturnType<typeof drizzle>["insert"]>[0],
   rows: T[],
   chunkSize = 10,
+  options: { ignoreConflicts?: boolean } = {},
 ): Promise<void> {
   for (let i = 0; i < rows.length; i += chunkSize) {
     const chunk = rows.slice(i, i + chunkSize);
-    await (db.insert(table) as any).values(chunk);
+    const query = (db.insert(table) as any).values(chunk);
+    await (options.ignoreConflicts ? query.onConflictDoNothing() : query);
   }
 }
 
@@ -206,19 +249,63 @@ export async function seedDatabase(env: Bindings): Promise<void> {
   // ════════════════════════════════════════════
 
   const roleRows: Array<typeof roles.$inferInsert> = [
-    { id: "admin", name: "Admin", level: 999, color: "red", isBuiltin: true },
-    { id: "moderator", name: "Moderator", level: 500, color: "#756047", isBuiltin: true },
-    { id: "member", name: "Member", level: 100, color: "gray", isBuiltin: true },
+    { id: "admin", name: "Admin", level: 999, color: "red" },
+    { id: "moderator", name: "Moderator", level: 500, color: "#756047" },
+    { id: "member", name: "Member", level: 100, color: "gray" },
   ];
-  await batchInsert(db, roles, roleRows, 3);
+  await batchInsert(db, roles, roleRows, 3, { ignoreConflicts: true });
 
   const rolePermissionRows: Array<typeof rolePermissions.$inferInsert> = [];
   for (const permission of PERMISSIONS) {
-    rolePermissionRows.push({ roleId: "admin", permission, granted: true });
-    rolePermissionRows.push({ roleId: "moderator", permission, granted: MODERATOR_GRANTED_PERMISSIONS.has(permission) });
-    rolePermissionRows.push({ roleId: "member", permission, granted: MEMBER_GRANTED_PERMISSIONS.has(permission) });
+    rolePermissionRows.push({ roleId: "admin", permission });
+    if (MODERATOR_GRANTED_PERMISSIONS.has(permission)) {
+      rolePermissionRows.push({ roleId: "moderator", permission });
+    }
+    if (MEMBER_GRANTED_PERMISSIONS.has(permission)) {
+      rolePermissionRows.push({ roleId: "member", permission });
+    }
   }
-  await batchInsert(db, rolePermissions, rolePermissionRows, 15);
+  await batchInsert(db, rolePermissions, rolePermissionRows, 15, { ignoreConflicts: true });
+
+  await batchInsert(
+    db,
+    classCatalog,
+    SEEDED_CLASS_CATALOG.map((item) => ({
+      id: item.id,
+      label: item.label,
+      color: item.color,
+      iconType: item.id === SEEDED_IMAGE_CLASS_ID ? "image" : "vector",
+      vectorIcon: item.id === SEEDED_IMAGE_CLASS_ID ? null : item.vectorIcon,
+      sortOrder: item.sortOrder,
+    })),
+    10,
+    { ignoreConflicts: true },
+  );
+
+  /*
+   * 职业标签：给一组职业起个名字，活动配额就指着它说「这一格要 N 个，组里的职业都算」。
+   * 刻意让三个标签互相重叠——破竹风既在输出里也在治疗里——否则摇摆位一个都不会出现，
+   * 筹码的三档配色和名单里的「摇摆」标记在种子数据上根本看不出来。
+   */
+  const classTagRows: Array<typeof classTags.$inferInsert> = [
+    { id: "tag-tank", label: "坦克", sortOrder: 0 },
+    { id: "tag-healer", label: "治疗", sortOrder: 10 },
+    { id: "tag-dps", label: "输出", sortOrder: 20 },
+  ];
+  const classTagMemberRows: Array<typeof classTagMembers.$inferInsert> = [
+    { tagId: "tag-tank", classId: "裂石威" },
+    { tagId: "tag-tank", classId: "破竹尘" },
+    { tagId: "tag-healer", classId: "牵丝霖" },
+    { tagId: "tag-healer", classId: "牵丝翊" },
+    { tagId: "tag-healer", classId: "破竹风" },
+    { tagId: "tag-dps", classId: "鸣金虹" },
+    { tagId: "tag-dps", classId: "鸣金影" },
+    { tagId: "tag-dps", classId: "破竹鸢" },
+    { tagId: "tag-dps", classId: "破竹风" },
+    { tagId: "tag-dps", classId: "裂石钧" },
+  ];
+  await batchInsert(db, classTags, classTagRows, 10, { ignoreConflicts: true });
+  await batchInsert(db, classTagMembers, classTagMemberRows, 10, { ignoreConflicts: true });
 
   // ════════════════════════════════════════════
   // ── Users ──
@@ -254,56 +341,46 @@ export async function seedDatabase(env: Bindings): Promise<void> {
 
   await batchInsert(db, users, userRows);
 
-  await db.insert(siteConfig).values({
-    id: "default",
-    siteName: "Infini 公会",
-    siteLogoUrl: "/guild-logo.webp",
-    featureFlagsJson: JSON.stringify({
-      announcements: true,
-      events: true,
-      guildWar: true,
-      gallery: true,
-      wiki: true,
-      tools: true,
-      equipmentCalc: true,
-      storage: true,
-    }),
-    mediaPolicyJson: JSON.stringify({
-      max_file_size_bytes: {
-        site_logo: 2 * 1024 * 1024,
-        profile_image: 5 * 1024 * 1024,
-        profile_audio: 20 * 1024 * 1024,
-        announcement_image: 5 * 1024 * 1024,
-        wiki_image: 5 * 1024 * 1024,
-        event_image: 5 * 1024 * 1024,
-        gallery_image: 10 * 1024 * 1024,
-        storage_image: 5 * 1024 * 1024,
-      },
-      quotas: {
-        profile: 10,
-        announcement: 10,
-        gallery: 20,
-        wiki: 10,
-      },
-    }),
-    storagePolicyJson: JSON.stringify({
-      images_per_item: 5,
-    }),
-    absencePolicyJson: JSON.stringify({
-      max_span_days: 366,
-      max_entries_per_user: 20,
-    }),
-    analyticsSettingsJson: JSON.stringify({
-      reference_duration_minutes: 30,
-      modifier_weights: {
-        credits: 0.3,
-        kda: 0.3,
-        basehp: 0.15,
-        towers: 0.1,
-        distance: 0.15,
-      },
-    }),
+  const demoSiteConfig = {
+    siteName: "演示公会",
+    featureAnnouncementsEnabled: DEFAULT_FEATURE_FLAGS.announcements,
+    featureEventsEnabled: DEFAULT_FEATURE_FLAGS.events,
+    featureGuildWarEnabled: DEFAULT_FEATURE_FLAGS.guildWar,
+    featureGalleryEnabled: DEFAULT_FEATURE_FLAGS.gallery,
+    featureWikiEnabled: DEFAULT_FEATURE_FLAGS.wiki,
+    featureToolsEnabled: DEFAULT_FEATURE_FLAGS.tools,
+    featureStorageEnabled: DEFAULT_FEATURE_FLAGS.storage,
+    mediaSiteLogoMaxBytes: DEFAULT_SITE_MEDIA_POLICY.max_file_size_bytes.site_logo,
+    mediaClassIconMaxBytes: DEFAULT_SITE_MEDIA_POLICY.max_file_size_bytes.class_icon,
+    mediaProfileImageMaxBytes: DEFAULT_SITE_MEDIA_POLICY.max_file_size_bytes.profile_image,
+    mediaProfileAudioMaxBytes: DEFAULT_SITE_MEDIA_POLICY.max_file_size_bytes.profile_audio,
+    mediaAnnouncementImageMaxBytes: DEFAULT_SITE_MEDIA_POLICY.max_file_size_bytes.announcement_image,
+    mediaWikiImageMaxBytes: DEFAULT_SITE_MEDIA_POLICY.max_file_size_bytes.wiki_image,
+    mediaEventImageMaxBytes: DEFAULT_SITE_MEDIA_POLICY.max_file_size_bytes.event_image,
+    mediaGalleryImageMaxBytes: DEFAULT_SITE_MEDIA_POLICY.max_file_size_bytes.gallery_image,
+    mediaStorageImageMaxBytes: DEFAULT_SITE_MEDIA_POLICY.max_file_size_bytes.storage_image,
+    mediaProfileQuota: DEFAULT_SITE_MEDIA_POLICY.quotas.profile,
+    mediaAnnouncementQuota: DEFAULT_SITE_MEDIA_POLICY.quotas.announcement,
+    mediaGalleryQuota: DEFAULT_SITE_MEDIA_POLICY.quotas.gallery,
+    mediaWikiQuota: DEFAULT_SITE_MEDIA_POLICY.quotas.wiki,
+    storageImagesPerItem: DEFAULT_SITE_STORAGE_POLICY.images_per_item,
+    absenceMaxSpanDays: DEFAULT_SITE_ABSENCE_POLICY.max_span_days,
+    absenceMaxEntriesPerUser: DEFAULT_SITE_ABSENCE_POLICY.max_entries_per_user,
+    analyticsReferenceDurationMinutes: DEFAULT_SITE_ANALYTICS_SETTINGS.reference_duration_minutes,
+    analyticsKillsWeight: DEFAULT_SITE_ANALYTICS_SETTINGS.modifier_weights.kills,
+    analyticsTowersWeight: DEFAULT_SITE_ANALYTICS_SETTINGS.modifier_weights.towers,
+    analyticsBaseHpWeight: DEFAULT_SITE_ANALYTICS_SETTINGS.modifier_weights.base_hp,
+    analyticsCreditsWeight: DEFAULT_SITE_ANALYTICS_SETTINGS.modifier_weights.credits,
+    analyticsDistanceWeight: DEFAULT_SITE_ANALYTICS_SETTINGS.modifier_weights.distance,
+  };
+  await db.insert(siteConfig).values({ id: "default", ...demoSiteConfig }).onConflictDoUpdate({
+    target: siteConfig.id,
+    set: {
+      ...demoSiteConfig,
+      updatedAt: sql`strftime('%Y-%m-%dT%H:%M:%fZ', 'now')`,
+    },
   });
+
   const passwords = new Map<string, string>([
     [adminId, "admin123"],
     ...moderatorIds.map((id, index) => [id, `moderator${index + 1}23`] as const),
@@ -326,68 +403,65 @@ export async function seedDatabase(env: Bindings): Promise<void> {
   // ════════════════════════════════════════════
 
   const profileRows: Array<typeof memberProfiles.$inferInsert> = [];
+  const profileClassesByUser = new Map<string, string[]>();
+  const profileVideosByUser = new Map<string, string[]>();
   for (let index = 0; index < memberIds.length; index += 1) {
     const userId = memberIds[index]!;
     const onVacation = index === 5 || index === 11;
-    const profileImages = index % 4 === 3 ? [] : [seedMockAsset("portrait", index)];
     const profileVideos = index % 6 === 0 ? ["https://www.youtube.com/watch?v=aqz-KE-bpKQ"] : [];
+    profileClassesByUser.set(userId, pickClasses(index));
+    profileVideosByUser.set(userId, profileVideos);
     profileRows.push({
-      id: nanoid(),
       userId,
       power: 3000 + index * 120,
-      classes: JSON.stringify(pickClasses(index)),
       titleHtml: `<p>Seed Title ${index + 1}</p>`,
       bio: `Seed profile for member ${index + 1}`,
-      images: JSON.stringify(profileImages),
-      audioKey: null,
-      videoUrls: JSON.stringify(profileVideos),
-      availability: JSON.stringify({
-        weekdayEvening: index % 2 === 0,
-        weekendAfternoon: index % 3 === 0,
-        guildWarNight: index % 4 !== 0,
-      }),
-      vacationStart: null,
-      vacationEnd: null,
+      availabilityTimezone: "Asia/Shanghai",
       notes: index % 5 === 0 ? "High priority member" : onVacation ? "Vacation scheduled" : null,
     });
   }
 
-  const moderatorProfileRows: Array<typeof memberProfiles.$inferInsert> = moderatorIds.map((id, index) => ({
-    id: nanoid(),
-    userId: id,
-    power: 6000 + index * 500,
-    classes: JSON.stringify(pickClasses(index + 5)),
-    titleHtml: `<p>Moderator ${index + 1}</p>`,
-    bio: `Seed profile for moderator ${index + 1}`,
-    images: JSON.stringify([seedMockAsset("portrait", index + 20)]),
-    audioKey: null,
-    videoUrls: JSON.stringify(index === 0 ? ["https://www.youtube.com/watch?v=aqz-KE-bpKQ"] : []),
-    availability: JSON.stringify({ weekdayEvening: true, weekendAfternoon: true, guildWarNight: true }),
-    vacationStart: null,
-    vacationEnd: null,
-    notes: index === 0 ? "Lead moderator" : null,
-  }));
+  const moderatorProfileRows: Array<typeof memberProfiles.$inferInsert> = moderatorIds.map((id, index) => {
+    profileClassesByUser.set(id, pickClasses(index + 5));
+    profileVideosByUser.set(id, index === 0 ? ["https://www.youtube.com/watch?v=aqz-KE-bpKQ"] : []);
+    return {
+      userId: id,
+      power: 6000 + index * 500,
+      titleHtml: `<p>Moderator ${index + 1}</p>`,
+      bio: `Seed profile for moderator ${index + 1}`,
+      availabilityTimezone: "Asia/Shanghai",
+      notes: index === 0 ? "Lead moderator" : null,
+    };
+  });
+
+  profileClassesByUser.set(adminId, ["鸣金虹"]);
+  profileVideosByUser.set(adminId, ["https://www.youtube.com/watch?v=aqz-KE-bpKQ"]);
 
   const allProfileRows = [
     {
-      id: nanoid(),
       userId: adminId,
       power: 9999,
-      classes: JSON.stringify(["鸣金虹"]),
       titleHtml: "<p>Guild Leader</p>",
       bio: "Seeded admin profile",
-      images: JSON.stringify([seedMockAsset("portrait", 99)]),
-      audioKey: null,
-      videoUrls: JSON.stringify(["https://www.youtube.com/watch?v=aqz-KE-bpKQ"]),
-      availability: JSON.stringify({ all_day: true }),
-      vacationStart: null,
-      vacationEnd: null,
+      availabilityTimezone: "Asia/Shanghai",
       notes: "seed-admin",
     },
     ...moderatorProfileRows,
     ...profileRows,
   ];
   await batchInsert(db, memberProfiles, allProfileRows, 5);
+  await batchInsert(
+    db,
+    memberAvailabilityWindows,
+    allProfileRows.flatMap((profile, index) => {
+      const firstWeekday = index % 7;
+      return [
+        { userId: profile.userId, weekday: firstWeekday, startMinute: 12 * 60, endMinute: 14 * 60 },
+        { userId: profile.userId, weekday: (firstWeekday + 3) % 7, startMinute: 22 * 60, endMinute: 24 * 60 },
+      ];
+    }),
+    10,
+  );
 
   // Absence history (请假) — one current, one upcoming, one past entry.
   const absenceRows: Array<typeof memberAbsences.$inferInsert> = [
@@ -400,9 +474,18 @@ export async function seedDatabase(env: Bindings): Promise<void> {
     db,
     memberProfileClasses,
     allProfileRows.flatMap((profile) => {
-      const classNames = JSON.parse(profile.classes ?? "[]") as string[];
-      return [...new Set(classNames)].map((className) => ({ userId: profile.userId, className }));
+      const classIds = [...new Set(profileClassesByUser.get(profile.userId) ?? [])];
+      return classIds.map((classId, sortOrder) => ({ userId: profile.userId, classId, sortOrder }));
     }),
+    10,
+  );
+  await batchInsert(
+    db,
+    memberProfileVideos,
+    allProfileRows.flatMap((profile) =>
+      [...new Set(profileVideosByUser.get(profile.userId) ?? [])]
+        .map((url, sortOrder) => ({ userId: profile.userId, url, sortOrder })),
+    ),
     10,
   );
 
@@ -481,7 +564,7 @@ export async function seedDatabase(env: Bindings): Promise<void> {
   const pendingRaffleEventId = nanoid();
 
   const eventRows: Array<typeof events.$inferInsert> = [
-    // [0] weekly_mission - future, pinned, with attachments
+    // [0] weekly_mission - future, pinned
     {
       id: nanoid(),
       type: "weekly_mission",
@@ -495,7 +578,6 @@ export async function seedDatabase(env: Bindings): Promise<void> {
       archivedAt: null,
       createdBy: adminId,
       updatedBy: null,
-      attachments: JSON.stringify(["/mock/scene-1.svg", "/mock/scene-2.svg"]),
       seriesId: null,
       instanceDate: null,
     },
@@ -530,7 +612,6 @@ export async function seedDatabase(env: Bindings): Promise<void> {
       archivedAt: null,
       createdBy: adminId,
       updatedBy: null,
-      attachments: JSON.stringify(["/mock/portrait-1.svg"]),
       seriesId: null,
       instanceDate: null,
     },
@@ -902,28 +983,24 @@ export async function seedDatabase(env: Bindings): Promise<void> {
 
   const pollVoteRows: Array<typeof eventPollVotes.$inferInsert> = [
     ...memberIds.slice(0, 8).map((userId, index) => ({
-      id: nanoid(),
       eventId: openPollEventId,
       optionId: openPollOptionIds[index % openPollOptionIds.length]!,
       userId,
       createdAt: addMinutes(now, -120 + index),
     })),
     ...memberIds.slice(2, 6).map((userId, index) => ({
-      id: nanoid(),
       eventId: openPollEventId,
       optionId: openPollOptionIds[(index + 1) % openPollOptionIds.length]!,
       userId,
       createdAt: addMinutes(now, -90 + index),
     })),
     ...memberIds.slice(0, 9).map((userId, index) => ({
-      id: nanoid(),
       eventId: hiddenPollEventId,
       optionId: hiddenPollOptionIds[index % hiddenPollOptionIds.length]!,
       userId,
       createdAt: addMinutes(now, -180 + index),
     })),
     ...memberIds.slice(0, 10).map((userId, index) => ({
-      id: nanoid(),
       eventId: closedPollEventId,
       optionId: closedPollOptionIds[index % closedPollOptionIds.length]!,
       userId,
@@ -1009,7 +1086,9 @@ export async function seedDatabase(env: Bindings): Promise<void> {
       startTime: "04:00",
       durationMinutes: 120,
       capacity: 10,
-      recurrenceRule: JSON.stringify({ frequency: "weekly", interval: 1, daysOfWeek: [1, 3, 5] }),
+      recurrenceFrequency: "weekly",
+      recurrenceInterval: 1,
+      recurrenceEndAfter: 52,
       visibilityOffsetMinutes: 1440,
       autoArchive: true,
       paused: false,
@@ -1027,7 +1106,8 @@ export async function seedDatabase(env: Bindings): Promise<void> {
       startTime: "04:30",
       durationMinutes: 180,
       capacity: 20,
-      recurrenceRule: JSON.stringify({ frequency: "weekly", interval: 1, daysOfWeek: [6] }),
+      recurrenceFrequency: "weekly",
+      recurrenceInterval: 1,
       visibilityOffsetMinutes: 10080,
       autoArchive: false,
       paused: false,
@@ -1045,7 +1125,9 @@ export async function seedDatabase(env: Bindings): Promise<void> {
       startTime: "05:00",
       durationMinutes: 60,
       capacity: null,
-      recurrenceRule: JSON.stringify({ frequency: "daily", interval: 1 }),
+      recurrenceFrequency: "daily",
+      recurrenceInterval: 1,
+      recurrenceEndAt: addDays(now, 30),
       visibilityOffsetMinutes: 0,
       autoArchive: true,
       paused: false,
@@ -1063,7 +1145,9 @@ export async function seedDatabase(env: Bindings): Promise<void> {
       startTime: "03:00",
       durationMinutes: 90,
       capacity: null,
-      recurrenceRule: JSON.stringify({ frequency: "monthly", interval: 1, dayOfMonth: 1 }),
+      recurrenceFrequency: "monthly",
+      recurrenceInterval: 1,
+      recurrenceDayOfMonth: 1,
       visibilityOffsetMinutes: 4320,
       autoArchive: false,
       paused: true,
@@ -1075,6 +1159,51 @@ export async function seedDatabase(env: Bindings): Promise<void> {
     },
   ];
   await batchInsert(db, recurringTemplates, recurringTemplateRows, 4);
+  await batchInsert(db, recurringTemplateWeekdays, [
+    ...[1, 3, 5].map((weekday) => ({ templateId: recurringTemplateRows[0]!.id!, weekday })),
+    { templateId: recurringTemplateRows[1]!.id!, weekday: 6 },
+  ]);
+
+  // ════════════════════════════════════════════
+  // ── Class Quotas ──
+  // ════════════════════════════════════════════
+
+  /*
+   * 三种情形各占一个活动，这样打开活动页就能同时看到筹码的三档颜色：
+   *   Guild War #1  —— 配得齐，靠摇摆位补上（琥珀）
+   *   Guild War #2  —— 要 3 个坦克，报名的人凑不出来（红）
+   *   Weekly Alpha  —— 一次性组，不进目录，只服务这一个活动
+   * required 只是筹划期的信号，报名不受它限制，所以数字可以大于实际报名人数。
+   */
+  const warOneId = eventRows[2]!.id!;
+  const warTwoId = eventRows[3]!.id!;
+  const weeklyAlphaId = eventRows[0]!.id!;
+  const oneTimeTagId = "tag-once-weekly-alpha";
+
+  await batchInsert(db, classTags, [
+    { id: oneTimeTagId, label: "能拉怪的", sortOrder: 0, ownerKind: "event", ownerId: weeklyAlphaId },
+  ], 5, { ignoreConflicts: true });
+  await batchInsert(db, classTagMembers, [
+    { tagId: oneTimeTagId, classId: "裂石威" },
+    { tagId: oneTimeTagId, classId: "破竹尘" },
+    { tagId: oneTimeTagId, classId: "破竹风" },
+  ], 5, { ignoreConflicts: true });
+
+  await batchInsert(db, eventClassQuotas, [
+    { eventId: warOneId, tagId: "tag-tank", required: 2 },
+    { eventId: warOneId, tagId: "tag-healer", required: 3 },
+    { eventId: warOneId, tagId: "tag-dps", required: 5 },
+    { eventId: warTwoId, tagId: "tag-tank", required: 3 },
+    { eventId: warTwoId, tagId: "tag-healer", required: 2 },
+    { eventId: weeklyAlphaId, tagId: oneTimeTagId, required: 2 },
+    { eventId: weeklyAlphaId, tagId: "tag-healer", required: 2 },
+  ], 8, { ignoreConflicts: true });
+
+  /* 模板也带一格，好让 cron 生成实例时那条复制路径在种子数据上跑得到。 */
+  await batchInsert(db, recurringTemplateClassQuotas, [
+    { templateId: recurringTemplateRows[0]!.id!, tagId: "tag-healer", required: 2 },
+    { templateId: recurringTemplateRows[0]!.id!, tagId: "tag-tank", required: 1 },
+  ], 5, { ignoreConflicts: true });
 
   // ════════════════════════════════════════════
   // ── Announcements ──
@@ -1142,8 +1271,8 @@ export async function seedDatabase(env: Bindings): Promise<void> {
       warName: "War Session A",
       enemyName: "Shadow Legion",
       result: "win",
-      ownStats: { kills: 38, towers: 6, base_hp: 72, credits: 12800, distance: 4800 },
-      enemyStats: { kills: 27, towers: 3, base_hp: 0, credits: 9300, distance: 3900 },
+      ownKills: 38, ownTowers: 6, ownBaseHp: 72, ownCredits: 12800, ownDistance: 4800,
+      enemyKills: 27, enemyTowers: 3, enemyBaseHp: 0, enemyCredits: 9300, enemyDistance: 3900,
       durationMinutes: 42,
       notes: "Solid frontline execution",
       createdBy: adminId,
@@ -1155,8 +1284,8 @@ export async function seedDatabase(env: Bindings): Promise<void> {
       warName: "War Session B",
       enemyName: "Iron Vanguard",
       result: "loss",
-      ownStats: { kills: 24, towers: 2, base_hp: 0, credits: 8700, distance: 3200 },
-      enemyStats: { kills: 34, towers: 5, base_hp: 55, credits: 12100, distance: 4600 },
+      ownKills: 24, ownTowers: 2, ownBaseHp: 0, ownCredits: 8700, ownDistance: 3200,
+      enemyKills: 34, enemyTowers: 5, enemyBaseHp: 55, enemyCredits: 12100, enemyDistance: 4600,
       durationMinutes: 55,
       notes: "Need better split control",
       createdBy: moderatorIds[0]!,
@@ -1168,8 +1297,8 @@ export async function seedDatabase(env: Bindings): Promise<void> {
       warName: "War Session C",
       enemyName: "Crimson Tide",
       result: "win",
-      ownStats: { kills: 42, towers: 7, base_hp: 58, credits: 14200, distance: 5100 },
-      enemyStats: { kills: 31, towers: 4, base_hp: 0, credits: 10500, distance: 4200 },
+      ownKills: 42, ownTowers: 7, ownBaseHp: 58, ownCredits: 14200, ownDistance: 5100,
+      enemyKills: 31, enemyTowers: 4, enemyBaseHp: 0, enemyCredits: 10500, enemyDistance: 4200,
       durationMinutes: 38,
       notes: "Clean sweep - great coordination",
       createdBy: adminId,
@@ -1181,8 +1310,8 @@ export async function seedDatabase(env: Bindings): Promise<void> {
       warName: "War Session D",
       enemyName: "Frost Reapers",
       result: "draw",
-      ownStats: { kills: 30, towers: 4, base_hp: 35, credits: 11000, distance: 4400 },
-      enemyStats: { kills: 29, towers: 4, base_hp: 38, credits: 10800, distance: 4350 },
+      ownKills: 30, ownTowers: 4, ownBaseHp: 35, ownCredits: 11000, ownDistance: 4400,
+      enemyKills: 29, enemyTowers: 4, enemyBaseHp: 38, enemyCredits: 10800, enemyDistance: 4350,
       durationMinutes: 60,
       notes: "Extremely close match, towers tied",
       createdBy: moderatorIds[1]!,
@@ -1195,8 +1324,8 @@ export async function seedDatabase(env: Bindings): Promise<void> {
       warName: "War Session E",
       enemyName: "Storm Vanguard",
       result: "win",
-      ownStats: { kills: 35, towers: 5, base_hp: 60, credits: 13000, distance: 4700 },
-      enemyStats: { kills: 28, towers: 3, base_hp: 0, credits: 9800, distance: 4000 },
+      ownKills: 35, ownTowers: 5, ownBaseHp: 60, ownCredits: 13000, ownDistance: 4700,
+      enemyKills: 28, enemyTowers: 3, enemyBaseHp: 0, enemyCredits: 9800, enemyDistance: 4000,
       durationMinutes: 45,
       notes: "Older match - good for history browsing",
       createdBy: adminId,
@@ -1238,16 +1367,14 @@ export async function seedDatabase(env: Bindings): Promise<void> {
         userId,
         roleTag: memberIndex % 2 === 0 ? "core" : "flex",
         sortOrder: memberIndex,
-        stats: {
-          kills: base * 4 + (memberIndex % 3),
-          deaths: Math.max(1, base - (memberIndex % 2)),
-          assists: base * 6 + (memberIndex % 5),
-          damage: base * 15000 + memberIndex * 2000,
-          healing: base * 8000 + memberIndex * 1500,
-          building_damage: base * 5000 + memberIndex * 1000,
-          credits: base * 1200 + memberIndex * 200,
-          damage_taken: base * 12000 + memberIndex * 1800,
-        },
+        kills: base * 4 + (memberIndex % 3),
+        deaths: Math.max(1, base - (memberIndex % 2)),
+        assists: base * 6 + (memberIndex % 5),
+        damage: base * 15000 + memberIndex * 2000,
+        healing: base * 8000 + memberIndex * 1500,
+        buildingDamage: base * 5000 + memberIndex * 1000,
+        credits: base * 1200 + memberIndex * 200,
+        damageTaken: base * 12000 + memberIndex * 1800,
       });
     });
 
@@ -1261,6 +1388,86 @@ export async function seedDatabase(env: Bindings): Promise<void> {
       })),
     );
   }
+
+  // ════════════════════════════════════════════
+  // ── Active Guild War board (event-scoped) ──
+  // ════════════════════════════════════════════
+  // war_teams / war_pool_members carry two mutually exclusive foreign keys:
+  // war_history_id (a concluded war, read by the History tab) and event_id
+  // (a war still being planned, read by the Active tab). The loop above only
+  // fills the history side, so seed an event-scoped board too — otherwise the
+  // Active tab always starts empty.
+
+  const activeWarEventId = eventRows[2]!.id; // [2] guild_war - active future war #1
+
+  const activeWarTeams: Array<{ name: string; notes: string | null; locked: boolean; members: Array<{ userId: string; roleTag: string }> }> = [
+    {
+      name: "Alpha Team",
+      notes: "主推线，优先塔压制",
+      locked: false,
+      members: [
+        { userId: memberIds[0]!, roleTag: "core" },
+        { userId: memberIds[1]!, roleTag: "flex" },
+        { userId: memberIds[2]!, roleTag: "core" },
+        { userId: memberIds[3]!, roleTag: "flex" },
+      ],
+    },
+    {
+      name: "Bravo Team",
+      notes: "守塔与支援",
+      locked: false,
+      members: [
+        { userId: memberIds[4]!, roleTag: "core" },
+        { userId: memberIds[5]!, roleTag: "flex" },
+        { userId: moderatorIds[0]!, roleTag: "core" },
+      ],
+    },
+    {
+      name: "Charlie Team",
+      notes: null,
+      locked: true,
+      members: [],
+    },
+  ];
+
+  const activeWarTeamRows: Array<typeof warTeams.$inferInsert> = [];
+  const activeWarTeamMemberRows: Array<typeof warTeamMembers.$inferInsert> = [];
+
+  activeWarTeams.forEach((team, teamIndex) => {
+    const teamId = nanoid();
+    activeWarTeamRows.push({
+      id: teamId,
+      warHistoryId: null,
+      eventId: activeWarEventId,
+      teamName: team.name,
+      sortOrder: teamIndex,
+      notes: team.notes,
+      isLocked: team.locked,
+    });
+    team.members.forEach((member, memberIndex) => {
+      activeWarTeamMemberRows.push({
+        id: nanoid(),
+        warTeamId: teamId,
+        userId: member.userId,
+        roleTag: member.roleTag,
+        sortOrder: memberIndex,
+        note: null,
+      });
+    });
+  });
+
+  await batchInsert(db, warTeams, activeWarTeamRows, 4);
+  await batchInsert(db, warTeamMembers, activeWarTeamMemberRows, 4);
+
+  const activeWarPoolRows: Array<typeof warPoolMembers.$inferInsert> = memberIds
+    .slice(6, 12)
+    .map((userId) => ({
+      id: nanoid(),
+      warHistoryId: null,
+      eventId: activeWarEventId,
+      userId,
+    }));
+  await batchInsert(db, warPoolMembers, activeWarPoolRows, 4);
 
   // ════════════════════════════════════════════
   // ── Wiki ──
@@ -1440,36 +1647,34 @@ export async function seedDatabase(env: Bindings): Promise<void> {
   // ── Gallery ──
   // ════════════════════════════════════════════
 
-  const galleryItemRows: Array<typeof galleryItems.$inferInsert> = [
-    ...Array.from({ length: 20 }).map((_, index) => ({
-      id: nanoid(),
-      type: "image" as const,
-      url: seedMockAsset("scene", index),
-      caption: `Seed image ${index + 1}`,
-      uploadedBy: memberIds[index % memberIds.length]!,
-    })),
-    ...Array.from({ length: 8 }).map((_, index) => ({
-      id: nanoid(),
-      type: "video" as const,
-      url: `https://youtu.be/seed-video-${index + 1}`,
-      caption: `Seed video ${index + 1}`,
-      uploadedBy: index < 3 ? moderatorIds[index]! : memberIds[(index + 5) % memberIds.length]!,
-    })),
-  ];
+  const galleryImageRows: Array<typeof galleryItems.$inferInsert> = Array.from({ length: 4 }).map((_, index) => ({
+    id: nanoid(),
+    type: "image" as const,
+    url: null,
+    caption: `Seed gallery image ${index + 1}`,
+    uploadedBy: memberIds[index]!,
+  }));
+  const galleryVideoRows: Array<typeof galleryItems.$inferInsert> = Array.from({ length: 8 }).map((_, index) => ({
+    id: nanoid(),
+    type: "video" as const,
+    url: `https://youtu.be/seed-video-${index + 1}`,
+    caption: `Seed video ${index + 1}`,
+    uploadedBy: index < 3 ? moderatorIds[index]! : memberIds[(index + 5) % memberIds.length]!,
+  }));
+  const galleryItemRows = [...galleryImageRows, ...galleryVideoRows];
   await batchInsert(db, galleryItems, galleryItemRows);
 
   // ════════════════════════════════════════════
   // ── Invite Links ──
   // ════════════════════════════════════════════
-  // usedCount: 18 = 1 admin + 3 mods + 14 active members (member_14 is inactive but was registered via this link)
-  // Total registered users through SEEDLIVE = 19 (all users), but some may have used other links
-  // For simplicity: admin + 3 mods + 15 members = 19, minus those via other links = 18
+  // SEEDLIVE represents 18 of 19 seeded registrations; one user used another invite link.
 
   await db.insert(inviteLinks).values([
     {
       id: nanoid(),
       code: "SEEDLIVE",
       createdBy: adminId,
+      roleId: "member",
       maxUses: 100,
       usedCount: 18,
       expiresAt: addDays(now, 30),
@@ -1479,6 +1684,7 @@ export async function seedDatabase(env: Bindings): Promise<void> {
       id: nanoid(),
       code: "SEEDEXPR",
       createdBy: adminId,
+      roleId: "member",
       maxUses: 10,
       usedCount: 10,
       expiresAt: addDays(now, -1),
@@ -1488,6 +1694,7 @@ export async function seedDatabase(env: Bindings): Promise<void> {
       id: nanoid(),
       code: "SEEDREVOKED",
       createdBy: adminId,
+      roleId: "member",
       maxUses: 25,
       usedCount: 4,
       expiresAt: addDays(now, 12),
@@ -1497,6 +1704,7 @@ export async function seedDatabase(env: Bindings): Promise<void> {
       id: nanoid(),
       code: "SEEDFRESH",
       createdBy: moderatorIds[0]!,
+      roleId: "member",
       maxUses: 50,
       usedCount: 0,
       expiresAt: addDays(now, 60),
@@ -1532,7 +1740,7 @@ export async function seedDatabase(env: Bindings): Promise<void> {
       actorId: adminId,
       entityId: "seed-users",
       diffTitle: "Seed users created",
-      detailText: JSON.stringify({ users: userRows.length }),
+      detailText: serializeJsonObject({ users: userRows.length }),
       createdAt: addHours(now, -12),
     },
     {
@@ -1542,7 +1750,7 @@ export async function seedDatabase(env: Bindings): Promise<void> {
       actorId: adminId,
       entityId: "seed-events",
       diffTitle: "Seed events created",
-      detailText: JSON.stringify({ events: eventRows.length }),
+      detailText: serializeJsonObject({ events: eventRows.length }),
       createdAt: addHours(now, -10),
     },
     {
@@ -1552,7 +1760,7 @@ export async function seedDatabase(env: Bindings): Promise<void> {
       actorId: adminId,
       entityId: "seed-announcements",
       diffTitle: "Seed announcements created",
-      detailText: JSON.stringify({ announcements: 4 }),
+      detailText: serializeJsonObject({ announcements: 4 }),
       createdAt: addHours(now, -9),
     },
     {
@@ -1562,7 +1770,7 @@ export async function seedDatabase(env: Bindings): Promise<void> {
       actorId: adminId,
       entityId: "seed-wiki",
       diffTitle: "Seed wiki created",
-      detailText: JSON.stringify({ categories: categoryRows.length, articles: articleRows.length }),
+      detailText: serializeJsonObject({ categories: categoryRows.length, articles: articleRows.length }),
       createdAt: addHours(now, -8),
     },
     {
@@ -1572,7 +1780,7 @@ export async function seedDatabase(env: Bindings): Promise<void> {
       actorId: adminId,
       entityId: memberIds[13]!,
       diffTitle: "Marked member_14 as inactive",
-      detailText: JSON.stringify({ reason: "Seeded inactive state for admin QA" }),
+      detailText: serializeJsonObject({ reason: "Seeded inactive state for admin QA" }),
       createdAt: addHours(now, -7),
     },
     {
@@ -1582,7 +1790,7 @@ export async function seedDatabase(env: Bindings): Promise<void> {
       actorId: adminId,
       entityId: "SEEDREVOKED",
       diffTitle: "Revoked compromised invite link",
-      detailText: JSON.stringify({ code: "SEEDREVOKED" }),
+      detailText: serializeJsonObject({ code: "SEEDREVOKED" }),
       createdAt: addHours(now, -6),
     },
     {
@@ -1592,17 +1800,17 @@ export async function seedDatabase(env: Bindings): Promise<void> {
       actorId: moderatorIds[0]!,
       entityId: "retired-raid-rotation",
       diffTitle: "Archived outdated raid rotation",
-      detailText: JSON.stringify({ status: "archived" }),
+      detailText: serializeJsonObject({ status: "archived" }),
       createdAt: addHours(now, -5),
     },
     {
       id: nanoid(),
       entityType: "gallery",
-      action: "upload_images",
+      action: "share_video",
       actorId: memberIds[2]!,
-      entityId: galleryItemRows[2]!.id!,
-      diffTitle: "Uploaded strategy reference image",
-      detailText: JSON.stringify({ type: galleryItemRows[2]!.type, caption: galleryItemRows[2]!.caption }),
+      entityId: galleryVideoRows[2]!.id!,
+      diffTitle: "Shared strategy reference video",
+      detailText: serializeJsonObject({ type: galleryVideoRows[2]!.type, caption: galleryVideoRows[2]!.caption ?? null }),
       createdAt: addHours(now, -4),
     },
     {
@@ -1612,7 +1820,7 @@ export async function seedDatabase(env: Bindings): Promise<void> {
       actorId: adminId,
       entityId: badgeRows[0]!.id,
       diffTitle: "Created Veteran badge",
-      detailText: JSON.stringify({ name: "Veteran", color: "#f59e0b" }),
+      detailText: serializeJsonObject({ name: "Veteran", color: "#f59e0b" }),
       createdAt: addHours(now, -3),
     },
     {
@@ -1622,7 +1830,7 @@ export async function seedDatabase(env: Bindings): Promise<void> {
       actorId: adminId,
       entityId: "seed-run",
       diffTitle: "Seed complete",
-      detailText: JSON.stringify({
+      detailText: serializeJsonObject({
         at: new Date().toISOString(),
         totals: {
           users: userRows.length,
@@ -1633,6 +1841,9 @@ export async function seedDatabase(env: Bindings): Promise<void> {
           wikiArticles: articleRows.length,
           galleryItems: galleryItemRows.length,
           warHistory: warHistoryRows.length,
+          activeWarTeams: activeWarTeamRows.length,
+          activeWarAssigned: activeWarTeamMemberRows.length,
+          activeWarPool: activeWarPoolRows.length,
           badges: badgeRows.length,
           badgeAssignments: badgeAssignmentRows.length,
         },
@@ -1784,15 +1995,14 @@ export async function seedDatabase(env: Bindings): Promise<void> {
   }
   await batchInsert(db, storageItems, storageItemRows, 5);
   await batchInsert(db, storageTransactions, storageTransactionRows, 8);
-  // NOTE: no storage_item_images rows — mock R2 has no objects, keys would dangle.
 
-  // ════════════════════════════════════════════
-  // ── Game Data ──
-  // ════════════════════════════════════════════
-
-  await db.insert(gameData).values({
-    data: JSON.stringify(seedGameData),
-    version: seedGameData.version,
-    uploadedBy: adminId,
+  await seedLocalMedia(env, {
+    adminUserId: adminId,
+    avatarUserIds: memberIds.slice(0, 6),
+    profileImageUserIds: memberIds.slice(0, 3),
+    profileAudioUserId: memberIds[0]!,
+    galleryImages: galleryImageRows.map((row) => ({ id: row.id!, ownerUserId: row.uploadedBy })),
+    classId: SEEDED_IMAGE_CLASS_ID,
   });
+
 }

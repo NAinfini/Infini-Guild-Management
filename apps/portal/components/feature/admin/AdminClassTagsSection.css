@@ -1,0 +1,61 @@
+/* 职业标签页。主从台本身来自 AdminPage.css 的 .admin-md，这里只有编辑器内部的东西。 */
+
+/* 拖拽清单行（.admin-md__row / .admin-md__grip）在 AdminPage.css，三张清单共用。 */
+
+/* Bound short single-line fields independently from the editor column width. */
+.admin-class-tags__name-field {
+  max-inline-size: 24rem;
+}
+
+/* 编辑器里除了成员清单，谁都不许被压缩：清单是唯一自带滚动条的那块，
+   高度不够时该让它滚，而不是把名称输入框和用量那行挤扁。 */
+.admin-class-tags__name-field,
+.admin-class-tags__usage {
+  flex: 0 0 auto;
+}
+
+/* 编辑器主体填满可用高度，成员清单负责溢出滚动。 */
+.admin-class-tags__body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-md);
+  min-block-size: 0;
+  padding: var(--space-md) var(--space-lg);
+  overflow: hidden;
+}
+
+/* 成员区按内容取高、允许收缩，并限制阅读宽度。 */
+.admin-class-tags__members {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-xs);
+  flex: 0 1 auto;
+  min-block-size: 0;
+  max-inline-size: 40rem;
+}
+
+.admin-class-tags__members-intro {
+  min-inline-size: 0;
+}
+
+/*
+ * 清单：内容不满时就是内容高，满了才在自己身上滚（行本身的样子在 shared/PickList.css）。
+ * 上限用 rem 而不是 px，跟着字号走。
+ */
+.admin-class-tags__picker .pick-list__body {
+  max-block-size: 20rem;
+}
+
+@media (max-width: 47.99em) {
+  /* 窄屏上主从台回到内容高（见 AdminPage.css 同一断点），这里也没有「剩余高度」
+     可分了，改回固定高度并让整块跟着页面滚。 */
+  .admin-class-tags__body {
+    overflow: visible;
+    padding: var(--space-md);
+  }
+
+  /* 窄屏上没有「剩余高度」可分，清单封一个上限跟着页面滚，免得一屏全是它。 */
+  .admin-class-tags__picker .pick-list__body {
+    max-block-size: 18rem;
+  }
+}

@@ -15,13 +15,13 @@ function createService(db: unknown) {
 describe("AdminAuditService", () => {
   const row = {
     id: "audit-1",
-    entityType: "game_data",
+    entityType: "site_config",
     action: "upload",
     actorId: "admin-user-id",
     actorUsername: "GuildAdmin",
     entityId: "game-data-1",
     diffTitle: "v1",
-    detailText: null,
+    detailText: '{"scope":{"active":true}}',
     createdAt: "2026-05-22T00:00:00.000Z",
   };
 
@@ -49,6 +49,7 @@ describe("AdminAuditService", () => {
     expect(result.data[0]).toMatchObject({
       actor_id: "admin-user-id",
       actor_username: "GuildAdmin",
+      detail: { scope: { active: true } },
     });
     expect(leftJoin).toHaveBeenCalled();
   });
@@ -67,7 +68,30 @@ describe("AdminAuditService", () => {
     });
 
     expect(result.body).toContain("actor_id,actor_username");
+    expect(result.body).toContain("diff_title,detail,created_at");
     expect(result.body).toContain("\"admin-user-id\",\"GuildAdmin\"");
+    expect(result.body).toContain('"{""scope"":{""active"":true}}"');
+  });
+
+  it("rejects invalid persisted audit detail instead of returning a fallback", async () => {
+    const offset = vi.fn().mockResolvedValue([{ ...row, detailText: "not-json" }]);
+    const limitRows = vi.fn(() => ({ offset }));
+    const orderBy = vi.fn(() => ({ limit: limitRows }));
+    const whereRows = vi.fn(() => ({ orderBy }));
+    const leftJoin = vi.fn(() => ({ where: whereRows }));
+    const fromRows = vi.fn(() => ({ leftJoin }));
+    const whereCount = vi.fn().mockResolvedValue([{ count: 1 }]);
+    const fromCount = vi.fn(() => ({ where: whereCount }));
+    const select = vi.fn()
+      .mockReturnValueOnce({ from: fromRows })
+      .mockReturnValueOnce({ from: fromCount });
+
+    await expect(createService({ select }).listAuditLogs({
+      page: "1",
+      limit: "50",
+      start_at: "2026-05-22T00:00:00.000Z",
+      end_at: "2026-05-22T23:59:59.999Z",
+    })).rejects.toThrow();
   });
 
   it("neutralizes spreadsheet formulas in CSV exports", async () => {

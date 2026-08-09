@@ -19,14 +19,110 @@ describe("App shell accessibility structure", () => {
     expect(source).toContain('aria-label={t("viewingAs.label")}');
   });
 
-  it("uses one app main landmark with a page h1", () => {
+  it("keeps the document language and locale selector in sync", () => {
+    const appShell = readPortalFile("apps/portal/components/layout/AppShell.tsx");
+    const i18n = readPortalFile("apps/portal/i18n/index.ts");
+
+    expect(appShell).toContain("void setI18nLocale(locale)");
+    expect(i18n).toContain("document.documentElement.dataset.locale = locale");
+    expect(i18n).toContain("document.documentElement.lang = locale");
+  });
+
+  it("refreshes member lists and the current profile after realtime badge changes", () => {
+    const appShell = readPortalFile("apps/portal/components/layout/AppShell.tsx");
+
+    expect(appShell).toMatch(
+      /member_badge:\s*\[queryKeys\.users\.all,\s*queryKeys\.myProfile\.all\]/,
+    );
+  });
+
+  it("keeps AppHeader as the only page-title source", () => {
     const appShell = readPortalFile("apps/portal/components/layout/AppShell.tsx");
     const appHeader = readPortalFile("apps/portal/components/layout/AppHeader.tsx");
     const pageLayout = readPortalFile("apps/portal/components/layout/PageLayout.tsx");
 
     expect(appShell).toContain('<MantineAppShell.Main id="main-content"');
     expect(appShell).not.toContain('<main id="main-content"');
-    expect(appHeader).not.toContain("<Title order={1}");
-    expect(pageLayout).toContain("<Title order={1}");
+    expect(appShell).toContain("activePageTitle");
+    expect(appHeader).toContain("activePageTitle");
+    expect(appHeader).toContain("<Title order={1}");
+    expect(pageLayout).not.toContain("page-layout__title");
+    expect(pageLayout).not.toContain("page-layout__subtitle");
+    expect(pageLayout).not.toContain("page-layout__icon");
+    expect(pageLayout).not.toContain("<header");
+  });
+
+  it("keeps the visual header and Mantine content offset at the same compact height", () => {
+    const appShell = readPortalFile("apps/portal/components/layout/AppShell.tsx");
+    const appShellCss = readPortalFile("apps/portal/components/layout/AppShell.css");
+    const scale = readPortalFile("apps/portal/styles/scale.css");
+
+    expect(appShell).toContain("header={{ height: 48 }}");
+    expect(scale).toMatch(/--header-height:\s*48px\b/);
+    expect(scale).toMatch(/--header-height-mobile:\s*48px\b/);
+    expect(appShellCss).not.toMatch(/\.app-header\s*\{[^}]*position:\s*relative/);
+    expect(appShellCss).toMatch(
+      /\.app-content\.app-content\s*\{[^}]*height:\s*100dvh/,
+    );
+  });
+
+  /*
+   * 定高链的两头必须同时在：className 掉了 CSS 规则就成了死规则，
+   * 规则掉了成员表又会按整页行数铺开，把滚动条顶回外壳。
+   */
+  it("gives fixed-height routes a definite shell height instead of a lower bound", () => {
+    const appShell = readPortalFile("apps/portal/components/layout/AppShell.tsx");
+    const appShellCss = readPortalFile("apps/portal/components/layout/AppShell.css");
+
+    expect(appShell).toContain('activeRoute.fillsViewport ? " app-main--fill" : ""');
+    expect(appShellCss).toMatch(/\.app-main--fill\s*\{[^}]*height:\s*100%/);
+  });
+
+  it("keeps the shell title compact and desktop workspaces broad", () => {
+    const appShellCss = readPortalFile("apps/portal/components/layout/AppShell.css");
+    const scale = readPortalFile("apps/portal/styles/scale.css");
+
+    expect(appShellCss).toMatch(
+      /\.app-header__page-title\s*\{[^}]*font-size:\s*var\(--text-h2\)/,
+    );
+    expect(scale).toMatch(/--content-width-reading:\s*1120px\b/);
+    expect(scale).toMatch(/--content-width-standard:\s*1800px\b/);
+    expect(scale).toMatch(/--content-width-wide:\s*2200px\b/);
+  });
+
+  it("uses compact navigation through tablet portrait without changing the phone header breakpoint", () => {
+    const appShell = readPortalFile("apps/portal/components/layout/AppShell.tsx");
+    const appSidebar = readPortalFile("apps/portal/components/layout/AppSidebar.tsx");
+
+    expect(appSidebar).toContain("export const MOBILE_BREAKPOINT_PX = 767");
+    expect(appSidebar).toContain("export const COMPACT_NAV_BREAKPOINT_PX = 1023");
+    expect(appShell).toContain(
+      "const usesCompactNavigation = useMediaQuery(`(max-width: ${COMPACT_NAV_BREAKPOINT_PX}px)`)",
+    );
+    expect(appShell).toContain("navbar={!usesCompactNavigation");
+    expect(appShell).toContain("{!usesCompactNavigation ? (");
+    expect(appShell).toContain("{usesCompactNavigation ? (");
+  });
+
+  it("uses one route registry and does not apply generic route entrance motion", () => {
+    const appShell = readPortalFile("apps/portal/components/layout/AppShell.tsx");
+    const appShellCss = readPortalFile("apps/portal/components/layout/AppShell.css");
+
+    expect(appShell).toContain("PORTAL_ROUTES");
+    expect(appShell).toContain("findPortalRoute");
+    expect(appShell).not.toContain("HEADER_TITLE_OVERRIDES");
+    expect(appShell).not.toContain("AnimatedOutlet");
+    expect(appShellCss).not.toContain("route-slide-in");
+  });
+
+  it("owns the only header-to-content gap at the shell level", () => {
+    const appShellCss = readPortalFile("apps/portal/components/layout/AppShell.css");
+    const pageLayoutCss = readPortalFile("apps/portal/components/layout/PageLayout.css");
+
+    expect(appShellCss).toMatch(/--shell-content-gap:\s*16px/);
+    expect(appShellCss).toMatch(/--shell-content-gap:\s*12px/);
+    expect(appShellCss).toContain("padding-top: var(--shell-content-gap)");
+    expect(pageLayoutCss).not.toMatch(/padding-top:/);
+    expect(pageLayoutCss).not.toMatch(/margin-top:/);
   });
 });

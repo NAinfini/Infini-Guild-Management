@@ -9,23 +9,26 @@ describe("isImmutableBuildAssetPath", () => {
   });
 
   it("does not mark non-hashed static paths immutable", () => {
-    expect(isImmutableBuildAssetPath("/splash.js")).toBe(false);
-    expect(isImmutableBuildAssetPath("/guild-logo.webp")).toBe(false);
+    expect(isImmutableBuildAssetPath("/robots.txt")).toBe(false);
+    expect(isImmutableBuildAssetPath("/guild-logo.svg")).toBe(false);
     expect(isImmutableBuildAssetPath("/assets/index.js")).toBe(false);
   });
 });
 
-function createAssetEnv(response: Response): Bindings {
+function createAssetEnv(response: Response, siteRow: { site_name: string } | null = { site_name: "D1 Guild" }): Bindings {
   return {
-    DB: {} as D1Database,
+    DB: {
+      prepare: () => ({
+        bind: () => ({ first: async () => siteRow }),
+      }),
+    } as unknown as D1Database,
     MEDIA: {} as R2Bucket,
     WS: {} as DurableObjectNamespace,
     ASSETS: { fetch: async () => response } as unknown as Fetcher,
     PORTAL_ORIGIN: "https://guild.example.com",
     ENVIRONMENT: "production",
     SIGNING_SECRET: "test-secret",
-    SITE_NAME: "Guild",
-    SITE_LOGO_URL: "/guild-logo.webp",
+    SITE_LOGO_URL: "/guild-logo.svg",
   };
 }
 
@@ -37,9 +40,20 @@ describe("asset response headers", () => {
 
     const response = await worker.fetch(new Request("https://guild.example.com/"), env, {} as ExecutionContext);
 
-    expect(await response.text()).toContain("<title>Guild</title>");
+    expect(await response.text()).toContain("<title>D1 Guild</title>");
     expect(response.headers.get("Cache-Control")).toContain("no-transform");
     expect(response.headers.get("Permissions-Policy")).toContain("camera=()");
+  });
+
+  it("returns 500 when the authoritative D1 site name is missing", async () => {
+    const env = createAssetEnv(new Response("<title>{{SITE_NAME}}</title>", {
+      headers: { "Content-Type": "text/html" },
+    }), null);
+
+    const response = await worker.fetch(new Request("https://guild.example.com/"), env, {} as ExecutionContext);
+
+    expect(response.status).toBe(500);
+    expect(await response.text()).toContain("Site configuration unavailable");
   });
 
   it("marks Vite hashed build assets as immutable in browser cache", async () => {

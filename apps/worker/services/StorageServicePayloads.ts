@@ -1,8 +1,8 @@
 import { storageItemSchema, storageSchema, storageTransactionSchema } from "@guild/shared";
-import { storageCategories, storageItemImages, storageItems, storageTransactions, storages } from "../db/schema";
+import { storageCategories, storageItems, storageTransactions, storages } from "../db/schema";
 
 export type StorageItemRow = typeof storageItems.$inferSelect;
-export type StorageImageRow = typeof storageItemImages.$inferSelect;
+export type StorageImageRow = { mediaId: string };
 export type StorageRow = typeof storages.$inferSelect;
 export type CategoryRow = typeof storageCategories.$inferSelect;
 type TxType = typeof storageTransactions.type.enumValues[number];
@@ -41,7 +41,7 @@ export function toItemPayload(row: StorageItemRow, images: StorageImageRow[] = [
     quantity: row.quantity,
     allow_member_deposit: row.allowMemberDeposit,
     allow_member_withdraw: row.allowMemberWithdraw,
-    images: images.map((image) => ({ id: image.id, r2_key: image.r2Key })),
+    images: images.map((image) => ({ media_id: image.mediaId })),
     created_at: row.createdAt,
     updated_at: row.updatedAt,
   });

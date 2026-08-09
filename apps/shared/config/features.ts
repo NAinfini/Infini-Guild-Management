@@ -7,7 +7,6 @@ export interface FeatureFlags {
   gallery: boolean;
   wiki: boolean;
   tools: boolean;
-  equipmentCalc: boolean;
   storage: boolean;
 }
 
@@ -18,7 +17,6 @@ export const featureFlagsSchema = z.object({
   gallery: z.boolean(),
   wiki: z.boolean(),
   tools: z.boolean(),
-  equipmentCalc: z.boolean(),
   storage: z.boolean(),
 });
 
@@ -29,6 +27,5 @@ export const DEFAULT_FEATURE_FLAGS: FeatureFlags = {
   gallery: true,
   wiki: true,
   tools: true,
-  equipmentCalc: true,
   storage: true,
 };

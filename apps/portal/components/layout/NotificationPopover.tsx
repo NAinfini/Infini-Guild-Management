@@ -16,6 +16,7 @@ import { formatDistanceToNow } from "date-fns";
 import { zhCN } from "date-fns/locale";
 import { useTranslation } from "react-i18next";
 import { EmptyState } from "../shared/EmptyState";
+import styles from "./NotificationPopover.module.css";
 
 type PushEntry = {
   id: string;
@@ -49,7 +50,14 @@ export function NotificationPopover({
   const dateFnsLocale = i18n.language === "zh" ? zhCN : undefined;
 
   return (
-    <Popover width={420} position="bottom-end" shadow="md" withArrow trapFocus onClose={onClose}>
+    <Popover
+      position="bottom-end"
+      shadow="md"
+      withArrow
+      trapFocus
+      returnFocus
+      onClose={onClose}
+    >
       <Popover.Target>
         <ActionIcon variant="subtle" className="app-header-icon-btn" aria-label={pushHasUnread ? t("label.notificationsUnread") : t("label.notifications")}>
           <Indicator
@@ -68,8 +76,8 @@ export function NotificationPopover({
           </Indicator>
         </ActionIcon>
       </Popover.Target>
-      <Popover.Dropdown className="app-header-notifications-popover">
-        <div className="app-header-notifications-overlay">
+      <Popover.Dropdown className={styles.dropdown}>
+        <div className={styles.overlay}>
           <div className="app-header-notifications-head">
             <Text fw={600}>{t("label.notifications")}</Text>
             {displayPushEntries.length > 0 && (

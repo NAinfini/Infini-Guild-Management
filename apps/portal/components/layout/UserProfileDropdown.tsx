@@ -1,12 +1,11 @@
 import type { User } from "@guild/shared";
-import { Avatar, Button, Group, Text, UnstyledButton } from "@mantine/core";
+import { Avatar, Button, Group, Menu, Text, UnstyledButton } from "@mantine/core";
 import { UserIcon } from "@portal/components/icons";
-import { InfiniMenu } from "@portal/components/shared/InfiniMenu";
 import { useNavigate } from "@tanstack/react-router";
 import { useTranslation } from "react-i18next";
 import { DownOutlined, LogoutOutlined, SettingOutlined, UserOutlined } from "../../utils/icons";
 import { useAuthStore } from "../../stores/auth";
-import { resolveProfileMediaUrl } from "../../utils/media";
+import { resolveMediaUrl } from "../../utils/media";
 
 type UserProfileDropdownProps = {
   user: User | null;
@@ -28,15 +27,15 @@ export function UserProfileDropdown({ user, onLogout, compact = false }: UserPro
   }
 
   return (
-    <InfiniMenu width={220} position="bottom-end">
-      <InfiniMenu.Target>
+    <Menu width={220} position="bottom-end">
+      <Menu.Target>
         <UnstyledButton
           type="button"
           className={`app-profile-trigger ${compact ? "app-profile-trigger--compact" : ""}`}
-          aria-label={t("profile.menu.aria.open")}
+          aria-label={`${user.username}: ${t("profile.menu.aria.open")}`}
         >
           <Group gap={8} wrap="nowrap" align="center">
-            <Avatar size={32} radius="xl" className="app-profile-avatar" src={profile?.avatar_key ? resolveProfileMediaUrl(profile.avatar_key) : undefined}>
+            <Avatar size={32} radius="xl" className="app-profile-avatar" src={profile?.avatar_media_id ? resolveMediaUrl(profile.avatar_media_id) : undefined}>
               <UserIcon size={18} />
             </Avatar>
             <div className="app-profile-meta">
@@ -44,29 +43,33 @@ export function UserProfileDropdown({ user, onLogout, compact = false }: UserPro
                 {user.username}
               </Text>
               {!compact ? (
-                <Text c="dimmed" size="xs" className="app-profile-role">
-                  {user.role}
+                <Text
+                  c={user.role_color ?? "dimmed"}
+                  size="xs"
+                  className="app-profile-role"
+                >
+                  {user.role_name}
                 </Text>
               ) : null}
             </div>
             <DownOutlined className="app-profile-chevron" />
           </Group>
         </UnstyledButton>
-      </InfiniMenu.Target>
+      </Menu.Target>
 
-      <InfiniMenu.Dropdown>
-        <InfiniMenu.Item leftSection={<UserOutlined />} onClick={() => void navigate({ to: "/profile" })}>
+      <Menu.Dropdown>
+        <Menu.Item leftSection={<UserOutlined />} onClick={() => void navigate({ to: "/profile" })}>
           {t("profile.menu.profile")}
-        </InfiniMenu.Item>
-        <InfiniMenu.Item leftSection={<SettingOutlined />} onClick={() => void navigate({ to: "/settings" })}>
+        </Menu.Item>
+        <Menu.Item leftSection={<SettingOutlined />} onClick={() => void navigate({ to: "/settings" })}>
           {t("profile.menu.settings")}
-        </InfiniMenu.Item>
-        <InfiniMenu.Divider />
-        <InfiniMenu.Item className="infini-menu-item--danger" color="red" leftSection={<LogoutOutlined />} onClick={() => void onLogout()}>
+        </Menu.Item>
+        <Menu.Divider />
+        <Menu.Item color="red" leftSection={<LogoutOutlined />} onClick={() => void onLogout()}>
           {t("action.logout")}
-        </InfiniMenu.Item>
-      </InfiniMenu.Dropdown>
-    </InfiniMenu>
+        </Menu.Item>
+      </Menu.Dropdown>
+    </Menu>
   );
 }
 

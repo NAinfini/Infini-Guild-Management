@@ -1,5 +1,4 @@
 import {
-  ALLOWED_IMAGE_TYPES,
   createAnnouncementSchema,
   hasAnyPermission,
   updateAnnouncementSchema,
@@ -7,21 +6,20 @@ import {
 import type { Context } from "hono";
 import { Hono } from "hono";
 import { getRequestUser, requirePermission } from "../middleware/rbac";
-import { AnnouncementService } from "../services/AnnouncementService";
-import { AnnouncementImageStagingService } from "../services/announcement-image-staging";
-import { validateUploadBytes } from "../services/media";
-import { buildError, collectFiles, getDb, handleResult, parseBoolean, parseJsonBody, parsePage, safeFormData, serveR2Object } from "./_shared";
-import { hasMediaQuotaCapacity, withMediaAndPublishAnnouncement } from "./service-factory";
+import { AnnouncementService, type AnnouncementSort } from "../services/AnnouncementService";
+import { MediaValidationError, parseImageMediaFormData } from "../services/MediaService";
+import { buildError, getDb, handleResult, parseBoolean, parseJsonBody, parsePage, safeFormData } from "./_shared";
+import { withMediaAndPublishAnnouncement } from "./service-factory";
 
 export const announcementsRoutes = new Hono();
 
-function getService(c: Context): AnnouncementService {
-  return new AnnouncementService(getDb(c), withMediaAndPublishAnnouncement(c));
+function parseAnnouncementSort(value: string | undefined): AnnouncementSort | null {
+  if (value === undefined) return "updated_desc";
+  return value === "updated_desc" || value === "updated_asc" ? value : null;
 }
 
-function getStagingService(c: Context): AnnouncementImageStagingService {
-  const deps = withMediaAndPublishAnnouncement(c);
-  return new AnnouncementImageStagingService({ media: deps.media, rawDb: deps.rawDb, signingSecret: deps.signingSecret });
+function getService(c: Context): AnnouncementService {
+  return new AnnouncementService(getDb(c), withMediaAndPublishAnnouncement(c));
 }
 
 async function requireAnnouncementCreate(c: Context) { return requirePermission(c, "announcements.create"); }
@@ -33,17 +31,12 @@ announcementsRoutes.get("/", async (c) => {
   const user = await getRequestUser(c);
   const canReadAll = user ? hasAnyPermission(user.permissions, ["announcements.create", "announcements.edit", "announcements.archive", "announcements.delete"]) : false;
   const query = c.req.query();
+  const sort = parseAnnouncementSort(query.sort);
+  if (!sort) return buildError(c, "VALIDATION_ERROR", "Invalid announcement sort");
   const page = parsePage(query.page, 1);
   const limit = Math.min(100, parsePage(query.limit, 20));
-  const result = await getService(c).list({ canReadAll, page, limit, status: query.status, pinned: parseBoolean(query.pinned), archived: parseBoolean(query.archived), search: (query.search ?? "").trim() || undefined });
+  const result = await getService(c).list({ canReadAll, page, limit, status: query.status, pinned: parseBoolean(query.pinned), archived: parseBoolean(query.archived), search: (query.search ?? "").trim() || undefined, sort });
   return handleResult(c, result);
-});
-
-announcementsRoutes.get("/image", async (c) => {
-  const key = c.req.query("key");
-  if (!key) return buildError(c, "VALIDATION_ERROR", "key query parameter required");
-  if (!key.startsWith("announcement/")) return buildError(c, "FORBIDDEN", "Invalid announcement image key");
-  return serveR2Object(c, key, "Announcement image not found");
 });
 
 announcementsRoutes.get("/:id", async (c) => {
@@ -63,26 +56,21 @@ announcementsRoutes.post("/", async (c) => {
   return c.json(result.data, 201);
 });
 
-announcementsRoutes.post("/images/stage", async (c) => {
+announcementsRoutes.post("/images", async (c) => {
   const sessionUser = await requireAnnouncementCreate(c);
   const form = await safeFormData(c);
-  const files = collectFiles(form);
-  if (files.length === 0) return buildError(c, "VALIDATION_ERROR", "No files provided");
+  let uploads;
+  try {
+    uploads = await parseImageMediaFormData(form);
+  } catch (error) {
+    if (error instanceof MediaValidationError) return buildError(c, "VALIDATION_ERROR", error.message);
+    throw error;
+  }
   const mediaPolicy = await withMediaAndPublishAnnouncement(c).getMediaPolicy();
-  if (files.length > mediaPolicy.quotas.announcement) {
+  if (uploads.length > mediaPolicy.quotas.announcement) {
     return buildError(c, "VALIDATION_ERROR", `Maximum ${mediaPolicy.quotas.announcement} announcement images per upload`);
   }
-  const allowedTypes = new Set<string>(ALLOWED_IMAGE_TYPES);
-  const fileData: Array<{ data: ArrayBuffer; contentType: string }> = [];
-  for (const file of files) {
-    if (file.size > mediaPolicy.max_file_size_bytes.announcement_image) return buildError(c, "VALIDATION_ERROR", `File too large: ${file.name}`);
-    const data = await file.arrayBuffer();
-    const validation = validateUploadBytes(data, file.type || "application/octet-stream", allowedTypes);
-    if (!validation.ok) return buildError(c, "VALIDATION_ERROR", validation.message);
-    fileData.push({ data, contentType: validation.contentType });
-  }
-  const token = form.get("staging_token");
-  const result = await getStagingService(c).stage(sessionUser.id, fileData, typeof token === "string" ? token : undefined, mediaPolicy.quotas.announcement);
+  const result = await getService(c).createPendingImages(sessionUser.id, uploads, mediaPolicy.quotas.announcement, mediaPolicy.max_file_size_bytes.announcement_image);
   return handleResult(c, result, 201);
 });
 
@@ -104,7 +92,7 @@ announcementsRoutes.delete("/:id", async (c) => {
 });
 
 announcementsRoutes.delete("/:id/permanent", async (c) => {
-  const sessionUser = await requirePermission(c, "announcements.delete", { freshPermissions: true });
+  const sessionUser = await requirePermission(c, "announcements.delete");
   const result = await getService(c).permanentDelete(sessionUser.id, c.req.param("id"));
   return handleResult(c, result);
 });
@@ -113,27 +101,17 @@ announcementsRoutes.post("/:id/images", async (c) => {
   const sessionUser = await requireAnnouncementEdit(c);
 
   const form = await safeFormData(c);
-  const files = collectFiles(form);
-
-  if (files.length === 0) return buildError(c, "VALIDATION_ERROR", "No files provided");
+  let uploads;
+  try {
+    uploads = await parseImageMediaFormData(form);
+  } catch (error) {
+    if (error instanceof MediaValidationError) return buildError(c, "VALIDATION_ERROR", error.message);
+    throw error;
+  }
   const mediaPolicy = await withMediaAndPublishAnnouncement(c).getMediaPolicy();
-  if (files.length > mediaPolicy.quotas.announcement) {
+  if (uploads.length > mediaPolicy.quotas.announcement) {
     return buildError(c, "VALIDATION_ERROR", `Maximum ${mediaPolicy.quotas.announcement} announcement images per upload`);
   }
-  for (const file of files) {
-    if (!ALLOWED_IMAGE_TYPES.includes(file.type as typeof ALLOWED_IMAGE_TYPES[number])) return buildError(c, "VALIDATION_ERROR", `Invalid file type: ${file.name}`);
-    if (file.size > mediaPolicy.max_file_size_bytes.announcement_image) return buildError(c, "VALIDATION_ERROR", `File too large: ${file.name}`);
-  }
-  if (!await hasMediaQuotaCapacity(
-    c,
-    `announcement/${c.req.param("id")}/images/`,
-    files.length,
-    mediaPolicy.quotas.announcement,
-  )) {
-    return buildError(c, "VALIDATION_ERROR", `Announcement image quota is ${mediaPolicy.quotas.announcement}`);
-  }
-
-  const fileData = await Promise.all(files.map(async (f) => ({ data: await f.arrayBuffer(), contentType: f.type || "application/octet-stream" })));
-  const result = await getService(c).uploadImages(sessionUser.id, c.req.param("id"), fileData);
+  const result = await getService(c).uploadImages(sessionUser.id, c.req.param("id"), uploads, mediaPolicy.quotas.announcement, mediaPolicy.max_file_size_bytes.announcement_image);
   return handleResult(c, result);
 });

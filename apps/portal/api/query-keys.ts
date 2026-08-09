@@ -44,8 +44,8 @@ export const queryKeys = {
   },
   announcements: {
     all: ["announcements"] as const,
-    list: (scope: string, status: string, search: string) =>
-      [...queryKeys.announcements.all, "list", scope, status, search] as const,
+    list: (scope: string, status: string, search: string, sort: string) =>
+      [...queryKeys.announcements.all, "list", scope, status, search, sort] as const,
     detail: (id: string | null) => [...queryKeys.announcements.all, "detail", id] as const,
   },
   gallery: {
@@ -120,8 +120,8 @@ export const queryKeys = {
   wiki: {
     all: ["wiki"] as const,
     categories: () => [...queryKeys.wiki.all, "categories"] as const,
-    articles: (categoryId: string, search: string, archivedMode: string, pinnedOnly: boolean) =>
-      [...queryKeys.wiki.all, "articles", categoryId, search, archivedMode, pinnedOnly] as const,
+    articles: (categoryId: string, search: string, archivedMode: string, pinnedOnly: boolean, sort: string) =>
+      [...queryKeys.wiki.all, "articles", categoryId, search, archivedMode, pinnedOnly, sort] as const,
     article: (slug: string | null) => [...queryKeys.wiki.all, "article", slug] as const,
     revisions: (articleId: string | null) => [...queryKeys.wiki.all, "revisions", articleId] as const,
     revision: (articleId: string | null, revision: number | null) => [...queryKeys.wiki.all, "revision", articleId, revision] as const,
@@ -132,12 +132,15 @@ export const queryKeys = {
     detail: (id: string) => [...queryKeys.badges.all, "detail", id] as const,
     assignments: (id: string) => [...queryKeys.badges.all, "assignments", id] as const,
   },
-  gameData: {
-    all: ["game-data"] as const,
-    latest: () => [...queryKeys.gameData.all, "latest"] as const,
-    full: () => [...queryKeys.gameData.all, "full"] as const,
-    rotation: (classId: string) => [...queryKeys.gameData.all, "rotation", classId] as const,
-    versions: () => [...queryKeys.gameData.all, "versions"] as const,
+  classes: {
+    all: ["classes"] as const,
+    list: () => [...queryKeys.classes.all, "list"] as const,
+  },
+  /* 标签自成一族。改标签成员不动职业目录，所以它不挂在 classes 下面；反过来删职业会
+     把它从所有标签里带走，那一处要显式把这一族也作废掉。 */
+  classTags: {
+    all: ["class-tags"] as const,
+    list: () => [...queryKeys.classTags.all, "list"] as const,
   },
   cmdk: {
     all: ["cmdk"] as const,

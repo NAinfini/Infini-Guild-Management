@@ -23,6 +23,8 @@ import {
   metricValueOrNullFromWarMember,
   normalizeMetricValue,
 } from "../../utils/guild-war-analytics";
+import { useSiteConfigStore } from "@portal/stores/site-config";
+import { GUILD_WAR_KDA_KEY } from "@guild/shared";
 
 type UseGuildWarAnalyticsParams = {
   historyRows: Array<{ id: string; war_name: string; created_at: string }>;
@@ -37,6 +39,7 @@ export function useGuildWarAnalytics({
 }: UseGuildWarAnalyticsParams) {
   const { t } = useTranslation("guild-war");
   const hasSession = useAuthStore((state) => Boolean(state.user));
+  const warRules = useSiteConfigStore((state) => state.gameRules.guild_war);
   const {
     analyticsMode,
     setAnalyticsMode,
@@ -157,8 +160,7 @@ export function useGuildWarAnalytics({
   const analyticsRows = analyticsQuery.data?.member_stats ?? [];
   const analyticsWarDetails = analyticsDetailsQuery.data ?? [];
 
-  // Absence (请假) window covering all selected wars — used to excuse
-  // rostered-but-absent members from the attendance denominator.
+  // One absence window covers every selected war used by attendance analytics.
   const absencesWindow = useMemo(() => {
     if (analyticsWarDetails.length === 0) {
       return null;
@@ -193,6 +195,22 @@ export function useGuildWarAnalytics({
 
   const analyticsSettings = analyticsQuery.data?.analytics_settings;
   const referenceDuration = analyticsSettings?.reference_duration_minutes ?? 30;
+
+  useEffect(() => {
+    const metricKeys = new Set([
+      ...warRules.member_stats.map((definition) => definition.key),
+      GUILD_WAR_KDA_KEY,
+    ]);
+    const validMetrics = analyticsSelectedMetrics.filter((metric) => metricKeys.has(metric));
+    if (validMetrics.length !== analyticsSelectedMetrics.length || validMetrics.length === 0) {
+      setAnalyticsSelectedMetrics(validMetrics.length > 0 ? validMetrics : [warRules.default_member_stat_key]);
+    }
+    if (!warRules.team_stats.some((definition) => definition.key === analyticsWarStat)) {
+      const fallback = warRules.team_stats.find((definition) => definition.dashboard === "primary")
+        ?? warRules.team_stats[0];
+      if (fallback) setAnalyticsWarStat(fallback.key);
+    }
+  }, [analyticsSelectedMetrics, analyticsWarStat, setAnalyticsSelectedMetrics, setAnalyticsWarStat, warRules]);
 
   useEffect(() => {
     if (analyticsSettings && !modifierWeightsInitialized) {

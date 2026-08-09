@@ -2,72 +2,11 @@ import { and, eq } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/d1";
 import { nanoid } from "nanoid";
 import { computeNextOccurrence } from "@guild/shared/utils/recurrence";
-import { events, recurringTemplates } from "../db/schema";
+import { recurringTemplates } from "../db/schema";
 import type { Bindings } from "../index";
-import { logger } from "../utils/logger";
-import { replaceMediaRefs, extractAttachmentKeys } from "../services/media-references";
-
-type RecurrenceRule = {
-  frequency: "daily" | "weekly" | "monthly";
-  interval: number;
-  daysOfWeek?: number[];
-  dayOfMonth?: number;
-  endAfter?: number;
-  endDate?: string;
-};
-
-function parseRecurrenceRule(value: string | null): RecurrenceRule | null {
-  if (!value) {
-    return null;
-  }
-
-  try {
-    const parsed = JSON.parse(value) as unknown;
-    if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
-      return null;
-    }
-
-    const rule = parsed as Record<string, unknown>;
-    const frequency = rule.frequency;
-    const interval = rule.interval;
-
-    if (
-      (frequency !== "daily" && frequency !== "weekly" && frequency !== "monthly") ||
-      typeof interval !== "number" ||
-      !Number.isFinite(interval) ||
-      interval <= 0
-    ) {
-      return null;
-    }
-
-    const daysOfWeek = Array.isArray(rule.daysOfWeek)
-      ? (rule.daysOfWeek as unknown[])
-          .map((v) => Number(v))
-          .filter((v) => Number.isFinite(v) && v >= 0 && v <= 6)
-      : undefined;
-    const dayOfMonth =
-      typeof rule.dayOfMonth === "number" && Number.isFinite(rule.dayOfMonth) && rule.dayOfMonth >= 1 && rule.dayOfMonth <= 31
-        ? Math.floor(rule.dayOfMonth)
-        : undefined;
-    const endAfter =
-      typeof rule.endAfter === "number" && Number.isFinite(rule.endAfter)
-        ? Math.max(1, Math.floor(rule.endAfter))
-        : undefined;
-    const endDate = typeof rule.endDate === "string" ? rule.endDate : undefined;
-
-    return {
-      frequency,
-      interval: Math.floor(interval),
-      daysOfWeek: daysOfWeek && daysOfWeek.length > 0 ? daysOfWeek : undefined,
-      dayOfMonth,
-      endAfter,
-      endDate,
-    };
-  } catch (e) {
-    logger.warn("Failed to parse recurrence rule", { value, error: String(e) });
-    return null;
-  }
-}
+import { buildCloneTemplateQuotaStatements } from "../services/events/event-class-quotas";
+import type { RawDbLike } from "../services/events/EventCrudService";
+import { recurrenceRuleFromColumns } from "../services/events/EventTemplateService";
 
 function isValidDate(value: Date): boolean {
   return Number.isFinite(value.getTime());
@@ -99,7 +38,10 @@ export function computeHorizon(now: Date, offsetMinutes = 0): Date {
   return horizon;
 }
 
-export async function runEventInstanceGenerationCron(env: Bindings, options: { templateId?: string } = {}): Promise<void> {
+export async function runEventInstanceGenerationCron(
+  env: Bindings,
+  options: { templateId?: string; systemTestRunId?: string } = {},
+): Promise<void> {
   const db = drizzle(env.DB);
   const now = new Date();
   const MAX_CATCHUP = 10;
@@ -114,8 +56,11 @@ export async function runEventInstanceGenerationCron(env: Bindings, options: { t
       durationMinutes: recurringTemplates.durationMinutes,
       capacity: recurringTemplates.capacity,
       createdBy: recurringTemplates.createdBy,
-      recurrenceRule: recurringTemplates.recurrenceRule,
-      attachments: recurringTemplates.attachments,
+      recurrenceFrequency: recurringTemplates.recurrenceFrequency,
+      recurrenceInterval: recurringTemplates.recurrenceInterval,
+      recurrenceDayOfMonth: recurringTemplates.recurrenceDayOfMonth,
+      recurrenceEndAfter: recurringTemplates.recurrenceEndAfter,
+      recurrenceEndAt: recurringTemplates.recurrenceEndAt,
       lastGeneratedDate: recurringTemplates.lastGeneratedDate,
       generationCount: recurringTemplates.generationCount,
       visibilityOffsetMinutes: recurringTemplates.visibilityOffsetMinutes,
@@ -130,11 +75,28 @@ export async function runEventInstanceGenerationCron(env: Bindings, options: { t
       ),
     );
 
+  const weekdayResult = await env.DB.prepare(
+    `SELECT template_id AS templateId, weekday
+     FROM recurring_template_weekdays
+     WHERE ?1 IS NULL OR template_id = ?1
+     ORDER BY template_id, weekday`,
+  ).bind(options.templateId ?? null).all<{ templateId: string; weekday: number }>();
+  const weekdaysByTemplate = new Map<string, number[]>();
+  for (const { templateId, weekday } of weekdayResult.results ?? []) {
+    const weekdays = weekdaysByTemplate.get(templateId) ?? [];
+    weekdays.push(weekday);
+    weekdaysByTemplate.set(templateId, weekdays);
+  }
+
   for (const template of templates) {
-    const rule = parseRecurrenceRule(template.recurrenceRule);
-    if (!rule) {
-      continue;
-    }
+    const rule = recurrenceRuleFromColumns({
+      recurrenceFrequency: template.recurrenceFrequency,
+      recurrenceInterval: template.recurrenceInterval,
+      recurrenceDayOfMonth: template.recurrenceDayOfMonth,
+      recurrenceEndAfter: template.recurrenceEndAfter,
+      recurrenceEndAt: template.recurrenceEndAt,
+      weekdays: weekdaysByTemplate.get(template.id) ?? [],
+    });
 
     const utcTime = parseStartTime(template.startTime);
     if (!utcTime) {
@@ -184,8 +146,12 @@ export async function runEventInstanceGenerationCron(env: Bindings, options: { t
 
     // Collect per-template insert statements so they can be batched with the
     // template UPDATE in a single D1 round-trip instead of N+1 separate awaits.
-    type InsertStmt = ReturnType<ReturnType<ReturnType<typeof db.insert>["values"]>["onConflictDoNothing"]>;
-    const pendingInserts: Array<{ stmt: InsertStmt; dateKey: string; eventId: string; attachments: string }> = [];
+    const pendingInserts: Array<{
+      dateKey: string;
+      eventId: string;
+      startAt: string;
+      endAt: string | null;
+    }> = [];
 
     while (catchupCount < MAX_CATCHUP) {
       const nextOccurrence = computeNextOccurrence(currentAnchor, utcTime.utcHour, utcTime.utcMinute, rule, referenceDate);
@@ -218,35 +184,12 @@ export async function runEventInstanceGenerationCron(env: Bindings, options: { t
         : null;
 
       const eventId = nanoid();
-      pendingInserts.push({
-        stmt: db.insert(events).values({
-          id: eventId,
-          type: template.type,
-          title: template.title,
-          description: template.description,
-          startAt: nextStartIso,
-          endAt: nextEndAt,
-          capacity: template.capacity,
-          pinned: false,
-          signupLocked: false,
-          autoArchive: template.autoArchive,
-          autoArchived: false,
-          archivedAt: null,
-          createdBy: template.createdBy,
-          attachments: template.attachments,
-          seriesId: template.id,
-          instanceDate: nextDateKey,
-          updatedAt: now.toISOString(),
-        }).onConflictDoNothing({ target: [events.seriesId, events.instanceDate] }),
-        dateKey: nextDateKey,
-        eventId,
-        attachments: template.attachments,
-      });
+      pendingInserts.push({ dateKey: nextDateKey, eventId, startAt: nextStartIso, endAt: nextEndAt });
 
       currentAnchor = nextOccurrence;
       catchupCount += 1;
 
-      if (rule.endAfter && generationCount >= rule.endAfter) {
+      if (rule.endAfter && generationCount + pendingInserts.length >= rule.endAfter) {
         break;
       }
     }
@@ -255,36 +198,101 @@ export async function runEventInstanceGenerationCron(env: Bindings, options: { t
       continue;
     }
 
-    // Batch all insert statements for this template in one D1 round-trip.
-    // D1 Drizzle .batch() accepts an array at runtime even though the TypeScript
-    // overload requires a tuple. Cast via unknown to bypass the tuple constraint.
-    const insertStmts = pendingInserts.map((p) => p.stmt) as unknown as Parameters<typeof db.batch>[0];
-    const batchResults = await db.batch(insertStmts);
+    const datePlaceholders = pendingInserts.map(() => "?").join(", ");
+    const existing = await env.DB.prepare(
+      `SELECT instance_date FROM events WHERE series_id = ? AND instance_date IN (${datePlaceholders})`,
+    ).bind(template.id, ...pendingInserts.map((entry) => entry.dateKey)).all<{ instance_date: string }>();
+    const existingDates = new Set((existing.results ?? []).map((row) => row.instance_date));
+    const newInserts = pendingInserts.filter((entry) => !existingDates.has(entry.dateKey));
+    if (newInserts.length === 0) {
+      continue;
+    }
 
-    let lastDateKey: string | null = null;
-    const mediaRefPromises: Promise<void>[] = [];
-    for (let i = 0; i < pendingInserts.length; i++) {
-      const result = batchResults[i] as D1Result;
-      if (result.meta.changes > 0) {
-        generationCount += 1;
-        lastDateKey = pendingInserts[i]!.dateKey;
-        const keys = extractAttachmentKeys(pendingInserts[i]!.attachments);
-        if (keys.length > 0) {
-          mediaRefPromises.push(replaceMediaRefs(env.DB, "event", pendingInserts[i]!.eventId, keys));
-        }
+    const lastDateKey = newInserts[newInserts.length - 1]!.dateKey;
+    const nextGenerationCount = generationCount + newInserts.length;
+    const nowIso = now.toISOString();
+    const rawDb = env.DB as never as RawDbLike;
+    const runGuard = options.systemTestRunId
+      ? " AND EXISTS (SELECT 1 FROM system_test_runs WHERE id = ?6 AND status = 'running')"
+      : "";
+    const updateBindings: unknown[] = [
+      lastDateKey,
+      nextGenerationCount,
+      nowIso,
+      template.id,
+      generationCount,
+      ...(options.systemTestRunId ? [options.systemTestRunId] : []),
+    ];
+    const statements: D1PreparedStatement[] = [
+      env.DB.prepare(
+        `UPDATE recurring_templates
+         SET last_generated_date = ?1, generation_count = ?2, updated_at = ?3
+         WHERE id = ?4 AND paused = 0 AND generation_count = ?5${runGuard}`,
+      ).bind(...updateBindings),
+    ];
+
+    for (const entry of newInserts) {
+      statements.push(
+        env.DB.prepare(
+          `INSERT INTO events
+             (id, type, title, description, start_at, end_at, capacity, auto_archive,
+              created_by, series_id, instance_date, updated_at)
+           SELECT ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12
+           WHERE EXISTS (
+             SELECT 1 FROM recurring_templates
+             WHERE id = ?10 AND paused = 0 AND generation_count = ?13 AND last_generated_date = ?14
+           )`,
+        ).bind(
+          entry.eventId,
+          template.type,
+          template.title,
+          template.description,
+          entry.startAt,
+          entry.endAt,
+          template.capacity,
+          template.autoArchive ? 1 : 0,
+          template.createdBy,
+          template.id,
+          entry.dateKey,
+          nowIso,
+          nextGenerationCount,
+          lastDateKey,
+        ),
+        env.DB.prepare(`
+          INSERT INTO media_links (media_id, entity_type, entity_id, slot, sort_order)
+          SELECT media_id, 'event', ?1, 'attachment', sort_order
+          FROM media_links
+          WHERE entity_type = 'recurring_template'
+            AND entity_id = ?2
+            AND slot = 'attachment'
+        `).bind(entry.eventId, template.id),
+      );
+    }
+
+    /* 活动、媒体关联、配额、测试登记和模板进度必须同生共死。
+       D1 batch 是单事务；任何一条失败都会回滚整批，不会留下裸活动。 */
+    statements.push(
+      ...await buildCloneTemplateQuotaStatements(
+        rawDb,
+        template.id,
+        newInserts.map((entry) => entry.eventId),
+        () => nanoid(),
+      ) as unknown as D1PreparedStatement[],
+    );
+    if (options.systemTestRunId) {
+      for (const entry of newInserts) {
+        statements.push(
+          env.DB.prepare(
+            `INSERT INTO system_test_artifacts (run_id, artifact_type, artifact_key)
+             SELECT ?1, 'event', ?2 FROM system_test_runs
+             WHERE id = ?1 AND status = 'running'
+               AND EXISTS (SELECT 1 FROM events WHERE id = ?2)
+             ON CONFLICT(run_id, artifact_type, artifact_key)
+             DO UPDATE SET artifact_key = excluded.artifact_key`,
+          ).bind(options.systemTestRunId, entry.eventId),
+        );
       }
     }
-    await Promise.all(mediaRefPromises);
-
-    if (lastDateKey) {
-      await db
-        .update(recurringTemplates)
-        .set({
-          lastGeneratedDate: lastDateKey,
-          generationCount,
-          updatedAt: now.toISOString(),
-        })
-        .where(eq(recurringTemplates.id, template.id));
-    }
+    await env.DB.batch(statements);
   }
 }

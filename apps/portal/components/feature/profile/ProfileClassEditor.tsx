@@ -9,16 +9,17 @@ import {
 } from "@dnd-kit/core";
 import {
   SortableContext,
+  rectSortingStrategy,
   sortableKeyboardCoordinates,
   useSortable,
-  verticalListSortingStrategy,
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { resolveClassDisplayColor } from "@guild/shared/constants/classes";
-import { Badge, Group, Select, Stack, Text } from "@mantine/core";
+import { ActionIcon, Popover, Select, Text, Tooltip } from "@mantine/core";
 import { PlusIcon, TrashIcon } from "@portal/components/icons";
-import { DepthButton } from "@portal/components/shared/DepthButton";
+import { ClassIcon } from "@portal/components/shared/ClassIcon";
+import { resolveClassCatalogItem, useClassCatalogStore } from "@portal/stores/class-catalog";
 import { IconGripVertical } from "@tabler/icons-react";
+import { useState } from "react";
 import { useTranslation } from "react-i18next";
 
 type ProfileClassEditorProps = {
@@ -26,25 +27,25 @@ type ProfileClassEditorProps = {
   classOptions: Array<{ value: string; label: string }>;
   classList: string[];
   onClassDraftChange: (value: string) => void;
-  onAddClass: () => void;
+  onAddClass: (value: string) => void;
   onClassDragEnd: (event: DragEndEvent) => void;
   onRemoveClass: (index: number) => void;
 };
 
 type SortableClassRowProps = {
   value: string;
-  index: number;
   isPrimary: boolean;
   onRemove: () => void;
 };
 
 function SortableClassRow({
   value,
-  index,
   isPrimary,
   onRemove,
 }: SortableClassRowProps) {
   const { t } = useTranslation("profile");
+  const catalog = useClassCatalogStore((state) => state.items);
+  const item = resolveClassCatalogItem(value, catalog);
   const {
     attributes,
     listeners,
@@ -56,41 +57,50 @@ function SortableClassRow({
   } = useSortable({ id: value });
 
   return (
-    <Group
+    <span
       ref={setNodeRef}
-      wrap="wrap"
       style={{
         transform: CSS.Transform.toString(transform),
         transition,
       }}
-      className={`my-profile-sortable-row ${isDragging ? "my-profile-sortable-row--dragging" : ""}`.trim()}
+      className={[
+        "profile-class__pill",
+        isPrimary ? "profile-class__pill--primary" : "",
+        isDragging ? "profile-class__pill--dragging" : "",
+      ].filter(Boolean).join(" ")}
     >
-      <DepthButton
-        ref={setActivatorNodeRef}
-        {...attributes}
-        {...listeners}
-        size="sm"
-        type="secondary"
-        iconOnly
-        before={<IconGripVertical size={18} />}
-        tooltip={{ label: t("classRow.aria.drag", { value }), withArrow: true }}
-        style={{ cursor: isDragging ? "grabbing" : "grab" }}
-      />
-      <Badge color={resolveClassDisplayColor(value, isPrimary ? "yellow" : "gray")}>
-        {value}
-      </Badge>
-      <DepthButton
-        size="sm"
-        type="danger"
-        iconOnly
-        before={<TrashIcon size={16} />}
-        onClick={onRemove}
-        tooltip={{ label: t("classRow.remove"), withArrow: true }}
-      />
-      <Text c="dimmed" size="sm" style={{ fontSize: 12 }}>
-        #{index + 1}
-      </Text>
-    </Group>
+      <Tooltip label={t("classRow.aria.drag", { value: item.label })} withArrow>
+        <ActionIcon
+          ref={setActivatorNodeRef}
+          {...attributes}
+          {...listeners}
+          size="xs"
+          variant="subtle"
+          color="gray"
+          aria-label={t("classRow.aria.drag", { value: item.label })}
+          style={{ cursor: isDragging ? "grabbing" : "grab" }}
+        >
+          <IconGripVertical size={14} />
+        </ActionIcon>
+      </Tooltip>
+      <ClassIcon item={item} size={16} />
+      <Tooltip label={t("classRow.primaryHint")} withArrow disabled={!isPrimary}>
+        <Text component="span" size="sm" fw={isPrimary ? 700 : 600} className="profile-class__pill-label">
+          {item.label}
+        </Text>
+      </Tooltip>
+      <Tooltip label={t("classRow.remove")} withArrow>
+        <ActionIcon
+          size="xs"
+          color="red"
+          variant="subtle"
+          aria-label={t("classRow.remove")}
+          onClick={onRemove}
+        >
+          <TrashIcon size={14} />
+        </ActionIcon>
+      </Tooltip>
+    </span>
   );
 }
 
@@ -104,48 +114,74 @@ export function ProfileClassEditor({
   onRemoveClass,
 }: ProfileClassEditorProps) {
   const { t } = useTranslation("profile");
+  const [pickerOpen, setPickerOpen] = useState(false);
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
   );
 
   return (
-    <>
-      <Text fw={700} size="sm" c="dimmed" tt="uppercase" lts={0.5} mb={10}>
+    <div className="profile-class">
+      <Text component="span" size="sm" fw={600} className="profile-class__label">
         {t("section.classes")}
       </Text>
-      <Group gap={8} wrap="nowrap">
-        <Select
-          searchable
-          value={classDraft || null}
-          data={classOptions}
-          style={{ flex: 1 }}
-          placeholder={t("field.selectClass")}
-          aria-label={t("aria.selectClass")}
-          onChange={(value) => onClassDraftChange(value ?? "")}
-          onSearchChange={onClassDraftChange}
-        />
-        <DepthButton type="primary" onClick={onAddClass} before={<PlusIcon size={16} />}>
-          {t("action.add")}
-        </DepthButton>
-      </Group>
-      {classList.length > 0 ? (
-        <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={onClassDragEnd}>
-          <SortableContext items={classList} strategy={verticalListSortingStrategy}>
-            <Stack gap={6} mt={8}>
-              {classList.map((item, index) => (
-                <SortableClassRow
-                  key={item}
-                  value={item}
-                  index={index}
-                  isPrimary={index === 0}
-                  onRemove={() => onRemoveClass(index)}
+      {/*
+       * 选择器收进「+ 添加」里。它常驻时是一个和简介同宽的下拉框加一个按钮，占掉
+       * 一整行，而添加职业是一次性动作——已有的职业才是这一栏平时要看的东西。
+       */}
+      <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={onClassDragEnd}>
+        {/* rect 而不是 vertical：胶囊会换行，落点可能在右边也可能在下一行。 */}
+        <SortableContext items={classList} strategy={rectSortingStrategy}>
+          <div className="profile-class__pills">
+            {classList.map((item, index) => (
+              <SortableClassRow
+                key={item}
+                value={item}
+                isPrimary={index === 0}
+                onRemove={() => onRemoveClass(index)}
+              />
+            ))}
+
+            <Popover
+              opened={pickerOpen}
+              onChange={setPickerOpen}
+              position="bottom-start"
+              withArrow
+              trapFocus
+            >
+              <Popover.Target>
+                <button
+                  type="button"
+                  className="profile-class__add"
+                  onClick={() => setPickerOpen((open) => !open)}
+                >
+                  <PlusIcon size={13} />
+                  {t("action.add")}
+                </button>
+              </Popover.Target>
+              <Popover.Dropdown>
+                <Select
+                  searchable
+                  data={classOptions}
+                  value={classDraft || null}
+                  w={220}
+                  placeholder={t("field.selectClass")}
+                  aria-label={t("aria.selectClass")}
+                  onSearchChange={onClassDraftChange}
+                  onChange={(value) => {
+                    if (!value) return;
+                    // 选中即添加：留一个「添加」按钮的话，选完还要再点一次，而这个
+                    // 下拉框本身就是为这一次添加才打开的。
+                    onAddClass(value);
+                    onClassDraftChange("");
+                    setPickerOpen(false);
+                  }}
                 />
-              ))}
-            </Stack>
-          </SortableContext>
-        </DndContext>
-      ) : null}
-    </>
+              </Popover.Dropdown>
+            </Popover>
+          </div>
+        </SortableContext>
+      </DndContext>
+    </div>
   );
 }

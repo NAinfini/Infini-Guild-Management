@@ -1,5 +1,4 @@
 import {
-  createStorageBatchTransactionSchema,
   storageBatchTransactionResultSchema,
   type StorageBatchTransactionResult,
 } from "@guild/shared";
@@ -13,54 +12,140 @@ export type NormalizedStorageBatchRequest = {
   note: string | null;
 };
 
-export type StorageBatchAuditDetail = {
-  kind: "storage_batch";
-  version: 1;
-  request: NormalizedStorageBatchRequest;
-  response: StorageBatchTransactionResult;
+export type StoredStorageBatchRequest = Omit<NormalizedStorageBatchRequest, "idempotency_key">;
+export type StorageBatchReplayState =
+  | { kind: "missing" }
+  | { kind: "corrupt" }
+  | {
+      kind: "stored";
+      request: StoredStorageBatchRequest;
+      response: StorageBatchTransactionResult;
+    };
+
+type StorageBatchReplayRow = {
+  batchId: string;
+  batchActorId: string;
+  batchCreatedAt: string;
+  batchPosition: number | null;
+  transactionId: string | null;
+  itemId: string | null;
+  itemName: string | null;
+  type: string | null;
+  quantityDelta: number | null;
+  recipientUserId: string | null;
+  recipientUsername: string | null;
+  note: string | null;
+  actorId: string | null;
+  actorUsername: string | null;
+  transactionCreatedAt: string | null;
 };
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null;
-}
+export async function getStorageBatchReplay(
+  rawDb: D1Database,
+  batchId: string,
+  actorId: string,
+): Promise<StorageBatchReplayState> {
+  const result = await rawDb.prepare(`
+    SELECT
+      batch.id AS batchId,
+      batch.actor_id AS batchActorId,
+      batch.created_at AS batchCreatedAt,
+      tx.batch_position AS batchPosition,
+      tx.id AS transactionId,
+      tx.item_id AS itemId,
+      item.name AS itemName,
+      tx.type,
+      tx.quantity_delta AS quantityDelta,
+      tx.recipient_user_id AS recipientUserId,
+      recipient.username AS recipientUsername,
+      tx.note,
+      tx.actor_id AS actorId,
+      actor.username AS actorUsername,
+      tx.created_at AS transactionCreatedAt
+    FROM storage_batches batch
+    LEFT JOIN storage_transactions tx ON tx.batch_id = batch.id
+    LEFT JOIN storage_items item ON item.id = tx.item_id
+    LEFT JOIN users recipient ON recipient.id = tx.recipient_user_id
+    LEFT JOIN users actor ON actor.id = tx.actor_id
+    WHERE batch.id = ?1
+    ORDER BY tx.batch_position ASC
+  `).bind(batchId).all<StorageBatchReplayRow>();
+  const rows = result.results ?? [];
+  if (rows.length === 0) return { kind: "missing" };
 
-export function parseStorageBatchAuditDetail(
-  detailText: string | null,
-): StorageBatchAuditDetail | null {
-  if (!detailText) return null;
-  try {
-    const parsed: unknown = JSON.parse(detailText);
+  const first = rows[0]!;
+  if (
+    first.batchId !== batchId
+    || first.batchActorId !== actorId
+    || first.transactionId === null
+    || first.type === null
+    || first.actorUsername === null
+  ) return { kind: "corrupt" };
+
+  const entries: StoredStorageBatchRequest["entries"] = [];
+  const transactions: TransactionJoinedRow[] = [];
+  let previousItemId: string | null = null;
+  for (const [position, row] of rows.entries()) {
     if (
-      !isRecord(parsed)
-      || parsed.kind !== "storage_batch"
-      || parsed.version !== 1
-      || !isRecord(parsed.request)
-    ) return null;
-    const response = storageBatchTransactionResultSchema.safeParse(parsed.response);
-    const request = createStorageBatchTransactionSchema.safeParse(parsed.request);
-    if (!response.success || !request.success) return null;
-    return {
-      kind: "storage_batch",
-      version: 1,
-      request: {
-        idempotency_key: request.data.idempotency_key,
-        type: request.data.type,
-        entries: [...request.data.entries]
-          .map((entry) => ({ item_id: entry.item_id, quantity: entry.quantity }))
-          .sort((a, b) => a.item_id.localeCompare(b.item_id)),
-        recipient_user_id: request.data.recipient_user_id ?? null,
-        note: request.data.note ?? null,
-      },
-      response: response.data,
-    };
-  } catch {
-    return null;
+      row.batchId !== batchId
+      || row.batchActorId !== actorId
+      || row.batchCreatedAt !== first.batchCreatedAt
+      || row.batchPosition !== position
+      || row.transactionId === null
+      || row.itemId === null
+      || row.itemName === null
+      || row.type !== first.type
+      || (row.type !== "intake" && row.type !== "distribute")
+      || row.quantityDelta === null
+      || !Number.isInteger(row.quantityDelta)
+      || (row.type === "intake" ? row.quantityDelta <= 0 : row.quantityDelta >= 0)
+      || row.recipientUserId !== first.recipientUserId
+      || row.note !== first.note
+      || row.actorId !== actorId
+      || row.actorUsername === null
+      || row.transactionCreatedAt !== first.batchCreatedAt
+      || (row.recipientUserId !== null && row.recipientUsername === null)
+      || (previousItemId !== null && previousItemId.localeCompare(row.itemId) >= 0)
+    ) return { kind: "corrupt" };
+
+    previousItemId = row.itemId;
+    entries.push({
+      item_id: row.itemId,
+      quantity: row.type === "intake" ? row.quantityDelta : -row.quantityDelta,
+    });
+    transactions.push({
+      id: row.transactionId,
+      itemId: row.itemId,
+      itemName: row.itemName,
+      type: row.type,
+      quantityDelta: row.quantityDelta,
+      recipientUserId: row.recipientUserId,
+      recipientUsername: row.recipientUsername,
+      note: row.note,
+      actorId: row.actorId,
+      actorUsername: row.actorUsername,
+      createdAt: row.transactionCreatedAt,
+    });
   }
+
+  const response = storageBatchTransactionResultSchema.safeParse({
+    data: transactions.map(toTransactionPayload),
+    replayed: false,
+  });
+  if (!response.success) return { kind: "corrupt" };
+  return {
+    kind: "stored",
+    request: {
+      type: first.type as "intake" | "distribute",
+      entries,
+      recipient_user_id: first.recipientUserId,
+      note: first.note,
+    },
+    response: response.data,
+  };
 }
 
 export type StorageBatchPreflightRow = {
-  markerId: string | null;
-  markerDetailText: string | null;
   requestedItemId: string;
   requestedQuantity: number;
   itemId: string | null;
@@ -75,15 +160,14 @@ export type StorageBatchPreflightRow = {
 };
 
 /**
- * Fetches the idempotency marker, all requested item snapshots, and both users
- * in one statement. Keeping this as one query makes the subsequent D1 batch's
+ * Fetches all requested item snapshots and both users in one statement.
+ * Keeping this as one query makes the subsequent D1 batch's
  * failure diagnostics a fresh snapshot instead of a sequence of stale reads.
  */
 export async function getStorageBatchPreflight(
   rawDb: D1Database,
   input: {
     entries: Array<{ itemId: string; quantity: number }>;
-    markerId: string;
     actorId: string;
     recipientUserId: string | null;
   },
@@ -93,8 +177,6 @@ export async function getStorageBatchPreflight(
   const rows = await rawDb.prepare(`
     WITH requested(item_id, quantity) AS (VALUES ${entryValues})
     SELECT
-      marker.id AS markerId,
-      marker.detail_text AS markerDetailText,
       requested.item_id AS requestedItemId,
       requested.quantity AS requestedQuantity,
       item.id AS itemId,
@@ -107,14 +189,12 @@ export async function getStorageBatchPreflight(
       recipient.id AS recipientId,
       recipient.username AS recipientUsername
     FROM requested
-    LEFT JOIN audit_log marker ON marker.id = ?${trailingIndex + 1}
     LEFT JOIN storage_items item ON item.id = requested.item_id
-    LEFT JOIN users actor ON actor.id = ?${trailingIndex + 2}
-    LEFT JOIN users recipient ON recipient.id = ?${trailingIndex + 3}
+    LEFT JOIN users actor ON actor.id = ?${trailingIndex + 1}
+    LEFT JOIN users recipient ON recipient.id = ?${trailingIndex + 2}
     ORDER BY requested.item_id ASC
   `).bind(
     ...input.entries.flatMap((entry) => [entry.itemId, entry.quantity]),
-    input.markerId,
     input.actorId,
     input.recipientUserId,
   ).all<StorageBatchPreflightRow>();

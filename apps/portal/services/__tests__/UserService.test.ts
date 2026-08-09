@@ -17,6 +17,7 @@ import {
   deleteProfileImage,
   deleteProfileImages,
   deleteProfileAudio,
+  uploadProfileAudio,
   fetchAllUsersListWithOptions,
 } from "../UserService";
 
@@ -83,27 +84,27 @@ describe("UserService mutations", () => {
     ).toThrow();
   });
 
-  it("deleteProfileImage sends one-key delete request", async () => {
+  it("deleteProfileImage sends one-media-id delete request", async () => {
     mockFetch.mockResolvedValueOnce(mockJsonResponse({ ok: true, deleted: 1 }));
-    await deleteProfileImage("u-1", "users/u-1/images/photo.webp");
+    await deleteProfileImage("u-1", "image1234567890abcdef");
     const [url, init] = mockFetch.mock.calls[0]!;
     expect(url).toContain("/api/users/u-1/media/images");
     expect(url).not.toContain("batch");
     expect(init.method).toBe("DELETE");
     expect(JSON.parse(init.body)).toEqual({
-      keys: ["users/u-1/images/photo.webp"],
+      media_ids: ["image1234567890abcdef"],
     });
   });
 
   it("deleteProfileImages sends one delete request", async () => {
     mockFetch.mockResolvedValueOnce(mockJsonResponse({ ok: true, deleted: 2 }));
-    await deleteProfileImages("u-1", ["users/u-1/images/one.webp", "users/u-1/images/two.webp"]);
+    await deleteProfileImages("u-1", ["image1234567890abcdef", "second1234567890abcde"]);
     const [url, init] = mockFetch.mock.calls[0]!;
     expect(url).toContain("/api/users/u-1/media/images");
     expect(url).not.toContain("batch");
     expect(init.method).toBe("DELETE");
     expect(JSON.parse(init.body)).toEqual({
-      keys: ["users/u-1/images/one.webp", "users/u-1/images/two.webp"],
+      media_ids: ["image1234567890abcdef", "second1234567890abcde"],
     });
   });
 
@@ -113,6 +114,20 @@ describe("UserService mutations", () => {
     const [url, init] = mockFetch.mock.calls[0]!;
     expect(url).toContain("/api/users/u-1/media/audio");
     expect(init.method).toBe("DELETE");
+  });
+
+  it("uploadProfileAudio sends the canonical Ogg/Opus file without converting it again", async () => {
+    mockFetch.mockResolvedValueOnce(mockJsonResponse({ media_id: "audio1234567890abcdef" }));
+    const canonicalAudioFile = new File(["opus"], "voice.ogg", { type: "audio/ogg; codecs=opus" });
+
+    await uploadProfileAudio("u-1", canonicalAudioFile);
+
+    const [url, init] = mockFetch.mock.calls[0]!;
+    expect(url).toContain("/api/users/u-1/media/audio");
+    expect(init.method).toBe("POST");
+    expect(init.body).toBeInstanceOf(FormData);
+    const uploaded = (init.body as FormData).get("file");
+    expect(uploaded).toBe(canonicalAudioFile);
   });
 
   it("fetchAllUsersListWithOptions follows pages until the final partial page", async () => {

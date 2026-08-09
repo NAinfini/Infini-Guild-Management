@@ -2,6 +2,9 @@ import { z } from "zod";
 import { PERMISSIONS } from "../constants/roles";
 import { AUDIT_ENTITY_TYPES, AUDIT_ACTIONS } from "../constants/audit";
 import { LIMITS } from "../config/limits";
+import { roleIdSchema, roleMetadataSchema } from "./role";
+import { siteAnalyticsModifierWeightsSchema } from "./site-config";
+import { jsonObjectSchema } from "./json";
 
 const L_admin = LIMITS.content;
 const usernameSchema = z.string().min(L_admin.username.min).max(L_admin.username.max).regex(/^[a-zA-Z0-9_一-鿿]+$/);
@@ -12,12 +15,13 @@ export const inviteLinkSchema = z.object({
   id: z.string(),
   code: z.string(),
   created_by: z.string(),
+  role_id: roleIdSchema,
   max_uses: z.number().int().positive(),
   used_count: z.number().int().min(0),
   expires_at: z.string().datetime({ offset: true }).nullable(),
   created_at: z.string(),
   revoked_at: z.string().datetime({ offset: true }).nullable(),
-});
+}).extend(roleMetadataSchema.shape);
 
 export const inviteLinkStatsSchema = z.object({
   id: z.string(),
@@ -28,6 +32,7 @@ export const inviteLinkStatsSchema = z.object({
 });
 
 export const createInviteLinkSchema = z.object({
+  role_id: roleIdSchema,
   max_uses: z.number().int().positive(),
   expires_at: z.string().datetime().optional(),
 });
@@ -40,14 +45,14 @@ export const auditLogSchema = z.object({
   actor_username: z.string().nullable().optional(),
   entity_id: z.string(),
   diff_title: z.string().nullable(),
-  detail_text: z.string().nullable(),
+  detail: jsonObjectSchema.nullable(),
   created_at: z.string(),
 });
 
 
 export const batchRoleChangeSchema = z.object({
   user_ids: z.array(z.string()).min(1).max(50),
-  new_role: z.string().min(1).max(80).regex(/^[a-z0-9_-]+$/),
+  new_role: roleIdSchema,
 });
 
 export const batchDeactivateSchema = z.object({
@@ -56,6 +61,7 @@ export const batchDeactivateSchema = z.object({
 
 export const createAdminMemberSchema = z.object({
   username: usernameSchema,
+  role_id: roleIdSchema,
 });
 
 export const rolePermissionsSchema = z.record(permissionKeySchema, z.boolean());
@@ -65,7 +71,6 @@ export const adminRoleSchema = z.object({
   name: z.string(),
   level: z.number().int().min(1).max(999),
   color: z.string().nullable(),
-  is_builtin: z.boolean(),
   created_at: z.string(),
   updated_at: z.string(),
   permissions: rolePermissionsSchema,
@@ -73,12 +78,7 @@ export const adminRoleSchema = z.object({
 });
 
 export const createRoleSchema = z.object({
-  id: z
-    .string()
-    .min(2)
-    .max(80)
-    .regex(/^[a-z0-9_-]+$/)
-    .optional(),
+  id: roleIdSchema.min(2).optional(),
   name: z.string().min(1).max(80),
   level: z.number().int().min(1).max(998),
   color: colorSchema.nullable().optional(),
@@ -98,5 +98,5 @@ export const updateRoleSchema = z
 
 export const analyticsSettingsSchema = z.object({
   reference_duration_minutes: z.number().positive().optional(),
-  modifier_weights: z.record(z.string(), z.number()).optional(),
-});
+  modifier_weights: siteAnalyticsModifierWeightsSchema.partial().optional(),
+}).strict();

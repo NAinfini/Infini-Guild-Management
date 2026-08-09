@@ -34,10 +34,9 @@ describe("gallery upload queue", () => {
     });
   });
 
-  it("classifies unsupported and oversized files as visible errors", () => {
+  it("classifies supported image MIME types without a hardcoded size limit", () => {
     expect(classifyGalleryUploadFile({ type: "text/plain", size: 128 })).toBe("unsupported");
-    expect(classifyGalleryUploadFile({ type: "image/png", size: 10 * 1024 * 1024 + 1 })).toBe("too-large");
-    expect(classifyGalleryUploadFile({ type: "image/png", size: 10 * 1024 * 1024 })).toBe("queued");
+    expect(classifyGalleryUploadFile({ type: "image/png", size: 64 * 1024 * 1024 })).toBe("queued");
   });
 
   it("returns a failed upload to the queue without losing its caption", () => {

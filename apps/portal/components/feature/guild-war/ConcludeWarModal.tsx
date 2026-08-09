@@ -1,4 +1,10 @@
 import {
+  DEFAULT_GAME_RULES,
+  GUILD_WAR_RESULT_DEFINITIONS,
+  WAR_RESULTS,
+  type WarResult,
+} from "@guild/shared";
+import {
   Button,
   Group,
   Modal,
@@ -12,11 +18,14 @@ import {
 } from "@mantine/core";
 import { FlagIcon } from "@portal/components/icons";
 import { MetricGridInput } from "@portal/components/shared/MetricGridInput";
-import { activeGame } from "@guild/shared/games";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { SectionHeader } from "@portal/components/shared/SectionHeader";
+import { useCallback, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
-
-// --- Types ---
+import {
+  getGuildWarMemberStatLabel,
+  getGuildWarResultLabel,
+  getGuildWarTeamStatLabel,
+} from "@portal/utils/game-rules";
 
 export type ConcludeWarMember = {
   userId: string;
@@ -27,14 +36,14 @@ export type ConcludeWarMember = {
 
 export type ConcludeWarInfo = {
   enemyName: string;
-  result: string;
+  result: WarResult | "";
   durationMinutes: number | null;
   ownStats: Record<string, number | null>;
   enemyStats: Record<string, number | null>;
 };
 
 export type ConcludeWarSubmitData = {
-  warInfo: ConcludeWarInfo;
+  warInfo: Omit<ConcludeWarInfo, "result"> & { result: WarResult };
   memberStats: Array<{
     user_id: string;
     stats: Record<string, number>;
@@ -50,14 +59,21 @@ type ConcludeWarModalProps = {
   warName: string;
 };
 
-const MEMBER_STAT_FIELDS = activeGame.war.memberStats.map((s) => ({
-  key: s.key,
-  apiKey: s.key,
-}));
+function createInitialWarInfo(teamStatKeys: string[]): ConcludeWarInfo {
+  return {
+    enemyName: "",
+    result: "",
+    durationMinutes: null,
+    ownStats: Object.fromEntries(teamStatKeys.map((key) => [key, null])),
+    enemyStats: Object.fromEntries(teamStatKeys.map((key) => [key, null])),
+  };
+}
 
-const TEAM_OBJECTIVE_FIELDS = activeGame.war.teamObjectives.filter((o) => o.hasBothSides);
-
-// --- Component ---
+function createInitialMemberStats(
+  members: ConcludeWarMember[],
+): Map<string, Record<string, number>> {
+  return new Map(members.map((member) => [member.userId, { ...member.stats }]));
+}
 
 export function ConcludeWarModal({
   opened,
@@ -68,30 +84,28 @@ export function ConcludeWarModal({
   warName,
 }: ConcludeWarModalProps) {
   const { t } = useTranslation("guild-war");
+  const gameRules = DEFAULT_GAME_RULES;
+  const warRules = gameRules.guild_war;
+  const memberStatFields = warRules.member_stats;
+  const teamObjectiveFields = warRules.team_stats;
 
-  const [warInfo, setWarInfo] = useState<ConcludeWarInfo>(() => ({
-    enemyName: "",
-    result: "",
-    durationMinutes: null,
-    ownStats: Object.fromEntries(TEAM_OBJECTIVE_FIELDS.map((o) => [o.key, null])),
-    enemyStats: Object.fromEntries(TEAM_OBJECTIVE_FIELDS.map((o) => [o.key, null])),
-  }));
-
-  const [memberStatsMap, setMemberStatsMap] = useState<Map<string, Record<string, number>>>(() => {
-    const map = new Map<string, Record<string, number>>();
-    for (const m of members) {
-      map.set(m.userId, { ...m.stats });
-    }
-    return map;
-  });
+  const [warInfo, setWarInfo] = useState<ConcludeWarInfo>(() => createInitialWarInfo(teamObjectiveFields.map((field) => field.key)));
+  const [memberStatsMap, setMemberStatsMap] = useState<Map<string, Record<string, number>>>(
+    () => createInitialMemberStats(members),
+  );
 
   useEffect(() => {
-    const map = new Map<string, Record<string, number>>();
-    for (const m of members) {
-      map.set(m.userId, { ...m.stats });
+    setMemberStatsMap(createInitialMemberStats(members));
+    if (!opened) {
+      setWarInfo(createInitialWarInfo(teamObjectiveFields.map((field) => field.key)));
     }
-    setMemberStatsMap(map);
-  }, [members]);
+  }, [members, opened, teamObjectiveFields]);
+
+  const handleClose = useCallback(() => {
+    if (!pending) {
+      onClose();
+    }
+  }, [onClose, pending]);
 
   const updateWarInfoField = useCallback(
     <K extends keyof ConcludeWarInfo>(key: K, value: ConcludeWarInfo[K]) => {
@@ -121,170 +135,214 @@ export function ConcludeWarModal({
   );
 
   const handleSubmit = useCallback(() => {
+    if (!warInfo.result) return;
     const memberStats = members.map((m) => {
-      const stats = memberStatsMap.get(m.userId) ?? {};
+      const current = memberStatsMap.get(m.userId) ?? {};
+      const stats = Object.fromEntries(memberStatFields.map((field) => [field.key, current[field.key] ?? 0]));
       return { user_id: m.userId, stats };
     });
-    onSubmit({ warInfo, memberStats });
-  }, [members, memberStatsMap, onSubmit, warInfo]);
+    onSubmit({ warInfo: { ...warInfo, result: warInfo.result }, memberStats });
+  }, [memberStatFields, members, memberStatsMap, onSubmit, warInfo]);
 
-  const resultOptions = useMemo(
-    () =>
-      activeGame.war.resultOptions.map((value) => ({
-        value,
-        label: t(`conclude.result.${value}`),
-      })),
-    [t],
-  );
+  const resultOptions = GUILD_WAR_RESULT_DEFINITIONS.map((definition) => ({
+    value: definition.id,
+    label: getGuildWarResultLabel(definition.id),
+  }));
 
   return (
     <Modal
       opened={opened}
-      onClose={onClose}
+      onClose={handleClose}
       title={t("conclude.title", { warName })}
-      size="xl"
+      size="min(960px, calc(100vw - 2rem))"
       centered
       closeOnClickOutside={false}
+      closeOnEscape={!pending}
+      closeButtonProps={{
+        disabled: pending,
+        "aria-label": t("common:action.close"),
+      }}
+      classNames={{
+        content: "conclude-war-modal",
+        body: "conclude-war-modal__body",
+      }}
     >
-      <Stack gap={16}>
-        {/* Section 1: War-level info */}
-        <Text size="sm" fw={600} tt="uppercase" c="dimmed">
-          {t("conclude.section.warInfo")}
-        </Text>
-        <Group gap={10} wrap="wrap" grow>
-          <TextInput
-            label={t("conclude.field.enemyName")}
-            value={warInfo.enemyName}
-            onChange={(e) => updateWarInfoField("enemyName", e.currentTarget.value)}
-            style={{ flex: "1 1 180px" }}
-          />
-          <Select
-            label={t("conclude.field.result")}
-            data={resultOptions}
-            value={warInfo.result || null}
-            onChange={(v) => updateWarInfoField("result", v ?? "")}
-            clearable
-            style={{ flex: "0 1 140px" }}
-          />
-          <NumberInput
-            label={t("conclude.field.duration")}
-            value={warInfo.durationMinutes ?? ""}
-            onChange={(v) => updateWarInfoField("durationMinutes", typeof v === "number" ? v : null)}
-            min={0}
-            hideControls
-            suffix=" min"
-            style={{ flex: "0 1 130px" }}
-          />
-        </Group>
-
-        {/* Own vs Enemy stats — driven by teamObjectives */}
-        {TEAM_OBJECTIVE_FIELDS.length > 0 ? (
-          <Group gap={10} wrap="wrap" grow>
-            {TEAM_OBJECTIVE_FIELDS.map((obj, rowIndex) => (
-              <Group key={obj.key} gap={10} wrap="wrap" grow style={{ flex: "1 1 200px" }}>
-                <MetricGridInput
-                  label={t(`conclude.field.own_${obj.key}`, { defaultValue: `Own ${obj.key}` })}
-                  aria-label={t("conclude.aria.objectiveMetric", {
-                    metric: t(`conclude.field.own_${obj.key}`, { defaultValue: `Own ${obj.key}` }),
-                  })}
-                  gridId="conclude-war-objectives"
-                  rowIndex={rowIndex}
-                  columnIndex={0}
-                  rowCount={TEAM_OBJECTIVE_FIELDS.length}
-                  columnCount={2}
-                  value={warInfo.ownStats[obj.key] ?? ""}
-                  onChange={(v) => updateOwnStat(obj.key, typeof v === "number" ? v : null)}
+      <Stack gap={0} className="conclude-war-modal__layout">
+        <ScrollArea.Autosize
+          mah="calc(100dvh - 11rem)"
+          type="auto"
+          offsetScrollbars
+        >
+          <Stack gap={16} className="conclude-war-modal__content">
+            <section className="conclude-war-modal__section">
+              <SectionHeader title={t("conclude.section.warInfo")} className="section-header--flush" />
+              <div className="conclude-war-modal__war-fields">
+                <TextInput
+                  className="conclude-war-modal__enemy"
+                  label={t("conclude.field.enemyName")}
+                  value={warInfo.enemyName}
+                  onChange={(event) => updateWarInfoField("enemyName", event.currentTarget.value)}
+                />
+                <Select
+                  label={t("conclude.field.result")}
+                  data={resultOptions}
+                  value={warInfo.result || null}
+                  onChange={(value) => updateWarInfoField(
+                    "result",
+                    value && WAR_RESULTS.includes(value as WarResult) ? value as WarResult : "",
+                  )}
+                  clearable
+                />
+                <NumberInput
+                  label={t("conclude.field.duration")}
+                  value={warInfo.durationMinutes ?? ""}
+                  onChange={(value) => updateWarInfoField("durationMinutes", typeof value === "number" ? value : null)}
                   min={0}
                   hideControls
-                  style={{ flex: "1 1 100px" }}
+                  suffix=" min"
                 />
-                <MetricGridInput
-                  label={t(`conclude.field.enemy_${obj.key}`, { defaultValue: `Enemy ${obj.key}` })}
-                  aria-label={t("conclude.aria.objectiveMetric", {
-                    metric: t(`conclude.field.enemy_${obj.key}`, { defaultValue: `Enemy ${obj.key}` }),
-                  })}
-                  gridId="conclude-war-objectives"
-                  rowIndex={rowIndex}
-                  columnIndex={1}
-                  rowCount={TEAM_OBJECTIVE_FIELDS.length}
-                  columnCount={2}
-                  value={warInfo.enemyStats[obj.key] ?? ""}
-                  onChange={(v) => updateEnemyStat(obj.key, typeof v === "number" ? v : null)}
-                  min={0}
-                  hideControls
-                  style={{ flex: "1 1 100px" }}
-                />
-              </Group>
-            ))}
-          </Group>
-        ) : null}
+              </div>
 
-        {/* Section 2: Member stats table */}
-        {members.length > 0 ? (
-          <>
-            <Text size="sm" fw={600} tt="uppercase" c="dimmed">
-              {t("conclude.section.memberStats")}
-            </Text>
-            <Text size="xs" c="dimmed">
-              {t("conclude.keyboardHint")}
-            </Text>
-            <ScrollArea h={Math.min(members.length * 48 + 48, 360)} type="auto">
-              <Table striped highlightOnHover withTableBorder withColumnBorders style={{ fontSize: "0.8rem" }}>
-                <Table.Thead>
-                  <Table.Tr>
-                    <Table.Th className="conclude-war-modal__sticky-col">
-                      {t("conclude.col.member")}
-                    </Table.Th>
-                    {MEMBER_STAT_FIELDS.map((f) => (
-                      <Table.Th key={f.key} style={{ minWidth: 70, textAlign: "center" }}>
-                        {t(`conclude.col.${f.key}`)}
-                      </Table.Th>
-                    ))}
-                  </Table.Tr>
-                </Table.Thead>
-                <Table.Tbody>
-                  {members.map((member, rowIndex) => {
-                    const stats = memberStatsMap.get(member.userId) ?? {};
-                    return (
-                      <Table.Tr key={member.userId}>
-                        <Table.Td className="conclude-war-modal__sticky-col conclude-war-modal__sticky-col--cell">
-                          <Text size="xs" fw={500} lineClamp={1}>{member.username}</Text>
-                          <Text size="xs" c="dimmed">{member.teamName}</Text>
-                        </Table.Td>
-                        {MEMBER_STAT_FIELDS.map((f, columnIndex) => (
-                          <Table.Td key={f.key} style={{ padding: "2px 4px" }}>
+              {teamObjectiveFields.length > 0 ? (
+                <table
+                  aria-label={t("conclude.section.objectives")}
+                  className="conclude-war-modal__objective-ledger"
+                >
+                  <thead>
+                    <tr>
+                      <th scope="col">{t("conclude.section.objectives")}</th>
+                      <th scope="col">{t("history.compare.us")}</th>
+                      <th scope="col">{t("history.compare.enemy")}</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {teamObjectiveFields.map((objective, rowIndex) => {
+                      const objectiveLabel = getGuildWarTeamStatLabel(objective.key);
+                      return (
+                        <tr key={objective.key}>
+                          <th scope="row">{objectiveLabel}</th>
+                          <td>
                             <MetricGridInput
-                              aria-label={t("conclude.aria.memberMetric", {
-                                member: member.username,
-                                metric: t(`conclude.col.${f.key}`),
+                              className="conclude-war-modal__objective-input"
+                              aria-label={t("conclude.aria.objectiveMetric", {
+                                metric: t(`conclude.field.own_${objective.key}`, { defaultValue: `Own ${objective.key}` }),
                               })}
-                              gridId="conclude-war-member-stats"
+                              gridId="conclude-war-objectives"
                               rowIndex={rowIndex}
-                              columnIndex={columnIndex}
-                              rowCount={members.length}
-                              columnCount={MEMBER_STAT_FIELDS.length}
+                              columnIndex={0}
+                              rowCount={teamObjectiveFields.length}
+                              columnCount={2}
+                              value={warInfo.ownStats[objective.key] ?? ""}
+                              onChange={(value) => updateOwnStat(objective.key, typeof value === "number" ? value : null)}
+                              min={0}
                               size="xs"
                               variant="unstyled"
                               hideControls
-                              value={stats[f.apiKey] ?? 0}
-                              onChange={(v) => updateMemberStat(member.userId, f.apiKey, typeof v === "number" ? v : 0)}
-                              min={0}
-                              styles={{ input: { textAlign: "center", padding: "2px 4px" } }}
                             />
-                          </Table.Td>
+                          </td>
+                          <td>
+                            <MetricGridInput
+                              className="conclude-war-modal__objective-input"
+                              aria-label={t("conclude.aria.objectiveMetric", {
+                                metric: t(`conclude.field.enemy_${objective.key}`, { defaultValue: `Enemy ${objective.key}` }),
+                              })}
+                              gridId="conclude-war-objectives"
+                              rowIndex={rowIndex}
+                              columnIndex={1}
+                              rowCount={teamObjectiveFields.length}
+                              columnCount={2}
+                              value={warInfo.enemyStats[objective.key] ?? ""}
+                              onChange={(value) => updateEnemyStat(objective.key, typeof value === "number" ? value : null)}
+                              min={0}
+                              size="xs"
+                              variant="unstyled"
+                              hideControls
+                            />
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              ) : null}
+            </section>
+
+            {members.length > 0 ? (
+              <section className="conclude-war-modal__section">
+                <div className="conclude-war-modal__section-heading">
+                  <SectionHeader title={t("conclude.section.memberStats")} className="section-header--flush" />
+                  <Text size="xs" c="dimmed">
+                    {t("conclude.keyboardHint")}
+                  </Text>
+                </div>
+                <ScrollArea
+                  h={Math.min(members.length * 42 + 42, 252)}
+                  type="auto"
+                  className="conclude-war-modal__table-scroll"
+                >
+                  <Table
+                    striped
+                    highlightOnHover
+                    withTableBorder
+                    withColumnBorders
+                    className="conclude-war-modal__table"
+                  >
+                    <Table.Thead>
+                      <Table.Tr>
+                        <Table.Th className="conclude-war-modal__sticky-col">
+                          {t("conclude.col.member")}
+                        </Table.Th>
+                        {memberStatFields.map((field) => (
+                          <Table.Th key={field.key} className="conclude-war-modal__metric-heading">
+                            {getGuildWarMemberStatLabel(field.key)}
+                          </Table.Th>
                         ))}
                       </Table.Tr>
-                    );
-                  })}
-                </Table.Tbody>
-              </Table>
-            </ScrollArea>
-          </>
-        ) : null}
+                    </Table.Thead>
+                    <Table.Tbody>
+                      {members.map((member, rowIndex) => {
+                        const stats = memberStatsMap.get(member.userId) ?? {};
+                        return (
+                          <Table.Tr key={member.userId}>
+                            <Table.Td className="conclude-war-modal__sticky-col conclude-war-modal__sticky-col--cell">
+                              <Text size="xs" fw={500} lineClamp={1}>{member.username}</Text>
+                              <Text size="xs" c="dimmed">{member.teamName}</Text>
+                            </Table.Td>
+                            {memberStatFields.map((field, columnIndex) => (
+                              <Table.Td key={field.key} className="conclude-war-modal__metric-cell">
+                                <MetricGridInput
+                                  className="conclude-war-modal__metric-input"
+                                  aria-label={t("conclude.aria.memberMetric", {
+                                    member: member.username,
+                                    metric: getGuildWarMemberStatLabel(field.key),
+                                  })}
+                                  gridId="conclude-war-member-stats"
+                                  rowIndex={rowIndex}
+                                  columnIndex={columnIndex}
+                                  rowCount={members.length}
+                                  columnCount={memberStatFields.length}
+                                  size="xs"
+                                  variant="unstyled"
+                                  hideControls
+                                  value={stats[field.key] ?? 0}
+                                  onChange={(value) => updateMemberStat(member.userId, field.key, typeof value === "number" ? value : 0)}
+                                  min={0}
+                                />
+                              </Table.Td>
+                            ))}
+                          </Table.Tr>
+                        );
+                      })}
+                    </Table.Tbody>
+                  </Table>
+                </ScrollArea>
+              </section>
+            ) : null}
+          </Stack>
+        </ScrollArea.Autosize>
 
-        {/* Actions */}
-        <Group justify="flex-end" gap={8}>
-          <Button variant="default" onClick={onClose} disabled={pending}>
+        <Group justify="flex-end" gap={8} className="conclude-war-modal__footer">
+          <Button data-autofocus variant="default" onClick={handleClose} disabled={pending}>
             {t("common:action.cancel")}
           </Button>
           <Button

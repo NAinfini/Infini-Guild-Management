@@ -18,7 +18,7 @@ import {
   type UpdateStorageItemPayload,
 } from "@guild/shared";
 import { apiRequest } from "../client";
-import { convertFilesForUpload } from "@guild/shared/utils/media";
+import { appendImageUploadVariants, convertImagesForUpload } from "@guild/shared/utils/media";
 
 export function createStorage(payload: CreateStoragePayload): Promise<Storage> {
   return apiRequest<Storage>("/api/storage/storages", { method: "POST", bodyJson: createStorageSchema.parse(payload) });
@@ -56,13 +56,11 @@ export function deleteStorageItem(id: string): Promise<{ ok: true }> {
   return apiRequest<{ ok: true }>(`/api/storage/items/${id}`, { method: "DELETE" });
 }
 
-export async function uploadStorageItemImages(itemId: string, files: File[]): Promise<Array<{ id: string; r2_key: string }>> {
-  const converted = await convertFilesForUpload(files);
+export async function uploadStorageItemImages(itemId: string, files: File[]): Promise<Array<{ media_id: string }>> {
+  const converted = await convertImagesForUpload(files);
   const formData = new FormData();
-  for (const file of converted) {
-    formData.append("files", file);
-  }
-  return apiRequest<Array<{ id: string; r2_key: string }>>(`/api/storage/items/${itemId}/images`, { method: "POST", body: formData });
+  appendImageUploadVariants(formData, converted);
+  return apiRequest<Array<{ media_id: string }>>(`/api/storage/items/${itemId}/images`, { method: "POST", body: formData });
 }
 
 export function deleteStorageItemImage(itemId: string, imageId: string): Promise<{ ok: true }> {

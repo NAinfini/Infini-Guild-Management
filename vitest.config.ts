@@ -1,4 +1,5 @@
 import { realpathSync } from "node:fs";
+import { availableParallelism } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { defineConfig } from "vitest/config";
@@ -28,6 +29,7 @@ export default defineConfig({
           name: "portal",
           include: ["apps/portal/**/*.test.ts", "apps/portal/**/*.test.tsx"],
           environment: "jsdom",
+          setupFiles: [path.resolve(repoRoot, "apps/portal/tests/setup.ts")],
         },
       },
       {
@@ -39,18 +41,17 @@ export default defineConfig({
             "apps/shared/**/*.test.tsx",
             "apps/worker/**/*.test.ts",
             "apps/worker/**/*.test.tsx",
-            // Node-native .test.mjs files remain on the separate `node --test` CI step.
             "scripts/**/*.test.ts",
           ],
-          exclude: ["apps/worker/tests/events.test.ts", "apps/worker/tests/contracts/**"],
           environment: "node",
         },
       },
     ],
-    setupFiles: [path.resolve(repoRoot, "apps/portal/tests/setup.ts")],
+    restoreMocks: true,
     testTimeout: 15_000,
     hookTimeout: 30_000,
-    pool: "forks",
-    fileParallelism: false,
+    pool: "threads",
+    fileParallelism: true,
+    maxWorkers: Math.min(4, availableParallelism()),
   },
 });

@@ -8,12 +8,12 @@ import {
   Button,
   Collapse,
   Group,
+  Paper,
   Select,
   Skeleton,
   Stack,
   Text,
 } from "@mantine/core";
-import { PortalCard } from "../../shared/PortalCard";
 import { useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { ArchiveIcon } from "@portal/components/icons";
@@ -57,19 +57,19 @@ export function AuditArchiveExplorer({
   };
 
   return (
-    <PortalCard interactive={false} padding="1.2rem">
+    <Paper withBorder radius="md" p="md">
       <Stack gap={12}>
         <Group justify="space-between" align="center">
           <Group gap={8}>
             <ArchiveIcon size={18} />
             <Text fw={600}>{t("auditArchive.title")}</Text>
           </Group>
-          <Button variant={opened ? "default" : "light"} size="compact-sm" onClick={() => setOpened((v) => !v)}>
+          <Button variant={opened ? "default" : "light"} size="sm" onClick={() => setOpened((v) => !v)}>
             {opened ? t("auditArchive.toggleHide") : t("auditArchive.toggleShow")}
           </Button>
         </Group>
 
-        <Collapse in={opened}>
+        <Collapse expanded={opened}>
           <Stack gap={12} pt="xs">
             {monthsLoading ? <Skeleton height={36} /> : null}
             {monthsError ? <Alert color="red" title={tc("loadError")} /> : null}
@@ -90,7 +90,7 @@ export function AuditArchiveExplorer({
                 />
                 <Button
                   variant="default"
-                  size="compact-sm"
+                  size="sm"
                   onClick={() => void handleDownload()}
                   loading={downloading}
                   disabled={!selectedMonth}
@@ -102,6 +102,6 @@ export function AuditArchiveExplorer({
           </Stack>
         </Collapse>
       </Stack>
-    </PortalCard>
+    </Paper>
   );
 }

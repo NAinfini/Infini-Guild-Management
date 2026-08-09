@@ -32,15 +32,14 @@
   text-align: left;
   border: 1px solid color-mix(in srgb, var(--text-primary) 10%, transparent);
   background: color-mix(in srgb, var(--surface-base) 96%, transparent);
-  cursor: pointer;
   transition:
     background 140ms ease,
     border-color 140ms ease;
 }
 
-.month-calendar__cell:hover {
-  border-color: color-mix(in srgb, var(--accent-fill) 40%, transparent);
-  background: color-mix(in srgb, var(--accent-fill) 4%, var(--surface-base));
+.month-calendar__cell:focus-within {
+  border-color: color-mix(in srgb, var(--brand-fill) 40%, transparent);
+  background: color-mix(in srgb, var(--brand-fill) 4%, var(--surface-base));
 }
 
 /*
@@ -57,14 +56,24 @@
 }
 
 .month-calendar__cell--today {
-  border-color: var(--accent-fill);
-  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent-fill) 30%, transparent);
+  border-color: var(--brand-fill);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--brand-fill) 30%, transparent);
+}
+
+.month-calendar__date-button {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  min-height: var(--control-height-compact);
+  margin-bottom: var(--space-xs);
+  border-radius: var(--radius-control);
+  color: var(--text-primary);
+  cursor: pointer;
 }
 
 .month-calendar__date {
   font-size: 13px;
   font-weight: 500;
-  margin-bottom: 6px;
   color: var(--text-primary);
   line-height: 1;
 }
@@ -76,12 +85,12 @@
   width: 24px;
   height: 24px;
   border-radius: 50%;
-  background: var(--accent-fill);
+  background: var(--brand-fill);
   /* --accent-on-fill is pinned to the 900 ink stop in both modes (semantic.css),
    * so it stays a dark, readable ink on the 500-stop fill regardless of theme or
    * which of the 3 accents is active — the same three-way branch as the
    * replacement table's "on a primary fill" row. */
-  color: var(--accent-on-fill);
+  color: var(--brand-on-fill);
   font-weight: 700;
 }
 
@@ -102,12 +111,24 @@
   cursor: pointer;
   font-size: 11px;
   color: var(--text-muted);
-  opacity: 0;
+  opacity: 0.72;
   transition: opacity 140ms ease;
 }
 
-.month-calendar__cell:hover .month-calendar__create-btn {
+.month-calendar__create-btn:hover,
+.month-calendar__create-btn:focus-visible {
   opacity: 1;
+}
+
+.month-calendar__event-button {
+  display: block;
+  max-width: 100%;
+  border-radius: var(--radius-control);
+  cursor: pointer;
+}
+
+.month-calendar__event-button .mantine-Badge-root {
+  max-width: 100%;
 }
 
 .month-calendar__overlay {

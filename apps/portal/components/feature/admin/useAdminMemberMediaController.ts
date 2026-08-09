@@ -4,7 +4,8 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useMediaUpload } from "../../../hooks/useMediaUpload";
 import { notifySuccess } from "../../../utils/notifications";
-import { resolveProfileMediaUrl } from "../../../utils/media";
+import { resolveMediaUrl } from "../../../utils/media";
+import { requireSiteMediaPolicy, useSiteConfigStore } from "../../../stores/site-config";
 import {
   deleteAvatar,
   deleteProfileAudio,
@@ -15,10 +16,6 @@ import {
   uploadProfileImages,
   type UsersListResponse,
 } from "../../../services/UserService";
-
-const PROFILE_IMAGE_MAX = 10;
-const PROFILE_IMAGE_MAX_BYTES = 5 * 1024 * 1024;
-const PROFILE_AUDIO_MAX_BYTES = 20 * 1024 * 1024;
 
 type AdminUserRow = UsersListResponse["data"][number];
 
@@ -41,15 +38,17 @@ export function useAdminMemberMediaController({
   onError,
 }: UseAdminMemberMediaControllerParams) {
   const { t } = useTranslation(["admin", "common"]);
+  const mediaPolicy = useSiteConfigStore(requireSiteMediaPolicy);
+  const profileImageQuota = mediaPolicy.quotas.profile;
   const memberVideoUrls = member?.profile.video_urls ?? [];
   const memberVideoUrlsSnapshot = JSON.stringify(memberVideoUrls);
 
   const imageItems: ImageGridEditorItem[] = useMemo(
     () =>
-      (member?.profile.images ?? []).map((key) => ({
-        id: key,
-        src: resolveProfileMediaUrl(key),
-        alt: key,
+      (member?.profile.images ?? []).map((mediaId) => ({
+        id: mediaId,
+        src: resolveMediaUrl(mediaId),
+        alt: mediaId,
       })),
     [member?.profile.images],
   );
@@ -57,17 +56,14 @@ export function useAdminMemberMediaController({
   const imageUploader = useMediaUpload(
     async (files) => uploadProfileImages(requireMember(member).user.id, files),
     {
-      maxFiles: PROFILE_IMAGE_MAX,
-      maxFileSizeBytes: PROFILE_IMAGE_MAX_BYTES,
+      maxFiles: profileImageQuota,
       mediaType: "image",
-      convertImagesToWebp: true,
-      imageWebpQuality: 0.8,
     },
   );
 
   const audioUploader = useMediaUpload(
-    async (files) => {
-      const file = files[0];
+    async (canonicalAudioFiles) => {
+      const file = canonicalAudioFiles[0];
       if (!file) {
         throw new Error(t("media.audioFileRequired"));
       }
@@ -75,13 +71,12 @@ export function useAdminMemberMediaController({
     },
     {
       maxFiles: 1,
-      maxFileSizeBytes: PROFILE_AUDIO_MAX_BYTES,
       mediaType: "audio",
     },
   );
 
   const deleteImageMutation = useMutation({
-    mutationFn: (key: string) => deleteProfileImage(requireMember(member).user.id, key),
+    mutationFn: (mediaId: string) => deleteProfileImage(requireMember(member).user.id, mediaId),
     onSuccess: async () => {
       notifySuccess(t("message.mediaImageRemoved"));
       await onRefresh();
@@ -229,6 +224,7 @@ export function useAdminMemberMediaController({
   }, [deleteAvatarMutation]);
 
   return {
+    profileImageQuota,
     imageItems,
     imageUploader,
     imageReorderPending: reorderImagesMutation.isPending,

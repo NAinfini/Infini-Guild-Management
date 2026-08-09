@@ -16,7 +16,8 @@ interface ArrowUpIconProps extends HTMLAttributes<HTMLDivElement> {
 
 const ARROW_VARIANTS: Variants = {
   normal: { translateY: 0, transition: { duration: 0.3, ease: "easeOut" } },
-  animate: { translateY: [0, -2, 0], transition: { duration: 0.4, type: "spring", stiffness: 200, damping: 10 } },
+  // 多关键帧不能配 spring，见 ShieldIcon 的说明。
+  animate: { translateY: [0, -2, 0], transition: { duration: 0.4, ease: "easeInOut" } },
 };
 
 const ArrowUpIcon = forwardRef<ArrowUpIconHandle, ArrowUpIconProps>(

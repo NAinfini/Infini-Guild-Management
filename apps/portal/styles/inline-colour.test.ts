@@ -33,8 +33,6 @@ describe("inline styles carry no colour", () => {
     expect(COLOUR_PROPS.test('style={{ gap: 8, width: "100%" }}')).toBe(false);
   });
 
-  /* Task 8 批 C 已把批 B/C 的迁移工单全部处理完，取消 skip。跳过前跑出的
-   * 完整清单（27 文件 / 63 处）见 task-8-report.md 的「A 批」一节。 */
   it("keeps colour out of every inline style in the portal", () => {
     const offenders: string[] = [];
     for (const file of listTsx(portalRoot)) {
@@ -48,11 +46,11 @@ describe("inline styles carry no colour", () => {
   });
 });
 
-/* ── .tsx 里不许出现裸 hex（task-8-addendum.md C 节） ──────────────────── */
+/* ── TSX must not contain unclassified hex colors ──────────────────── */
 
 /**
  * 把已经被上面那条断言管辖的 style={{ … }} 内容整段挖掉，剩下的裸 hex 才计入
- * 这条断言——两条断言的工单因此不重叠：同一处 hex 不会同时出现在两份清单里。
+ * 这条断言，避免同一处 hex 被两条规则重复报告。
  */
 function stripInlineStyleBlocks(source: string): string {
   return source.replace(/style=\{\{([^{}]|\{[^{}]*\})*\}\}/g, "");
@@ -71,7 +69,7 @@ type BareHexExemption = {
 };
 
 /**
- * rule 2 豁免表（task-8-addendum.md B 节类 1 / C 节）。这里的每一条都是用户在
+ * rule 2 豁免表。这里的每一条都是用户在
  * 界面上点选出来的颜色数据，选中后要么被存进数据库（角色色、徽章色），要么被
  * 写进富文本 HTML 或工具页生成的 HTML 片段（文字色、高亮色、沙盒预览）。换成
  * var(--accent-fill) 之类的 token 后，这个字面值在别的模式/别的主色下会解析
@@ -81,14 +79,7 @@ type BareHexExemption = {
  *
  * 豁免粒度按「文件 + 该文件内已核实过的具体 hex 值」授予，不是整文件豁免——
  * 整文件豁免太粗，日后这个文件如果混入类 2/3/4 的裸 hex 也会被放过；也不是按
- * 行号豁免——行号会漂。之所以不能再往下收紧到纯「按常量名」（本节以下每条的
- * `source` 字段本该是那个粒度），是因为 TitleSandboxModal.tsx 的取色器初值不是一个具
- * 名常量，而批 A 的范围只许新建这一个测试文件、不许改 .tsx 去给它起名字。
- * 已经在 task-8-report.md 的「A 批」一节按文件逐处核实过：下面五个文件里，
- * style={{}} 之外的裸 hex 清一色只有这些列出的值，没有混入其它类别——所以
- * 「文件 + 值」这个粒度在当前代码状态下等价于「按常量名」。批 B/C 如果在这些
- * 文件里新增裸 hex，这条豁免表不会自动放行，会照样报红，需要显式决定要不要
- * 扩表。
+ * 行号豁免——行号会漂。因而最窄稳定粒度是「文件 + 值」；新增字面量仍需显式扩表。
  */
 const BARE_HEX_EXEMPTIONS: Record<string, BareHexExemption[]> = {
   "apps/portal/components/shared/TipTapEditorToolbar.tsx": [
@@ -115,23 +106,18 @@ const BARE_HEX_EXEMPTIONS: Record<string, BareHexExemption[]> = {
       values: ["#fef08a", "#bbf7d0", "#bfdbfe", "#fecdd3", "#e9d5ff", "#fed7aa"],
     },
   ],
-  "apps/portal/components/feature/tools/TitleSandboxModal.tsx": [
+  "apps/portal/components/shared/LabelStyleModal.tsx": [
     {
       source: "PRESET_COLORS",
-      reason: "沙盒工具的文字色预设：选中值经 rgbaColor 拼进生成的 HTML 片段（`color: rgba(...)`），用户复制这段 HTML 到站外使用，不是站内主题。",
+      reason: "行内样式编辑器的文字色预设：选中值经 rgbaColor 拼进生成的 HTML 片段（`color: rgba(...)`），随称号 / 徽章标签落库，不是站内主题。",
       values: ["#1f6feb", "#16a34a", "#f59e0b", "#dc2626", "#7c3aed", "#ec4899", "#0891b2", "#334155"],
     },
-    {
-      source: "useState(\"#1f6feb\")（取色器 color 状态的初值，与 PRESET_COLORS[0] 同值）",
-      reason: "同上：是同一个沙盒文字色状态的初值，最终同样拼进生成的 HTML 片段。",
-      values: ["#1f6feb"],
-    },
   ],
-  "apps/portal/components/feature/admin/AdminBadgesSection.tsx": [
+  "apps/portal/components/feature/admin/AdminClassesSection.tsx": [
     {
-      source: "COLOR_PRESETS",
-      reason: "徽章颜色预设：选中值写进 BadgeForm.color，经 controller 提交后落库为 MemberBadge.color。",
-      values: ["#D4A843", "#ef4444", "#22c55e", "#f59e0b", "#8B7355", "#ec4899", "#C17F3E", "#f97316"],
+      source: "COLOR_SWATCHES",
+      reason: "职业颜色预设：选中值写进 GameClass.color 落库，再由 ClassIcon / MemberCard 以 --class-color 注入，与 --class-color 本身同一类（管理员配置的数据色，不随主题变化）。",
+      values: ["#61B8AA", "#6EA8FE", "#A78BFA", "#E27676", "#D6A85F", "#E18BB6", "#75B86B", "#8594A8"],
     },
   ],
   "apps/portal/components/feature/admin/AdminRolesSection.tsx": [
@@ -186,15 +172,12 @@ describe(".tsx carries no bare hex outside the class-1 exemption table", () => {
     expect(bareHexOffenders("some/file.tsx", 'style={{ color: "#123456" }}')).toEqual([]);
     expect(
       bareHexOffenders(
-        "apps/portal/components/feature/tools/TitleSandboxModal.tsx",
+        "apps/portal/components/shared/LabelStyleModal.tsx",
         'const PRESET_COLORS = ["#1f6feb", "#16a34a", "#f59e0b", "#dc2626", "#7c3aed", "#ec4899", "#0891b2", "#334155"];',
       ),
     ).toEqual([]);
   });
 
-  /* Task 8 批 C 已把类 2/3/4 的裸 hex 全部迁完，取消 skip。跳过前跑出的
-   * 完整清单（18 文件 / 103 处，按类 1–4 归类）见 task-8-report.md 的
-   * 「A 批」一节。 */
   it("no bare hex outside the class-1 exemption table", () => {
     const offenders: string[] = [];
     for (const file of listTsx(portalRoot)) {
@@ -206,7 +189,7 @@ describe(".tsx carries no bare hex outside the class-1 exemption table", () => {
   });
 });
 
-/* ── .tsx 内联间距也必须走 token 或显式豁免（Task 1 / D5） ───────── */
+/* ── TSX inline spacing must use tokens or explicit exemptions ───────── */
 
 const INLINE_SPACING_PROPS = [
   "padding",
@@ -241,7 +224,7 @@ const INLINE_SPACING_EXEMPTIONS: Record<string, string[]> = {
   "apps/portal/components/feature/admin/AdminSiteConfigSection.tsx": ["marginTop:2"],
   "apps/portal/components/feature/admin/AdminSystemSection.tsx": ["marginTop:2", "marginTop:2"],
   "apps/portal/components/feature/announcements/AnnouncementListCard.tsx": ["marginTop:2"],
-  "apps/portal/components/feature/events/EventCard.tsx": ["marginTop:2"],
+  "apps/portal/components/feature/events/EventCardView.tsx": ["marginTop:2"],
   "apps/portal/components/feature/events/EventDetailModal.tsx": ["marginRight:4", "marginRight:4", "marginRight:4"],
   "apps/portal/components/feature/events/EventMonthView.tsx": ["marginTop:2"],
   "apps/portal/components/feature/events/RecurringTemplatesTab.tsx": ["marginTop:2", "marginTop:2"],
@@ -257,9 +240,8 @@ const INLINE_SPACING_EXEMPTIONS: Record<string, string[]> = {
   /* Local compound-layout geometry that cannot be replaced by one global token. */
   "apps/portal/components/feature/admin/AdminStatusTab.tsx": ["gap:6"],
   "apps/portal/components/feature/profile/ProfileProfileTab.tsx": ["gap:2", "marginTop:6"],
-  "apps/portal/components/shared/AvailabilityGridEditor.tsx": ["paddingRight:6", "paddingTop:2"],
   "apps/portal/components/shared/ImageGridEditor.tsx": ["padding:0", "margin:0"],
-  "apps/portal/components/shared/InfiniTable.tsx": ["marginLeft:4", "gap:4"],
+  "apps/portal/components/shared/DataTableAdapter.tsx": ["gap:4"],
 
   /* These render before the themed app/CSS is available, so CSS variables are unsafe. */
   "apps/portal/main.tsx": ["margin:0", "marginTop:8", "marginBottom:0"],

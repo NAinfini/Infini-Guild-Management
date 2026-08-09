@@ -1,12 +1,14 @@
-import { Stack } from "@mantine/core";
+import { Paper, Stack } from "@mantine/core";
 import { useTranslation } from "react-i18next";
-import { AvailabilityGridEditor } from "@portal/components/shared/AvailabilityGridEditor";
+import { AvailabilityEditor } from "@portal/components/shared/AvailabilityEditor";
 import { AbsenceManagerCard } from "@portal/components/shared/AbsenceManagerCard";
+import { SectionHeader } from "@portal/components/shared/SectionHeader";
+import type { MemberAvailability } from "@guild/shared";
 
 type ProfileAvailabilityTabProps = {
   userId: string | undefined;
-  availabilityData: Record<string, unknown> | null;
-  onAvailabilityChange: (value: Record<string, unknown>) => void;
+  availabilityData: MemberAvailability | null;
+  onAvailabilityChange: (value: MemberAvailability | null) => void;
 };
 
 export function ProfileAvailabilityTab({
@@ -16,25 +18,16 @@ export function ProfileAvailabilityTab({
 }: ProfileAvailabilityTabProps) {
   const { t } = useTranslation("profile");
   return (
-    <Stack gap={16}>
-      <AvailabilityGridEditor
-        value={availabilityData}
-        labels={{
-          timezoneNote: t("availability.editor.timezoneNote"),
-          clearAll: t("availability.editor.clearAll"),
-          gridHint: t("availability.editor.gridHint"),
-          dayMon: t("availability.editor.dayMon"),
-          dayTue: t("availability.editor.dayTue"),
-          dayWed: t("availability.editor.dayWed"),
-          dayThu: t("availability.editor.dayThu"),
-          dayFri: t("availability.editor.dayFri"),
-          daySat: t("availability.editor.daySat"),
-          daySun: t("availability.editor.daySun"),
-        }}
-        onChange={({ availability }) => {
-          onAvailabilityChange((availability ?? null) as Record<string, unknown>);
-        }}
-      />
+    <Stack gap="var(--space-md)">
+      <Paper withBorder radius="md" p="var(--card-padding)">
+        <SectionHeader title={t("availability.section.week")} />
+        <AvailabilityEditor
+          value={availabilityData}
+          onChange={({ availability }) => {
+            onAvailabilityChange(availability);
+          }}
+        />
+      </Paper>
       <AbsenceManagerCard userId={userId} />
     </Stack>
   );

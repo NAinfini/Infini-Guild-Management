@@ -1,6 +1,8 @@
 // @vitest-environment jsdom
 import { fireEvent, render, screen } from "@testing-library/react";
 import { MantineProvider } from "@mantine/core";
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import { describe, expect, it, vi } from "vitest";
 import type { DashboardUpcomingEventRow } from "./shared";
 import { UpcomingEventsCard } from "./UpcomingEventsCard";
@@ -23,17 +25,22 @@ vi.mock("@portal/components/effects", () => ({
   NumberTicker: ({ value }: { value: number }) => <span>{value}</span>,
 }));
 
-function eventRow(id: string, pinned: boolean): DashboardUpcomingEventRow {
+function eventRow(
+  id: string,
+  pinned: boolean,
+  startAt = "2026-08-01T20:00:00.000Z",
+): DashboardUpcomingEventRow {
   return {
     item: {
       id,
       title: `Event ${id}`,
       description: null,
       type: "social",
-      start_at: "2026-08-01T20:00:00.000Z",
+      start_at: startAt,
       end_at: null,
       capacity: null,
       pinned,
+      class_quotas: [] as DashboardUpcomingEventRow["item"]["class_quotas"],
     } as DashboardUpcomingEventRow["item"],
     startsSoon: false,
     hasConflict: false,
@@ -41,10 +48,24 @@ function eventRow(id: string, pinned: boolean): DashboardUpcomingEventRow {
     joined: false,
     capacityLabel: "0/∞",
     isFull: false,
+    quotaSummary: null,
   };
 }
 
 describe("UpcomingEventsCard", () => {
+  it("reflows quota rows from their actual card width instead of the viewport width", () => {
+    const css = readFileSync(
+      resolve(process.cwd(), "apps/portal/components/pages/DashboardPage.css"),
+      "utf8",
+    );
+
+    expect(css).toMatch(/\.upcoming-event-row\s*\{[^}]*container-type:\s*inline-size/s);
+    expect(css).toMatch(/@container\s*\(max-width:\s*64rem\)/);
+    expect(css).toMatch(
+      /\.upcoming-event-row\s+\.mantine-Badge-root\s*\{[^}]*color:\s*color-mix\(in srgb,\s*var\(--badge-color\) 60%,\s*var\(--text-primary\)\);/s,
+    );
+  });
+
   it("shows both server groups without a second truncation and links to all results", () => {
     const onViewAll = vi.fn();
     render(
@@ -70,5 +91,32 @@ describe("UpcomingEventsCard", () => {
     expect(screen.getAllByText(/^Event /)).toHaveLength(6);
     fireEvent.click(screen.getByRole("button", { name: "View all 8" }));
     expect(onViewAll).toHaveBeenCalledTimes(1);
+  });
+
+  it("orders featured and ordinary rows as one chronological list", () => {
+    render(
+      <MantineProvider>
+        <UpcomingEventsCard
+          upcomingEventsCount={4}
+          featuredRows={[
+            eventRow("featured-late", true, "2026-08-03T20:00:00.000Z"),
+            eventRow("featured-latest", true, "2026-08-04T20:00:00.000Z"),
+          ]}
+          rows={[
+            eventRow("regular-first", false, "2026-07-31T20:00:00.000Z"),
+            eventRow("regular-second", false, "2026-08-01T20:00:00.000Z"),
+          ]}
+          onOpenEvent={vi.fn()}
+          onViewAll={vi.fn()}
+        />
+      </MantineProvider>,
+    );
+
+    expect(screen.getAllByText(/^Event /).map((node) => node.textContent)).toEqual([
+      "Event regular-first",
+      "Event regular-second",
+      "Event featured-late",
+      "Event featured-latest",
+    ]);
   });
 });

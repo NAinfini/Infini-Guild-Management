@@ -4,6 +4,7 @@ import { act, renderHook, waitFor } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { useAnnouncementsController } from "./useAnnouncementsController";
+import { userScopedStorageKey } from "../session-storage";
 
 const serviceMocks = vi.hoisted(() => ({
   archiveAnnouncement: vi.fn(),
@@ -11,7 +12,7 @@ const serviceMocks = vi.hoisted(() => ({
   deleteAnnouncement: vi.fn(),
   fetchAnnouncement: vi.fn(),
   fetchAnnouncements: vi.fn(),
-  stageAnnouncementImages: vi.fn(),
+  uploadPendingAnnouncementImages: vi.fn(),
   updateAnnouncement: vi.fn(),
   uploadAnnouncementImages: vi.fn(),
 }));
@@ -19,6 +20,11 @@ const navigateMock = vi.hoisted(() => vi.fn());
 const routeSearchMock = vi.hoisted(() => ({
   announcementId: undefined as string | undefined,
   selection: undefined as "none" | undefined,
+}));
+const authState = vi.hoisted(() => ({ user: { id: "user-1" } as { id: string } | null }));
+
+vi.mock("../stores/auth", () => ({
+  useAuthStore: (selector: (state: typeof authState) => unknown) => selector(authState),
 }));
 
 vi.mock("@tanstack/react-router", () => ({
@@ -32,7 +38,7 @@ vi.mock("../services/AnnouncementService", () => ({
   deleteAnnouncement: serviceMocks.deleteAnnouncement,
   fetchAnnouncement: serviceMocks.fetchAnnouncement,
   fetchAnnouncements: serviceMocks.fetchAnnouncements,
-  stageAnnouncementImages: serviceMocks.stageAnnouncementImages,
+  uploadPendingAnnouncementImages: serviceMocks.uploadPendingAnnouncementImages,
   updateAnnouncement: serviceMocks.updateAnnouncement,
   uploadAnnouncementImages: serviceMocks.uploadAnnouncementImages,
 }));
@@ -77,14 +83,14 @@ function createWrapper(): ({ children }: { children: ReactNode }) => ReactNode {
 }
 
 describe("useAnnouncementsController", () => {
-  const stagingResponse = {
-    staging_id: "nanoid1234567890abcde",
-    staging_token: "signed-announcement-staging-token".repeat(3),
+  const pendingUploadResponse = {
     expires_at: "2026-07-29T00:00:00.000Z",
-    keys: ["announcement/nanoid1234567890abcde/images/image-1"],
+    media_ids: ["media1234567890abcdef"],
   };
 
   beforeEach(() => {
+    localStorage.clear();
+    authState.user = { id: "user-1" };
     navigateMock.mockReset();
     routeSearchMock.announcementId = undefined;
     routeSearchMock.selection = undefined;
@@ -100,9 +106,9 @@ describe("useAnnouncementsController", () => {
     });
     serviceMocks.fetchAnnouncement.mockResolvedValue(null);
     serviceMocks.createAnnouncement.mockResolvedValue({ id: "announcement-1" });
-    serviceMocks.stageAnnouncementImages.mockResolvedValue(stagingResponse);
+    serviceMocks.uploadPendingAnnouncementImages.mockResolvedValue(pendingUploadResponse);
     serviceMocks.uploadAnnouncementImages.mockResolvedValue({
-      keys: ["announcement/announcement-1/images/image-1"],
+      media_ids: ["image1234567890abcdef"],
     });
   });
 
@@ -114,7 +120,10 @@ describe("useAnnouncementsController", () => {
     });
     act(() => {
       result.current.setTitle("Maintenance");
-      result.current.setBodyJson('{"type":"doc","content":[{"type":"paragraph"}]}');
+      result.current.setBodyJson('{"type":"doc","content":[{"type":"paragraph","content":[{"type":"text","text":"Planned work"}]}]}');
+    });
+    await waitFor(() => expect(result.current.isPublishReady).toBe(true));
+    act(() => {
       result.current.handleFinish("none");
     });
 
@@ -122,7 +131,91 @@ describe("useAnnouncementsController", () => {
     expect(serviceMocks.createAnnouncement.mock.calls[0]?.[0]).not.toHaveProperty("expires_at");
   });
 
-  it("stages create-mode images without creating a ghost announcement", async () => {
+  it("sends only one create request when publish is triggered twice", async () => {
+    let resolveCreate!: (value: { id: string }) => void;
+    serviceMocks.createAnnouncement.mockImplementation(() => new Promise((resolve) => {
+      resolveCreate = resolve;
+    }));
+    const { result } = renderHook(() => useAnnouncementsController(), { wrapper: createWrapper() });
+
+    act(() => {
+      result.current.handleCreateByStatus();
+    });
+    await waitFor(() => expect(result.current.isCreating).toBe(true));
+    act(() => {
+      result.current.setTitle("Maintenance");
+      result.current.setBodyJson('{"type":"doc","content":[{"type":"paragraph","content":[{"type":"text","text":"Planned work"}]}]}');
+    });
+    await waitFor(() => expect(result.current.isPublishReady).toBe(true));
+
+    act(() => {
+      result.current.handleFinish("none");
+      result.current.handleFinish("none");
+    });
+
+    await waitFor(() => expect(serviceMocks.createAnnouncement).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(result.current.savePending).toBe(true));
+
+    resolveCreate({ id: "announcement-1" });
+    await waitFor(() => expect(result.current.savePending).toBe(false));
+  });
+
+  it("reloads announcement last-seen state from the active user's scoped storage", async () => {
+    const firstSeenAt = "2026-01-01T00:00:00.000Z";
+    const secondSeenAt = "2026-02-01T00:00:00.000Z";
+    localStorage.setItem(
+      userScopedStorageKey("portal:last_seen", "user-1"),
+      JSON.stringify({ announcements: { lastSeenAt: firstSeenAt } }),
+    );
+    localStorage.setItem(
+      userScopedStorageKey("portal:last_seen", "user-2"),
+      JSON.stringify({ announcements: { lastSeenAt: secondSeenAt } }),
+    );
+    localStorage.setItem(
+      "portal:last_seen",
+      JSON.stringify({ announcements: { lastSeenAt: "2099-01-01T00:00:00.000Z" } }),
+    );
+    const { result, rerender } = renderHook(() => useAnnouncementsController(), { wrapper: createWrapper() });
+
+    await waitFor(() => expect(result.current.announcementsLastSeenAt).toBe(firstSeenAt));
+    authState.user = { id: "user-2" };
+    rerender();
+
+    await waitFor(() => expect(result.current.announcementsLastSeenAt).toBe(secondSeenAt));
+  });
+
+  it("exits create mode when browser history restores a selected announcement", async () => {
+    const selected = {
+      id: "announcement-history",
+      title: "History selection",
+      body_json: "{}",
+      pinned: false,
+      status: "published" as const,
+      publish_at: null,
+      expires_at: null,
+      archived_at: null,
+      created_by: "user-1",
+      updated_by: null,
+      created_at: "2026-01-01T00:00:00.000Z",
+      updated_at: "2026-01-01T00:00:00.000Z",
+    };
+    serviceMocks.fetchAnnouncement.mockResolvedValue(selected);
+    const { result, rerender } = renderHook(() => useAnnouncementsController(), { wrapper: createWrapper() });
+
+    act(() => {
+      result.current.handleCreateByStatus();
+    });
+    await waitFor(() => expect(result.current.isCreating).toBe(true));
+
+    routeSearchMock.selection = undefined;
+    routeSearchMock.announcementId = selected.id;
+    rerender();
+
+    await waitFor(() => expect(result.current.isCreating).toBe(false));
+    expect(result.current.selectedId).toBe(selected.id);
+  });
+
+  it("uploads create-mode images as pending media without creating a ghost announcement", async () => {
     const { result } = renderHook(() => useAnnouncementsController(), { wrapper: createWrapper() });
     const file = new File(["image"], "image.webp", { type: "image/webp" });
 
@@ -136,19 +229,16 @@ describe("useAnnouncementsController", () => {
     });
 
     expect(serviceMocks.createAnnouncement).not.toHaveBeenCalled();
-    expect(serviceMocks.stageAnnouncementImages).toHaveBeenCalledWith(null, [file]);
-    expect(imageUrl).toContain(encodeURIComponent(stagingResponse.keys[0]!));
+    expect(serviceMocks.uploadPendingAnnouncementImages).toHaveBeenCalledWith([file]);
+    expect(imageUrl).toContain(`/api/media/${pendingUploadResponse.media_ids[0]}/view`);
 
     await act(async () => {
       await result.current.handleUploadAnnouncementImages(file);
     });
-    expect(serviceMocks.stageAnnouncementImages).toHaveBeenLastCalledWith(
-      stagingResponse.staging_token,
-      [file],
-    );
+    expect(serviceMocks.uploadPendingAnnouncementImages).toHaveBeenLastCalledWith([file]);
   });
 
-  it("claims the staging token only on explicit save", async () => {
+  it("saves announcement content without exposing pending media IDs", async () => {
     const { result } = renderHook(() => useAnnouncementsController(), { wrapper: createWrapper() });
     const file = new File(["image"], "image.webp", { type: "image/webp" });
 
@@ -160,21 +250,19 @@ describe("useAnnouncementsController", () => {
     });
     act(() => {
       result.current.setTitle("Maintenance");
-      result.current.setBodyJson('{"type":"doc","content":[]}');
+      result.current.setBodyJson('{"type":"doc","content":[{"type":"paragraph","content":[{"type":"text","text":"Planned work"}]}]}');
     });
     act(() => {
       result.current.handleFinish("draft");
     });
 
     await waitFor(() => expect(serviceMocks.createAnnouncement).toHaveBeenCalled());
-    expect(serviceMocks.createAnnouncement.mock.calls[0]?.[0]).toEqual(
-      expect.objectContaining({
-        staging_token: stagingResponse.staging_token,
-      }),
-    );
+    const payload = serviceMocks.createAnnouncement.mock.calls[0]?.[0] as Record<string, unknown>;
+    expect(payload).toEqual(expect.objectContaining({ title: "Maintenance", status: "draft" }));
+    expect(payload).not.toHaveProperty("media_ids");
   });
 
-  it("abandons staged images without creating or archiving a record", async () => {
+  it("abandons pending images without creating or archiving a record", async () => {
     const { result } = renderHook(() => useAnnouncementsController(), { wrapper: createWrapper() });
     const file = new File(["image"], "image.webp", { type: "image/webp" });
 
@@ -191,6 +279,27 @@ describe("useAnnouncementsController", () => {
     expect(serviceMocks.createAnnouncement).not.toHaveBeenCalled();
     expect(serviceMocks.updateAnnouncement).not.toHaveBeenCalled();
     expect(serviceMocks.archiveAnnouncement).not.toHaveBeenCalled();
+  });
+
+  it("does not publish a new announcement until required content is present", async () => {
+    const { result } = renderHook(() => useAnnouncementsController(), { wrapper: createWrapper() });
+
+    act(() => {
+      result.current.handleCreateByStatus();
+    });
+    await waitFor(() => expect(result.current.isCreating).toBe(true));
+
+    expect(result.current.isPublishReady).toBe(false);
+    act(() => {
+      result.current.handleFinish("none");
+    });
+    expect(serviceMocks.createAnnouncement).not.toHaveBeenCalled();
+
+    act(() => {
+      result.current.setTitle("Maintenance");
+      result.current.setBodyJson('{"type":"doc","content":[{"type":"paragraph","content":[{"type":"text","text":"Planned work"}]}]}');
+    });
+    await waitFor(() => expect(result.current.isPublishReady).toBe(true));
   });
 
   it("keeps the announcement detail empty after deleting the selected announcement", async () => {
@@ -236,7 +345,7 @@ describe("useAnnouncementsController", () => {
 
     const { result } = renderHook(() => useAnnouncementsController(), { wrapper: createWrapper() });
 
-    await waitFor(() => expect(result.current.selectedId).toBe("announcement-2"));
+    await waitFor(() => expect(result.current.selectedId).toBe("announcement-1"));
 
     act(() => {
       result.current.setSelectedId("announcement-1");
@@ -348,7 +457,7 @@ describe("useAnnouncementsController", () => {
       await result.current.onLoadMoreList();
     });
     await waitFor(() =>
-      expect(result.current.rows.map((item) => item.id).sort()).toEqual([
+      expect(result.current.rows.map((item) => item.id)).toEqual([
         "announcement-1",
         "announcement-2",
       ]),
@@ -362,5 +471,31 @@ describe("useAnnouncementsController", () => {
       expect(result.current.rows.map((item) => item.id)).toEqual(["announcement-pinned"]),
     );
     expect(result.current.listHasMore).toBe(false);
+  });
+
+  it("passes server sort state through and resets it to updated_desc", async () => {
+    const { result } = renderHook(() => useAnnouncementsController(), { wrapper: createWrapper() });
+
+    await waitFor(() =>
+      expect(serviceMocks.fetchAnnouncements).toHaveBeenCalledWith(
+        expect.objectContaining({ sort: "updated_desc" }),
+      ),
+    );
+    expect(result.current.sortOrder).toBe("updated_desc");
+
+    act(() => {
+      result.current.setSortOrder("updated_asc");
+    });
+    await waitFor(() =>
+      expect(serviceMocks.fetchAnnouncements).toHaveBeenCalledWith(
+        expect.objectContaining({ sort: "updated_asc" }),
+      ),
+    );
+    expect(result.current.sortOrder).toBe("updated_asc");
+
+    act(() => {
+      result.current.resetFilters();
+    });
+    expect(result.current.sortOrder).toBe("updated_desc");
   });
 });

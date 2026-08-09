@@ -6,13 +6,21 @@ import {
 } from "./guild-war";
 
 describe("guild war decimal stats", () => {
+  it.each(["win", "loss", "draw"])("accepts the fixed %s result", (result) => {
+    expect(createWarHistorySchema.parse({ war_name: "Result test", result }).result).toBe(result);
+  });
+
+  it.each(["victory", "Victory-now"])("rejects unsupported result %s", (result) => {
+    expect(createWarHistorySchema.safeParse({ war_name: "Result test", result }).success).toBe(false);
+  });
+
   it("accepts decimal metrics in every write contract", () => {
     expect(
       createWarHistorySchema.parse({
         war_name: "Decimal test",
-        own_stats: { damage: 1234.56 },
+        own_stats: { distance: 1234.56 },
       }).own_stats,
-    ).toEqual({ damage: 1234.56 });
+    ).toEqual({ distance: 1234.56 });
 
     expect(
       updateMemberStatsSchema.parse({
@@ -25,7 +33,7 @@ describe("guild war decimal stats", () => {
         event_id: "event-1",
         war_info: {
           result: "win",
-          own_stats: { damage: 1234.56 },
+          own_stats: { distance: 1234.56 },
         },
         member_stats: [
           {
@@ -47,4 +55,23 @@ describe("guild war decimal stats", () => {
       ).toBe(false);
     },
   );
+
+  it("rejects unknown and negative persisted metrics", () => {
+    expect(
+      createWarHistorySchema.safeParse({
+        war_name: "Unknown team metric",
+        own_stats: { damage: 1 },
+      }).success,
+    ).toBe(false);
+    expect(
+      updateMemberStatsSchema.safeParse({
+        stats: { distance: 1 },
+      }).success,
+    ).toBe(false);
+    expect(
+      updateMemberStatsSchema.safeParse({
+        stats: { damage: -1 },
+      }).success,
+    ).toBe(false);
+  });
 });

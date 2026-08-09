@@ -10,6 +10,7 @@ function createDb(rowsBySelect: unknown[][] = []) {
       const rows = rowsBySelect[selectIndex++] ?? [];
       const builder = {
         from: vi.fn(() => builder),
+        innerJoin: vi.fn(() => builder),
         leftJoin: vi.fn(() => builder),
         where: vi.fn((filter: unknown) => {
           whereFilters.push(filter);
@@ -40,7 +41,7 @@ describe("SearchService", () => {
 
   it("caps the public limit and keeps deterministic cross-type ordering", async () => {
     const rows = [
-      Array.from({ length: 10 }, (_, index) => ({ id: `user-${index}`, username: `User ${index}`, role: "member", power: index + 1 })),
+      Array.from({ length: 10 }, (_, index) => ({ id: `user-${index}`, username: `User ${index}`, role: "member", roleName: "Member", roleColor: "gray", roleLevel: 100, power: index + 1 })),
       Array.from({ length: 10 }, (_, index) => ({ id: `event-${index}`, title: `Event ${index}`, type: "raid", startAt: "2026-03-08T12:00:00.000Z" })),
       Array.from({ length: 10 }, (_, index) => ({ id: `announcement-${index}`, title: `Announcement ${index}` })),
       Array.from({ length: 10 }, (_, index) => ({ id: `wiki-${index}`, title: `Wiki ${index}`, slug: `wiki-${index}` })),
@@ -61,11 +62,14 @@ describe("SearchService", () => {
     expect(result.data.data[0]).toEqual(expect.objectContaining({
       id: "user-0",
       title: "User 0",
-      subtitle: "member · 1 power",
+      subtitle: "Member · 1 power",
       type: "user",
       to: "/roster",
       entity_id: "user-0",
       role: "member",
+      role_name: "Member",
+      role_color: "gray",
+      role_level: 100,
     }));
     expect(result.data.data[10]).toEqual(expect.objectContaining({
       id: "event-0",

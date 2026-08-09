@@ -1,13 +1,24 @@
-import { PortalCard } from "../../shared/PortalCard";
-import { DepthButton } from "@portal/components/shared/DepthButton";
-import { Grid, Group, PasswordInput, Stack, Text, TextInput } from "@mantine/core";
+import { SectionHeader } from "../../shared/SectionHeader";
+import { Button, Paper, PasswordInput, Stack, Text, TextInput } from "@mantine/core";
 import { SaveIcon, LogOutIcon } from "@portal/components/icons";
+import type { CSSProperties } from "react";
 import { useTranslation } from "react-i18next";
 import { notifyError } from "../../../utils/notifications";
 
 const USERNAME_PATTERN = /^[a-zA-Z0-9_一-鿿]+$/;
+const LOGOUT_BUTTON_VARS = {
+  "--button-bg": "var(--status-danger)",
+  "--button-hover": "color-mix(in srgb, var(--status-danger) 88%, var(--surface-base))",
+  "--button-color": "var(--status-on-fill)",
+} as CSSProperties;
 
 type ProfileAccountTabProps = {
+  /* 四项都可能还没到（会话数据是异步的）。没到就不渲染那一行，而不是填一个
+     占位符——「加入于 Invalid Date」比少一行更糟。 */
+  username: string | null;
+  role: string | null;
+  joinedAt: string | null;
+  profileUpdatedAt: string | null;
   currentPassword: string;
   newPassword: string;
   confirmNewPassword: string;
@@ -26,6 +37,10 @@ type ProfileAccountTabProps = {
 };
 
 export function ProfileAccountTab({
+  username,
+  role,
+  joinedAt,
+  profileUpdatedAt,
   currentPassword,
   newPassword,
   confirmNewPassword,
@@ -42,9 +57,13 @@ export function ProfileAccountTab({
   changePasswordPending,
   changeUsernamePending,
 }: ProfileAccountTabProps) {
-  const { t } = useTranslation("profile");
+  const { t, i18n } = useTranslation("profile");
   const changePasswordLabel = t("button.changePassword");
   const changeUsernameLabel = t("button.changeUsername");
+  const isPasswordInvalid =
+    !currentPassword.trim()
+    || newPassword.length < 8
+    || newPassword !== confirmNewPassword;
 
   const handleChangePassword = () => {
     if (!currentPassword.trim()) {
@@ -77,74 +96,128 @@ export function ProfileAccountTab({
     onChangeUsername();
   };
 
+  /* 只到日；这四行是「我这个号是什么」，不是审计时间线，精确到分秒没人要读。 */
+  const formatDay = (value: string | null) =>
+    value ? new Date(value).toLocaleDateString(i18n.language) : null;
+  const facts = [
+    { key: "username", label: t("account.field.username"), value: username },
+    { key: "role", label: t("overview.role"), value: role },
+    { key: "joined", label: t("overview.joined"), value: formatDay(joinedAt) },
+    { key: "updated", label: t("overview.updated"), value: formatDay(profileUpdatedAt) },
+  ].filter((fact): fact is { key: string; label: string; value: string } => Boolean(fact.value));
+
   return (
-    <Stack gap={16}>
-      <Grid gutter={16}>
-        <Grid.Col span={{ base: 12, sm: 6 }}>
-          <PortalCard interactive={false} style={{ height: "100%" }}>
+    <div className="profile-account">
+      <div className="profile-account__cards">
+          {/* Immutable account facts stay separate from editable forms. */}
+          {facts.length > 0 ? (
+            <Paper withBorder radius="md" p="var(--card-padding)">
+              <SectionHeader title={t("account.section.facts")} headingLevel={2} />
+              <dl className="profile-account__facts">
+                {facts.map((fact) => (
+                  <div className="profile-account__fact" key={fact.key}>
+                    <dt className="profile-account__fact-label">{fact.label}</dt>
+                    <dd className="profile-account__fact-value">{fact.value}</dd>
+                  </div>
+                ))}
+              </dl>
+            </Paper>
+          ) : null}
+
+          <Paper withBorder radius="md" p="var(--card-padding)" className="profile-account__card">
             <form onSubmit={(event) => { event.preventDefault(); handleChangePassword(); }}>
-            <Stack gap={10} p="1.2rem">
-              <Text fw={600} size="sm">{changePasswordLabel}</Text>
+            <SectionHeader title={changePasswordLabel} headingLevel={2} />
+            {/* Persistent labels are required because password values obscure field context. */}
+            <Stack gap="var(--space-md)">
               <PasswordInput
+                id="profile-current-password"
+                name="profile-current-password"
                 size="sm"
+                label={t("account.field.currentPassword")}
                 value={currentPassword}
                 onChange={(event) => onCurrentPasswordChange(event.currentTarget.value)}
-                placeholder={t("account.field.currentPassword")}
                 autoComplete="current-password"
-                aria-label={t("account.aria.currentPassword")}
               />
               <PasswordInput
+                id="profile-new-password"
+                name="profile-new-password"
                 size="sm"
+                label={t("account.field.newPassword")}
                 value={newPassword}
                 onChange={(event) => onNewPasswordChange(event.currentTarget.value)}
-                placeholder={t("account.field.newPassword")}
                 autoComplete="new-password"
-                aria-label={t("account.aria.newPassword")}
               />
               <PasswordInput
+                id="profile-confirm-new-password"
+                name="profile-confirm-new-password"
                 size="sm"
+                label={t("account.field.confirmNewPassword")}
                 value={confirmNewPassword}
                 onChange={(event) => onConfirmNewPasswordChange(event.currentTarget.value)}
-                placeholder={t("account.field.confirmNewPassword")}
                 autoComplete="new-password"
-                aria-label={t("account.aria.confirmNewPassword")}
               />
-              <DepthButton htmlType="submit" type="primary" size="sm" loading={changePasswordPending} before={<SaveIcon size={14} />}>{changePasswordLabel}</DepthButton>
+              <Button
+                type="submit"
+                size="sm"
+                loading={changePasswordPending}
+                disabled={isPasswordInvalid}
+                leftSection={<SaveIcon size={14} />}
+              >
+                {changePasswordLabel}
+              </Button>
             </Stack>
             </form>
-          </PortalCard>
-        </Grid.Col>
+          </Paper>
 
-        <Grid.Col span={{ base: 12, sm: 6 }}>
-          <PortalCard interactive={false} style={{ height: "100%" }}>
-            <Stack gap={10} p="1.2rem">
-              <Text fw={600} size="sm">{changeUsernameLabel}</Text>
+          <Paper withBorder radius="md" p="var(--card-padding)" className="profile-account__card">
+              <SectionHeader title={changeUsernameLabel} headingLevel={2} />
+              <Stack gap="var(--space-md)">
               <PasswordInput
+                id="profile-username-current-password"
+                name="profile-username-current-password"
                 size="sm"
+                label={t("account.field.currentPassword")}
                 value={currentPasswordForUsername}
                 onChange={(event) => onCurrentPasswordForUsernameChange(event.currentTarget.value)}
-                placeholder={t("account.field.currentPassword")}
-                aria-label={t("account.aria.currentPasswordUsername")}
+                autoComplete="current-password"
               />
               <TextInput
+                id="profile-new-username"
+                name="profile-new-username"
                 size="sm"
+                label={t("account.field.newUsername")}
                 value={newUsername}
                 onChange={(event) => onNewUsernameChange(event.currentTarget.value)}
-                placeholder={t("account.field.newUsername")}
-                aria-label={t("account.aria.newUsername")}
                 error={usernameError}
               />
-              <DepthButton type="primary" size="sm" onClick={handleChangeUsername} loading={changeUsernamePending} disabled={isUsernameInvalid} before={<SaveIcon size={14} />}>{changeUsernameLabel}</DepthButton>
-            </Stack>
-          </PortalCard>
-        </Grid.Col>
-      </Grid>
+                <Button
+                  size="sm"
+                  onClick={handleChangeUsername}
+                  loading={changeUsernamePending}
+                  disabled={isUsernameInvalid}
+                  leftSection={<SaveIcon size={14} />}
+                >
+                  {changeUsernameLabel}
+                </Button>
+              </Stack>
+          </Paper>
+      </div>
 
-      <Group>
-        <DepthButton type="warning" size="sm" onClick={onLogout} before={<LogOutIcon size={14} />}>
+      <div className="profile-account__exit">
+        <div>
+          <Text size="sm" fw={600}>{t("account.exit.title")}</Text>
+          <Text size="xs" c="dimmed">{t("account.exit.description")}</Text>
+        </div>
+        <Button
+          size="sm"
+          variant="default"
+          style={LOGOUT_BUTTON_VARS}
+          onClick={onLogout}
+          leftSection={<LogOutIcon size={14} />}
+        >
           {t("action.logout")}
-        </DepthButton>
-      </Group>
-    </Stack>
+        </Button>
+      </div>
+    </div>
   );
 }

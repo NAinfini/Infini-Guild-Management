@@ -1,11 +1,11 @@
 // @vitest-environment jsdom
 import { MantineProvider } from "@mantine/core";
+import { ModalsProvider } from "@mantine/modals";
 import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, expect, it, vi } from "vitest";
-import { ConfirmDialogProvider } from "@portal/components/shared/ConfirmDialog";
 import { EventDetailModal } from "./EventDetailModal";
 
 vi.mock("react-i18next", () => ({
@@ -33,12 +33,93 @@ vi.mock("@portal/components/shared/MediaGallery", () => ({
 }));
 
 vi.mock("@portal/components/shared/MemberRoleAvatar", () => ({
+  /* 真组件把名字放在 UnstyledButton 的 aria-label 上，悬停卡里才有可见的名字。 */
   MemberRoleAvatar: ({ user }: { user: { username: string } }) => (
-    <div data-testid="poll-voter-avatar">{user.username.slice(0, 1).toUpperCase()}</div>
+    <div data-testid="poll-voter-avatar" aria-label={user.username}>
+      {user.username.slice(0, 1).toUpperCase()}
+    </div>
   ),
 }));
 
 describe("EventDetailModal", () => {
+  it("keeps the member workspace neutral instead of treating it as a success state", () => {
+    const css = readFileSync(
+      resolve(process.cwd(), "apps/portal/components/feature/events/EventDetailModal.css"),
+      "utf8",
+    );
+
+    expect(css).not.toMatch(
+      /\.event-detail-modal__section--members\s*\{[^}]*mantine-color-green/s,
+    );
+    expect(css).not.toMatch(
+      /\[data-theme="dark"\]\s+\.event-detail-modal__section--members\s*\{/,
+    );
+    expect(css).toMatch(
+      /\.event-detail-modal__section--members[^}]*svg\s*\{[^}]*color:\s*var\(--brand-text\)/s,
+    );
+  });
+
+  it("gives the event date and time range separate readable lines", () => {
+    render(
+      <MantineProvider>
+        <EventDetailModal
+          event={{
+            id: "event-time-layout",
+            title: "Evening Mission",
+            type: "weekly_mission",
+            start_at: "2099-03-12T16:00:00.000Z",
+            end_at: "2099-03-12T18:00:00.000Z",
+            description: null,
+            capacity: null,
+            attachments: [],
+            class_quotas: [],
+          } as never}
+          members={[]}
+          allUsers={[]}
+          canManage={false}
+          onClose={() => {}}
+          onAddParticipant={() => {}}
+          onRemoveParticipant={() => {}}
+        />
+      </MantineProvider>,
+    );
+
+    const timeCard = document.querySelector(".event-detail-modal__meta-card--time");
+    expect(timeCard).not.toBeNull();
+    expect(timeCard?.querySelector(".event-detail-modal__time-date")).toHaveTextContent("2099");
+    expect(timeCard?.querySelector(".event-detail-modal__time-range")).not.toBeEmptyDOMElement();
+  });
+
+  it("leaves the head count to the section title instead of repeating it above the roster", () => {
+    render(
+      <MantineProvider>
+        <EventDetailModal
+          event={{
+            id: "event-progress",
+            title: "Open Event",
+            type: "social",
+            start_at: "2099-03-12T16:00:00.000Z",
+            end_at: null,
+            description: null,
+            capacity: 10,
+            attachments: [],
+            class_quotas: [],
+          } as never}
+          members={[]}
+          allUsers={[]}
+          canManage={false}
+          onClose={() => {}}
+          onAddParticipant={() => {}}
+          onRemoveParticipant={() => {}}
+        />
+      </MantineProvider>,
+    );
+
+    expect(screen.queryByRole("progressbar")).not.toBeInTheDocument();
+    expect(document.querySelector(".quota-bar")).not.toBeInTheDocument();
+    expect(screen.getByText("detail.membersWithCap")).toBeInTheDocument();
+  });
+
   it("does not show a fallback title while the detail modal is closing", () => {
     const source = readFileSync(resolve(process.cwd(), "apps/portal/components/feature/events/EventDetailModal.tsx"), "utf8");
 
@@ -61,8 +142,8 @@ describe("EventDetailModal", () => {
     expect(screen.queryByText("detail.title")).not.toBeInTheDocument();
   });
 
-  it("resolves raw event attachment keys to the event image endpoint", () => {
-    const attachmentKey = "events/p0UhTp1BApaAKsJbVHOiW/images/1773067314787_kKZOKY3Mzi7f2y6458J3l";
+  it("resolves event attachment media IDs to the shared view endpoint", () => {
+    const attachmentMediaId = "media1234567890abcdef";
 
     render(
       <MantineProvider>
@@ -75,7 +156,8 @@ describe("EventDetailModal", () => {
             end_at: null,
             description: null,
             capacity: null,
-            attachments: [attachmentKey],
+            attachments: [attachmentMediaId],
+            class_quotas: [],
           } as never}
           members={[]}
           allUsers={[]}
@@ -87,10 +169,7 @@ describe("EventDetailModal", () => {
       </MantineProvider>,
     );
 
-    const expectedUrl = new URL("/api/events/image", window.location.origin);
-    expectedUrl.searchParams.set("key", attachmentKey);
-
-    expect(screen.getByText(expectedUrl.toString())).toBeInTheDocument();
+    expect(screen.getByText(`${window.location.origin}/api/media/${attachmentMediaId}/view`)).toBeInTheDocument();
   });
 
   it("unmounts content immediately when the modal closes", () => {
@@ -103,6 +182,7 @@ describe("EventDetailModal", () => {
       description: "Should not linger after close",
       capacity: null,
       attachments: [],
+      class_quotas: [],
     } as never;
 
     const { rerender } = render(
@@ -154,6 +234,7 @@ describe("EventDetailModal", () => {
             signup_locked: true,
             archived_at: "2026-03-12T18:00:00.000Z",
             attachments: [],
+            class_quotas: [],
           } as never}
           members={[]}
           allUsers={[]}
@@ -175,6 +256,51 @@ describe("EventDetailModal", () => {
     expect(await screen.findByText("button.disabled.archived")).toBeInTheDocument();
   });
 
+  it.each([
+    ["ended", { end_at: "2000-01-01T00:00:00.000Z", signup_locked: false }],
+    ["signup-locked", { end_at: "2099-12-31T23:59:59.000Z", signup_locked: true }],
+  ])("disables leaving an %s event in the detail modal", (_state, eventOverrides) => {
+    const member = {
+      user: { id: "user-1", username: "member-1" },
+      profile: {
+        user_id: "user-1",
+        classes: ["mage"],
+        power: 1000,
+        avatar_media_id: null,
+        title_html: null,
+      },
+    };
+
+    render(
+      <MantineProvider>
+        <EventDetailModal
+          event={{
+            id: "event-1",
+            title: "Member event",
+            type: "social",
+            start_at: "2099-12-31T22:00:00.000Z",
+            description: null,
+            capacity: 10,
+            archived_at: null,
+            attachments: [],
+            class_quotas: [],
+            ...eventOverrides,
+          } as never}
+          members={[member] as never}
+          allUsers={[member] as never}
+          canManage={false}
+          currentUserId="user-1"
+          onClose={() => {}}
+          onLeave={() => {}}
+          onAddParticipant={() => {}}
+          onRemoveParticipant={() => {}}
+        />
+      </MantineProvider>,
+    );
+
+    expect(screen.getByRole("button", { name: "button.leave" })).toBeDisabled();
+  });
+
   it("lets users vote in poll detail and still shows voter breakdown", async () => {
     const user = userEvent.setup();
     const onVotePoll = vi.fn();
@@ -191,6 +317,7 @@ describe("EventDetailModal", () => {
             description: null,
             capacity: null,
             attachments: [],
+            class_quotas: [],
             poll: {
               results_visibility: "after_vote",
               show_voter_names: false,
@@ -227,8 +354,10 @@ describe("EventDetailModal", () => {
     expect(document.querySelectorAll(".event-detail-modal__poll-voters")).toHaveLength(1);
     expect(screen.getByText("poll.detail.noVotes")).toBeInTheDocument();
     expect(screen.getAllByTestId("poll-voter-avatar")).toHaveLength(2);
-    expect(screen.getByText("member-1")).toBeInTheDocument();
-    expect(screen.getByText("member-2")).toBeInTheDocument();
+    /* 投票人只画头像，名字交给悬停卡——名字不再作为可见文本排在头像旁边。 */
+    expect(screen.getByLabelText("member-1")).toBeInTheDocument();
+    expect(screen.getByLabelText("member-2")).toBeInTheDocument();
+    expect(document.querySelector(".event-detail-modal__poll-voter-chip")).not.toBeInTheDocument();
     expect(screen.getByRole("checkbox", { name: /Raid/i })).toHaveAttribute("aria-checked", "true");
     expect(screen.getByRole("checkbox", { name: /Dungeon/i })).toHaveAttribute("aria-checked", "false");
     await user.click(screen.getByRole("checkbox", { name: /Dungeon/i }));
@@ -252,6 +381,7 @@ describe("EventDetailModal", () => {
             description: null,
             capacity: null,
             attachments: [],
+            class_quotas: [],
             poll: {
               results_visibility: "after_vote",
               show_voter_names: false,
@@ -279,13 +409,59 @@ describe("EventDetailModal", () => {
     expect(screen.queryByRole("button", { name: /poll\.update/i })).not.toBeInTheDocument();
   });
 
-  it("confirms member removal inside the existing event modal", async () => {
+  it("clears the add-member search after adding someone, so the next person is reachable", async () => {
+    const user = userEvent.setup();
+    const onAddParticipant = vi.fn();
+    const candidates = [
+      { user: { id: "user-1", username: "member-1", is_active: true, deleted_at: null }, profile: { classes: [], power: 1 } },
+      { user: { id: "user-2", username: "member-2", is_active: true, deleted_at: null }, profile: { classes: [], power: 1 } },
+    ];
+
+    render(
+      <MantineProvider>
+        <EventDetailModal
+          event={{
+            id: "event-1",
+            title: "Guild social",
+            type: "social",
+            start_at: "2099-06-12T16:00:00.000Z",
+            end_at: "2099-06-12T18:00:00.000Z",
+            description: null,
+            capacity: 10,
+            attachments: [],
+            class_quotas: [],
+          } as never}
+          members={[]}
+          allUsers={candidates as never}
+          canManage
+          onClose={() => {}}
+          onAddParticipant={onAddParticipant}
+          onRemoveParticipant={() => {}}
+        />
+      </MantineProvider>,
+    );
+
+    const picker = screen.getByPlaceholderText("detail.addMemberPlaceholder");
+    await user.click(picker);
+    await user.type(picker, "member-1");
+    // 下拉挂在 Modal 的 portal 里，jsdom 下整棵树带 aria-hidden，按角色取必须放开 hidden。
+    await user.click(await screen.findByRole("option", { name: "member-1", hidden: true }));
+
+    expect(onAddParticipant).toHaveBeenCalledWith("event-1", "user-1");
+    /*
+     * 搜索词留在框里，下一个人就搜不出来了：他被 members 过滤掉之后候选表里只剩别人，
+     * 而过滤词还卡在上一个名字上，点开只有一句 Nothing found。
+     */
+    expect(picker).toHaveValue("");
+  });
+
+  it("confirms member removal through the Mantine modal manager", async () => {
     const user = userEvent.setup();
     const onRemoveParticipant = vi.fn();
 
     render(
       <MantineProvider>
-        <ConfirmDialogProvider>
+        <ModalsProvider>
           <EventDetailModal
             event={{
               id: "event-1",
@@ -296,6 +472,7 @@ describe("EventDetailModal", () => {
               description: null,
               capacity: 10,
               attachments: [],
+              class_quotas: [],
             } as never}
             members={[
               {
@@ -309,24 +486,26 @@ describe("EventDetailModal", () => {
             onAddParticipant={() => {}}
             onRemoveParticipant={onRemoveParticipant}
           />
-        </ConfirmDialogProvider>
+        </ModalsProvider>
       </MantineProvider>,
     );
 
     const originDialog = screen.getByRole("dialog", { name: "Guild social" });
-    await user.click(within(originDialog).getByRole("button", { name: "detail.removeMember" }));
+    const removeButton = within(originDialog).getByRole("button", { name: "detail.removeMember" });
+    expect(removeButton).toHaveAttribute("data-variant", "light");
+    await user.click(removeButton);
 
-    expect(screen.getAllByRole("dialog")).toHaveLength(1);
-    const confirmation = within(originDialog).getByRole("alertdialog", {
+    const confirmation = await screen.findByRole("dialog", {
       name: "detail.confirm.removeMember.title",
     });
+    expect(screen.getAllByRole("dialog")).toHaveLength(2);
     expect(onRemoveParticipant).not.toHaveBeenCalled();
 
     await user.click(within(confirmation).getByRole("button", { name: "button.cancel" }));
     expect(onRemoveParticipant).not.toHaveBeenCalled();
 
     await user.click(within(originDialog).getByRole("button", { name: "detail.removeMember" }));
-    const acceptedConfirmation = within(originDialog).getByRole("alertdialog", {
+    const acceptedConfirmation = await screen.findByRole("dialog", {
       name: "detail.confirm.removeMember.title",
     });
     await user.click(within(acceptedConfirmation).getByRole("button", {

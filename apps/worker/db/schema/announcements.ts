@@ -1,9 +1,10 @@
 // Domain: Announcements
 // Tables: announcements
 // Dependencies: auth.users
-import { index, integer, sqliteTable, text } from "drizzle-orm/sqlite-core";
+import { sql } from "drizzle-orm";
+import { check, index, integer, sqliteTable, text } from "drizzle-orm/sqlite-core";
 import { users } from "./auth";
-import { nowUtc } from "./shared";
+import { canonicalUtcDateTime, nowUtc } from "./shared";
 
 export const announcements = sqliteTable(
   "announcements",
@@ -21,14 +22,23 @@ export const announcements = sqliteTable(
     createdAt: text("created_at").notNull().default(nowUtc),
     updatedAt: text("updated_at").notNull().default(nowUtc),
   },
-  (table) => ({
-    idxStatusPinnedCreated: index("idx_announcements_status_pinned_created").on(
+  (table) => [
+    index("idx_announcements_status_pinned_created").on(
       table.status,
       table.pinned,
       table.createdAt,
       table.id,
     ),
-    idxSchedule: index("idx_announcements_schedule").on(table.status, table.publishAt),
-    idxExpiry: index("idx_announcements_expiry").on(table.status, table.expiresAt),
-  }),
+    index("idx_announcements_schedule").on(table.status, table.publishAt),
+    index("idx_announcements_expiry").on(table.status, table.expiresAt),
+    index("idx_announcements_created_by").on(table.createdBy),
+    index("idx_announcements_updated_by").on(table.updatedBy),
+    check("announcements_status_valid", sql`${table.status} IN ('draft', 'scheduled', 'published', 'archived')`),
+    check("announcements_pinned_boolean", sql`${table.pinned} IN (0, 1)`),
+    check(
+      "announcements_times_valid",
+      sql`(${table.publishAt} IS NULL OR (${canonicalUtcDateTime(table.publishAt)})) AND (${table.expiresAt} IS NULL OR (${canonicalUtcDateTime(table.expiresAt)})) AND (${table.archivedAt} IS NULL OR (${canonicalUtcDateTime(table.archivedAt)}))`,
+    ),
+    check("announcements_body_json_object", sql`json_valid(${table.bodyJson}) AND json_type(${table.bodyJson}) = 'object'`),
+  ],
 );

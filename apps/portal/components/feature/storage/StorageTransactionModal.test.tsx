@@ -28,6 +28,9 @@ const member: User = {
   id: "user-1",
   username: "Member One",
   role: "member",
+  role_name: "Member",
+  role_color: null,
+  role_level: 1,
   permissions: Object.fromEntries(PERMISSIONS.map((permission) => [permission, false])) as User["permissions"],
   is_active: true,
   deleted_at: null,
@@ -75,8 +78,8 @@ describe("StorageTransactionModal", () => {
     expect(screen.getByRole("textbox", { name: "field.quantity" })).toBeInTheDocument();
     expect(screen.getByRole("textbox", { name: "field.note" })).toBeInTheDocument();
     expect(screen.queryByText("tx.adjust")).not.toBeInTheDocument();
-    expect(screen.queryByRole("textbox", { name: "field.item" })).not.toBeInTheDocument();
-    expect(screen.queryByRole("textbox", { name: "field.member" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("combobox", { name: "field.item" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("combobox", { name: "field.member" })).not.toBeInTheDocument();
 
     await user.click(screen.getByRole("button", { name: "action.submitDeposit" }));
 
@@ -91,16 +94,75 @@ describe("StorageTransactionModal", () => {
   it("lets a stock manager submit a distribution for a selected member", async () => {
     const user = userEvent.setup();
     const onSubmit = renderModal({ canManageStock: true, mode: "distribute" });
+    const submit = screen.getByRole("button", { name: "action.submit" });
 
     expect(screen.getByText("tx.adjust")).toBeInTheDocument();
-    expect(screen.getByRole("textbox", { name: "field.item" })).toBeInTheDocument();
-    expect(screen.getByRole("textbox", { name: "field.member" })).toBeInTheDocument();
+    expect(screen.getByRole("combobox", { name: "field.item" })).toBeInTheDocument();
+    expect(screen.getByRole("combobox", { name: "field.member" })).toBeInTheDocument();
+    expect(submit).toBeDisabled();
 
-    await user.click(screen.getByRole("button", { name: "action.submit" }));
+    await user.click(screen.getByRole("combobox", { name: "field.member" }));
+    await user.keyboard("{ArrowDown}{Enter}");
+    await user.click(submit);
 
     expect(onSubmit).toHaveBeenCalledWith(item.id, {
       type: "distribute",
       quantity: 1,
+      recipient_user_id: member.id,
+      note: null,
+    });
+  });
+
+  it("lets a stock manager record intake without attributing it to a member", async () => {
+    const user = userEvent.setup();
+    const onSubmit = renderModal({ canManageStock: true, mode: "intake" });
+    const submit = screen.getByRole("button", { name: "action.submit" });
+
+    expect(screen.getByRole("combobox", { name: "field.memberOptional" })).toHaveValue("");
+    expect(submit).toBeEnabled();
+
+    await user.click(submit);
+
+    expect(onSubmit).toHaveBeenCalledWith(item.id, {
+      type: "intake",
+      quantity: 1,
+      recipient_user_id: null,
+      note: null,
+    });
+  });
+
+  it("requires explicit valid choices for a manual manager entry", async () => {
+    const user = userEvent.setup();
+    const onSubmit = renderModal({
+      canManageStock: true,
+      mode: "distribute",
+      initialItem: null,
+    });
+    const itemSelect = screen.getByRole("combobox", { name: "field.item" });
+    const memberSelect = screen.getByRole("combobox", { name: "field.member" });
+    const quantityInput = screen.getByRole("textbox", { name: "field.quantity" });
+    const submit = screen.getByRole("button", { name: "action.submit" });
+
+    expect(itemSelect).toHaveValue("");
+    expect(memberSelect).toHaveValue("");
+    expect(submit).toBeDisabled();
+
+    await user.click(itemSelect);
+    await user.keyboard("{ArrowDown}{Enter}");
+    expect(submit).toBeDisabled();
+
+    await user.click(memberSelect);
+    await user.keyboard("{ArrowDown}{Enter}");
+    await user.clear(quantityInput);
+    expect(submit).toBeDisabled();
+
+    await user.type(quantityInput, "2");
+    expect(submit).toBeEnabled();
+    await user.click(submit);
+
+    expect(onSubmit).toHaveBeenCalledWith(item.id, {
+      type: "distribute",
+      quantity: 2,
       recipient_user_id: member.id,
       note: null,
     });
@@ -155,6 +217,10 @@ describe("StorageTransactionModal", () => {
         <StorageTransactionModal {...commonProps} items={[item]} />
       </MantineProvider>,
     );
+    await user.click(screen.getByRole("combobox", { name: "field.item" }));
+    await user.keyboard("{ArrowDown}{Enter}");
+    await user.click(screen.getByRole("combobox", { name: "field.memberOptional" }));
+    await user.keyboard("{ArrowDown}{Enter}");
     const quantityInput = screen.getByRole("textbox", { name: "field.quantity" });
     await user.clear(quantityInput);
     await user.type(quantityInput, "5");
@@ -178,5 +244,37 @@ describe("StorageTransactionModal", () => {
 
     expect(screen.getByText("Crystal")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "action.submit" })).toBeEnabled();
+  });
+
+  /* jsdom has no reliable responsive viewport and resolves vw in computed styles.
+   * Assert authored bounds directly and leave responsive height to the global scale. */
+  it("declares a viewport-bounded max width and leaves control height to the token", () => {
+    const { container } = render(
+      <MantineProvider>
+        <StorageTransactionModal
+          opened
+          items={[item]}
+          users={[{ user: member }]}
+          initialItem={null}
+          initialMode="intake"
+          canManageStock
+          defaultRecipientUserId={member.id}
+          isSaving={false}
+          onClose={vi.fn()}
+          onSubmit={vi.fn()}
+        />
+      </MantineProvider>,
+    );
+
+    const content = container.ownerDocument.querySelector<HTMLElement>(".storage-modal-content");
+    expect(content).toBeInTheDocument();
+    expect(content?.style.maxWidth).toBe("calc(100vw - 16px)");
+    expect(screen.getByRole("combobox", { name: "field.item" }).style.minHeight).toBe("");
+    expect(screen.getByRole("button", { name: "action.submit" }).style.minHeight).toBe("");
+    // 分段控件没有可桥接的高度变量，仍要显式给——但必须是令牌，不是字面量 44。
+    expect(
+      container.ownerDocument.querySelector<HTMLElement>(".mantine-SegmentedControl-label")?.style
+        .minHeight,
+    ).toBe("var(--control-height-regular)");
   });
 });

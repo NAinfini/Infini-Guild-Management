@@ -1,6 +1,49 @@
 import { describe, expect, it } from "vitest";
 import { localWeekdayToUtc, utcWeekdayToLocal } from "@guild/shared/utils/recurrence";
-import { localTimeToUtcTime, utcTimeToLocalTime } from "./RecurringTemplateFormModal.helpers";
+import { buildRecurrenceRule, localTimeToUtcTime, utcTimeToLocalTime } from "./RecurringTemplateFormModal.helpers";
+
+describe("recurring template discriminated rules", () => {
+  const state = {
+    recurrenceInterval: "2",
+    recurrenceDays: [1, 3],
+    recurrenceMonthDay: "31",
+    recurrenceEndDate: "2026-12-31",
+    recurrenceEndCount: "8",
+  };
+
+  it("emits only daily fields and the selected count ending", () => {
+    expect(buildRecurrenceRule({
+      ...state,
+      recurrenceFreq: "daily",
+      recurrenceEndMode: "count",
+    }, "not-a-date")).toEqual({ frequency: "daily", interval: 2, endAfter: 8 });
+  });
+
+  it("emits only weekly fields and the selected date ending", () => {
+    expect(buildRecurrenceRule({
+      ...state,
+      recurrenceFreq: "weekly",
+      recurrenceEndMode: "date",
+    }, "not-a-date")).toEqual({
+      frequency: "weekly",
+      interval: 2,
+      daysOfWeek: [1, 3],
+      endDate: "2026-12-31T00:00:00.000Z",
+    });
+  });
+
+  it("drops stale weekly and ending fields after switching to monthly/never", () => {
+    expect(buildRecurrenceRule({
+      ...state,
+      recurrenceFreq: "monthly",
+      recurrenceEndMode: "never",
+    }, "not-a-date")).toEqual({
+      frequency: "monthly",
+      interval: 2,
+      dayOfMonth: 31,
+    });
+  });
+});
 
 describe("recurring template weekday timezone conversion", () => {
   it("round-trips every weekday through UTC and back, anchored on start_at", () => {

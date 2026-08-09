@@ -2,7 +2,8 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
   apiRequest: vi.fn(),
-  convertFilesForUpload: vi.fn(),
+  convertImagesForUpload: vi.fn(),
+  appendImageUploadVariants: vi.fn(),
 }));
 
 vi.mock("../client", () => ({
@@ -10,7 +11,8 @@ vi.mock("../client", () => ({
 }));
 
 vi.mock("@guild/shared/utils/media", () => ({
-  convertFilesForUpload: mocks.convertFilesForUpload,
+  convertImagesForUpload: mocks.convertImagesForUpload,
+  appendImageUploadVariants: mocks.appendImageUploadVariants,
 }));
 
 import { uploadGalleryImages } from "./gallery";
@@ -18,18 +20,20 @@ import { uploadGalleryImages } from "./gallery";
 describe("uploadGalleryImages", () => {
   beforeEach(() => {
     mocks.apiRequest.mockReset();
-    mocks.convertFilesForUpload.mockReset();
+    mocks.convertImagesForUpload.mockReset();
+    mocks.appendImageUploadVariants.mockReset();
   });
 
-  it("passes the caller's abort signal to the upload request", async () => {
+  it("uploads full/view pairs and passes the caller's abort signal", async () => {
     const source = new File(["source"], "source.png", { type: "image/png" });
-    const converted = new File(["converted"], "source.webp", { type: "image/webp" });
+    const variants = [{ full: {}, view: {} }];
     const controller = new AbortController();
-    mocks.convertFilesForUpload.mockResolvedValue([converted]);
+    mocks.convertImagesForUpload.mockResolvedValue(variants);
     mocks.apiRequest.mockResolvedValue({ data: [] });
 
     await uploadGalleryImages([source], ["Guild night"], { signal: controller.signal });
 
+    expect(mocks.appendImageUploadVariants).toHaveBeenCalledWith(expect.any(FormData), variants);
     expect(mocks.apiRequest).toHaveBeenCalledWith(
       "/api/gallery/images",
       expect.objectContaining({
@@ -47,7 +51,7 @@ describe("uploadGalleryImages", () => {
     await expect(
       uploadGalleryImages([source], [], { signal: controller.signal }),
     ).rejects.toMatchObject({ name: "AbortError" });
-    expect(mocks.convertFilesForUpload).not.toHaveBeenCalled();
+    expect(mocks.convertImagesForUpload).not.toHaveBeenCalled();
     expect(mocks.apiRequest).not.toHaveBeenCalled();
   });
 });

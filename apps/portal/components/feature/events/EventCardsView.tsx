@@ -1,7 +1,5 @@
 import type { Event, MemberProfile, User } from "@guild/shared";
-import { Button, Group, SimpleGrid } from "@mantine/core";
-import { DepthButton } from "@portal/components/shared/DepthButton";
-import { PortalCard } from "../../shared/PortalCard";
+import { Button, Group, Paper, SimpleGrid } from "@mantine/core";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { type EventTypeFilter } from "../../../utils/event-navigation";
@@ -27,12 +25,11 @@ type EventCardsViewProps = {
   eventFlags: Map<string, "NEW" | "UPDATED">;
   eventMembersMap: Map<string, MemberEntry[]>;
   allUsers: MemberEntry[];
-  joinPending: boolean;
+  participantPendingEventIds: ReadonlySet<string>;
   votePending?: boolean;
   hasMore?: boolean;
   isLoadingMore?: boolean;
   onLoadMore?: () => void;
-  leavePending: boolean;
   onResetFilters: () => void;
   onCreateEvent: () => void;
   onJoinEvent: (eventId: string) => void;
@@ -67,9 +64,8 @@ export function EventCardsView({
   eventFlags,
   eventMembersMap,
   allUsers,
-  joinPending,
+  participantPendingEventIds,
   votePending,
-  leavePending,
   onResetFilters,
   onCreateEvent,
   onJoinEvent,
@@ -95,32 +91,31 @@ export function EventCardsView({
   const [detailModalEvent, setDetailModalEvent] = useState<Event | null>(null);
   const detailModalMembers = detailModalEvent ? (eventMembersMap.get(detailModalEvent.id) ?? []) : [];
   const now = new Date();
+  const filtersApplied =
+    hasAnyFilter ?? Boolean(eventType || archivedOnly || pinnedOnly || lockedOnly);
 
   if (events.length === 0) {
     return (
-      <PortalCard interactive={false}>
+      <Paper withBorder radius="md" p="md">
         <EmptyState
           title={cardsEmptyDescription}
           actions={
-            <Group gap={8}>
-              <Button onClick={onResetFilters} disabled={hasAnyFilter === undefined ? !eventType && !archivedOnly && !pinnedOnly && !lockedOnly : !hasAnyFilter}>
+            filtersApplied ? (
+              <Button onClick={onResetFilters}>
                 {t("card.resetFilters")}
               </Button>
-              {canManage ? (
-                <DepthButton type="primary" onClick={onCreateEvent}>
-                  {t("button.create")}
-                </DepthButton>
-              ) : null}
-            </Group>
+            ) : canManage ? (
+              <Button onClick={onCreateEvent}>{t("button.create")}</Button>
+            ) : null
           }
         />
-      </PortalCard>
+      </Paper>
     );
   }
 
   return (
     <>
-      <SimpleGrid cols={{ base: 1, sm: 2, md: 3, lg: 4 }} spacing={12}>
+      <SimpleGrid cols={{ base: 1, sm: 2, lg: 3, xl: 4 }} spacing={12}>
         {events.map((event) => (
           <EventCard
             key={event.id}
@@ -133,8 +128,8 @@ export function EventCardsView({
             eventFlags={eventFlags}
             eventMembersMap={eventMembersMap}
             allUsers={allUsers}
-            joinPending={joinPending}
-            leavePending={leavePending}
+            joinPending={participantPendingEventIds.has(event.id)}
+            leavePending={participantPendingEventIds.has(event.id)}
             onOpenDetail={setDetailModalEvent}
             onJoinEvent={onJoinEvent}
             onLeaveEvent={onLeaveEvent}
@@ -169,8 +164,8 @@ export function EventCardsView({
         allUsers={allUsers}
         canManage={canManage}
         currentUserId={currentUserId ?? undefined}
-        joinPending={joinPending}
-        leavePending={leavePending}
+        joinPending={detailModalEvent ? participantPendingEventIds.has(detailModalEvent.id) : false}
+        leavePending={detailModalEvent ? participantPendingEventIds.has(detailModalEvent.id) : false}
         onClose={() => setDetailModalEvent(null)}
         onJoin={onJoinEvent}
         onLeave={onLeaveEvent}

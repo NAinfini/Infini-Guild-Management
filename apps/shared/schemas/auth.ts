@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { LIMITS } from "../config/limits";
+import { roleIdSchema, roleMetadataSchema } from "./role";
 
 const L = LIMITS.content;
 
@@ -36,3 +37,11 @@ export const changeUsernameSchema = z.object({
   currentPassword: z.string().min(1),
   newUsername: usernameSchema,
 });
+
+export const verifyInviteResponseSchema = z.discriminatedUnion("valid", [
+  z.object({ valid: z.literal(false) }),
+  z.object({
+    valid: z.literal(true),
+    role_id: roleIdSchema,
+  }).extend(roleMetadataSchema.shape),
+]);

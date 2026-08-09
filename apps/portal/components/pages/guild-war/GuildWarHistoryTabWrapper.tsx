@@ -76,14 +76,12 @@ export function GuildWarHistoryTabWrapper({
     historyRows,
     historyPage,
     historyPerPage,
-    historyColumns: guildWarHistory.historyColumns,
     historyDetail,
     canManage: canManageActive,
     saveMemberStatsPending: guildWarMutations.updateMemberStatsMutation.isPending,
     onSelectHistoryId: setSelectedHistoryId,
     onSaveMemberStats: guildWarMutations.saveHistoryMemberStats,
     onDeleteHistory: (id) => guildWarMutations.deleteHistoryMutation.mutate(id),
-    onBulkDeleteHistory: (ids) => guildWarMutations.batchDeleteHistoryMutation.mutate(ids),
   });
 
   return (
@@ -131,14 +129,13 @@ export function GuildWarHistoryTabWrapper({
         historyMvp={guildWarHistory.historyMvp}
         saveMemberStatsPending={guildWarMutations.updateMemberStatsMutation.isPending}
         deleteHistoryPending={guildWarMutations.deleteHistoryMutation.isPending}
-        bulkDeleteHistoryPending={guildWarMutations.batchDeleteHistoryMutation.isPending}
         historyDetailTitle={t("history.detail")}
         loadErrorMessage={t("common:loadError")}
         chartThemeName={chartThemeName}
         chartThemeConfig={chartThemeConfig}
         chartPalette={chartPalette}
         hashToPaletteColor={hashToPaletteColor}
-        getMetricLabel={(metric) => t(getMetricLabelKey(metric))}
+        getMetricLabel={getMetricLabelKey}
         metricValueOrNullFromWarMember={metricValueOrNullFromWarMember}
         controller={controller}
       />

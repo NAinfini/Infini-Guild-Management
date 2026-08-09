@@ -1,10 +1,20 @@
 // @vitest-environment jsdom
 import type { Storage } from "@guild/shared";
 import { MantineProvider } from "@mantine/core";
-import { render, screen } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { StorageStructureManager } from "./StorageStructureManager";
+
+const responsive = vi.hoisted(() => ({ mobile: false }));
+
+vi.mock("@mantine/hooks", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@mantine/hooks")>();
+  return {
+    ...actual,
+    useMediaQuery: () => responsive.mobile,
+  };
+});
 
 vi.mock("react-i18next", () => ({
   useTranslation: () => ({ t: (key: string) => key }),
@@ -16,6 +26,14 @@ const storage: Storage = {
   description: "Guild supplies",
   created_at: "2026-07-28T00:00:00.000Z",
   categories: [{ id: "category-1", name: "Materials" }],
+};
+
+const secondaryStorage: Storage = {
+  id: "storage-2",
+  name: "Raid vault",
+  description: "Raid supplies",
+  created_at: "2026-07-28T00:00:00.000Z",
+  categories: [{ id: "category-2", name: "Consumables" }],
 };
 
 const labels = {
@@ -37,6 +55,9 @@ const labels = {
   saveCategory: "action.saveCategory",
   deleteCategory: "action.deleteCategory",
   noCategories: "empty.noCategories",
+  selectStructure: "manageStorage.selectStructure",
+  changeSelection: "manageStorage.changeSelection",
+  mobileHint: "manageStorage.mobileHint",
 };
 
 const callbacks = {
@@ -50,15 +71,13 @@ const callbacks = {
   onDeleteCategory: vi.fn(),
 };
 
-function renderModal() {
+function renderModal(storages: Storage[] = [storage]) {
   render(
     <MantineProvider>
       <StorageStructureManager
-        storages={[storage]}
+        storages={storages}
         selectedStorage={storage}
         selectedCategoryId={null}
-        isSaving={false}
-        isDeleting={false}
         {...callbacks}
       />
     </MantineProvider>,
@@ -70,6 +89,7 @@ describe("StorageStructureManager create drafts", () => {
     for (const callback of Object.values(callbacks)) {
       callback.mockReset();
     }
+    responsive.mobile = false;
   });
 
   it("keeps a new storage local until the user explicitly saves it", async () => {
@@ -90,7 +110,6 @@ describe("StorageStructureManager create drafts", () => {
     expect(callbacks.onCreateStorage).toHaveBeenCalledTimes(1);
     expect(callbacks.onCreateStorage).toHaveBeenCalledWith(
       { name: "Raid vault", description: "Weekly raid supplies" },
-      expect.any(Function),
     );
   });
 
@@ -124,7 +143,49 @@ describe("StorageStructureManager create drafts", () => {
     expect(callbacks.onCreateCategory).toHaveBeenCalledWith(
       storage.id,
       { name: "Consumables" },
-      expect.any(Function),
     );
+  });
+
+  it("keeps structure selection accessible from a left drawer on mobile", async () => {
+    responsive.mobile = true;
+    const user = userEvent.setup();
+    renderModal();
+
+    expect(screen.getByText(labels.mobileHint)).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: labels.changeSelection }));
+    await waitFor(() => {
+      expect(screen.getByRole("dialog")).toBeInTheDocument();
+    });
+
+    await user.click(screen.getByRole("button", { name: "Materials" }));
+    expect(callbacks.onSelectCategory).toHaveBeenCalledWith(storage.id, "category-1");
+    await waitFor(() => {
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    });
+  });
+
+  it("shows delete progress only on the target storage and ignores a repeated click", async () => {
+    const user = userEvent.setup();
+    let finishDelete!: () => void;
+    callbacks.onDeleteStorage.mockReturnValue(new Promise<boolean>((resolve) => {
+      finishDelete = () => resolve(true);
+    }));
+    renderModal([storage, secondaryStorage]);
+
+    const mainRow = screen.getAllByText(storage.name)[0]!.closest(".storage-management-modal__tree-row--storage");
+    const raidRow = screen.getByText(secondaryStorage.name).closest(".storage-management-modal__tree-row--storage");
+    const mainDelete = within(mainRow as HTMLElement).getByRole("button", { name: labels.delete });
+    const raidDelete = within(raidRow as HTMLElement).getByRole("button", { name: labels.delete });
+
+    await user.click(mainDelete);
+
+    expect(mainDelete).toHaveAttribute("data-loading", "true");
+    expect(raidDelete).not.toHaveAttribute("data-loading", "true");
+    await user.click(mainDelete);
+    expect(callbacks.onDeleteStorage).toHaveBeenCalledTimes(1);
+
+    finishDelete();
+    await waitFor(() => expect(mainDelete).not.toHaveAttribute("data-loading", "true"));
   });
 });

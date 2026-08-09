@@ -1,15 +1,13 @@
 import { type PushMessage } from "@guild/shared";
 import type { PushEntityType } from "@guild/shared/constants/push-hints";
-import { ScrollProgress } from "@portal/components/effects";
 import { Alert, AppShell as MantineAppShell } from "@mantine/core";
 import { useMediaQuery } from "@mantine/hooks";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import i18n from "i18next";
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Outlet, useNavigate, useRouterState } from "@tanstack/react-router";
 import { useTranslation } from "react-i18next";
+import { setI18nLocale } from "../../i18n";
 import { canAccessAdmin, userCanAccessAdmin } from "../../utils/permissions";
-import { PageHeaderContext } from "../../context/PageHeaderContext";
 import { ViewingAsProvider } from "../../context/ViewingAsContext";
 import { useNotificationPresentation } from "../../hooks/useNotificationPresentation";
 import { useNotificationSync } from "../../hooks/useNotificationSync";
@@ -20,38 +18,30 @@ import { useAuthStore } from "../../stores/auth";
 import { useNotificationStore } from "../../stores/notifications";
 import { usePreferencesStore } from "../../stores/preferences";
 import { useSiteConfigStore } from "../../stores/site-config";
+import {
+  installSessionSynchronization,
+  revalidateSessionSnapshot,
+  transitionSession,
+} from "../../session-transition";
 import { isExternalViewSearch } from "../../utils/external-view";
 import { AppErrorOverlay } from "../shared/AppErrorOverlay";
 import { OverlayRegistrar } from "../shared/OverlayRegistrar";
 import { BottomNav } from "./BottomNav";
 import {
   AppSidebar,
-  NAV_ITEMS,
   SIDEBAR_WIDTH,
   SIDEBAR_COLLAPSED_WIDTH,
   MOBILE_BREAKPOINT_PX,
+  COMPACT_NAV_BREAKPOINT_PX,
   HEADER_COMPACT_BREAKPOINT_PX,
 } from "./AppSidebar";
-import type { NavItem } from "./AppSidebar";
 import { AppHeader } from "./AppHeader";
+import {
+  findPortalRoute,
+  PORTAL_ROUTES,
+  type PortalRouteMetadata,
+} from "./route-metadata";
 import "./AppShell.css";
-
-function isPathActive(pathname: string, target: string): boolean {
-  if (target === "/") {
-    return pathname === "/";
-  }
-
-  return pathname === target || pathname.startsWith(`${target}/`);
-}
-
-function isWikiPath(pathname: string): boolean {
-  return pathname === "/wiki" || pathname.startsWith("/wiki/");
-}
-
-const HEADER_TITLE_OVERRIDES: Record<string, string> = {
-  "/profile": "nav.profile",
-  "/settings": "nav.settings",
-};
 
 const ENTITY_QUERY_KEYS = {
   announcement: [queryKeys.announcements.all],
@@ -61,36 +51,19 @@ const ENTITY_QUERY_KEYS = {
   storage: [queryKeys.storage.all],
   guild_war: [queryKeys.guildWar.all],
   member_profile: [queryKeys.users.all, queryKeys.myProfile.all],
-  member_badge: [],
+  member_badge: [queryKeys.users.all, queryKeys.myProfile.all],
 } satisfies Record<PushEntityType, readonly (readonly string[])[]>;
 
-function AnimatedOutlet({ pathname, enabled }: { pathname: string; enabled: boolean }) {
-  const [animKey, setAnimKey] = useState(0);
-  const prevPathRef = useRef(pathname);
-
-  const useFallbackAnim = enabled;
-
-  useEffect(() => {
-    if (pathname !== prevPathRef.current) {
-      prevPathRef.current = pathname;
-      if (useFallbackAnim) {
-        setAnimKey((k) => k + 1);
-      }
-    }
-  }, [pathname, useFallbackAnim]);
-
-  return (
-    <div key={useFallbackAnim ? animKey : 0} className={useFallbackAnim ? "app-route-slide-in" : undefined}>
-      <Outlet />
-    </div>
-  );
-}
+// Push messages arrive in bursts (batch admin actions, reconnect catch-up).
+// Invalidating per message refetches the same queries once per burst entry,
+// so invalidations collect for this long and flush as a single round.
+const PUSH_INVALIDATION_WINDOW_MS = 300;
 
 function normalizeViewingAs(role: string | null, isExternalView: boolean): string {
   if (isExternalView) {
     return "external";
   }
-  return role ?? "member";
+  return role ?? "external";
 }
 
 function syncViewSearch(nextRole: string) {
@@ -112,6 +85,7 @@ export function AppShell() {
   const searchStr = useRouterState({ select: (state) => state.location.searchStr });
   const isExternalView = isExternalViewSearch(searchStr);
   const isMobile = useMediaQuery(`(max-width: ${MOBILE_BREAKPOINT_PX}px)`) ?? false;
+  const usesCompactNavigation = useMediaQuery(`(max-width: ${COMPACT_NAV_BREAKPOINT_PX}px)`) ?? false;
   const isHeaderCompact = useMediaQuery(`(max-width: ${HEADER_COMPACT_BREAKPOINT_PX}px)`) ?? false;
   const [isSidebarExpanded, setIsSidebarExpanded] = useState(true);
   const isSidebarCollapsed = !isSidebarExpanded;
@@ -122,26 +96,19 @@ export function AppShell() {
   const queryClient = useQueryClient();
 
   const user = useAuthStore((s) => s.user);
-  const clearSession = useAuthStore((s) => s.clearSession);
   const locale = usePreferencesStore((s) => s.locale);
   const notificationFeatures = useNotificationStore((state) => state.features);
   const pushEntries = useNotificationStore((state) => state.pushHistory);
   const { markFeatureAsRead, markPushAsRead, markAllPushAsRead, clearPushHistory } = useNotificationStore.getState();
   const [isOnline, setIsOnline] = useState(typeof navigator === "undefined" ? true : navigator.onLine);
   const [permissionBanner, setPermissionBanner] = useState<string | null>(null);
-  const [headerActions, setHeaderActions] = useState<ReactNode>(null);
   const [viewingAs, setViewingAs] = useState<string>(() =>
     normalizeViewingAs(user?.role ?? null, isExternalView),
   );
-  const previousPathnameRef = useRef(pathname);
   const scrollContainerRef = useRef<HTMLElement>(null);
-  const isWikiInternalNavigation = isWikiPath(previousPathnameRef.current) && isWikiPath(pathname);
-  const shouldAnimateRoute = !hideNavigation && true && !isWikiInternalNavigation;
-  const pageHeaderContextValue = useMemo(() => ({ setActions: setHeaderActions }), []);
 
   useEffect(() => {
-    void i18n.changeLanguage(locale);
-    document.documentElement.dataset.locale = locale;
+    void setI18nLocale(locale);
   }, [locale]);
 
   useEffect(() => {
@@ -149,11 +116,6 @@ export function AppShell() {
   }, [isExternalView, user?.role]);
 
   useEffect(() => {
-    const previousPathname = previousPathnameRef.current;
-    previousPathnameRef.current = pathname;
-    if (pathname !== "/" || previousPathname === "/") {
-      return;
-    }
     const frameId = window.requestAnimationFrame(() => {
       if (scrollContainerRef.current) {
         scrollContainerRef.current.scrollTo({ top: 0, left: 0, behavior: "auto" });
@@ -188,8 +150,7 @@ export function AppShell() {
       if (window.location.pathname === "/login") {
         return;
       }
-      useAuthStore.getState().clearSession();
-      queryClient.clear();
+      transitionSession(queryClient, null);
       void navigate({
         to: "/login",
         search: {
@@ -209,24 +170,65 @@ export function AppShell() {
       window.removeEventListener("guild-api-unauthorized", onUnauthorized as EventListener);
       window.removeEventListener("guild-api-forbidden", onForbidden as EventListener);
     };
-  }, [navigate, t]);
+  }, [navigate, queryClient, t]);
+
+  useEffect(() => installSessionSynchronization({
+    queryClient,
+    onSessionChange: (session) => {
+      if (!session && window.location.pathname !== "/login") {
+        void navigate({ to: "/login", search: { reason: "expired" } });
+      }
+    },
+  }), [navigate, queryClient]);
+
+  const sessionRevalidationRef = useRef<Promise<unknown> | null>(null);
+  const revalidateSession = useCallback(() => {
+    if (!useAuthStore.getState().user || sessionRevalidationRef.current) return;
+    const request = revalidateSessionSnapshot(queryClient)
+      .catch((error: unknown) => {
+        if (import.meta.env.DEV) console.error("[auth] Session revalidation failed", error);
+      })
+      .finally(() => {
+        sessionRevalidationRef.current = null;
+      });
+    sessionRevalidationRef.current = request;
+  }, [queryClient]);
+
+  useEffect(() => {
+    revalidateSession();
+    window.addEventListener("focus", revalidateSession);
+    return () => window.removeEventListener("focus", revalidateSession);
+  }, [revalidateSession, user?.id]);
+
+  const pendingInvalidationsRef = useRef(new Map<string, readonly unknown[]>());
+  const invalidationTimerRef = useRef<number | null>(null);
+  useEffect(() => () => {
+    if (invalidationTimerRef.current !== null) window.clearTimeout(invalidationTimerRef.current);
+  }, []);
+
+  const queueInvalidations = useCallback(
+    (keys: readonly (readonly unknown[])[]) => {
+      for (const key of keys) pendingInvalidationsRef.current.set(JSON.stringify(key), key);
+      invalidationTimerRef.current ??= window.setTimeout(() => {
+        invalidationTimerRef.current = null;
+        const pending = [...pendingInvalidationsRef.current.values()];
+        pendingInvalidationsRef.current.clear();
+        for (const queryKey of pending) void queryClient.invalidateQueries({ queryKey });
+      }, PUSH_INVALIDATION_WINDOW_MS);
+    },
+    [queryClient],
+  );
 
   const handlePushMessage = useCallback(
     (message: PushMessage) => {
       if (message.type === "entity_changed") {
-        void queryClient.invalidateQueries({ queryKey: queryKeys.cmdk.all });
-        const keys = ENTITY_QUERY_KEYS[message.entity_type];
-        if (keys) {
-          for (const key of keys) {
-            void queryClient.invalidateQueries({ queryKey: key });
-          }
-        }
+        queueInvalidations([queryKeys.cmdk.all, ...(ENTITY_QUERY_KEYS[message.entity_type] ?? [])]);
       }
       if (message.type === "announcement_published") {
-        void queryClient.invalidateQueries({ queryKey: queryKeys.announcements.all });
+        queueInvalidations([queryKeys.announcements.all]);
       }
     },
-    [queryClient],
+    [queueInvalidations],
   );
 
   useNotificationSync({
@@ -241,8 +243,7 @@ export function AppShell() {
   const logoutMutation = useMutation({
     mutationFn: requestLogout,
     onSettled: () => {
-      clearSession();
-      queryClient.clear();
+      transitionSession(queryClient, null);
       void navigate({ to: "/login" });
     },
   });
@@ -251,7 +252,8 @@ export function AppShell() {
     logoutMutation.mutate();
   };
 
-  const canSwitchView = user?.permissions["admin.roles.view"] === true;
+  const canSwitchView = user?.permissions["admin.roles.view"] === true
+    || user?.permissions["admin.roles.manage"] === true;
 
   const rolesQuery = useQuery({
     queryKey: queryKeys.admin.roles(),
@@ -264,7 +266,7 @@ export function AppShell() {
 
   const visibleNavItems = useMemo(
     () =>
-      NAV_ITEMS.filter((item) => {
+      PORTAL_ROUTES.filter((item) => {
         if (item.featureFlag && !features[item.featureFlag]) {
           return false;
         }
@@ -287,11 +289,14 @@ export function AppShell() {
   );
 
   const mobileMainItems = useMemo(
-    () => visibleNavItems.filter((item) => ["/", "/events", "/guild-war", "/roster"].includes(item.to)),
+    () =>
+      visibleNavItems
+        .filter((item) => item.mobilePrimary)
+        .sort((left, right) => (left.mobilePrimary ?? 0) - (right.mobilePrimary ?? 0)),
     [visibleNavItems],
   );
   const mobileMoreItems = useMemo(
-    () => visibleNavItems.filter((item) => !["/", "/events", "/guild-war", "/roster"].includes(item.to)),
+    () => visibleNavItems.filter((item) => !item.mobilePrimary),
     [visibleNavItems],
   );
 
@@ -304,7 +309,7 @@ export function AppShell() {
   );
 
   const navHasNew = useCallback(
-    (item: NavItem) =>
+    (item: PortalRouteMetadata) =>
       item.feature === "announcements"
         ? notificationState.announcements
         : item.feature === "members"
@@ -361,21 +366,12 @@ export function AppShell() {
     [markFeatureAsRead, markPushAsRead, navigate],
   );
 
-  const { selectedNavKey, activePageTitle } = useMemo(() => {
-    const matches = visibleNavItems
-      .filter((item) => isPathActive(pathname, item.to))
-      .sort((left, right) => right.to.length - left.to.length);
-    const active = matches[0];
-    const overrideKey = HEADER_TITLE_OVERRIDES[pathname];
-    return {
-      selectedNavKey: active?.to ?? "",
-      activePageTitle: t(overrideKey ?? active?.labelKey ?? "nav.dashboard"),
-    };
-  }, [pathname, t, visibleNavItems]);
+  const activeRoute = useMemo(() => findPortalRoute(pathname), [pathname]);
+  const selectedNavKey = activeRoute.to;
+  const activePageTitle = t(activeRoute.labelKey);
 
   if (hideNavigation) {
     return (
-      <PageHeaderContext.Provider value={pageHeaderContextValue}>
       <ViewingAsProvider value={viewingAs}>
         <div className="app-login-layout">
           <main className="app-login-content">
@@ -385,26 +381,23 @@ export function AppShell() {
           </main>
         </div>
       </ViewingAsProvider>
-      </PageHeaderContext.Provider>
     );
   }
 
   return (
-    <PageHeaderContext.Provider value={pageHeaderContextValue}>
     <ViewingAsProvider value={viewingAs}>
       <a href="#main-content" className="app-skip-link">{t("nav.skipToContent", "Skip to content")}</a>
       <MantineAppShell
         className="app-shell-root"
         layout="alt"
-        header={{ height: isMobile ? 56 : 64 }}
-        navbar={!isMobile ? { width: sidebarWidth, breakpoint: MOBILE_BREAKPOINT_PX } : undefined}
+        header={{ height: 48 }}
+        navbar={!usesCompactNavigation ? { width: sidebarWidth, breakpoint: COMPACT_NAV_BREAKPOINT_PX } : undefined}
         padding={0}
       >
-        <ScrollProgress thicknessPx={3} zIndex={1000} container={scrollContainerRef} />
         <OverlayRegistrar />
         <AppErrorOverlay />
 
-        {!isMobile ? (
+        {!usesCompactNavigation ? (
           <AppSidebar
             isSidebarCollapsed={isSidebarCollapsed}
             onCollapse={() => setIsSidebarExpanded(false)}
@@ -430,7 +423,6 @@ export function AppShell() {
           isMobile={isMobile}
           isHeaderCompact={isHeaderCompact}
           activePageTitle={activePageTitle}
-          headerActions={headerActions}
           user={user}
           pushHasUnread={pushHasUnread}
           notificationAnnouncementsHasNew={notificationFeatures.announcements.hasNew}
@@ -442,8 +434,8 @@ export function AppShell() {
           onLoginClick={() => void navigate({ to: "/login" })}
         />
 
-        <MantineAppShell.Main id="main-content" ref={scrollContainerRef} className={`app-content ${isMobile ? "app-content-mobile" : ""}`}>
-          <div className="app-main">
+        <MantineAppShell.Main id="main-content" ref={scrollContainerRef} className={`app-content ${usesCompactNavigation ? "app-content-mobile" : ""}`}>
+          <div className={`app-main${activeRoute.fillsViewport ? " app-main--fill" : ""}`}>
             {isExternalView ? (
               <Alert color="gray" variant="light" className="app-banner">
                 {t("nav.externalViewBanner")}
@@ -467,13 +459,13 @@ export function AppShell() {
                 {permissionBanner}
               </Alert>
             ) : null}
-            <div className="app-route-container">
-              <AnimatedOutlet pathname={pathname} enabled={shouldAnimateRoute} />
+            <div className="app-route-container" data-content-width={activeRoute.contentWidth}>
+              <Outlet />
             </div>
           </div>
         </MantineAppShell.Main>
 
-        {isMobile ? (
+        {usesCompactNavigation ? (
           <BottomNav
             pathname={pathname}
             mainItems={mobileMainItems.map((item) => ({
@@ -493,6 +485,5 @@ export function AppShell() {
         ) : null}
       </MantineAppShell>
     </ViewingAsProvider>
-    </PageHeaderContext.Provider>
   );
 }

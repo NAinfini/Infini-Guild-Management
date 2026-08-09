@@ -75,7 +75,7 @@ describe("AdminService mutations", () => {
 
   it("createAdminMember validates and sends POST", async () => {
     mockFetch.mockResolvedValueOnce(mockJsonResponse({ ok: true, user_id: "u-new", username: "newuser", temporary_password: "pass" }));
-    const result = await createAdminMember({ username: "newuser" });
+    const result = await createAdminMember({ username: "newuser", role_id: "member" });
     const [url, init] = mockFetch.mock.calls[0]!;
     expect(url).toContain("/api/admin/users");
     expect(init.method).toBe("POST");
@@ -83,7 +83,7 @@ describe("AdminService mutations", () => {
   });
 
   it("createAdminMember rejects empty username", () => {
-    expect(() => createAdminMember({ username: "" })).toThrow();
+    expect(() => createAdminMember({ username: "", role_id: "member" })).toThrow();
   });
 
   it("batchUpdateAdminUserRole sends batch role PATCH", async () => {
@@ -125,22 +125,23 @@ describe("AdminService mutations", () => {
 
   it("createAdminInviteLink sends POST with payload", async () => {
     mockFetch.mockResolvedValueOnce(mockJsonResponse({ id: "inv-1", code: "ABC" }));
-    await createAdminInviteLink({ max_uses: 10 });
+    await createAdminInviteLink({ role_id: "member", max_uses: 10 });
     const [url, init] = mockFetch.mock.calls[0]!;
     expect(url).toContain("/api/admin/invite-links");
     expect(init.method).toBe("POST");
   });
 
   it("fetchAdminInviteLinks sends cursor, visibility, and search filters", async () => {
+    const cursor = "eyJjcmVhdGVkX2F0IjoiMjAyNi0wNS0xOFQwMDowMDowMC4wMDBaIiwiaWQiOiJpbnZpdGUtNTAifQ";
     const response = {
       data: [],
-      next_cursor: "50",
+      next_cursor: cursor,
       total: 75,
     };
     mockFetch.mockResolvedValueOnce(mockJsonResponse(response));
 
     const result = await fetchAdminInviteLinks({
-      cursor: "0",
+      cursor,
       limit: 50,
       visibility: "expired",
       search: "2026-07",
@@ -148,7 +149,7 @@ describe("AdminService mutations", () => {
 
     const [url] = mockFetch.mock.calls[0]!;
     expect(url).toContain("/api/admin/invite-links?");
-    expect(url).toContain("cursor=0");
+    expect(url).toContain(`cursor=${cursor}`);
     expect(url).toContain("limit=50");
     expect(url).toContain("visibility=expired");
     expect(url).toContain("search=2026-07");

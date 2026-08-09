@@ -1,22 +1,17 @@
 import { loginSchema } from "@guild/shared";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { useMutation } from "@tanstack/react-query";
-import { useNavigate, useSearch } from "@tanstack/react-router";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { Link, useNavigate, useSearch } from "@tanstack/react-router";
 import {
   Anchor,
+  Button,
   Checkbox,
+  Paper,
   Stack,
   Text,
   TextInput,
+  Title,
 } from "@mantine/core";
-import {
-  BubbleBackground,
-  GlassEffect,
-  GradientText,
-  LampHeading,
-
-} from "@portal/components/effects";
-import { DepthButton } from "@portal/components/shared/DepthButton";
 import { AlertTriangleIcon, ArrowLeftIcon, EyeIcon, EyeOffIcon, InfoCircleIcon, KeyboardIcon } from "@portal/components/icons";
 import { useState, type ReactNode } from "react";
 import { useDisclosure } from "@mantine/hooks";
@@ -24,8 +19,8 @@ import { useForm } from "react-hook-form";
 import { useTranslation } from "react-i18next";
 import { z } from "zod";
 import { isApiRequestError, login as requestLogin } from "../../services/AuthService";
-import { useAuthStore } from "../../stores/auth";
 import { useSiteConfigStore } from "../../stores/site-config";
+import { transitionSession } from "../../session-transition";
 import "./AuthPages.css";
 
 const LOGIN_FORM_SCHEMA = loginSchema.extend({
@@ -93,7 +88,7 @@ export function LoginPage() {
   const { t } = useTranslation("auth");
   const navigate = useNavigate();
   const search = useSearch({ from: "/login" });
-  const setSession = useAuthStore((state) => state.setSession);
+  const queryClient = useQueryClient();
   const siteName = useSiteConfigStore((s) => s.siteName);
   const siteLogoUrl = useSiteConfigStore((s) => s.siteLogoUrl);
 
@@ -123,7 +118,7 @@ export function LoginPage() {
   const loginMutation = useMutation({
     mutationFn: requestLogin,
     onSuccess: (response) => {
-      setSession(response.user, response.profile);
+      transitionSession(queryClient, response);
       const fallback = "/";
       const target = isSafeReturnTo(search.returnTo) ? search.returnTo : fallback;
       void navigate({ to: target });
@@ -159,33 +154,20 @@ export function LoginPage() {
 
   return (
     <div className="login-page">
-      <div className="login-page__bg" />
-      <BubbleBackground
-        count={24}
-        minSize={4}
-        maxSize={40}
-        speed={0.6}
-        className="login-page__bubbles"
-      />
-
       <div className="login-page__content">
-        <div className="login-page__heading">
-          <LampHeading coneWidth={320} coneHeight={140} animated>
-            <div className="login-page__brand">
-              {siteLogoUrl ? (
-                <img src={siteLogoUrl} alt="" aria-hidden className="login-page__brand-logo" />
-              ) : null}
-              <GradientText animated duration={4} className="login-page__brand-text">
-                {siteName}
-              </GradientText>
-            </div>
-          </LampHeading>
+        <header className="login-page__heading">
+          <div className="login-page__brand">
+            {siteLogoUrl ? (
+              <img src={siteLogoUrl} alt="" aria-hidden className="login-page__brand-logo" />
+            ) : null}
+            <Title order={1} className="login-page__brand-text">{siteName}</Title>
+          </div>
           <Text c="dimmed" size="sm" ta="center" className="login-page__subtitle">
             {t("login.subtitle")}
           </Text>
-        </div>
+        </header>
 
-        <GlassEffect className="login-page__card">
+        <Paper withBorder shadow="sm" radius="md" className="login-page__card">
           {search.reason === "expired" ? (
             <LoginNotice tone="warning">{t("sessionExpired")}</LoginNotice>
           ) : null}
@@ -213,43 +195,53 @@ export function LoginPage() {
                 onKeyUpCapture={(event) => setIsCapsLockOn(event.getModifierState("CapsLock"))}
                 onKeyDownCapture={(event) => setIsCapsLockOn(event.getModifierState("CapsLock"))}
               >
-                <TextInput
-                  label={t("field.password")}
-                  type={showPassword ? "text" : "password"}
-                  value={passwordValue}
-                  onChange={(event) => {
-                    setValue("password", event.currentTarget.value);
-                  }}
-                  error={passwordError}
-                  classNames={{ root: "login-floating-root", input: "login-floating-input", label: "login-floating-label" }}
-                  autoComplete="current-password"
-                />
-                <div className="login-page__password-actions">
-                  {isCapsLockOn ? (
-                    <KeyboardIcon size={18} className="login-page__caps-icon" />
-                  ) : null}
-                  <button
-                    type="button"
-                    className="login-page__eye-btn"
-                    onClick={showPasswordHandlers.toggle}
-                    tabIndex={-1}
-                    aria-label={showPassword ? t("aria.hidePassword") : t("aria.showPassword")}
-                  >
-                    {showPassword ? <EyeOffIcon size={18} /> : <EyeIcon size={18} />}
-                  </button>
+                <div className="login-page__password-control">
+                  <TextInput
+                    label={t("field.password")}
+                    type={showPassword ? "text" : "password"}
+                    value={passwordValue}
+                    onChange={(event) => {
+                      setValue("password", event.currentTarget.value);
+                    }}
+                    error={passwordError}
+                    classNames={{ root: "login-floating-root", input: "login-floating-input login-page__password-input", label: "login-floating-label" }}
+                    autoComplete="current-password"
+                  />
+                  <div className="login-page__password-actions">
+                    <button
+                      type="button"
+                      className="login-page__eye-btn"
+                      onClick={showPasswordHandlers.toggle}
+                      aria-label={showPassword ? t("aria.hidePassword") : t("aria.showPassword")}
+                      aria-pressed={showPassword}
+                    >
+                      {showPassword ? <EyeOffIcon size={18} /> : <EyeIcon size={18} />}
+                    </button>
+                  </div>
                 </div>
+                {isCapsLockOn ? (
+                  <div className="login-page__caps-warning" role="status" aria-live="polite">
+                    <KeyboardIcon
+                      size={18}
+                      className="login-page__caps-icon"
+                      aria-hidden="true"
+                    />
+                    <span>{t("capsLockWarning")}</span>
+                  </div>
+                ) : null}
               </div>
 
               <Checkbox {...register("stay_logged_in")} label={t("field.stayLoggedIn")} />
 
-              <DepthButton htmlType="submit" disabled={loginMutation.isPending}>
+              <Button type="submit" loading={loginMutation.isPending}>
                 {t("button.login")}
-              </DepthButton>
+              </Button>
 
               <div className="login-page__back-link">
                 <Anchor
+                  component={Link}
+                  to="/"
                   underline="hover"
-                  onClick={() => void navigate({ to: "/" })}
                   className="login-page__back-anchor"
                 >
                   <ArrowLeftIcon size={14} />
@@ -260,14 +252,14 @@ export function LoginPage() {
               <div style={{ textAlign: "center" }}>
                 <Text size="sm" c="dimmed">
                   {t("button.haveInviteCode")}{" "}
-                  <Anchor underline="hover" onClick={() => void navigate({ to: "/register" })}>
+                  <Anchor component={Link} to="/register" underline="hover">
                     {t("button.registerHere")}
                   </Anchor>
                 </Text>
               </div>
             </Stack>
           </form>
-        </GlassEffect>
+        </Paper>
       </div>
     </div>
   );

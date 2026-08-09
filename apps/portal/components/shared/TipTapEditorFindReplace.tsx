@@ -4,7 +4,7 @@ import { useRef, useEffect, useState, useCallback } from "react";
 import { ActionIcon, Group, TextInput, Tooltip, Text } from "@mantine/core";
 import { ArrowDownIcon, ArrowUpIcon, ReplaceIcon, XIcon } from "@portal/components/icons";
 import { IconGripVertical } from "@tabler/icons-react";
-import type { TipTapEditorLabels } from "./TipTapEditor";
+import type { TipTapEditorLabels } from "./tiptap-meta";
 
 type TipTapEditorFindReplaceProps = {
   editor: Editor;

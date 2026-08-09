@@ -1,24 +1,35 @@
 import { z } from "zod";
 import { LIMITS } from "../config/limits";
+import {
+  WAR_MEMBER_STAT_KEYS,
+  WAR_RESULTS,
+  WAR_TEAM_OBJECTIVE_KEYS,
+} from "../constants/guild-war";
 import { eventSchema } from "./event";
-import { activeGame } from "../games";
 
 const L = LIMITS.content;
 
-const statValueSchema = z.number();
-const writeStatsObjectSchema = z.record(z.string(), statValueSchema.nullable());
-const statsObjectSchema = writeStatsObjectSchema.nullable();
-
-const WAR_RESULTS = activeGame.war.resultOptions as unknown as [string, ...string[]];
+const statValueSchema = z.number().nonnegative();
+const warResultSchema = z.enum(WAR_RESULTS);
+const writeTeamStatsObjectSchema = z.partialRecord(
+  z.enum(WAR_TEAM_OBJECTIVE_KEYS),
+  statValueSchema.nullable(),
+) as z.ZodType<Record<string, number | null>>;
+const teamStatsObjectSchema = writeTeamStatsObjectSchema.nullable();
+const writeMemberStatsObjectSchema = z.partialRecord(
+  z.enum(WAR_MEMBER_STAT_KEYS),
+  statValueSchema.nullable(),
+) as z.ZodType<Record<string, number | null>>;
+const memberStatsObjectSchema = writeMemberStatsObjectSchema.nullable();
 
 export const warHistorySchema = z.object({
   id: z.string(),
   event_id: z.string().nullable(),
   war_name: z.string().max(L.warName.max),
   enemy_name: z.string().max(L.warEnemyName.max).nullable(),
-  result: z.enum(WAR_RESULTS).nullable(),
-  own_stats: statsObjectSchema,
-  enemy_stats: statsObjectSchema,
+  result: warResultSchema.nullable(),
+  own_stats: teamStatsObjectSchema,
+  enemy_stats: teamStatsObjectSchema,
   duration_minutes: z.number().nullable(),
   notes: z.string().max(L.warNotes.max).nullable(),
   created_by: z.string(),
@@ -31,9 +42,9 @@ export const createWarHistorySchema = z.object({
   event_id: z.string().optional(),
   war_name: z.string().min(L.warName.min).max(L.warName.max),
   enemy_name: z.string().max(L.warEnemyName.max).optional(),
-  result: z.enum(WAR_RESULTS).optional(),
-  own_stats: writeStatsObjectSchema.optional(),
-  enemy_stats: writeStatsObjectSchema.optional(),
+  result: warResultSchema.optional(),
+  own_stats: writeTeamStatsObjectSchema.optional(),
+  enemy_stats: writeTeamStatsObjectSchema.optional(),
   duration_minutes: z.number().positive().optional(),
   notes: z.string().max(L.warNotes.max).optional(),
 });
@@ -56,7 +67,7 @@ export const warTeamMemberSchema = z.object({
   user_id: z.string(),
   role_tag: z.string().nullable(),
   sort_order: z.number().int(),
-  stats: statsObjectSchema,
+  stats: memberStatsObjectSchema,
   note: z.string().nullable(),
 });
 
@@ -64,6 +75,7 @@ export const saveTeamsPayloadSchema = z.object({
   event_id: z.string(),
   teams: z.array(
     z.object({
+      id: z.string().optional(),
       team_name: z.string(),
       sort_order: z.number().int(),
       notes: z.string().optional(),
@@ -85,7 +97,7 @@ export const saveTeamsPayloadSchema = z.object({
 });
 
 export const updateMemberStatsSchema = z.object({
-  stats: writeStatsObjectSchema.optional(),
+  stats: writeMemberStatsObjectSchema.optional(),
   note: z.string().nullable().optional(),
 });
 
@@ -113,15 +125,18 @@ export const concludeWarPayloadSchema = z.object({
   event_id: z.string(),
   war_info: z.object({
     enemy_name: z.string().max(L.warEnemyName.max).optional(),
-    result: z.enum(WAR_RESULTS),
+    result: warResultSchema,
     duration_minutes: z.number().positive().nullable().optional(),
-    own_stats: writeStatsObjectSchema.optional(),
-    enemy_stats: writeStatsObjectSchema.optional(),
+    own_stats: writeTeamStatsObjectSchema.optional(),
+    enemy_stats: writeTeamStatsObjectSchema.optional(),
   }),
   member_stats: z.array(
     z.object({
       user_id: z.string(),
-      stats: z.record(z.string(), statValueSchema),
+      stats: z.partialRecord(
+        z.enum(WAR_MEMBER_STAT_KEYS),
+        statValueSchema,
+      ) as z.ZodType<Record<string, number>>,
     }),
   ).optional(),
 });

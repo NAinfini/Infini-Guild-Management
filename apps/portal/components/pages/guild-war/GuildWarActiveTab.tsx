@@ -1,5 +1,5 @@
 import type { SensorDescriptor, SensorOptions } from "@dnd-kit/core";
-import { Button, Card, Group, Modal, MultiSelect, Skeleton, Stack } from "@mantine/core";
+import { Alert, Badge, Button, Card, Group, Modal, MultiSelect, Paper, Skeleton, Stack, Text } from "@mantine/core";
 import { useDisclosure } from "@mantine/hooks";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Suspense, lazy, useCallback, useMemo, useState } from "react";
@@ -8,11 +8,13 @@ import { useAppError } from "../../../hooks/useAppError";
 import { absenceQueryKeys, concludeGuildWar, guildWarQueryKeys, moveGuildWarMember, usersQueryKeys } from "../../../services/GuildWarService";
 import { fetchAbsencesWindow, fetchAllUsersListWithOptions } from "../../../services/UserService";
 import { notifySuccess } from "../../../utils/notifications";
+import { SwordsIcon } from "../../icons";
 import type { ConcludeWarMember, ConcludeWarSubmitData } from "../../feature/guild-war/ConcludeWarModal";
 import type { useGuildWarActiveController } from "../../feature/guild-war/useGuildWarActiveController";
 import type { useGuildWarDragController } from "../../../hooks/guild-war/useGuildWarDragController";
 import type { useGuildWarHistory } from "../../../hooks/guild-war/useGuildWarHistory";
 import type { useGuildWarData } from "../../../hooks/data/useGuildWarData";
+import { EmptyState } from "../../shared/EmptyState";
 
 const LazyWarMemberDetailModal = lazy(() =>
   import("../../feature/guild-war/WarMemberDetailModal").then((mod) => ({ default: mod.WarMemberDetailModal })),
@@ -34,8 +36,11 @@ type GuildWarActiveTabProps = {
   activeController: ReturnType<typeof useGuildWarActiveController>;
   guildWarDrag: ReturnType<typeof useGuildWarDragController>;
   guildWarHistory: ReturnType<typeof useGuildWarHistory>;
-  warEventsQuery: ReturnType<typeof useGuildWarData>["warEventsQuery"];
-  concludedEventIdSet: Set<string>;
+  eligibleWarEvents: ReturnType<typeof useGuildWarData>["eligibleWarEvents"];
+  activeEligibilityReady: boolean;
+  canCreateWarEvent: boolean;
+  onCreateWarEvent: () => void;
+  onViewHistory: () => void;
   activeQuery: ReturnType<typeof useGuildWarData>["activeQuery"];
   sensors: SensorDescriptor<SensorOptions>[];
   concludeWarDisabled: boolean;
@@ -52,6 +57,77 @@ export function resolveGuildWarAbsenceWindow(
   return { from: day, to: day };
 }
 
+type GuildWarActiveEmptyStateProps = {
+  canCreateWarEvent: boolean;
+  onCreateWarEvent: () => void;
+  onViewHistory: () => void;
+};
+
+export function GuildWarActiveEmptyState({
+  canCreateWarEvent,
+  onCreateWarEvent,
+  onViewHistory,
+}: GuildWarActiveEmptyStateProps) {
+  const { t } = useTranslation("guild-war");
+
+  return (
+    <Paper
+      withBorder
+      radius="md"
+      p={0}
+      className="guild-war-active-empty"
+    >
+      <EmptyState
+        className="guild-war-active-empty__state"
+        icon={<SwordsIcon size={24} aria-hidden="true" />}
+        title={t("active.empty.title")}
+        description={
+          canCreateWarEvent
+            ? t("active.empty.managerDescription")
+            : t("active.empty.viewerDescription")
+        }
+        actions={
+          <Button onClick={canCreateWarEvent ? onCreateWarEvent : onViewHistory}>
+            {canCreateWarEvent
+              ? t("active.empty.createAction")
+              : t("active.empty.historyAction")}
+          </Button>
+        }
+      />
+    </Paper>
+  );
+}
+
+type GuildWarTeamConflictAlertProps = {
+  pending: boolean;
+  onAcceptRemote: () => void;
+  onRetryLocal: () => void;
+};
+
+export function GuildWarTeamConflictAlert({
+  pending,
+  onAcceptRemote,
+  onRetryLocal,
+}: GuildWarTeamConflictAlertProps) {
+  const { t } = useTranslation("guild-war");
+
+  return (
+    <Alert color="orange" title={t("active.teamConflict.title")}>
+      <Stack gap="sm">
+        <Text size="sm">{t("active.teamConflict.description")}</Text>
+        <Group gap="sm">
+          <Button size="xs" variant="default" disabled={pending} onClick={onAcceptRemote}>
+            {t("active.teamConflict.useRemote")}
+          </Button>
+          <Button size="xs" color="orange" disabled={pending} onClick={onRetryLocal}>
+            {t("active.teamConflict.keepLocal")}
+          </Button>
+        </Group>
+      </Stack>
+    </Alert>
+  );
+}
+
 export function GuildWarActiveTab({
   selectedEventId,
   setSelectedEventId,
@@ -59,8 +135,11 @@ export function GuildWarActiveTab({
   activeController,
   guildWarDrag,
   guildWarHistory,
-  warEventsQuery,
-  concludedEventIdSet,
+  eligibleWarEvents,
+  activeEligibilityReady,
+  canCreateWarEvent,
+  onCreateWarEvent,
+  onViewHistory,
   activeQuery,
   sensors,
   concludeWarDisabled,
@@ -76,7 +155,7 @@ export function GuildWarActiveTab({
     staleTime: 10 * 60_000,
   });
 
-  // Absences (请假) covering the war date — marks members on the drag board.
+  // Absence queries use the selected war's calendar date, not today's date.
   const absenceWindow = resolveGuildWarAbsenceWindow(activeQuery.data?.event?.start_at);
   const absencesQuery = useQuery({
     queryKey: absenceQueryKeys.window(absenceWindow?.from ?? "", absenceWindow?.to ?? ""),
@@ -94,7 +173,7 @@ export function GuildWarActiveTab({
     [absencesQuery.data],
   );
 
-  // --- Add to Pool ---
+  // Add-to-pool state
   const [addToPoolOpen, addToPoolHandlers] = useDisclosure(false);
   const [addToPoolSelection, setAddToPoolSelection] = useState<string[]>([]);
 
@@ -139,7 +218,7 @@ export function GuildWarActiveTab({
     });
   }, [addToPoolMutation, addToPoolSelection, selectedEventId]);
 
-  // --- Conclude War ---
+  // War conclusion state
   const [concludeWarOpen, concludeWarHandlers] = useDisclosure(false);
 
   const concludeWarMembers = useMemo<ConcludeWarMember[]>(() => {
@@ -181,7 +260,7 @@ export function GuildWarActiveTab({
         event_id: eventId,
         war_info: {
           enemy_name: data.warInfo.enemyName || undefined,
-          result: data.warInfo.result as "win" | "loss" | "draw",
+          result: data.warInfo.result,
           duration_minutes: data.warInfo.durationMinutes,
           own_stats: Object.keys(ownStats).length > 0 ? ownStats : undefined,
           enemy_stats: Object.keys(enemyStats).length > 0 ? enemyStats : undefined,
@@ -218,12 +297,22 @@ export function GuildWarActiveTab({
     }
   }, [activeController, selectedEventId, setSelectedEventId]);
 
+  if (activeEligibilityReady && eligibleWarEvents.length === 0) {
+    return (
+      <GuildWarActiveEmptyState
+        canCreateWarEvent={canCreateWarEvent}
+        onCreateWarEvent={onCreateWarEvent}
+        onViewHistory={onViewHistory}
+      />
+    );
+  }
+
   return (
     <Stack gap={12} style={{ display: "flex" }}>
       <Suspense fallback={<Card><Stack gap={10} p="md"><Skeleton height={32} width="40%" /><Skeleton height={32} /><Group gap={8}><Skeleton height={32} width="30%" /><Skeleton height={32} width="30%" /></Group></Stack></Card>}>
         <LazyGuildWarActiveTopCard
           selectedEventId={selectedEventId}
-          eventOptions={(warEventsQuery.data?.data ?? []).filter((item) => !concludedEventIdSet.has(item.id)).map((item) => ({
+          eventOptions={eligibleWarEvents.map((item) => ({
             value: item.id,
             label: `${item.title} (${guildWarHistory.formatDateTime(item.start_at)})`,
           }))}
@@ -250,11 +339,17 @@ export function GuildWarActiveTab({
           concludeWarDisabled={concludeWarDisabled}
           concludeWarDisabledReason={concludeWarDisabledReason}
           onAddTeam={canManageActive && selectedEventId ? guildWarDrag.handleAddTeam : undefined}
-          onSaveTeams={canManageActive && selectedEventId ? activeController.handleSaveTeams : undefined}
           saveTeamsPending={activeController.saveTeamsPending}
-          teamsDirty={activeController.isTeamsDirty}
         />
       </Suspense>
+
+      {activeController.hasTeamDraftConflict ? (
+        <GuildWarTeamConflictAlert
+          pending={activeController.saveTeamsPending}
+          onAcceptRemote={activeController.acceptRemoteTeamChanges}
+          onRetryLocal={activeController.retryLocalTeamChanges}
+        />
+      ) : null}
 
       <Suspense fallback={<Card><Group gap={12} p="md" align="flex-start">{Array.from({ length: 4 }).map((_, i) => <Stack key={i} gap={8} style={{ flex: 1 }}><Skeleton height={24} width="60%" /><Skeleton height={60} /><Skeleton height={60} /><Skeleton height={60} /></Stack>)}</Group></Card>}>
         <LazyGuildWarDragBoard
@@ -262,12 +357,10 @@ export function GuildWarActiveTab({
           canDrag={canManageActive && Boolean(selectedEventId)}
           emptyText={t("empty")}
           activePoolStatus={guildWarDrag.activePoolStatus}
-          selectedUserIds={guildWarDrag.selectedDragUserIdSet}
           activeSearch={activeController.activeSearch}
           activeDragItem={guildWarDrag.activeDragItem}
           toMemberDomId={guildWarDrag.toMemberDomId}
           sensors={sensors}
-          onSelectMember={guildWarDrag.handleSelectMember}
           onOpenMember={
             selectedEventId
               ? (userId) => activeController.setActiveDetailUserId(userId)
@@ -288,6 +381,8 @@ export function GuildWarActiveTab({
           onDraftNameChange={canManageActive ? guildWarDrag.handleDraftNameChange : undefined}
           disabled={!selectedEventId}
           absentUserIds={absentUserIds}
+          teamsDirty={activeController.isTeamsDirty}
+          saveTeamsPending={activeController.saveTeamsPending}
         />
       </Suspense>
 
@@ -304,19 +399,38 @@ export function GuildWarActiveTab({
         opened={addToPoolOpen}
         onClose={addToPoolHandlers.close}
         title={t("active.addToPoolTitle")}
+        size="lg"
         centered
+        classNames={{
+          content: "guild-war-task-modal",
+          body: "guild-war-task-modal__body",
+        }}
       >
-        <Stack gap={12}>
+        <Stack gap={16}>
+          <Group justify="space-between" align="flex-start" wrap="nowrap" className="guild-war-task-modal__intro">
+            <Text size="sm" c="dimmed">
+              {t("active.addToPoolDescription")}
+            </Text>
+            <Badge variant="light" color="gray" className="tabular-nums">
+              {t("active.addToPoolAvailable", { count: availableForPool.length })}
+            </Badge>
+          </Group>
           <MultiSelect
             searchable
             clearable
+            label={t("active.addToPoolField")}
             placeholder={t("active.addToPoolPlaceholder")}
             data={availableForPool}
             value={addToPoolSelection}
             onChange={setAddToPoolSelection}
+            maxDropdownHeight={280}
           />
-          <Group justify="flex-end">
-            <Button variant="default" onClick={addToPoolHandlers.close}>{t("common:action.cancel")}</Button>
+          <Group justify="space-between" className="guild-war-task-modal__footer">
+            <Text size="xs" c="dimmed" className="tabular-nums">
+              {t("active.addToPoolSelected", { count: addToPoolSelection.length })}
+            </Text>
+            <Group gap={8}>
+              <Button data-autofocus variant="default" onClick={addToPoolHandlers.close}>{t("common:action.cancel")}</Button>
             <Button
               onClick={handleAddToPool}
               loading={addToPoolMutation.isPending}
@@ -324,6 +438,7 @@ export function GuildWarActiveTab({
             >
               {t("active.addToPoolConfirm", { count: addToPoolSelection.length })}
             </Button>
+            </Group>
           </Group>
         </Stack>
       </Modal>

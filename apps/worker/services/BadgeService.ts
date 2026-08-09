@@ -1,11 +1,12 @@
-import { memberBadgeSchema } from "@guild/shared";
+import { memberBadgeSchema, type JsonValue } from "@guild/shared";
 import type { WriteAuditLogInput as AuditLogInput } from "./audit";
 import type { PushEntityType, PushHint } from "@guild/shared/constants/push-hints";
-import { and, asc, eq, inArray } from "drizzle-orm";
+import { and, asc, eq, inArray, max } from "drizzle-orm";
 import type { DrizzleD1Database } from "drizzle-orm/d1";
 import { nanoid } from "nanoid";
 import { users } from "../db/schema/auth";
 import { memberBadgeAssignments, memberBadges } from "../db/schema";
+import { sanitizeInlineHtml } from "./inline-html";
 import { ok, err, type ServiceResult } from "./result";
 
 type DrizzleDb = DrizzleD1Database<Record<string, never>>;
@@ -14,6 +15,8 @@ type EntityChangedInput = { entityType: PushEntityType; entityId: string; hint: 
 export type BadgeServiceDeps = {
   writeAuditLog: (input: AuditLogInput) => Promise<void>;
   publishEntityChanged: (input: EntityChangedInput) => Promise<void>;
+  /* 整表重排要在一次 batch 里改完所有行，drizzle 的 update 一次只发一条。 */
+  rawDb: D1Database;
 };
 
 type BadgeRow = {
@@ -40,47 +43,6 @@ const BADGE_COLS = {
 
 const DEFAULT_BADGE_COLOR = "#3b82f6";
 const HEX_COLOR_PATTERN = /^#[0-9a-fA-F]{3}(?:[0-9a-fA-F]{3})?$/;
-const ALLOWED_INLINE_TAGS = new Set(["span", "b", "strong", "i", "em", "u", "br"]);
-
-function escapeHtml(value: string): string {
-  return value
-    .replaceAll("&", "&amp;")
-    .replaceAll("<", "&lt;")
-    .replaceAll(">", "&gt;")
-    .replaceAll('"', "&quot;")
-    .replaceAll("'", "&#39;");
-}
-
-function sanitizeBadgeLabelHtml(html: string): string {
-  const withoutBlockedElements = html.replace(/<(script|style)\b[^>]*>[\s\S]*?<\/\1>/gi, "");
-  let output = "";
-  const tokenPattern = /<[^>]*>/g;
-  let lastIndex = 0;
-
-  for (const match of withoutBlockedElements.matchAll(tokenPattern)) {
-    output += escapeHtml(withoutBlockedElements.slice(lastIndex, match.index));
-    const rawTag = match[0];
-    const tagMatch = /^<\/?\s*([a-zA-Z0-9-]+)([^>]*)>$/.exec(rawTag);
-    if (tagMatch) {
-      const tag = tagMatch[1]!.toLowerCase();
-      if (ALLOWED_INLINE_TAGS.has(tag)) {
-        const isClosing = /^<\//.test(rawTag);
-        if (tag === "br") {
-          output += "<br>";
-        } else if (isClosing) {
-          output += `</${tag}>`;
-        } else {
-          const styleMatch = /\bstyle\s*=\s*"([^"]*)"/.exec(tagMatch[2]!);
-          output += styleMatch ? `<${tag} style="${styleMatch[1]!}">` : `<${tag}>`;
-        }
-      }
-    }
-    lastIndex = match.index + rawTag.length;
-  }
-
-  output += escapeHtml(withoutBlockedElements.slice(lastIndex));
-  return output.trim();
-}
 
 function hasVisibleBadgeLabelContent(html: string): boolean {
   return html.replace(/<br>/g, "").replace(/<[^>]+>/g, "").trim().length > 0;
@@ -91,7 +53,7 @@ function normalizeBadgeColor(color?: string): string {
 }
 
 function sanitizeBadgeCreateInput(data: { name: string; label_html: string; color?: string; description?: string; sort_order?: number }) {
-  const labelHtml = sanitizeBadgeLabelHtml(data.label_html);
+  const labelHtml = sanitizeInlineHtml(data.label_html).trim();
   if (!hasVisibleBadgeLabelContent(labelHtml)) {
     return err("VALIDATION_ERROR", "Badge label must contain visible allowed content");
   }
@@ -105,7 +67,7 @@ function sanitizeBadgeCreateInput(data: { name: string; label_html: string; colo
 function sanitizeBadgeUpdateInput(data: { name?: string; label_html?: string; color?: string; description?: string; sort_order?: number }) {
   const patch = { ...data };
   if (data.label_html !== undefined) {
-    const labelHtml = sanitizeBadgeLabelHtml(data.label_html);
+    const labelHtml = sanitizeInlineHtml(data.label_html).trim();
     if (!hasVisibleBadgeLabelContent(labelHtml)) {
       return err("VALIDATION_ERROR", "Badge label must contain visible allowed content");
     }
@@ -120,8 +82,8 @@ function sanitizeBadgeUpdateInput(data: { name?: string; label_html?: string; co
 function buildBadgeDiff(
   existing: BadgeRow,
   data: { name?: string; label_html?: string; color?: string; description?: string; sort_order?: number },
-): Record<string, { from: unknown; to: unknown }> | null {
-  const diff: Record<string, { from: unknown; to: unknown }> = {};
+): Record<string, { from: JsonValue; to: JsonValue }> | null {
+  const diff: Record<string, { from: JsonValue; to: JsonValue }> = {};
   if (data.name !== undefined && data.name !== existing.name) diff.name = { from: existing.name, to: data.name };
   if (data.label_html !== undefined && data.label_html !== existing.labelHtml) diff.label_html = { from: existing.labelHtml, to: data.label_html };
   if (data.color !== undefined && data.color !== existing.color) diff.color = { from: existing.color, to: data.color };
@@ -168,13 +130,15 @@ export class BadgeService {
     if (!sanitized.ok) return sanitized;
     const safeData = sanitized.data;
     const badgeId = nanoid();
+    /* 不指定顺序就排到末尾：拖拽序里「新建的在最后」，插到队首会跟已有的号段撞上。 */
+    const maxSortRow = (await this.db.select({ value: max(memberBadges.sortOrder) }).from(memberBadges))[0];
     await this.db.insert(memberBadges).values({
       id: badgeId,
       name: safeData.name,
       labelHtml: safeData.label_html,
       color: safeData.color,
       description: safeData.description ?? null,
-      sortOrder: safeData.sort_order ?? 0,
+      sortOrder: safeData.sort_order ?? Number(maxSortRow?.value ?? -10) + 10,
     });
     const created = (await this.db.select(BADGE_COLS).from(memberBadges).where(eq(memberBadges.id, badgeId)).limit(1))[0];
     if (!created) return err("SERVER_ERROR", "Failed to create badge");
@@ -200,8 +164,46 @@ export class BadgeService {
     const updated = (await this.db.select(BADGE_COLS).from(memberBadges).where(eq(memberBadges.id, badgeId)).limit(1))[0];
     if (!updated) return err("SERVER_ERROR", "Failed to load updated badge");
     const diff = buildBadgeDiff(existing, safeData);
-    await this.deps.writeAuditLog({ entityType: "member_badge", action: "update", actorId, entityId: badgeId, diffTitle: updated.name, detailText: diff ? JSON.stringify(diff) : null });
+    await this.deps.writeAuditLog({ entityType: "member_badge", action: "update", actorId, entityId: badgeId, diffTitle: updated.name, detail: diff });
     return ok(toBadgePayload(updated));
+  }
+
+  /*
+   * 整表重排，和 ClassCatalogService.reorder 一模一样的形状：请求体必须列全所有
+   * 徽章，服务端按下标 * 10 重写。少一个就拒绝——顺序是全序，收下半张表就得去猜
+   * 剩下那些排在哪，而猜出来的结果客户端看不见。
+   */
+  async reorderBadges(actorId: string, order: string[]): Promise<ServiceResult<unknown[]>> {
+    const existingIds = (await this.db.select({ id: memberBadges.id }).from(memberBadges)).map((row) => row.id);
+
+    if (existingIds.length !== order.length) {
+      return err(
+        "CONFLICT",
+        `Badge order must list all ${existingIds.length} badges; received ${order.length}`,
+      );
+    }
+    const submitted = new Set(order);
+    const missing = existingIds.filter((id) => !submitted.has(id));
+    if (missing.length > 0) {
+      return err("CONFLICT", `Badge order is missing ${missing.length} badge(s)`);
+    }
+
+    const updatedAt = new Date().toISOString();
+    await this.deps.rawDb.batch(
+      order.map((id, index) => this.deps.rawDb
+        .prepare("UPDATE member_badges SET sort_order = ?, updated_at = ? WHERE id = ?")
+        .bind(index * 10, updatedAt, id)),
+    );
+    /* entityId 用 "batch"：这次改的是整张表，不是某一行。 */
+    await this.deps.writeAuditLog({
+      entityType: "member_badge",
+      action: "batch_update",
+      actorId,
+      entityId: "batch",
+      diffTitle: `${order.length} badges reordered`,
+      detail: { count: order.length, order },
+    });
+    return this.listBadges();
   }
 
   async deleteBadge(actorId: string, badgeId: string): Promise<ServiceResult<{ ok: true }>> {
@@ -234,7 +236,7 @@ export class BadgeService {
         actorId,
         entityId: badgeId,
         diffTitle: existing.name,
-        detailText: JSON.stringify({ user_ids: userIds, assigned: toInsert.length }),
+        detail: { user_ids: userIds, assigned: toInsert.length },
       });
       await this.deps.publishEntityChanged({ entityType: "member_badge", entityId: badgeId, hint: "badge_assigned" });
     }
@@ -266,7 +268,7 @@ export class BadgeService {
         actorId,
         entityId: badgeId,
         diffTitle: existing.name,
-        detailText: JSON.stringify({ user_ids: removeUserIds, removed }),
+        detail: { user_ids: removeUserIds, removed },
       });
       await this.deps.publishEntityChanged({ entityType: "member_badge", entityId: badgeId, hint: "badge_unassigned" });
     }

@@ -1,10 +1,11 @@
-import { Button, Group, Slider, Stack, Text } from "@mantine/core";
+import { Button, Group, Modal, Slider, Stack, Text } from "@mantine/core";
 import { Carousel } from "@mantine/carousel";
 import { useMediaQuery } from "@mantine/hooks";
 import { forwardRef, useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import clsx from "clsx";
 import { isDirectPlayableVideoUrl, isEmbeddableVideoUrl, toEmbedVideoUrl, getVideoThumbnailUrl } from "@guild/shared/utils/video";
 import { ChevronUpIcon, ChevronDownIcon, PlayIcon } from "@portal/components/icons";
+import { resolveMediaUrl as resolvePortalMediaUrl } from "../../utils/media";
 import "./media-gallery.css";
 
 export type MediaGalleryLabels = {
@@ -23,9 +24,14 @@ export type MediaGalleryLabels = {
   showThumbnails: string;
   thumbnailVideo: string;
   thumbnailImage: string;
+  close: string;
   seekVideo: string;
   playVideoAria: string;
-  openItemAria: string;
+  enlargeImageAria: (index: number) => string;
+  openItemAria: (index: number) => string;
+  imageAlt: (index: number) => string;
+  imageThumbnailAlt: (index: number) => string;
+  videoThumbnailAlt: (index: number) => string;
 };
 
 const DEFAULT_LABELS: MediaGalleryLabels = {
@@ -44,12 +50,19 @@ const DEFAULT_LABELS: MediaGalleryLabels = {
   showThumbnails: "Show thumbnails",
   thumbnailVideo: "Video",
   thumbnailImage: "Image",
+  close: "Close",
   seekVideo: "Seek video",
   playVideoAria: "Play video",
-  openItemAria: "Open item",
+  enlargeImageAria: (index) => `Enlarge image ${index}`,
+  openItemAria: (index) => `Open item ${index}`,
+  imageAlt: (index) => `Media image ${index}`,
+  imageThumbnailAlt: (index) => `Media thumbnail ${index}`,
+  videoThumbnailAlt: (index) => `Video thumbnail ${index}`,
 };
 
-export function buildMediaGalleryLabels(t: (key: string) => string): MediaGalleryLabels {
+export function buildMediaGalleryLabels(
+  t: (key: string, options?: { index?: number }) => string,
+): MediaGalleryLabels {
   return {
     noMedia: t("media.noMedia"),
     imageLoadFailed: t("media.imageLoadFailed"),
@@ -66,16 +79,21 @@ export function buildMediaGalleryLabels(t: (key: string) => string): MediaGaller
     showThumbnails: t("media.showThumbnails"),
     thumbnailVideo: t("media.thumbnailVideo"),
     thumbnailImage: t("media.thumbnailImage"),
+    close: t("action.close"),
     seekVideo: t("media.aria.seekVideo"),
     playVideoAria: t("media.aria.playVideo"),
-    openItemAria: t("media.aria.openItem"),
+    enlargeImageAria: (index) => t("media.aria.enlargeImage", { index }),
+    openItemAria: (index) => t("media.aria.openItem", { index }),
+    imageAlt: (index) => t("media.aria.imageAlt", { index }),
+    imageThumbnailAlt: (index) => t("media.aria.imageThumbnailAlt", { index }),
+    videoThumbnailAlt: (index) => t("media.aria.videoThumbnailAlt", { index }),
   };
 }
 
 export type MediaGalleryProps = {
   images: string[];
   videos?: string[];
-  resolveMediaUrl?: (key: string) => string;
+  resolveMediaUrl?: (mediaId: string, variant?: "view" | "full") => string;
   emptyContent?: ReactNode;
   labels?: Partial<MediaGalleryLabels>;
   className?: string;
@@ -91,9 +109,9 @@ type FullscreenVideoElement = HTMLVideoElement & {
   webkitRequestFullscreen?: () => Promise<void> | void;
 };
 
-function defaultResolver(value: string): string {
-  return value;
-}
+/* 省略 videos 时要落到同一个数组上。写成 `videos = []` 每次渲染都新造一个，
+   下面那个 useMemo 的依赖就永远在变，items 每帧重算。 */
+const NO_VIDEOS: string[] = [];
 
 function isRenderableUrl(value: string): boolean {
   return /^https?:\/\//i.test(value) || value.startsWith("/");
@@ -109,8 +127,8 @@ function formatMediaTime(totalSeconds: number): string {
 export const MediaGallery = forwardRef<HTMLDivElement, MediaGalleryProps>(
   function MediaGallery({
     images,
-    videos = [],
-    resolveMediaUrl = defaultResolver,
+    videos = NO_VIDEOS,
+    resolveMediaUrl = resolvePortalMediaUrl,
     emptyContent,
     labels: labelsProp,
     className,
@@ -123,6 +141,7 @@ export const MediaGallery = forwardRef<HTMLDivElement, MediaGalleryProps>(
   const [directVideoPlaying, setDirectVideoPlaying] = useState<Record<number, boolean>>({});
   const [directVideoProgress, setDirectVideoProgress] = useState<Record<number, VideoProgressState>>({});
   const [thumbnailExpanded, setThumbnailExpanded] = useState(true);
+  const [enlargedIndex, setEnlargedIndex] = useState<number | null>(null);
 
   const [embla, setEmbla] = useState<any>(null);
   const directVideoRefs = useRef<Record<number, HTMLVideoElement | null>>({});
@@ -133,7 +152,8 @@ export const MediaGallery = forwardRef<HTMLDivElement, MediaGalleryProps>(
         key: `img-${item}`,
         type: "image" as const,
         label: item,
-        source: resolveMediaUrl(item),
+        source: resolveMediaUrl(item, "view"),
+        fullSource: resolveMediaUrl(item, "full"),
       })),
       ...videos.map((item) => ({
         key: `vid-${item}`,
@@ -149,6 +169,14 @@ export const MediaGallery = forwardRef<HTMLDivElement, MediaGalleryProps>(
   const thumbnails = items.slice(0, 20);
   const [brokenImages, setBrokenImages] = useState<Set<number>>(new Set());
 
+  /*
+   * 轮播的每一张都留在 DOM 里，只是被横向挪出了视口。浏览器的懒加载判定看的是
+   * 视口，而不是轮播的「下一张」，所以整条懒下去的话，每次翻页都从零开始下载，
+   * 翻页因此永远要等一次网络。左右各一张提前取好，点下一张时图已经在手上；再远
+   * 的仍然懒加载，免得一开就把整本相册拉下来。
+   */
+  const isNearActive = (index: number) => Math.abs(index - activeIndex) <= 1;
+
   const handleImageError = useCallback((index: number) => {
     setBrokenImages((prev) => {
       const next = new Set(prev);
@@ -157,9 +185,15 @@ export const MediaGallery = forwardRef<HTMLDivElement, MediaGalleryProps>(
     });
   }, []);
 
+  /* brokenImages 记的是下标，而下标只在同一份列表里指向同一张图，换了列表就得清
+     空。判定得看内容：调用方常常临时拼出数组，按引用比会每次渲染都判成「换了列
+     表」，于是清空、拿到新 Set、再渲染，组件就一直空转下去。 */
+  const mediaSignature = JSON.stringify(items.map((item) => item.key));
+
   useEffect(() => {
     setBrokenImages(new Set());
-  }, [images, videos]);
+    setEnlargedIndex(null);
+  }, [mediaSignature]);
 
   useEffect(() => {
     if (isMobile) setThumbnailExpanded(false);
@@ -225,11 +259,23 @@ export const MediaGallery = forwardRef<HTMLDivElement, MediaGalleryProps>(
               <Carousel.Slide key={item.key}>
                 {item.type === "image" ? (
                   isRenderableUrl(item.source) && !brokenImages.has(index) ? (
-                    <div className="infini-media-gallery-slide">
-                      <img src={item.source} alt={`Media image ${index + 1}`} loading="lazy" decoding="async" onError={() => handleImageError(index)} />
-                    </div>
+                    <button
+                      type="button"
+                      className="infini-media-gallery-slide infini-media-gallery-slide-zoom"
+                      onClick={() => setEnlargedIndex(index)}
+                      aria-label={labels.enlargeImageAria(index + 1)}
+                    >
+                      <img
+                        src={item.source}
+                        alt={labels.imageAlt(index + 1)}
+                        loading={isNearActive(index) ? "eager" : "lazy"}
+                        fetchPriority={index === activeIndex ? "high" : "auto"}
+                        decoding="async"
+                        onError={() => handleImageError(index)}
+                      />
+                    </button>
                   ) : (
-                    <div className="infini-media-gallery-slide infini-media-gallery-slide--broken">
+                    <div className="infini-media-gallery-slide">
                       <Text c="dimmed" ta="center">{brokenImages.has(index) ? labels.imageLoadFailed : item.label}</Text>
                     </div>
                   )
@@ -329,15 +375,15 @@ export const MediaGallery = forwardRef<HTMLDivElement, MediaGalleryProps>(
                   type="button"
                   className={`infini-media-gallery-thumb${index === activeIndex ? " infini-media-gallery-thumb-active" : ""}`}
                   onClick={() => { setActiveIndex(index); (embla as { scrollTo?: (index: number) => void })?.scrollTo?.(index); }}
-                  aria-label={`${labels.openItemAria} ${index + 1}`}
+                  aria-label={labels.openItemAria(index + 1)}
                   aria-pressed={index === activeIndex}
                 >
                   {item.type === "image" && isRenderableUrl(item.source) && !brokenImages.has(index) ? (
-                    <img src={item.source} alt={`Media thumbnail ${index + 1}`} loading="lazy" decoding="async" onError={() => handleImageError(index)} />
+                    <img src={item.source} alt={labels.imageThumbnailAlt(index + 1)} loading="lazy" decoding="async" onError={() => handleImageError(index)} />
                   ) : item.type === "video" ? (
                     "thumbnailUrl" in item && item.thumbnailUrl ? (
                       <div className="infini-media-gallery-thumb-video">
-                        <img src={item.thumbnailUrl} alt={`Video thumbnail ${index + 1}`} loading="lazy" decoding="async" />
+                        <img src={item.thumbnailUrl} alt={labels.videoThumbnailAlt(index + 1)} loading="lazy" decoding="async" />
                         <PlayIcon size={16} className="infini-media-gallery-thumb-play" />
                       </div>
                     ) : "isDirect" in item && item.isDirect ? (
@@ -359,6 +405,28 @@ export const MediaGallery = forwardRef<HTMLDivElement, MediaGalleryProps>(
           ) : null}
         </div>
       ) : null}
+
+      <Modal
+        opened={enlargedIndex !== null}
+        onClose={() => setEnlargedIndex(null)}
+        fullScreen
+        padding="md"
+        closeButtonProps={{ "aria-label": labels.close }}
+        classNames={{
+          content: "infini-media-gallery-zoom-content",
+          body: "infini-media-gallery-zoom-body",
+        }}
+      >
+        {enlargedIndex !== null && items[enlargedIndex] ? (
+          <img
+            className="infini-media-gallery-zoom-img"
+            src={items[enlargedIndex].type === "image" ? items[enlargedIndex].fullSource : items[enlargedIndex].source}
+            alt={labels.imageAlt(enlargedIndex + 1)}
+            decoding="async"
+            onClick={() => setEnlargedIndex(null)}
+          />
+        ) : null}
+      </Modal>
     </Stack>
     </div>
   );

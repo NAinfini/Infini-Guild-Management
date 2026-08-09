@@ -1,6 +1,5 @@
 import { MantineProvider } from "@mantine/core";
 import { render, screen } from "@testing-library/react";
-import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 import { GuildWarActiveTopCard } from "./GuildWarActiveTopCard";
 
@@ -22,47 +21,59 @@ const baseProps = {
 };
 
 describe("GuildWarActiveTopCard", () => {
-  it("exposes the team save action only when there are changes to persist", async () => {
-    const onSaveTeams = vi.fn();
-    const { rerender } = render(
-      <MantineProvider>
-        <GuildWarActiveTopCard
-          {...baseProps}
-          onSaveTeams={onSaveTeams}
-          teamsDirty={false}
-        />
-      </MantineProvider>,
-    );
-
-    expect(screen.getByRole("button", { name: "active.saveTeams" })).toBeDisabled();
-
-    rerender(
-      <MantineProvider>
-        <GuildWarActiveTopCard
-          {...baseProps}
-          onSaveTeams={onSaveTeams}
-          teamsDirty
-        />
-      </MantineProvider>,
-    );
-
-    expect(screen.getByText("active.unsaved")).toBeInTheDocument();
-    await userEvent.click(screen.getByRole("button", { name: "active.saveTeams" }));
-    expect(onSaveTeams).toHaveBeenCalledTimes(1);
-  });
-
-  it("locks event switching while a team save is in progress", () => {
+  it("does not expose a redundant manual save action", () => {
     render(
       <MantineProvider>
         <GuildWarActiveTopCard
           {...baseProps}
-          onSaveTeams={vi.fn()}
-          teamsDirty
+          onAddTeam={vi.fn()}
+          onConcludeWar={vi.fn()}
+        />
+      </MantineProvider>,
+    );
+
+    expect(screen.queryByRole("button", { name: "active.saveTeams" })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "active.addTeam" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "active.concludeWar" })).toBeInTheDocument();
+  });
+
+  it("locks event switching while team metadata is auto-saving", () => {
+    render(
+      <MantineProvider>
+        <GuildWarActiveTopCard
+          {...baseProps}
           saveTeamsPending
         />
       </MantineProvider>,
     );
 
-    expect(screen.getByRole("textbox", { name: "active.aria.selectEvent" })).toBeDisabled();
+    expect(screen.getByRole("combobox", { name: "active.aria.selectEvent" })).toBeDisabled();
+  });
+
+  it("aligns the search and event selectors in one filter grid", () => {
+    const { container } = render(
+      <MantineProvider>
+        <GuildWarActiveTopCard {...baseProps} />
+      </MantineProvider>,
+    );
+
+    const filters = container.querySelector(".guild-war-active-top-card__filters");
+    expect(filters).not.toBeNull();
+    expect(filters?.querySelector(".guild-war-active-top-card__search")).not.toBeNull();
+    expect(filters?.querySelector(".guild-war-active-top-card__event")).not.toBeNull();
+  });
+
+  it("does not expose the end-war action without an eligible active selection", () => {
+    render(
+      <MantineProvider>
+        <GuildWarActiveTopCard
+          {...baseProps}
+          selectedEventId={undefined}
+          eventOptions={[]}
+        />
+      </MantineProvider>,
+    );
+
+    expect(screen.queryByRole("button", { name: "active.concludeWar" })).not.toBeInTheDocument();
   });
 });

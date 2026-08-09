@@ -1,7 +1,7 @@
 import { type GalleryItem, createGalleryItemSchema } from "@guild/shared";
 import type { z } from "zod";
 import { apiRequest } from "../client";
-import { convertFilesForUpload } from "@guild/shared/utils/media";
+import { appendImageUploadVariants, convertImagesForUpload } from "@guild/shared/utils/media";
 
 export type CreateGalleryVideoPayload = z.input<typeof createGalleryItemSchema>;
 
@@ -11,13 +11,13 @@ export async function uploadGalleryImages(
   options: { signal?: AbortSignal } = {},
 ): Promise<{ data: GalleryItem[] }> {
   options.signal?.throwIfAborted();
-  const converted = await convertFilesForUpload(files.filter(Boolean));
+  const converted = await convertImagesForUpload(files.filter(Boolean));
   options.signal?.throwIfAborted();
   const formData = new FormData();
   for (let index = 0; index < converted.length; index += 1) {
-    const file = converted[index];
-    if (!file) continue;
-    formData.append("files", file);
+    const image = converted[index];
+    if (!image) continue;
+    appendImageUploadVariants(formData, [image]);
     formData.append("captions", captions[index] ?? "");
   }
 

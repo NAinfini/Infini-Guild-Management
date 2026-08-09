@@ -8,6 +8,7 @@ import {
 } from "../services/SiteConfigService";
 import { notifySuccess } from "../utils/notifications";
 import { useSiteConfigStore } from "../stores/site-config";
+import { resolveMediaUrl } from "../utils/media";
 
 type UseSiteConfigMutationsParams = {
   showError: (error: unknown, fallbackMessage: string) => void;
@@ -18,14 +19,18 @@ export function useSiteConfigMutations({ showError }: UseSiteConfigMutationsPara
   const queryClient = useQueryClient();
 
   const applySiteConfig = (data: AdminSiteConfigResponse) => {
+    const siteLogoUrl = data.site.site_logo_media_id
+      ? resolveMediaUrl(data.site.site_logo_media_id)
+      : data.site.default_site_logo_url;
     useSiteConfigStore.getState().setSiteConfig({
       siteName: data.site.site_name,
-      siteLogoUrl: data.site.site_logo_url,
+      siteLogoUrl,
+      mediaPolicy: data.site.media_policy,
     });
     useSiteConfigStore.getState().setFeatures(data.site.features);
     document.title = data.site.site_name;
     const favicon = document.querySelector<HTMLLinkElement>("link[rel='icon']");
-    if (favicon) favicon.href = data.site.site_logo_url;
+    if (favicon) favicon.href = siteLogoUrl;
     queryClient.setQueryData(queryKeys.siteConfig.admin(), data);
   };
 

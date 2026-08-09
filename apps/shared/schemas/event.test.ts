@@ -1,7 +1,90 @@
 import { describe, expect, it } from "vitest";
-import { createEventSchema, createTemplateSchema, eventPollSchema, eventSchema, pollVoteSchema, recurringTemplateSchema, updateEventSchema, updateTemplateSchema } from "./event";
+import {
+  createEventSchema,
+  createTemplateSchema,
+  eventParticipantsBatchSchema,
+  eventPollSchema,
+  eventSchema,
+  pollVoteSchema,
+  recurrenceRuleSchema,
+  recurringTemplateSchema,
+  updateEventSchema,
+  updateTemplateSchema,
+} from "./event";
+
+describe("recurrenceRuleSchema", () => {
+  it("accepts only the fields owned by each recurrence frequency", () => {
+    expect(recurrenceRuleSchema.safeParse({ frequency: "daily", interval: 1 }).success).toBe(true);
+    expect(recurrenceRuleSchema.safeParse({
+      frequency: "weekly",
+      interval: 2,
+      daysOfWeek: [1, 3, 5],
+    }).success).toBe(true);
+    expect(recurrenceRuleSchema.safeParse({
+      frequency: "monthly",
+      interval: 1,
+      dayOfMonth: 31,
+    }).success).toBe(true);
+
+    expect(recurrenceRuleSchema.safeParse({
+      frequency: "daily",
+      interval: 1,
+      daysOfWeek: [1],
+    }).success).toBe(false);
+    expect(recurrenceRuleSchema.safeParse({
+      frequency: "weekly",
+      interval: 1,
+      daysOfWeek: [1],
+      dayOfMonth: 1,
+    }).success).toBe(false);
+    expect(recurrenceRuleSchema.safeParse({
+      frequency: "monthly",
+      interval: 1,
+      dayOfMonth: 1,
+      daysOfWeek: [1],
+    }).success).toBe(false);
+  });
+
+  it("requires unique weekly UTC weekdays and one exclusive end condition", () => {
+    expect(recurrenceRuleSchema.safeParse({
+      frequency: "weekly",
+      interval: 1,
+      daysOfWeek: [],
+    }).success).toBe(false);
+    expect(recurrenceRuleSchema.safeParse({
+      frequency: "weekly",
+      interval: 1,
+      daysOfWeek: [1, 1],
+    }).success).toBe(false);
+    expect(recurrenceRuleSchema.safeParse({
+      frequency: "daily",
+      interval: 1,
+      endAfter: 10,
+      endDate: "2026-12-01T00:00:00.000Z",
+    }).success).toBe(false);
+    expect(recurrenceRuleSchema.safeParse({
+      frequency: "daily",
+      interval: 1,
+      endAfter: 10,
+    }).success).toBe(true);
+    expect(recurrenceRuleSchema.safeParse({
+      frequency: "daily",
+      interval: 1,
+      endDate: "2026-12-01T00:00:00.000Z",
+    }).success).toBe(true);
+  });
+});
 
 describe("event schemas", () => {
+  it("keeps participant batches within D1's 100-parameter statement limit", () => {
+    expect(eventParticipantsBatchSchema.safeParse({
+      user_ids: Array.from({ length: 99 }, (_, index) => `user-${index}`),
+    }).success).toBe(true);
+    expect(eventParticipantsBatchSchema.safeParse({
+      user_ids: Array.from({ length: 100 }, (_, index) => `user-${index}`),
+    }).success).toBe(false);
+  });
+
   it("keeps event auto-archive controls in event and template payloads", () => {
     expect(
       eventSchema.parse({
@@ -70,7 +153,27 @@ describe("event schemas", () => {
     expect(updateTemplateSchema.parse({ auto_archive: false })).toMatchObject({ auto_archive: false });
   });
 
-  it("requires poll events to have an end time and 2-10 options", () => {
+  it("accepts canonical media ids in template create and update payloads", () => {
+    const attachments = ["Abcdefghijklmnopqrstu"];
+
+    expect(createTemplateSchema.parse({
+      type: "social",
+      title: "Guild Run",
+      start_time: "20:00",
+      recurrence_rule: { frequency: "daily", interval: 1 },
+      attachments,
+    })).toMatchObject({ attachments });
+
+    expect(updateTemplateSchema.parse({ attachments })).toEqual({ attachments });
+  });
+
+  it("accepts only source-owned event types while validating poll requirements", () => {
+    expect(createEventSchema.safeParse({
+      type: "custom_event",
+      title: "Custom",
+      start_at: "2026-05-07T19:00:00.000Z",
+    }).success).toBe(false);
+
     expect(createEventSchema.safeParse({
       type: "poll",
       title: "Next activity?",

@@ -1,40 +1,36 @@
-import { EVENT_TYPES, type RecurringTemplate } from "@guild/shared";
+import type { EventClassQuotaInput, EventType, RecurrenceRule, RecurringTemplate } from "@guild/shared";
 import { computeNextOccurrence, localWeekdayToUtc, utcWeekdayToLocal } from "@guild/shared/utils/recurrence";
+import { toClassQuotaInputs } from "./class-quota-view";
 
 export { localWeekdayToUtc, utcWeekdayToLocal };
 
-export type RecurrenceFreq = "daily" | "weekly" | "monthly";
+export type RecurrenceFreq = RecurrenceRule["frequency"];
 export type RecurrenceEndMode = "never" | "date" | "count";
 export type DurationUnit = "minutes" | "hours";
 
 export type RecurringTemplateFormPayload = {
-  type: (typeof EVENT_TYPES)[number];
+  type: EventType;
   title: string;
   description?: string;
   /** UTC wall-clock "HH:mm" — converted from the local form input before submit. */
   start_time: string;
   duration_minutes?: number;
   capacity?: number;
-  recurrence_rule: {
-    frequency: RecurrenceFreq;
-    interval: number;
-    daysOfWeek?: number[];
-    dayOfMonth?: number;
-    endAfter?: number;
-    endDate?: string;
-  };
+  recurrence_rule: RecurrenceRule;
   visibility_offset_minutes?: number;
   auto_archive?: boolean;
+  class_quotas: EventClassQuotaInput[];
 };
 
 export type RecurringTemplateFormState = {
   title: string;
-  eventType: (typeof EVENT_TYPES)[number];
+  eventType: EventType | "";
   description: string;
   startTime: string;
   durationValue: number;
   durationUnit: DurationUnit;
   capacity: string;
+  classQuotas: EventClassQuotaInput[];
   visibilityOffsetDays: number | "";
   visibilityOffsetHours: number | "";
   visibilityOffsetMinutes: number | "";
@@ -49,6 +45,47 @@ export type RecurringTemplateFormState = {
 };
 
 export const WEEKDAY_KEYS = ["weekday.sun", "weekday.mon", "weekday.tue", "weekday.wed", "weekday.thu", "weekday.fri", "weekday.sat"] as const;
+
+export function buildRecurrenceRule(
+  formState: Pick<
+    RecurringTemplateFormState,
+    | "recurrenceFreq"
+    | "recurrenceInterval"
+    | "recurrenceDays"
+    | "recurrenceMonthDay"
+    | "recurrenceEndMode"
+    | "recurrenceEndDate"
+    | "recurrenceEndCount"
+  >,
+  anchorIso: string,
+): RecurrenceRule {
+  const interval = Math.max(1, Number.parseInt(formState.recurrenceInterval || "1", 10));
+  const end = formState.recurrenceEndMode === "count"
+    ? { endAfter: Math.max(1, Number.parseInt(formState.recurrenceEndCount || "1", 10)) }
+    : formState.recurrenceEndMode === "date" && formState.recurrenceEndDate.trim()
+      ? { endDate: new Date(formState.recurrenceEndDate).toISOString() }
+      : {};
+
+  if (formState.recurrenceFreq === "daily") {
+    return { frequency: "daily", interval, ...end };
+  }
+  if (formState.recurrenceFreq === "weekly") {
+    return {
+      frequency: "weekly",
+      interval,
+      daysOfWeek: Array.from(new Set(
+        formState.recurrenceDays.map((day) => localWeekdayToUtc(day, anchorIso)),
+      )).sort((a, b) => a - b),
+      ...end,
+    };
+  }
+  return {
+    frequency: "monthly",
+    interval,
+    dayOfMonth: Math.max(1, Math.min(31, Number.parseInt(formState.recurrenceMonthDay || "1", 10))),
+    ...end,
+  };
+}
 
 /**
  * Build a synthetic ISO string whose local-vs-UTC day shift matches the given
@@ -99,7 +136,8 @@ function durationFromMinutes(totalMinutes: number | null): { value: number; unit
 export function buildFormState(template: RecurringTemplate | null): RecurringTemplateFormState {
   const duration = durationFromMinutes(template?.duration_minutes ?? null);
   const totalMinutes = template?.visibility_offset_minutes ?? null;
-  const storedDays = template?.recurrence_rule?.daysOfWeek ?? [1, 3, 5];
+  const recurrenceRule = template?.recurrence_rule;
+  const storedDays = recurrenceRule?.frequency === "weekly" ? recurrenceRule.daysOfWeek : [1, 3, 5];
   // start_time is stored as UTC; anchor on the instant at that UTC time so the
   // weekday conversion matches the viewer's actual local offset.
   const anchorIso = template ? tzOffsetToAnchorIso(0, template.start_time) : null;
@@ -108,26 +146,27 @@ export function buildFormState(template: RecurringTemplate | null): RecurringTem
     : storedDays;
   return {
     title: template?.title ?? "",
-    eventType: (template?.type as (typeof EVENT_TYPES)[number]) ?? ("" as (typeof EVENT_TYPES)[number]),
+    eventType: template?.type ?? "",
     description: template?.description ?? "",
     startTime: template ? utcTimeToLocalTime(template.start_time) : "00:00",
     durationValue: duration.value,
     durationUnit: duration.unit,
     capacity: template?.capacity === null ? "" : String(template?.capacity ?? ""),
-    recurrenceFreq: template?.recurrence_rule?.frequency ?? "weekly",
-    recurrenceInterval: String(template?.recurrence_rule?.interval ?? 1),
+    classQuotas: toClassQuotaInputs(template?.class_quotas ?? []),
+    recurrenceFreq: recurrenceRule?.frequency ?? "weekly",
+    recurrenceInterval: String(recurrenceRule?.interval ?? 1),
     recurrenceDays: localDays,
-    recurrenceMonthDay: template?.recurrence_rule?.dayOfMonth ? String(template.recurrence_rule.dayOfMonth) : "1",
-    recurrenceEndMode: template?.recurrence_rule?.endDate
+    recurrenceMonthDay: recurrenceRule?.frequency === "monthly" ? String(recurrenceRule.dayOfMonth) : "1",
+    recurrenceEndMode: recurrenceRule?.endDate
       ? "date"
-      : template?.recurrence_rule?.endAfter
+      : recurrenceRule?.endAfter
         ? "count"
         : "never",
-    recurrenceEndDate: template?.recurrence_rule?.endDate
-      ? template.recurrence_rule.endDate.slice(0, 10)
+    recurrenceEndDate: recurrenceRule?.endDate
+      ? recurrenceRule.endDate.slice(0, 10)
       : "",
-    recurrenceEndCount: template?.recurrence_rule?.endAfter
-      ? String(template.recurrence_rule.endAfter)
+    recurrenceEndCount: recurrenceRule?.endAfter
+      ? String(recurrenceRule.endAfter)
       : "13",
     visibilityOffsetDays: totalMinutes != null ? Math.floor(totalMinutes / 1440) : 0,
     visibilityOffsetHours: totalMinutes != null ? Math.floor((totalMinutes % 1440) / 60) : 0,
@@ -171,17 +210,7 @@ export function computeNextLifecyclePreview(
   if (!utcTime) return null;
 
   const anchorIso = tzOffsetToAnchorIso(timezoneOffsetMinutes, formState.startTime);
-  const interval = Math.max(1, Number.parseInt(formState.recurrenceInterval || "1", 10));
-  const daysOfWeek =
-    formState.recurrenceFreq === "weekly"
-      ? Array.from(new Set(formState.recurrenceDays.map((d) => localWeekdayToUtc(d, anchorIso)))).sort((a, b) => a - b)
-      : undefined;
-  const dayOfMonth =
-    formState.recurrenceFreq === "monthly"
-      ? Math.max(1, Math.min(31, Number.parseInt(formState.recurrenceMonthDay || "1", 10)))
-      : undefined;
-
-  const rule = { frequency: formState.recurrenceFreq, interval, daysOfWeek, dayOfMonth };
+  const rule = buildRecurrenceRule(formState, anchorIso);
 
   const now = new Date();
   let referenceDate: Date;

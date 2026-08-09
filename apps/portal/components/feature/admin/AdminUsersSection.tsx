@@ -1,46 +1,65 @@
-import { PortalCard } from "../../shared/PortalCard";
 import type { AdminRole } from "@guild/shared";
 import {
   ActionIcon,
   Alert,
   Badge,
+  Button,
   Group,
+  Menu,
+  Paper,
+  SegmentedControl,
   Skeleton,
-  Progress,
-  ScrollArea,
   Stack,
   Text,
   TextInput,
-
+  UnstyledButton,
 } from "@mantine/core";
 import { CopyIcon, EyeIcon, KeyIcon, LockOpenIcon, PlayIcon, PlayerPauseIcon, SearchIcon, TrashIcon, UserPlusIcon } from "@portal/components/icons";
 import { IconDotsVertical } from "@tabler/icons-react";
 import {
-  InfiniTable,
+  type ColumnDef,
+  type PaginationState,
+  type SortingState,
   getCoreRowModel,
   getPaginationRowModel,
   getSortedRowModel,
   useReactTable,
-} from "@portal/components/shared/InfiniTable";
-import type { ColumnDef, PaginationState, SortingState } from "@portal/components/shared/InfiniTable";
-import { useMemo, useRef, useState } from "react";
+} from "@tanstack/react-table";
+import { DataTableAdapter } from "@portal/components/shared/DataTableAdapter";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useClipboard } from "@mantine/hooks";
-import { type ContextMenuItemOptions, useContextMenu } from "mantine-contextmenu";
-import type { MouseEvent as ReactMouseEvent } from "react";
+import type {
+  KeyboardEvent as ReactKeyboardEvent,
+  MouseEvent as ReactMouseEvent,
+} from "react";
 import { useTranslation } from "react-i18next";
-import { TablePagination } from "../../shared/TablePagination";
+import { DataTablePagination } from "../../shared/DataTablePagination";
 import type { UsersListResponse } from "../../../services/UserService";
+import { resolveClassCatalogItem, useClassCatalogStore } from "../../../stores/class-catalog";
+import type { AdminUserPendingAction } from "../../../hooks/useAdminMutations";
+import { useAuthStore } from "../../../stores/auth";
+import { canManageUserByRoleLevel, userCanAccessAdmin } from "../../../utils/permissions";
 
 export type AdminUserRow = UsersListResponse["data"][number];
+
+type ActionMenuContext = {
+  userIds: string[];
+  x: number;
+  y: number;
+  returnFocusTo: HTMLElement | null;
+};
 
 type AdminUsersSectionProps = {
   usersLoading: boolean;
   usersError: boolean;
-  isAdmin: boolean;
+  canEditUsers: boolean;
+  canAssignUserRoles: boolean;
+  canActivateUsers: boolean;
+  canDeleteUsers: boolean;
+  canResetUserPasswords: boolean;
   onOpenCreateMember: () => void;
   selectedUserIds: string[];
-  batchSelectionLimit: number;
-  onBatchRole: (userIds: string[], role: string) => void;
+  onBatchRole: (userIds: string[], role: string, roleName: string) => void;
   onBatchActivate: (userIds: string[]) => void;
   onBatchDeactivate: (userIds: string[]) => void;
   onBatchDelete: (userIds: string[]) => void;
@@ -53,12 +72,7 @@ type AdminUsersSectionProps = {
   batchActivatePending: boolean;
   batchDeactivatePending: boolean;
   batchDeletePending: boolean;
-  singleRolePending: boolean;
-  singleActivationPending: boolean;
-  singleResetPasswordPending: boolean;
-  singleResetLoginLockPending: boolean;
-  isBatchPending: boolean;
-  batchProgress: number;
+  isSingleActionPending: (userId: string, action: AdminUserPendingAction) => boolean;
   userRows: AdminUserRow[];
   userColumns: ColumnDef<AdminUserRow, unknown>[];
   onOpenMemberDetail: (userId: string) => void;
@@ -71,10 +85,13 @@ type AdminUsersSectionProps = {
 export function AdminUsersSection({
   usersLoading,
   usersError,
-  isAdmin,
+  canEditUsers,
+  canAssignUserRoles,
+  canActivateUsers,
+  canDeleteUsers,
+  canResetUserPasswords,
   onOpenCreateMember,
   selectedUserIds,
-  batchSelectionLimit,
   onBatchRole,
   onBatchActivate,
   onBatchDeactivate,
@@ -88,12 +105,7 @@ export function AdminUsersSection({
   batchActivatePending,
   batchDeactivatePending,
   batchDeletePending,
-  singleRolePending,
-  singleActivationPending,
-  singleResetPasswordPending,
-  singleResetLoginLockPending,
-  isBatchPending,
-  batchProgress,
+  isSingleActionPending,
   userRows,
   userColumns,
   onOpenMemberDetail,
@@ -104,19 +116,81 @@ export function AdminUsersSection({
 }: AdminUsersSectionProps) {
   const { t } = useTranslation("admin");
   const { t: tc } = useTranslation("common");
+  const classCatalog = useClassCatalogStore((state) => state.items);
   const clipboard = useClipboard();
+  const currentUser = useAuthStore((state) => state.user);
   const loadErrorMessage = tc("loadError");
   const [sorting, setSorting] = useState<SortingState>([]);
   const [pagination, setPagination] = useState<PaginationState>({ pageIndex: 0, pageSize: 20 });
   const [selectionAnchorId, setSelectionAnchorId] = useState<string | null>(null);
-  const { showContextMenu } = useContextMenu();
+  const [actionMenu, setActionMenu] = useState<ActionMenuContext | null>(null);
+  const [statusFilter, setStatusFilter] = useState<"all" | "active" | "inactive">("all");
 
   const selectedIdSet = useMemo(() => new Set(selectedUserIds), [selectedUserIds]);
   const usersById = useMemo(() => new Map(userRows.map((row) => [row.user.id, row])), [userRows]);
-  const contextMenuRef = useRef<(userId: string, event: ReactMouseEvent<HTMLTableRowElement>) => void>(() => {});
+
+  /* userRows 已经在 controller 里按搜索词过滤过，全部成员都在内存里，所以
+     启用/停用这一层纯粹是视图筛选，不用再发请求。 */
+  const memberStats = useMemo(() => {
+    let active = 0;
+    let managementAccess = 0;
+    for (const row of userRows) {
+      if (row.user.is_active) active += 1;
+      if (userCanAccessAdmin(row.user)) managementAccess += 1;
+    }
+    return { total: userRows.length, active, inactive: userRows.length - active, managementAccess };
+  }, [userRows]);
+
+  const visibleRows = useMemo(() => {
+    if (statusFilter === "all") return userRows;
+    const wantActive = statusFilter === "active";
+    return userRows.filter((row) => row.user.is_active === wantActive);
+  }, [userRows, statusFilter]);
+
+  // A changed status filter invalidates the current page index.
+  useEffect(() => {
+    setPagination((previous) => (previous.pageIndex === 0 ? previous : { ...previous, pageIndex: 0 }));
+  }, [statusFilter]);
+
+  const openActionMenu = useCallback((
+    userId: string,
+    event: ReactMouseEvent<HTMLElement> | ReactKeyboardEvent<HTMLElement>,
+  ) => {
+    event.preventDefault();
+    event.stopPropagation();
+    const userIds = selectedIdSet.has(userId) && selectedUserIds.length > 0
+      ? selectedUserIds
+      : [userId];
+    const targetRect = event.currentTarget.getBoundingClientRect();
+    const openedFromContextMenu = event.type === "contextmenu" && "clientX" in event;
+
+    if (!selectedIdSet.has(userId)) {
+      onSelectionChange([userId]);
+      setSelectionAnchorId(userId);
+    }
+
+    setActionMenu({
+      userIds,
+      x: openedFromContextMenu ? event.clientX : targetRect.right,
+      y: openedFromContextMenu ? event.clientY : targetRect.bottom,
+      returnFocusTo: openedFromContextMenu ? null : event.currentTarget,
+    });
+  }, [onSelectionChange, selectedIdSet, selectedUserIds]);
+
+  useEffect(() => {
+    if (!actionMenu) {
+      return;
+    }
+
+    const frame = window.requestAnimationFrame(() => {
+      document
+        .querySelector<HTMLElement>("[data-admin-user-action-menu] [data-menu-item]:not([data-disabled])")
+        ?.focus();
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [actionMenu]);
 
   const allColumns = useMemo(() => {
-    if (!isAdmin) return userColumns;
     const actionColumn: ColumnDef<AdminUserRow, unknown> = {
       header: "",
       id: "actions",
@@ -128,8 +202,7 @@ export function AdminUsersSection({
           color="gray"
           size="sm"
           onClick={(e) => {
-            e.stopPropagation();
-            contextMenuRef.current(row.original.user.id, e as unknown as ReactMouseEvent<HTMLTableRowElement>);
+            openActionMenu(row.original.user.id, e);
           }}
           aria-label={t("member.action.menu")}
         >
@@ -138,10 +211,10 @@ export function AdminUsersSection({
       ),
     };
     return [...userColumns, actionColumn];
-  }, [userColumns, isAdmin, t]);
+  }, [userColumns, openActionMenu, t]);
 
   const table = useReactTable({
-    data: userRows,
+    data: visibleRows,
     columns: allColumns,
     state: { sorting, pagination },
     onSortingChange: setSorting,
@@ -153,19 +226,13 @@ export function AdminUsersSection({
     getRowId: (row) => row.user.id,
   });
 
-  const orderedRowIds = useMemo(
-    () => table.getRowModel().rows.map((row) => row.original.user.id),
-    [table, sorting, userRows],
-  );
+  const orderedRowIds = table.getRowModel().rows.map((row) => row.original.user.id);
+  const currentPageUserIdSet = new Set(orderedRowIds);
 
   const handleRowClick = (
     userId: string,
     event: ReactMouseEvent<HTMLTableRowElement>,
   ) => {
-    if (!isAdmin) {
-      return;
-    }
-
     const orderedIndex = orderedRowIds.indexOf(userId);
     if (orderedIndex === -1) {
       return;
@@ -208,266 +275,349 @@ export function AdminUsersSection({
     setSelectionAnchorId(userId);
   };
 
-  const handleRowContextMenu = (
+  const handleRowKeyDown = (
     userId: string,
-    event: ReactMouseEvent<HTMLTableRowElement>,
+    event: ReactKeyboardEvent<HTMLTableRowElement>,
   ) => {
-    if (!isAdmin) {
+    if (event.key === "Enter") {
+      event.preventDefault();
+      onOpenMemberDetail(userId);
       return;
     }
 
-    const nextContextUserIds = selectedIdSet.has(userId) && selectedUserIds.length > 0
-      ? selectedUserIds
-      : [userId];
-    const nextContextRows = nextContextUserIds
-      .map((contextUserId) => usersById.get(contextUserId))
-      .filter(Boolean) as AdminUserRow[];
-    const isBatchContext = nextContextUserIds.length > 1;
-    const contextSingleUserId = nextContextUserIds.length === 1 ? nextContextUserIds[0] ?? null : null;
-    const anyActiveInContext = nextContextRows.some((row) => row.user.is_active);
-    const anyInactiveInContext = nextContextRows.some((row) => !row.user.is_active);
-
-    if (!selectedIdSet.has(userId)) {
-      onSelectionChange([userId]);
+    if (event.key === " ") {
+      event.preventDefault();
+      const withModifier = event.ctrlKey || event.metaKey;
+      if (withModifier) {
+        const nextSet = new Set(selectedUserIds);
+        if (nextSet.has(userId)) nextSet.delete(userId);
+        else nextSet.add(userId);
+        onSelectionChange(Array.from(nextSet));
+      } else {
+        onSelectionChange([userId]);
+      }
       setSelectionAnchorId(userId);
+      return;
     }
 
-    const roleItems: ContextMenuItemOptions[] = roles
-      .slice()
-      .sort((a, b) => a.level - b.level)
-      .map((role) => ({
-        key: `role-${role.id}`,
-        disabled:
-          (isBatchContext && role.id === "admin") ||
-          singleRolePending ||
-          batchRolePending,
-        onClick: () => {
-          if (isBatchContext) {
-            if (role.id === "admin") {
-              return;
-            }
-            onBatchRole(nextContextUserIds, role.id);
-            return;
-          }
-
-          if (!contextSingleUserId) {
-            return;
-          }
-
-          onSingleRoleChange(contextSingleUserId, role.id);
-        },
-        title: role.name,
-      }));
-
-    const items: ContextMenuItemOptions[] = [
-      {
-        key: "selection-label",
-        className: "infini-menu-item--label",
-        disabled: true,
-        onClick: () => {},
-        title: isBatchContext
-          ? t("member.context.batchSelected", { count: nextContextUserIds.length })
-          : nextContextRows[0]?.user.username ?? "-",
-      },
-      { key: "divider-identity" },
-      {
-        key: "detail",
-        disabled: !contextSingleUserId,
-        icon: <EyeIcon size={14} />,
-        onClick: () => {
-          if (contextSingleUserId) {
-            onOpenMemberDetail(contextSingleUserId);
-          }
-        },
-        title: t("member.action.detail"),
-      },
-      {
-        key: "copy-row",
-        icon: <CopyIcon size={14} />,
-        onClick: () => {
-          const lines = nextContextRows.map((row) =>
-            [
-              row.user.username,
-              row.profile.classes.join(", "),
-              String(row.profile.power),
-              row.user.role,
-              row.user.is_active ? t("member.status.active") : t("member.status.inactive"),
-            ].join(", "),
-          );
-          clipboard.copy(lines.join("\n") + "\n");
-        },
-        title: isBatchContext ? t("member.context.copyRows") : t("member.context.copyRow"),
-      },
-      {
-        key: "change-role",
-        items: roleItems,
-        title: t("member.context.changeRole"),
-      },
-      ...(anyInactiveInContext
-        ? [{
-            key: "activate",
-            disabled: singleActivationPending || batchActivatePending,
-            icon: <PlayIcon size={14} />,
-            onClick: () => {
-              if (isBatchContext) {
-                onBatchActivate(nextContextUserIds);
-              } else if (contextSingleUserId) {
-                onSingleActivate(contextSingleUserId);
-              }
-            },
-            title: isBatchContext ? t("member.context.batchActivate") : t("member.reactivate"),
-          } satisfies ContextMenuItemOptions]
-        : []),
-      ...(anyActiveInContext
-        ? [{
-            key: "deactivate",
-            disabled: singleActivationPending || batchDeactivatePending,
-            icon: <PlayerPauseIcon size={14} />,
-            onClick: () => {
-              if (isBatchContext) {
-                onBatchDeactivate(nextContextUserIds);
-              } else if (contextSingleUserId) {
-                onSingleDeactivate(contextSingleUserId);
-              }
-            },
-            title: isBatchContext ? t("member.context.batchDeactivate") : t("member.deactivate"),
-          } satisfies ContextMenuItemOptions]
-        : []),
-      ...(!isBatchContext && contextSingleUserId
-        ? [{
-            key: "reset-password",
-            disabled: singleResetPasswordPending,
-            icon: <KeyIcon size={14} />,
-            onClick: () => {
-              onSingleResetPassword(contextSingleUserId);
-            },
-            title: t("member.resetPassword"),
-          } satisfies ContextMenuItemOptions]
-        : []),
-      ...(!isBatchContext && contextSingleUserId
-        ? [{
-            key: "reset-login-lock",
-            disabled: singleResetLoginLockPending,
-            icon: <LockOpenIcon size={14} />,
-            onClick: () => {
-              onSingleResetLoginLock(contextSingleUserId);
-            },
-            title: t("member.resetLoginLock"),
-          } satisfies ContextMenuItemOptions]
-        : []),
-      { key: "divider-actions" },
-      {
-        key: "create-member",
-        icon: <UserPlusIcon size={14} />,
-        onClick: () => {
-          onOpenCreateMember();
-        },
-        title: t("member.context.createMember"),
-      },
-      {
-        key: "delete",
-        className: "infini-menu-item--danger",
-        color: "red",
-        disabled: batchDeletePending,
-        icon: <TrashIcon size={14} />,
-        onClick: () => {
-          onBatchDelete(nextContextUserIds);
-        },
-        title: isBatchContext ? t("member.context.batchDelete") : t("member.context.delete"),
-      },
-    ];
-
-    showContextMenu(items)(event);
+    if (event.key === "ContextMenu" || (event.key === "F10" && event.shiftKey)) {
+      openActionMenu(userId, event);
+    }
   };
 
-  contextMenuRef.current = handleRowContextMenu;
+  const contextUserIds = (actionMenu?.userIds ?? [])
+    .filter((userId) => currentPageUserIdSet.has(userId));
+  const contextRows = contextUserIds
+    .map((userId) => usersById.get(userId))
+    .filter(Boolean) as AdminUserRow[];
+  const isBatchContext = contextUserIds.length > 1;
+  const contextSingleUserId = contextUserIds.length === 1 ? contextUserIds[0] ?? null : null;
+  const contextHasProtectedTarget = contextRows.some(
+    (row) => !canManageUserByRoleLevel(row.user, currentUser),
+  );
+  const anyActiveInContext = contextRows.some((row) => row.user.is_active);
+  const anyInactiveInContext = contextRows.some((row) => !row.user.is_active);
+  const contextActionPending = (action: AdminUserPendingAction) =>
+    contextSingleUserId ? isSingleActionPending(contextSingleUserId, action) : false;
+  const roleActionPending = isBatchContext ? batchRolePending : contextActionPending("change-role");
+  const activateActionPending = isBatchContext ? batchActivatePending : contextActionPending("activate");
+  const deactivateActionPending = isBatchContext ? batchDeactivatePending : contextActionPending("deactivate");
+
+  const copyContextRows = () => {
+    const lines = contextRows.map((row) =>
+      [
+        row.user.username,
+        row.profile.classes
+          .map((id) => resolveClassCatalogItem(id, classCatalog).label)
+          .join(", "),
+        String(row.profile.power),
+        row.user.role_name,
+        row.user.is_active ? t("member.status.active") : t("member.status.inactive"),
+      ].join(", "),
+    );
+    clipboard.copy(lines.join("\n") + "\n");
+  };
+
+  const closeActionMenu = () => {
+    const returnFocusTo = actionMenu?.returnFocusTo;
+    setActionMenu(null);
+    if (returnFocusTo) {
+      window.requestAnimationFrame(() => returnFocusTo.focus());
+    }
+  };
 
   return (
-    <Stack gap={12}>
+    /* admin-fill：把 .admin-page__panel 给的高度原样传给下面的表格卡片。 */
+    <Stack gap={12} className="admin-fill">
+      <Menu
+        opened={actionMenu !== null}
+        onClose={closeActionMenu}
+        position="bottom-start"
+        withinPortal
+        shadow="md"
+        width={240}
+      >
+        <Menu.Target>
+          <span
+            aria-hidden="true"
+            style={{
+              position: "fixed",
+              left: actionMenu?.x ?? -1,
+              top: actionMenu?.y ?? -1,
+              width: 1,
+              height: 1,
+              pointerEvents: "none",
+            }}
+          />
+        </Menu.Target>
+        <Menu.Dropdown data-admin-user-action-menu>
+          <Menu.Label>
+            {isBatchContext
+              ? t("member.context.batchSelected", { count: contextUserIds.length })
+              : contextRows[0]?.user.username ?? "-"}
+          </Menu.Label>
+          <Menu.Divider />
+          <Menu.Item
+            leftSection={<EyeIcon size={14} />}
+            disabled={!contextSingleUserId}
+            onClick={() => {
+              if (contextSingleUserId) {
+                onOpenMemberDetail(contextSingleUserId);
+              }
+            }}
+          >
+            {t("member.action.detail")}
+          </Menu.Item>
+          <Menu.Item leftSection={<CopyIcon size={14} />} onClick={copyContextRows}>
+            {isBatchContext ? t("member.context.copyRows") : t("member.context.copyRow")}
+          </Menu.Item>
+          <Menu.Sub>
+            <Menu.Sub.Target>
+              <Menu.Sub.Item disabled={!canAssignUserRoles || roleActionPending || contextHasProtectedTarget}>
+                {t("member.context.changeRole")}
+              </Menu.Sub.Item>
+            </Menu.Sub.Target>
+            <Menu.Sub.Dropdown>
+              {roles
+                .slice()
+                .sort((a, b) => a.level - b.level)
+                .map((role) => (
+                  <Menu.Item
+                    key={role.id}
+                    disabled={
+                      !canAssignUserRoles || contextHasProtectedTarget || roleActionPending
+                    }
+                    onClick={() => {
+                      if (isBatchContext) {
+                        onBatchRole(contextUserIds, role.id, role.name);
+                      } else if (contextSingleUserId) {
+                        onSingleRoleChange(contextSingleUserId, role.id);
+                      }
+                    }}
+                  >
+                    {role.name}
+                  </Menu.Item>
+                ))}
+            </Menu.Sub.Dropdown>
+          </Menu.Sub>
+          {anyInactiveInContext ? (
+            <Menu.Item
+              leftSection={<PlayIcon size={14} />}
+              disabled={!canActivateUsers || activateActionPending || contextHasProtectedTarget}
+              onClick={() => {
+                if (isBatchContext) {
+                  onBatchActivate(contextUserIds);
+                } else if (contextSingleUserId) {
+                  onSingleActivate(contextSingleUserId);
+                }
+              }}
+            >
+              {isBatchContext ? t("member.context.batchActivate") : t("member.reactivate")}
+            </Menu.Item>
+          ) : null}
+          {anyActiveInContext ? (
+            <Menu.Item
+              leftSection={<PlayerPauseIcon size={14} />}
+              disabled={!canActivateUsers || deactivateActionPending || contextHasProtectedTarget}
+              onClick={() => {
+                if (isBatchContext) {
+                  onBatchDeactivate(contextUserIds);
+                } else if (contextSingleUserId) {
+                  onSingleDeactivate(contextSingleUserId);
+                }
+              }}
+            >
+              {isBatchContext ? t("member.context.batchDeactivate") : t("member.deactivate")}
+            </Menu.Item>
+          ) : null}
+          {!isBatchContext && contextSingleUserId ? (
+            <>
+              <Menu.Item
+                leftSection={<KeyIcon size={14} />}
+                disabled={!canResetUserPasswords || contextActionPending("reset-password") || contextHasProtectedTarget}
+                onClick={() => onSingleResetPassword(contextSingleUserId)}
+              >
+                {t("member.resetPassword")}
+              </Menu.Item>
+              <Menu.Item
+                leftSection={<LockOpenIcon size={14} />}
+                disabled={!canResetUserPasswords || contextActionPending("reset-login-lock") || contextHasProtectedTarget}
+                onClick={() => onSingleResetLoginLock(contextSingleUserId)}
+              >
+                {t("member.resetLoginLock")}
+              </Menu.Item>
+            </>
+          ) : null}
+          <Menu.Divider />
+          {canEditUsers ? (
+            <Menu.Item leftSection={<UserPlusIcon size={14} />} onClick={onOpenCreateMember}>
+              {t("member.context.createMember")}
+            </Menu.Item>
+          ) : null}
+          <Menu.Item
+            color="red"
+            leftSection={<TrashIcon size={14} />}
+            disabled={!canDeleteUsers || batchDeletePending || contextHasProtectedTarget}
+            onClick={() => onBatchDelete(contextUserIds)}
+          >
+            {isBatchContext ? t("member.context.batchDelete") : t("member.context.delete")}
+          </Menu.Item>
+        </Menu.Dropdown>
+      </Menu>
+
       {usersLoading ? <Stack gap={8}>{Array.from({ length: 5 }).map((_, i) => <Skeleton key={i} height={18} />)}</Stack> : null}
       {usersError ? <Alert color="red" title={loadErrorMessage} /> : null}
       {!usersLoading && !usersError ? (
         <>
-          {isAdmin ? (
-            <Group gap={8} wrap="wrap" align="center">
-              <TextInput
-                value={memberSearch}
-                onChange={(event) => onMemberSearchChange(event.currentTarget.value)}
-                placeholder={t("member.search.placeholder")}
-                leftSection={<SearchIcon size={14} />}
-                style={{ flex: 1 }} miw={200} maw={360}
-                size="sm"
-              />
-              <Text c="dimmed" size="sm">
-                {t("member.selectionHint")}
-              </Text>
-              <Text c="dimmed" size="sm">
-                {t("member.selected", { count: selectedUserIds.length })} / {batchSelectionLimit}
-              </Text>
-              {isBatchPending || batchProgress > 0 ? (
-                <Progress value={batchProgress} animated={isBatchPending} color={isBatchPending ? "blue" : "green"} style={{ width: "100%" }} />
-              ) : null}
-            </Group>
-          ) : null}
+          <div className="admin-toolbar">
+                <TextInput
+                  className="admin-toolbar__search"
+                  value={memberSearch}
+                  onChange={(event) => onMemberSearchChange(event.currentTarget.value)}
+                  placeholder={t("member.search.placeholder")}
+                  aria-label={t("member.search.aria")}
+                  leftSection={<SearchIcon size={14} />}
+                  size="sm"
+                />
+                <SegmentedControl
+                  size="xs"
+                  value={statusFilter}
+                  onChange={(value) => setStatusFilter(value as "all" | "active" | "inactive")}
+                  data={[
+                    { value: "all", label: t("member.filter.all") },
+                    { value: "active", label: t("member.status.active") },
+                    { value: "inactive", label: t("member.status.inactive") },
+                  ]}
+                />
+                <div className="admin-toolbar__spacer" />
+                {canEditUsers ? (
+                  <Button size="sm" leftSection={<UserPlusIcon size={14} />} onClick={onOpenCreateMember}>
+                    {t("member.create.button")}
+                  </Button>
+                ) : null}
+          </div>
 
-          <PortalCard interactive={false} className="admin-member-table-desktop">
-            <ScrollArea type="auto" style={{ padding: "1.2rem" }}>
-              <InfiniTable
+          <Text c="dimmed" size="xs">{t("member.accountStatusDescription")}</Text>
+
+          <div className="admin-stats">
+                <div className="admin-stat">
+                  <div className="admin-stat__value">{memberStats.total}</div>
+                  <div className="admin-stat__label">{t("member.stat.total")}</div>
+                </div>
+                <div className="admin-stat">
+                  <div className="admin-stat__value admin-stat__value--ok">{memberStats.active}</div>
+                  <div className="admin-stat__label">{t("member.stat.active")}</div>
+                </div>
+                <div className="admin-stat">
+                  <div className={`admin-stat__value${memberStats.inactive > 0 ? " admin-stat__value--warn" : ""}`}>
+                    {memberStats.inactive}
+                  </div>
+                  <div className="admin-stat__label">{t("member.stat.inactive")}</div>
+                </div>
+                <div className="admin-stat">
+                  <div className="admin-stat__value">{memberStats.managementAccess}</div>
+                  <div className="admin-stat__label">{t("member.stat.managementAccess")}</div>
+                </div>
+          </div>
+
+          <Paper withBorder radius="md" className="admin-member-table-desktop admin-table-card admin-table-card--fill">
+            <>
+              <DataTableAdapter
+                className="admin-table"
                 table={table}
                 highlightOnHover
+                striped={false}
+                withTableBorder={false}
+                withColumnBorders={false}
                 virtualize
-                maxHeight="65vh"
+                maxHeight="none"
                 onRowDoubleClick={(row) => onOpenMemberDetail(row.original.user.id)}
                 onRowClick={(row, event) => handleRowClick(row.original.user.id, event)}
-                onRowContextMenu={(row, event) => handleRowContextMenu(row.original.user.id, event)}
+                onRowContextMenu={(row, event) => openActionMenu(row.original.user.id, event)}
+                onRowKeyDown={(row, event) => handleRowKeyDown(row.original.user.id, event)}
+                rowAriaLabel={(row) => t("member.aria.row", { username: row.original.user.username })}
+                rowAriaSelected={(row) => selectedIdSet.has(row.original.user.id)}
                 rowClassName={(row) =>
                   selectedIdSet.has(row.original.user.id) ? "admin-member-row-selected" : undefined
                 }
               />
-              <TablePagination table={table} />
-            </ScrollArea>
-          </PortalCard>
+              <div className="admin-table-card__footer">
+                <DataTablePagination table={table} />
+              </div>
+            </>
+          </Paper>
+
+          {/* 多选操作通过任意选中行的右键菜单或 Shift+F10 进入，并作用于全部选中成员。 */}
+          <Text c="dimmed" size="xs">{t("member.selectionHint")}</Text>
 
           <div className="admin-member-cards-mobile">
             {table.getRowModel().rows.map((row) => {
               const u = row.original.user;
               const p = row.original.profile;
-              const roleDef = roles.find((r) => r.id === u.role);
               return (
-                <PortalCard key={u.id} interactive className={`admin-member-card${selectedIdSet.has(u.id) ? " admin-member-card--selected" : ""}`}>
-                  <div style={{ padding: "0.8rem 1rem" }} onClick={() => onOpenMemberDetail(u.id)}>
-                    <Group justify="space-between" wrap="nowrap" gap={8}>
-                      <div style={{ minWidth: 0, flex: 1 }}>
+                <Paper
+                  key={u.id}
+                  withBorder
+                  radius="md"
+                  className={`admin-member-card${selectedIdSet.has(u.id) ? " admin-member-card--selected" : ""}`}
+                >
+                  <Group justify="space-between" wrap="nowrap" gap={8} style={{ padding: "0.8rem 1rem" }}>
+                    <UnstyledButton
+                      type="button"
+                      style={{ minWidth: 0, flex: 1, textAlign: "start" }}
+                      onClick={() => onOpenMemberDetail(u.id)}
+                      aria-label={t("member.action.openDetailAria", { username: u.username })}
+                    >
                         <Text fw={600} size="sm" truncate>{u.username}</Text>
                         <Group gap={6} mt={2}>
-                          <Badge size="xs" color={roleDef?.color ?? "gray"}>{u.role}</Badge>
+                          <Badge size="xs" color={u.role_color ?? "gray"}>{u.role_name}</Badge>
                           {u.is_active
                             ? <Badge size="xs" color="green">{t("member.status.active")}</Badge>
                             : <Badge size="xs" color="red">{t("member.status.inactive")}</Badge>
                           }
-                          {p.classes[0] ? <Text size="xs" c="dimmed">{p.classes[0]}</Text> : null}
+                          {p.classes[0] ? (
+                            <Text size="xs" c="dimmed">
+                              {resolveClassCatalogItem(p.classes[0], classCatalog).label}
+                            </Text>
+                          ) : null}
                         </Group>
-                      </div>
-                      {isAdmin ? (
-                        <ActionIcon
-                          variant="subtle"
-                          color="gray"
-                          size="sm"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            handleRowContextMenu(u.id, e as unknown as ReactMouseEvent<HTMLTableRowElement>);
-                          }}
-                          aria-label={t("member.action.menu")}
-                        >
-                          <IconDotsVertical size={16} />
-                        </ActionIcon>
-                      ) : null}
-                    </Group>
-                  </div>
-                </PortalCard>
+                    </UnstyledButton>
+                    <ActionIcon
+                        variant="subtle"
+                        color="gray"
+                        size={44}
+                        onClick={(e) => {
+                          openActionMenu(u.id, e);
+                        }}
+                        aria-label={t("member.action.menu")}
+                      >
+                        <IconDotsVertical size={16} />
+                      </ActionIcon>
+                  </Group>
+                </Paper>
               );
             })}
-            <TablePagination table={table} />
+            <DataTablePagination table={table} />
           </div>
         </>
       ) : null}

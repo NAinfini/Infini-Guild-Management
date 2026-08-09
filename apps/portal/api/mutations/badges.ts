@@ -25,6 +25,15 @@ export function updateBadge(id: string, payload: UpdateBadgePayload): Promise<Me
   });
 }
 
+/* 整表重排，跟 reorderClassCatalog 同一套约定：带**完整**的 id 顺序上去，
+   服务端按下标重写 sort_order 并把整张表回给我们。 */
+export function reorderBadges(order: string[]): Promise<MemberBadge[]> {
+  return apiRequest<MemberBadge[]>("/api/badges/reorder", {
+    method: "PATCH",
+    bodyJson: { order },
+  });
+}
+
 export function deleteBadge(id: string): Promise<{ ok: true }> {
   return apiRequest<{ ok: true }>(`/api/badges/${id}`, {
     method: "DELETE",

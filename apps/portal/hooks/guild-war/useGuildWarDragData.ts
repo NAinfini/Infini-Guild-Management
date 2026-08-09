@@ -1,6 +1,9 @@
 import type { GuildWarActiveResponse } from "@guild/shared";
 import { useEffect, useMemo, type Dispatch, type SetStateAction } from "react";
 import type { UsersListResponse } from "../../services/UserService";
+import { useSiteConfigStore } from "@portal/stores/site-config";
+import { getGuildWarMemberStatLabel, getGuildWarMetricValue } from "@portal/utils/game-rules";
+import { GUILD_WAR_KDA_KEY } from "@guild/shared";
 
 export type DragMemberItem = {
   itemId: string;
@@ -53,6 +56,7 @@ type UseGuildWarDragDataParams = {
 };
 
 export function useGuildWarDragData({ activeData, usersData, poolLabel, draft }: UseGuildWarDragDataParams) {
+  const gameRules = useSiteConfigStore((state) => state.gameRules);
   const teams = activeData?.teams ?? [];
   const pool = activeData?.pool ?? [];
   const { teamDraftNames, setTeamDraftNames, setTeamDraftNotes, teamDraftLocks, setTeamDraftLocks, teamOrder, setTeamOrder } = draft;
@@ -101,6 +105,7 @@ export function useGuildWarDragData({ activeData, usersData, poolLabel, draft }:
     if (teams.length === 0) return;
 
     setTeamOrder((current) => {
+      if (current.length === 0) return current;
       const ids = teams.map((team) => team.id);
       const preserved = current.filter((id) => ids.includes(id));
       const missing = ids.filter((id) => !preserved.includes(id));
@@ -110,19 +115,28 @@ export function useGuildWarDragData({ activeData, usersData, poolLabel, draft }:
 
     setTeamDraftNames((current) => {
       const next: Record<string, string> = {};
-      for (const team of teams) next[team.id] = current[team.id] ?? team.team_name;
+      for (const team of teams) {
+        const draftName = current[team.id];
+        if (typeof draftName === "string") next[team.id] = draftName;
+      }
       return shallowRecordEqual(current, next) ? current : next;
     });
 
     setTeamDraftNotes((current) => {
       const next: Record<string, string> = {};
-      for (const team of teams) next[team.id] = current[team.id] ?? team.notes ?? "";
+      for (const team of teams) {
+        const draftNote = current[team.id];
+        if (typeof draftNote === "string") next[team.id] = draftNote;
+      }
       return shallowRecordEqual(current, next) ? current : next;
     });
 
     setTeamDraftLocks((current) => {
       const next: Record<string, boolean> = {};
-      for (const team of teams) next[team.id] = current[team.id] ?? team.is_locked;
+      for (const team of teams) {
+        const draftLock = current[team.id];
+        if (typeof draftLock === "boolean") next[team.id] = draftLock;
+      }
       return shallowRecordEqual(current, next) ? current : next;
     });
   }, [setTeamDraftLocks, setTeamDraftNames, setTeamDraftNotes, setTeamOrder, teams]);
@@ -142,13 +156,7 @@ export function useGuildWarDragData({ activeData, usersData, poolLabel, draft }:
         titleHtml: string | null;
         teamName: string;
         roleTag: string | null;
-        kills: number;
-        deaths: number;
-        assists: number;
-        damage: number;
-        healing: number;
-        buildingDamage: number;
-        credits: number;
+        stats: Record<string, number | null>;
       }
     >();
 
@@ -164,13 +172,7 @@ export function useGuildWarDragData({ activeData, usersData, poolLabel, draft }:
           titleHtml: fullUser?.profile.title_html ?? null,
           teamName,
           roleTag: member.role_tag ?? null,
-          kills: member.stats?.kills ?? 0,
-          deaths: member.stats?.deaths ?? 0,
-          assists: member.stats?.assists ?? 0,
-          damage: member.stats?.damage ?? 0,
-          healing: member.stats?.healing ?? 0,
-          buildingDamage: member.stats?.building_damage ?? 0,
-          credits: member.stats?.credits ?? 0,
+          stats: { ...(member.stats ?? {}) },
         });
       }
     }
@@ -186,7 +188,7 @@ export function useGuildWarDragData({ activeData, usersData, poolLabel, draft }:
           titleHtml: fullUser?.profile.title_html ?? null,
           teamName: "Pool",
           roleTag: null,
-          kills: 0, deaths: 0, assists: 0, damage: 0, healing: 0, buildingDamage: 0, credits: 0,
+          stats: {},
         });
       }
     }
@@ -207,7 +209,7 @@ export function useGuildWarDragData({ activeData, usersData, poolLabel, draft }:
           username: userData?.username ?? member.user_id,
           power: userData?.power ?? 0,
           class: userData?.class ?? "Unknown",
-          subtitle: `${member.role_tag ? `[${member.role_tag}] ` : ""}K/D/A: ${member.stats?.kills ?? 0}/${member.stats?.deaths ?? 0}/${member.stats?.assists ?? 0}`,
+          subtitle: `${member.role_tag ? `[${member.role_tag}] ` : ""}${getGuildWarMemberStatLabel(GUILD_WAR_KDA_KEY, undefined, gameRules)}: ${getGuildWarMetricValue(member.stats, GUILD_WAR_KDA_KEY, gameRules).toFixed(2)}`,
         };
       }),
     }));
@@ -230,7 +232,7 @@ export function useGuildWarDragData({ activeData, usersData, poolLabel, draft }:
     };
 
     return [...teamColumns, poolColumn];
-  }, [lockedTeamIds, orderedTeams, pool, poolLabel, teamDraftNames, userDataMap]);
+  }, [gameRules, lockedTeamIds, orderedTeams, pool, poolLabel, teamDraftNames, userDataMap]);
 
   const memberContainerMap = useMemo(() => {
     const map = new Map<string, string>();

@@ -1,8 +1,17 @@
 import type { WikiArticle, WikiCategory } from "@guild/shared";
-import { DepthButton } from "@portal/components/shared/DepthButton";
-import { DepthToggle } from "@portal/components/shared/DepthToggle";
-import { PortalCard } from "../../shared/PortalCard";
-import { ActionIcon, Alert, Group, Select, Skeleton, Stack, Text, TextInput } from "@mantine/core";
+import {
+  ActionIcon,
+  Alert,
+  Button,
+  Group,
+  Paper,
+  Select,
+  Skeleton,
+  Stack,
+  Text,
+  TextInput,
+  Tooltip,
+} from "@mantine/core";
 import { ArchiveIcon, PinIcon, PlusIcon, SaveIcon, TrashIcon, XIcon } from "@portal/components/icons";
 import { format } from "date-fns";
 import type { ReactNode } from "react";
@@ -10,7 +19,8 @@ import { useMemo } from "react";
 import { useTranslation } from "react-i18next";
 import { EmptyState } from "../../shared/EmptyState";
 import { notifyError } from "../../../utils/notifications";
-import { TipTapEditor, buildTipTapEditorLabels } from "@portal/components/shared/TipTapEditor";
+import { TipTapEditor } from "@portal/components/shared/TipTapEditor";
+import { buildTipTapEditorLabels } from "@portal/components/shared/tiptap-meta";
 
 function formatDateTime(iso: string): string {
   const date = new Date(iso);
@@ -39,6 +49,7 @@ type WikiArticleEditorCardProps = {
   archiveIntent: "none" | "archive" | "unarchive";
   isSaving: boolean;
   isCreating: boolean;
+  isDeleting: boolean;
   canCreateArticle: boolean;
   onArticleTitleChange: (value: string) => void;
   onArticleBodyChange: (value: string) => void;
@@ -69,6 +80,7 @@ export function WikiArticleEditorCard({
   archiveIntent,
   isSaving,
   isCreating,
+  isDeleting,
   canCreateArticle,
   onArticleTitleChange,
   onArticleBodyChange,
@@ -94,67 +106,61 @@ export function WikiArticleEditorCard({
   const pinnedPressed = selectedArticle
     ? (selectedArticle.pinned ? pinnedIntent !== "unpin" : pinnedIntent === "pin")
     : false;
+  const editorBusy = isSaving || isDeleting;
   if (!selectedArticle && !(canEdit && isCreatingArticle)) {
     return (
-      <PortalCard className="wiki-article-editor-card" interactive={false}>
-        <div style={{ padding: "1.2rem" }}>
-          <Stack gap={10}>
-            <Text fw={600}>{t("articleEditor.title")}</Text>
-            <EmptyState title={emptyTitle} />
-          </Stack>
+      <Paper withBorder className="wiki-article-editor-card">
+        <div className="wiki-card-body" style={{ padding: "var(--card-padding)" }}>
+          <Text component="h2" fw={600} className="wiki-article-editor-title">
+            {t("articleEditor.title")}
+          </Text>
+          <EmptyState title={emptyTitle} />
         </div>
-      </PortalCard>
+      </Paper>
     );
   }
 
   return (
-    <PortalCard className="wiki-article-editor-card" interactive={false}>
-      <div style={{ padding: "1.2rem" }}>
-        <Stack gap={12}>
+    <Paper withBorder className="wiki-article-editor-card">
+      {/* 标题行钉住：保存、退出、删除这几个按钮不能跟着正文滚出视口。 */}
+      <div className="wiki-card-body" style={{ padding: "var(--card-padding)" }}>
           <Group justify="space-between" align="start">
-            <Text fw={600}>{t("articleEditor.title")}</Text>
+            <Text component="h2" fw={600} className="wiki-article-editor-title">
+              {t("articleEditor.title")}
+            </Text>
             {canEdit ? (
-              <Group gap={8} wrap="wrap">
+              <Group gap={8} wrap="wrap" className="wiki-article-editor-actions">
                 {selectedArticle ? (
                   <>
-                    <DepthToggle
-                        pressed={pinnedPressed}
-                        onToggle={() => onTogglePinnedIntent()}
-                        type="primary"
-                        size="sm"
-                        iconOnly
-                        disabled={isSaving}
+                    <Tooltip label={pinLabel} withArrow>
+                      <ActionIcon
+                        aria-pressed={pinnedPressed}
+                        onClick={onTogglePinnedIntent}
+                        color="portal-brand"
+                        variant={pinnedPressed ? "light" : "default"}
+                        size="lg"
+                        disabled={editorBusy}
                         aria-label={pinLabel}
-                        tooltip={{ label: pinLabel, withArrow: true }}
                       >
                         <PinIcon size={16} />
-                      </DepthToggle>
-                    <DepthToggle
-                      pressed={selectedArticle?.archived_at ? archiveIntent !== "unarchive" : archiveIntent === "archive"}
-                      onToggle={onToggleArchiveIntent}
-                      type="primary"
-                      iconOnly
-                      size="sm"
-                      disabled={isSaving}
-                      aria-label={archiveLabel}
-                      tooltip={{ label: archiveLabel, withArrow: true }}
-                    >
-                      <ArchiveIcon size={16} />
-                    </DepthToggle>
-                    <ActionIcon
-                      color="red"
-                      variant="filled"
-                      size="sm"
-                      onClick={onDeleteArticle}
-                      disabled={isSaving}
-                      aria-label={t("common:action.delete")}
-                    >
-                      <TrashIcon size={16} />
-                    </ActionIcon>
-                    <DepthButton
-                      type="primary"
-                      size="sm"
-                      before={<SaveIcon size={16} />}
+                      </ActionIcon>
+                    </Tooltip>
+                    <Tooltip label={archiveLabel} withArrow>
+                      <ActionIcon
+                        aria-pressed={selectedArticle?.archived_at ? archiveIntent !== "unarchive" : archiveIntent === "archive"}
+                        onClick={() => onToggleArchiveIntent()}
+                        color="portal-brand"
+                        variant={(selectedArticle?.archived_at ? archiveIntent !== "unarchive" : archiveIntent === "archive") ? "light" : "default"}
+                        size="lg"
+                        disabled={editorBusy}
+                        aria-label={archiveLabel}
+                      >
+                        <ArchiveIcon size={16} />
+                      </ActionIcon>
+                    </Tooltip>
+                    <Button
+                      size="md"
+                      leftSection={<SaveIcon size={16} />}
                       onClick={() => {
                         if (!articleTitle.trim()) {
                           notifyError(t("validation.titleRequired"));
@@ -162,36 +168,52 @@ export function WikiArticleEditorCard({
                         }
                         onSaveArticle();
                       }}
-                      disabled={isSaving}
+                      disabled={editorBusy}
                     >
                       {t("articleEditor.save")}
-                    </DepthButton>
+                    </Button>
                   </>
                 ) : null}
                 {canEdit && isCreatingArticle ? (
-                  <DepthButton
-                    type="primary"
-                    size="sm"
-                    before={<PlusIcon size={16} />}
+                  <Button
+                    size="md"
+                    leftSection={<PlusIcon size={16} />}
                     onClick={onCreateArticle}
                     disabled={!canCreateArticle || isCreating}
                   >
                     {t("articleEditor.create")}
-                  </DepthButton>
+                  </Button>
                 ) : null}
-                <DepthButton
-                  type="secondary"
-                  size="sm"
-                  before={<XIcon size={16} />}
+                <Button
+                  variant="default"
+                  size="md"
+                  leftSection={<XIcon size={16} />}
                   onClick={onExitEditor}
-                  disabled={isSaving}
+                  disabled={editorBusy}
                 >
                   {t("editor.exit")}
-                </DepthButton>
+                </Button>
+                {selectedArticle ? (
+                  <Tooltip label={t("common:action.delete")} withArrow>
+                    <ActionIcon
+                      color="red"
+                      variant="light"
+                      size="lg"
+                      className="wiki-article-editor-actions__danger"
+                      onClick={onDeleteArticle}
+                      loading={isDeleting}
+                      disabled={editorBusy}
+                      aria-label={t("common:action.delete")}
+                    >
+                      <TrashIcon size={16} />
+                    </ActionIcon>
+                  </Tooltip>
+                ) : null}
               </Group>
             ) : null}
           </Group>
 
+          <Stack gap={12} className="wiki-card-scroll">
           {isLoading ? (
             <Stack gap={8}>
               {Array.from({ length: 7 }).map((_, index) => (
@@ -203,26 +225,26 @@ export function WikiArticleEditorCard({
 
           {!isLoading && !isError ? (
             <Stack gap={12}>
-              <Group gap={12} wrap="nowrap" align="flex-end" grow>
+              <Group gap={12} wrap="wrap" align="flex-end" grow>
                 <TextInput
                   label={t("articleEditor.titleField")}
                   value={articleTitle}
-                  disabled={!canEdit}
+                  disabled={!canEdit || isDeleting}
                   onChange={(event) => onArticleTitleChange(event.currentTarget.value)}
                   placeholder={t("articleEditor.titleField")}
                   aria-label={t("aria.articleTitle")}
-                  style={{ flex: 1 }}
+                  style={{ flex: "1 1 16rem", minWidth: 0 }}
                 />
                 <Select
                   w={200}
                   label={t("articleEditor.category")}
                   value={articleCategoryId || null}
-                  disabled={!canEdit}
+                  disabled={!canEdit || isDeleting}
                   data={categoryOptions}
                   placeholder={t("articleEditor.category")}
                   aria-label={t("aria.articleCategory")}
                   onChange={(value) => onArticleCategoryChange(value ?? "")}
-                  style={{ flex: 0, minWidth: 200 }}
+                  style={{ flex: "0 1 12.5rem", minWidth: 0, maxWidth: "100%" }}
                 />
               </Group>
               <Text fw={600} size="sm">
@@ -232,7 +254,8 @@ export function WikiArticleEditorCard({
                 value={articleBody}
                 onChange={onArticleBodyChange}
                 placeholder={t("articleEditor.body")}
-                editable={canEdit}
+                editable={canEdit && !isDeleting}
+                ariaLabel={t("articleEditor.body")}
                 onImageUpload={onImageUpload}
                 labels={editorLabels}
               />
@@ -259,6 +282,6 @@ export function WikiArticleEditorCard({
           ) : null}
         </Stack>
       </div>
-    </PortalCard>
+    </Paper>
   );
 }

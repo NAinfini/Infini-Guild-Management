@@ -3,47 +3,38 @@ import { SiteConfigService } from "../SiteConfigService";
 
 const NOW = new Date("2026-06-12T12:00:00.000Z");
 
-const SEEDED_SITE_ROW = {
+const SITE_ROW = {
   id: "default",
   siteName: "D1 Guild",
-  siteLogoUrl: "/d1-logo.webp",
-  featureFlagsJson: JSON.stringify({
-    announcements: true,
-    events: true,
-    guildWar: true,
-    gallery: true,
-    wiki: true,
-    tools: true,
-    equipmentCalc: false,
-    storage: true,
-  }),
-  mediaPolicyJson: JSON.stringify({
-    max_file_size_bytes: {
-      profile_image: 5242880,
-      profile_audio: 20971520,
-      announcement_image: 5242880,
-      wiki_image: 5242880,
-      event_image: 5242880,
-      gallery_image: 10485760,
-    },
-    quotas: {
-      profile: 10,
-      announcement: 10,
-      gallery: 20,
-      wiki: 10,
-    },
-  }),
-  storagePolicyJson: JSON.stringify({
-    images_per_item: 5,
-  }),
-  absencePolicyJson: JSON.stringify({
-    max_span_days: 366,
-    max_entries_per_user: 20,
-  }),
-  analyticsSettingsJson: JSON.stringify({
-    reference_duration_minutes: 45,
-    modifier_weights: { kills: 0.7, basehp: 0.3 },
-  }),
+  featureAnnouncementsEnabled: true,
+  featureEventsEnabled: true,
+  featureGuildWarEnabled: true,
+  featureGalleryEnabled: false,
+  featureWikiEnabled: true,
+  featureToolsEnabled: true,
+  featureStorageEnabled: true,
+  mediaSiteLogoMaxBytes: 2 * 1024 * 1024,
+  mediaClassIconMaxBytes: 512 * 1024,
+  mediaProfileImageMaxBytes: 5 * 1024 * 1024,
+  mediaProfileAudioMaxBytes: 20 * 1024 * 1024,
+  mediaAnnouncementImageMaxBytes: 5 * 1024 * 1024,
+  mediaWikiImageMaxBytes: 5 * 1024 * 1024,
+  mediaEventImageMaxBytes: 5 * 1024 * 1024,
+  mediaGalleryImageMaxBytes: 10 * 1024 * 1024,
+  mediaStorageImageMaxBytes: 5 * 1024 * 1024,
+  mediaProfileQuota: 10,
+  mediaAnnouncementQuota: 10,
+  mediaGalleryQuota: 20,
+  mediaWikiQuota: 10,
+  storageImagesPerItem: 5,
+  absenceMaxSpanDays: 366,
+  absenceMaxEntriesPerUser: 20,
+  analyticsReferenceDurationMinutes: 45,
+  analyticsKillsWeight: 0.4,
+  analyticsTowersWeight: 0.1,
+  analyticsBaseHpWeight: 0.2,
+  analyticsCreditsWeight: 0.2,
+  analyticsDistanceWeight: 0.1,
   createdAt: NOW.toISOString(),
   updatedAt: NOW.toISOString(),
 };
@@ -52,7 +43,6 @@ function queryFromRows(rows: unknown[]) {
   const promise = Promise.resolve(rows);
   const query = {
     where: vi.fn(() => query),
-    orderBy: vi.fn(() => query),
     limit: vi.fn(() => Promise.resolve(rows)),
     then: promise.then.bind(promise),
     catch: promise.catch.bind(promise),
@@ -67,49 +57,35 @@ function selectQueue(rows: unknown[][]) {
   }));
 }
 
-function createDb(selectRows: unknown[][] = []) {
-  const values = vi.fn().mockResolvedValue(undefined);
-  const insert = vi.fn(() => ({ values }));
-  const set = vi.fn(() => ({ where: vi.fn().mockResolvedValue(undefined) }));
-  const update = vi.fn(() => ({ set }));
-  return {
-    db: { select: selectQueue(selectRows), insert, update },
-    calls: { values, set },
-  };
-}
-
 function createService(selectRows: unknown[][] = []) {
-  const { db, calls } = createDb(selectRows);
-  const deps = {
-    writeAuditLog: vi.fn().mockResolvedValue(undefined),
-    storeSiteLogo: vi.fn(),
-    deleteMediaObject: vi.fn(),
-    generateId: vi.fn(() => "generated-id"),
-    now: () => NOW,
-    envSiteName: "Env Guild",
-    envSiteLogoUrl: "/env-logo.webp",
+  const set = vi.fn((_values: unknown) => ({ where: vi.fn().mockResolvedValue(undefined) }));
+  const mediaService = {
+    listLinkedMediaIds: vi.fn().mockResolvedValue([]),
+    createImages: vi.fn().mockResolvedValue({ mediaIds: ["media1234567890abcdef"] }),
+    replace: vi.fn().mockResolvedValue(undefined),
   };
-  return { service: new SiteConfigService(db as never, deps), deps, calls };
+  const deps = {
+    mediaService: mediaService as never,
+    writeAuditLog: vi.fn().mockResolvedValue(undefined),
+    now: () => NOW,
+    envSiteLogoUrl: "/default-logo.webp",
+  };
+  const db = {
+    select: selectQueue(selectRows),
+    update: vi.fn(() => ({ set })),
+  };
+  return {
+    service: new SiteConfigService(db as never, deps),
+    deps,
+    mediaService,
+    set,
+  };
 }
 
 describe("SiteConfigService", () => {
-  it("falls back to environment branding when no site config row exists", async () => {
-    const { service } = createService([[]]);
-
-    const result = await service.getPublicConfig();
-
-    expect(result.ok).toBe(true);
-    if (!result.ok) return;
-    expect(result.data).toMatchObject({
-      site_name: "Env Guild",
-      site_logo_url: "/env-logo.webp",
-      features: expect.objectContaining({ storage: true }),
-      storage_policy: { images_per_item: 5 },
-    });
-  });
-
-  it("returns D1-managed feature flags and policies in public config", async () => {
-    const { service } = createService([[SEEDED_SITE_ROW]]);
+  it("assembles the public API shape directly from relational D1 columns", async () => {
+    const { service, mediaService } = createService([[SITE_ROW]]);
+    mediaService.listLinkedMediaIds.mockResolvedValueOnce(["logo1234567890abcdefg"]);
 
     const result = await service.getPublicConfig();
 
@@ -117,35 +93,33 @@ describe("SiteConfigService", () => {
     if (!result.ok) return;
     expect(result.data).toMatchObject({
       site_name: "D1 Guild",
-      site_logo_url: "/d1-logo.webp",
-      features: expect.objectContaining({ equipmentCalc: false, storage: true }),
-      media_policy: expect.objectContaining({
-        max_file_size_bytes: expect.objectContaining({ gallery_image: 10485760 }),
-      }),
+      site_logo_media_id: "logo1234567890abcdefg",
+      default_site_logo_url: "/default-logo.webp",
+      features: { announcements: true, events: true, guildWar: true, gallery: false, wiki: true, tools: true, storage: true },
+      media_policy: {
+        max_file_size_bytes: expect.objectContaining({ class_icon: 512 * 1024, gallery_image: 10 * 1024 * 1024 }),
+        quotas: { profile: 10, announcement: 10, gallery: 20, wiki: 10 },
+      },
       storage_policy: { images_per_item: 5 },
       absence_policy: { max_span_days: 366, max_entries_per_user: 20 },
     });
   });
 
-  it("logs an error instead of silently serving defaults over a corrupt feature flag blob", async () => {
-    // A corrupt blob re-enables every feature flag, and the flags gate whole API
-    // prefixes — so this must never happen quietly.
-    const consoleError = vi.spyOn(console, "error").mockImplementation(() => {});
-    const { service } = createService([[{ ...SEEDED_SITE_ROW, featureFlagsJson: "{not json" }]]);
+  it("hard-fails when the authoritative singleton is missing", async () => {
+    const { service, mediaService } = createService([[]]);
 
-    const result = await service.getPublicConfig();
+    await expect(service.getPublicConfig()).rejects.toThrow(/site_config singleton.*missing/i);
+    expect(mediaService.listLinkedMediaIds).not.toHaveBeenCalled();
+  });
 
-    expect(result.ok).toBe(true);
-    if (!result.ok) return;
-    // equipmentCalc was false in the stored row; the default is true.
-    expect(result.data.features.equipmentCalc).toBe(true);
-    expect(consoleError).toHaveBeenCalledTimes(1);
-    expect(consoleError.mock.calls[0]?.[0]).toContain("feature_flags_json");
-    consoleError.mockRestore();
+  it("hard-fails instead of serving defaults over invalid D1 policy data", async () => {
+    const { service } = createService([[{ ...SITE_ROW, mediaGalleryQuota: 0 }]]);
+
+    await expect(service.getPublicConfig()).rejects.toThrow();
   });
 
   it("keeps analytics settings out of general admin site config", async () => {
-    const { service } = createService([[SEEDED_SITE_ROW]]);
+    const { service } = createService([[SITE_ROW]]);
 
     const result = await service.getAdminConfig();
 
@@ -154,72 +128,101 @@ describe("SiteConfigService", () => {
     expect(result.data.site).not.toHaveProperty("analytics_settings");
   });
 
-  it("returns analytics settings through the dedicated analytics API service", async () => {
-    const { service } = createService([[SEEDED_SITE_ROW]]);
+  it("returns all five fixed analytics weights from explicit columns", async () => {
+    const { service } = createService([[SITE_ROW]]);
 
-    const result = await service.getAnalyticsSettings();
-
-    expect(result).toEqual({
+    await expect(service.getAnalyticsSettings()).resolves.toEqual({
       ok: true,
       data: {
         reference_duration_minutes: 45,
-        modifier_weights: { kills: 0.7, basehp: 0.3 },
+        modifier_weights: { kills: 0.4, towers: 0.1, base_hp: 0.2, credits: 0.2, distance: 0.1 },
       },
     });
   });
 
-  it("updates admin site config and writes an audit diff", async () => {
-    const { service, deps, calls } = createService([
-      [{ id: "default", siteName: "Old Guild", siteLogoUrl: "/old.webp", createdAt: NOW.toISOString(), updatedAt: NOW.toISOString() }],
-      [{ id: "default", siteName: "New Guild", siteLogoUrl: "/new.webp", createdAt: NOW.toISOString(), updatedAt: NOW.toISOString() }],
-    ]);
+  it("normalizes and writes analytics updates to the six relational columns", async () => {
+    const { service, deps, set } = createService([[SITE_ROW]]);
+
+    const result = await service.updateAnalyticsSettings("admin-1", {
+      reference_duration_minutes: 60,
+      modifier_weights: { kills: 2, towers: 1, base_hp: 1, credits: 0, distance: 0 },
+    });
+
+    expect(result).toEqual({
+      ok: true,
+      data: {
+        reference_duration_minutes: 60,
+        modifier_weights: { kills: 0.5, towers: 0.25, base_hp: 0.25, credits: 0, distance: 0 },
+      },
+    });
+    expect(set).toHaveBeenCalledWith({
+      analyticsReferenceDurationMinutes: 60,
+      analyticsKillsWeight: 0.5,
+      analyticsTowersWeight: 0.25,
+      analyticsBaseHpWeight: 0.25,
+      analyticsCreditsWeight: 0,
+      analyticsDistanceWeight: 0,
+      updatedAt: NOW.toISOString(),
+    });
+    expect(deps.writeAuditLog).toHaveBeenCalledWith(expect.objectContaining({
+      entityType: "analytics_settings",
+      actorId: "admin-1",
+    }));
+  });
+
+  it("rejects dynamic analytics keys", async () => {
+    const { service, set } = createService([[SITE_ROW]]);
+
+    const result = await service.updateAnalyticsSettings("admin-1", {
+      modifier_weights: { assists: 1 },
+    });
+
+    expect(result).toMatchObject({ ok: false, code: "VALIDATION_ERROR" });
+    expect(set).not.toHaveBeenCalled();
+  });
+
+  it("updates site policies through relational columns and audits the write", async () => {
+    const nextRow = { ...SITE_ROW, siteName: "New Guild", featureGalleryEnabled: true };
+    const { service, deps, set } = createService([[SITE_ROW], [nextRow]]);
 
     const result = await service.updateAdminConfig("admin-1", {
       site_name: "New Guild",
+      features: { gallery: true },
+      media_policy: { max_file_size_bytes: { class_icon: 256 * 1024 } },
     });
 
     expect(result.ok).toBe(true);
-    expect(calls.set).toHaveBeenCalledWith(expect.objectContaining({
+    expect(set).toHaveBeenCalledWith(expect.objectContaining({
       siteName: "New Guild",
+      featureGalleryEnabled: true,
+      mediaClassIconMaxBytes: 256 * 1024,
+    }));
+    expect(set.mock.calls[0]?.[0]).not.toEqual(expect.objectContaining({
+      featureFlagsJson: expect.anything(),
     }));
     expect(deps.writeAuditLog).toHaveBeenCalledWith(expect.objectContaining({
       entityType: "site_config",
       action: "update",
       actorId: "admin-1",
-      entityId: "default",
-      diffTitle: "Site Config",
     }));
   });
 
-  it("uploads a site logo, stores the internal logo URL, and removes the previous managed logo", async () => {
-    const { service, deps, calls } = createService([
-      [{ id: "default", siteName: "Guild", siteLogoUrl: "/api/site-config/logo?key=site%2Flogo%2Fold.webp", createdAt: NOW.toISOString(), updatedAt: NOW.toISOString() }],
-      [{ id: "default", siteName: "Guild", siteLogoUrl: "/api/site-config/logo?key=site%2Flogo%2Fold.webp", createdAt: NOW.toISOString(), updatedAt: NOW.toISOString() }],
-      [{ id: "default", siteName: "Guild", siteLogoUrl: "/api/site-config/logo?key=site%2Flogo%2Fnew.webp", createdAt: NOW.toISOString(), updatedAt: NOW.toISOString() }],
-    ]);
-    deps.storeSiteLogo = vi.fn().mockResolvedValue("site/logo/new.webp");
-    deps.deleteMediaObject = vi.fn().mockResolvedValue(undefined);
-    const file = new File(["RIFF____WEBP"], "logo.webp", { type: "image/webp" });
+  it("uses the D1 logo limit when replacing the linked site logo", async () => {
+    const { service, mediaService } = createService([[SITE_ROW], [SITE_ROW]]);
+    const upload = { full: new Uint8Array([1]).buffer, view: new Uint8Array([2]).buffer };
 
-    const result = await service.uploadSiteLogo("admin-1", file);
+    const result = await service.uploadSiteLogo("admin-1", upload);
 
     expect(result.ok).toBe(true);
-    expect(deps.storeSiteLogo).toHaveBeenCalledWith(file);
-    expect(calls.set).toHaveBeenCalledWith(expect.objectContaining({
-      siteLogoUrl: "/api/site-config/logo?key=site%2Flogo%2Fnew.webp",
+    expect(mediaService.createImages).toHaveBeenCalledWith(expect.objectContaining({
+      purpose: "site_logo",
+      uploads: [upload],
+      maxBytes: 2 * 1024 * 1024,
     }));
-    expect(deps.deleteMediaObject).toHaveBeenCalledWith("site/logo/old.webp");
+    expect(mediaService.replace).toHaveBeenCalledWith(expect.objectContaining({
+      entityType: "site_config",
+      entityId: "default",
+      slot: "logo",
+    }));
   });
-
-  it("rejects oversized site logos before writing to storage", async () => {
-    const { service, deps } = createService([[SEEDED_SITE_ROW]]);
-    deps.storeSiteLogo = vi.fn().mockResolvedValue("site/logo/new.webp");
-    const file = new File([new Uint8Array(6 * 1024 * 1024)], "logo.webp", { type: "image/webp" });
-
-    const result = await service.uploadSiteLogo("admin-1", file);
-
-    expect(result).toMatchObject({ ok: false, code: "VALIDATION_ERROR" });
-    expect(deps.storeSiteLogo).not.toHaveBeenCalled();
-  });
-
 });

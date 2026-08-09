@@ -5,15 +5,15 @@ import {
   createStorageTransactionSchema,
   type StorageStockFilter,
   type StorageBatchTransactionResult,
+  type SiteStoragePolicy,
   updateStorageItemSchema,
 } from "@guild/shared";
-import { and, asc, eq, gt, inArray, or, sql, type SQL } from "drizzle-orm";
+import { and, asc, eq, gt, or, sql, type SQL } from "drizzle-orm";
 import type { DrizzleD1Database } from "drizzle-orm/d1";
 import { nanoid } from "nanoid";
-import { storageCategories, storageItemImages, storageItems, storages } from "../db/schema";
+import { storageCategories, storageItems, storages } from "../db/schema";
 import type { SessionUser } from "./auth";
 import type { WriteAuditLogInput } from "./audit";
-import { deleteMediaRefs } from "./media-references";
 import { err, ok, type ServiceResult } from "./result";
 import type { PushEntityType, PushHint } from "@guild/shared/constants/push-hints";
 import {
@@ -24,14 +24,17 @@ import {
 } from "./StorageServicePayloads";
 import { getStorageTransactionPayload, listStorageTransactionPayloads } from "./StorageTransactionQueries";
 import { deleteStorageImage, uploadStorageImages } from "./StorageImageService";
+import type { MediaService, ParsedImageMediaUpload } from "./MediaService";
 import { applyStorageBatchTransactions } from "./StorageBatchService";
 import { escapeLikePattern, likeEscaped } from "./helpers";
 
 type DrizzleDb = DrizzleD1Database<Record<string, never>>;
 type EntityChangedInput = { entityType: PushEntityType; entityId: string; hint: PushHint };
 export type StorageServiceDeps = {
-  media: R2Bucket;
+  mediaService: MediaService;
   rawDb: D1Database;
+  getStoragePolicy: () => Promise<SiteStoragePolicy>;
+  systemTestRunId?: string | null;
   writeAuditLog: (input: WriteAuditLogInput) => Promise<void>;
   publishEntityChanged: (input: EntityChangedInput) => Promise<void>;
 };
@@ -94,7 +97,7 @@ export class StorageService {
   ) {}
 
   private isManager(sessionUser: SessionUser): boolean {
-    return sessionUser.permissions.has("admin.storage.stock") || sessionUser.permissions.has("admin.storage.manage");
+    return sessionUser.permissions.has("admin.storage.stock");
   }
 
   private async getItemRow(itemId: string): Promise<StorageItemRow | null> {
@@ -102,7 +105,30 @@ export class StorageService {
   }
 
   private async getImages(itemId: string): Promise<StorageImageRow[]> {
-    return this.db.select().from(storageItemImages).where(eq(storageItemImages.itemId, itemId)).orderBy(storageItemImages.createdAt, storageItemImages.id);
+    return (await this.deps.mediaService.listLinkedMediaIds("storage_item", itemId, "image"))
+      .map((mediaId) => ({ mediaId }));
+  }
+
+  private async validateItemCategory(
+    storageId: string,
+    categoryId: string | null,
+  ): Promise<ServiceResult<never> | null> {
+    const storage = (await this.db.select({ id: storages.id })
+      .from(storages)
+      .where(eq(storages.id, storageId))
+      .limit(1))[0];
+    if (!storage) return err("NOT_FOUND", "Storage not found");
+    if (categoryId === null) return null;
+
+    const category = (await this.db.select({ storageId: storageCategories.storageId })
+      .from(storageCategories)
+      .where(eq(storageCategories.id, categoryId))
+      .limit(1))[0];
+    if (!category) return err("NOT_FOUND", "Category not found");
+    if (category.storageId !== storageId) {
+      return err("VALIDATION_ERROR", "Category does not belong to storage");
+    }
+    return null;
   }
 
   async getTree(): Promise<ServiceResult<{ data: unknown[] }>> {
@@ -204,12 +230,10 @@ export class StorageService {
     const hasMore = itemRows.length > options.limit;
     const pageRows = hasMore ? itemRows.slice(0, options.limit) : itemRows;
     const ids = pageRows.map((item) => item.id);
-    const imageRows = ids.length > 0
-      ? await this.db.select().from(storageItemImages).where(inArray(storageItemImages.itemId, ids)).orderBy(storageItemImages.createdAt, storageItemImages.id)
-      : [];
+    const linkedMedia = await this.deps.mediaService.listLinkedMedia("storage_item", ids, ["image"]);
     const lastItem = pageRows.at(-1);
     return ok({
-      data: pageRows.map((item) => toItemPayload(item, imageRows.filter((image) => image.itemId === item.id))),
+      data: pageRows.map((item) => toItemPayload(item, (linkedMedia.get(item.id) ?? []).map((image) => ({ mediaId: image.mediaId })))),
       next_cursor: hasMore && lastItem ? encodeStorageItemCursor({ name: lastItem.name, id: lastItem.id }) : null,
     });
   }
@@ -223,16 +247,25 @@ export class StorageService {
   async createItem(actorId: string, body: unknown): Promise<ServiceResult<unknown>> {
     const parsed = createStorageItemSchema.safeParse(body);
     if (!parsed.success) return err("VALIDATION_ERROR", "Invalid item payload", parsed.error.flatten());
+    const categoryId = parsed.data.category_id ?? null;
+    const categoryError = await this.validateItemCategory(parsed.data.storage_id, categoryId);
+    if (categoryError) return categoryError;
     const id = nanoid();
-    await this.db.insert(storageItems).values({
-      id,
-      storageId: parsed.data.storage_id,
-      categoryId: parsed.data.category_id ?? null,
-      name: parsed.data.name,
-      description: parsed.data.description ?? null,
-      allowMemberDeposit: parsed.data.allow_member_deposit,
-      allowMemberWithdraw: parsed.data.allow_member_withdraw,
-    });
+    try {
+      await this.db.insert(storageItems).values({
+        id,
+        storageId: parsed.data.storage_id,
+        categoryId,
+        name: parsed.data.name,
+        description: parsed.data.description ?? null,
+        allowMemberDeposit: parsed.data.allow_member_deposit,
+        allowMemberWithdraw: parsed.data.allow_member_withdraw,
+      });
+    } catch (error) {
+      if (!isForeignKeyConstraintViolation(error)) throw error;
+      const currentError = await this.validateItemCategory(parsed.data.storage_id, categoryId);
+      return currentError ?? err("CONFLICT", "Storage or category changed; refresh and retry");
+    }
     const created = await this.getItemRow(id);
     if (!created) return err("SERVER_ERROR", "Failed to create item");
     await this.deps.writeAuditLog({ entityType: "storage_item", action: "create", actorId, entityId: id, diffTitle: created.name });
@@ -244,14 +277,28 @@ export class StorageService {
     const parsed = updateStorageItemSchema.safeParse(body);
     if (!parsed.success) return err("VALIDATION_ERROR", "Invalid item payload", parsed.error.flatten());
     if (Object.keys(parsed.data).length === 0) return err("VALIDATION_ERROR", "No fields to update");
-    await this.db.update(storageItems).set({
-      ...(parsed.data.category_id !== undefined ? { categoryId: parsed.data.category_id } : {}),
-      ...(parsed.data.name !== undefined ? { name: parsed.data.name } : {}),
-      ...(parsed.data.description !== undefined ? { description: parsed.data.description ?? null } : {}),
-      ...(parsed.data.allow_member_deposit !== undefined ? { allowMemberDeposit: parsed.data.allow_member_deposit } : {}),
-      ...(parsed.data.allow_member_withdraw !== undefined ? { allowMemberWithdraw: parsed.data.allow_member_withdraw } : {}),
-      updatedAt: nowIso(),
-    }).where(eq(storageItems.id, itemId));
+    const existing = await this.getItemRow(itemId);
+    if (!existing) return err("NOT_FOUND", "Item not found");
+    if (parsed.data.category_id !== undefined) {
+      const categoryError = await this.validateItemCategory(existing.storageId, parsed.data.category_id);
+      if (categoryError) return categoryError;
+    }
+    try {
+      await this.db.update(storageItems).set({
+        ...(parsed.data.category_id !== undefined ? { categoryId: parsed.data.category_id } : {}),
+        ...(parsed.data.name !== undefined ? { name: parsed.data.name } : {}),
+        ...(parsed.data.description !== undefined ? { description: parsed.data.description ?? null } : {}),
+        ...(parsed.data.allow_member_deposit !== undefined ? { allowMemberDeposit: parsed.data.allow_member_deposit } : {}),
+        ...(parsed.data.allow_member_withdraw !== undefined ? { allowMemberWithdraw: parsed.data.allow_member_withdraw } : {}),
+        updatedAt: nowIso(),
+      }).where(eq(storageItems.id, itemId));
+    } catch (error) {
+      if (!isForeignKeyConstraintViolation(error)) throw error;
+      const currentError = parsed.data.category_id === undefined
+        ? null
+        : await this.validateItemCategory(existing.storageId, parsed.data.category_id);
+      return currentError ?? err("CONFLICT", "Storage or category changed; refresh and retry");
+    }
     const updated = await this.getItemRow(itemId);
     if (!updated) return err("NOT_FOUND", "Item not found");
     await this.deps.writeAuditLog({ entityType: "storage_item", action: "update", actorId, entityId: itemId, diffTitle: updated.name });
@@ -262,15 +309,26 @@ export class StorageService {
   async deleteItem(actorId: string, itemId: string): Promise<ServiceResult<{ ok: true }>> {
     const item = await this.getItemRow(itemId);
     if (!item) return err("NOT_FOUND", "Item not found");
-    await this.db.delete(storageItems).where(eq(storageItems.id, itemId));
-    await deleteMediaRefs(this.deps.rawDb, "storage_item", itemId);
+    const ledgerEntry = await this.deps.rawDb
+      .prepare("SELECT 1 AS present FROM storage_transactions WHERE item_id = ?1 LIMIT 1")
+      .bind(itemId)
+      .first<{ present: number }>();
+    if (ledgerEntry) return err("CONFLICT", "Storage items with transaction history cannot be deleted");
+    try {
+      await this.deps.rawDb.prepare("DELETE FROM storage_items WHERE id = ?1").bind(itemId).run();
+    } catch (error) {
+      if (isForeignKeyConstraintViolation(error)) {
+        return err("CONFLICT", "Storage items with transaction history cannot be deleted");
+      }
+      throw error;
+    }
     await this.deps.writeAuditLog({
       entityType: "storage_item",
       action: "delete",
       actorId,
       entityId: itemId,
       diffTitle: item.name,
-      detailText: JSON.stringify({ final_quantity: item.quantity }),
+      detail: { final_quantity: item.quantity },
     });
     await this.deps.publishEntityChanged({ entityType: "storage", entityId: itemId, hint: "storage_updated" });
     return ok({ ok: true });
@@ -370,13 +428,13 @@ export class StorageService {
       actorId: sessionUser.id,
       entityId: txId,
       diffTitle: item.name,
-      detailText: JSON.stringify({
+      detail: {
         item_id: itemId,
         quantity_delta: auditDelta,
         recipient_user_id: recipientUserId,
         note: parsed.data.note ?? null,
         ...(parsed.data.type === "adjust" ? { target_quantity: targetQuantity } : {}),
-      }),
+      },
     });
     await this.deps.publishEntityChanged({ entityType: "storage", entityId: itemId, hint: "storage_updated" });
     return ok(tx ?? { id: txId, item_id: itemId, type: parsed.data.type, quantity_delta: auditDelta });
@@ -390,8 +448,8 @@ export class StorageService {
     return ok(await listStorageTransactionPayloads(this.deps.rawDb, options));
   }
 
-  async uploadImages(actorId: string, itemId: string, files: Array<{ data: ArrayBuffer; contentType: string; name: string }>): Promise<ServiceResult<unknown[]>> {
-    return uploadStorageImages(this.db, this.deps, actorId, itemId, files);
+  async uploadImages(actorId: string, itemId: string, uploads: readonly ParsedImageMediaUpload[], maxBytes: number): Promise<ServiceResult<unknown[]>> {
+    return uploadStorageImages(this.db, this.deps, actorId, itemId, uploads, maxBytes);
   }
 
   async deleteImage(actorId: string, itemId: string, imageId: string): Promise<ServiceResult<{ ok: true }>> {

@@ -16,7 +16,8 @@ interface BootIconProps extends HTMLAttributes<HTMLDivElement> {
 
 const SVG_VARIANTS: Variants = {
   normal: { y: 0, transition: { duration: 0.3 } },
-  animate: { y: [0, -2, 1, 0], transition: { duration: 0.4, type: "spring", stiffness: 200, damping: 12 } },
+  // 多关键帧不能配 spring，见 ShieldIcon 的说明。
+  animate: { y: [0, -2, 1, 0], transition: { duration: 0.4, ease: "easeInOut" } },
 };
 
 const BootIcon = forwardRef<BootIconHandle, BootIconProps>(

@@ -1,12 +1,14 @@
-import type { ClassName, MemberProfile, User, UserBadge } from "@guild/shared";
-import { CLASS_COLOR_GROUP, CLASS_NAMES } from "@guild/shared";
+import type { MemberProfile, User, UserBadge } from "@guild/shared";
 import { IconPhoto, IconVideo } from "@tabler/icons-react";
 import DOMPurify from "dompurify";
 import { motion, useReducedMotion, useSpring } from "motion/react";
 import { memo, useMemo, useState, type PointerEvent as ReactPointerEvent } from "react";
 import { useTranslation } from "react-i18next";
+import { resolveMediaUrl as resolvePortalMediaUrl } from "../../utils/media";
 import { parseAvailabilityRanges } from "../../utils/availability";
 import { sanitizeTitleHtml } from "../../utils/sanitize";
+import { resolveClassCatalogItem, useClassCatalogStore } from "../../stores/class-catalog";
+import { ClassIcon } from "./ClassIcon";
 import "./MemberCard.css";
 
 /*
@@ -18,19 +20,27 @@ import "./MemberCard.css";
 const TILT_SPRING = { stiffness: 100, damping: 30, mass: 2 } as const;
 /** 光标推到卡片边缘时的最大倾角（度）。 */
 const TILT_AMPLITUDE = 14;
-const HOVER_SCALE = 1.1;
+/*
+ * 1.1 在 200~235px 宽的卡上等于向外顶出 20 多像素，而网格间距只有 8px，
+ * 抬起来的卡会整个压住左右邻居。1.04 只越界约 5px，卡还是「抬起来了」，
+ * 但不再吃掉邻居。
+ */
+const HOVER_SCALE = 1.04;
 /*
  * 高光相对倾斜的反向行程系数。乘出来约 ±18px，正好在 .member-card__spec
  * 那圈 -30% 的余量之内；再大就会把渐变的软边平移出卡面，露出一条硬边。
  */
 const SPECULAR_TRAVEL = 1.3;
+const VISIBLE_BADGE_LIMIT = 2;
 
 const BADGE_SANITIZE_OPTIONS = {
   ALLOWED_TAGS: ["span", "b", "strong", "i", "em", "u", "br"],
   ALLOWED_ATTR: ["style"],
 };
 
-const MemberBadge = memo(function MemberBadge({ badge }: { badge: UserBadge }) {
+/* 导出给资料页用：名片预览和概览条都要挂同一批徽章，理由同 getMemberStatus——
+   同一个人在两处不该长成两种样子，清洗白名单也不该有第二份。 */
+export const MemberBadgeChip = memo(function MemberBadgeChip({ badge }: { badge: UserBadge }) {
   const sanitizedHtml = useMemo(
     () => DOMPurify.sanitize(badge.label_html, BADGE_SANITIZE_OPTIONS),
     [badge.label_html],
@@ -52,34 +62,31 @@ type MemberCardProps = {
   onDoubleClick?: () => void;
   compact?: boolean;
   selected?: boolean;
-  resolveMediaUrl?: (key: string) => string;
+  resolveMediaUrl?: (mediaId: string) => string;
 };
 
 type MemberStatus = "active" | "inactive" | "vacation";
 
-function isClassName(value: string): value is ClassName {
-  return (CLASS_NAMES as readonly string[]).includes(value);
+/* 请假窗口：起止都在、且此刻落在区间内。成员状态和后台详情里的请假摘要走同一条
+   判定，否则同一个人会在两处被说成两种情况。 */
+export function isOnVacation(profile: MemberProfile): boolean {
+  if (!profile.vacation_start || !profile.vacation_end) return false;
+  const start = Date.parse(profile.vacation_start);
+  const end = Date.parse(profile.vacation_end);
+  if (Number.isNaN(start) || Number.isNaN(end)) return false;
+  const now = Date.now();
+  return now >= start && now <= end;
 }
 
-function resolveClassGroup(className: string | null): string {
-  if (!className || !isClassName(className)) {
-    return "blue";
-  }
-  return CLASS_COLOR_GROUP[className] ?? "blue";
-}
-
-function getMemberStatus(user: User, profile: MemberProfile): MemberStatus {
+/* 导出给资料页的名片预览用：那张卡的排版和这里不一样，但「在线 / 离线 / 休假」
+   必须是同一套判定，否则同一个人在两处显示成两种状态。 */
+export function getMemberStatus(user: User, profile: MemberProfile): MemberStatus {
   if (!user.is_active) {
     return "inactive";
   }
 
-  if (profile.vacation_start && profile.vacation_end) {
-    const now = Date.now();
-    const start = Date.parse(profile.vacation_start);
-    const end = Date.parse(profile.vacation_end);
-    if (!Number.isNaN(start) && !Number.isNaN(end) && now >= start && now <= end) {
-      return "vacation";
-    }
+  if (isOnVacation(profile)) {
+    return "vacation";
   }
 
   const rangesByDay = parseAvailabilityRanges(profile.availability);
@@ -97,10 +104,6 @@ function getMemberStatus(user: User, profile: MemberProfile): MemberStatus {
   return "inactive";
 }
 
-function defaultMediaResolver(value: string): string {
-  return value;
-}
-
 export const MemberCard = memo(function MemberCard({
   user,
   profile,
@@ -109,14 +112,17 @@ export const MemberCard = memo(function MemberCard({
   onDoubleClick,
   compact = false,
   selected = false,
-  resolveMediaUrl = defaultMediaResolver,
+  resolveMediaUrl = resolvePortalMediaUrl,
 }: MemberCardProps) {
   const { t } = useTranslation("common");
+  const classCatalog = useClassCatalogStore((state) => state.items);
   const primaryClass = profile.classes[0] ?? null;
-  const classGroup = resolveClassGroup(primaryClass);
+  const primaryClassItem = resolveClassCatalogItem(primaryClass, classCatalog);
+  const visibleBadges = badges?.slice(0, VISIBLE_BADGE_LIMIT) ?? [];
+  const remainingBadgeCount = Math.max(0, (badges?.length ?? 0) - visibleBadges.length);
   const status = getMemberStatus(user, profile);
-  const avatarKey = profile.avatar_key ?? null;
-  const avatarSrc = avatarKey ? resolveMediaUrl(avatarKey) : null;
+  const avatarMediaId = profile.avatar_media_id ?? null;
+  const avatarSrc = avatarMediaId ? resolveMediaUrl(avatarMediaId) : null;
   const [avatarBroken, setAvatarBroken] = useState(false);
 
   const titleHtml = useMemo(
@@ -134,7 +140,7 @@ export const MemberCard = memo(function MemberCard({
   const prefersReducedMotion = useReducedMotion();
 
   const handlePointerMove = (event: ReactPointerEvent<HTMLDivElement>) => {
-    if (prefersReducedMotion) return;
+    if (prefersReducedMotion || event.pointerType !== "mouse") return;
     const rect = event.currentTarget.getBoundingClientRect();
     /* 归一化到 [-1, 1]：卡片中心是 0，边缘是 ±1。 */
     const ratioX = (event.clientX - rect.left - rect.width / 2) / (rect.width / 2);
@@ -146,8 +152,8 @@ export const MemberCard = memo(function MemberCard({
     specularY.set(ratioY * -TILT_AMPLITUDE * SPECULAR_TRAVEL);
   };
 
-  const handlePointerEnter = () => {
-    if (prefersReducedMotion) return;
+  const handlePointerEnter = (event: ReactPointerEvent<HTMLDivElement>) => {
+    if (prefersReducedMotion || event.pointerType !== "mouse") return;
     scale.set(HOVER_SCALE);
   };
 
@@ -165,13 +171,20 @@ export const MemberCard = memo(function MemberCard({
     return (
       <button
         type="button"
-        className={`member-card member-card--compact member-card--${classGroup}${selected ? " member-card--selected" : ""}`}
+        className={`member-card member-card--compact${selected ? " member-card--selected" : ""}`}
+        style={{ "--class-color": primaryClassItem.color } as React.CSSProperties}
         onClick={onClick}
         onDoubleClick={onDoubleClick}
         aria-label={t("a11y.select", { name: user.username })}
       >
         <span className="member-card__compact-username">{user.username}</span>
-        <span className="member-card__compact-meta">{primaryClass ?? "-"}</span>
+        <span
+          className="member-card__compact-class"
+          style={{ "--class-color": primaryClassItem.color } as React.CSSProperties}
+        >
+          <ClassIcon item={primaryClassItem} size={16} framed={false} />
+          <span className="member-card__compact-meta">{primaryClassItem.label}</span>
+        </span>
         <span className="member-card__compact-meta">{t("member.power")} {profile.power}</span>
       </button>
     );
@@ -180,8 +193,6 @@ export const MemberCard = memo(function MemberCard({
   return (
     <div
       className="member-card__frame"
-      onClick={onClick}
-      onDoubleClick={onDoubleClick}
       onPointerMove={handlePointerMove}
       onPointerEnter={handlePointerEnter}
       onPointerLeave={handlePointerLeave}
@@ -190,7 +201,8 @@ export const MemberCard = memo(function MemberCard({
       <motion.button
         type="button"
         className={`member-card member-card--full${selected ? " member-card--selected" : ""}`}
-        tabIndex={-1}
+        onClick={onClick}
+        onDoubleClick={onDoubleClick}
         aria-label={t("a11y.openProfile", { name: user.username })}
         style={{ rotateX, rotateY, scale }}
       >
@@ -216,28 +228,51 @@ export const MemberCard = memo(function MemberCard({
         </div>
 
         <div className="member-card__content">
-          <span className="member-card__username">{user.username}</span>
-          <div className="member-card__title" dangerouslySetInnerHTML={{ __html: titleHtml || "&nbsp;" }} />
+          <div className="member-card__identity">
+            <span className="member-card__username">{user.username}</span>
+          </div>
+          {titleHtml ? (
+            <div className="member-card__title" dangerouslySetInnerHTML={{ __html: titleHtml }} />
+          ) : null}
         </div>
 
         {/* A "0" count says nothing and, on a roster where most profiles carry no
             media, turned every card into a row of zeroes. Only non-empty counts show. */}
         <div className="member-card__meta-row">
+          {primaryClass ? (
+            <span
+              className="member-card__class-chip member-card__class-chip--primary"
+              style={{ "--class-color": primaryClassItem.color } as React.CSSProperties}
+            >
+              <ClassIcon item={primaryClassItem} size={16} framed={false} />
+              <span className="member-card__class-label">{primaryClassItem.label}</span>
+            </span>
+          ) : null}
           {profile.images.length > 0 ? (
             <span className="member-card__pill member-card__pill--photo" aria-label={`${t("member.photo")} ${profile.images.length}`}>
-              <IconPhoto size={13} />
-              {profile.images.length}
+              <IconPhoto size={13} aria-hidden="true" />
+              <span className="member-card__pill-label">{t("member.photo")}</span>
+              <span className="member-card__pill-count">{profile.images.length}</span>
             </span>
           ) : null}
           {profile.video_urls.length > 0 ? (
             <span className="member-card__pill member-card__pill--video" aria-label={`${t("member.video")} ${profile.video_urls.length}`}>
-              <IconVideo size={13} />
-              {profile.video_urls.length}
+              <IconVideo size={13} aria-hidden="true" />
+              <span className="member-card__pill-label">{t("member.video")}</span>
+              <span className="member-card__pill-count">{profile.video_urls.length}</span>
             </span>
           ) : null}
-          {badges?.map((badge) => (
-            <MemberBadge key={badge.id} badge={badge} />
+          {visibleBadges.map((badge) => (
+            <MemberBadgeChip key={badge.id} badge={badge} />
           ))}
+          {remainingBadgeCount > 0 ? (
+            <span
+              className="member-card__badge-overflow"
+              aria-label={t("member.moreBadges", { count: remainingBadgeCount })}
+            >
+              +{remainingBadgeCount}
+            </span>
+          ) : null}
         </div>
 
         {/* 放在最后：定位元素本来就画在常规流之上，写在末尾只是让「这层盖在
@@ -251,4 +286,3 @@ export const MemberCard = memo(function MemberCard({
     </div>
   );
 });
-

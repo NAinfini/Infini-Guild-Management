@@ -1,79 +1,136 @@
+.wiki-page-toolbar {
+  background: var(--surface-raised);
+}
+
+.wiki-page-toolbar__categories {
+  width: 15rem;
+}
+
+/* Desktop list and article panes scroll independently; compact layouts retain page scrolling. */
 .wiki-page-grid {
-  width: 100%; display: grid; gap: 12px;
-  grid-template-columns: 260px minmax(0, 1fr);
-  align-items: start;
-  min-height: calc(100vh - 240px);
+  width: 100%;
+  display: grid;
+  gap: var(--space-md);
+  grid-template-columns: clamp(19rem, 22vw, 24rem) minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr);
+  align-items: stretch;
+  flex: 1 1 auto;
+  min-block-size: 0;
 }
 
 .wiki-page-grid--mobile {
   grid-template-columns: minmax(0, 1fr);
+  grid-template-rows: auto;
+  flex: 0 1 auto;
   min-height: auto;
 }
 
 .wiki-page-column {
   display: flex;
   flex-direction: column;
-  gap: 12px;
-  height: 100%;
-  min-height: 600px;
+  gap: var(--space-md);
+  min-width: 0;
+  min-block-size: 0;
 }
 
 .wiki-page-column--mobile {
   min-height: auto;
+  min-block-size: auto;
 }
 
-.wiki-category-tree-card,
+/* 四张卡都占满右栏分给它的高度：短文章也铺满，卡片下边缘和清单卡齐平，不会在
+   正文下面留出一段空的底色。 */
 .wiki-article-list-card,
 .wiki-article-editor-card,
+.wiki-category-editor-card,
 .wiki-article-reader-card {
   display: flex;
   flex-direction: column;
-}
-
-.wiki-category-tree-card {
-  flex: 0 0 auto;
-  min-height: 180px;
-  max-height: 360px;
-}
-
-.wiki-article-list-card,
-.wiki-article-editor-card,
-.wiki-article-reader-card {
   flex: 1 1 auto;
-  min-height: 280px;
+  min-block-size: 0;
 }
 
-.wiki-category-tree-card > div,
-.wiki-article-list-card > div,
-.wiki-article-editor-card > div,
-.wiki-article-reader-card > div {
-  height: 100%;
+/* 正文卡自己就是滚动层（见下面 wiki-card-scroll 的说明），滚动出去的正文要靠它
+   在圆角处裁掉。 */
+.wiki-article-reader-card {
+  overflow: hidden;
+  background: var(--surface-raised);
 }
 
-.wiki-category-tree-card > div {
-  overflow: auto;
+.wiki-article-reader-title,
+.wiki-article-editor-title {
+  margin: 0;
+  min-width: 0;
+  max-width: 100%;
+  overflow-wrap: anywhere;
+  line-height: 1.25;
+}
+
+.wiki-article-reader-content {
+  width: 100%;
+  max-width: none;
+  margin-inline: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-md);
+  min-width: 0;
+}
+
+.wiki-article-reader-card .infini-tiptap-surface--readonly {
+  width: 100%;
+  max-width: 100%;
+}
+
+.wiki-article-editor-actions__danger {
+  margin-inline-start: var(--space-sm);
+}
+
+/*
+ * 卡片内部统一的两段式：卡头钉在上边，剩下的内滚。四张卡的 DOM 形状一样，规则只写一份。
+ *
+ * 钉住卡头是有代价才做的选择：清单卡的「新建文章 / 编辑分类」、编辑器卡的保存与退出，
+ * 都是随时要够得着的东西，跟着内容滚走等于没有。正文卡是例外——标题、面包屑和正文是
+ * 一篇东西，整块一起滚才对，所以它直接把 wiki-card-scroll 挂在最外层。
+ */
+.wiki-card-body {
+  display: flex;
+  flex-direction: column;
+  /* All wiki card bodies consume the shared spacing scale. */
+  gap: var(--space-md);
+  block-size: 100%;
+  min-block-size: 0;
+}
+
+.wiki-card-scroll {
+  flex: 1 1 auto;
+  min-block-size: 0;
+  /* The article pane scrolls vertically; wide code blocks own their horizontal scrolling. */
+  overflow-x: clip;
+  overflow-y: auto;
+  /* Reserve scrollbar width to prevent content shift. */
+  scrollbar-gutter: stable;
 }
 
 .wiki-article-item {
   width: 100%; cursor: pointer; text-align: left;
-  border-radius: var(--radius-sm); border: 1px solid transparent;
+  border-radius: var(--radius-control); border: 1px solid transparent;
   padding: 8px; background: transparent;
   transition: background var(--transition-fast), border-color var(--transition-fast);
 }
 
 .wiki-article-item:hover {
   border-color: color-mix(in srgb, var(--text-primary) 65%, transparent);
-  background: color-mix(in srgb, var(--accent-fill) 6%, transparent);
+  background: color-mix(in srgb, var(--brand-fill) 6%, transparent);
 }
 
 .wiki-article-item:focus-visible {
-  border-color: color-mix(in srgb, var(--accent-fill) 28%, transparent);
-  background: color-mix(in srgb, var(--accent-fill) 6%, transparent);
+  border-color: color-mix(in srgb, var(--brand-fill) 28%, transparent);
+  background: color-mix(in srgb, var(--brand-fill) 6%, transparent);
 }
 
 .wiki-article-item--active {
-  background: color-mix(in srgb, var(--accent-fill) 10%, transparent);
-  border-color: color-mix(in srgb, var(--accent-fill) 28%, transparent);
+  background: color-mix(in srgb, var(--brand-fill) 10%, transparent);
+  border-color: color-mix(in srgb, var(--brand-fill) 28%, transparent);
 }
 
 .wiki-floating-field {
@@ -105,9 +162,9 @@
   top: 0;
   transform: translateY(-50%);
   font-size: 11px;
-  color: var(--accent-text);
+  color: var(--brand-text);
   background: color-mix(in srgb, var(--surface-base) 90%, transparent);
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius-control);
 }
 
 .wiki-floating-input {
@@ -115,71 +172,49 @@
   padding-bottom: 12px;
 }
 
-.wiki-category-diagram-panel {
-  border: 1px solid color-mix(in srgb, var(--text-primary) 14%, transparent);
-  border-radius: var(--radius-md);
-  padding: 10px 12px;
-  background: color-mix(in srgb, var(--surface-base) 92%, transparent);
-}
-
-.wiki-category-diagram-list {
-  margin: 0;
-  padding: 0 0 0 16px;
-  list-style: none;
-}
-
-.wiki-category-diagram-list--root {
-  padding-left: 0;
-}
-
-.wiki-category-diagram-item {
-  position: relative;
-  margin: 4px 0;
-  padding-left: 16px;
-}
-
-.wiki-category-diagram-item::before {
-  content: "";
-  position: absolute;
-  top: 0.8em;
-  left: 0;
-  width: 10px;
-  border-top: 1px solid color-mix(in srgb, var(--text-primary) 18%, transparent);
-}
-
-.wiki-category-diagram-item::after {
-  content: "";
-  position: absolute;
-  top: -6px;
-  bottom: -6px;
-  left: 0;
-  border-left: 1px solid color-mix(in srgb, var(--text-primary) 18%, transparent);
-}
-
-.wiki-category-diagram-item:last-child::after {
-  bottom: 0.8em;
-}
-
-.wiki-category-diagram-list--root > .wiki-category-diagram-item {
-  padding-left: 0;
-}
-
-.wiki-category-diagram-list--root > .wiki-category-diagram-item::before,
-.wiki-category-diagram-list--root > .wiki-category-diagram-item::after {
-  display: none;
-}
-
-.wiki-category-diagram-node {
-  min-height: 1.5rem;
+/*
+ * The editable list is the category tree; indentation communicates hierarchy.
+ *
+ * --wiki-category-indent 同时是视觉缩进和横向拖拽的换算单位：拖过一格算深一层。
+ * 改这个值必须同步改 utils/wiki-category-tree.ts 里的 CATEGORY_INDENT_WIDTH，
+ * 否则手感和眼睛看到的对不上。单测钉住了这个等式。
+ */
+.wiki-category-editor-tree {
+  --wiki-category-indent: 28px;
   display: flex;
-  align-items: center;
+  flex-direction: column;
+  gap: 10px;
 }
 
-/* ── WikiHistoryModal ── (moved out of style={{}}, task-8 批 B). */
+.wiki-category-editor-row {
+  --wiki-category-depth: 0;
+  position: relative;
+  padding-inline-start: calc(var(--wiki-category-depth) * var(--wiki-category-indent));
+}
+
+/*
+ * 子级左边的那条竖线。用 opacity 直接吃深度值：顶层是 0 就是透明，子级是 1 就画出来。
+ * 这样不必为「有没有父级」再挂一个 class，深度只有一个来源。
+ */
+.wiki-category-editor-row::before {
+  content: "";
+  position: absolute;
+  inset-block: 6px;
+  inset-inline-start: calc(var(--wiki-category-indent) / 2);
+  width: 1px;
+  background: color-mix(in srgb, var(--text-primary) 22%, transparent);
+  opacity: var(--wiki-category-depth);
+}
+
+.wiki-category-editor-row--dragging {
+  opacity: 0.7;
+}
+
+/* ── WikiHistoryModal ── */
 
 .wiki-history-revision-row {
   padding: 0.5rem 0.65rem;
-  border-radius: 8px;
+  border-radius: var(--radius-control);
   width: 100%;
 }
 
@@ -187,29 +222,48 @@
   background-color: var(--mantine-color-blue-light);
 }
 
+/* 单栏堆叠之后回到整页滚：把窄屏视口再切成两个小滚动区只会更难用。 */
 @media (max-width: 1199px) {
   .wiki-page-grid {
     grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: auto;
+    flex: 0 1 auto;
     min-height: auto;
   }
 
   .wiki-page-column {
     min-height: auto;
+    min-block-size: auto;
+  }
+  .wiki-article-reader-card {
+    overflow: visible;
   }
 
-  .wiki-category-tree-card {
-    max-height: 240px;
+
+  /* 两轴一起复位。只写 overflow-y: visible 的话，留在宽屏那条 overflow-x: clip
+     又会反过来把它提升成 auto——正是上面刚拆掉的那条隐式规则。 */
+  .wiki-card-scroll {
+    overflow: visible;
+    scrollbar-gutter: auto;
   }
 }
 
 @media (max-width: 767px) {
-  .wiki-category-tree-card {
-    max-height: 200px;
+  .wiki-page-toolbar__categories {
+    width: 100%;
   }
+  .wiki-article-item + .wiki-article-item {
+    border-block-start-color: var(--border-subtle);
+  }
+
 
   .wiki-article-list-card,
   .wiki-article-editor-card,
   .wiki-article-reader-card {
     min-height: 200px;
+  }
+
+  .wiki-article-editor-card .infini-tiptap-surface {
+    min-height: clamp(11.25rem, 36dvh, 20rem);
   }
 }

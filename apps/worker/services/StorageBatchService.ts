@@ -6,21 +6,30 @@ import {
 } from "@guild/shared";
 import { nanoid } from "nanoid";
 import type { SessionUser } from "./auth";
+import { buildAuditLogInsertStatement } from "./audit";
 import { err, ok, type ServiceResult } from "./result";
 import type { StorageServiceDeps } from "./StorageService";
 import {
+  getStorageBatchReplay,
   getStorageBatchPreflight,
-  parseStorageBatchAuditDetail,
   type NormalizedStorageBatchRequest,
-  type StorageBatchAuditDetail,
   type StorageBatchPreflightRow,
+  type StorageBatchReplayState,
+  type StoredStorageBatchRequest,
 } from "./StorageTransactionQueries";
 
 function sameRequest(
-  first: NormalizedStorageBatchRequest,
-  second: NormalizedStorageBatchRequest,
+  stored: StoredStorageBatchRequest,
+  requested: NormalizedStorageBatchRequest,
 ): boolean {
-  return JSON.stringify(first) === JSON.stringify(second);
+  return stored.type === requested.type
+    && stored.recipient_user_id === requested.recipient_user_id
+    && stored.note === requested.note
+    && stored.entries.length === requested.entries.length
+    && stored.entries.every((entry, index) => {
+      const candidate = requested.entries[index];
+      return candidate?.item_id === entry.item_id && candidate.quantity === entry.quantity;
+    });
 }
 
 async function getMarkerId(actorId: string, idempotencyKey: string): Promise<string> {
@@ -35,22 +44,21 @@ async function getMarkerId(actorId: string, idempotencyKey: string): Promise<str
 }
 
 function isManager(sessionUser: SessionUser): boolean {
-  return sessionUser.permissions.has("admin.storage.stock")
-    || sessionUser.permissions.has("admin.storage.manage");
+  return sessionUser.permissions.has("admin.storage.stock");
 }
 
 function replayOrConflict(
-  rows: StorageBatchPreflightRow[],
+  replay: StorageBatchReplayState,
   request: NormalizedStorageBatchRequest,
 ): ServiceResult<StorageBatchTransactionResult> | null {
-  const markerRow = rows.find((row) => row.markerId !== null);
-  if (!markerRow) return null;
-  const marker = parseStorageBatchAuditDetail(markerRow.markerDetailText);
-  if (!marker) return err("SERVER_ERROR", "Stored batch idempotency marker is invalid");
-  if (!sameRequest(marker.request, request)) {
+  if (replay.kind === "missing") return null;
+  if (replay.kind === "corrupt") {
+    return err("SERVER_ERROR", "Stored storage batch is incomplete or invalid");
+  }
+  if (!sameRequest(replay.request, request)) {
     return err("CONFLICT", "Idempotency key was already used with a different request");
   }
-  return ok({ data: marker.response.data, replayed: true });
+  return ok({ data: replay.response.data, replayed: true });
 }
 
 function validateSnapshot(
@@ -107,6 +115,7 @@ type StorageBatchContext = {
   request: NormalizedStorageBatchRequest;
   markerId: string;
   preflight: () => Promise<StorageBatchPreflightRow[]>;
+  replay: () => Promise<StorageBatchReplayState>;
 };
 
 function createTransactions(
@@ -131,36 +140,39 @@ function createTransactions(
   }));
 }
 
-function createMarkerStatement(
+function createBatchStatement(
   context: StorageBatchContext,
-  response: StorageBatchTransactionResult,
   createdAt: string,
 ): D1PreparedStatement {
-  const detail: StorageBatchAuditDetail = {
-    kind: "storage_batch",
-    version: 1,
-    request: context.request,
-    response,
-  };
-  return context.deps.rawDb.prepare(`
-    INSERT INTO audit_log
-      (id, entity_type, action, actor_id, entity_id, diff_title, detail_text, created_at)
-    VALUES (?1, 'storage_transaction', ?2, ?3, ?4, ?5, ?6, ?7)
-  `).bind(
-    context.markerId,
-    context.request.type,
-    context.sessionUser.id,
-    context.markerId,
-    `Batch ${context.request.type} (${response.data.length})`,
-    JSON.stringify(detail),
-    createdAt,
-  );
+  return context.deps.rawDb.prepare(
+    "INSERT INTO storage_batches (id, actor_id, created_at) VALUES (?1, ?2, ?3)",
+  ).bind(context.markerId, context.sessionUser.id, createdAt);
+}
+
+function createSystemTestArtifactStatement(
+  context: StorageBatchContext,
+  type: "storage_batch" | "audit_log",
+  key: string,
+): D1PreparedStatement | null {
+  const runId = context.deps.systemTestRunId;
+  if (!runId) return null;
+  return context.deps.rawDb.prepare(
+    `INSERT INTO system_test_artifacts (run_id, artifact_type, artifact_key)
+     VALUES (
+       (SELECT id FROM system_test_runs WHERE id = ? AND status = 'running'),
+       ?,
+       ?
+     )
+     ON CONFLICT(run_id, artifact_type, artifact_key)
+     DO UPDATE SET artifact_key = excluded.artifact_key`,
+  ).bind(runId, type, key);
 }
 
 function createItemStatements(
   context: StorageBatchContext,
   transaction: StorageTransaction,
   createdAt: string,
+  batchPosition: number,
 ): D1PreparedStatement[] {
   const permissionFlag = context.request.type === "intake"
     ? "allow_member_deposit"
@@ -181,8 +193,8 @@ function createItemStatements(
       `).bind(transaction.quantity_delta, createdAt, transaction.item_id);
   const insert = context.deps.rawDb.prepare(`
     INSERT INTO storage_transactions
-      (id, item_id, type, quantity_delta, recipient_user_id, note, actor_id, created_at)
-    VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)
+      (id, item_id, type, quantity_delta, recipient_user_id, note, actor_id, batch_id, batch_position, created_at)
+    VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)
   `).bind(
     transaction.id,
     transaction.item_id,
@@ -191,6 +203,8 @@ function createItemStatements(
     transaction.recipient_user_id,
     transaction.note,
     transaction.actor_id,
+    context.markerId,
+    batchPosition,
     transaction.created_at,
   );
   return [update, insert];
@@ -206,17 +220,41 @@ async function commitBatch(
     data: transactions,
     replayed: false,
   });
+  const audit = buildAuditLogInsertStatement(context.deps.rawDb, {
+    entityType: "storage_transaction",
+    action: context.request.type,
+    actorId: context.sessionUser.id,
+    entityId: context.markerId,
+    diffTitle: `Batch ${context.request.type} (${transactions.length})`,
+    detail: {
+      batch_id: context.markerId,
+      type: context.request.type,
+      entries: context.request.entries,
+      recipient_user_id: context.recipientUserId,
+      note: context.request.note,
+      transaction_ids: transactions.map((transaction) => transaction.id),
+    },
+  }, { createdAt });
+  const batchArtifact = createSystemTestArtifactStatement(
+    context,
+    "storage_batch",
+    context.markerId,
+  );
+  const auditArtifact = createSystemTestArtifactStatement(context, "audit_log", audit.id);
   const statements = [
-    createMarkerStatement(context, response, createdAt),
-    ...transactions.flatMap((transaction) =>
-      createItemStatements(context, transaction, createdAt)),
+    createBatchStatement(context, createdAt),
+    ...(batchArtifact ? [batchArtifact] : []),
+    ...transactions.flatMap((transaction, position) =>
+      createItemStatements(context, transaction, createdAt, position)),
+    audit.statement,
+    ...(auditArtifact ? [auditArtifact] : []),
   ];
   try {
     await context.deps.rawDb.batch(statements);
   } catch (error) {
-    const currentRows = await context.preflight();
-    const replay = replayOrConflict(currentRows, context.request);
+    const replay = replayOrConflict(await context.replay(), context.request);
     if (replay) return replay;
+    const currentRows = await context.preflight();
     if (currentRows.length !== context.request.entries.length) {
       return err("SERVER_ERROR", "Storage batch diagnostic returned an incomplete result");
     }
@@ -267,10 +305,10 @@ export async function applyStorageBatchTransactions(
       itemId: entry.item_id,
       quantity: entry.quantity,
     })),
-    markerId,
     actorId: sessionUser.id,
     recipientUserId,
   });
+  const replay = () => getStorageBatchReplay(deps.rawDb, markerId, sessionUser.id);
 
   const context: StorageBatchContext = {
     deps,
@@ -280,10 +318,11 @@ export async function applyStorageBatchTransactions(
     request,
     markerId,
     preflight,
+    replay,
   };
+  const existing = replayOrConflict(await replay(), request);
+  if (existing) return existing;
   const rows = await preflight();
-  const replay = replayOrConflict(rows, request);
-  if (replay) return replay;
   if (rows.length !== request.entries.length) {
     return err("SERVER_ERROR", "Storage batch preflight returned an incomplete result");
   }

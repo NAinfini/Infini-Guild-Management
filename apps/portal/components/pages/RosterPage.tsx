@@ -1,11 +1,10 @@
 import { Suspense, lazy, useEffect, useState, type FocusEvent } from "react";
 import { useTranslation } from "react-i18next";
 import { useNavigate } from "@tanstack/react-router";
-import { Button, Skeleton } from "@mantine/core";
+import { Button, Paper, Skeleton, Stack } from "@mantine/core";
 import { useLoadWarningToast } from "../../hooks/useLoadWarningToast";
 import { useRosterPageController } from "../../hooks/useRosterPageController";
-import { resolveProfileMediaUrl } from "../../utils/media";
-import { PortalCard } from "../shared/PortalCard";
+import { resolveMediaUrl } from "../../utils/media";
 import { PageLayout } from "../layout/PageLayout";
 import { EmptyState } from "../shared/EmptyState";
 import { RosterFilterCard } from "../feature/roster/RosterFilterCard";
@@ -46,7 +45,6 @@ export function RosterPage() {
   useLoadWarningToast(controller.usersQuery.isError, t("common:loadErrorRetry"));
 
   const { sortedRows, visibleCount, setVisibleCount, debouncedSearch, classFilter, sortMode } = controller;
-  const isMobile = windowWidth < 768;
   const shouldVirtualize = sortedRows.length > 50;
   const renderedRows = shouldVirtualize ? sortedRows : sortedRows.slice(0, visibleCount);
   const columnCount = resolveColumnCount(windowWidth);
@@ -61,11 +59,13 @@ export function RosterPage() {
   };
 
   return (
-    <PageLayout title={t("title")} subtitle={t("subtitle")} className="roster-page">
+    <PageLayout className="roster-page">
+      <Stack gap={16}>
       <RosterFilterCard
         search={controller.search}
         onSearchChange={controller.setSearch}
         classFilter={classFilter}
+        loadedClassIds={controller.loadedClassIds}
         onClassFilterChange={controller.setClassFilter}
         sortMode={sortMode}
         onSortModeChange={controller.setSortMode}
@@ -75,13 +75,12 @@ export function RosterPage() {
         onAudioVolumeChange={controller.setAudioVolumeState}
         renderedCount={renderedRows.length}
         totalCount={sortedRows.length}
-        isMobile={isMobile}
       />
 
       {controller.usersQuery.isLoading ? (
         <Skeleton height={200} radius={8} />
       ) : sortedRows.length === 0 ? (
-        <PortalCard className="roster-empty-card" interactive={false}>
+        <Paper className="roster-empty-card" withBorder p="lg">
           <EmptyState
             title={debouncedSearch || classFilter.length > 0 ? t("empty.filtered") : t("empty.default")}
             actions={
@@ -94,7 +93,7 @@ export function RosterPage() {
               </Button>
             }
           />
-        </PortalCard>
+        </Paper>
       ) : null}
 
       {sortedRows.length > 0 ? (
@@ -117,6 +116,7 @@ export function RosterPage() {
           <Button variant="default" onClick={() => setVisibleCount((count) => count + 20)}>{t("action.loadMore")}</Button>
         </div>
       ) : null}
+      </Stack>
 
       <Suspense fallback={null}>
         <LazyProfileModal
@@ -124,7 +124,7 @@ export function RosterPage() {
           user={controller.selected?.user ?? null}
           profile={controller.selected?.profile ?? null}
           onClose={controller.closeMemberProfile}
-          resolveMediaUrl={resolveProfileMediaUrl}
+          resolveMediaUrl={resolveMediaUrl}
           canEdit={Boolean(
             controller.selected && controller.sessionUser && (
               controller.canManagePermission(["admin.users.edit"]) ||

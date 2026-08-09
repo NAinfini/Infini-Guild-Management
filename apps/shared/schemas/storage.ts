@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { LIMITS } from "../config/limits";
+import { mediaIdSchema } from "./media";
 
 const L = LIMITS.content;
 
@@ -26,7 +27,7 @@ export const storageItemSchema = z.object({
   quantity: z.number().int().min(0),
   allow_member_deposit: z.boolean(),
   allow_member_withdraw: z.boolean(),
-  images: z.array(z.object({ id: z.string(), r2_key: z.string() })), // upload order = created_at
+  images: z.array(z.object({ media_id: mediaIdSchema })),
   created_at: z.string(),
   updated_at: z.string(),
 });

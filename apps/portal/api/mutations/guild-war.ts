@@ -83,13 +83,6 @@ export function deleteGuildWarHistory(id: string): Promise<{ ok: true }> {
   });
 }
 
-export function batchDeleteGuildWarHistory(ids: string[]): Promise<{ ok: true; deleted: number }> {
-  return apiRequest<{ ok: true; deleted: number }>("/api/guild-war/history/batch-delete", {
-    method: "POST",
-    bodyJson: { ids },
-  });
-}
-
 export function updateGuildWarHistory(historyId: string, payload: UpdateWarHistoryPayload): Promise<WarHistory> {
   return apiRequest<WarHistory>(`/api/guild-war/history/${historyId}`, {
     method: "PATCH",

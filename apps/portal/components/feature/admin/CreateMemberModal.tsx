@@ -1,8 +1,10 @@
-import { DepthButton } from "@portal/components/shared/DepthButton";
+import type { AdminRole } from "@guild/shared";
 import {
+  Button,
   CopyButton,
   Group,
   Modal,
+  Select,
   Stack,
   Text,
   TextInput,
@@ -27,8 +29,10 @@ type CreateMemberModalProps = {
   onCreateMember: (data: {
     username: string;
     notes: string;
+    roleId: string;
   }) => Promise<CreateMemberResult>;
   creating: boolean;
+  roles: AdminRole[];
 };
 
 export function CreateMemberModal({
@@ -36,15 +40,18 @@ export function CreateMemberModal({
   onClose,
   onCreateMember,
   creating,
+  roles,
 }: CreateMemberModalProps) {
   const { t } = useTranslation("admin");
   const [username, setUsername] = useState("");
   const [notes, setNotes] = useState("");
+  const [roleId, setRoleId] = useState("");
   const [result, setResult] = useState<CreateMemberResult | null>(null);
 
   const resetForm = () => {
     setUsername("");
     setNotes("");
+    setRoleId("");
     setResult(null);
   };
 
@@ -55,7 +62,7 @@ export function CreateMemberModal({
 
   const handleCreate = async () => {
     const trimmed = username.trim();
-    if (!trimmed) return;
+    if (!trimmed || !roleId) return;
     if (trimmed.length < 3 || trimmed.length > 50 || !USERNAME_PATTERN.test(trimmed)) {
       notifyError(t("member.create.usernameInvalid"));
       return;
@@ -65,6 +72,7 @@ export function CreateMemberModal({
       const res = await onCreateMember({
         username: trimmed,
         notes: notes.trim(),
+        roleId,
       });
       setResult(res);
     } catch {
@@ -95,22 +103,23 @@ export function CreateMemberModal({
               />
               <CopyButton value={result.temporary_password}>
                 {({ copied, copy }) => (
-                  <DepthButton
+                  <Button
                     onClick={copy}
-                    type={copied ? "success" : "secondary"}
+                    color={copied ? "green" : undefined}
+                    variant={copied ? "light" : "default"}
                     size="sm"
-                    before={copied ? <CheckIcon size={16} /> : <CopyIcon size={16} />}
+                    leftSection={copied ? <CheckIcon size={16} /> : <CopyIcon size={16} />}
                   >
                     {copied ? t("member.create.copied") : t("member.create.copy")}
-                  </DepthButton>
+                  </Button>
                 )}
               </CopyButton>
             </Group>
           </div>
           <Group justify="flex-end">
-            <DepthButton onClick={handleClose} type="primary" size="sm">
+            <Button onClick={handleClose} size="sm">
               {t("member.create.done")}
-            </DepthButton>
+            </Button>
           </Group>
         </Stack>
       ) : (
@@ -123,6 +132,15 @@ export function CreateMemberModal({
             required
             data-autofocus
           />
+          <Select
+            label={t("member.create.roleLabel")}
+            placeholder={t("member.create.rolePlaceholder")}
+            value={roleId}
+            onChange={(value) => setRoleId(value ?? "")}
+            data={roles.map((role) => ({ value: role.id, label: role.name }))}
+            searchable
+            required
+          />
           <Textarea
             label={t("member.create.notesLabel")}
             placeholder={t("member.create.notesPlaceholder")}
@@ -132,19 +150,18 @@ export function CreateMemberModal({
             autosize
           />
           <Group justify="flex-end" mt={8}>
-            <DepthButton onClick={handleClose} type="secondary" size="sm">
+            <Button onClick={handleClose} variant="default" size="sm">
               {t("member.create.cancel")}
-            </DepthButton>
-            <DepthButton
+            </Button>
+            <Button
               onClick={() => { void handleCreate(); }}
-              type="primary"
               size="sm"
-              before={<UserPlusIcon size={16} />}
-              disabled={!username.trim() || creating}
+              leftSection={<UserPlusIcon size={16} />}
+              disabled={!username.trim() || !roleId || creating}
               loading={creating}
             >
               {t("member.create.submit")}
-            </DepthButton>
+            </Button>
           </Group>
         </Stack>
       )}

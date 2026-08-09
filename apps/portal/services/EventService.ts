@@ -1,4 +1,4 @@
-import type { Event } from "@guild/shared";
+import type { Event, EventClassQuotaInput } from "@guild/shared";
 import type { QueryClient } from "@tanstack/react-query";
 import {
   addEventParticipant,
@@ -30,6 +30,7 @@ import {
 } from "../api/queries/events";
 import type { EventDetailResponse } from "../api/queries/events";
 import type { AttachmentItem, AttachmentService } from "./AttachmentService";
+import { eventHasBehavior } from "@portal/utils/game-rules";
 
 export {
   addEventParticipant,
@@ -96,11 +97,12 @@ export type EventSaveInput = {
   pollResultsVisibility?: "always" | "after_vote" | "after_close";
   pollShowVoterNames?: boolean;
   winnerCount?: string;
+  classQuotas?: EventClassQuotaInput[];
   attachmentItems: AttachmentItem[];
 };
 
 type EventServiceDeps = {
-  attachmentService: Pick<AttachmentService, "extractExistingUrls" | "extractNewFiles">;
+  attachmentService: Pick<AttachmentService, "extractExistingMediaIds" | "extractNewFiles">;
   queryClient?: QueryClient;
   createEvent?: typeof createEventMutation;
   updateEvent?: typeof updateEventMutation;
@@ -108,7 +110,7 @@ type EventServiceDeps = {
 };
 
 export class EventService {
-  private readonly attachmentService: Pick<AttachmentService, "extractExistingUrls" | "extractNewFiles">;
+  private readonly attachmentService: Pick<AttachmentService, "extractExistingMediaIds" | "extractNewFiles">;
   private readonly queryClient?: QueryClient;
   private readonly createEventFn: typeof createEventMutation;
   private readonly updateEventFn: typeof updateEventMutation;
@@ -157,10 +159,11 @@ export class EventService {
       throw new EventValidationError("missing_event_id", "Missing event id");
     }
 
-    const existingAttachments = this.attachmentService.extractExistingUrls(input.attachmentItems);
-    const nextAttachments = filesToUpload.length > 0
-      ? (await this.uploadEventImagesFn(input.editingEventId, filesToUpload)).attachments ?? existingAttachments
-      : existingAttachments;
+    const existingAttachments = this.attachmentService.extractExistingMediaIds(input.attachmentItems);
+    const uploadedMediaIds = filesToUpload.length > 0
+      ? (await this.uploadEventImagesFn(input.editingEventId, filesToUpload)).media_ids
+      : [];
+    const nextAttachments = [...existingAttachments, ...uploadedMediaIds];
 
     const response = await this.updateEventFn(input.editingEventId, {
       ...payload,
@@ -184,7 +187,9 @@ export class EventService {
     }
 
     let capacity: number | undefined;
-    if (input.eventType !== "poll" && input.capacity.trim()) {
+    const isPoll = eventHasBehavior(input.eventType, "poll");
+    const isRaffle = eventHasBehavior(input.eventType, "raffle");
+    if (!isPoll && input.capacity.trim()) {
       const parsedCapacity = Number.parseInt(input.capacity, 10);
       if (Number.isNaN(parsedCapacity) || parsedCapacity < 1) {
         throw new EventValidationError("invalid_capacity", "Capacity must be positive");
@@ -194,7 +199,7 @@ export class EventService {
 
     const description = input.description.trim();
     const pollOptions = (input.pollOptions ?? []).map((option) => option.trim()).filter(Boolean);
-    if (input.eventType === "poll") {
+    if (isPoll) {
       if (!input.endIso) {
         throw new EventValidationError("missing_poll_end", "Poll end time required");
       }
@@ -203,7 +208,7 @@ export class EventService {
       }
     }
 
-    if (input.eventType === "raffle") {
+    if (isRaffle) {
       if (!input.endIso) {
         throw new EventValidationError("missing_raffle_end", "Raffle end time required");
       }
@@ -213,9 +218,17 @@ export class EventService {
       }
     }
 
-    const winnerCount = input.eventType === "raffle"
+    const winnerCount = isRaffle
       ? Number.parseInt(input.winnerCount ?? "", 10) || undefined
       : undefined;
+
+    /*
+     * 投票和抽奖必须发空数组，不能把编辑器里残留的配额带过去：服务端对这两种类型
+     * 收到非空配额会整个请求拒收。表单在类型切成投票/抽奖时只是把控件藏了，状态还在。
+     */
+    const classQuotas = isPoll || isRaffle
+      ? []
+      : input.classQuotas ?? [];
 
     return {
       type: input.eventType,
@@ -226,7 +239,7 @@ export class EventService {
       capacity,
       attachments: [],
       auto_archive: input.autoArchive,
-      poll: input.eventType === "poll"
+      poll: isPoll
         ? {
             options: pollOptions,
             results_visibility: input.pollResultsVisibility ?? "after_vote",
@@ -234,6 +247,7 @@ export class EventService {
           }
         : undefined,
       winner_count: winnerCount,
+      class_quotas: classQuotas,
     };
   }
 

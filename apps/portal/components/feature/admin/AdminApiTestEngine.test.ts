@@ -1,11 +1,8 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
-  STALE_ARTIFACT_PROBES,
   buildJsonRequest,
-  buildCleanupSteps,
   buildApiCategories,
   captureContextFromResponse,
-  countStaleSystemTestArtifacts,
   createInitialTestRunContext,
   filterApiCategoriesForPermissions,
   prepareEndpointRequest,
@@ -22,102 +19,86 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
-describe("AdminApiTestEngine cleanup planning", () => {
-  it("permanently deletes test-created content before parent records", () => {
-    const steps = buildCleanupSteps(contextWith({
-      createdAnnouncementId: "announcement-1",
-      createdWikiArticleId: "article-1",
-      createdWikiCategoryId: "category-1",
-      createdEventId: "event-1",
-      createdTemplateId: "template-1",
-    }));
-
-    expect(steps.map((step) => step.label)).toEqual([
-      "Cleanup: Announcement",
-      "Cleanup: Wiki Article",
-      "Cleanup: Wiki Category",
-      "Cleanup: Event Template",
-      "Cleanup: Archive Event",
-      "Cleanup: Destroy Event",
-    ]);
-    expect(steps.map((step) => step.path)).toEqual([
-      "/api/announcements/announcement-1/permanent",
-      "/api/wiki/articles/article-1/permanent",
-      "/api/wiki/categories/category-1",
-      "/api/events/templates/template-1",
-      "/api/events/event-1",
-      "/api/events/event-1/destroy",
-    ]);
-  });
-
-  it("builds user cleanup with batch deletion", () => {
-    const steps = buildCleanupSteps(contextWith({
-      meId: "admin-1",
-      registeredUserId: "registered-1",
-      adminCreatedUserId: "created-1",
-      adminCreatedUserPassword: "TempPass123!",
-    }));
-
-    expect(steps).toEqual([
-      {
-        label: "Cleanup: Registered User",
-        method: "PATCH",
-        path: "/api/admin/users/batch/delete",
-        jsonBody: { user_ids: ["registered-1"] },
-        clearContext: { registeredUserId: null },
-      },
-      {
-        label: "Cleanup: Admin Created User",
-        method: "PATCH",
-        path: "/api/admin/users/batch/delete",
-        jsonBody: { user_ids: ["created-1"] },
-        clearContext: { adminCreatedUserId: null, adminCreatedUsername: null, adminCreatedUserPassword: null },
-      },
-    ]);
-  });
-
-  it("cleans up storage fixtures from item to category to storage", () => {
-    const steps = buildCleanupSteps(contextWith({
-      createdStorageId: "storage-1",
-      createdStorageCategoryId: "category-1",
-      createdStorageItemId: "item-1",
-      createdStorageImageId: "image-1",
-    } as Partial<TestRunContext>));
-
-    expect(steps.slice(0, 4)).toEqual([
-      {
-        label: "Cleanup: Storage Image",
-        method: "DELETE",
-        path: "/api/storage/items/item-1/images/image-1",
-        clearContext: { createdStorageImageId: null, storageImageKey: null },
-      },
-      {
-        label: "Cleanup: Storage Item",
-        method: "DELETE",
-        path: "/api/storage/items/item-1",
-        clearContext: { createdStorageItemId: null },
-      },
-      {
-        label: "Cleanup: Storage Category",
-        method: "DELETE",
-        path: "/api/storage/storages/storage-1/categories/category-1",
-        clearContext: { createdStorageCategoryId: null },
-      },
-      {
-        label: "Cleanup: Storage",
-        method: "DELETE",
-        path: "/api/storage/storages/storage-1",
-        clearContext: { createdStorageId: null },
-      },
-    ]);
-  });
-});
-
 describe("AdminApiTestEngine request preparation", () => {
   function parseJsonBody(prepared: { body?: BodyInit }): unknown {
     expect(typeof prepared.body).toBe("string");
     return JSON.parse(prepared.body as string) as unknown;
   }
+
+  it("uses a public fixture UID without exposing the cleanup run UID", () => {
+    const runId = "014f27f1-6ca1-4c5e-924f-f111b76b9efd";
+    const fixtureId = "488488b7-b293-4149-88ba-5eef4f202dcb";
+    const registerContext = contextWith({ runId, fixtureId, registerInviteCode: "INVITE" });
+    const adminContext = contextWith({ runId, fixtureId, adminRoleId: "raid-lead" });
+
+    expect(parseJsonBody(prepareEndpointRequest(
+      { label: "Register", method: "POST", path: "/api/auth/register/:inviteCode" },
+      registerContext,
+    ))).toMatchObject({
+      username: "apitest_488488b7b293414988ba5eef4f202dcb",
+    });
+    expect(parseJsonBody(prepareEndpointRequest(
+      { label: "Create Member", method: "POST", path: "/api/admin/users" },
+      adminContext,
+    ))).toMatchObject({
+      username: "apitestadmin_488488b7b293414988ba5eef4f202dcb",
+      role_id: "raid-lead",
+    });
+  });
+
+  it("uses the captured assignable D1 role in invite and member payloads", () => {
+    const context = contextWith({ adminRoleId: "raid-lead" });
+
+    expect(parseJsonBody(prepareEndpointRequest(
+      { label: "Create Invite", method: "POST", path: "/api/admin/invite-links" },
+      context,
+    ))).toMatchObject({ role_id: "raid-lead" });
+    expect(parseJsonBody(prepareEndpointRequest(
+      { label: "Create Member", method: "POST", path: "/api/admin/users" },
+      context,
+    ))).toMatchObject({ role_id: "raid-lead" });
+  });
+
+  it("captures only a lower D1 role whose grants are a subset of the actor's permissions", () => {
+    const actor = captureContextFromResponse(
+      createInitialTestRunContext(),
+      { label: "Current User", method: "GET", path: "/api/auth/me" },
+      {
+        status: 200,
+        latencyMs: 1,
+        body: "{}",
+        error: null,
+        ranAt: "2026-08-05T00:00:00.000Z",
+        parsedJson: {
+          user: {
+            id: "admin-1",
+            username: "admin",
+            role_level: 500,
+            permissions: { "admin.users.role": true, "admin.audit.view": false },
+          },
+          profile: null,
+        },
+      },
+    );
+    const next = captureContextFromResponse(
+      actor,
+      { label: "Roles", method: "GET", path: "/api/admin/roles" },
+      {
+        status: 200,
+        latencyMs: 1,
+        body: "{}",
+        error: null,
+        ranAt: "2026-08-05T00:00:00.000Z",
+        parsedJson: [
+          { id: "same-level", level: 500, permissions: {} },
+          { id: "over-granted", level: 400, permissions: { "admin.audit.view": true } },
+          { id: "assignable", level: 300, permissions: { "admin.users.role": true } },
+        ],
+      },
+    );
+
+    expect(next.adminRoleId).toBe("assignable");
+  });
 
   it("uses the captured admin-created username for login smoke tests", () => {
     const endpoint = { label: "Login", method: "POST" as const, path: "/api/auth/login" };
@@ -139,6 +120,7 @@ describe("AdminApiTestEngine request preparation", () => {
   it("falls back to the registered test user for login smoke tests", () => {
     const endpoint = { label: "Login", method: "POST" as const, path: "/api/auth/login" };
     const ctx = contextWith({
+      registeredUserId: "user-2",
       registeredUsername: "systemtest_123",
       registeredUserPassword: "Passw0rd!",
     });
@@ -152,6 +134,18 @@ describe("AdminApiTestEngine request preparation", () => {
     expect(prepared.credentials).toBe("omit");
   });
 
+  it("does not attempt login when user creation did not return an exact user id", () => {
+    const prepared = prepareEndpointRequest(
+      { label: "Login", method: "POST", path: "/api/auth/login" },
+      contextWith({
+        registeredUsername: "systemtest_failed",
+        registeredUserPassword: "Passw0rd!",
+      }),
+    );
+
+    expect(prepared.skipReason).toBe("Requires test user credentials");
+  });
+
   it("creates badges with the backend schema fields", () => {
     const endpoint = { label: "Create Badge", method: "POST" as const, path: "/api/badges" };
 
@@ -160,6 +154,126 @@ describe("AdminApiTestEngine request preparation", () => {
 
     expect(body.label_html).toBeTypeOf("string");
     expect(body.icon).toBeUndefined();
+  });
+
+  /*
+   * reorder 接口要求整表 id 列全，所以用例只能回放列表抓到的现序并把本次新建的
+   * 那一个补在末尾——断言的正是「现序 + 尾插」，多一位少一位都说明会改动线上顺序。
+   */
+  it("replays the captured server order and appends only this run's fixture on reorder endpoints", () => {
+    const ctx = contextWith({
+      badgeIdsInOrder: ["badge-1", "badge-2"],
+      createdBadgeId: "badge-3",
+      classIdsInOrder: ["class-1"],
+      createdClassId: "class-2",
+      classTagIdsInOrder: [],
+      createdClassTagId: "tag-1",
+    });
+
+    expect(parseJsonBody(prepareEndpointRequest(
+      { label: "Reorder Badges", method: "PATCH", path: "/api/badges/reorder" },
+      ctx,
+    ))).toEqual({ order: ["badge-1", "badge-2", "badge-3"] });
+    expect(parseJsonBody(prepareEndpointRequest(
+      { label: "Reorder Classes", method: "PATCH", path: "/api/classes/reorder" },
+      ctx,
+    ))).toEqual({ order: ["class-1", "class-2"] });
+    expect(parseJsonBody(prepareEndpointRequest(
+      { label: "Reorder Class Tags", method: "PATCH", path: "/api/class-tags/reorder" },
+      ctx,
+    ))).toEqual({ order: ["tag-1"] });
+  });
+
+  it("skips reorder endpoints until their list capture has run", () => {
+    const context = createInitialTestRunContext();
+
+    expect(prepareEndpointRequest(
+      { label: "Reorder Badges", method: "PATCH", path: "/api/badges/reorder" },
+      context,
+    ).skipReason).toContain("badge order");
+    expect(prepareEndpointRequest(
+      { label: "Reorder Classes", method: "PATCH", path: "/api/classes/reorder" },
+      context,
+    ).skipReason).toContain("class order");
+    expect(prepareEndpointRequest(
+      { label: "Reorder Class Tags", method: "PATCH", path: "/api/class-tags/reorder" },
+      context,
+    ).skipReason).toContain("class tag order");
+  });
+
+  it("captures the server order from the badge, class, and class-tag list responses", () => {
+    const listResult = (rows: unknown) => ({
+      status: 200,
+      latencyMs: 1,
+      body: "[]",
+      error: null,
+      ranAt: "2026-08-07T00:00:00.000Z",
+      parsedJson: rows,
+    });
+    let ctx = createInitialTestRunContext();
+
+    ctx = captureContextFromResponse(ctx, { label: "Badges", method: "GET", path: "/api/badges" }, listResult([{ id: "badge-1" }, { id: "badge-2" }]));
+    ctx = captureContextFromResponse(ctx, { label: "Classes", method: "GET", path: "/api/classes" }, listResult([{ id: "class-1" }]));
+    ctx = captureContextFromResponse(ctx, { label: "Tags", method: "GET", path: "/api/class-tags" }, listResult([]));
+
+    expect(ctx.badgeIdsInOrder).toEqual(["badge-1", "badge-2"]);
+    expect(ctx.classIdsInOrder).toEqual(["class-1"]);
+    expect(ctx.classTagIdsInOrder).toEqual([]);
+  });
+
+  it("runs class-tag mutations only against the tag created by this run", () => {
+    const created = captureContextFromResponse(
+      createInitialTestRunContext(),
+      { label: "Create Tag", method: "POST", path: "/api/class-tags" },
+      { status: 201, latencyMs: 1, body: "{}", error: null, ranAt: "2026-08-07T00:00:00.000Z", parsedJson: { id: "tag-1" } },
+    );
+
+    expect(prepareEndpointRequest(
+      { label: "Update Tag", method: "PATCH", path: "/api/class-tags/:id" },
+      createInitialTestRunContext(),
+    ).skipReason).toContain("created class tag id");
+    expect(resolveEndpointPath(
+      { label: "Delete Tag", method: "DELETE", path: "/api/class-tags/:id" },
+      created,
+    ).path).toBe("/api/class-tags/tag-1");
+
+    const cleared = captureContextFromResponse(
+      created,
+      { label: "Delete Tag", method: "DELETE", path: "/api/class-tags/:id" },
+      { status: 200, latencyMs: 1, body: "{}", error: null, ranAt: "2026-08-07T00:00:00.000Z", parsedJson: { deleted: true } },
+    );
+    expect(cleared.createdClassTagId).toBeNull();
+  });
+
+  it("batch-updates only the run-created wiki category and holds its position", () => {
+    expect(prepareEndpointRequest(
+      { label: "Batch Update Categories", method: "PATCH", path: "/api/wiki/categories/batch" },
+      createInitialTestRunContext(),
+    ).skipReason).toContain("created wiki category id");
+
+    expect(parseJsonBody(prepareEndpointRequest(
+      { label: "Batch Update Categories", method: "PATCH", path: "/api/wiki/categories/batch" },
+      contextWith({ createdWikiCategoryId: "cat-1" }),
+    ))).toEqual({ updates: [{ id: "cat-1", sort_order: 0 }] });
+  });
+
+  it("uses the recurring-template contract and never writes a profile during auth read smoke tests", () => {
+    const template = prepareEndpointRequest(
+      { label: "Create Template", method: "POST", path: "/api/events/templates" },
+      contextWith({ fixtureId: "488488b7-b293-4149-88ba-5eef4f202dcb" }),
+    );
+    const templateBody = parseJsonBody(template) as Record<string, unknown>;
+    const currentUser = prepareEndpointRequest(
+      { label: "Current User", method: "GET", path: "/api/auth/me" },
+      createInitialTestRunContext(),
+    );
+
+    expect(templateBody.start_time).toEqual(expect.stringMatching(/^\d{2}:\d{2}$/));
+    expect(templateBody.duration_minutes).toBe(60);
+    expect(templateBody).not.toHaveProperty("start_at");
+    expect(templateBody).not.toHaveProperty("end_at");
+    expect(currentUser.skipReason).toContain("production admin profile");
+    expect(currentUser.optionalSkip).toBe(true);
   });
 
   it("sends guild war member stats in the nested route contract shape", () => {
@@ -218,50 +332,44 @@ describe("AdminApiTestEngine request preparation", () => {
     expect(endpointKeys.indexOf("POST /api/guild-war/save-teams")).toBeLessThan(endpointKeys.indexOf("POST /api/guild-war/conclude"));
   });
 
-  it("stages an announcement image before creating and claiming it", () => {
-    const endpointKeys = buildApiCategories((key) => key)
+  it("creates an announcement before uploading its media without a staging token", () => {
+    const endpoints = buildApiCategories((key) => key)
       .find((category) => category.key === "announcements")
-      ?.endpoints.map((endpoint) => `${endpoint.method} ${endpoint.path}`) ?? [];
-    expect(endpointKeys.indexOf("POST /api/announcements/images/stage"))
-      .toBeLessThan(endpointKeys.indexOf("POST /api/announcements"));
+      ?.endpoints ?? [];
+    const endpointKeys = endpoints.map((endpoint) => `${endpoint.method} ${endpoint.path}`);
+    expect(endpointKeys).not.toContain("POST /api/announcements/images/stage");
+    expect(endpointKeys.indexOf("POST /api/announcements"))
+      .toBeLessThan(endpointKeys.indexOf("POST /api/announcements/:id/images"));
 
-    const stageEndpoint = {
-      label: "Stage Announcement Image",
-      method: "POST" as const,
-      path: "/api/announcements/images/stage",
-    };
-    const stageRequest = prepareEndpointRequest(stageEndpoint, createInitialTestRunContext());
-    expect(stageRequest.body).toBeInstanceOf(FormData);
-    expect((stageRequest.body as FormData).get("files")).toBeInstanceOf(File);
-
-    const stagedContext = captureContextFromResponse(
-      createInitialTestRunContext(),
-      stageEndpoint,
+    const uploadedContext = captureContextFromResponse(
+      contextWith({ createdAnnouncementId: "announcement-1" }),
+      { label: "Upload Announcement Image", method: "POST", path: "/api/announcements/:id/images" },
       {
         status: 201,
         latencyMs: 1,
         body: "{}",
         error: null,
         ranAt: "2026-07-28T00:00:00.000Z",
-        parsedJson: {
-          staging_id: "abcdefghijklmnopqrstu",
-          staging_token: "signed-staging-token",
-          keys: ["announcement/abcdefghijklmnopqrstu/images/image.png"],
-        },
+        parsedJson: { media_ids: ["abcdefghijklmnopqrstu"] },
       },
     );
-    expect(stagedContext.announcementStagingToken).toBe("signed-staging-token");
-    expect(stagedContext.announcementImageKey).toBe("announcement/abcdefghijklmnopqrstu/images/image.png");
+    expect(uploadedContext.announcementImageMediaId).toBe("abcdefghijklmnopqrstu");
 
     const createRequest = prepareEndpointRequest(
       { label: "Create Announcement", method: "POST", path: "/api/announcements" },
-      stagedContext,
+      createInitialTestRunContext(),
     );
     const createBody = parseJsonBody(createRequest) as Record<string, unknown>;
-    expect(createBody.staging_token).toBe("signed-staging-token");
-    expect(createBody.body_json).toContain(
-      encodeURIComponent("announcement/abcdefghijklmnopqrstu/images/image.png"),
+    expect(createBody).not.toHaveProperty("staging_token");
+
+    const uploadRequest = prepareEndpointRequest(
+      { label: "Upload Announcement Image", method: "POST", path: "/api/announcements/:id/images" },
+      contextWith({ createdAnnouncementId: "announcement-1" }),
     );
+    const form = uploadRequest.body as FormData;
+    expect(form.get("full")).toBeInstanceOf(File);
+    expect(form.get("view")).toBeInstanceOf(File);
+    expect(form.has("original_name")).toBe(false);
   });
 
   it("uses concluded history for member stats requests", () => {
@@ -294,34 +402,73 @@ describe("AdminApiTestEngine request preparation", () => {
       ctx,
     ).path).toBe("/api/guild-war/history/created-war/member-stats/user-1");
     expect(prepareEndpointRequest(
-      { label: "Batch History", method: "POST", path: "/api/guild-war/history/batch" },
+      { label: "Batch History", method: "GET", path: "/api/guild-war/history/batch" },
       ctx,
-    ).body).toBe(JSON.stringify({ ids: ["created-war"] }));
+    ).path).toBe("/api/guild-war/history/batch?ids=created-war");
   });
 
-  it("resolves uploaded media keys for image retrieval endpoints", () => {
-    expect(resolveEndpointPath(
-      { label: "Event Image", method: "GET", path: "/api/events/image" },
-      contextWith({ eventImageKey: "events/event-1/images/key" }),
-    ).path).toBe("/api/events/image?key=events%2Fevent-1%2Fimages%2Fkey");
+  it("creates guild-war history only for the guild-war event made by this run", () => {
+    const endpoint = { label: "Create History", method: "POST" as const, path: "/api/guild-war/history" };
+    const unsafe = prepareEndpointRequest(endpoint, contextWith({
+      eventId: "seed-event",
+      warEventId: "live-war-event",
+      createdEventId: "other-test-event",
+    }));
+    const safe = prepareEndpointRequest(endpoint, contextWith({
+      createdGuildWarEventId: "test-guild-war-event",
+    }));
 
-    expect(resolveEndpointPath(
-      { label: "Announcement Image", method: "GET", path: "/api/announcements/image" },
-      contextWith({ announcementImageKey: "announcement/ann-1/images/key" }),
-    ).path).toBe("/api/announcements/image?key=announcement%2Fann-1%2Fimages%2Fkey");
-
-    expect(resolveEndpointPath(
-      { label: "Gallery Image", method: "GET", path: "/api/gallery/image" },
-      contextWith({ galleryImageKey: "gallery/images/user-1/key" }),
-    ).path).toBe("/api/gallery/image?key=gallery%2Fimages%2Fuser-1%2Fkey");
-
-    expect(resolveEndpointPath(
-      { label: "Wiki Image", method: "GET", path: "/api/wiki/image" },
-      contextWith({ wikiImageKey: "wiki/article-1/images/key" }),
-    ).path).toBe("/api/wiki/image?key=wiki%2Farticle-1%2Fimages%2Fkey");
+    expect(unsafe.skipReason).toContain("created guild war event");
+    expect(parseJsonBody(safe)).toMatchObject({ event_id: "test-guild-war-event" });
   });
 
-  it("captures admin-created username and uploaded image keys from responses", () => {
+  it("resolves every image read through the canonical media route", () => {
+    expect(resolveEndpointPath(
+      {
+        label: "Event Image",
+        method: "GET",
+        path: "/api/media/:mediaId/:variant",
+        mediaIdContext: "eventImageMediaId",
+        mediaVariant: "view",
+      },
+      contextWith({ eventImageMediaId: "abcdefghijklmnopqrstu" }),
+    ).path).toBe("/api/media/abcdefghijklmnopqrstu/view");
+
+    expect(resolveEndpointPath(
+      {
+        label: "Announcement Image",
+        method: "GET",
+        path: "/api/media/:mediaId/:variant",
+        mediaIdContext: "announcementImageMediaId",
+        mediaVariant: "full",
+      },
+      contextWith({ announcementImageMediaId: "bcdefghijklmnopqrstuv" }),
+    ).path).toBe("/api/media/bcdefghijklmnopqrstuv/full");
+
+    expect(resolveEndpointPath(
+      {
+        label: "Gallery Image",
+        method: "GET",
+        path: "/api/media/:mediaId/:variant",
+        mediaIdContext: "galleryImageMediaId",
+        mediaVariant: "view",
+      },
+      contextWith({ galleryImageMediaId: "cdefghijklmnopqrstuvw" }),
+    ).path).toBe("/api/media/cdefghijklmnopqrstuvw/view");
+
+    expect(resolveEndpointPath(
+      {
+        label: "Wiki Image",
+        method: "GET",
+        path: "/api/media/:mediaId/:variant",
+        mediaIdContext: "wikiImageMediaId",
+        mediaVariant: "view",
+      },
+      contextWith({ wikiImageMediaId: "defghijklmnopqrstuvwx" }),
+    ).path).toBe("/api/media/defghijklmnopqrstuvwx/view");
+  });
+
+  it("captures admin-created username and uploaded media IDs from responses", () => {
     const adminCtx = captureContextFromResponse(
       createInitialTestRunContext(),
       { label: "Create User", method: "POST", path: "/api/admin/users" },
@@ -346,14 +493,14 @@ describe("AdminApiTestEngine request preparation", () => {
         body: "{}",
         error: null,
         ranAt: "2026-05-18T00:00:00.000Z",
-        parsedJson: { data: [{ id: "gallery-1", url: "gallery/images/user-1/key" }] },
+        parsedJson: { data: [{ id: "gallery-1", type: "image", media_id: "abcdefghijklmnopqrstu", url: null }] },
       },
     );
 
-    expect(imageCtx.galleryImageKey).toBe("gallery/images/user-1/key");
+    expect(imageCtx.galleryImageMediaId).toBe("abcdefghijklmnopqrstu");
   });
 
-  it("captures an invite code from the cursor response envelope", () => {
+  it("never reuses an existing invite from the cursor response", () => {
     const next = captureContextFromResponse(
       createInitialTestRunContext(),
       { label: "Invites", method: "GET", path: "/api/admin/invite-links" },
@@ -371,10 +518,14 @@ describe("AdminApiTestEngine request preparation", () => {
       },
     );
 
-    expect(next.registerInviteCode).toBe("CURSOR-INVITE-CODE");
+    expect(next.registerInviteCode).toBeNull();
+    expect(prepareEndpointRequest(
+      { label: "Register", method: "POST", path: "/api/auth/register/:inviteCode" },
+      next,
+    ).skipReason).toContain("register invite code");
   });
 
-  it("does not capture seeded mock image paths as profile media keys", () => {
+  it("captures profile media IDs without interpreting R2 path prefixes", () => {
     const next = captureContextFromResponse(
       createInitialTestRunContext(),
       { label: "Users", method: "GET", path: "/api/users?page=1&limit=5" },
@@ -388,14 +539,14 @@ describe("AdminApiTestEngine request preparation", () => {
           data: [
             {
               user: { id: "user-1" },
-              profile: { images: ["/mock/portrait-1.svg"] },
+              profile: { images: ["abcdefghijklmnopqrstu"] },
             },
           ],
         },
       },
     );
 
-    expect(next.userImageKey).toBeNull();
+    expect(next.userImageMediaId).toBe("abcdefghijklmnopqrstu");
   });
 
   it("uses the registered disposable user as a fallback target", () => {
@@ -563,7 +714,7 @@ describe("AdminApiTestEngine request preparation", () => {
     for (const endpoint of protectedUserEndpoints) {
       const prepared = prepareEndpointRequest(endpoint, contextWith({
         meId: "real-admin",
-        uploadedImageKey: "members/real-admin/images/systemtest.png",
+        uploadedImageMediaId: "abcdefghijklmnopqrstu",
       }));
 
       expect(prepared.path).toBe(endpoint.path);
@@ -574,7 +725,7 @@ describe("AdminApiTestEngine request preparation", () => {
       const prepared = prepareEndpointRequest(endpoint, contextWith({
         meId: "real-admin",
         adminCreatedUserId: "disposable-member",
-        uploadedImageKey: "members/disposable-member/images/systemtest.png",
+        uploadedImageMediaId: "abcdefghijklmnopqrstu",
       }));
 
       expect(prepared.path).toContain("/api/users/disposable-member/");
@@ -596,38 +747,6 @@ describe("AdminApiTestEngine request preparation", () => {
     expect(detail.path).toBe("/api/users/:id");
     expect(detail.skipReason).toContain("test member");
     expect(safeDetail.path).toBe("/api/users/disposable-member");
-  });
-
-  it("cleans up profile media against disposable members only", () => {
-    expect(buildCleanupSteps(contextWith({
-      meId: "real-admin",
-      targetProfileSnapshot: { bio: "admin bio", classes: ["admin-class"] },
-      uploadedImageKey: "members/real-admin/images/systemtest.png",
-    }))).toEqual([]);
-
-    const steps = buildCleanupSteps(contextWith({
-      meId: "real-admin",
-      registeredUserId: "disposable-member",
-      targetProfileSnapshot: { bio: "test bio", classes: ["test-class"] },
-      uploadedImageKey: "members/disposable-member/images/systemtest.png",
-    }));
-
-    expect(steps).toContainEqual({
-      label: "Cleanup: Restore Profile",
-      method: "PATCH",
-      path: "/api/users/disposable-member/profile",
-      jsonBody: { bio: "test bio", classes: ["test-class"] },
-      clearContext: { targetProfileSnapshot: null },
-    });
-    expect(steps).toContainEqual({
-      label: "Cleanup: Test Image",
-      method: "DELETE",
-      path: "/api/users/disposable-member/media/images",
-      jsonBody: { keys: ["members/disposable-member/images/systemtest.png"] },
-      clearContext: { uploadedImageKey: null },
-    });
-    expect(steps.map((step) => step.path)).not.toContain("/api/users/real-admin/profile");
-    expect(steps.map((step) => step.path)).not.toContain("/api/users/real-admin/media/images");
   });
 
   it("uses disposable members for participant, guild-war, and badge mutation payloads", () => {
@@ -785,7 +904,7 @@ describe("AdminApiTestEngine request preparation", () => {
       "GET /api/users/:id",
       "PATCH /api/users/:id/profile",
       "POST /api/users/:id/media/images",
-      "GET /api/users/image",
+      "GET /api/media/:mediaId/:variant",
       "DELETE /api/users/:id/media/images",
       "POST /api/users/:id/media/avatar",
       "DELETE /api/users/:id/media/avatar",
@@ -800,7 +919,6 @@ describe("AdminApiTestEngine request preparation", () => {
       "PATCH /api/events/:id",
       "POST /api/events/batch-details",
       "POST /api/events/:id/images",
-      "GET /api/events/image",
       "POST /api/events/:id/join",
       "POST /api/events/:id/poll/vote",
       "POST /api/events/:id/raffle/draw",
@@ -818,17 +936,14 @@ describe("AdminApiTestEngine request preparation", () => {
       "DELETE /api/events/templates/:id",
       "GET /api/announcements?page=1&limit=5",
       "GET /api/announcements/:id",
-      "POST /api/announcements/images/stage",
       "POST /api/announcements",
       "PATCH /api/announcements/:id",
       "DELETE /api/announcements/:id",
       "DELETE /api/announcements/:id/permanent",
       "POST /api/announcements/:id/images",
-      "GET /api/announcements/image",
       "GET /api/gallery?limit=5",
       "POST /api/gallery/images",
       "POST /api/gallery/videos",
-      "GET /api/gallery/image",
       "DELETE /api/gallery/:id",
       "POST /api/gallery/batch-delete",
       "GET /api/guild-war/active",
@@ -840,7 +955,7 @@ describe("AdminApiTestEngine request preparation", () => {
       "POST /api/guild-war/conclude",
       "GET /api/guild-war/export?format=json",
       "GET /api/guild-war/history?page=1&limit=5",
-      "POST /api/guild-war/history/batch",
+      "GET /api/guild-war/history/batch",
       "GET /api/guild-war/history/:id",
       "POST /api/guild-war/history",
       "PATCH /api/guild-war/history/:id",
@@ -860,15 +975,28 @@ describe("AdminApiTestEngine request preparation", () => {
       "DELETE /api/wiki/articles/:id",
       "DELETE /api/wiki/articles/:id/permanent",
       "POST /api/wiki/articles/:id/images",
-      "GET /api/wiki/image",
       "GET /api/badges",
       "GET /api/badges/:id",
       "POST /api/badges",
       "PATCH /api/badges/:id",
+      "PATCH /api/badges/reorder",
       "DELETE /api/badges/:id",
       "GET /api/badges/:id/assignments",
       "POST /api/badges/:id/assign",
       "POST /api/badges/:id/unassign",
+      "GET /api/classes",
+      "POST /api/classes",
+      "PATCH /api/classes/:id",
+      "PATCH /api/classes/reorder",
+      "POST /api/classes/:id/icon",
+      "DELETE /api/classes/:id/icon",
+      "DELETE /api/classes/:id",
+      "GET /api/class-tags",
+      "POST /api/class-tags",
+      "PATCH /api/class-tags/:id",
+      "PATCH /api/class-tags/reorder",
+      "DELETE /api/class-tags/:id",
+      "PATCH /api/wiki/categories/batch",
       "GET /api/admin/invite-links",
       "GET /api/admin/invite-links/stats",
       "POST /api/admin/invite-links",
@@ -903,7 +1031,6 @@ describe("AdminApiTestEngine request preparation", () => {
       "POST /api/storage/items",
       "PATCH /api/storage/items/:id",
       "POST /api/storage/items/:id/images",
-      "GET /api/storage/image",
       "DELETE /api/storage/items/:id/images/:imageId",
       "POST /api/storage/items/:id/transactions?fixture=intake",
       "POST /api/storage/items/:id/transactions?fixture=distribute",
@@ -914,10 +1041,6 @@ describe("AdminApiTestEngine request preparation", () => {
       "DELETE /api/storage/items/:id",
       "DELETE /api/storage/storages/:storageId/categories/:id",
       "DELETE /api/storage/storages/:id",
-      "GET /api/game-data",
-      "GET /api/game-data/rotations/:classId",
-      "GET /api/game-data/full",
-      "GET /api/game-data/versions",
     ];
 
     expect(expectedRoutes.filter((route) => !endpointKeys.has(route))).toEqual([]);
@@ -928,8 +1051,8 @@ describe("AdminApiTestEngine request preparation", () => {
     const userEndpointKeys = categories.find((category) => category.key === "users")
       ?.endpoints.map((endpoint) => `${endpoint.method} ${endpoint.path}`) ?? [];
 
-    expect(userEndpointKeys.indexOf("POST /api/users/:id/media/images")).toBeLessThan(userEndpointKeys.indexOf("GET /api/users/image"));
-    expect(userEndpointKeys.indexOf("GET /api/users/image")).toBeLessThan(userEndpointKeys.indexOf("DELETE /api/users/:id/media/images"));
+    expect(userEndpointKeys.indexOf("POST /api/users/:id/media/images")).toBeLessThan(userEndpointKeys.indexOf("GET /api/media/:mediaId/:variant"));
+    expect(userEndpointKeys.indexOf("GET /api/media/:mediaId/:variant")).toBeLessThan(userEndpointKeys.indexOf("DELETE /api/users/:id/media/images"));
   });
 
   it("creates a disposable invite before registration so seeded invite counters are not mutated", () => {
@@ -973,12 +1096,14 @@ describe("AdminApiTestEngine request preparation", () => {
     expect(endpointKeys).not.toContain("GET /api/guild-war/export?format=json");
   });
 
-  it("exposes every storage smoke endpoint when the current user has storage management permission", () => {
+  it("exposes every storage smoke endpoint when the current user holds every granular storage permission", () => {
     const categories = buildApiCategories((key) => key);
     const storageEndpoints = categories.find((category) => category.key === "storage")?.endpoints ?? [];
 
     const filtered = filterApiCategoriesForPermissions(categories, {
-      "admin.storage.manage": true,
+      "admin.storage.structure": true,
+      "admin.storage.items": true,
+      "admin.storage.stock": true,
     });
     const visibleStorageEndpoints = filtered.find((category) => category.key === "storage")?.endpoints ?? [];
     const visibleEndpointKeys = visibleStorageEndpoints.map((endpoint) => `${endpoint.method} ${endpoint.path}`);
@@ -1031,6 +1156,8 @@ describe("AdminApiTestEngine request preparation", () => {
     expect(endpointKeys).not.toContain("POST /api/admin/users");
     expect(endpointKeys).not.toContain("POST /api/auth/register/:inviteCode");
     expect(endpointKeys).not.toContain("POST /api/guild-war/save-teams");
+    expect(endpointKeys).toContain("GET /api/guild-war/history/batch");
+    expect(endpointKeys).not.toContain("POST /api/guild-war/history/batch-delete");
   });
 
   it("exposes production mutation smoke tests when full fixture lifecycle permissions are available", () => {
@@ -1084,8 +1211,7 @@ describe("AdminApiTestEngine request preparation", () => {
       createdStorageId: "storage-1",
       createdStorageCategoryId: "category-1",
       createdStorageItemId: "item-1",
-      createdStorageImageId: "image-1",
-      storageImageKey: "storage/items/item-1/image-1",
+      storageImageMediaId: "abcdefghijklmnopqrstu",
       adminCreatedUserId: "member-1",
     } as Partial<TestRunContext>);
 
@@ -1114,13 +1240,19 @@ describe("AdminApiTestEngine request preparation", () => {
       ctx,
     ).path).toBe("/api/storage/items/item-1");
     expect(resolveEndpointPath(
-      { label: "Storage Image", method: "GET", path: "/api/storage/image" },
+      {
+        label: "Storage Image",
+        method: "GET",
+        path: "/api/media/:mediaId/:variant",
+        mediaIdContext: "storageImageMediaId",
+        mediaVariant: "view",
+      },
       ctx,
-    ).path).toBe("/api/storage/image?key=storage%2Fitems%2Fitem-1%2Fimage-1");
+    ).path).toBe("/api/media/abcdefghijklmnopqrstu/view");
     expect(resolveEndpointPath(
       { label: "Delete Storage Image", method: "DELETE", path: "/api/storage/items/:id/images/:imageId" },
       ctx,
-    ).path).toBe("/api/storage/items/item-1/images/image-1");
+    ).path).toBe("/api/storage/items/item-1/images/abcdefghijklmnopqrstu");
     expect(prepareEndpointRequest(
       { label: "Upload Storage Image", method: "POST", path: "/api/storage/items/:id/images" },
       ctx,
@@ -1192,15 +1324,14 @@ describe("AdminApiTestEngine request preparation", () => {
         body: "{}",
         error: null,
         ranAt: "2026-06-11T00:00:00.000Z",
-        parsedJson: [{ id: "image-1", r2_key: "storage/items/item-1/image-1" }],
+        parsedJson: [{ media_id: "abcdefghijklmnopqrstu" }],
       },
     );
 
     expect(imageCtx.createdStorageId).toBe("storage-1");
     expect(imageCtx.createdStorageCategoryId).toBe("category-1");
     expect(imageCtx.createdStorageItemId).toBe("item-1");
-    expect(imageCtx.createdStorageImageId).toBe("image-1");
-    expect(imageCtx.storageImageKey).toBe("storage/items/item-1/image-1");
+    expect(imageCtx.storageImageMediaId).toBe("abcdefghijklmnopqrstu");
   });
 
   it("runs admin batch delete against the admin-created test user", () => {
@@ -1212,17 +1343,6 @@ describe("AdminApiTestEngine request preparation", () => {
     expect(parseJsonBody(prepared)).toEqual({ user_ids: ["created-user"] });
   });
 
-  it("permanently deletes created invite links during cleanup", () => {
-    const steps = buildCleanupSteps(contextWith({ createdInviteLinkId: "invite-1" }));
-
-    expect(steps).toContainEqual({
-      label: "Cleanup: Invite Link",
-      method: "DELETE",
-      path: "/api/admin/invite-links/invite-1/permanent",
-      clearContext: { createdInviteLinkId: null },
-    });
-  });
-
   it("resolves invite cleanup against the created invite instead of a seeded invite", () => {
     const resolved = resolveEndpointPath(
       { label: "Delete Invite", method: "DELETE", path: "/api/admin/invite-links/:id/permanent" },
@@ -1230,18 +1350,6 @@ describe("AdminApiTestEngine request preparation", () => {
     );
 
     expect(resolved.path).toBe("/api/admin/invite-links/created-invite/permanent");
-  });
-
-  it("does not expose removed gallery like or comment smoke endpoints", () => {
-    const endpointKeys = buildApiCategories((key) => key)
-      .find((category) => category.key === "gallery")
-      ?.endpoints.map((endpoint) => `${endpoint.method} ${endpoint.path}`) ?? [];
-
-    expect(endpointKeys).not.toContain("POST /api/gallery/:id/like");
-    expect(endpointKeys).not.toContain("GET /api/gallery/:id/comments");
-    expect(endpointKeys).not.toContain("POST /api/gallery/:id/comments");
-    expect(endpointKeys).not.toContain("PATCH /api/gallery/:id/comments/:commentId");
-    expect(endpointKeys).not.toContain("DELETE /api/gallery/:id/comments/:commentId");
   });
 
   it("covers website read actions that were missing from the smoke registry", () => {
@@ -1280,8 +1388,6 @@ describe("AdminApiTestEngine request preparation", () => {
       .flatMap((category) => category.endpoints.map((endpoint) => `${endpoint.method} ${endpoint.path}`));
 
     expect(endpointKeys).toEqual(expect.arrayContaining([
-      "GET /api/game-data",
-      "GET /api/game-data/versions",
       "GET /api/admin/site-config",
       "GET /api/users/absences?from=2026-01-01&to=2026-01-31",
       "GET /api/users/:id/absences",
@@ -1309,7 +1415,35 @@ describe("AdminApiTestEngine request preparation", () => {
     ]));
     expect(visibleWithoutSiteConfigPermission).not.toContain("GET /api/admin/site-config");
     expect(visibleWithSiteConfigPermission).toContain("GET /api/admin/site-config");
-    expect(endpointKeys).not.toContain("PATCH /api/admin/site-config");
+  });
+
+  /*
+   * 站点配置的写接口现在登记进目录，只是为了让覆盖情况可见——它们必须永远发不出去。
+   * 沿用 PATCH /api/admin/analytics-settings 已有的做法：列进目录 + 准备阶段无条件跳过，
+   * 而不是把端点从目录里藏掉。「藏掉」看着安全，实际上是把覆盖缺口伪装成覆盖完整。
+   */
+  it("never sends the mutations that would change the running admin or the whole site", () => {
+    const alwaysSkipped = [
+      { label: "Logout", method: "POST" as const, path: "/api/auth/logout" },
+      { label: "Update Site Config", method: "PATCH" as const, path: "/api/admin/site-config" },
+      { label: "Upload Site Logo", method: "POST" as const, path: "/api/admin/site-config/logo" },
+      { label: "Change Password", method: "POST" as const, path: "/api/users/:id/change-password" },
+      { label: "Change Username", method: "POST" as const, path: "/api/users/:id/change-username" },
+    ];
+    const endpointKeys = buildApiCategories((key) => key)
+      .flatMap((category) => category.endpoints.map((endpoint) => `${endpoint.method} ${endpoint.path}`));
+    /* 给足一次性成员 id，让 :id 能解析出来——否则跳过的理由会是「缺 id」，
+       测不到「就算 id 齐了也照样不发」这个真正要守的性质。 */
+    const ready = contextWith({ adminCreatedUserId: "disposable-user" });
+
+    for (const endpoint of alwaysSkipped) {
+      const key = `${endpoint.method} ${endpoint.path}`;
+      expect(endpointKeys, key).toContain(key);
+      const prepared = prepareEndpointRequest(endpoint, ready);
+      expect(prepared.skipReason, key).toBeTruthy();
+      expect(prepared.optionalSkip, key).toBe(true);
+      expect(prepared.body, key).toBeUndefined();
+    }
   });
 
   it("prepares additional production read endpoints without mutating existing database state", () => {
@@ -1487,6 +1621,7 @@ describe("AdminApiTestEngine request preparation", () => {
     await runEndpointTest(
       { label: "Create Event", method: "POST", path: "/api/events" },
       buildJsonRequest("/api/events", { title: "[systemtest] Event" }),
+      "014f27f1-6ca1-4c5e-924f-f111b76b9efd",
     );
 
     expect(fetchMock).toHaveBeenCalledWith(
@@ -1495,53 +1630,9 @@ describe("AdminApiTestEngine request preparation", () => {
         headers: expect.objectContaining({
           "X-System-Test": "admin-console-api",
           "X-System-Test-Audit": "suppress",
+          "X-System-Test-Run-Id": "014f27f1-6ca1-4c5e-924f-f111b76b9efd",
         }),
       }),
     );
-  });
-
-});
-
-describe("stale [systemtest] artifact probes", () => {
-  function probe(label: string): string {
-    const found = STALE_ARTIFACT_PROBES.find((p) => p.label === label);
-    if (!found) throw new Error(`no probe named ${label}`);
-    return found.path;
-  }
-
-  /*
-   * A leaked fixture is by definition one teardown never touched, so it is still
-   * active and still unarchived. Every one of these probes previously narrowed by
-   * exactly the state a leak cannot be in, which made them report a clean run
-   * over a database that still held test rows.
-   */
-  it("does not narrow the leak probes by a state a leaked fixture cannot be in", () => {
-    expect(probe("Users")).not.toContain("active=");
-    expect(probe("Events")).not.toContain("archived=");
-    expect(probe("Announcements")).not.toContain("archived=");
-  });
-
-  it("searches users by the username the engine actually generates", () => {
-    const context = createInitialTestRunContext();
-    context.registerInviteCode = "invite-code";
-    prepareEndpointRequest(
-      { label: "Register", method: "POST", path: "/api/auth/register/:inviteCode" },
-      context,
-    );
-
-    const searchTerm = decodeURIComponent(new URL(probe("Users"), "http://x").searchParams.get("search") ?? "");
-    expect(searchTerm).not.toBe("");
-    /*
-     * The users query matches `search` against the username column alone, so a
-     * term that is not a substring of the generated username can never match —
-     * which is how `[systemtest]` came to be searched against `systemtest_<ts>`.
-     */
-    expect(context.registeredUsername).toContain(searchTerm);
-  });
-
-  it("counts both fixture naming schemes as stale artifacts", () => {
-    expect(countStaleSystemTestArtifacts({ data: [{ user: { username: "systemtest_1785085457897" } }] })).toBe(1);
-    expect(countStaleSystemTestArtifacts({ data: [{ title: "[systemtest] API Poll Event" }] })).toBe(1);
-    expect(countStaleSystemTestArtifacts({ data: [{ user: { username: "admin" } }, { title: "Guild meeting" }] })).toBe(0);
   });
 });

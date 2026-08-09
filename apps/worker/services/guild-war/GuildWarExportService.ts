@@ -1,10 +1,10 @@
-import { activeGame } from "@guild/shared/games";
 import { and, asc, desc, eq, gte, inArray, lte, type SQL } from "drizzle-orm";
 import { warHistory, warTeams } from "../../db/schema";
 import { neutralizeSpreadsheetFormula } from "../../utils/csv";
 import { ok, type ServiceResult } from "../result";
 import {
   GuildWarCoreService,
+  WAR_HISTORY_FIELDS,
   toMemberPayload,
   toTeamPayload,
   toWarHistoryPayload,
@@ -20,13 +20,15 @@ function toCsvCell(value: unknown): string {
   return `"${safe.replaceAll('"', '""')}"`;
 }
 
-function buildWarHistoryCsv(rows: WarHistoryRow[], creatorMap: Map<string, string>): string {
-  const objectives = activeGame.war.teamObjectives.filter((o) => o.hasBothSides);
-  const statHeaders = objectives.flatMap((o) => [`own_${o.key}`, `enemy_${o.key}`]);
+function buildWarHistoryCsv(rows: WarHistoryRow[], creatorMap: Map<string, string>, teamStatKeys: string[]): string {
+  const statHeaders = teamStatKeys.flatMap((key) => [`own_${key}`, `enemy_${key}`]);
   const headers = ["id","event_id","war_name","enemy_name","result",...statHeaders,"duration_minutes","notes","created_by","created_by_username","created_at","updated_at"];
   const lines = [headers.join(",")];
   for (const row of rows) {
-    const statCells = objectives.flatMap((o) => [toCsvCell(row.ownStats?.[o.key]), toCsvCell(row.enemyStats?.[o.key])]);
+    const payload = toWarHistoryPayload(row);
+    const ownStats = payload.own_stats as Partial<Record<string, number | null>> | null;
+    const enemyStats = payload.enemy_stats as Partial<Record<string, number | null>> | null;
+    const statCells = teamStatKeys.flatMap((key) => [toCsvCell(ownStats?.[key]), toCsvCell(enemyStats?.[key])]);
     lines.push([toCsvCell(row.id),toCsvCell(row.eventId),toCsvCell(row.warName),toCsvCell(row.enemyName),toCsvCell(row.result),...statCells,toCsvCell(row.durationMinutes),toCsvCell(row.notes),toCsvCell(row.createdBy),toCsvCell(creatorMap.get(row.createdBy ?? "") ?? row.createdBy),toCsvCell(row.createdAt),toCsvCell(row.updatedAt)].join(","));
   }
   return lines.join("\n");
@@ -38,11 +40,12 @@ export class GuildWarExportService extends GuildWarCoreService {
   }
 
   async exportHistory(format: "csv" | "json", filters: { dateFrom?: string; dateTo?: string; eventId?: string }): Promise<ServiceResult<{ content: string; contentType: string; filename: string }>> {
+    const gameRules = await this.getGameRules();
     const where: SQL<unknown>[] = [];
     if (filters.dateFrom) where.push(gte(warHistory.createdAt, filters.dateFrom));
     if (filters.dateTo) where.push(lte(warHistory.createdAt, filters.dateTo));
     if (filters.eventId) where.push(eq(warHistory.eventId, filters.eventId));
-    const rows = await this.db.select({ id: warHistory.id, eventId: warHistory.eventId, warName: warHistory.warName, enemyName: warHistory.enemyName, result: warHistory.result, ownStats: warHistory.ownStats, enemyStats: warHistory.enemyStats, durationMinutes: warHistory.durationMinutes, notes: warHistory.notes, createdBy: warHistory.createdBy, updatedBy: warHistory.updatedBy, createdAt: warHistory.createdAt, updatedAt: warHistory.updatedAt }).from(warHistory).where(where.length > 0 ? and(...where) : undefined).orderBy(desc(warHistory.createdAt), desc(warHistory.id)).limit(5000);
+    const rows = await this.db.select(WAR_HISTORY_FIELDS).from(warHistory).where(where.length > 0 ? and(...where) : undefined).orderBy(desc(warHistory.createdAt), desc(warHistory.id)).limit(5000);
     const creatorIds = [...new Set(rows.map((r) => r.createdBy).filter(Boolean) as string[])];
     const creatorMap = await this.getUsernameMap(creatorIds);
     const dateStamp = new Date().toISOString().slice(0, 10);
@@ -68,6 +71,10 @@ export class GuildWarExportService extends GuildWarCoreService {
       const payload = { exported_at: new Date().toISOString(), filters: { date_from: filters.dateFrom ?? null, date_to: filters.dateTo ?? null, event_id: filters.eventId ?? null }, total: rows.length, data };
       return ok({ content: JSON.stringify(payload, null, 2), contentType: "application/json; charset=utf-8", filename });
     }
-    return ok({ content: buildWarHistoryCsv(rows, creatorMap), contentType: "text/csv; charset=utf-8", filename });
+    return ok({
+      content: buildWarHistoryCsv(rows, creatorMap, gameRules.guild_war.team_stats.map((stat) => stat.key)),
+      contentType: "text/csv; charset=utf-8",
+      filename,
+    });
   }
 }

@@ -1,7 +1,11 @@
-import i18n, { type Resource } from "i18next";
+import i18n from "i18next";
 import { initReactI18next } from "react-i18next";
 
 const localeModules = import.meta.glob<Record<string, unknown>>("./*/*.json");
+const SUPPORTED_LOCALES = ["en", "zh"] as const;
+type SupportedLocale = (typeof SUPPORTED_LOCALES)[number];
+const loadedLocales = new Set<SupportedLocale>();
+const localeLoads = new Map<SupportedLocale, Promise<void>>();
 
 async function loadLocaleResources(lang: string): Promise<Record<string, object>> {
   const resources: Record<string, object> = {};
@@ -19,29 +23,69 @@ async function loadLocaleResources(lang: string): Promise<Record<string, object>
   return resources;
 }
 
+async function ensureLocaleResources(locale: SupportedLocale): Promise<void> {
+  if (loadedLocales.has(locale)) return;
+  const inFlight = localeLoads.get(locale);
+  if (inFlight) return inFlight;
+
+  const load = loadLocaleResources(locale).then((resources) => {
+    for (const [namespace, bundle] of Object.entries(resources)) {
+      i18n.addResourceBundle(locale, namespace, bundle, true, true);
+    }
+    loadedLocales.add(locale);
+    localeLoads.delete(locale);
+  });
+  localeLoads.set(locale, load);
+  return load;
+}
+
+function applyDocumentLocale(locale: SupportedLocale): void {
+  if (typeof document === "undefined") return;
+  document.documentElement.lang = locale;
+  document.documentElement.dataset.locale = locale;
+}
+
 async function initI18n(): Promise<void> {
-  const locale = localStorage.getItem("locale") ?? (navigator.language.startsWith("zh") ? "zh" : "en");
-  const fallbackLng = "en";
+  let storedLocale: string | null = null;
+  try {
+    storedLocale = typeof window === "undefined" ? null : window.localStorage.getItem("locale");
+  } catch {
+    storedLocale = null;
+  }
+  const locale = storedLocale === "en" || storedLocale === "zh"
+    ? storedLocale
+    : typeof navigator !== "undefined" && navigator.language.startsWith("zh") ? "zh" : "en";
+  const resources = await loadLocaleResources(locale);
+  const namespaces = Object.keys(resources);
 
-  const [localeResources, fallbackResources] = await Promise.all([
-    loadLocaleResources(locale),
-    locale !== fallbackLng ? loadLocaleResources(fallbackLng) : Promise.resolve({}),
-  ]);
-
-  const namespaces = Object.keys(localeResources);
-  const resources: Resource = {
-    [locale]: localeResources,
-    ...(locale !== fallbackLng ? { [fallbackLng]: fallbackResources } : {}),
-  };
+  // HMR and isolated tests can reuse i18next's singleton. Clear loaded bundles so
+  // bootstrap retains the same one-locale loading contract as a fresh page.
+  const existingResources = (i18n.services?.resourceStore as unknown as {
+    data?: Record<string, Record<string, unknown>>;
+  } | undefined)?.data;
+  for (const lang of SUPPORTED_LOCALES) {
+    for (const namespace of Object.keys(existingResources?.[lang] ?? {})) {
+      i18n.removeResourceBundle(lang, namespace);
+    }
+  }
 
   await i18n.use(initReactI18next).init({
     lng: locale,
-    fallbackLng,
+    fallbackLng: false,
     defaultNS: "common",
     ns: namespaces,
-    resources,
+    resources: { [locale]: resources },
     interpolation: { escapeValue: false },
   });
+  loadedLocales.clear();
+  loadedLocales.add(locale);
+  applyDocumentLocale(locale);
+}
+
+export async function setI18nLocale(locale: SupportedLocale): Promise<void> {
+  await ensureLocaleResources(locale);
+  await i18n.changeLanguage(locale);
+  applyDocumentLocale(locale);
 }
 
 export const i18nReady = initI18n();

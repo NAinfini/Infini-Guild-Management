@@ -1,58 +1,15 @@
-import { activeGame } from "@guild/shared/games";
-import { Avatar, Group, HoverCard, Stack, Text } from "@mantine/core";
-import { ShieldIcon, SwordIcon, HeartbeatIcon, BoltIcon } from "@portal/components/icons";
-import { resolveProfileMediaUrl } from "../../utils/media";
+import { Avatar, Group, HoverCard, Stack, Text, UnstyledButton } from "@mantine/core";
+import { BoltIcon } from "@portal/components/icons";
+import { resolveMediaUrl } from "../../utils/media";
+import {
+  resolveClassCatalogItem,
+  useClassCatalogStore,
+} from "../../stores/class-catalog";
+import { ClassIcon } from "./ClassIcon";
+import "./MemberCard.css";
 
-const ICON_MAP: Record<string, typeof SwordIcon> = {
-  IconSword: SwordIcon,
-  IconShield: ShieldIcon,
-  IconHeartbeat: HeartbeatIcon,
-};
-
-type RoleConfigResolved = {
-  id: string;
-  color: string;
-  avatarColor: string;
-  icon: typeof SwordIcon;
-  label: string;
-};
-
-const ROLE_CONFIG: Record<string, RoleConfigResolved> = Object.fromEntries(
-  activeGame.roles.map((r) => [
-    r.id,
-    { id: r.id, color: r.color, avatarColor: r.avatarColor, icon: ICON_MAP[r.icon] ?? SwordIcon, label: r.label },
-  ]),
-);
-
-const CLASS_TO_ROLE: Record<string, string> = Object.fromEntries(
-  activeGame.classes.filter((c) => c.role).map((c) => [c.id, c.role!]),
-);
-
-function classToRole(cls: string): string {
-  return CLASS_TO_ROLE[cls] ?? activeGame.defaultRole;
-}
-
-function getUniqueRoles(classes: readonly string[]): string[] {
-  if (classes.length === 0) return [activeGame.defaultRole];
-  const seen = new Set<string>();
-  const roles: string[] = [];
-  for (const cls of classes) {
-    const role = classToRole(cls);
-    if (!seen.has(role)) {
-      seen.add(role);
-      roles.push(role);
-    }
-  }
-  return roles;
-}
-
-function getPrimaryAvatarColor(roles: string[]): string {
-  for (const roleId of activeGame.roles.map((r) => r.id)) {
-    if (roles.includes(roleId) && roleId !== activeGame.defaultRole) {
-      return ROLE_CONFIG[roleId]?.avatarColor ?? "blue";
-    }
-  }
-  return ROLE_CONFIG[activeGame.defaultRole]?.avatarColor ?? "blue";
+function getUniqueClassIds(classes: readonly string[]): string[] {
+  return [...new Set(classes.filter(Boolean))];
 }
 
 type MemberRoleAvatarProps = {
@@ -62,89 +19,97 @@ type MemberRoleAvatarProps = {
   profile: {
     classes: readonly string[];
     power: number;
-    avatar_key: string | null;
+    avatar_media_id: string | null;
   };
   size?: number;
   withTooltip?: boolean;
+  /*
+   * 头像右下角那一圈职业图标。花名册要它——那里一个人就是一行，图标是主要信息。
+   * 活动卡不要：卡片已经用职业配额筹码在讲「缺什么职业」，每个头像再挂三个小圈
+   * 就是同一件事说两遍，而且头像本身要叠在一起，圈圈会互相压。
+   */
+  withClassCircles?: boolean;
 };
 
-export function MemberRoleAvatar({ user, profile, size = 36, withTooltip = true }: MemberRoleAvatarProps) {
-  const roles = getUniqueRoles(profile.classes);
-  const avatarColor = getPrimaryAvatarColor(roles);
-  const avatarSrc = profile.avatar_key ? resolveProfileMediaUrl(profile.avatar_key) : undefined;
-  const iconSize = Math.max(8, Math.round(size * 0.28));
-  const circleSize = iconSize + 6;
-  const circleGap = 2;
+export function MemberRoleAvatar({
+  user,
+  profile,
+  size = 36,
+  withTooltip = true,
+  withClassCircles = true,
+}: MemberRoleAvatarProps) {
+  const catalog = useClassCatalogStore((state) => state.items);
+  const classItems = getUniqueClassIds(profile.classes).map((id) =>
+    resolveClassCatalogItem(id, catalog)
+  );
+  const visibleClassItems = classItems.slice(0, 3);
+  const hiddenCount = Math.max(0, classItems.length - visibleClassItems.length);
+  const avatarSrc = profile.avatar_media_id ? resolveMediaUrl(profile.avatar_media_id) : undefined;
+  const circleSize = Math.max(18, Math.min(24, Math.round(size * 0.52)));
 
   const avatar = (
-    <div style={{ position: "relative", display: "inline-flex" }}>
-      <Avatar size={size} radius="xl" color={avatarColor} src={avatarSrc}>
+    <div className="member-role-avatar">
+      <Avatar size={size} radius="xl" color="portal-brand" src={avatarSrc}>
         {user.username.slice(0, 1).toUpperCase()}
       </Avatar>
-      <div
-        style={{
-          position: "absolute",
-          bottom: -3,
-          right: -3,
-          display: "flex",
-          alignItems: "center",
-          gap: circleGap,
-        }}
-      >
-        {roles.map((roleId) => {
-          const cfg = ROLE_CONFIG[roleId] ?? ROLE_CONFIG[activeGame.defaultRole];
-          if (!cfg) return null;
-          const Icon = cfg.icon;
-          return (
-            <div
-              key={roleId}
-              className="member-role-avatar__role-circle"
-              style={{ width: circleSize, height: circleSize, "--role-color": cfg.color } as React.CSSProperties}
+      {withClassCircles && visibleClassItems.length > 0 ? (
+        <div className="member-role-avatar__roles" aria-hidden="true">
+          {hiddenCount > 0 ? (
+            <span
+              className="member-role-avatar__overflow"
+              style={{ width: circleSize, height: circleSize }}
             >
-              <Icon size={iconSize} className="member-role-avatar__role-icon" style={{ display: "inline-flex", lineHeight: 0 }} />
-            </div>
-          );
-        })}
-      </div>
+              +{hiddenCount}
+            </span>
+          ) : null}
+          {visibleClassItems.map((item) => (
+            <ClassIcon
+              key={item.id}
+              item={item}
+              size={circleSize}
+              className="member-role-avatar__role-circle"
+            />
+          ))}
+        </div>
+      ) : null}
     </div>
   );
 
   if (!withTooltip) return avatar;
 
   return (
-    <HoverCard width={220} shadow="md" position="top" withArrow openDelay={200} closeDelay={100}>
-      <HoverCard.Target>{avatar}</HoverCard.Target>
-      <HoverCard.Dropdown style={{ padding: "12px" }}>
+    <HoverCard width={236} shadow="md" position="top" withArrow openDelay={200} closeDelay={100}>
+      <HoverCard.Target>
+        <UnstyledButton aria-label={user.username}>
+          {avatar}
+        </UnstyledButton>
+      </HoverCard.Target>
+      <HoverCard.Dropdown className="member-role-avatar__popover">
         <Group gap={10} wrap="nowrap" align="flex-start">
-          <Avatar size={40} radius="xl" color={avatarColor} src={avatarSrc}>
+          <Avatar size={40} radius="xl" color="portal-brand" src={avatarSrc}>
             {user.username.slice(0, 1).toUpperCase()}
           </Avatar>
           <Stack gap={2} style={{ flex: 1, minWidth: 0 }}>
             <Text size="sm" fw={700} truncate>{user.username}</Text>
-            {profile.classes.length > 0 ? (
-              <Text size="xs" c="dimmed" truncate>{profile.classes.join(" · ")}</Text>
+            {classItems.length > 0 ? (
+              <Text size="xs" c="dimmed" truncate>
+                {classItems.map((item) => item.label).join(" · ")}
+              </Text>
             ) : null}
           </Stack>
         </Group>
-        <Group gap={6} mt={10} wrap="wrap">
-          {profile.classes.map((cls) => {
-            const roleId = classToRole(cls);
-            const cfg = ROLE_CONFIG[roleId] ?? ROLE_CONFIG[activeGame.defaultRole];
-            if (!cfg) return null;
-            const Icon = cfg.icon;
-            return (
-              <Group key={cls} gap={4}>
-                <Icon
-                  size={14}
-                  className="member-role-avatar__class-icon"
-                  style={{ "--role-color": cfg.color, display: "inline-flex", lineHeight: 0 } as React.CSSProperties}
-                />
-                <Text size="xs" fw={600}>{cls}</Text>
-              </Group>
-            );
-          })}
+        <Group gap={8} mt={10} wrap="wrap">
+          {classItems.map((item) => (
+            <Group key={item.id} gap={5} wrap="nowrap">
+              <ClassIcon item={item} size={20} />
+              <Text size="xs" fw={600}>{item.label}</Text>
+            </Group>
+          ))}
           {profile.power > 0 ? (
-            <Text component="span" size="xs" c="dimmed"><BoltIcon size={13} style={{ display: "inline-block", verticalAlign: "-2px" }} /> {profile.power.toLocaleString()}</Text>
+            <Text component="span" size="xs" c="dimmed">
+              <BoltIcon size={13} className="member-role-avatar__power-icon" />{" "}
+              {profile.power.toLocaleString()}
+            </Text>
           ) : null}
         </Group>
       </HoverCard.Dropdown>
@@ -152,4 +117,4 @@ export function MemberRoleAvatar({ user, profile, size = 36, withTooltip = true 
   );
 }
 
-export { getUniqueRoles, ROLE_CONFIG };
+export { getUniqueClassIds };

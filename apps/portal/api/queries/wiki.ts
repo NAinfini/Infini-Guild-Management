@@ -1,6 +1,7 @@
 import type { PaginatedResponse, WikiArticle, WikiCategory, WikiRevision, WikiRevisionListItem } from "@guild/shared";
 import { LIMITS } from "@guild/shared/config/limits";
 import { apiRequest } from "../client";
+export type WikiSort = "curated" | "updated_desc" | "updated_asc";
 
 export function fetchWikiCategories(): Promise<WikiCategory[]> {
   return apiRequest<WikiCategory[]>("/api/wiki/categories");
@@ -13,10 +14,12 @@ export function fetchWikiArticles(params: {
   archived?: boolean;
   pinned?: boolean;
   search?: string;
+  sort?: WikiSort;
 }): Promise<PaginatedResponse<WikiArticle>> {
   const query = new URLSearchParams();
   query.set("page", String(params.page ?? 1));
   query.set("limit", String(params.limit ?? LIMITS.pagination.wiki));
+  query.set("sort", params.sort ?? "curated");
   const categoryIds = typeof params.category_id === "string"
     ? [params.category_id]
     : params.category_id ?? [];

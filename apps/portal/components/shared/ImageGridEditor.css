@@ -1,0 +1,9 @@
+/*
+ * 删除按钮的可视圆点。按钮本体是 44px 的触控热区（站内统一手势尺寸），
+ * 看得见的红点只有 20px，两者尺寸不同，所以圆点是独立的一层。
+ * 尺寸留在内联 style 上（跟着 imageSize 走），颜色在这里，不进内联。
+ */
+.image-grid-editor__delete-glyph {
+  background: var(--status-danger);
+  color: var(--status-on-fill);
+}

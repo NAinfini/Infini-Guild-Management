@@ -1,4 +1,11 @@
-import { updateMemberStatsSchema } from "@guild/shared";
+import {
+  findGuildWarResultDefinition,
+  updateMemberStatsSchema,
+  WAR_MEMBER_STAT_KEYS,
+  WAR_TEAM_OBJECTIVE_KEYS,
+  type GameRules,
+  type JsonValue,
+} from "@guild/shared";
 import { and, asc, desc, eq, gte, inArray, lte, or, sql, type SQL } from "drizzle-orm";
 import { nanoid } from "nanoid";
 import type { z } from "zod";
@@ -7,13 +14,23 @@ import { err, ok, type ServiceResult } from "../result";
 import { escapeLikePattern, likeEscaped } from "../helpers";
 import {
   GuildWarCoreService,
+  WAR_HISTORY_FIELDS,
+  WAR_TEAM_MEMBER_FIELDS,
+  toEnemyStatsColumns,
   toMemberPayload,
+  toMemberStats,
+  toMemberStatsColumns,
+  toOwnStatsColumns,
+  toTeamStats,
   toTeamPayload,
   toWarHistoryPayload,
   type CreateWarHistoryInput,
   type DrizzleDb,
   type GuildWarServiceDeps,
+  type MemberStatsInput,
+  type TeamStatsInput,
   type UpdateWarHistoryInput,
+  type WarHistoryRow,
   type WarTeamMemberRow,
   type WarTemplateSnapshot,
 } from "./GuildWarCoreService";
@@ -49,29 +66,77 @@ function eventHistoryConflict(historyId?: string): ServiceResult<never> {
 }
 
 function buildWarHistoryDiff(
-  existing: { eventId: string | null; warName: string; enemyName: string | null; result: string | null; ownStats: Record<string, number | null> | null; enemyStats: Record<string, number | null> | null; durationMinutes: number | null; notes: string | null },
+  existing: WarHistoryRow,
   input: UpdateWarHistoryInput,
-): Record<string, { from: unknown; to: unknown }> | null {
-  const diff: Record<string, { from: unknown; to: unknown }> = {};
+): Record<string, { from: JsonValue; to: JsonValue }> | null {
+  const diff: Record<string, { from: JsonValue; to: JsonValue }> = {};
+  const existingOwnStats = toTeamStats(existing, "own");
+  const existingEnemyStats = toTeamStats(existing, "enemy");
   if (input.event_id !== undefined && (input.event_id ?? null) !== existing.eventId) diff.event_id = { from: existing.eventId, to: input.event_id ?? null };
   if (input.war_name !== undefined && input.war_name !== existing.warName) diff.war_name = { from: existing.warName, to: input.war_name };
   if (input.enemy_name !== undefined && (input.enemy_name ?? null) !== existing.enemyName) diff.enemy_name = { from: existing.enemyName, to: input.enemy_name ?? null };
   if (input.result !== undefined && (input.result ?? null) !== existing.result) diff.result = { from: existing.result, to: input.result ?? null };
-  if (input.own_stats !== undefined && JSON.stringify(input.own_stats ?? null) !== JSON.stringify(existing.ownStats)) diff.own_stats = { from: existing.ownStats, to: input.own_stats ?? null };
-  if (input.enemy_stats !== undefined && JSON.stringify(input.enemy_stats ?? null) !== JSON.stringify(existing.enemyStats)) diff.enemy_stats = { from: existing.enemyStats, to: input.enemy_stats ?? null };
+  if (input.own_stats !== undefined && !sameStats(WAR_TEAM_OBJECTIVE_KEYS, input.own_stats, existingOwnStats)) diff.own_stats = { from: existingOwnStats, to: input.own_stats };
+  if (input.enemy_stats !== undefined && !sameStats(WAR_TEAM_OBJECTIVE_KEYS, input.enemy_stats, existingEnemyStats)) diff.enemy_stats = { from: existingEnemyStats, to: input.enemy_stats };
   if (input.duration_minutes !== undefined && (input.duration_minutes ?? null) !== existing.durationMinutes) diff.duration_minutes = { from: existing.durationMinutes, to: input.duration_minutes ?? null };
   if (input.notes !== undefined && (input.notes ?? null) !== existing.notes) diff.notes = { from: existing.notes, to: input.notes ?? null };
   return Object.keys(diff).length > 0 ? diff : null;
 }
 
 function buildMemberStatsDiff(
-  existing: { stats: Record<string, number | null> | null; note: string | null },
-  input: { stats?: unknown; note?: string | null },
-): Record<string, { from: unknown; to: unknown }> | null {
-  const diff: Record<string, { from: unknown; to: unknown }> = {};
-  if (input.stats !== undefined && JSON.stringify(input.stats ?? null) !== JSON.stringify(existing.stats)) diff.stats = { from: existing.stats, to: input.stats ?? null };
+  existing: WarTeamMemberRow,
+  input: { stats?: MemberStatsInput; note?: string | null },
+): Record<string, { from: JsonValue; to: JsonValue }> | null {
+  const diff: Record<string, { from: JsonValue; to: JsonValue }> = {};
+  const existingStats = toMemberStats(existing);
+  if (input.stats !== undefined && !sameStats(WAR_MEMBER_STAT_KEYS, input.stats, existingStats)) diff.stats = { from: existingStats, to: input.stats };
   if (input.note !== undefined && (input.note ?? null) !== existing.note) diff.note = { from: existing.note, to: input.note ?? null };
   return Object.keys(diff).length > 0 ? diff : null;
+}
+
+function sameStats(
+  keys: readonly string[],
+  left: object | null | undefined,
+  right: object | null | undefined,
+): boolean {
+  const leftRecord = left as Record<string, number | null | undefined> | null | undefined;
+  const rightRecord = right as Record<string, number | null | undefined> | null | undefined;
+  return keys.every((key) => (leftRecord?.[key] ?? null) === (rightRecord?.[key] ?? null));
+}
+
+function unknownStatKeys(
+  stats: object | null | undefined,
+  allowed: ReadonlySet<string>,
+): string[] {
+  return stats ? Object.keys(stats).filter((key) => !allowed.has(key)) : [];
+}
+
+function validateHistoryRuleKeys(
+  rules: GameRules,
+  input: {
+    result?: string;
+    own_stats?: TeamStatsInput;
+    enemy_stats?: TeamStatsInput;
+  },
+): string | null {
+  if (input.result !== undefined && !findGuildWarResultDefinition(input.result)) {
+    return `Unknown guild-war result: ${input.result}`;
+  }
+  const teamKeys = new Set(rules.guild_war.team_stats.map((stat) => stat.key));
+  const unknownOwn = unknownStatKeys(input.own_stats, teamKeys);
+  if (unknownOwn.length > 0) return `Unknown own team stat keys: ${unknownOwn.join(", ")}`;
+  const unknownEnemy = unknownStatKeys(input.enemy_stats, teamKeys);
+  if (unknownEnemy.length > 0) return `Unknown enemy team stat keys: ${unknownEnemy.join(", ")}`;
+  return null;
+}
+
+function validateMemberRuleKeys(
+  rules: GameRules,
+  stats: MemberStatsInput | null | undefined,
+): string | null {
+  const memberKeys = new Set(rules.guild_war.member_stats.map((stat) => stat.key));
+  const unknown = unknownStatKeys(stats, memberKeys);
+  return unknown.length > 0 ? `Unknown member stat keys: ${unknown.join(", ")}` : null;
 }
 
 export class GuildWarHistoryService extends GuildWarCoreService {
@@ -120,9 +185,16 @@ export class GuildWarHistoryService extends GuildWarCoreService {
   async concludeWar(
     actorId: string,
     eventId: string,
-    warInfo: { enemy_name?: string; result: string; duration_minutes?: number | null; own_stats?: Record<string, number | null>; enemy_stats?: Record<string, number | null> },
-    memberStats?: Array<{ user_id: string; stats: Record<string, number> }>,
+    warInfo: { enemy_name?: string; result: string; duration_minutes?: number | null; own_stats?: TeamStatsInput; enemy_stats?: TeamStatsInput },
+    memberStats?: Array<{ user_id: string; stats: MemberStatsInput }>,
   ): Promise<ServiceResult<{ war_history_id: string }>> {
+    const rules = await this.getGameRules();
+    const historyRuleError = validateHistoryRuleKeys(rules, warInfo);
+    if (historyRuleError) return err("VALIDATION_ERROR", historyRuleError);
+    for (const member of memberStats ?? []) {
+      const memberRuleError = validateMemberRuleKeys(rules, member.stats);
+      if (memberRuleError) return err("VALIDATION_ERROR", `${member.user_id}: ${memberRuleError}`);
+    }
     const existingHistory = await this.getLatestWarHistory(eventId);
     if (existingHistory) return eventHistoryConflict(existingHistory.id);
 
@@ -138,11 +210,24 @@ export class GuildWarHistoryService extends GuildWarCoreService {
     const stmts: D1PreparedStatement[] = [];
 
     stmts.push(this.deps.rawDb.prepare(
-      "INSERT INTO war_history (id, event_id, war_name, enemy_name, result, own_stats, enemy_stats, duration_minutes, created_by, created_at, updated_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)",
+      `INSERT INTO war_history (
+        id, event_id, war_name, enemy_name, result,
+        own_kills, own_towers, own_base_hp, own_credits, own_distance,
+        enemy_kills, enemy_towers, enemy_base_hp, enemy_credits, enemy_distance,
+        duration_minutes, created_by, created_at, updated_at
+      ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19)`,
     ).bind(
       historyId, eventId, warName, warInfo.enemy_name ?? null, warInfo.result,
-      warInfo.own_stats ? JSON.stringify(warInfo.own_stats) : null,
-      warInfo.enemy_stats ? JSON.stringify(warInfo.enemy_stats) : null,
+      warInfo.own_stats?.kills ?? null,
+      warInfo.own_stats?.towers ?? null,
+      warInfo.own_stats?.base_hp ?? null,
+      warInfo.own_stats?.credits ?? null,
+      warInfo.own_stats?.distance ?? null,
+      warInfo.enemy_stats?.kills ?? null,
+      warInfo.enemy_stats?.towers ?? null,
+      warInfo.enemy_stats?.base_hp ?? null,
+      warInfo.enemy_stats?.credits ?? null,
+      warInfo.enemy_stats?.distance ?? null,
       warInfo.duration_minutes ?? null,
       actorId, nowIso, nowIso,
     ));
@@ -153,7 +238,24 @@ export class GuildWarHistoryService extends GuildWarCoreService {
       const memberByUserId = new Map(members.map((m) => [m.userId, m.id]));
       for (const ms of memberStats) {
         const memberId = memberByUserId.get(ms.user_id);
-        if (memberId) stmts.push(this.deps.rawDb.prepare("UPDATE war_team_members SET stats = ?1 WHERE id = ?2").bind(JSON.stringify(ms.stats), memberId));
+        if (memberId) {
+          stmts.push(this.deps.rawDb.prepare(
+            `UPDATE war_team_members SET
+              kills = ?1, deaths = ?2, assists = ?3, damage = ?4,
+              healing = ?5, building_damage = ?6, credits = ?7, damage_taken = ?8
+            WHERE id = ?9`,
+          ).bind(
+            ms.stats.kills ?? null,
+            ms.stats.deaths ?? null,
+            ms.stats.assists ?? null,
+            ms.stats.damage ?? null,
+            ms.stats.healing ?? null,
+            ms.stats.building_damage ?? null,
+            ms.stats.credits ?? null,
+            ms.stats.damage_taken ?? null,
+            memberId,
+          ));
+        }
       }
     }
 
@@ -172,7 +274,7 @@ export class GuildWarHistoryService extends GuildWarCoreService {
       await this.deps.writeAuditLog({
         entityType: "guild_war_history", action: "conclude", actorId, entityId: historyId,
         diffTitle: warName,
-        detailText: JSON.stringify({ event_id: eventId, result: warInfo.result, team_count: teams.length, member_count: members.length }),
+        detail: { event_id: eventId, result: warInfo.result, team_count: teams.length, member_count: members.length },
       });
       await this.deps.publishEntityChanged({ entityType: "guild_war", entityId: eventId, hint: "war_concluded" });
     } catch (postBatchErr) {
@@ -216,14 +318,21 @@ export class GuildWarHistoryService extends GuildWarCoreService {
         likeEscaped(warHistory.enemyName, pattern),
         likeEscaped(warHistory.result, pattern),
         likeEscaped(warHistory.createdAt, pattern),
-        likeEscaped(warHistory.ownStats, pattern),
-        likeEscaped(warHistory.enemyStats, pattern),
+        likeEscaped(warHistory.ownKills, pattern),
+        likeEscaped(warHistory.ownTowers, pattern),
+        likeEscaped(warHistory.ownBaseHp, pattern),
+        likeEscaped(warHistory.ownCredits, pattern),
+        likeEscaped(warHistory.ownDistance, pattern),
+        likeEscaped(warHistory.enemyKills, pattern),
+        likeEscaped(warHistory.enemyTowers, pattern),
+        likeEscaped(warHistory.enemyBaseHp, pattern),
+        likeEscaped(warHistory.enemyCredits, pattern),
+        likeEscaped(warHistory.enemyDistance, pattern),
       )!);
     }
     const whereClause = where.length > 0 ? and(...where) : undefined;
-    const selectFields = { id: warHistory.id, eventId: warHistory.eventId, warName: warHistory.warName, enemyName: warHistory.enemyName, result: warHistory.result, ownStats: warHistory.ownStats, enemyStats: warHistory.enemyStats, durationMinutes: warHistory.durationMinutes, notes: warHistory.notes, createdBy: warHistory.createdBy, updatedBy: warHistory.updatedBy, createdAt: warHistory.createdAt, updatedAt: warHistory.updatedAt };
     const [rows, countRow] = await Promise.all([
-      this.db.select(selectFields).from(warHistory).where(whereClause).orderBy(desc(warHistory.createdAt), desc(warHistory.id)).limit(limit).offset(offset),
+      this.db.select(WAR_HISTORY_FIELDS).from(warHistory).where(whereClause).orderBy(desc(warHistory.createdAt), desc(warHistory.id)).limit(limit).offset(offset),
       this.db.select({ count: sql<number>`count(*)` }).from(warHistory).where(whereClause),
     ]);
     const total = Number(countRow[0]?.count ?? 0);
@@ -231,7 +340,7 @@ export class GuildWarHistoryService extends GuildWarCoreService {
   }
 
   async batchHistory(ids: string[]): Promise<ServiceResult<{ data: unknown[] }>> {
-    const histories = await this.db.select({ id: warHistory.id, eventId: warHistory.eventId, warName: warHistory.warName, enemyName: warHistory.enemyName, result: warHistory.result, ownStats: warHistory.ownStats, enemyStats: warHistory.enemyStats, durationMinutes: warHistory.durationMinutes, notes: warHistory.notes, createdBy: warHistory.createdBy, updatedBy: warHistory.updatedBy, createdAt: warHistory.createdAt, updatedAt: warHistory.updatedAt }).from(warHistory).where(inArray(warHistory.id, ids));
+    const histories = await this.db.select(WAR_HISTORY_FIELDS).from(warHistory).where(inArray(warHistory.id, ids));
     const allTeams = await this.db.select({ id: warTeams.id, warHistoryId: warTeams.warHistoryId, eventId: warTeams.eventId, teamName: warTeams.teamName, sortOrder: warTeams.sortOrder, notes: warTeams.notes, isLocked: warTeams.isLocked }).from(warTeams).where(inArray(warTeams.warHistoryId, ids)).orderBy(asc(warTeams.sortOrder), asc(warTeams.id));
     const allMembers = allTeams.length > 0 ? await this.getMembersForTeams(allTeams.map((t) => t.id)) : [];
     const allPool = await this.db.select({ id: warPoolMembers.id, warHistoryId: warPoolMembers.warHistoryId, eventId: warPoolMembers.eventId, userId: warPoolMembers.userId }).from(warPoolMembers).where(inArray(warPoolMembers.warHistoryId, ids));
@@ -267,9 +376,22 @@ export class GuildWarHistoryService extends GuildWarCoreService {
   }
 
   async createHistory(actorId: string, input: CreateWarHistoryInput): Promise<ServiceResult<unknown>> {
+    const rules = await this.getGameRules();
+    const ruleError = validateHistoryRuleKeys(rules, input);
+    if (ruleError) return err("VALIDATION_ERROR", ruleError);
     const historyId = nanoid();
     try {
-      await this.db.insert(warHistory).values({ id: historyId, eventId: input.event_id ?? null, warName: input.war_name, enemyName: input.enemy_name ?? null, result: input.result ?? null, ownStats: input.own_stats ?? null, enemyStats: input.enemy_stats ?? null, notes: input.notes ?? null, createdBy: actorId });
+      await this.db.insert(warHistory).values({
+        id: historyId,
+        eventId: input.event_id ?? null,
+        warName: input.war_name,
+        enemyName: input.enemy_name ?? null,
+        result: input.result ?? null,
+        ...toOwnStatsColumns(input.own_stats),
+        ...toEnemyStatsColumns(input.enemy_stats),
+        notes: input.notes ?? null,
+        createdBy: actorId,
+      });
     } catch (error) {
       if (isEventHistoryUniqueConflict(error)) {
         const conflictingHistory = input.event_id
@@ -307,6 +429,9 @@ export class GuildWarHistoryService extends GuildWarCoreService {
   }
 
   async updateHistory(actorId: string, warId: string, input: UpdateWarHistoryInput): Promise<ServiceResult<unknown>> {
+    const rules = await this.getGameRules();
+    const ruleError = validateHistoryRuleKeys(rules, input);
+    if (ruleError) return err("VALIDATION_ERROR", ruleError);
     const existing = await this.getWarHistoryById(warId);
     if (!existing) return err("NOT_FOUND", "War history not found");
     const patch: Partial<typeof warHistory.$inferInsert> = { updatedAt: new Date().toISOString(), updatedBy: actorId };
@@ -314,8 +439,8 @@ export class GuildWarHistoryService extends GuildWarCoreService {
     if (input.war_name !== undefined) patch.warName = input.war_name;
     if (input.enemy_name !== undefined) patch.enemyName = input.enemy_name;
     if (input.result !== undefined) patch.result = input.result;
-    if (input.own_stats !== undefined) patch.ownStats = input.own_stats;
-    if (input.enemy_stats !== undefined) patch.enemyStats = input.enemy_stats;
+    if (input.own_stats !== undefined) Object.assign(patch, toOwnStatsColumns(input.own_stats));
+    if (input.enemy_stats !== undefined) Object.assign(patch, toEnemyStatsColumns(input.enemy_stats));
     if (input.duration_minutes !== undefined) patch.durationMinutes = input.duration_minutes;
     if (input.notes !== undefined) patch.notes = input.notes;
     try {
@@ -333,7 +458,7 @@ export class GuildWarHistoryService extends GuildWarCoreService {
     const updated = await this.getWarHistoryById(warId);
     if (!updated) return err("SERVER_ERROR", "Failed to load updated war history");
     const historyDiff = buildWarHistoryDiff(existing, input);
-    await this.deps.writeAuditLog({ entityType: "guild_war_history", action: "update", actorId, entityId: warId, diffTitle: updated.warName, detailText: historyDiff ? JSON.stringify(historyDiff) : null });
+    await this.deps.writeAuditLog({ entityType: "guild_war_history", action: "update", actorId, entityId: warId, diffTitle: updated.warName, detail: historyDiff });
     await this.deps.publishEntityChanged({ entityType: "guild_war", entityId: warId, hint: "history_updated" });
     return ok(toWarHistoryPayload(updated));
   }
@@ -377,39 +502,48 @@ export class GuildWarHistoryService extends GuildWarCoreService {
   }
 
   async updateMemberStats(actorId: string, warId: string, targetUserId: string, input: z.infer<typeof updateMemberStatsSchema>): Promise<ServiceResult<unknown>> {
+    const ruleError = validateMemberRuleKeys(await this.getGameRules(), input.stats);
+    if (ruleError) return err("VALIDATION_ERROR", ruleError);
     const existingHistory = await this.getWarHistoryById(warId);
     if (!existingHistory) return err("NOT_FOUND", "War history not found");
-    const memberRow = (await this.db.select({ id: warTeamMembers.id, warTeamId: warTeamMembers.warTeamId, userId: warTeamMembers.userId, roleTag: warTeamMembers.roleTag, sortOrder: warTeamMembers.sortOrder, stats: warTeamMembers.stats, note: warTeamMembers.note }).from(warTeamMembers).innerJoin(warTeams, eq(warTeams.id, warTeamMembers.warTeamId)).where(and(eq(warTeams.warHistoryId, warId), eq(warTeamMembers.userId, targetUserId))).limit(1))[0];
+    const memberRow = (await this.db.select(WAR_TEAM_MEMBER_FIELDS).from(warTeamMembers).innerJoin(warTeams, eq(warTeams.id, warTeamMembers.warTeamId)).where(and(eq(warTeams.warHistoryId, warId), eq(warTeamMembers.userId, targetUserId))).limit(1))[0];
     if (!memberRow) return err("NOT_FOUND", "Team member not found in selected war history");
     const patch: Partial<typeof warTeamMembers.$inferInsert> = {};
-    if (input.stats !== undefined) patch.stats = input.stats;
+    if (input.stats !== undefined) Object.assign(patch, toMemberStatsColumns(input.stats));
     if (input.note !== undefined) patch.note = input.note;
     await this.db.update(warTeamMembers).set(patch).where(eq(warTeamMembers.id, memberRow.id));
-    const refreshed = (await this.db.select({ id: warTeamMembers.id, warTeamId: warTeamMembers.warTeamId, userId: warTeamMembers.userId, roleTag: warTeamMembers.roleTag, sortOrder: warTeamMembers.sortOrder, stats: warTeamMembers.stats, note: warTeamMembers.note }).from(warTeamMembers).where(eq(warTeamMembers.id, memberRow.id)).limit(1))[0];
+    const refreshed = (await this.db.select(WAR_TEAM_MEMBER_FIELDS).from(warTeamMembers).where(eq(warTeamMembers.id, memberRow.id)).limit(1))[0];
     if (!refreshed) return err("SERVER_ERROR", "Failed to load updated member stats");
     const targetUser = (await this.db.select({ username: users.username }).from(users).where(eq(users.id, targetUserId)).limit(1))[0];
     const memberDiff = buildMemberStatsDiff(memberRow, input);
-    await this.deps.writeAuditLog({ entityType: "guild_war_member_stats", action: "update", actorId, entityId: `${warId}:${targetUserId}`, diffTitle: targetUser?.username ?? null, detailText: memberDiff ? JSON.stringify(memberDiff) : null });
+    await this.deps.writeAuditLog({ entityType: "guild_war_member_stats", action: "update", actorId, entityId: `${warId}:${targetUserId}`, diffTitle: targetUser?.username ?? null, detail: memberDiff });
     return ok(toMemberPayload(refreshed));
   }
 
   async batchUpdateMemberStats(actorId: string, warId: string, updates: Array<{ user_id: string; stats: unknown }>): Promise<ServiceResult<{ data: unknown[] }>> {
+    const rules = await this.getGameRules();
+    const parsedUpdates: Array<{ user_id: string; data: z.infer<typeof updateMemberStatsSchema> }> = [];
+    for (const update of updates) {
+      const parsed = updateMemberStatsSchema.safeParse(update.stats);
+      if (!parsed.success) return err("VALIDATION_ERROR", `Invalid stats for user ${update.user_id}`, parsed.error.flatten());
+      const ruleError = validateMemberRuleKeys(rules, parsed.data.stats);
+      if (ruleError) return err("VALIDATION_ERROR", `${update.user_id}: ${ruleError}`);
+      parsedUpdates.push({ user_id: update.user_id, data: parsed.data });
+    }
     const existingHistory = await this.getWarHistoryById(warId);
     if (!existingHistory) return err("NOT_FOUND", "War history not found");
     const userIds = updates.map((u) => u.user_id).filter((id) => typeof id === "string" && id.length > 0);
-    const memberRows = await this.db.select({ id: warTeamMembers.id, warTeamId: warTeamMembers.warTeamId, userId: warTeamMembers.userId, roleTag: warTeamMembers.roleTag, sortOrder: warTeamMembers.sortOrder, stats: warTeamMembers.stats, note: warTeamMembers.note }).from(warTeamMembers).innerJoin(warTeams, eq(warTeams.id, warTeamMembers.warTeamId)).where(and(eq(warTeams.warHistoryId, warId), inArray(warTeamMembers.userId, userIds)));
+    const memberRows = await this.db.select(WAR_TEAM_MEMBER_FIELDS).from(warTeamMembers).innerJoin(warTeams, eq(warTeams.id, warTeamMembers.warTeamId)).where(and(eq(warTeams.warHistoryId, warId), inArray(warTeamMembers.userId, userIds)));
     const memberByUserId = new Map(memberRows.map((m) => [m.userId, m]));
     const results: ReturnType<typeof toMemberPayload>[] = [];
     const pendingPatches: Array<{ memberRow: WarTeamMemberRow; patch: Partial<typeof warTeamMembers.$inferInsert> }> = [];
 
-    for (const update of updates) {
+    for (const update of parsedUpdates) {
       const memberRow = memberByUserId.get(update.user_id);
       if (!memberRow) continue;
-      const parsed = updateMemberStatsSchema.safeParse(update.stats);
-      if (!parsed.success) continue;
       const patch: Partial<typeof warTeamMembers.$inferInsert> = {};
-      if (parsed.data.stats !== undefined) patch.stats = parsed.data.stats;
-      if (parsed.data.note !== undefined) patch.note = parsed.data.note;
+      if (update.data.stats !== undefined) Object.assign(patch, toMemberStatsColumns(update.data.stats));
+      if (update.data.note !== undefined) patch.note = update.data.note;
       if (Object.keys(patch).length > 0) pendingPatches.push({ memberRow, patch });
       else results.push(toMemberPayload(memberRow));
     }
@@ -419,7 +553,16 @@ export class GuildWarHistoryService extends GuildWarCoreService {
         const setClauses: string[] = [];
         const bindings: unknown[] = [];
         let paramIdx = 1;
-        if (patch.stats !== undefined) { setClauses.push(`stats = ?${paramIdx++}`); bindings.push(JSON.stringify(patch.stats)); }
+        if (patch.kills !== undefined) {
+          setClauses.push(`kills = ?${paramIdx++}`); bindings.push(patch.kills);
+          setClauses.push(`deaths = ?${paramIdx++}`); bindings.push(patch.deaths ?? null);
+          setClauses.push(`assists = ?${paramIdx++}`); bindings.push(patch.assists ?? null);
+          setClauses.push(`damage = ?${paramIdx++}`); bindings.push(patch.damage ?? null);
+          setClauses.push(`healing = ?${paramIdx++}`); bindings.push(patch.healing ?? null);
+          setClauses.push(`building_damage = ?${paramIdx++}`); bindings.push(patch.buildingDamage ?? null);
+          setClauses.push(`credits = ?${paramIdx++}`); bindings.push(patch.credits ?? null);
+          setClauses.push(`damage_taken = ?${paramIdx++}`); bindings.push(patch.damageTaken ?? null);
+        }
         if (patch.note !== undefined) { setClauses.push(`note = ?${paramIdx++}`); bindings.push(patch.note); }
         bindings.push(memberRow.id);
         return this.deps.rawDb.prepare(`UPDATE war_team_members SET ${setClauses.join(", ")} WHERE id = ?${paramIdx}`).bind(...(bindings as Parameters<D1PreparedStatement["bind"]>));
@@ -432,7 +575,8 @@ export class GuildWarHistoryService extends GuildWarCoreService {
     }
 
     const targetNames = await this.db.select({ id: users.id, username: users.username }).from(users).where(inArray(users.id, userIds));
-    await this.deps.writeAuditLog({ entityType: "guild_war_member_stats", action: "batch_update", actorId, entityId: warId, diffTitle: targetNames.map((r) => r.username).join(", "), detailText: JSON.stringify({ count: results.length, user_ids: userIds, usernames: targetNames.map((r) => r.username) }) });
+    await this.deps.writeAuditLog({ entityType: "guild_war_member_stats", action: "batch_update", actorId, entityId: warId, diffTitle: targetNames.map((r) => r.username).join(", "), detail: { count: results.length, user_ids: userIds, usernames: targetNames.map((r) => r.username) } });
     return ok({ data: results });
   }
+
 }

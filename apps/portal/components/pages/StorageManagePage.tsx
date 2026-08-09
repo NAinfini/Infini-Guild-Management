@@ -1,12 +1,13 @@
-import { Button, Skeleton, Stack } from "@mantine/core";
+import { Alert, Button, Skeleton, Stack } from "@mantine/core";
 import { Link, useNavigate, useSearch } from "@tanstack/react-router";
 import { ArrowLeftIcon } from "@portal/components/icons";
-import { useConfirmDialog } from "@portal/components/shared/ConfirmDialog";
+import { useConfirmDialog } from "@portal/hooks/useConfirmDialog";
 import { useTranslation } from "react-i18next";
 import { useStorageTree } from "../../hooks/useStorage";
 import { useStorageMutations } from "../../hooks/useStorageMutations";
 import { StorageStructureManager } from "../feature/storage/StorageStructureManager";
 import { PageLayout } from "../layout/PageLayout";
+import { EmptyState } from "../shared/EmptyState";
 import "./StoragePage.css";
 
 export function StorageManagePage() {
@@ -20,6 +21,8 @@ export function StorageManagePage() {
   const treeQuery = useStorageTree();
   const mutations = useStorageMutations();
   const storages = treeQuery.data?.data ?? [];
+  const treeBlockingError = treeQuery.isError && storages.length === 0;
+  const treeRefreshError = treeQuery.isError && storages.length > 0;
 
   const selectedStorage = storages.find((storage) => storage.id === search.storageId)
     ?? storages[0]
@@ -41,20 +44,15 @@ export function StorageManagePage() {
     });
   };
 
-  const confirmDelete = async (title: string, onConfirm: () => void) => {
-    const confirmed = await confirm({
+  const confirmDelete = (title: string) => confirm({
       title,
       confirmLabel: t("common:action.delete"),
       cancelLabel: t("common:action.cancel"),
       intent: "danger",
     });
-    if (confirmed) onConfirm();
-  };
 
   return (
     <PageLayout
-      title={t("manageStorage.title")}
-      subtitle={t("manageStorage.subtitle")}
       className="storage-page storage-manage-page"
       actions={(
         <Button
@@ -68,79 +66,102 @@ export function StorageManagePage() {
         </Button>
       )}
     >
-      <Stack gap="md">
+      <Stack gap="lg">
         {treeQuery.isLoading ? (
           <Skeleton height={420} radius="md" className="storage-loading" />
+        ) : treeBlockingError ? (
+          <EmptyState
+            status="error"
+            title={t("common:loadError")}
+            description={t("common:errors.connectionIssue")}
+            actions={(
+              <Button
+                loading={treeQuery.isFetching}
+                onClick={() => void treeQuery.refetch()}
+              >
+                {t("common:action.retry")}
+              </Button>
+            )}
+          />
         ) : (
-          <PageLayout.Section className="storage-management-section">
+          <>
+            {treeRefreshError ? (
+              <Alert color="red" title={t("common:loadError")}>
+                <Stack gap="xs" align="flex-start">
+                  <span>{t("common:errors.connectionIssue")}</span>
+                  <Button
+                    variant="default"
+                    size="compact-sm"
+                    loading={treeQuery.isFetching}
+                    onClick={() => void treeQuery.refetch()}
+                  >
+                    {t("common:action.retry")}
+                  </Button>
+                </Stack>
+              </Alert>
+            ) : null}
             <StorageStructureManager
               storages={storages}
               selectedStorage={selectedStorage}
               selectedCategoryId={selectedCategoryId}
-              isSaving={
-                mutations.createStorageMutation.isPending
-                || mutations.updateStorageMutation.isPending
-                || mutations.createCategoryMutation.isPending
-                || mutations.updateCategoryMutation.isPending
-              }
-              isDeleting={
-                mutations.deleteStorageMutation.isPending
-                || mutations.deleteCategoryMutation.isPending
-              }
               onSelectStorage={(storageId) => {
                 selectStructure(storageId, null);
               }}
               onSelectCategory={(storageId, categoryId) => {
                 selectStructure(storageId, categoryId);
               }}
-              onCreateStorage={(payload, onSuccess) => {
-                mutations.createStorageMutation.mutate(payload, {
-                  onSuccess: (storage) => {
+              onCreateStorage={(payload) =>
+                mutations.createStorageMutation.mutateAsync(payload).then(
+                  (storage) => {
                     selectStructure(storage.id, null);
-                    onSuccess();
+                    return true;
                   },
-                });
-              }}
-              onUpdateStorage={(id, payload) => {
-                mutations.updateStorageMutation.mutate({ id, payload });
-              }}
-              onDeleteStorage={(id) => {
-                void confirmDelete(t("confirm.deleteStorage"), () => {
-                  mutations.deleteStorageMutation.mutate(id, {
-                    onSuccess: () => {
+                  () => false,
+                )}
+              onUpdateStorage={(id, payload) =>
+                mutations.updateStorageMutation.mutateAsync({ id, payload }).then(
+                  () => true,
+                  () => false,
+                )}
+              onDeleteStorage={async (id) => {
+                if (!await confirmDelete(t("confirm.deleteStorage"))) return false;
+                return mutations.deleteStorageMutation.mutateAsync(id).then(
+                  () => {
                       selectStructure(null, null);
+                      return true;
                     },
-                  });
-                });
-              }}
-              onCreateCategory={(storageId, payload, onSuccess) => {
-                mutations.createCategoryMutation.mutate(
-                  { storageId, payload },
-                  {
-                    onSuccess: (category) => {
-                      selectStructure(storageId, category.id);
-                      onSuccess();
-                    },
-                  },
+                  () => false,
                 );
               }}
-              onUpdateCategory={(storageId, categoryId, payload) => {
-                mutations.updateCategoryMutation.mutate({ storageId, categoryId, payload });
-              }}
-              onDeleteCategory={(storageId, categoryId) => {
-                void confirmDelete(t("confirm.deleteCategory"), () => {
-                  mutations.deleteCategoryMutation.mutate(
-                    { storageId, categoryId },
-                    {
-                      onSuccess: () => {
-                        selectStructure(storageId, null);
-                      },
+              onCreateCategory={(storageId, payload) =>
+                mutations.createCategoryMutation.mutateAsync(
+                  { storageId, payload },
+                ).then(
+                  (category) => {
+                      selectStructure(storageId, category.id);
+                      return true;
                     },
+                  () => false,
+                )}
+              onUpdateCategory={(storageId, categoryId, payload) =>
+                mutations.updateCategoryMutation.mutateAsync({ storageId, categoryId, payload }).then(
+                  () => true,
+                  () => false,
+                )}
+              onDeleteCategory={async (storageId, categoryId) => {
+                if (!await confirmDelete(t("confirm.deleteCategory"))) return false;
+                return mutations.deleteCategoryMutation.mutateAsync(
+                    { storageId, categoryId },
+                  ).then(
+                    () => {
+                        selectStructure(storageId, null);
+                        return true;
+                      },
+                    () => false,
                   );
-                });
               }}
             />
-          </PageLayout.Section>
+          </>
         )}
       </Stack>
     </PageLayout>

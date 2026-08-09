@@ -2,6 +2,7 @@ import type { PushMessage } from "@guild/shared";
 import i18n from "i18next";
 import { create } from "zustand";
 import { isIsoDate, toIsoOrNow } from "../utils/iso-dates";
+import { userScopedStorageKey } from "../session-storage";
 
 export type NotificationFeature = "announcements" | "members";
 
@@ -31,8 +32,6 @@ type PushNotificationEntry = {
 
 const FEATURE_STORAGE_KEY = "portal:last_seen";
 const PUSH_STORAGE_KEY = "portal:push-notification-center";
-const PUSH_VERSION_KEY = "portal:push-version";
-const PUSH_VERSION = 2;
 const MAX_PUSH_ENTRIES = 80;
 const FEATURES: NotificationFeature[] = ["announcements", "members"];
 const ENTRY_TYPES: PushNotificationEntryType[] = [
@@ -42,6 +41,40 @@ const ENTRY_TYPES: PushNotificationEntryType[] = [
   "wiki_created",
   "member_joined",
 ];
+
+export function notificationStorageKeys(userId: string | null) {
+  return {
+    features: userScopedStorageKey(FEATURE_STORAGE_KEY, userId),
+    push: userScopedStorageKey(PUSH_STORAGE_KEY, userId),
+  };
+}
+
+function readStorage(key: string): string | null {
+  if (typeof window === "undefined") return null;
+  try {
+    return window.localStorage.getItem(key);
+  } catch {
+    return null;
+  }
+}
+
+function writeStorage(key: string, value: string): void {
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.setItem(key, value);
+  } catch {
+    // Keep in-memory state if storage is unavailable.
+  }
+}
+
+function removeStorage(key: string): void {
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.removeItem(key);
+  } catch {
+    // Storage is optional.
+  }
+}
 
 function emptyFeatureState(lastSeenAt?: string): FeatureState {
   return {
@@ -73,32 +106,22 @@ function parseFeatureState(raw: string | null): FeatureMap {
   }
 }
 
-function readFeatureState(): FeatureMap {
-  if (typeof window === "undefined") {
-    return {
-      announcements: emptyFeatureState(),
-      members: emptyFeatureState(),
-    };
-  }
-
-  return parseFeatureState(window.localStorage.getItem(FEATURE_STORAGE_KEY));
+function readFeatureState(userId: string | null): FeatureMap {
+  const keys = notificationStorageKeys(userId);
+  return parseFeatureState(readStorage(keys.features));
 }
 
-function persistFeatureState(state: FeatureMap): void {
-  if (typeof window === "undefined") {
-    return;
-  }
-  try {
-    window.localStorage.setItem(
-      FEATURE_STORAGE_KEY,
-      JSON.stringify({
-        announcements: { lastSeenAt: state.announcements.lastSeenAt },
-        members: { lastSeenAt: state.members.lastSeenAt },
-      }),
-    );
-  } catch {
-    // Keep in-memory state if storage is unavailable.
-  }
+function persistFeatureState(userId: string | null, state: FeatureMap): void {
+  const keys = notificationStorageKeys(userId);
+  const stored = parseFeatureState(readStorage(keys.features));
+  const latestSeen = (left: string, right: string) => Date.parse(left) >= Date.parse(right) ? left : right;
+  writeStorage(
+    keys.features,
+    JSON.stringify({
+      announcements: { lastSeenAt: latestSeen(stored.announcements.lastSeenAt, state.announcements.lastSeenAt) },
+      members: { lastSeenAt: latestSeen(stored.members.lastSeenAt, state.members.lastSeenAt) },
+    }),
+  );
 }
 
 function isPushEntryType(value: unknown): value is PushNotificationEntryType {
@@ -153,36 +176,39 @@ function sanitizePushEntries(raw: unknown): PushNotificationEntry[] {
   return entries;
 }
 
-function readPushHistory(): PushNotificationEntry[] {
-  if (typeof window === "undefined") {
-    return [];
+function mergePushHistories(...histories: PushNotificationEntry[][]): PushNotificationEntry[] {
+  const byId = new Map<string, PushNotificationEntry>();
+  for (const history of histories) {
+    for (const entry of history) {
+      const existing = byId.get(entry.id);
+      if (!existing || Date.parse(entry.occurredAt) > Date.parse(existing.occurredAt)) {
+        byId.set(entry.id, entry);
+        continue;
+      }
+      if (entry.occurredAt === existing.occurredAt && entry.readAt && !existing.readAt) {
+        byId.set(entry.id, { ...existing, readAt: entry.readAt });
+      }
+    }
   }
+  return [...byId.values()]
+    .sort((left, right) => Date.parse(right.occurredAt) - Date.parse(left.occurredAt))
+    .slice(0, MAX_PUSH_ENTRIES);
+}
+
+function readPushHistory(userId: string | null): PushNotificationEntry[] {
+  const keys = notificationStorageKeys(userId);
+  const raw = readStorage(keys.push);
+  if (!raw) return [];
   try {
-    const storedVersion = Number(window.localStorage.getItem(PUSH_VERSION_KEY) ?? "0");
-    if (storedVersion < PUSH_VERSION) {
-      window.localStorage.removeItem(PUSH_STORAGE_KEY);
-      window.localStorage.setItem(PUSH_VERSION_KEY, String(PUSH_VERSION));
-      return [];
-    }
-    const raw = window.localStorage.getItem(PUSH_STORAGE_KEY);
-    if (!raw) {
-      return [];
-    }
     return sanitizePushEntries(JSON.parse(raw));
   } catch {
     return [];
   }
 }
 
-function persistPushHistory(entries: PushNotificationEntry[]): void {
-  if (typeof window === "undefined") {
-    return;
-  }
-  try {
-    window.localStorage.setItem(PUSH_STORAGE_KEY, JSON.stringify(entries));
-  } catch {
-    // Keep in-memory state if storage is unavailable.
-  }
+function persistPushHistory(userId: string | null, entries: PushNotificationEntry[]): void {
+  const keys = notificationStorageKeys(userId);
+  writeStorage(keys.push, JSON.stringify(entries));
 }
 
 function isNewerThanLastSeen(lastSeenAt: string, latestUpdatedAt: string | null): boolean {
@@ -199,12 +225,21 @@ function resolveHintText(hint: string): string {
   return hint.replace(/_/g, " ");
 }
 
+function translateNotificationText(
+  key: string,
+  fallback: string,
+  values: Record<string, string> = {},
+): string {
+  const translated = i18n.t(key, { ...values, defaultValue: fallback });
+  return typeof translated === "string" && translated.length > 0 ? translated : fallback;
+}
+
 function createEntryFromPush(message: PushMessage): PushNotificationEntry | null {
   if (message.type === "announcement_published") {
     return {
       id: `announcement:${message.announcement_id}`,
       type: "announcement_published",
-      title: i18n.t("common:notification.title.announcement_published", { defaultValue: "Announcement Published" }),
+      title: translateNotificationText("common:notification.title.announcement_published", "Announcement Published"),
       message: message.title,
       occurredAt: sanitizeUnknownIso(message.published_at),
       readAt: null,
@@ -220,7 +255,7 @@ function createEntryFromPush(message: PushMessage): PushNotificationEntry | null
     return {
       id: `announcement:${message.entity_id}:${hint}`,
       type: "announcement_created",
-      title: i18n.t("common:notification.title.announcement_created"),
+      title: translateNotificationText("common:notification.title.announcement_created", "Announcement Created"),
       message: resolveHintText(hint),
       occurredAt,
       readAt: null,
@@ -231,9 +266,9 @@ function createEntryFromPush(message: PushMessage): PushNotificationEntry | null
     return {
       id: `event:${message.entity_id}:${hint}`,
       type: "event_created",
-      title: i18n.t("common:notification.title.event_created"),
+      title: translateNotificationText("common:notification.title.event_created", "Event Created"),
       message: message.display_name
-        ? i18n.t("common:notification.event_created_message", { name: message.display_name, defaultValue: message.display_name })
+        ? translateNotificationText("common:notification.event_created_message", message.display_name, { name: message.display_name })
         : resolveHintText(hint),
       occurredAt,
       readAt: null,
@@ -244,7 +279,7 @@ function createEntryFromPush(message: PushMessage): PushNotificationEntry | null
     return {
       id: `wiki:${message.entity_id}:${hint}`,
       type: "wiki_created",
-      title: i18n.t("common:notification.title.article_created"),
+      title: translateNotificationText("common:notification.title.article_created", "Article Created"),
       message: resolveHintText(hint),
       occurredAt,
       readAt: null,
@@ -256,10 +291,10 @@ function createEntryFromPush(message: PushMessage): PushNotificationEntry | null
     return {
       id: `member:${message.entity_id}:${hint}`,
       type: "member_joined",
-      title: i18n.t("common:notification.hint.member_joined"),
+      title: translateNotificationText("common:notification.hint.member_joined", "Member Joined"),
       message: name
-        ? i18n.t("common:notification.member_joined_message", { name, defaultValue: "{{name}} joined the guild" })
-        : i18n.t("common:notification.hint.member_joined"),
+        ? translateNotificationText("common:notification.member_joined_message", `${name} joined the guild`, { name })
+        : translateNotificationText("common:notification.hint.member_joined", "Member joined"),
       occurredAt,
       readAt: null,
     };
@@ -269,6 +304,7 @@ function createEntryFromPush(message: PushMessage): PushNotificationEntry | null
 }
 
 type NotificationStore = {
+  identityUserId: string | null;
   features: FeatureMap;
   pushHistory: PushNotificationEntry[];
   wsConnected: boolean;
@@ -289,13 +325,15 @@ type NotificationStore = {
   setSyncing: (syncing: boolean) => void;
   setLastSyncedAt: (value: string | null) => void;
   setSuppressed: (suppressed: boolean) => void;
+  setIdentity: (userId: string | null) => void;
   resetNotifications: () => void;
 };
 
-const initialFeatureState = readFeatureState();
-const initialPushHistory = readPushHistory();
+const initialFeatureState = readFeatureState(null);
+const initialPushHistory = readPushHistory(null);
 
 export const useNotificationStore = create<NotificationStore>((set) => ({
+  identityUserId: null,
   features: initialFeatureState,
   pushHistory: initialPushHistory,
   wsConnected: false,
@@ -314,7 +352,7 @@ export const useNotificationStore = create<NotificationStore>((set) => ({
           hasNew: isNewerThanLastSeen(state.features[feature].lastSeenAt, latestUpdatedAt),
         },
       };
-      persistFeatureState(nextFeatures);
+      persistFeatureState(state.identityUserId, nextFeatures);
       return { features: nextFeatures };
     }),
   setFeatureLatestBatch: (latest) =>
@@ -334,7 +372,7 @@ export const useNotificationStore = create<NotificationStore>((set) => ({
           hasNew: isNewerThanLastSeen(nextFeatures[feature].lastSeenAt, latestUpdatedAt),
         };
       }
-      persistFeatureState(nextFeatures);
+      persistFeatureState(state.identityUserId, nextFeatures);
       return { features: nextFeatures };
     }),
   markFeatureAsRead: (feature) =>
@@ -348,7 +386,7 @@ export const useNotificationStore = create<NotificationStore>((set) => ({
           hasNew: false,
         },
       };
-      persistFeatureState(nextFeatures);
+      persistFeatureState(state.identityUserId, nextFeatures);
       return { features: nextFeatures };
     }),
   markAllFeaturesAsRead: () =>
@@ -361,7 +399,7 @@ export const useNotificationStore = create<NotificationStore>((set) => ({
         nextFeatures[feature].lastSeenAt = nextFeatures[feature].latestUpdatedAt ?? nowIso();
         nextFeatures[feature].hasNew = false;
       }
-      persistFeatureState(nextFeatures);
+      persistFeatureState(state.identityUserId, nextFeatures);
       return { features: nextFeatures };
     }),
   appendPushMessage: (message) =>
@@ -376,14 +414,15 @@ export const useNotificationStore = create<NotificationStore>((set) => ({
         };
       }
 
-      const existingIndex = state.pushHistory.findIndex((entry) => entry.id === nextEntry.id);
+      const currentHistory = mergePushHistories(state.pushHistory, readPushHistory(state.identityUserId));
+      const existingIndex = currentHistory.findIndex((entry) => entry.id === nextEntry.id);
       const nextHistory =
         existingIndex >= 0
           ? (() => {
-              const updated = [...state.pushHistory];
+              const updated = [...currentHistory];
               const existing = updated[existingIndex];
               if (!existing) {
-                return [nextEntry, ...state.pushHistory].slice(0, MAX_PUSH_ENTRIES);
+                return [nextEntry, ...currentHistory].slice(0, MAX_PUSH_ENTRIES);
               }
               updated[existingIndex] = {
                 ...existing,
@@ -393,9 +432,9 @@ export const useNotificationStore = create<NotificationStore>((set) => ({
               updated.sort((left, right) => Date.parse(right.occurredAt) - Date.parse(left.occurredAt));
               return updated.slice(0, MAX_PUSH_ENTRIES);
             })()
-          : [nextEntry, ...state.pushHistory].slice(0, MAX_PUSH_ENTRIES);
+          : [nextEntry, ...currentHistory].slice(0, MAX_PUSH_ENTRIES);
 
-      persistPushHistory(nextHistory);
+      persistPushHistory(state.identityUserId, nextHistory);
       return {
         pushHistory: nextHistory,
         signalSequence: nextSignalSequence,
@@ -405,7 +444,8 @@ export const useNotificationStore = create<NotificationStore>((set) => ({
   markPushAsRead: (entryId) =>
     set((state) => {
       const nextReadAt = nowIso();
-      const nextHistory = state.pushHistory.map((entry) =>
+      const currentHistory = mergePushHistories(state.pushHistory, readPushHistory(state.identityUserId));
+      const nextHistory = currentHistory.map((entry) =>
         entry.id === entryId && entry.readAt === null
           ? {
               ...entry,
@@ -413,13 +453,14 @@ export const useNotificationStore = create<NotificationStore>((set) => ({
             }
           : entry,
       );
-      persistPushHistory(nextHistory);
+      persistPushHistory(state.identityUserId, nextHistory);
       return { pushHistory: nextHistory };
     }),
   markAllPushAsRead: () =>
     set((state) => {
       const nextReadAt = nowIso();
-      const nextHistory = state.pushHistory.map((entry) =>
+      const currentHistory = mergePushHistories(state.pushHistory, readPushHistory(state.identityUserId));
+      const nextHistory = currentHistory.map((entry) =>
         entry.readAt === null
           ? {
               ...entry,
@@ -427,25 +468,39 @@ export const useNotificationStore = create<NotificationStore>((set) => ({
             }
           : entry,
       );
-      persistPushHistory(nextHistory);
+      persistPushHistory(state.identityUserId, nextHistory);
       return { pushHistory: nextHistory };
     }),
   clearPushHistory: () => {
-    persistPushHistory([]);
-    set({ pushHistory: [] });
+    set((state) => {
+      persistPushHistory(state.identityUserId, []);
+      return { pushHistory: [] };
+    });
   },
   setWsConnected: (connected) => set({ wsConnected: connected }),
   setSyncing: (syncing) => set({ isSyncing: syncing }),
   setLastSyncedAt: (value) => set({ lastSyncedAt: value }),
   setSuppressed: (suppressed) => set({ suppressed }),
-  resetNotifications: () => {
+  setIdentity: (identityUserId) => set({
+    identityUserId,
+    features: readFeatureState(identityUserId),
+    pushHistory: readPushHistory(identityUserId),
+    wsConnected: false,
+    isSyncing: false,
+    lastSyncedAt: null,
+    signalSequence: 0,
+    lastSignalMessage: null,
+    suppressed: false,
+  }),
+  resetNotifications: () => set((state) => {
     const nextFeatures = {
       announcements: emptyFeatureState(),
       members: emptyFeatureState(),
     };
-    persistFeatureState(nextFeatures);
-    persistPushHistory([]);
-    set({
+    const keys = notificationStorageKeys(state.identityUserId);
+    removeStorage(keys.features);
+    removeStorage(keys.push);
+    return {
       features: nextFeatures,
       pushHistory: [],
       wsConnected: false,
@@ -454,6 +509,29 @@ export const useNotificationStore = create<NotificationStore>((set) => ({
       signalSequence: 0,
       lastSignalMessage: null,
       suppressed: false,
-    });
-  },
+    };
+  }),
 }));
+
+export function synchronizeNotificationStorage(event: StorageEvent): void {
+  const state = useNotificationStore.getState();
+  const keys = notificationStorageKeys(state.identityUserId);
+  if (event.key === keys.features) {
+    const stored = readFeatureState(state.identityUserId);
+    const features: FeatureMap = {
+      announcements: {
+        ...stored.announcements,
+        latestUpdatedAt: state.features.announcements.latestUpdatedAt,
+        hasNew: isNewerThanLastSeen(stored.announcements.lastSeenAt, state.features.announcements.latestUpdatedAt),
+      },
+      members: {
+        ...stored.members,
+        latestUpdatedAt: state.features.members.latestUpdatedAt,
+        hasNew: isNewerThanLastSeen(stored.members.lastSeenAt, state.features.members.latestUpdatedAt),
+      },
+    };
+    useNotificationStore.setState({ features });
+  } else if (event.key === keys.push) {
+    useNotificationStore.setState({ pushHistory: readPushHistory(state.identityUserId) });
+  }
+}

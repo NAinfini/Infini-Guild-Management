@@ -4,37 +4,89 @@ import { describe, expect, it } from "vitest";
 
 const I18N_ROOT = join(process.cwd(), "apps/portal/i18n");
 const LOCALES = ["en", "zh"] as const;
+const NAMESPACE_FILES = [
+  "admin.json",
+  "announcements.json",
+  "auth.json",
+  "common.json",
+  "dashboard.json",
+  "editor.json",
+  "events.json",
+  "gallery.json",
+  "guild-war.json",
+  "profile.json",
+  "roster.json",
+  "settings.json",
+  "storage.json",
+  "tools.json",
+  "wiki.json",
+] as const;
 
-function flattenKeys(value: unknown, prefix = ""): string[] {
+function flattenLeaves(value: unknown, prefix = "", leaves: Record<string, unknown> = {}): Record<string, unknown> {
   if (value && typeof value === "object" && !Array.isArray(value)) {
-    return Object.entries(value).flatMap(([k, v]) => flattenKeys(v, prefix ? `${prefix}.${k}` : k));
+    const entries = Object.entries(value);
+    if (entries.length > 0) {
+      for (const [key, child] of entries) {
+        flattenLeaves(child, prefix ? `${prefix}.${key}` : key, leaves);
+      }
+      return leaves;
+    }
   }
-  return [prefix];
+  leaves[prefix] = value;
+  return leaves;
 }
 
-function loadKeys(locale: string, file: string): Set<string> {
+function loadLeaves(locale: string, file: string): Record<string, unknown> {
   const parsed = JSON.parse(readFileSync(join(I18N_ROOT, locale, file), "utf8")) as unknown;
-  return new Set(flattenKeys(parsed));
+  return flattenLeaves(parsed);
+}
+
+function interpolationVariables(value: string): string[] {
+  const variables = new Set<string>();
+  for (const match of value.matchAll(/{{\s*([^{}\s]+)\s*}}/g)) variables.add(match[1]!);
+  return [...variables].sort();
 }
 
 describe("i18n locale parity (en ↔ zh)", () => {
-  const enFiles = readdirSync(join(I18N_ROOT, "en")).filter((f) => f.endsWith(".json"));
-
-  it("has the same set of namespace files in every locale", () => {
-    const reference = new Set(enFiles);
+  it("has exactly the required namespace files in every locale", () => {
     for (const locale of LOCALES) {
-      const files = new Set(readdirSync(join(I18N_ROOT, locale)).filter((f) => f.endsWith(".json")));
-      expect([...reference].filter((f) => !files.has(f)), `${locale} missing namespaces`).toEqual([]);
-      expect([...files].filter((f) => !reference.has(f)), `${locale} extra namespaces`).toEqual([]);
+      const files = readdirSync(join(I18N_ROOT, locale)).filter((file) => file.endsWith(".json")).sort();
+      expect(files, `${locale} namespace files`).toEqual([...NAMESPACE_FILES]);
     }
   });
 
-  it.each(enFiles)("has identical keys across locales in %s", (file) => {
-    const enKeys = loadKeys("en", file);
-    const zhKeys = loadKeys("zh", file);
-    const missingInZh = [...enKeys].filter((k) => !zhKeys.has(k));
-    const missingInEn = [...zhKeys].filter((k) => !enKeys.has(k));
-    expect(missingInZh, `keys present in en but missing in zh (${file})`).toEqual([]);
-    expect(missingInEn, `keys present in zh but missing in en (${file})`).toEqual([]);
+  it.each(NAMESPACE_FILES)("uses identical string leaves and interpolation variables in %s", (file) => {
+    const enLeaves = loadLeaves("en", file);
+    const zhLeaves = loadLeaves("zh", file);
+    expect(Object.keys(enLeaves).sort(), `keys in ${file}`).toEqual(Object.keys(zhLeaves).sort());
+
+    for (const [key, value] of Object.entries(enLeaves)) {
+      expect(value, `en leaf must be a string for ${key} (${file})`).toBeTypeOf("string");
+    }
+    for (const [key, value] of Object.entries(zhLeaves)) {
+      expect(value, `zh leaf must be a string for ${key} (${file})`).toBeTypeOf("string");
+    }
+
+    for (const key of Object.keys(enLeaves)) {
+      const enValue = enLeaves[key];
+      const zhValue = zhLeaves[key];
+      if (typeof enValue !== "string" || typeof zhValue !== "string") continue;
+      expect(
+        interpolationVariables(zhValue),
+        `interpolation variables differ for ${key} (${file})`,
+      ).toEqual(interpolationVariables(enValue));
+    }
+  });
+
+  it("distinguishes durable member removal from ordinary deactivation", () => {
+    const en = loadLeaves("en", "admin.json");
+    const zh = loadLeaves("zh", "admin.json");
+
+    expect(en["member.context.delete"]).toBe("Remove member");
+    expect(en["member.context.batchDelete"]).toBe("Remove selected");
+    expect(en["member.context.delete"]).not.toBe(en["member.deactivate"]);
+    expect(zh["member.context.delete"]).toBe("移除成员");
+    expect(zh["member.context.batchDelete"]).toBe("移除所选成员");
+    expect(zh["member.context.delete"]).not.toBe(zh["member.deactivate"]);
   });
 });

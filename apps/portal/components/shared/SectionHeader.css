@@ -1,0 +1,42 @@
+/* The heading and trailing hairline establish card-internal section hierarchy. */
+.section-header {
+  display: flex;
+  align-items: center;
+  gap: var(--space-md);
+  margin-bottom: var(--space-md);
+}
+
+/*
+ * 调用点已经在一个带 gap 的 flex 容器里（Mantine <Stack gap>、自定义 flex 列）
+ * 时用这个修饰类。否则上面的 12px 会和容器的 gap 叠加，标题离正文反而比
+ * 章节之间还远，层级读反。CSS 没有「父级有 gap」这种选择器，只能由调用点声明。
+ */
+.section-header--flush {
+  margin-bottom: 0;
+}
+
+.section-header__title {
+  flex: 0 0 auto;
+  margin: 0;
+  font-size: var(--text-meta);
+  font-weight: var(--fw-strong);
+  line-height: var(--lh-tight);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+/* flex:1 的发丝线，把标题和右侧计数撑开。没有 trailing 时它一直延伸到卡片右缘。 */
+.section-header__rule {
+  flex: 1 1 auto;
+  height: 1px;
+  min-width: var(--space-lg);
+  background: var(--border-subtle);
+}
+
+.section-header__trailing {
+  flex: 0 0 auto;
+  font-size: var(--text-meta);
+  line-height: var(--lh-tight);
+  color: var(--text-muted);
+}

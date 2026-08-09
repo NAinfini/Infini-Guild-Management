@@ -1,4 +1,6 @@
 // @vitest-environment jsdom
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import { MantineProvider } from "@mantine/core";
 import type { QueryClient } from "@tanstack/react-query";
 import { render, screen, waitFor } from "@testing-library/react";
@@ -58,12 +60,6 @@ vi.mock("../../components/shared/ImageGridEditor", () => ({
   ),
 }));
 
-vi.mock("@guild/shared/utils/media", () => ({
-  convertFileForUpload: vi.fn(async (file: File) => file),
-  convertFilesForUpload: vi.fn(async (files: readonly File[]) => [...files]),
-  DEFAULT_IMAGE_WEBP_QUALITY: 0.82,
-}));
-
 function EventCreationHarness({
   createEvent,
 }: {
@@ -106,6 +102,8 @@ function EventCreationHarness({
         onDescriptionChange={setDescription}
         autoArchive={autoArchive}
         onAutoArchiveChange={setAutoArchive}
+        classQuotas={[]}
+        onClassQuotasChange={() => {}}
         attachmentItems={attachmentItems}
         onAttachmentsChange={setAttachmentItems}
         onFilesSelected={(files) => {
@@ -143,6 +141,15 @@ function EventCreationHarness({
 }
 
 describe("event creation flow", () => {
+  it("uses one datetime column on mobile and two from the sm breakpoint", () => {
+    const source = readFileSync(
+      resolve(process.cwd(), "apps/portal/components/feature/events/EventFormModal.tsx"),
+      "utf8",
+    );
+
+    expect(source).toContain('<SimpleGrid cols={{ base: 1, sm: 2 }} spacing="sm">');
+  });
+
   it("creates an event with attachment files through the modal workflow", async () => {
     vi.spyOn(URL, "createObjectURL").mockReturnValue("blob:poster");
     const createEvent = vi.fn().mockResolvedValue({ id: "evt-1" });

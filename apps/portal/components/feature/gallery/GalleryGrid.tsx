@@ -1,9 +1,8 @@
-import { RevealOnScroll } from "@portal/components/effects";
-import { DepthButton } from "@portal/components/shared/DepthButton";
-import { PortalCard } from "../../shared/PortalCard";
-import { Button, Checkbox, Group, Skeleton, Stack, Text } from "@mantine/core";
+import { getVideoThumbnailUrl } from "@guild/shared/utils/video";
+import { ActionIcon, Button, Checkbox, Group, Paper, Skeleton, Stack, Text, Tooltip } from "@mantine/core";
 import { TrashIcon, PlayIcon } from "@portal/components/icons";
-import type { CSSProperties } from "react";
+import { useKeyedPending } from "@portal/hooks/useKeyedPending";
+import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { EmptyState } from "../../shared/EmptyState";
 import type { GalleryItem } from "./shared";
@@ -15,7 +14,6 @@ type GalleryGridProps = {
   isExternalView: boolean;
   canModerate: boolean;
   selectedIds: string[];
-  deletePending: boolean;
   emptyTitle: string;
   emptyDescription?: string;
   errorTitle: string;
@@ -30,12 +28,47 @@ type GalleryGridProps = {
   onResetFilters: () => void;
   onAddMedia: () => void;
   onToggleSelect: (id: string) => void;
-  onDelete: (id: string) => void;
+  onDelete: (id: string) => Promise<boolean>;
   onOpenLightbox: (id: string) => void;
-  resolveImageUrl: (key: string) => string;
+  resolveImageUrl: (mediaId: string, variant?: "view" | "full") => string;
   formatDateTime: (iso: string) => string;
   actionDeleteLabel: string;
 };
+
+type GalleryVideoPreviewProps = {
+  url: string;
+};
+
+function GalleryVideoPreview({ url }: GalleryVideoPreviewProps) {
+  const thumbnailUrl = getVideoThumbnailUrl(url);
+  const [failedThumbnailUrl, setFailedThumbnailUrl] = useState<string | null>(null);
+
+  if (thumbnailUrl && failedThumbnailUrl !== thumbnailUrl) {
+    return (
+      <>
+        <img
+          src={thumbnailUrl}
+          alt=""
+          loading="lazy"
+          decoding="async"
+          className="gallery-preview-img"
+          onError={() => setFailedThumbnailUrl(thumbnailUrl)}
+        />
+        <span className="gallery-video-cover-play" aria-hidden="true">
+          <PlayIcon size={20} />
+        </span>
+      </>
+    );
+  }
+
+  return (
+    <div className="gallery-video-thumb">
+      <span className="gallery-video-thumb__mark" aria-hidden="true">
+        <PlayIcon size={28} />
+      </span>
+    </div>
+  );
+}
 
 export function GalleryGrid({
   rows,
@@ -44,7 +77,6 @@ export function GalleryGrid({
   isExternalView,
   canModerate,
   selectedIds,
-  deletePending,
   emptyTitle,
   emptyDescription,
   errorTitle,
@@ -66,6 +98,7 @@ export function GalleryGrid({
   actionDeleteLabel,
 }: GalleryGridProps) {
   const { t } = useTranslation("gallery");
+  const { pendingKeys, runPending } = useKeyedPending();
   const getOpenLabel = (item: GalleryItem) => {
     const name = item.caption ?? item.id;
     if (isExternalView) {
@@ -79,18 +112,18 @@ export function GalleryGrid({
 
   if (isLoading && rows.length === 0) {
     return (
-      <div className="gallery-masonry" role="list" aria-label={t("aria.galleryLoading")}>
+      <div className="gallery-grid" role="list" aria-label={t("aria.galleryLoading")}>
         {Array.from({ length: 8 }).map((_, i) => (
-          <div key={i} role="listitem" className="gallery-masonry__item">
-            <PortalCard interactive={false}>
+          <div key={i} role="listitem" className="gallery-grid__item">
+            <Paper withBorder radius="md" className="gallery-card">
               <div className="gallery-card__inner">
-                <Skeleton height={200} radius={8} />
+                <Skeleton className="gallery-card__skeleton-media" radius={0} />
                 <Stack gap={4} mt={8}>
                   <Skeleton height={12} width="70%" />
                   <Skeleton height={10} width="40%" />
                 </Stack>
               </div>
-            </PortalCard>
+            </Paper>
           </div>
         ))}
       </div>
@@ -99,9 +132,8 @@ export function GalleryGrid({
 
   if (isError && rows.length === 0) {
     return (
-      <PortalCard interactive={false}>
-        <div style={{ padding: "1.2rem" }}>
-          <EmptyState
+      <Paper withBorder radius="md" p="var(--card-padding)">
+        <EmptyState
             status="error"
             title={errorTitle}
             description={errorDescription}
@@ -110,17 +142,15 @@ export function GalleryGrid({
                 {retryLabel}
               </Button>
             }
-          />
-        </div>
-      </PortalCard>
+        />
+      </Paper>
     );
   }
 
   if (rows.length === 0) {
     return (
-      <PortalCard interactive={false}>
-        <div style={{ padding: "1.2rem" }}>
-          <EmptyState
+      <Paper withBorder radius="md" p="var(--card-padding)">
+        <EmptyState
             title={emptyTitle}
             description={emptyDescription}
             actions={
@@ -132,26 +162,26 @@ export function GalleryGrid({
                 <Button onClick={onAddMedia}>{addMediaLabel}</Button>
               ) : undefined
             }
-          />
-        </div>
-      </PortalCard>
+        />
+      </Paper>
     );
   }
 
   /*
-   * list/listitem, not grid/gridcell: role="grid" requires role="row"
-   * children, and a masonry wall has no column semantics to navigate.
+   * Keep list/listitem semantics: the visual rows follow this DOM order, while
+   * role="grid" would require row wrappers and spreadsheet-style interaction.
    */
   return (
-    <div className="gallery-masonry" role="list" aria-label={t("aria.galleryItems")}>
-      {rows.map((item, index) => (
-        <RevealOnScroll key={item.id} delayMs={Math.min(index, 18) * 18}>
-          <div
-            className="gallery-masonry__item gallery-masonry__item--animated"
-            role="listitem"
-            style={{ "--stagger-index": index } as CSSProperties}
-          >
-            <PortalCard className="gallery-card" interactive={false}>
+    <div className="gallery-grid" role="list" aria-label={t("aria.galleryItems")}>
+      {rows.map((item) => (
+        <div
+          key={item.id}
+          className="gallery-grid__item"
+          role="listitem"
+          data-gallery-id={item.id}
+        >
+          <Paper withBorder radius="md" className="gallery-card">
+            <div className="gallery-card__inner">
               <button
                 type="button"
                 onClick={() => onOpenLightbox(item.id)}
@@ -161,26 +191,35 @@ export function GalleryGrid({
                 <div className="gallery-preview-media">
                   {item.type === "image" ? (
                     <img
-                      src={resolveImageUrl(item.url)}
+                      src={resolveImageUrl(item.media_id)}
                       alt={item.caption ?? item.id}
                       loading="lazy"
                       decoding="async"
                       className="gallery-preview-img"
                     />
                   ) : (
-                    <div className="gallery-video-thumb">
-                      <PlayIcon size={40} />
-                    </div>
+                    <>
+                      <GalleryVideoPreview url={item.url} />
+                      <span className="gallery-video-type-badge" aria-hidden="true">
+                        {t("media.video")}
+                      </span>
+                    </>
                   )}
                   {!isExternalView ? (
-                    <span className="gallery-preview-uploader">{item.uploaded_by_name ?? item.uploaded_by}</span>
+                    <span className="gallery-preview-uploader">
+                      {item.uploaded_by_name ?? item.uploaded_by}
+                    </span>
                   ) : null}
                 </div>
               </button>
               <div className="gallery-card__footer">
                 <div className="gallery-card__meta">
-                  <Text size="sm" fw={600} lineClamp={1}>{item.caption ?? "-"}</Text>
-                  <Text size="xs" c="dimmed">{formatDateTime(item.created_at)}</Text>
+                  <Text size="sm" fw={600} lineClamp={1}>
+                    {item.caption ?? "-"}
+                  </Text>
+                  <Text size="xs" c="dimmed">
+                    {formatDateTime(item.created_at)}
+                  </Text>
                 </div>
                 {canModerate ? (
                   <Group gap={6} wrap="nowrap" className="gallery-card__actions">
@@ -192,13 +231,27 @@ export function GalleryGrid({
                         aria-label={t("aria.selectItem", { id: item.id })}
                       />
                     </label>
-                    <DepthButton type="danger" size="sm" iconOnly before={<TrashIcon size={14} />} onClick={(e: React.MouseEvent) => { e.stopPropagation(); onDelete(item.id); }} loading={deletePending} tooltip={{ label: actionDeleteLabel, withArrow: true }} />
+                    <Tooltip label={actionDeleteLabel} withArrow>
+                      <ActionIcon
+                        color="red"
+                        variant="light"
+                        size="lg"
+                        aria-label={actionDeleteLabel}
+                        onClick={(e: React.MouseEvent) => {
+                          e.stopPropagation();
+                          void runPending(`delete:gallery:${item.id}`, () => onDelete(item.id));
+                        }}
+                        loading={pendingKeys.has(`delete:gallery:${item.id}`)}
+                      >
+                        <TrashIcon size={14} />
+                      </ActionIcon>
+                    </Tooltip>
                   </Group>
                 ) : null}
               </div>
-            </PortalCard>
-          </div>
-        </RevealOnScroll>
+            </div>
+          </Paper>
+        </div>
       ))}
     </div>
   );

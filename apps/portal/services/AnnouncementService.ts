@@ -2,7 +2,7 @@ export {
   archiveAnnouncement,
   createAnnouncement,
   deleteAnnouncement,
-  stageAnnouncementImages,
+  uploadPendingAnnouncementImages,
   updateAnnouncement,
   uploadAnnouncementImages,
 } from "../api/mutations/announcements";
@@ -10,7 +10,7 @@ export type {
   CreateAnnouncementPayload,
   UpdateAnnouncementPayload,
 } from "../api/mutations/announcements";
-export type { AnnouncementImageStagingResponse } from "@guild/shared";
+export type { AnnouncementImageUploadResponse } from "@guild/shared";
 export {
   fetchAnnouncement,
   fetchAnnouncements,

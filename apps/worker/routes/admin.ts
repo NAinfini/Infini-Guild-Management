@@ -19,10 +19,15 @@ import { requirePermission } from "../middleware/rbac";
 import { writeAuditLog, writeAuditLogDurable } from "../services/audit";
 import { AdminService, type MediaLike } from "../services/AdminService";
 import { AdminAuditService, AuditLogQueryError } from "../services/AdminAuditService";
-import { createPasswordHash } from "../services/auth";
+import { createPasswordHash, resolvePbkdf2Iterations } from "../services/auth";
 import { errorLog } from "../db/schema/error-log";
 import { buildError, getDb, handleResult, parseJsonBody, parsePage } from "./_shared";
 import { getSiteConfigService } from "./site-config";
+import { SystemTestService, getSystemTestRunId } from "../services/SystemTestService";
+import { MediaValidationError, parseImageMediaFormData } from "../services/MediaService";
+import { toErrorLogResponse } from "../services/ErrorLogService";
+import { SYSTEM_TEST_RUN_ID_HEADER } from "@guild/shared/config/system-test";
+import { withMedia } from "./service-factory";
 
 const generateInviteCode = customAlphabet("ABCDEFGHJKLMNPQRSTUVWXYZ23456789", 16);
 const generateTemporaryPassword = customAlphabet("ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789", 12);
@@ -42,6 +47,7 @@ const systemTestSummarySchema = z.object({
     error: z.string().max(500).nullable(),
   })).max(100),
 });
+const errorLogSourceSchema = z.enum(["request", "cron", "push", "audit"]);
 
 function getAdminService(c: Context) {
   const env = c.env as Bindings;
@@ -49,15 +55,15 @@ function getAdminService(c: Context) {
   return new AdminService({
     db,
     media: env.MEDIA as unknown as MediaLike,
+    mediaService: withMedia(c).mediaService,
     writeAuditLog: (input) => writeAuditLog(c, input),
     writeAuditLogDurable: (input) => writeAuditLogDurable(c, input),
-    createPasswordHash,
+    createPasswordHash: (password) => createPasswordHash(password, resolvePbkdf2Iterations(env)),
     generateId: () => nanoid(),
     generateInviteCode: () => generateInviteCode(),
     generateTemporaryPassword: () => generateTemporaryPassword(),
     rawDb: env.DB,
     ws: env.WS,
-    envSiteName: env.SITE_NAME,
     envSiteLogoUrl: env.SITE_LOGO_URL,
   });
 }
@@ -85,7 +91,7 @@ function buildArchiveDownloadUrl(c: Context, token: string): string {
 adminRoutes.get("/invite-links", async (c) => {
   const sessionUser = await requirePermission(c, "admin.invite.view");
   const canManage = sessionUser.permissions.has("admin.invite.manage");
-  const cursorRaw = Number.parseInt(c.req.query("cursor") ?? "", 10);
+  const cursor = c.req.query("cursor");
   const limitRaw = Number.parseInt(c.req.query("limit") ?? "", 10);
   const visibilityRaw = c.req.query("visibility");
   const visibility = visibilityRaw === "expired" || visibilityRaw === "revoked"
@@ -93,7 +99,7 @@ adminRoutes.get("/invite-links", async (c) => {
     : "active";
   const search = (c.req.query("search") ?? "").trim().slice(0, 200);
   const result = await getAdminService(c).listInviteLinks({
-    cursor: Number.isFinite(cursorRaw) && cursorRaw >= 0 ? cursorRaw : 0,
+    cursor: cursor && cursor.length > 0 ? cursor : undefined,
     limit: Number.isFinite(limitRaw) && limitRaw > 0
       ? Math.min(limitRaw, 100)
       : LIMITS.pagination.admin,
@@ -122,7 +128,7 @@ adminRoutes.post("/invite-links", async (c) => {
   const body = await parseJsonBody(c);
   const parsed = createInviteLinkSchema.safeParse(body);
   if (!parsed.success) return buildError(c, "VALIDATION_ERROR", "Invalid invite payload", parsed.error.flatten());
-  const result = await getAdminService(c).createInviteLink(sessionUser.id, parsed.data.max_uses, parsed.data.expires_at ?? null);
+  const result = await getAdminService(c).createInviteLink(sessionUser.id, parsed.data.role_id, parsed.data.max_uses, parsed.data.expires_at ?? null);
   return handleResult(c, result, 201);
 });
 
@@ -142,7 +148,7 @@ adminRoutes.delete("/invite-links/:id/permanent", async (c) => {
 
 // User Management
 adminRoutes.patch("/users/batch/role", async (c) => {
-  const sessionUser = await requirePermission(c, "admin.users.role", { freshPermissions: true });
+  const sessionUser = await requirePermission(c, "admin.users.role");
   const body = await parseJsonBody(c);
   const parsed = batchRoleChangeSchema.safeParse(body);
   if (!parsed.success) return buildError(c, "VALIDATION_ERROR", "Invalid batch role payload", parsed.error.flatten());
@@ -169,7 +175,7 @@ adminRoutes.patch("/users/batch/reactivate", async (c) => {
 });
 
 adminRoutes.patch("/users/batch/delete", async (c) => {
-  const sessionUser = await requirePermission(c, "admin.users.delete", { freshPermissions: true });
+  const sessionUser = await requirePermission(c, "admin.users.delete");
   const body = await parseJsonBody(c);
   const parsed = batchDeactivateSchema.safeParse(body);
   if (!parsed.success) return buildError(c, "VALIDATION_ERROR", "Invalid batch delete payload", parsed.error.flatten());
@@ -182,13 +188,13 @@ adminRoutes.post("/users", async (c) => {
   const body = await parseJsonBody(c);
   const parsed = createAdminMemberSchema.safeParse(body);
   if (!parsed.success) return buildError(c, "VALIDATION_ERROR", "Invalid create member payload", parsed.error.flatten());
-  const result = await getAdminService(c).createMember(sessionUser.id, parsed.data.username);
+  const result = await getAdminService(c).createMember(sessionUser.id, parsed.data.username, parsed.data.role_id);
   if (!result.ok) return handleResult(c, result);
   return c.json({ ok: true, ...result.data }, 201);
 });
 
 adminRoutes.patch("/users/:id/role", async (c) => {
-  const sessionUser = await requirePermission(c, "admin.users.role", { freshPermissions: true });
+  const sessionUser = await requirePermission(c, "admin.users.role");
   const body = await parseJsonBody(c);
   const parsed = batchRoleChangeSchema.shape.new_role.safeParse((body as { role?: unknown }).role);
   if (!parsed.success) return buildError(c, "VALIDATION_ERROR", "Invalid role payload", parsed.error.flatten());
@@ -218,7 +224,7 @@ adminRoutes.patch("/users/:id/reactivate", async (c) => {
 });
 
 adminRoutes.post("/users/:id/reset-password", async (c) => {
-  const sessionUser = await requirePermission(c, "admin.users.password", { freshPermissions: true });
+  const sessionUser = await requirePermission(c, "admin.users.password");
   const body = await parseJsonBody(c);
   const temporaryPasswordInput = (body as { temporary_password?: unknown }).temporary_password;
   if (temporaryPasswordInput !== undefined && typeof temporaryPasswordInput !== "string") return buildError(c, "VALIDATION_ERROR", "temporary_password must be a string when provided");
@@ -228,20 +234,26 @@ adminRoutes.post("/users/:id/reset-password", async (c) => {
 });
 
 adminRoutes.post("/users/:id/reset-login-lock", async (c) => {
-  const sessionUser = await requirePermission(c, "admin.users.password", { freshPermissions: true });
+  const sessionUser = await requirePermission(c, "admin.users.password");
   const result = await getAdminService(c).resetLoginLock(sessionUser.id, c.req.param("id"));
   return handleResult(c, result);
 });
 
 // Roles
 adminRoutes.get("/roles", async (c) => {
-  await requirePermission(c, "admin.roles.view");
+  await requirePermission(c, [
+    "admin.roles.view",
+    "admin.roles.manage",
+    "admin.invite.manage",
+    "admin.users.edit",
+    "admin.users.role",
+  ]);
   const result = await getAdminService(c).listRoles();
   return handleResult(c, result);
 });
 
 adminRoutes.post("/roles", async (c) => {
-  const sessionUser = await requirePermission(c, "admin.roles.manage", { freshPermissions: true });
+  const sessionUser = await requirePermission(c, "admin.roles.manage");
   const body = await parseJsonBody(c);
   const parsed = createRoleSchema.safeParse(body);
   if (!parsed.success) return buildError(c, "VALIDATION_ERROR", "Invalid role payload", parsed.error.flatten());
@@ -250,7 +262,7 @@ adminRoutes.post("/roles", async (c) => {
 });
 
 adminRoutes.patch("/roles/:id", async (c) => {
-  const sessionUser = await requirePermission(c, "admin.roles.manage", { freshPermissions: true });
+  const sessionUser = await requirePermission(c, "admin.roles.manage");
   const body = await parseJsonBody(c);
   const parsed = updateRoleSchema.safeParse(body);
   if (!parsed.success) return buildError(c, "VALIDATION_ERROR", "Invalid role update payload", parsed.error.flatten());
@@ -259,7 +271,7 @@ adminRoutes.patch("/roles/:id", async (c) => {
 });
 
 adminRoutes.delete("/roles/:id", async (c) => {
-  const sessionUser = await requirePermission(c, "admin.roles.manage", { freshPermissions: true });
+  const sessionUser = await requirePermission(c, "admin.roles.manage");
   const result = await getAdminService(c).deleteRole(sessionUser.id, c.req.param("id"));
   if (!result.ok) return handleResult(c, result);
   return c.json({ ok: true });
@@ -272,7 +284,7 @@ adminRoutes.get("/site-config", async (c) => {
 });
 
 adminRoutes.patch("/site-config", async (c) => {
-  const sessionUser = await requirePermission(c, "admin.siteConfig.manage", { freshPermissions: true });
+  const sessionUser = await requirePermission(c, "admin.siteConfig.manage");
   const body = await parseJsonBody(c);
   const parsed = updateSiteConfigSchema.safeParse(body);
   if (!parsed.success) return buildError(c, "VALIDATION_ERROR", "Invalid site config payload", parsed.error.flatten());
@@ -280,36 +292,68 @@ adminRoutes.patch("/site-config", async (c) => {
 });
 
 adminRoutes.post("/site-config/logo", async (c) => {
-  const sessionUser = await requirePermission(c, "admin.siteConfig.manage", { freshPermissions: true });
+  const sessionUser = await requirePermission(c, "admin.siteConfig.manage");
   let form: FormData;
   try {
     form = await c.req.formData();
   } catch {
     return buildError(c, "VALIDATION_ERROR", "Request must be multipart/form-data");
   }
-  const file = form.get("file");
-  if (!(file instanceof File)) return buildError(c, "VALIDATION_ERROR", "Logo file is required");
-  return handleResult(c, await getSiteConfigService(c).uploadSiteLogo(sessionUser.id, file));
+  try {
+    const uploads = await parseImageMediaFormData(form);
+    if (uploads.length !== 1) return buildError(c, "VALIDATION_ERROR", "Exactly one logo is required");
+    return handleResult(c, await getSiteConfigService(c).uploadSiteLogo(sessionUser.id, uploads[0]!));
+  } catch (error) {
+    if (error instanceof MediaValidationError) return buildError(c, "VALIDATION_ERROR", error.message);
+    throw error;
+  }
 });
 
 adminRoutes.get("/status", async (c) => {
-  await requirePermission(c, "admin.status.view", { freshPermissions: false });
+  await requirePermission(c, "admin.status.view");
   const result = await getAdminService(c).getStatus();
   return handleResult(c, result);
 });
 
+adminRoutes.post("/status/system-test-runs", async (c) => {
+  const sessionUser = await requirePermission(c, "admin.status.view");
+  const runId = await new SystemTestService(c.env as Bindings).createRun(sessionUser.id);
+  return c.json({ run_id: runId, fixture_id: crypto.randomUUID() }, 201);
+});
+
+adminRoutes.post("/status/system-test-runs/:runId/cleanup", async (c) => {
+  const sessionUser = await requirePermission(c, "admin.status.view");
+  try {
+    const result = await new SystemTestService(c.env as Bindings).cleanupRun(c.req.param("runId"), sessionUser.id);
+    return c.json({ ok: result.status === "completed", ...result }, result.status === "completed" ? 200 : 409);
+  } catch (error) {
+    return buildError(c, "FORBIDDEN", error instanceof Error ? error.message : "System test cleanup denied");
+  }
+});
+
+adminRoutes.post("/status/system-test-runs/:runId/finalize", async (c) => {
+  const sessionUser = await requirePermission(c, "admin.status.view");
+  try {
+    await new SystemTestService(c.env as Bindings).finalizeRun(c.req.param("runId"), sessionUser.id);
+    return c.json({ ok: true });
+  } catch (error) {
+    return buildError(c, "CONFLICT", error instanceof Error ? error.message : "System test run is not ready to finalize");
+  }
+});
+
 adminRoutes.post("/status/system-test-audit", async (c) => {
-  const sessionUser = await requirePermission(c, "admin.status.view", { freshPermissions: false });
+  const sessionUser = await requirePermission(c, "admin.status.view");
+  const runId = c.req.header(SYSTEM_TEST_RUN_ID_HEADER) ?? getSystemTestRunId(c);
+  if (!runId) return buildError(c, "FORBIDDEN", "A valid active system-test run is required");
+  if (!(await new SystemTestService(c.env as Bindings).isRunOwnedBy(runId, sessionUser.id))) {
+    return buildError(c, "FORBIDDEN", "System test run belongs to another actor");
+  }
   const parsed = systemTestSummarySchema.safeParse(await parseJsonBody(c));
   if (!parsed.success) return buildError(c, "VALIDATION_ERROR", "Invalid system test summary", parsed.error.flatten());
   const { total, passed, failed, errors } = parsed.data;
-  await writeAuditLogDurable(c, {
-    entityType: "system_test",
-    action: "run",
-    actorId: sessionUser.id,
-    entityId: "admin-console-api",
+  await new SystemTestService(c.env as Bindings).finalizeRun(runId, sessionUser.id, {
     diffTitle: `Full system test: ${passed}/${total} passed`,
-    detailText: JSON.stringify({ total, passed, failed, errors }),
+    detail: { total, passed, failed, errors },
   });
   return c.json({ ok: true });
 });
@@ -400,9 +444,10 @@ adminRoutes.get("/error-log", async (c) => {
   const page = parsePage(c.req.query("page"), 1);
   const limitRaw = Number.parseInt(c.req.query("limit") ?? "", 10);
   const limit = Number.isFinite(limitRaw) && limitRaw > 0 ? Math.min(limitRaw, 100) : 50;
-  const sourceFilter = c.req.query("source");
+  const sourceFilter = errorLogSourceSchema.optional().safeParse(c.req.query("source"));
+  if (!sourceFilter.success) return buildError(c, "VALIDATION_ERROR", "Invalid error log source");
 
-  const where = sourceFilter ? eq(errorLog.source, sourceFilter) : undefined;
+  const where = sourceFilter.data ? eq(errorLog.source, sourceFilter.data) : undefined;
 
   const [countRow] = await db
     .select({ count: sql<number>`count(*)` })
@@ -414,12 +459,12 @@ adminRoutes.get("/error-log", async (c) => {
     .select()
     .from(errorLog)
     .where(where)
-    .orderBy(desc(errorLog.createdAt))
+    .orderBy(desc(errorLog.createdAt), desc(errorLog.id))
     .limit(limit)
     .offset((page - 1) * limit);
 
   return c.json({
-    data,
+    data: data.map(toErrorLogResponse),
     total,
     page,
     limit,

@@ -1,12 +1,8 @@
 import { describe, expect, it, vi } from "vitest";
 import { AttachmentService } from "../AttachmentService";
 
-vi.mock("@guild/shared/utils/media", () => ({
-  convertFileForUpload: vi.fn(async (file: File) => file),
-}));
-
 describe("AttachmentService", () => {
-  it("prepares files with blob urls and preserves converted files", async () => {
+  it("prepares files with blob urls and preserves source files", async () => {
     const createObjectURL = vi.spyOn(URL, "createObjectURL").mockReturnValue("blob:test-image");
     const service = new AttachmentService();
     const file = new File(["image"], "poster.png", { type: "image/png" });
@@ -23,25 +19,25 @@ describe("AttachmentService", () => {
     ]);
   });
 
-  it("extracts new files and existing urls from mixed items", () => {
+  it("extracts new files and existing media IDs from mixed items", () => {
     const service = new AttachmentService();
     const file = new File(["image"], "new.png", { type: "image/png" });
 
     const items = [
-      { id: "existing", src: "events/existing.png" },
+      { id: "media1234567890abcdef", src: "/api/media/media1234567890abcdef/view" },
       { id: "new", src: "blob:new", file },
     ];
 
-    expect(service.extractExistingUrls(items)).toEqual(["events/existing.png"]);
+    expect(service.extractExistingMediaIds(items)).toEqual(["media1234567890abcdef"]);
     expect(service.extractNewFiles(items)).toEqual([file]);
   });
 
-  it("releases blob urls but ignores stable attachment keys", () => {
+  it("releases blob urls but ignores stable media urls", () => {
     const revokeObjectURL = vi.spyOn(URL, "revokeObjectURL").mockImplementation(() => undefined);
     const service = new AttachmentService();
 
     service.releaseItem({ id: "blob", src: "blob:temp" });
-    service.releaseItem({ id: "stable", src: "events/existing.png" });
+    service.releaseItem({ id: "stable", src: "/api/media/media1234567890abcdef/view" });
 
     expect(revokeObjectURL).toHaveBeenCalledTimes(1);
     expect(revokeObjectURL).toHaveBeenCalledWith("blob:temp");

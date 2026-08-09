@@ -3,6 +3,8 @@ import { fetchEventsList } from "../../services/EventService";
 import { queryKeys } from "../../api/query-keys";
 import { fetchAllUsersListWithOptions } from "../../services/UserService";
 import type { EventStatusFilter } from "../../utils/event-navigation";
+import { viewerIdentity } from "../../session-storage";
+import { useAuthStore } from "../../stores/auth";
 
 const PAGE_LIMIT = 50;
 
@@ -23,11 +25,13 @@ function toArchivedParam(status: EventStatusFilter): boolean | undefined {
 export function useEventsData(options: UseEventsDataOptions) {
   const { eventType, status, searchQuery, pinnedOnly, lockedOnly } = options;
   const normalizedSearch = searchQuery.trim();
+  const viewerKey = useAuthStore((state) => viewerIdentity(state.user?.id));
 
   const eventsQuery = useInfiniteQuery({
     queryKey: [
       ...queryKeys.events.all,
       "infinite",
+      viewerKey,
       eventType ?? "all",
       status,
       normalizedSearch,
@@ -59,7 +63,7 @@ export function useEventsData(options: UseEventsDataOptions) {
     eventsQuery.data?.pages.flatMap((page) => page.data) ?? [];
 
   const usersQuery = useQuery({
-    queryKey: queryKeys.users.all,
+    queryKey: [...queryKeys.users.all, viewerKey],
     queryFn: () => fetchAllUsersListWithOptions(),
     staleTime: 10 * 60_000,
   });

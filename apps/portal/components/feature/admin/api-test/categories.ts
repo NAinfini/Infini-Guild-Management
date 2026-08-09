@@ -1,50 +1,4 @@
-import { type CategoryDef, type EndpointDef, type StaleArtifactProbe, isRecord } from "./types";
-
-/*
- * These probes exist to catch fixtures a run failed to delete — the operator
- * closing the tab mid-run, a worker restart. A leaked fixture is therefore
- * always *live*, never archived and never deactivated, so none of these paths
- * may narrow by state:
- *   - Users:  UserService.buildUsersWhereFilters matches `search` against the
- *             username alone, and the disposable user is named `systemtest_<ts>`
- *             with no brackets — `[systemtest]` matched nothing. `active=false`
- *             then excluded the live leftover that is the whole point of this
- *             probe. (Soft-deleted rows stay invisible here by design: the query
- *             always ANDs isNull(deletedAt), and a soft-deleted fixture is one
- *             teardown already handled.)
- *   - Events / Announcements: `archived=true` compiles to isNotNull(archivedAt),
- *             so it excluded every unarchived leftover.
- */
-export const STALE_ARTIFACT_PROBES: StaleArtifactProbe[] = [
-  { label: "Users", path: "/api/users?search=systemtest_&limit=20" },
-  { label: "Events", path: "/api/events?search=%5Bsystemtest%5D&limit=20" },
-  { label: "Announcements", path: "/api/announcements?search=%5Bsystemtest%5D&limit=20" },
-  { label: "Gallery", path: "/api/gallery?search=%5Bsystemtest%5D&limit=20" },
-  { label: "Wiki", path: "/api/wiki/articles?search=%5Bsystemtest%5D&page=1&limit=20" },
-  { label: "Storage", path: "/api/storage" },
-  { label: "Roles", path: "/api/admin/roles" },
-  { label: "Badges", path: "/api/badges" },
-];
-
-export function countStaleSystemTestArtifacts(payload: unknown): number {
-  /*
-   * Two markers, because the fixtures carry two naming schemes: content rows are
-   * titled "[systemtest] …", but the disposable users are `systemtest_<ts>` with
-   * no brackets. Matching only the bracketed form left the Users probe unable to
-   * report a leaked test account.
-   */
-  const containsMarker = (value: unknown): boolean => {
-    const json = JSON.stringify(value).toLowerCase();
-    return json.includes("[systemtest]") || json.includes("systemtest_");
-  };
-  if (isRecord(payload) && Array.isArray(payload.data)) {
-    return payload.data.filter(containsMarker).length;
-  }
-  if (Array.isArray(payload)) {
-    return payload.filter(containsMarker).length;
-  }
-  return containsMarker(payload) ? 1 : 0;
-}
+import { type CategoryDef, type EndpointDef } from "./types";
 
 export function buildApiCategories(t: (key: string) => string): CategoryDef[] {
   return [
@@ -61,9 +15,6 @@ export function buildApiCategories(t: (key: string) => string): CategoryDef[] {
         { label: t("status.api.ep.dashboardEvents"), method: "GET", path: "/api/dashboard/events" },
         { label: t("status.api.ep.dashboardWars"), method: "GET", path: "/api/dashboard/wars" },
         { label: t("status.api.ep.globalSearch"), method: "GET", path: "/api/search?q=systemtest&limit=5" },
-        { label: t("status.api.ep.gameData"), method: "GET", path: "/api/game-data" },
-        // Must follow /api/game-data — it supplies the class id.
-        { label: t("status.api.ep.gameDataRotation"), method: "GET", path: "/api/game-data/rotations/:classId" },
       ],
     },
     {
@@ -72,11 +23,13 @@ export function buildApiCategories(t: (key: string) => string): CategoryDef[] {
       endpoints: [
         { label: t("status.api.ep.checkUsername"), method: "GET", path: "/api/auth/check-username?username=test" },
         { label: t("status.api.ep.currentUser"), method: "GET", path: "/api/auth/me" },
+        { label: t("status.api.ep.listRoles"), method: "GET", path: "/api/admin/roles" },
         { label: t("status.api.ep.registerInvitePrep"), method: "GET", path: "/api/admin/invite-links" },
         { label: t("status.api.ep.createInvite"), method: "POST", path: "/api/admin/invite-links" },
         { label: t("status.api.ep.verifyInvite"), method: "GET", path: "/api/auth/verify-invite/:code" },
         { label: t("status.api.ep.register"), method: "POST", path: "/api/auth/register/:inviteCode" },
         { label: t("status.api.ep.login"), method: "POST", path: "/api/auth/login" },
+        { label: t("status.api.ep.logout"), method: "POST", path: "/api/auth/logout" },
       ],
     },
     {
@@ -88,9 +41,19 @@ export function buildApiCategories(t: (key: string) => string): CategoryDef[] {
         { label: t("status.api.ep.absenceWindow"), method: "GET", path: "/api/users/absences?from=2026-01-01&to=2026-01-31" },
         { label: t("status.api.ep.getUserById"), method: "GET", path: "/api/users/:id" },
         { label: t("status.api.ep.userAbsences"), method: "GET", path: "/api/users/:id/absences" },
+        { label: t("status.api.ep.createAbsence"), method: "POST", path: "/api/users/:id/absences" },
+        { label: t("status.api.ep.deleteAbsence"), method: "DELETE", path: "/api/users/:id/absences/:absenceId" },
         { label: t("status.api.ep.updateProfile"), method: "PATCH", path: "/api/users/:id/profile" },
+        { label: t("status.api.ep.changePassword"), method: "POST", path: "/api/users/:id/change-password" },
+        { label: t("status.api.ep.changeUsername"), method: "POST", path: "/api/users/:id/change-username" },
         { label: t("status.api.ep.uploadImage"), method: "POST", path: "/api/users/:id/media/images" },
-        { label: t("status.api.ep.getUserImage"), method: "GET", path: "/api/users/image" },
+        {
+          label: t("status.api.ep.getUserImage"),
+          method: "GET",
+          path: "/api/media/:mediaId/:variant",
+          mediaIdContext: "userImageMediaId",
+          mediaVariant: "view",
+        },
         { label: t("status.api.ep.deleteImage"), method: "DELETE", path: "/api/users/:id/media/images" },
         { label: t("status.api.ep.uploadAvatar"), method: "POST", path: "/api/users/:id/media/avatar" },
         { label: t("status.api.ep.deleteAvatar"), method: "DELETE", path: "/api/users/:id/media/avatar" },
@@ -114,7 +77,13 @@ export function buildApiCategories(t: (key: string) => string): CategoryDef[] {
         { label: t("status.api.ep.updateEvent"), method: "PATCH", path: "/api/events/:id" },
         { label: t("status.api.ep.batchEventDetails"), method: "POST", path: "/api/events/batch-details" },
         { label: t("status.api.ep.uploadEventImages"), method: "POST", path: "/api/events/:id/images" },
-        { label: t("status.api.ep.getEventImage"), method: "GET", path: "/api/events/image" },
+        {
+          label: t("status.api.ep.getEventImage"),
+          method: "GET",
+          path: "/api/media/:mediaId/:variant",
+          mediaIdContext: "eventImageMediaId",
+          mediaVariant: "view",
+        },
         { label: t("status.api.ep.joinEvent"), method: "POST", path: "/api/events/:id/join" },
         { label: t("status.api.ep.addParticipant"), method: "POST", path: "/api/events/:id/participants" },
         { label: t("status.api.ep.removeParticipant"), method: "DELETE", path: "/api/events/:id/participants" },
@@ -134,12 +103,17 @@ export function buildApiCategories(t: (key: string) => string): CategoryDef[] {
       label: t("status.api.cat.announcements"),
       endpoints: [
         { label: t("status.api.ep.listAnnouncements"), method: "GET", path: "/api/announcements?page=1&limit=5" },
-        { label: t("status.api.ep.stageAnnouncementImages"), method: "POST", path: "/api/announcements/images/stage" },
         { label: t("status.api.ep.createAnnouncement"), method: "POST", path: "/api/announcements" },
         { label: t("status.api.ep.getAnnouncement"), method: "GET", path: "/api/announcements/:id" },
-        { label: t("status.api.ep.updateAnnouncement"), method: "PATCH", path: "/api/announcements/:id" },
         { label: t("status.api.ep.uploadAnnouncementImages"), method: "POST", path: "/api/announcements/:id/images" },
-        { label: t("status.api.ep.getAnnouncementImage"), method: "GET", path: "/api/announcements/image" },
+        {
+          label: t("status.api.ep.getAnnouncementImage"),
+          method: "GET",
+          path: "/api/media/:mediaId/:variant",
+          mediaIdContext: "announcementImageMediaId",
+          mediaVariant: "view",
+        },
+        { label: t("status.api.ep.updateAnnouncement"), method: "PATCH", path: "/api/announcements/:id" },
         { label: t("status.api.ep.archiveAnnouncement"), method: "DELETE", path: "/api/announcements/:id" },
         { label: t("status.api.ep.deleteAnnouncement"), method: "DELETE", path: "/api/announcements/:id/permanent" },
       ],
@@ -150,7 +124,13 @@ export function buildApiCategories(t: (key: string) => string): CategoryDef[] {
       endpoints: [
         { label: t("status.api.ep.listGallery"), method: "GET", path: "/api/gallery?limit=5" },
         { label: t("status.api.ep.uploadGalleryImages"), method: "POST", path: "/api/gallery/images" },
-        { label: t("status.api.ep.getGalleryImage"), method: "GET", path: "/api/gallery/image" },
+        {
+          label: t("status.api.ep.getGalleryImage"),
+          method: "GET",
+          path: "/api/media/:mediaId/:variant",
+          mediaIdContext: "galleryImageMediaId",
+          mediaVariant: "view",
+        },
         { label: t("status.api.ep.addVideo"), method: "POST", path: "/api/gallery/videos" },
         { label: t("status.api.ep.batchDeleteGallery"), method: "POST", path: "/api/gallery/batch-delete" },
         { label: t("status.api.ep.deleteGalleryItem"), method: "DELETE", path: "/api/gallery/:id" },
@@ -169,7 +149,7 @@ export function buildApiCategories(t: (key: string) => string): CategoryDef[] {
         { label: t("status.api.ep.exportGuildWar"), method: "GET", path: "/api/guild-war/export?format=json" },
         { label: t("status.api.ep.warHistory"), method: "GET", path: "/api/guild-war/history?page=1&limit=5" },
         { label: t("status.api.ep.historyDetail"), method: "GET", path: "/api/guild-war/history/:id" },
-        { label: t("status.api.ep.batchHistoryDetails"), method: "POST", path: "/api/guild-war/history/batch" },
+        { label: t("status.api.ep.batchHistoryDetails"), method: "GET", path: "/api/guild-war/history/batch" },
         { label: t("status.api.ep.createHistory"), method: "POST", path: "/api/guild-war/history" },
         { label: t("status.api.ep.analytics"), method: "GET", path: "/api/guild-war/analytics" },
         { label: t("status.api.ep.concludeWar"), method: "POST", path: "/api/guild-war/conclude" },
@@ -187,14 +167,22 @@ export function buildApiCategories(t: (key: string) => string): CategoryDef[] {
         { label: t("status.api.ep.listCategories"), method: "GET", path: "/api/wiki/categories" },
         { label: t("status.api.ep.createCategory"), method: "POST", path: "/api/wiki/categories" },
         { label: t("status.api.ep.updateCategory"), method: "PATCH", path: "/api/wiki/categories/:id" },
+        { label: t("status.api.ep.batchUpdateCategories"), method: "PATCH", path: "/api/wiki/categories/batch" },
         { label: t("status.api.ep.listArticles"), method: "GET", path: "/api/wiki/articles?page=1&limit=5" },
         { label: t("status.api.ep.createArticle"), method: "POST", path: "/api/wiki/articles" },
         { label: t("status.api.ep.getArticle"), method: "GET", path: "/api/wiki/articles/:slug" },
         { label: t("status.api.ep.updateArticle"), method: "PATCH", path: "/api/wiki/articles/:id" },
         { label: t("status.api.ep.articleRevisions"), method: "GET", path: "/api/wiki/articles/:id/revisions" },
         { label: t("status.api.ep.articleRevision"), method: "GET", path: "/api/wiki/articles/:id/revisions/1" },
+        { label: t("status.api.ep.restoreArticleRevision"), method: "POST", path: "/api/wiki/articles/:id/revisions/1/restore" },
         { label: t("status.api.ep.uploadArticleImages"), method: "POST", path: "/api/wiki/articles/:id/images" },
-        { label: t("status.api.ep.getWikiImage"), method: "GET", path: "/api/wiki/image" },
+        {
+          label: t("status.api.ep.getWikiImage"),
+          method: "GET",
+          path: "/api/media/:mediaId/:variant",
+          mediaIdContext: "wikiImageMediaId",
+          mediaVariant: "view",
+        },
         { label: t("status.api.ep.archiveArticle"), method: "DELETE", path: "/api/wiki/articles/:id" },
         { label: t("status.api.ep.deleteArticle"), method: "DELETE", path: "/api/wiki/articles/:id/permanent" },
         { label: t("status.api.ep.deleteCategory"), method: "DELETE", path: "/api/wiki/categories/:id" },
@@ -214,7 +202,13 @@ export function buildApiCategories(t: (key: string) => string): CategoryDef[] {
         { label: t("status.api.ep.getStorageItem"), method: "GET", path: "/api/storage/items/:id" },
         { label: t("status.api.ep.updateStorageItem"), method: "PATCH", path: "/api/storage/items/:id" },
         { label: t("status.api.ep.uploadStorageItemImages"), method: "POST", path: "/api/storage/items/:id/images" },
-        { label: t("status.api.ep.getStorageImage"), method: "GET", path: "/api/storage/image" },
+        {
+          label: t("status.api.ep.getStorageImage"),
+          method: "GET",
+          path: "/api/media/:mediaId/:variant",
+          mediaIdContext: "storageImageMediaId",
+          mediaVariant: "view",
+        },
         { label: t("status.api.ep.deleteStorageItemImage"), method: "DELETE", path: "/api/storage/items/:id/images/:imageId" },
         { label: t("status.api.ep.storageTransactionIntake"), method: "POST", path: "/api/storage/items/:id/transactions?fixture=intake" },
         { label: t("status.api.ep.storageTransactionDistribute"), method: "POST", path: "/api/storage/items/:id/transactions?fixture=distribute" },
@@ -234,6 +228,7 @@ export function buildApiCategories(t: (key: string) => string): CategoryDef[] {
         { label: t("status.api.ep.createBadge"), method: "POST", path: "/api/badges" },
         { label: t("status.api.ep.getBadge"), method: "GET", path: "/api/badges/:id" },
         { label: t("status.api.ep.updateBadge"), method: "PATCH", path: "/api/badges/:id" },
+        { label: t("status.api.ep.reorderBadges"), method: "PATCH", path: "/api/badges/reorder" },
         { label: t("status.api.ep.badgeAssignments"), method: "GET", path: "/api/badges/:id/assignments" },
         { label: t("status.api.ep.assignBadge"), method: "POST", path: "/api/badges/:id/assign" },
         { label: t("status.api.ep.unassignBadge"), method: "POST", path: "/api/badges/:id/unassign" },
@@ -241,9 +236,42 @@ export function buildApiCategories(t: (key: string) => string): CategoryDef[] {
       ],
     },
     {
+      key: "classes",
+      label: t("status.api.cat.classes"),
+      endpoints: [
+        { label: t("status.api.ep.listClasses"), method: "GET", path: "/api/classes" },
+        { label: t("status.api.ep.createClass"), method: "POST", path: "/api/classes" },
+        { label: t("status.api.ep.updateClass"), method: "PATCH", path: "/api/classes/:id" },
+        { label: t("status.api.ep.reorderClasses"), method: "PATCH", path: "/api/classes/reorder" },
+        { label: t("status.api.ep.uploadClassIcon"), method: "POST", path: "/api/classes/:id/icon" },
+        {
+          label: t("status.api.ep.getClassIcon"),
+          method: "GET",
+          path: "/api/media/:mediaId/:variant",
+          mediaIdContext: "createdClassIconMediaId",
+          mediaVariant: "view",
+        },
+        { label: t("status.api.ep.deleteClassIcon"), method: "DELETE", path: "/api/classes/:id/icon" },
+        { label: t("status.api.ep.deleteClass"), method: "DELETE", path: "/api/classes/:id" },
+      ],
+    },
+    {
+      key: "classTags",
+      label: t("status.api.cat.classTags"),
+      endpoints: [
+        { label: t("status.api.ep.listClassTags"), method: "GET", path: "/api/class-tags" },
+        { label: t("status.api.ep.createClassTag"), method: "POST", path: "/api/class-tags" },
+        { label: t("status.api.ep.updateClassTag"), method: "PATCH", path: "/api/class-tags/:id" },
+        { label: t("status.api.ep.reorderClassTags"), method: "PATCH", path: "/api/class-tags/reorder" },
+        { label: t("status.api.ep.deleteClassTag"), method: "DELETE", path: "/api/class-tags/:id" },
+      ],
+    },
+    {
       key: "adminInvites",
       label: t("status.api.cat.adminInvites"),
       endpoints: [
+        { label: t("status.api.ep.currentUser"), method: "GET", path: "/api/auth/me" },
+        { label: t("status.api.ep.listRoles"), method: "GET", path: "/api/admin/roles" },
         { label: t("status.api.ep.listInviteLinks"), method: "GET", path: "/api/admin/invite-links" },
         { label: t("status.api.ep.inviteStats"), method: "GET", path: "/api/admin/invite-links/stats" },
         { label: t("status.api.ep.createInvite"), method: "POST", path: "/api/admin/invite-links" },
@@ -263,17 +291,11 @@ export function buildApiCategories(t: (key: string) => string): CategoryDef[] {
       ],
     },
     {
-      key: "adminGameData",
-      label: t("status.api.cat.adminGameData"),
-      endpoints: [
-        { label: t("status.api.ep.gameDataVersions"), method: "GET", path: "/api/game-data/versions" },
-        { label: t("status.api.ep.gameDataFull"), method: "GET", path: "/api/game-data/full" },
-      ],
-    },
-    {
       key: "adminUsers",
       label: t("status.api.cat.adminUsers"),
       endpoints: [
+        { label: t("status.api.ep.currentUser"), method: "GET", path: "/api/auth/me" },
+        { label: t("status.api.ep.listRoles"), method: "GET", path: "/api/admin/roles" },
         { label: t("status.api.ep.createMember"), method: "POST", path: "/api/admin/users" },
         { label: t("status.api.ep.changeUserRole"), method: "PATCH", path: "/api/admin/users/:id/role" },
         { label: t("status.api.ep.deactivateUser"), method: "PATCH", path: "/api/admin/users/:id/deactivate" },
@@ -301,6 +323,15 @@ export function buildApiCategories(t: (key: string) => string): CategoryDef[] {
       label: t("status.api.cat.adminSiteConfig"),
       endpoints: [
         { label: t("status.api.ep.adminSiteConfig"), method: "GET", path: "/api/admin/site-config" },
+        { label: t("status.api.ep.updateSiteConfig"), method: "PATCH", path: "/api/admin/site-config" },
+        { label: t("status.api.ep.uploadSiteLogo"), method: "POST", path: "/api/admin/site-config/logo" },
+        {
+          label: t("status.api.ep.siteLogo"),
+          method: "GET",
+          path: "/api/media/:mediaId/:variant",
+          mediaIdContext: "siteLogoMediaId",
+          mediaVariant: "view",
+        },
       ],
     },
     {
@@ -346,10 +377,6 @@ function requiresAny(...permissions: string[]): EndpointPermissionRequirement {
   return { all: [], any: permissions };
 }
 
-function requiresStoragePermission(permission: string): EndpointPermissionRequirement {
-  return requiresAny(permission, "admin.storage.manage");
-}
-
 function publicEndpoint(): EndpointPermissionRequirement {
   return { all: [], any: [] };
 }
@@ -357,7 +384,12 @@ function publicEndpoint(): EndpointPermissionRequirement {
 function permissionRequirementForEndpoint(endpoint: EndpointDef): EndpointPermissionRequirement {
   const key = `${endpoint.method} ${endpoint.path}`;
   if (key === "GET /api/admin/status") return requiresAll("admin.status.view");
-  if (key === "GET /api/admin/site-config") return requiresAll("admin.siteConfig.manage");
+  if (endpoint.path.startsWith("/api/admin/site-config")) return requiresAll("admin.siteConfig.manage");
+  /* GET /api/classes 本身是公开读，但它在这里只作为创建-上传-删除链条的一环运行，
+     没有管理权限时整条链都跑不起来。
+     职业标签与职业目录共用同一个权限（routes/class-tags.ts）。 */
+  if (endpoint.path.startsWith("/api/classes")) return requiresAll("admin.classes.manage");
+  if (endpoint.path.startsWith("/api/class-tags")) return requiresAll("admin.classes.manage");
   if (endpoint.path.startsWith("/api/admin/error-log")) return requiresAll("admin.status.view");
   if (key === "GET /api/admin/analytics-settings") return requiresAll("admin.analytics.view");
   if (key === "PATCH /api/admin/analytics-settings") return requiresAll("admin.analytics.manage");
@@ -368,7 +400,6 @@ function permissionRequirementForEndpoint(endpoint: EndpointDef): EndpointPermis
   if (endpoint.path.startsWith("/api/admin/audit-log") || endpoint.path.startsWith("/api/admin/audit-archive")) {
     return endpoint.path.includes("export") || endpoint.path.includes("download") ? requiresAll("admin.audit.export") : requiresAll("admin.audit.view");
   }
-  if (endpoint.path.startsWith("/api/game-data/versions") || endpoint.path.startsWith("/api/game-data/full")) return requiresAll("admin.gameData.manage");
   if (endpoint.path.startsWith("/api/wiki/articles") && endpoint.path.includes("/revisions")) return requiresAll("wiki.articles.edit");
   if (endpoint.path.startsWith("/api/admin/users")) {
     if (endpoint.path.includes("role")) return requiresAll("admin.users.edit", "admin.users.role", "admin.users.delete");
@@ -422,7 +453,7 @@ function permissionRequirementForEndpoint(endpoint: EndpointDef): EndpointPermis
   if (endpoint.path.startsWith("/api/guild-war/save-teams") || endpoint.path.startsWith("/api/guild-war/move") || endpoint.path.startsWith("/api/guild-war/role-tag") || endpoint.path.startsWith("/api/guild-war/conclude")) return requiresAll("events.create", "events.archive", "events.delete", "guildwar.teams.edit", "guildwar.history.edit");
   if (endpoint.path.startsWith("/api/guild-war/export")) return requiresAll("guildwar.history.edit");
   if (endpoint.path.startsWith("/api/guild-war/history")) {
-    return endpoint.method === "GET" || endpoint.method === "POST" && endpoint.path.includes("/batch")
+    return endpoint.method === "GET"
       ? publicEndpoint()
       : requiresAll("guildwar.history.edit");
   }
@@ -436,9 +467,9 @@ function permissionRequirementForEndpoint(endpoint: EndpointDef): EndpointPermis
   }
   if (endpoint.path.startsWith("/api/storage")) {
     if (endpoint.method === "GET") return publicEndpoint();
-    if (endpoint.path.includes("/transactions")) return requiresStoragePermission("admin.storage.stock");
-    if (endpoint.path.includes("/items")) return requiresStoragePermission("admin.storage.items");
-    return requiresStoragePermission("admin.storage.structure");
+    if (endpoint.path.includes("/transactions")) return requiresAny("admin.storage.stock");
+    if (endpoint.path.includes("/items")) return requiresAny("admin.storage.items");
+    return requiresAny("admin.storage.structure");
   }
   return publicEndpoint();
 }

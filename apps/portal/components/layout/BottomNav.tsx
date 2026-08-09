@@ -1,5 +1,4 @@
-import { Button, Indicator } from "@mantine/core";
-import { InfiniMenu } from "@portal/components/shared/InfiniMenu";
+import { Indicator, Menu, UnstyledButton } from "@mantine/core";
 import { Link, useNavigate } from "@tanstack/react-router";
 import type { IconProps } from "@tabler/icons-react";
 import type { ComponentType } from "react";
@@ -53,24 +52,23 @@ export function BottomNav({ pathname, mainItems, moreItems, onNavigate }: Bottom
           </Link>
         ))}
 
-        <InfiniMenu width={220} position="top-end">
-          <InfiniMenu.Target>
-            <Button
-              variant={isMoreActive ? "filled" : "subtle"}
-              size="compact-sm"
-              className="bottom-nav-more-button"
+        <Menu width={240} position="top-end">
+          <Menu.Target>
+            <UnstyledButton
+              className={`bottom-nav-more-button ${isMoreActive ? "bottom-nav-more-button--active" : ""}`}
               aria-label={t("nav.openMoreLinks")}
             >
               <EllipsisOutlined className="bottom-nav-more-icon" />
               <span className="bottom-nav-label">{t("nav.more")}</span>
-            </Button>
-          </InfiniMenu.Target>
+              <span className="bottom-nav-indicator" />
+            </UnstyledButton>
+          </Menu.Target>
 
-          <InfiniMenu.Dropdown>
+          <Menu.Dropdown>
             {moreItems.map((item) => {
               const Icon = item.icon;
               return (
-                <InfiniMenu.Item
+                <Menu.Item
                   key={item.to}
                   leftSection={
                     <Indicator disabled={!item.isNew} size={7} offset={1} inline>
@@ -83,11 +81,11 @@ export function BottomNav({ pathname, mainItems, moreItems, onNavigate }: Bottom
                   }}
                 >
                   {item.label}
-                </InfiniMenu.Item>
+                </Menu.Item>
               );
             })}
-          </InfiniMenu.Dropdown>
-        </InfiniMenu>
+          </Menu.Dropdown>
+        </Menu>
       </div>
     </nav>
   );

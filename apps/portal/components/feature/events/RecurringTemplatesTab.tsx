@@ -1,30 +1,45 @@
-import type { RecurringTemplate } from "@guild/shared";
-import { EVENT_TYPES } from "@guild/shared";
+import { DEFAULT_GAME_RULES, type RecurringTemplate } from "@guild/shared";
 import { utcWeekdayToLocal } from "@guild/shared/utils/recurrence";
 import { tzOffsetToAnchorIso, buildFormState, computeNextLifecyclePreview, formatLifecycleDate, utcTimeToLocalTime } from "./RecurringTemplateFormModal.helpers";
-import { PortalCard } from "@portal/components/shared/PortalCard";
-import { useConfirmDialog } from "@portal/components/shared/ConfirmDialog";
-import { DepthButton } from "@portal/components/shared/DepthButton";
-import { CalendarRepeatIcon, CircleCheckIcon, ClockIcon, PauseIcon, UsersIcon } from "@portal/components/icons";
-import { Badge, Group, HoverCard, Skeleton, Stack, Text, ThemeIcon } from "@mantine/core";
-import { useCallback, useState } from "react";
+import { useConfirmDialog } from "@portal/hooks/useConfirmDialog";
+import { CalendarRepeatIcon, CircleCheckIcon, ClockIcon, PauseIcon, SearchIcon, UsersIcon } from "@portal/components/icons";
+import { ContentFilterToolbar } from "@portal/components/shared/ContentFilterToolbar";
+import {
+  Badge,
+  Button,
+  Group,
+  HoverCard,
+  Paper,
+  SegmentedControl,
+  Select,
+  Skeleton,
+  Stack,
+  Text,
+  TextInput,
+  ThemeIcon,
+  UnstyledButton,
+} from "@mantine/core";
+import { useCallback, useMemo, useState } from "react";
 import { useDisclosure } from "@mantine/hooks";
 import { useTranslation } from "react-i18next";
 import {
   RecurringTemplateFormModal,
   type RecurringTemplateFormPayload,
 } from "./RecurringTemplateFormModal";
+import { EventsViewSwitcher } from "./EventsViewSwitcher";
+import { type EventWorkbenchViewMode } from "../../../utils/event-navigation";
+import { getEventTypeLabel } from "@portal/utils/game-rules";
 
 const WEEKDAY_KEYS = ["weekday.sun", "weekday.mon", "weekday.tue", "weekday.wed", "weekday.thu", "weekday.fri", "weekday.sat"] as const;
+type TemplateStatusFilter = "all" | "active" | "paused";
 
 function buildRecurrenceSummary(
   t: (key: string, opts?: Record<string, unknown>) => string,
   rule: RecurringTemplate["recurrence_rule"],
   startTime: string,
 ): string {
-  if (!rule) return "";
   const freq = rule.frequency;
-  const interval = rule.interval ?? 1;
+  const interval = rule.interval;
   if (freq === "daily") {
     return t("recurring.summary.daily", { interval });
   }
@@ -32,22 +47,25 @@ function buildRecurrenceSummary(
     // start_time is stored as UTC; anchor on that UTC instant for the
     // UTC→local weekday conversion.
     const anchorIso = tzOffsetToAnchorIso(0, startTime);
-    const dayNames = (rule.daysOfWeek ?? [])
+    const dayNames = rule.daysOfWeek
       .map((d) => utcWeekdayToLocal(d, anchorIso))
       .sort((a, b) => a - b)
       .map((d) => t(WEEKDAY_KEYS[d] ?? "weekday.sun"))
       .join(", ");
     return t("recurring.summary.weekly", { interval, days: dayNames });
   }
-  if (freq === "monthly") {
-    return t("recurring.summary.monthly", { interval, day: rule.dayOfMonth ?? 1 });
-  }
-  return "";
+  return t("recurring.summary.monthly", { interval, day: rule.dayOfMonth });
 }
 
 
 type RecurringTemplatesTabProps = {
   canManage: boolean;
+  /*
+   * 卡片 / 月 / 周期 的切换器由这条筛选栏承载：模板档不渲染 EventsFiltersCard，
+   * 否则页面上就是上下两条工具栏。必填而不是可选，是因为它是退出模板档的唯一入口，
+   * 漏传的结果是用户进得来出不去，而这种缺失在类型上必须能被发现。
+   */
+  onViewModeChange: (value: EventWorkbenchViewMode) => void;
   templates: RecurringTemplate[];
   loading: boolean;
   formSaving: boolean;
@@ -60,6 +78,7 @@ type RecurringTemplatesTabProps = {
 
 export function RecurringTemplatesTab({
   canManage,
+  onViewModeChange,
   templates,
   loading,
   formSaving,
@@ -70,11 +89,41 @@ export function RecurringTemplatesTab({
   onDeleteTemplate,
 }: RecurringTemplatesTabProps) {
   const { t, i18n } = useTranslation("events");
+  const gameRules = DEFAULT_GAME_RULES;
   const confirm = useConfirmDialog();
 
   const [formOpen, formHandlers] = useDisclosure(false);
   const [formMode, setFormMode] = useState<"create" | "edit">("create");
   const [editingTemplate, setEditingTemplate] = useState<RecurringTemplate | null>(null);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [statusFilter, setStatusFilter] = useState<TemplateStatusFilter>("all");
+  const [typeFilter, setTypeFilter] = useState<string | null>(null);
+
+  const filteredTemplates = useMemo(() => {
+    const normalizedSearch = searchQuery.trim().toLocaleLowerCase(i18n.language);
+
+    return templates.filter((template) => {
+      if (statusFilter === "active" && template.paused) return false;
+      if (statusFilter === "paused" && !template.paused) return false;
+      if (typeFilter && template.type !== typeFilter) return false;
+      if (!normalizedSearch) return true;
+
+      return [template.title, template.description ?? ""]
+        .some((value) => value.toLocaleLowerCase(i18n.language).includes(normalizedSearch));
+    });
+  }, [i18n.language, searchQuery, statusFilter, templates, typeFilter]);
+
+  const hasActiveFilters = searchQuery.trim().length > 0 || statusFilter !== "all" || typeFilter !== null;
+  const activeFilterCount = [
+    searchQuery.trim().length > 0,
+    statusFilter !== "all",
+    typeFilter !== null,
+  ].filter(Boolean).length;
+  const resetFilters = () => {
+    setSearchQuery("");
+    setStatusFilter("all");
+    setTypeFilter(null);
+  };
 
   const handleCreate = useCallback(() => {
     setFormMode("create");
@@ -122,9 +171,20 @@ export function RecurringTemplatesTab({
     [editingTemplate, formMode, onCreateTemplate, onUpdateTemplate],
   );
 
+  const viewSwitcher = (
+    <EventsViewSwitcher viewMode="recurring" canManage={canManage} onViewModeChange={onViewModeChange} />
+  );
+
+  /*
+   * 加载中也要留着切换器：模板列表可能拉很久，这段时间里它是唯一的退出路径，
+   * 一起换成骨架屏就等于把人锁在一屏骨架里。
+   */
   if (loading) {
     return (
-      <Stack gap={12} py={16}>
+      <Stack gap={12}>
+        <Paper withBorder radius="md" p="sm">
+          {viewSwitcher}
+        </Paper>
         {Array.from({ length: 3 }).map((_, i) => (
           <Skeleton key={i} height={80} radius={8} />
         ))}
@@ -132,44 +192,133 @@ export function RecurringTemplatesTab({
     );
   }
 
+  const searchControl = (
+    <TextInput
+      value={searchQuery}
+      onChange={(event) => setSearchQuery(event.currentTarget.value)}
+      placeholder={t("recurring.filter.search")}
+      aria-label={t("recurring.filter.search")}
+      leftSection={<SearchIcon size={16} />}
+      className="recurring-template-filter-search"
+    />
+  );
+  const filterControls = (
+    <>
+      <SegmentedControl
+        value={statusFilter}
+        onChange={(value) => setStatusFilter(value as TemplateStatusFilter)}
+        data={[
+          { value: "all", label: t("recurring.filter.all") },
+          { value: "active", label: t("recurring.status.active") },
+          { value: "paused", label: t("recurring.status.paused") },
+        ]}
+        aria-label={t("recurring.filter.status")}
+        className="recurring-template-filter-status"
+      />
+      <Select
+        clearable
+        value={typeFilter}
+        onChange={setTypeFilter}
+        placeholder={t("recurring.filter.type")}
+        aria-label={t("recurring.filter.type")}
+        data={gameRules.events.types
+          .filter((definition) => definition.enabled)
+          .map((definition) => ({
+            value: definition.id,
+            label: getEventTypeLabel(definition.id, i18n.language, gameRules),
+          }))}
+        className="recurring-template-filter-type"
+      />
+    </>
+  );
+
   return (
     <>
       <Stack gap={12}>
-        {canManage && templates.length > 0 ? (
-          <Group justify="flex-end">
-            <DepthButton type="primary" size="sm" onClick={handleCreate}>
-              {t("recurring.create")}
-            </DepthButton>
-          </Group>
-        ) : null}
+        {/*
+          * 这条工具栏跟活动档那条（EventsFiltersCard）共用同一套渐进披露：搜索、
+          * 视图切换和新建始终可见，状态与类型只在容器足够宽时内联。
+          * 没有模板时只留切换器：筛一个空列表没有意义，但切换器是退出模板档的唯一
+          * 入口，跟着一起消失就是进得来出不去。
+          */}
+        {templates.length > 0 ? (
+          <ContentFilterToolbar
+            search={searchControl}
+            controls={filterControls}
+            primary={(
+              <>
+                {viewSwitcher}
+                {canManage ? (
+                  <Button size="sm" onClick={handleCreate}>
+                    {t("recurring.create")}
+                  </Button>
+                ) : null}
+              </>
+            )}
+            toggleLabel={t("common:filter.toggle")}
+            activeFilterCount={activeFilterCount}
+            collapseBelow={1120}
+          />
+        ) : (
+          <Paper withBorder radius="md" p="sm">{viewSwitcher}</Paper>
+        )}
         {templates.length === 0 ? (
-          <PortalCard interactive={false}>
-            <Stack align="center" gap={8} py={40} px={16}>
+          <Paper withBorder radius="md">
+            <div>
+              <Stack align="center" gap={8} py={40} px={16}>
               <CalendarRepeatIcon size={40} style={{ opacity: 0.3 }} />
               <Text c="dimmed" size="sm">{t("recurring.empty")}</Text>
               {canManage ? (
-                <DepthButton type="primary" size="sm" onClick={handleCreate}>
+                <Button size="sm" onClick={handleCreate}>
                   {t("recurring.create")}
-                </DepthButton>
+                </Button>
+              ) : null}
+              </Stack>
+            </div>
+          </Paper>
+        ) : filteredTemplates.length === 0 ? (
+          <Paper withBorder radius="md">
+            <Stack align="center" gap={8} py={40} px={16}>
+              <CalendarRepeatIcon size={40} style={{ opacity: 0.3 }} />
+              <Text c="dimmed" size="sm">{t("recurring.emptyFiltered")}</Text>
+              {hasActiveFilters ? (
+                <Button size="sm" variant="default" onClick={resetFilters}>
+                  {t("recurring.filter.reset")}
+                </Button>
               ) : null}
             </Stack>
-          </PortalCard>
+          </Paper>
         ) : (
-          templates.map((template) => {
+          filteredTemplates.map((template) => {
             const isPaused = template.paused;
-            const typeDef = EVENT_TYPES.find((et) => et === template.type);
+            const typeDef = gameRules.events.types.find((definition) => definition.id === template.type);
             const time = template.start_time ? utcTimeToLocalTime(template.start_time) : "--:--";
             const lifecycle = isPaused ? null : computeNextLifecyclePreview(buildFormState(template), template, "edit");
             const lang = i18n.language;
             return (
-              <PortalCard
+              <Paper
                 key={template.id}
-                interactive={canManage}
+                withBorder
+                radius="md"
                 /* Dimming the whole row dragged every label to ~2.3:1. The
                    "paused" badge already says it, so the row stays readable. */
-                onClick={canManage ? () => handleEdit(template) : undefined}
+                style={{ position: "relative" }}
               >
-                <div style={{ padding: "12px 16px" }}>
+                {canManage ? (
+                  <UnstyledButton
+                    type="button"
+                    aria-label={t("recurring.editAria", { title: template.title })}
+                    onClick={() => handleEdit(template)}
+                    style={{
+                      position: "absolute",
+                      inset: 0,
+                      zIndex: 1,
+                      borderRadius: "inherit",
+                      cursor: "pointer",
+                    }}
+                  />
+                ) : null}
+                <div style={{ padding: "12px 16px", position: "relative", zIndex: 2, pointerEvents: "none" }}>
                   <Group justify="space-between" align="center" wrap="nowrap">
                     <Group gap={12} align="center" wrap="nowrap" style={{ flex: 1, minWidth: 0 }}>
                       <div className="recurring-template-icon-wrap">
@@ -186,20 +335,25 @@ export function RecurringTemplatesTab({
                           </Text>
                           {typeDef && (
                             <Badge size="xs" variant="light" style={{ flexShrink: 0 }}>
-                              {t(`common:eventType.${typeDef}`)}
+                              {getEventTypeLabel(typeDef.id, i18n.language, gameRules)}
                             </Badge>
                           )}
                           <HoverCard width={280} shadow="lg" withArrow arrowSize={10} openDelay={350} closeDelay={80} position="top">
                             <HoverCard.Target>
-                              <Badge
-                                size="xs"
-                                variant="light"
-                                color={isPaused ? "gray" : "green"}
-                                style={{ flexShrink: 0 }}
-                                data-animate-icon-trigger
+                              <UnstyledButton
+                                type="button"
+                                aria-label={isPaused ? t("recurring.status.paused") : t("recurring.status.active")}
+                                style={{ flexShrink: 0, pointerEvents: "auto" }}
                               >
-                                {isPaused ? t("recurring.status.paused") : t("recurring.status.active")}
-                              </Badge>
+                                <Badge
+                                  size="xs"
+                                  variant="light"
+                                  color={isPaused ? "gray" : "green"}
+                                  data-animate-icon-trigger
+                                >
+                                  {isPaused ? t("recurring.status.paused") : t("recurring.status.active")}
+                                </Badge>
+                              </UnstyledButton>
                             </HoverCard.Target>
                             <HoverCard.Dropdown p="sm" style={{ borderRadius: 10 }}>
                               <Group gap={10} wrap="nowrap" align="flex-start">
@@ -260,7 +414,7 @@ export function RecurringTemplatesTab({
                       {template.last_generated_date && (
                         <HoverCard width={280} shadow="lg" withArrow arrowSize={10} openDelay={350} closeDelay={80} position="top">
                           <HoverCard.Target>
-                            <Text size="xs" c="dimmed" style={{ whiteSpace: "nowrap" }}>
+                            <Text size="xs" c="dimmed" style={{ whiteSpace: "nowrap", pointerEvents: "auto" }}>
                               {t("recurring.generated", { count: template.generation_count })}
                             </Text>
                           </HoverCard.Target>
@@ -281,7 +435,7 @@ export function RecurringTemplatesTab({
                     </Group>
                   </Group>
                 </div>
-              </PortalCard>
+              </Paper>
             );
           })
         )}

@@ -1,28 +1,27 @@
-import { CLASS_NAMES } from "@guild/shared";
-import { DepthToggle } from "@portal/components/shared/DepthToggle";
-import { PortalCard } from "../../shared/PortalCard";
 import {
   ActionIcon,
-  Collapse,
   Group,
   MultiSelect,
+  Paper,
   Select,
   Slider,
   Text,
   TextInput,
 } from "@mantine/core";
-import { useDisclosure } from "@mantine/hooks";
+import { useClickOutside, useDisclosure } from "@mantine/hooks";
 import { SearchIcon } from "@portal/components/icons";
-import { IconAdjustmentsHorizontal } from "@tabler/icons-react";
+import { ContentFilterToolbar } from "@portal/components/shared/ContentFilterToolbar";
 import { useTranslation } from "react-i18next";
 import { VolumeOutlined, VolumeMutedOutlined } from "../../../utils/icons";
 import { isAudioPlaying, stopAudio } from "../../../utils/audio-player";
 import type { RosterSortMode } from "../../../hooks/useRosterPageController";
+import { buildClassOptions, useClassCatalogStore } from "../../../stores/class-catalog";
 
 type Props = {
   search: string;
   onSearchChange: (value: string) => void;
   classFilter: string[];
+  loadedClassIds: string[];
   onClassFilterChange: (value: string[]) => void;
   sortMode: RosterSortMode;
   onSortModeChange: (value: RosterSortMode) => void;
@@ -32,7 +31,6 @@ type Props = {
   onAudioVolumeChange: (value: number) => void;
   renderedCount: number;
   totalCount: number;
-  isMobile: boolean;
 };
 
 const SORT_MODES = ["power", "username", "class"] as const;
@@ -41,6 +39,7 @@ export function RosterFilterCard({
   search,
   onSearchChange,
   classFilter,
+  loadedClassIds,
   onClassFilterChange,
   sortMode,
   onSortModeChange,
@@ -50,98 +49,102 @@ export function RosterFilterCard({
   onAudioVolumeChange,
   renderedCount,
   totalCount,
-  isMobile,
 }: Props) {
   const { t } = useTranslation("roster");
-  const [filtersOpen, { toggle: toggleFilters }] = useDisclosure(false);
+  const classCatalog = useClassCatalogStore((state) => state.items);
+  const [audioOpen, { close: closeAudio, toggle: toggleAudio }] = useDisclosure(false);
+  const audioPreferencesRef = useClickOutside(closeAudio);
 
   const audioControl = (
     <Group gap={8} align="center" wrap="nowrap" className="roster-audio-popover">
-      <DepthToggle
-        pressed={audioMuted}
-        onToggle={(nextPressed) => {
+      <ActionIcon
+        aria-pressed={audioMuted}
+        variant={audioMuted ? "light" : "default"}
+        color={audioMuted ? "red" : "gray"}
+        onClick={() => {
+          const nextPressed = !audioMuted;
           if (nextPressed && isAudioPlaying()) {
             stopAudio();
           }
           onAudioMutedChange(nextPressed);
         }}
-        type="secondary"
         size="sm"
-        iconOnly
         aria-label={audioMuted ? t("audio.aria.unmute") : t("audio.aria.mute")}
       >
         {audioMuted ? <VolumeMutedOutlined size={18} /> : <VolumeOutlined size={18} />}
-      </DepthToggle>
+      </ActionIcon>
       <div className="roster-volume-control">
         <Text size="xs" c="dimmed" className="roster-volume-label">{t("audio.volume")}</Text>
-        <Slider min={0} max={100} value={audioVolume} onChange={onAudioVolumeChange} aria-label={t("audio.aria.volumeSlider")} />
+        <Slider
+          min={0}
+          max={100}
+          value={audioVolume}
+          onChange={onAudioVolumeChange}
+          thumbLabel={t("audio.aria.volumeSlider")}
+        />
         <Text size="xs" c="dimmed" style={{ whiteSpace: "nowrap" }}>{t("audio.hint")}</Text>
       </div>
     </Group>
   );
+  const audioPreferences = (
+    <div className="roster-audio-menu" ref={audioPreferencesRef}>
+      <ActionIcon
+        variant="default"
+        size="lg"
+        className="roster-audio-trigger"
+        aria-label={t("audio.hint")}
+        aria-expanded={audioOpen}
+        aria-controls="roster-audio-preferences"
+        onClick={toggleAudio}
+      >
+        {audioMuted ? <VolumeMutedOutlined size={18} /> : <VolumeOutlined size={18} />}
+      </ActionIcon>
+      {audioOpen ? (
+        <Paper
+          id="roster-audio-preferences"
+          role="dialog"
+          aria-label={t("audio.hint")}
+          withBorder
+          className="roster-audio-menu__panel"
+          onKeyDown={(event) => {
+            if (event.key === "Escape") closeAudio();
+          }}
+        >
+          {audioControl}
+        </Paper>
+      ) : null}
+    </div>
+  );
 
-  const classData = CLASS_NAMES.map((className) => ({ value: className, label: className }));
+  const classData = buildClassOptions(
+    classCatalog,
+    [...loadedClassIds, ...classFilter],
+  );
   const sortData = [
     { value: "power", label: t("sort.powerDesc") },
     { value: "username", label: t("sort.usernameAsc") },
     { value: "class", label: t("sort.class") },
   ];
-
+  const activeFilterCount = [
+    search.trim().length > 0,
+    classFilter.length > 0,
+    sortMode !== "power",
+  ].filter(Boolean).length;
   return (
-    <PortalCard className="roster-filter-card" interactive={false}>
-      <div className="roster-filter-padding">
-        {isMobile ? (
-          <>
-            <Group gap="xs" wrap="nowrap" align="center">
-              <TextInput
-                className="roster-search-input"
-                value={search}
-                placeholder={t("search.placeholder.usernameOnly")}
-                aria-label={t("search.aria.usernameOnly")}
-                onChange={(event) => onSearchChange(event.currentTarget.value)}
-                leftSection={<SearchIcon size={14} />}
-                style={{ flex: 1 }}
-              />
-              <ActionIcon variant={filtersOpen ? "filled" : "default"} size="lg" onClick={toggleFilters} aria-label={t("filter.toggle")}>
-                <IconAdjustmentsHorizontal size={18} />
-              </ActionIcon>
-              <Text size="xs" c="dimmed" style={{ whiteSpace: "nowrap" }}>
-                {renderedCount}/{totalCount}
-              </Text>
-            </Group>
-            <Collapse in={filtersOpen}>
-              <Group wrap="wrap" gap={6} mt={6} className="roster-filter-controls">
-                <MultiSelect
-                  className="roster-class-select"
-                  value={classFilter}
-                  onChange={onClassFilterChange}
-                  data={classData}
-                  placeholder={t("filter.class.placeholder")}
-                  aria-label={t("filter.class.aria")}
-                  clearable
-                  searchable
-                />
-                <Select
-                  className="roster-sort-select"
-                  value={sortMode}
-                  aria-label={t("sort.aria")}
-                  onChange={(value) => { if (value && (SORT_MODES as readonly string[]).includes(value)) onSortModeChange(value as RosterSortMode); }}
-                  data={sortData}
-                />
-                {audioControl}
-              </Group>
-            </Collapse>
-          </>
-        ) : (
-          <Group wrap="wrap" gap="md" className="roster-filter-controls">
-            <TextInput
-              className="roster-search-input"
-              value={search}
-              placeholder={t("search.placeholder.usernameOnly")}
-              aria-label={t("search.aria.usernameOnly")}
-              onChange={(event) => onSearchChange(event.currentTarget.value)}
-              leftSection={<SearchIcon size={14} />}
-            />
+    <ContentFilterToolbar
+      className="roster-filter-card"
+      search={(
+        <TextInput
+          className="roster-search-input"
+          value={search}
+          placeholder={t("search.placeholder.usernameOnly")}
+          aria-label={t("search.aria.usernameOnly")}
+          onChange={(event) => onSearchChange(event.currentTarget.value)}
+          leftSection={<SearchIcon size={14} />}
+        />
+      )}
+      controls={(
+        <Group wrap="wrap" gap="sm" className="roster-filter-controls">
             <MultiSelect
               className="roster-class-select"
               value={classFilter}
@@ -159,13 +162,19 @@ export function RosterFilterCard({
               onChange={(value) => { if (value && (SORT_MODES as readonly string[]).includes(value)) onSortModeChange(value as RosterSortMode); }}
               data={sortData}
             />
-            {audioControl}
-            <Text size="sm" c="dimmed" className="roster-count-text">
-              {t("count.showing", { visible: renderedCount, total: totalCount })}
-            </Text>
-          </Group>
-        )}
-      </div>
-    </PortalCard>
+        </Group>
+      )}
+      primary={(
+        <>
+          {audioPreferences}
+          <Text size="sm" c="dimmed" className="roster-count-text">
+            {t("count.showing", { visible: renderedCount, total: totalCount })}
+          </Text>
+        </>
+      )}
+      toggleLabel={t("common:filter.toggle")}
+      activeFilterCount={activeFilterCount}
+      collapseBelow={920}
+    />
   );
 }

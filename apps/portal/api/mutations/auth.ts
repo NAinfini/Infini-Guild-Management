@@ -26,10 +26,9 @@ export function logout(): Promise<{ ok: true }> {
   });
 }
 
-export async function register(inviteCode: string, payload: RegisterPayload): Promise<AuthSessionResponse> {
-  await apiRequest<{ user: User }>(`/api/auth/register/${inviteCode}`, {
+export function register(inviteCode: string, payload: RegisterPayload): Promise<AuthSessionResponse> {
+  return apiRequest<AuthSessionResponse>(`/api/auth/register/${inviteCode}`, {
     method: "POST",
     bodyJson: payload,
   });
-  return apiRequest<AuthSessionResponse>("/api/auth/me");
 }

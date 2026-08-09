@@ -1,7 +1,6 @@
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useMemo, useRef, useState } from "react";
 import {
-  DEFAULT_IMAGE_WEBP_QUALITY,
-  convertFileForUpload,
+  convertAudioToOpus,
   getAudioConversionSupport,
 } from "@guild/shared/utils/media";
 
@@ -13,11 +12,8 @@ type UploadFunction<TResult> = (files: File[], context: UploadContext) => Promis
 
 type UseMediaUploadOptions = {
   maxFiles?: number;
-  maxFileSizeBytes?: number;
+  /** Images use WebP, audio uses Opus, and raw media bypasses conversion. */
   mediaType?: "image" | "audio" | "raw";
-  convertImagesToWebp?: boolean;
-  imageWebpQuality?: number;
-  convertAudioToOpus?: boolean;
 };
 
 type UseMediaUploadState<TResult> = {
@@ -41,18 +37,14 @@ export function useMediaUpload<TResult>(
   uploadFn: UploadFunction<TResult>,
   options: UseMediaUploadOptions = {},
 ): UseMediaUploadState<TResult> {
-  const maxFiles = options.maxFiles ?? 10;
   const mediaType = options.mediaType ?? "raw";
-  const convertImagesToWebp = options.convertImagesToWebp ?? true;
-  const imageWebpQuality = options.imageWebpQuality ?? DEFAULT_IMAGE_WEBP_QUALITY;
-  const convertAudioToOpusEnabled = options.convertAudioToOpus ?? true;
   const supportError = useMemo(() => {
-    if (mediaType !== "audio" || !convertAudioToOpusEnabled) {
+    if (mediaType !== "audio") {
       return null;
     }
     const support = getAudioConversionSupport();
     return support.supported ? null : support.reason;
-  }, [convertAudioToOpusEnabled, mediaType]);
+  }, [mediaType]);
 
   const [files, setFiles] = useState<File[]>([]);
   const [isUploading, setIsUploading] = useState(false);
@@ -61,22 +53,15 @@ export function useMediaUpload<TResult>(
   const [uploadProgress, setUploadProgress] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<TResult | null>(null);
+  const inFlightRef = useRef(false);
 
   const selectFiles = useCallback(
     (source: FileList | File[] | null) => {
       const selected = source ? Array.from(source) : [];
-      const limited = selected.slice(0, maxFiles);
-      const oversized = limited.filter(
-        (file) => options.maxFileSizeBytes !== undefined && file.size > options.maxFileSizeBytes,
-      );
-      if (oversized.length > 0) {
-        setError(`File(s) too large: ${oversized.map((file) => file.name).join(", ")}`);
-      } else {
-        setError(null);
-      }
-      const valid = limited.filter(
-        (file) => options.maxFileSizeBytes === undefined || file.size <= options.maxFileSizeBytes,
-      );
+      const limited = options.maxFiles === undefined
+        ? selected
+        : selected.slice(0, options.maxFiles);
+      setError(null);
       if (supportError) {
         setFiles([]);
         setConversionProgress(0);
@@ -84,11 +69,11 @@ export function useMediaUpload<TResult>(
         setError(supportError);
         return;
       }
-      setFiles(valid);
+      setFiles(limited);
       setConversionProgress(0);
       setUploadProgress(0);
     },
-    [maxFiles, options.maxFileSizeBytes, supportError],
+    [options.maxFiles, supportError],
   );
 
   const clearFiles = useCallback(() => {
@@ -98,7 +83,7 @@ export function useMediaUpload<TResult>(
   }, []);
 
   const preprocessFiles = useCallback(async () => {
-    if (mediaType === "raw") {
+    if (mediaType !== "audio") {
       setConversionProgress(100);
       return files;
     }
@@ -112,21 +97,11 @@ export function useMediaUpload<TResult>(
         setConversionProgress(Math.min(100, Math.round(offset + percent * scale)));
       };
 
-      const enabled = mediaType === "image" ? convertImagesToWebp : convertAudioToOpusEnabled;
-      if (enabled) {
-        // Single shared dispatcher, so this hook cannot drift from the mutation layer.
-        converted.push(await convertFileForUpload(file, {
-          imageQuality: imageWebpQuality,
-          onProgress: updateProgress,
-        }));
-        continue;
-      }
-      converted.push(file);
-      updateProgress(100);
+      converted.push(await convertAudioToOpus(file, updateProgress));
     }
     setConversionProgress(100);
     return converted;
-  }, [convertAudioToOpusEnabled, convertImagesToWebp, files, imageWebpQuality, mediaType]);
+  }, [files, mediaType]);
 
   const upload = useCallback(async () => {
     if (files.length === 0) {
@@ -137,10 +112,11 @@ export function useMediaUpload<TResult>(
       setError(supportError);
       return null;
     }
-    if (isUploading) {
+    if (inFlightRef.current) {
       return null;
     }
 
+    inFlightRef.current = true;
     setIsUploading(true);
     setError(null);
     setUploadProgress(0);
@@ -154,6 +130,7 @@ export function useMediaUpload<TResult>(
       setError(`Conversion failed: ${message}`);
       setIsConverting(false);
       setIsUploading(false);
+      inFlightRef.current = false;
       return null;
     }
 
@@ -172,10 +149,11 @@ export function useMediaUpload<TResult>(
       setError(`Upload failed: ${message}`);
       return null;
     } finally {
+      inFlightRef.current = false;
       setIsConverting(false);
       setIsUploading(false);
     }
-  }, [files, isUploading, preprocessFiles, supportError, uploadFn]);
+  }, [files, preprocessFiles, supportError, uploadFn]);
 
   const reset = useCallback(() => {
     setFiles([]);

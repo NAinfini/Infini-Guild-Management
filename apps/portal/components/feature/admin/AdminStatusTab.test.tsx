@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import { MantineProvider } from "@mantine/core";
-import { render, screen } from "@testing-library/react";
+import { render, screen, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -44,9 +45,11 @@ vi.mock("../../../stores/notifications", () => ({
 }));
 
 type RenderStatusTabOptions = {
+  onRunQuickCheck?: () => void;
   canCopyConfigSummary?: boolean;
   statusLatencyMs?: number | null;
   statusLoading?: boolean;
+  statusChecking?: boolean;
   statusError?: boolean;
   statusData?: {
     db: string;
@@ -65,19 +68,30 @@ type RenderStatusTabOptions = {
 };
 
 function renderStatusTab(options: RenderStatusTabOptions = {}) {
+  const onRunQuickCheck = options.onRunQuickCheck ?? vi.fn();
   render(
     <MantineProvider>
       <AdminStatusTab
+        onRunQuickCheck={onRunQuickCheck}
         onCopyConfigSummary={vi.fn()}
         canCopyConfigSummary={options.canCopyConfigSummary ?? true}
         statusLatencyMs={options.statusLatencyMs ?? 12}
         statusLoading={options.statusLoading ?? false}
+        statusChecking={options.statusChecking ?? false}
         statusError={options.statusError ?? false}
-        statusData={options.statusData ?? { db: "ok", r2: "ok", ws: "ok", crons: "ok" }}
+        statusData={"statusData" in options
+          ? options.statusData ?? null
+          : {
+              db: "ok",
+              r2: "ok",
+              ws: "ok",
+              crons: "ok",
+            }}
         statusHealthLogs={options.statusHealthLogs ?? []}
       />
     </MantineProvider>,
   );
+  return { onRunQuickCheck };
 }
 
 describe("AdminStatusTab", () => {
@@ -93,10 +107,11 @@ describe("AdminStatusTab", () => {
     };
   });
 
-  it("does not hide the API test console behind the Vite dev flag", () => {
+  it("never gates the console on the Vite build mode or a server capability flag", () => {
     const source = readFileSync(resolve(process.cwd(), "apps/portal/components/feature/admin/AdminStatusTab.tsx"), "utf8");
 
     expect(source).not.toContain("import.meta.env.DEV");
+    expect(source).not.toContain("system_tests_enabled");
   });
 
   it("clears stale endpoint results before a single-category run", () => {
@@ -108,11 +123,12 @@ describe("AdminStatusTab", () => {
 
     expect(runCategoryBlock).toContain("setResultMap(new Map())");
     expect(runCategoryBlock).toContain(
-      "contextRef.current = createInitialTestRunContext()",
+      "contextRef.current = { ...createInitialTestRunContext(), ...serverRun }",
     );
+    expect(runCategoryBlock).toContain("finalizeServerRun");
   });
 
-  it("renders the API test console for authorized admins in production builds", () => {
+  it("always renders the API test console for status viewers", () => {
     renderStatusTab();
 
     expect(screen.getByText("status.section.apiTests")).toBeInTheDocument();
@@ -122,22 +138,97 @@ describe("AdminStatusTab", () => {
     );
   });
 
-  it("renders healthy service tiles, latency, empty health logs, and endpoint count", () => {
-    renderStatusTab();
+  it("runs the explicit quick check action", async () => {
+    const user = userEvent.setup();
+    const onRunQuickCheck = vi.fn();
+    renderStatusTab({ onRunQuickCheck });
+
+    await user.click(screen.getByRole("button", { name: "status.quickCheck" }));
+
+    expect(onRunQuickCheck).toHaveBeenCalledOnce();
+    expect(screen.getByText("status.quickCheckDescription")).toBeInTheDocument();
+  });
+
+  it("keeps the previous result visible while a quick check is in flight", () => {
+    renderStatusTab({
+      statusChecking: true,
+      statusData: {
+        db: "ok",
+        r2: "ok",
+        ws: "configured",
+        crons: "configured",
+      },
+    });
+
+    expect(screen.getByRole("button", { name: "status.quickCheck" })).toBeDisabled();
+    expect(screen.getByText("status.service.db")).toBeInTheDocument();
+    expect(screen.getAllByText("status.value.ok")).toHaveLength(2);
+    expect(screen.getAllByText("status.value.configured")).toHaveLength(2);
+  });
+
+  it("distinguishes verified services from configured-only services", () => {
+    renderStatusTab({
+      statusData: {
+        db: "ok",
+        r2: "ok",
+        ws: "configured",
+        crons: "configured",
+      },
+    });
 
     expect(screen.getByText("status.section.health")).toBeInTheDocument();
-    expect(screen.getByText("D1")).toBeInTheDocument();
-    expect(screen.getByText("R2")).toBeInTheDocument();
-    expect(screen.getByText("WS")).toBeInTheDocument();
-    expect(screen.getByText("Crons")).toBeInTheDocument();
-    expect(screen.getAllByText("OK")).toHaveLength(4);
+    expect(screen.getByText("status.service.db")).toBeInTheDocument();
+    expect(screen.getByText("status.service.r2")).toBeInTheDocument();
+    expect(screen.getByText("status.service.ws")).toBeInTheDocument();
+    expect(screen.getByText("status.service.crons")).toBeInTheDocument();
+    expect(screen.getAllByText("status.value.ok")).toHaveLength(2);
+    expect(screen.getAllByText("status.value.configured")).toHaveLength(2);
     expect(screen.getByText("12")).toBeInTheDocument();
-    expect(screen.getByText("status.operational")).toBeInTheDocument();
+    expect(screen.getByText("status.partiallyVerified")).toBeInTheDocument();
     expect(screen.getByText("status.healthLogs.empty")).toBeInTheDocument();
     expect(screen.getByText(/\d+ endpoints/)).toBeInTheDocument();
   });
 
-  it("renders degraded system health and populated health logs", () => {
+  it("shows configured health-log services as warnings with localized labels", async () => {
+    const user = userEvent.setup();
+    renderStatusTab({
+      statusHealthLogs: [{
+        at: "2026-06-11T18:00:00.000Z",
+        db: "configured",
+        r2: "configured",
+        ws: "configured",
+        crons: "configured",
+        latencyMs: 12,
+      }],
+    });
+
+    await user.click(screen.getByRole("button", { name: /status\.healthLogs\.title/ }));
+    const table = screen.getByRole("table");
+    expect(within(table).getAllByText("status.value.configured")).toHaveLength(4);
+    expect(table.querySelectorAll(".health-log-dot--warn")).toHaveLength(4);
+    expect(table.querySelectorAll(".health-log-dot--error")).toHaveLength(0);
+  });
+
+  it("keeps the health log, API console and debug console collapsed until asked", async () => {
+    const user = userEvent.setup();
+    renderStatusTab();
+
+    const disclosures = screen.getAllByRole("button", { expanded: false });
+    const labels = disclosures.map((node) => node.textContent);
+    expect(labels.some((text) => text?.includes("status.healthLogs.title"))).toBe(true);
+    expect(labels.some((text) => text?.includes("status.section.apiTests"))).toBe(true);
+    expect(labels.some((text) => text?.includes("status.api.debugTitle"))).toBe(true);
+
+    /* 健康面板不折叠：这一页最常做的事就是扫一眼四个服务，它必须一进来就在。 */
+    expect(screen.getByText("status.service.db")).toBeVisible();
+
+    const healthLogs = disclosures.find((node) => node.textContent?.includes("status.healthLogs.title"));
+    await user.click(healthLogs!);
+    expect(healthLogs).toHaveAttribute("aria-expanded", "true");
+  });
+
+  it("renders degraded system health and populated health logs", async () => {
+    const user = userEvent.setup();
     renderStatusTab({
       statusLatencyMs: 450,
       statusData: { db: "ok", r2: "error", ws: "degraded", crons: "error" },
@@ -154,12 +245,16 @@ describe("AdminStatusTab", () => {
     });
 
     expect(screen.getByText("status.degraded")).toBeInTheDocument();
-    expect(screen.getAllByText("ERROR")).toHaveLength(2);
-    expect(screen.getByText("DEGRADED")).toBeInTheDocument();
+    expect(screen.getAllByText("ERROR")).toHaveLength(4);
+    expect(screen.getAllByText("DEGRADED")).toHaveLength(2);
+
+    /* 日志表默认折起（Mantine Collapse 收拢后是 display:none），
+       role 查询查不到隐藏节点——先真的展开，再断言表头。 */
+    await user.click(screen.getByRole("button", { name: /status\.healthLogs\.title/ }));
     expect(screen.getByRole("columnheader", { name: "audit.table.time" })).toBeInTheDocument();
-    expect(screen.getByRole("columnheader", { name: "DB" })).toBeInTheDocument();
-    expect(screen.getByRole("columnheader", { name: "R2" })).toBeInTheDocument();
-    expect(screen.getByRole("columnheader", { name: "WS" })).toBeInTheDocument();
+    expect(screen.getByRole("columnheader", { name: "status.service.db" })).toBeInTheDocument();
+    expect(screen.getByRole("columnheader", { name: "status.service.r2" })).toBeInTheDocument();
+    expect(screen.getByRole("columnheader", { name: "status.service.ws" })).toBeInTheDocument();
     expect(screen.getByRole("columnheader", { name: "status.service.crons" })).toBeInTheDocument();
     expect(screen.getByRole("columnheader", { name: "status.latency" })).toBeInTheDocument();
     expect(screen.getByText("450ms")).toBeInTheDocument();
@@ -172,7 +267,7 @@ describe("AdminStatusTab", () => {
     });
 
     expect(screen.getByText("loadError")).toBeInTheDocument();
-    expect(screen.queryByText("D1")).not.toBeInTheDocument();
+    expect(screen.queryByText("status.service.db")).not.toBeInTheDocument();
   });
 
   it("hides system health and API tests from users without status permission", () => {

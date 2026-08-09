@@ -1,13 +1,21 @@
 .member-card {
+  --member-card-radius: 16px;
   width: 100%;
   border: 1px solid var(--border-subtle);
-  border-radius: var(--radius-lg);
+  border-radius: var(--member-card-radius);
   background: var(--surface-base);
   color: inherit;
   text-align: left;
   cursor: pointer;
   box-shadow: none;
-  transition: transform var(--transition-smooth), box-shadow var(--transition-smooth), border-color var(--transition-smooth);
+  /*
+   * transform 刻意不在过渡列表里。倾斜与缩放由 MemberCard.tsx 的 useSpring
+   * 逐帧写内联 transform；只要这里还声明 transition: transform，每一帧的新值
+   * 都会再起一段 CSS 过渡，等于在弹簧外面又套一层缓动 —— 既多一层每帧的
+   * 合成开销，手感上也变成「跟不上光标」的拖沓。box-shadow 与 border-color
+   * 是纯 CSS 的悬停态，一次切换，留着。
+   */
+  transition: box-shadow var(--transition-smooth), border-color var(--transition-smooth);
 }
 
 /*
@@ -44,26 +52,17 @@
   box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent-fill) 40%, transparent);
 }
 
-/*
- * Big icon card, restored per user request: a full-width 1:1 avatar tile with
- * the name/title underneath, plus a lift + colour-glow hover treatment. This
- * predates the token migration, so the geometry/spacing/hover transform below
- * are recreated from the pre-flattening version but the colours are wired to
- * the new L2 semantic tokens rather than the old fallback-style var() calls
- * (rule 1 bans var() fallback values, see theme-tokens.test.ts). RosterGrid's
- * virtualiser estimateSize and RosterPage's column-count breakpoints were
- * restored alongside this to match the taller card.
- */
-/* transform-origin 从 center bottom 改成 center center：这里的 transform 已经
- * 不是原来那个「向上平移」，而是绕 X/Y 轴的三维旋转，绕底边转会让卡整个
- * 甩出去而不是就地翻转。overflow:hidden 是给下面的高光层兜底的（那一层
- * 铺得比卡大，靠这里裁到圆角内），元素自身的外投影不受它影响。 */
+/* Portrait card geometry is coupled to the roster virtualizer's row estimate. */
+/* Center 3D rotation in place and clip the oversized highlight to the card radius. */
 .member-card--full {
   padding: 10px;
   position: relative;
   overflow: hidden;
   transform-origin: center center;
-  will-change: transform, box-shadow;
+  /* box-shadow 不是可合成属性，把它列进 will-change 只会让浏览器为每张卡
+   * 常驻一层「随时会重绘」的准备，17 张卡就是 17 层。transform 才是逐帧动的
+   * 那个。 */
+  will-change: transform;
   height: 100%;
 }
 
@@ -109,52 +108,31 @@
   opacity: 1;
 }
 
-.member-card--blue:hover {
+.member-card--compact:hover {
   box-shadow:
-    0 12px 32px color-mix(in srgb, var(--accent-fill) 22%, transparent),
-    inset 0 0 20px color-mix(in srgb, var(--accent-fill) 4%, transparent);
-  border-color: color-mix(in srgb, var(--accent-fill) 35%, transparent);
-}
-
-.member-card--green:hover {
-  box-shadow:
-    0 12px 32px color-mix(in srgb, var(--status-success) 22%, transparent),
-    inset 0 0 20px color-mix(in srgb, var(--status-success) 4%, transparent);
-  border-color: color-mix(in srgb, var(--status-success) 35%, transparent);
-}
-
-.member-card--purple:hover {
-  box-shadow:
-    0 12px 32px color-mix(in srgb, var(--accent-fill) 24%, transparent),
-    inset 0 0 20px color-mix(in srgb, var(--accent-fill) 5%, transparent);
-  border-color: color-mix(in srgb, var(--accent-fill) 40%, transparent);
-}
-
-.member-card--dark-red:hover {
-  box-shadow:
-    0 12px 32px color-mix(in srgb, var(--status-danger) 20%, transparent),
-    inset 0 0 20px color-mix(in srgb, var(--status-danger) 4%, transparent);
-  border-color: color-mix(in srgb, var(--status-danger) 30%, transparent);
+    0 12px 32px color-mix(in srgb, var(--class-color) 22%, transparent),
+    inset 0 0 20px color-mix(in srgb, var(--class-color) 4%, transparent);
+  border-color: color-mix(in srgb, var(--class-color) 35%, transparent);
 }
 
 .member-card__avatar-wrap {
   position: relative;
   width: 100%; height: auto;
   aspect-ratio: 1 / 1;
-  margin-inline: auto; border-radius: var(--radius-lg); overflow: hidden;
+  margin-inline: auto; border-radius: var(--member-card-radius); overflow: hidden;
   border: 1px solid var(--border-subtle);
   background: color-mix(in srgb, var(--surface-base) 88%, var(--text-primary) 12%);
   pointer-events: none;
 }
 
 .member-card__avatar,
-.member-card__avatar-fallback { width: 100%; height: 100%; object-fit: cover; pointer-events: none; border-radius: var(--radius-lg); }
+.member-card__avatar-fallback { width: 100%; height: 100%; object-fit: cover; pointer-events: none; border-radius: var(--member-card-radius); }
 
 .member-card__avatar { object-position: top center; }
 
 .member-card__avatar-fallback {
   display: grid; place-items: center;
-  font-size: 52px; font-weight: var(--fw-strong);
+  font-size: var(--text-display); font-weight: var(--fw-strong);
   color: color-mix(in srgb, var(--text-primary) 65%, transparent);
 }
 
@@ -182,13 +160,33 @@
   box-shadow: 0 0 6px color-mix(in srgb, var(--status-danger) 40%, transparent);
 }
 
-.member-card__meta-row { margin-top: 4px; display: flex; flex-wrap: wrap; gap: 4px; align-items: center; }
+/*
+ * Keep metadata in flow so the virtual row measures its tallest card and every
+ * sibling can stretch to the same height without clipping identity badges.
+ */
+.member-card__meta-row {
+  margin-top: 4px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  align-items: center;
+  min-width: 0;
+}
 
 .member-card__pill {
   display: inline-flex; align-items: center; gap: 3px;
-  border-radius: var(--radius-pill);
+  border-radius: var(--shape-pill);
   padding: 2px 7px; font-size: 12px; line-height: 1.4;
   font-weight: 600;
+}
+.member-card__pill-label {
+  font-size: var(--text-micro);
+  font-weight: var(--fw-medium);
+}
+
+.member-card__pill-count {
+  font-variant-numeric: tabular-nums;
+  font-weight: var(--fw-strong);
 }
 
 .member-card__pill--photo {
@@ -197,33 +195,95 @@
   color: var(--accent-text);
 }
 
-/*
- * --color-accent（旧铜色）本次改版要消灭，装饰性用途收敛到 --accent-fill 系。
- * 上面的 --photo 徽章已经用了 --accent-fill，这里选 --accent-fill-hover 而不是
- * 同一个值，保留 photo/video 两种媒体徽章的色相区分（同 EventCardsView.css 的
- * social 分类色先例）。
- */
+/* The darker accent shade distinguishes video from photo media badges. */
 .member-card__pill--video {
   background: color-mix(in srgb, var(--accent-fill-hover) 14%, transparent);
   border: 1px solid color-mix(in srgb, var(--accent-fill-hover) 30%, transparent);
   color: color-mix(in srgb, var(--accent-fill-hover) 50%, var(--text-primary));
 }
 
-.member-card__content { margin-top: 6px; }
-.member-card__username { display: block; font-size: var(--text-body); font-weight: var(--fw-medium); line-height: 1.3; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-
+.member-card__content {
+  margin-top: var(--space-sm);
+}
+.member-card__identity {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: var(--space-xs) var(--space-sm);
+  min-width: 0;
+}
+.member-card__username {
+  display: block;
+  flex: 1 1 8ch;
+  min-width: 0;
+  font-size: var(--text-h3);
+  font-weight: var(--fw-strong);
+  line-height: 1.35;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+/* 没有称号的成员整条不渲染：留一行空占位会在名字和职业/徽章之间撑出一道空隙。
+   卡片等高由网格拉伸保证（见 RosterPage.css），不靠这里占位。 */
 .member-card__title {
-  margin-top: 2px; min-height: 18px; line-height: 1.35;
+  margin-top: 2px; line-height: 1.35;
   color: color-mix(in srgb, var(--text-primary) 65%, transparent);
   display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 1; overflow: hidden;
 }
 
+.member-card__class-chip,
+.member-card__compact-class {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+  border: 1px solid color-mix(in srgb, var(--class-color) 30%, var(--border-subtle));
+  border-radius: var(--radius-control);
+  background: color-mix(in srgb, var(--class-color) 9%, transparent);
+  color: color-mix(in srgb, var(--class-color) 52%, var(--text-primary));
+}
+
+.member-card__class-chip {
+  max-width: 100%;
+  padding: 2px 6px 2px 4px;
+  font-size: var(--text-meta);
+  font-weight: var(--fw-medium);
+  line-height: 1.2;
+}
+.member-card__class-chip--primary {
+  flex: 0 1 auto;
+  width: fit-content;
+  max-width: 100%;
+  padding: var(--space-xs) var(--space-sm);
+  font-size: var(--text-sm);
+  font-weight: var(--fw-strong);
+}
+
+.member-card__class-label {
+  min-width: 0;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+.member-card__badge-overflow {
+  flex: 0 0 auto;
+  color: var(--text-secondary);
+  font-size: var(--text-micro);
+  font-weight: var(--fw-strong);
+  line-height: 1.4;
+}
 .member-card__badge {
   display: inline-flex;
   align-items: center;
-  padding: 1px 6px;
-  border-radius: var(--radius-pill);
-  font-size: 11px;
+  /* 名片上这枚是密排的附注，后台表单里同一枚是被打量的主角。尺寸留成变量，
+     两处共用同一份药丸样式和同一份清洗白名单，只有大小按场景给。默认值声明在
+     药丸自己身上（而不是写成 var() 兜底，硬规则 1 不允许），放大那一档由
+     AdminBadgesSection.css 用后代选择器压过来。 */
+  --badge-padding: 1px 6px;
+  --badge-font-size: 11px;
+  padding: var(--badge-padding);
+  border-radius: var(--shape-pill);
+  font-size: var(--badge-font-size);
   line-height: 1.4;
   /* --badge-color 是管理员自选的任意色号，运行期由 MemberCard.tsx:24 的内联
    * style 无条件写入（UserBadge.color 经 apps/shared/schemas/admin.ts 的
@@ -237,73 +297,84 @@
    */
   color: color-mix(in srgb, var(--badge-color) 50%, var(--text-primary));
   max-width: 100%;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  white-space: normal;
+  overflow-wrap: anywhere;
 }
 
 .member-card--compact {
   min-height: 96px; padding: 10px 12px;
   display: grid; align-content: center; gap: 4px;
+  background: color-mix(in srgb, var(--class-color) 8%, var(--surface-base));
+  border-color: color-mix(in srgb, var(--class-color) 24%, transparent);
 }
 
 .member-card__compact-username { font-size: 15px; font-weight: 600; line-height: 1.25; }
 
+.member-card__compact-class {
+  width: fit-content;
+  max-width: 100%;
+  padding: 2px 6px 2px 4px;
+}
+
 .member-card__compact-meta {
   font-size: 12px; font-weight: 600; line-height: 1.2;
   color: color-mix(in srgb, var(--text-primary) 65%, transparent);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
-.member-card--blue {
-  background: color-mix(in srgb, var(--accent-fill) 8%, var(--surface-base));
-  border-color: color-mix(in srgb, var(--accent-fill) 24%, transparent);
+/* ── Member class markers attached to participant avatars ── */
+
+.member-role-avatar {
+  position: relative;
+  display: inline-flex;
+  flex: 0 0 auto;
+  line-height: 0;
 }
 
-.member-card--green {
-  background: color-mix(in srgb, var(--status-success) 8%, var(--surface-base));
-  border-color: color-mix(in srgb, var(--status-success) 24%, transparent);
-}
-
-.member-card--purple {
-  background: color-mix(in srgb, var(--accent-fill) 10%, var(--surface-base));
-  border-color: color-mix(in srgb, var(--accent-fill) 30%, transparent);
-}
-
-.member-card--dark-red {
-  background: color-mix(in srgb, var(--status-danger) 8%, var(--surface-base));
-  border-color: color-mix(in srgb, var(--status-danger) 24%, transparent);
-}
-
-/* ── Member Role Avatar ── (moved out of style={{}}, task-8 批 B)
-   --role-color is the active game's per-role hex (activeGame.roles[].color,
-   e.g. apps/shared/games/definitions/yan-yun.ts), a data blob that changes
-   with the active game config rather than a fixed enum this token system
-   owns — same reasoning as --badge-color, registered in
-   theme-tokens.test.ts RUNTIME_INJECTED_VARS. */
-
-.member-role-avatar__role-circle {
-  border-radius: 50%;
+.member-role-avatar__roles {
+  position: absolute;
+  right: -4px;
+  bottom: -4px;
   display: flex;
+  flex-direction: row;
+  align-items: center;
+  isolation: isolate;
+  pointer-events: none;
+}
+
+.member-role-avatar__role-circle,
+.member-role-avatar__overflow {
+  flex: 0 0 auto;
+  border: 2px solid var(--surface-raised);
+  box-shadow: 0 1px 4px color-mix(in srgb, var(--text-primary) 18%, transparent);
+}
+
+.member-role-avatar__roles > * + * {
+  margin-inline-start: -5px;
+}
+
+.member-role-avatar__overflow {
+  z-index: 1;
+  display: inline-flex;
   align-items: center;
   justify-content: center;
-  border: 2px solid var(--surface-base);
-  /* 与模式无关的字面黑：这圈投影是给下面任意色号的 --role-color 描一圈固定
-     轮廓，理由同上面 --role-color 本身注释——数据色，不随 [data-theme] 变化，
-     换成 --shadow-sm 会让投影强度随主题波动，反而跟框住的固定数据色不一致。 */
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.25);
-  background: var(--role-color);
+  border-radius: 50%;
+  background: var(--surface-raised);
+  color: var(--text-secondary);
+  font-size: var(--text-micro);
+  font-weight: var(--fw-strong);
+  line-height: 1;
 }
 
-/* Icon sits on top of the arbitrary --role-color fill, so it needs the
-   same on-saturated-fill treatment as status badges rather than a bare
-   white literal (rule 2 forbids bare colour literals here anyway, not just
-   bare hex — see theme-tokens.test.ts rule 2). */
-.member-role-avatar__role-icon {
-  color: var(--status-on-fill);
+.member-role-avatar__popover {
+  padding: var(--space-sm);
 }
 
-.member-role-avatar__class-icon {
-  color: var(--role-color);
+.member-role-avatar__power-icon {
+  display: inline-block;
+  vertical-align: -2px;
 }
 
 /* 倾斜与缩放的关闭不在这里——那两个是 JS 写的内联 transform，CSS 覆盖不到，
@@ -313,4 +384,3 @@
   .member-card { transition: none; }
   .member-card__spec { transition: none; }
 }
-

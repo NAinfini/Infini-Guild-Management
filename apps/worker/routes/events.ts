@@ -20,51 +20,73 @@ import {
   toRaffleWinnerPayload,
   toTemplatePayload,
 } from "../services/EventService";
-import { isEventPubliclyVisible } from "../services/events/event-visibility";
-import { buildError, collectFiles, getDb, parseBoolean, parseJsonBody, parsePage, requireSessionUser, serveR2Object } from "./_shared";
-import { commonDeps, getMediaPolicy } from "./service-factory";
+import { MediaValidationError, parseImageMediaFormData, type ParsedImageMediaUpload } from "../services/MediaService";
+import { buildError, getDb, parseBoolean, parseJsonBody, parsePage, requireSessionUser } from "./_shared";
+import { withMedia } from "./service-factory";
+import { getSystemTestRunId } from "../services/SystemTestService";
 
 export const eventsRoutes = new Hono();
 
 function getEventService(c: Context) {
   const db = getDb(c);
   const deps = {
+    ...withMedia(c),
     getEventById: (eventId: string) => svc.getEventById(eventId),
     getUsername: async (userId: string) => {
       const row = (await db.select({ username: users.username }).from(users).where(eq(users.id, userId)).limit(1))[0];
       return row?.username ?? null;
     },
-    getMediaPolicy: () => getMediaPolicy(c),
-    ...commonDeps(c),
   };
   const templateDeps = {
     getTemplateById: (templateId: string) => svc.getTemplateById(templateId),
     materializeRecurringSeries: (templateId: string) => materializeRecurringSeries(c, templateId),
     writeAuditLog: deps.writeAuditLog,
+    getGameRules: deps.getGameRules,
+    mediaService: deps.mediaService,
+    systemTestRunId: getSystemTestRunId(c),
   };
-  const svc: EventService = new EventService(db as never, (c.env as Bindings).DB as never, (c.env as Bindings).MEDIA as never, deps, templateDeps);
+  const svc: EventService = new EventService(
+    db as never,
+    (c.env as Bindings).DB as never,
+    deps,
+    templateDeps,
+  );
   return svc;
 }
 
 async function requireEventCreate(c: Context) { return requirePermission(c, "events.create"); }
 async function requireEventEdit(c: Context) { return requirePermission(c, "events.edit"); }
 async function requireEventArchive(c: Context) { return requirePermission(c, "events.archive"); }
-async function requireEventDelete(c: Context) { return requirePermission(c, "events.delete", { freshPermissions: true }); }
+async function requireEventDelete(c: Context) { return requirePermission(c, "events.delete"); }
 async function requireEventTemplates(c: Context) { return requirePermission(c, "events.templates"); }
 
-async function parseCreateEventRequest(c: Context): Promise<{ body: unknown; files: File[] } | Response> {
+async function parseCreateEventRequest(c: Context): Promise<{ body: unknown; uploads: ParsedImageMediaUpload[] } | Response> {
   const ct = c.req.header("content-type") ?? "";
   if (ct.includes("multipart/form-data")) {
     const form = await c.req.formData();
     const raw = form.get("data");
     if (typeof raw !== "string" || !raw.trim()) return buildError(c, "VALIDATION_ERROR", "Missing data payload");
-    try { return { body: JSON.parse(raw), files: collectFiles(form) }; } catch { return buildError(c, "VALIDATION_ERROR", "Invalid JSON body"); }
+    let body: unknown;
+    try {
+      body = JSON.parse(raw);
+    } catch {
+      return buildError(c, "VALIDATION_ERROR", "Invalid JSON body");
+    }
+    try {
+      return { body, uploads: await parseImageMediaFormData(form) };
+    } catch (error) {
+      if (error instanceof MediaValidationError) return buildError(c, "VALIDATION_ERROR", error.message);
+      throw error;
+    }
   }
-  try { return { body: await c.req.json(), files: [] }; } catch { return buildError(c, "VALIDATION_ERROR", "Invalid JSON body"); }
+  try { return { body: await c.req.json(), uploads: [] }; } catch { return buildError(c, "VALIDATION_ERROR", "Invalid JSON body"); }
 }
 
 async function materializeRecurringSeries(c: Context, templateId: string): Promise<void> {
-  await runEventInstanceGenerationCron(c.env as Bindings, { templateId });
+  await runEventInstanceGenerationCron(c.env as Bindings, {
+    templateId,
+    systemTestRunId: getSystemTestRunId(c) ?? undefined,
+  });
 }
 
 // --- Routes ---
@@ -97,25 +119,6 @@ eventsRoutes.post("/batch-details", async (c) => {
   return c.json({ data: await getEventService(c).batchDetails(ids, viewer?.id ?? null, viewer?.permissions.has("events.edit") ?? false) });
 });
 
-eventsRoutes.get("/image", async (c) => {
-  const key = c.req.query("key");
-  if (!key) return buildError(c, "VALIDATION_ERROR", "key query parameter required");
-  const eventId = /^events\/([A-Za-z0-9_-]+)\/images\/[^/]+$/.exec(key)?.[1];
-  if (!eventId) return buildError(c, "FORBIDDEN", "Invalid event image key");
-  const viewer = await getRequestUser(c);
-  const event = await getEventService(c).getEventById(eventId);
-  if (
-    !event
-    || (
-      !viewer?.permissions.has("events.edit")
-      && !isEventPubliclyVisible(event.visibleAt, new Date().toISOString())
-    )
-  ) {
-    return buildError(c, "NOT_FOUND", "Event image not found");
-  }
-  return serveR2Object(c, key, "Event image not found");
-});
-
 eventsRoutes.get("/:id", async (c) => {
   const viewer = await getRequestUser(c);
   const detail = await getEventService(c).getEventDetail(c.req.param("id"), viewer?.id ?? null, viewer?.permissions.has("events.edit") ?? false);
@@ -126,10 +129,10 @@ eventsRoutes.post("/", async (c) => {
   const sessionUser = await requireEventCreate(c);
   const parsed_req = await parseCreateEventRequest(c);
   if (parsed_req instanceof Response) return parsed_req;
-  const { body, files } = parsed_req;
+  const { body, uploads } = parsed_req;
   const parsed = createEventSchema.safeParse(body);
   if (!parsed.success) return buildError(c, "VALIDATION_ERROR", "Invalid create event payload", parsed.error.flatten());
-  const result = await getEventService(c).createEvent(sessionUser.id, parsed.data, files);
+  const result = await getEventService(c).createEvent(sessionUser.id, parsed.data, uploads);
   if (!result.ok) return buildError(c, result.code, result.message);
   return c.json(toEventPayload(result.data), 201);
 });
@@ -170,7 +173,14 @@ eventsRoutes.post("/:id/images", async (c) => {
   const svc = getEventService(c);
   const existing = await svc.getEventById(c.req.param("id"));
   if (!existing) return buildError(c, "NOT_FOUND", "Event not found");
-  const result = await svc.uploadEventImages(sessionUser.id, existing.id, existing, collectFiles(await c.req.formData()));
+  let uploads: ParsedImageMediaUpload[];
+  try {
+    uploads = await parseImageMediaFormData(await c.req.formData());
+  } catch (error) {
+    if (error instanceof MediaValidationError) return buildError(c, "VALIDATION_ERROR", error.message);
+    throw error;
+  }
+  const result = await svc.uploadEventImages(sessionUser.id, existing.id, existing, uploads);
   if (!result.ok) return buildError(c, result.code, result.message);
   return c.json(result.data);
 });
@@ -269,7 +279,7 @@ eventsRoutes.post("/templates/:id/resume", async (c) => {
 });
 
 eventsRoutes.delete("/templates/:id", async (c) => {
-  const sessionUser = await requirePermission(c, "events.templates", { freshPermissions: true });
+  const sessionUser = await requirePermission(c, "events.templates");
   const svc = getEventService(c);
   const existing = await svc.getTemplateById(c.req.param("id"));
   if (!existing) return buildError(c, "NOT_FOUND", "Template not found");

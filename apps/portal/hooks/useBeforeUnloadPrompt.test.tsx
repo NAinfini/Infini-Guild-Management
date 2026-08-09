@@ -10,7 +10,7 @@ vi.mock("@tanstack/react-router", () => ({
   useBlocker: blockerMock,
 }));
 
-vi.mock("@portal/components/shared/ConfirmDialog", () => ({
+vi.mock("@portal/hooks/useConfirmDialog", () => ({
   useConfirmDialog: () => confirmMock,
 }));
 

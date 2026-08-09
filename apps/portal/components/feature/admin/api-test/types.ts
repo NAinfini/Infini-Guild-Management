@@ -5,7 +5,20 @@ export type EndpointDef = {
   method: "GET" | "POST" | "PATCH" | "DELETE";
   /** URL path (may include query params) */
   path: string;
+  /** Context field used by the canonical media read route. */
+  mediaIdContext?: MediaIdContextKey;
+  mediaVariant?: "view" | "full";
 };
+
+export type MediaIdContextKey =
+  | "userImageMediaId"
+  | "eventImageMediaId"
+  | "announcementImageMediaId"
+  | "galleryImageMediaId"
+  | "wikiImageMediaId"
+  | "storageImageMediaId"
+  | "createdClassIconMediaId"
+  | "siteLogoMediaId";
 
 export type CategoryDef = {
   key: string;
@@ -14,17 +27,22 @@ export type CategoryDef = {
 };
 
 export type TestRunContext = {
+  /** Server-issued UID; every request and cleanup operation is bound to it. */
+  runId: string | null;
+  /** Independent public fixture label; never grants access to the cleanup run. */
+  fixtureId: string | null;
   meId: string | null;
   meUsername: string | null;
+  meRoleLevel: number | null;
+  mePermissions: Record<string, boolean> | null;
   registerInviteCode: string | null;
-  userImageKey: string | null;
-  userAudioKey: string | null;
+  userImageMediaId: string | null;
+  userAudioMediaId: string | null;
   eventId: string | null;
   eventParticipantUserId: string | null;
   pollOptionId: string | null;
   eventTemplateId: string | null;
   announcementId: string | null;
-  announcementStagingToken: string | null;
   galleryItemId: string | null;
   galleryDeleteId: string | null;
   warEventId: string | null;
@@ -32,8 +50,6 @@ export type TestRunContext = {
   warTeamId: string | null;
   warMemberUserId: string | null;
   createdConcludedWarHistoryId: string | null;
-  /** Captured from GET /api/game-data so the rotations endpoint has a real class. */
-  gameDataClassId: string | null;
   wikiCategoryId: string | null;
   wikiArticleId: string | null;
   wikiArticleSlug: string | null;
@@ -46,12 +62,13 @@ export type TestRunContext = {
   auditArchiveMonth: string | null;
   auditArchiveDownloadToken: string | null;
   badgeId: string | null;
-  eventImageKey: string | null;
-  announcementImageKey: string | null;
-  galleryImageKey: string | null;
-  wikiImageKey: string | null;
-  /** Key of the image uploaded by the test (for cleanup) */
-  uploadedImageKey: string | null;
+  eventImageMediaId: string | null;
+  announcementImageMediaId: string | null;
+  galleryImageMediaId: string | null;
+  wikiImageMediaId: string | null;
+  siteLogoMediaId: string | null;
+  /** Media ID created by the test and safe to delete during cleanup. */
+  uploadedImageMediaId: string | null;
   registeredUserId: string | null;
   registeredUsername: string | null;
   registeredUserPassword: string | null;
@@ -65,6 +82,18 @@ export type TestRunContext = {
   createdGuildWarEventId: string | null;
   createdRoleId: string | null;
   createdBadgeId: string | null;
+  createdClassId: string | null;
+  createdClassIconMediaId: string | null;
+  createdClassTagId: string | null;
+  createdAbsenceId: string | null;
+  /*
+   * 三个 reorder 接口都要求带上完整的 id 顺序（服务端整表核对）。这里存的是各自
+   * 列表 GET 抓到的服务端现序，reorder 用例原样回放它（外加本次运行新建的那一个），
+   * 于是写路径被完整走了一遍，而站上的相对顺序一个都不变。
+   */
+  badgeIdsInOrder: string[] | null;
+  classIdsInOrder: string[] | null;
+  classTagIdsInOrder: string[] | null;
   createdEventId: string | null;
   createdPollEventId: string | null;
   createdRaffleEventId: string | null;
@@ -72,11 +101,10 @@ export type TestRunContext = {
   storageId: string | null;
   storageCategoryId: string | null;
   storageItemId: string | null;
-  storageImageKey: string | null;
+  storageImageMediaId: string | null;
   createdStorageId: string | null;
   createdStorageCategoryId: string | null;
   createdStorageItemId: string | null;
-  createdStorageImageId: string | null;
   targetProfileSnapshot: { bio: string | null; classes: string[] } | null;
 };
 
@@ -113,32 +141,22 @@ export type DebugLogEntry = {
   skipped?: boolean;
 };
 
-export type CleanupStep = {
-  label: string;
-  method: EndpointDef["method"];
-  path: string;
-  jsonBody?: unknown;
-  clearContext?: Partial<TestRunContext>;
-};
-
-export type StaleArtifactProbe = {
-  label: string;
-  path: string;
-};
-
 export function createInitialTestRunContext(): TestRunContext {
   return {
+    runId: null,
+    fixtureId: null,
     meId: null,
     meUsername: null,
+    meRoleLevel: null,
+    mePermissions: null,
     registerInviteCode: null,
-    userImageKey: null,
-    userAudioKey: null,
+    userImageMediaId: null,
+    userAudioMediaId: null,
     eventId: null,
     eventParticipantUserId: null,
     pollOptionId: null,
     eventTemplateId: null,
     announcementId: null,
-    announcementStagingToken: null,
     galleryItemId: null,
     galleryDeleteId: null,
     warEventId: null,
@@ -146,7 +164,6 @@ export function createInitialTestRunContext(): TestRunContext {
     warTeamId: null,
     warMemberUserId: null,
     createdConcludedWarHistoryId: null,
-    gameDataClassId: null,
     wikiCategoryId: null,
     wikiArticleId: null,
     wikiArticleSlug: null,
@@ -159,11 +176,12 @@ export function createInitialTestRunContext(): TestRunContext {
     auditArchiveMonth: null,
     auditArchiveDownloadToken: null,
     badgeId: null,
-    eventImageKey: null,
-    announcementImageKey: null,
-    galleryImageKey: null,
-    wikiImageKey: null,
-    uploadedImageKey: null,
+    eventImageMediaId: null,
+    announcementImageMediaId: null,
+    galleryImageMediaId: null,
+    wikiImageMediaId: null,
+    siteLogoMediaId: null,
+    uploadedImageMediaId: null,
     registeredUserId: null,
     registeredUsername: null,
     registeredUserPassword: null,
@@ -177,6 +195,13 @@ export function createInitialTestRunContext(): TestRunContext {
     createdGuildWarEventId: null,
     createdRoleId: null,
     createdBadgeId: null,
+    createdClassId: null,
+    createdClassIconMediaId: null,
+    createdClassTagId: null,
+    createdAbsenceId: null,
+    badgeIdsInOrder: null,
+    classIdsInOrder: null,
+    classTagIdsInOrder: null,
     createdEventId: null,
     createdPollEventId: null,
     createdRaffleEventId: null,
@@ -184,11 +209,10 @@ export function createInitialTestRunContext(): TestRunContext {
     storageId: null,
     storageCategoryId: null,
     storageItemId: null,
-    storageImageKey: null,
+    storageImageMediaId: null,
     createdStorageId: null,
     createdStorageCategoryId: null,
     createdStorageItemId: null,
-    createdStorageImageId: null,
     targetProfileSnapshot: null,
   };
 }
@@ -207,10 +231,6 @@ export function firstArrayItem(value: unknown): Record<string, unknown> | null {
 
 export function readString(value: unknown): string | null {
   return typeof value === "string" && value.length > 0 ? value : null;
-}
-
-export function isProfileMediaKey(value: string | null): value is string {
-  return typeof value === "string" && value.startsWith("members/");
 }
 
 export function disposableMemberId(context: TestRunContext): string | null {

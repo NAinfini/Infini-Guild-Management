@@ -1,6 +1,5 @@
 import type { Event, MemberProfile, User } from "@guild/shared";
 import type { ImageGridEditorItem } from "@portal/types/media";
-import { CalendarEventIcon } from "@portal/components/icons";
 import { useClipboard } from "@mantine/hooks";
 import { useQueryClient } from "@tanstack/react-query";
 import { useNavigate, useSearch } from "@tanstack/react-router";
@@ -30,9 +29,9 @@ import { sanitizeEventsRouteSearch, type EventWorkbenchViewMode, type EventsRout
 import { useEventsEditorController } from "../feature/events/useEventsEditorController";
 import { useRecurringTemplatesController } from "../feature/events/useRecurringTemplatesController";
 import { PageLayout } from "../layout/PageLayout";
-import { PageTabPanel, PageTabs } from "../layout/PageTabs";
 import { EventDetailModal } from "../feature/events/EventDetailModal";
 import "./EventsPage.css";
+import { resolveMediaUrl } from "../../utils/media";
 
 const LazyEventsFiltersCard = lazy(() =>
   import("../feature/events/EventsFiltersCard").then((mod) => ({ default: mod.EventsFiltersCard })),
@@ -77,8 +76,11 @@ export function EventsPage() {
   const canManage = isModerator && !isExternalView;
   const canInteract = Boolean(user) && !isExternalView;
 
-  const viewMode = eventsRouteSearch.view ?? "cards";
-  const activeTab = eventsRouteSearch.tab === "recurring" && canManage ? "recurring" : "events";
+  // Recurring templates are an administrative view; normalize unauthorized
+  // deep links to cards instead of rendering an empty workbench.
+  const requestedView = eventsRouteSearch.view ?? "cards";
+  const viewMode: EventWorkbenchViewMode =
+    requestedView === "recurring" && !canManage ? "cards" : requestedView;
   const [, setSelectedDate] = useState(() => new Date().toISOString().slice(0, 10));
   const [monthDetailEvent, setMonthDetailEvent] = useState<Event | null>(null);
   const [attachmentItems, setAttachmentItems] = useState<ImageGridEditorItem[]>([]);
@@ -108,12 +110,13 @@ export function EventsPage() {
     [attachmentService, queryClient],
   );
   const recurringTemplatesController = useRecurringTemplatesController({
-    enabled: canManage && activeTab === "recurring",
+    enabled: canManage && viewMode === "recurring",
     showError,
   });
   const filtering = useEventsFiltering({
     currentUserId: user?.id,
   });
+  const routeDetailEvent = filtering.focusedEvent;
   const {
     editorOpen,
     editorMode,
@@ -131,6 +134,7 @@ export function EventsPage() {
     editorPollResultsVisibility,
     editorPollShowVoterNames,
     editorWinnerCount,
+    editorClassQuotas,
     editorStartIso,
     editorEndIso,
     setEditorType,
@@ -144,6 +148,7 @@ export function EventsPage() {
     setEditorPollResultsVisibility,
     setEditorPollShowVoterNames,
     setEditorWinnerCount,
+    setEditorClassQuotas,
     markEditorTouched,
     openCreateEditor: openCreateEditorBase,
     openEditEditor: openEditEditorBase,
@@ -169,9 +174,9 @@ export function EventsPage() {
   }, [mutations, openCreateEditorBase]);
 
   const openEditEditor = useCallback((event: Event) => {
-    const nextItems = (event.attachments ?? []).map((url, idx) => ({
-      id: url,
-      src: url,
+    const nextItems = (event.attachments ?? []).map((mediaId, idx) => ({
+      id: mediaId,
+      src: resolveMediaUrl(mediaId),
       alt: `Attachment ${idx + 1}`,
     }));
     setAttachmentItems((current) => {
@@ -223,6 +228,7 @@ export function EventsPage() {
       pollResultsVisibility: editorPollResultsVisibility,
       pollShowVoterNames: editorPollShowVoterNames,
       winnerCount: editorWinnerCount,
+      classQuotas: editorClassQuotas,
     });
   };
 
@@ -241,21 +247,20 @@ export function EventsPage() {
     notifySuccess(t("message.mentionsCopied"));
   };
 
-  const hasLoadError = filtering.eventsQuery.isError || filtering.usersQuery.isError;
+  const hasLoadError =
+    filtering.eventsQuery.isError
+    || filtering.usersQuery.isError
+    || filtering.focusedEventQuery.isError;
   useLoadWarningToast(hasLoadError, t("common:loadErrorRetry"));
 
   return (
-    <PageLayout title={t("title")} subtitle={t("subtitle")} icon={<CalendarEventIcon size={22} />} className="events-page">
-      <PageTabs
-        keepMounted={false}
-        defaultValue="events"
-        tabs={[
-          { value: "events", label: t("tab.events") },
-          ...(canManage ? [{ value: "recurring" as const, label: t("recurring.tab") }] : []),
-        ]}
-      >
-        <PageTabPanel value="events" pt="sm">
-          <Stack gap={12}>
+    <PageLayout className="events-page">
+      <Stack gap={12}>
+            {/*
+              * 模板档不渲染这张卡：那一档的视图切换器挂在 RecurringTemplatesTab
+              * 自己那条筛选栏上，两边都渲染就是上下并排的两条工具栏。
+              */}
+            {viewMode === "recurring" ? null : (
             <Suspense fallback={<Card><Stack gap={8} p="md"><Skeleton height={36} radius={8} /></Stack></Card>}>
               <LazyEventsFiltersCard
                 searchQuery={filtering.searchQuery}
@@ -274,9 +279,23 @@ export function EventsPage() {
                 onCreateEvent={() => openCreateEditor()}
               />
             </Suspense>
+            )}
 
             <Suspense fallback={<Card><Stack gap={8} p="md"><Skeleton height={200} radius={8} /></Stack></Card>}>
-              {viewMode === "cards" ? (
+              {viewMode === "recurring" ? (
+                <LazyRecurringTemplatesTab
+                  canManage={canManage}
+                  onViewModeChange={setViewMode}
+                  templates={recurringTemplatesController.templates}
+                  loading={recurringTemplatesController.loading}
+                  formSaving={recurringTemplatesController.formSaving}
+                  onCreateTemplate={recurringTemplatesController.createRecurringTemplate}
+                  onUpdateTemplate={recurringTemplatesController.updateRecurringTemplate}
+                  onPauseTemplate={recurringTemplatesController.pauseRecurringTemplate}
+                  onResumeTemplate={recurringTemplatesController.resumeRecurringTemplate}
+                  onDeleteTemplate={recurringTemplatesController.deleteRecurringTemplate}
+                />
+              ) : viewMode === "cards" ? (
                 <LazyEventCardsView
                   events={filtering.sortedEvents}
                   cardsEmptyDescription={filtering.cardsEmptyDescription}
@@ -292,8 +311,7 @@ export function EventsPage() {
                   eventFlags={filtering.eventFlags}
                   eventMembersMap={filtering.eventMembersMap}
                   allUsers={asMemberEntries(filtering.usersQuery.data?.data ?? [])}
-                  joinPending={mutations.joinPending}
-                  leavePending={mutations.leavePending}
+                  participantPendingEventIds={mutations.participantPendingEventIds}
                   votePending={mutations.votePending}
                   onResetFilters={filtering.resetFilters}
                   onCreateEvent={() => openCreateEditor()}
@@ -331,27 +349,7 @@ export function EventsPage() {
                 />
               )}
             </Suspense>
-          </Stack>
-        </PageTabPanel>
-
-        {canManage ? (
-          <PageTabPanel value="recurring" pt="sm">
-            <Suspense fallback={<Card><Stack gap={8} p="md"><Skeleton height={200} radius={8} /></Stack></Card>}>
-              <LazyRecurringTemplatesTab
-                canManage={canManage}
-                templates={recurringTemplatesController.templates}
-                loading={recurringTemplatesController.loading}
-                formSaving={recurringTemplatesController.formSaving}
-                onCreateTemplate={recurringTemplatesController.createRecurringTemplate}
-                onUpdateTemplate={recurringTemplatesController.updateRecurringTemplate}
-                onPauseTemplate={recurringTemplatesController.pauseRecurringTemplate}
-                onResumeTemplate={recurringTemplatesController.resumeRecurringTemplate}
-                onDeleteTemplate={recurringTemplatesController.deleteRecurringTemplate}
-              />
-            </Suspense>
-          </PageTabPanel>
-        ) : null}
-      </PageTabs>
+      </Stack>
 
       {editorOpen ? (
         <Suspense fallback={<Card><Stack gap={8} p="md"><Skeleton height={120} radius={8} /></Stack></Card>}>
@@ -381,6 +379,8 @@ export function EventsPage() {
             onPollShowVoterNamesChange={setEditorPollShowVoterNames}
             winnerCount={editorWinnerCount}
             onWinnerCountChange={setEditorWinnerCount}
+            classQuotas={editorClassQuotas}
+            onClassQuotasChange={setEditorClassQuotas}
             attachmentItems={attachmentItems}
             onAttachmentsChange={handleAttachmentItemsChange}
             onFilesSelected={handleFilesSelected}
@@ -399,14 +399,23 @@ export function EventsPage() {
 
       {/* Month view detail modal */}
       <EventDetailModal
-        event={monthDetailEvent}
-        members={monthDetailEvent ? (filtering.eventMembersMap.get(monthDetailEvent.id) ?? []) : []}
+        event={routeDetailEvent ?? monthDetailEvent}
+        members={
+          routeDetailEvent ?? monthDetailEvent
+            ? (filtering.eventMembersMap.get((routeDetailEvent ?? monthDetailEvent)!.id) ?? [])
+            : []
+        }
         allUsers={asMemberEntries(filtering.usersQuery.data?.data ?? [])}
         canManage={canManage}
         currentUserId={user?.id ?? undefined}
-        joinPending={mutations.joinPending}
-        leavePending={mutations.leavePending}
-        onClose={() => setMonthDetailEvent(null)}
+        joinPending={mutations.participantPendingEventIds.has((routeDetailEvent ?? monthDetailEvent)?.id ?? "")}
+        leavePending={mutations.participantPendingEventIds.has((routeDetailEvent ?? monthDetailEvent)?.id ?? "")}
+        onClose={() => {
+          if (filtering.focusEventId) {
+            filtering.clearFocusedEvent();
+          }
+          setMonthDetailEvent(null);
+        }}
         onJoin={(eventId) => { void mutations.handleJoin(eventId); }}
         onLeave={mutations.handleLeave}
         onAddParticipant={mutations.addParticipant}

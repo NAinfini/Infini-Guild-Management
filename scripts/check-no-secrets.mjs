@@ -33,10 +33,15 @@ function splitNull(value) {
 }
 
 export function isForbiddenTrackedFile(file) {
-  const name = basename(file);
+  // POSIX basename treats `\` as an ordinary character, so a Windows-style
+  // path would sail through every name check on Linux. Normalize first —
+  // the verdict must not depend on which OS ran the scanner.
+  const name = basename(file.replace(/\\/g, "/"));
   if (/^\.env(?:\..+)?\.example$/i.test(name) || /^\.dev\.vars(?:\..+)?\.example$/i.test(name)) {
     return false;
   }
+  // Every wrangler.jsonc is a deployment's private manifest (real resource IDs,
+  // domains); only the wrangler.example.jsonc template belongs in the repo.
   return (
     /^\.env(?:\.|$)/i.test(name) ||
     /^\.dev\.vars(?:\.|$)/i.test(name) ||

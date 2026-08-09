@@ -1,8 +1,6 @@
 import type { Announcement } from "@guild/shared";
 import { PushpinOutlined } from "@portal/utils/icons";
-import { DepthButton } from "@portal/components/shared/DepthButton";
-import { PortalCard } from "../../shared/PortalCard";
-import { Alert, Badge, Button, Group, Indicator, Skeleton, Stack, Text, ThemeIcon, Tooltip, VisuallyHidden } from "@mantine/core";
+import { Alert, Badge, Button, Group, Indicator, Paper, Skeleton, Stack, Text, ThemeIcon, Tooltip, VisuallyHidden } from "@mantine/core";
 import { ArchiveIcon, CalendarTimeIcon, CircleCheckIcon, FileTextIcon, PlusIcon } from "@portal/components/icons";
 import { format } from "date-fns";
 import type { ReactNode } from "react";
@@ -68,22 +66,22 @@ export function AnnouncementListCard({
 }: AnnouncementListCardProps) {
   const { t } = useTranslation("announcements");
   return (
-    <PortalCard className="announcements-list-card" interactive={false}>
-      <div style={{ padding: "1.2rem" }}>
-        <Stack gap={8}>
-          <Group justify="space-between" align="center">
-            <Text fw={600}>{title}</Text>
-            {canCreate && onCreate ? (
-              <DepthButton
-                onClick={() => onCreate()}
-                type="primary"
-                size="sm"
-                before={<PlusIcon size={16} />}
-              >
-                {t("action.newAnnouncement")}
-              </DepthButton>
-            ) : null}
-          </Group>
+    <Paper withBorder radius="md" p="var(--card-padding)" className="announcements-list-card">
+      {/* 卡头钉住、清单内滚：「新建公告」是随时要够得着的，跟着列表滚走等于没有。 */}
+      <div className="announcements-card-body">
+        <Group justify="space-between" align="center">
+          <Text fw={600}>{title}</Text>
+          {canCreate && onCreate ? (
+            <Button
+              onClick={() => onCreate()}
+              size="sm"
+              leftSection={<PlusIcon size={16} />}
+            >
+              {t("action.newAnnouncement")}
+            </Button>
+          ) : null}
+        </Group>
+        <Stack gap={8} className="announcements-card-scroll">
           {isLoading ? (
             <Stack gap={8}>
               {Array.from({ length: 4 }).map((_, i) => (
@@ -118,7 +116,8 @@ export function AnnouncementListCard({
                     >
                       <Stack gap={2}>
                         <div className="announcement-item-title">
-                            <Text fw={600}>{item.title}</Text>
+                          <Text fw={600} className="announcement-item-title-text">{item.title}</Text>
+                          <span className="announcement-item-meta">
                           {item.pinned ? <PushpinOutlined className="announcement-item-pin" /> : null}
                           {canEdit || item.status === "archived" ? (() => {
                             const { color, icon } = STATUS_THEME[item.status];
@@ -150,6 +149,7 @@ export function AnnouncementListCard({
                               </Tooltip>
                             );
                           })() : null}
+                          </span>
                         </div>
                         <Group gap={8}>
                           {canEdit && item.status === "scheduled" && item.publish_at ? (
@@ -182,6 +182,6 @@ export function AnnouncementListCard({
           ) : null}
         </Stack>
       </div>
-    </PortalCard>
+    </Paper>
   );
 }

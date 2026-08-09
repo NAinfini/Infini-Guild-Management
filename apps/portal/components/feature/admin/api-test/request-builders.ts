@@ -1,31 +1,49 @@
 import {
-  type CleanupStep,
   type EndpointDef,
   type PreparedEndpointRequest,
   type TestRunContext,
   disposableMemberId,
 } from "./types";
+import { getCurrentGameRules } from "@portal/utils/game-rules";
 
 export function toIso(hoursFromNow: number): string {
   return new Date(Date.now() + hoursFromNow * 60 * 60 * 1000).toISOString();
 }
 
-export function createTinyPngFile(): File {
-  // Minimal valid 1x1 red PNG (68 bytes)
-  const bytes = new Uint8Array([
-    0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, // PNG signature
-    0x00, 0x00, 0x00, 0x0d, 0x49, 0x48, 0x44, 0x52, // IHDR chunk
-    0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x01, 0x08, 0x02, 0x00, 0x00, 0x00, 0x90, 0x77, 0x53,
-    0xde, 0x00, 0x00, 0x00, 0x0c, 0x49, 0x44, 0x41, // IDAT chunk
-    0x54, 0x08, 0xd7, 0x63, 0xf8, 0xcf, 0xc0, 0x00, 0x00, 0x00, 0x03, 0x00, 0x01, 0x36, 0x28, 0xcf,
-    0x80, 0x00, 0x00, 0x00, 0x00, 0x49, 0x45, 0x4e, 0x44, 0xae, 0x42, 0x60, 0x82, // IEND chunk
-  ]);
-  return new File([bytes], "systemtest-image.png", { type: "image/png" });
+/** YYYY-MM-DD，请假接口只收日期不收时刻。 */
+export function isoDate(daysFromNow: number): string {
+  return new Date(Date.now() + daysFromNow * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+}
+
+/*
+ * 冒烟用例直接打接口，绕过了浏览器那一轮转码，所以素材必须已经是能落库的编码：
+ * 服务端按魔术字节复核声明的 MIME（apps/worker/services/media.ts 的
+ * validateUploadBytes），PNG、WAV 这类只在选择器里出现过的格式会被当场拒掉。
+ */
+function decodeBase64(base64: string): ArrayBuffer {
+  const binary = atob(base64);
+  const bytes = new Uint8Array(new ArrayBuffer(binary.length));
+  for (let index = 0; index < binary.length; index += 1) {
+    bytes[index] = binary.charCodeAt(index);
+  }
+  return bytes.buffer;
+}
+
+/** 1×1 无损 WebP（RIFF/WEBP/VP8L）。 */
+const TINY_WEBP_BASE64 = "UklGRhoAAABXRUJQVlA4TA0AAAAvAAAAEAcQERGIiP4HAA==";
+
+/** 0.1 秒静音，16 kHz 单声道 Opus 装在 Ogg 里——和上传链产出的编码同一套参数。 */
+const TINY_OGG_OPUS_BASE64
+  = "T2dnUwACAAAAAAAAAABzkiyQAAAAAAq2k/ABE09wdXNIZWFkAQE4AYA+AAAAAABPZ2dTAAAAAAAAAAAAAHOS"
+  + "LJABAAAAXjXAPgE+T3B1c1RhZ3MNAAAATGF2ZjYwLjE2LjEwMAEAAAAdAAAAZW5jb2Rlcj1MYXZjNjAuMzEu"
+  + "MTAyIGxpYm9wdXNPZ2dTAAT4EwAAAAAAAHOSLJACAAAANztTLwYDAwMDAwO4//64//64//64//64//64//4=";
+
+export function createTinyImageFile(): File {
+  return new File([decodeBase64(TINY_WEBP_BASE64)], "systemtest-image.webp", { type: "image/webp" });
 }
 
 export function createTinyAudioFile(): File {
-  const payload = new Uint8Array([82, 73, 70, 70, 24, 0, 0, 0, 87, 65, 86, 69]);
-  return new File([payload], "systemtest-audio.wav", { type: "audio/wav" });
+  return new File([decodeBase64(TINY_OGG_OPUS_BASE64)], "systemtest-audio.ogg", { type: "audio/ogg" });
 }
 
 export function buildJsonRequest(path: string, body: unknown): PreparedEndpointRequest {
@@ -44,6 +62,17 @@ export function buildFormRequest(path: string, fields: Array<[string, string | F
   return { path, body: form };
 }
 
+function buildImageUploadRequest(
+  path: string,
+  fields: Array<[string, string | File]> = [],
+): PreparedEndpointRequest {
+  return buildFormRequest(path, [
+    ["full", createTinyImageFile()],
+    ["view", createTinyImageFile()],
+    ...fields,
+  ]);
+}
+
 function stripTestFixture(path: string): string {
   return path.replace(/\?fixture=[^&]+&?/, "?").replace(/[?&]$/, "");
 }
@@ -56,218 +85,29 @@ export function skipEndpoint(path: string, reason: string, optionalSkip = false)
   return { path, skipReason: reason, optionalSkip };
 }
 
-export function buildCleanupSteps(ctx: TestRunContext): CleanupStep[] {
-  const cleanupSteps: CleanupStep[] = [];
-  const disposableUserId = disposableMemberId(ctx);
-
-  if (ctx.createdStorageImageId && ctx.createdStorageItemId) {
-    cleanupSteps.push({
-      label: "Cleanup: Storage Image",
-      method: "DELETE",
-      path: `/api/storage/items/${encodeURIComponent(ctx.createdStorageItemId)}/images/${encodeURIComponent(ctx.createdStorageImageId)}`,
-      clearContext: { createdStorageImageId: null, storageImageKey: null },
-    });
+/*
+ * 徽章、职业、职业标签三个 reorder 接口共同的约定：请求体必须列全服务端现有的
+ * 每一个 id（整表核对，理由见 shared/schemas/class-catalog.ts）。所以这类用例没有
+ * 「只动本次夹具」的做法——原样回放列表 GET 抓到的服务端现序，把本次运行新建的
+ * 那一个补在末尾（创建时按 max+10 追加，末尾就是它的现位）。服务端照此把
+ * sort_order 规范化成下标 * 10：写路径完整走了一遍，站上的相对顺序一处不变。
+ */
+export function buildReorderRequest(
+  path: string,
+  capturedOrder: readonly string[] | null,
+  createdId: string | null,
+  missing: string,
+): PreparedEndpointRequest {
+  if (!capturedOrder) {
+    return skipEndpoint(path, `Missing ${missing}`);
   }
-  if (ctx.createdStorageItemId) {
-    cleanupSteps.push({
-      label: "Cleanup: Storage Item",
-      method: "DELETE",
-      path: `/api/storage/items/${encodeURIComponent(ctx.createdStorageItemId)}`,
-      clearContext: { createdStorageItemId: null },
-    });
+  const order = createdId && !capturedOrder.includes(createdId)
+    ? [...capturedOrder, createdId]
+    : [...capturedOrder];
+  if (order.length === 0) {
+    return skipEndpoint(path, "Nothing to reorder");
   }
-  if (ctx.createdStorageCategoryId && ctx.createdStorageId) {
-    cleanupSteps.push({
-      label: "Cleanup: Storage Category",
-      method: "DELETE",
-      path: `/api/storage/storages/${encodeURIComponent(ctx.createdStorageId)}/categories/${encodeURIComponent(ctx.createdStorageCategoryId)}`,
-      clearContext: { createdStorageCategoryId: null },
-    });
-  }
-  if (ctx.createdStorageId) {
-    cleanupSteps.push({
-      label: "Cleanup: Storage",
-      method: "DELETE",
-      path: `/api/storage/storages/${encodeURIComponent(ctx.createdStorageId)}`,
-      clearContext: { createdStorageId: null },
-    });
-  }
-
-  if (ctx.createdBadgeId) {
-    cleanupSteps.push({
-      label: "Cleanup: Badge",
-      method: "DELETE",
-      path: `/api/badges/${encodeURIComponent(ctx.createdBadgeId)}`,
-      clearContext: { createdBadgeId: null },
-    });
-  }
-  if (ctx.createdGalleryVideoId) {
-    cleanupSteps.push({
-      label: "Cleanup: Gallery Video",
-      method: "DELETE",
-      path: `/api/gallery/${encodeURIComponent(ctx.createdGalleryVideoId)}`,
-      clearContext: { createdGalleryVideoId: null },
-    });
-  }
-  if (ctx.createdGalleryImageId) {
-    cleanupSteps.push({
-      label: "Cleanup: Gallery Image",
-      method: "DELETE",
-      path: `/api/gallery/${encodeURIComponent(ctx.createdGalleryImageId)}`,
-      clearContext: { createdGalleryImageId: null },
-    });
-  }
-  if (ctx.createdAnnouncementId) {
-    cleanupSteps.push({
-      label: "Cleanup: Announcement",
-      method: "DELETE",
-      path: `/api/announcements/${encodeURIComponent(ctx.createdAnnouncementId)}/permanent`,
-      clearContext: { createdAnnouncementId: null },
-    });
-  }
-  if (ctx.createdWikiArticleId) {
-    cleanupSteps.push({
-      label: "Cleanup: Wiki Article",
-      method: "DELETE",
-      path: `/api/wiki/articles/${encodeURIComponent(ctx.createdWikiArticleId)}/permanent`,
-      clearContext: { createdWikiArticleId: null },
-    });
-  }
-  if (ctx.createdWikiCategoryId) {
-    cleanupSteps.push({
-      label: "Cleanup: Wiki Category",
-      method: "DELETE",
-      path: `/api/wiki/categories/${encodeURIComponent(ctx.createdWikiCategoryId)}`,
-      clearContext: { createdWikiCategoryId: null },
-    });
-  }
-  if (ctx.createdWarHistoryId) {
-    cleanupSteps.push({
-      label: "Cleanup: War History",
-      method: "DELETE",
-      path: `/api/guild-war/history/${encodeURIComponent(ctx.createdWarHistoryId)}`,
-      clearContext: {
-        createdWarHistoryId: null,
-      },
-    });
-  }
-  if (ctx.createdConcludedWarHistoryId) {
-    cleanupSteps.push({
-      label: "Cleanup: Concluded War History",
-      method: "DELETE",
-      path: `/api/guild-war/history/${encodeURIComponent(ctx.createdConcludedWarHistoryId)}`,
-      clearContext: { createdConcludedWarHistoryId: null },
-    });
-  }
-  if (ctx.createdTemplateId) {
-    cleanupSteps.push({
-      label: "Cleanup: Event Template",
-      method: "DELETE",
-      path: `/api/events/templates/${encodeURIComponent(ctx.createdTemplateId)}`,
-      clearContext: { createdTemplateId: null },
-    });
-  }
-  if (ctx.createdGuildWarEventId && ctx.createdGuildWarEventId !== ctx.createdEventId) {
-    cleanupSteps.push({
-      label: "Cleanup: Archive Guild War Event",
-      method: "DELETE",
-      path: `/api/events/${encodeURIComponent(ctx.createdGuildWarEventId)}`,
-    });
-    cleanupSteps.push({
-      label: "Cleanup: Destroy Guild War Event",
-      method: "DELETE",
-      path: `/api/events/${encodeURIComponent(ctx.createdGuildWarEventId)}/destroy`,
-      clearContext: { createdGuildWarEventId: null },
-    });
-  }
-  if (ctx.createdPollEventId) {
-    cleanupSteps.push({
-      label: "Cleanup: Poll Event",
-      method: "DELETE",
-      path: `/api/events/${encodeURIComponent(ctx.createdPollEventId)}/destroy`,
-      clearContext: { createdPollEventId: null, pollOptionId: null },
-    });
-  }
-  if (ctx.createdRaffleEventId) {
-    cleanupSteps.push({
-      label: "Cleanup: Raffle Event",
-      method: "DELETE",
-      path: `/api/events/${encodeURIComponent(ctx.createdRaffleEventId)}/destroy`,
-      clearContext: { createdRaffleEventId: null },
-    });
-  }
-  if (ctx.createdEventId) {
-    cleanupSteps.push({
-      label: "Cleanup: Archive Event",
-      method: "DELETE",
-      path: `/api/events/${encodeURIComponent(ctx.createdEventId)}`,
-    });
-    cleanupSteps.push({
-      label: "Cleanup: Destroy Event",
-      method: "DELETE",
-      path: `/api/events/${encodeURIComponent(ctx.createdEventId)}/destroy`,
-      clearContext: { createdEventId: null },
-    });
-  }
-  if (ctx.createdInviteLinkId) {
-    cleanupSteps.push({
-      label: "Cleanup: Invite Link",
-      method: "DELETE",
-      path: `/api/admin/invite-links/${encodeURIComponent(ctx.createdInviteLinkId)}/permanent`,
-      clearContext: { createdInviteLinkId: null },
-    });
-  }
-  if (ctx.createdRoleId) {
-    cleanupSteps.push({
-      label: "Cleanup: Admin Role",
-      method: "DELETE",
-      path: `/api/admin/roles/${encodeURIComponent(ctx.createdRoleId)}`,
-      clearContext: { createdRoleId: null },
-    });
-  }
-  if (disposableUserId && ctx.targetProfileSnapshot) {
-    cleanupSteps.push({
-      label: "Cleanup: Restore Profile",
-      method: "PATCH",
-      path: `/api/users/${encodeURIComponent(disposableUserId)}/profile`,
-      jsonBody: ctx.targetProfileSnapshot,
-      clearContext: { targetProfileSnapshot: null },
-    });
-  }
-  if (disposableUserId && ctx.uploadedImageKey) {
-    cleanupSteps.push({
-      label: "Cleanup: Test Image",
-      method: "DELETE",
-      path: `/api/users/${encodeURIComponent(disposableUserId)}/media/images`,
-      jsonBody: { keys: [ctx.uploadedImageKey] },
-      clearContext: { uploadedImageKey: null },
-    });
-  }
-  if (ctx.registeredUserId) {
-    cleanupSteps.push({
-      label: "Cleanup: Registered User",
-      method: "PATCH",
-      path: "/api/admin/users/batch/delete",
-      jsonBody: { user_ids: [ctx.registeredUserId] },
-      clearContext: {
-        registeredUserId: null,
-        ...(ctx.adminCreatedUserId === ctx.registeredUserId
-          ? { adminCreatedUserId: null, adminCreatedUsername: null, adminCreatedUserPassword: null }
-          : {}),
-      },
-    });
-  }
-  if (ctx.adminCreatedUserId && ctx.adminCreatedUserId !== ctx.registeredUserId) {
-    cleanupSteps.push({
-      label: "Cleanup: Admin Created User",
-      method: "PATCH",
-      path: "/api/admin/users/batch/delete",
-      jsonBody: { user_ids: [ctx.adminCreatedUserId] },
-      clearContext: { adminCreatedUserId: null, adminCreatedUsername: null, adminCreatedUserPassword: null },
-    });
-  }
-
-  return cleanupSteps;
+  return buildJsonRequest(path, { order });
 }
 
 export function replacePathParam(path: string, key: string, value: string | null): string | null {
@@ -282,6 +122,17 @@ export function replacePathParam(path: string, key: string, value: string | null
 
 export function resolveEndpointPath(endpoint: EndpointDef, context: TestRunContext): { path: string; missing: string | null } {
   let path = endpoint.path;
+
+  if (endpoint.path === "/api/media/:mediaId/:variant") {
+    const mediaId = endpoint.mediaIdContext ? context[endpoint.mediaIdContext] : null;
+    if (!mediaId || !endpoint.mediaVariant) {
+      return { path, missing: "media id (run the corresponding upload first)" };
+    }
+    return {
+      path: `/api/media/${encodeURIComponent(mediaId)}/${endpoint.mediaVariant}`,
+      missing: null,
+    };
+  }
 
   if (endpoint.path === "/api/admin/audit-archive/download") {
     const month = context.auditArchiveMonth;
@@ -324,10 +175,29 @@ export function resolveEndpointPath(endpoint: EndpointDef, context: TestRunConte
     path = next;
   }
 
-  if (path.includes("/api/users/") && path.includes(":key")) {
-    const next = replacePathParam(path, ":key", context.userImageKey);
+  if (path.includes(":absenceId")) {
+    const next = replacePathParam(path, ":absenceId", context.createdAbsenceId);
     if (!next) {
-      return { path, missing: "uploaded image key" };
+      return { path, missing: "created absence id (run the absence create first)" };
+    }
+    path = next;
+  }
+
+  if (path.includes("/api/classes/:id")) {
+    /* 只允许操作本次跑出来的职业。既有职业被成员档案按名字引用，
+       改名或删除都会把线上数据打散，而且没有任何回滚路径。 */
+    const next = replacePathParam(path, ":id", context.createdClassId);
+    if (!next) {
+      return { path, missing: "created class id" };
+    }
+    path = next;
+  }
+
+  if (path.includes("/api/class-tags/:id")) {
+    /* 同职业：只动本次运行创建的标签，既有标签被活动配额引用。 */
+    const next = replacePathParam(path, ":id", context.createdClassTagId);
+    if (!next) {
+      return { path, missing: "created class tag id" };
     }
     path = next;
   }
@@ -459,24 +329,9 @@ export function resolveEndpointPath(endpoint: EndpointDef, context: TestRunConte
   }
 
   if (path.includes("/api/storage/items/") && path.includes(":imageId")) {
-    const next = replacePathParam(path, ":imageId", context.createdStorageImageId);
+    const next = replacePathParam(path, ":imageId", context.storageImageMediaId);
     if (!next) {
-      return { path, missing: "created storage image id" };
-    }
-    path = next;
-  }
-
-  if (endpoint.path === "/api/storage/image") {
-    if (!context.storageImageKey) {
-      return { path, missing: "storage image key (run storage image upload first)" };
-    }
-    return { path: `/api/storage/image?key=${encodeURIComponent(context.storageImageKey)}`, missing: null };
-  }
-
-  if (path.includes("/api/game-data/rotations/:classId")) {
-    const next = replacePathParam(path, ":classId", context.gameDataClassId);
-    if (!next) {
-      return { path, missing: "game data class id (run game data first)" };
+      return { path, missing: "created storage image media id" };
     }
     path = next;
   }
@@ -523,41 +378,6 @@ export function resolveEndpointPath(endpoint: EndpointDef, context: TestRunConte
     path = next;
   }
 
-  if (endpoint.path === "/api/users/image") {
-    if (!context.userImageKey) {
-      return { path, missing: "user image key (run user image upload first)" };
-    }
-    return { path: `/api/users/image?key=${encodeURIComponent(context.userImageKey)}`, missing: null };
-  }
-
-  if (endpoint.path === "/api/events/image") {
-    if (!context.eventImageKey) {
-      return { path, missing: "event image key (run event image upload first)" };
-    }
-    return { path: `/api/events/image?key=${encodeURIComponent(context.eventImageKey)}`, missing: null };
-  }
-
-  if (endpoint.path === "/api/announcements/image") {
-    if (!context.announcementImageKey) {
-      return { path, missing: "announcement image key (run announcement image upload first)" };
-    }
-    return { path: `/api/announcements/image?key=${encodeURIComponent(context.announcementImageKey)}`, missing: null };
-  }
-
-  if (endpoint.path === "/api/gallery/image") {
-    if (!context.galleryImageKey) {
-      return { path, missing: "gallery image key (run gallery image upload first)" };
-    }
-    return { path: `/api/gallery/image?key=${encodeURIComponent(context.galleryImageKey)}`, missing: null };
-  }
-
-  if (endpoint.path === "/api/wiki/image") {
-    if (!context.wikiImageKey) {
-      return { path, missing: "wiki image key (run wiki image upload first)" };
-    }
-    return { path: `/api/wiki/image?key=${encodeURIComponent(context.wikiImageKey)}`, missing: null };
-  }
-
   if (path.includes("/api/badges/:id")) {
     const next = replacePathParam(path, ":id", isMutableMethod(endpoint.method) ? context.createdBadgeId : context.badgeId);
     if (!next) {
@@ -596,6 +416,22 @@ export function resolveEndpointPath(endpoint: EndpointDef, context: TestRunConte
 }
 
 export function prepareEndpointRequest(endpoint: EndpointDef, context: TestRunContext): PreparedEndpointRequest {
+  const gameRules = getCurrentGameRules();
+  const eventTypeForBehavior = (behavior: "standard" | "guild_war" | "poll" | "raffle") =>
+    gameRules.events.types.find((definition) => definition.behavior === behavior && definition.enabled)?.id;
+  const winningResultId = "win";
+  const teamStatsFixture = Object.fromEntries(gameRules.guild_war.team_stats.map((definition, index) => [
+    definition.key,
+    index === 0 ? 10 : 1,
+  ]));
+  const enemyTeamStatsFixture = Object.fromEntries(gameRules.guild_war.team_stats.map((definition, index) => [
+    definition.key,
+    index === 0 ? 5 : 0,
+  ]));
+  const memberStatsFixture = Object.fromEntries(gameRules.guild_war.member_stats.map((definition, index) => [
+    definition.key,
+    index === 0 ? 1 : 0,
+  ]));
   const resolved = resolveEndpointPath(endpoint, context);
   if (resolved.missing) {
     if (endpoint.path === "/api/admin/audit-archive/download") {
@@ -618,10 +454,10 @@ export function prepareEndpointRequest(endpoint: EndpointDef, context: TestRunCo
       case "/api/users/:id/media/audio":
         return { path };
       case "/api/users/:id/media/images":
-        if (!context.uploadedImageKey) {
+        if (!context.uploadedImageMediaId) {
           return skipEndpoint(path, "No test-uploaded image to delete");
         }
-        return buildJsonRequest(path, { keys: [context.uploadedImageKey] });
+        return buildJsonRequest(path, { media_ids: [context.uploadedImageMediaId] });
       case "/api/events/:id/participants":
         if (!context.eventParticipantUserId && !testMemberId) {
           return skipEndpoint(path, "Missing test member id");
@@ -635,17 +471,96 @@ export function prepareEndpointRequest(endpoint: EndpointDef, context: TestRunCo
   }
 
   if (endpoint.method === "GET") {
+    if (endpoint.path === "/api/auth/me") {
+      return skipEndpoint(
+        path,
+        "Skipping auth profile read because the endpoint may lazily create a production admin profile",
+        true,
+      );
+    }
+    if (endpoint.path === "/api/guild-war/history/batch") {
+      const historyId = context.createdWarHistoryId ?? context.warHistoryId;
+      if (!historyId) {
+        return skipEndpoint(path, "Missing war history id");
+      }
+      return { path: `${path}?ids=${encodeURIComponent(historyId)}` };
+    }
     return { path };
   }
 
-  const nowId = Date.now();
+  const nowId = context.fixtureId?.replaceAll("-", "") ?? "missingfixture";
   switch (`${endpoint.method} ${endpoint.path}`) {
     case "PATCH /api/admin/analytics-settings":
       return skipEndpoint(path, "Skipping global analytics settings mutation to avoid touching existing database state", true);
 
+    /*
+     * 下面这五个端点被登记进目录只是为了让覆盖情况可见，它们永远不会真的发出去。
+     * 每一条都会改动跑测试这个人自己或整站的状态，而且没有任何回滚路径——
+     * 不是「暂时不测」，是「测了就没法还原」。
+     */
+    case "POST /api/auth/logout":
+      return skipEndpoint(path, "Skipping logout because it would terminate the admin session running this console", true);
+
+    case "PATCH /api/admin/site-config":
+      return skipEndpoint(path, "Skipping global site config mutation: it has no per-run cleanup path", true);
+
+    case "POST /api/admin/site-config/logo":
+      return skipEndpoint(path, "Skipping site logo upload because it replaces the live logo for every visitor", true);
+
+    case "POST /api/users/:id/change-password":
+      return skipEndpoint(path, "Skipping password change: the endpoint is self-only, so it would change the running admin's own password", true);
+
+    case "POST /api/users/:id/change-username":
+      return skipEndpoint(path, "Skipping username change: the endpoint is self-only and rejects the reserved systemtest prefix", true);
+
+    case "POST /api/classes":
+      return buildJsonRequest(path, {
+        label: `[systemtest] API Class ${nowId.slice(0, 24)}`,
+        color: "#B8922F",
+        vector_icon: "sword",
+      });
+
+    case "PATCH /api/classes/:id":
+      return buildJsonRequest(path, {
+        label: `[systemtest] API Class Updated ${nowId.slice(0, 16)}`,
+        vector_icon: "shield",
+      });
+
+    case "PATCH /api/classes/reorder":
+      return buildReorderRequest(path, context.classIdsInOrder, context.createdClassId, "class order (run the class list first)");
+
+    case "POST /api/classes/:id/icon":
+      return buildImageUploadRequest(path);
+
+    case "POST /api/class-tags":
+      /* class_ids 留空：职业目录里那枚测试职业在自己那一类收尾时就删掉了，
+         标签的成员流转由 e2e 的管理页用例覆盖，这里只体检标签自身的写路径。 */
+      return buildJsonRequest(path, {
+        label: `[systemtest] API Tag ${nowId.slice(0, 24)}`,
+        class_ids: [],
+      });
+
+    case "PATCH /api/class-tags/:id":
+      return buildJsonRequest(path, {
+        label: `[systemtest] API Tag Updated ${nowId.slice(0, 16)}`,
+      });
+
+    case "PATCH /api/class-tags/reorder":
+      return buildReorderRequest(path, context.classTagIdsInOrder, context.createdClassTagId, "class tag order (run the class tag list first)");
+
+    case "POST /api/users/:id/absences":
+      return buildJsonRequest(path, {
+        start_date: isoDate(30),
+        end_date: isoDate(32),
+        note: "[systemtest] API absence",
+      });
+
+    case "POST /api/wiki/articles/:id/revisions/1/restore":
+      return buildJsonRequest(path, {});
+
     case "POST /api/auth/register/:inviteCode":
       {
-        const username = `systemtest_${nowId}`;
+        const username = `apitest_${nowId.slice(0, 32)}`;
         context.registeredUsername = username;
         context.registeredUserPassword = "Passw0rd!";
         return {
@@ -666,7 +581,8 @@ export function prepareEndpointRequest(endpoint: EndpointDef, context: TestRunCo
       });
 
     case "POST /api/users/:id/media/images":
-      return buildFormRequest(path, [["file", createTinyPngFile()]]);
+    case "POST /api/users/:id/media/avatar":
+      return buildImageUploadRequest(path);
 
     case "POST /api/users/:id/media/audio":
       return buildFormRequest(path, [["file", createTinyAudioFile()]]);
@@ -677,12 +593,12 @@ export function prepareEndpointRequest(endpoint: EndpointDef, context: TestRunCo
     case "POST /api/events?fixture=raffle":
       return buildJsonRequest(path, {
         type: endpoint.path === "/api/events?fixture=guild-war"
-          ? "guild_war"
+          ? eventTypeForBehavior("guild_war")
           : endpoint.path === "/api/events?fixture=poll"
-            ? "poll"
+            ? eventTypeForBehavior("poll")
             : endpoint.path === "/api/events?fixture=raffle"
-              ? "raffle"
-              : "weekly_mission",
+              ? eventTypeForBehavior("raffle")
+              : eventTypeForBehavior("standard"),
         title: endpoint.path === "/api/events?fixture=guild-war"
           ? `[systemtest] API Guild War Event ${nowId}`
           : endpoint.path === "/api/events?fixture=poll"
@@ -706,7 +622,7 @@ export function prepareEndpointRequest(endpoint: EndpointDef, context: TestRunCo
       });
 
     case "POST /api/events/:id/images":
-      return buildFormRequest(path, [["file", createTinyPngFile()]]);
+      return buildImageUploadRequest(path);
 
     case "POST /api/events/:id/join":
       return { path };
@@ -720,62 +636,42 @@ export function prepareEndpointRequest(endpoint: EndpointDef, context: TestRunCo
         user_ids: [testMemberId],
       });
 
-    case "POST /api/events/templates":
+    case "POST /api/events/templates": {
+      const start = new Date(Date.now() + 4 * 60 * 60 * 1000);
       return buildJsonRequest(path, {
         type: "social",
         title: `[systemtest] API Template ${nowId}`,
         description: "[systemtest] Recurring template from API tester",
-        start_at: toIso(4),
-        end_at: toIso(5),
+        start_time: start.toISOString().slice(11, 16),
+        duration_minutes: 60,
         recurrence_rule: {
           frequency: "weekly",
           interval: 1,
-          daysOfWeek: [1],
+          daysOfWeek: [start.getUTCDay()],
         },
       });
+    }
 
     case "PATCH /api/events/templates/:id":
       return buildJsonRequest(path, {
         title: `[systemtest] API Template Updated ${nowId}`,
       });
 
-    case "POST /api/announcements/images/stage":
-      return buildFormRequest(path, [["files", createTinyPngFile()]]);
-
     case "POST /api/announcements": {
-      const stagedKey = context.announcementImageKey;
-      const stagingToken = context.announcementStagingToken;
-      const bodyJson = stagingToken && stagedKey
-        ? {
-            type: "doc",
-            content: [
-              {
-                type: "paragraph",
-                content: [{ type: "text", text: "[systemtest] Created by API tester" }],
-              },
-              {
-                type: "image",
-                attrs: {
-                  src: `/api/announcements/image?key=${encodeURIComponent(stagedKey)}`,
-                },
-              },
-            ],
-          }
-        : {
-            type: "doc",
-            content: [
-              {
-                type: "paragraph",
-                content: [{ type: "text", text: "[systemtest] Created by API tester" }],
-              },
-            ],
-          };
+      const bodyJson = {
+        type: "doc",
+        content: [
+          {
+            type: "paragraph",
+            content: [{ type: "text", text: "[systemtest] Created by API tester" }],
+          },
+        ],
+      };
       return buildJsonRequest(path, {
         title: `[systemtest] API Announcement ${nowId}`,
         body_json: JSON.stringify(bodyJson),
         pinned: false,
         status: "draft",
-        ...(stagingToken && stagedKey ? { staging_token: stagingToken } : {}),
       });
     }
 
@@ -786,11 +682,10 @@ export function prepareEndpointRequest(endpoint: EndpointDef, context: TestRunCo
       });
 
     case "POST /api/announcements/:id/images":
-      return buildFormRequest(path, [["file", createTinyPngFile()]]);
+      return buildImageUploadRequest(path);
 
     case "POST /api/gallery/images":
-      return buildFormRequest(path, [
-        ["file", createTinyPngFile()],
+      return buildImageUploadRequest(path, [
         ["captions", "[systemtest] API test image"],
       ]);
 
@@ -849,15 +744,15 @@ export function prepareEndpointRequest(endpoint: EndpointDef, context: TestRunCo
         event_id: context.createdGuildWarEventId ?? context.createdEventId,
         war_info: {
           enemy_name: "[systemtest] API Enemy",
-          result: "win",
+          result: winningResultId,
           duration_minutes: 30,
-          own_stats: { kills: 10, towers: 3, credits: 10000, distance: 3000, base_hp: 50 },
-          enemy_stats: { kills: 5, towers: 1, credits: 8000, distance: 2000, base_hp: 0 },
+          own_stats: teamStatsFixture,
+          enemy_stats: enemyTeamStatsFixture,
         },
         member_stats: [
           {
             user_id: context.warMemberUserId ?? testMemberId,
-            stats: { kills: 1 },
+            stats: memberStatsFixture,
           },
         ],
       });
@@ -875,10 +770,13 @@ export function prepareEndpointRequest(endpoint: EndpointDef, context: TestRunCo
       });
 
     case "POST /api/guild-war/history":
+      if (!context.createdGuildWarEventId) {
+        return skipEndpoint(path, "Missing created guild war event for history");
+      }
       return buildJsonRequest(path, {
-        event_id: context.createdGuildWarEventId ?? context.createdEventId ?? context.eventId ?? context.warEventId ?? undefined,
+        event_id: context.createdGuildWarEventId,
         war_name: `[systemtest] API Test War ${nowId}`,
-        result: "win",
+        result: winningResultId,
       });
 
     case "PATCH /api/guild-war/history/:id":
@@ -908,6 +806,16 @@ export function prepareEndpointRequest(endpoint: EndpointDef, context: TestRunCo
         name: `[systemtest] API Category Updated ${nowId}`,
       });
 
+    case "PATCH /api/wiki/categories/batch":
+      /* 批量口收的是子集，所以只对本次创建的分类下手；sort_order 写回创建时的 0，
+         批量写路径走完，分类的位置一点不动。 */
+      if (!context.createdWikiCategoryId) {
+        return skipEndpoint(path, "Missing created wiki category id");
+      }
+      return buildJsonRequest(path, {
+        updates: [{ id: context.createdWikiCategoryId, sort_order: 0 }],
+      });
+
     case "POST /api/wiki/articles":
       if (!context.wikiArticleCategoryId && !context.wikiCategoryId) {
         return skipEndpoint(path, "Missing wiki category id");
@@ -925,25 +833,36 @@ export function prepareEndpointRequest(endpoint: EndpointDef, context: TestRunCo
       });
 
     case "POST /api/wiki/articles/:id/images":
-      return buildFormRequest(path, [["file", createTinyPngFile()]]);
+      return buildImageUploadRequest(path);
 
     case "POST /api/admin/invite-links":
+      if (!context.adminRoleId) {
+        return skipEndpoint(path, "Missing assignable admin role id");
+      }
       return buildJsonRequest(path, {
+        role_id: context.adminRoleId,
         max_uses: 1,
       });
 
     case "POST /api/admin/users":
+      if (!context.adminRoleId) {
+        return skipEndpoint(path, "Missing assignable admin role id");
+      }
       return buildJsonRequest(path, {
-        username: `systemtest_admin_${nowId}`,
+        username: `apitestadmin_${nowId.slice(0, 32)}`,
+        role_id: context.adminRoleId,
       });
 
     case "PATCH /api/admin/users/batch/role":
       if (!context.adminCreatedUserId) {
         return skipEndpoint(path, "Missing created admin user id");
       }
+      if (!context.adminRoleId) {
+        return skipEndpoint(path, "Missing assignable admin role id");
+      }
       return buildJsonRequest(path, {
         user_ids: [context.adminCreatedUserId],
-        new_role: "member",
+        new_role: context.adminRoleId,
       });
 
     case "PATCH /api/admin/users/batch/deactivate":
@@ -971,8 +890,11 @@ export function prepareEndpointRequest(endpoint: EndpointDef, context: TestRunCo
       });
 
     case "PATCH /api/admin/users/:id/role":
+      if (!context.adminRoleId) {
+        return skipEndpoint(path, "Missing assignable admin role id");
+      }
       return buildJsonRequest(path, {
-        role: "member",
+        role: context.adminRoleId,
       });
 
     case "PATCH /api/admin/users/:id/deactivate":
@@ -1005,22 +927,34 @@ export function prepareEndpointRequest(endpoint: EndpointDef, context: TestRunCo
 
     case "POST /api/auth/login":
       {
-        const username = context.adminCreatedUsername ?? context.registeredUsername;
-        const password = context.adminCreatedUserPassword ?? context.registeredUserPassword;
-        if (!username || !password) {
+        const adminCredentials = context.adminCreatedUserId
+          && context.adminCreatedUsername
+          && context.adminCreatedUserPassword
+          ? {
+              username: context.adminCreatedUsername,
+              password: context.adminCreatedUserPassword,
+            }
+          : null;
+        const registeredCredentials = context.registeredUserId
+          && context.registeredUsername
+          && context.registeredUserPassword
+          ? {
+              username: context.registeredUsername,
+              password: context.registeredUserPassword,
+            }
+          : null;
+        const credentials = adminCredentials ?? registeredCredentials;
+        if (!credentials) {
           return skipEndpoint(path, "Requires test user credentials");
         }
         return {
-          ...buildJsonRequest(path, {
-            username,
-            password,
-          }),
+          ...buildJsonRequest(path, credentials),
           credentials: "omit",
         };
       }
 
     case "POST /api/users/:id/media/avatar":
-      return buildFormRequest(path, [["file", createTinyPngFile()]]);
+      return buildFormRequest(path, [["file", createTinyImageFile()]]);
 
     case "POST /api/events/batch-details":
       if (!context.createdEventId && !context.eventId) {
@@ -1047,14 +981,6 @@ export function prepareEndpointRequest(endpoint: EndpointDef, context: TestRunCo
       }
       return buildJsonRequest(path, {
         ids: [context.galleryDeleteId],
-      });
-
-    case "POST /api/guild-war/history/batch":
-      if (!context.createdWarHistoryId && !context.warHistoryId) {
-        return skipEndpoint(path, "Missing war history id");
-      }
-      return buildJsonRequest(path, {
-        ids: [context.createdWarHistoryId ?? context.warHistoryId],
       });
 
     case "POST /api/guild-war/history/batch-delete":
@@ -1087,6 +1013,9 @@ export function prepareEndpointRequest(endpoint: EndpointDef, context: TestRunCo
       return buildJsonRequest(path, {
         name: `[systemtest] API Badge Updated ${nowId}`,
       });
+
+    case "PATCH /api/badges/reorder":
+      return buildReorderRequest(path, context.badgeIdsInOrder, context.createdBadgeId, "badge order (run the badge list first)");
 
     case "POST /api/badges/:id/assign":
       if (!testMemberId) {
@@ -1184,7 +1113,7 @@ export function prepareEndpointRequest(endpoint: EndpointDef, context: TestRunCo
       });
 
     case "POST /api/storage/items/:id/images":
-      return buildFormRequest(path, [["file", createTinyPngFile()]]);
+      return buildImageUploadRequest(path);
 
     default:
       return { path };

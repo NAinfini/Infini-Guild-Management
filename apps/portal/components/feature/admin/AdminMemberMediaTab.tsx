@@ -1,15 +1,13 @@
+import { AUDIO_FILE_ACCEPT, IMAGE_FILE_ACCEPT } from "@guild/shared";
 import { ImageGridEditor } from "@portal/components/shared/ImageGridEditor";
 import type { ImageGridEditorItem } from "@portal/types/media";
-import { PortalCard } from "../../shared/PortalCard";
-import { Avatar, Button, FileButton, Group, Progress, Stack, Text, TextInput } from "@mantine/core";
+import { Avatar, Button, FileButton, Group, Paper, Progress, Stack, Text, TextInput } from "@mantine/core";
 import { PlusIcon, TrashIcon, UploadIcon, UserIcon } from "@portal/components/icons";
-import { useConfirmDialog } from "@portal/components/shared/ConfirmDialog";
+import { useConfirmDialog } from "@portal/hooks/useConfirmDialog";
 import { useTranslation } from "react-i18next";
 import type { UseMediaUploadState } from "../../../hooks/useMediaUpload";
 import type { UsersListResponse } from "../../../services/UserService";
-import { resolveProfileMediaUrl } from "../../../utils/media";
-
-const PROFILE_IMAGE_MAX = 10;
+import { resolveMediaUrl } from "../../../utils/media";
 
 type AdminUserRow = UsersListResponse["data"][number];
 
@@ -17,6 +15,7 @@ type AdminMemberMediaTabProps = {
   member: AdminUserRow;
   isAdmin: boolean;
   isModerator: boolean;
+  profileImageQuota: number;
   imageItems: ImageGridEditorItem[];
   imageUploader: UseMediaUploadState<unknown>;
   imageReorderPending: boolean;
@@ -46,6 +45,7 @@ export function AdminMemberMediaTab(props: AdminMemberMediaTabProps) {
     member,
     isAdmin,
     isModerator,
+    profileImageQuota,
     imageItems,
     imageUploader,
     imageReorderPending,
@@ -108,18 +108,18 @@ export function AdminMemberMediaTab(props: AdminMemberMediaTabProps) {
 
   return (
     <Stack gap={16}>
-      <PortalCard interactive={false}>
-        <div style={{ padding: "1.2rem" }}>
+      <Paper withBorder radius="md">
+        <div style={{ padding: "var(--card-padding)" }}>
           <Text fw={600} size="sm" mb={12}>{t("media.avatar")}</Text>
           <Group gap={16} align="center">
-            <Avatar size={72} radius="xl" src={member.profile.avatar_key ? resolveProfileMediaUrl(member.profile.avatar_key) : undefined}>
+            <Avatar size={72} radius="xl" src={member.profile.avatar_media_id ? resolveMediaUrl(member.profile.avatar_media_id) : undefined}>
               <UserIcon size={32} />
             </Avatar>
             {isModerator ? (
               <Stack gap={6}>
                 <FileButton
                   onChange={(file) => { if (file) onUploadAvatar(file); }}
-                  accept="image/jpeg,image/png,image/gif,image/webp,image/avif"
+                  accept={IMAGE_FILE_ACCEPT}
                 >
                   {(props) => (
                     <Button
@@ -133,7 +133,7 @@ export function AdminMemberMediaTab(props: AdminMemberMediaTabProps) {
                     </Button>
                   )}
                 </FileButton>
-                {member.profile.avatar_key && isAdmin ? (
+                {member.profile.avatar_media_id && isAdmin ? (
                   <Button
                     variant="subtle"
                     color="red"
@@ -149,10 +149,10 @@ export function AdminMemberMediaTab(props: AdminMemberMediaTabProps) {
             ) : null}
           </Group>
         </div>
-      </PortalCard>
+      </Paper>
 
-      <PortalCard interactive={false}>
-        <div style={{ padding: "1.2rem" }}>
+      <Paper withBorder radius="md">
+        <div style={{ padding: "var(--card-padding)" }}>
           <Text fw={600} size="sm" mb={12}>{t("media.images")}</Text>
           {imageItems.length === 0 && !isModerator ? (
             <Text c="dimmed" size="sm">{t("media.noImages")}</Text>
@@ -163,7 +163,7 @@ export function AdminMemberMediaTab(props: AdminMemberMediaTabProps) {
                 onReorder={onImageReorder}
                 onDelete={isAdmin ? onImageDelete : undefined}
                 onFilesSelected={isModerator ? imageUploader.selectFiles : undefined}
-                maxImages={PROFILE_IMAGE_MAX}
+                maxImages={profileImageQuota}
                 imageSize={80}
                 disabled={imageDeletePending || imageReorderPending}
                 aria-label={t("media.aria.profileImagesGrid")}
@@ -194,10 +194,10 @@ export function AdminMemberMediaTab(props: AdminMemberMediaTabProps) {
             </Stack>
           )}
         </div>
-      </PortalCard>
+      </Paper>
 
-      <PortalCard interactive={false}>
-        <div style={{ padding: "1.2rem" }}>
+      <Paper withBorder radius="md">
+        <div style={{ padding: "var(--card-padding)" }}>
           <Text fw={600} size="sm" mb={12}>{t("media.videos")}</Text>
           <Stack gap={8}>
             {videoUrls.map((url, index) => (
@@ -258,16 +258,16 @@ export function AdminMemberMediaTab(props: AdminMemberMediaTabProps) {
             ) : null}
           </Stack>
         </div>
-      </PortalCard>
+      </Paper>
 
-      <PortalCard interactive={false}>
-        <div style={{ padding: "1.2rem" }}>
+      <Paper withBorder radius="md">
+        <div style={{ padding: "var(--card-padding)" }}>
           <Text fw={600} size="sm" mb={12}>{t("media.audio")}</Text>
-          {member.profile.audio_key ? (
+          {member.profile.audio_media_id ? (
             <Stack gap={6}>
-              <audio controls src={resolveProfileMediaUrl(member.profile.audio_key)} style={{ width: "100%" }} />
+              <audio controls src={resolveMediaUrl(member.profile.audio_media_id, "full")} style={{ width: "100%" }} />
               <Text c="dimmed" size="sm" style={{ wordBreak: "break-all" }}>
-                {member.profile.audio_key}
+                {member.profile.audio_name ?? member.profile.audio_media_id}
               </Text>
               {isAdmin ? (
                 <Button
@@ -299,7 +299,7 @@ export function AdminMemberMediaTab(props: AdminMemberMediaTabProps) {
               <Group gap={8}>
                 <FileButton
                   onChange={(file) => { if (file) audioUploader.selectFiles([file]); }}
-                  accept="audio/*"
+                  accept={AUDIO_FILE_ACCEPT}
                 >
                   {(btnProps) => (
                     <Button
@@ -327,7 +327,7 @@ export function AdminMemberMediaTab(props: AdminMemberMediaTabProps) {
             </Stack>
           ) : null}
         </div>
-      </PortalCard>
+      </Paper>
     </Stack>
   );
 }

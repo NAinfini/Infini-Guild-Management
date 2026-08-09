@@ -1,11 +1,14 @@
 import {
   createMemberBadgeSchema,
+  reorderMemberBadgesSchema,
   updateMemberBadgeSchema,
   assignBadgeSchema,
   unassignBadgeSchema,
 } from "@guild/shared";
+import type { ReorderMemberBadgesInput } from "@guild/shared";
 import type { Context } from "hono";
 import { Hono } from "hono";
+import type { Bindings } from "../index";
 import { requirePermission } from "../middleware/rbac";
 import { BadgeService } from "../services/BadgeService";
 import { getDb, handleResult, parseJsonBody } from "./_shared";
@@ -14,7 +17,7 @@ import { commonDeps } from "./service-factory";
 export const badgeRoutes = new Hono();
 
 function getService(c: Context): BadgeService {
-  return new BadgeService(getDb(c), commonDeps(c));
+  return new BadgeService(getDb(c), { ...commonDeps(c), rawDb: (c.env as Bindings).DB });
 }
 
 async function requireBadgesManage(c: Context) {
@@ -39,6 +42,14 @@ badgeRoutes.post("/", async (c) => {
   return handleResult(c, result, 201);
 });
 
+/* 必须排在 `/:id` 之前：Hono 按注册顺序匹配，否则 "reorder" 会被当成一个徽章 id。
+   职业目录那条路由（routes/classes.ts）踩过同一个坑，注释也在那边。 */
+badgeRoutes.patch("/reorder", async (c) => {
+  const sessionUser = await requireBadgesManage(c);
+  const input = await parseJsonBody(c, reorderMemberBadgesSchema) as ReorderMemberBadgesInput;
+  return handleResult(c, await getService(c).reorderBadges(sessionUser.id, input.order));
+});
+
 badgeRoutes.patch("/:id", async (c) => {
   const sessionUser = await requireBadgesManage(c);
   const body = await parseJsonBody(c, updateMemberBadgeSchema);
@@ -48,7 +59,7 @@ badgeRoutes.patch("/:id", async (c) => {
 });
 
 badgeRoutes.delete("/:id", async (c) => {
-  const sessionUser = await requirePermission(c, "admin.badges.manage", { freshPermissions: true });
+  const sessionUser = await requirePermission(c, "admin.badges.manage");
   const result = await getService(c).deleteBadge(sessionUser.id, c.req.param("id"));
   return handleResult(c, result);
 });

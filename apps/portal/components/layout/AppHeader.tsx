@@ -1,23 +1,26 @@
+import type { User } from "@guild/shared";
 import {
+  ActionIcon,
+  AppShell as MantineAppShell,
+  Button,
+  Group,
+  Menu,
+  Title,
+} from "@mantine/core";
+import { useMemo } from "react";
+import { useTranslation } from "react-i18next";
+import { useTheme } from "../../providers/ThemeProvider";
+import { usePreferencesStore } from "../../stores/preferences";
+import { buildLocaleOptions } from "../../utils/locales";
+import {
+  EllipsisOutlined,
   MoonOutlined,
   SunOutlined,
   TranslationOutlined,
 } from "../../utils/icons";
-import type { User } from "@guild/shared";
-import { InfiniMenu } from "@portal/components/shared/InfiniMenu";
-import { DepthButton } from "@portal/components/shared/DepthButton";
-import { useTheme } from "../../providers/ThemeProvider";
-import {
-  ActionIcon,
-  AppShell as MantineAppShell,
-} from "@mantine/core";
-import { type ReactNode, useMemo } from "react";
-import { useTranslation } from "react-i18next";
-import { usePreferencesStore } from "../../stores/preferences";
-import { buildLocaleOptions } from "../../utils/locales";
 import { CmdKSearch } from "./CmdKSearch";
-import { UserProfileDropdown } from "./UserProfileDropdown";
 import { NotificationPopover } from "./NotificationPopover";
+import { UserProfileDropdown } from "./UserProfileDropdown";
 
 type PushEntry = {
   id: string;
@@ -32,7 +35,6 @@ type AppHeaderProps = {
   isMobile: boolean;
   isHeaderCompact: boolean;
   activePageTitle: string;
-  headerActions: ReactNode;
   user: User | null;
   pushHasUnread: boolean;
   notificationAnnouncementsHasNew: boolean;
@@ -48,7 +50,6 @@ export function AppHeader({
   isMobile,
   isHeaderCompact,
   activePageTitle,
-  headerActions,
   user,
   pushHasUnread,
   notificationAnnouncementsHasNew,
@@ -61,63 +62,93 @@ export function AppHeader({
 }: AppHeaderProps) {
   const { t } = useTranslation("common");
   const { theme: currentTheme, toggleTheme } = useTheme();
-  const locale = usePreferencesStore((s) => s.locale);
-  const setLocale = usePreferencesStore((s) => s.setLocale);
+  const locale = usePreferencesStore((state) => state.locale);
+  const setLocale = usePreferencesStore((state) => state.setLocale);
   const localeOptions = useMemo(() => buildLocaleOptions((key) => t(key)), [t]);
+  const ThemeIcon = currentTheme === "dark" ? SunOutlined : MoonOutlined;
+
+  const localeItems = localeOptions.map((option) => (
+    <Menu.Item
+      key={option.value}
+      className={locale === option.value ? "app-menu-item--active" : undefined}
+      onClick={() => setLocale(option.value)}
+    >
+      {option.label}
+    </Menu.Item>
+  ));
 
   return (
     <MantineAppShell.Header className="app-header">
-      <div className="app-header__left">
-        <div className="app-header__page-title">{activePageTitle}</div>
-      </div>
+      <Title order={1} className="app-header__page-title">
+        {activePageTitle}
+      </Title>
 
-      <div className="app-header__center">{headerActions}</div>
+      <Group className="app-header__right" gap="sm" wrap="nowrap">
+        <CmdKSearch asIcon={isMobile || isHeaderCompact} />
+        <NotificationPopover
+          user={user}
+          pushHasUnread={pushHasUnread}
+          notificationAnnouncementsHasNew={notificationAnnouncementsHasNew}
+          displayPushEntries={displayPushEntries}
+          onClose={onNotificationClose}
+          onClearHistory={onClearPushHistory}
+          onEntryClick={onPushEntryClick}
+        />
 
-      <div className="app-header__right">
-        <div className="app-header-tools">
-          {isMobile || isHeaderCompact ? <CmdKSearch asIcon /> : <CmdKSearch />}
-          <NotificationPopover
-            user={user}
-            pushHasUnread={pushHasUnread}
-            notificationAnnouncementsHasNew={notificationAnnouncementsHasNew}
-            displayPushEntries={displayPushEntries}
-            onClose={onNotificationClose}
-            onClearHistory={onClearPushHistory}
-            onEntryClick={onPushEntryClick}
-          />
-
-          <ActionIcon variant="subtle" className="app-header-icon-btn" aria-label={t("label.theme")} onClick={toggleTheme}>
-            {currentTheme === "dark" ? <SunOutlined /> : <MoonOutlined />}
-          </ActionIcon>
-
-          <InfiniMenu width={160} position="bottom-end">
-            <InfiniMenu.Target>
-              <ActionIcon variant="subtle" className="app-header-icon-btn" aria-label={t("label.locale")}>
-                <TranslationOutlined />
+        {isMobile ? (
+          <Menu width={220} position="bottom-end">
+            <Menu.Target>
+              <ActionIcon
+                variant="subtle"
+                className="app-header-icon-btn"
+                aria-label={t("nav.openGlobalTools")}
+              >
+                <EllipsisOutlined />
               </ActionIcon>
-            </InfiniMenu.Target>
-            <InfiniMenu.Dropdown>
-              {localeOptions.map((option) => (
-                <InfiniMenu.Item
-                  key={option.value}
-                  className={locale === option.value ? "infini-menu-item--active" : undefined}
-                  onClick={() => setLocale(option.value)}
+            </Menu.Target>
+            <Menu.Dropdown>
+              <Menu.Item leftSection={<ThemeIcon />} onClick={toggleTheme}>
+                {t("label.theme")}
+              </Menu.Item>
+              <Menu.Divider />
+              <Menu.Label>{t("label.locale")}</Menu.Label>
+              {localeItems}
+            </Menu.Dropdown>
+          </Menu>
+        ) : (
+          <>
+            <ActionIcon
+              variant="subtle"
+              className="app-header-icon-btn"
+              aria-label={t("label.theme")}
+              onClick={toggleTheme}
+            >
+              <ThemeIcon />
+            </ActionIcon>
+
+            <Menu width={180} position="bottom-end">
+              <Menu.Target>
+                <ActionIcon
+                  variant="subtle"
+                  className="app-header-icon-btn"
+                  aria-label={t("label.locale")}
                 >
-                  {option.label}
-                </InfiniMenu.Item>
-              ))}
-            </InfiniMenu.Dropdown>
-          </InfiniMenu>
-        </div>
+                  <TranslationOutlined />
+                </ActionIcon>
+              </Menu.Target>
+              <Menu.Dropdown>{localeItems}</Menu.Dropdown>
+            </Menu>
+          </>
+        )}
 
         {user ? (
           <UserProfileDropdown user={user} onLogout={onLogout} compact />
         ) : (
-          <DepthButton onClick={onLoginClick}>
+          <Button size="sm" onClick={onLoginClick}>
             {t("action.login")}
-          </DepthButton>
+          </Button>
         )}
-      </div>
+      </Group>
     </MantineAppShell.Header>
   );
 }

@@ -1,10 +1,14 @@
+import {
+  SYSTEM_TEST_HEADER,
+  SYSTEM_TEST_HEADER_VALUE,
+  SYSTEM_TEST_RUN_ID_HEADER,
+} from "@guild/shared/config/system-test";
 import { type EndpointDef, type EndpointResult, type PreparedEndpointRequest, isRecord } from "./types";
 
 export const API_TEST_GAP_GET_MS = 90;
 export const API_TEST_GAP_MUTATION_MS = 900;
-export const SYSTEM_TEST_HEADER = "X-System-Test";
 export const SYSTEM_TEST_AUDIT_HEADER = "X-System-Test-Audit";
-export const SYSTEM_TEST_HEADER_VALUE = "admin-console-api";
+export { SYSTEM_TEST_HEADER, SYSTEM_TEST_HEADER_VALUE, SYSTEM_TEST_RUN_ID_HEADER };
 
 export function waitWithAbort(ms: number, signal?: AbortSignal): Promise<void> {
   if (ms <= 0) {
@@ -66,6 +70,7 @@ export function truncateJson(json: string, maxLen = 2000): string {
 export async function runEndpointTest(
   endpoint: EndpointDef,
   prepared: PreparedEndpointRequest,
+  runId: string,
   signal?: AbortSignal,
 ): Promise<EndpointResult> {
   const ranAt = new Date().toISOString();
@@ -87,6 +92,7 @@ export async function runEndpointTest(
       ...prepared.headers,
       [SYSTEM_TEST_HEADER]: SYSTEM_TEST_HEADER_VALUE,
       [SYSTEM_TEST_AUDIT_HEADER]: "suppress",
+      [SYSTEM_TEST_RUN_ID_HEADER]: runId,
     };
     if (endpoint.method === "POST" || endpoint.method === "PATCH" || endpoint.method === "DELETE") {
       mergedHeaders["X-Requested-With"] = "XMLHttpRequest";

@@ -4,10 +4,21 @@ import {
   type TestRunContext,
   disposableMemberId,
   firstArrayItem,
-  isProfileMediaKey,
   isRecord,
   readString,
 } from "./types";
+
+function orderedIds(rows: readonly unknown[]): string[] {
+  return rows
+    .map((row) => (isRecord(row) ? readString(row.id) : null))
+    .filter((id): id is string => id !== null);
+}
+
+function firstMediaId(payload: Record<string, unknown>): string | null {
+  return Array.isArray(payload.media_ids)
+    ? payload.media_ids.find((item): item is string => typeof item === "string") ?? null
+    : null;
+}
 
 export function captureContextFromResponse(
   previous: TestRunContext,
@@ -36,15 +47,15 @@ export function captureContextFromResponse(
     }
     if (endpoint.path === "/api/events/:id/destroy" && next.createdEventId) {
       next.createdEventId = null;
-      next.eventImageKey = null;
+      next.eventImageMediaId = null;
     }
     if (endpoint.path === "/api/announcements/:id/permanent" && next.createdAnnouncementId) {
       next.createdAnnouncementId = null;
-      next.announcementImageKey = null;
+      next.announcementImageMediaId = null;
     }
     if (endpoint.path === "/api/wiki/articles/:id/permanent" && next.createdWikiArticleId) {
       next.createdWikiArticleId = null;
-      next.wikiImageKey = null;
+      next.wikiImageMediaId = null;
     }
     if (endpoint.path === "/api/gallery/:id") {
       const deletedId = next.galleryDeleteId ?? next.createdGalleryImageId;
@@ -53,7 +64,7 @@ export function captureContextFromResponse(
       }
       if (deletedId && deletedId === next.createdGalleryImageId) {
         next.createdGalleryImageId = null;
-        next.galleryImageKey = null;
+        next.galleryImageMediaId = null;
       }
     }
     if (endpoint.path === "/api/badges/:id" && next.createdBadgeId === next.badgeId) {
@@ -74,17 +85,15 @@ export function captureContextFromResponse(
       next.adminCreatedUserPassword = null;
     }
     if (endpoint.path === "/api/users/:id/media/images") {
-      next.uploadedImageKey = null;
+      next.uploadedImageMediaId = null;
     }
     if (endpoint.path === "/api/storage/items/:id" && next.createdStorageItemId === next.storageItemId) {
       next.createdStorageItemId = null;
       next.storageItemId = null;
-      next.createdStorageImageId = null;
-      next.storageImageKey = null;
+      next.storageImageMediaId = null;
     }
     if (endpoint.path === "/api/storage/items/:id/images/:imageId") {
-      next.createdStorageImageId = null;
-      next.storageImageKey = null;
+      next.storageImageMediaId = null;
     }
     if (endpoint.path === "/api/storage/storages/:storageId/categories/:id" && next.createdStorageCategoryId === next.storageCategoryId) {
       next.createdStorageCategoryId = null;
@@ -93,6 +102,19 @@ export function captureContextFromResponse(
     if (endpoint.path === "/api/storage/storages/:id" && next.createdStorageId === next.storageId) {
       next.createdStorageId = null;
       next.storageId = null;
+    }
+    if (endpoint.path === "/api/classes/:id/icon") {
+      next.createdClassIconMediaId = null;
+    }
+    if (endpoint.path === "/api/classes/:id") {
+      next.createdClassId = null;
+      next.createdClassIconMediaId = null;
+    }
+    if (endpoint.path === "/api/class-tags/:id") {
+      next.createdClassTagId = null;
+    }
+    if (endpoint.path === "/api/users/:id/absences/:absenceId") {
+      next.createdAbsenceId = null;
     }
     return next;
   }
@@ -117,11 +139,45 @@ export function captureContextFromResponse(
     const profile = isRecord(payload.profile) ? payload.profile : null;
     next.meId = readString(user?.id) ?? next.meId;
     next.meUsername = readString(user?.username) ?? next.meUsername;
+    next.meRoleLevel = typeof user?.role_level === "number" ? user.role_level : next.meRoleLevel;
+    if (isRecord(user?.permissions)) {
+      next.mePermissions = Object.fromEntries(
+        Object.entries(user.permissions).filter((entry): entry is [string, boolean] => typeof entry[1] === "boolean"),
+      );
+    }
     const profileImages = Array.isArray(profile?.images) ? profile.images : [];
     const firstImage = profileImages.find((item): item is string => typeof item === "string");
-    const profileImageKey = firstImage ?? null;
-    next.userImageKey = isProfileMediaKey(profileImageKey) ? profileImageKey : next.userImageKey;
-    next.userAudioKey = readString(profile?.audio_key) ?? next.userAudioKey;
+    next.userImageMediaId = firstImage ?? next.userImageMediaId;
+    next.userAudioMediaId = readString(profile?.audio_media_id) ?? next.userAudioMediaId;
+    return next;
+  }
+
+  if (endpoint.path === "/api/classes") {
+    /* 列表 GET 返回按 sort_order 排好的整个目录；reorder 用例要原样回放这份顺序。 */
+    if (Array.isArray(result.parsedJson)) {
+      next.classIdsInOrder = orderedIds(result.parsedJson);
+    } else {
+      next.createdClassId = readString(payload.id) ?? next.createdClassId;
+    }
+    return next;
+  }
+
+  if (endpoint.path === "/api/class-tags") {
+    if (Array.isArray(result.parsedJson)) {
+      next.classTagIdsInOrder = orderedIds(result.parsedJson);
+    } else if (endpoint.method === "POST") {
+      next.createdClassTagId = readString(payload.id) ?? next.createdClassTagId;
+    }
+    return next;
+  }
+
+  if (endpoint.path === "/api/classes/:id/icon") {
+    next.createdClassIconMediaId = readString(payload.icon_media_id) ?? next.createdClassIconMediaId;
+    return next;
+  }
+
+  if (endpoint.path === "/api/users/:id/absences" && endpoint.method === "POST") {
+    next.createdAbsenceId = readString(payload.id) ?? next.createdAbsenceId;
     return next;
   }
 
@@ -146,9 +202,8 @@ export function captureContextFromResponse(
       const profile = isRecord(first.profile) ? first.profile : null;
       const images = Array.isArray(profile?.images) ? profile.images : [];
       const firstImage = images.find((item): item is string => typeof item === "string");
-      const profileImageKey = firstImage ?? null;
-      next.userImageKey = isProfileMediaKey(profileImageKey) ? profileImageKey : next.userImageKey;
-      next.userAudioKey = readString(profile?.audio_key) ?? next.userAudioKey;
+      next.userImageMediaId = firstImage ?? next.userImageMediaId;
+      next.userAudioMediaId = readString(profile?.audio_media_id) ?? next.userAudioMediaId;
     }
     return next;
   }
@@ -157,25 +212,22 @@ export function captureContextFromResponse(
     const profile = isRecord(payload.profile) ? payload.profile : null;
     const images = Array.isArray(profile?.images) ? profile.images : [];
     const firstImage = images.find((item): item is string => typeof item === "string");
-    const profileImageKey = firstImage ?? null;
-    next.userImageKey = isProfileMediaKey(profileImageKey) ? profileImageKey : next.userImageKey;
-    next.userAudioKey = readString(profile?.audio_key) ?? next.userAudioKey;
+    next.userImageMediaId = firstImage ?? next.userImageMediaId;
+    next.userAudioMediaId = readString(profile?.audio_media_id) ?? next.userAudioMediaId;
     return next;
   }
 
   if (endpoint.path === "/api/users/:id/media/images") {
-    const firstKey = Array.isArray(payload.keys)
-      ? payload.keys.find((item): item is string => typeof item === "string")
-      : null;
-    if (firstKey && endpoint.method === "POST") {
-      next.uploadedImageKey = firstKey;
+    const mediaId = firstMediaId(payload);
+    if (mediaId && endpoint.method === "POST") {
+      next.uploadedImageMediaId = mediaId;
     }
-    next.userImageKey = firstKey ?? next.userImageKey;
+    next.userImageMediaId = mediaId ?? next.userImageMediaId;
     return next;
   }
 
   if (endpoint.path === "/api/users/:id/media/audio") {
-    next.userAudioKey = readString(payload.key) ?? next.userAudioKey;
+    next.userAudioMediaId = readString(payload.media_id) ?? next.userAudioMediaId;
     return next;
   }
 
@@ -214,10 +266,7 @@ export function captureContextFromResponse(
   }
 
   if (endpoint.path === "/api/events/:id/images") {
-    const firstKey = Array.isArray(payload.keys)
-      ? payload.keys.find((item): item is string => typeof item === "string")
-      : null;
-    next.eventImageKey = firstKey ?? next.eventImageKey;
+    next.eventImageMediaId = firstMediaId(payload) ?? next.eventImageMediaId;
     return next;
   }
 
@@ -246,28 +295,15 @@ export function captureContextFromResponse(
     return next;
   }
 
-  if (endpoint.path === "/api/announcements/images/stage" && endpoint.method === "POST") {
-    next.announcementStagingToken = readString(payload.staging_token) ?? next.announcementStagingToken;
-    const firstKey = Array.isArray(payload.keys)
-      ? payload.keys.find((item): item is string => typeof item === "string")
-      : null;
-    next.announcementImageKey = firstKey ?? next.announcementImageKey;
-    return next;
-  }
-
   if (endpoint.path === "/api/announcements" && endpoint.method === "POST") {
     const id = readString(payload.id);
     next.announcementId = id ?? next.announcementId;
     next.createdAnnouncementId = id ?? next.createdAnnouncementId;
-    next.announcementStagingToken = null;
     return next;
   }
 
   if (endpoint.path === "/api/announcements/:id/images") {
-    const firstKey = Array.isArray(payload.keys)
-      ? payload.keys.find((item): item is string => typeof item === "string")
-      : null;
-    next.announcementImageKey = firstKey ?? next.announcementImageKey;
+    next.announcementImageMediaId = firstMediaId(payload) ?? next.announcementImageMediaId;
     return next;
   }
 
@@ -282,7 +318,7 @@ export function captureContextFromResponse(
     const itemId = readString(firstItem?.id);
     next.galleryItemId = itemId ?? next.galleryItemId;
     next.createdGalleryImageId = itemId ?? next.createdGalleryImageId;
-    next.galleryImageKey = readString(firstItem?.url) ?? next.galleryImageKey;
+    next.galleryImageMediaId = readString(firstItem?.media_id) ?? next.galleryImageMediaId;
     return next;
   }
 
@@ -347,15 +383,6 @@ export function captureContextFromResponse(
     return next;
   }
 
-  if (endpoint.path === "/api/game-data") {
-    const base = isRecord(payload.data) ? payload.data : null;
-    const firstClass = Array.isArray(base?.classes)
-      ? base.classes.find((item): item is string => typeof item === "string")
-      : null;
-    next.gameDataClassId = firstClass ?? next.gameDataClassId;
-    return next;
-  }
-
   if (endpoint.path === "/api/wiki/categories") {
     if (Array.isArray(payload)) {
       const firstCategory = payload.find((item): item is Record<string, unknown> => isRecord(item));
@@ -388,23 +415,15 @@ export function captureContextFromResponse(
   }
 
   if (endpoint.path === "/api/wiki/articles/:id/images") {
-    const firstKey = Array.isArray(payload.keys)
-      ? payload.keys.find((item): item is string => typeof item === "string")
-      : null;
-    next.wikiImageKey = firstKey ?? next.wikiImageKey;
+    next.wikiImageMediaId = firstMediaId(payload) ?? next.wikiImageMediaId;
     return next;
   }
 
   if (endpoint.path === "/api/admin/invite-links") {
-    if (endpoint.method === "GET") {
-      const firstInvite = firstArrayItem(payload.data);
-      next.registerInviteCode = readString(firstInvite?.code) ?? next.registerInviteCode;
-    } else {
-      if (endpoint.method === "POST") {
-        const id = readString(payload.id);
-        next.inviteLinkId = id ?? next.inviteLinkId;
-        next.createdInviteLinkId = id ?? next.createdInviteLinkId;
-      }
+    if (endpoint.method === "POST") {
+      const id = readString(payload.id);
+      next.inviteLinkId = id ?? next.inviteLinkId;
+      next.createdInviteLinkId = id ?? next.createdInviteLinkId;
       next.registerInviteCode = readString(payload.code) ?? next.registerInviteCode;
     }
     return next;
@@ -419,10 +438,18 @@ export function captureContextFromResponse(
 
   if (endpoint.path === "/api/admin/roles") {
     if (Array.isArray(payload)) {
-      const customRole = payload.find(
-        (item): item is Record<string, unknown> => isRecord(item) && item.is_builtin === false,
-      );
-      next.adminRoleId = readString(customRole?.id) ?? next.adminRoleId;
+      const assignableRole = payload
+        .filter((item): item is Record<string, unknown> => isRecord(item))
+        .filter((role) => {
+          if (typeof role.level !== "number" || role.level >= (next.meRoleLevel ?? 0) || !isRecord(role.permissions)) {
+            return false;
+          }
+          return Object.entries(role.permissions).every(
+            ([permission, granted]) => granted !== true || next.mePermissions?.[permission] === true,
+          );
+        })
+        .sort((left, right) => Number(right.level) - Number(left.level))[0];
+      next.adminRoleId = readString(assignableRole?.id) ?? next.adminRoleId;
     } else {
       const id = readString(payload.id);
       next.adminRoleId = id ?? next.adminRoleId;
@@ -457,9 +484,11 @@ export function captureContextFromResponse(
     if (Array.isArray(payload.data)) {
       const first = firstArrayItem(payload.data);
       next.badgeId = readString(first?.id) ?? next.badgeId;
+      next.badgeIdsInOrder = orderedIds(payload.data);
     } else if (Array.isArray(payload)) {
       const first = payload.find((item): item is Record<string, unknown> => isRecord(item));
       next.badgeId = readString(first?.id) ?? next.badgeId;
+      next.badgeIdsInOrder = orderedIds(payload);
     } else {
       const id = readString(payload.id);
       next.badgeId = id ?? next.badgeId;
@@ -522,8 +551,12 @@ export function captureContextFromResponse(
     const firstImage = Array.isArray(result.parsedJson)
       ? result.parsedJson.find((item): item is Record<string, unknown> => isRecord(item))
       : null;
-    next.createdStorageImageId = readString(firstImage?.id) ?? next.createdStorageImageId;
-    next.storageImageKey = readString(firstImage?.r2_key) ?? next.storageImageKey;
+    next.storageImageMediaId = readString(firstImage?.media_id) ?? next.storageImageMediaId;
+    return next;
+  }
+
+  if (endpoint.path === "/api/site-config" || endpoint.path === "/api/admin/site-config") {
+    next.siteLogoMediaId = readString(payload.site_logo_media_id) ?? next.siteLogoMediaId;
     return next;
   }
 

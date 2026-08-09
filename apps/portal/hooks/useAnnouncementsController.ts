@@ -1,5 +1,5 @@
 import { type Announcement, type PaginatedResponse } from "@guild/shared";
-import { useConfirmDialog } from "@portal/components/shared/ConfirmDialog";
+import { useConfirmDialog } from "@portal/hooks/useConfirmDialog";
 import { TIPTAP_DEFAULT_JSON } from "@portal/components/shared/tiptap-meta";
 import {
   useInfiniteQuery,
@@ -10,18 +10,20 @@ import {
 } from "@tanstack/react-query";
 import { useNavigate, useSearch } from "@tanstack/react-router";
 import { format, isValid, parseISO } from "date-fns";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { flushSync } from "react-dom";
 import { useDisclosure } from "@mantine/hooks";
 import { useDebouncedSearch } from "./useDebouncedSearch";
 import { useTranslation } from "react-i18next";
 import { useAppError } from "./useAppError";
 import { useBeforeUnloadPrompt } from "./useBeforeUnloadPrompt";
 import { useExternalView } from "./useExternalView";
+import { extractTipTapText } from "../utils/tiptap-text";
 import {
   archiveAnnouncement,
   createAnnouncement,
   deleteAnnouncement,
-  stageAnnouncementImages,
+  uploadPendingAnnouncementImages,
   type UpdateAnnouncementPayload,
   updateAnnouncement,
   uploadAnnouncementImages,
@@ -32,13 +34,11 @@ import { queryKeys } from "../api/query-keys";
 import { useEffectivePermissions } from "./useEffectivePermissions";
 import { toIsoOrUndefined } from "../utils/iso-dates";
 import { notifySuccess } from "../utils/notifications";
+import { useAuthStore } from "../stores/auth";
+import { userScopedStorageKey } from "../session-storage";
+import { resolveMediaUrl } from "../utils/media";
 
-function buildAnnouncementImageUrl(key: string): string {
-  if (/^(?:https?:)?\/\//i.test(key) || key.startsWith("data:")) return key;
-  const path = `/api/announcements/image?key=${encodeURIComponent(key)}`;
-  if (typeof window === "undefined") return path;
-  return new URL(path, window.location.origin).toString();
-}
+const ANNOUNCEMENTS_LAST_SEEN_STORAGE_KEY = "portal:last_seen";
 
 type AnnouncementSelection =
   | { kind: "auto" }
@@ -46,6 +46,7 @@ type AnnouncementSelection =
   | { kind: "selected"; id: string };
 
 type AnnouncementFinishMode = "none" | "draft" | "archived" | "scheduled";
+type AnnouncementSort = "updated_desc" | "updated_asc";
 
 const ANNOUNCEMENT_STATUS_BY_FINISH_MODE = {
   none: "published",
@@ -105,9 +106,9 @@ function toDateTimePickerValue(iso: string | null): string {
   return format(date, "yyyy-MM-dd'T'HH:mm");
 }
 
-function readAnnouncementsLastSeenAt(): string | null {
+function readAnnouncementsLastSeenAt(storageKey: string): string | null {
   try {
-    const raw = localStorage.getItem("portal:last_seen");
+    const raw = localStorage.getItem(storageKey);
     if (!raw) return null;
     const parsed = JSON.parse(raw) as {
       announcements?: { lastSeenAt?: string };
@@ -127,6 +128,11 @@ export function useAnnouncementsController() {
   const routeSearch = useSearch({ strict: false }) as AnnouncementRouteSearch;
   const isExternalView = useExternalView();
   const { showError } = useAppError();
+  const currentUserId = useAuthStore((state) => state.user?.id);
+  const announcementsLastSeenStorageKey = userScopedStorageKey(
+    ANNOUNCEMENTS_LAST_SEEN_STORAGE_KEY,
+    currentUserId,
+  );
 
   const { canManage: canManagePermission } = useEffectivePermissions();
 
@@ -135,13 +141,13 @@ export function useAnnouncementsController() {
   const canCreate = canManagePermission(["announcements.create"]) && !isExternalView;
 
   const [pinnedFilter, setPinnedFilter] = useState(false);
+  const [sortOrder, setSortOrder] = useState<AnnouncementSort>("updated_desc");
   const [statusFilter, setStatusFilter] = useState<string | undefined>(undefined);
   const { search, setSearch, debouncedSearch: debouncedSearchRaw } = useDebouncedSearch();
   const debouncedSearch = debouncedSearchRaw.trim();
   const [selection, setSelection] = useState<AnnouncementSelection>(() => selectionFromRoute(routeSearch));
   const selectedId = selection.kind === "selected" ? selection.id : null;
   const [isCreating, isCreatingHandlers] = useDisclosure(false);
-  const [imageStagingToken, setImageStagingToken] = useState<string | null>(null);
   const [title, setTitle] = useState("");
   const [bodyJson, setBodyJson] = useState(TIPTAP_DEFAULT_JSON);
   const [pinned, setPinned] = useState(false);
@@ -150,6 +156,11 @@ export function useAnnouncementsController() {
   const [publishAt, setPublishAt] = useState("");
   const [scheduleEnabled, setScheduleEnabled] = useState(false);
   const [announcementsLastSeenAt, setAnnouncementsLastSeenAt] = useState<string | null>(null);
+  const savePendingRef = useRef(false);
+  const isCreatingRef = useRef(isCreating);
+  const closeCreatingRef = useRef(isCreatingHandlers.close);
+  isCreatingRef.current = isCreating;
+  closeCreatingRef.current = isCreatingHandlers.close;
 
   const setAnnouncementSelection = useCallback((
     next: AnnouncementSelection,
@@ -168,8 +179,21 @@ export function useAnnouncementsController() {
     });
   }, [navigate]);
 
+  /**
+   * 退出创建态并把草稿清空。
+   * 必须同步落地：调用方紧接着就要导航，而未保存改动拦截器读的是已提交的 state，
+   * 异步的 setState 会让它读到「还在创建、草稿是脏的」，凭空多问一句。
+   */
+  const discardCreateDraft = useCallback(() => {
+    flushSync(() => {
+      isCreatingHandlers.close();
+      setTitle("");
+      setBodyJson(TIPTAP_DEFAULT_JSON);
+    });
+  }, [isCreatingHandlers]);
+
   const listQuery = useInfiniteQuery({
-    queryKey: queryKeys.announcements.list(pinnedFilter ? "pinned" : "all", statusFilter ?? "all", debouncedSearch),
+    queryKey: queryKeys.announcements.list(pinnedFilter ? "pinned" : "all", statusFilter ?? "all", debouncedSearch, sortOrder),
     queryFn: ({ pageParam }) =>
       fetchAnnouncements({
         page: pageParam,
@@ -178,6 +202,7 @@ export function useAnnouncementsController() {
         pinned: pinnedFilter ? true : undefined,
         search: debouncedSearch || undefined,
         archived: statusFilter === "archived",
+        sort: sortOrder,
       }),
     initialPageParam: 1,
     getNextPageParam: (lastPage) =>
@@ -194,6 +219,9 @@ export function useAnnouncementsController() {
 
   useEffect(() => {
     const next = selectionFromRoute(routeSearch);
+    if (isCreatingRef.current && next.kind !== "none") {
+      closeCreatingRef.current();
+    }
     setSelection((current) => sameSelection(current, next) ? current : next);
   }, [routeSearch.announcementId, routeSearch.selection]);
 
@@ -202,12 +230,21 @@ export function useAnnouncementsController() {
     onSuccess: async (data) => {
       notifySuccess(t("message.created"));
       await queryClient.invalidateQueries({ queryKey: queryKeys.announcements.all });
-      isCreatingHandlers.close();
-      setImageStagingToken(null);
+      /*
+       * 先把创建态的草稿清干净再跳转。跳转要经过未保存改动拦截器（useBeforeUnloadPrompt），
+       * 草稿还在的话，用户刚点完「发布」就会被问「有未保存的改动，确定离开吗」；
+       * 选 Stay 更糟——公告已经建出来了，地址栏却停在 ?selection=none，选中的是空。
+       * flushSync 是为了让拦截器在这次跳转被评估之前就看到已经不脏的状态，
+       * 否则 setState 还没落地，拦截器读到的仍是旧值。
+       */
+      discardCreateDraft();
       setAnnouncementSelection({ kind: "selected", id: data.id });
     },
     onError: (error) => {
       showError(error, t("message.createFailed"));
+    },
+    onSettled: () => {
+      savePendingRef.current = false;
     },
   });
 
@@ -270,6 +307,9 @@ export function useAnnouncementsController() {
         queryClient.setQueryData(queryKeys.announcements.detail(variables.id), context.previousDetail);
       }
       showError(error, t("message.saveFailed"));
+    },
+    onSettled: () => {
+      savePendingRef.current = false;
     },
   });
 
@@ -351,12 +391,7 @@ export function useAnnouncementsController() {
     if (pinnedFilter) {
       raw = raw.filter((item) => item.pinned);
     }
-    return [...raw].sort((left, right) => {
-      if (left.pinned === right.pinned) {
-        return new Date(right.updated_at).getTime() - new Date(left.updated_at).getTime();
-      }
-      return left.pinned ? -1 : 1;
-    });
+    return raw;
   }, [canEdit, accumulatedAnnouncements, pinnedFilter, statusFilter]);
 
   const listHasMore = listQuery.hasNextPage ?? false;
@@ -364,8 +399,8 @@ export function useAnnouncementsController() {
   const selected = detailQuery.data ?? null;
 
   useEffect(() => {
-    setAnnouncementsLastSeenAt(readAnnouncementsLastSeenAt());
-  }, []);
+    setAnnouncementsLastSeenAt(readAnnouncementsLastSeenAt(announcementsLastSeenStorageKey));
+  }, [announcementsLastSeenStorageKey]);
 
   useEffect(() => {
     if (isCreating || selection.kind !== "auto") return;
@@ -413,13 +448,16 @@ export function useAnnouncementsController() {
     }
     return false;
   }, [archived, bodyJson, canEdit, draftEnabled, isCreating, pinned, publishAt, scheduleEnabled, selected, title]);
+  const isPublishReady = useMemo(
+    () => title.trim().length > 0 && extractTipTapText(bodyJson).trim().length > 0,
+    [bodyJson, title],
+  );
 
   useBeforeUnloadPrompt(isDirty);
 
   const handleCreateByStatus = useCallback(() => {
     if (!canCreate) return;
     isCreatingHandlers.open();
-    setImageStagingToken(null);
     setAnnouncementSelection({ kind: "none" });
   }, [canCreate, isCreatingHandlers, setAnnouncementSelection]);
 
@@ -433,7 +471,7 @@ export function useAnnouncementsController() {
         intent: "danger",
       });
       if (!confirmed) {
-        return;
+        return false;
       }
     }
     if (id !== null) {
@@ -442,17 +480,23 @@ export function useAnnouncementsController() {
     setAnnouncementSelection(
       id === null ? { kind: "none" } : { kind: "selected", id },
     );
+    return true;
   }, [confirm, isDirty, isCreatingHandlers, setAnnouncementSelection, t]);
 
   const resetFilters = useCallback(() => {
     setSearch("");
     setStatusFilter(undefined);
     setPinnedFilter(false);
+    setSortOrder("updated_desc");
   }, []);
 
   const handleFinish = (mode: AnnouncementFinishMode) => {
+    if (!isPublishReady) return;
+
     if (isCreating) {
       if (mode === "archived") return;
+      if (savePendingRef.current) return;
+      savePendingRef.current = true;
 
       const status = ANNOUNCEMENT_STATUS_BY_FINISH_MODE[mode];
 
@@ -462,7 +506,6 @@ export function useAnnouncementsController() {
         pinned,
         status,
         publish_at: status === "published" ? new Date().toISOString() : toIsoOrUndefined(publishAt),
-        staging_token: imageStagingToken ?? undefined,
       });
       return;
     }
@@ -473,6 +516,9 @@ export function useAnnouncementsController() {
       archiveMutation.mutate(selectedId);
       return;
     }
+
+    if (savePendingRef.current) return;
+    savePendingRef.current = true;
 
     const status = ANNOUNCEMENT_STATUS_BY_FINISH_MODE[mode];
 
@@ -491,8 +537,9 @@ export function useAnnouncementsController() {
 
   const handleCloseEditor = () => {
     if (isCreating) {
-      isCreatingHandlers.close();
-      setImageStagingToken(null);
+      // 同 createMutation：取消同样要先把草稿清干净，否则这一跳会被未保存拦截器再问一次，
+      // 而「取消」本身就是用户在明确表示要丢掉它。
+      discardCreateDraft();
       const firstId = rows[0]?.id;
       setAnnouncementSelection(
         firstId ? { kind: "selected", id: firstId } : { kind: "none" },
@@ -516,27 +563,28 @@ export function useAnnouncementsController() {
 
   const handleUploadAnnouncementImages = async (file: File) => {
     if (isCreating || !selectedId) {
-      const staged = await stageAnnouncementImages(imageStagingToken, [file]);
-      setImageStagingToken(staged.staging_token);
-      const stagedKey = staged.keys[0];
-      if (!stagedKey) {
-        throw new Error("Image staging returned no key");
+      const uploaded = await uploadPendingAnnouncementImages([file]);
+      const mediaId = uploaded.media_ids[0];
+      if (!mediaId) {
+        throw new Error("Image upload returned no media id");
       }
-      return buildAnnouncementImageUrl(stagedKey);
+      return resolveMediaUrl(mediaId);
     }
 
     const uploaded = await uploadAnnouncementImages(selectedId, [file]);
-    const key = uploaded.keys[0];
-    if (!key) {
-      throw new Error("Image upload returned no key");
+    const mediaId = uploaded.media_ids[0];
+    if (!mediaId) {
+      throw new Error("Image upload returned no media id");
     }
-    return buildAnnouncementImageUrl(key);
+    return resolveMediaUrl(mediaId);
   };
 
   return {
     canEdit,
     canCreate,
     pinnedFilter,
+    sortOrder,
+    setSortOrder,
     setPinnedFilter,
     statusFilter,
     setStatusFilter,
@@ -568,9 +616,10 @@ export function useAnnouncementsController() {
     listLoadingMore: listQuery.isFetchingNextPage,
     onLoadMoreList: () => void listQuery.fetchNextPage(),
     isBusy: createMutation.isPending || updateMutation.isPending || archiveMutation.isPending || deleteMutation.isPending,
-    savePending: updateMutation.isPending,
+    savePending: createMutation.isPending || updateMutation.isPending,
     deletePending: deleteMutation.isPending,
     isDirty,
+    isPublishReady,
     resetFilters,
     handleCreateByStatus,
     handleFinish,

@@ -1,6 +1,10 @@
 import type { AuditLogEntry } from "@guild/shared";
-import { Button, Group, Stack, TextInput } from "@mantine/core";
-import { PortalCard } from "../../shared/PortalCard";
+import { Button, Group, Menu, SegmentedControl, Stack, Text, TextInput } from "@mantine/core";
+import { ArrowDownIcon, SearchIcon, XIcon } from "@portal/components/icons";
+import { ContentFilterToolbar } from "@portal/components/shared/ContentFilterToolbar";
+import { NativeDateTimeInput } from "@portal/components/shared/NativeDateTimeInput";
+import { matchAuditDatePreset, type AuditDatePreset } from "@portal/hooks/useAdminAuditFilter";
+import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useAuthStore } from "../../../stores/auth";
 import { formatDateTime, maskIdentifier } from "../../../utils/admin";
@@ -17,7 +21,7 @@ type AdminAuditSectionProps = {
   auditDateTo: string;
   onAuditDateFromChange: (value: string) => void;
   onAuditDateToChange: (value: string) => void;
-  onSetDatePreset: (preset: "1d" | "7d" | "1m") => void;
+  onSetDatePreset: (preset: AuditDatePreset) => void;
   onDownloadFilteredCsv: () => void;
   onDownloadFilteredJson: () => void;
   exportAuditLogPending: boolean;
@@ -68,53 +72,130 @@ export function AdminAuditSection({
         canViewStatus(rolesData, user.role)),
   );
   const loadErrorMessage = tc("loadError");
+  /*
+   * 高亮哪一格由手上这对日期反推，不另存一份 range：两份状态各说各话时，
+   * 工具条会指着「自定义」而实际过滤的是最近一天（进页面时的默认区间就是它）。
+   * customRange 记的是另一件事——用户要不要那两个手填框，认不出预设时也自动摊开。
+   */
+  const [customRange, setCustomRange] = useState(false);
+  const range = customRange
+    ? "custom"
+    : matchAuditDatePreset(auditDateFrom, auditDateTo) ?? "custom";
 
+  const applyPreset = (value: string) => {
+    if (value === "custom") {
+      setCustomRange(true);
+      return;
+    }
+    setCustomRange(false);
+    onSetDatePreset(value as AuditDatePreset);
+  };
+
+  const hasFilters = Boolean(auditSearch || auditDateFrom || auditDateTo);
+  const activeFilterCount = [
+    auditSearch.trim().length > 0,
+    Boolean(auditDateFrom || auditDateTo),
+  ].filter(Boolean).length;
   return (
     <Stack gap={12}>
-      <PortalCard interactive={false}>
-        <div style={{ padding: "1.2rem" }}>
-          <Group wrap="wrap" gap={8}>
-            <TextInput
-              placeholder={t("audit.search")}
-              style={{ width: 200 }}
-              aria-label={t("audit.aria.search")}
-              value={auditSearch}
-              onChange={(event) => onAuditSearchChange(event.currentTarget.value)}
+      <ContentFilterToolbar
+        className="admin-audit-toolbar"
+        search={(
+          <TextInput
+            size="sm"
+            leftSection={<SearchIcon size={14} />}
+            placeholder={t("audit.search")}
+            aria-label={t("audit.aria.search")}
+            value={auditSearch}
+            onChange={(event) => onAuditSearchChange(event.currentTarget.value)}
+          />
+        )}
+        controls={(
+          <>
+            <SegmentedControl
+              size="xs"
+              value={range}
+              onChange={applyPreset}
+              data={[
+                { value: "1d", label: t("audit.lastDay") },
+                { value: "7d", label: t("audit.last7Days") },
+                { value: "1m", label: t("audit.lastMonth") },
+                { value: "custom", label: t("audit.range.custom") },
+              ]}
             />
-            <TextInput
-              type="date"
-              value={auditDateFrom}
-              onChange={(event) => onAuditDateFromChange(event.currentTarget.value)}
-              aria-label={t("audit.aria.dateFrom")}
-              style={{ width: 170 }}
-            />
-            <TextInput
-              type="date"
-              value={auditDateTo}
-              onChange={(event) => onAuditDateToChange(event.currentTarget.value)}
-              aria-label={t("audit.aria.dateTo")}
-              style={{ width: 170 }}
-            />
-            <Button variant="default" size="compact-sm" onClick={() => onSetDatePreset("1d")}>{t("audit.lastDay")}</Button>
-            <Button variant="default" size="compact-sm" onClick={() => onSetDatePreset("7d")}>{t("audit.last7Days")}</Button>
-            <Button variant="default" size="compact-sm" onClick={() => onSetDatePreset("1m")}>{t("audit.lastMonth")}</Button>
-            <Button
-              variant="default"
-              onClick={onDownloadFilteredCsv}
-              loading={exportAuditLogPending}
+            {range === "custom" ? (
+              <Group gap={6} wrap="nowrap" className="admin-audit-toolbar__dates">
+                <NativeDateTimeInput
+                  size="sm"
+                  value={auditDateFrom}
+                  onChange={(event) => onAuditDateFromChange(event.currentTarget.value)}
+                  aria-label={t("audit.aria.dateFrom")}
+                />
+                <NativeDateTimeInput
+                  size="sm"
+                  value={auditDateTo}
+                  onChange={(event) => onAuditDateToChange(event.currentTarget.value)}
+                  aria-label={t("audit.aria.dateTo")}
+                />
+              </Group>
+            ) : null}
+          </>
+        )}
+        primary={(
+          <Menu withinPortal position="bottom-end" shadow="md" width={180}>
+            <Menu.Target>
+              <Button
+                size="sm"
+                variant="default"
+                loading={exportAuditLogPending}
+                leftSection={<ArrowDownIcon size={14} />}
+              >
+                {t("audit.export")}
+              </Button>
+            </Menu.Target>
+            <Menu.Dropdown>
+              <Menu.Item onClick={onDownloadFilteredCsv}>{t("audit.downloadFilteredCsv")}</Menu.Item>
+              <Menu.Item onClick={onDownloadFilteredJson}>{t("audit.downloadFilteredJson")}</Menu.Item>
+            </Menu.Dropdown>
+          </Menu>
+        )}
+        toggleLabel={t("common:filter.toggle")}
+        activeFilterCount={activeFilterCount}
+        collapseBelow={1120}
+      />
+
+      {hasFilters ? (
+        <div className="admin-filter-summary">
+          <Text size="xs" c="dimmed">{t("audit.filter.active")}</Text>
+          {auditSearch ? (
+            <button
+              type="button"
+              className="admin-filter-chip"
+              onClick={() => onAuditSearchChange("")}
             >
-              {t("audit.downloadFilteredCsv")}
-            </Button>
-            <Button
-              variant="default"
-              onClick={onDownloadFilteredJson}
-              loading={exportAuditLogPending}
+              {t("audit.filter.searchChip", { value: auditSearch })}
+              <XIcon size={12} />
+            </button>
+          ) : null}
+          {auditDateFrom || auditDateTo ? (
+            <button
+              type="button"
+              className="admin-filter-chip"
+              onClick={() => {
+                onAuditDateFromChange("");
+                onAuditDateToChange("");
+              }}
             >
-              {t("audit.downloadFilteredJson")}
-            </Button>
-          </Group>
+              {t("audit.filter.dateRange", {
+                from: auditDateFrom || "…",
+                to: auditDateTo || "…",
+              })}
+              <XIcon size={12} />
+            </button>
+          ) : null}
+          <Text size="xs" c="dimmed">{t("audit.filter.total", { total: auditTotal })}</Text>
         </div>
-      </PortalCard>
+      ) : null}
 
       <AuditLogViewer
         auditLoading={auditLoading}

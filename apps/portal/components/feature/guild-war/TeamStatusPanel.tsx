@@ -20,6 +20,7 @@ export const TeamStatusPanel = memo(function TeamStatusPanel({
 
   return (
     <TextInput
+      className="guild-war-team-notes"
       value={draftNotes}
       onChange={(event) => onDraftNotesChange(team.id, event.currentTarget.value)}
       disabled={draftLocked}

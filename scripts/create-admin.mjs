@@ -1,5 +1,6 @@
 import { execFile } from "node:child_process";
-import { randomBytes, randomUUID, webcrypto } from "node:crypto";
+import { randomBytes, webcrypto } from "node:crypto";
+import { nanoid } from "nanoid";
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
@@ -21,6 +22,12 @@ function encodeBase64(bytes) {
   return Buffer.from(bytes).toString("base64");
 }
 
+// Must stay verifiable by apps/worker/services/auth.ts: same derivation and the
+// same self-describing `pbkdf2-sha256$<iterations>$<hash>` format. The count
+// matches the Worker's free-plan default; deployments that raise
+// PBKDF2_ITERATIONS upgrade this hash automatically on the first login.
+const PBKDF2_ITERATIONS = 10_000;
+
 export async function createPasswordHash(password, salt = randomBytes(16)) {
   const keyMaterial = await webcrypto.subtle.importKey(
     "raw",
@@ -33,7 +40,7 @@ export async function createPasswordHash(password, salt = randomBytes(16)) {
     {
       name: "PBKDF2",
       salt,
-      iterations: 10_000,
+      iterations: PBKDF2_ITERATIONS,
       hash: "SHA-256",
     },
     keyMaterial,
@@ -41,15 +48,14 @@ export async function createPasswordHash(password, salt = randomBytes(16)) {
   );
 
   return {
-    passwordHash: encodeBase64(new Uint8Array(bits)),
+    passwordHash: `pbkdf2-sha256$${PBKDF2_ITERATIONS}$${encodeBase64(new Uint8Array(bits))}`,
     salt: encodeBase64(salt),
   };
 }
 
-export function buildAdminSql({ userId, profileId, username, passwordHash, salt }) {
+export function buildAdminSql({ userId, username, passwordHash, salt }) {
   const values = {
     userId: escapeSql(userId),
-    profileId: escapeSql(profileId),
     username: escapeSql(username),
     passwordHash: escapeSql(passwordHash),
     salt: escapeSql(salt),
@@ -62,8 +68,8 @@ WHERE NOT EXISTS (SELECT 1 FROM users);
 INSERT INTO user_auth_password (user_id, password_hash, salt)
 SELECT '${values.userId}', '${values.passwordHash}', '${values.salt}'
 WHERE EXISTS (SELECT 1 FROM users WHERE id = '${values.userId}');
-INSERT INTO member_profiles (id, user_id, power, classes, images, video_urls)
-SELECT '${values.profileId}', '${values.userId}', 0, '[]', '[]', '[]'
+INSERT INTO member_profiles (user_id, power)
+SELECT '${values.userId}', 0
 WHERE EXISTS (SELECT 1 FROM users WHERE id = '${values.userId}');
 COMMIT;
 `;
@@ -196,8 +202,8 @@ async function assertConfigReady(environment, configPath) {
 
 export async function runCreateAdmin(argv = process.argv.slice(2)) {
   const options = parseArguments(argv);
-  if (!["production", "staging"].includes(options.environment)) {
-    throw new Error("Use --env=production or --env=staging. This command never writes to an unspecified database.");
+  if (options.environment !== "production") {
+    throw new Error("Use --env=production. This command never writes to an unspecified database.");
   }
 
   await assertConfigReady(options.environment, options.configPath);
@@ -230,12 +236,11 @@ export async function runCreateAdmin(argv = process.argv.slice(2)) {
   const { passwordHash, salt } = await createPasswordHash(password);
   const temporaryDirectory = await mkdtemp(join(tmpdir(), "infini-admin-"));
   const sqlPath = join(temporaryDirectory, "create-admin.sql");
-  const userId = randomUUID();
+  const userId = nanoid();
 
   try {
     await writeFile(sqlPath, buildAdminSql({
       userId,
-      profileId: randomUUID(),
       username,
       passwordHash,
       salt,

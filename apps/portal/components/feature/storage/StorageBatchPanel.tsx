@@ -3,18 +3,19 @@ import {
   ActionIcon,
   Badge,
   Button,
-  Divider,
+  Drawer,
   Group,
+  Paper,
   SegmentedControl,
   Select,
   Stack,
   Text,
   Textarea,
 } from "@mantine/core";
+import { useMediaQuery } from "@mantine/hooks";
 import { TrashIcon, XIcon } from "@portal/components/icons";
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { PortalCard } from "../../shared/PortalCard";
 
 export type StorageBatchDirection = "intake" | "distribute";
 
@@ -59,6 +60,8 @@ export function StorageBatchPanel({
   onSubmit,
 }: StorageBatchPanelProps) {
   const { t } = useTranslation("storage");
+  const isMobile = useMediaQuery("(max-width: 40em)");
+  const [reviewOpened, setReviewOpened] = useState(false);
   const itemsById = useMemo(
     () => new Map(Object.entries(draft.itemSnapshots)),
     [draft.itemSnapshots],
@@ -89,27 +92,16 @@ export function StorageBatchPanel({
       id="storage-batch-panel"
       className="storage-batch-panel"
       aria-label={t("batch.title")}
-      tabIndex={-1}
     >
-      <PortalCard interactive={false} className="storage-batch-panel__card">
-        <Stack gap="md">
-          <Group justify="space-between" align="flex-start" wrap="nowrap">
-            <div>
-              <Text fw={800}>{t("batch.title")}</Text>
-              <Text size="sm" c="dimmed">{t("batch.subtitle")}</Text>
-            </div>
-            <ActionIcon
-              variant="subtle"
-              aria-label={t("action.closeBatch")}
-              onClick={onClose}
-              disabled={isSaving}
-            >
-              <XIcon size={16} />
-            </ActionIcon>
-          </Group>
+      <Paper withBorder className="storage-batch-bar">
+        <Group justify="space-between" gap="md" wrap="wrap">
+          <div className="storage-batch-bar__identity">
+            <Text fw={800}>{t("batch.title")}</Text>
+            <Text size="sm" c="dimmed">{t("batch.selectHint")}</Text>
+          </div>
 
           <SegmentedControl
-            fullWidth
+            className="storage-batch-bar__direction"
             value={draft.type}
             onChange={(value) => onTypeChange(value as StorageBatchDirection)}
             data={[
@@ -118,6 +110,70 @@ export function StorageBatchPanel({
             ]}
           />
 
+          <Group gap="lg" className="storage-batch-bar__summary">
+            <div>
+              <Text size="xs" c="dimmed">{t("batch.selectedItems")}</Text>
+              <Text fw={800} className="storage-batch-bar__value">{selectedEntries.length}</Text>
+            </div>
+            <div>
+              <Text size="xs" c="dimmed">{t("batch.totalUnits")}</Text>
+              <Text fw={800} className="storage-batch-bar__value">{totalQuantity}</Text>
+            </div>
+          </Group>
+
+          <Group gap="xs" wrap="nowrap" className="storage-batch-bar__actions">
+            <Button
+              variant="default"
+              onClick={() => setReviewOpened(true)}
+              disabled={selectedEntries.length === 0}
+            >
+              {t("action.reviewBatch")}
+            </Button>
+            <ActionIcon
+              variant="subtle"
+              size={44}
+              aria-label={t("action.closeBatch")}
+              onClick={onClose}
+              disabled={isSaving}
+            >
+              <XIcon size={18} />
+            </ActionIcon>
+          </Group>
+        </Group>
+      </Paper>
+
+      <Drawer
+        opened={reviewOpened}
+        onClose={() => setReviewOpened(false)}
+        title={t("batch.reviewTitle")}
+        position="right"
+        size={isMobile ? "100%" : 440}
+        classNames={{
+          content: "storage-batch-drawer",
+          header: "storage-modal-header",
+          body: "storage-modal-body",
+        }}
+      >
+        <Stack gap="lg">
+          <div className="storage-batch-review__summary">
+            <Group justify="space-between" gap="md">
+              <div>
+                <Text size="xs" c="dimmed">{t("field.direction")}</Text>
+                <Text fw={800}>{draft.type === "intake" ? t("tx.intake") : t("tx.distribute")}</Text>
+              </div>
+              <Group gap="lg">
+                <div>
+                  <Text size="xs" c="dimmed">{t("batch.selectedItems")}</Text>
+                  <Text fw={800}>{selectedEntries.length}</Text>
+                </div>
+                <div>
+                  <Text size="xs" c="dimmed">{t("batch.totalUnits")}</Text>
+                  <Text fw={800}>{totalQuantity}</Text>
+                </div>
+              </Group>
+            </Group>
+          </div>
+
           {canManageStock ? (
             <Select
               label={t("field.member")}
@@ -125,6 +181,9 @@ export function StorageBatchPanel({
               value={draft.recipientUserId}
               onChange={onRecipientChange}
               searchable
+              withAsterisk
+              /* 没选人时直接把原因写在字段上：否则提交按钮灰着，用户看不出差在哪。 */
+              error={draft.recipientUserId ? null : t("validation.recipientRequired")}
               nothingFoundMessage={t("empty.noUsers")}
               disabled={isSaving}
             />
@@ -135,45 +194,48 @@ export function StorageBatchPanel({
             </Group>
           )}
 
-          <Divider />
-
-          <Group justify="space-between" gap="xs">
-            <Text size="sm" fw={700}>
-              {t("batch.pendingItems", { count: selectedEntries.length })}
-            </Text>
-            <Text size="sm" c="dimmed">
-              {t("batch.totalQuantity", { count: totalQuantity })}
-            </Text>
-          </Group>
-
-          {selectedEntries.length === 0 ? (
-            <Text size="sm" c="dimmed" className="storage-batch-panel__empty">
-              {t("batch.empty")}
-            </Text>
-          ) : (
-            <Stack gap={6} className="storage-batch-panel__items">
+          <div>
+            <Group justify="space-between" gap="xs" mb="xs">
+              <Text size="sm" fw={700}>{t("batch.itemsToApply")}</Text>
+              <Button
+                size="compact-sm"
+                variant="subtle"
+                color="red"
+                onClick={onClear}
+                disabled={selectedEntries.length === 0 || isSaving}
+              >
+                {t("action.clearBatch")}
+              </Button>
+            </Group>
+            <Stack gap={6} className="storage-batch-review__items">
               {selectedEntries.map(({ itemId, item, quantity }) => (
-                <Group key={itemId} justify="space-between" wrap="nowrap" className="storage-batch-panel__item">
+                <Group
+                  key={itemId}
+                  justify="space-between"
+                  wrap="nowrap"
+                  className="storage-batch-review__item"
+                >
                   <Text size="sm" lineClamp={1} title={item?.name ?? itemId}>
                     {item?.name ?? itemId}
                   </Text>
                   <Group gap={6} wrap="nowrap">
                     <Badge variant="light">×{quantity}</Badge>
                     <ActionIcon
-                      size="sm"
+                      size={36}
                       variant="subtle"
                       color="red"
                       aria-label={t("action.removeBatchItem", { item: item?.name ?? itemId })}
                       onClick={() => onQuantityChange(itemId, 0)}
                       disabled={isSaving}
                     >
-                      <TrashIcon size={13} />
+                      <TrashIcon size={14} />
                     </ActionIcon>
                   </Group>
                 </Group>
               ))}
             </Stack>
-          )}
+          </div>
+
           {selectionInvalid ? (
             <Text size="sm" c="red" role="alert">
               {t("batch.selectionChanged")}
@@ -184,26 +246,22 @@ export function StorageBatchPanel({
             label={t("field.note")}
             value={draft.note}
             onChange={(event) => onNoteChange(event.currentTarget.value)}
-            minRows={2}
+            minRows={3}
             autosize
             disabled={isSaving}
           />
 
-          <Group justify="space-between" align="stretch" className="storage-batch-panel__actions">
-            <Button
-              variant="subtle"
-              color="red"
-              onClick={onClear}
-              disabled={selectedEntries.length === 0 || isSaving}
-            >
-              {t("action.clearBatch")}
-            </Button>
-            <Button onClick={onSubmit} loading={isSaving} disabled={!canSubmit}>
-              {t("action.submitBatch", { count: selectedEntries.length })}
-            </Button>
-          </Group>
+          <Button
+            fullWidth
+            size="md"
+            onClick={onSubmit}
+            loading={isSaving}
+            disabled={!canSubmit}
+          >
+            {t("action.submitBatch", { count: selectedEntries.length })}
+          </Button>
         </Stack>
-      </PortalCard>
+      </Drawer>
     </aside>
   );
 }

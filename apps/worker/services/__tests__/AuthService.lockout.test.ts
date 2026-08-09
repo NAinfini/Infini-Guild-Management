@@ -7,6 +7,9 @@ const ACCOUNT = {
   id: "user-1",
   username: "Victim",
   role: "member",
+  roleName: "Member",
+  roleColor: "gray",
+  roleLevel: 100,
   isActive: true,
   deletedAt: null,
   createdAt: "2026-01-01T00:00:00.000Z",
@@ -17,8 +20,8 @@ const ACCOUNT = {
 
 /**
  * Mock DB for the two reads `login` performs before it can fail: the lockout
- * row, then the account row. Writes (insert/update/delete) are accepted and
- * discarded — the ladder arithmetic is covered in login-lockout.test.ts.
+ * row, then the account row. Writes are accepted and discarded — the ladder
+ * arithmetic and atomic SQL shape are covered in login-lockout.test.ts.
  */
 function createMockDb(lockRow: { failCount: number; lockedUntil: string | null } | null, account: typeof ACCOUNT | null) {
   const select = vi.fn()
@@ -26,12 +29,20 @@ function createMockDb(lockRow: { failCount: number; lockedUntil: string | null }
       from: () => ({ where: () => ({ limit: () => Promise.resolve(lockRow ? [lockRow] : []) }) }),
     })
     .mockReturnValueOnce({
-      from: () => ({ innerJoin: () => ({ where: () => ({ limit: () => Promise.resolve(account ? [account] : []) }) }) }),
+      from: () => ({ innerJoin: () => ({ innerJoin: () => ({ where: () => ({ limit: () => Promise.resolve(account ? [account] : []) }) }) }) }),
     });
   return {
     select,
-    insert: () => ({ values: () => ({ onConflictDoUpdate: () => ({ returning: () => Promise.resolve([{ failCount: 4 }]) }) }) }),
-    update: () => ({ set: () => ({ where: () => Promise.resolve() }) }),
+    insert: () => ({
+      values: () => ({
+        onConflictDoUpdate: () => ({
+          returning: () => Promise.resolve([{
+            failCount: 4,
+            lockedUntil: "2026-07-25T00:00:30.000Z",
+          }]),
+        }),
+      }),
+    }),
     delete: () => ({ where: () => Promise.resolve() }),
   } as never;
 }
@@ -39,10 +50,14 @@ function createMockDb(lockRow: { failCount: number; lockedUntil: string | null }
 function createDeps() {
   return {
     rawDb: {} as never,
+    mediaService: {
+      listLinkedMedia: vi.fn().mockResolvedValue(new Map()),
+    } as never,
     createPasswordHash: vi.fn(),
     verifyPassword: vi.fn().mockResolvedValue(false),
+    passwordHashTargetIterations: 10_000,
     createSession: vi.fn().mockResolvedValue(undefined),
-    destroySession: vi.fn().mockResolvedValue(undefined),
+    destroySessionById: vi.fn().mockResolvedValue(undefined),
     enforceSessionLimit: vi.fn().mockResolvedValue(undefined),
     writeAuditLog: vi.fn().mockResolvedValue(undefined),
     now: () => NOW,
@@ -72,11 +87,11 @@ describe("AuthService.login lockout", () => {
 
     expect(result).toEqual({ ok: false, code: "UNAUTHORIZED", message: "Invalid credentials" });
     expect(deps.writeAuditLog).toHaveBeenCalledTimes(1);
-    const entry = deps.writeAuditLog.mock.calls[0]?.[0] as { action: string; actorId: string; detailText: string };
+    const entry = deps.writeAuditLog.mock.calls[0]?.[0] as { action: string; actorId: string; detail: object };
     expect(entry.action).toBe("login_failed");
     expect(entry.actorId).toBe("user-1");
     expect(JSON.stringify(entry)).not.toContain("hunter2-secret");
-    expect(JSON.parse(entry.detailText)).toEqual({
+    expect(entry.detail).toEqual({
       reason: "wrong_password",
       client_ip: "203.0.113.7",
       fail_count: 4,
@@ -95,4 +110,5 @@ describe("AuthService.login lockout", () => {
     expect(deps.verifyPassword).toHaveBeenCalledTimes(1);
     expect(deps.writeAuditLog).not.toHaveBeenCalled();
   });
+
 });

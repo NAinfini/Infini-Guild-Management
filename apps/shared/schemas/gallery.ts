@@ -1,20 +1,31 @@
 import { z } from "zod";
 import { isAllowedGalleryVideoUrl } from "../utils/video";
-import { GALLERY_ITEM_TYPES } from "../constants/gallery";
+import { mediaIdSchema } from "./media";
 
-export const galleryItemSchema = z.object({
+const galleryItemBaseSchema = z.object({
   id: z.string(),
-  type: z.enum(GALLERY_ITEM_TYPES),
-  url: z.string(),
   caption: z.string().max(200).nullable(),
   uploaded_by: z.string(),
   uploaded_by_name: z.string().nullable().optional(),
   created_at: z.string(),
 });
 
+export const galleryItemSchema = z.discriminatedUnion("type", [
+  galleryItemBaseSchema.extend({
+    type: z.literal("image"),
+    media_id: mediaIdSchema,
+    url: z.null(),
+  }),
+  galleryItemBaseSchema.extend({
+    type: z.literal("video"),
+    media_id: z.null(),
+    url: z.string().url(),
+  }),
+]);
+
 export const createGalleryItemSchema = z
   .object({
-    type: z.enum(GALLERY_ITEM_TYPES),
+    type: z.literal("video"),
     url: z.string().url("url must be a valid URL"),
     caption: z.string().max(200).optional(),
   })

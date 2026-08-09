@@ -16,6 +16,7 @@ import {
   redirect,
 } from "@tanstack/react-router";
 import { userCanAccessAdmin } from "./utils/permissions";
+import { Button, Paper, Stack, Text, Title } from "@mantine/core";
 import { NavigationProgress, nprogress } from "@mantine/nprogress";
 import { Suspense, lazy, useEffect, type ReactNode } from "react";
 import { z } from "zod";
@@ -23,6 +24,8 @@ import { useTranslation } from "react-i18next";
 import { apiRequest } from "./api/client";
 import { fetchEventDetail } from "./api/queries/events";
 import { AppShell } from "./components/layout/AppShell";
+import { resolveRouteSession } from "./router-session";
+import { transitionSession } from "./session-transition";
 import { useAuthStore } from "./stores/auth";
 import { useSiteConfigStore } from "./stores/site-config";
 import { buildEventWorkbenchSearch, EVENTS_ROUTE_SEARCH_SCHEMA, sanitizeEventsRouteSearch } from "./utils/event-navigation";
@@ -37,15 +40,27 @@ const LOGIN_SEARCH_SCHEMA = z.object({
 
 const GUILD_WAR_SEARCH_SCHEMA = z.object({
   tab: z.enum(["active", "history", "analytics"]).optional(),
-  warName: z.string().optional(),
+  /*
+   * TanStack 默认的搜索参数解析会先拿 JSON.parse 试一遍，所以 ?warName=2026 到这里
+   * 已经是 number 了，z.string() 会直接把整条路由打进错误边界。战名是用户随便填的，
+   * 纯数字完全合法（仪表盘的「上一场战」卡片就照原样带过来）。
+   * 用 coerce 收口：.optional() 会在 coerce 之前短路掉 undefined，不会变出 "undefined"。
+   */
+  warName: z.coerce.string().optional(),
 });
 
 const PROFILE_SEARCH_SCHEMA = z.object({
-  tab: z.enum(["profile", "availability", "account"]).optional(),
+  tab: z.enum(["availability", "account"]).optional(),
 });
 
 const ANNOUNCEMENTS_SEARCH_SCHEMA = z.object({
-  announcementId: z.string().trim().min(1).optional(),
+  /*
+   * 同 warName 的坑：TanStack 解析搜索参数时先拿 JSON.parse 试一遍，
+   * ?announcementId=12345 到这里已经是 number，z.string() 会把整条路由打进错误边界。
+   * 地址栏是用户能随便改的入口，改错一个参数该是「查不到这条公告」，不是整页崩掉。
+   * coerce 收口；.optional() 在 coerce 之前短路 undefined，不会变出 "undefined"。
+   */
+  announcementId: z.coerce.string().trim().min(1).optional(),
   selection: z.literal("none").optional(),
 }).passthrough();
 
@@ -63,7 +78,6 @@ const STORAGE_MANAGE_SEARCH_SCHEMA = STORAGE_SEARCH_SCHEMA.extend({
 
 export function isRouteFeatureEnabled(feature: keyof FeatureFlags): boolean {
   const features = useSiteConfigStore.getState().features;
-  if (feature === "equipmentCalc") return features.tools && features.equipmentCalc;
   return features[feature];
 }
 
@@ -250,20 +264,16 @@ const queryClient = new QueryClient({
 });
 
 async function ensureSession(): Promise<AuthSessionResponse | null> {
-  const store = useAuthStore.getState();
-  if (store.user && store.profile) {
-    return { user: store.user, profile: store.profile };
-  }
-
-  try {
-    const response = await apiRequest<AuthSessionResponse>("/api/auth/me");
-    useAuthStore.getState().setSession(response.user, response.profile);
-    return response;
-  } catch {
-    useAuthStore.getState().clearSession();
-    queryClient.clear();
-    return null;
-  }
+  return resolveRouteSession({
+    getCachedSession: () => {
+      const store = useAuthStore.getState();
+      return store.user && store.profile
+        ? { user: store.user, profile: store.profile }
+        : null;
+    },
+    requestSession: () => apiRequest<AuthSessionResponse>("/api/auth/me"),
+    transitionSession: (session) => transitionSession(queryClient, session, { broadcast: false }),
+  });
 }
 
 function NotFoundPage(): ReactNode {
@@ -274,30 +284,34 @@ function NotFoundPage(): ReactNode {
   }, [t]);
 
   return (
-    <div style={{ minHeight: "60vh", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 12, padding: 24 }}>
-      <span style={{ fontSize: 48, fontWeight: 700, opacity: 0.5 }}>404</span>
-      <span style={{ fontSize: 16, fontWeight: 600 }}>{t("notFound.title")}</span>
-      <a href="/" className="not-found-page__link" style={{ fontSize: 14 }}>{t("notFound.backHome")}</a>
-    </div>
+    <Stack mih="60vh" align="center" justify="center" p="lg">
+      <Paper withBorder radius="lg" p="xl" maw={480} w="100%">
+        <Stack align="center" gap="md">
+          <Text fz={48} fw={700} c="dimmed" lh={1}>404</Text>
+          <Title order={2} ta="center">{t("notFound.title")}</Title>
+          <Button component="a" href="/" variant="default">
+            {t("notFound.backHome")}
+          </Button>
+        </Stack>
+      </Paper>
+    </Stack>
   );
 }
 
 function RouteErrorFallback(): ReactNode {
   const { t } = useTranslation("common");
   return (
-    <div style={{ minHeight: "60vh", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 12, padding: 24 }}>
-      {/* This is the headline of the error screen, not decoration — the old 0.15
-          opacity rendered it at 1.3:1. */}
-      <span className="route-error__headline">{t("errors.somethingWentWrong")}</span>
-      <span style={{ fontSize: 16, fontWeight: 600 }}>{t("errors.generic")}</span>
-      <button
-        type="button"
-        onClick={() => window.location.reload()}
-        className="route-error__reload-button"
-      >
-        {t("action.reloadPage")}
-      </button>
-    </div>
+    <Stack mih="60vh" align="center" justify="center" p="lg">
+      <Paper withBorder radius="lg" p="xl" maw={480} w="100%">
+        <Stack align="center" gap="md">
+          <Title order={2} ta="center">{t("errors.somethingWentWrong")}</Title>
+          <Text c="dimmed" ta="center">{t("errors.generic")}</Text>
+          <Button onClick={() => window.location.reload()}>
+            {t("action.reloadPage")}
+          </Button>
+        </Stack>
+      </Paper>
+    </Stack>
   );
 }
 
@@ -309,7 +323,7 @@ const rootRoute = createRootRoute({
     if (!useAuthStore.getState().user) {
       try {
         const response = await apiRequest<AuthSessionResponse>("/api/auth/me");
-        useAuthStore.getState().setSession(response.user, response.profile);
+        transitionSession(queryClient, response, { broadcast: false });
       } catch {
         // no valid session — that's fine for public routes
       }
@@ -470,10 +484,7 @@ const storageManageRoute = createRoute({
   beforeLoad: () => {
     requireRouteFeature("storage");
     const user = useAuthStore.getState().user;
-    if (
-      !user?.permissions["admin.storage.structure"]
-      && !user?.permissions["admin.storage.manage"]
-    ) {
+    if (!user?.permissions["admin.storage.structure"]) {
       throw redirect({ to: "/storage" });
     }
   },
@@ -498,7 +509,7 @@ const wikiSlugRoute = createRoute({
 
 const ADMIN_SEARCH_SCHEMA = z.object({
   member: z.string().optional(),
-  tab: z.enum(["member", "invite", "audit", "roles", "siteConfig", "badges", "status", "gameData"]).optional(),
+  tab: z.enum(["member", "invite", "audit", "roles", "siteConfig", "classes", "badges", "status"]).optional(),
 });
 
 const adminRoute = createRoute({

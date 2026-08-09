@@ -1,17 +1,35 @@
 // @vitest-environment jsdom
 import { MantineProvider } from "@mantine/core";
 import { render, screen } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { PageLayout } from "./PageLayout";
 
+vi.mock("react-i18next", () => ({
+  useTranslation: () => ({
+    t: (key: string) => ({
+      "nav.breadcrumbs": "Localized breadcrumb navigation",
+    })[key] ?? key,
+  }),
+}));
+
 describe("PageLayout", () => {
-  it("renders the route title as the only h1 and exposes the page-header slots", () => {
-    render(
+  it("does not reserve a page-header row for ordinary content", () => {
+    const { container } = render(
+      <MantineProvider>
+        <PageLayout>
+          <section>Event list</section>
+        </PageLayout>
+      </MantineProvider>,
+    );
+
+    expect(container.querySelector(".page-layout__header")).not.toBeInTheDocument();
+    expect(screen.getByText("Event list")).toBeInTheDocument();
+  });
+
+  it("keeps breadcrumbs and actions in the first content row without rendering another page header", () => {
+    const { container } = render(
       <MantineProvider>
         <PageLayout
-          title="Events"
-          subtitle="Plan and join guild activities."
-          icon={<span data-testid="page-icon">E</span>}
           breadcrumbs={<a href="/">Dashboard</a>}
           actions={<button type="button">Create event</button>}
         >
@@ -20,13 +38,24 @@ describe("PageLayout", () => {
       </MantineProvider>,
     );
 
-    expect(screen.getAllByRole("heading", { level: 1 })).toHaveLength(1);
-    expect(screen.getByRole("heading", { level: 1, name: "Events" })).toBeInTheDocument();
-    expect(screen.getByText("Plan and join guild activities.")).toBeInTheDocument();
-    expect(screen.getByTestId("page-icon")).toBeInTheDocument();
-    expect(screen.getByRole("navigation", { name: "Breadcrumb" })).toContainElement(
+    expect(screen.queryByRole("heading", { level: 1 })).not.toBeInTheDocument();
+    expect(container.querySelector("header")).not.toBeInTheDocument();
+    expect(container.querySelector(".page-layout__action-row")).not.toBeNull();
+    expect(screen.getByRole("navigation", { name: "Localized breadcrumb navigation" })).toContainElement(
       screen.getByRole("link", { name: "Dashboard" }),
     );
     expect(screen.getByRole("button", { name: "Create event" })).toBeInTheDocument();
+  });
+
+  it("uses the shell route metadata for width instead of accepting page-specific width values", () => {
+    const { container } = render(
+      <MantineProvider>
+        <PageLayout>
+          <section>Settings form</section>
+        </PageLayout>
+      </MantineProvider>,
+    );
+
+    expect(container.querySelector(".page-layout")).toHaveAttribute("data-page-layout", "content");
   });
 });

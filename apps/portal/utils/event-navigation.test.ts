@@ -2,18 +2,18 @@ import { describe, expect, it } from "vitest";
 import {
   EVENTS_ROUTE_SEARCH_SCHEMA,
   buildEventWorkbenchSearch,
+  clearEventWorkbenchFocus,
   sanitizeEventsRouteSearch,
 } from "./event-navigation";
 
 describe("event navigation", () => {
-  it("builds dashboard and search navigation for the events workbench", () => {
+  it("uses eventId as the sole detail-restoration state", () => {
     expect(
       buildEventWorkbenchSearch({
         id: "event-42",
         title: "Guild Raid",
       }),
     ).toEqual({
-      search: "Guild Raid",
       eventId: "event-42",
       view: "cards",
     });
@@ -42,7 +42,6 @@ describe("event navigation", () => {
         status: "archived",
         pinned: true,
         locked: true,
-        tab: "recurring",
         eventId: "event-42",
         view: "month",
       }),
@@ -52,7 +51,6 @@ describe("event navigation", () => {
       status: "archived",
       pinned: true,
       locked: true,
-      tab: "recurring",
       eventId: "event-42",
       view: "month",
     });
@@ -62,10 +60,31 @@ describe("event navigation", () => {
     expect(sanitizeEventsRouteSearch({ status: "all" })).toEqual({ status: "all" });
   });
 
-  it("keeps the default events tab implicit and rejects recurring as a view mode", () => {
-    expect(sanitizeEventsRouteSearch({ tab: "events", view: "cards" })).toEqual({
+  it("clears only the modal focus when a deep-linked detail closes", () => {
+    expect(
+      clearEventWorkbenchFocus({
+        search: "Guild Raid",
+        eventId: "event-42",
+        view: "cards",
+        pinned: true,
+      }),
+    ).toEqual({
+      search: "Guild Raid",
       view: "cards",
+      pinned: true,
     });
-    expect(EVENTS_ROUTE_SEARCH_SCHEMA.parse({ view: "recurring" })).toEqual({});
+  });
+
+  it("survives the router's JSON-parsed search params instead of blowing up the route", () => {
+    expect(EVENTS_ROUTE_SEARCH_SCHEMA.parse({ search: 20260731 })).toEqual({ search: "20260731" });
+    expect(EVENTS_ROUTE_SEARCH_SCHEMA.parse({ search: true })).toEqual({ search: "true" });
+    expect(EVENTS_ROUTE_SEARCH_SCHEMA.parse({ eventId: 42 })).toEqual({ eventId: "42" });
+    expect(EVENTS_ROUTE_SEARCH_SCHEMA.parse({ type: 1 })).toEqual({});
+    expect(EVENTS_ROUTE_SEARCH_SCHEMA.parse({ type: "not_a_type" })).toEqual({});
+  });
+
+  it("accepts the current recurring view contract", () => {
+    expect(sanitizeEventsRouteSearch({ view: "recurring" })).toEqual({ view: "recurring" });
+    expect(EVENTS_ROUTE_SEARCH_SCHEMA.parse({ view: "recurring" })).toEqual({ view: "recurring" });
   });
 });

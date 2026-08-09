@@ -1,21 +1,21 @@
 # Self-hosting setup guide
 
-This guide takes a new installation from a fresh clone to a working Cloudflare deployment. You do not need an existing server: Cloudflare Workers serves both the website and API.
+This is the canonical source for local installation, Cloudflare deployment, production initialization, updates, and setup troubleshooting. The README intentionally links here instead of duplicating these commands.
 
 Chinese version: [SETUP.zh.md](./SETUP.zh.md)
 
 ## What you need
 
-- A computer with [Node.js 24 LTS (24.18.0 or newer)](https://nodejs.org/)
-- pnpm 11.17.0 (`npm install --global pnpm@11.17.0` if `pnpm --version` fails)
-- A free or paid [Cloudflare account](https://dash.cloudflare.com/sign-up)
+- [Node.js 24 LTS](https://nodejs.org/) 24.18.0 or newer
+- pnpm 11.17.0 (`npm install --global pnpm@11.17.0` if needed)
 - Git, or a downloaded ZIP of this repository
+- A [Cloudflare account](https://dash.cloudflare.com/sign-up) for production
 
-You do not need a custom domain. The first deployment can use a free `*.workers.dev` address.
+Local development does not require a Cloudflare account. A custom domain is optional; production may start on `*.workers.dev`.
 
-## 1. Try the site locally
+## 1. Run locally
 
-From the repository folder, run:
+From the repository root:
 
 ```bash
 pnpm install
@@ -23,14 +23,15 @@ pnpm setup:local
 pnpm dev
 ```
 
-`setup:local` creates two ignored files:
+`pnpm setup:local` creates your untracked `apps/worker/wrangler.jsonc` from `wrangler.example.jsonc` when it does not exist yet, and creates an ignored `apps/worker/.dev.vars` with a random local `SIGNING_SECRET`. It never overwrites an existing configuration or `.dev.vars` file. Both files are ignored by git; do not commit them.
 
-- `apps/worker/wrangler.jsonc`, your private Cloudflare configuration
-- `apps/worker/.dev.vars`, containing a randomly generated local signing secret
+One more one-time install: the E2E suite (run by `pnpm test:e2e` and by the deployment gate in step 5) needs a Playwright browser:
 
-It never overwrites either file. Do not add them to Git.
+```bash
+pnpm exec playwright install chromium
+```
 
-Open `http://localhost:5173` after the terminal reports that the portal is ready. Local development uses disposable demo data:
+Open `http://localhost:5173` after the portal is ready. Local development uses disposable demo data:
 
 | Username | Password | Role |
 | --- | --- | --- |
@@ -38,70 +39,83 @@ Open `http://localhost:5173` after the terminal reports that the portal is ready
 | `mod_1` | `moderator123` | Moderator |
 | `member_01` | `member1234` | Member |
 
-Stopping and restarting with `pnpm dev` resets this local database. These demo accounts are never created in production.
+`pnpm dev` rebuilds the local D1 database and seeds it again. These accounts are never created in production.
 
-## 2. Connect Cloudflare
+## Production schema policy
 
-Log in from the terminal:
+`apps/worker/db/migrations/0000_core_schema.sql` is the complete fresh pre-release schema baseline.
+
+- During the pre-release reset window, approved schema changes fold into this baseline and disposable databases must be rebuilt from it.
+- After the first release, the baseline freezes. Every later schema change ships as a new monotonically numbered incremental migration that preserves existing data, and no applied migration may be edited.
+- Never patch a production D1 database manually. Apply reviewed migrations through Wrangler, and back up production data before an authorized remote migration.
+
+The schema deliberately has no runtime game-rule tables. Event types, war results, stat keys, and KDA behavior are source-owned contracts, not Site Config records.
+
+## 2. Connect Cloudflare and create resources
+
+`apps/worker/wrangler.jsonc` is your deployment's manifest and is deliberately untracked: the repository ships `wrangler.example.jsonc` as the template, `pnpm setup:local` copies it into place, and `.gitignore` keeps your copy — with its real database ID, bucket name, domain, and origin — out of version control. Fill in the production D1 binding, R2 binding, route, and default logo asset with resources you own. Resource names, IDs, and routes are configuration identifiers, not credentials; `SIGNING_SECRET` and Cloudflare API tokens are the actual secrets and never belong in this file.
+
+Log in:
 
 ```bash
 pnpm exec wrangler login
 ```
 
-Your browser should open a Cloudflare authorization page. Return to the terminal after it confirms the login.
-
-Create a production D1 database and let Wrangler update the `DB` binding:
+Create the production D1 database and update the `DB` binding:
 
 ```bash
 pnpm exec wrangler d1 create my-guild-db --binding DB --env production --update-config --config apps/worker/wrangler.jsonc
 ```
 
-Create a production R2 bucket and update the `MEDIA` binding:
+Create one production R2 bucket and update the `MEDIA` binding:
 
 ```bash
 pnpm exec wrangler r2 bucket create my-guild-media --binding MEDIA --env production --update-config --config apps/worker/wrangler.jsonc
 ```
 
-If either command says that the resource already exists, choose a different globally unique name or enter its existing ID/name manually in `env.production`.
+Only one R2 binding is required. The `MEDIA` bucket stores content media, audit archive data, and each archive month's authoritative manifest. Do not create a separate audit bucket and do not manually rewrite or delete production R2 objects.
 
-## 3. Set the site name and secret
+If a resource name is already taken, choose another name. If you bind an existing resource, edit only the corresponding `env.production` binding.
 
-Open `apps/worker/wrangler.jsonc` and edit only these production values:
+## 3. Configure production variables and secret
+
+In `apps/worker/wrangler.jsonc`, review the production variables along with the resource bindings:
 
 ```jsonc
 "vars": {
   "ENVIRONMENT": "production",
   "PORTAL_ORIGIN": "",
-  "SITE_NAME": "My Guild",
-  "SITE_LOGO_URL": "/guild-logo.webp"
+  "SITE_LOGO_URL": "/guild-logo.svg"
 }
 ```
 
-For the normal same-Worker deployment, keep `PORTAL_ORIGIN` empty. It is only needed when a separately hosted frontend calls the API.
+For the normal same-Worker deployment, leave `PORTAL_ORIGIN` empty. Set it only when a separately hosted frontend must call this Worker, and use a bare origin such as `https://portal.example.com` — no path, query, or trailing slash. The Worker compares request origins against this value verbatim, and `pnpm config:check` rejects values that could never match.
 
-Store the production signing secret in Cloudflare:
+`PBKDF2_ITERATIONS` controls the password-hashing cost. It defaults to `10000`, chosen so a login derivation fits the Workers free-plan CPU budget; see [Running on the Workers free plan](#running-on-the-workers-free-plan) for why you should raise it on a paid plan and how the upgrade rolls out to existing accounts.
+
+Store the production secret in Cloudflare:
 
 ```bash
 pnpm exec wrangler secret put SIGNING_SECRET --env production --config apps/worker/wrangler.jsonc
 ```
 
-Paste a long random value when prompted. The value belongs in Cloudflare, not in `wrangler.jsonc`, `.env`, an issue, or a commit.
+Use a long random value. `SIGNING_SECRET` signs audit archive download tokens and authenticates Worker-to-Durable-Object push publication. Store it only as a Cloudflare secret; never place it in `wrangler.jsonc`, an `.env` file, an issue, or a commit.
 
-Check the configuration:
+Validate the manifest:
 
 ```bash
 pnpm config:check -- --env=production
 ```
 
-Do not continue until it prints:
+Continue only after it prints:
 
 ```text
 [config] production configuration is ready.
 ```
 
-## 4. Create the production database and first administrator
+## 4. Initialize D1 and create the first administrator
 
-Apply all database migrations:
+Apply the reviewed migrations:
 
 ```bash
 pnpm exec wrangler d1 migrations apply DB --remote --env production --config apps/worker/wrangler.jsonc
@@ -113,15 +127,7 @@ Create the first administrator:
 pnpm setup:admin -- --env=production
 ```
 
-The command:
-
-- requires an interactive terminal and hides password input;
-- requires a 12-128 character password;
-- only writes to the explicitly selected environment;
-- refuses to run when any user already exists;
-- removes its temporary SQL file immediately.
-
-All later users should join through invite links created in the Admin console.
+The command requires an interactive terminal, hides password input, requires a 12–128 character password, operates only on the explicitly selected production environment, refuses to run when any user already exists, and removes its temporary SQL directory. The password hash is written at the default cost and upgrades automatically on the first login if you later raise `PBKDF2_ITERATIONS`. All later users should register through invite links created in Admin.
 
 ## 5. Deploy
 
@@ -131,88 +137,104 @@ Run:
 pnpm deploy:production
 ```
 
-This performs the config check, builds the React portal, and deploys the Worker and static assets together. Wrangler prints the public URL when it finishes. Open that URL and sign in with the administrator account from step 4.
+This runs the repository's production release checks, builds the portal, performs a Worker deployment dry run, and deploys the Worker with its static assets. Use this script instead of a bare `wrangler deploy`, which can publish stale frontend assets or skip required checks. The release gate includes the full Playwright E2E suite, so expect the command to run for tens of minutes; it fails early if the Playwright browser from step 1 is missing.
 
-If the page is blank or shows old content, run `pnpm build` and `pnpm deploy:production` again. Do not run a bare `wrangler deploy` after frontend changes because it may reuse an old portal build.
+Wrangler prints the public URL after deployment. Open it and sign in with the administrator created in step 4.
 
-## 6. Finish setup in the Admin console
+## 6. Finish configuration in Admin
 
 Open **Admin → Site Config** and review:
 
 1. **Branding** — site name and uploaded logo.
-2. **Features** — announcements, events, guild war, gallery, wiki, tools, equipment calculator, and storage.
+2. **Features** — `announcements`, `events`, `guildWar`, `gallery`, `wiki`, `tools`, and `storage`.
 3. **Limits** — per-file upload limits, media quotas, and storage images per item.
-4. **Onboarding** — rules, acknowledgement requirement, and checklist for new members.
+4. **Policies** — the absence policy shown to members.
 
-Then open **Admin → Invites** and create the first member invite. Never reuse the bootstrap administrator password for another account.
+Then use **Admin → Invites** to create member invitations. Never reuse the bootstrap administrator password.
 
-The Admin console stores these settings in D1. `SITE_NAME` and `SITE_LOGO_URL` in Wrangler remain safe fallback values used while the app starts.
+The fresh D1 migration creates the authoritative `site_config` singleton with the neutral name `Infini Guild`; change it in Admin after first login. `SITE_LOGO_URL` points only to the deployment's static default logo, which an uploaded logo can supersede. The `.github` issue templates link to this repository — a public fork should retarget them so reports reach its own maintainers.
 
-## Where each setting belongs
+The site name and runtime policies always come from D1. Wrangler does not provide a production site-name fallback.
 
-| What you want to change | Correct place | Restart or deploy? |
+## Where configuration belongs
+
+| Change | Source of truth | Requires deploy? |
 | --- | --- | --- |
-| Site name, logo, enabled modules, media quotas, onboarding | **Admin → Site Config** | No |
-| Member roles, permissions, invites | **Admin console** | No |
-| D1, R2, domain, environment, fallback branding | `apps/worker/wrangler.jsonc` | Deploy |
-| Cloudflare signing secret | `wrangler secret put` | Deploy |
-| Game classes, event types, and war metrics | `apps/shared/games/definitions/` | Build and deploy |
-| Hard safety ceilings, rate limits, and pagination defaults | `apps/shared/config/limits.ts` | Build and deploy |
+| Site name/logo, seven feature flags, upload limits, media quotas, storage policy | **Admin → Site Config** | No |
+| Member profiles, roles, permissions, invites, classes, class tags, badges | Corresponding Admin workflow | No |
+| Guild-war analytics weights | `/api/admin/analytics-settings` with the required permission | No |
+| D1, the single `MEDIA` R2 bucket, environment, domain, default logo asset | `apps/worker/wrangler.jsonc` | Yes |
+| `SIGNING_SECRET` | Cloudflare secret storage via `wrangler secret put` | Yes |
+| Event types, war results, stat definitions, KDA formula | Shared source contracts plus an incremental data migration when needed | Build and deploy |
+| Hard safety ceilings, rate limits, pagination defaults | `apps/shared/config/limits.ts` | Build and deploy |
 
-There is no `FEATURES` environment variable. Runtime module switches belong in Admin → Site Config so there is one source of truth.
+There is no `FEATURES` environment variable. Do not create a second configuration source and do not manually edit production D1 or R2 to change application behavior.
 
-## Optional: use a custom domain
+## Running on the Workers free plan
 
-The default production config uses `workers_dev: true`, so a domain is not required. To use a domain already managed by Cloudflare:
+The portal is designed to run on the Workers free plan. These defaults exist because of its limits, and each can be raised after upgrading:
 
-1. Change `workers_dev` to `false` under `env.production`.
-2. Uncomment the example `routes` entry.
-3. Replace its pattern with your hostname, such as `guild.example.com`.
-4. Run `pnpm config:check -- --env=production`.
-5. Run `pnpm deploy:production`.
+- **Password hashing.** The free plan caps CPU time per invocation at roughly 10 ms, which is why `PBKDF2_ITERATIONS` defaults to `10000` — one login derivation fits the budget. OWASP recommends 600,000 iterations for PBKDF2-SHA256, so on a paid plan (30 s CPU ceiling) set `"PBKDF2_ITERATIONS": "600000"` in the production vars. Stored hashes are self-describing, so the change is safe at any time: existing accounts keep verifying against their stored cost and are transparently rehashed to the new cost on their next successful login.
 
-Because the portal and API share one origin, `PORTAL_ORIGIN` can remain empty.
+Upgrading is a Cloudflare dashboard action (Workers & Pages → plan); no code change is needed beyond the vars above.
 
-## Updating an existing installation
+## Optional custom domain
 
-Back up D1 before a major update, then run:
+Choose one production exposure mode before the configuration check:
+
+1. For `workers.dev`, keep `env.production.workers_dev` as `true` (the template default) with no `routes` entry.
+2. For a Cloudflare-managed custom domain, set `workers_dev` to `false` and add a `routes` entry with your hostname (the template carries a commented example), for example `guild.example.com`.
+3. Run `pnpm config:check -- --env=production`.
+4. Run `pnpm deploy:production`.
+
+The portal and API normally remain same-origin, so `PORTAL_ORIGIN` can stay empty.
+
+## Update an initialized site
+
+Back up production data before an authorized migration, then run:
 
 ```bash
 pnpm install
-pnpm typecheck
-pnpm test
+pnpm config:check -- --env=production
 pnpm exec wrangler d1 migrations apply DB --remote --env production --config apps/worker/wrangler.jsonc
 pnpm deploy:production
 ```
 
-Never run `pnpm setup:admin` on an existing installation.
+An initialized site must never rerun `pnpm setup:admin`, edit an already-applied migration file, or apply direct production D1/R2 edits. Repository releases provide incremental migrations for schema changes.
 
 ## Troubleshooting
 
-### `wrangler.jsonc not found`
+### `wrangler.jsonc` is missing
 
-Run `pnpm setup:local`. If you already have a private config elsewhere, copy it to `apps/worker/wrangler.jsonc`.
+Run `pnpm setup:local` to create it from `wrangler.example.jsonc`. The file is deliberately untracked, so a fresh clone does not contain it until this step.
 
-### A placeholder is reported
+### The configuration check reports a placeholder
 
-Read the exact field in the `config:check` error. Re-run the D1 or R2 `--update-config` command, or replace that one value in `env.production`.
+Read the exact field in the error. Re-run the matching D1/R2 `--update-config` command or replace only that production value.
 
-### `Authentication error` or browser login did not finish
+### Cloudflare authentication fails
 
-Run `pnpm exec wrangler logout`, then `pnpm exec wrangler login`.
+```bash
+pnpm exec wrangler logout
+pnpm exec wrangler login
+```
 
-### The first-admin command says users already exist
+### The first-admin command reports existing users
 
-This is a safety stop, not a failure. Sign in with the existing administrator. If no administrator exists, do not delete production data; open a support issue with all secrets and resource IDs removed.
+This is a safety stop. Use an existing administrator. If no administrator is usable, do not delete or modify production data; request help with credentials and private guild data removed.
+
+### Port 8787 or 5173 is already in use
+
+`pnpm dev` needs both fixed ports: the Worker serves `http://localhost:8787` and Vite must own `http://localhost:5173`, because the dev CORS allowlist pins that exact portal origin. Vite is configured with `strictPort` and fails immediately instead of silently moving to 5174 (which would break every credentialed request). If either port is taken — often a previous `pnpm dev` that did not exit — stop that process and rerun. The local seed step also times out after 60 seconds when the Worker cannot start on 8787.
+
+### E2E tests fail with "Executable doesn't exist"
+
+Run `pnpm exec playwright install chromium` once. Also stop `pnpm dev` before `pnpm test:e2e`: the E2E slots start their own Workers and clash with a running dev server's ports.
 
 ### Uploads fail
 
-Check that the `MEDIA` binding points to the correct R2 bucket. The request-wide ceilings are 1 MiB for ordinary API mutations and 32 MiB for upload routes; smaller per-file limits can be changed in **Admin → Site Config**.
+Confirm that `MEDIA` points to the one expected R2 bucket. Persisted images are complete WebP `full`/`view` pairs; profile audio is Ogg containing Opus. The Worker compares declared types with bytes, verifies exact image dimensions, and rejects SVG and GIF as images. Ordinary API bodies are limited to 1 MiB and upload requests to 32 MiB; smaller per-variant limits and logical-asset quotas live in Site Config. See [Media Architecture](./docs/media-architecture.md).
 
-### Asking for help safely
+### Ask for setup help safely
 
-Use the repository's **Setup help** issue form. Include the command and error text, but remove:
-
-- passwords, cookies, invite codes, and signing secrets;
-- Cloudflare API tokens;
-- D1 database IDs, account IDs, and private hostnames.
+Use the repository's **Setup help** issue form and include the failing command plus complete error text. Remove passwords, cookies, invite codes, `SIGNING_SECRET`, Cloudflare API tokens, and private guild data. Your `wrangler.jsonc` resource identifiers are configuration, not authentication secrets — and the file is untracked, so nothing publishes them automatically — but you may still redact identifiers you do not want in a public issue.

@@ -1,5 +1,5 @@
 import type { User } from "@guild/shared";
-import { useConfirmDialog } from "@portal/components/shared/ConfirmDialog";
+import { useConfirmDialog } from "@portal/hooks/useConfirmDialog";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
 import { useCallback } from "react";
@@ -13,6 +13,7 @@ import {
   type EventDetailResponse,
 } from "../services/EventService";
 import { queryKeys } from "../api/query-keys";
+import { useKeyedPending } from "./useKeyedPending";
 
 type EventDetailPayload = EventDetailResponse;
 
@@ -35,6 +36,7 @@ export function useEventsParticipantMutations({
   const confirm = useConfirmDialog();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+  const { pendingKeys: participantPendingEventIds, runPending } = useKeyedPending();
 
   const openConfirm = useCallback(
     (options: { title: string; description?: string; intent: "neutral" | "warning" | "danger" }) =>
@@ -203,7 +205,7 @@ export function useEventsParticipantMutations({
     },
   });
 
-  const handleJoin = async (eventId: string) => {
+  const handleJoin = (eventId: string) => runPending(eventId, async () => {
     if (!canInteract) {
       if (!user) {
         void navigate({
@@ -223,13 +225,13 @@ export function useEventsParticipantMutations({
 
     const target = eventById.get(eventId);
     if (!target) {
-      joinMutation.mutate(eventId);
+      await joinMutation.mutateAsync(eventId);
       return;
     }
     const targetStart = Date.parse(target.start_at);
     const targetEnd = Date.parse(target.end_at ?? target.start_at);
     if (!Number.isFinite(targetStart) || !Number.isFinite(targetEnd)) {
-      joinMutation.mutate(eventId);
+      await joinMutation.mutateAsync(eventId);
       return;
     }
 
@@ -245,15 +247,15 @@ export function useEventsParticipantMutations({
         intent: "warning",
       });
       if (shouldJoin) {
-        joinMutation.mutate(eventId);
+        await joinMutation.mutateAsync(eventId);
       }
       return;
     }
 
-    joinMutation.mutate(eventId);
-  };
+    await joinMutation.mutateAsync(eventId);
+  });
 
-  const handleLeave = async (eventId: string) => {
+  const handleLeave = (eventId: string) => runPending(eventId, async () => {
     if (!user || !canInteract) {
       return;
     }
@@ -264,21 +266,20 @@ export function useEventsParticipantMutations({
       intent: "warning",
     });
     if (confirmed) {
-      leaveMutation.mutate(eventId);
+      await leaveMutation.mutateAsync(eventId);
     }
-  };
+  });
 
   const addParticipant = (eventId: string, userId: string) => {
-    addParticipantMutation.mutate({ eventId, userId });
+    void runPending(eventId, () => addParticipantMutation.mutateAsync({ eventId, userId }));
   };
 
   const removeParticipant = (eventId: string, userId: string) => {
-    removeParticipantMutation.mutate({ eventId, userId });
+    void runPending(eventId, () => removeParticipantMutation.mutateAsync({ eventId, userId }));
   };
 
   return {
-    joinPending: joinMutation.isPending,
-    leavePending: leaveMutation.isPending,
+    participantPendingEventIds,
     handleJoin,
     handleLeave,
     addParticipant,

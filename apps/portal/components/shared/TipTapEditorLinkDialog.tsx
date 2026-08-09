@@ -1,9 +1,8 @@
-import { Button, Group, Text } from "@mantine/core";
-import type { TipTapEditorLabels } from "./TipTapEditor";
+import { Button, Group, Modal } from "@mantine/core";
+import type { TipTapEditorLabels } from "./tiptap-meta";
 
 type TipTapEditorLinkDialogProps = {
   labels: TipTapEditorLabels;
-  titleId: string;
   url: string;
   onUrlChange: (value: string) => void;
   onClose: () => void;
@@ -13,42 +12,64 @@ type TipTapEditorLinkDialogProps = {
 
 export function TipTapEditorLinkDialog({
   labels,
-  titleId,
   url,
   onUrlChange,
   onClose,
   onSubmit,
   onUnset,
 }: TipTapEditorLinkDialogProps) {
+  const handleKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
+    if (event.key !== "Escape" || event.nativeEvent.isComposing) return;
+    event.preventDefault();
+    event.stopPropagation();
+    onClose();
+  };
+
   return (
-    <div className="infini-tiptap-link-dialog-backdrop" onMouseDown={onClose}>
+    <Modal
+      opened
+      onClose={onClose}
+      title={labels.linkPrompt}
+      size="sm"
+      keepMounted={false}
+      closeOnEscape={false}
+      returnFocus={false}
+      overlayProps={{ className: "infini-tiptap-link-dialog-backdrop" }}
+      closeButtonProps={{
+        "aria-label": labels.close,
+        mod: { "data-mantine-stop-propagation": true },
+      }}
+      onKeyDown={handleKeyDown}
+    >
       <form
-        aria-labelledby={titleId}
         className="infini-tiptap-link-dialog"
-        role="dialog"
-        aria-modal="true"
-        onMouseDown={(event) => event.stopPropagation()}
         onSubmit={(event) => {
           event.preventDefault();
           onSubmit();
         }}
       >
-        <div className="infini-tiptap-link-dialog__header">
-          <Text id={titleId} fw={700}>{labels.linkPrompt}</Text>
-          <Button size="xs" variant="subtle" type="button" onClick={onClose}>{labels.close}</Button>
-        </div>
         <input
           autoFocus
           className="infini-tiptap-link-dialog__input"
           value={url}
           aria-label={labels.linkPrompt}
+          data-mantine-stop-propagation="true"
           onChange={(event) => onUrlChange(event.currentTarget.value)}
         />
         <Group justify="flex-end" gap={8}>
-          <Button variant="default" type="button" onClick={onUnset}>{labels.unlink}</Button>
-          <Button type="submit">{labels.link}</Button>
+          <Button
+            variant="default"
+            type="button"
+            data-mantine-stop-propagation="true"
+            onClick={onUnset}
+          >
+            {labels.unlink}
+          </Button>
+          <Button type="submit" data-mantine-stop-propagation="true">
+            {labels.link}
+          </Button>
         </Group>
       </form>
-    </div>
+    </Modal>
   );
 }

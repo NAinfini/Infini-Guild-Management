@@ -1,0 +1,41 @@
+/*
+ * 活动表单：左栏「所有活动都要填的」，右栏「这个类型独有的」。
+ * 右栏比左栏宽一点，因为职业配额那一行是四格的，挤在半幅里图标就得收进 +N。
+ */
+.event-form__layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.15fr);
+  align-items: start;
+  gap: var(--space-lg);
+}
+
+.event-form__column {
+  min-width: 0;
+}
+
+.event-form__type-block {
+  display: grid;
+  align-content: start;
+  gap: var(--space-md);
+  padding: var(--space-md);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-surface);
+  background: color-mix(in srgb, var(--text-primary) 3%, transparent);
+}
+
+.event-form__actions {
+  margin-top: var(--space-lg);
+  padding-top: var(--space-md);
+  border-top: 1px solid var(--border-subtle);
+}
+
+/* 没有被卡住的时候这行是空的，但位子留着——按钮不会因为多出一句话而横跳。 */
+.event-form__blocked {
+  min-width: 0;
+}
+
+@media (max-width: 820px) {
+  .event-form__layout {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}

@@ -39,8 +39,8 @@
   "toolbar.embedVideo": "Embed Video",
   "toolbar.details": "Toggle Section",
   "toolbar.findReplace": "Find & Replace",
-  "toolbar.findPlaceholder": "Find...",
-  "toolbar.replacePlaceholder": "Replace...",
+  "toolbar.findPlaceholder": "Find…",
+  "toolbar.replacePlaceholder": "Replace…",
   "toolbar.findNext": "Next",
   "toolbar.findPrev": "Previous",
   "toolbar.replaceOne": "Replace",
@@ -54,5 +54,11 @@
   "message.imageUploadFailed": "Image upload failed",
   "toolbar.linkPrompt": "Link URL",
   "toolbar.close": "Close",
-  "upload.uploading": "Uploading image..."
+  "upload.uploading": "Uploading image…",
+  "lightbox.title": "Image preview",
+  "lightbox.preview": "Preview image",
+  "lightbox.zoomOut": "Zoom out",
+  "lightbox.zoomReset": "Reset zoom",
+  "lightbox.zoomIn": "Zoom in",
+  "lightbox.zoomLevel": "Zoom {{percent}}%"
 }

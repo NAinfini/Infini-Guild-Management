@@ -1,4 +1,4 @@
-import { activeGame } from "@guild/shared/games";
+import type { GameRules } from "@guild/shared";
 import { and, asc, desc, eq, gte, inArray, isNotNull, isNull, lte, sql } from "drizzle-orm";
 import { Hono } from "hono";
 import {
@@ -10,14 +10,27 @@ import {
   warTeamMembers,
   warTeams,
 } from "../db/schema";
-import { parseStringArray } from "../services/helpers";
+import { loadMemberClasses } from "../services/ordered-relations";
+import type { MediaService } from "../services/MediaService";
 import { eventPublicVisibilityFilter } from "../services/events/event-visibility";
 import { toEventPayload, type EventRow } from "../services/EventService";
-import { toWarHistoryPayload } from "../services/GuildWarService";
+import type { RawDbLike } from "../services/events/EventCrudService";
+import {
+  EVENT_CLASS_QUOTA_TABLE,
+  loadClassQuotas,
+  typeSupportsClassQuotas,
+} from "../services/events/event-class-quotas";
+import {
+  WAR_HISTORY_FIELDS,
+  WAR_TEAM_MEMBER_STAT_FIELDS,
+  toMemberStats,
+  toWarHistoryPayload,
+} from "../services/GuildWarService";
 import type { SessionUser } from "../services/auth";
+import type { Bindings } from "../index";
 import { getRequestUser } from "../middleware/rbac";
 import { getDb } from "./_shared";
-import { getFeatureFlags } from "./service-factory";
+import { getFeatureFlags, getGameRules, withMedia } from "./service-factory";
 
 export const dashboardRoutes = new Hono();
 
@@ -40,7 +53,6 @@ const DASHBOARD_EVENT_FIELDS = {
   autoArchived: events.autoArchived,
   createdBy: events.createdBy,
   updatedBy: events.updatedBy,
-  attachments: events.attachments,
   seriesId: events.seriesId,
   instanceDate: events.instanceDate,
   winnerCount: events.winnerCount,
@@ -75,7 +87,13 @@ async function loadMemberStats(db: DashboardDb) {
   };
 }
 
-async function loadUpcomingEvents(db: DashboardDb, viewer: SessionUser | null) {
+async function loadUpcomingEvents(
+  db: DashboardDb,
+  rawDb: RawDbLike,
+  mediaService: MediaService,
+  viewer: SessionUser | null,
+  gameRules: GameRules,
+) {
   const window = weekWindow();
   const eventVisibilityFilter = viewer?.permissions.has("events.edit")
     ? undefined
@@ -112,6 +130,16 @@ async function loadUpcomingEvents(db: DashboardDb, viewer: SessionUser | null) {
 
   const dashboardEventRows = [...featuredEventRows, ...upcomingEventRows];
   const eventIds = dashboardEventRows.map((row) => row.id);
+  /* 面板上的活动条也要能看出「还缺什么」，所以这里得跟活动列表一样把配额读出来。
+     投票和抽奖存不进配额，不必为它们白查一遍。 */
+  const [quotasByEvent, attachmentsByEvent] = await Promise.all([
+    loadClassQuotas(
+      rawDb,
+      EVENT_CLASS_QUOTA_TABLE,
+      dashboardEventRows.filter((row) => typeSupportsClassQuotas(row.type, gameRules)).map((row) => row.id),
+    ),
+    mediaService.listLinkedMedia("event", eventIds, ["attachment"]),
+  ]);
   const participantRows = eventIds.length > 0
     ? await db
         .select({
@@ -119,9 +147,7 @@ async function loadUpcomingEvents(db: DashboardDb, viewer: SessionUser | null) {
           userId: users.id,
           username: users.username,
           role: users.role,
-          classes: memberProfiles.classes,
           power: memberProfiles.power,
-          avatarKey: memberProfiles.avatarKey,
         })
         .from(eventParticipants)
         .innerJoin(users, eq(users.id, eventParticipants.userId))
@@ -129,6 +155,16 @@ async function loadUpcomingEvents(db: DashboardDb, viewer: SessionUser | null) {
         .where(and(inArray(eventParticipants.eventId, eventIds), isNull(users.deletedAt), eq(users.isActive, true)))
         .orderBy(eventParticipants.joinedAt, users.username)
     : [];
+
+  const classesByUser = await loadMemberClasses(
+    rawDb as unknown as D1Database,
+    participantRows.map((row) => row.userId),
+  );
+  const avatarsByUser = await mediaService.listLinkedMedia(
+    "member_profile",
+    participantRows.map((row) => row.userId),
+    ["avatar"],
+  );
 
   const participantsByEvent = new Map<string, unknown[]>();
   const mySignupEventIds = new Set<string>();
@@ -141,15 +177,19 @@ async function loadUpcomingEvents(db: DashboardDb, viewer: SessionUser | null) {
       user_id: row.userId,
       username: row.username,
       role: row.role,
-      classes: parseStringArray(row.classes ?? "[]"),
+      classes: classesByUser.get(row.userId) ?? [],
       power: Number(row.power ?? 0),
-      avatar_key: row.avatarKey ?? null,
+      avatar_media_id: avatarsByUser.get(row.userId)?.[0]?.mediaId ?? null,
     });
     participantsByEvent.set(row.eventId, list);
   }
 
   const toDashboardEvent = (row: (typeof dashboardEventRows)[number]) => ({
-    ...toEventPayload(row as EventRow),
+    ...toEventPayload({
+      ...row,
+      attachments: (attachmentsByEvent.get(row.id) ?? []).map((link) => link.mediaId),
+      classQuotas: quotasByEvent.get(row.id) ?? [],
+    } as EventRow),
     participants: participantsByEvent.get(row.id) ?? [],
   });
 
@@ -161,31 +201,18 @@ async function loadUpcomingEvents(db: DashboardDb, viewer: SessionUser | null) {
   };
 }
 
-async function loadWarStats(db: DashboardDb) {
+async function loadWarStats(db: DashboardDb, gameRules: GameRules) {
+  const winCondition = eq(warHistory.result, "win");
   const [recentWarRows, warStatsRows] = await Promise.all([
     db
-      .select({
-        id: warHistory.id,
-        eventId: warHistory.eventId,
-        warName: warHistory.warName,
-        enemyName: warHistory.enemyName,
-        result: warHistory.result,
-        ownStats: warHistory.ownStats,
-        enemyStats: warHistory.enemyStats,
-        durationMinutes: warHistory.durationMinutes,
-        notes: warHistory.notes,
-        createdBy: warHistory.createdBy,
-        updatedBy: warHistory.updatedBy,
-        createdAt: warHistory.createdAt,
-        updatedAt: warHistory.updatedAt,
-      })
+      .select(WAR_HISTORY_FIELDS)
       .from(warHistory)
       .orderBy(desc(warHistory.createdAt), desc(warHistory.id))
       .limit(RECENT_WAR_LIMIT),
     db
       .select({
         total: sql<number>`count(*)`,
-        wins: sql<number>`sum(case when ${warHistory.result} = 'win' then 1 else 0 end)`,
+        wins: sql<number>`sum(case when ${winCondition} then 1 else 0 end)`,
       })
       .from(warHistory)
       .where(isNotNull(warHistory.result)),
@@ -198,7 +225,7 @@ async function loadWarStats(db: DashboardDb) {
           warHistoryId: warTeams.warHistoryId,
           userId: warTeamMembers.userId,
           username: users.username,
-          stats: warTeamMembers.stats,
+          ...WAR_TEAM_MEMBER_STAT_FIELDS,
         })
         .from(warTeamMembers)
         .innerJoin(warTeams, eq(warTeams.id, warTeamMembers.warTeamId))
@@ -206,7 +233,7 @@ async function loadWarStats(db: DashboardDb) {
         .where(inArray(warTeams.warHistoryId, warIds))
     : [];
 
-  const mvpCategories = activeGame.war.mvpCategories;
+  const mvpCategories = gameRules.guild_war.member_stats.filter((stat) => stat.mvp);
   const warMembersByHistory = new Map<string, typeof warMemberRows>();
   for (const member of warMemberRows) {
     if (!member.warHistoryId) continue;
@@ -216,21 +243,27 @@ async function loadWarStats(db: DashboardDb) {
   const recentWarMvps = recentWarRows.map((war) => {
     const members = warMembersByHistory.get(war.id) ?? [];
     if (members.length === 0) return null;
-    return mvpCategories.map((category) => {
-      let top = members[0]!;
-      for (const member of members.slice(1)) {
-        if ((member.stats?.[category] ?? 0) > (top.stats?.[category] ?? 0)) {
-          top = member;
+    const mvps = mvpCategories.flatMap((category) => {
+      const candidates = members.flatMap((member) => {
+        const value = toMemberStats(member)?.[category.key];
+        return typeof value === "number" && Number.isFinite(value) ? [{ member, value }] : [];
+      });
+      if (candidates.length === 0) return [];
+      let top = candidates[0]!;
+      for (const candidate of candidates.slice(1)) {
+        if (category.lower_is_better ? candidate.value < top.value : candidate.value > top.value) {
+          top = candidate;
         }
       }
-      return {
-        category,
-        label: category,
-        name: top.username,
-        initials: initials(top.username),
-        value: top.stats?.[category] ?? 0,
-      };
+      return [{
+        category: category.key,
+        label: category.key,
+        name: top.member.username,
+        initials: initials(top.member.username),
+        value: top.value,
+      }];
     });
+    return mvps.length > 0 ? mvps : null;
   });
 
   const warStats = warStatsRows[0];
@@ -265,7 +298,13 @@ dashboardRoutes.get("/events", async (c) => {
   const viewer = c.req.query("external_view") === "true"
     ? null
     : await getRequestUser(c);
-  return c.json(await loadUpcomingEvents(getDb(c), viewer));
+  return c.json(await loadUpcomingEvents(
+    getDb(c),
+    (c.env as Bindings).DB as never,
+    withMedia(c).mediaService,
+    viewer,
+    await getGameRules(c),
+  ));
 });
 
 dashboardRoutes.get("/wars", async (c) => {
@@ -278,5 +317,5 @@ dashboardRoutes.get("/wars", async (c) => {
     });
   }
 
-  return c.json(await loadWarStats(getDb(c)));
+  return c.json(await loadWarStats(getDb(c), await getGameRules(c)));
 });

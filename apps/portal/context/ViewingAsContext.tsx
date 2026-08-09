@@ -1,6 +1,6 @@
 import { createContext, useContext } from "react";
 
-const ViewingAsContext = createContext<string>("member");
+const ViewingAsContext = createContext<string>("external");
 
 export const ViewingAsProvider = ViewingAsContext.Provider;
 

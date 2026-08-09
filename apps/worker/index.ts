@@ -5,7 +5,7 @@ import { bodyLimit } from "hono/body-limit";
 import { LIMITS } from "@guild/shared/config/limits";
 import { logger } from "./utils/logger";
 import { runDailyMaintenanceCron, runQuarterHourlyMaintenanceCron } from "./crons/maintenance";
-import { WebSocketDO, WS_SESSION_ID_HEADER } from "./durable-objects/WebSocketDO";
+import { WebSocketDO, WS_ACCOUNT_ID_HEADER, WS_SESSION_ID_HEADER } from "./durable-objects/WebSocketDO";
 import { etagMiddleware } from "./middleware/etag";
 import { featureGateMiddleware } from "./middleware/feature-gate";
 import { handleAppError } from "./middleware/error-handler";
@@ -14,7 +14,6 @@ import { buildSpaHtmlCsp, HSTS_VALUE, PERMISSIONS_POLICY_VALUE, REFERRER_POLICY_
 import { sessionMiddleware } from "./middleware/session";
 import { resolveSession, type SessionUser } from "./services/auth";
 import { adminRoutes } from "./routes/admin";
-import { adminMaintenanceRoutes } from "./routes/admin-maintenance";
 import { announcementsRoutes } from "./routes/announcements";
 import { authRoutes } from "./routes/auth";
 import { dashboardRoutes } from "./routes/dashboard";
@@ -27,7 +26,11 @@ import { siteConfigRoutes } from "./routes/site-config";
 import { usersRoutes } from "./routes/users";
 import { wikiRoutes } from "./routes/wiki";
 import { badgeRoutes } from "./routes/badges";
-import { gameDataRoutes } from "./routes/game-data";
+import { classTagRoutes } from "./routes/class-tags";
+import { classRoutes } from "./routes/classes";
+import { mediaRoutes } from "./routes/media";
+import { systemTestTrackingMiddleware } from "./middleware/system-test-tracking";
+import { MediaService } from "./services/MediaService";
 
 export type Bindings = {
   DB: D1Database;
@@ -36,8 +39,8 @@ export type Bindings = {
   ASSETS: Fetcher;
   PORTAL_ORIGIN?: string;
   ENVIRONMENT?: string;
+  PBKDF2_ITERATIONS?: string;
   SIGNING_SECRET: string;
-  SITE_NAME: string;
   SITE_LOGO_URL: string;
 };
 
@@ -105,8 +108,8 @@ function isUploadPath(path: string): boolean {
   return (
     path === "/api/events" ||
     path === "/api/gallery/images" ||
-    path === "/api/announcements/images/stage" ||
-    path === "/api/game-data" ||
+    path === "/api/announcements/images" ||
+    /^\/api\/classes\/[^/]+\/icon$/.test(path) ||
     path === "/api/admin/site-config/logo" ||
     /^\/api\/users\/[^/]+\/media\/(?:images|avatar|audio)$/.test(path) ||
     /^\/api\/(?:announcements|events)\/[^/]+\/images$/.test(path) ||
@@ -134,7 +137,7 @@ app.use("*", async (c, next) => {
 app.use("*", async (c, next) => {
   const env = c.env as Bindings;
   if (env.ENVIRONMENT !== "development") {
-    const missing = ["SIGNING_SECRET", "SITE_NAME", "SITE_LOGO_URL"].filter(k => !env[k as keyof Bindings]);
+    const missing = ["SIGNING_SECRET", "SITE_LOGO_URL"].filter(k => !env[k as keyof Bindings]);
     if (missing.length > 0) {
       logger.error("Missing required environment variables", { missing });
       return c.json({ error_code: "SERVER_ERROR", message: "Server misconfigured", request_id: c.get("requestId") }, 500);
@@ -152,7 +155,7 @@ app.use(
       if (origin !== allowedOrigin) return null;
       return origin;
     },
-    allowHeaders: ["Content-Type", "If-None-Match", "If-Match", "X-Signature", "X-Timestamp", "X-Request-Id", "X-Requested-With", "X-System-Test", "X-System-Test-Audit"],
+    allowHeaders: ["Content-Type", "If-None-Match", "If-Match", "X-Signature", "X-Timestamp", "X-Request-Id", "X-Requested-With", "X-System-Test", "X-System-Test-Audit", "X-System-Test-Run-Id"],
     allowMethods: ["GET", "POST", "PATCH", "DELETE", "OPTIONS"],
     credentials: true,
     maxAge: 86400,
@@ -187,6 +190,9 @@ app.get("/api/health", async (c) => {
   return c.json({ ok: true, request_id: c.get("requestId") });
 });
 
+// Wrap every downstream API middleware so a test-triggered 5xx can register
+// its exact error-log UUID before the run lease is released.
+app.use("/api/*", systemTestTrackingMiddleware);
 app.use("/api/auth/login", authRateLimit);
 app.use("/api/auth/register/*", authRateLimit);
 app.use("/api/auth/check-username", checkUsernameRateLimit);
@@ -207,7 +213,7 @@ app.use("/api/*", async (c, next) => {
     return;
   }
 
-  if (c.req.method === "GET") {
+  if (c.req.method === "GET" || c.req.method === "HEAD") {
     await readRateLimit(c, next);
     return;
   }
@@ -246,9 +252,49 @@ app.post("/api/dev/reseed", async (c) => {
   const blocked = rejectNonDev(c);
   if (blocked) return blocked;
   const { clearAllData, seedDatabase } = await import("./db/seed");
+  const { clearLocalMediaObjects } = await import("./db/seed-media");
   await clearAllData(c.env);
+  await clearLocalMediaObjects(c.env);
   await seedDatabase(c.env);
   return c.json({ ok: true, message: "Database cleared and reseeded" });
+});
+/*
+ * e2e 的清理断言基准。列表接口只能看到它们愿意暴露的东西——
+ * 靠它们判断「清干净了」等于用抽样冒充证据。这里直接读每张表的行数
+ * 和 R2 的对象数，跑前跑后逐项比对，任何一条残留都对不上。
+ * 与 seed/reseed 同一个 development 门禁，生产环境返回 404。
+ */
+app.get("/api/dev/table-counts", async (c) => {
+  const blocked = rejectNonDev(c);
+  if (blocked) return blocked;
+  const env = c.env as Bindings;
+  const counts: Record<string, number> = {};
+  try {
+    /* D1 不允许读 sqlite_master（SQLITE_AUTH），所以表清单取自 seed 自己维护的那份。
+       它同时也是 clearAllData 的清单——用同一份列表，就不会出现
+       「能被重种清掉、却不在残留检查视野里」的表。 */
+    const { SEED_CLEAR_TABLES } = await import("./db/seed");
+
+    for (const name of SEED_CLEAR_TABLES) {
+      // name 来自代码里的常量数组，不是请求输入，拼接不引入注入面。
+      const row = await env.DB.prepare(`SELECT COUNT(*) AS total FROM "${name}"`).first<{ total: number }>();
+      counts[`table:${name}`] = row?.total ?? 0;
+    }
+
+    let mediaObjects = 0;
+    let cursor: string | undefined;
+    do {
+      const page = await env.MEDIA.list(cursor ? { cursor, limit: 1000 } : { limit: 1000 });
+      mediaObjects += page.objects.length;
+      cursor = page.truncated ? page.cursor : undefined;
+    } while (cursor);
+    counts["r2:media"] = mediaObjects;
+  } catch (error) {
+    // 这是给 e2e 用的诊断端点：把真实原因原样抬出来，别让它变成一句 Internal server error。
+    return c.json({ error_code: "SERVER_ERROR", message: error instanceof Error ? error.stack ?? error.message : String(error) }, 500);
+  }
+
+  return c.json({ counts });
 });
 app.get("/ws", async (c) => {
   if (c.req.header("Upgrade") !== "websocket") {
@@ -267,9 +313,10 @@ app.get("/ws", async (c) => {
   const objectId = c.env.WS.idFromName("global");
   const stub = c.env.WS.get(objectId);
 
-  // The DO needs the session id to recheck it periodically while the socket is
-  // open. `set` overwrites, so a client-supplied value of this header is dropped.
+  // The DO needs the session id for periodic revalidation and the account id for
+  // per-account quotas. `set` overwrites both client-supplied internal headers.
   const headers = new Headers(c.req.raw.headers);
+  headers.set(WS_ACCOUNT_ID_HEADER, session.user.id);
   headers.set(WS_SESSION_ID_HEADER, session.sessionId);
   return stub.fetch(c.req.url, { method: "GET", headers });
 });
@@ -286,11 +333,14 @@ app.route("/api/guild-war", guildWarRoutes);
 app.route("/api/wiki", wikiRoutes);
 app.route("/api/gallery", galleryRoutes);
 app.route("/api/badges", badgeRoutes);
-app.route("/api/game-data", gameDataRoutes);
+app.route("/api/classes", classRoutes);
+app.route("/api/media", mediaRoutes);
+/* 单独挂一个前缀而不是塞进 /api/classes：那边已经有 /:id，"tags" 会被当成职业 id
+   吃掉，只能靠注册顺序绕开——一条以后随时会被踩坏的隐式约束。 */
+app.route("/api/class-tags", classTagRoutes);
 app.route("/api/storage", storageRoutes);
 app.route("/api/site-config", siteConfigRoutes);
 app.route("/api/admin", adminRoutes);
-app.route("/api/admin/maintenance", adminMaintenanceRoutes);
 
 export default {
   async fetch(request: Request, env: Bindings, ctx: ExecutionContext): Promise<Response> {
@@ -300,10 +350,24 @@ export default {
     }
     const assetResponse = await env.ASSETS.fetch(request);
     const contentType = assetResponse.headers.get("content-type") ?? "";
-    const selfHost = url.host;
     if (contentType.includes("text/html")) {
+      let siteRow: { site_name: string } | null;
+      try {
+        siteRow = await env.DB.prepare("SELECT site_name FROM site_config WHERE id = ?1")
+          .bind("default")
+          .first<{ site_name: string }>();
+      } catch (error) {
+        logger.error("Failed to load site name from D1", {
+          error: error instanceof Error ? error.message : String(error),
+        });
+        return new Response("Site configuration unavailable", { status: 500 });
+      }
+      if (!siteRow || siteRow.site_name.length === 0 || siteRow.site_name !== siteRow.site_name.trim()) {
+        logger.error("Required D1 site configuration is missing or invalid");
+        return new Response("Site configuration unavailable", { status: 500 });
+      }
       let html = await assetResponse.text();
-      html = html.replaceAll("{{SITE_NAME}}", env.SITE_NAME);
+      html = html.replaceAll("{{SITE_NAME}}", siteRow.site_name);
       html = html.replaceAll("{{SITE_LOGO_URL}}", env.SITE_LOGO_URL);
       const response = new Response(html, assetResponse);
       response.headers.set("Cache-Control", "no-cache, no-store, must-revalidate, no-transform");
@@ -312,7 +376,7 @@ export default {
       response.headers.set("Strict-Transport-Security", HSTS_VALUE);
       response.headers.set("Referrer-Policy", REFERRER_POLICY_VALUE);
       response.headers.set("Permissions-Policy", PERMISSIONS_POLICY_VALUE);
-      response.headers.set("Content-Security-Policy", buildSpaHtmlCsp(selfHost));
+      response.headers.set("Content-Security-Policy", buildSpaHtmlCsp(url));
       return response;
     }
     if (isImmutableBuildAssetPath(url.pathname)) {
@@ -338,6 +402,19 @@ export default {
         break;
       case "*/15 * * * *":
         tasks.push(runQuarterHourlyMaintenanceCron(env, event.cron));
+        tasks.push((async () => {
+          try {
+            const deleted = await new MediaService(env.DB, env.MEDIA).deleteUnclaimed(new Date().toISOString());
+            logger.info("Unclaimed media cleanup completed", { source: "cron", deleted });
+          } catch (error) {
+            logger.error("Unclaimed media cleanup failed", {
+              source: "cron",
+              error: error instanceof Error ? error.message : String(error),
+              stack: error instanceof Error ? error.stack : undefined,
+            });
+            throw error;
+          }
+        })());
         break;
     }
 

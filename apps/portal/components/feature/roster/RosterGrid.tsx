@@ -2,9 +2,9 @@ import type { MemberProfile, User, UserBadge } from "@guild/shared";
 import { StaggerList } from "@portal/components/effects";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { motion } from "motion/react";
-import { useMemo, useRef, type FocusEvent } from "react";
+import { useMemo, useRef, type FocusEvent, type PointerEvent } from "react";
 import { MemberCard } from "../../shared/MemberCard";
-import { resolveProfileMediaUrl } from "../../../utils/media";
+import { resolveMediaUrl } from "../../../utils/media";
 
 type RosterEntry = { user: User; profile: MemberProfile; badges?: UserBadge[] };
 
@@ -49,6 +49,12 @@ export function RosterGrid({
 }: Props) {
   const virtualScrollRef = useRef<HTMLDivElement | null>(null);
   const rowChunks = useMemo(() => chunkEntries(rows, columnCount), [rows, columnCount]);
+  const handlePointerEnter = (event: PointerEvent<HTMLDivElement>, entry: RosterEntry) => {
+    if (event.pointerType === "mouse") onCardMouseEnter(entry);
+  };
+  const handlePointerLeave = (event: PointerEvent<HTMLDivElement>) => {
+    if (event.pointerType === "mouse") onCardMouseLeave();
+  };
 
   const rowVirtualizer = useVirtualizer({
     count: rowChunks.length,
@@ -85,8 +91,9 @@ export function RosterGrid({
                 {members.map((entry) => (
                   <div key={entry.user.id} role="listitem" className="roster-virtual-cell">
                     <div
-                      onMouseEnter={() => onCardMouseEnter(entry)}
-                      onMouseLeave={onCardMouseLeave}
+                      className="roster-card-interaction"
+                      onPointerEnter={(event) => handlePointerEnter(event, entry)}
+                      onPointerLeave={handlePointerLeave}
                       onFocus={() => onCardFocus(entry)}
                       onBlur={onCardBlur}
                     >
@@ -94,7 +101,7 @@ export function RosterGrid({
                         user={entry.user}
                         profile={entry.profile}
                         badges={entry.badges}
-                        resolveMediaUrl={resolveProfileMediaUrl}
+                        resolveMediaUrl={resolveMediaUrl}
                         onClick={() => onCardClick(entry)}
                       />
                     </div>
@@ -114,8 +121,9 @@ export function RosterGrid({
         {rows.map((entry) => (
           <motion.div key={entry.user.id} role="listitem" variants={rosterCardVariants} className="roster-card-cell">
             <div
-              onMouseEnter={() => onCardMouseEnter(entry)}
-              onMouseLeave={onCardMouseLeave}
+              className="roster-card-interaction"
+              onPointerEnter={(event) => handlePointerEnter(event, entry)}
+              onPointerLeave={handlePointerLeave}
               onFocus={() => onCardFocus(entry)}
               onBlur={onCardBlur}
             >
@@ -123,7 +131,7 @@ export function RosterGrid({
                 user={entry.user}
                 profile={entry.profile}
                 badges={entry.badges}
-                resolveMediaUrl={resolveProfileMediaUrl}
+                resolveMediaUrl={resolveMediaUrl}
                 onClick={() => onCardClick(entry)}
               />
             </div>

@@ -16,7 +16,8 @@ interface CrownIconProps extends HTMLAttributes<HTMLDivElement> {
 
 const SVG_VARIANTS: Variants = {
   normal: { translateY: 0, transition: { duration: 0.3 } },
-  animate: { translateY: [0, -3, 0], transition: { duration: 0.5, type: "spring", stiffness: 200, damping: 12 } },
+  // 多关键帧不能配 spring，见 ShieldIcon 的说明。
+  animate: { translateY: [0, -3, 0], transition: { duration: 0.5, ease: "easeInOut" } },
 };
 
 const CrownIcon = forwardRef<CrownIconHandle, CrownIconProps>(

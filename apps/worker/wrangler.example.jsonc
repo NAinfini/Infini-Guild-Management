@@ -5,7 +5,7 @@
     "@guild/shared": "../shared/index.ts",
     "@guild/shared/*": "../shared/*"
   },
-  "compatibility_date": "2025-01-01",
+  "compatibility_date": "2026-07-01",
   "secrets": {
     "required": ["SIGNING_SECRET"]
   },
@@ -21,8 +21,7 @@
   "vars": {
     "ENVIRONMENT": "development",
     "PORTAL_ORIGIN": "http://localhost:5173",
-    "SITE_NAME": "My Guild",
-    "SITE_LOGO_URL": "/guild-logo.webp"
+    "SITE_LOGO_URL": "/guild-logo.svg"
   },
   "d1_databases": [
     {
@@ -65,6 +64,18 @@
   "env": {
     "production": {
       "workers_dev": true,
+      "observability": {
+        "enabled": true,
+        "logs": {
+          "enabled": true,
+          "head_sampling_rate": 1,
+          "invocation_logs": true
+        },
+        "traces": {
+          "enabled": true,
+          "head_sampling_rate": 0.1
+        }
+      },
       // For a custom domain managed by Cloudflare, change workers_dev to false
       // and uncomment the next line:
       // "routes": [{ "pattern": "guild.example.com", "custom_domain": true }],
@@ -82,63 +93,29 @@
         // Same-origin deployments can leave this empty. Set it only when a
         // separately hosted portal must call this Worker.
         "PORTAL_ORIGIN": "",
-        "SITE_NAME": "My Guild",
-        "SITE_LOGO_URL": "/guild-logo.webp"
+        // Keep production in report mode until the first full media-reference
+        // scan has been reviewed. Change to "delete" only after that review.
+        // Password-hashing cost for new hashes and login rehashes. The default
+        // (10000) fits the Workers free-plan CPU budget; on a paid plan raise it
+        // (OWASP recommends 600000 for PBKDF2-SHA256). Existing accounts upgrade
+        // to the new cost automatically on their next login.
+        // "PBKDF2_ITERATIONS": "600000",
+        "SITE_LOGO_URL": "/guild-logo.svg"
       },
+      // Placeholders are lowercase-with-hyphens on purpose: `wrangler deploy
+      // --dry-run` enforces resource-name syntax, so they must be shaped like
+      // real names while config:check still recognizes them as unresolved.
       "r2_buckets": [
         {
           "binding": "MEDIA",
-          "bucket_name": "YOUR_R2_BUCKET_NAME"
+          "bucket_name": "your-r2-bucket-name"
         }
       ],
       "d1_databases": [
         {
           "binding": "DB",
-          "database_name": "YOUR_D1_DATABASE_NAME",
-          "database_id": "YOUR_D1_DATABASE_ID",
-          "migrations_dir": "db/migrations"
-        }
-      ],
-      "durable_objects": {
-        "bindings": [
-          {
-            "name": "WS",
-            "class_name": "WebSocketDO"
-          }
-        ]
-      }
-    },
-
-    // ── Staging environment ────────────────────────────────────────────
-    // Deploy with: pnpm deploy:staging
-    "staging": {
-      "workers_dev": true,
-      "secrets": {
-        "required": ["SIGNING_SECRET"]
-      },
-      "assets": {
-        "directory": "../portal/dist",
-        "not_found_handling": "single-page-application",
-        "binding": "ASSETS",
-        "run_worker_first": true
-      },
-      "vars": {
-        "ENVIRONMENT": "staging",
-        "PORTAL_ORIGIN": "",
-        "SITE_NAME": "My Guild Staging",
-        "SITE_LOGO_URL": "/guild-logo.webp"
-      },
-      "r2_buckets": [
-        {
-          "binding": "MEDIA",
-          "bucket_name": "YOUR_STAGING_R2_BUCKET_NAME"
-        }
-      ],
-      "d1_databases": [
-        {
-          "binding": "DB",
-          "database_name": "YOUR_STAGING_D1_DATABASE_NAME",
-          "database_id": "YOUR_STAGING_D1_DATABASE_ID",
+          "database_name": "your-d1-database-name",
+          "database_id": "your-d1-database-id",
           "migrations_dir": "db/migrations"
         }
       ],

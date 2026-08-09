@@ -1,8 +1,10 @@
 // @vitest-environment jsdom
+import { DEFAULT_SITE_MEDIA_POLICY } from "@guild/shared";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { renderHook, waitFor, act } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { useSiteConfigStore } from "../../../stores/site-config";
 import { useAdminMemberMediaController } from "./useAdminMemberMediaController";
 
 const notificationMocks = vi.hoisted(() => ({
@@ -78,15 +80,17 @@ function createMember() {
       deleted_at: null,
     },
     profile: {
-      images: ["https://cdn.example.com/one.webp", "https://cdn.example.com/two.webp"],
+      images: ["image1234567890abcdef", "second1234567890abcde"],
       video_urls: ["https://youtube.com/watch?v=abc"],
-      audio_key: "https://cdn.example.com/audio.opus",
+      audio_media_id: "audio1234567890abcdef",
+      audio_name: "theme.ogg",
     },
   };
 }
 
 describe("useAdminMemberMediaController", () => {
   beforeEach(() => {
+    useSiteConfigStore.setState({ mediaPolicy: DEFAULT_SITE_MEDIA_POLICY });
     vi.clearAllMocks();
   });
 
@@ -167,15 +171,15 @@ describe("useAdminMemberMediaController", () => {
 
     await act(async () => {
       result.current.reorderImages([
-        { id: "https://cdn.example.com/two.webp", src: "https://cdn.example.com/two.webp" },
-        { id: "https://cdn.example.com/one.webp", src: "https://cdn.example.com/one.webp" },
+        { id: "second1234567890abcde", src: "/api/media/second1234567890abcde/view" },
+        { id: "image1234567890abcdef", src: "/api/media/image1234567890abcdef/view" },
       ]);
     });
 
     await act(async () => {
       result.current.deleteImage({
-        id: "https://cdn.example.com/one.webp",
-        src: "https://cdn.example.com/one.webp",
+        id: "image1234567890abcdef",
+        src: "/api/media/image1234567890abcdef/view",
       });
     });
 
@@ -189,11 +193,11 @@ describe("useAdminMemberMediaController", () => {
     });
 
     expect(serviceMocks.updateMyProfile).toHaveBeenCalledWith("user-1", {
-      images: ["https://cdn.example.com/two.webp", "https://cdn.example.com/one.webp"],
+      images: ["second1234567890abcde", "image1234567890abcdef"],
     });
     expect(serviceMocks.deleteProfileImage).toHaveBeenCalledWith(
       "user-1",
-      "https://cdn.example.com/one.webp",
+      "image1234567890abcdef",
     );
     expect(uploaderMocks.image.upload).toHaveBeenCalled();
     expect(uploaderMocks.image.reset).toHaveBeenCalled();

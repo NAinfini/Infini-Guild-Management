@@ -73,6 +73,7 @@ describe("GuildWarService", () => {
       event_id: "event-1",
       teams: [
         {
+          id: "team-1",
           team_name: "Alpha Prime",
           sort_order: 0,
           notes: "Burst comp",
@@ -82,6 +83,20 @@ describe("GuildWarService", () => {
       ],
       pool_members: [{ user_id: "u-9" }],
     });
+  });
+
+  it("omits client-only ids when persisting a newly added team", () => {
+    const service = new GuildWarService({ saveGuildWarTeams: vi.fn() });
+    const payload = service.buildSaveTeamsPayload({
+      eventId: "event-1",
+      teams: [{ ...baseTeams[0]!, id: "new:123" }],
+      pool: [],
+      teamDraftNames: {},
+      teamDraftNotes: {},
+      teamDraftLocks: {},
+    });
+
+    expect(payload.teams[0]).not.toHaveProperty("id");
   });
 
   it("persists snapshots with concurrency control and invalidates dependent queries", async () => {

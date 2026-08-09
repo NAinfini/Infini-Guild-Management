@@ -1,10 +1,8 @@
 import {
-  DEFAULT_FEATURE_FLAGS,
-  DEFAULT_SITE_ABSENCE_POLICY,
-  DEFAULT_SITE_MEDIA_POLICY,
-  DEFAULT_SITE_STORAGE_POLICY,
+  IMAGE_FILE_ACCEPT,
   LIMITS,
-  MAX_CONFIGURABLE_MEDIA_FILE_BYTES,
+  MAX_CONFIGURABLE_AUDIO_BYTES,
+  MAX_CONFIGURABLE_IMAGE_VARIANT_BYTES,
   type AdminSiteConfigResponse,
   type FeatureFlags,
   type UpdateSiteConfigPayload,
@@ -13,6 +11,7 @@ import { Badge, Button, FileButton, Group, HoverCard, NumberInput, SimpleGrid, S
 import { BookTextIcon, CloudIcon, GalleryThumbnailsIcon, InfoCircleIcon, SaveIcon, SettingsIcon, UploadIcon, WarehouseIcon } from "@portal/components/icons";
 import { useEffect, useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
+import { resolveMediaUrl } from "@portal/utils/media";
 
 type AdminSiteConfigSectionProps = {
   data: AdminSiteConfigResponse | null;
@@ -23,12 +22,6 @@ type AdminSiteConfigSectionProps = {
   onUploadLogo: (file: File) => void;
 };
 
-type SiteConfigNavItem = {
-  id: string;
-  title: string;
-  icon: ReactNode;
-};
-
 type SiteConfigInfoProps = {
   title: string;
   description: string;
@@ -37,7 +30,15 @@ type SiteConfigInfoProps = {
   badge?: string;
 };
 
-const FEATURE_KEYS: Array<keyof FeatureFlags> = ["announcements", "events", "guildWar", "gallery", "wiki", "tools", "equipmentCalc", "storage"];
+type EditableSiteConfig = {
+  site_name: string;
+  features: FeatureFlags;
+  media_policy: AdminSiteConfigResponse["site"]["media_policy"];
+  storage_policy: AdminSiteConfigResponse["site"]["storage_policy"];
+  absence_policy: AdminSiteConfigResponse["site"]["absence_policy"];
+};
+
+const FEATURE_KEYS: Array<keyof FeatureFlags> = ["announcements", "events", "guildWar", "gallery", "wiki", "tools", "storage"];
 
 const FEATURE_INFO_META: Record<keyof FeatureFlags, { icon: ReactNode; color: string }> = {
   announcements: { icon: <BookTextIcon size={16} />, color: "blue" },
@@ -47,7 +48,6 @@ const FEATURE_INFO_META: Record<keyof FeatureFlags, { icon: ReactNode; color: st
   wiki: { icon: <BookTextIcon size={16} />, color: "violet" },
   tools: { icon: <SettingsIcon size={16} />, color: "gray" },
   storage: { icon: <WarehouseIcon size={16} />, color: "teal" },
-  equipmentCalc: { icon: <SettingsIcon size={16} />, color: "gray" },
 };
 
 function numberOr(value: string | number, fallback: number) {
@@ -56,6 +56,38 @@ function numberOr(value: string | number, fallback: number) {
 
 function formatMb(bytes: number) {
   return Math.round(bytes / 1024 / 1024);
+}
+
+function copyEditableConfig(data: AdminSiteConfigResponse): EditableSiteConfig {
+  const features = data.site.features;
+  const mediaPolicy = data.site.media_policy;
+  const storagePolicy = data.site.storage_policy;
+  const absencePolicy = data.site.absence_policy;
+  return {
+    site_name: data.site.site_name,
+    features: { ...features },
+    media_policy: {
+      max_file_size_bytes: { ...mediaPolicy.max_file_size_bytes },
+      quotas: { ...mediaPolicy.quotas },
+    },
+    storage_policy: { ...storagePolicy },
+    absence_policy: { ...absencePolicy },
+  };
+}
+
+function haveSameFields<T extends object>(left: T, right: T) {
+  const leftKeys = Object.keys(left) as Array<keyof T>;
+  return leftKeys.length === Object.keys(right).length
+    && leftKeys.every((key) => left[key] === right[key]);
+}
+
+function areEditableConfigsEqual(left: EditableSiteConfig, right: EditableSiteConfig) {
+  return left.site_name === right.site_name
+    && haveSameFields(left.features, right.features)
+    && haveSameFields(left.media_policy.max_file_size_bytes, right.media_policy.max_file_size_bytes)
+    && haveSameFields(left.media_policy.quotas, right.media_policy.quotas)
+    && haveSameFields(left.storage_policy, right.storage_policy)
+    && haveSameFields(left.absence_policy, right.absence_policy);
 }
 
 function SiteConfigInfo({ title, description, icon, color = "gray", badge }: SiteConfigInfoProps) {
@@ -95,269 +127,219 @@ export function AdminSiteConfigSection({
   const { t } = useTranslation("admin");
   const [siteName, setSiteName] = useState("");
   const [siteLogoUrl, setSiteLogoUrl] = useState("");
-  const [features, setFeatures] = useState<FeatureFlags>({ ...DEFAULT_FEATURE_FLAGS });
-  const [mediaPolicy, setMediaPolicy] = useState<AdminSiteConfigResponse["site"]["media_policy"]>(DEFAULT_SITE_MEDIA_POLICY);
-  const [storagePolicy, setStoragePolicy] = useState<AdminSiteConfigResponse["site"]["storage_policy"]>(DEFAULT_SITE_STORAGE_POLICY);
-  const [absencePolicy, setAbsencePolicy] = useState<AdminSiteConfigResponse["site"]["absence_policy"]>(DEFAULT_SITE_ABSENCE_POLICY);
+  const [features, setFeatures] = useState<FeatureFlags | null>(null);
+  const [mediaPolicy, setMediaPolicy] = useState<AdminSiteConfigResponse["site"]["media_policy"] | null>(null);
+  const [storagePolicy, setStoragePolicy] = useState<AdminSiteConfigResponse["site"]["storage_policy"] | null>(null);
+  const [absencePolicy, setAbsencePolicy] = useState<AdminSiteConfigResponse["site"]["absence_policy"] | null>(null);
+  const [baselineConfig, setBaselineConfig] = useState<EditableSiteConfig | null>(null);
 
   useEffect(() => {
     if (!data) return;
-    setSiteName(data.site.site_name);
-    setSiteLogoUrl(data.site.site_logo_url);
-    setFeatures(data.site.features ?? DEFAULT_FEATURE_FLAGS);
-    setMediaPolicy(data.site.media_policy ?? DEFAULT_SITE_MEDIA_POLICY);
-    setStoragePolicy(data.site.storage_policy ?? DEFAULT_SITE_STORAGE_POLICY);
-    setAbsencePolicy(data.site.absence_policy ?? DEFAULT_SITE_ABSENCE_POLICY);
+    const nextConfig = copyEditableConfig(data);
+    setSiteName(nextConfig.site_name);
+    setSiteLogoUrl(data.site.site_logo_media_id
+      ? resolveMediaUrl(data.site.site_logo_media_id)
+      : data.site.default_site_logo_url);
+    setFeatures(nextConfig.features);
+    setMediaPolicy(nextConfig.media_policy);
+    setStoragePolicy(nextConfig.storage_policy);
+    setAbsencePolicy(nextConfig.absence_policy);
+    setBaselineConfig(nextConfig);
   }, [data]);
 
-  const enabledFeatureCount = FEATURE_KEYS.filter((key) => features[key]).length;
-
-  const navItems: SiteConfigNavItem[] = [
-    {
-      id: "branding",
-      title: t("siteConfig.branding.title"),
-      icon: <GalleryThumbnailsIcon size={18} />,
-    },
-    {
-      id: "features",
-      title: t("siteConfig.policy.features"),
-      icon: <SettingsIcon size={18} />,
-    },
-    {
-      id: "limits",
-      title: t("siteConfig.policy.limits"),
-      icon: <CloudIcon size={18} />,
-    },
-  ];
-
-  if (loading) {
+  const currentConfig: EditableSiteConfig | null = features && mediaPolicy && storagePolicy && absencePolicy ? {
+    site_name: siteName,
+    features,
+    media_policy: mediaPolicy,
+    storage_policy: storagePolicy,
+    absence_policy: absencePolicy,
+  } : null;
+  const hasPendingChanges = currentConfig !== null && baselineConfig !== null
+    && !areEditableConfigsEqual(currentConfig, baselineConfig);
+  const canSave = hasPendingChanges
+    && siteName.trim().length > 0
+    && !saving;
+  if (loading || !currentConfig || !features || !mediaPolicy || !storagePolicy || !absencePolicy) {
     return <Text c="dimmed">{t("common:loading")}</Text>;
   }
+  const enabledFeatureCount = FEATURE_KEYS.filter((key) => features[key]).length;
 
   const handleSave = () => {
-    onSaveSite({
-      site_name: siteName,
-      features,
-      media_policy: mediaPolicy,
-      storage_policy: storagePolicy,
-      absence_policy: absencePolicy,
-    });
+    if (!canSave) return;
+    onSaveSite(currentConfig);
   };
 
   return (
-    <div className="site-config-workspace">
-      <aside className="site-config-rail" aria-label={t("siteConfig.navLabel")}>
-        <div className="site-config-rail__header">
-          <Text size="xs" c="dimmed">{t("siteConfig.navEyebrow")}</Text>
-          <Text size="lg" fw={800}>{t("tab.siteConfig")}</Text>
-          <Text size="xs" c="dimmed">{t("siteConfig.summary.compact", { enabled: enabledFeatureCount, total: FEATURE_KEYS.length })}</Text>
+    <div className="site-config">
+      <section id="site-config-branding" className="site-config-card">
+        <div className="site-config-card__header">
+          <div className="site-config-title-row">
+            <Text fw={800} className="site-config-card__title">{t("siteConfig.branding.title")}</Text>
+            <SiteConfigInfo
+              title={t("siteConfig.branding.title")}
+              description={t("siteConfig.branding.description")}
+              icon={<GalleryThumbnailsIcon size={16} />}
+              color="gray"
+            />
+          </div>
         </div>
 
-        <nav className="site-config-rail__nav">
-          {navItems.map((item) => (
-            <a key={item.id} href={`#site-config-${item.id}`} className="site-config-rail__item">
-              <span className="site-config-rail__icon">{item.icon}</span>
-              <Text size="sm" fw={700}>{item.title}</Text>
-            </a>
-          ))}
-        </nav>
-
-        <Button className="site-config-save-button" onClick={handleSave} loading={saving} leftSection={<SaveIcon size={16} />}>
-          {t("siteConfig.action.saveAll")}
-        </Button>
-      </aside>
-
-      <div className="site-config-content">
-        <div className="site-config-overview-grid">
-          <section id="site-config-branding" className="site-config-card site-config-card--branding">
-            <div className="site-config-card__header">
+        <div className="site-config-brand-block">
+          <div className="site-config-logo-preview">
+            {siteLogoUrl ? (
+              <img src={siteLogoUrl} alt={t("siteConfig.field.siteLogo")} />
+            ) : (
+              <GalleryThumbnailsIcon size={28} />
+            )}
+          </div>
+          <div className="site-config-brand-fields">
+            <TextInput size="sm" label={t("siteConfig.field.siteName")} value={siteName} onChange={(event) => setSiteName(event.currentTarget.value)} />
+            <div className="site-config-logo-upload">
               <div className="site-config-title-row">
-                <Text fw={800}>{t("siteConfig.branding.title")}</Text>
+                <Text size="sm" fw={700}>{t("siteConfig.field.siteLogo")}</Text>
                 <SiteConfigInfo
-                  title={t("siteConfig.branding.title")}
-                  description={t("siteConfig.branding.description")}
-                  icon={<GalleryThumbnailsIcon size={16} />}
+                  title={t("siteConfig.field.siteLogo")}
+                  description={t("siteConfig.field.siteLogoDescription")}
+                  icon={<UploadIcon size={16} />}
                   color="gray"
                 />
               </div>
-            </div>
-
-            <div className="site-config-brand-block">
-              <div className="site-config-logo-preview">
-                {siteLogoUrl ? (
-                  <img src={siteLogoUrl} alt={t("siteConfig.field.siteLogo")} />
-                ) : (
-                  <GalleryThumbnailsIcon size={34} />
+              <FileButton onChange={(file) => { if (file) onUploadLogo(file); }} accept={IMAGE_FILE_ACCEPT}>
+                {(buttonProps) => (
+                  <Button size="sm" variant="default" loading={logoUploading} leftSection={<UploadIcon size={16} />} {...buttonProps}>
+                    {t("siteConfig.action.uploadLogo")}
+                  </Button>
                 )}
-              </div>
-              <div className="site-config-brand-fields">
-                <TextInput size="sm" label={t("siteConfig.field.siteName")} value={siteName} onChange={(event) => setSiteName(event.currentTarget.value)} />
-                <div className="site-config-logo-upload">
-                  <div className="site-config-title-row">
-                    <Text size="sm" fw={700}>{t("siteConfig.field.siteLogo")}</Text>
-                    <SiteConfigInfo
-                      title={t("siteConfig.field.siteLogo")}
-                      description={t("siteConfig.field.siteLogoDescription")}
-                      icon={<UploadIcon size={16} />}
-                      color="gray"
-                    />
-                  </div>
-                  <FileButton onChange={(file) => { if (file) onUploadLogo(file); }} accept="image/jpeg,image/png,image/gif,image/webp,image/avif">
-                    {(buttonProps) => (
-                      <Button size="sm" variant="default" loading={logoUploading} leftSection={<UploadIcon size={16} />} {...buttonProps}>
-                        {t("siteConfig.action.uploadLogo")}
-                      </Button>
-                    )}
-                  </FileButton>
-                </div>
-              </div>
+              </FileButton>
             </div>
-          </section>
+          </div>
+        </div>
+      </section>
 
-          <section id="site-config-features" className="site-config-card site-config-card--features">
-            <div className="site-config-card__header">
-              <div className="site-config-title-row">
-                <Text fw={800}>{t("siteConfig.policy.features")}</Text>
-                <SiteConfigInfo
-                  title={t("siteConfig.policy.features")}
-                  description={t("siteConfig.policy.featuresDescription")}
-                  icon={<SettingsIcon size={16} />}
-                  color="gray"
-                />
-              </div>
-              <Text size="xs" fw={700} c="dimmed">{t("siteConfig.summary.features", { enabled: enabledFeatureCount, total: FEATURE_KEYS.length })}</Text>
-            </div>
-
-            <div className="site-config-feature-grid">
-              {FEATURE_KEYS.map((key) => (
-                <div key={key} className="site-config-feature-card">
-                  <span className="site-config-feature-label">
-                    <Text size="sm" fw={700}>{t(`siteConfig.feature.${key}`)}</Text>
-                    <SiteConfigInfo
-                      title={t(`siteConfig.feature.${key}`)}
-                      description={t(`siteConfig.featureDescription.${key}`)}
-                      icon={FEATURE_INFO_META[key].icon}
-                      color={FEATURE_INFO_META[key].color}
-                    />
-                  </span>
-                  <Switch
-                    checked={features[key]}
-                    onChange={(event) => {
-                      const checked = event.currentTarget.checked;
-                      setFeatures((current) => ({ ...current, [key]: checked }));
-                    }}
-                    aria-label={t(`siteConfig.feature.${key}`)}
-                  />
-                </div>
-              ))}
-            </div>
-          </section>
+      <section id="site-config-features" className="site-config-card">
+        <div className="site-config-card__header">
+          <div className="site-config-title-row">
+            <Text fw={800} className="site-config-card__title">{t("siteConfig.policy.features")}</Text>
+            <SiteConfigInfo
+              title={t("siteConfig.policy.features")}
+              description={t("siteConfig.policy.featuresDescription")}
+              icon={<SettingsIcon size={16} />}
+              color="gray"
+            />
+          </div>
+          <Text size="xs" fw={700} className="site-config-count">{t("siteConfig.summary.compact", { enabled: enabledFeatureCount, total: FEATURE_KEYS.length })}</Text>
         </div>
 
-        <section id="site-config-limits" className="site-config-card site-config-card--limits">
-          <div className="site-config-card__header">
-            <div className="site-config-title-row">
-              <Text fw={800}>{t("siteConfig.policy.limits")}</Text>
-              <SiteConfigInfo
-                title={t("siteConfig.policy.limits")}
-                description={t("siteConfig.policy.limitsDescription")}
-                icon={<CloudIcon size={16} />}
-                color="gray"
+        <div className="site-config-feature-list">
+          {FEATURE_KEYS.map((key) => (
+            <div key={key} className="site-config-feature-row">
+              <span className="site-config-feature-label">
+                <Text size="sm" fw={700}>{t(`siteConfig.feature.${key}`)}</Text>
+                <SiteConfigInfo
+                  title={t(`siteConfig.feature.${key}`)}
+                  description={t(`siteConfig.featureDescription.${key}`)}
+                  icon={FEATURE_INFO_META[key].icon}
+                  color={FEATURE_INFO_META[key].color}
+                />
+              </span>
+              <Switch
+                checked={features[key]}
+                onChange={(event) => {
+                  const checked = event.currentTarget.checked;
+                  setFeatures((current) => current ? ({ ...current, [key]: checked }) : current);
+                }}
+                aria-label={t(`siteConfig.feature.${key}`)}
               />
             </div>
+          ))}
+        </div>
+      </section>
+
+      <section id="site-config-limits" className="site-config-card">
+        <div className="site-config-card__header">
+          <div className="site-config-title-row">
+            <Text fw={800} className="site-config-card__title">{t("siteConfig.policy.limits")}</Text>
+            <SiteConfigInfo
+              title={t("siteConfig.policy.limits")}
+              description={t("siteConfig.policy.limitsDescription")}
+              icon={<CloudIcon size={16} />}
+              color="gray"
+            />
           </div>
+        </div>
 
-          <div className="site-config-limits-sections">
-            <Stack gap={12} className="site-config-subpanel">
-              <Text size="sm" fw={700}>{t("siteConfig.policy.uploads")}</Text>
-              <SimpleGrid cols={{ base: 1, sm: 2, lg: 3 }} spacing="sm">
-                {Object.entries(mediaPolicy.max_file_size_bytes).map(([key, value]) => (
-                  <NumberInput
-                    key={key}
-                    size="sm"
-                    label={t(`siteConfig.fileSize.${key}`)}
-                    value={formatMb(value)}
-                    min={1}
-                    max={formatMb(MAX_CONFIGURABLE_MEDIA_FILE_BYTES)}
-                    suffix=" MB"
-                    hideControls
-                    onChange={(next) => setMediaPolicy((current) => ({
-                      ...current,
-                      max_file_size_bytes: {
-                        ...current.max_file_size_bytes,
-                        [key]: numberOr(next, formatMb(value)) * 1024 * 1024,
-                      },
-                    }))}
-                  />
-                ))}
-              </SimpleGrid>
-            </Stack>
-
-            <Stack gap={12} className="site-config-subpanel">
-              <Group gap={8}>
-                <WarehouseIcon size={18} />
-                <Text size="sm" fw={700}>{t("siteConfig.policy.quotas")}</Text>
-              </Group>
-              <SimpleGrid cols={{ base: 1, sm: 2, lg: 5 }} spacing="sm">
-                {Object.entries(mediaPolicy.quotas).map(([key, value]) => (
-                  <NumberInput
-                    key={key}
-                    size="sm"
-                    label={t(`siteConfig.quota.${key}`)}
-                    value={value}
-                    min={1}
-                    max={LIMITS.media.configurableQuotaMax}
-                    hideControls
-                    onChange={(next) => setMediaPolicy((current) => ({
-                      ...current,
-                      quotas: { ...current.quotas, [key]: numberOr(next, value) },
-                    }))}
-                  />
-                ))}
+        <div className="site-config-limits-sections">
+          <Stack gap={12} className="site-config-subpanel">
+            <Text size="sm" fw={700}>{t("siteConfig.policy.uploads")}</Text>
+            <SimpleGrid cols={{ base: 1, sm: 2, lg: 3 }} spacing="sm">
+              {Object.entries(mediaPolicy.max_file_size_bytes).map(([key, value]) => (
                 <NumberInput
+                  key={key}
                   size="sm"
-                  hideControls
-                  label={t("siteConfig.storage.imagesPerItem")}
-                  value={storagePolicy.images_per_item}
+                  label={t(`siteConfig.fileSize.${key}`)}
+                  value={formatMb(value)}
                   min={1}
-                  max={LIMITS.content.storageImagesPerItem.max}
-                  onChange={(next) => setStoragePolicy((current) => ({ ...current, images_per_item: numberOr(next, current.images_per_item) }))}
-                />
-              </SimpleGrid>
-            </Stack>
-
-            <Stack gap={12} className="site-config-subpanel">
-              <Text size="sm" fw={700}>{t("siteConfig.policy.absences")}</Text>
-              <SimpleGrid cols={{ base: 1, sm: 2 }} spacing="sm">
-                <NumberInput
-                  size="sm"
+                  max={formatMb(key === "profile_audio"
+                    ? MAX_CONFIGURABLE_AUDIO_BYTES
+                    : MAX_CONFIGURABLE_IMAGE_VARIANT_BYTES)}
+                  suffix=" MB"
                   hideControls
-                  label={t("siteConfig.absence.maxSpanDays")}
-                  value={absencePolicy.max_span_days}
-                  min={1}
-                  max={LIMITS.content.absenceSpanDays.max}
-                  onChange={(next) => setAbsencePolicy((current) => ({
+                  onChange={(next) => setMediaPolicy((current) => current ? ({
                     ...current,
-                    max_span_days: numberOr(next, current.max_span_days),
-                  }))}
+                    max_file_size_bytes: {
+                      ...current.max_file_size_bytes,
+                      [key]: numberOr(next, formatMb(value)) * 1024 * 1024,
+                    },
+                  }) : current)}
                 />
+              ))}
+            </SimpleGrid>
+          </Stack>
+
+          <Stack gap={12} className="site-config-subpanel">
+            <Group gap={8}>
+              <WarehouseIcon size={18} />
+              <Text size="sm" fw={700}>{t("siteConfig.policy.quotas")}</Text>
+            </Group>
+            <SimpleGrid cols={{ base: 1, sm: 2, lg: 5 }} spacing="sm">
+              {Object.entries(mediaPolicy.quotas).map(([key, value]) => (
                 <NumberInput
+                  key={key}
                   size="sm"
-                  hideControls
-                  label={t("siteConfig.absence.maxEntriesPerUser")}
-                  value={absencePolicy.max_entries_per_user}
+                  label={t(`siteConfig.quota.${key}`)}
+                  value={value}
                   min={1}
-                  max={LIMITS.content.absencesPerUser.max}
-                  onChange={(next) => setAbsencePolicy((current) => ({
+                  max={LIMITS.media.configurableQuotaMax}
+                  hideControls
+                  onChange={(next) => setMediaPolicy((current) => current ? ({
                     ...current,
-                    max_entries_per_user: numberOr(next, current.max_entries_per_user),
-                  }))}
+                    quotas: { ...current.quotas, [key]: numberOr(next, value) },
+                  }) : current)}
                 />
-              </SimpleGrid>
-            </Stack>
-          </div>
-        </section>
-      </div>
+              ))}
+              <NumberInput
+                size="sm"
+                hideControls
+                label={t("siteConfig.storage.imagesPerItem")}
+                value={storagePolicy.images_per_item}
+                min={1}
+                max={LIMITS.content.storageImagesPerItem.max}
+                onChange={(next) => setStoragePolicy((current) => current ? ({ ...current, images_per_item: numberOr(next, current.images_per_item) }) : current)}
+              />
+            </SimpleGrid>
+          </Stack>
+        </div>
+      </section>
+
+      {/* The save bar remains visible for invalid dirty state, but not for a clean form. */}
+      {hasPendingChanges ? (
+        <div className="site-config-savebar" role="status">
+          <Text size="sm" fw={700}>{t("siteConfig.unsavedChanges")}</Text>
+          <Button onClick={handleSave} loading={saving} disabled={!canSave} leftSection={<SaveIcon size={16} />}>
+            {t("siteConfig.action.saveAll")}
+          </Button>
+        </div>
+      ) : null}
     </div>
   );
 }

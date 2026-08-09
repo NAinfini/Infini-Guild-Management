@@ -1,9 +1,13 @@
 import { and, desc, eq, inArray, sql, type SQL } from "drizzle-orm";
+import { siteAnalyticsSettingsSchema } from "@guild/shared";
 import { siteConfig, warHistory, warTeamMembers, warTeams } from "../../db/schema";
-import { type AnalyticsSettings, defaultAnalyticsSettings } from "../AdminService";
+import type { AnalyticsSettings } from "../AdminService";
 import { ok, type ServiceResult } from "../result";
 import {
   GuildWarCoreService,
+  WAR_HISTORY_FIELDS,
+  WAR_TEAM_MEMBER_STAT_FIELDS,
+  toMemberStats,
   toWarHistoryPayload,
   type DrizzleDb,
   type GuildWarServiceDeps,
@@ -12,15 +16,14 @@ import {
 type ModifierBreakdown = { factor: string; ratio: number; weight: number; contribution: number };
 
 function computeWarModifier(
-  war: { ownStats: Record<string, number | null> | null; enemyStats: Record<string, number | null> | null },
+  war: { own_stats: Partial<Record<string, number | null>> | null; enemy_stats: Partial<Record<string, number | null>> | null },
   _ownTeamSize: number,
   settings: AnalyticsSettings,
 ): { value: number; breakdown: ModifierBreakdown[] } {
   const factors = Object.entries(settings.modifier_weights)
     .filter(([, weight]) => weight > 0)
     .map(([key, weight]) => {
-      const objectiveKey = key === "basehp" ? "base_hp" : key === "kda" ? "kills" : key;
-      return { key, weight, ownVal: war.ownStats?.[objectiveKey] ?? null, enemyVal: war.enemyStats?.[objectiveKey] ?? null };
+      return { key, weight, ownVal: war.own_stats?.[key] ?? null, enemyVal: war.enemy_stats?.[key] ?? null };
     });
   const valid = factors
     .filter((f): f is { key: string; weight: number; ownVal: number; enemyVal: number } => f.ownVal !== null && f.enemyVal !== null)
@@ -50,43 +53,42 @@ export class GuildWarAnalyticsService extends GuildWarCoreService {
 
   private async readAnalyticsSettings(): Promise<AnalyticsSettings> {
     const [row] = await this.db
-      .select({ analyticsSettingsJson: siteConfig.analyticsSettingsJson })
+      .select({
+        referenceDurationMinutes: siteConfig.analyticsReferenceDurationMinutes,
+        killsWeight: siteConfig.analyticsKillsWeight,
+        towersWeight: siteConfig.analyticsTowersWeight,
+        baseHpWeight: siteConfig.analyticsBaseHpWeight,
+        creditsWeight: siteConfig.analyticsCreditsWeight,
+        distanceWeight: siteConfig.analyticsDistanceWeight,
+      })
       .from(siteConfig)
       .where(eq(siteConfig.id, "default"))
       .limit(1);
-    if (!row?.analyticsSettingsJson) return defaultAnalyticsSettings();
-    try {
-      const parsed = JSON.parse(row.analyticsSettingsJson) as unknown;
-      const defaults = defaultAnalyticsSettings();
-      if (typeof parsed !== "object" || parsed === null) return defaults;
-      const record = parsed as Record<string, unknown>;
-      const rawWeights = record.modifier_weights;
-      const modifier_weights: Record<string, number> = { ...defaults.modifier_weights };
-      if (typeof rawWeights === "object" && rawWeights !== null) {
-        for (const [key, val] of Object.entries(rawWeights as Record<string, unknown>)) {
-          if (typeof val === "number") modifier_weights[key] = val;
-        }
-      }
-      return {
-        reference_duration_minutes: typeof record.reference_duration_minutes === "number" && record.reference_duration_minutes > 0 ? record.reference_duration_minutes : defaults.reference_duration_minutes,
-        modifier_weights,
-      };
-    } catch {
-      return defaultAnalyticsSettings();
-    }
+    if (!row) throw new Error('Required site_config singleton "default" is missing');
+    return siteAnalyticsSettingsSchema.parse({
+      reference_duration_minutes: row.referenceDurationMinutes,
+      modifier_weights: {
+        kills: row.killsWeight,
+        towers: row.towersWeight,
+        base_hp: row.baseHpWeight,
+        credits: row.creditsWeight,
+        distance: row.distanceWeight,
+      },
+    });
   }
 
   async getAnalytics(warIds: string[], userIds: string[]): Promise<ServiceResult<{ wars: unknown[]; member_stats: unknown[]; analytics_settings: AnalyticsSettings }>> {
+    const analyticsSettings = await this.readAnalyticsSettings();
     const warFilters: SQL<unknown>[] = [];
     if (warIds.length > 0) warFilters.push(inArray(warHistory.id, warIds));
     const wars = await this.db
-      .select({ id: warHistory.id, eventId: warHistory.eventId, warName: warHistory.warName, enemyName: warHistory.enemyName, result: warHistory.result, ownStats: warHistory.ownStats, enemyStats: warHistory.enemyStats, durationMinutes: warHistory.durationMinutes, notes: warHistory.notes, createdBy: warHistory.createdBy, updatedBy: warHistory.updatedBy, createdAt: warHistory.createdAt, updatedAt: warHistory.updatedAt })
+      .select(WAR_HISTORY_FIELDS)
       .from(warHistory)
       .where(warFilters.length > 0 ? and(...warFilters) : undefined)
       .orderBy(desc(warHistory.createdAt), desc(warHistory.id))
       .limit(200);
     const historyIds = wars.map((w) => w.id);
-    if (historyIds.length === 0) return ok({ wars: [], member_stats: [], analytics_settings: defaultAnalyticsSettings() });
+    if (historyIds.length === 0) return ok({ wars: [], member_stats: [], analytics_settings: analyticsSettings });
 
     const teamSizeCounts = await this.db
       .select({ warHistoryId: warTeams.warHistoryId, memberCount: sql<number>`count(${warTeamMembers.id})`.as("member_count") })
@@ -97,25 +99,25 @@ export class GuildWarAnalyticsService extends GuildWarCoreService {
     const teamSizeMap = new Map<string, number>();
     for (const row of teamSizeCounts) if (row.warHistoryId) teamSizeMap.set(row.warHistoryId, row.memberCount);
 
-    const analyticsSettings = await this.readAnalyticsSettings();
     const warsWithModifier = wars.map((war) => {
       const teamSize = teamSizeMap.get(war.id) ?? 0;
-      const modifier = computeWarModifier(war, teamSize, analyticsSettings);
-      return { ...toWarHistoryPayload(war), team_size: teamSize, modifier: modifier.value, modifier_breakdown: modifier.breakdown };
+      const payload = toWarHistoryPayload(war);
+      const modifier = computeWarModifier(payload, teamSize, analyticsSettings);
+      return { ...payload, team_size: teamSize, modifier: modifier.value, modifier_breakdown: modifier.breakdown };
     });
 
     const memberFilters: SQL<unknown>[] = [inArray(warTeams.warHistoryId, historyIds)];
     if (userIds.length > 0) memberFilters.push(inArray(warTeamMembers.userId, userIds));
     const members = await this.db
-      .select({ userId: warTeamMembers.userId, stats: warTeamMembers.stats })
+      .select({ userId: warTeamMembers.userId, ...WAR_TEAM_MEMBER_STAT_FIELDS })
       .from(warTeamMembers)
       .innerJoin(warTeams, eq(warTeams.id, warTeamMembers.warTeamId))
       .where(and(...memberFilters));
     const aggregate = new Map<string, { user_id: string; stats: Record<string, number> }>();
     for (const row of members) {
       const current = aggregate.get(row.userId) ?? { user_id: row.userId, stats: {} };
-      for (const [key, val] of Object.entries(row.stats ?? {})) {
-        current.stats[key] = (current.stats[key] ?? 0) + (val ?? 0);
+      for (const [key, val] of Object.entries(toMemberStats(row) ?? {})) {
+        if (val !== null) current.stats[key] = (current.stats[key] ?? 0) + val;
       }
       aggregate.set(row.userId, current);
     }

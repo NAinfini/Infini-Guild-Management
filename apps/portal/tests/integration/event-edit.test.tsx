@@ -92,12 +92,6 @@ vi.mock("../../components/shared/ImageGridEditor", () => ({
   ),
 }));
 
-vi.mock("@guild/shared/utils/media", () => ({
-  convertFileForUpload: vi.fn(async (file: File) => file),
-  convertFilesForUpload: vi.fn(async (files: readonly File[]) => [...files]),
-  DEFAULT_IMAGE_WEBP_QUALITY: 0.82,
-}));
-
 function EventEditHarness({
   updateEvent,
   uploadEventImages,
@@ -114,7 +108,7 @@ function EventEditHarness({
     uploadEventImages: uploadEventImages as never,
   });
   const [attachmentItems, setAttachmentItems] = useState<Array<{ id: string; src?: string; alt?: string; file?: File }>>([
-    { id: "events/existing.png", src: "events/existing.png", alt: "Existing" },
+    { id: "exist1234567890abcdef", src: "/api/media/exist1234567890abcdef/view", alt: "Existing" },
   ]);
 
   return (
@@ -137,6 +131,8 @@ function EventEditHarness({
         onDescriptionChange={() => {}}
         autoArchive={false}
         onAutoArchiveChange={() => {}}
+        classQuotas={[]}
+        onClassQuotasChange={() => {}}
         attachmentItems={attachmentItems}
         onAttachmentsChange={setAttachmentItems}
         onFilesSelected={(files) => {
@@ -180,8 +176,7 @@ describe("event edit flow", () => {
   it("uploads new files and preserves existing attachments during edit", async () => {
     vi.spyOn(URL, "createObjectURL").mockReturnValue("blob:new");
     const uploadEventImages = vi.fn().mockResolvedValue({
-      keys: ["events/new.png"],
-      attachments: ["events/existing.png", "events/new.png"],
+      media_ids: ["newid1234567890abcdef"],
     });
     const updateEvent = vi.fn().mockResolvedValue({ id: "evt-1" });
     const user = userEvent.setup();
@@ -196,7 +191,7 @@ describe("event edit flow", () => {
       expect(updateEvent).toHaveBeenCalledWith(
         "evt-1",
         expect.objectContaining({
-          attachments: ["events/existing.png", "events/new.png"],
+          attachments: ["exist1234567890abcdef", "newid1234567890abcdef"],
           pinned: true,
           signup_locked: true,
         }),

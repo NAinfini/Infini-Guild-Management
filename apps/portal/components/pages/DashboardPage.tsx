@@ -1,8 +1,8 @@
 import type { Event } from "@guild/shared";
-import { Grid, Skeleton, Stack } from "@mantine/core";
-import { LayoutGridIcon } from "@portal/components/icons";
+import { Button, Grid, Skeleton, Stack } from "@mantine/core";
 import { useQuery } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
+import { useMediaQuery } from "@mantine/hooks";
 import { differenceInHours } from "date-fns";
 import { useCallback, useMemo } from "react";
 import { useTranslation } from "react-i18next";
@@ -19,11 +19,14 @@ import { useAuthStore } from "../../stores/auth";
 import { useSiteConfigStore } from "../../stores/site-config";
 import { buildEventWorkbenchSearch } from "../../utils/event-navigation";
 import { PageLayout } from "../layout/PageLayout";
+import { EmptyState } from "../shared/EmptyState";
 import {
   type DashboardLastWarMvp,
   type DashboardMember,
   type DashboardUpcomingEventRow,
+  orderDashboardUpcomingRows,
 } from "../dashboard/shared";
+import { summariseEventClassQuotas } from "../feature/events/class-quota-view";
 import { ActiveMembersCard } from "../dashboard/ActiveMembersCard";
 import { LastWarCard } from "../dashboard/LastWarCard";
 import { MySignupsCard } from "../dashboard/MySignupsCard";
@@ -31,6 +34,7 @@ import { UpcomingEventsCard } from "../dashboard/UpcomingEventsCard";
 import "./DashboardPage.css";
 
 export const DASHBOARD_EVENTS_REFETCH_INTERVAL_MS = 60_000;
+export const DASHBOARD_MOBILE_MEDIA_QUERY = "(max-width: 47.99em)";
 
 export function roundDashboardNow(value = new Date()): Date {
   const rounded = new Date(value);
@@ -47,7 +51,7 @@ export function participantToDashboardMember(participant: DashboardEvent["partic
     profile: {
       power: participant.power,
       classes: participant.classes,
-      avatar_key: participant.avatar_key,
+      avatar_media_id: participant.avatar_media_id,
     },
   };
 }
@@ -71,26 +75,21 @@ function buildUpcomingEventRow(
   const joined = Boolean(currentUserId && item.participants.some((participant) => participant.user_id === currentUserId));
   const capacityLabel = item.capacity === null ? `${participantCount}/∞` : `${participantCount}/${item.capacity}`;
 
+  const members = item.participants.map(participantToDashboardMember);
+
   return {
     item,
     startsSoon,
     hasConflict,
-    members: item.participants.map(participantToDashboardMember),
+    members,
     joined,
     capacityLabel,
     isFull: item.capacity !== null && participantCount >= item.capacity,
+    quotaSummary: summariseEventClassQuotas(item, members),
   };
 }
 
-export function orderDashboardUpcomingRows<T extends { item: Pick<Event, "id" | "start_at" | "pinned"> }>(rows: T[]): T[] {
-  return [...rows].sort((left, right) => {
-    const leftTime = new Date(left.item.start_at).getTime();
-    const rightTime = new Date(right.item.start_at).getTime();
-    if (leftTime !== rightTime) return leftTime - rightTime;
-    if (left.item.pinned !== right.item.pinned) return left.item.pinned ? -1 : 1;
-    return left.item.id.localeCompare(right.item.id);
-  });
-}
+export { orderDashboardUpcomingRows } from "../dashboard/shared";
 
 export function DashboardPage() {
   const { t } = useTranslation("dashboard");
@@ -99,6 +98,7 @@ export function DashboardPage() {
   const eventsEnabled = useSiteConfigStore((state) => state.features.events);
   const guildWarEnabled = useSiteConfigStore((state) => state.features.guildWar);
   const isExternalView = useExternalView();
+  const isMobileDashboard = useMediaQuery(DASHBOARD_MOBILE_MEDIA_QUERY) ?? false;
 
   const memberStatsQuery = useQuery({
     queryKey: dashboardQueryKeys.members(),
@@ -173,67 +173,122 @@ export function DashboardPage() {
     });
   };
 
+  const memberStatsInitialError = memberStatsQuery.isError && !memberStatsQuery.data;
+  const eventsInitialError = eventsEnabled && eventsQuery.isError && !eventsQuery.data;
+  const warsInitialError = guildWarEnabled && warsQuery.isError && !warsQuery.data;
+  const hasInitialLoadError = memberStatsInitialError || eventsInitialError || warsInitialError;
+  const hasRefreshError =
+    (memberStatsQuery.isError && Boolean(memberStatsQuery.data))
+    || (eventsQuery.isError && Boolean(eventsQuery.data))
+    || (warsQuery.isError && Boolean(warsQuery.data));
+
   useLoadWarningToast(
-    memberStatsQuery.isError || eventsQuery.isError || warsQuery.isError,
+    hasRefreshError,
     t("common:loadErrorRetry"),
   );
 
+  const actionsColumn = eventsEnabled ? (
+    <Stack gap={16}>
+      {!isExternalView && (
+        <Skeleton visible={eventsQuery.isLoading} radius={8}>
+          <MySignupsCard
+            mySignupEvents={mySignupEvents}
+            now={now}
+            onOpenEvent={openEventDetail}
+            onBrowseEvents={openAllEvents}
+          />
+        </Skeleton>
+      )}
+
+      <Skeleton visible={eventsQuery.isLoading} radius={8}>
+        <UpcomingEventsCard
+          upcomingEventsCount={eventsQuery.data?.active_events_count ?? 0}
+          featuredRows={featuredEventRows}
+          rows={upcomingEventRows}
+          onOpenEvent={openEventDetail}
+          onViewAll={openAllEvents}
+        />
+      </Skeleton>
+    </Stack>
+  ) : null;
+
+  const activeMembersCard = (
+    <ActiveMembersCard
+      activeMemberCount={memberStatsQuery.data?.active_member_count ?? 0}
+      totalMembersCount={memberStatsQuery.data?.total_member_count ?? 0}
+      allWarWinRate={warsQuery.data?.all_war_win_rate ?? 0}
+      activeEventsCount={eventsQuery.data?.active_events_count ?? 0}
+      memberStatsLoading={memberStatsQuery.isLoading}
+      eventsLoading={eventsQuery.isLoading}
+      warsLoading={warsQuery.isLoading}
+    />
+  );
+
+  const lastWarCard = guildWarEnabled ? (
+    <Skeleton visible={warsQuery.isLoading} radius={8}>
+      <LastWarCard
+        recentWars={recentWars}
+        warMvps={recentWarMvps}
+        isExternalView={isExternalView}
+        onOpenHistory={(warName) => {
+          void navigate({
+            to: "/guild-war",
+            search: { tab: "history", warName },
+          });
+        }}
+        onViewHistory={() => {
+          void navigate({
+            to: "/guild-war",
+            search: { tab: "history" },
+          });
+        }}
+      />
+    </Skeleton>
+  ) : null;
+
   return (
-    <PageLayout
-      title={t("title")}
-      subtitle={t("welcome", { name: user?.username ?? t("welcomeFallback") })}
-      icon={<LayoutGridIcon size={22} />}
-      className="dashboard-page"
-    >
-      <Grid gutter={16} align="flex-start">
-        {eventsEnabled ? <Grid.Col span={{ base: 12, xl: "auto" }}>
-          <Stack gap={16}>
-            {!isExternalView && (
-              <Skeleton visible={eventsQuery.isLoading} radius={8}>
-                <MySignupsCard mySignupEvents={mySignupEvents} now={now} onOpenEvent={openEventDetail} />
-              </Skeleton>
-            )}
-
-            <Skeleton visible={eventsQuery.isLoading} radius={8}>
-              <UpcomingEventsCard
-                upcomingEventsCount={eventsQuery.data?.active_events_count ?? 0}
-                featuredRows={featuredEventRows}
-                rows={upcomingEventRows}
-                onOpenEvent={openEventDetail}
-                onViewAll={openAllEvents}
-              />
-            </Skeleton>
-          </Stack>
-        </Grid.Col> : null}
-
-        <Grid.Col span={{ base: 12, xl: eventsEnabled ? (isExternalView ? 6 : 4) : 12 }}>
-          <Stack gap={16}>
-            <ActiveMembersCard
-              activeMemberCount={memberStatsQuery.data?.active_member_count ?? 0}
-              totalMembersCount={memberStatsQuery.data?.total_member_count ?? 0}
-              allWarWinRate={warsQuery.data?.all_war_win_rate ?? 0}
-              activeEventsCount={eventsQuery.data?.active_events_count ?? 0}
-              memberStatsLoading={memberStatsQuery.isLoading}
-              eventsLoading={eventsQuery.isLoading}
-              warsLoading={warsQuery.isLoading}
-            />
-
-            {guildWarEnabled ? <Skeleton visible={warsQuery.isLoading} radius={8}>
-              <LastWarCard
-                recentWars={recentWars}
-                warMvps={recentWarMvps}
-                isExternalView={isExternalView}
-                onOpenHistory={(warName) => {
-                  void navigate({
-                    to: "/guild-war",
-                    search: { tab: "history", warName },
-                  });
-                }}
-              />
-            </Skeleton> : null}
-          </Stack>
-        </Grid.Col>
-      </Grid>
+    <PageLayout className="dashboard-page">
+      {hasInitialLoadError ? (
+        <EmptyState
+          status="error"
+          title={t("common:loadError")}
+          description={t("common:errors.connectionIssue")}
+          actions={(
+            <Button
+              loading={memberStatsQuery.isFetching || eventsQuery.isFetching || warsQuery.isFetching}
+              onClick={() => {
+                if (memberStatsInitialError) void memberStatsQuery.refetch();
+                if (eventsInitialError) void eventsQuery.refetch();
+                if (warsInitialError) void warsQuery.refetch();
+              }}
+            >
+              {t("common:action.retry")}
+            </Button>
+          )}
+        />
+      ) : (
+        <Grid gap={{ base: 12, md: 16 }} align="flex-start">
+          {isMobileDashboard ? (
+            <>
+              {actionsColumn ? <Grid.Col span={12}>{actionsColumn}</Grid.Col> : null}
+              <Grid.Col span={12}>{activeMembersCard}</Grid.Col>
+              {lastWarCard ? <Grid.Col span={12}>{lastWarCard}</Grid.Col> : null}
+            </>
+          ) : (
+            <>
+              {actionsColumn ? (
+                <Grid.Col span={{ base: 12, xl: "auto" }}>{actionsColumn}</Grid.Col>
+              ) : null}
+              <Grid.Col span={{ base: 12, xl: eventsEnabled ? (isExternalView ? 6 : 4) : 12 }}>
+                <Stack gap={16}>
+                  {activeMembersCard}
+                  {lastWarCard}
+                </Stack>
+              </Grid.Col>
+            </>
+          )}
+        </Grid>
+      )}
     </PageLayout>
   );
 }

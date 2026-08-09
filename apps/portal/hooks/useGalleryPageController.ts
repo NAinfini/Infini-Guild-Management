@@ -2,7 +2,7 @@ import { useInfiniteQuery, useMutation, useQueryClient } from "@tanstack/react-q
 import { format } from "date-fns";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useDisclosure } from "@mantine/hooks";
-import { useConfirmDialog } from "@portal/components/shared/ConfirmDialog";
+import { useConfirmDialog } from "@portal/hooks/useConfirmDialog";
 import { useDebouncedSearch } from "./useDebouncedSearch";
 import { useTranslation } from "react-i18next";
 import {
@@ -18,23 +18,19 @@ import { useLoadWarningToast } from "./useLoadWarningToast";
 import { queryKeys } from "../api/query-keys";
 import { notifySuccess, notifyError } from "../utils/notifications";
 import { useAuthStore } from "../stores/auth";
+import { requireSiteMediaPolicy, useSiteConfigStore } from "../stores/site-config";
 import { useEffectivePermissions } from "./useEffectivePermissions";
 import { isAllowedGalleryVideoUrl, toEmbedVideoUrl } from "@guild/shared/utils/video";
 import type { UploadTask } from "../types/media";
-import { resolveGalleryMediaUrl } from "../utils/media";
+import { resolveMediaUrl } from "../utils/media";
 
-const MAX_GALLERY_IMAGE_SIZE_BYTES = 10 * 1024 * 1024;
-
-export type GalleryUploadFileClassification = "queued" | "unsupported" | "too-large";
+export type GalleryUploadFileClassification = "queued" | "unsupported";
 
 export function classifyGalleryUploadFile(
   file: Pick<File, "type" | "size">,
 ): GalleryUploadFileClassification {
   if (!file.type.startsWith("image/")) {
     return "unsupported";
-  }
-  if (file.size > MAX_GALLERY_IMAGE_SIZE_BYTES) {
-    return "too-large";
   }
   return "queued";
 }
@@ -93,6 +89,8 @@ export function useGalleryPageController() {
   const confirm = useConfirmDialog();
   const queryClient = useQueryClient();
   const user = useAuthStore((state) => state.user);
+  const mediaPolicy = useSiteConfigStore(requireSiteMediaPolicy);
+  const galleryImageQuota = mediaPolicy.quotas.gallery;
   const isExternalView = useExternalView();
   const { canManage: canManagePermission } = useEffectivePermissions();
   const canDeleteGallery = canManagePermission(["gallery.delete"]);
@@ -215,7 +213,10 @@ export function useGalleryPageController() {
   const selectFiles = (files: FileList | File[] | null) => {
     const list = files ? Array.from(files) : [];
     if (list.length === 0) return;
-    const mapped = list.map<UploadTask>((file) => {
+    if (list.length > galleryImageQuota) {
+      notifyError(t("message.fileQuotaExceeded", { max: galleryImageQuota }));
+    }
+    const mapped = list.slice(0, galleryImageQuota).map<UploadTask>((file) => {
       const classification = classifyGalleryUploadFile(file);
       return {
         id: crypto.randomUUID(),
@@ -223,10 +224,8 @@ export function useGalleryPageController() {
         caption: "",
         status: classification === "queued" ? "queued" : "error",
         error:
-          classification === "too-large"
-            ? t("message.fileTooLarge", { fileName: file.name })
-            : classification === "unsupported"
-              ? t("message.unsupportedFileType", { fileName: file.name })
+          classification === "unsupported"
+            ? t("message.unsupportedFileType", { fileName: file.name })
             : undefined,
       };
     });
@@ -414,9 +413,11 @@ export function useGalleryPageController() {
       cancelLabel: t("common:action.cancel"),
       intent: "danger",
     });
-    if (confirmed) {
-      deleteMutation.mutate(id);
-    }
+    if (!confirmed) return false;
+    return deleteMutation.mutateAsync(id).then(
+      () => true,
+      () => false,
+    );
   };
 
   const handleAddVideo = () => {
@@ -461,6 +462,7 @@ export function useGalleryPageController() {
     setVideoCaption,
     // upload queue
     uploadQueue,
+    galleryImageQuota,
     queuedCount,
     uploadingCount,
     selectFiles,
@@ -502,7 +504,7 @@ export function useGalleryPageController() {
     handleDeleteItem,
     handleAddVideo,
     // helpers
-    resolveImageUrl: resolveGalleryMediaUrl,
+    resolveImageUrl: resolveMediaUrl,
     formatDateTime,
     toEmbedVideoUrl,
   };

@@ -1,13 +1,13 @@
 import {
   type Announcement,
-  type AnnouncementImageStagingResponse,
-  announcementImageStagingResponseSchema,
+  type AnnouncementImageUploadResponse,
+  announcementImageUploadResponseSchema,
   createAnnouncementSchema,
   updateAnnouncementSchema,
 } from "@guild/shared";
 import type { z } from "zod";
 import { apiRequest } from "../client";
-import { convertFilesForUpload } from "@guild/shared/utils/media";
+import { appendImageUploadVariants, convertImagesForUpload } from "@guild/shared/utils/media";
 
 export type CreateAnnouncementPayload = z.input<typeof createAnnouncementSchema>;
 export type UpdateAnnouncementPayload = z.input<typeof updateAnnouncementSchema>;
@@ -42,38 +42,32 @@ export function deleteAnnouncement(id: string): Promise<{ ok: true }> {
 }
 
 async function buildAnnouncementImageFormData(files: File[]): Promise<FormData> {
-  const converted = await convertFilesForUpload(files);
+  const converted = await convertImagesForUpload(files);
   const formData = new FormData();
-  for (const file of converted) {
-    formData.append("files", file);
-  }
+  appendImageUploadVariants(formData, converted);
   return formData;
 }
 
-export async function stageAnnouncementImages(
-  stagingToken: string | null,
+export async function uploadPendingAnnouncementImages(
   files: File[],
-): Promise<AnnouncementImageStagingResponse> {
+): Promise<AnnouncementImageUploadResponse> {
   const formData = await buildAnnouncementImageFormData(files);
-  if (stagingToken) {
-    formData.set("staging_token", stagingToken);
-  }
-  const response = await apiRequest<AnnouncementImageStagingResponse>(
-    "/api/announcements/images/stage",
+  const response = await apiRequest<AnnouncementImageUploadResponse>(
+    "/api/announcements/images",
     {
       method: "POST",
       body: formData,
     },
   );
-  return announcementImageStagingResponseSchema.parse(response);
+  return announcementImageUploadResponseSchema.parse(response);
 }
 
 export async function uploadAnnouncementImages(
   announcementId: string,
   files: File[],
-): Promise<{ keys: string[] }> {
+): Promise<{ media_ids: string[] }> {
   const formData = await buildAnnouncementImageFormData(files);
-  return apiRequest<{ keys: string[] }>(`/api/announcements/${announcementId}/images`, {
+  return apiRequest<{ media_ids: string[] }>(`/api/announcements/${announcementId}/images`, {
     method: "POST",
     body: formData,
   });

@@ -15,7 +15,6 @@ const API_FEATURE_REQUIREMENTS: ReadonlyArray<{
   { prefix: "/api/guild-war", features: ["guildWar"] },
   { prefix: "/api/storage", features: ["storage"] },
   { prefix: "/api/wiki", features: ["wiki"] },
-  { prefix: "/api/game-data", features: ["tools", "equipmentCalc"] },
 ];
 
 export function requiredFeaturesForApiPath(path: string): readonly FeatureKey[] {

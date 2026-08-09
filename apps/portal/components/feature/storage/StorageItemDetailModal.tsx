@@ -1,15 +1,38 @@
 import type { StorageItem, StorageTransaction } from "@guild/shared";
-import { ActionIcon, Badge, Group, Image, Loader, Modal, Pagination, Stack, Text } from "@mantine/core";
-import { ChevronLeftIcon, ChevronRightIcon, PhotoOffIcon } from "@portal/components/icons";
-import { resolveStorageMediaUrl } from "@portal/utils/media";
+import {
+  ActionIcon,
+  Alert,
+  Badge,
+  Button,
+  Drawer,
+  Group,
+  Image,
+  Loader,
+  Pagination,
+  Stack,
+  Text,
+} from "@mantine/core";
+import { useMediaQuery } from "@mantine/hooks";
+import {
+  ChevronLeftIcon,
+  ChevronRightIcon,
+  PencilIcon,
+  PhotoOffIcon,
+} from "@portal/components/icons";
 import { useStorageTransactions } from "@portal/hooks/useStorage";
+import { resolveMediaUrl } from "@portal/utils/media";
 import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 
 type StorageItemDetailModalProps = {
   opened: boolean;
   item: StorageItem | null;
+  canEditItem: boolean;
+  canManageStock: boolean;
   onClose: () => void;
+  onDeposit: (item: StorageItem) => void;
+  onWithdraw: (item: StorageItem) => void;
+  onEdit: (item: StorageItem) => void;
 };
 
 function formatDateTime(iso: string): string {
@@ -27,10 +50,16 @@ function txClassName(type: StorageTransaction["type"]): string {
 export function StorageItemDetailModal({
   opened,
   item,
+  canEditItem,
+  canManageStock,
   onClose,
+  onDeposit,
+  onWithdraw,
+  onEdit,
 }: StorageItemDetailModalProps) {
   const { t } = useTranslation("storage");
   const { t: tCommon } = useTranslation("common");
+  const isMobile = useMediaQuery("(max-width: 40em)");
   const [imageIndex, setImageIndex] = useState(0);
   const [ledgerPage, setLedgerPage] = useState(1);
   const [brokenImages, setBrokenImages] = useState<Set<string>>(new Set());
@@ -42,10 +71,19 @@ export function StorageItemDetailModal({
   });
   const transactions = transactionsQuery.data?.data ?? [];
   const totalPages = transactionsQuery.data?.total_pages ?? 1;
-  const activeImage = useMemo(() => item?.images[imageIndex] ?? item?.images[0] ?? null, [imageIndex, item]);
-  const activeImageKey = activeImage?.r2_key ?? null;
-  const imageIsBroken = activeImageKey ? brokenImages.has(activeImageKey) : false;
-  const txLabels = { intake: t("tx.intake"), distribute: t("tx.distribute"), adjust: t("tx.adjust") };
+  const activeImage = useMemo(
+    () => item?.images[imageIndex] ?? item?.images[0] ?? null,
+    [imageIndex, item],
+  );
+  const activeImageId = activeImage?.media_id ?? null;
+  const imageIsBroken = activeImageId ? brokenImages.has(activeImageId) : false;
+  const canShowPreviousImage = imageIndex > 0;
+  const canShowNextImage = imageIndex < (item?.images.length ?? 0) - 1;
+  const txLabels = {
+    intake: t("tx.intake"),
+    distribute: t("tx.distribute"),
+    adjust: t("tx.adjust"),
+  };
 
   useEffect(() => {
     setImageIndex(0);
@@ -53,98 +91,193 @@ export function StorageItemDetailModal({
     setBrokenImages(new Set());
   }, [item?.id]);
 
+  useEffect(() => {
+    setImageIndex((current) =>
+      Math.min(current, Math.max(0, (item?.images.length ?? 0) - 1)),
+    );
+  }, [item?.images.length]);
+
   return (
-    <Modal opened={opened} onClose={onClose} title={item?.name ?? ""} size="xl" classNames={{ content: "storage-modal-content", header: "storage-modal-header", body: "storage-modal-body" }}>
+    <Drawer
+      opened={opened}
+      onClose={onClose}
+      title={item?.name ?? ""}
+      position="right"
+      size={isMobile ? "100%" : 520}
+      classNames={{
+        content: "storage-detail-drawer",
+        header: "storage-modal-header",
+        body: "storage-modal-body",
+      }}
+    >
       {item ? (
-        <div className="storage-detail">
-          <aside className="storage-detail-media">
+        <Stack gap="lg" className="storage-detail" style={{ minWidth: 0, maxWidth: "100%" }}>
+          <aside className="storage-detail-media" style={{ minWidth: 0 }}>
             {activeImage && !imageIsBroken ? (
               <Image
-                src={resolveStorageMediaUrl(activeImage.r2_key)}
+                src={resolveMediaUrl(activeImage.media_id)}
                 alt={item.name}
                 fit="contain"
                 className="storage-detail-media__image"
-                onError={() => setBrokenImages((current) => new Set(current).add(activeImage.r2_key))}
+                onError={() =>
+                  setBrokenImages((current) => new Set(current).add(activeImage.media_id))
+                }
               />
             ) : imageIsBroken ? (
-              <div className="storage-detail-media__empty storage-detail-media__empty--broken"><PhotoOffIcon size={48} /></div>
+              <div className="storage-detail-media__empty storage-detail-media__empty--broken">
+                <PhotoOffIcon size={48} />
+              </div>
             ) : (
-              <div className="storage-detail-media__empty"><PhotoOffIcon size={44} /></div>
+              <div className="storage-detail-media__empty">
+                <PhotoOffIcon size={44} />
+              </div>
             )}
             {item.images.length > 1 ? (
-              <Group justify="center" mt={8}>
-                <ActionIcon variant="default" onClick={() => setImageIndex((value) => (value <= 0 ? item.images.length - 1 : value - 1))}>
+              <Group justify="center" mt={8} wrap="nowrap">
+                <ActionIcon
+                  variant="default"
+                  size={44}
+                  aria-label={t("detail.previousImage")}
+                  disabled={!canShowPreviousImage}
+                  onClick={() => setImageIndex((value) => Math.max(0, value - 1))}
+                >
                   <ChevronLeftIcon size={16} />
                 </ActionIcon>
                 <Text size="xs">{imageIndex + 1} / {item.images.length}</Text>
-                <ActionIcon variant="default" onClick={() => setImageIndex((value) => (value + 1) % item.images.length)}>
+                <ActionIcon
+                  variant="default"
+                  size={44}
+                  aria-label={t("detail.nextImage")}
+                  disabled={!canShowNextImage}
+                  onClick={() =>
+                    setImageIndex((value) => Math.min(item.images.length - 1, value + 1))
+                  }
+                >
                   <ChevronRightIcon size={16} />
                 </ActionIcon>
               </Group>
             ) : null}
-            <div className="storage-detail-media__meta">
-              <Text size="xs" c="dimmed">{t("field.stock")}</Text>
-              <Text fw={900}>{item.quantity}</Text>
-            </div>
           </aside>
-          <Stack gap="sm" className="storage-detail__content">
-            <section className="storage-detail__panel storage-detail__panel--summary">
-              <Group gap={8}>
-                <Badge color={item.quantity > 0 ? "green" : "gray"}>{t("field.stock")}: {item.quantity}</Badge>
-                {item.allow_member_deposit ? <Badge variant="light" color="green">{t("tx.intake")}</Badge> : null}
-                {item.allow_member_withdraw ? <Badge variant="light" color="teal">{t("tx.distribute")}</Badge> : null}
+
+          <section className="storage-detail__summary">
+            <Group justify="space-between" align="flex-end" gap="md" wrap="nowrap">
+              <div>
+                <Text size="xs" c="dimmed">{t("field.stock")}</Text>
+                <Text className="storage-detail__stock">{item.quantity}</Text>
+              </div>
+              <Group gap={6}>
+                {item.allow_member_deposit ? (
+                  <Badge variant="light">{t("badge.depositEnabled")}</Badge>
+                ) : null}
+                {item.allow_member_withdraw ? (
+                  <Badge variant="light">{t("badge.withdrawEnabled")}</Badge>
+                ) : null}
+                {!item.allow_member_deposit && !item.allow_member_withdraw ? (
+                  <Badge variant="light" color="gray">{t("badge.closed")}</Badge>
+                ) : null}
               </Group>
-              <Text size="sm" fw={800} mt={12}>{t("field.description")}</Text>
-              <Text size="sm" c={item.description ? undefined : "dimmed"}>{item.description || t("empty.noDescription")}</Text>
-            </section>
-            <section className="storage-detail__panel">
-              <Group justify="space-between" gap={8} mb={10}>
-                <Text size="sm" fw={800}>{t("ledger.title")}</Text>
-                {transactionsQuery.isFetching ? <Loader size="xs" /> : null}
-              </Group>
-              {transactions.length > 0 ? (
-                <div className="storage-ledger">
-                  {transactions.map((tx) => (
-                    <div key={tx.id} className={`storage-ledger-row ${txClassName(tx.type)}`}>
+            </Group>
+            <Text size="sm" mt="md" c={item.description ? undefined : "dimmed"}>
+              {item.description || t("empty.noDescription")}
+            </Text>
+          </section>
+
+          <Group grow className="storage-detail__actions">
+            {canManageStock || item.allow_member_deposit ? (
+              <Button
+                variant="default"
+                leftSection={<span className="storage-direction-glyph" aria-hidden>↓</span>}
+                onClick={() => onDeposit(item)}
+              >
+                {t("action.deposit")}
+              </Button>
+            ) : null}
+            {canManageStock || item.allow_member_withdraw ? (
+              <Button
+                leftSection={<span className="storage-direction-glyph" aria-hidden>↑</span>}
+                onClick={() => onWithdraw(item)}
+                disabled={item.quantity <= 0}
+              >
+                {t("action.withdraw")}
+              </Button>
+            ) : null}
+            {canEditItem ? (
+              <Button
+                variant="default"
+                leftSection={<PencilIcon size={16} />}
+                onClick={() => onEdit(item)}
+              >
+                {t("action.edit")}
+              </Button>
+            ) : null}
+          </Group>
+
+          <section className="storage-detail__ledger">
+            <Group justify="space-between" gap={8} mb="sm">
+              <div>
+                <Text fw={800}>{t("ledger.title")}</Text>
+                <Text size="xs" c="dimmed">{t("ledger.subtitle")}</Text>
+              </div>
+              {transactionsQuery.isFetching ? <Loader size="xs" /> : null}
+            </Group>
+
+            {transactionsQuery.isError ? (
+              <Alert color="red" title={t("ledger.error")}>
+                <Button
+                  mt="sm"
+                  size="compact-sm"
+                  variant="default"
+                  onClick={() => void transactionsQuery.refetch()}
+                >
+                  {tCommon("action.retry")}
+                </Button>
+              </Alert>
+            ) : transactions.length > 0 ? (
+              <div className="storage-ledger">
+                {transactions.map((tx) => (
+                  <div key={tx.id} className={`storage-ledger-row ${txClassName(tx.type)}`}>
+                    <Group justify="space-between" gap="sm" align="flex-start" wrap="nowrap">
                       <div className="storage-ledger-row__main">
-                        <Group justify="space-between" gap={8} wrap="nowrap">
-                          <Group gap={6} wrap="nowrap">
-                            <Badge variant="light">{txLabels[tx.type]}</Badge>
-                            <Text fw={900} className="storage-ledger-row__delta">{tx.quantity_delta > 0 ? "+" : ""}{tx.quantity_delta}</Text>
-                          </Group>
-                          <Text size="xs" c="dimmed">{formatDateTime(tx.created_at)}</Text>
+                        <Group gap={8}>
+                          <Text size="sm" fw={700}>{txLabels[tx.type]}</Text>
+                          <Text fw={900} className="storage-ledger-row__delta">
+                            {tx.quantity_delta > 0 ? "+" : ""}{tx.quantity_delta}
+                          </Text>
                         </Group>
-                        <Text size="xs" c="dimmed" mt={5}>
-                          {t("field.actor")}: {tx.actor_username ?? tx.actor_id}
-                          {tx.recipient_username ? ` / ${t("field.recipient")}: ${tx.recipient_username}` : ""}
+                        <Text size="xs" c="dimmed" mt={4}>
+                          {tx.recipient_username ?? tx.actor_username ?? tx.actor_id}
                         </Text>
-                        {tx.note ? <Text size="sm" mt={5}>{tx.note}</Text> : null}
+                        {tx.note ? <Text size="sm" mt={4}>{tx.note}</Text> : null}
                       </div>
-                    </div>
-                  ))}
-                </div>
-              ) : (
-                <Text size="sm" c="dimmed">{t("ledger.empty")}</Text>
-              )}
-              {totalPages > 1 ? (
-                <Pagination
-                  className="storage-ledger-pagination"
-                  value={ledgerPage}
-                  total={totalPages}
-                  onChange={setLedgerPage}
-                  withEdges
-                  size="sm"
-                  getControlProps={(control) => ({
-                    "aria-label": tCommon(
-                      control === "previous" ? "pagination.prev" : `pagination.${control}`,
-                    ),
-                  })}
-                />
-              ) : null}
-            </section>
-          </Stack>
-        </div>
+                      <Text size="xs" c="dimmed" className="storage-ledger-row__date">
+                        {formatDateTime(tx.created_at)}
+                      </Text>
+                    </Group>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <Text size="sm" c="dimmed">{t("ledger.empty")}</Text>
+            )}
+
+            {totalPages > 1 ? (
+              <Pagination
+                className="storage-ledger-pagination"
+                value={ledgerPage}
+                total={totalPages}
+                onChange={setLedgerPage}
+                withEdges
+                size="sm"
+                getControlProps={(control) => ({
+                  "aria-label": tCommon(
+                    control === "previous" ? "pagination.prev" : `pagination.${control}`,
+                  ),
+                })}
+              />
+            ) : null}
+          </section>
+        </Stack>
       ) : null}
-    </Modal>
+    </Drawer>
   );
 }

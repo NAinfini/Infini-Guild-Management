@@ -1,5 +1,5 @@
 import type { Editor } from "@tiptap/react";
-import type { TipTapEditorLabels } from "./TipTapEditor";
+import type { TipTapEditorLabels } from "./tiptap-meta";
 
 type Heading = { level: number; text: string; pos: number };
 

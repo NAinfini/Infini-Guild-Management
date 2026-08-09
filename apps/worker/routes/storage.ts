@@ -1,9 +1,10 @@
-import { ALLOWED_IMAGE_TYPES, storageItemsListQuerySchema, type Permission } from "@guild/shared";
+import { storageItemsListQuerySchema, type Permission } from "@guild/shared";
 import type { Context } from "hono";
 import { Hono } from "hono";
 import type { Bindings } from "../index";
+import { MediaValidationError, parseImageMediaFormData } from "../services/MediaService";
 import { StorageService } from "../services/StorageService";
-import { buildError, collectFiles, getDb, handleResult, parseJsonBody, requireSessionUser, safeFormData, serveR2Object, throwError } from "./_shared";
+import { buildError, getDb, handleResult, parseJsonBody, requireSessionUser, safeFormData, throwError } from "./_shared";
 import { withMedia } from "./service-factory";
 
 export const storageRoutes = new Hono();
@@ -25,7 +26,7 @@ function parseLimit(value: string | undefined): number {
 
 async function requireStoragePermission(c: Context, permission: Permission) {
   const user = await requireSessionUser(c);
-  if (!user.permissions.has(permission) && !user.permissions.has("admin.storage.manage")) {
+  if (!user.permissions.has(permission)) {
     throwError(c, "FORBIDDEN", "Insufficient permission");
   }
   return user;
@@ -38,14 +39,6 @@ async function requireStorageStructureManager(c: Context) {
 async function requireStorageItemManager(c: Context) {
   return requireStoragePermission(c, "admin.storage.items");
 }
-
-storageRoutes.get("/image", async (c) => {
-  await requireSessionUser(c);
-  const key = c.req.query("key");
-  if (!key) return buildError(c, "VALIDATION_ERROR", "key query parameter required");
-  if (!key.startsWith("storage/items/")) return buildError(c, "FORBIDDEN", "Invalid storage media key");
-  return serveR2Object(c, key, "Storage media not found");
-});
 
 storageRoutes.get("/", async (c) => {
   await requireSessionUser(c);
@@ -143,21 +136,21 @@ storageRoutes.delete("/items/:id", async (c) => {
 storageRoutes.post("/items/:id/images", async (c) => {
   const user = await requireStorageItemManager(c);
   const form = await safeFormData(c);
-  const files = collectFiles(form);
-  if (files.length === 0) return buildError(c, "VALIDATION_ERROR", "No files provided");
+  let uploads;
+  try {
+    uploads = await parseImageMediaFormData(form);
+  } catch (error) {
+    if (error instanceof MediaValidationError) return buildError(c, "VALIDATION_ERROR", error.message);
+    throw error;
+  }
   const mediaPolicy = await withMedia(c).getMediaPolicy();
   const maxImageBytes = mediaPolicy.max_file_size_bytes.storage_image;
-  for (const file of files) {
-    if (!ALLOWED_IMAGE_TYPES.includes(file.type as typeof ALLOWED_IMAGE_TYPES[number])) return buildError(c, "VALIDATION_ERROR", `Invalid file type: ${file.name}`);
-    if (file.size > maxImageBytes) return buildError(c, "VALIDATION_ERROR", `File too large: ${file.name}`);
-  }
-  const fileData = await Promise.all(files.map(async (file) => ({ data: await file.arrayBuffer(), contentType: file.type || "application/octet-stream", name: file.name })));
-  return handleResult(c, await getService(c).uploadImages(user.id, c.req.param("id"), fileData), 201);
+  return handleResult(c, await getService(c).uploadImages(user.id, c.req.param("id"), uploads, maxImageBytes), 201);
 });
 
-storageRoutes.delete("/items/:id/images/:imageId", async (c) => {
+storageRoutes.delete("/items/:id/images/:mediaId", async (c) => {
   const user = await requireStorageItemManager(c);
-  return handleResult(c, await getService(c).deleteImage(user.id, c.req.param("id"), c.req.param("imageId")));
+  return handleResult(c, await getService(c).deleteImage(user.id, c.req.param("id"), c.req.param("mediaId")));
 });
 
 storageRoutes.post("/items/:id/transactions", async (c) => {

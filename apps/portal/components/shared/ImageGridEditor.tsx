@@ -1,24 +1,43 @@
-import { AnimatePresence, motion, Reorder, useDragControls } from "motion/react";
+import { IMAGE_FILE_ACCEPT } from "@guild/shared";
+import { ActionIcon, Button } from "@mantine/core";
+import { AnimatePresence, Reorder, useDragControls } from "motion/react";
 import {
   forwardRef,
   useCallback,
-  useId,
   useRef,
   useState,
   type CSSProperties,
   type ReactNode,
 } from "react";
 import type { ImageGridEditorItem } from "@portal/types/media";
+import { useTranslation } from "react-i18next";
+import "./ImageGridEditor.css";
 
 export type { ImageGridEditorItem };
+
+/*
+ * 添加位要和它左边那排缩略图是同一种方块，只是空着。Mantine 的 variant="default"
+ * 给的是控件灰（--mantine-color-default），深色下比图片底色亮一档，结果这一格比
+ * 七张真图还抢眼——加号是最不重要的那一格。
+ *
+ * 走内联变量而不是 CSS class：Mantine 把变体色解析成 --button-* 写在元素的
+ * style 属性上，样式表里的同名声明永远盖不过它。同 ProfileAccountTab 的
+ * LOGOUT_BUTTON_VARS 先例。
+ */
+const ADD_TILE_VARS = {
+  "--button-bg": "var(--surface-sunken)",
+  "--button-bd": "1px dashed var(--border-subtle)",
+  "--button-color": "var(--text-muted)",
+  "--button-hover": "var(--surface-raised)",
+  "--button-hover-color": "var(--text-primary)",
+} as CSSProperties;
 
 export interface ImageGridEditorProps {
   items: ImageGridEditorItem[];
   onReorder: (items: ImageGridEditorItem[]) => void;
   onDelete?: (item: ImageGridEditorItem) => void;
   onFilesSelected?: (files: File[]) => void;
-  maxImages?: number;
-  maxFileSize?: number;
+  maxImages: number;
   allowedTypes?: string[];
   onError?: (error: Error) => void;
   error?: Error | string;
@@ -31,6 +50,7 @@ export interface ImageGridEditorProps {
   accept?: string;
   uploadLabel?: ReactNode;
   disabled?: boolean;
+  deletingIds?: ReadonlySet<string>;
   className?: string;
   style?: CSSProperties;
   "aria-label"?: string;
@@ -46,14 +66,18 @@ function DraggableImageCell({
   imageSize,
   borderRadius,
   onDelete,
+  deleteLabel,
   disabled,
+  deletePending,
   motionAllowed,
 }: {
   item: ImageGridEditorItem;
   imageSize: number;
   borderRadius: number;
   onDelete?: (item: ImageGridEditorItem) => void;
+  deleteLabel: string;
   disabled: boolean;
+  deletePending: boolean;
   motionAllowed: boolean;
 }) {
   const dragControls = useDragControls();
@@ -137,19 +161,37 @@ function DraggableImageCell({
       )}
 
       {onDelete && !disabled ? (
-        <motion.button
+        <ActionIcon
           type="button"
-          aria-label={`Delete ${item.alt ?? item.id}`}
-          className="absolute -top-1.5 -right-1.5 w-5 h-5 rounded-full bg-red-500 text-white text-xs flex items-center justify-center z-10 hover:bg-red-600"
+          aria-label={deleteLabel}
+          color="red"
+          variant="transparent"
+          radius="xl"
+          size={44}
+          loading={deletePending}
+          disabled={deletePending}
+          style={{ position: "absolute", top: -6, right: -6, zIndex: 10 }}
           onClick={(e) => {
             e.stopPropagation();
+            if (deletePending) return;
             onDelete(item);
           }}
-          whileHover={motionAllowed ? { scale: 1.15 } : undefined}
-          whileTap={motionAllowed ? { scale: 0.9 } : undefined}
         >
-          ×
-        </motion.button>
+          <span
+            aria-hidden="true"
+            className="image-grid-editor__delete-glyph"
+            style={{
+              display: "inline-grid",
+              placeItems: "center",
+              width: 20,
+              height: 20,
+              borderRadius: "50%",
+              lineHeight: 1,
+            }}
+          >
+            ×
+          </span>
+        </ActionIcon>
       ) : null}
     </Reorder.Item>
   );
@@ -162,8 +204,7 @@ export const ImageGridEditor = forwardRef<HTMLDivElement, ImageGridEditorProps>(
       onReorder,
       onDelete,
       onFilesSelected,
-      maxImages = 10,
-      maxFileSize,
+      maxImages,
       allowedTypes,
       onError,
       error,
@@ -173,9 +214,10 @@ export const ImageGridEditor = forwardRef<HTMLDivElement, ImageGridEditorProps>(
       imageSize = 80,
       borderRadius = 8,
       gap = 8,
-      accept = "image/*",
+      accept = IMAGE_FILE_ACCEPT,
       uploadLabel,
       disabled = false,
+      deletingIds,
       className,
       style: styleProp,
       "aria-label": ariaLabel,
@@ -183,9 +225,9 @@ export const ImageGridEditor = forwardRef<HTMLDivElement, ImageGridEditorProps>(
     },
     ref,
   ) {
+    const { t } = useTranslation("common");
     const motionAllowed = useMotionAllowed();
     const fileInputRef = useRef<HTMLInputElement>(null);
-    const inputId = useId();
 
     if (loading) return <>{loadingContent}</>;
     if (error) return <>{errorContent}</>;
@@ -207,18 +249,10 @@ export const ImageGridEditor = forwardRef<HTMLDivElement, ImageGridEditorProps>(
           selected = selected.filter((f) => allowedTypes.includes(f.type));
         }
 
-        if (maxFileSize) {
-          const oversized = selected.filter((f) => f.size > maxFileSize);
-          if (oversized.length > 0) {
-            try { onError?.(new Error(`File too large: ${oversized.map((f) => f.name).join(", ")}`)); } catch { /* swallow */ }
-          }
-          selected = selected.filter((f) => f.size <= maxFileSize);
-        }
-
         if (selected.length > 0) onFilesSelected(selected);
         e.target.value = "";
       },
-      [items.length, maxImages, onFilesSelected, maxFileSize, allowedTypes, onError],
+      [items.length, maxImages, onFilesSelected, allowedTypes, onError],
     );
 
     const containerStyle: CSSProperties = {
@@ -226,6 +260,7 @@ export const ImageGridEditor = forwardRef<HTMLDivElement, ImageGridEditorProps>(
       flexWrap: "wrap",
       gap,
       alignItems: "flex-start",
+      justifyContent: items.length === 0 ? "center" : "flex-start",
       ...styleProp,
     };
 
@@ -251,7 +286,9 @@ export const ImageGridEditor = forwardRef<HTMLDivElement, ImageGridEditorProps>(
                 imageSize={imageSize}
                 borderRadius={borderRadius}
                 onDelete={onDelete}
+                deleteLabel={t("media.aria.deleteItem", { name: item.alt ?? item.id })}
                 disabled={disabled}
+                deletePending={deletingIds?.has(item.id) ?? false}
                 motionAllowed={motionAllowed}
               />
             ))}
@@ -259,28 +296,60 @@ export const ImageGridEditor = forwardRef<HTMLDivElement, ImageGridEditorProps>(
         </Reorder.Group>
 
         {canUpload ? (
-          <label
-            htmlFor={inputId}
-            className="flex flex-col items-center justify-center cursor-pointer border-2 border-dashed border-gray-300 dark:border-gray-600 hover:border-amber-500 transition-colors text-gray-600 dark:text-gray-300"
-            style={{ width: imageSize, height: imageSize, borderRadius, fontSize: Math.max(10, imageSize * 0.14) }}
-          >
-            {uploadLabel ?? (
-              <>
-                <span style={{ fontSize: Math.max(18, imageSize * 0.3), lineHeight: 1 }}>+</span>
-                <span>{items.length}/{maxImages}</span>
-              </>
-            )}
+          <>
+            <Button
+              type="button"
+              variant="default"
+              aria-label={typeof uploadLabel === "string" ? uploadLabel : t("media.aria.addImages")}
+              onClick={() => fileInputRef.current?.click()}
+              w={imageSize}
+              h={imageSize}
+              p={4}
+              radius={borderRadius}
+              style={{ ...ADD_TILE_VARS, fontSize: Math.max(10, imageSize * 0.14) }}
+              styles={{
+                /*
+                 * 两个轴都显式居中。Button 的 label 在 column 方向下只保证交叉轴
+                 * （横向）居中，主轴留给默认值，加号和计数那一组就贴在方块上沿。
+                 */
+                inner: { height: "100%", width: "100%" },
+                label: {
+                  flexDirection: "column",
+                  justifyContent: "center",
+                  alignItems: "center",
+                  height: "100%",
+                  width: "100%",
+                  whiteSpace: "normal",
+                  lineHeight: 1.2,
+                },
+              }}
+            >
+              {uploadLabel ?? (
+                <>
+                  {/* 加号的行框比字号高，跟着行高走会整体偏上；这里按字形高度对齐。 */}
+                  <span
+                    style={{
+                      fontSize: Math.max(18, imageSize * 0.3),
+                      lineHeight: 1,
+                      display: "block",
+                    }}
+                  >
+                    +
+                  </span>
+                  <span>{items.length}/{maxImages}</span>
+                </>
+              )}
+            </Button>
             <input
               ref={fileInputRef}
-              id={inputId}
               type="file"
               multiple
               accept={accept}
               onChange={handleFileChange}
-              className="hidden"
+              hidden
               disabled={disabled}
             />
-          </label>
+          </>
         ) : null}
       </div>
     );

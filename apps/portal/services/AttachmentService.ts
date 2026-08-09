@@ -1,6 +1,5 @@
 import { useEffect, useRef } from "react";
 import { type ImageGridEditorItem } from "@portal/types/media";
-import { convertFileForUpload } from "@guild/shared/utils/media";
 
 export type AttachmentItem = ImageGridEditorItem;
 
@@ -14,14 +13,13 @@ export class AttachmentService {
   async prepareFiles(files: File[]): Promise<AttachmentItem[]> {
     const preparedItems = await Promise.all(
       files.map(async (file) => {
-        const preparedFile = await convertFileForUpload(file);
-        const blobUrl = URL.createObjectURL(preparedFile);
+        const blobUrl = URL.createObjectURL(file);
         this.blobUrls.add(blobUrl);
         return {
           id: createAttachmentId(),
           src: blobUrl,
-          alt: preparedFile.name,
-          file: preparedFile,
+          alt: file.name,
+          file,
         } satisfies AttachmentItem;
       }),
     );
@@ -33,8 +31,8 @@ export class AttachmentService {
     return items.flatMap((item) => (item.file ? [item.file] : []));
   }
 
-  extractExistingUrls(items: AttachmentItem[]): string[] {
-    return items.flatMap((item) => (!item.file && item.src ? [item.src] : []));
+  extractExistingMediaIds(items: AttachmentItem[]): string[] {
+    return items.flatMap((item) => (!item.file ? [item.id] : []));
   }
 
   releaseItem(item: AttachmentItem) {

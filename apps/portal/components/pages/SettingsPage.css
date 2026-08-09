@@ -1,15 +1,26 @@
 /* ── Settings Page ── */
 
-.settings-section {
-  border-radius: var(--radius-md);
-  border: 1px solid color-mix(in srgb, var(--border-subtle) 80%, transparent);
-  background: var(--surface-base);
-  padding: 24px;
-  box-shadow: var(--shadow-sm);
+.settings-page {
+  width: 100%;
+  max-width: 60rem;
+  margin-inline: auto;
+  container-type: inline-size;
 }
 
-.settings-section__title {
-  margin: 0 0 16px;
+.settings-section {
+  border: 1px solid color-mix(in srgb, var(--border-subtle) 80%, transparent);
+  background: var(--surface-raised);
+  padding: 24px;
+}
+
+.settings-choice-grid {
+  display: grid;
+  gap: var(--space-md);
+}
+
+.settings-choice-grid--binary,
+.settings-choice-grid--accent {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
 /* ── Option card (shared by theme, locale, motion selectors) ── */
@@ -22,7 +33,7 @@
   flex-direction: column;
   gap: 4px;
   padding: 14px 18px;
-  border-radius: var(--radius-md);
+  border-radius: var(--radius-control);
   border: 1px solid color-mix(in srgb, var(--border-subtle) 80%, transparent);
   background: var(--surface-base);
   transition:
@@ -37,10 +48,8 @@
 }
 
 .settings-option-card--active {
-  border-width: 2px;
   border-color: var(--accent-fill);
   background: color-mix(in srgb, var(--accent-fill) 6%, var(--surface-base));
-  box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent-fill) 12%, transparent);
 }
 
 .settings-option-card--active:hover {
@@ -61,12 +70,7 @@
   width: 40px;
   height: 40px;
   flex-shrink: 0;
-  display: grid;
-  place-items: center;
-  border-radius: var(--radius-md);
-  background: color-mix(in srgb, var(--accent-fill) 8%, var(--surface-base));
-  color: var(--accent-text);
-  transition: background var(--transition-normal);
+  flex-shrink: 0;
 }
 
 .settings-option-card--active .settings-option-card__icon {
@@ -90,8 +94,8 @@
 .settings-accent-swatch {
   width: 22px;
   height: 22px;
-  border-radius: var(--radius-pill);
-  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--shadow-ink) 18%, transparent);
+  border-radius: var(--shape-pill);
+  box-shadow: var(--edge-top);
 }
 
 .settings-accent-swatch--teal { background: var(--accent-swatch-teal); }
@@ -101,10 +105,16 @@
 
 /* ── Responsive ── */
 
+@container (min-width: 48rem) {
+  .settings-choice-grid--accent {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+}
+
 @media (max-width: 767px) {
   .settings-section {
     padding: 16px;
-    border-radius: var(--radius-md);
+    border-radius: var(--radius-surface);
   }
 
   .settings-option-card--with-icon {
@@ -114,5 +124,16 @@
   .settings-option-card__icon {
     width: 34px;
     height: 34px;
+  }
+}
+
+@media (max-width: 30rem) {
+  .settings-option-card--with-icon {
+    gap: var(--space-sm);
+    padding-inline: var(--space-md);
+  }
+
+  .settings-option-card__description {
+    display: none;
   }
 }

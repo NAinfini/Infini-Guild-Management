@@ -47,7 +47,7 @@ describe("EventService", () => {
     const file = new File(["image"], "poster.png", { type: "image/png" });
     const attachmentService = {
       extractNewFiles: vi.fn(() => [file]),
-      extractExistingUrls: vi.fn(() => []),
+      extractExistingMediaIds: vi.fn(() => []),
     };
     const createEvent = vi.fn().mockResolvedValue({ id: "evt-1" });
     const invalidateQueries = vi.fn().mockResolvedValue(undefined);
@@ -93,16 +93,15 @@ describe("EventService", () => {
     expect(invalidateQueries).toHaveBeenCalledWith({ queryKey: queryKeys.dashboard.all });
   });
 
-  it("updates events by uploading new files and merging existing attachment keys", async () => {
+  it("updates events by uploading new files and merging existing attachment media IDs", async () => {
     const newFile = new File(["image"], "new.png", { type: "image/png" });
     const attachmentService = {
       extractNewFiles: vi.fn(() => [newFile]),
-      extractExistingUrls: vi.fn(() => ["events/existing.png"]),
+      extractExistingMediaIds: vi.fn(() => ["exist1234567890abcdef"]),
     };
     const updateEvent = vi.fn().mockResolvedValue({ id: "evt-1" });
     const uploadEventImages = vi.fn().mockResolvedValue({
-      keys: ["events/new.png"],
-      attachments: ["events/existing.png", "events/new.png"],
+      media_ids: ["newid1234567890abcdef"],
     });
     const invalidateQueries = vi.fn().mockResolvedValue(undefined);
     const service = new EventService({
@@ -128,7 +127,7 @@ describe("EventService", () => {
       signupLocked: true,
       autoArchive: false,
       attachmentItems: [
-        { id: "existing", src: "events/existing.png" },
+        { id: "exist1234567890abcdef", src: "/api/media/exist1234567890abcdef/view" },
         { id: "new", src: "blob:new", file: newFile },
       ],
     });
@@ -141,7 +140,7 @@ describe("EventService", () => {
         pinned: true,
         signup_locked: true,
         auto_archive: false,
-        attachments: ["events/existing.png", "events/new.png"],
+        attachments: ["exist1234567890abcdef", "newid1234567890abcdef"],
       }),
     );
     expect(invalidateQueries).toHaveBeenCalledWith({ queryKey: queryKeys.events.all });
@@ -153,7 +152,7 @@ describe("EventService", () => {
     const service = new EventService({
       attachmentService: {
         extractNewFiles: vi.fn(() => []),
-        extractExistingUrls: vi.fn(() => []),
+        extractExistingMediaIds: vi.fn(() => []),
       },
       createEvent,
       updateEvent: vi.fn(),
@@ -188,7 +187,7 @@ describe("EventService", () => {
     const service = new EventService({
       attachmentService: {
         extractNewFiles: vi.fn(() => []),
-        extractExistingUrls: vi.fn(() => []),
+        extractExistingMediaIds: vi.fn(() => []),
       },
       createEvent,
       updateEvent: vi.fn(),

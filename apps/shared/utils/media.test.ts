@@ -1,5 +1,10 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { convertAudioToOpus, convertImageToWebP, getAudioConversionSupport } from "./media";
+import {
+  appendImageUploadVariants,
+  convertAudioToOpus,
+  convertImageForUpload,
+  getAudioConversionSupport,
+} from "./media";
 
 /*
  * These tests run in the node environment, so every browser API the converters
@@ -32,163 +37,205 @@ function file(name: string, type: string, size: number): File {
 }
 
 /** Canvas that encodes to a blob of exactly `encodedSize` bytes. */
-function stubImageEnvironment(encodedSize: number) {
-  stub("createImageBitmap", vi.fn(async () => ({ width: 4, height: 4, close: vi.fn() })));
+function stubImageEnvironment(encodedSize: number, width = 4, height = 4) {
+  const drawImage = vi.fn();
+  const canvases: Array<{ width: number; height: number }> = [];
+  const qualities: number[] = [];
+  stub("createImageBitmap", vi.fn(async () => ({ width, height, close: vi.fn() })));
   stub("document", {
-    createElement: () => ({
-      width: 0,
-      height: 0,
-      getContext: () => ({ drawImage: vi.fn() }),
-      toBlob: (cb: (blob: Blob) => void) => cb(new Blob([new Uint8Array(encodedSize)], { type: "image/webp" })),
-    }),
-  });
-}
-
-/** MediaRecorder that only advertises the container types in `supported`. */
-function stubAudioEnvironment(supported: string[]) {
-  class FakeMediaRecorder {
-    static isTypeSupported = (type: string) => supported.includes(type);
-    ondataavailable: ((event: { data: Blob }) => void) | null = null;
-    onstop: (() => void) | null = null;
-    readonly mimeType: string;
-    constructor(_stream: unknown, options: { mimeType: string }) {
-      this.mimeType = options.mimeType;
-      recordedMimeTypes.push(options.mimeType);
-    }
-    start() {
-      this.ondataavailable?.({ data: new Blob([new Uint8Array(8)]) });
-    }
-    stop() {
-      this.onstop?.();
-    }
-  }
-
-  const audioBuffer = { duration: 1, sampleRate: 48_000 };
-  class FakeAudioContext {
-    createMediaStreamDestination = () => ({ stream: {}, disconnect: vi.fn() });
-    createBufferSource = () => {
-      const source: Record<string, unknown> = {
-        buffer: null,
-        connect: vi.fn(),
-        disconnect: vi.fn(),
-        onended: null,
-        start: () => {
-          /*
-           * Deferred, because the converter assigns `onended` on the line after
-           * start(). A real AudioBufferSourceNode dispatches onended as a task,
-           * so the assignment always wins; firing it synchronously here would
-           * deadlock the test rather than reflect the browser.
-           */
-          queueMicrotask(() => (source.onended as (() => void) | null)?.());
+    createElement: () => {
+      const canvas = {
+        width: 0,
+        height: 0,
+        getContext: () => ({ drawImage }),
+        toBlob: (cb: (blob: Blob) => void, _type: string, quality: number) => {
+          qualities.push(quality);
+          cb(new Blob([new Uint8Array(encodedSize)], { type: "image/webp" }));
         },
       };
-      return source;
-    };
-    decodeAudioData = async () => audioBuffer;
-    close = async () => undefined;
-  }
-  class FakeOfflineAudioContext {
-    createBufferSource = () => ({ buffer: null, connect: vi.fn(), start: vi.fn() });
-    destination = {};
-    startRendering = async () => audioBuffer;
-  }
-
-  stub("MediaRecorder", FakeMediaRecorder);
-  stub("AudioContext", FakeAudioContext);
-  stub("OfflineAudioContext", FakeOfflineAudioContext);
-  stub("window", { AudioContext: FakeAudioContext, OfflineAudioContext: FakeOfflineAudioContext });
+      canvases.push(canvas);
+      return canvas;
+    },
+  });
+  return { canvases, drawImage, qualities };
 }
 
-const recordedMimeTypes: string[] = [];
+/*
+ * mediabunny 走的是真实的 WebCodecs，node 里没有，所以整包 mock 掉。
+ * 这里要钉的本来也不是「编码器编得对不对」——那是它的单测该管的事——
+ * 而是「什么时候决定重编、什么时候放行」，那条判断是我们自己写的。
+ */
+const conversionCalls: Array<{ audio?: Record<string, unknown> }> = [];
+let encoderState = { codec: "mp3" as string | null, canEncode: true, hasTrack: true };
+
+vi.mock("mediabunny", () => ({
+  ALL_FORMATS: [],
+  BlobSource: class {},
+  BufferTarget: class {
+    buffer: ArrayBuffer | null = new Uint8Array(64).buffer;
+  },
+  OggOutputFormat: class {},
+  Output: class {
+    constructor(public options: { target: { buffer: ArrayBuffer | null } }) {}
+  },
+  Input: class {
+    async getPrimaryAudioTrack() {
+      if (!encoderState.hasTrack) return null;
+      return { getCodec: async () => encoderState.codec };
+    }
+  },
+  canEncodeAudio: async () => encoderState.canEncode,
+  Conversion: {
+    init: async (options: { audio?: Record<string, unknown> }) => {
+      conversionCalls.push({ audio: options.audio });
+      return { isValid: true, onProgress: undefined, execute: async () => undefined };
+    },
+  },
+}));
+
+/** WebCodecs 存在，且 mediabunny 按给定的编码/能力作答。 */
+function stubAudioEnvironment(
+  options: { codec?: string | null; canEncode?: boolean; track?: null } = {},
+) {
+  conversionCalls.length = 0;
+  encoderState = {
+    codec: options.codec ?? "mp3",
+    canEncode: options.canEncode ?? true,
+    hasTrack: options.track !== null,
+  };
+  stub("AudioEncoder", class {});
+  stub("window", {});
+}
 
 describe("image conversion", () => {
-  it("passes an animated GIF through instead of flattening it to one frame", async () => {
+  it("rejects image formats outside the canonical upload contract", async () => {
     stubImageEnvironment(10);
     const gif = file("loop.gif", "image/gif", 5_000);
+    const svg = file("logo.svg", "image/svg+xml", 5_000);
+    const bmp = file("legacy.bmp", "image/bmp", 5_000);
 
-    // createImageBitmap decodes only the first frame, so converting would be data loss.
-    await expect(convertImageToWebP(gif)).resolves.toBe(gif);
+    await expect(convertImageForUpload(gif)).rejects.toThrow(/JPEG, PNG, AVIF, or WebP/i);
+    await expect(convertImageForUpload(svg)).rejects.toThrow(/JPEG, PNG, AVIF, or WebP/i);
+    await expect(convertImageForUpload(bmp)).rejects.toThrow(/JPEG, PNG, AVIF, or WebP/i);
     expect(g.createImageBitmap).not.toHaveBeenCalled();
   });
 
-  it("is idempotent for input that is already WebP", async () => {
-    stubImageEnvironment(10);
-    const webp = file("already.webp", "image/webp", 5_000);
-    await expect(convertImageToWebP(webp)).resolves.toBe(webp);
-  });
-
-  it("keeps the original when the WebP re-encode came out bigger", async () => {
-    // A flat PNG or an already-optimised JPEG can grow; uploading the bigger of
-    // the two would defeat the point of converting at all.
-    stubImageEnvironment(9_000);
-    const png = file("flat.png", "image/png", 1_000);
-    await expect(convertImageToWebP(png)).resolves.toBe(png);
-  });
-
-  it("returns the WebP when it is genuinely smaller", async () => {
+  it("creates separate canonical full and view WebP files", async () => {
     stubImageEnvironment(400);
     const png = file("photo.png", "image/png", 5_000);
 
-    const result = await convertImageToWebP(png);
-    expect(result).not.toBe(png);
-    expect(result.name).toBe("photo.webp");
-    expect(result.type).toBe("image/webp");
+    const result = await convertImageForUpload(png);
+
+    expect(result.full.name).toBe("photo.full.webp");
+    expect(result.view.name).toBe("photo.view.webp");
+    expect(result.full.type).toBe("image/webp");
+    expect(result.view.type).toBe("image/webp");
+    expect(result.view).not.toBe(result.full);
+  });
+
+  it.each([
+    ["landscape", 3840, 2160, 1920, 1080],
+    ["portrait", 2160, 3840, 1080, 1920],
+    ["square", 3000, 3000, 1080, 1080],
+  ])("fits a %s view inside the orientation-aware envelope", async (_label, width, height, expectedWidth, expectedHeight) => {
+    const { canvases, drawImage } = stubImageEnvironment(400, width, height);
+
+    const result = await convertImageForUpload(file("image.png", "image/png", 5_000));
+
+    expect(result.viewWidth).toBe(expectedWidth);
+    expect(result.viewHeight).toBe(expectedHeight);
+    expect(canvases.at(-1)).toMatchObject({ width: expectedWidth, height: expectedHeight });
+    expect(drawImage).toHaveBeenLastCalledWith(expect.anything(), 0, 0, expectedWidth, expectedHeight);
+  });
+
+  it("never upscales a small source but still creates an independent view object", async () => {
+    const { canvases, qualities } = stubImageEnvironment(400, 800, 600);
+
+    const result = await convertImageForUpload(file("small.png", "image/png", 5_000));
+
+    expect(result).toMatchObject({ fullWidth: 800, fullHeight: 600, viewWidth: 800, viewHeight: 600 });
+    expect(result.view).not.toBe(result.full);
+    expect(canvases).toHaveLength(2);
+    expect(canvases.at(-1)).toMatchObject({ width: 800, height: 600 });
+    expect(qualities.at(-1)).toBe(0.8);
+  });
+
+  it("appends only aligned full/view fields to multipart form data", async () => {
+    stubImageEnvironment(400, 800, 600);
+    const variants = await convertImageForUpload(file("map.png", "image/png", 5_000));
+    const formData = new FormData();
+
+    appendImageUploadVariants(formData, [variants]);
+
+    expect(formData.getAll("full")).toHaveLength(1);
+    expect(formData.getAll("view")).toHaveLength(1);
+    expect(formData.has("original_name")).toBe(false);
   });
 
   it("refuses a non-image outright rather than producing junk", async () => {
     stubImageEnvironment(10);
-    await expect(convertImageToWebP(file("notes.txt", "text/plain", 10))).rejects.toThrow(/image file/i);
+    await expect(convertImageForUpload(file("notes.txt", "text/plain", 10))).rejects.toThrow(/JPEG, PNG, AVIF, or WebP/i);
   });
 });
 
-describe("audio conversion container negotiation", () => {
-  it("encodes into WebM when the browser only offers Opus in WebM", async () => {
-    /*
-     * This is Chromium, verified on Chrome 148: it reports
-     * isTypeSupported("audio/ogg;codecs=opus") === false. Demanding Ogg made the
-     * converter unusable there, which is why both call sites had it disabled.
-     */
-    recordedMimeTypes.length = 0;
-    stubAudioEnvironment(["audio/webm;codecs=opus"]);
-
+describe("音频转 Opus", () => {
+  it("mp3 转出来是 Ogg/Opus，容器不再跟浏览器协商", async () => {
+    stubAudioEnvironment();
     const result = await convertAudioToOpus(file("clip.mp3", "audio/mpeg", 200_000));
 
-    expect(recordedMimeTypes).toEqual(["audio/webm;codecs=opus"]);
-    expect(result.name).toBe("clip.webm");
-    /*
-     * Bare container type, no ";codecs=" parameter: the worker validates the
-     * declared Content-Type against an exact allow-list, so a parameterised type
-     * is rejected as an unsupported file type.
-     */
-    expect(result.type).toBe("audio/webm");
-  });
-
-  it("prefers Ogg when the browser offers it", async () => {
-    recordedMimeTypes.length = 0;
-    stubAudioEnvironment(["audio/ogg;codecs=opus", "audio/webm;codecs=opus"]);
-
-    const result = await convertAudioToOpus(file("clip.wav", "audio/wav", 200_000));
-
-    expect(recordedMimeTypes).toEqual(["audio/ogg;codecs=opus"]);
     expect(result.name).toBe("clip.ogg");
+    /* 裸容器类型，不带 ";codecs="：服务端按精确白名单比对声明的 Content-Type。 */
     expect(result.type).toBe("audio/ogg");
+    expect(conversionCalls).toHaveLength(1);
+    expect(conversionCalls[0]?.audio).toMatchObject({
+      codec: "opus",
+      numberOfChannels: 1,
+      sampleRate: 16_000,
+    });
   });
 
-  it("reports a clear reason when no container can carry Opus", async () => {
-    stubAudioEnvironment([]);
+  it("已经是 Ogg/Opus 就原样退回，不做第二次有损", async () => {
+    stubAudioEnvironment({ codec: "opus" });
+    const ogg = file("clip.ogg", "audio/ogg", 5_000);
+
+    await expect(convertAudioToOpus(ogg)).resolves.toBe(ogg);
+    expect(conversionCalls).toHaveLength(0);
+  });
+
+  it("Ogg 装的是 Vorbis 就照样重编——只看容器会把它放进库里", async () => {
+    stubAudioEnvironment({ codec: "vorbis" });
+    const ogg = file("voice.ogg", "audio/ogg", 5_000);
+
+    const result = await convertAudioToOpus(ogg);
+    expect(result).not.toBe(ogg);
+    expect(conversionCalls).toHaveLength(1);
+  });
+
+  it("WebM/Opus 也要重封装成 Ogg：落库只认一种容器", async () => {
+    stubAudioEnvironment({ codec: "opus" });
+    const webm = file("clip.webm", "audio/webm", 5_000);
+
+    const result = await convertAudioToOpus(webm);
+    expect(result.type).toBe("audio/ogg");
+    expect(conversionCalls).toHaveLength(1);
+  });
+
+  it("浏览器没有 WebCodecs 时给出可读的理由", async () => {
+    stub("window", {});
     const support = getAudioConversionSupport();
     expect(support).toMatchObject({ supported: false });
-    expect(support.supported ? "" : support.reason).toMatch(/cannot encode Opus/i);
+    expect(support.supported ? "" : support.reason).toMatch(/WebCodecs/i);
   });
 
-  it("does not re-encode audio that is already in an Opus container", async () => {
-    // The converter's own output must be recognised, or a second call runs
-    // another lossy real-time render over it.
-    stubAudioEnvironment(["audio/webm;codecs=opus"]);
-    const converted = file("clip.webm", "audio/webm", 5_000);
-    await expect(convertAudioToOpus(converted)).resolves.toBe(converted);
+  it("编不出 Opus 时明确报错，而不是悄悄退回原文件", async () => {
+    stubAudioEnvironment({ canEncode: false });
+    await expect(convertAudioToOpus(file("clip.wav", "audio/wav", 200_000)))
+      .rejects.toThrow(/cannot encode Opus/i);
+  });
 
-    const ogg = file("clip.ogg", "audio/ogg", 5_000);
-    await expect(convertAudioToOpus(ogg)).resolves.toBe(ogg);
+  it("没有音轨的文件直接报错", async () => {
+    stubAudioEnvironment({ track: null });
+    await expect(convertAudioToOpus(file("silent.wav", "audio/wav", 200_000)))
+      .rejects.toThrow(/no audio track/i);
   });
 });

@@ -1,10 +1,14 @@
 import {
   createWarHistorySchema,
+  DEFAULT_GAME_RULES,
   saveTeamsPayloadSchema,
   updateWarHistorySchema,
   warHistorySchema,
   warTeamMemberSchema,
   warTeamSchema,
+  type GameRules,
+  type WarMemberStatKey,
+  type WarTeamObjectiveKey,
 } from "@guild/shared";
 import type { PushEntityType, PushHint } from "@guild/shared/constants/push-hints";
 import { asc, desc, eq, inArray } from "drizzle-orm";
@@ -21,44 +25,60 @@ import type { WriteAuditLogInput } from "../audit";
 
 export type DrizzleDb = DrizzleD1Database<Record<string, never>>;
 
-export type WarHistoryRow = {
-  id: string;
-  eventId: string | null;
-  warName: string;
-  enemyName: string | null;
-  result: string | null;
-  ownStats: Record<string, number | null> | null;
-  enemyStats: Record<string, number | null> | null;
-  durationMinutes: number | null;
-  notes: string | null;
-  createdBy: string;
-  updatedBy: string | null;
-  createdAt: string;
-  updatedAt: string;
+export type TeamStatsInput = Partial<Record<WarTeamObjectiveKey, number | null>>;
+export type MemberStatsInput = Partial<Record<WarMemberStatKey, number | null>>;
+export type WarHistoryRow = typeof warHistory.$inferSelect;
+export type WarTeamRow = typeof warTeams.$inferSelect;
+export type WarTeamMemberRow = typeof warTeamMembers.$inferSelect;
+
+export const WAR_HISTORY_FIELDS = {
+  id: warHistory.id,
+  eventId: warHistory.eventId,
+  warName: warHistory.warName,
+  enemyName: warHistory.enemyName,
+  result: warHistory.result,
+  ownKills: warHistory.ownKills,
+  ownTowers: warHistory.ownTowers,
+  ownBaseHp: warHistory.ownBaseHp,
+  ownCredits: warHistory.ownCredits,
+  ownDistance: warHistory.ownDistance,
+  enemyKills: warHistory.enemyKills,
+  enemyTowers: warHistory.enemyTowers,
+  enemyBaseHp: warHistory.enemyBaseHp,
+  enemyCredits: warHistory.enemyCredits,
+  enemyDistance: warHistory.enemyDistance,
+  durationMinutes: warHistory.durationMinutes,
+  notes: warHistory.notes,
+  createdBy: warHistory.createdBy,
+  updatedBy: warHistory.updatedBy,
+  createdAt: warHistory.createdAt,
+  updatedAt: warHistory.updatedAt,
 };
 
-export type WarTeamRow = {
-  id: string;
-  warHistoryId: string | null;
-  eventId: string | null;
-  teamName: string;
-  sortOrder: number;
-  notes: string | null;
-  isLocked: boolean;
+export const WAR_TEAM_MEMBER_STAT_FIELDS = {
+  kills: warTeamMembers.kills,
+  deaths: warTeamMembers.deaths,
+  assists: warTeamMembers.assists,
+  damage: warTeamMembers.damage,
+  healing: warTeamMembers.healing,
+  buildingDamage: warTeamMembers.buildingDamage,
+  credits: warTeamMembers.credits,
+  damageTaken: warTeamMembers.damageTaken,
 };
 
-export type WarTeamMemberRow = {
-  id: string;
-  warTeamId: string;
-  userId: string;
-  roleTag: string | null;
-  sortOrder: number;
-  stats: Record<string, number | null> | null;
-  note: string | null;
+export const WAR_TEAM_MEMBER_FIELDS = {
+  id: warTeamMembers.id,
+  warTeamId: warTeamMembers.warTeamId,
+  userId: warTeamMembers.userId,
+  roleTag: warTeamMembers.roleTag,
+  sortOrder: warTeamMembers.sortOrder,
+  ...WAR_TEAM_MEMBER_STAT_FIELDS,
+  note: warTeamMembers.note,
 };
 
 export type WarTemplateSnapshot = {
   teams: Array<{
+    id?: string;
     team_name: string;
     sort_order: number;
     notes?: string;
@@ -80,6 +100,7 @@ export type GuildWarServiceDeps = {
   writeAuditLog: (input: AuditLogInput) => Promise<void>;
   publishEntityChanged: (input: { entityType: PushEntityType; entityId: string; hint: PushHint }) => Promise<void>;
   rawDb: D1Database;
+  getGameRules?: () => Promise<GameRules>;
 };
 
 // --- Pure helpers ---
@@ -91,11 +112,82 @@ function toNum(v: unknown): number | null {
   return Number.isFinite(n) ? n : null;
 }
 
+function statsOrNull(stats: Record<string, number | null>): Record<string, number | null> | null {
+  const recorded = Object.entries(stats).filter(([, value]) => value !== null);
+  return recorded.length > 0 ? Object.fromEntries(recorded) : null;
+}
+
+export function toTeamStats(row: WarHistoryRow, side: "own" | "enemy"): Record<string, number | null> | null {
+  return side === "own"
+    ? statsOrNull({
+        kills: toNum(row.ownKills),
+        towers: toNum(row.ownTowers),
+        base_hp: toNum(row.ownBaseHp),
+        credits: toNum(row.ownCredits),
+        distance: toNum(row.ownDistance),
+      })
+    : statsOrNull({
+        kills: toNum(row.enemyKills),
+        towers: toNum(row.enemyTowers),
+        base_hp: toNum(row.enemyBaseHp),
+        credits: toNum(row.enemyCredits),
+        distance: toNum(row.enemyDistance),
+      });
+}
+
+export function toMemberStats(
+  row: Pick<WarTeamMemberRow, "kills" | "deaths" | "assists" | "damage" | "healing" | "buildingDamage" | "credits" | "damageTaken">,
+): Record<string, number | null> | null {
+  return statsOrNull({
+    kills: toNum(row.kills),
+    deaths: toNum(row.deaths),
+    assists: toNum(row.assists),
+    damage: toNum(row.damage),
+    healing: toNum(row.healing),
+    building_damage: toNum(row.buildingDamage),
+    credits: toNum(row.credits),
+    damage_taken: toNum(row.damageTaken),
+  });
+}
+
+export function toOwnStatsColumns(stats: TeamStatsInput | null | undefined) {
+  return {
+    ownKills: stats?.kills ?? null,
+    ownTowers: stats?.towers ?? null,
+    ownBaseHp: stats?.base_hp ?? null,
+    ownCredits: stats?.credits ?? null,
+    ownDistance: stats?.distance ?? null,
+  };
+}
+
+export function toEnemyStatsColumns(stats: TeamStatsInput | null | undefined) {
+  return {
+    enemyKills: stats?.kills ?? null,
+    enemyTowers: stats?.towers ?? null,
+    enemyBaseHp: stats?.base_hp ?? null,
+    enemyCredits: stats?.credits ?? null,
+    enemyDistance: stats?.distance ?? null,
+  };
+}
+
+export function toMemberStatsColumns(stats: MemberStatsInput | null | undefined) {
+  return {
+    kills: stats?.kills ?? null,
+    deaths: stats?.deaths ?? null,
+    assists: stats?.assists ?? null,
+    damage: stats?.damage ?? null,
+    healing: stats?.healing ?? null,
+    buildingDamage: stats?.building_damage ?? null,
+    credits: stats?.credits ?? null,
+    damageTaken: stats?.damage_taken ?? null,
+  };
+}
+
 export function toWarHistoryPayload(row: WarHistoryRow) {
   return warHistorySchema.parse({
     id: row.id, event_id: row.eventId, war_name: row.warName, enemy_name: row.enemyName, result: row.result,
-    own_stats: row.ownStats ?? null,
-    enemy_stats: row.enemyStats ?? null,
+    own_stats: toTeamStats(row, "own"),
+    enemy_stats: toTeamStats(row, "enemy"),
     duration_minutes: toNum(row.durationMinutes), notes: row.notes,
     created_by: row.createdBy, updated_by: row.updatedBy ?? null, created_at: row.createdAt, updated_at: row.updatedAt,
   });
@@ -111,7 +203,7 @@ export function toTeamPayload(row: WarTeamRow) {
 export function toMemberPayload(row: WarTeamMemberRow) {
   return warTeamMemberSchema.parse({
     id: row.id, war_team_id: row.warTeamId, user_id: row.userId, role_tag: row.roleTag,
-    sort_order: toNum(row.sortOrder) ?? 0, stats: row.stats ?? null, note: row.note,
+    sort_order: toNum(row.sortOrder) ?? 0, stats: toMemberStats(row), note: row.note,
   });
 }
 
@@ -154,15 +246,19 @@ export class GuildWarCoreService {
     this.deps = deps;
   }
 
+  protected getGameRules(): Promise<GameRules> {
+    return this.deps.getGameRules?.() ?? Promise.resolve(DEFAULT_GAME_RULES);
+  }
+
   // --- DB query methods ---
 
   async getWarHistoryById(warId: string): Promise<WarHistoryRow | null> {
-    const row = (await this.db.select({ id: warHistory.id, eventId: warHistory.eventId, warName: warHistory.warName, enemyName: warHistory.enemyName, result: warHistory.result, ownStats: warHistory.ownStats, enemyStats: warHistory.enemyStats, durationMinutes: warHistory.durationMinutes, notes: warHistory.notes, createdBy: warHistory.createdBy, updatedBy: warHistory.updatedBy, createdAt: warHistory.createdAt, updatedAt: warHistory.updatedAt }).from(warHistory).where(eq(warHistory.id, warId)).limit(1))[0];
+    const row = (await this.db.select(WAR_HISTORY_FIELDS).from(warHistory).where(eq(warHistory.id, warId)).limit(1))[0];
     return row ?? null;
   }
 
   async getLatestWarHistory(eventId?: string): Promise<WarHistoryRow | null> {
-    const rows = await this.db.select({ id: warHistory.id, eventId: warHistory.eventId, warName: warHistory.warName, enemyName: warHistory.enemyName, result: warHistory.result, ownStats: warHistory.ownStats, enemyStats: warHistory.enemyStats, durationMinutes: warHistory.durationMinutes, notes: warHistory.notes, createdBy: warHistory.createdBy, updatedBy: warHistory.updatedBy, createdAt: warHistory.createdAt, updatedAt: warHistory.updatedAt }).from(warHistory).where(eventId ? eq(warHistory.eventId, eventId) : undefined).orderBy(desc(warHistory.createdAt), desc(warHistory.id)).limit(1);
+    const rows = await this.db.select(WAR_HISTORY_FIELDS).from(warHistory).where(eventId ? eq(warHistory.eventId, eventId) : undefined).orderBy(desc(warHistory.createdAt), desc(warHistory.id)).limit(1);
     return rows[0] ?? null;
   }
 
@@ -176,7 +272,7 @@ export class GuildWarCoreService {
 
   async getMembersForTeams(teamIds: string[]): Promise<WarTeamMemberRow[]> {
     if (teamIds.length === 0) return [];
-    return await this.db.select({ id: warTeamMembers.id, warTeamId: warTeamMembers.warTeamId, userId: warTeamMembers.userId, roleTag: warTeamMembers.roleTag, sortOrder: warTeamMembers.sortOrder, stats: warTeamMembers.stats, note: warTeamMembers.note }).from(warTeamMembers).where(inArray(warTeamMembers.warTeamId, teamIds)).orderBy(asc(warTeamMembers.sortOrder), asc(warTeamMembers.id));
+    return await this.db.select(WAR_TEAM_MEMBER_FIELDS).from(warTeamMembers).where(inArray(warTeamMembers.warTeamId, teamIds)).orderBy(asc(warTeamMembers.sortOrder), asc(warTeamMembers.id));
   }
 
   async getPoolMembers(warHistoryId: string): Promise<Array<{ id: string; warHistoryId: string | null; eventId: string | null; userId: string }>> {

@@ -1,16 +1,17 @@
 import {
   announcementSchema,
+  type JsonValue,
 } from "@guild/shared";
 import type { WriteAuditLogInput as AuditLogInput } from "./audit";
 import type { PushEntityType, PushHint } from "@guild/shared/constants/push-hints";
-import { and, desc, eq, inArray, or, sql, type SQL } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, or, sql, type SQL } from "drizzle-orm";
 import type { DrizzleD1Database } from "drizzle-orm/d1";
 import { nanoid } from "nanoid";
 import { announcements } from "../db/schema";
 import { ok, err, type ServiceResult } from "./result";
 import { escapeLikePattern, likeEscaped } from "./helpers";
-import { buildReplaceMediaRefsStatements, replaceMediaRefs, deleteMediaRefs, extractAnnouncementImageNodeKeys } from "./media-references";
-import { verifyAnnouncementImageStagingToken } from "./announcement-image-staging";
+import type { MediaService, ParsedImageMediaUpload } from "./MediaService";
+import { extractRichTextMediaIds, MediaValidationError } from "./MediaService";
 
 // --- Types ---
 
@@ -19,6 +20,7 @@ type EntityChangedInput = { entityType: PushEntityType; entityId: string; hint: 
 type AnnouncementPublishedInput = { announcementId: string; title: string; publishedAt: string };
 
 type AnnouncementStatus = "draft" | "scheduled" | "published" | "archived";
+export type AnnouncementSort = "updated_desc" | "updated_asc";
 
 type AnnouncementRow = {
   id: string; title: string; bodyJson: string; pinned: boolean;
@@ -27,12 +29,11 @@ type AnnouncementRow = {
 };
 
 export type AnnouncementServiceDeps = {
-  media: R2Bucket;
+  mediaService: MediaService;
   rawDb: D1Database;
   writeAuditLog: (input: AuditLogInput) => Promise<void>;
   publishEntityChanged: (input: EntityChangedInput) => Promise<void>;
   publishAnnouncementPublished: (input: AnnouncementPublishedInput) => Promise<void>;
-  signingSecret: string;
 };
 
 // --- Helpers ---
@@ -72,8 +73,8 @@ function toListPayload(row: AnnouncementListRow) {
 function buildAnnouncementDiff(
   existing: AnnouncementRow,
   data: { title?: string; body_json?: string; pinned?: boolean; status?: AnnouncementStatus; publish_at?: string | null; expires_at?: string | null; archived_at?: string | null },
-): Record<string, { from: unknown; to: unknown }> | null {
-  const diff: Record<string, { from: unknown; to: unknown }> = {};
+): Record<string, { from: JsonValue; to: JsonValue }> | null {
+  const diff: Record<string, { from: JsonValue; to: JsonValue }> = {};
   if (data.title !== undefined && data.title !== existing.title) diff.title = { from: existing.title, to: data.title };
   if (data.body_json !== undefined && data.body_json !== existing.bodyJson) diff.body_json = { from: "changed", to: "changed" };
   if (data.pinned !== undefined && data.pinned !== existing.pinned) diff.pinned = { from: existing.pinned, to: data.pinned };
@@ -101,7 +102,7 @@ export class AnnouncementService {
 
   // --- Public ---
 
-  async list(opts: { canReadAll: boolean; page: number; limit: number; status?: string; pinned?: boolean; archived?: boolean; search?: string }): Promise<ServiceResult<{ data: unknown[]; total: number; page: number; limit: number; total_pages: number }>> {
+  async list(opts: { canReadAll: boolean; page: number; limit: number; status?: string; pinned?: boolean; archived?: boolean; search?: string; sort?: AnnouncementSort }): Promise<ServiceResult<{ data: unknown[]; total: number; page: number; limit: number; total_pages: number }>> {
     const offset = (opts.page - 1) * opts.limit;
     const filters: SQL<unknown>[] = [];
 
@@ -120,8 +121,9 @@ export class AnnouncementService {
     }
 
     const whereClause = and(...filters);
+    const sortDirection = opts.sort === "updated_asc" ? asc : desc;
     const [rows, countRow] = await Promise.all([
-      this.db.select(LIST_COLS).from(announcements).where(whereClause).orderBy(desc(announcements.pinned), desc(announcements.createdAt), desc(announcements.id)).limit(opts.limit).offset(offset),
+      this.db.select(LIST_COLS).from(announcements).where(whereClause).orderBy(desc(announcements.pinned), sortDirection(announcements.updatedAt), sortDirection(announcements.id)).limit(opts.limit).offset(offset),
       this.db.select({ count: sql<number>`count(*)` }).from(announcements).where(whereClause),
     ]);
     const total = Number(countRow[0]?.count ?? 0);
@@ -135,7 +137,7 @@ export class AnnouncementService {
     return ok(toPayload(row));
   }
 
-  async create(actorId: string, data: { title: string; body_json: string; pinned: boolean; status: AnnouncementStatus; publish_at?: string | null; expires_at?: string | null; staging_token?: string }): Promise<ServiceResult<unknown>> {
+  async create(actorId: string, data: { title: string; body_json: string; pinned: boolean; status: AnnouncementStatus; publish_at?: string | null; expires_at?: string | null }): Promise<ServiceResult<unknown>> {
     if (data.publish_at && data.expires_at) {
       const publishDate = new Date(data.publish_at);
       const expiryDate = new Date(data.expires_at);
@@ -144,32 +146,32 @@ export class AnnouncementService {
       }
     }
     const nowIso = new Date().toISOString();
-    const stagingPayload = data.staging_token
-      ? await verifyAnnouncementImageStagingToken(this.deps.signingSecret, data.staging_token, actorId)
-      : null;
-    if (data.staging_token && !stagingPayload) return err("FORBIDDEN", "Invalid, expired, or unauthorized staging token");
-    const announcementId = stagingPayload?.announcement_id ?? nanoid();
-    if (stagingPayload) {
-      if (await this.getById(announcementId)) return err("CONFLICT", "Announcement already exists");
-      const claimedKeys: string[] = [];
-      for (const key of extractAnnouncementImageNodeKeys(data.body_json, announcementId)) {
-        if (await this.deps.media.head(key)) claimedKeys.push(key);
+    const announcementId = nanoid();
+    const mediaIds = extractRichTextMediaIds(data.body_json);
+    await this.deps.rawDb.prepare(
+      "INSERT INTO announcements (id, title, body_json, pinned, status, publish_at, expires_at, archived_at, created_by, updated_by, created_at, updated_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, NULL, ?8, NULL, ?9, ?9)",
+    ).bind(announcementId, data.title, data.body_json, data.pinned ? 1 : 0, data.status, data.publish_at ?? null, data.expires_at ?? null, actorId, nowIso).run();
+    try {
+      await this.deps.mediaService.replace({
+        entityType: "announcement",
+        entityId: announcementId,
+        slot: "body",
+        media: mediaIds.map((mediaId, sortOrder) => ({ mediaId, sortOrder })),
+        ownerUserId: actorId,
+        now: nowIso,
+      });
+    } catch (error) {
+      try {
+        await this.deps.rawDb.prepare("DELETE FROM announcements WHERE id = ?1").bind(announcementId).run();
+      } catch (cleanupError) {
+        throw new AggregateError([error, cleanupError], `Announcement ${announcementId} attachment and parent cleanup both failed`);
       }
-      await this.deps.rawDb.batch([
-        this.deps.rawDb.prepare(
-          "INSERT INTO announcements (id, title, body_json, pinned, status, publish_at, expires_at, archived_at, created_by, updated_by, created_at, updated_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, NULL, ?8, NULL, ?9, ?9)",
-        ).bind(announcementId, data.title, data.body_json, data.pinned ? 1 : 0, data.status, data.publish_at ?? null, data.expires_at ?? null, actorId, nowIso),
-        ...buildReplaceMediaRefsStatements(this.deps.rawDb, "announcement", announcementId, claimedKeys),
-      ]);
-    } else {
-      await this.db.insert(announcements).values({ id: announcementId, title: data.title, bodyJson: data.body_json, pinned: data.pinned, status: data.status, publishAt: data.publish_at ?? null, expiresAt: data.expires_at ?? null, archivedAt: null, createdBy: actorId, updatedAt: nowIso });
+      if (error instanceof MediaValidationError) return err("FORBIDDEN", error.message);
+      throw error;
     }
 
     const created = await this.getById(announcementId);
     if (!created) return err("SERVER_ERROR", "Failed to create announcement");
-    if (!stagingPayload) {
-      await replaceMediaRefs(this.deps.rawDb, "announcement", announcementId, extractAnnouncementImageNodeKeys(created.bodyJson, announcementId));
-    }
     await this.deps.writeAuditLog({ entityType: "announcement", action: "create", actorId, entityId: announcementId, diffTitle: created.title });
     await this.deps.publishEntityChanged({ entityType: "announcement", entityId: announcementId, hint: "announcement_created" });
     if (created.status === "published") {
@@ -205,15 +207,68 @@ export class AnnouncementService {
     if (data.expires_at !== undefined) patch.expiresAt = data.expires_at;
     if (data.archived_at !== undefined) patch.archivedAt = data.archived_at;
 
-    await this.db.update(announcements).set(patch).where(eq(announcements.id, announcementId));
+    const previousMediaIds = data.body_json !== undefined
+      ? await this.deps.mediaService.listLinkedMediaIds("announcement", announcementId, "body")
+      : [];
+    if (data.body_json !== undefined) {
+      try {
+        const mediaIds = extractRichTextMediaIds(data.body_json);
+        await this.deps.mediaService.replace({
+          entityType: "announcement",
+          entityId: announcementId,
+          slot: "body",
+          media: mediaIds.map((mediaId, sortOrder) => ({ mediaId, sortOrder })),
+          ownerUserId: actorId,
+          now: patch.updatedAt as string,
+        });
+      } catch (error) {
+        if (error instanceof MediaValidationError) return err("FORBIDDEN", error.message);
+        throw error;
+      }
+    }
+    const updateWhere = conditionalEtag
+      ? and(eq(announcements.id, announcementId), eq(announcements.updatedAt, existing.updatedAt))
+      : eq(announcements.id, announcementId);
+    try {
+      const updateQuery = this.db.update(announcements).set(patch).where(updateWhere);
+      if (conditionalEtag) {
+        const updatedRows = await updateQuery.returning({ id: announcements.id });
+        if (updatedRows.length === 0) {
+          if (data.body_json !== undefined) {
+            await this.deps.mediaService.replace({
+              entityType: "announcement",
+              entityId: announcementId,
+              slot: "body",
+              media: previousMediaIds.map((mediaId, sortOrder) => ({ mediaId, sortOrder })),
+              now: patch.updatedAt as string,
+            });
+          }
+          return err("CONFLICT", "Announcement has been modified by another user");
+        }
+      } else {
+        await updateQuery;
+      }
+    } catch (error) {
+      if (data.body_json !== undefined) {
+        try {
+          await this.deps.mediaService.replace({
+            entityType: "announcement",
+            entityId: announcementId,
+            slot: "body",
+            media: previousMediaIds.map((mediaId, sortOrder) => ({ mediaId, sortOrder })),
+            now: patch.updatedAt as string,
+          });
+        } catch (cleanupError) {
+          throw new AggregateError([error, cleanupError], `Announcement ${announcementId} update and media rollback both failed`);
+        }
+      }
+      throw error;
+    }
     const updated = await this.getById(announcementId);
     if (!updated) return err("SERVER_ERROR", "Failed to load updated announcement");
 
-    if (data.body_json !== undefined) {
-      await replaceMediaRefs(this.deps.rawDb, "announcement", announcementId, extractAnnouncementImageNodeKeys(updated.bodyJson, announcementId));
-    }
     const announcementDiff = buildAnnouncementDiff(existing, data);
-    await this.deps.writeAuditLog({ entityType: "announcement", action: "update", actorId, entityId: announcementId, diffTitle: updated.title, detailText: announcementDiff ? JSON.stringify(announcementDiff) : null });
+    await this.deps.writeAuditLog({ entityType: "announcement", action: "update", actorId, entityId: announcementId, diffTitle: updated.title, detail: announcementDiff });
     await this.deps.publishEntityChanged({ entityType: "announcement", entityId: announcementId, hint: "announcement_updated" });
     if (existing.status !== "published" && updated.status === "published") {
       await this.deps.publishAnnouncementPublished({ announcementId: updated.id, title: updated.title, publishedAt: updated.publishAt ?? updated.updatedAt });
@@ -235,25 +290,62 @@ export class AnnouncementService {
     const existing = await this.getById(announcementId);
     if (!existing) return err("NOT_FOUND", "Announcement not found");
     await this.db.delete(announcements).where(eq(announcements.id, announcementId));
-    await deleteMediaRefs(this.deps.rawDb, "announcement", announcementId);
     await this.deps.writeAuditLog({ entityType: "announcement", action: "delete", actorId, entityId: announcementId, diffTitle: existing.title });
     await this.deps.publishEntityChanged({ entityType: "announcement", entityId: announcementId, hint: "announcement_deleted" });
     return ok({ ok: true });
   }
 
-  async uploadImages(actorId: string, announcementId: string, files: Array<{ data: ArrayBuffer; contentType: string }>): Promise<ServiceResult<{ keys: string[] }>> {
+  async createPendingImages(
+    actorId: string,
+    uploads: readonly ParsedImageMediaUpload[],
+    quota: number,
+    maxBytes: number,
+  ): Promise<ServiceResult<{ expires_at: string; media_ids: string[] }>> {
+    const now = new Date().toISOString();
+    if (!await this.deps.mediaService.checkQuota({ purpose: "announcement_image", ownerUserId: actorId, scope: { kind: "pending" }, limit: quota, incomingCount: uploads.length, now })) {
+      return err("VALIDATION_ERROR", `Announcement image quota is ${quota}`);
+    }
+    try {
+      const created = await this.deps.mediaService.createImages({ ownerUserId: actorId, purpose: "announcement_image", uploads, now, maxBytes });
+      return ok({ expires_at: created.expiresAt, media_ids: created.mediaIds });
+    } catch (error) {
+      if (error instanceof MediaValidationError) return err("VALIDATION_ERROR", error.message);
+      throw error;
+    }
+  }
+
+  async uploadImages(actorId: string, announcementId: string, uploads: readonly ParsedImageMediaUpload[], quota: number, maxBytes: number): Promise<ServiceResult<{ media_ids: string[] }>> {
     const existing = await this.getById(announcementId);
     if (!existing) return err("NOT_FOUND", "Announcement not found");
-    const keys: string[] = [];
-    for (const file of files) {
-      // No media_references entry here: keys are added when the body_json referencing
-      // them is saved (replaceMediaRefs). Unsaved uploads are orphans caught by the
-      // media-orphan-cleanup cron's 48 h grace period.
-      const key = `announcement/${announcementId}/images/${Date.now()}_${nanoid()}`;
-      await this.deps.media.put(key, file.data, { httpMetadata: { contentType: file.contentType || "application/octet-stream" } });
-      keys.push(key);
+    const now = new Date().toISOString();
+    if (!await this.deps.mediaService.checkQuota({ purpose: "announcement_image", ownerUserId: actorId, scope: { kind: "entity", entityType: "announcement", entityId: announcementId }, limit: quota, incomingCount: uploads.length, now })) {
+      return err("VALIDATION_ERROR", `Announcement image quota is ${quota}`);
     }
-    await this.deps.writeAuditLog({ entityType: "announcement", action: "upload_images", actorId, entityId: announcementId, diffTitle: existing.title ?? null, detailText: JSON.stringify({ keys }) });
-    return ok({ keys });
+    const current = await this.deps.mediaService.listLinkedMediaIds("announcement", announcementId, "body");
+    let createdMediaIds: string[] = [];
+    try {
+      const created = await this.deps.mediaService.createImages({ ownerUserId: actorId, purpose: "announcement_image", uploads, now, maxBytes });
+      createdMediaIds = created.mediaIds;
+      await this.deps.mediaService.replace({ entityType: "announcement", entityId: announcementId, slot: "body", media: [...current, ...created.mediaIds].map((mediaId, sortOrder) => ({ mediaId, sortOrder })), ownerUserId: actorId, now });
+      await this.deps.writeAuditLog({ entityType: "announcement", action: "upload_images", actorId, entityId: announcementId, diffTitle: existing.title ?? null, detail: { media_ids: created.mediaIds } });
+      return ok({ media_ids: created.mediaIds });
+    } catch (error) {
+      if (createdMediaIds.length > 0) {
+        try {
+          await this.deps.mediaService.replace({
+            entityType: "announcement",
+            entityId: announcementId,
+            slot: "body",
+            media: current.map((mediaId, sortOrder) => ({ mediaId, sortOrder })),
+            now,
+          });
+          await this.deps.mediaService.deleteAssets(createdMediaIds);
+        } catch (cleanupError) {
+          throw new AggregateError([error, cleanupError], `Announcement ${announcementId} image upload and media cleanup both failed`);
+        }
+      }
+      if (error instanceof MediaValidationError) return err("VALIDATION_ERROR", error.message);
+      throw error;
+    }
   }
 }

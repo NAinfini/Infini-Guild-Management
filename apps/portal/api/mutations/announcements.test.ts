@@ -3,7 +3,8 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
   apiRequest: vi.fn(),
-  convertFilesForUpload: vi.fn(),
+  convertImagesForUpload: vi.fn(),
+  appendImageUploadVariants: vi.fn(),
 }));
 
 vi.mock("../client", () => ({
@@ -11,71 +12,62 @@ vi.mock("../client", () => ({
 }));
 
 vi.mock("@guild/shared/utils/media", () => ({
-  convertFilesForUpload: mocks.convertFilesForUpload,
+  convertImagesForUpload: mocks.convertImagesForUpload,
+  appendImageUploadVariants: mocks.appendImageUploadVariants,
 }));
 
 import {
-  createAnnouncement,
-  stageAnnouncementImages,
+  uploadAnnouncementImages,
+  uploadPendingAnnouncementImages,
 } from "./announcements";
 
-const stagingResponse = {
-  staging_id: "nanoid1234567890abcde",
-  staging_token: "signed-announcement-staging-token".repeat(3),
-  expires_at: "2026-07-29T00:00:00.000Z",
-  keys: ["announcement/nanoid1234567890abcde/images/image-1"],
-};
+const mediaId = "media1234567890abcdef";
+const imageVariants = [{
+  full: new File(["full"], "source-full.webp", { type: "image/webp" }),
+  view: new File(["view"], "source-view.webp", { type: "image/webp" }),
+  fullWidth: 2400,
+  fullHeight: 1600,
+  viewWidth: 1620,
+  viewHeight: 1080,
+}];
 
-describe("announcement image staging mutations", () => {
+describe("announcement image mutations", () => {
   beforeEach(() => {
     mocks.apiRequest.mockReset();
-    mocks.convertFilesForUpload.mockReset();
+    mocks.convertImagesForUpload.mockReset();
+    mocks.appendImageUploadVariants.mockReset();
+    mocks.convertImagesForUpload.mockResolvedValue(imageVariants);
   });
 
-  it("starts staging without creating an announcement record", async () => {
+  it("uploads pending full/view pairs without creating an announcement", async () => {
     const source = new File(["source"], "source.png", { type: "image/png" });
-    const converted = new File(["converted"], "source.webp", { type: "image/webp" });
-    mocks.convertFilesForUpload.mockResolvedValue([converted]);
-    mocks.apiRequest.mockResolvedValue(stagingResponse);
+    const response = {
+      expires_at: "2026-07-29T00:00:00.000Z",
+      media_ids: [mediaId],
+    };
+    mocks.apiRequest.mockResolvedValue(response);
 
-    await expect(stageAnnouncementImages(null, [source])).resolves.toEqual(stagingResponse);
+    await expect(uploadPendingAnnouncementImages([source])).resolves.toEqual(response);
 
-    expect(mocks.apiRequest).toHaveBeenCalledTimes(1);
-    const [path, request] = mocks.apiRequest.mock.calls[0] as [string, { method: string; body: FormData }];
-    expect(path).toBe("/api/announcements/images/stage");
-    expect(request.method).toBe("POST");
-    expect(request.body.getAll("files")).toEqual([converted]);
-    expect(request.body.has("staging_token")).toBe(false);
+    expect(mocks.convertImagesForUpload).toHaveBeenCalledWith([source]);
+    expect(mocks.appendImageUploadVariants).toHaveBeenCalledWith(expect.any(FormData), imageVariants);
+    expect(mocks.apiRequest).toHaveBeenCalledWith(
+      "/api/announcements/images",
+      expect.objectContaining({ method: "POST", body: expect.any(FormData) }),
+    );
   });
 
-  it("reuses the signed token for later staged uploads", async () => {
+  it("uploads full/view pairs directly to an existing announcement", async () => {
     const source = new File(["source"], "source.png", { type: "image/png" });
-    mocks.convertFilesForUpload.mockResolvedValue([source]);
-    mocks.apiRequest.mockResolvedValue(stagingResponse);
+    mocks.apiRequest.mockResolvedValue({ media_ids: [mediaId] });
 
-    await stageAnnouncementImages(stagingResponse.staging_token, [source]);
-
-    const request = mocks.apiRequest.mock.calls[0]?.[1] as { body: FormData };
-    expect(request.body.get("staging_token")).toBe(stagingResponse.staging_token);
-  });
-
-  it("sends the staging token only when the announcement is explicitly saved", async () => {
-    mocks.apiRequest.mockResolvedValue({ id: stagingResponse.staging_id });
-
-    await createAnnouncement({
-      title: "Maintenance",
-      body_json: '{"type":"doc","content":[]}',
-      staging_token: stagingResponse.staging_token,
+    await expect(uploadAnnouncementImages("announcement-1", [source])).resolves.toEqual({
+      media_ids: [mediaId],
     });
 
     expect(mocks.apiRequest).toHaveBeenCalledWith(
-      "/api/announcements",
-      expect.objectContaining({
-        method: "POST",
-        bodyJson: expect.objectContaining({
-          staging_token: stagingResponse.staging_token,
-        }),
-      }),
+      "/api/announcements/announcement-1/images",
+      expect.objectContaining({ method: "POST", body: expect.any(FormData) }),
     );
   });
 });

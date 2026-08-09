@@ -2,7 +2,7 @@
   "title": "Settings",
   "description": "Additional preferences",
   "field.theme": "Theme",
-  "field.accent": "Accent colour",
+  "field.accent": "Accent color",
   "field.locale": "Language",
   "theme.aria.useTheme": "Use theme {{themeId}}",
   "theme.light": "Light",

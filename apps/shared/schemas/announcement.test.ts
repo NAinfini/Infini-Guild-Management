@@ -1,58 +1,76 @@
 import { describe, expect, it } from "vitest";
 import {
-  announcementImageStagingResponseSchema,
+  announcementImageUploadResponseSchema,
   createAnnouncementSchema,
   updateAnnouncementSchema,
 } from "./announcement";
+import { createWikiArticleSchema, updateWikiArticleSchema } from "./wiki";
 
-const stagingToken = "signed-announcement-staging-token".repeat(3);
+const mediaId = "media1234567890abcdef";
 
-describe("announcement staging contracts", () => {
-  it("allows a create request to claim an image staging token", () => {
+describe("announcement contracts", () => {
+  it("applies create defaults without accepting upload-owned media fields", () => {
     expect(
       createAnnouncementSchema.parse({
         title: "Maintenance",
         body_json: '{"type":"doc","content":[]}',
-        staging_token: stagingToken,
+        media_ids: [mediaId],
       }),
-    ).toMatchObject({
-      staging_token: stagingToken,
+    ).toEqual({
+      title: "Maintenance",
+      body_json: '{"type":"doc","content":[]}',
       pinned: false,
       status: "draft",
     });
   });
 
-  it("never applies create defaults or staging fields to an update", () => {
+  it("never applies create defaults or upload-owned media fields to an update", () => {
     expect(
       updateAnnouncementSchema.parse({
         title: "Updated",
-        staging_token: stagingToken,
+        media_ids: [mediaId],
       }),
     ).toEqual({ title: "Updated" });
   });
 
-  it("validates the staging upload response", () => {
+  it("validates the pending image upload response", () => {
     expect(
-      announcementImageStagingResponseSchema.parse({
-        staging_id: "nanoid1234567890abcde",
-        staging_token: stagingToken,
+      announcementImageUploadResponseSchema.parse({
         expires_at: "2026-07-29T00:00:00.000Z",
-        keys: ["announcement/nanoid1234567890abcde/images/image-1"],
+        media_ids: [mediaId],
       }),
-    ).toMatchObject({
-      staging_id: "nanoid1234567890abcde",
-      staging_token: stagingToken,
+    ).toEqual({
+      expires_at: "2026-07-29T00:00:00.000Z",
+      media_ids: [mediaId],
     });
   });
 
-  it("rejects malformed staging response IDs and short tokens", () => {
+  it("rejects malformed media IDs", () => {
     expect(
-      announcementImageStagingResponseSchema.safeParse({
-        staging_id: "../announcement",
-        staging_token: "short",
+      announcementImageUploadResponseSchema.safeParse({
         expires_at: "2026-07-29T00:00:00.000Z",
-        keys: [],
+        media_ids: ["../announcement"],
       }).success,
     ).toBe(false);
   });
+
+  it.each(["not-json", "[]", "null", "42", '"text"'])(
+    "rejects non-object announcement body JSON: %s",
+    (body_json) => {
+      expect(createAnnouncementSchema.safeParse({ title: "Invalid", body_json }).success).toBe(false);
+      expect(updateAnnouncementSchema.safeParse({ body_json }).success).toBe(false);
+    },
+  );
+
+  it.each(["not-json", "[]", "null", "42", '"text"'])(
+    "rejects non-object wiki body JSON: %s",
+    (body_json) => {
+      expect(createWikiArticleSchema.safeParse({
+        title: "Invalid",
+        category_id: "category-1",
+        body_json,
+      }).success).toBe(false);
+      expect(updateWikiArticleSchema.safeParse({ body_json }).success).toBe(false);
+    },
+  );
 });

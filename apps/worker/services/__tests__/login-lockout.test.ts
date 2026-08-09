@@ -1,24 +1,41 @@
+import type { SQL } from "drizzle-orm";
+import { SQLiteSyncDialect } from "drizzle-orm/sqlite-core";
 import { describe, expect, it } from "vitest";
 import { clearLoginFailures, readLockout, recordLoginFailure } from "../login-lockout";
 
 type Row = { failCount: number; lockedUntil: string | null };
+const dialect = new SQLiteSyncDialect();
+const lockSteps = [30, 60, 300, 900, 1800, 3600] as const;
 
 /**
  * Single-row fake DB. Every helper in login-lockout.ts scopes its statement to
  * one username, so the fake ignores the predicates and tracks that one row.
  */
 function createDb(row: Row | null) {
-  const state = { row: row ? { ...row } : null as Row | null, deletes: 0 };
+  const state = {
+    row: row ? { ...row } : null as Row | null,
+    deletes: 0,
+    updates: 0,
+    conflictLockedUntil: null as SQL | null,
+  };
   const db = {
     select: () => ({ from: () => ({ where: () => ({ limit: () => Promise.resolve(state.row ? [state.row] : []) }) }) }),
     insert: () => ({
       values: (values: { failCount: number }) => ({
-        onConflictDoUpdate: () => ({
+        onConflictDoUpdate: (config: { set: { lockedUntil?: SQL } }) => ({
           returning: () => {
-            state.row = state.row
-              ? { ...state.row, failCount: state.row.failCount + 1 }
-              : { failCount: values.failCount, lockedUntil: null };
-            return Promise.resolve([{ failCount: state.row.failCount }]);
+            state.conflictLockedUntil = config.set.lockedUntil ?? null;
+            const failCount = state.row ? state.row.failCount + 1 : values.failCount;
+            const step = failCount <= 3 ? 0 : lockSteps[Math.min(failCount - 4, lockSteps.length - 1)]!;
+            const candidate = step > 0
+              ? new Date(NOW.getTime() + step * 1000).toISOString()
+              : null;
+            const existing = state.row?.lockedUntil ?? null;
+            const lockedUntil = config.set.lockedUntil && candidate && (!existing || candidate > existing)
+              ? candidate
+              : existing;
+            state.row = { failCount, lockedUntil };
+            return Promise.resolve([{ failCount, lockedUntil }]);
           },
         }),
       }),
@@ -26,6 +43,7 @@ function createDb(row: Row | null) {
     update: () => ({
       set: (patch: { lockedUntil: string }) => ({
         where: () => {
+          state.updates += 1;
           if (state.row) state.row.lockedUntil = patch.lockedUntil;
           return Promise.resolve();
         },
@@ -62,6 +80,30 @@ describe("login lockout ladder", () => {
     expect(state.row?.lockedUntil).toBeNull();
     await recordLoginFailure(db, "victim", NOW);
     expect(state.row?.lockedUntil).toBe("2026-07-25T00:00:30.000Z");
+  });
+
+  it("updates the count and lock deadline in one atomic upsert", async () => {
+    const { db, state } = createDb({ failCount: 3, lockedUntil: null });
+
+    await recordLoginFailure(db, "victim", NOW);
+
+    expect(state.updates).toBe(0);
+    expect(state.conflictLockedUntil).not.toBeNull();
+    const query = dialect.sqlToQuery(state.conflictLockedUntil!);
+    expect(query.sql.toLowerCase()).toContain("case");
+    expect(query.sql).toContain("fail_count");
+  });
+
+  it("never lets a late shorter deadline replace a longer concurrent lock", async () => {
+    const { db, state } = createDb({
+      failCount: 4,
+      lockedUntil: "2026-07-25T01:00:00.000Z",
+    });
+
+    const result = await recordLoginFailure(db, "victim", NOW);
+
+    expect(state.row?.lockedUntil).toBe("2026-07-25T01:00:00.000Z");
+    expect(result).toEqual({ retryAfterSeconds: 3600, failCount: 5 });
   });
 });
 

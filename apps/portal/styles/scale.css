@@ -1,16 +1,49 @@
+/* Saira Semi Condensed is used only for Latin display headings and KPI values.
+ * The local files preserve the upstream Latin / Latin-Ext coverage, with hinting
+ * removed to keep the two-file payload below the 30 KiB design budget. */
+@font-face {
+  font-family: "Saira Semi Condensed";
+  font-style: normal;
+  font-display: swap;
+  font-weight: 700;
+  size-adjust: 98%;
+  src: url("/fonts/saira-semi-condensed-latin-ext-700.woff2") format("woff2");
+  unicode-range:
+    U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7,
+    U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF,
+    U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB,
+    U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+
+@font-face {
+  font-family: "Saira Semi Condensed";
+  font-style: normal;
+  font-display: swap;
+  font-weight: 700;
+  size-adjust: 98%;
+  src: url("/fonts/saira-semi-condensed-latin-700.woff2") format("woff2");
+  unicode-range:
+    U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6,
+    U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F,
+    U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215,
+    U+FEFF, U+FFFD;
+}
+
 /* ═══════════════════════════════════════════════════════════════
  * L3 · 尺寸标度 —— 不随模式或主色变化
  *
- * 这里合并原先散落在 styles.css / ThemeProvider 的尺寸，并承载新增的统一控件
- * 标度。组件只消费这里的名字，不再各自写一套像素高度。
+ * Components consume this shared scale instead of defining local control sizes.
  * ═══════════════════════════════════════════════════════════════ */
 :root {
   /* 布局 */
-  --header-height: 64px;
-  --header-height-mobile: 56px;
+  --header-height: 48px;
+  --header-height-mobile: 48px;
   --sidebar-width: 236px;
   --sidebar-collapsed-width: 84px;
   --bottom-nav-height: 64px;
+  --content-width-reading: 1120px;
+  --content-width-standard: 1800px;
+  --content-width-wide: 2200px;
   /* 原名 --portal-scrollbar-size，去掉 portal- 前缀以与本层其余 token 一致，
    * 值不变。 */
   --scrollbar-size: 10px;
@@ -22,30 +55,27 @@
   --z-modal: 200;
   --z-toast: 300;
 
-  /* 圆角 —— 六档，来源是两处而不是一处：
-   * sm/md/lg/pill 原是 styles.css 的 :root 定义，随本次标度层迁移一起搬到
-   * 这里，styles.css 里已经不再重复这四个值；
-   * xs(4px) 与 xl(24px) 搬自 ThemeProvider.tsx:49,53 的 createTheme radius，
-   * 它们此前只存在于 Mantine 那一份重复定义里。Mantine 的 radius 需要
-   * xs..xl 五个键齐全，所以这两档不能省，否则 radius="xs" 会取不到值。
-   * （复审 T3：此前这里写的是 styles.css:33-36 与 ThemeProvider.tsx:53,57，
-   * 前者现在是 .star-border 的变量定义，后者的 57 行落在 shadows.xs 而不是
-   * radius.xs——两处都已核实并改成当前实际行号。） */
-  --radius-xs: 4px;
-  --radius-sm: 8px;
-  --radius-md: 12px;
-  --radius-lg: 16px;
-  --radius-xl: 24px;
-  --radius-pill: 999px;
+  /* 三档通用形状。Mantine 的 xs…xl 映射到这三档，不再形成第二套圆角标度。 */
+  --radius-control: 6px;
+  --radius-surface: 10px;
+  --radius-overlay: 14px;
+  /* Pill 只用于状态、标签与紧凑选择，不属于通用表面圆角。 */
+  --shape-pill: 999px;
 
-  /* 字号标度 —— 五档，靠字号与字重承担层次，不靠颜色 */
-  --text-page: 20px;
-  --text-section: 18px;
-  --text-card: 16px;
+  /* 字号标度 */
+  --text-display: 40px;
+  --text-h1: 28px;
+  --text-h2: 22px;
+  --text-h3: 18px;
   --text-body: 14px;
+  --text-sm: 13px;
   --text-meta: 12px;
-  --lh-tight: 1.25;
-  --lh-normal: 1.5;
+  --text-micro: 11px;
+  --text-page: var(--text-h1);
+  --text-section: var(--text-h2);
+  --text-card: var(--text-h3);
+  --lh-tight: 1.2;
+  --lh-normal: 1.6;
   --fw-medium: 600;
   --fw-strong: 700;
 
@@ -56,30 +86,90 @@
   --space-lg: 16px;
   --space-xl: 24px;
   --space-2xl: 32px;
+  --space-3xl: 48px;
 
-  /* 控件标度。文本控件统一为 32 / 44 / 52；图标控件保留 22 / 28 / 40
-   * 的视觉密度，由独立的 44px 透明命中区补足触控面积。 */
+  /* Shared card padding belongs to the spacing scale. */
+  --card-padding: var(--space-lg);
+
+  /* 控件标度。文本控件统一为 32 / 36 / 52；图标控件保留 22 / 28 / 40
+   * 的视觉密度，由独立的 44px 透明命中区补足触控面积。
+   *
+   * Visual control height is independent from the larger transparent touch target.
+   *
+   * 现在按指针精度分档：细指针取 36px（回到 Mantine 原生 sm），粗指针整档
+   * 回到 44px。用 @media (pointer: coarse) 而不是站点自己的
+   * data-input-modality——后者是「上一次输入用的是什么」，会在同一台设备上
+   * 来回翻，拿它控尺寸会让控件在鼠标和触摸之间跳动；pointer 媒体特性问的是
+   * 主输入设备的精度，是个稳定值，才是该管尺寸的那一个。
+   *
+   * 无障碍上不亏：WCAG 2.2 AA 的最小靶面是 24×24 CSS px，36px 有余量；
+   * 44×44 属于 AAA / Apple HIG 那一档，在粗指针设备上原样保留。
+   *
+   * 这一档不只喂按钮：输入框 xs/sm/md、标签页 .tabsTab、ActionIcon 的 input
+   * 档，以及 AppShell / PageLayout / GuildWarPage / RosterPage / StoragePage /
+   * ToolsPage / tiptap-editor 里 14 条手写规则都吃它。一起收才不会让同一行里
+   * 的按钮和输入框错位——这是共用一个令牌的目的，不是副作用。 */
   --control-height-compact: 32px;
-  --control-height-regular: 44px;
+  --control-height-regular: 36px;
   --control-height-large: 52px;
   --control-icon-size-compact: 22px;
   --control-icon-size-regular: 28px;
   --control-icon-size-large: 40px;
   --control-hit-area: 44px;
 
-  /* 过渡 */
-  --transition-fast: 120ms ease;
-  --transition-normal: 160ms ease;
-  --transition-smooth: 180ms ease;
+  /* 状态与浮层动效。只允许 transform、opacity 与颜色状态消费。 */
+  --motion-state: 120ms cubic-bezier(.2, .8, .2, 1);
+  --motion-overlay: 180ms cubic-bezier(.2, .8, .2, 1);
+  --motion-panel: 240ms cubic-bezier(.2, .8, .2, 1);
+  --transition-fast: var(--motion-state);
+  --transition-normal: var(--motion-overlay);
+  --transition-smooth: var(--motion-panel);
 
-  /* 字体 ──
-   * 刻意不叫 --font-sans：那个名字属于 Tailwind 的 @theme 命名空间，
-   * 在 @theme 里写 `--font-sans: var(--font-sans)` 是循环引用。
-   * L3 用 --font-body / --font-code，@theme 侧再转发。 */
+  /* 字体。L3 使用站点语义名称，ThemeProvider 再桥接给 Mantine。 */
   --font-body: "Inter", system-ui, sans-serif;
+  --font-display: "Saira Semi Condensed", var(--font-body);
   --font-code: "JetBrains Mono", "Fira Code", monospace;
+}
+
+/* 粗指针（触屏、手写笔、遥控器）没有像素级精度，regular 这一档整体回到
+ * 44px 触控靶面。理由与取值见上面 --control-height-regular 的说明。 */
+@media (pointer: coarse) {
+  :root {
+    --control-height-regular: 44px;
+  }
+}
+
+/*
+ * 但上面那条问错了对象：pointer 只描述**主**指针。
+ *
+ * Windows 的触屏笔记本（以及带触摸的一体机、手写屏）把触摸报成主指针，插着鼠标
+ * 也一样——于是一台鼠标驱动的桌面设备被整档判成粗指针，全站输入框、按钮、页签
+ * 各高 8px。单看不明显，累积起来就是「主从台比视口高一点」：管理后台的成员表和
+ * 公会战历史的详情面板各自内滚之外，外层再多出一条整页滚动条；富文本工具条更直接，
+ * 44px 按钮配 22px 间距，二十八个控件排不下一行，末尾六个折到第二行。
+ *
+ * any-pointer 问的是「有没有一个精确指针可用」，同样是硬件事实、同样稳定（不像
+ * data-input-modality 那样跟着上一次输入翻），但不受「哪个是主指针」的影响。
+ * 纯触屏设备上 any-pointer: fine 为假，上面那条 44px 原样保留，AAA 靶面不丢。
+ *
+ * 写成「粗指针档 + 细指针复位」两块而不是把上面那条改成
+ * `(any-pointer: coarse) and (not (any-pointer: fine))`：后者要媒体查询的布尔
+ * `not`（MQ Level 4），老一档浏览器整条查询失效会让触屏一起丢掉 44px；这里两块
+ * 都只用基础特性查询，且靠源序决胜。
+ */
+@media (any-pointer: fine) {
+  :root {
+    --control-height-regular: 36px;
+  }
 }
 
 html[data-locale="zh"] {
   --font-body: "Noto Sans SC", "Microsoft YaHei", system-ui, sans-serif;
+}
+
+.portal-kpi-value {
+  font-family: var(--font-display);
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum" 1;
+  font-weight: var(--fw-strong);
 }

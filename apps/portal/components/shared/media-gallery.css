@@ -8,21 +8,38 @@
   height: min(62vh, 520px);
   border-radius: 12px;
   overflow: hidden;
-  display: grid;
-  place-items: center;
-  background: color-mix(in srgb, var(--surface-base) 88%, var(--text-primary) 6%);
-}
-
-.infini-media-gallery-slide img {
-  width: 100%;
-  height: 100%;
-  object-fit: contain;
-}
-
-.infini-media-gallery-slide--broken {
   display: flex;
   align-items: center;
   justify-content: center;
+  background: color-mix(in srgb, var(--surface-base) 88%, var(--text-primary) 6%);
+}
+
+/*
+ * 图片按自然尺寸参与布局，再由这两条上限等比收进槽位：短边不会被拉伸，长边也不会
+ * 顶出槽位被 overflow 裁掉。
+ *
+ * 换成 width/height: 100% 就不成立——百分比高度要落在一个确定的高度上才算数，而
+ * 槽位若按内容排版，高度反过来由图片决定，于是浏览器把它当 auto 处理：图片按原始
+ * 比例撑满整个宽度，超出的部分直接被裁。object-fit 这时候也救不回来，因为盒子已经
+ * 和图片同比例了。
+ */
+.infini-media-gallery-slide img {
+  max-width: 100%;
+  max-height: 100%;
+}
+
+/* 点开看大图的槽位是个按钮，得先抹掉浏览器给按钮的默认外观。 */
+.infini-media-gallery-slide-zoom {
+  padding: 0;
+  border: none;
+  font: inherit;
+  color: inherit;
+  cursor: zoom-in;
+}
+
+.infini-media-gallery-slide-zoom:focus-visible {
+  outline: 2px solid var(--brand-fill);
+  outline-offset: -2px;
 }
 
 .infini-media-gallery-video-slide {
@@ -44,8 +61,7 @@
   background: rgb(0 0 0);
 }
 
-/* MediaGallery.tsx's embedded-video iframe, moved out of style={{}}
-   (task-8 批 B). */
+/* Embedded video frame geometry. */
 .infini-media-gallery-video-embed {
   width: 100%;
   height: calc(100% - 40px);
@@ -114,8 +130,8 @@
 }
 
 .infini-media-gallery-thumb-active {
-  border-color: var(--accent-fill);
-  box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent-fill) 40%, transparent);
+  border-color: var(--brand-fill);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--brand-fill) 40%, transparent);
 }
 
 /* 同上：视频缩略图占位背景，与模式无关的字面黑，已一并登记在同一张豁免表里。 */
@@ -139,11 +155,7 @@
   position: absolute;
   bottom: 3px;
   right: 3px;
-  /* 播放图标叠在缩略图（照片/视频帧）之上，底色不可控，固定用 Mantine 自带的
-   * 白而不是会分模式变化的语义 token（同 EventCardsView.css 的 raffle 徽章、
-   * 本批 EventDetailModal.css 的 poll-choice-indicator 先例）。下面这条投影
-   * 同理固定：给白色图标描一圈暗晕，保证它压在任意亮度的缩略图上都看得清，
-   * 不随 [data-theme] 变化。 */
+  /* Media thumbnails have unknown luminance, so the play glyph uses fixed white with a dark halo. */
   color: var(--mantine-color-white);
   filter: drop-shadow(0 1px 2px rgba(0,0,0,0.5));
   pointer-events: none;
@@ -151,6 +163,26 @@
 
 .infini-media-gallery-thumb-play-only {
   color: color-mix(in srgb, var(--text-primary) 65%, transparent);
+}
+
+/* 放大层：头部固定高度，剩下的整块交给图片，图片再按 max-* 等比收进去。 */
+.infini-media-gallery-zoom-content {
+  display: flex;
+  flex-direction: column;
+}
+
+.infini-media-gallery-zoom-body {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.infini-media-gallery-zoom-img {
+  max-width: 100%;
+  max-height: 100%;
+  cursor: zoom-out;
 }
 
 @media (max-width: 767px) {

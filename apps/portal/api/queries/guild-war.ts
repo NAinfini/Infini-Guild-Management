@@ -1,4 +1,4 @@
-import type { GuildWarActiveResponse, PaginatedResponse, WarHistory } from "@guild/shared";
+import type { GuildWarActiveResponse, PaginatedResponse, SiteAnalyticsSettings, WarHistory } from "@guild/shared";
 import { LIMITS } from "@guild/shared/config/limits";
 import { apiDownload, apiRequest } from "../client";
 
@@ -42,10 +42,7 @@ export type AnalyticsWarEntry = WarHistory & {
   modifier_breakdown: ModifierBreakdown[];
 };
 
-export type AnalyticsSettings = {
-  reference_duration_minutes: number;
-  modifier_weights: Record<string, number>;
-};
+export type AnalyticsSettings = SiteAnalyticsSettings;
 
 export type GuildWarAnalyticsResponse = {
   wars: AnalyticsWarEntry[];
@@ -91,10 +88,11 @@ export function fetchGuildWarHistoryDetail(id: string): Promise<GuildWarHistoryD
 }
 
 export function fetchGuildWarHistoryBatch(ids: string[]): Promise<{ data: GuildWarHistoryDetailResponse[] }> {
-  return apiRequest<{ data: GuildWarHistoryDetailResponse[] }>("/api/guild-war/history/batch", {
-    method: "POST",
-    bodyJson: { ids },
-  });
+  const query = new URLSearchParams();
+  if (ids.length > 0) query.set("ids", ids.join(","));
+  return apiRequest<{ data: GuildWarHistoryDetailResponse[] }>(
+    `/api/guild-war/history/batch${query.size > 0 ? `?${query.toString()}` : ""}`,
+  );
 }
 
 export function fetchGuildWarAnalytics(params: {

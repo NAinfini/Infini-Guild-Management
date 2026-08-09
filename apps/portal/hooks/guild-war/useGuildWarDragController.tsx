@@ -1,19 +1,22 @@
-import type { GuildWarActiveResponse } from "@guild/shared";
-import { activeGame } from "@guild/shared/games";
+import { GUILD_WAR_CAPTAIN_ROLE_TAG, type GuildWarActiveResponse } from "@guild/shared";
 import { useQueryClient } from "@tanstack/react-query";
 import type { DragEndEvent, DragStartEvent } from "@dnd-kit/core";
 import {
   useCallback,
   useMemo,
   type Dispatch,
-  type MouseEvent,
   type ReactNode,
   type SetStateAction,
 } from "react";
 import { useTranslation } from "react-i18next";
-import { useConfirmDialog } from "../../components/shared/ConfirmDialog";
+import { useConfirmDialog } from "@portal/hooks/useConfirmDialog";
 import type { UsersListResponse } from "../../services/UserService";
-import { GuildWarService, guildWarQueryKeys, moveGuildWarMember } from "../../services/GuildWarService";
+import {
+  fetchGuildWarActive,
+  GuildWarService,
+  guildWarQueryKeys,
+  moveGuildWarMember,
+} from "../../services/GuildWarService";
 import { copyPlainText } from "../../utils/copy";
 import { notifySuccess, notifyWarning } from "../../utils/notifications";
 import { useGuildWarDragData, type DragMemberColumn } from "./useGuildWarDragData";
@@ -29,10 +32,6 @@ type MovePayload = {
 };
 
 type ActiveControllerState = {
-  selectedDragUserIds: string[];
-  setSelectedDragUserIds: Dispatch<SetStateAction<string[]>>;
-  selectionAnchorUserId: string | null;
-  setSelectionAnchorUserId: Dispatch<SetStateAction<string | null>>;
   activeDragItemId: string | null;
   setActiveDragItemId: Dispatch<SetStateAction<string | null>>;
   teamDraftNames: Record<string, string>;
@@ -99,10 +98,6 @@ export function useGuildWarDragController({
   const queryClient = useQueryClient();
 
   const {
-    selectedDragUserIds,
-    setSelectedDragUserIds,
-    selectionAnchorUserId,
-    setSelectionAnchorUserId,
     activeDragItemId,
     setActiveDragItemId,
     teamDraftNames,
@@ -143,8 +138,6 @@ export function useGuildWarDragController({
     memberContainerMap,
     dragItemMap,
     pool,
-    draggableUserOrder,
-    draggableUserOrderIndexMap,
   } = dragData;
 
   const search = useGuildWarSearch({
@@ -156,10 +149,9 @@ export function useGuildWarDragController({
   });
 
   const activeDragItem = activeDragItemId ? dragItemMap.get(activeDragItemId) ?? null : null;
-  const selectedDragUserIdSet = useMemo(() => new Set(selectedDragUserIds), [selectedDragUserIds]);
   const activeDetail = activeDetailUserId ? activeMemberDetailByUserId.get(activeDetailUserId) ?? null : null;
 
-  // --- Move ---
+  // Member and team mutations share one server snapshot and ETag.
 
   const resolveTeamName = useCallback((containerId: string) => {
     if (containerId === "pool") return t("active.pool");
@@ -248,12 +240,6 @@ export function useGuildWarDragController({
     notifySuccess(t("active.teamCopied"));
   };
 
-  const handleTeamSelectAll = (containerId: string) => {
-    const team = teamById.get(containerId);
-    if (!team) return;
-    setSelectedDragUserIds(team.members.map((m) => m.user_id));
-  };
-
   const handleTeamClear = (containerId: string) => {
     const team = teamById.get(containerId);
     if (!team) return;
@@ -324,30 +310,49 @@ export function useGuildWarDragController({
       });
       if (!confirmed) return;
 
-      const nextTeams = orderedTeams
-        .filter((candidate) => candidate.id !== containerId)
-        .map((candidate, index) => ({ ...candidate, sort_order: index }));
-      const poolMembers = team.members.map((member) => ({
-        userId: member.user_id,
-        from: containerId,
-        to: "pool",
-      }));
-      if (poolMembers.length > 0) {
-        handleBatchMove(poolMembers);
-      }
-      void persistTeamSnapshot(nextTeams).catch((error) => {
+      if (!selectedEventId) return;
+      try {
+        let snapshot = activeData;
+        if (team.members.length > 0) {
+          await moveGuildWarMember({
+            event_id: selectedEventId,
+            moves: team.members.map((member) => ({ user_id: member.user_id, to: "pool" })),
+            etag: activeData?.etag ?? undefined,
+          });
+          snapshot = await fetchGuildWarActive(selectedEventId);
+          queryClient.setQueryData(guildWarQueryKeys.active(selectedEventId), snapshot);
+        }
+        if (!snapshot) return;
+        const nextTeams = snapshot.teams
+          .filter((candidate) => candidate.id !== containerId)
+          .map((candidate, index) => ({ ...candidate, sort_order: index }));
+        await guildWarService.persistTeamSnapshot({
+          eventId: selectedEventId,
+          teams: nextTeams,
+          pool: snapshot.pool,
+          teamDraftNames,
+          teamDraftNotes,
+          teamDraftLocks,
+          etag: snapshot.etag ?? undefined,
+        });
+      } catch (error) {
+        await queryClient.invalidateQueries({ queryKey: guildWarQueryKeys.active(selectedEventId) });
         showError(error, t("message.deleteTeamFailed"));
-      });
+      }
     })();
   }, [
+    activeData,
     confirm,
-    handleBatchMove,
-    orderedTeams,
-    persistTeamSnapshot,
+    guildWarService,
+    queryClient,
     resolveTeamName,
+    selectedEventId,
     showError,
     t,
     teamById,
+    teamDraftLocks,
+    teamDraftNames,
+    teamDraftNotes,
   ]);
 
   const handleTeamSwap = (fromId: string, toId: string) => {
@@ -374,12 +379,12 @@ export function useGuildWarDragController({
 
   const handleSetCaptain = (userId: string) => {
     if (!selectedEventId) return;
-    roleTagMutation.mutate({ event_id: selectedEventId, user_id: userId, role_tag: activeGame.war.captainRoleTag });
+    roleTagMutation.mutate({ event_id: selectedEventId, user_id: userId, role_tag: GUILD_WAR_CAPTAIN_ROLE_TAG });
   };
 
   const handleRemoveCaptain = (userId: string) => {
     const member = allTeamMembers.find((c) => c.user_id === userId);
-    if (!member || !selectedEventId || member.role_tag !== activeGame.war.captainRoleTag) return;
+    if (!member || !selectedEventId || member.role_tag !== GUILD_WAR_CAPTAIN_ROLE_TAG) return;
     roleTagMutation.mutate({ event_id: selectedEventId, user_id: userId, role_tag: null });
   };
 
@@ -391,47 +396,11 @@ export function useGuildWarDragController({
     setActiveDetailUserId(userId);
   };
 
-  // --- Selection ---
-
-  const handleSelectMember = (userId: string, event: MouseEvent<HTMLButtonElement>) => {
-    if (!canManageActive) return;
-    if (event.shiftKey) {
-      setSelectedDragUserIds((current) => {
-        const anchor = selectionAnchorUserId ?? current[current.length - 1] ?? userId;
-        const anchorIndex = draggableUserOrderIndexMap.get(anchor);
-        const targetIndex = draggableUserOrderIndexMap.get(userId);
-        if (anchorIndex === undefined || targetIndex === undefined) {
-          return event.metaKey || event.ctrlKey ? Array.from(new Set([...current, userId])) : [userId];
-        }
-        const rangeUserIds = draggableUserOrder.slice(
-          Math.min(anchorIndex, targetIndex),
-          Math.max(anchorIndex, targetIndex) + 1,
-        );
-        return event.metaKey || event.ctrlKey ? Array.from(new Set([...current, ...rangeUserIds])) : rangeUserIds;
-      });
-      setSelectionAnchorUserId(userId);
-      return;
-    }
-    if (event.metaKey || event.ctrlKey) {
-      setSelectedDragUserIds((current) =>
-        current.includes(userId) ? current.filter((id) => id !== userId) : [...current, userId],
-      );
-      setSelectionAnchorUserId(userId);
-      return;
-    }
-    setSelectedDragUserIds([userId]);
-    setSelectionAnchorUserId(userId);
-  };
-
-  // --- Drag Events ---
+  // Drag-and-drop lifecycle
 
   const handleDragStart = (event: DragStartEvent) => {
     const nextActiveId = String(event.active.id);
     setActiveDragItemId(nextActiveId);
-    const activeUserId = parseUserIdFromDragId(nextActiveId);
-    if (activeUserId && !selectedDragUserIdSet.has(activeUserId)) {
-      setSelectedDragUserIds([activeUserId]);
-    }
   };
 
   const handleDragCancel = () => {
@@ -453,61 +422,41 @@ export function useGuildWarDragController({
       return;
     }
 
-    const movingUserIds = selectedDragUserIdSet.has(userId) ? selectedDragUserIds : [userId];
-    const uniqueUserIds = Array.from(new Set(movingUserIds));
-
     if (targetContainer === "remove") {
-      const payloads = uniqueUserIds.map((uid) => ({
+      const payload = {
         event_id: selectedEventId,
-        user_id: uid,
+        user_id: userId,
         to: "remove" as const,
-        from: memberContainerMap.get(`member:${uid}`) ?? sourceContainer,
+        from: sourceContainer,
         etag: activeData?.etag ?? undefined,
-      }));
+      };
       void (async () => {
         const confirmed = await confirm({
           title: t("active.removeConfirm.title"),
-          description: uniqueUserIds.length === 1
-            ? t("active.removeConfirm.descSingle", {
-                username: resolveUsername(uniqueUserIds[0] ?? ""),
-              })
-            : t("active.removeConfirm.descMulti", {
-                count: uniqueUserIds.length,
-              }),
+          description: t("active.removeConfirm.descSingle", {
+            username: resolveUsername(userId),
+          }),
           confirmLabel: t("active.removeConfirm.confirm"),
           cancelLabel: t("common:action.cancel"),
           intent: "danger",
         });
         if (confirmed) {
-          applyMove(payloads);
+          applyMove([payload]);
         }
       })();
       return;
     }
 
-    if (uniqueUserIds.length <= 1) {
-      applyMove([{
-        event_id: selectedEventId,
-        user_id: userId,
-        to: targetContainer,
-        from: sourceContainer,
-        etag: activeData?.etag ?? undefined,
-      }]);
-      return;
-    }
-
-    applyMove(
-      uniqueUserIds.map((uid) => ({
-        event_id: selectedEventId,
-        user_id: uid,
-        to: targetContainer,
-        from: memberContainerMap.get(`member:${uid}`),
-        etag: activeData?.etag ?? undefined,
-      })),
-    );
+    applyMove([{
+      event_id: selectedEventId,
+      user_id: userId,
+      to: targetContainer,
+      from: sourceContainer,
+      etag: activeData?.etag ?? undefined,
+    }]);
   };
 
-  // --- Team Status Panels (component-based, no longer JSX in hook) ---
+  // Team status controls keyed by their drag container.
 
   const teamStatusContentByContainerId = useMemo<Record<string, ReactNode>>(() => {
     if (!canManageActive) return {};
@@ -562,7 +511,6 @@ export function useGuildWarDragController({
     teamDraftNames,
     activeDetail,
     activeDragItem,
-    selectedDragUserIdSet,
     matchedItemIds: search.matchedItemIds,
     activeMatchIndex: search.activeMatchIndex,
     dragColumns,
@@ -571,7 +519,6 @@ export function useGuildWarDragController({
     toMemberDomId: search.toMemberDomId,
     memberContainerMap,
     handleCopyTeamMentions,
-    handleTeamSelectAll,
     handleTeamClear,
     handleTeamDuplicate,
     handleTeamSwap,
@@ -583,7 +530,6 @@ export function useGuildWarDragController({
     handleRemoveCaptain,
     handleViewHistory,
     handleManageTags,
-    handleSelectMember,
     handleDragStart,
     handleDragCancel,
     handleDragEnd,

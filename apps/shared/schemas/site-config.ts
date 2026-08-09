@@ -1,20 +1,23 @@
 import { z } from "zod";
 import { featureFlagsSchema } from "../config/features";
-import { LIMITS, MAX_CONFIGURABLE_MEDIA_FILE_BYTES } from "../config/limits";
-import { activeGame } from "../games";
+import {
+  LIMITS,
+  MAX_CONFIGURABLE_AUDIO_BYTES,
+  MAX_CONFIGURABLE_IMAGE_VARIANT_BYTES,
+} from "../config/limits";
+import { mediaIdSchema } from "./media";
 
 export const siteMediaPolicySchema = z.object({
   max_file_size_bytes: z.object({
-    site_logo: z.number().int().positive().max(MAX_CONFIGURABLE_MEDIA_FILE_BYTES)
-      .default(LIMITS.media.maxFileSize.siteLogo),
-    profile_image: z.number().int().positive().max(MAX_CONFIGURABLE_MEDIA_FILE_BYTES),
-    profile_audio: z.number().int().positive().max(MAX_CONFIGURABLE_MEDIA_FILE_BYTES),
-    announcement_image: z.number().int().positive().max(MAX_CONFIGURABLE_MEDIA_FILE_BYTES),
-    wiki_image: z.number().int().positive().max(MAX_CONFIGURABLE_MEDIA_FILE_BYTES),
-    event_image: z.number().int().positive().max(MAX_CONFIGURABLE_MEDIA_FILE_BYTES),
-    gallery_image: z.number().int().positive().max(MAX_CONFIGURABLE_MEDIA_FILE_BYTES),
-    storage_image: z.number().int().positive().max(MAX_CONFIGURABLE_MEDIA_FILE_BYTES)
-      .default(LIMITS.media.maxFileSize.storageImage),
+    site_logo: z.number().int().positive().max(MAX_CONFIGURABLE_IMAGE_VARIANT_BYTES),
+    class_icon: z.number().int().positive().max(MAX_CONFIGURABLE_IMAGE_VARIANT_BYTES),
+    profile_image: z.number().int().positive().max(MAX_CONFIGURABLE_IMAGE_VARIANT_BYTES),
+    profile_audio: z.number().int().positive().max(MAX_CONFIGURABLE_AUDIO_BYTES),
+    announcement_image: z.number().int().positive().max(MAX_CONFIGURABLE_IMAGE_VARIANT_BYTES),
+    wiki_image: z.number().int().positive().max(MAX_CONFIGURABLE_IMAGE_VARIANT_BYTES),
+    event_image: z.number().int().positive().max(MAX_CONFIGURABLE_IMAGE_VARIANT_BYTES),
+    gallery_image: z.number().int().positive().max(MAX_CONFIGURABLE_IMAGE_VARIANT_BYTES),
+    storage_image: z.number().int().positive().max(MAX_CONFIGURABLE_IMAGE_VARIANT_BYTES),
   }),
   quotas: z.object({
     profile: z.number().int().positive().max(LIMITS.media.configurableQuotaMax),
@@ -33,14 +36,26 @@ export const siteAbsencePolicySchema = z.object({
   max_entries_per_user: z.number().int().min(1).max(LIMITS.content.absencesPerUser.max),
 });
 
+export const siteAnalyticsModifierWeightsSchema = z.object({
+  kills: z.number().min(0),
+  towers: z.number().min(0),
+  base_hp: z.number().min(0),
+  credits: z.number().min(0),
+  distance: z.number().min(0),
+}).strict();
+
 export const siteAnalyticsSettingsSchema = z.object({
   reference_duration_minutes: z.number().positive(),
-  modifier_weights: z.record(z.string(), z.number()),
-});
+  modifier_weights: siteAnalyticsModifierWeightsSchema,
+}).strict().refine(
+  ({ modifier_weights }) => Object.values(modifier_weights).some((weight) => weight > 0),
+  { path: ["modifier_weights"], message: "At least one analytics weight must be positive" },
+);
 
 export const DEFAULT_SITE_MEDIA_POLICY = siteMediaPolicySchema.parse({
   max_file_size_bytes: {
     site_logo: LIMITS.media.maxFileSize.siteLogo,
+    class_icon: LIMITS.media.maxFileSize.classIcon,
     profile_image: LIMITS.media.maxFileSize.profileImage,
     profile_audio: LIMITS.media.maxFileSize.profileAudio,
     announcement_image: LIMITS.media.maxFileSize.announcementImage,
@@ -68,12 +83,19 @@ export const DEFAULT_SITE_ABSENCE_POLICY = siteAbsencePolicySchema.parse({
 
 export const DEFAULT_SITE_ANALYTICS_SETTINGS = siteAnalyticsSettingsSchema.parse({
   reference_duration_minutes: 30,
-  modifier_weights: { ...activeGame.war.modifierWeights },
+  modifier_weights: {
+    kills: 0.30,
+    towers: 0.10,
+    credits: 0.30,
+    distance: 0.15,
+    base_hp: 0.15,
+  },
 });
 
 export const siteConfigSchema = z.object({
-  site_name: z.string(),
-  site_logo_url: z.string(),
+  site_name: z.string().min(1).max(100).refine((value) => value === value.trim(), "Site name must be trimmed"),
+  site_logo_media_id: mediaIdSchema.nullable(),
+  default_site_logo_url: z.string().min(1),
   features: featureFlagsSchema,
   media_policy: siteMediaPolicySchema,
   storage_policy: siteStoragePolicySchema,
@@ -85,7 +107,8 @@ export const siteConfigSchema = z.object({
 
 export const publicSiteConfigSchema = siteConfigSchema.pick({
   site_name: true,
-  site_logo_url: true,
+  site_logo_media_id: true,
+  default_site_logo_url: true,
   features: true,
   media_policy: true,
   storage_policy: true,
