@@ -18,7 +18,7 @@ import {
   type UpdateStorageItemPayload,
 } from "@guild/shared";
 import { apiRequest } from "../client";
-import { appendImageUploadVariants, convertImagesForUpload } from "@guild/shared/utils/media";
+import { appendImageUploadVariants, convertImagesForUpload } from "../../utils/upload-media";
 
 export function createStorage(payload: CreateStoragePayload): Promise<Storage> {
   return apiRequest<Storage>("/api/storage/storages", { method: "POST", bodyJson: createStorageSchema.parse(payload) });

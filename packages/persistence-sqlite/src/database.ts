@@ -1,0 +1,18 @@
+import type { DrizzleConfig } from "drizzle-orm";
+import { drizzle, type SqliteRemoteDatabase } from "drizzle-orm/sqlite-proxy";
+import { createDrizzleBatchCallback, createDrizzleCallback } from "./runtime/drizzle-callback.js";
+import type { SqlExecutor } from "@guild/kernel";
+
+export type AppDatabase<TSchema extends Record<string, unknown> = Record<string, never>> =
+  Omit<SqliteRemoteDatabase<TSchema>, "transaction">;
+
+export function createAppDatabase<TSchema extends Record<string, unknown> = Record<string, never>>(
+  executor: SqlExecutor,
+  config: DrizzleConfig<TSchema> = {},
+): AppDatabase<TSchema> {
+  return drizzle(
+    createDrizzleCallback(executor),
+    createDrizzleBatchCallback(executor),
+    config,
+  );
+}

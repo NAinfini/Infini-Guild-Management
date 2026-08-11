@@ -1,8 +1,0 @@
-{
-  "mode": "incremental",
-  "current_version": "0000",
-  "baseline_schema": "0000_core_schema.sql",
-  "migrations": [
-    "0000_core_schema.sql"
-  ]
-}

@@ -10,6 +10,8 @@
     "forceConsistentCasingInFileNames": true,
     "resolveJsonModule": true,
     "isolatedModules": true,
+    "allowJs": true,
+    "checkJs": false,
     "noUnusedLocals": true,
     "noUnusedParameters": true,
     "noUncheckedIndexedAccess": true,
@@ -21,6 +23,14 @@
       "@portal/*": ["./apps/portal/*"],
       "@guild/shared": ["./apps/shared"],
       "@guild/shared/*": ["./apps/shared/*"],
+      "@guild/kernel": ["./packages/kernel/src/public.ts"],
+      "@guild/kernel/testing": ["./packages/kernel/src/testing.ts"],
+      "@guild/server": ["./packages/server/src/public.ts"],
+      "@guild/server/modules/*": ["./packages/server/src/modules/*/public.ts"],
+      "@guild/persistence-sqlite": ["./packages/persistence-sqlite/src/public.ts"],
+      "@guild/transport-http": ["./packages/transport-http/src/public.ts"],
+      "@guild/application": ["./packages/application/src/public.ts"],
+      "@guild/vps/adapters": ["./apps/vps/src/adapters/public.ts"],
       "@tabler/icons-react": ["./node_modules/@tabler/icons-react"],
       "@tanstack/react-table": ["./node_modules/@tanstack/react-table"],
       "@tiptap/*": ["./node_modules/@tiptap/*"],
@@ -41,7 +51,10 @@
     "apps/portal/**/*.tsx",
     "apps/portal/vite.config.ts",
     "playwright.config.ts",
-    "apps/worker/**/*.ts",
-    "apps/worker/drizzle.config.ts"
+    "apps/cloudflare/**/*.ts",
+    "apps/vps/**/*.ts",
+    "packages/**/*.ts",
+    "scripts/**/*.ts",
+    "scripts/**/*.mjs"
   ]
 }

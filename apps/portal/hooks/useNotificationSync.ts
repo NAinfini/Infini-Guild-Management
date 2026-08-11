@@ -15,6 +15,8 @@ import { isIsoDate, toIsoOrNow } from "../utils/iso-dates";
 type UseNotificationSyncOptions = {
   enabled?: boolean;
   onMessage?: (message: PushMessage) => void;
+  onConnected?: () => void;
+  onUnauthorized?: () => void;
 };
 
 const FALLBACK_POLL_INTERVAL_MS = 30_000;
@@ -51,11 +53,15 @@ export function useNotificationSync(options: UseNotificationSyncOptions = {}) {
   const setLastSyncedAt = useNotificationStore((state) => state.setLastSyncedAt);
   const setWsConnected = useNotificationStore((state) => state.setWsConnected);
   const onMessageRef = useRef<((message: PushMessage) => void) | undefined>(options.onMessage);
+  const onConnectedRef = useRef<(() => void) | undefined>(options.onConnected);
+  const onUnauthorizedRef = useRef<(() => void) | undefined>(options.onUnauthorized);
   const wsConnectedRef = useRef(false);
 
   useEffect(() => {
     onMessageRef.current = options.onMessage;
-  }, [options.onMessage]);
+    onConnectedRef.current = options.onConnected;
+    onUnauthorizedRef.current = options.onUnauthorized;
+  }, [options.onConnected, options.onMessage, options.onUnauthorized]);
 
   const syncFeatureNotifications = useCallback(async () => {
     if (!enabled) {
@@ -185,6 +191,7 @@ export function useNotificationSync(options: UseNotificationSyncOptions = {}) {
         stopFallbackPolling();
         wsConnectedRef.current = true;
         setWsConnected(true);
+        onConnectedRef.current?.();
         if (socket) {
           startHeartbeat(socket);
         }
@@ -231,7 +238,12 @@ export function useNotificationSync(options: UseNotificationSyncOptions = {}) {
         if (isCleaningUp) {
           return;
         }
-        if (event.code === WS_CLOSE_POLICY_VIOLATION || event.code === WS_CLOSE_UNAUTHORIZED) {
+        if (event.code === WS_CLOSE_UNAUTHORIZED) {
+          console.warn(`[useNotificationSync] WebSocket closed with auth error (code ${event.code}). Stopping reconnect.`);
+          onUnauthorizedRef.current?.();
+          return;
+        }
+        if (event.code === WS_CLOSE_POLICY_VIOLATION) {
           console.warn(`[useNotificationSync] WebSocket closed with auth error (code ${event.code}). Stopping reconnect.`);
           startFallbackPolling();
           return;

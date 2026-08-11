@@ -104,14 +104,8 @@ export function getEventBehavior(rules: GameRules, id: string): EventBehavior | 
   return findEventTypeDefinition(rules, id)?.behavior;
 }
 
-export function findGuildWarResultDefinition(id: string): GuildWarResultDefinition | undefined;
-export function findGuildWarResultDefinition(_rules: GameRules, id: string): GuildWarResultDefinition | undefined;
-export function findGuildWarResultDefinition(
-  rulesOrId: GameRules | string,
-  id?: string,
-): GuildWarResultDefinition | undefined {
-  const resultId = typeof rulesOrId === "string" ? rulesOrId : id;
-  return GUILD_WAR_RESULT_DEFINITIONS.find((item) => item.id === resultId);
+export function findGuildWarResultDefinition(id: string): GuildWarResultDefinition | undefined {
+  return GUILD_WAR_RESULT_DEFINITIONS.find((item) => item.id === id);
 }
 
 export function findGuildWarTeamStatDefinition(rules: GameRules, key: string): GuildWarTeamStatDefinition | undefined {

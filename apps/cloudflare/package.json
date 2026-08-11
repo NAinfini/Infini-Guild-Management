@@ -1,0 +1,24 @@
+{
+  "name": "@guild/cloudflare",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "pnpm --workspace-root run dev:cloudflare",
+    "build": "pnpm --workspace-root run build:cloudflare",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "test": "vitest run apps/cloudflare/src"
+  },
+  "dependencies": {
+    "@guild/application": "workspace:*",
+    "@guild/kernel": "workspace:*",
+    "@guild/persistence-sqlite": "workspace:*",
+    "@guild/server": "workspace:*",
+    "@guild/shared": "workspace:*",
+    "@guild/transport-http": "workspace:*",
+    "hono": "^4.12.34"
+  },
+  "devDependencies": {
+    "@guild/vps": "workspace:*",
+    "miniflare": "5.20260801.1-alpha"
+  }
+}

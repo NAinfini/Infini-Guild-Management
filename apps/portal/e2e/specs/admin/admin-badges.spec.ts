@@ -75,7 +75,7 @@ async function styleLabel(page: Page, text: string, hex: string): Promise<void> 
 }
 /* 侧栏那个「+」和详情里的提交按钮共用同一句译文，只能靠作用域区分。 */
 function newBadgeButton(page: Page): Locator {
-  return sidebar(page).getByRole("button", { name: "Create Badge", exact: true });
+  return sidebar(page).locator('button[aria-label="Create Badge"]');
 }
 function submitCreateButton(page: Page): Locator {
   return detail(page).getByRole("button", { name: "Create Badge", exact: true });
@@ -92,7 +92,11 @@ async function serverBadge(api: APIRequestContext, id: string): Promise<ServerBa
 }
 
 async function serverAssignments(api: APIRequestContext, id: string): Promise<ServerAssignment[]> {
-  return await readJson(await api.get(`/api/badges/${id}/assignments`), "读取徽章分配") as ServerAssignment[];
+  const response = await readJson(
+    await api.get(`/api/badges/${id}/assignments`),
+    "读取徽章分配",
+  ) as { data: ServerAssignment[] };
+  return response.data;
 }
 
 /** 直接建一个徽章当靶子：建的过程另有用例专门验。 */
@@ -160,11 +164,10 @@ test("新建徽章：名称和标签都填了才让提交；建完自动选中�
 });
 
 test("新建取消：不发请求，右边落回清单里真实存在的那一枚", async ({ page, api, flow }) => {
+  await createServerBadge(api, `E2E ${uniqueTag("cancel-anchor")}`);
   await openBadges(page);
   const before = await serverBadges(api);
-  /* 右栏的不变量是「永远停在一枚真实存在的徽章上」，进页面落在第一枚。
-     取消新建要回到的就是这个状态，所以清单不能是空的。 */
-  expect(before.length, "种子里至少要有一枚徽章，否则取消之后无处可落").toBeGreaterThan(0);
+  /* 右栏的不变量是「永远停在一枚真实存在的徽章上」，进页面落在第一枚。 */
   const firstName = before[0]!.name;
   await expect(detailHead(page).getByText(firstName, { exact: true })).toBeVisible();
 
@@ -321,6 +324,7 @@ test("卡片上的移除：确认框取消什么都不做，确认之后两边�
 });
 
 test("删除徽章：确认框取消什么都不做；确认之后清单、详情和服务端一起清干净", async ({ page, api, flow }) => {
+  await createServerBadge(api, `E2E ${uniqueTag("delete-anchor")}`);
   const badge = await createServerBadge(api, `E2E ${uniqueTag("del")}`);
   await openBadges(page);
   await badgeItem(page, badge.name).click();
@@ -340,7 +344,7 @@ test("删除徽章：确认框取消什么都不做；确认之后清单、详�
   await expect(badgeItem(page, badge.name)).toHaveCount(0);
   const remaining = await serverBadges(api);
   expect(remaining.some((row) => row.id === badge.id), "服务端也不能再查到它").toBe(false);
-  expect(remaining.length, "种子里的徽章还在，删完不该只剩空清单").toBeGreaterThan(0);
+  expect(remaining.length, "本用例的对照徽章还在，删完不该只剩空清单").toBeGreaterThan(0);
   await expect(
     detailHead(page).getByText(remaining[0]!.name, { exact: true }),
     "删掉当前选中项之后，右栏落回第一枚，不能还停在一个已经不存在的徽章上",
@@ -356,7 +360,7 @@ test("删除徽章：确认框取消什么都不做；确认之后清单、详�
  * 一条都查不出来，所以 finally 里必须把顺序放回去。
  */
 test("拖拽排序：整张徽章表一次提交，顺序按下标重新发号落库；残缺的顺序一律回 409", async ({ page, api, flow }) => {
-  /* 自己造两枚，不指望种子里一定有两枚以上。 */
+  /* 自己造两枚，不依赖站点预装徽章。 */
   await createServerBadge(api, `E2E ${uniqueTag("sortA")}`);
   await createServerBadge(api, `E2E ${uniqueTag("sortB")}`);
   const before = (await serverBadges(api)).map((row) => row.id);
@@ -409,6 +413,7 @@ test("拖拽排序：整张徽章表一次提交，顺序按下标重新发号�
       "被拒的那次不能改动任何一行",
     ).toEqual(expected);
   } finally {
-    await api.patch("/api/badges/reorder", { data: { order: before } });
+    const restored = await api.patch("/api/badges/reorder", { data: { order: before } });
+    expect(restored.ok(), "徽章排序恢复失败会污染后续用例与收尾指纹").toBe(true);
   }
 });

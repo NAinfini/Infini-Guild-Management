@@ -3,11 +3,20 @@ import {
   SYSTEM_TEST_HEADER_VALUE,
   SYSTEM_TEST_RUN_ID_HEADER,
 } from "@guild/shared/config/system-test";
-import { type EndpointDef, type EndpointResult, type PreparedEndpointRequest, isRecord } from "./types";
+import type { SystemTestSummary } from "@guild/shared/schemas/system-test";
+import {
+  type DebugLogEntry,
+  type EndpointDef,
+  type EndpointResult,
+  type PreparedEndpointRequest,
+  isRecord,
+} from "./types";
 
 export const API_TEST_GAP_GET_MS = 90;
 export const API_TEST_GAP_MUTATION_MS = 900;
 export const SYSTEM_TEST_AUDIT_HEADER = "X-System-Test-Audit";
+const SYSTEM_TEST_CLEANUP_RETRY_MS = 250;
+const SYSTEM_TEST_CLEANUP_MAX_FAILURES = 3;
 export { SYSTEM_TEST_HEADER, SYSTEM_TEST_HEADER_VALUE, SYSTEM_TEST_RUN_ID_HEADER };
 
 export function waitWithAbort(ms: number, signal?: AbortSignal): Promise<void> {
@@ -65,6 +74,95 @@ export function statusColor(status: number | null): string {
 export function truncateJson(json: string, maxLen = 2000): string {
   if (json.length <= maxLen) return json;
   return `${json.slice(0, maxLen)}\n... (truncated)`;
+}
+
+export function buildSystemTestSummary(logs: readonly DebugLogEntry[]): SystemTestSummary {
+  const attempted = logs.filter((entry) => (
+    entry.category !== "Cleanup"
+    && !(entry.skipped === true && entry.error === null)
+  ));
+  const failed = attempted.filter((entry) => (
+    entry.error !== null || entry.status === null || entry.status >= 400
+  ));
+  return {
+    total: attempted.length,
+    passed: attempted.length - failed.length,
+    failed: failed.length,
+    errors: failed.map((entry) => ({
+      category: entry.category,
+      label: entry.label,
+      method: entry.method,
+      path: entry.path,
+      status: entry.status,
+      error: entry.error,
+    })),
+  };
+}
+
+export async function requestSystemTestCleanup(
+  runId: string,
+  signal: AbortSignal,
+): Promise<Readonly<{ status: number | null; body: string; error: string | null }>> {
+  let consecutiveFailures = 0;
+  while (!signal.aborted) {
+    let response: Response;
+    let body: string;
+    try {
+      response = await fetch(`/api/admin/status/system-test-runs/${encodeURIComponent(runId)}/cleanup`, {
+        method: "POST",
+        credentials: "include",
+        signal,
+        headers: {
+          "X-Requested-With": "XMLHttpRequest",
+          [SYSTEM_TEST_HEADER]: SYSTEM_TEST_HEADER_VALUE,
+          [SYSTEM_TEST_RUN_ID_HEADER]: runId,
+        },
+      });
+      body = await response.text();
+    } catch (error) {
+      if (signal.aborted) break;
+      consecutiveFailures += 1;
+      if (consecutiveFailures >= SYSTEM_TEST_CLEANUP_MAX_FAILURES) {
+        return {
+          status: null,
+          body: "",
+          error: error instanceof Error ? error.message : "Unknown cleanup error",
+        };
+      }
+      await waitWithAbort(SYSTEM_TEST_CLEANUP_RETRY_MS, signal);
+      continue;
+    }
+    let cleanupStatus: unknown;
+    try {
+      cleanupStatus = (JSON.parse(body) as { status?: unknown }).status;
+    } catch {
+      cleanupStatus = undefined;
+    }
+    if (response.ok) return { status: response.status, body, error: null };
+
+    const progressing = response.status === 409
+      && (cleanupStatus === "running" || cleanupStatus === "cleaning");
+    const retryableFailure = response.status >= 500
+      || (response.status === 409 && cleanupStatus === "cleanup_failed");
+    if (progressing) {
+      consecutiveFailures = 0;
+      await waitWithAbort(SYSTEM_TEST_CLEANUP_RETRY_MS, signal);
+      continue;
+    }
+    if (retryableFailure) {
+      consecutiveFailures += 1;
+      if (consecutiveFailures < SYSTEM_TEST_CLEANUP_MAX_FAILURES) {
+        await waitWithAbort(SYSTEM_TEST_CLEANUP_RETRY_MS, signal);
+        continue;
+      }
+    }
+    return {
+      status: response.status,
+      body,
+      error: `${response.status} ${response.statusText}`,
+    };
+  }
+  return { status: null, body: "", error: "System-test cleanup timed out" };
 }
 
 export async function runEndpointTest(

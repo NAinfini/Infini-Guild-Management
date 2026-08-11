@@ -95,7 +95,7 @@ test.beforeEach(async ({ api }) => {
 
 test.afterEach(async ({ api }) => {
   const histories = await readJson(
-    await api.get(`/api/guild-war/history?search=${stamp}&limit=50`),
+    await api.get(`/api/guild-war/history?search=${stamp}&limit=20`),
     "回读待清理的战史",
   ) as { data: HistoryRow[] };
   for (const entry of histories.data) {
@@ -119,6 +119,8 @@ test.afterEach(async ({ api }) => {
  * 用接口摆能让这条用例专注在「结束战争」这一个控件上。
  */
 async function seedTeam(api: APIRequestContext, userIds: string[]): Promise<void> {
+  const joined = await api.post(`/api/events/${eventId}/participants`, { data: { user_ids: userIds } });
+  expect(joined.ok(), `预置参战成员返回 ${joined.status()}: ${await joined.text()}`).toBe(true);
   const response = await api.post("/api/guild-war/save-teams", {
     data: {
       event_id: eventId,
@@ -169,7 +171,7 @@ async function openConcludeModal(page: Page): Promise<Locator> {
 
 async function readHistories(api: APIRequestContext): Promise<HistoryRow[]> {
   const list = await readJson(
-    await api.get(`/api/guild-war/history?search=${stamp}&limit=50`),
+    await api.get(`/api/guild-war/history?search=${stamp}&limit=20`),
     "回读战史列表",
   ) as { data: HistoryRow[] };
   return list.data;

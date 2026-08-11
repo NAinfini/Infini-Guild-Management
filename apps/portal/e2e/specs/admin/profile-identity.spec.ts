@@ -149,24 +149,30 @@ test("称号：清除、纯文本输入、沙盒生成样式，三条路都能�
 });
 
 test("职业编辑器：添加一个再删掉，两次保存的结果都对得上服务端", async ({ page, flow, api }) => {
-  const catalog = await readJson(await api.get("/api/classes"), "读取职业目录") as Array<{ id: string; label: string }>;
-  const addition = catalog.find((item) => !original.classes.includes(item.id));
-  expect(addition, "目录里得有一个 admin 还没挂上的职业").toBeTruthy();
+  const label = `E2E Profile Class ${Date.now()}`;
+  const addition = await readJson(
+    await api.post("/api/classes", {
+      data: { label, color: "#8594A8", vector_icon: "shield", sort_order: 900 },
+    }),
+    "创建职业编辑器靶子",
+  ) as { id: string; label: string };
+  await page.reload();
+  await expect(page.getByRole("heading", { name: "Identity", exact: true })).toBeVisible();
 
   await expect(classPills(page)).toHaveCount(original.classes.length);
   await page.locator("button.profile-class__add").click();
   /* 选中即添加：这个下拉没有确认按钮，onChange 里直接就把职业挂上去了。 */
   await field(page, "Select class").click();
-  await page.getByRole("option", { name: addition!.label, exact: true }).click();
+  await page.getByRole("option", { name: addition.label, exact: true }).click();
   await expect(classPills(page)).toHaveCount(original.classes.length + 1);
 
   await save(page, flow);
   const afterAdd = await readProfile(api);
   expect(afterAdd.classes, "新职业要落库，且原有的不能被顶掉")
-    .toEqual([...original.classes, addition!.id]);
+    .toEqual([...original.classes, addition.id]);
 
   await classPills(page)
-    .filter({ hasText: addition!.label })
+    .filter({ hasText: addition.label })
     .getByRole("button", { name: "Remove", exact: true })
     .click();
   await expect(classPills(page)).toHaveCount(original.classes.length);

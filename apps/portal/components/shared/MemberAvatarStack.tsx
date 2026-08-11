@@ -21,11 +21,12 @@ const AVATAR_SIZE = 34;
 
 type MemberAvatarStackProps = {
   members: readonly MemberEntry[];
+  totalCount?: number;
 };
 
-export function MemberAvatarStack({ members }: MemberAvatarStackProps) {
+export function MemberAvatarStack({ members, totalCount = members.length }: MemberAvatarStackProps) {
   const displayMembers = members.slice(0, MAX_VISIBLE_AVATARS);
-  const overflowCount = members.length - displayMembers.length;
+  const overflowCount = Math.max(0, totalCount - displayMembers.length);
 
   return (
     <div

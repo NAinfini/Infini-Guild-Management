@@ -1,16 +1,22 @@
 import type { Event } from "@guild/shared";
-import type { ClassQuotaSlot, ClassQuotaSummary } from "@guild/shared/utils/class-quota";
+import type { ClassQuotaSlot } from "@guild/shared/utils/class-quota";
 import type { CSSProperties } from "react";
 import { useTranslation } from "react-i18next";
 import "./EventQuotaBar.css";
 
 type EventQuotaBarProps = {
   /** null means this event has no role/tag requirements, so show signup progress instead. */
-  summary: ClassQuotaSummary | null;
+  summary: EventQuotaBarSummary | null;
   event: Pick<Event, "class_quotas" | "capacity">;
   participantCount: number;
   className?: string;
 };
+
+export type EventQuotaBarSummary = Readonly<{
+  slots: readonly Readonly<Pick<ClassQuotaSlot, "key" | "required" | "matched" | "eligible">>[];
+  requiredTotal: number;
+  matchedTotal: number;
+}>;
 
 /*
  * Bar length represents quantity and series hue represents role category.
@@ -22,7 +28,7 @@ type QuotaVisualState = "ready" | "filling" | "over";
 // Must match the number of --series-* tokens in semantic.css.
 const QUOTA_SERIES_LENGTH = 4;
 
-function roleState(slot: ClassQuotaSlot): QuotaVisualState {
+function roleState(slot: EventQuotaBarSummary["slots"][number]): QuotaVisualState {
   return slot.matched >= slot.required ? "ready" : "filling";
 }
 
@@ -88,7 +94,7 @@ export function EventQuotaBar({ summary, event, participantCount, className }: E
     );
   }
 
-  const labelFor = (slot: ClassQuotaSlot) =>
+  const labelFor = (slot: EventQuotaBarSummary["slots"][number]) =>
     labelByTagId.get(slot.key) ?? t("quota.editor.unknownTag");
   const capacity = event.capacity;
   const otherCapacity = capacity === null

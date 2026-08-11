@@ -1,6 +1,7 @@
 import type { Page } from "@playwright/test";
 import { SYSTEM_TEST_CONTENT_MARKER } from "@guild/shared/config/system-test";
 import { expect, readJson, test } from "../../support/test";
+import { createTestStorage } from "../../support/storage";
 import { ensureFiltersOpen, field, selectFilterOption } from "../../support/ui";
 
 /*
@@ -24,17 +25,12 @@ type Sample = { id: string; name: string; categoryName: string };
 let storageId: string;
 let depositSample: Sample;
 let withdrawSample: Sample;
+let positiveSample: Sample;
 
 test.beforeEach(async ({ page, api }) => {
-  const tree = await readJson(await api.get("/api/storage"), "读取仓库树") as {
-    data: { id: string; name: string; categories: { id: string; name: string }[] }[];
-  };
-  /* 分类筛选要验证「切到别的分类就该消失」，至少得有两个分类。
-     写死 data[0] 会随仓库排序悄悄失效，这里按条件挑。 */
-  const storage = tree.data.find((candidate) => candidate.categories.length >= 2);
-  expect(storage, "环境里必须有一个至少含两个分类的仓库，否则分类筛选无从验证").toBeTruthy();
-  const [first, second] = storage!.categories;
-  storageId = storage!.id;
+  const storage = await createTestStorage(api, "Filters", ["Deposit", "Withdraw"]);
+  const [first, second] = storage.categories;
+  storageId = storage.id;
 
   const stamp = Date.now();
   depositSample = await createSample(api, {
@@ -51,6 +47,20 @@ test.beforeEach(async ({ page, api }) => {
     allow_member_deposit: false,
     allow_member_withdraw: true,
   });
+  positiveSample = await createSample(api, {
+    storageId,
+    category: first!,
+    name: `${SYSTEM_TEST_CONTENT_MARKER} Filter Stocked ${stamp}`,
+    allow_member_deposit: true,
+    allow_member_withdraw: true,
+  });
+  const stocked = await readJson(
+    await api.post(`/api/storage/items/${positiveSample.id}/transactions`, {
+      data: { type: "intake", quantity: 3, recipient_user_id: null, note: null },
+    }),
+    "预置有库存样本",
+  ) as { quantity_delta: number };
+  expect(stocked.quantity_delta).toBe(3);
 
   await page.goto(`/storage?storageId=${storageId}`);
   await expect(card(page, depositSample)).toHaveCount(1);
@@ -137,6 +147,7 @@ test("库存筛选「In stock」滤掉 0 库存，留下的每件都大于 0", a
 
   await expect(card(page, depositSample), "0 库存的样本不该出现在「有库存」里").toHaveCount(0);
   await expect(card(page, withdrawSample), "0 库存的样本不该出现在「有库存」里").toHaveCount(0);
+  await expect(card(page, positiveSample), "本用例预置的有库存样本必须留下").toHaveCount(1);
   const stocks = await page.locator(`${CARD} .storage-item-card__stock-value`).allInnerTexts();
   expect(stocks.length, "「有库存」不该把整个列表清空").toBeGreaterThan(0);
   for (const stock of stocks) {

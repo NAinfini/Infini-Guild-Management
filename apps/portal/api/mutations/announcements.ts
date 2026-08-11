@@ -7,7 +7,7 @@ import {
 } from "@guild/shared";
 import type { z } from "zod";
 import { apiRequest } from "../client";
-import { appendImageUploadVariants, convertImagesForUpload } from "@guild/shared/utils/media";
+import { appendImageUploadVariants, convertImagesForUpload } from "../../utils/upload-media";
 
 export type CreateAnnouncementPayload = z.input<typeof createAnnouncementSchema>;
 export type UpdateAnnouncementPayload = z.input<typeof updateAnnouncementSchema>;

@@ -1,4 +1,4 @@
-import { access, copyFile, readFile, writeFile } from "node:fs/promises";
+import { readFile, writeFile } from "node:fs/promises";
 import { randomBytes } from "node:crypto";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
@@ -6,47 +6,80 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 const scriptDirectory = dirname(fileURLToPath(import.meta.url));
 const defaultRoot = resolve(scriptDirectory, "..");
 
-async function exists(path) {
+async function writeIfMissing(path, content) {
   try {
-    await access(path);
+    await writeFile(path, content, { encoding: "utf8", flag: "wx", mode: 0o600 });
     return true;
-  } catch {
-    return false;
+  } catch (error) {
+    if (error && typeof error === "object" && "code" in error && error.code === "EEXIST") return false;
+    throw error;
   }
 }
 
-export function generateSigningSecret() {
+function generatedSecret() {
   return randomBytes(32).toString("base64url");
 }
 
-export async function setupLocal(root = defaultRoot, secret = generateSigningSecret()) {
-  const workerDirectory = resolve(root, "apps/worker");
-  const wranglerExamplePath = resolve(workerDirectory, "wrangler.example.jsonc");
-  const wranglerPath = resolve(workerDirectory, "wrangler.jsonc");
-  const varsExamplePath = resolve(workerDirectory, ".dev.vars.example");
-  const varsPath = resolve(workerDirectory, ".dev.vars");
+function injectSecrets(template, secrets) {
+  const invitePlaceholder = "replace-with-at-least-32-random-bytes";
+  const inviteIndex = template.indexOf(invitePlaceholder);
+  const auditIndex = template.indexOf(invitePlaceholder, inviteIndex + invitePlaceholder.length);
+  if (inviteIndex < 0 || auditIndex < 0) {
+    throw new Error("The runtime template must contain both secret placeholders.");
+  }
+  return template
+    .replace(invitePlaceholder, secrets.inviteToken)
+    .replace(invitePlaceholder, secrets.auditDownload);
+}
+
+export function parseSetupArguments(args) {
+  if (args.length !== 2 || args[0] !== "--runtime") {
+    throw new TypeError("Usage: pnpm setup:local --runtime cloudflare|vps");
+  }
+  if (args[1] !== "cloudflare" && args[1] !== "vps") {
+    throw new TypeError("--runtime must be cloudflare or vps");
+  }
+  return args[1];
+}
+
+export async function setupLocal({
+  runtime,
+  root = defaultRoot,
+  secrets = { inviteToken: generatedSecret(), auditDownload: generatedSecret() },
+}) {
+  if (runtime !== "cloudflare" && runtime !== "vps") {
+    throw new TypeError("runtime must be cloudflare or vps");
+  }
   const created = [];
   const kept = [];
 
-  if (await exists(wranglerPath)) {
-    kept.push("apps/worker/wrangler.jsonc");
-  } else {
-    await copyFile(wranglerExamplePath, wranglerPath);
-    created.push("apps/worker/wrangler.jsonc");
-  }
-
-  if (await exists(varsPath)) {
-    kept.push("apps/worker/.dev.vars");
-  } else {
-    const template = await readFile(varsExamplePath, "utf8");
-    if (!template.includes("replace-with-a-random-secret")) {
-      throw new Error("The .dev.vars template does not contain the expected secret placeholder.");
+  if (runtime === "cloudflare") {
+    const directory = resolve(root, "apps/cloudflare");
+    const configPath = resolve(directory, "wrangler.jsonc");
+    const configTemplate = await readFile(resolve(directory, "wrangler.example.jsonc"), "utf8");
+    if (await writeIfMissing(configPath, configTemplate
+        .replaceAll("https://replace-with-public-origin.example", "http://localhost:5173")
+        .replaceAll("https://replace-with-allowed-origin.example", "http://localhost:5173"))) {
+      created.push("apps/cloudflare/wrangler.jsonc");
+    } else {
+      kept.push("apps/cloudflare/wrangler.jsonc");
     }
-    await writeFile(varsPath, template.replace("replace-with-a-random-secret", secret), {
-      encoding: "utf8",
-      mode: 0o600,
-    });
-    created.push("apps/worker/.dev.vars");
+
+    const variablesPath = resolve(directory, ".dev.vars");
+    const variablesTemplate = await readFile(resolve(directory, ".dev.vars.example"), "utf8");
+    if (await writeIfMissing(variablesPath, injectSecrets(variablesTemplate, secrets))) {
+      created.push("apps/cloudflare/.dev.vars");
+    } else {
+      kept.push("apps/cloudflare/.dev.vars");
+    }
+  } else {
+    const variablesPath = resolve(root, "apps/vps/.env");
+    const template = await readFile(resolve(root, "scripts/templates/vps.env.example"), "utf8");
+    if (await writeIfMissing(variablesPath, injectSecrets(template, secrets))) {
+      created.push("apps/vps/.env");
+    } else {
+      kept.push("apps/vps/.env");
+    }
   }
 
   return { created, kept };
@@ -57,10 +90,11 @@ const isMainModule = process.argv[1]
 
 if (isMainModule) {
   try {
-    const result = await setupLocal();
+    const runtime = parseSetupArguments(process.argv.slice(2));
+    const result = await setupLocal({ runtime });
     for (const path of result.created) console.log(`[setup] Created ${path}`);
     for (const path of result.kept) console.log(`[setup] Kept existing ${path}`);
-    console.log("[setup] Local configuration is ready. Next: pnpm dev");
+    console.log(`[setup] ${runtime} local configuration is ready.`);
   } catch (error) {
     console.error(`[setup] ${error instanceof Error ? error.message : String(error)}`);
     process.exitCode = 1;

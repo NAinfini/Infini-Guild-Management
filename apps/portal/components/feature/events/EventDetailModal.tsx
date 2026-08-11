@@ -13,7 +13,6 @@ import {
 import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { eventHasBehavior, getEventTypeLabel } from "@portal/utils/game-rules";
-import { useSiteConfigStore } from "@portal/stores/site-config";
 import { getParticipantActionDisabledReasonKey } from "./participant-action";
 import { EventDetailMemberRoster } from "./EventDetailMemberRoster";
 import { EventDetailPoll } from "./EventDetailPoll";
@@ -94,9 +93,8 @@ export function EventDetailModal({
   const isJoined = currentUserId ? members.some((entry) => entry.user.id === currentUserId) : false;
   const isFull = event?.capacity != null ? members.length >= event.capacity : false;
   const hasEnded = Boolean(event?.end_at && new Date(event.end_at) <= new Date());
-  const gameRules = useSiteConfigStore((state) => state.gameRules);
-  const isPoll = event ? eventHasBehavior(event.type, "poll", gameRules) : false;
-  const isRaffle = event ? eventHasBehavior(event.type, "raffle", gameRules) : false;
+  const isPoll = event ? eventHasBehavior(event.type, "poll") : false;
+  const isRaffle = event ? eventHasBehavior(event.type, "raffle") : false;
   const showMemberAction = Boolean(currentUserId && (isJoined ? onLeave : onJoin));
   const memberActionDisabledReasonKey = event
     ? getParticipantActionDisabledReasonKey({
@@ -167,7 +165,7 @@ export function EventDetailModal({
                   <Text size="xs" fw={700} tt="uppercase" c="dimmed">{t("detail.eventType")}</Text>
                 </div>
                 <Text size="sm" fw={700} className="event-detail-modal__meta-value">
-                  {getEventTypeLabel(event.type, i18n.language, gameRules)}
+                  {getEventTypeLabel(event.type, i18n.language)}
                 </Text>
               </section>
               <section className="event-detail-modal__meta-card event-detail-modal__meta-card--time">

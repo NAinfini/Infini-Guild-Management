@@ -1,0 +1,312 @@
+import { access, readFile } from "node:fs/promises";
+import { dirname, resolve } from "node:path";
+import { fileURLToPath, pathToFileURL } from "node:url";
+
+const runtimeConfigScriptDirectory = dirname(fileURLToPath(import.meta.url));
+const repositoryRoot = resolve(runtimeConfigScriptDirectory, "..");
+const RATE_LIMIT_BINDINGS = [
+  "AUTH_RATE_LIMITER",
+  "READ_RATE_LIMITER",
+  "MUTATION_RATE_LIMITER",
+  "UPLOAD_RATE_LIMITER",
+  "WEBSOCKET_RATE_LIMITER",
+];
+const SECRET_KEYS = ["IG_INVITE_TOKEN_SECRET", "IG_AUDIT_DOWNLOAD_SECRET"];
+const SHARED_MIGRATIONS_DIRECTORY = "../../packages/persistence-sqlite/src/migrations/generated";
+
+export function parseJsonc(source) {
+  source = source.replace(/^\uFEFF/, "");
+  let result = "";
+  let inString = false;
+  let escaped = false;
+  let lineComment = false;
+  let blockComment = false;
+
+  for (let index = 0; index < source.length; index += 1) {
+    const character = source[index];
+    const next = source[index + 1];
+    if (lineComment) {
+      if (character === "\n") {
+        lineComment = false;
+        result += character;
+      }
+      continue;
+    }
+    if (blockComment) {
+      if (character === "*" && next === "/") {
+        blockComment = false;
+        index += 1;
+      } else if (character === "\n") {
+        result += character;
+      }
+      continue;
+    }
+    if (!inString && character === "/" && next === "/") {
+      lineComment = true;
+      index += 1;
+      continue;
+    }
+    if (!inString && character === "/" && next === "*") {
+      blockComment = true;
+      index += 1;
+      continue;
+    }
+    result += character;
+    if (inString) {
+      if (escaped) escaped = false;
+      else if (character === "\\") escaped = true;
+      else if (character === '"') inString = false;
+    } else if (character === '"') {
+      inString = true;
+    }
+  }
+
+  let withoutTrailingCommas = "";
+  inString = false;
+  escaped = false;
+  for (let index = 0; index < result.length; index += 1) {
+    const character = result[index];
+    if (!inString && character === ",") {
+      let nextIndex = index + 1;
+      while (/\s/.test(result[nextIndex] ?? "")) nextIndex += 1;
+      if (result[nextIndex] === "}" || result[nextIndex] === "]") continue;
+    }
+    withoutTrailingCommas += character;
+    if (inString) {
+      if (escaped) escaped = false;
+      else if (character === "\\") escaped = true;
+      else if (character === '"') inString = false;
+    } else if (character === '"') {
+      inString = true;
+    }
+  }
+  return JSON.parse(withoutTrailingCommas);
+}
+
+export function parseEnv(source) {
+  const values = {};
+  for (const [index, line] of source.replace(/^\uFEFF/, "").split(/\r?\n/).entries()) {
+    const trimmed = line.trim();
+    if (!trimmed || trimmed.startsWith("#")) continue;
+    const match = /^([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.*)$/.exec(trimmed);
+    if (!match) throw new SyntaxError(`Invalid environment entry on line ${index + 1}`);
+    const key = match[1];
+    if (Object.hasOwn(values, key)) throw new SyntaxError(`Duplicate environment key: ${key}`);
+    let value = match[2].trim();
+    if ((value.startsWith('"') && value.endsWith('"')) || (value.startsWith("'") && value.endsWith("'"))) {
+      value = value.slice(1, -1);
+    } else {
+      value = value.replace(/\s+#.*$/, "").trim();
+    }
+    values[key] = value;
+  }
+  return values;
+}
+
+function isObject(value) {
+  return value !== null && typeof value === "object" && !Array.isArray(value);
+}
+
+function placeholder(value) {
+  return typeof value === "string" && (
+    /(?:replace-with|YOUR[_-]|CHANGE[_-]?ME|00000000-0000-0000-0000-000000000000)/i.test(value)
+    || ["1001", "1002", "1003", "1004", "1005"].includes(value)
+  );
+}
+
+function requiredString(object, key, label, errors, options) {
+  const value = object[key];
+  if (typeof value !== "string" || !value.trim()) {
+    errors.push(`${label}.${key} is required.`);
+  } else if (!options.allowPlaceholders && placeholder(value)) {
+    errors.push(`${label}.${key} still contains a placeholder.`);
+  }
+  return typeof value === "string" ? value : "";
+}
+
+function validateIterations(value, label, errors) {
+  if (value === undefined || value === "") return;
+  const iterations = Number(value);
+  if (typeof value !== "string" || !/^\d+$/.test(value)
+    || !Number.isSafeInteger(iterations) || iterations < 10_000 || iterations > 10_000_000) {
+    errors.push(`${label}.IG_PBKDF2_ITERATIONS must be an integer between 10000 and 10000000.`);
+  }
+}
+
+function validOrigin(value, requireHttps) {
+  try {
+    const url = new URL(value);
+    const loopbackHttp = url.protocol === "http:"
+      && (url.hostname === "localhost" || url.hostname === "127.0.0.1" || url.hostname === "[::1]");
+    return (!requireHttps || url.protocol === "https:" || loopbackHttp)
+      && (url.protocol === "http:" || url.protocol === "https:")
+      && !url.username && !url.password
+      && url.pathname === "/" && !url.search && !url.hash;
+  } catch {
+    return false;
+  }
+}
+
+export function validateCloudflareConfig(config, options = {}) {
+  const settings = { allowPlaceholders: options.allowPlaceholders === true };
+  const errors = [];
+  if (!isObject(config)) return ["Cloudflare config must be an object."];
+  requiredString(config, "name", "cloudflare", errors, settings);
+  if (config.main !== "src/index.ts") errors.push("cloudflare.main must be src/index.ts.");
+
+  const assets = isObject(config.assets) ? config.assets : {};
+  if (assets.binding !== "ASSETS" || assets.run_worker_first !== true
+    || assets.html_handling !== "none" || assets.not_found_handling !== "none") {
+    errors.push("Cloudflare ASSETS binding must route through the Worker with native HTML fallbacks disabled.");
+  }
+  requiredString(assets, "directory", "cloudflare.assets", errors, settings);
+
+  const d1 = Array.isArray(config.d1_databases)
+    ? config.d1_databases.find((entry) => isObject(entry) && entry.binding === "DB")
+    : undefined;
+  if (!isObject(d1)) errors.push('Cloudflare D1 binding "DB" is missing.');
+  else {
+    requiredString(d1, "database_name", "cloudflare.DB", errors, settings);
+    requiredString(d1, "database_id", "cloudflare.DB", errors, settings);
+    if (d1.migrations_dir !== SHARED_MIGRATIONS_DIRECTORY) {
+      errors.push(`cloudflare.DB.migrations_dir must be ${SHARED_MIGRATIONS_DIRECTORY}.`);
+    }
+    if (d1.remote !== false) errors.push("cloudflare.DB.remote must be false for local-safe configuration.");
+  }
+
+  const r2 = Array.isArray(config.r2_buckets)
+    ? config.r2_buckets.find((entry) => isObject(entry) && entry.binding === "BLOBS")
+    : undefined;
+  if (!isObject(r2)) errors.push('Cloudflare R2 binding "BLOBS" is missing.');
+  else {
+    requiredString(r2, "bucket_name", "cloudflare.BLOBS", errors, settings);
+    if (r2.remote !== false) errors.push("cloudflare.BLOBS.remote must be false for local-safe configuration.");
+  }
+
+  const durableBindings = isObject(config.durable_objects) && Array.isArray(config.durable_objects.bindings)
+    ? config.durable_objects.bindings
+    : [];
+  if (!durableBindings.some((entry) => isObject(entry)
+    && entry.name === "NOTIFICATIONS" && entry.class_name === "CloudflareNotificationDurableObject")) {
+    errors.push('Cloudflare Durable Object binding "NOTIFICATIONS" is missing or targets the wrong class.');
+  }
+  if (!Array.isArray(config.migrations) || !config.migrations.some((entry) => isObject(entry)
+    && Array.isArray(entry.new_sqlite_classes)
+    && entry.new_sqlite_classes.includes("CloudflareNotificationDurableObject"))) {
+    errors.push("Cloudflare Durable Object SQLite migration is missing.");
+  }
+
+  const rateLimits = Array.isArray(config.ratelimits) ? config.ratelimits : [];
+  for (const binding of RATE_LIMIT_BINDINGS) {
+    const entry = rateLimits.find((candidate) => isObject(candidate) && candidate.name === binding);
+    if (!isObject(entry)) {
+      errors.push(`Cloudflare rate limiter ${binding} is missing.`);
+      continue;
+    }
+    requiredString(entry, "namespace_id", `cloudflare.${binding}`, errors, settings);
+    const simple = isObject(entry.simple) ? entry.simple : {};
+    if (!Number.isInteger(simple.limit) || simple.limit <= 0 || ![10, 60].includes(simple.period)) {
+      errors.push(`Cloudflare rate limiter ${binding} needs a positive integer limit and a 10 or 60 second period.`);
+    }
+  }
+
+  const crons = isObject(config.triggers) && Array.isArray(config.triggers.crons)
+    ? config.triggers.crons
+    : [];
+  for (const cron of ["*/15 * * * *", "0 0 * * *"]) {
+    if (!crons.includes(cron)) errors.push(`Cloudflare cron schedule ${cron} is missing.`);
+  }
+
+  const vars = isObject(config.vars) ? config.vars : {};
+  const publicUrl = requiredString(vars, "IG_PUBLIC_URL", "cloudflare.vars", errors, settings);
+  if (publicUrl && !validOrigin(publicUrl, true)) {
+    errors.push("cloudflare.vars.IG_PUBLIC_URL must be a root HTTPS origin, except for loopback local development.");
+  }
+  for (const key of SECRET_KEYS) {
+    if (Object.hasOwn(vars, key)) errors.push(`cloudflare.vars.${key} must use Wrangler secret storage, not vars.`);
+  }
+  validateIterations(vars.IG_PBKDF2_ITERATIONS, "cloudflare.vars", errors);
+  if (config.workers_dev !== true && !Array.isArray(config.routes)) {
+    errors.push("Cloudflare config needs workers_dev: true or a routes list.");
+  }
+  return errors;
+}
+
+export function validateVpsConfig(config, options = {}) {
+  const settings = { allowPlaceholders: options.allowPlaceholders === true };
+  const errors = [];
+  if (!isObject(config)) return ["VPS config must be an environment map."];
+  const publicUrl = requiredString(config, "IG_PUBLIC_URL", "vps", errors, settings);
+  if (publicUrl && !validOrigin(publicUrl, false)) errors.push("vps.IG_PUBLIC_URL must be a root HTTP(S) origin.");
+  for (const key of SECRET_KEYS) {
+    const value = requiredString(config, key, "vps", errors, settings);
+    if (value && !settings.allowPlaceholders && new TextEncoder().encode(value).byteLength < 32) {
+      errors.push(`vps.${key} must contain at least 32 UTF-8 bytes.`);
+    }
+  }
+  for (const key of ["IG_DATABASE_PATH", "IG_BLOB_PATH", "IG_STATIC_PATH"]) {
+    requiredString(config, key, "vps", errors, settings);
+  }
+  validateIterations(config.IG_PBKDF2_ITERATIONS, "vps", errors);
+  if (config.IG_PORT !== undefined) {
+    const port = Number(config.IG_PORT);
+    if (!Number.isInteger(port) || port < 1 || port > 65_535) errors.push("vps.IG_PORT must be an integer from 1 to 65535.");
+  }
+  return errors;
+}
+
+function parseArguments(argv) {
+  const runtimeIndex = argv.indexOf("--runtime");
+  const configIndex = argv.indexOf("--config");
+  const runtime = runtimeIndex >= 0 ? argv[runtimeIndex + 1] : undefined;
+  if (runtime !== "cloudflare" && runtime !== "vps") {
+    throw new TypeError("--runtime must be cloudflare or vps");
+  }
+  const fallback = runtime === "cloudflare" ? "apps/cloudflare/wrangler.jsonc" : "apps/vps/.env";
+  return {
+    runtime,
+    configPath: resolve(repositoryRoot, configIndex >= 0 ? argv[configIndex + 1] : fallback),
+    allowPlaceholders: argv.includes("--allow-placeholders"),
+  };
+}
+
+export async function runPreflight(argv = process.argv.slice(2)) {
+  const { runtime, configPath, allowPlaceholders } = parseArguments(argv);
+  try {
+    await access(configPath);
+  } catch {
+    throw new Error(`[config] ${configPath} not found. Run pnpm setup:local --runtime ${runtime}.`);
+  }
+  const source = await readFile(configPath, "utf8");
+  let config;
+  try {
+    config = runtime === "cloudflare" ? parseJsonc(source) : parseEnv(source);
+  } catch (error) {
+    throw new Error(`[config] Could not parse ${configPath}: ${error instanceof Error ? error.message : String(error)}`);
+  }
+
+  if (runtime === "cloudflare") {
+    const { unstable_readConfig: readWranglerConfig } = await import("wrangler");
+    readWranglerConfig({ config: configPath }, { hideWarnings: true });
+  }
+  const errors = runtime === "cloudflare"
+    ? validateCloudflareConfig(config, { allowPlaceholders })
+    : validateVpsConfig(config, { allowPlaceholders });
+  if (errors.length > 0) {
+    throw new Error(`[config] ${runtime} configuration is not ready:\n${errors.map((error) => `  - ${error}`).join("\n")}`);
+  }
+  return { runtime, configPath };
+}
+
+const isMainModule = process.argv[1]
+  && pathToFileURL(resolve(process.argv[1])).href === import.meta.url;
+
+if (isMainModule) {
+  try {
+    const result = await runPreflight();
+    console.log(`[config] ${result.runtime} configuration is ready.`);
+  } catch (error) {
+    console.error(error instanceof Error ? error.message : String(error));
+    process.exitCode = 1;
+  }
+}

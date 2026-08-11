@@ -1,12 +1,13 @@
 // @vitest-environment jsdom
 import type { AdminRole } from "@guild/shared";
 import { MantineProvider } from "@mantine/core";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import type { ColumnDef } from "@tanstack/react-table";
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   AdminUsersSection,
   type AdminUserRow,
@@ -14,13 +15,20 @@ import {
 
 vi.mock("react-i18next", () => ({
   useTranslation: () => ({
-    t: (key: string, options?: { username?: string; count?: number }) => {
+    t: (key: string, options?: { username?: string; count?: number; seconds?: number }) => {
       if (options?.username) return `${key} ${options.username}`;
       if (typeof options?.count === "number") return `${key} ${options.count}`;
+      if (typeof options?.seconds === "number") return `${key} ${options.seconds}`;
       return key;
     },
   }),
 }));
+
+const adminServiceMocks = vi.hoisted(() => ({
+  fetchAdminUserLoginLock: vi.fn(),
+}));
+
+vi.mock("../../../services/AdminService", () => adminServiceMocks);
 
 vi.mock("@tanstack/react-virtual", () => ({
   useVirtualizer: ({ count }: { count: number }) => ({
@@ -143,13 +151,27 @@ function renderUsers(
   };
 
   render(
-    <MantineProvider>
-      <AdminUsersSection {...props} />
-    </MantineProvider>,
+    <QueryClientProvider client={new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    })}>
+      <MantineProvider>
+        <AdminUsersSection {...props} />
+      </MantineProvider>
+    </QueryClientProvider>,
   );
 
   return props;
 }
+
+beforeEach(() => {
+  adminServiceMocks.fetchAdminUserLoginLock.mockReset();
+  adminServiceMocks.fetchAdminUserLoginLock.mockResolvedValue({
+    fail_count: 0,
+    locked_until: null,
+    is_locked: false,
+    retry_after_seconds: 0,
+  });
+});
 
 describe("AdminUsersSection accessibility", () => {
   it("explains that account status is separate from roster availability", () => {
@@ -261,6 +283,34 @@ describe("AdminUsersSection accessibility", () => {
     expect(within(bobMenu).getAllByRole("menuitem", { name: "member.deactivate", hidden: true })).toHaveLength(1);
     expect(within(bobMenu).getByRole("menuitem", { name: "member.resetPassword", hidden: true })).toBeEnabled();
     expect(within(bobMenu).getByRole("menuitem", { name: "member.resetLoginLock", hidden: true })).toBeEnabled();
+  });
+
+  it("shows the current login lock and passes it into the reset confirmation flow", async () => {
+    const lockState = {
+      fail_count: 4,
+      locked_until: "2026-08-09T12:00:45.000Z",
+      is_locked: true,
+      retry_after_seconds: 45,
+    };
+    adminServiceMocks.fetchAdminUserLoginLock.mockResolvedValueOnce(lockState);
+    const onSingleResetLoginLock = vi.fn().mockResolvedValue(undefined);
+    renderUsers({ onSingleResetLoginLock });
+
+    fireEvent.click(screen.getAllByRole("button", { name: "member.action.menu" })[0]!);
+    let menu: HTMLElement | null = null;
+    await waitFor(() => {
+      menu = document.querySelector("[data-admin-user-action-menu]");
+      expect(menu).not.toBeNull();
+      expect(within(menu as HTMLElement).getByText("member.loginLock.locked 45")).toBeInTheDocument();
+    });
+
+    fireEvent.click(within(menu as unknown as HTMLElement).getByRole("menuitem", {
+      name: "member.resetLoginLock",
+      hidden: true,
+    }));
+
+    expect(adminServiceMocks.fetchAdminUserLoginLock).toHaveBeenCalledWith("user-1");
+    expect(onSingleResetLoginLock).toHaveBeenCalledWith("user-1", lockState);
   });
 
   it("gates each write action with its matching permission", async () => {

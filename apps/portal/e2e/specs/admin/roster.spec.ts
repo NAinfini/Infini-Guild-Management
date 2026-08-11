@@ -1,5 +1,5 @@
 import type { APIRequestContext, Locator, Page, Response } from "@playwright/test";
-import { readAssignableRole } from "../../support/members";
+import { createThrowawayMember, uniqueTag } from "../../support/members";
 import { expect, readJson, test } from "../../support/test";
 import { field, topDialog } from "../../support/ui";
 
@@ -12,7 +12,7 @@ import { field, topDialog } from "../../support/ui";
  * 名单只在进页面时取一次，staleTime 10 分钟）。
  * 所以这里的验证契约是另一套：
  *   1. 结果集要和服务端的真实数据对得上——期望值一律从 GET /api/users 现算，
- *      不把种子里的用户名和职业抄进用例，否则改种子就得改测试，
+ *      需要特定分布时由用例先创建，不把演示用户名和职业抄进断言，
  *      而且抄一遍等于把实现又写了一遍，什么都没验证；
  *   2. 每个控件都必须证明它「没有回服务端」——既不重取名单，也不写库。
  *      纯前端控件一旦偷偷发请求，就是把 10 分钟的缓存和限流预算白白烧掉。
@@ -32,9 +32,8 @@ type RosterRow = {
 
 let createdUserIds: string[] = [];
 
-test.beforeEach(async ({ page }) => {
+test.beforeEach(async () => {
   createdUserIds = [];
-  await openRoster(page);
 });
 
 test.afterEach(async ({ api }) => {
@@ -59,8 +58,33 @@ async function openRoster(page: Page): Promise<void> {
 /** 服务端眼里的名册。期望值全部由它现算。 */
 async function fetchRoster(api: APIRequestContext): Promise<RosterRow[]> {
   const body = await readJson(await api.get("/api/users?page=1&limit=500"), "读取名册") as { data: RosterRow[] };
-  expect(body.data.length, "种子名册不该是空的").toBeGreaterThan(0);
+  expect(body.data.length, "fresh fixture 至少应包含当前管理员和共享成员").toBeGreaterThan(0);
   return body.data;
+}
+
+async function createRosterMember(api: APIRequestContext, tag: string): Promise<{ id: string; username: string }> {
+  const member = await createThrowawayMember(api, tag);
+  createdUserIds.push(member.id);
+  return member;
+}
+
+async function updateRosterProfile(
+  api: APIRequestContext,
+  userId: string,
+  data: { power?: number; classes?: string[] },
+): Promise<void> {
+  const response = await api.patch(`/api/users/${userId}/profile`, { data });
+  expect(response.ok(), `预置名册资料返回 ${response.status()}: ${await response.text()}`).toBe(true);
+}
+
+async function createRosterClass(api: APIRequestContext, tag: string): Promise<{ id: string; label: string }> {
+  const label = `E2E Roster ${tag}`;
+  return await readJson(
+    await api.post("/api/classes", {
+      data: { label, color: "#8594A8", vector_icon: "shield", sort_order: 900 },
+    }),
+    `创建名册职业 ${label}`,
+  ) as { id: string; label: string };
 }
 
 function cards(page: Page): Locator {
@@ -115,8 +139,8 @@ async function expectClientSideOnly(
  * 把名册整份展开。
  *
  * 首屏只渲染 20 张，换排序还会把这个数字重置回 20（useRosterPageController.ts:110）。
- * 凡是要拿「整份名单」做断言的用例，都必须先展开：单跑时种子只有 19 个人，
- * 一页装得下，不展开也碰巧对；整轮跑起来站点上有几十号人，读到的就只是第一页，
+ * 凡是要拿「整份名单」做断言的用例，都必须先展开：fresh fixture 通常一页装得下，
+ * 不展开也碰巧对；整轮跑起来站点上可能有几十号人，读到的就只是第一页，
  * 于是「换排序不该把人换掉」这种断言会在两个不同的分页切片之间比较，红得毫无道理。
  */
 async function revealAll(page: Page): Promise<void> {
@@ -137,26 +161,30 @@ async function readStoredFilters(page: Page): Promise<{ classFilter?: unknown; s
 }
 
 test("搜索框：按用户名过滤，条件先 trim 再忽略大小写，全程不回服务端", async ({ page, api }) => {
+  const tag = uniqueTag("search");
+  await createRosterMember(api, tag);
+  await createRosterMember(api, tag);
+  await openRoster(page);
   const roster = await fetchRoster(api);
-  const expectedPrefix = roster
+  const expectedMatches = roster
     .map((row) => row.user.username)
-    .filter((username) => username.toLowerCase().includes("mod_"))
+    .filter((username) => username.toLowerCase().includes(tag.toLowerCase()))
     .sort();
-  expect(expectedPrefix.length, "种子里应当有若干 mod_ 开头的账号").toBeGreaterThan(1);
+  expect(expectedMatches.length, "本用例创建的两个成员必须可检索").toBe(2);
 
   /* 故意全大写：控件会 toLowerCase 之后再比（useRosterPageController.ts:65）。 */
   await expectClientSideOnly(page, async () => {
-    await searchBox(page).fill("MOD_");
-    await expect(cards(page)).toHaveCount(expectedPrefix.length);
+    await searchBox(page).fill(tag.toUpperCase());
+    await expect(cards(page)).toHaveCount(expectedMatches.length);
   });
   expect(
     (await cardNames(page).allInnerTexts()).map((name) => name.trim()).sort(),
     "大小写不同就漏人的话，搜索基本等于不能用",
-  ).toEqual(expectedPrefix);
+  ).toEqual(expectedMatches);
   expect(await readCount(page), "计数要跟着筛选后的结果集走")
-    .toEqual({ visible: expectedPrefix.length, total: expectedPrefix.length });
+    .toEqual({ visible: expectedMatches.length, total: expectedMatches.length });
 
-  const single = expectedPrefix[0]!;
+  const single = expectedMatches[0]!;
   await expectClientSideOnly(page, async () => {
     await searchBox(page).fill(`  ${single}  `);
     await expect(cards(page)).toHaveCount(1);
@@ -171,6 +199,10 @@ test("搜索框：按用户名过滤，条件先 trim 再忽略大小写，全�
 });
 
 test("职业多选：结果集与服务端数据一致，条件写进 localStorage 并在刷新后恢复", async ({ page, api }) => {
+  const rosterClass = await createRosterClass(api, uniqueTag("class"));
+  const member = await createRosterMember(api, uniqueTag("class_member"));
+  await updateRosterProfile(api, member.id, { classes: [rosterClass.id] });
+  await openRoster(page);
   const roster = await fetchRoster(api);
   const catalog = await readJson(await api.get("/api/classes"), "读取职业目录") as Array<{ id: string; label: string }>;
 
@@ -182,7 +214,7 @@ test("职业多选：结果集与服务端数据一致，条件写进 localStora
   }
   const ranked = [...byClass.entries()].sort((left, right) => right[1].length - left[1].length || left[0].localeCompare(right[0]));
   const top = ranked[0];
-  expect(top, "种子里至少要有一个挂了职业的成员").toBeTruthy();
+  expect(top, "本用例创建的职业成员必须出现在名册里").toBeTruthy();
   const [classId, expectedNames] = top!;
   const outsider = roster.find((row) => !row.profile.classes.includes(classId));
   expect(outsider, "得有一个不属于该职业的成员，才能验证「滤掉」的方向").toBeTruthy();
@@ -214,6 +246,12 @@ test("职业多选：结果集与服务端数据一致，条件写进 localStora
 });
 
 test("排序下拉：换一套排序依据真的重排卡片，选择被持久化", async ({ page, api }) => {
+  const tag = uniqueTag("sort");
+  const low = await createRosterMember(api, `${tag}_a`);
+  const high = await createRosterMember(api, `${tag}_b`);
+  await updateRosterProfile(api, low.id, { power: 10 });
+  await updateRosterProfile(api, high.id, { power: 20 });
+  await openRoster(page);
   const roster = await fetchRoster(api);
   const powerOf = new Map(roster.map((row) => [row.user.username, row.profile.power]));
   const primaryClassOf = new Map(roster.map((row) => [row.user.username, row.profile.classes[0] ?? ""]));
@@ -273,35 +311,15 @@ test("排序下拉：换一套排序依据真的重排卡片，选择被持久�
 });
 
 test("加载更多：首屏只渲染 20 张，点下去把剩下的补齐", async ({ page, api }) => {
-  const before = await readCount(page);
-  /*
-   * 首屏永远是「20 张或全部，取小的那个」。
-   * 这里不能写成 visible === total：整轮跑起来时，前面用例造的一次性成员
-   * 要到收尾才被硬删，站点上远不止一页人，把它当前提这条用例就只在单跑时成立。
-   */
-  expect(before.visible, "首屏最多渲染 20 张").toBe(Math.min(20, before.total));
-
-  /*
-   * 名册要超过一页才有「加载更多」，种子只有 19 个人，所以现造两个。
-   * POST /api/admin/users 收用户名和当前管理员可授予的 D1 角色，临时密码由服务端生成。
-   * 返回的 user_id 会被 system-test 中间件登记成 user 产物，收尾时硬删。
-  */
-  const stamp = Date.now();
-  const role = await readAssignableRole(api);
-  for (const suffix of ["a", "b"]) {
-    const created = await readJson(
-      await api.post("/api/admin/users", {
-        data: { username: `e2e_roster_${stamp}${suffix}`, role_id: role.id },
-      }),
-      "创建临时成员",
-    ) as { user_id: string };
-    expect(created.user_id, "创建接口必须回 user_id，否则收尾时无从定位").toBeTruthy();
-    createdUserIds.push(created.user_id);
+  let total = (await fetchRoster(api)).length;
+  while (total <= 20) {
+    await createRosterMember(api, uniqueTag("page"));
+    total += 1;
   }
 
   await openRoster(page);
   const paged = await readCount(page);
-  expect(paged.total, "两个新成员要出现在总数里").toBe(before.total + 2);
+  expect(paged.total, "自建成员必须把名册撑到第二页").toBe(total);
   expect(paged.visible, "首屏只渲染 20 张").toBe(20);
   await expect(cards(page)).toHaveCount(20);
 
@@ -320,6 +338,8 @@ test("加载更多：首屏只渲染 20 张，点下去把剩下的补齐", asyn
 });
 
 test("空态的重置筛选：一次清掉搜索与职业，列表回到全量", async ({ page, api }) => {
+  await createRosterClass(api, uniqueTag("empty"));
+  await openRoster(page);
   const roster = await fetchRoster(api);
 
   await field(page, "Filter roster by class").click();
@@ -344,6 +364,7 @@ test("空态的重置筛选：一次清掉搜索与职业，列表回到全量",
 });
 
 test("音频偏好：静音开关与音量滑块都落盘", async ({ page }) => {
+  await openRoster(page);
   const trigger = page.getByRole("button", { name: "Controls profile BGM", exact: true });
   await trigger.click();
   const panel = page.getByRole("dialog", { name: "Controls profile BGM" });
@@ -381,9 +402,10 @@ test("音频偏好：静音开关与音量滑块都落盘", async ({ page }) => 
 });
 
 test("成员卡片：打开资料弹窗，内容与服务端一致，关闭按钮收起", async ({ page, api }) => {
+  await openRoster(page);
   const roster = await fetchRoster(api);
-  const target = roster.find((row) => row.user.username.startsWith("member_"));
-  expect(target, "种子里应当有普通成员").toBeTruthy();
+  const target = roster.find((row) => row.user.username === "member_01");
+  expect(target, "fresh fixture 必须提供共享成员 member_01").toBeTruthy();
   const { username } = target!.user;
 
   await searchBox(page).fill(username);
@@ -407,9 +429,10 @@ test("成员卡片：打开资料弹窗，内容与服务端一致，关闭按�
 });
 
 test("资料弹窗的编辑入口：别人的资料跳去后台，自己的跳去个人页", async ({ page, api }) => {
+  await openRoster(page);
   const roster = await fetchRoster(api);
-  const target = roster.find((row) => row.user.username.startsWith("member_"));
-  expect(target, "种子里应当有普通成员").toBeTruthy();
+  const target = roster.find((row) => row.user.username === "member_01");
+  expect(target, "fresh fixture 必须提供共享成员 member_01").toBeTruthy();
   const { username } = target!.user;
 
   /*

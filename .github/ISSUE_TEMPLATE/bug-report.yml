@@ -33,7 +33,7 @@ body:
     id: environment
     attributes:
       label: Browser and deployment
-      placeholder: Browser name and version, workers.dev or custom domain, commit or release
+      placeholder: Browser/version, Cloudflare or single-process VPS, commit or release
     validations:
       required: true
   - type: checkboxes

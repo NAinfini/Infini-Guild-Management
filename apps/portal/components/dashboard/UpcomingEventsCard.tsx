@@ -8,7 +8,6 @@ import { CalendarEventOutlined } from "../../utils/icons";
 import { EventQuotaBar } from "../feature/events/EventQuotaBar";
 import { EventTypeIcon } from "../shared/EventTypeIcon";
 import { getEventTypeLabel } from "@portal/utils/game-rules";
-import { useSiteConfigStore } from "@portal/stores/site-config";
 import { EmptyState } from "../shared/EmptyState";
 import {
   cardHeading,
@@ -33,7 +32,6 @@ export const UpcomingEventsCard = memo(function UpcomingEventsCard({
   onViewAll,
 }: UpcomingEventsCardProps) {
   const { t, i18n } = useTranslation("dashboard");
-  const gameRules = useSiteConfigStore((state) => state.gameRules);
   const safeUpcomingCount = Math.max(0, upcomingEventsCount);
   const hasAnyRows = featuredRows.length > 0 || rows.length > 0;
   const orderedRows = useMemo(
@@ -57,7 +55,7 @@ export const UpcomingEventsCard = memo(function UpcomingEventsCard({
         ) : (
           <Stack gap={8} mt={12}>
             {orderedRows.map((item) => {
-              const signedUpCount = item.members.length;
+              const signedUpCount = item.participantCount;
               const capacity = item.item.capacity ?? 0;
               const startDate = new Date(item.item.start_at);
               const month = startDate.toLocaleString(i18n.language, { month: "short" }).toUpperCase();
@@ -90,7 +88,7 @@ export const UpcomingEventsCard = memo(function UpcomingEventsCard({
                       ) : null}
                       <Group gap={6}>
                         <Badge size="xs" color={eventTypeTagColor(item.item.type)} variant="light" leftSection={<EventTypeIcon eventType={item.item.type} />}>
-                          {getEventTypeLabel(item.item.type, i18n.language, gameRules)}
+                          {getEventTypeLabel(item.item.type, i18n.language)}
                         </Badge>
                         <Group gap={4}>
                           <ClockIcon size={12} style={{ opacity: 0.6 }} />
@@ -105,13 +103,13 @@ export const UpcomingEventsCard = memo(function UpcomingEventsCard({
                         <EventQuotaBar
                           summary={item.quotaSummary}
                           event={item.item}
-                          participantCount={item.members.length}
+                          participantCount={item.participantCount}
                         />
                       </div>
                     ) : null}
                     <div className="upcoming-event-row__people">
                       <div className="upcoming-event-row__avatars">
-                        <MemberAvatarStack members={item.members} />
+                        <MemberAvatarStack members={item.members} totalCount={item.participantCount} />
                       </div>
                       <Text
                         className="upcoming-event-row__capacity"

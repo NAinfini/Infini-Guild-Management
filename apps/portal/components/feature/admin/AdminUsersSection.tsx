@@ -39,6 +39,8 @@ import { resolveClassCatalogItem, useClassCatalogStore } from "../../../stores/c
 import type { AdminUserPendingAction } from "../../../hooks/useAdminMutations";
 import { useAuthStore } from "../../../stores/auth";
 import { canManageUserByRoleLevel, userCanAccessAdmin } from "../../../utils/permissions";
+import type { AdminLoginLockState } from "../../../services/AdminService";
+import { useAdminUserLoginLock } from "../../../hooks/useAdminUserLoginLock";
 
 export type AdminUserRow = UsersListResponse["data"][number];
 
@@ -67,7 +69,7 @@ type AdminUsersSectionProps = {
   onSingleActivate: (userId: string) => void;
   onSingleDeactivate: (userId: string) => void;
   onSingleResetPassword: (userId: string) => void;
-  onSingleResetLoginLock: (userId: string) => void;
+  onSingleResetLoginLock: (userId: string, lockState: AdminLoginLockState) => void | Promise<void>;
   batchRolePending: boolean;
   batchActivatePending: boolean;
   batchDeactivatePending: boolean;
@@ -322,6 +324,17 @@ export function AdminUsersSection({
   const roleActionPending = isBatchContext ? batchRolePending : contextActionPending("change-role");
   const activateActionPending = isBatchContext ? batchActivatePending : contextActionPending("activate");
   const deactivateActionPending = isBatchContext ? batchDeactivatePending : contextActionPending("deactivate");
+  const canReadContextLoginLock = Boolean(
+    actionMenu && contextSingleUserId && canResetUserPasswords && !contextHasProtectedTarget,
+  );
+  const loginLockQuery = useAdminUserLoginLock(contextSingleUserId, canReadContextLoginLock);
+  const loginLockStatus = loginLockQuery.data
+    ? loginLockQuery.data.is_locked
+      ? t("member.loginLock.locked", { seconds: loginLockQuery.data.retry_after_seconds })
+      : t("member.loginLock.unlocked", { count: loginLockQuery.data.fail_count })
+    : loginLockQuery.isError
+      ? t("member.loginLock.unavailable")
+      : t("member.loginLock.checking");
 
   const copyContextRows = () => {
     const lines = contextRows.map((row) =>
@@ -459,10 +472,29 @@ export function AdminUsersSection({
               >
                 {t("member.resetPassword")}
               </Menu.Item>
+              {canResetUserPasswords && !contextHasProtectedTarget ? (
+                <Menu.Label
+                  aria-live="polite"
+                  role="status"
+                  title={loginLockQuery.data?.locked_until ?? undefined}
+                >
+                  {loginLockStatus}
+                </Menu.Label>
+              ) : null}
               <Menu.Item
                 leftSection={<LockOpenIcon size={14} />}
-                disabled={!canResetUserPasswords || contextActionPending("reset-login-lock") || contextHasProtectedTarget}
-                onClick={() => onSingleResetLoginLock(contextSingleUserId)}
+                disabled={
+                  !canResetUserPasswords
+                  || contextActionPending("reset-login-lock")
+                  || contextHasProtectedTarget
+                  || loginLockQuery.isError
+                }
+                onClick={() => {
+                  void (async () => {
+                    const lockState = loginLockQuery.data ?? (await loginLockQuery.refetch()).data;
+                    if (lockState) await onSingleResetLoginLock(contextSingleUserId, lockState);
+                  })();
+                }}
               >
                 {t("member.resetLoginLock")}
               </Menu.Item>

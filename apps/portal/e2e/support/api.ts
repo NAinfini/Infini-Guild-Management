@@ -6,7 +6,6 @@ import {
 } from "@guild/shared/config/system-test";
 import {
   clientIdentityHeaders,
-  FINGERPRINT_IGNORED_KEYS,
   PORTAL_ORIGIN,
   SETUP_CLIENT_ADDRESS,
   type SiteFingerprint,
@@ -41,58 +40,10 @@ export async function newApiContext(
   return request.newContext({
     baseURL: origin,
     storageState: storageStatePath,
+    ignoreHTTPSErrors: true,
     // 固定地址：让 setup/teardown 的配额和用例的配额互不牵连。
     extraHTTPHeaders: { ...mutationHeaders(origin), ...clientIdentityHeaders(SETUP_CLIENT_ADDRESS) },
   });
-}
-
-/**
- * E2E 配额隔离要求按客户端地址分桶：同地址读数递减，不同地址使用独立桶。
- * 预检不满足时携带诊断立即停止。
- */
-export async function assertRateLimitIsolation(origin: string, slot: number): Promise<void> {
-  const remainingFor = async (address: string): Promise<number> => {
-    const api = await request.newContext({
-      baseURL: origin,
-      extraHTTPHeaders: clientIdentityHeaders(address),
-    });
-    try {
-      const response = await api.get("/api/auth/me");
-      const headers = response.headers();
-      const remaining = Number(headers["x-ratelimit-remaining"]);
-      if (headers["x-ratelimit-scope"] !== "read" || !Number.isFinite(remaining)) {
-        throw new Error(
-          `${origin} 没有按预期回限流头：scope=${headers["x-ratelimit-scope"]} remaining=${headers["x-ratelimit-remaining"]}`,
-        );
-      }
-      return remaining;
-    } finally {
-      await api.dispose();
-    }
-  };
-
-  /* 地址按槽位错开，免得并发准备的几个槽位互相干扰。 */
-  const first = `10.40.${slot}.1`;
-  const second = `10.40.${slot}.2`;
-  const firstA = await remainingFor(first);
-  const firstB = await remainingFor(first);
-  const other = await remainingFor(second);
-
-  if (firstB >= firstA) {
-    throw new Error(
-      `${origin} 的限流没有在计数：同一个地址连发两次，剩余额度是 ${firstA} → ${firstB}`,
-    );
-  }
-  if (other <= firstB) {
-    throw new Error(
-      [
-        `${origin} 没有按客户端地址分限流桶：`,
-        `地址 ${first} 用掉两次后剩 ${firstB}，换成 ${second} 的第一次却只剩 ${other}——两者共用一个桶。`,
-        "所有用例都会挤进同一份配额，跑到中段一律 429，报出来却是各自的功能失败。",
-        "先查 apps/portal/e2e/support/config.ts 的 clientIdentityHeaders 说明。",
-      ].join("\n"),
-    );
-  }
 }
 
 async function expectOk(
@@ -113,14 +64,14 @@ export async function waitForPortal(
   origin: string = PORTAL_ORIGIN,
   timeoutMs = 120_000,
 ): Promise<void> {
-  const api = await request.newContext({ baseURL: origin });
+  const api = await request.newContext({ baseURL: origin, ignoreHTTPSErrors: true });
   const deadline = Date.now() + timeoutMs;
   let lastError = "never attempted";
   try {
     while (Date.now() < deadline) {
       try {
         const health = await api.get("/api/health");
-        const root = await api.get("/");
+        const root = await api.get("/", { headers: { Accept: "text/html" } });
         if (health.ok() && root.ok()) return;
         lastError = `health ${health.status()}, root ${root.status()}`;
       } catch (error) {
@@ -132,11 +83,6 @@ export async function waitForPortal(
     await api.dispose();
   }
   throw new Error(`${origin} did not become ready within ${timeoutMs}ms: ${lastError}`);
-}
-
-/** 清库重种。e2e 的每次运行都从同一个已知基线出发，否则残留断言没有意义。 */
-export async function reseed(api: APIRequestContext): Promise<void> {
-  await expectOk(api, "post", "/api/dev/reseed");
 }
 
 export async function login(
@@ -154,19 +100,30 @@ export async function createSystemTestRun(adminApi: APIRequestContext): Promise<
 }
 
 export async function cleanupSystemTestRun(adminApi: APIRequestContext, runId: string): Promise<void> {
-  const response = await adminApi.post(`/api/admin/status/system-test-runs/${runId}/cleanup`);
-  const body = await response.text();
-  if (!response.ok()) throw new Error(`cleanup of run ${runId} failed (${response.status()}): ${body}`);
-  await expectOk(adminApi, "post", `/api/admin/status/system-test-runs/${runId}/finalize`);
+  for (let page = 0; page < 100; page += 1) {
+    const response = await adminApi.post(`/api/admin/status/system-test-runs/${runId}/cleanup`);
+    const text = await response.text();
+    let body: { ok?: boolean; status?: string };
+    try {
+      body = JSON.parse(text) as { ok?: boolean; status?: string };
+    } catch {
+      throw new Error(`cleanup of run ${runId} returned invalid JSON (${response.status()}): ${text}`);
+    }
+    if (response.ok() && body.ok === true && body.status === "completed") {
+      await expectOk(adminApi, "post", `/api/admin/status/system-test-runs/${runId}/finalize`);
+      return;
+    }
+    if (response.status() === 409 && body.ok === false && body.status === "cleaning") continue;
+    throw new Error(`cleanup of run ${runId} failed (${response.status()}): ${text}`);
+  }
+  throw new Error(`cleanup of run ${runId} exceeded 100 local cleanup pages`);
 }
 
-export async function readFingerprint(api: APIRequestContext): Promise<SiteFingerprint> {
-  const body = await expectOk(api, "get", "/api/dev/table-counts") as { counts?: SiteFingerprint };
-  if (!body.counts) throw new Error("/api/dev/table-counts returned no counts");
-  return body.counts;
-}
-
-export type FingerprintDrift = { key: string; before: number; after: number };
+export type FingerprintDrift = {
+  key: string;
+  before: SiteFingerprint[string] | "<missing>";
+  after: SiteFingerprint[string] | "<missing>";
+};
 
 /**
  * 逐项比对两个指纹。返回空数组才算清干净——
@@ -175,9 +132,8 @@ export type FingerprintDrift = { key: string; before: number; after: number };
 export function diffFingerprints(before: SiteFingerprint, after: SiteFingerprint): FingerprintDrift[] {
   const drift: FingerprintDrift[] = [];
   for (const key of new Set([...Object.keys(before), ...Object.keys(after)])) {
-    if (FINGERPRINT_IGNORED_KEYS.has(key)) continue;
-    const from = before[key] ?? 0;
-    const to = after[key] ?? 0;
+    const from = Object.hasOwn(before, key) ? before[key]! : "<missing>";
+    const to = Object.hasOwn(after, key) ? after[key]! : "<missing>";
     if (from !== to) drift.push({ key, before: from, after: to });
   }
   return drift.sort((a, b) => a.key.localeCompare(b.key));

@@ -28,11 +28,11 @@ function renderEditor(items: Array<{ id: string; src?: string }>) {
 }
 
 describe("ImageGridEditor", () => {
-  it("centers the upload control when the grid is empty", () => {
+  it("keeps the upload control aligned to the start when the grid is empty", () => {
     renderEditor([]);
 
     expect(screen.getByRole("group", { name: "Attachments" })).toHaveStyle({
-      justifyContent: "center",
+      justifyContent: "flex-start",
     });
   });
 

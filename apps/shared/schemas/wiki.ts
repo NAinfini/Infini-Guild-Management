@@ -99,5 +99,17 @@ export const wikiRevisionListItemSchema = z.object({
 });
 
 export const wikiRevisionSchema = wikiRevisionListItemSchema.extend({
+  slug: z.string(),
+  category_id: z.string(),
   body_json: z.string(),
+  sort_order: z.number().int(),
+  pinned: z.boolean(),
+  archived_at: z.string().nullable(),
+  deleted_at: z.string().nullable(),
+  media_ids: z.array(z.string()).max(50),
 });
+
+export const wikiRevisionListQuerySchema = z.object({
+  before_revision: z.coerce.number().int().positive().optional(),
+  limit: z.coerce.number().int().min(1).max(50).default(50),
+}).strict();

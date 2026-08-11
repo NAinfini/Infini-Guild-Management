@@ -1,5 +1,6 @@
 import type { APIRequestContext, Locator, Page } from "@playwright/test";
 import { SYSTEM_TEST_CONTENT_MARKER } from "@guild/shared/config/system-test";
+import { createThrowawayMember, uniqueTag } from "../../support/members";
 import { expect, readJson, test, type Flow } from "../../support/test";
 import { field, selectOption, toggleInput } from "../../support/ui";
 
@@ -67,14 +68,11 @@ test.beforeEach(async ({ api }) => {
     await api.get("/api/users?page=1&limit=500&include_total=false"),
     "回读成员名单",
   ) as { data: Array<{ user: Member }> };
-  const pick = (username: string): Member => {
-    const found = users.data.find((entry) => entry.user.username === username);
-    expect(found, `种子数据里必须有 ${username}`).toBeTruthy();
-    return found!.user;
-  };
-  m1 = pick("member_01");
-  m2 = pick("member_02");
-  m3 = pick("member_03");
+  const shared = users.data.find((entry) => entry.user.username === "member_01");
+  expect(shared, "fresh E2E fixture 必须提供共享成员 member_01").toBeTruthy();
+  m1 = shared!.user;
+  m2 = await createThrowawayMember(api, uniqueTag("gwa2"));
+  m3 = await createThrowawayMember(api, uniqueTag("gwa3"));
   firstSelectable = [m1, m2, m3].sort((left, right) => (left.id < right.id ? -1 : 1))[0]!;
 
   warAId = await seedWar(api, {
@@ -119,7 +117,7 @@ test.afterEach(async ({ api }) => {
   /* 先删战史再删活动：destroyEvent 对 war_history 只做 event_id = NULL，
      顺序反了战史会留在库里，下一次运行的排名和行数就全乱了。 */
   const histories = await readJson(
-    await api.get(`/api/guild-war/history?search=${stamp}&limit=100`),
+    await api.get(`/api/guild-war/history?search=${stamp}&limit=20`),
     "回读待清理的战史",
   ) as { data: Array<{ id: string }> };
   if (histories.data.length > 0) {
@@ -159,6 +157,12 @@ async function seedWar(api: APIRequestContext, input: SeedWarInput): Promise<str
     }),
     `创建活动 ${input.title}`,
   ) as { id: string };
+
+  const participantIds = [...new Set(input.teams.flatMap((team) => team.members.map((member) => member.id)))];
+  const joined = await api.post(`/api/events/${created.id}/participants`, {
+    data: { user_ids: participantIds },
+  });
+  expect(joined.ok(), `预置参战成员返回 ${joined.status()}: ${await joined.text()}`).toBe(true);
 
   const saved = await api.post("/api/guild-war/save-teams", {
     data: {
@@ -383,7 +387,7 @@ test("玩家模式：空状态引导选人，选中谁表格就出谁的列", as
 test("玩家模式：「只看参战过的活动」真的把没上场的那一场从表里去掉", async ({ page, flow }) => {
   await openAnalyticsTab(page, flow);
   await openConsoleField(page, "Members");
-  // member_03 只打了 B 那一场。
+  // m3 只打了 B 那一场。
   await toggleMember(page, m3.username);
 
   await expect(

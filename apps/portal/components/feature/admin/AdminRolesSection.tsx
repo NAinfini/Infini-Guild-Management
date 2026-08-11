@@ -1,4 +1,4 @@
-import { PERMISSIONS, type AdminRole, type Permission } from "@guild/shared";
+import { PERMISSION_ID, PERMISSIONS, type AdminRole, type Permission } from "@guild/shared";
 import { useConfirmDialog } from "@portal/hooks/useConfirmDialog";
 import { SectionHeader } from "@portal/components/shared/SectionHeader";
 import {
@@ -113,6 +113,7 @@ const PERMISSION_CATEGORIES: PermissionCategory[] = [
       "admin.status.view",
       "admin.roles.view",
       "admin.roles.manage",
+      "admin.owners.manage",
       "admin.siteConfig.manage",
       "admin.classes.manage",
       "admin.badges.manage",
@@ -156,13 +157,14 @@ type PermMeta = { icon: ReactNode; color: string; danger?: boolean };
 
 const PERM_ICON_SIZE = 16;
 
-const PERM_META: Record<string, PermMeta> = {
+const PERM_META: Record<Permission, PermMeta> = {
   "admin.users.view":      { icon: <EyeIcon size={PERM_ICON_SIZE} />,              color: "gray" },
   "admin.users.edit":      { icon: <PencilIcon size={PERM_ICON_SIZE} />,            color: "teal" },
   "admin.users.role":      { icon: <ShieldIcon size={PERM_ICON_SIZE} />,             color: "violet" },
   "admin.users.activate":  { icon: <UserCheckIcon size={PERM_ICON_SIZE} />,          color: "orange" },
   "admin.users.delete":    { icon: <TrashIcon size={PERM_ICON_SIZE} />,              color: "red", danger: true },
   "admin.users.password":  { icon: <LockIcon size={PERM_ICON_SIZE} />,               color: "orange", danger: true },
+  "admin.owners.manage":   { icon: <LockIcon size={PERM_ICON_SIZE} />,               color: "yellow", danger: true },
   "admin.invite.view":     { icon: <EyeIcon size={PERM_ICON_SIZE} />,              color: "gray" },
   "admin.invite.manage":   { icon: <PlusIcon size={PERM_ICON_SIZE} />,               color: "teal" },
   "admin.audit.view":      { icon: <EyeIcon size={PERM_ICON_SIZE} />,              color: "gray" },
@@ -567,6 +569,7 @@ export function AdminRolesSection({
                         <div className="admin-roles-perm-grid">
                           {category.permissions.map((permission) => {
                             const isGranted = Boolean(selectedDraft.permissions[permission]);
+                            const isImmutableOwnerGrant = permission === PERMISSION_ID.ADMIN_OWNERS_MANAGE;
                             const meta = PERM_META[permission] ?? DEFAULT_META;
                             const tooltipText = t(`roles.tooltip.${permission}`, { defaultValue: "" });
 
@@ -577,6 +580,7 @@ export function AdminRolesSection({
                                 variant={isGranted ? "light" : "default"}
                                 color={isGranted ? "portal-brand" : "gray"}
                                 onClick={() => togglePermission(selectedRole.id, permission)}
+                                disabled={isImmutableOwnerGrant}
                                 size="sm"
                                 leftSection={
                                   isGranted ? (

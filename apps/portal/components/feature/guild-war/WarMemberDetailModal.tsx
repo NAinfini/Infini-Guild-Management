@@ -5,9 +5,8 @@ import { BoltIcon } from "@portal/components/icons";
 import { ClassIcon } from "@portal/components/shared/ClassIcon";
 import { resolveClassCatalogItem, useClassCatalogStore } from "@portal/stores/class-catalog";
 import { sanitizeTitleHtml } from "../../../utils/sanitize";
-import { useSiteConfigStore } from "@portal/stores/site-config";
 import { getGuildWarMemberStatLabel, getGuildWarMetricValue } from "@portal/utils/game-rules";
-import { GUILD_WAR_KDA_KEY } from "@guild/shared";
+import { DEFAULT_GAME_RULES, GUILD_WAR_KDA_KEY } from "@guild/shared";
 
 type ActiveMemberDetail = {
   username: string;
@@ -32,8 +31,8 @@ export function WarMemberDetailModal({
   activeDetail,
   onClose,
 }: WarMemberDetailModalProps) {
-  const { t, i18n } = useTranslation("guild-war");
-  const gameRules = useSiteConfigStore((state) => state.gameRules);
+  const { t } = useTranslation("guild-war");
+  const gameRules = DEFAULT_GAME_RULES;
   const classCatalog = useClassCatalogStore((state) => state.items);
   const safeTitleHtml = useMemo(
     () => (activeDetail?.titleHtml ? sanitizeTitleHtml(activeDetail.titleHtml) : ""),
@@ -103,15 +102,15 @@ export function WarMemberDetailModal({
               {gameRules.guild_war.member_stats.map((definition) => (
                 <MemberStat
                   key={definition.key}
-                  label={getGuildWarMemberStatLabel(definition.key, i18n.language, gameRules)}
+                  label={getGuildWarMemberStatLabel(definition.key)}
                   value={(activeDetail.stats[definition.key] ?? 0).toLocaleString(undefined, {
                     maximumFractionDigits: 20,
                   })}
                 />
               ))}
               <MemberStat
-                label={getGuildWarMemberStatLabel(GUILD_WAR_KDA_KEY, i18n.language, gameRules)}
-                value={getGuildWarMetricValue(activeDetail.stats, GUILD_WAR_KDA_KEY, gameRules).toFixed(2)}
+                label={getGuildWarMemberStatLabel(GUILD_WAR_KDA_KEY)}
+                value={getGuildWarMetricValue(activeDetail.stats, GUILD_WAR_KDA_KEY).toFixed(2)}
               />
             </div>
           </section>

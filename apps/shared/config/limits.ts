@@ -36,12 +36,15 @@ export const LIMITS = {
     eventTitle: { min: 1, max: 200 },
     eventDescription: { max: 5000 },
     eventAttachments: { max: 5 },
+    recurringTemplateCatalog: { max: 100 },
     // Quota slots describe team composition and are independent of per-member classes.
     eventClassQuotas: { max: 20 },
+    eventParticipantsPerEvent: { max: 500 },
     eventParticipantsBatch: { max: 99 },
     announcementTitle: { min: 1, max: 200 },
     announcementBody: { min: 1, max: 500000 },
     wikiCategoryName: { min: 1, max: 120 },
+    wikiCategoryCatalog: { max: 200 },
     /* 一次批量改分类最多能带多少行。分类编辑器一次提交的是所有改动过的行，
        所以这同时也是分类目录的规模上限——超过这个数就该分页而不是整屏编辑。 */
     wikiCategoryBatch: { min: 1, max: 200 },
@@ -56,6 +59,7 @@ export const LIMITS = {
     absenceNote: { max: 200 },
     absenceSpanDays: { max: 366 },
     absencesPerUser: { max: 20 },
+    absenceQueryResults: { max: 500 },
     storageName: { max: 50 },
     storageCategoryName: { max: 50 },
     storageDescription: { max: 500 },
@@ -64,10 +68,15 @@ export const LIMITS = {
     storageNote: { max: 200 },
     storageImagesPerItem: { max: 5 },
     storageTransactionQuantity: { max: 1_000_000 },
+    storageStructure: {
+      storages: { max: 50 },
+      categories: { max: 500 },
+    },
     warName: { min: 1, max: 200 },
     warEnemyName: { max: 200 },
     warNotes: { max: 2000 },
     roleName: { min: 1, max: 80 },
+    roleCatalogSize: { max: 50 },
     classLabel: { min: 1, max: 80 },
     classesPerProfile: { max: 20 },
     classTagLabel: { min: 1, max: 80 },
@@ -86,6 +95,7 @@ export const LIMITS = {
   pagination: {
     admin: 50,
     announcements: 50,
+    badgeAssignments: 100,
     events: 100,
     gallery: 24,
     guildWar: 20,
@@ -108,6 +118,10 @@ export const LIMITS = {
   },
   cache: {
     mediaMaxAgeSeconds: 3600,
+  },
+  analytics: {
+    referenceDurationMinutes: { max: 7 * 24 * 60 },
+    modifierWeight: { max: 1_000_000 },
   },
 } as const;
 

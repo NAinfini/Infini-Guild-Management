@@ -53,6 +53,13 @@ function isOptionalSkip(result: EndpointResult | null): boolean {
   return result?.skipped === true && result.error === null;
 }
 
+export function isEndpointError(result: EndpointResult | null | undefined): boolean {
+  return result !== null
+    && result !== undefined
+    && !isOptionalSkip(result)
+    && (result.status === null || result.status >= 400);
+}
+
 type ProgressState = "pass" | "fail" | "pending";
 
 function progressState(allPassed: boolean, hasFail: boolean): ProgressState {
@@ -105,11 +112,13 @@ export function ApiTestCategory({
   onRunCategory,
   runningSet,
   resultMap,
+  showOnlyErrors = false,
 }: {
   category: CategoryDef;
   onRunCategory: (cat: CategoryDef) => Promise<void>;
   runningSet: Set<string>;
   resultMap: Map<string, EndpointResult>;
+  showOnlyErrors?: boolean;
 }) {
   const [open, setOpen] = useState(false);
   const endpointsId = useId();
@@ -122,8 +131,7 @@ export function ApiTestCategory({
     return r && (isOptionalSkip(r) || r.status !== null && r.status >= 200 && r.status < 400);
   });
   const hasFail = category.endpoints.some((ep) => {
-    const r = resultMap.get(epKey(category.key, ep));
-    return r && !isOptionalSkip(r) && (r.status === null || r.status >= 400);
+    return isEndpointError(resultMap.get(epKey(category.key, ep)));
   });
   const pct = catTotal > 0 ? Math.round((catDone / catTotal) * 100) : 0;
 
@@ -157,6 +165,9 @@ export function ApiTestCategory({
 
   const shouldAutoOpen = catRunning || (catDone > 0 && catDone < catTotal);
   const isOpen = open || shouldAutoOpen;
+  const displayedEndpoints = showOnlyErrors
+    ? category.endpoints.filter((ep) => isEndpointError(resultMap.get(epKey(category.key, ep))))
+    : category.endpoints;
 
   return (
     <div className="api-cat">
@@ -226,7 +237,7 @@ export function ApiTestCategory({
 
       {isOpen ? (
         <div id={endpointsId} className="api-cat__endpoints">
-          {category.endpoints.map((ep) => (
+          {displayedEndpoints.map((ep) => (
             <EndpointRow
               key={epKey(category.key, ep)}
               endpoint={ep}

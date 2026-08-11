@@ -260,7 +260,7 @@ export const ImageGridEditor = forwardRef<HTMLDivElement, ImageGridEditorProps>(
       flexWrap: "wrap",
       gap,
       alignItems: "flex-start",
-      justifyContent: items.length === 0 ? "center" : "flex-start",
+      justifyContent: "flex-start",
       ...styleProp,
     };
 

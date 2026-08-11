@@ -52,6 +52,7 @@ const ENTITY_QUERY_KEYS = {
   guild_war: [queryKeys.guildWar.all],
   member_profile: [queryKeys.users.all, queryKeys.myProfile.all],
   member_badge: [queryKeys.users.all, queryKeys.myProfile.all],
+  site_config: [queryKeys.siteConfig.all],
 } satisfies Record<PushEntityType, readonly (readonly string[])[]>;
 
 // Push messages arrive in bursts (batch admin actions, reconnect catch-up).
@@ -231,9 +232,19 @@ export function AppShell() {
     [queueInvalidations],
   );
 
+  const handleNotificationConnected = useCallback(() => {
+    void queryClient.invalidateQueries();
+  }, [queryClient]);
+
+  const handleNotificationUnauthorized = useCallback(() => {
+    window.dispatchEvent(new CustomEvent("guild-api-unauthorized"));
+  }, []);
+
   useNotificationSync({
     enabled: Boolean(user),
     onMessage: handlePushMessage,
+    onConnected: handleNotificationConnected,
+    onUnauthorized: handleNotificationUnauthorized,
   });
   useNotificationPresentation({
     enabled: Boolean(user),

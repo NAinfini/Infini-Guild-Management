@@ -110,8 +110,8 @@ export function EventFormModal({
 
   const titleError = titleTouched && !title.trim() ? t("message.titleRequired") : undefined;
   const dateError = startAt && endAt && endAt < startAt ? t("field.endBeforeStart") : undefined;
-  const isPoll = eventHasBehavior(eventType, "poll", gameRules);
-  const isRaffle = eventHasBehavior(eventType, "raffle", gameRules);
+  const isPoll = eventHasBehavior(eventType, "poll");
+  const isRaffle = eventHasBehavior(eventType, "raffle");
   const eventTypeOptions = gameRules.events.types
     .filter((definition) => definition.enabled)
     .map((definition) => ({

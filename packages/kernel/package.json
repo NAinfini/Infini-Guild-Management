@@ -1,0 +1,9 @@
+{
+  "name": "@guild/kernel",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/public.ts",
+    "./testing": "./src/testing.ts"
+  }
+}

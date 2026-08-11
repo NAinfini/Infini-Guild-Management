@@ -14,7 +14,7 @@ import {
   appendImageUploadVariants,
   convertImageForUpload,
   convertImagesForUpload,
-} from "@guild/shared/utils/media";
+} from "../../utils/upload-media";
 
 export type UpdateMyProfilePayload = z.input<typeof updateProfileSchema>;
 export type ChangeMyPasswordPayload = z.input<typeof changePasswordSchema>;

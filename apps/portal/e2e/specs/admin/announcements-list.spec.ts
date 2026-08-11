@@ -229,8 +229,8 @@ test("重置筛选：空结果时才给按钮，一次清掉三个条件", async
   await expect(pinnedToggle(page)).toHaveAttribute("aria-pressed", "false");
   await expect(field(page, "Filter status")).toHaveValue("All");
   await expect(
-    item(page, "Welcome to Infini Guild"),
-    "重置之后要看得到本用例之外的公告，说明筛选真的撤了",
+    item(page, beta.title),
+    "重置之后要重新显示未置顶草稿，证明搜索、状态和置顶三个条件都撤了",
   ).toBeVisible();
   await expect(reset, "没有条件在生效时重置按钮该收起来").toHaveCount(0);
 });

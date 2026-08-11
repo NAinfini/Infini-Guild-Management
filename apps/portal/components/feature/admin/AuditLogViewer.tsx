@@ -272,6 +272,7 @@ const ENTITY_COLOR_MAP = {
   audit_log_export: "gray",
   audit_archive_export: "gray",
   media_cleanup: "gray",
+  media_asset: "gray",
   seed: "gray",
   system_test: "gray",
   site_config: "teal",

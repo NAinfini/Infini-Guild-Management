@@ -2,7 +2,7 @@ import { useCallback, useMemo, useRef, useState } from "react";
 import {
   convertAudioToOpus,
   getAudioConversionSupport,
-} from "@guild/shared/utils/media";
+} from "../utils/upload-media";
 
 type UploadContext = {
   onUploadProgress: (percent: number) => void;

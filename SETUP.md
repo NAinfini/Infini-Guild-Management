@@ -1,240 +1,258 @@
 # Self-hosting setup guide
 
-This is the canonical source for local installation, Cloudflare deployment, production initialization, updates, and setup troubleshooting. The README intentionally links here instead of duplicating these commands.
+This is the canonical guide for the modular backend. Choose exactly one runtime for each deployment:
+
+| Runtime | Database | Blobs | Realtime and schedules | Process model |
+| --- | --- | --- | --- | --- |
+| Cloudflare | D1 | One `BLOBS` R2 bucket | Durable Object and Cron Triggers | Cloudflare managed |
+| VPS | One local SQLite file | One filesystem root | In-process WebSocket hub and scheduler | One Node.js process |
+
+Both runtimes use the same application services, HTTP routes, Drizzle schema, and core migration. Never point Cloudflare and VPS at copies of data that are being edited independently and later try to merge them.
 
 Chinese version: [SETUP.zh.md](./SETUP.zh.md)
 
-## What you need
+## Requirements
 
-- [Node.js 24 LTS](https://nodejs.org/) 24.18.0 or newer
-- pnpm 11.17.0 (`npm install --global pnpm@11.17.0` if needed)
-- Git, or a downloaded ZIP of this repository
-- A [Cloudflare account](https://dash.cloudflare.com/sign-up) for production
+- Node.js 24.18.0 or newer
+- pnpm 11.17.0
+- Git or a source archive
+- For Cloudflare: a Cloudflare account with Workers, D1, R2, Durable Objects, Cron Triggers, and Rate Limiting available
+- For VPS: a current 64-bit Linux host, persistent disk, TLS reverse proxy, and a service manager such as systemd
 
-Local development does not require a Cloudflare account. A custom domain is optional; production may start on `*.workers.dev`.
-
-## 1. Run locally
-
-From the repository root:
+Install dependencies from the repository root:
 
 ```bash
-pnpm install
-pnpm setup:local
+pnpm install --frozen-lockfile
+```
+
+## Command map
+
+| Purpose | Command |
+| --- | --- |
+| Create local config | `pnpm setup:local --runtime cloudflare` or `pnpm setup:local --runtime vps` |
+| Develop | `pnpm dev` (Cloudflare), `pnpm cloudflare dev`, or `pnpm vps dev` |
+| Build the shared portal | `pnpm build:portal` |
+| Build Cloudflare locally | `pnpm cloudflare build` |
+| Build VPS locally | `pnpm vps build` |
+| Type-check both runtimes | `pnpm typecheck` |
+| Run tests | `pnpm test` |
+| Generate Drizzle SQL | `pnpm db:generate` |
+| Assemble the pre-release core migration | `pnpm db:assemble` |
+| Initialize/verify a VPS database | `pnpm db:migrate:vps --database <sqlite-path>` |
+| Verify a VPS database/blob snapshot | `pnpm verify:data:vps --database <sqlite-path> --blobs <blob-root>` |
+| Apply reviewed private SQL to VPS | `pnpm db:migrate-private:vps --database <sqlite-path> --migration <sql-path>` |
+| Prepare a first site owner | `pnpm prepare:site-owner -- ...` |
+| Prepare old two-column credentials | `pnpm prepare:credential-import -- ...` |
+| Start VPS | `pnpm start:vps` |
+| Local release gates | `pnpm release:check` |
+| Deploy Cloudflare | `pnpm deploy:cloudflare` |
+
+`release:check` is local-only: it scans tracked content, validates both templates, type-checks both runtimes, runs tests, and builds the portal. It does not create, migrate, deploy, or modify remote resources. `deploy:cloudflare` is intentionally separate and is a real remote mutation.
+
+## Local development
+
+### Cloudflare
+
+```bash
 pnpm dev
 ```
 
-`pnpm setup:local` creates your untracked `apps/worker/wrangler.jsonc` from `wrangler.example.jsonc` when it does not exist yet, and creates an ignored `apps/worker/.dev.vars` with a random local `SIGNING_SECRET`. It never overwrites an existing configuration or `.dev.vars` file. Both files are ignored by git; do not commit them.
+`pnpm dev` defaults to `pnpm cloudflare dev`. It creates any missing ignored local configuration and independent local secrets without overwriting existing files, applies the shared migration and local development seed to D1, starts Wrangler on port 8787, and starts Vite on port 5173. No Cloudflare login or remote resource is needed.
 
-One more one-time install: the E2E suite (run by `pnpm test:e2e` and by the deployment gate in step 5) needs a Playwright browser:
+Open `http://localhost:5173`.
 
-```bash
-pnpm exec playwright install chromium
-```
-
-Open `http://localhost:5173` after the portal is ready. Local development uses disposable demo data:
-
-| Username | Password | Role |
-| --- | --- | --- |
-| `admin` | `admin123` | Administrator |
-| `mod_1` | `moderator123` | Moderator |
-| `member_01` | `member1234` | Member |
-
-`pnpm dev` rebuilds the local D1 database and seeds it again. These accounts are never created in production.
-
-## Production schema policy
-
-`apps/worker/db/migrations/0000_core_schema.sql` is the complete fresh pre-release schema baseline.
-
-- During the pre-release reset window, approved schema changes fold into this baseline and disposable databases must be rebuilt from it.
-- After the first release, the baseline freezes. Every later schema change ships as a new monotonically numbered incremental migration that preserves existing data, and no applied migration may be edited.
-- Never patch a production D1 database manually. Apply reviewed migrations through Wrangler, and back up production data before an authorized remote migration.
-
-The schema deliberately has no runtime game-rule tables. Event types, war results, stat keys, and KDA behavior are source-owned contracts, not Site Config records.
-
-## 2. Connect Cloudflare and create resources
-
-`apps/worker/wrangler.jsonc` is your deployment's manifest and is deliberately untracked: the repository ships `wrangler.example.jsonc` as the template, `pnpm setup:local` copies it into place, and `.gitignore` keeps your copy — with its real database ID, bucket name, domain, and origin — out of version control. Fill in the production D1 binding, R2 binding, route, and default logo asset with resources you own. Resource names, IDs, and routes are configuration identifiers, not credentials; `SIGNING_SECRET` and Cloudflare API tokens are the actual secrets and never belong in this file.
-
-Log in:
+### VPS
 
 ```bash
-pnpm exec wrangler login
+pnpm vps dev
 ```
 
-Create the production D1 database and update the `DB` binding:
+The command creates a missing ignored `apps/vps/.env` from `scripts/templates/vps.env.example` with two independent local secrets without overwriting an existing file. It initializes or verifies `data/infini-guild.sqlite`, applies the same local development seed used by Cloudflare, then starts the backend on port 8787 and Vite on port 5173. Open `http://localhost:5173`.
 
-```bash
-pnpm exec wrangler d1 create my-guild-db --binding DB --env production --update-config --config apps/worker/wrangler.jsonc
-```
+The development seed runs only when the database is pristine, is safe to rerun, and never becomes part of the production migration. Use password `admin123` with `admin`, `moderator_01`, or any seeded `member_01`–`member_08` account to exercise the owner, moderator, and member flows. It covers every event type, invite and announcement states, recurring events, polls, raffles, Wiki revision/restore history, storage transaction modes, active and win/loss/draw guild wars, gallery entries, audit/error records, and real local WebP/Ogg media objects. If a database already contains a non-development user, seeding is skipped instead of mixing mock data into that site.
 
-Create one production R2 bucket and update the `MEDIA` binding:
+## Shared schema and migrations
 
-```bash
-pnpm exec wrangler r2 bucket create my-guild-media --binding MEDIA --env production --update-config --config apps/worker/wrangler.jsonc
-```
-
-Only one R2 binding is required. The `MEDIA` bucket stores content media, audit archive data, and each archive month's authoritative manifest. Do not create a separate audit bucket and do not manually rewrite or delete production R2 objects.
-
-If a resource name is already taken, choose another name. If you bind an existing resource, edit only the corresponding `env.production` binding.
-
-## 3. Configure production variables and secret
-
-In `apps/worker/wrangler.jsonc`, review the production variables along with the resource bindings:
-
-```jsonc
-"vars": {
-  "ENVIRONMENT": "production",
-  "PORTAL_ORIGIN": "",
-  "SITE_LOGO_URL": "/guild-logo.svg"
-}
-```
-
-For the normal same-Worker deployment, leave `PORTAL_ORIGIN` empty. Set it only when a separately hosted frontend must call this Worker, and use a bare origin such as `https://portal.example.com` — no path, query, or trailing slash. The Worker compares request origins against this value verbatim, and `pnpm config:check` rejects values that could never match.
-
-`PBKDF2_ITERATIONS` controls the password-hashing cost. It defaults to `10000`, chosen so a login derivation fits the Workers free-plan CPU budget; see [Running on the Workers free plan](#running-on-the-workers-free-plan) for why you should raise it on a paid plan and how the upgrade rolls out to existing accounts.
-
-Store the production secret in Cloudflare:
-
-```bash
-pnpm exec wrangler secret put SIGNING_SECRET --env production --config apps/worker/wrangler.jsonc
-```
-
-Use a long random value. `SIGNING_SECRET` signs audit archive download tokens and authenticates Worker-to-Durable-Object push publication. Store it only as a Cloudflare secret; never place it in `wrangler.jsonc`, an `.env` file, an issue, or a commit.
-
-Validate the manifest:
-
-```bash
-pnpm config:check -- --env=production
-```
-
-Continue only after it prints:
+The canonical pre-release baseline is:
 
 ```text
-[config] production configuration is ready.
+packages/persistence-sqlite/src/migrations/generated/0000_core.sql
+packages/persistence-sqlite/src/migrations/generated/manifest.json  # exactly one 0000 entry
 ```
 
-## 4. Initialize D1 and create the first administrator
+Cloudflare D1 and VPS SQLite consume the same `0000_core.sql` bytes. `app_migrations` is the application's ordinal/checksum ledger and is the authority used at runtime startup. Cloudflare additionally maintains `d1_migrations` so Wrangler knows which file it has applied. These ledgers serve different owners and must both remain present; an empty, unknown, or mismatched schema is refused rather than silently repaired.
 
-Apply the reviewed migrations:
+Schema authors use this pre-release sequence only after changing the shared Drizzle schema:
 
 ```bash
-pnpm exec wrangler d1 migrations apply DB --remote --env production --config apps/worker/wrangler.jsonc
+pnpm db:generate
+pnpm db:assemble
+pnpm test
 ```
 
-Create the first administrator:
+During pre-release development, regenerate `0000_core.sql` from an empty local generated-migration directory, then run `db:assemble` to add the reviewed invariants, canonical seed, application-ledger row, and one-entry manifest. `db:assemble` is not a production migration command. Until the first public release, approved changes replace the baseline; after that release, applied files become immutable and later changes require new numbered migrations.
+
+This pre-release fold replaces the abandoned `0000`–`0002` history. Any existing D1 or VPS database whose `app_migrations` ledger already contains that chain cannot be deployed with the current exact manifest. Before the next deployment, back it up and either rebuild it from the current `0000_core.sql` or perform an explicitly planned and verified rebaseline. The application intentionally has no runtime compatibility branch or automatic remote-ledger rewrite, and repository commands never modify remote D1 unless an operator separately runs an explicitly authorized `--remote` Wrangler command.
+
+Initialize or verify VPS SQLite:
 
 ```bash
-pnpm setup:admin -- --env=production
+pnpm db:migrate:vps --database /srv/infini/data/infini-guild.sqlite
 ```
 
-The command requires an interactive terminal, hides password input, requires a 12–128 character password, operates only on the explicitly selected production environment, refuses to run when any user already exists, and removes its temporary SQL directory. The password hash is written at the default cost and upgrades automatically on the first login if you later raise `PBKDF2_ITERATIONS`. All later users should register through invite links created in Admin.
+The command applies the baseline only to an empty database. It refuses unknown non-empty databases, then verifies the exact `app_migrations` ledger, every canonical schema object, SQLite integrity, and all foreign keys.
 
-## 5. Deploy
-
-Run:
+Verify a stopped VPS deployment, restored snapshot, or prepared transfer without modifying either data store:
 
 ```bash
-pnpm deploy:production
+pnpm verify:data:vps --database /srv/infini/data/infini-guild.sqlite --blobs /srv/infini/data/blobs
 ```
 
-This runs the repository's production release checks, builds the portal, performs a Worker deployment dry run, and deploys the Worker with its static assets. Use this script instead of a bare `wrangler deploy`, which can publish stale frontend assets or skip required checks. The release gate includes the full Playwright E2E suite, so expect the command to run for tens of minutes; it fails early if the Playwright browser from step 1 is missing.
+The verifier opens SQLite read-only and uses the same manifest and Blob inventory services as the application. It emits JSON findings for missing objects, metadata mismatches, and orphan candidates older than 24 hours, then exits nonzero when any finding exists. Stop application writes or run it against a paired snapshot so the two stores cannot change during the scan. The command has no copy or delete capability.
 
-Wrangler prints the public URL after deployment. Open it and sign in with the administrator created in step 4.
-
-## 6. Finish configuration in Admin
-
-Open **Admin → Site Config** and review:
-
-1. **Branding** — site name and uploaded logo.
-2. **Features** — `announcements`, `events`, `guildWar`, `gallery`, `wiki`, `tools`, and `storage`.
-3. **Limits** — per-file upload limits, media quotas, and storage images per item.
-4. **Policies** — the absence policy shown to members.
-
-Then use **Admin → Invites** to create member invitations. Never reuse the bootstrap administrator password.
-
-The fresh D1 migration creates the authoritative `site_config` singleton with the neutral name `Infini Guild`; change it in Admin after first login. `SITE_LOGO_URL` points only to the deployment's static default logo, which an uploaded logo can supersede. The `.github` issue templates link to this repository — a public fork should retarget them so reports reach its own maintainers.
-
-The site name and runtime policies always come from D1. Wrangler does not provide a production site-name fallback.
-
-## Where configuration belongs
-
-| Change | Source of truth | Requires deploy? |
-| --- | --- | --- |
-| Site name/logo, seven feature flags, upload limits, media quotas, storage policy | **Admin → Site Config** | No |
-| Member profiles, roles, permissions, invites, classes, class tags, badges | Corresponding Admin workflow | No |
-| Guild-war analytics weights | `/api/admin/analytics-settings` with the required permission | No |
-| D1, the single `MEDIA` R2 bucket, environment, domain, default logo asset | `apps/worker/wrangler.jsonc` | Yes |
-| `SIGNING_SECRET` | Cloudflare secret storage via `wrangler secret put` | Yes |
-| Event types, war results, stat definitions, KDA formula | Shared source contracts plus an incremental data migration when needed | Build and deploy |
-| Hard safety ceilings, rate limits, pagination defaults | `apps/shared/config/limits.ts` | Build and deploy |
-
-There is no `FEATURES` environment variable. Do not create a second configuration source and do not manually edit production D1 or R2 to change application behavior.
-
-## Running on the Workers free plan
-
-The portal is designed to run on the Workers free plan. These defaults exist because of its limits, and each can be raised after upgrading:
-
-- **Password hashing.** The free plan caps CPU time per invocation at roughly 10 ms, which is why `PBKDF2_ITERATIONS` defaults to `10000` — one login derivation fits the budget. OWASP recommends 600,000 iterations for PBKDF2-SHA256, so on a paid plan (30 s CPU ceiling) set `"PBKDF2_ITERATIONS": "600000"` in the production vars. Stored hashes are self-describing, so the change is safe at any time: existing accounts keep verifying against their stored cost and are transparently rehashed to the new cost on their next successful login.
-
-Upgrading is a Cloudflare dashboard action (Workers & Pages → plan); no code change is needed beyond the vars above.
-
-## Optional custom domain
-
-Choose one production exposure mode before the configuration check:
-
-1. For `workers.dev`, keep `env.production.workers_dev` as `true` (the template default) with no `routes` entry.
-2. For a Cloudflare-managed custom domain, set `workers_dev` to `false` and add a `routes` entry with your hostname (the template carries a commented example), for example `guild.example.com`.
-3. Run `pnpm config:check -- --env=production`.
-4. Run `pnpm deploy:production`.
-
-The portal and API normally remain same-origin, so `PORTAL_ORIGIN` can stay empty.
-
-## Update an initialized site
-
-Back up production data before an authorized migration, then run:
+For Cloudflare, first back up the target, review the exact migration and binding, then explicitly authorize the remote Wrangler operation yourself:
 
 ```bash
-pnpm install
-pnpm config:check -- --env=production
-pnpm exec wrangler d1 migrations apply DB --remote --env production --config apps/worker/wrangler.jsonc
-pnpm deploy:production
+pnpm exec wrangler d1 migrations apply DB --remote --config apps/cloudflare/wrangler.jsonc
 ```
 
-An initialized site must never rerun `pnpm setup:admin`, edit an already-applied migration file, or apply direct production D1/R2 edits. Repository releases provide incremental migrations for schema changes.
+This repository's setup, CI, tests, and release checks never run that remote command.
+
+## Configuration and secrets
+
+`IG_PBKDF2_ITERATIONS` defaults to `10000` on both runtimes and accepts integers through `10000000`. Stored hashes include their cost. Raising the configured value upgrades an older valid hash after the user's next successful login. Benchmark the chosen value on the actual runtime before production; never lower it below 10000.
+
+### Cloudflare production
+
+1. Copy `apps/cloudflare/wrangler.example.jsonc` to ignored `apps/cloudflare/wrangler.jsonc`.
+2. Fill your `DB`, `BLOBS`, `ASSETS`, `NOTIFICATIONS`, and all five rate-limiter bindings: `AUTH_RATE_LIMITER`, `READ_RATE_LIMITER`, `MUTATION_RATE_LIMITER`, `UPLOAD_RATE_LIMITER`, and `WEBSOCKET_RATE_LIMITER`.
+3. Set the public HTTPS origin, allowed origins, routes, and cron configuration.
+4. Put both secrets into Cloudflare secret storage; never place them in `vars`:
+
+```bash
+pnpm exec wrangler secret put IG_INVITE_TOKEN_SECRET --config apps/cloudflare/wrangler.jsonc
+pnpm exec wrangler secret put IG_AUDIT_DOWNLOAD_SECRET --config apps/cloudflare/wrangler.jsonc
+```
+
+5. Validate locally:
+
+```bash
+pnpm config:check --runtime cloudflare --config apps/cloudflare/wrangler.jsonc
+```
+
+Real account IDs, database IDs, bucket names, domains, and secrets must stay in the ignored deployment config or Cloudflare secret storage. Do not commit them.
+
+### VPS production
+
+Run setup once, then edit ignored `apps/vps/.env`:
+
+```bash
+pnpm setup:local --runtime vps
+pnpm config:check --runtime vps --config apps/vps/.env
+```
+
+Set `IG_PUBLIC_URL` to the external HTTPS origin; `IG_DATABASE_PATH`, `IG_BLOB_PATH`, and `IG_STATIC_PATH` to persistent absolute paths; and both secrets to independent random values of at least 32 bytes. Bind `IG_HOST` to a private/loopback address behind a TLS reverse proxy. Set `IG_TRUSTED_PROXY_IPS` only to exact proxy IP addresses you operate.
+
+Protect `.env`, the SQLite file, blob root, backups, and `private-migrations/` with an operating-system account dedicated to the service. Do not run multiple VPS application processes, replicas, Node cluster workers, or network-shared SQLite writers. The first VPS release supports one process on one host.
+
+## Establish the first `site_owner`
+
+Do this after the core schema exists and before exposing registration. Additional owners must be managed through the authenticated admin workflow.
+
+Create the ignored working directory once with `mkdir private-migrations`.
+
+For a new owner, set `IG_BOOTSTRAP_PASSWORD` in the current shell without putting the value in command history, optionally set `IG_PBKDF2_ITERATIONS`, then generate private SQL:
+
+```bash
+pnpm prepare:site-owner --mode create --user-id owner-1 --username Owner_1 --output private-migrations/0001_site_owner.sql
+```
+
+To promote one existing active user instead, leave `IG_BOOTSTRAP_PASSWORD` unset:
+
+```bash
+pnpm prepare:site-owner --mode promote --user-id existing-user-id --output private-migrations/0001_site_owner.sql
+```
+
+The generator refuses to overwrite a file and never prints the password or hash. Clear `IG_BOOTSTRAP_PASSWORD` from the shell immediately afterward.
+
+On VPS, stop the service, back up both data stores, and apply with the transactional private-migration command:
+
+```bash
+pnpm db:migrate-private:vps --database /srv/infini/data/infini-guild.sqlite --migration private-migrations/0001_site_owner.sql
+```
+
+That command checks `app_migrations`, SQLite integrity, and foreign keys before and after, rejects embedded transaction control, uses `BEGIN IMMEDIATE`, and rolls back any failure.
+
+For Cloudflare, this repository deliberately does not automate a remote private migration. After a backup, put the reviewed SQL in an untracked deployment-private migration directory, point the ignored Wrangler config's `migrations_dir` at it, and explicitly run the same authorized `wrangler d1 migrations apply ... --remote` workflow shown above. Restore the canonical migrations directory afterward. Never commit the SQL.
+
+## Offline migration of legacy two-column passwords
+
+The old Worker stored password material across `password_hash` and `salt`. Export only the required rows into a private JSON file:
+
+```json
+[
+  { "user_id": "user-1", "password_hash": "pbkdf2-sha256$10000$...", "salt": "..." }
+]
+```
+
+Generate the one-time SQL offline:
+
+```bash
+pnpm prepare:credential-import --input private-migrations/legacy-credentials.json --output private-migrations/0002_credentials.sql
+```
+
+The generator validates at most 10,000 unique users, converts the legacy format without plaintext passwords, asserts that every target user exists, and refuses to overwrite output. Apply it on VPS with `db:migrate-private:vps`; for Cloudflare, use the explicitly authorized private Wrangler migration procedure above. Keep input and output out of source control, logs, tickets, and chat, then delete or archive them in encrypted storage according to your retention policy.
+
+## Production start and deployment
+
+### Cloudflare
+
+```bash
+pnpm release:check
+pnpm cloudflare build
+# Back up, then explicitly apply reviewed remote migrations.
+pnpm deploy:cloudflare
+```
+
+`deploy:cloudflare` publishes code and assets. Review the selected Cloudflare account, bindings, routes, and migration state before authorizing it.
+
+### VPS
+
+```bash
+pnpm release:check
+pnpm vps build
+pnpm db:migrate:vps --database /srv/infini/data/infini-guild.sqlite
+pnpm verify:data:vps --database /srv/infini/data/infini-guild.sqlite --blobs /srv/infini/data/blobs
+pnpm start:vps
+```
+
+Run `start:vps` under the service manager as the dedicated user, with working directory set to the repository/release root and `apps/vps/.env` readable only by that user. Terminate TLS at the reverse proxy and forward `/api`, `/ws`, and static requests to the same Node process. Configure restart-on-failure, graceful `SIGTERM`, and persistent disk mounts before enabling traffic.
+
+## Backup and restore
+
+### VPS
+
+1. Stop the single application process and confirm it exited.
+2. Copy the SQLite file and the entire blob root into the same timestamped, encrypted snapshot. Preserve file permissions and metadata.
+3. Restart only after both copies finish. Test restoration regularly on a separate host.
+
+To restore, stop the service, move the damaged data aside, restore the matching SQLite and blob snapshots together, run `db:migrate:vps` and `verify:data:vps`, then start and check `/api/health`. Never restore only one side: database rows authorize exact blob keys.
+
+### Cloudflare
+
+Before a remote migration or deployment, export D1 with an explicitly authorized Wrangler `d1 export --remote` operation and copy every R2 object plus metadata through an S3-compatible backup tool into independent storage. Record the Worker config and resource bindings without secrets; keep secrets in a separate secret manager. Restore into new D1/R2 resources, verify counts and object metadata, update the ignored bindings, then deploy. Do not treat source control, a D1 export alone, or R2 object versioning alone as a complete backup.
+
+## Updates and CI
+
+For either runtime: read release notes, stop writes or schedule maintenance, take a complete backup, install with the locked pnpm version, run `release:check`, review new migrations, apply them to the selected backend, then start/deploy and verify health.
+
+The GitHub workflow runs only local gates. It does not log in to Cloudflare, create resources, run remote D1/R2 operations, deploy, or start a production VPS.
 
 ## Troubleshooting
 
-### `wrangler.jsonc` is missing
-
-Run `pnpm setup:local` to create it from `wrangler.example.jsonc`. The file is deliberately untracked, so a fresh clone does not contain it until this step.
-
-### The configuration check reports a placeholder
-
-Read the exact field in the error. Re-run the matching D1/R2 `--update-config` command or replace only that production value.
-
-### Cloudflare authentication fails
-
-```bash
-pnpm exec wrangler logout
-pnpm exec wrangler login
-```
-
-### The first-admin command reports existing users
-
-This is a safety stop. Use an existing administrator. If no administrator is usable, do not delete or modify production data; request help with credentials and private guild data removed.
-
-### Port 8787 or 5173 is already in use
-
-`pnpm dev` needs both fixed ports: the Worker serves `http://localhost:8787` and Vite must own `http://localhost:5173`, because the dev CORS allowlist pins that exact portal origin. Vite is configured with `strictPort` and fails immediately instead of silently moving to 5174 (which would break every credentialed request). If either port is taken — often a previous `pnpm dev` that did not exit — stop that process and rerun. The local seed step also times out after 60 seconds when the Worker cannot start on 8787.
-
-### E2E tests fail with "Executable doesn't exist"
-
-Run `pnpm exec playwright install chromium` once. Also stop `pnpm dev` before `pnpm test:e2e`: the E2E slots start their own Workers and clash with a running dev server's ports.
-
-### Uploads fail
-
-Confirm that `MEDIA` points to the one expected R2 bucket. Persisted images are complete WebP `full`/`view` pairs; profile audio is Ogg containing Opus. The Worker compares declared types with bytes, verifies exact image dimensions, and rejects SVG and GIF as images. Ordinary API bodies are limited to 1 MiB and upload requests to 32 MiB; smaller per-variant limits and logical-asset quotas live in Site Config. See [Media Architecture](./docs/media-architecture.md).
-
-### Ask for setup help safely
-
-Use the repository's **Setup help** issue form and include the failing command plus complete error text. Remove passwords, cookies, invite codes, `SIGNING_SECRET`, Cloudflare API tokens, and private guild data. Your `wrangler.jsonc` resource identifiers are configuration, not authentication secrets — and the file is untracked, so nothing publishes them automatically — but you may still redact identifiers you do not want in a public issue.
+- Missing config: rerun `pnpm setup:local --runtime cloudflare|vps`; existing files are preserved.
+- Port already in use: stop the existing service on 5173 (and the VPS backend on 8787), then rerun the command. Development ports are intentionally fixed; Cloudflare will not silently move to another port because that would invalidate configured origins and cookies.
+- Schema 503/startup refusal: verify that the selected database received the shared migration and that its ordered `app_migrations` ledger matches the release. Never bypass the check.
+- VPS write contention: confirm only one application process has the SQLite file open and that the file is on local persistent storage, not NFS/SMB.
+- Upload failures: confirm the single `BLOBS` binding or blob root is writable and has enough capacity; do not create a second media namespace.
+- Setup support: include the runtime, exact command, and redacted error. Remove passwords, cookies, invite tokens, `.env`, `.dev.vars`, private migrations, Cloudflare tokens, and guild data.

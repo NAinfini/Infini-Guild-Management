@@ -1,9 +1,8 @@
 import { useCallback, useMemo } from "react";
 import { useTranslation } from "react-i18next";
-import { GUILD_WAR_KDA_KEY, evaluateKda, findGuildWarResultDefinition } from "@guild/shared";
+import { DEFAULT_GAME_RULES, GUILD_WAR_KDA_KEY, evaluateKda, findGuildWarResultDefinition } from "@guild/shared";
 import type { AnalyticsAggregation, AnalyticsMetricKey, AnalyticsTableColumn } from "../../types/guild-war";
 import { aggregateValues, computeStdDev, hashToPaletteColor } from "@portal/utils/guild-war-analytics";
-import { useSiteConfigStore } from "@portal/stores/site-config";
 import { getGuildWarResultLabel } from "@portal/utils/game-rules";
 
 type WarDetail = {
@@ -109,7 +108,7 @@ export function useGuildWarAnalyticsComputed({
   normalizeMetricValue,
 }: UseGuildWarAnalyticsComputedParams) {
   const { t } = useTranslation("guild-war");
-  const gameRules = useSiteConfigStore((state) => state.gameRules);
+  const gameRules = DEFAULT_GAME_RULES;
   const warRules = gameRules.guild_war;
 
   const analyticsMetric = analyticsSelectedMetrics[0] ?? warRules.default_member_stat_key;
@@ -174,7 +173,7 @@ export function useGuildWarAnalyticsComputed({
         war_name: war.war_name,
         created_at: war.created_at.slice(0, 10),
         enemy_name: war.enemy_name ?? "—",
-        result: war.result ? getGuildWarResultLabel(war.result, undefined, gameRules) : "—",
+        result: war.result ? getGuildWarResultLabel(war.result) : "—",
         own,
         enemy,
         margin: own !== null && enemy !== null ? own - enemy : null,
@@ -189,7 +188,7 @@ export function useGuildWarAnalyticsComputed({
     }
     const decided = Array.from(counts.values()).reduce((sum, value) => sum + value, 0);
     const wins = Array.from(counts.entries()).reduce((sum, [resultId, count]) => (
-      findGuildWarResultDefinition(gameRules, resultId)?.outcome === "win" ? sum + count : sum
+      findGuildWarResultDefinition(resultId)?.outcome === "win" ? sum + count : sum
     ), 0);
     return {
       counts,

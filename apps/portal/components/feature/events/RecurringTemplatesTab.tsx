@@ -225,7 +225,7 @@ export function RecurringTemplatesTab({
           .filter((definition) => definition.enabled)
           .map((definition) => ({
             value: definition.id,
-            label: getEventTypeLabel(definition.id, i18n.language, gameRules),
+            label: getEventTypeLabel(definition.id, i18n.language),
           }))}
         className="recurring-template-filter-type"
       />
@@ -335,7 +335,7 @@ export function RecurringTemplatesTab({
                           </Text>
                           {typeDef && (
                             <Badge size="xs" variant="light" style={{ flexShrink: 0 }}>
-                              {getEventTypeLabel(typeDef.id, i18n.language, gameRules)}
+                              {getEventTypeLabel(typeDef.id, i18n.language)}
                             </Badge>
                           )}
                           <HoverCard width={280} shadow="lg" withArrow arrowSize={10} openDelay={350} closeDelay={80} position="top">

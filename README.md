@@ -4,7 +4,7 @@
 
 **A self-hosted guild portal for members, events, wars, knowledge, media, storage, and staff operations.**
 
-The React portal and Hono API share TypeScript contracts and are deployed together on Cloudflare Workers.
+The React portal and Hono API share TypeScript contracts and run on either Cloudflare Workers or a single-process Node.js VPS.
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](./LICENSE)
 [![TypeScript](https://img.shields.io/badge/TypeScript-6-blue?logo=typescript)](https://www.typescriptlang.org/)
@@ -21,7 +21,7 @@ The React portal and Hono API share TypeScript contracts and are deployed togeth
 
 ## Overview
 
-Infini Guild Management keeps routine guild work in one bilingual, responsive portal instead of spreading it across spreadsheets, chat pins, media folders, and one-off utilities. The Worker serves both the SPA and the API, so normal deployments use one origin and one public URL.
+Infini Guild Management keeps routine guild work in one bilingual, responsive portal instead of spreading it across spreadsheets, chat pins, media folders, and one-off utilities. Both supported backends serve the SPA and API from one origin; choose Cloudflare or VPS for a deployment, never both over the same data.
 
 ## User-facing capabilities
 
@@ -36,7 +36,7 @@ Infini Guild Management keeps routine guild work in one bilingual, responsive po
 | Storage | Authenticated inventory structures, categories, items, images, quantities, and transaction history |
 | Tools and settings | Public settings and a Tools page with the dice roller |
 | Administration | Members, invites, roles and permissions, audit archives/logs, error and service status, Site Config, classes, class tags, badges, and maintenance actions |
-| Discovery and updates | Command search plus authenticated WebSocket update hints through a Durable Object |
+| Discovery and updates | Command search plus authenticated WebSocket update hints through the selected runtime's notification hub |
 
 ### Page access
 
@@ -65,24 +65,31 @@ Admin and Site Config cannot edit these rules. D1 contains no runtime game-rule 
 
 ```text
 apps/
-├── shared/   Zod schemas, shared types, limits, and source-owned domain contracts
-├── worker/   Hono API on Cloudflare Workers with D1, R2, and Durable Objects
-└── portal/   React SPA with TanStack Router, TanStack Query, Mantine, and Zustand
+├── cloudflare/  Workers entrypoint and D1/R2/Durable Object adapters
+├── vps/         Single-process Node.js runtime with SQLite and filesystem blobs
+├── shared/      Zod schemas, shared types, limits, and source-owned contracts
+└── portal/      React SPA with TanStack Router, TanStack Query, Mantine, and Zustand
+packages/
+├── application/         Runtime-neutral composition
+├── kernel/              Context, errors, authorization, and ports
+├── persistence-sqlite/  Shared Drizzle schema and core SQLite migration
+├── server/              Domain services
+└── transport-http/      Shared Hono routes
 ```
 
 | Layer | Current stack |
 | --- | --- |
 | Frontend | React 19.2, Vite 8.2, Mantine 9.5, TanStack Router/Query, Zustand 5, and plain CSS with custom properties; Tailwind is not used |
-| Language and validation | TypeScript 6 and Zod 4 shared across portal and Worker |
+| Language and validation | TypeScript 6 and Zod 4 shared across portal and both backends |
 | Content and charts | TipTap 3 and ECharts 6 |
-| Backend and data | Hono, Drizzle ORM, Cloudflare Workers, and D1 |
-| Objects and realtime | One R2 `MEDIA` bucket and a WebSocket Durable Object |
+| Cloudflare backend | Hono, D1, one `BLOBS` R2 bucket, Cron Triggers, and a notification Durable Object |
+| VPS backend | Hono on Node.js, one local SQLite file, one filesystem blob root, and in-process scheduling/WebSockets |
 
-The single `MEDIA` bucket stores both persisted content media and audit archive data. Each audit month is committed by an authoritative `audit-archive/.../manifest.json` in that same bucket; there is no second archive bucket.
+The single physical blob namespace (`BLOBS` on Cloudflare or the configured VPS blob root) stores both persisted content media and audit archive data. Audit batches use canonical `audit/YYYY/MM/<archiveId>.ndjson` objects; their authoritative size, digest, range, and lifecycle metadata lives in the shared SQLite `audit_archives` table. There is no second archive store.
 
-Persisted images use mandatory WebP `full` and `view` variants; profile audio uses Ogg/Opus. The Worker verifies bytes, dimensions, and required variants before attachment. SVG and GIF are not accepted as images. See [Media Architecture](./docs/media-architecture.md) for the canonical D1/R2 contract.
+Persisted images use mandatory WebP `full` and `view` variants; profile audio uses Ogg/Opus. The selected backend verifies bytes, dimensions, and required variants before attachment. SVG and GIF are not accepted as images. See [Media Architecture](./docs/media-architecture.md) for the canonical persistence contract.
 
-Media-backed domain creation writes the owning parent and business children before attaching media; attachment failure compensates by deleting that parent. Deletion resolves non-media relationships and then deletes the parent directly, allowing D1 lifecycle triggers to remove links and schedule expiry. R2 object keys derive only from the opaque media ID plus the fixed `full`/`view` variant name, never from a domain ID, filename, or upload path.
+Media bytes are staged before a domain mutation. The owning parent, business children, media links, and audit row are then committed in one SQLite transaction; a failed transaction leaves only staged assets for bounded garbage collection. Parent deletion and its audit row are also atomic, while shared SQLite lifecycle triggers remove links and schedule unreferenced assets for expiry. Blob keys derive only from the opaque media ID plus the fixed `full`/`view` variant name, never from a domain ID, filename, or upload path.
 
 ## API surface
 
@@ -98,13 +105,13 @@ All HTTP APIs are under `/api/`; authentication uses HTTP-only session cookies.
 | `/api/announcements` | Announcement content, images, publishing, archive, and deletion |
 | `/api/guild-war` | Active war state, teams, history, member stats, export, and analytics |
 | `/api/wiki`, `/api/gallery` | Wiki categories/articles/revisions/media and gallery images/videos |
-| `/api/media` | D1-authorized `view`/`full` delivery for canonical R2 media variants |
+| `/api/media` | Database-authorized `view`/`full` delivery for canonical blob variants |
 | `/api/storage` | Storage structures, items, images, quantities, and transactions |
 | `/api/classes`, `/api/class-tags`, `/api/badges` | Runtime catalogs and badge assignments |
 | `/api/admin`, `/api/admin/maintenance` | Users, invites, roles, Site Config, analytics settings, audit/error/status data, system tests, and maintenance |
-| `/ws` | Authenticated WebSocket endpoint backed by the Durable Object |
+| `/ws` | Authenticated WebSocket endpoint backed by a Durable Object or the VPS in-process hub |
 
-Mutations require origin and `X-Requested-With` checks. The Worker also applies separate rate limits for authentication, reads, writes, uploads, and credential changes.
+Mutations require origin and `X-Requested-With` checks. Both backends apply separate rate limits for authentication, reads, writes, uploads, and credential changes.
 
 ## Scheduled maintenance
 
@@ -113,17 +120,17 @@ Mutations require origin and `X-Requested-With` checks. The Worker also applies 
 | Daily at 00:00 UTC | Audit archive and error-log cleanup |
 | Every 15 minutes | Event instance generation, raffle draws, session cleanup, scheduled announcement publishing, event auto-archive, and expired unlinked-media cleanup |
 
-Media cleanup runs in scheduled maintenance. It selects only expired, unlinked D1 assets and deletes the exact R2 keys recorded for their variants; it never guesses ownership from paths or scans the bucket as an authorization source. The admin API test console is always available and gated by admin permissions: every fixture a test run creates is registered in a server-side run registry and deleted by exact ID when the run ends.
+Cloudflare uses Cron Triggers; the VPS runtime schedules the same jobs in its single Node.js process. Media cleanup selects only expired, unlinked database assets and deletes the exact recorded blob keys; it never guesses ownership from paths or scans blob storage as an authorization source.
 
 ## Setup and deployment
 
-[SETUP.md](./SETUP.md) is the single source of truth for prerequisites, local development, first production initialization, Cloudflare resources, migrations, deployment, updates, and troubleshooting. Use [SETUP.zh.md](./SETUP.zh.md) for the matching Chinese guide.
+[SETUP.md](./SETUP.md) is the source of truth for choosing Cloudflare or VPS, local development, the shared core schema, first-site-owner bootstrap, private legacy credential migration, production secrets, backup/restore, updates, and troubleshooting. Use [SETUP.zh.md](./SETUP.zh.md) for Chinese.
 
-The core migration is the fresh pre-release schema baseline. Approved schema changes fold into it until the first release; later changes ship as immutable incremental migrations. The setup guide states the full policy, including how to run on the Workers free plan and what to raise after upgrading.
+The sole checked-in pre-release baseline is `0000_core.sql`, and its manifest contains only that entry. Approved schema changes fold into it until the first release; later changes ship as immutable incremental migrations. A deployment that already applied the abandoned pre-release `0000`–`0002` chain must be rebuilt or explicitly rebaselined before its next deployment; there is no runtime compatibility path for that history. The setup guide states the full policy, including how to run on the Workers free plan and what to raise after upgrading.
 
 ## Security
 
-Server-side permission checks are authoritative. Sessions use HTTP-only cookies; rich text is sanitized; security headers include CSP, HSTS, frame denial, and `nosniff`. `SIGNING_SECRET` protects both audit archive download tokens and Worker-to-Durable-Object push publication.
+Server-side permission checks are authoritative. Sessions use HTTP-only cookies; rich text is sanitized; security headers include CSP, frame denial, and `nosniff`. `IG_INVITE_TOKEN_SECRET` and `IG_AUDIT_DOWNLOAD_SECRET` must each contain at least 32 random bytes and stay in Cloudflare secret storage or the private VPS environment file.
 
 Report vulnerabilities privately according to [SECURITY.md](./SECURITY.md).
 

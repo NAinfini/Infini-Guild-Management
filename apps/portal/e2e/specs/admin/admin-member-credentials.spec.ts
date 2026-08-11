@@ -3,6 +3,7 @@ import { MUTATION_HEADERS } from "../../support/api";
 import { PORTAL_ORIGIN } from "../../support/config";
 import { createThrowawayMember, uniqueTag } from "../../support/members";
 import { expect, identityHeaders, test } from "../../support/test";
+import { confirmDialog } from "../../support/ui";
 
 /*
  * 行操作菜单里的两件凭据类操作：重置密码、清除登录锁。
@@ -20,7 +21,15 @@ import { expect, identityHeaders, test } from "../../support/test";
 const RESET_PASSWORD = { method: "POST", path: /^\/api\/admin\/users\/[^/]+\/reset-password$/ } as const;
 const RESET_LOGIN_LOCK = { method: "POST", path: /^\/api\/admin\/users\/[^/]+\/reset-login-lock$/ } as const;
 
-type LoginResult = { status: number; message: string };
+type LoginPayload = {
+  error_code?: string;
+  message?: string;
+  details?: {
+    retry_after_seconds?: number;
+    locked_until?: string;
+  };
+};
+type LoginResult = { status: number; message: string; payload: LoginPayload };
 
 let trackArtifactsFlag: boolean;
 
@@ -52,16 +61,17 @@ async function attemptLogin(username: string, password: string, address: string)
   });
   const response = await probe.post("/api/auth/login", { data: { username, password } });
   const status = response.status();
-  const body = await response.text();
+  const payload = await response.json() as LoginPayload;
   await probe.dispose();
-  return { status, message: body };
+  return { status, message: JSON.stringify(payload), payload };
 }
 
 /** 连续打错密码。第 4 次之后阶梯开始锁账号（前 3 次是免费的打字容错）。 */
 async function failLogins(username: string, address: string, times: number): Promise<void> {
   for (let attempt = 1; attempt <= times; attempt += 1) {
     const result = await attemptLogin(username, "definitely-not-the-password", address);
-    expect(result.status, `第 ${attempt} 次故意打错密码应当是 401`).toBe(401);
+    const expectedStatus = attempt < 4 ? 401 : 429;
+    expect(result.status, `第 ${attempt} 次故意打错密码应当是 ${expectedStatus}`).toBe(expectedStatus);
   }
 }
 
@@ -142,16 +152,28 @@ test("清除登录锁：连错四次之后账号被锁，点掉锁的那个才�
   /*
    * 对照组先确认锁真的生效了。没有这一步，后面「清完能登」的断言就悬空了——
    * 锁根本没上的话，那一条照样绿。
-   * 429 有两个可能来源，所以连文案一起断言：限流说的是 Too many requests，
-   * 账号锁说的是 This account is locked。
+   * 429 有两个可能来源，所以连结构化详情一起断言：普通请求限流只有重试秒数，
+   * 账号锁还必须给出锁定截止时间，供客户端持续展示剩余时长。
    */
   const blocked = await attemptLogin(control.username, control.password, controlAddress);
   expect(blocked.status, "连错四次之后，正确口令也该被挡在门外").toBe(429);
-  expect(blocked.message, "挡住它的必须是账号锁，不是请求限流").toContain("This account is locked");
+  expect(blocked.payload.error_code, "账号锁使用统一的限流错误合同").toBe("RATE_LIMITED");
+  expect(blocked.payload.details?.retry_after_seconds, "客户端必须拿到剩余锁定秒数").toBeGreaterThan(0);
+  expect(blocked.payload.details?.locked_until, "锁定截止时间能区分账号锁和普通请求限流")
+    .toEqual(expect.any(String));
 
   await openMembers(page, tag);
   await openRowMenu(page, target.username);
-  await flow.click(menuItem(page, "Clear Login Lock"), RESET_LOGIN_LOCK);
+  await flow.clickWithoutApi(menuItem(page, "Clear Login Lock"));
+  const confirmation = await confirmDialog(page, "Clear login lock?");
+  await expect(
+    confirmation,
+    "管理员确认前必须看到当前剩余锁定时长",
+  ).toContainText(/Current lock time remaining: \d+ seconds?/);
+  await flow.click(
+    confirmation.getByRole("button", { name: "Clear Login Lock", exact: true }),
+    RESET_LOGIN_LOCK,
+  );
   await expectNotified(page, "Login lock cleared; the user can sign in again immediately");
 
   const unlocked = await attemptLogin(target.username, target.password, probeAddress);

@@ -20,6 +20,7 @@ export type {
   BatchRoleChangePayload,
   CreateAdminMemberPayload,
   CreateInviteLinkPayload,
+  ResetAdminUserLoginLockResponse,
 } from "../api/mutations/admin";
 export { createRole, deleteRole, updateRole } from "../api/mutations/roles";
 export type { CreateRolePayload, UpdateRolePayload } from "../api/mutations/roles";
@@ -40,6 +41,7 @@ export {
   fetchAdminInviteLinks,
   fetchAdminInviteStats,
   fetchAdminStatus,
+  fetchAdminUserLoginLock,
   requestAdminAuditArchiveDownload,
 } from "../api/queries/admin";
 export { fetchBadgeAssignments, fetchBadges } from "../api/queries/badges";
@@ -49,6 +51,7 @@ export type {
   AdminAuditExportParams,
   AdminInviteLinksResponse,
   AdminStatus,
+  AdminLoginLockState,
   InviteVisibility,
   InviteLinkStatsSummary,
 } from "../api/queries/admin";

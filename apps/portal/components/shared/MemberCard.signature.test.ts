@@ -51,11 +51,12 @@ describe("Roster MemberCard signature interaction", () => {
     expect(source).not.toContain("tabIndex={-1}");
   });
 
-  it("keeps mobile hover bleed inside the 12px shell gutter", () => {
+  it("keeps mobile hover bleed inside the padded roster surface", () => {
     const styles = readPortalFile("apps/portal/components/pages/RosterPage.css");
 
     expect(styles).toMatch(
-      /@media \(max-width: 767px\)[\s\S]*?\.roster-card-grid,\s*\.roster-virtual-scroll\s*\{[\s\S]*?padding:\s*var\(--space-md\);[\s\S]*?margin:\s*calc\(-1 \* var\(--space-md\)\);/,
+      /@media \(max-width: 767px\)[\s\S]*?\.roster-grid-region\s*\{[\s\S]*?padding:\s*var\(--space-md\);/,
     );
+    expect(styles).not.toMatch(/\.roster-card-grid\s*\{[^}]*margin:\s*-16px/);
   });
 });

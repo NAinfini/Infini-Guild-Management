@@ -1,5 +1,6 @@
 import { SYSTEM_TEST_CONTENT_MARKER } from "@guild/shared/config/system-test";
 import { expect, readJson, test } from "../../support/test";
+import { createTestStorage } from "../../support/storage";
 import { expectNoDialog, readInteger, selectOption, topDialog } from "../../support/ui";
 
 /*
@@ -14,8 +15,9 @@ import { expectNoDialog, readInteger, selectOption, topDialog } from "../../supp
  */
 test("库存全流程：存入加库存、取出减库存，UI 与服务端必须一致", async ({ page, flow, api }) => {
   const itemName = `${SYSTEM_TEST_CONTENT_MARKER} E2E Stock ${Date.now()}`;
+  const storage = await createTestStorage(api, "Stock Flow");
 
-  await page.goto("/storage");
+  await page.goto(`/storage?storageId=${storage.id}`);
 
   // 新建物品
   await page.getByRole("button", { name: "New Item", exact: true }).first().click();

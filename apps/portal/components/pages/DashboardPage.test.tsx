@@ -110,13 +110,21 @@ describe("DashboardPage upcoming event query", () => {
     expect(apiRequest).toHaveBeenCalledWith("/api/dashboard/wars");
   });
 
-  it("isolates event caches by viewer and applies public visibility in external view", async () => {
+  it("isolates dashboard caches by viewer and applies public visibility in external view", async () => {
     expect(dashboardQueryKeys.events("admin-1", false)).not.toEqual(
       dashboardQueryKeys.events("guest", false),
     );
+    expect(dashboardQueryKeys.wars("admin-1", false)).not.toEqual(
+      dashboardQueryKeys.wars("guest", false),
+    );
+    expect(dashboardQueryKeys.wars("admin-1", false)).not.toEqual(
+      dashboardQueryKeys.wars("admin-1", true),
+    );
 
     await fetchDashboardEvents({ externalView: true });
+    await fetchDashboardWars({ externalView: true });
 
     expect(apiRequest).toHaveBeenCalledWith("/api/dashboard/events?external_view=true");
+    expect(apiRequest).toHaveBeenCalledWith("/api/dashboard/wars?external_view=true");
   });
 });

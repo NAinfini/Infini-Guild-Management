@@ -1,7 +1,7 @@
 import { type GalleryItem, createGalleryItemSchema } from "@guild/shared";
 import type { z } from "zod";
 import { apiRequest } from "../client";
-import { appendImageUploadVariants, convertImagesForUpload } from "@guild/shared/utils/media";
+import { appendImageUploadVariants, convertImagesForUpload } from "../../utils/upload-media";
 
 export type CreateGalleryVideoPayload = z.input<typeof createGalleryItemSchema>;
 

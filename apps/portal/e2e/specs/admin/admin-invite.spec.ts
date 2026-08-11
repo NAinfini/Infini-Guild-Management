@@ -47,11 +47,17 @@ async function serverStats(api: APIRequestContext): Promise<InviteStats> {
 }
 
 async function serverInvites(api: APIRequestContext, visibility: Visibility): Promise<ServerInvite[]> {
-  const page = await readJson(
-    await api.get(`/api/admin/invite-links?visibility=${visibility}&limit=100`),
-    `读取${visibility}邀请码`,
-  ) as { data: ServerInvite[] };
-  return page.data;
+  const rows: ServerInvite[] = [];
+  let cursor: string | null = null;
+  do {
+    const page = await readJson(
+      await api.get(`/api/admin/invite-links?visibility=${visibility}&limit=${PAGE_SIZE}${cursor ? `&cursor=${encodeURIComponent(cursor)}` : ""}`),
+      `读取${visibility}邀请码`,
+    ) as { data: ServerInvite[]; next_cursor: string | null };
+    rows.push(...page.data);
+    cursor = page.next_cursor;
+  } while (cursor);
+  return rows;
 }
 
 /** 建一个挂在本次运行名下的邀请码。expiresAt 传 null 表示永不过期。 */
@@ -160,7 +166,7 @@ async function switchVisibility(
 ): Promise<void> {
   await expectListRequest(page, () => segment(page, label).click(), {
     visibility,
-    search: search.trim().toLowerCase(),
+    search: search.trim(),
   });
   await expect(segmentInput(page, label)).toBeChecked();
 }
@@ -170,7 +176,7 @@ async function searchInvites(page: Page, term: string, visibility: Visibility = 
   await expectListRequest(
     page,
     () => searchBox(page).fill(term),
-    { visibility, search: term.trim().toLowerCase() },
+    { visibility, search: term.trim() },
   );
 }
 
@@ -196,16 +202,15 @@ async function expectNotified(page: Page, text: string): Promise<void> {
 /** 盯着 /api/ 证明这段操作没发请求。取消确认框、复制链接都必须走这条。 */
 async function expectNoApiCalls(page: Page, action: () => Promise<void>): Promise<void> {
   const calls: string[] = [];
-  const record = (response: { url: () => string; request: () => { method: () => string } }): void => {
-    const path = new URL(response.url()).pathname;
-    if (path.startsWith("/api/")) calls.push(`${response.request().method()} ${path}`);
+  const record = (request: { url: () => string; method: () => string }): void => {
+    const path = new URL(request.url()).pathname;
+    if (path.startsWith("/api/")) calls.push(`${request.method()} ${path}`);
   };
-  page.on("response", record);
+  page.on("request", record);
   try {
     await action();
-    await page.waitForTimeout(300);
   } finally {
-    page.off("response", record);
+    page.off("request", record);
   }
   expect(calls, "这段操作本不该发请求").toEqual([]);
 }
@@ -314,13 +319,15 @@ test("复制链接：剪贴板里是可以直接发出去的完整注册地址�
   await openInvites(page);
   await searchInvites(page, invite.code);
 
+  const expectedLink = `${new URL(page.url()).origin}/register/${invite.code}`;
   await expectNoApiCalls(page, async () => {
     await inviteRow(page, invite.code).getByRole("button", { name: "Copy Link", exact: true }).click();
+    await expect.poll(() => page.evaluate(() => navigator.clipboard.readText())).toBe(expectedLink);
   });
 
   const copied = await page.evaluate(() => navigator.clipboard.readText());
   expect(copied, "复制出来的必须是能直接注册的完整地址，不是光秃秃一个码")
-    .toBe(`${new URL(page.url()).origin}/register/${invite.code}`);
+    .toBe(expectedLink);
 });
 
 test("撤销：取消什么都不发；确认之后码当场失效、搬进「已撤销」段、统计跟着挪一格", async ({ page, api, flow }) => {

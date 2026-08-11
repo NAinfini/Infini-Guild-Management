@@ -11,7 +11,7 @@ vi.mock("../client", () => ({
   apiRequest: mocks.apiRequest,
 }));
 
-vi.mock("@guild/shared/utils/media", () => ({
+vi.mock("../../utils/upload-media", () => ({
   convertImagesForUpload: mocks.convertImagesForUpload,
   appendImageUploadVariants: mocks.appendImageUploadVariants,
 }));

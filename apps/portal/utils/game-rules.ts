@@ -8,15 +8,10 @@ import {
   findGuildWarTeamStatDefinition,
   getEventBehavior,
   getLocalizedGameRuleLabel,
-  type GameRules,
 } from "@guild/shared";
 import { usePreferencesStore } from "@portal/stores/preferences";
 
 export type EventBehavior = "standard" | "guild_war" | "poll" | "raffle";
-
-export function getCurrentGameRules(): GameRules {
-  return DEFAULT_GAME_RULES;
-}
 
 function currentRuleLanguage(): "en" | "zh" {
   return usePreferencesStore.getState().locale;
@@ -26,50 +21,49 @@ function languageForRules(language: string = currentRuleLanguage()): "en" | "zh"
   return language.toLowerCase().startsWith("zh") ? "zh" : "en";
 }
 
-export function eventHasBehavior(eventTypeId: string, behavior: EventBehavior, rules = getCurrentGameRules()): boolean {
-  return getEventBehavior(rules, eventTypeId) === behavior;
+export function eventHasBehavior(eventTypeId: string, behavior: EventBehavior): boolean {
+  return getEventBehavior(DEFAULT_GAME_RULES, eventTypeId) === behavior;
 }
 
-export function getEventTypeLabel(eventTypeId: string, language: string = currentRuleLanguage(), rules = getCurrentGameRules()): string {
-  const definition = findEventTypeDefinition(rules, eventTypeId);
+export function getEventTypeLabel(eventTypeId: string, language: string = currentRuleLanguage()): string {
+  const definition = findEventTypeDefinition(DEFAULT_GAME_RULES, eventTypeId);
   return definition
     ? getLocalizedGameRuleLabel(definition.labels, languageForRules(language))
     : eventTypeId;
 }
 
-export function getEventTypeColor(eventTypeId: string, rules = getCurrentGameRules()): string {
-  return findEventTypeDefinition(rules, eventTypeId)?.color ?? "#82C91E";
+export function getEventTypeColor(eventTypeId: string): string {
+  return findEventTypeDefinition(DEFAULT_GAME_RULES, eventTypeId)?.color ?? "#82C91E";
 }
 
-export function getGuildWarResultLabel(resultId: string, language: string = currentRuleLanguage(), rules = getCurrentGameRules()): string {
-  const definition = findGuildWarResultDefinition(rules, resultId);
+export function getGuildWarResultLabel(resultId: string, language: string = currentRuleLanguage()): string {
+  const definition = findGuildWarResultDefinition(resultId);
   return definition
     ? getLocalizedGameRuleLabel(definition.labels, languageForRules(language))
     : resultId;
 }
 
-export function getGuildWarResultColor(resultId: string | null | undefined, rules = getCurrentGameRules()): string {
-  const tone = resultId ? findGuildWarResultDefinition(rules, resultId)?.tone : undefined;
+export function getGuildWarResultColor(resultId: string | null | undefined): string {
+  const tone = resultId ? findGuildWarResultDefinition(resultId)?.tone : undefined;
   if (tone === "success") return "green";
   if (tone === "danger") return "red";
   return "gray";
 }
 
-export function getGuildWarTeamStatLabel(statKey: string, _language?: string, rules = getCurrentGameRules()): string {
-  const definition = findGuildWarTeamStatDefinition(rules, statKey);
+export function getGuildWarTeamStatLabel(statKey: string): string {
+  const definition = findGuildWarTeamStatDefinition(DEFAULT_GAME_RULES, statKey);
   return definition?.name ?? statKey;
 }
 
-export function getGuildWarMemberStatLabel(statKey: string, _language?: string, rules = getCurrentGameRules()): string {
+export function getGuildWarMemberStatLabel(statKey: string): string {
   if (statKey === GUILD_WAR_KDA_KEY) return "KDA";
-  const definition = findGuildWarMemberStatDefinition(rules, statKey);
+  const definition = findGuildWarMemberStatDefinition(DEFAULT_GAME_RULES, statKey);
   return definition?.name ?? statKey;
 }
 
 export function getGuildWarMetricValue(
   stats: Record<string, number | null> | null | undefined,
   metric: string,
-  _rules = getCurrentGameRules(),
 ): number {
   if (metric === GUILD_WAR_KDA_KEY) {
     return evaluateKda(stats ?? {});
@@ -80,7 +74,6 @@ export function getGuildWarMetricValue(
 export function getGuildWarMetricValueOrNull(
   stats: Record<string, number | null> | null | undefined,
   metric: string,
-  _rules = getCurrentGameRules(),
 ): number | null {
   if (metric === GUILD_WAR_KDA_KEY) {
     const dependencies = ["kills", "assists", "deaths"];

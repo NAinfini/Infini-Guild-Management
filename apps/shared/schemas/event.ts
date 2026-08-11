@@ -142,7 +142,7 @@ export const eventSchema = z.object({
   description: z.string().nullable(),
   start_at: z.string(),
   end_at: z.string().nullable(),
-  capacity: z.number().int().nullable(),
+  capacity: z.number().int().max(L.eventParticipantsPerEvent.max).nullable(),
   pinned: z.boolean(),
   signup_locked: z.boolean(),
   auto_archive: z.boolean(),
@@ -156,7 +156,7 @@ export const eventSchema = z.object({
   series_id: z.string().nullable(),
   instance_date: z.string().nullable(),
   poll: eventPollSchema.nullable().optional(),
-  winner_count: z.number().int().nullable().optional(),
+  winner_count: z.number().int().max(L.eventParticipantsPerEvent.max).nullable().optional(),
   raffle_winners: z.array(eventRaffleWinnerSchema).optional(),
   created_at: z.string(),
   updated_at: z.string(),
@@ -168,12 +168,12 @@ const eventMutationSchema = z.object({
   description: z.string().max(L.eventDescription.max).optional(),
   start_at: z.string().datetime(),
   end_at: z.string().datetime().optional(),
-  capacity: z.number().int().positive().optional(),
+  capacity: z.number().int().positive().max(L.eventParticipantsPerEvent.max).optional(),
   attachments: eventAttachmentsSchema.optional(),
   class_quotas: eventClassQuotaInputsSchema.optional(),
   auto_archive: z.boolean().optional(),
   poll: pollSettingsSchema.optional(),
-  winner_count: z.number().int().positive().optional(),
+  winner_count: z.number().int().positive().max(L.eventParticipantsPerEvent.max).optional(),
 });
 
 /*
@@ -232,7 +232,7 @@ function refineEventRules(
     if (value.capacity !== undefined) {
       ctx.addIssue({ code: "custom", path: ["capacity"], message: "Poll events do not use capacity" });
     }
-  } else if (isUpdate ? (value.type !== undefined && value.poll !== undefined) : value.poll !== undefined) {
+  } else if (value.poll !== undefined) {
     ctx.addIssue({ code: "custom", path: ["poll"], message: "Only poll events can include poll settings" });
   }
   if (value.type === "raffle") {
@@ -242,7 +242,7 @@ function refineEventRules(
     if (!isUpdate && !value.winner_count) {
       ctx.addIssue({ code: "custom", path: ["winner_count"], message: "Raffle events require winner_count" });
     }
-  } else if (isUpdate ? (value.type !== undefined && value.winner_count !== undefined) : value.winner_count !== undefined) {
+  } else if (value.winner_count !== undefined) {
     ctx.addIssue({ code: "custom", path: ["winner_count"], message: "Only raffle events can include winner_count" });
   }
 }
@@ -266,6 +266,40 @@ export const eventParticipantsBatchSchema = z.object({
   user_ids: z.array(z.string().min(1)).min(1).max(L.eventParticipantsBatch.max),
 });
 
+export const eventDetailSchema = eventSchema.extend({
+  participants: z.array(eventParticipantSchema),
+});
+
+export const eventDetailBatchSchema = z.object({
+  data: z.array(eventDetailSchema),
+});
+
+export const eventListResponseSchema = z.object({
+  data: z.array(eventSchema).max(LIMITS.pagination.events),
+  total: z.number().int().nonnegative(),
+  page: z.number().int().positive(),
+  limit: z.number().int().positive().max(LIMITS.pagination.events),
+  total_pages: z.number().int().nonnegative(),
+});
+
+export const eventOkResponseSchema = z.object({ ok: z.literal(true) });
+
+export const eventParticipantListResponseSchema = z.object({
+  data: z.array(eventParticipantSchema),
+});
+
+export const eventParticipantRemovalResponseSchema = eventOkResponseSchema.extend({
+  removed: z.number().int().nonnegative(),
+});
+
+export const eventRaffleDrawResponseSchema = z.object({
+  data: z.array(eventRaffleWinnerSchema),
+});
+
+export const eventIdsBatchSchema = z.object({
+  ids: z.array(z.string().min(1)).max(50),
+});
+
 // ── Recurring Templates ──
 
 export const recurringTemplateSchema = z.object({
@@ -275,7 +309,7 @@ export const recurringTemplateSchema = z.object({
   description: z.string().nullable(),
   start_time: z.string(),
   duration_minutes: z.number().int().nullable(),
-  capacity: z.number().int().nullable(),
+  capacity: z.number().int().max(L.eventParticipantsPerEvent.max).nullable(),
   recurrence_rule: recurrenceRuleSchema,
   visibility_offset_minutes: z.number().int(),
   auto_archive: z.boolean(),
@@ -289,6 +323,10 @@ export const recurringTemplateSchema = z.object({
   updated_at: z.string(),
 });
 
+export const recurringTemplateListResponseSchema = z.object({
+  data: z.array(recurringTemplateSchema).max(L.recurringTemplateCatalog.max),
+});
+
 const templateMutationSchema = z.object({
   type: eventTypeIdSchema,
   title: z.string().min(L.eventTitle.min).max(L.eventTitle.max),
@@ -297,7 +335,7 @@ const templateMutationSchema = z.object({
   // before submitting (see shared/utils/recurrence.ts contract).
   start_time: z.string().regex(/^(?:[01]\d|2[0-3]):[0-5]\d$/),
   duration_minutes: z.number().int().min(0).optional(),
-  capacity: z.number().int().positive().optional(),
+  capacity: z.number().int().positive().max(L.eventParticipantsPerEvent.max).optional(),
   recurrence_rule: recurrenceRuleSchema,
   visibility_offset_minutes: z.number().int().min(0).optional(),
   auto_archive: z.boolean().optional(),

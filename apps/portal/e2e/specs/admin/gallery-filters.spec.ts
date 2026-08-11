@@ -21,12 +21,10 @@ import {
  *   1. 列表是 useInfiniteQuery，staleTime 5 分钟（useGalleryPageController.ts:154）。
  *      把条件撤回到几秒前刚取过的组合时命中缓存，不会再发请求；
  *      所以「撤回」方向一律只验结果集，硬要求它发请求就是把缓存当成 bug。
- *   2. 进页面时种子有 28 条、每页 20 条，页尾那个 IntersectionObserver
- *      （GalleryPage.tsx:21）会自动去取第二页。所以每条用例都先用 stamp 搜到
- *      只剩自己造的三条——此时 next_cursor 为空，后续不再有翻页请求；
- *      nextGalleryRequest 也据此把带 cursor 的请求排除掉，免得等到的是翻页而不是筛选。
+ *   2. 每条用例先用 stamp 搜到只剩自己造的三条；另造一条不带 stamp 的对照素材，
+ *      用来证明重置真的撤销了搜索，而不是依赖环境里碰巧存在的演示数据。
  *
- * 三件一次性素材覆盖两个维度：alpha / beta 是视频、gamma 是真上传的图片，
+ * 三件筛选靶子覆盖两个维度：alpha / beta 是视频、gamma 是真上传的图片，
  * 且按这个顺序创建（created_at 精确到毫秒），所以排序方向能被稳定断言。
  */
 
@@ -38,6 +36,7 @@ let stamp: number;
 let alpha: Fixture;
 let beta: Fixture;
 let gamma: Fixture;
+let outside: Fixture;
 
 test.beforeEach(async ({ page, api }) => {
   stamp = Date.now();
@@ -45,13 +44,18 @@ test.beforeEach(async ({ page, api }) => {
   alpha = await createVideo(api, `${SYSTEM_TEST_CONTENT_MARKER} Alpha ${stamp}`, `https://youtu.be/e2e-alpha-${stamp}`);
   beta = await createVideo(api, `${SYSTEM_TEST_CONTENT_MARKER} Beta ${stamp}`, `https://youtu.be/e2e-beta-${stamp}`);
   gamma = await uploadImage(api, `${SYSTEM_TEST_CONTENT_MARKER} Gamma ${stamp}`);
+  outside = await createVideo(
+    api,
+    `${SYSTEM_TEST_CONTENT_MARKER} Outside ${stamp.toString(36)}`,
+    `https://youtu.be/e2e-outside-${stamp}`,
+  );
 
   await page.goto("/gallery");
   await expect(page.getByRole("list", { name: "Gallery items" })).toBeVisible();
 });
 
 test.afterEach(async ({ api }) => {
-  for (const fixture of [alpha, beta, gamma]) {
+  for (const fixture of [alpha, beta, gamma, outside]) {
     const response = await api.delete(`/api/gallery/${fixture.id}`);
     expect([200, 204, 404], `清理 ${fixture.caption} 返回 ${response.status()}`)
       .toContain(response.status());
@@ -240,14 +244,8 @@ test("重置筛选：一次清掉搜索、类型和两个日期，列表回到�
   await expect(field(page, "Filter gallery by type")).toHaveValue("");
   await expect(dateFrom(page)).toHaveValue("");
   await expect(dateTo(page)).toHaveValue("");
-  /*
-   * 认种子说明的形状，不认具体某一条：28 条种子数据是一次 batchInsert 建的，
-   * created_at 可能落在同一毫秒，此时排序由 id 兜底，哪 20 条落在第一页是随机的。
-   */
-  await expect(
-    captions(page).filter({ hasText: /^Seed (image|video) \d+$/ }).first(),
-    "重置之后应当能看到本用例之外的条目，说明筛选真的撤了",
-  ).toBeVisible();
+  await expect(itemByCaption(page, outside.caption), "重置之后对照素材必须回来，说明搜索真的撤了")
+    .toBeVisible();
 });
 
 test("换筛选条件：已勾选的条目必须跟着清掉", async ({ page, flow }) => {

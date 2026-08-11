@@ -62,14 +62,45 @@ export const batchDeactivateSchema = z.object({
 export const createAdminMemberSchema = z.object({
   username: usernameSchema,
   role_id: roleIdSchema,
-});
+}).strict();
+
+export const adminUserLifecycleSchema = z.object({
+  reason: z.string().trim().max(500).optional(),
+}).strict();
+
+export const resetAdminPasswordSchema = z.object({
+  temporary_password: z.string().min(L_admin.password.min).max(L_admin.password.max).optional(),
+}).strict();
+
+export const createAdminMemberResponseSchema = z.object({
+  ok: z.literal(true),
+  user_id: z.string(),
+  username: z.string(),
+  temporary_password: z.string(),
+}).strict();
+
+export const loginLockStateSchema = z.object({
+  fail_count: z.number().int().min(0),
+  locked_until: z.string().datetime({ offset: true }).nullable(),
+  is_locked: z.boolean(),
+  retry_after_seconds: z.number().int().min(0),
+}).strict();
+
+export const resetLoginLockResponseSchema = loginLockStateSchema.extend({
+  ok: z.literal(true),
+}).strict();
+
+export const adminBatchMutationResponseSchema = z.object({
+  ok: z.literal(true),
+  updated: z.number().int().min(0),
+}).strict();
 
 export const rolePermissionsSchema = z.record(permissionKeySchema, z.boolean());
 
 export const adminRoleSchema = z.object({
   id: z.string(),
   name: z.string(),
-  level: z.number().int().min(1).max(999),
+  level: z.number().int().min(1).max(1_000),
   color: z.string().nullable(),
   created_at: z.string(),
   updated_at: z.string(),
@@ -80,7 +111,7 @@ export const adminRoleSchema = z.object({
 export const createRoleSchema = z.object({
   id: roleIdSchema.min(2).optional(),
   name: z.string().min(1).max(80),
-  level: z.number().int().min(1).max(998),
+  level: z.number().int().min(1).max(1_000),
   color: colorSchema.nullable().optional(),
   permissions: rolePermissionsSchema.optional(),
 });
@@ -88,7 +119,7 @@ export const createRoleSchema = z.object({
 export const updateRoleSchema = z
   .object({
     name: z.string().min(1).max(80).optional(),
-    level: z.number().int().min(1).max(998).optional(),
+    level: z.number().int().min(1).max(1_000).optional(),
     color: colorSchema.nullable().optional(),
     permissions: rolePermissionsSchema.optional(),
   })
@@ -97,6 +128,6 @@ export const updateRoleSchema = z
   });
 
 export const analyticsSettingsSchema = z.object({
-  reference_duration_minutes: z.number().positive().optional(),
+  reference_duration_minutes: z.number().positive().max(LIMITS.analytics.referenceDurationMinutes.max).optional(),
   modifier_weights: siteAnalyticsModifierWeightsSchema.partial().optional(),
 }).strict();

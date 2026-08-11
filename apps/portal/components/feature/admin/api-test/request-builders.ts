@@ -4,7 +4,7 @@ import {
   type TestRunContext,
   disposableMemberId,
 } from "./types";
-import { getCurrentGameRules } from "@portal/utils/game-rules";
+import { DEFAULT_GAME_RULES } from "@guild/shared";
 
 export function toIso(hoursFromNow: number): string {
   return new Date(Date.now() + hoursFromNow * 60 * 60 * 1000).toISOString();
@@ -17,8 +17,7 @@ export function isoDate(daysFromNow: number): string {
 
 /*
  * 冒烟用例直接打接口，绕过了浏览器那一轮转码，所以素材必须已经是能落库的编码：
- * 服务端按魔术字节复核声明的 MIME（apps/worker/services/media.ts 的
- * validateUploadBytes），PNG、WAV 这类只在选择器里出现过的格式会被当场拒掉。
+ * 服务端会按魔术字节复核声明的 MIME；PNG、WAV 这类只在选择器里出现过的格式会被当场拒掉。
  */
 function decodeBase64(base64: string): ArrayBuffer {
   const binary = atob(base64);
@@ -83,31 +82,6 @@ function isMutableMethod(method: EndpointDef["method"]): boolean {
 
 export function skipEndpoint(path: string, reason: string, optionalSkip = false): PreparedEndpointRequest {
   return { path, skipReason: reason, optionalSkip };
-}
-
-/*
- * 徽章、职业、职业标签三个 reorder 接口共同的约定：请求体必须列全服务端现有的
- * 每一个 id（整表核对，理由见 shared/schemas/class-catalog.ts）。所以这类用例没有
- * 「只动本次夹具」的做法——原样回放列表 GET 抓到的服务端现序，把本次运行新建的
- * 那一个补在末尾（创建时按 max+10 追加，末尾就是它的现位）。服务端照此把
- * sort_order 规范化成下标 * 10：写路径完整走了一遍，站上的相对顺序一处不变。
- */
-export function buildReorderRequest(
-  path: string,
-  capturedOrder: readonly string[] | null,
-  createdId: string | null,
-  missing: string,
-): PreparedEndpointRequest {
-  if (!capturedOrder) {
-    return skipEndpoint(path, `Missing ${missing}`);
-  }
-  const order = createdId && !capturedOrder.includes(createdId)
-    ? [...capturedOrder, createdId]
-    : [...capturedOrder];
-  if (order.length === 0) {
-    return skipEndpoint(path, "Nothing to reorder");
-  }
-  return buildJsonRequest(path, { order });
 }
 
 export function replacePathParam(path: string, key: string, value: string | null): string | null {
@@ -353,10 +327,12 @@ export function resolveEndpointPath(endpoint: EndpointDef, context: TestRunConte
   }
 
   if (path.includes("/api/wiki/articles/:id/revisions")) {
-    const articleId = context.createdWikiArticleId ?? context.wikiArticleId;
+    const articleId = isMutableMethod(endpoint.method)
+      ? context.createdWikiArticleId
+      : context.createdWikiArticleId ?? context.wikiArticleId;
     const next = replacePathParam(path, ":id", articleId);
     if (!next) {
-      return { path, missing: "wiki article id" };
+      return { path, missing: isMutableMethod(endpoint.method) ? "created wiki article id" : "wiki article id" };
     }
     path = next;
   }
@@ -416,7 +392,21 @@ export function resolveEndpointPath(endpoint: EndpointDef, context: TestRunConte
 }
 
 export function prepareEndpointRequest(endpoint: EndpointDef, context: TestRunContext): PreparedEndpointRequest {
-  const gameRules = getCurrentGameRules();
+  if (endpoint.method === "POST" && endpoint.path === "/api/users/:id/change-password") {
+    return skipEndpoint(
+      endpoint.path,
+      "Skipping password change: the endpoint is self-only, so it would change the running admin's own password",
+      true,
+    );
+  }
+  if (endpoint.method === "POST" && endpoint.path === "/api/users/:id/change-username") {
+    return skipEndpoint(
+      endpoint.path,
+      "Skipping username change: the endpoint is self-only and rejects the reserved systemtest prefix",
+      true,
+    );
+  }
+  const gameRules = DEFAULT_GAME_RULES;
   const eventTypeForBehavior = (behavior: "standard" | "guild_war" | "poll" | "raffle") =>
     gameRules.events.types.find((definition) => definition.behavior === behavior && definition.enabled)?.id;
   const winningResultId = "win";
@@ -507,12 +497,6 @@ export function prepareEndpointRequest(endpoint: EndpointDef, context: TestRunCo
     case "POST /api/admin/site-config/logo":
       return skipEndpoint(path, "Skipping site logo upload because it replaces the live logo for every visitor", true);
 
-    case "POST /api/users/:id/change-password":
-      return skipEndpoint(path, "Skipping password change: the endpoint is self-only, so it would change the running admin's own password", true);
-
-    case "POST /api/users/:id/change-username":
-      return skipEndpoint(path, "Skipping username change: the endpoint is self-only and rejects the reserved systemtest prefix", true);
-
     case "POST /api/classes":
       return buildJsonRequest(path, {
         label: `[systemtest] API Class ${nowId.slice(0, 24)}`,
@@ -527,7 +511,11 @@ export function prepareEndpointRequest(endpoint: EndpointDef, context: TestRunCo
       });
 
     case "PATCH /api/classes/reorder":
-      return buildReorderRequest(path, context.classIdsInOrder, context.createdClassId, "class order (run the class list first)");
+      return skipEndpoint(
+        path,
+        "Skipping class reorder because the endpoint rewrites the complete live catalog",
+        true,
+      );
 
     case "POST /api/classes/:id/icon":
       return buildImageUploadRequest(path);
@@ -546,7 +534,11 @@ export function prepareEndpointRequest(endpoint: EndpointDef, context: TestRunCo
       });
 
     case "PATCH /api/class-tags/reorder":
-      return buildReorderRequest(path, context.classTagIdsInOrder, context.createdClassTagId, "class tag order (run the class tag list first)");
+      return skipEndpoint(
+        path,
+        "Skipping class-tag reorder because the endpoint rewrites the complete live catalog",
+        true,
+      );
 
     case "POST /api/users/:id/absences":
       return buildJsonRequest(path, {
@@ -678,7 +670,13 @@ export function prepareEndpointRequest(endpoint: EndpointDef, context: TestRunCo
     case "PATCH /api/announcements/:id":
       return buildJsonRequest(path, {
         title: `[systemtest] API Announcement Updated ${nowId}`,
-        body_json: "{\"content\":\"[systemtest] Updated by API tester\"}",
+        body_json: JSON.stringify({
+          type: "doc",
+          content: [{
+            type: "paragraph",
+            content: [{ type: "text", text: "[systemtest] Updated by API tester" }],
+          }],
+        }),
       });
 
     case "POST /api/announcements/:id/images":
@@ -823,7 +821,13 @@ export function prepareEndpointRequest(endpoint: EndpointDef, context: TestRunCo
       return buildJsonRequest(path, {
         title: `[systemtest] API Article ${nowId}`,
         category_id: context.wikiArticleCategoryId ?? context.wikiCategoryId,
-        body_json: "{\"content\":\"[systemtest] Created by API tester\"}",
+        body_json: JSON.stringify({
+          type: "doc",
+          content: [{
+            type: "paragraph",
+            content: [{ type: "text", text: "[systemtest] Created by API tester" }],
+          }],
+        }),
         sort_order: 0,
       });
 
@@ -1015,7 +1019,11 @@ export function prepareEndpointRequest(endpoint: EndpointDef, context: TestRunCo
       });
 
     case "PATCH /api/badges/reorder":
-      return buildReorderRequest(path, context.badgeIdsInOrder, context.createdBadgeId, "badge order (run the badge list first)");
+      return skipEndpoint(
+        path,
+        "Skipping badge reorder because the endpoint rewrites the complete live catalog",
+        true,
+      );
 
     case "POST /api/badges/:id/assign":
       if (!testMemberId) {

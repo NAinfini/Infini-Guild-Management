@@ -1,6 +1,6 @@
 import { useMemo } from "react";
 import { format } from "date-fns";
-import { useSiteConfigStore } from "@portal/stores/site-config";
+import { DEFAULT_GAME_RULES } from "@guild/shared";
 import { getGuildWarMemberStatLabel } from "@portal/utils/game-rules";
 
 function formatDateTime(iso: string): string {
@@ -31,7 +31,7 @@ type UseGuildWarHistoryParams = {
 export function useGuildWarHistory({
   historyDetailData,
 }: UseGuildWarHistoryParams) {
-  const gameRules = useSiteConfigStore((state) => state.gameRules);
+  const gameRules = DEFAULT_GAME_RULES;
   const historyMvp = useMemo(() => {
     const stats = historyDetailData?.member_stats ?? [];
     if (stats.length === 0) {
@@ -54,7 +54,7 @@ export function useGuildWarHistory({
         const top = ranked[0] ?? null;
         return {
           key: definition.key,
-          label: getGuildWarMemberStatLabel(definition.key, undefined, gameRules),
+          label: getGuildWarMemberStatLabel(definition.key),
           value: top ? `${top.member.username ?? top.member.user_id} (${top.value})` : "-",
         };
       });

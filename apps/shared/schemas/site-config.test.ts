@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { LIMITS } from "../config/limits";
+import { DEFAULT_FEATURE_FLAGS } from "../config/features";
 import {
   DEFAULT_SITE_ABSENCE_POLICY,
   DEFAULT_SITE_ANALYTICS_SETTINGS,
@@ -8,6 +9,7 @@ import {
   siteAbsencePolicySchema,
   siteAnalyticsSettingsSchema,
   siteMediaPolicySchema,
+  siteConfigSchema,
   siteStoragePolicySchema,
   updateSiteConfigSchema,
 } from "./site-config";
@@ -40,6 +42,17 @@ describe("site media policy", () => {
     expect(siteAnalyticsSettingsSchema.safeParse({
       ...DEFAULT_SITE_ANALYTICS_SETTINGS,
       modifier_weights: { kills: 0, towers: 0, base_hp: 0, credits: 0, distance: 0 },
+    }).success).toBe(false);
+    expect(siteAnalyticsSettingsSchema.safeParse({
+      ...DEFAULT_SITE_ANALYTICS_SETTINGS,
+      reference_duration_minutes: LIMITS.analytics.referenceDurationMinutes.max + 1,
+    }).success).toBe(false);
+    expect(siteAnalyticsSettingsSchema.safeParse({
+      ...DEFAULT_SITE_ANALYTICS_SETTINGS,
+      modifier_weights: {
+        ...DEFAULT_SITE_ANALYTICS_SETTINGS.modifier_weights,
+        kills: LIMITS.analytics.modifierWeight.max + 1,
+      },
     }).success).toBe(false);
   });
 
@@ -88,5 +101,23 @@ describe("site media policy", () => {
 
   it("rejects game rules in the general Site Config update contract", () => {
     expect(updateSiteConfigSchema.safeParse({ game_rules: {} }).success).toBe(false);
+  });
+
+  it("requires canonical persisted timestamps", () => {
+    const config = {
+      site_name: "Guild",
+      site_logo_media_id: null,
+      default_site_logo_url: "/logo.svg",
+      features: DEFAULT_FEATURE_FLAGS,
+      media_policy: DEFAULT_SITE_MEDIA_POLICY,
+      storage_policy: DEFAULT_SITE_STORAGE_POLICY,
+      absence_policy: DEFAULT_SITE_ABSENCE_POLICY,
+      analytics_settings: DEFAULT_SITE_ANALYTICS_SETTINGS,
+      created_at: "2026-08-09T00:00:00.000Z",
+      updated_at: "2026-08-09T00:00:00.000Z",
+    };
+    expect(siteConfigSchema.safeParse(config).success).toBe(true);
+    expect(siteConfigSchema.safeParse({ ...config, created_at: undefined }).success).toBe(false);
+    expect(siteConfigSchema.safeParse({ ...config, updated_at: null }).success).toBe(false);
   });
 });

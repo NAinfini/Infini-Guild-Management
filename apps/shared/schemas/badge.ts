@@ -14,6 +14,10 @@ export const memberBadgeSchema = z.object({
   updated_at: z.string(),
 });
 
+export const memberBadgeListSchema = z.array(memberBadgeSchema)
+  .max(LIMITS.content.badgeCatalogSize.max);
+export const memberBadgeDeletedResponseSchema = z.object({ ok: z.literal(true) }).strict();
+
 const badgeSortOrderSchema = z.number().int().min(0).max(100_000);
 
 export const createMemberBadgeSchema = z.object({
@@ -24,7 +28,7 @@ export const createMemberBadgeSchema = z.object({
   /* 不带就排到末尾（服务端取当前最大值 + 10），和职业目录同一套。写死 0 的话
      新徽章会插到队首，而队首的号段已经被上一次拖拽占着了。 */
   sort_order: badgeSortOrderSchema.optional(),
-});
+}).strict();
 
 /*
  * 刻意不写成 createMemberBadgeSchema.partial()：create 那份给 color 挂了 .default()，
@@ -37,7 +41,9 @@ export const updateMemberBadgeSchema = z.object({
   color: badgeColorSchema,
   description: z.string().max(500),
   sort_order: badgeSortOrderSchema,
-}).partial();
+}).partial().strict().refine((value) => Object.keys(value).length > 0, {
+  message: "At least one badge field is required",
+});
 
 /*
  * 整表重排，和 reorderClassCatalogSchema 是同一套约定：请求体带**完整**的徽章 id
@@ -62,13 +68,32 @@ export const badgeAssignmentSchema = z.object({
   assigned_at: z.string(),
 });
 
+export const badgeAssignmentsListQuerySchema = z.object({
+  limit: z.coerce.number().int().min(1).max(LIMITS.pagination.badgeAssignments)
+    .default(LIMITS.pagination.badgeAssignments),
+  cursor: z.string().min(1).max(512).optional(),
+}).strict();
+
+export const badgeAssignmentsCursorResponseSchema = z.object({
+  data: z.array(badgeAssignmentSchema).max(LIMITS.pagination.badgeAssignments),
+  next_cursor: z.string().max(512).nullable(),
+});
+
 export const assignBadgeSchema = z.object({
   user_ids: z.array(z.string().min(1)).min(1).max(100),
-});
+}).strict();
 
 export const unassignBadgeSchema = z.object({
   user_ids: z.array(z.string().min(1)).min(1).max(100),
-});
+}).strict();
+
+export const assignBadgeResponseSchema = z.object({
+  assigned: z.number().int().min(0).max(100),
+}).strict();
+
+export const unassignBadgeResponseSchema = z.object({
+  removed: z.number().int().min(0).max(100),
+}).strict();
 
 export const userBadgeSchema = z.object({
   id: z.string(),

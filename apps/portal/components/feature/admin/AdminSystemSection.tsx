@@ -36,9 +36,14 @@ const SERVICES: ServiceInfo[] = [
 
 // WebSocket disconnections are recoverable and use warning severity; failed
 // persistence or cron services use danger severity.
-function serviceState(value: string): ServiceState {
-  if (value === "ok") return "ok";
-  if (value === "configured") return "configured";
+export function serviceState(value: string): ServiceState {
+  if (value === "ok" || value.startsWith("ok (")) return "ok";
+  if (
+    value === "configured"
+    || value.startsWith("configured (")
+    || value === "degraded"
+    || value.startsWith("degraded (")
+  ) return "configured";
   return "error";
 }
 

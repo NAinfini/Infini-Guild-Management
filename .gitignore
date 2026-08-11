@@ -43,6 +43,8 @@ id_ed25519*
 *.kdbx
 *.sqlite
 *.sqlite3
+*.sqlite-wal
+*.sqlite-shm
 *.db
 *.db-wal
 *.db-shm
@@ -52,6 +54,7 @@ id_ed25519*
 # Local data and private working notes
 *.local
 backups/
+private-migrations/
 calculators/
 docs/plans/
 docs/superpowers/

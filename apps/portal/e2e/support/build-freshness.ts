@@ -2,7 +2,7 @@ import { readdir, stat } from "node:fs/promises";
 import { resolve } from "node:path";
 
 /*
- * e2e 打的是 apps/portal/dist——worker 通过 ASSETS 绑定把它当站点吐出来。
+ * e2e 打的是 apps/portal/dist——Cloudflare runtime 通过 ASSETS 绑定把它当站点吐出来。
  *
  * 好处见 config.ts，代价只有一条：产物过期就等于在测上一版代码，而且测出来
  * 是一片绿。这类「安静地测错东西」比红灯难查得多，所以这里不做任何兜底，

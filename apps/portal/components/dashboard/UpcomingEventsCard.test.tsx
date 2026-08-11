@@ -45,6 +45,7 @@ function eventRow(
     startsSoon: false,
     hasConflict: false,
     members: [],
+    participantCount: 0,
     joined: false,
     capacityLabel: "0/∞",
     isFull: false,

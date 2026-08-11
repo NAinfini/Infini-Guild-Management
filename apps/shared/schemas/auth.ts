@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { LIMITS } from "../config/limits";
 import { roleIdSchema, roleMetadataSchema } from "./role";
+import { memberProfileSchema, userSchema } from "./user";
 
 const L = LIMITS.content;
 
@@ -9,7 +10,8 @@ const usernameSchema = z.string().min(L.username.min).max(L.username.max).regex(
 export const loginSchema = z.object({
   username: usernameSchema,
   password: z.string().min(1).max(L.password.max),
-});
+  stay_logged_in: z.boolean().optional(),
+}).strict();
 
 export const registerSchema = z
   .object({
@@ -45,3 +47,22 @@ export const verifyInviteResponseSchema = z.discriminatedUnion("valid", [
     role_id: roleIdSchema,
   }).extend(roleMetadataSchema.shape),
 ]);
+
+export const usernameAvailabilityResponseSchema = z.object({
+  available: z.boolean(),
+  reason: z.enum(["invalid_format", "reserved_prefix", "already_taken"]).optional(),
+}).strict();
+
+export const authSessionResponseSchema = z.object({
+  user: userSchema,
+  profile: memberProfileSchema,
+}).strict();
+
+export const logoutResponseSchema = z.object({ ok: z.literal(true) }).strict();
+
+export const loginLockErrorDetailsSchema = z.object({
+  retry_after_seconds: z.number().int().positive(),
+  locked_until: z.string().datetime({ offset: true }),
+}).strict();
+
+export type AuthSessionResponse = z.infer<typeof authSessionResponseSchema>;

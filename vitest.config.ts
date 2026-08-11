@@ -39,9 +39,19 @@ export default defineConfig({
           include: [
             "apps/shared/**/*.test.ts",
             "apps/shared/**/*.test.tsx",
-            "apps/worker/**/*.test.ts",
-            "apps/worker/**/*.test.tsx",
             "scripts/**/*.test.ts",
+          ],
+          environment: "node",
+        },
+      },
+      {
+        extends: true,
+        test: {
+          name: "modular-backend",
+          include: [
+            "packages/**/*.test.ts",
+            "apps/cloudflare/**/*.test.ts",
+            "apps/vps/**/*.test.ts",
           ],
           environment: "node",
         },

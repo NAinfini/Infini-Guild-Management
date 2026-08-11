@@ -5,6 +5,7 @@ import { isAllowedVideoUrl } from "../utils/video";
 import { classIdSchema } from "./class-catalog";
 import { roleMetadataSchema } from "./role";
 import { mediaIdSchema } from "./media";
+import { userBadgeSchema } from "./badge";
 
 const L = LIMITS.content;
 const permissionKeySchema = z.enum(PERMISSIONS);
@@ -232,4 +233,41 @@ export const adminUpdateProfileSchema = updateProfileSchema.extend({
 
 export const deleteProfileImagesSchema = z.object({
   media_ids: z.array(mediaIdSchema).min(L.profileImagesDeleteBatch.min).max(L.profileImagesDeleteBatch.max),
+}).strict();
+
+/**
+ * Every roster projection keeps the Portal's existing shape. Fields that the
+ * viewer cannot read are represented by their existing redacted values rather
+ * than being omitted from the wire object.
+ */
+export const publicMemberProfileSchema = memberProfileSchema.extend({
+  availability: z.null(),
+  vacation_start: z.null(),
+  vacation_end: z.null(),
+  notes: z.null(),
 });
+
+export const authenticatedMemberProfileSchema = memberProfileSchema.extend({
+  notes: z.null(),
+});
+
+export const adminMemberProfileSchema = memberProfileSchema;
+
+export const userDetailResponseSchema = z.object({
+  user: userSchema,
+  profile: memberProfileSchema,
+  badges: z.array(userBadgeSchema),
+}).strict();
+
+export const usersListResponseSchema = z.object({
+  data: z.array(userDetailResponseSchema),
+  total: z.number().int().min(0),
+  page: z.number().int().positive(),
+  limit: z.number().int().positive(),
+  total_pages: z.number().int().min(1),
+}).strict();
+
+export const usersStatsResponseSchema = z.object({
+  active_members: z.number().int().min(0),
+  total_members: z.number().int().min(0),
+}).strict();

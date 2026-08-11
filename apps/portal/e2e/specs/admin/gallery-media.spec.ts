@@ -1,4 +1,4 @@
-import type { APIRequestContext, Locator, Page, Response } from "@playwright/test";
+import type { APIRequestContext, Locator, Page, Request } from "@playwright/test";
 import { SYSTEM_TEST_CONTENT_MARKER } from "@guild/shared/config/system-test";
 import { expect, readJson, test, type Flow } from "../../support/test";
 import { imageVariantsUpload, webpUpload } from "../../support/files";
@@ -40,7 +40,7 @@ test.beforeEach(async ({ page }) => {
   createdIds = [];
 
   await page.goto("/gallery");
-  await expect(page.getByRole("list", { name: "Gallery items" })).toBeVisible();
+  await expect(page.locator(".gallery-filters").getByRole("button", { name: "Add Media", exact: true })).toBeVisible();
 });
 
 test.afterEach(async ({ api }) => {
@@ -111,7 +111,7 @@ async function searchThisRun(page: Page, flow: Flow, expected: number): Promise<
 }
 
 async function openAddMedia(page: Page, tab?: string): Promise<Locator> {
-  await page.getByRole("button", { name: "Add Media", exact: true }).click();
+  await page.locator(".gallery-filters").getByRole("button", { name: "Add Media", exact: true }).click();
   const modal = dialogTitled(page, "Add Media");
   await expect(modal).toBeVisible();
   if (tab) {
@@ -125,20 +125,19 @@ async function openAddMedia(page: Page, tab?: string): Promise<Locator> {
  * 不用 flow.clickWithoutApi 是因为它连 GET 也算数：React Query 的后台重取
  * 随时可能落在这半秒里，那不是被测控件干的，会把用例洗成偶发红。
  */
-async function clickWithoutWrite(page: Page, control: Locator, quietMs = 500): Promise<void> {
+async function clickWithoutWrite(page: Page, action: () => Promise<void>): Promise<void> {
   const writes: string[] = [];
-  const record = (response: Response): void => {
-    const url = new URL(response.url());
-    if (url.pathname.startsWith("/api/") && response.request().method() !== "GET") {
-      writes.push(`${response.request().method()} ${url.pathname}`);
+  const record = (request: Request): void => {
+    const url = new URL(request.url());
+    if (url.pathname.startsWith("/api/") && request.method() !== "GET") {
+      writes.push(`${request.method()} ${url.pathname}`);
     }
   };
-  page.on("response", record);
+  page.on("request", record);
   try {
-    await control.click();
-    await page.waitForTimeout(quietMs);
+    await action();
   } finally {
-    page.off("response", record);
+    page.off("request", record);
   }
   expect(writes, "这一步本不该产生任何写请求").toEqual([]);
 }
@@ -179,13 +178,14 @@ test("视频站点白名单：不能嵌入的域名当场拦下，一个写请�
   const modal = await openAddMedia(page, "Add Video");
   await field(modal, "Gallery video URL").fill(`https://example.com/clip-${stamp}.mp4`);
 
-  await clickWithoutWrite(page, modal.getByRole("button", { name: "Add Video", exact: true }));
-
-  await expect(
-    page.getByText("Unsupported video host. Only YouTube, Bilibili, Vimeo and TikTok links can be embedded."),
-    "拦下来必须说清原因，而不是把 i18n 键原样漏给用户",
-  ).toBeVisible();
-  await expect(modal, "被拦下时弹窗要留在原地，用户才有机会改链接").toBeVisible();
+  await clickWithoutWrite(page, async () => {
+    await modal.getByRole("button", { name: "Add Video", exact: true }).click();
+    await expect(
+      page.getByText("Unsupported video host. Only YouTube, Bilibili, Vimeo and TikTok links can be embedded."),
+      "拦下来必须说清原因，而不是把 i18n 键原样漏给用户",
+    ).toBeVisible();
+    await expect(modal, "被拦下时弹窗要留在原地，用户才有机会改链接").toBeVisible();
+  });
 });
 
 test("图片上传：说明随图提交，库里有行、R2 里也要有对象", async ({ page, flow, api }) => {

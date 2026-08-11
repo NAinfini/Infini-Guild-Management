@@ -498,4 +498,22 @@ describe("useAnnouncementsController", () => {
     });
     expect(result.current.sortOrder).toBe("updated_desc");
   });
+
+  it("does not exclude archived announcements from All", async () => {
+    const { result } = renderHook(() => useAnnouncementsController(), { wrapper: createWrapper() });
+
+    await waitFor(() => expect(serviceMocks.fetchAnnouncements).toHaveBeenCalledWith(
+      expect.objectContaining({ status: undefined, archived: undefined }),
+    ));
+
+    act(() => result.current.setStatusFilter("draft"));
+    await waitFor(() => expect(serviceMocks.fetchAnnouncements).toHaveBeenCalledWith(
+      expect.objectContaining({ status: "draft", archived: false }),
+    ));
+
+    act(() => result.current.setStatusFilter("archived"));
+    await waitFor(() => expect(serviceMocks.fetchAnnouncements).toHaveBeenCalledWith(
+      expect.objectContaining({ status: "archived", archived: true }),
+    ));
+  });
 });

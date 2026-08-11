@@ -32,9 +32,11 @@ export { captureContextFromResponse } from "./api-test/response-context";
 export {
   API_TEST_GAP_GET_MS,
   API_TEST_GAP_MUTATION_MS,
+  buildSystemTestSummary,
   methodColor,
   nextLogId,
   readRetryAfterSeconds,
+  requestSystemTestCleanup,
   runEndpointTest,
   statusColor,
   SYSTEM_TEST_AUDIT_HEADER,

@@ -23,7 +23,7 @@ export function useAdminInviteController() {
 
   return {
     invite,
-    debouncedInviteSearch: debouncedSearch.trim().toLowerCase(),
+    debouncedInviteSearch: debouncedSearch.trim(),
     isInviteInactive,
     setInviteVisibility,
     setInviteSearch,

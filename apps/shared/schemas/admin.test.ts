@@ -5,6 +5,8 @@ import {
   createAdminMemberSchema,
   createInviteLinkSchema,
   inviteLinkSchema,
+  loginLockStateSchema,
+  resetLoginLockResponseSchema,
 } from "./admin";
 import { jsonObjectSchema } from "./json";
 import { PERMISSIONS } from "../constants/roles";
@@ -54,6 +56,21 @@ describe("admin role-target schemas", () => {
     });
 
     expect(parsed).not.toHaveProperty("is_builtin");
+  });
+});
+
+describe("admin login-lock schemas", () => {
+  const state = {
+    fail_count: 4,
+    locked_until: "2026-08-09T12:00:30.000Z",
+    is_locked: true,
+    retry_after_seconds: 30,
+  };
+
+  it("keeps state and reset DTOs strict and snake_case", () => {
+    expect(loginLockStateSchema.parse(state)).toEqual(state);
+    expect(resetLoginLockResponseSchema.parse({ ok: true, ...state })).toEqual({ ok: true, ...state });
+    expect(loginLockStateSchema.safeParse({ ...state, retryAfterSeconds: 30 }).success).toBe(false);
   });
 });
 

@@ -1,6 +1,6 @@
 import type { AnalyticsAggregation, AnalyticsMetricKey } from "../types/guild-war";
+import { DEFAULT_GAME_RULES } from "@guild/shared";
 import {
-  getCurrentGameRules,
   getGuildWarMemberStatLabel,
   getGuildWarMetricValue,
   getGuildWarMetricValueOrNull,
@@ -47,7 +47,7 @@ export function normalizeMetricValue(
     timeNormalized = (rawValue / durationMinutes) * referenceDuration;
   }
   if (modifier !== 1 && modifier > 0) {
-    const lowerIsBetter = getCurrentGameRules().guild_war.member_stats
+    const lowerIsBetter = DEFAULT_GAME_RULES.guild_war.member_stats
       .find((definition) => definition.key === metric)?.lower_is_better ?? false;
     if (lowerIsBetter) {
       timeNormalized /= modifier;

@@ -8,6 +8,9 @@ import { defineConfig, loadEnv, type Plugin } from "vite";
 const portalDir = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(portalDir, "..", "..");
 export const API_PROXY_CONTEXT = "^/api(?:/|$)";
+export const LOCAL_CLOUDFLARE_PROXY_HEADERS = Object.freeze({
+  "CF-Connecting-IP": "127.0.0.1",
+});
 const SOURCE_MODULE_PATH_PATTERN = /\/[^/?#]+\.[^/?#]+$/;
 
 export const ECHARTS_CHUNK_BUDGET = {
@@ -226,12 +229,14 @@ export default defineConfig(({ mode }) => {
       // The worker's CORS allowlist and PORTAL_ORIGIN pin this exact origin.
       // Failing fast beats Vite silently hopping to 5174 and breaking every
       // credentialed request.
+      host: "127.0.0.1",
       port: 5173,
       strictPort: true,
       proxy: {
         [API_PROXY_CONTEXT]: {
           target: workerHttpTarget,
           changeOrigin: true,
+          headers: LOCAL_CLOUDFLARE_PROXY_HEADERS,
           bypass(req) {
             if (!req.url || shouldProxyApiRequest(req.url)) return undefined;
             return req.url;
@@ -252,6 +257,7 @@ export default defineConfig(({ mode }) => {
         "/ws": {
           target: workerWsTarget,
           ws: true,
+          headers: LOCAL_CLOUDFLARE_PROXY_HEADERS,
           configure(proxy) {
             proxy.on("error", (_err, _req, socket) => {
               // Swallow WebSocket proxy errors when the backend isn't running.

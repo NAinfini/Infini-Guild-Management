@@ -26,7 +26,6 @@ import {
   type DashboardUpcomingEventRow,
   orderDashboardUpcomingRows,
 } from "../dashboard/shared";
-import { summariseEventClassQuotas } from "../feature/events/class-quota-view";
 import { ActiveMembersCard } from "../dashboard/ActiveMembersCard";
 import { LastWarCard } from "../dashboard/LastWarCard";
 import { MySignupsCard } from "../dashboard/MySignupsCard";
@@ -42,7 +41,7 @@ export function roundDashboardNow(value = new Date()): Date {
   return rounded;
 }
 
-export function participantToDashboardMember(participant: DashboardEvent["participants"][number]): DashboardMember {
+export function participantToDashboardMember(participant: DashboardEvent["participant_preview"][number]): DashboardMember {
   return {
     user: {
       id: participant.user_id,
@@ -60,7 +59,7 @@ function buildUpcomingEventRow(
   item: DashboardEvent,
   source: DashboardEvent[],
   now: Date,
-  currentUserId: string | undefined,
+  joined: boolean,
 ): DashboardUpcomingEventRow {
   const startsAt = new Date(item.start_at);
   const endsAt = item.end_at ? new Date(item.end_at) : startsAt;
@@ -71,21 +70,30 @@ function buildUpcomingEventRow(
     const peerEnd = peer.end_at ? new Date(peer.end_at) : peerStart;
     return startsAt < peerEnd && peerStart < endsAt;
   });
-  const participantCount = item.participants.length;
-  const joined = Boolean(currentUserId && item.participants.some((participant) => participant.user_id === currentUserId));
+  const participantCount = item.participant_count;
   const capacityLabel = item.capacity === null ? `${participantCount}/∞` : `${participantCount}/${item.capacity}`;
 
-  const members = item.participants.map(participantToDashboardMember);
+  const members = item.participant_preview.map(participantToDashboardMember);
 
   return {
     item,
     startsSoon,
     hasConflict,
     members,
+    participantCount,
     joined,
     capacityLabel,
     isFull: item.capacity !== null && participantCount >= item.capacity,
-    quotaSummary: summariseEventClassQuotas(item, members),
+    quotaSummary: item.quota_summary && {
+      slots: item.quota_summary.slots.map((slot) => ({
+        key: slot.tag_id,
+        required: slot.required,
+        matched: slot.matched,
+        eligible: slot.eligible,
+      })),
+      requiredTotal: item.quota_summary.required_total,
+      matchedTotal: item.quota_summary.matched_total,
+    },
   };
 }
 
@@ -113,8 +121,8 @@ export function DashboardPage() {
     refetchInterval: DASHBOARD_EVENTS_REFETCH_INTERVAL_MS,
   });
   const warsQuery = useQuery({
-    queryKey: dashboardQueryKeys.wars(),
-    queryFn: fetchDashboardWars,
+    queryKey: dashboardQueryKeys.wars(user?.id ?? "guest", isExternalView),
+    queryFn: () => fetchDashboardWars({ externalView: isExternalView }),
     enabled: guildWarEnabled,
     staleTime: DASHBOARD_EVENTS_REFETCH_INTERVAL_MS,
   });
@@ -127,13 +135,16 @@ export function DashboardPage() {
     [featuredEvents, upcomingEvents],
   );
   const recentWars = warsQuery.data?.recent_wars ?? [];
+  const mySignupEventIds = useMemo(
+    () => new Set(eventsQuery.data?.my_signup_event_ids ?? []),
+    [eventsQuery.data?.my_signup_event_ids],
+  );
 
   const mySignupEvents = useMemo(() => {
-    const mySignupIds = new Set(eventsQuery.data?.my_signup_event_ids ?? []);
     return dashboardEvents
-      .filter((event) => mySignupIds.has(event.id))
-      .map((event) => ({ event, participantCount: event.participants.length }));
-  }, [dashboardEvents, eventsQuery.data?.my_signup_event_ids]);
+      .filter((event) => mySignupEventIds.has(event.id))
+      .map((event) => ({ event, participantCount: event.participant_count }));
+  }, [dashboardEvents, mySignupEventIds]);
 
   const recentWarMvps = useMemo<DashboardLastWarMvp[]>(() => {
     return (warsQuery.data?.recent_war_mvps ?? []).map((warMvp) =>
@@ -146,15 +157,15 @@ export function DashboardPage() {
 
   const featuredEventRows = useMemo<DashboardUpcomingEventRow[]>(() => {
     return orderDashboardUpcomingRows(
-      featuredEvents.map((item) => buildUpcomingEventRow(item, dashboardEvents, now, user?.id)),
+      featuredEvents.map((item) => buildUpcomingEventRow(item, dashboardEvents, now, mySignupEventIds.has(item.id))),
     );
-  }, [dashboardEvents, featuredEvents, now, user?.id]);
+  }, [dashboardEvents, featuredEvents, mySignupEventIds, now]);
 
   const upcomingEventRows = useMemo<DashboardUpcomingEventRow[]>(() => {
     return orderDashboardUpcomingRows(
-      upcomingEvents.map((item) => buildUpcomingEventRow(item, dashboardEvents, now, user?.id)),
+      upcomingEvents.map((item) => buildUpcomingEventRow(item, dashboardEvents, now, mySignupEventIds.has(item.id))),
     );
-  }, [dashboardEvents, now, upcomingEvents, user?.id]);
+  }, [dashboardEvents, mySignupEventIds, now, upcomingEvents]);
 
   const openAllEvents = useCallback(
     () => {

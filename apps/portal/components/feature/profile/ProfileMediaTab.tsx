@@ -125,7 +125,7 @@ export function ProfileMediaTab({
       <SectionHeader title={t("section.media")} />
 
       <Stack gap="var(--space-md)" className="profile-media__groups">
-        <Fieldset legend={t("media.group.images", { count: imageList.length })}>
+        <Fieldset className="profile-media__group" legend={t("media.group.images", { count: imageList.length })}>
           <ImageGridEditor
             items={imageItems}
             onReorder={(items) => onReorderImages(items.map((item) => item.id))}
@@ -157,7 +157,7 @@ export function ProfileMediaTab({
           {renderProgress(imageUploader)}
         </Fieldset>
 
-        <Fieldset legend={t("media.group.videos", { count: videoList.length })}>
+        <Fieldset className="profile-media__group" legend={t("media.group.videos", { count: videoList.length })}>
           <Group gap={8} wrap="nowrap" align="flex-start">
             <TextInput
               style={{ flex: 1 }}
@@ -243,7 +243,7 @@ export function ProfileMediaTab({
           ) : null}
         </Fieldset>
 
-        <Fieldset legend={t("media.group.audio")}>
+        <Fieldset className="profile-media__group" legend={t("media.group.audio")}>
           {/* 一行说清「现在挂着哪首」，换和删就摆在名字旁边。名字始终占位，空着的
               时候由文案说明是空的，而不是让整行消失。 */}
           <Group gap={8} align="center" wrap="nowrap" className="profile-media-chip-row">

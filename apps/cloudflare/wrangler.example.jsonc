@@ -1,0 +1,88 @@
+{
+  "$schema": "../../node_modules/wrangler/config-schema.json",
+  "name": "replace-with-worker-name",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-07-28",
+  "workers_dev": true,
+  "preview_urls": false,
+
+  "assets": {
+    "directory": "../portal/dist",
+    "binding": "ASSETS",
+    "html_handling": "none",
+    "not_found_handling": "none",
+    "run_worker_first": true
+  },
+
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "replace-with-d1-database-name",
+      "database_id": "00000000-0000-0000-0000-000000000000",
+      "migrations_dir": "../../packages/persistence-sqlite/src/migrations/generated",
+      "remote": false
+    }
+  ],
+  "r2_buckets": [
+    {
+      "binding": "BLOBS",
+      "bucket_name": "replace-with-r2-bucket-name",
+      "remote": false
+    }
+  ],
+  "durable_objects": {
+    "bindings": [
+      {
+        "name": "NOTIFICATIONS",
+        "class_name": "CloudflareNotificationDurableObject"
+      }
+    ]
+  },
+  "migrations": [
+    {
+      "tag": "notifications-v1",
+      "new_sqlite_classes": ["CloudflareNotificationDurableObject"]
+    }
+  ],
+
+  // These local-only namespace IDs are placeholders. Replace them in the copied
+  // deployment config with the IDs allocated for that Cloudflare account.
+  "ratelimits": [
+    {
+      "name": "AUTH_RATE_LIMITER",
+      "namespace_id": "1001",
+      "simple": { "limit": 5, "period": 60 }
+    },
+    {
+      "name": "READ_RATE_LIMITER",
+      "namespace_id": "1002",
+      "simple": { "limit": 120, "period": 60 }
+    },
+    {
+      "name": "MUTATION_RATE_LIMITER",
+      "namespace_id": "1003",
+      "simple": { "limit": 80, "period": 60 }
+    },
+    {
+      "name": "UPLOAD_RATE_LIMITER",
+      "namespace_id": "1004",
+      "simple": { "limit": 20, "period": 60 }
+    },
+    {
+      "name": "WEBSOCKET_RATE_LIMITER",
+      "namespace_id": "1005",
+      "simple": { "limit": 30, "period": 60 }
+    }
+  ],
+
+  "triggers": {
+    "crons": ["*/15 * * * *", "0 0 * * *"]
+  },
+
+  "vars": {
+    "IG_PUBLIC_URL": "https://replace-with-public-origin.example",
+    "IG_ALLOWED_ORIGINS": "https://replace-with-allowed-origin.example",
+    "IG_SESSION_COOKIE_NAME": "ig_session",
+    "IG_PBKDF2_ITERATIONS": "10000"
+  }
+}

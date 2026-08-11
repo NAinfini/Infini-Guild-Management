@@ -37,15 +37,15 @@ export const siteAbsencePolicySchema = z.object({
 });
 
 export const siteAnalyticsModifierWeightsSchema = z.object({
-  kills: z.number().min(0),
-  towers: z.number().min(0),
-  base_hp: z.number().min(0),
-  credits: z.number().min(0),
-  distance: z.number().min(0),
+  kills: z.number().min(0).max(LIMITS.analytics.modifierWeight.max),
+  towers: z.number().min(0).max(LIMITS.analytics.modifierWeight.max),
+  base_hp: z.number().min(0).max(LIMITS.analytics.modifierWeight.max),
+  credits: z.number().min(0).max(LIMITS.analytics.modifierWeight.max),
+  distance: z.number().min(0).max(LIMITS.analytics.modifierWeight.max),
 }).strict();
 
 export const siteAnalyticsSettingsSchema = z.object({
-  reference_duration_minutes: z.number().positive(),
+  reference_duration_minutes: z.number().positive().max(LIMITS.analytics.referenceDurationMinutes.max),
   modifier_weights: siteAnalyticsModifierWeightsSchema,
 }).strict().refine(
   ({ modifier_weights }) => Object.values(modifier_weights).some((weight) => weight > 0),
@@ -101,8 +101,8 @@ export const siteConfigSchema = z.object({
   storage_policy: siteStoragePolicySchema,
   absence_policy: siteAbsencePolicySchema,
   analytics_settings: siteAnalyticsSettingsSchema,
-  created_at: z.string().nullable().optional(),
-  updated_at: z.string().nullable().optional(),
+  created_at: z.string().datetime(),
+  updated_at: z.string().datetime(),
 });
 
 export const publicSiteConfigSchema = siteConfigSchema.pick({

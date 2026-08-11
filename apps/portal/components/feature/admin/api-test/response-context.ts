@@ -8,12 +8,6 @@ import {
   readString,
 } from "./types";
 
-function orderedIds(rows: readonly unknown[]): string[] {
-  return rows
-    .map((row) => (isRecord(row) ? readString(row.id) : null))
-    .filter((id): id is string => id !== null);
-}
-
 function firstMediaId(payload: Record<string, unknown>): string | null {
   return Array.isArray(payload.media_ids)
     ? payload.media_ids.find((item): item is string => typeof item === "string") ?? null
@@ -153,19 +147,14 @@ export function captureContextFromResponse(
   }
 
   if (endpoint.path === "/api/classes") {
-    /* 列表 GET 返回按 sort_order 排好的整个目录；reorder 用例要原样回放这份顺序。 */
-    if (Array.isArray(result.parsedJson)) {
-      next.classIdsInOrder = orderedIds(result.parsedJson);
-    } else {
+    if (!Array.isArray(result.parsedJson)) {
       next.createdClassId = readString(payload.id) ?? next.createdClassId;
     }
     return next;
   }
 
   if (endpoint.path === "/api/class-tags") {
-    if (Array.isArray(result.parsedJson)) {
-      next.classTagIdsInOrder = orderedIds(result.parsedJson);
-    } else if (endpoint.method === "POST") {
+    if (!Array.isArray(result.parsedJson) && endpoint.method === "POST") {
       next.createdClassTagId = readString(payload.id) ?? next.createdClassTagId;
     }
     return next;
@@ -484,11 +473,9 @@ export function captureContextFromResponse(
     if (Array.isArray(payload.data)) {
       const first = firstArrayItem(payload.data);
       next.badgeId = readString(first?.id) ?? next.badgeId;
-      next.badgeIdsInOrder = orderedIds(payload.data);
     } else if (Array.isArray(payload)) {
       const first = payload.find((item): item is Record<string, unknown> => isRecord(item));
       next.badgeId = readString(first?.id) ?? next.badgeId;
-      next.badgeIdsInOrder = orderedIds(payload);
     } else {
       const id = readString(payload.id);
       next.badgeId = id ?? next.badgeId;

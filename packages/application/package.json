@@ -1,0 +1,16 @@
+{
+  "name": "@guild/application",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/public.ts"
+  },
+  "dependencies": {
+    "@guild/kernel": "workspace:*",
+    "@guild/persistence-sqlite": "workspace:*",
+    "@guild/server": "workspace:*",
+    "@guild/shared": "workspace:*",
+    "@guild/transport-http": "workspace:*",
+    "hono": "^4.12.34"
+  }
+}

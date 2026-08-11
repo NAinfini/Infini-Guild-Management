@@ -1,0 +1,5 @@
+# Copy this file to .dev.vars for local development only.
+# For production, store both values with `wrangler secret put`; never add them
+# to wrangler.jsonc, environment vars, or source control.
+IG_INVITE_TOKEN_SECRET=replace-with-at-least-32-random-bytes
+IG_AUDIT_DOWNLOAD_SECRET=replace-with-at-least-32-random-bytes

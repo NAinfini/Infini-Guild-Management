@@ -2,7 +2,7 @@
  * 上传用例的素材。
  *
  * 这里放的是真正合法的编码产物，不是随手拼的字节。服务端每条上传路径都会
- * 按魔术字节复核声明的 MIME（apps/worker/services/media.ts 的 validateUploadBytes），
+ * 按魔术字节复核声明的 MIME（packages/server/src/modules/media/media-validation.ts），
  * 拼出来的假字节会被直接拒掉。
  */
 
@@ -19,7 +19,7 @@ export const TINY_PNG = Buffer.from(
  * 0.2 秒、8 kHz、16 位单声道的静音 WAV。
  *
  * 音乐上传在浏览器里先解封装再用 WebCodecs 重编成 Ogg/Opus
- * （shared/utils/media.ts 的 convertAudioToOpus），所以素材必须是
+ * （Portal upload-media.ts 的 convertAudioToOpus），所以素材必须是
  * 真能解出来的文件——随手拼的字节在解码那一步就抛错，
  * 报出来的是「转换失败」，看不出是素材的问题。
  * 采样全是 0：静音照样能解码、能重编，而字节数只有 1.6 KB。

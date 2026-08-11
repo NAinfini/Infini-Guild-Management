@@ -2,19 +2,34 @@ import { mkdtemp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import { setupLocal } from "./setup-local.mjs";
+import { parseSetupArguments, setupLocal } from "./setup-local.mjs";
 
 const temporaryDirectories: string[] = [];
+const secrets = {
+  inviteToken: "invite-secret-0123456789abcdef0123456789",
+  auditDownload: "audit-secret-0123456789abcdef0123456789",
+};
 
 async function createFixture() {
   const root = await mkdtemp(join(tmpdir(), "infini-setup-"));
   temporaryDirectories.push(root);
-  const workerDirectory = join(root, "apps", "worker");
-  await mkdir(workerDirectory, { recursive: true });
-  await writeFile(join(workerDirectory, "wrangler.example.jsonc"), "{\"name\":\"example\"}\n");
+  await mkdir(join(root, "apps", "cloudflare"), { recursive: true });
+  await mkdir(join(root, "apps", "vps"), { recursive: true });
+  await mkdir(join(root, "scripts", "templates"), { recursive: true });
   await writeFile(
-    join(workerDirectory, ".dev.vars.example"),
-    "SIGNING_SECRET=replace-with-a-random-secret\n",
+    join(root, "apps", "cloudflare", "wrangler.example.jsonc"),
+    '{"vars":{"IG_PUBLIC_URL":"https://replace-with-public-origin.example","IG_ALLOWED_ORIGINS":"https://replace-with-allowed-origin.example"}}\n',
+  );
+  await writeFile(
+    join(root, "apps", "cloudflare", ".dev.vars.example"),
+    "IG_INVITE_TOKEN_SECRET=replace-with-at-least-32-random-bytes\n"
+      + "IG_AUDIT_DOWNLOAD_SECRET=replace-with-at-least-32-random-bytes\n",
+  );
+  await writeFile(
+    join(root, "scripts", "templates", "vps.env.example"),
+    "IG_ALLOWED_ORIGINS=http://localhost:5173,http://127.0.0.1:5173\n"
+      + "IG_INVITE_TOKEN_SECRET=replace-with-at-least-32-random-bytes\n"
+      + "IG_AUDIT_DOWNLOAD_SECRET=replace-with-at-least-32-random-bytes\n",
   );
   return root;
 }
@@ -24,30 +39,47 @@ afterEach(async () => {
 });
 
 describe("local setup", () => {
-  it("creates ignored local configuration without printing or retaining the placeholder", async () => {
-    const root = await createFixture();
-    const result = await setupLocal(root, "test-generated-secret");
-
-    expect(result.created).toEqual([
-      "apps/worker/wrangler.jsonc",
-      "apps/worker/.dev.vars",
-    ]);
-    expect(await readFile(join(root, "apps", "worker", ".dev.vars"), "utf8"))
-      .toBe("SIGNING_SECRET=test-generated-secret\n");
+  it("requires one explicit runtime", () => {
+    expect(parseSetupArguments(["--runtime", "cloudflare"])).toBe("cloudflare");
+    expect(parseSetupArguments(["--runtime", "vps"])).toBe("vps");
+    expect(() => parseSetupArguments([])).toThrow(/--runtime/);
+    expect(() => parseSetupArguments(["--runtime", "worker"])).toThrow(/cloudflare|vps/);
   });
 
-  it("does not overwrite existing local configuration", async () => {
+  it("creates Cloudflare config and two distinct ignored secrets", async () => {
     const root = await createFixture();
-    const workerDirectory = join(root, "apps", "worker");
-    await writeFile(join(workerDirectory, "wrangler.jsonc"), "existing config");
-    await writeFile(join(workerDirectory, ".dev.vars"), "existing secret");
+    const result = await setupLocal({ root, runtime: "cloudflare", secrets });
 
-    const result = await setupLocal(root, "new-secret");
-
-    expect(result.kept).toEqual([
-      "apps/worker/wrangler.jsonc",
-      "apps/worker/.dev.vars",
+    expect(result.created).toEqual([
+      "apps/cloudflare/wrangler.jsonc",
+      "apps/cloudflare/.dev.vars",
     ]);
-    expect(await readFile(join(workerDirectory, ".dev.vars"), "utf8")).toBe("existing secret");
+    const config = await readFile(join(root, "apps", "cloudflare", "wrangler.jsonc"), "utf8");
+    expect(config).toContain('"IG_PUBLIC_URL":"http://localhost:5173"');
+    expect(config).toContain('"IG_ALLOWED_ORIGINS":"http://localhost:5173"');
+    const variables = await readFile(join(root, "apps", "cloudflare", ".dev.vars"), "utf8");
+    expect(variables).toContain(`IG_INVITE_TOKEN_SECRET=${secrets.inviteToken}`);
+    expect(variables).toContain(`IG_AUDIT_DOWNLOAD_SECRET=${secrets.auditDownload}`);
+  });
+
+  it("creates a VPS env file from the VPS template", async () => {
+    const root = await createFixture();
+    const result = await setupLocal({ root, runtime: "vps", secrets });
+
+    expect(result.created).toEqual(["apps/vps/.env"]);
+    const variables = await readFile(join(root, "apps", "vps", ".env"), "utf8");
+    expect(variables).toContain("IG_ALLOWED_ORIGINS=http://localhost:5173,http://127.0.0.1:5173");
+    expect(variables).toContain(`IG_INVITE_TOKEN_SECRET=${secrets.inviteToken}`);
+    expect(variables).toContain(`IG_AUDIT_DOWNLOAD_SECRET=${secrets.auditDownload}`);
+  });
+
+  it("does not overwrite existing runtime configuration", async () => {
+    const root = await createFixture();
+    await writeFile(join(root, "apps", "vps", ".env"), "existing config");
+
+    const result = await setupLocal({ root, runtime: "vps", secrets });
+
+    expect(result.kept).toEqual(["apps/vps/.env"]);
+    expect(await readFile(join(root, "apps", "vps", ".env"), "utf8")).toBe("existing config");
   });
 });

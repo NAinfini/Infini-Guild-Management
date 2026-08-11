@@ -1,11 +1,15 @@
-import type {
-  AuditLogEntry,
-  CursorResponse,
-  InviteLink,
-  PaginatedResponse,
+import {
+  loginLockStateSchema,
+  type AuditLogEntry,
+  type CursorResponse,
+  type InviteLink,
+  type PaginatedResponse,
 } from "@guild/shared";
 import { LIMITS } from "@guild/shared/config/limits";
+import type { z } from "zod";
 import { apiDownload, apiRequest } from "../client";
+
+export type AdminLoginLockState = z.infer<typeof loginLockStateSchema>;
 
 export type InviteLinkStatsSummary = {
   total: number;
@@ -121,4 +125,8 @@ export async function downloadAdminAuditArchiveFile(url: string): Promise<Blob> 
 
 export function fetchAdminStatus(): Promise<AdminStatus> {
   return apiRequest<AdminStatus>("/api/admin/status");
+}
+
+export function fetchAdminUserLoginLock(userId: string): Promise<AdminLoginLockState> {
+  return apiRequest<AdminLoginLockState>(`/api/admin/users/${userId}/login-lock`);
 }

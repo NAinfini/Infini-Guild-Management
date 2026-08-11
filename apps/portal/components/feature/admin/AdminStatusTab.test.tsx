@@ -112,6 +112,7 @@ describe("AdminStatusTab", () => {
 
     expect(source).not.toContain("import.meta.env.DEV");
     expect(source).not.toContain("system_tests_enabled");
+    expect(source).toContain("useAdminApiTestRunner(visibleApiCategories, user)");
   });
 
   it("clears stale endpoint results before a single-category run", () => {
@@ -122,10 +123,12 @@ describe("AdminStatusTab", () => {
     );
 
     expect(runCategoryBlock).toContain("setResultMap(new Map())");
-    expect(runCategoryBlock).toContain(
-      "contextRef.current = { ...createInitialTestRunContext(), ...serverRun }",
-    );
+    expect(runCategoryBlock).toContain("...createInitialTestRunContext(),");
+    expect(runCategoryBlock).toContain("...serverRun,");
+    expect(runCategoryBlock).toContain("meRoleLevel: actor?.role_level ?? null");
+    expect(runCategoryBlock).toContain("mePermissions: actor?.permissions ?? null");
     expect(runCategoryBlock).toContain("finalizeServerRun");
+    expect(source).toContain("response.status === 404 && mayAlreadyBeFinalized");
   });
 
   it("always renders the API test console for status viewers", () => {
@@ -136,6 +139,28 @@ describe("AdminStatusTab", () => {
     expect(screen.getByRole("button", { name: "status.api.runAll" })).toHaveClass(
       "api-console__run-all",
     );
+  });
+
+  it("switches the API result list between all results and errors only", async () => {
+    const user = userEvent.setup();
+    renderStatusTab();
+
+    const filter = screen.getByRole("group", { name: "status.api.filter.results" });
+    const all = within(filter).getByRole("button", { name: "status.api.filter.all" });
+    const errors = within(filter).getByRole("button", { name: "status.api.filter.errors" });
+
+    expect(all).toHaveAttribute("aria-pressed", "true");
+    expect(errors).toHaveAttribute("aria-pressed", "false");
+
+    await user.click(errors);
+
+    expect(errors).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByText("status.api.noErrors")).toBeInTheDocument();
+
+    await user.click(all);
+
+    expect(all).toHaveAttribute("aria-pressed", "true");
+    expect(screen.queryByText("status.api.noErrors")).not.toBeInTheDocument();
   });
 
   it("runs the explicit quick check action", async () => {
@@ -202,11 +227,55 @@ describe("AdminStatusTab", () => {
       }],
     });
 
-    await user.click(screen.getByRole("button", { name: /status\.healthLogs\.title/ }));
+    const healthLogToggle = screen.getByRole("button", { name: /status\.healthLogs\.title/ });
+    if (healthLogToggle.getAttribute("aria-expanded") !== "true") {
+      await user.click(healthLogToggle);
+    }
     const table = screen.getByRole("table");
     expect(within(table).getAllByText("status.value.configured")).toHaveLength(4);
     expect(table.querySelectorAll(".health-log-dot--warn")).toHaveLength(4);
     expect(table.querySelectorAll(".health-log-dot--error")).toHaveLength(0);
+  });
+
+  it("classifies decorated service statuses consistently in cards and health logs", async () => {
+    const user = userEvent.setup();
+    renderStatusTab({
+      statusData: {
+        db: "ok (D1)",
+        r2: "error",
+        ws: "ok (Durable Object)",
+        crons: "configured (Cron Triggers)",
+      },
+      statusHealthLogs: [{
+        at: "2026-06-11T18:00:00.000Z",
+        db: "ok (D1)",
+        r2: "error",
+        ws: "ok (Durable Object)",
+        crons: "configured (Cron Triggers)",
+        latencyMs: 12,
+      }],
+    });
+
+    const serviceTile = (label: string) => screen
+      .getAllByText(label)
+      .find((node) => node.classList.contains("system-health-tile__label"))
+      ?.closest(".system-health-tile");
+
+    expect(serviceTile("status.service.db")).toHaveClass("system-health-tile--ok");
+    expect(serviceTile("status.service.r2")).toHaveClass("system-health-tile--error");
+    expect(serviceTile("status.service.ws")).toHaveClass("system-health-tile--ok");
+    expect(serviceTile("status.service.crons")).toHaveClass("system-health-tile--configured");
+    expect(screen.getAllByText("OK (D1)")).toHaveLength(2);
+    expect(screen.getAllByText("OK (DURABLE OBJECT)")).toHaveLength(2);
+    expect(screen.getAllByText("CONFIGURED (CRON TRIGGERS)")).toHaveLength(2);
+
+    await user.click(screen.getByRole("button", { name: /status\.healthLogs\.title/ }));
+
+    const dots = screen.getByRole("table").querySelectorAll(".health-log-dot");
+    expect(dots[0]).toHaveClass("health-log-dot--ok");
+    expect(dots[1]).toHaveClass("health-log-dot--error");
+    expect(dots[2]).toHaveClass("health-log-dot--ok");
+    expect(dots[3]).toHaveClass("health-log-dot--warn");
   });
 
   it("keeps the health log, API console and debug console collapsed until asked", async () => {
@@ -258,6 +327,12 @@ describe("AdminStatusTab", () => {
     expect(screen.getByRole("columnheader", { name: "status.service.crons" })).toBeInTheDocument();
     expect(screen.getByRole("columnheader", { name: "status.latency" })).toBeInTheDocument();
     expect(screen.getByText("450ms")).toBeInTheDocument();
+
+    const dots = screen.getByRole("table").querySelectorAll(".health-log-dot");
+    expect(dots[0]).toHaveClass("health-log-dot--ok");
+    expect(dots[1]).toHaveClass("health-log-dot--error");
+    expect(dots[2]).toHaveClass("health-log-dot--warn");
+    expect(dots[3]).toHaveClass("health-log-dot--error");
   });
 
   it("shows the load error state for failed status queries", () => {

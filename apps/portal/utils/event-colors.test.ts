@@ -6,7 +6,7 @@ import { getEventTypeColor } from "./game-rules";
 describe("event colours", () => {
   it("uses the colour stored on each configured event type", () => {
     for (const definition of DEFAULT_GAME_RULES.events.types) {
-      expect(getEventTypeColor(definition.id, DEFAULT_GAME_RULES)).toBe(definition.color);
+      expect(getEventTypeColor(definition.id)).toBe(definition.color);
     }
   });
 

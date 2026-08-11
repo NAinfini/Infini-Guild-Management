@@ -16,7 +16,7 @@ const HIGH_CONFIDENCE_PATTERNS = [
 ];
 
 const ASSIGNMENT_PATTERN =
-  /\b(SIGNING_SECRET|api[_-]?key|api[_-]?token|client[_-]?secret|private[_-]?key|auth[_-]?token|access[_-]?token|secret[_-]?access[_-]?key)\b["']?\s*[:=]\s*["']([^"'\r\n]{8,})["']/gi;
+  /\b(SIGNING_SECRET|IG_INVITE_TOKEN_SECRET|IG_AUDIT_DOWNLOAD_SECRET|IG_BOOTSTRAP_PASSWORD|api[_-]?key|api[_-]?token|client[_-]?secret|private[_-]?key|auth[_-]?token|access[_-]?token|secret[_-]?access[_-]?key)\b["']?\s*[:=]\s*["']([^"'\r\n]{8,})["']/gi;
 
 const PLACEHOLDER_PATTERN =
   /^(?:test|fake|dummy|mock|example|placeholder|replace|your[_-]|change[_-]?me|not[-_ ]?a[-_ ]?real|development)/i;
@@ -36,13 +36,15 @@ export function isForbiddenTrackedFile(file) {
   // POSIX basename treats `\` as an ordinary character, so a Windows-style
   // path would sail through every name check on Linux. Normalize first —
   // the verdict must not depend on which OS ran the scanner.
-  const name = basename(file.replace(/\\/g, "/"));
+  const normalized = file.replace(/\\/g, "/");
+  const name = basename(normalized);
   if (/^\.env(?:\..+)?\.example$/i.test(name) || /^\.dev\.vars(?:\..+)?\.example$/i.test(name)) {
     return false;
   }
   // Every wrangler.jsonc is a deployment's private manifest (real resource IDs,
   // domains); only the wrangler.example.jsonc template belongs in the repo.
   return (
+    /(^|\/)private-migrations(\/|$)/i.test(normalized) ||
     /^\.env(?:\.|$)/i.test(name) ||
     /^\.dev\.vars(?:\.|$)/i.test(name) ||
     name === "wrangler.jsonc" ||

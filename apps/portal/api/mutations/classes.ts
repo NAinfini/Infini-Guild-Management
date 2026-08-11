@@ -4,7 +4,7 @@ import {
   type CreateClassCatalogItemInput,
   type UpdateClassCatalogItemInput,
 } from "@guild/shared";
-import { appendImageUploadVariants, convertImageForUpload } from "@guild/shared/utils/media";
+import { appendImageUploadVariants, convertImageForUpload } from "../../utils/upload-media";
 import { apiRequest } from "../client";
 
 export async function createClassCatalogItem(

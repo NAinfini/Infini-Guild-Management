@@ -1,6 +1,13 @@
-import type { AdminRole, User } from "@guild/shared";
+import {
+  PERMISSIONS,
+  SITE_OWNER_LEVEL,
+  SITE_OWNER_ROLE_ID,
+  type AdminRole,
+  type User,
+} from "@guild/shared";
 import { describe, expect, it } from "vitest";
 import {
+  canPreviewRole,
   canManageUserByRoleLevel,
   getAdminCapabilities,
   isRoleAssignableToUser,
@@ -31,6 +38,8 @@ describe("class administration permission contract", () => {
 
 describe("role authority rules", () => {
   const actor = {
+    id: "officer-1",
+    role: "officer",
     role_level: 200,
     permissions: {
       "admin.users.role": true,
@@ -60,9 +69,41 @@ describe("role authority rules", () => {
   });
 
   it("allows member operations only below the actor's role level", () => {
-    expect(canManageUserByRoleLevel({ role_level: 199 } as User, actor)).toBe(true);
-    expect(canManageUserByRoleLevel({ role_level: 200 } as User, actor)).toBe(false);
-    expect(canManageUserByRoleLevel({ role_level: 201 } as User, actor)).toBe(false);
+    expect(canManageUserByRoleLevel({ id: "lower", role_level: 199 } as User, actor)).toBe(true);
+    expect(canManageUserByRoleLevel({ id: "peer", role_level: 200 } as User, actor)).toBe(false);
+    expect(canManageUserByRoleLevel({ id: "higher", role_level: 201 } as User, actor)).toBe(false);
     expect(canManageUserByRoleLevel({ role_level: 1 } as User, null)).toBe(false);
+  });
+
+  it("matches the server's site-owner peer and assignment exception", () => {
+    const ownerPermissions = Object.fromEntries(
+      PERMISSIONS.map((permission) => [permission, true]),
+    ) as User["permissions"];
+    const owner = {
+      id: "owner-1",
+      role: SITE_OWNER_ROLE_ID,
+      role_level: SITE_OWNER_LEVEL,
+      permissions: ownerPermissions,
+    } as User;
+    const ownerRole = {
+      id: SITE_OWNER_ROLE_ID,
+      level: SITE_OWNER_LEVEL,
+      permissions: ownerPermissions,
+    } as AdminRole;
+
+    expect(canManageUserByRoleLevel({
+      id: "owner-2",
+      role: SITE_OWNER_ROLE_ID,
+      role_level: SITE_OWNER_LEVEL,
+    } as User, owner)).toBe(true);
+    expect(canManageUserByRoleLevel(owner, owner)).toBe(false);
+    expect(isRoleAssignableToUser(ownerRole, owner)).toBe(true);
+  });
+
+  it("does not offer Viewing As roles above the actual session role", () => {
+    expect(canPreviewRole({ level: 199 } as AdminRole, actor)).toBe(true);
+    expect(canPreviewRole({ level: 200 } as AdminRole, actor)).toBe(true);
+    expect(canPreviewRole({ level: 201 } as AdminRole, actor)).toBe(false);
+    expect(canPreviewRole({ level: 1 } as AdminRole, null)).toBe(false);
   });
 });

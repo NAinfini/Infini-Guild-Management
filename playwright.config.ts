@@ -1,5 +1,6 @@
 import { defineConfig, devices } from "@playwright/test";
 import {
+  ARTIFACTS_DIR,
   E2E_INSPECTOR_PORT_BASE,
   E2E_PORT_BASE,
   E2E_SLOTS,
@@ -8,13 +9,13 @@ import {
 } from "./apps/portal/e2e/support/config";
 
 /*
- * 站点和接口同一个源：worker 通过 ASSETS 绑定直接吐 apps/portal/dist，
+ * 站点和接口同一个源：Cloudflare runtime 通过 ASSETS 绑定直接吐 apps/portal/dist，
  * 不再起 vite dev server（理由见 apps/portal/e2e/support/config.ts 的说明）。
  */
 
 export default defineConfig<E2eOptions>({
   testDir: "apps/portal/e2e/specs",
-  outputDir: "apps/portal/e2e/.artifacts",
+  outputDir: ARTIFACTS_DIR,
   globalSetup: "./apps/portal/e2e/global-setup.ts",
   globalTeardown: "./apps/portal/e2e/global-teardown.ts",
 
@@ -42,8 +43,8 @@ export default defineConfig<E2eOptions>({
      playwright-report/，是失败后唯一能带出运行器的现场。open: never，
      不然 CI 上会去尝试拉起浏览器。 */
   reporter: process.env.CI
-    ? [["github"], ["list"], ["html", { open: "never" }]]
-    : [["list"]],
+    ? [["github"], ["list"], ["html", { open: "never" }], ["./apps/portal/e2e/support/cleanup-reporter.ts"]]
+    : [["list"], ["./apps/portal/e2e/support/cleanup-reporter.ts"]],
 
   use: {
     /* baseURL 和 storageState 由 support/test.ts 的 fixture 按槽位给，
@@ -51,6 +52,7 @@ export default defineConfig<E2eOptions>({
     trace: "retain-on-failure",
     screenshot: "only-on-failure",
     video: "off",
+    ignoreHTTPSErrors: true,
     /*
      * 固定成英文：i18n 取 localStorage.locale，取不到就看 navigator.language。
      * 用例靠可访问名定位控件，语言飘一下全套选择器就散架。
@@ -74,33 +76,42 @@ export default defineConfig<E2eOptions>({
   ],
 
   /*
-   * 每个槽位一个 wrangler 实例：独立端口、独立 --persist-to（D1 + R2 都在里面）、
-   * 独立 inspector 端口。worker 同时是接口和站点，所以不需要另起 vite。
+   * 每个槽位一个 apps/cloudflare Wrangler 实例：独立端口、独立 --persist-to
+   * （D1 + R2 + DO + 限流都在里面）、独立 inspector 端口。
    *
    * 这里**不**负责 build：所有槽位共读同一个 apps/portal/dist，让其中一个边跑
    * vite build 边让别的槽位对着半成品目录起服务是自找的麻烦。产物由
    * `pnpm test:e2e` 在启动 Playwright 之前构建；直接敲 `playwright test` 时，
    * globalSetup 的时间戳比对会当场报错并告诉你去跑 `pnpm build`。
    *
-   * 每轮先精确删除各槽位自己的 e2e 状态，再由 migrations apply 从当前核心 schema
-   * 重建 D1；否则 0000_core_schema.sql 改过后，旧目录里的已应用迁移不会重跑，库会漂移。
+   * 每轮启动前由 scripts/e2e/prepare-slot.mjs 精确删除本槽位状态，再离线应用
+   * 0000_core.sql 和 fixture seed。配置与 CLI 都固定 local/remote:false。
    * reuseExistingServer 关掉：e2e 必须自己起自己的实例。复用别人留下的进程意味着
    * 复用别人留下的库，那是「上一轮的残留伪装成这一轮的数据」最常见的来源；
    * 端口被占就当场报错，比静默跑在错误的库上强。
    */
-  webServer: Array.from({ length: E2E_SLOTS }, (_, slot) => ({
-    command: [
-      `node scripts/reset-e2e-slot-state.mjs ${slot} && `,
-      `wrangler d1 migrations apply guild-portal-db --local`,
-      ` --config apps/worker/wrangler.jsonc --persist-to apps/worker/.wrangler/e2e-${slot} && `,
-      `wrangler dev --config apps/worker/wrangler.jsonc`,
-      ` --persist-to apps/worker/.wrangler/e2e-${slot}`,
-      ` --port ${E2E_PORT_BASE + slot} --inspector-port ${E2E_INSPECTOR_PORT_BASE + slot}`,
-    ].join(""),
-    url: `${originForSlot(slot)}/api/health`,
-    reuseExistingServer: false,
-    timeout: 180_000,
-    stdout: "pipe" as const,
-    stderr: "pipe" as const,
-  })),
+  webServer: Array.from({ length: E2E_SLOTS }, (_, slot) => {
+    const origin = originForSlot(slot);
+    const persistTo = `apps/portal/e2e/.state/slots/slot-${slot}/wrangler`;
+    return {
+      command: [
+        `node scripts/e2e/prepare-slot.mjs ${slot} && `,
+        "wrangler dev --local --config scripts/e2e/wrangler.e2e.jsonc",
+        ` --persist-to ${persistTo} --name infini-guild-e2e-${slot}`,
+        ` --ip 127.0.0.1 --port ${E2E_PORT_BASE + slot}`,
+        ` --inspector-ip 127.0.0.1 --inspector-port ${E2E_INSPECTOR_PORT_BASE + slot}`,
+        " --local-protocol https --show-interactive-dev-session=false",
+        ` --var IG_PUBLIC_URL:${origin} --var IG_ALLOWED_ORIGINS:${origin}`,
+        " --var IG_SESSION_COOKIE_NAME:ig_e2e_session --var IG_PBKDF2_ITERATIONS:10000",
+        " --var IG_INVITE_TOKEN_SECRET:test-invite-token-secret-000000000000",
+        " --var IG_AUDIT_DOWNLOAD_SECRET:test-audit-download-secret-000000000",
+      ].join(""),
+      url: `${origin}/api/health`,
+      ignoreHTTPSErrors: true,
+      reuseExistingServer: false,
+      timeout: 180_000,
+      stdout: "pipe" as const,
+      stderr: "pipe" as const,
+    };
+  }),
 });

@@ -71,36 +71,7 @@ type Fixtures = {
   quotaTrace: void;
 };
 
-/*
- * 回读通道对 ECONNRESET 重试两次。
- *
- * 浏览器和 api 都走 portal 的 vite 开发代理，代理会主动掐掉闲置的 keep-alive 连接。
- * 一条用例的节奏通常是：beforeEach 连着发几个请求造数据 → 界面上操作好几秒（这期间
- * 那条连接一直闲着）→ afterEach 复用它去清理。正好撞上代理关连接的时刻，
- * 就是 read ECONNRESET——清理没跑完，产物留在库里，报出来的却像用例失败。
- *
- * Playwright 的 maxRetries 只重试网络层的 ECONNRESET，明确不按 HTTP 状态码重试，
- * 所以服务端的任何失败（含 5xx）照样原样抛出来，不会被这层重试盖掉。
- */
-const NETWORK_RETRIES = 2;
-const RETRYABLE_METHODS = new Set(["fetch", "get", "post", "put", "patch", "delete", "head"]);
-
-function withNetworkRetries(context: APIRequestContext): APIRequestContext {
-  return new Proxy(context, {
-    get(target, property, receiver) {
-      const value = Reflect.get(target, property, receiver) as unknown;
-      if (typeof value !== "function") return value;
-      if (typeof property !== "string" || !RETRYABLE_METHODS.has(property)) {
-        return value.bind(target);
-      }
-      return (url: unknown, options?: Record<string, unknown>) =>
-        (value as (...args: unknown[]) => unknown).call(target, url, {
-          maxRetries: NETWORK_RETRIES,
-          ...options,
-        });
-    },
-  });
-}
+const API_METHODS = new Set(["fetch", "get", "post", "put", "patch", "delete", "head"]);
 
 /*
  * 配额取证的收集点，只有 E2E_QUOTA_TRACE 打开时才不是 null（见 quotaTrace fixture）。
@@ -125,7 +96,7 @@ function withQuotaTrace(context: APIRequestContext): APIRequestContext {
     get(target, property, receiver) {
       const value = Reflect.get(target, property, receiver) as unknown;
       if (typeof value !== "function") return value;
-      if (typeof property !== "string" || !RETRYABLE_METHODS.has(property)) {
+      if (typeof property !== "string" || !API_METHODS.has(property)) {
         return value.bind(target);
       }
       return async (...args: unknown[]) => {
@@ -351,9 +322,10 @@ export const test = base.extend<E2eOptions & Fixtures>({
     const context = await request.newContext({
       baseURL: PORTAL_ORIGIN,
       storageState: storageState as string | undefined,
+      ignoreHTTPSErrors: true,
       extraHTTPHeaders: { ...MUTATION_HEADERS, ...identityHeaders(apiClientAddress, trackArtifacts) },
     });
-    await use(withQuotaTrace(withNetworkRetries(context)));
+    await use(withQuotaTrace(context));
     await context.dispose();
   },
 

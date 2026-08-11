@@ -6,6 +6,31 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Rel
 
 ## [Unreleased]
 
+### Added
+
+- One runtime-neutral backend composed from shared contracts, domain services, SQLite stores, HTTP routes, and explicit platform ports, with selectable Cloudflare and single-process VPS deployments.
+- Persistent progressive login locking with exact remaining-time responses, administrator inspection/reset, and bounded scheduled cleanup.
+- A `site_owner` trust-root role above admin, support for multiple owners, peer-owner authorization, and database protection for the final active owner.
+- Offline private migration tools for exact conversion of the previous PBKDF2 hash/salt format and for establishing the first site owner without adding runtime compatibility paths.
+- VPS SQLite/filesystem/WebSocket/scheduler adapters, migration tooling, bounded shutdown, and Cloudflare/VPS conformance tests.
+
+### Changed
+
+- Rebuilt the backend domains around one-way module boundaries and one shared SQLite schema used by D1 and VPS; the replaced Worker implementation has been removed from the source tree.
+- Wiki revisions now retain complete immutable snapshots for every state change, use keyset pagination, preserve historical media, and can atomically restore any recorded revision.
+- Admin API tests record exact artifacts, errors, and reversible before-images, then perform compare-and-swap cleanup; abandoned runs are reclaimed by the shared scheduled-job coordinator.
+- Password hashing defaults to 10,000 PBKDF2-SHA256 iterations for the Cloudflare free-plan CPU budget, accepts a reviewed deployment override up to 10,000,000, and upgrades only lower-cost stored hashes.
+- Media identity, attachment, quota, ranges, and garbage collection are database-owned and share one streaming BlobStore contract across R2 and the VPS filesystem.
+
+### Breaking
+
+- The modular backend uses a new `0000_core.sql` baseline and intentionally provides no runtime legacy schema, dual-read, or backward-compatibility layer. Existing operators must follow the documented backup/rebuild procedure; only credentials have an explicit offline converter.
+
+### Security
+
+- Both runtimes resolve immutable authorization context server-side, apply origin/XHR/body/rate-limit guards before domain routes, and commit protected audit rows atomically with mutations.
+- Cloudflare local configuration is rejected unless D1 and R2 bindings explicitly set `remote: false`; CI and `release:check` never authenticate, deploy, or mutate production resources.
+
 ## [0.1.0] - 2026-08-08
 
 First public release. The entries below describe the product as shipped.

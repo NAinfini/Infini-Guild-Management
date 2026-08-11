@@ -8,12 +8,20 @@ export default [
       "**/node_modules/**",
       "**/dist/**",
       "**/coverage/**",
-      "apps/worker/.wrangler/**",
+      "**/.wrangler/**",
+      "apps/cloudflare/tmp/**",
       "apps/portal/public/**",
     ],
   },
   {
-    files: ["apps/**/*.ts", "apps/**/*.tsx"],
+    files: [
+      "apps/**/*.ts",
+      "apps/**/*.tsx",
+      "packages/**/*.ts",
+      "packages/**/*.tsx",
+      "scripts/**/*.ts",
+      "scripts/**/*.tsx",
+    ],
     languageOptions: {
       parser: tsParser,
       parserOptions: {
@@ -29,6 +37,17 @@ export default [
       "react-hooks": reactHooks,
     },
     rules: {
+      "no-restricted-imports": [
+        "error",
+        {
+          patterns: [
+            {
+              group: ["@guild/*/src", "@guild/*/src/**", "**/packages/*/src/**"],
+              message: "Import through an explicit @guild package public export.",
+            },
+          ],
+        },
+      ],
       "@typescript-eslint/no-unused-vars": [
         "warn",
         {
@@ -84,6 +103,12 @@ export default [
     },
   },
   {
+    files: ["scripts/**/*.mjs"],
+    rules: {
+      "no-unused-vars": ["warn", { argsIgnorePattern: "^_", varsIgnorePattern: "^_" }],
+    },
+  },
+  {
     files: ["apps/portal/hooks/**/*.ts", "apps/portal/hooks/**/*.tsx"],
     ignores: [
       // These two controllers still compose feature UI and are migration boundaries.
@@ -100,51 +125,6 @@ export default [
               message: "Hooks must depend on domain types/services, not feature component implementations.",
             },
           ],
-        },
-      ],
-    },
-  },
-  {
-    files: ["apps/worker/**/*.ts"],
-    ignores: [
-      "apps/worker/**/*.test.ts",
-      "apps/worker/tests/**",
-      "apps/worker/db/seed.ts",
-      "apps/worker/scripts/**",
-      "apps/worker/crons/announcement-publish.ts",
-      "apps/worker/crons/audit-archive.ts",
-      "apps/worker/crons/event-instance-gen.ts",
-      "apps/worker/crons/raffle-draw.ts",
-      "apps/worker/index.ts",
-      "apps/worker/routes/dashboard.ts",
-      "apps/worker/services/AdminAuditService.ts",
-      "apps/worker/services/AdminService.ts",
-      "apps/worker/services/BadgeService.ts",
-      "apps/worker/services/SearchService.ts",
-      "apps/worker/services/UserService.ts",
-      "apps/worker/services/WikiService.ts",
-      "apps/worker/services/auth.ts",
-      "apps/worker/services/events/EventCrudService.ts",
-      "apps/worker/services/events/EventParticipantService.ts",
-      "apps/worker/services/events/EventPollRaffleService.ts",
-      "apps/worker/services/guild-war/GuildWarActiveService.ts",
-      "apps/worker/services/guild-war/GuildWarHistoryService.ts",
-    ],
-    rules: {
-      "max-lines": [
-        "warn",
-        {
-          max: 300,
-          skipBlankLines: true,
-          skipComments: true,
-        },
-      ],
-      "max-lines-per-function": [
-        "warn",
-        {
-          max: 50,
-          skipBlankLines: true,
-          skipComments: true,
         },
       ],
     },

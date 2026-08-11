@@ -1,4 +1,4 @@
-import type { Event, WarHistory } from "@guild/shared";
+import type { Event, ExternalDashboardWar } from "@guild/shared";
 import { apiRequest } from "../client";
 
 export type DashboardParticipant = {
@@ -10,8 +10,29 @@ export type DashboardParticipant = {
   avatar_media_id: string | null;
 };
 
+export type DashboardQuotaSummary = {
+  slots: Array<{
+    tag_id: string;
+    required: number;
+    matched: number;
+    dedicated: number;
+    eligible: number;
+    floor: number;
+    ceiling: number;
+    status: "filled" | "flex" | "short";
+  }>;
+  benched_count: number;
+  unassigned_count: number;
+  flexible: number;
+  required_total: number;
+  matched_total: number;
+  shortfall: number;
+};
+
 export type DashboardEvent = Event & {
-  participants: DashboardParticipant[];
+  participant_count: number;
+  participant_preview: DashboardParticipant[];
+  quota_summary: DashboardQuotaSummary | null;
 };
 
 export type DashboardWarMvp = {
@@ -36,8 +57,8 @@ export type DashboardEventsResponse = {
 
 export type DashboardWarsResponse = {
   all_war_win_rate: number;
-  recent_wars: WarHistory[];
-  recent_war_mvps: Array<DashboardWarMvp[] | null>;
+  recent_wars: ExternalDashboardWar[];
+  recent_war_mvps?: Array<DashboardWarMvp[] | null>;
 };
 
 export function fetchDashboardMemberStats(): Promise<DashboardMemberStatsResponse> {
@@ -49,6 +70,7 @@ export function fetchDashboardEvents(options?: { externalView?: boolean }): Prom
   return apiRequest<DashboardEventsResponse>(`/api/dashboard/events${suffix}`);
 }
 
-export function fetchDashboardWars(): Promise<DashboardWarsResponse> {
-  return apiRequest<DashboardWarsResponse>("/api/dashboard/wars");
+export function fetchDashboardWars(options?: { externalView?: boolean }): Promise<DashboardWarsResponse> {
+  const suffix = options?.externalView ? "?external_view=true" : "";
+  return apiRequest<DashboardWarsResponse>(`/api/dashboard/wars${suffix}`);
 }

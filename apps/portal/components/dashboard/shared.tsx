@@ -1,5 +1,5 @@
 import type { Event } from "@guild/shared";
-import type { ClassQuotaSummary } from "@guild/shared/utils/class-quota";
+import type { EventQuotaBarSummary } from "../feature/events/EventQuotaBar";
 import { eventTypeColor } from "@portal/utils/event-colors";
 import { Group, Title } from "@mantine/core";
 import { format } from "date-fns";
@@ -58,11 +58,12 @@ export type DashboardUpcomingEventRow = {
   startsSoon: boolean;
   hasConflict: boolean;
   members: DashboardMember[];
+  participantCount: number;
   joined: boolean;
   capacityLabel: string;
   isFull: boolean;
   /** 没配过配额的活动是 null，整行筹码不渲染。 */
-  quotaSummary: ClassQuotaSummary | null;
+  quotaSummary: EventQuotaBarSummary | null;
 };
 
 export type DashboardLastWarMvpEntry = {

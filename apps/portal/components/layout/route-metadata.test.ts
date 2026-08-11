@@ -47,13 +47,13 @@ describe("portal route metadata", () => {
   });
 
   /*
-   * 控制台的成员表和 Wiki 的正文卡都把纵向滚动收在自己内部，前提是外壳给出确定
+   * 控制台、Wiki、公告与成员名册都把纵向滚动收在自己内部，前提是外壳给出确定
    * 高度。这个开关一旦丢了，内容会按整页铺开，滚动条重新落回外壳。
    */
   it("locks the inner-scrolling workspaces to one viewport and leaves every other route free to grow", () => {
     expect(
       PORTAL_ROUTES.filter((route) => route.fillsViewport).map((route) => route.to).sort(),
-    ).toEqual(["/admin", "/wiki"]);
+    ).toEqual(["/admin", "/announcements", "/roster", "/wiki"]);
   });
 
   it("preserves the approved navigation hierarchy without empty groups", () => {

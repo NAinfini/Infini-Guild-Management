@@ -23,8 +23,7 @@ import {
   metricValueOrNullFromWarMember,
   normalizeMetricValue,
 } from "../../utils/guild-war-analytics";
-import { useSiteConfigStore } from "@portal/stores/site-config";
-import { GUILD_WAR_KDA_KEY } from "@guild/shared";
+import { DEFAULT_GAME_RULES, GUILD_WAR_KDA_KEY } from "@guild/shared";
 
 type UseGuildWarAnalyticsParams = {
   historyRows: Array<{ id: string; war_name: string; created_at: string }>;
@@ -39,7 +38,7 @@ export function useGuildWarAnalytics({
 }: UseGuildWarAnalyticsParams) {
   const { t } = useTranslation("guild-war");
   const hasSession = useAuthStore((state) => Boolean(state.user));
-  const warRules = useSiteConfigStore((state) => state.gameRules.guild_war);
+  const warRules = DEFAULT_GAME_RULES.guild_war;
   const {
     analyticsMode,
     setAnalyticsMode,

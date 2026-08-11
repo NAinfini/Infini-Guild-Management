@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import type { AdminRole, Permission, User } from "@guild/shared";
+import { PERMISSIONS, type AdminRole, type Permission, type User } from "@guild/shared";
 import { MantineProvider } from "@mantine/core";
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
@@ -98,6 +98,15 @@ function renderRolesSection(
 }
 
 describe("AdminRolesSection storage permissions", () => {
+  it("presents every permission and keeps the owner grant immutable", () => {
+    renderRolesSection();
+
+    for (const permission of PERMISSIONS) {
+      expect(screen.getByText(permission)).toBeInTheDocument();
+    }
+    expect(screen.getByRole("button", { name: "admin.owners.manage" })).toBeDisabled();
+  });
+
   it("lets every D1 role edit metadata and exposes server-authoritative deletion", () => {
     renderRolesSection();
 

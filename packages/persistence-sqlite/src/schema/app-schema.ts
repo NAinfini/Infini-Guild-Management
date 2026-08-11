@@ -1,0 +1,125 @@
+import { announcements } from "./announcements.js";
+import { auditArchiveItems, auditArchives, auditLog } from "./audit.js";
+import {
+  inviteLinks,
+  loginFailures,
+  rolePermissions,
+  roles,
+  sessions,
+  userCredentials,
+  users,
+} from "./auth.js";
+import {
+  eventClassQuotas,
+  eventParticipants,
+  eventPollOptions,
+  eventPollVotes,
+  eventPolls,
+  eventRaffleDraws,
+  eventRaffleWinners,
+  events,
+  recurringTemplateClassQuotas,
+  recurringTemplates,
+  recurringTemplateWeekdays,
+} from "./events.js";
+import { errorLog } from "./error-log.js";
+import { galleryItems } from "./gallery.js";
+import { guildWars, warMembers, warTeams } from "./guild-war.js";
+import { mediaAssets, mediaLinks, mediaVariants } from "./media.js";
+import {
+  classCatalog,
+  classTagMembers,
+  classTags,
+  memberAbsences,
+  memberAvailabilityWindows,
+  memberBadgeAssignments,
+  memberBadges,
+  memberProfileClasses,
+  memberProfiles,
+  memberProfileVideos,
+} from "./members.js";
+import { siteConfig } from "./site-config.js";
+import { scheduledJobLeases } from "./scheduled-jobs.js";
+import { appMigrations } from "./schema-metadata.js";
+import {
+  storageBalances,
+  storageBatches,
+  storageCategories,
+  storageItems,
+  storageLedgerEntries,
+  storages,
+} from "./storage.js";
+import {
+  systemTestArtifacts,
+  systemTestBeforeImages,
+  systemTestRequests,
+  systemTestRuns,
+} from "./system-test.js";
+import {
+  wikiArticles,
+  wikiCategories,
+  wikiCategoryState,
+  wikiRevisionMedia,
+  wikiRevisions,
+} from "./wiki.js";
+
+export const appSchema = {
+  announcements,
+  appMigrations,
+  auditArchiveItems,
+  auditArchives,
+  auditLog,
+  classCatalog,
+  classTagMembers,
+  classTags,
+  eventClassQuotas,
+  eventParticipants,
+  eventPollOptions,
+  eventPollVotes,
+  eventPolls,
+  eventRaffleDraws,
+  eventRaffleWinners,
+  errorLog,
+  events,
+  galleryItems,
+  guildWars,
+  inviteLinks,
+  loginFailures,
+  mediaAssets,
+  mediaLinks,
+  mediaVariants,
+  memberAbsences,
+  memberAvailabilityWindows,
+  memberBadgeAssignments,
+  memberBadges,
+  memberProfileClasses,
+  memberProfiles,
+  memberProfileVideos,
+  recurringTemplateClassQuotas,
+  recurringTemplates,
+  recurringTemplateWeekdays,
+  rolePermissions,
+  roles,
+  scheduledJobLeases,
+  sessions,
+  siteConfig,
+  storageBalances,
+  storageBatches,
+  storageCategories,
+  storageItems,
+  storageLedgerEntries,
+  storages,
+  systemTestArtifacts,
+  systemTestBeforeImages,
+  systemTestRequests,
+  systemTestRuns,
+  userCredentials,
+  users,
+  warMembers,
+  warTeams,
+  wikiArticles,
+  wikiCategories,
+  wikiCategoryState,
+  wikiRevisionMedia,
+  wikiRevisions,
+} as const;

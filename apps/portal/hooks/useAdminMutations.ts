@@ -5,6 +5,7 @@ import { useTranslation } from "react-i18next";
 import { notifySuccess, notifyWarning, notifyError } from "../utils/notifications";
 import type { MemberDetailFormState } from "../types/admin";
 import {
+  type AdminLoginLockState,
   adminUpdateProfile,
   batchDeactivateAdminUsers,
   batchDeleteAdminUsers,
@@ -137,8 +138,9 @@ export function useAdminMutations({
 
   const resetLoginLockMutation = useMutation({
     mutationFn: (userId: string) => resetAdminUserLoginLock(userId),
-    onSuccess: () => {
-      notifySuccess(t("message.loginLockCleared"));
+    onSuccess: async (payload, userId) => {
+      notifySuccess(t("message.loginLockCleared", { seconds: payload.retry_after_seconds }));
+      await queryClient.invalidateQueries({ queryKey: queryKeys.admin.loginLock(userId) });
     },
     onError: (error) => showError(error, t("message.loginLockClearFailed")),
   });
@@ -493,12 +495,27 @@ export function useAdminMutations({
     if (pending) void pending.catch(() => undefined);
   };
 
-  const resetUserLoginLock = (userId: string) => {
+  const resetUserLoginLock = async (userId: string, lockState: AdminLoginLockState) => {
+    if (isActionPending({ resource: "user", resourceId: userId, action: "reset-login-lock" })) {
+      return;
+    }
+    const confirmed = await confirm({
+      title: t("confirm.loginLockTitle"),
+      description: t("confirm.loginLockDescription", {
+        username: resolveUsername(userId) ?? userId,
+        seconds: lockState.retry_after_seconds,
+      }),
+      confirmLabel: t("member.resetLoginLock"),
+      cancelLabel: t("common:action.cancel"),
+      intent: "warning",
+    });
+    if (!confirmed) return;
+
     const pending = runPendingAction(
       { resource: "user", resourceId: userId, action: "reset-login-lock" },
       () => resetLoginLockMutation.mutateAsync(userId),
     );
-    if (pending) void pending.catch(() => undefined);
+    if (pending) await pending.catch(() => undefined);
   };
 
   const revokeInvite = (inviteId: string) => {

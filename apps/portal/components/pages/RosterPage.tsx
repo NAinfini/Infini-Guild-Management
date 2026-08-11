@@ -60,7 +60,7 @@ export function RosterPage() {
 
   return (
     <PageLayout className="roster-page">
-      <Stack gap={16}>
+      <Stack gap="md" className="roster-page__body">
       <RosterFilterCard
         search={controller.search}
         onSearchChange={controller.setSearch}

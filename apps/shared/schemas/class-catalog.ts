@@ -39,6 +39,11 @@ export const classCatalogItemSchema = z.discriminatedUnion("icon_type", [
   }),
 ]);
 
+export const classCatalogListSchema = z.array(classCatalogItemSchema)
+  .max(LIMITS.content.classCatalogSize.max);
+
+export const classCatalogDeletedResponseSchema = z.object({ deleted: z.literal(true) }).strict();
+
 export const createClassCatalogItemSchema = z.object({
   label: z.string().trim().min(1).max(80),
   color: classColorSchema,

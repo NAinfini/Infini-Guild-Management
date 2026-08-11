@@ -1,6 +1,5 @@
-import { findEventTypeDefinition } from "@guild/shared";
+import { DEFAULT_GAME_RULES, findEventTypeDefinition } from "@guild/shared";
 import { z } from "zod";
-import { getCurrentGameRules } from "./game-rules";
 
 const EVENT_WORKBENCH_VIEW_MODES = ["cards", "month", "recurring"] as const;
 const EVENT_STATUS_FILTERS = ["active", "archived", "all"] as const;
@@ -48,7 +47,7 @@ export const EVENTS_ROUTE_SEARCH_SCHEMA = z.object({
   search: z.preprocess(parseTextSearchValue, z.string().optional()),
   type: z.preprocess(
     (val) => (
-      typeof val === "string" && findEventTypeDefinition(getCurrentGameRules(), val)?.enabled
+      typeof val === "string" && findEventTypeDefinition(DEFAULT_GAME_RULES, val)?.enabled
         ? val
         : undefined
     ),

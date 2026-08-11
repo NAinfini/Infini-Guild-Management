@@ -34,12 +34,9 @@ let stamp: number;
 let categoryA: { id: string; name: string };
 let categoryB: { id: string; name: string };
 let article: { id: string; title: string; slug: string };
-/** 用例自己新建的文章，afterEach 一并清掉。 */
-let extraArticleIds: string[];
 
 test.beforeEach(async ({ api }) => {
   stamp = Date.now();
-  extraArticleIds = [];
 
   categoryA = await createCategory(api, `${SYSTEM_TEST_CONTENT_MARKER} CatA ${stamp}`);
   categoryB = await createCategory(api, `${SYSTEM_TEST_CONTENT_MARKER} CatB ${stamp}`);
@@ -55,18 +52,6 @@ test.beforeEach(async ({ api }) => {
     "创建被编辑的文章",
   ) as ArticleDetail;
   article = { id: created.id, title: created.title, slug: created.slug };
-});
-
-test.afterEach(async ({ api }) => {
-  for (const id of [article.id, ...extraArticleIds]) {
-    const response = await api.delete(`/api/wiki/articles/${id}/permanent`);
-    expect([200, 204, 404], `清理文章 ${id} 返回 ${response.status()}`).toContain(response.status());
-  }
-  for (const category of [categoryA, categoryB]) {
-    const response = await api.delete(`/api/wiki/categories/${category.id}`);
-    expect([200, 204, 404], `清理分类 ${category.name} 返回 ${response.status()}`)
-      .toContain(response.status());
-  }
 });
 
 function bodyJson(text: string): string {
@@ -124,7 +109,7 @@ function saveButton(page: Page): Locator {
  * 这几个按钮真正的契约是「只记前端意图，不写服务端」，所以只盯写方法；
  * 服务端确实没变，紧接着还会被回读断言再钉一次。
  */
-async function clickWithoutWrite(page: Page, control: Locator): Promise<void> {
+async function clickWithoutWrite(page: Page, action: () => Promise<void>): Promise<void> {
   const writes: string[] = [];
   const record = (request: Request): void => {
     const { pathname } = new URL(request.url());
@@ -134,8 +119,7 @@ async function clickWithoutWrite(page: Page, control: Locator): Promise<void> {
   };
   page.on("request", record);
   try {
-    await control.click();
-    await page.waitForTimeout(500);
+    await action();
   } finally {
     page.off("request", record);
   }
@@ -153,13 +137,17 @@ async function replaceBody(page: Page, text: string): Promise<void> {
 test("进出编辑态：铅笔进、退出回到阅读态，两个方向都不写服务端", async ({ page }) => {
   await openArticle(page);
 
-  await clickWithoutWrite(page, page.getByRole("button", { name: "Edit Wiki", exact: true }));
-  await expect(page.locator(".wiki-article-editor-card")).toBeVisible();
+  await clickWithoutWrite(page, async () => {
+    await page.getByRole("button", { name: "Edit Wiki", exact: true }).click();
+    await expect(page.locator(".wiki-article-editor-card")).toBeVisible();
+  });
   await expect(titleField(page), "进编辑态时要把当前文章填进表单").toHaveValue(article.title);
 
-  await clickWithoutWrite(page, page.getByRole("button", { name: "Exit", exact: true }));
-  await expect(page.locator(".wiki-article-editor-card")).toHaveCount(0);
-  await expect(page.locator(".wiki-article-reader-title")).toHaveText(article.title);
+  await clickWithoutWrite(page, async () => {
+    await page.getByRole("button", { name: "Exit", exact: true }).click();
+    await expect(page.locator(".wiki-article-editor-card")).toHaveCount(0);
+    await expect(page.locator(".wiki-article-reader-title")).toHaveText(article.title);
+  });
 });
 
 test("保存：标题、分类、正文三处改动一起写回服务端", async ({ page, flow, api }) => {
@@ -183,7 +171,11 @@ test("保存：标题清空时挡在前端，不写服务端", async ({ page, ap
   await openEditor(page);
   await titleField(page).fill("   ");
 
-  await clickWithoutWrite(page, saveButton(page));
+  await clickWithoutWrite(page, async () => {
+    await saveButton(page).click();
+    await expect(page.locator(".mantine-Notification-description").filter({ hasText: "Article title is required." }))
+      .toBeVisible();
+  });
 
   const untouched = await readArticle(api, article.slug);
   expect(untouched.title, "被挡下的保存不该动到服务端").toBe(article.title);
@@ -194,17 +186,22 @@ test("置顶：点按钮只记意图，保存之后服务端才真的置顶", as
 
   const pin = page.getByRole("button", { name: "Pin", exact: true });
   await expect(pin).toHaveAttribute("aria-pressed", "false");
-  await clickWithoutWrite(page, pin);
-
   const queued = page.getByRole("button", { name: "Pin (pending save)", exact: true });
-  await expect(queued, "意图要写在按钮上，否则用户不知道还没保存").toHaveAttribute("aria-pressed", "true");
+  await clickWithoutWrite(page, async () => {
+    await pin.click();
+    await expect(queued, "意图要写在按钮上，否则用户不知道还没保存").toHaveAttribute("aria-pressed", "true");
+  });
   expect((await readArticle(api, article.slug)).pinned, "还没保存，服务端不该有变化").toBe(false);
 
   await flow.click(saveButton(page), UPDATE_ARTICLE);
   expect((await readArticle(api, article.slug)).pinned, "保存后服务端必须置顶").toBe(true);
 
   // 再点一次是撤销置顶：同样先记意图，保存才生效。
-  await clickWithoutWrite(page, page.getByRole("button", { name: "Unpin", exact: true }));
+  await clickWithoutWrite(page, async () => {
+    await page.getByRole("button", { name: "Unpin", exact: true }).click();
+    await expect(page.getByRole("button", { name: "Unpin (pending save)", exact: true }))
+      .toHaveAttribute("aria-pressed", "false");
+  });
   await flow.click(saveButton(page), UPDATE_ARTICLE);
   expect((await readArticle(api, article.slug)).pinned, "取消置顶同样要落库").toBe(false);
 });
@@ -212,15 +209,21 @@ test("置顶：点按钮只记意图，保存之后服务端才真的置顶", as
 test("归档：意图按钮 + 保存，归档时间落到服务端", async ({ page, flow, api }) => {
   await openEditor(page);
 
-  await clickWithoutWrite(page, page.getByRole("button", { name: "Archive", exact: true }));
-  await expect(page.getByRole("button", { name: "Archive (pending save)", exact: true }))
-    .toHaveAttribute("aria-pressed", "true");
+  await clickWithoutWrite(page, async () => {
+    await page.getByRole("button", { name: "Archive", exact: true }).click();
+    await expect(page.getByRole("button", { name: "Archive (pending save)", exact: true }))
+      .toHaveAttribute("aria-pressed", "true");
+  });
   expect((await readArticle(api, article.slug)).archived_at, "还没保存就不该有归档时间").toBeNull();
 
   await flow.click(saveButton(page), UPDATE_ARTICLE);
   expect((await readArticle(api, article.slug)).archived_at, "保存后必须写上归档时间").not.toBeNull();
 
-  await clickWithoutWrite(page, page.getByRole("button", { name: "Unarchive", exact: true }));
+  await clickWithoutWrite(page, async () => {
+    await page.getByRole("button", { name: "Unarchive", exact: true }).click();
+    await expect(page.getByRole("button", { name: "Unarchive (pending save)", exact: true }))
+      .toHaveAttribute("aria-pressed", "false");
+  });
   await flow.click(saveButton(page), UPDATE_ARTICLE);
   expect((await readArticle(api, article.slug)).archived_at, "取消归档要把时间清回 null").toBeNull();
 });
@@ -247,11 +250,10 @@ test("新建文章：加号进创建态，创建按钮真的建出一篇并跳�
   await openArticle(page);
 
   /* 列表卡上的加号和编辑器里的创建按钮同名，只能按所在卡片区分。 */
-  await clickWithoutWrite(
-    page,
-    page.locator(".wiki-article-list-card").getByRole("button", { name: "Create Article", exact: true }),
-  );
-  await expect(titleField(page), "创建态的标题应当是空的").toHaveValue("");
+  await clickWithoutWrite(page, async () => {
+    await page.locator(".wiki-article-list-card").getByRole("button", { name: "Create Article", exact: true }).click();
+    await expect(titleField(page), "创建态的标题应当是空的").toHaveValue("");
+  });
 
   const newTitle = `${SYSTEM_TEST_CONTENT_MARKER} Created ${stamp}`;
   await titleField(page).fill(newTitle);
@@ -261,8 +263,6 @@ test("新建文章：加号进创建态，创建按钮真的建出一篇并跳�
     page.locator(".wiki-article-editor-card").getByRole("button", { name: "Create Article", exact: true }),
     CREATE_ARTICLE,
   ) as ArticleDetail;
-  extraArticleIds.push(created.id);
-
   expect(created.title).toBe(newTitle);
   expect(created.category_id, "创建时选的分类要一起送出去").toBe(categoryB.id);
 

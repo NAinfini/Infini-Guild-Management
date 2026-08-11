@@ -231,7 +231,7 @@ describe("AnnouncementsPage empty state", () => {
     expect(controller.resetFilters).toHaveBeenCalledOnce();
   });
 
-  it("marks the desktop detail column and lets short details stay natural-height", () => {
+  it("marks the desktop detail column and stretches short details to the workspace height", () => {
     renderPage();
 
     const detailColumn = document.querySelector(".announcements-page-column--detail");
@@ -243,7 +243,7 @@ describe("AnnouncementsPage empty state", () => {
       "utf8",
     );
     expect(css).toMatch(
-      /\.announcements-detail-card\s*\{[\s\S]*?flex:\s*0 1 auto[\s\S]*?max-block-size:\s*100%/,
+      /\.announcements-detail-card\s*\{[\s\S]*?flex:\s*1 1 auto[\s\S]*?max-block-size:\s*100%/,
     );
   });
 });

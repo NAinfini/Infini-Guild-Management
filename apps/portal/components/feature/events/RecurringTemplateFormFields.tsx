@@ -107,7 +107,7 @@ function ProducesFields({ formState, setFormState }: FormFieldsProps) {
       />
 
       {/* 投票和抽奖没有阵容可言，服务端也拒收它们的配额。 */}
-      {!eventHasBehavior(eventType, "poll", gameRules) && !eventHasBehavior(eventType, "raffle", gameRules) ? (
+      {!eventHasBehavior(eventType, "poll") && !eventHasBehavior(eventType, "raffle") ? (
         <ClassQuotaEditor
           value={classQuotas}
           onChange={(next) => setFormState((current) => ({ ...current, classQuotas: next }))}

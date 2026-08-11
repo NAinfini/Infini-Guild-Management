@@ -92,6 +92,12 @@ describe("ProfileMediaTab", () => {
     expect(screen.getByText("media.group.audio")).toBeInTheDocument();
     expect(screen.getByTestId("image-grid-editor")).toBeInTheDocument();
     expect(screen.getByRole("textbox", { name: "media.videos" })).toBeInTheDocument();
+    expect(screen.getByRole("group", { name: "media.group.images" }))
+      .toHaveClass("profile-media__group");
+    expect(screen.getByRole("group", { name: "media.group.videos" }))
+      .toHaveClass("profile-media__group");
+    expect(screen.getByRole("group", { name: "media.group.audio" }))
+      .toHaveClass("profile-media__group");
   });
 
   it("names the chosen song, and says so plainly when there is none", () => {

@@ -73,7 +73,7 @@ export function RosterGrid({
      * semantics to navigate.
      */
     return (
-      <div ref={virtualScrollRef} className="roster-virtual-scroll" role="list" aria-label={ariaLabel}>
+      <div ref={virtualScrollRef} className="roster-grid-region roster-virtual-scroll" role="list" aria-label={ariaLabel}>
         <div className="roster-virtual-inner" style={{ height: rowVirtualizer.getTotalSize() }}>
           {virtualRows.map((virtualRow) => {
             const members = rowChunks[virtualRow.index] ?? [];
@@ -116,7 +116,7 @@ export function RosterGrid({
   }
 
   return (
-    <div role="list" aria-label={ariaLabel}>
+    <div className="roster-grid-region" role="list" aria-label={ariaLabel}>
       <StaggerList className="roster-card-grid" staggerMs={30} key={staggerKey}>
         {rows.map((entry) => (
           <motion.div key={entry.user.id} role="listitem" variants={rosterCardVariants} className="roster-card-cell">

@@ -45,6 +45,9 @@ export const classTagSchema = z.object({
   updated_at: z.string(),
 });
 
+export const classTagListSchema = z.array(classTagSchema).max(L.classTags.max);
+export const classTagDeletedResponseSchema = z.object({ deleted: z.literal(true) }).strict();
+
 const classTagSortOrderSchema = z.number().int().min(0).max(100_000);
 
 export const createClassTagSchema = z.object({

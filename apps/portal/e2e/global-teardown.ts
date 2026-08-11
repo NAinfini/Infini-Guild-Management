@@ -4,28 +4,28 @@ import {
   RUN_STATE_FILE,
   stateFileFor,
   type E2eRunStateFile,
+  type SiteFingerprint,
 } from "./support/config";
 import {
   cleanupSystemTestRun,
   diffFingerprints,
   formatDrift,
   newApiContext,
-  readFingerprint,
 } from "./support/api";
+import { readSlotFingerprint } from "./support/fingerprint";
 
 /**
  * 收尾即验收：每个槽位各自先让服务端按登记的主键清掉本次运行的产物，
- * 再把每张表的行数和 R2 对象数跟该槽位的基线逐项对齐。
+ * 再把本地 D1 全表内容与 R2 对象元数据指纹跟该槽位的基线逐项对齐。
  *
- * 对不上就抛错让整轮变红。这里绝不能「顺手重种一遍把痕迹抹掉」——
- * 那样等于用一次 reseed 买一个永远绿的清理断言。
+ * 对不上就抛错让整轮变红；不得在收尾阶段重种来掩盖残留。
  */
-async function verifySlot(slot: number, runId: string, baseline: Record<string, number>): Promise<string | null> {
+async function verifySlot(slot: number, runId: string, baseline: SiteFingerprint): Promise<string | null> {
   const origin = originForSlot(slot);
   const adminApi = await newApiContext(stateFileFor("admin", slot), origin);
   try {
     await cleanupSystemTestRun(adminApi, runId);
-    const drift = diffFingerprints(baseline, await readFingerprint(adminApi));
+    const drift = diffFingerprints(baseline, await readSlotFingerprint(slot));
     return drift.length === 0 ? null : `槽位 ${slot}（${origin}）:\n${formatDrift(drift)}`;
   } finally {
     await adminApi.dispose();

@@ -3,7 +3,7 @@ import type {
   PublicSiteConfig,
   UpdateSiteConfigPayload,
 } from "@guild/shared";
-import { appendImageUploadVariants, convertImageForUpload } from "@guild/shared/utils/media";
+import { appendImageUploadVariants, convertImageForUpload } from "../utils/upload-media";
 import { apiRequest } from "../api/client";
 
 export function fetchPublicSiteConfig(): Promise<PublicSiteConfig & { features?: Record<string, boolean> }> {

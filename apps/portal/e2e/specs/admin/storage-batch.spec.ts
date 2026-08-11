@@ -1,6 +1,7 @@
 import type { Locator, Page } from "@playwright/test";
 import { SYSTEM_TEST_CONTENT_MARKER } from "@guild/shared/config/system-test";
 import { expect, readJson, test } from "../../support/test";
+import { createTestStorage } from "../../support/storage";
 import { confirmDialog, dialogTitled, field, selectOption } from "../../support/ui";
 
 /*
@@ -25,8 +26,7 @@ let itemA: { id: string; name: string };
 let itemB: { id: string; name: string };
 
 test.beforeEach(async ({ page, api }) => {
-  const tree = await readJson(await api.get("/api/storage"), "读取仓库树") as { data: { id: string }[] };
-  storageId = tree.data[0]!.id;
+  storageId = (await createTestStorage(api, "Batch")).id;
 
   const stamp = Date.now();
   itemA = await createItem(api, storageId, `${SYSTEM_TEST_CONTENT_MARKER} Batch A ${stamp}`);

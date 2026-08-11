@@ -1,134 +1,120 @@
 # Contributing to Infini Guild Management
 
-Thank you for contributing. Start with [SETUP.md](./SETUP.md); keep changes focused, evidence-based, and compatible with the current architecture.
+Thank you for contributing. Start with [SETUP.md](./SETUP.md) and [AGENTS.md](./AGENTS.md). Keep changes focused, evidence-based, and aligned with the modular backend.
 
 ## Ground rules
 
-1. Discuss major features, cross-system redesigns, infrastructure changes, and new dependencies before implementation. Small fixes and documentation corrections can go directly to a pull request.
-2. Keep one concern per pull request. Do not bundle unrelated cleanup, renames, formatting, or dependency updates.
-3. Preserve shared-workspace changes. Never reset, clean, or overwrite files outside your scope.
-4. Keep contracts aligned across `apps/shared`, `apps/worker`, and `apps/portal` when behavior crosses a boundary.
-5. Do not commit secrets, populated local environment files, generated runtime state, or build artifacts.
+1. Discuss major features, cross-system redesigns, infrastructure changes, and new dependencies before implementation.
+2. Keep one concern per pull request and preserve unrelated shared-workspace changes.
+3. Do not add a second business implementation for Cloudflare or VPS. Both runtimes must compose the same contracts, services, stores, routes, and migration.
+4. Keep `apps/shared`, backend packages, runtime adapters, and Portal consumers synchronized when a wire contract changes.
+5. Never commit secrets, private migration SQL, populated environment files, databases, blob data, generated runtime state, or build artifacts.
 
 ## Branches and commits
 
-Branch from `main` using a descriptive prefix such as `feat/`, `fix/`, `docs/`, or `chore/`. Rebase or merge the latest `main` according to the maintainer's requested workflow before review.
-
-Clear imperative commit subjects are required. Conventional Commit style is welcome, for example:
-
-```text
-fix(portal): preserve filters when reopening an event
-docs(db): clarify the pre-release migration policy
-```
-
-The repository does not enforce Conventional Commits in CI, so do not rewrite otherwise clear history solely to satisfy that format.
+Branch from `main` with a descriptive prefix such as `feat/`, `fix/`, `docs/`, or `chore/`. Use clear imperative commit subjects. Conventional Commit style is welcome but not required.
 
 ## Architecture boundaries
 
-### Shared contracts
+### Shared and domain code
 
-- Put cross-runtime Zod schemas, constants, inferred types, limits, and utilities in `apps/shared/`.
-- Infer TypeScript types from Zod when a shared schema already defines the contract.
-- Keep API request/response schemas, Worker behavior, portal consumers, and tests synchronized.
-- Static event and guild-war rules are source-owned. Do not move them into Site Config or dynamic D1 tables.
+- Put runtime-neutral Zod schemas, permission IDs, built-in roles, limits, and utilities in `apps/shared/`.
+- `packages/kernel/` owns errors, immutable request/authorization context, and ports.
+- `packages/server/` owns domain services and authorization policy. It cannot import Hono, Drizzle, Cloudflare, or Node runtime adapters.
+- Mutating services require an audit mutation and persist it atomically with the business change.
+- Static event/guild-war rules stay in source; do not add a dynamic game-rules table.
+
+### Persistence and HTTP
+
+- `packages/persistence-sqlite/` owns the shared Drizzle schema and concrete stores for both D1 and VPS SQLite.
+- `packages/transport-http/` owns parsing, presenters, route factories, mutation security, body limits, ranges, ETags, and error envelopes.
+- Routes consume the injected `RequestContext`; they do not parse sessions or duplicate permission checks.
+- Collections must be bounded and use stable keyset pagination or a documented small hard limit. Add query-plan assertions for hot paths.
+
+### Runtime adapters
+
+- `packages/application/` is the single composition root.
+- `apps/cloudflare/` implements D1, R2, Durable Object, Cloudflare rate-limit, assets, and scheduled-event adapters.
+- `apps/vps/` implements Node SQLite, filesystem BlobStore, in-process WebSockets/rate limits/scheduler, static files, and bounded shutdown.
+- Runtime adapters may implement ports but cannot fork business rules.
 
 ### Portal
 
-- Use function components, Mantine primitives, the established semantic tokens, and co-located component styles.
-- Components must consume data through existing services and hooks; they must not import the raw API client or raw query/mutation modules.
-- Keep server state in TanStack Query and use Zustand only for established client/session/UI state.
-- Define route behavior in `apps/portal/router.tsx` and navigation metadata in `apps/portal/components/layout/route-metadata.ts`.
-- Add every user-facing string to both English and Chinese resources.
-- Preserve light/dark themes, keyboard focus, reduced motion, responsive task parity, and the protected Roster member-card interaction.
-- Follow [DESIGN.md](./DESIGN.md); exact token values are sourced from the CSS and theme implementation.
-
-### Worker
-
-- Validate request boundaries with shared Zod schemas.
-- Keep route handlers focused on HTTP parsing, authorization, and response mapping; put business rules and transactions in services.
-- Use `requirePermission()` for protected operations. Permissions are resolved from D1 per request and may be cached only within that request. Isolate-wide permission caches are forbidden.
-- Preserve the existing middleware order for request IDs, configuration checks, CORS, security headers, mutation-origin checks, rate limits, body limits, ETags, session handling, and feature gates.
-- Record audit entries for mutating operations using the established service dependencies.
-- The Worker configuration template is `apps/worker/wrangler.example.jsonc`; each clone's `wrangler.jsonc` is untracked and created by `pnpm setup:local`. Secrets belong in Cloudflare secrets, not JSON.
-
-### Database
-
-- Drizzle modules in `apps/worker/db/schema/` are the runtime model source of truth.
-- Follow [the migration policy](./apps/worker/db/migrations/README.md): `0000_core_schema.sql` is the fresh pre-release baseline and approved schema changes fold into it until the first release. After release, use monotonic incremental migrations and never edit a migration any deployment has applied.
-- Keep Drizzle and SQL checks, foreign keys, indexes, and required baseline rows aligned.
-- Do not apply remote migrations without explicit authorization.
+- Components consume data through existing services and hooks, not raw HTTP modules.
+- TanStack Query owns server state; Zustand owns established client/session/UI state.
+- Route behavior lives in `apps/portal/router.tsx`; navigation metadata lives in `apps/portal/components/layout/route-metadata.ts`.
+- Add every user-facing string in English and Chinese. Preserve accessibility, themes, reduced motion, responsive task parity, and the established design system.
 
 ### Media
 
 - Follow [the canonical media architecture](./docs/media-architecture.md).
-- Browser image uploads must produce the complete `full`/`view` WebP pair with the shared converter.
-- Domain code goes through `MediaService`; it must not derive authorization or quota from R2 keys or listings.
-- The single `MEDIA` R2 binding stores canonical content objects and audit archives in separate keyspaces.
-- Tests must use bytes matching the declared MIME type.
+- Domain code goes through `MediaService`; storage keys/listings never determine ownership, authorization, or quota.
+- Cloudflare R2 and the VPS filesystem implement the same streaming `BlobStore`, including integrity metadata and byte ranges.
+- Database links and lifecycle state change atomically with domain data and audit; staged upload failures are reclaimed by bounded garbage collection.
 
-## Adding or changing behavior
+### Schema and migrations
+
+- Drizzle modules in `packages/persistence-sqlite/src/schema/` are the relational source of truth; named SQL files contain required triggers and table options.
+- Before the first release, regenerate the single `0000_core.sql` baseline from an empty generated directory and run `pnpm db:assemble`.
+- Keep Node SQLite and local D1 parity tests green. Do not add runtime-specific schema variants.
+- Never apply a remote migration without explicit authorization, a verified backup, and a tested recovery path.
+- Existing credential migration is an explicit offline conversion into the new self-describing password format; runtime dual-read compatibility is forbidden.
+
+## Changing behavior
 
 For an API change:
 
-1. Update the shared schema or constant when the contract changes.
-2. Update the Worker route and service, including authorization and audit behavior.
-3. Update portal query/mutation, service/hook, and UI consumers.
-4. Add the smallest relevant service, route, contract, or component test.
-
-For a portal route:
-
-1. Add the page and lazy route in `apps/portal/router.tsx`.
-2. Update `route-metadata.ts` when it belongs in navigation.
-3. Add both English and Chinese text.
-4. Verify access, feature flags, loading/error/empty states, and the responsive composition.
+1. update the shared request/response schema;
+2. update the domain service and authorization/audit behavior;
+3. update the store transaction and route/presenter;
+4. verify both runtime composition paths;
+5. update Portal consumers only when the product contract changes.
 
 For a schema change:
 
-1. Update the relevant Drizzle module.
-2. Synchronize the applicable SQL according to the migration phase.
-3. Update shared contracts and consumers if the API shape changes.
-4. Run the focused migration parity/constraint tests and rebuild a local D1 database.
+1. update the Drizzle schema and any named invariant SQL;
+2. regenerate and assemble the core migration while the project is pre-release;
+3. run schema parity, Node SQLite, and local workerd D1 tests;
+4. update shared contracts and domain/store tests.
 
 ## Validation
 
-Choose checks in proportion to the change. A scoped change does not require the full release gate by default.
+Choose checks in proportion to risk:
 
 | Change | Minimum validation |
 | --- | --- |
-| Documentation only | `git diff --check` plus targeted link/path/script search |
-| Shared or TypeScript contract | focused tests and `pnpm typecheck` |
-| Portal behavior or styles | focused component/style tests, `pnpm typecheck`, and relevant light/dark/responsive review |
-| Worker route or service | focused service/route tests and `pnpm typecheck` |
-| D1 schema or SQL | focused migration tests, `pnpm db:mock:rebuild`, and `pnpm typecheck` |
+| Documentation only | `git diff --check` plus targeted path/link search |
+| Shared/domain contract | focused tests and affected package typechecks |
+| Portal behavior/styles | focused component tests, typecheck, and relevant visual/accessibility review |
+| Store/schema | focused store tests, schema parity, Node SQLite and local D1 migration tests |
+| Runtime adapter | its conformance tests and runtime typecheck |
 | Release candidate | `pnpm release:check` |
 
-Useful commands are defined in `package.json`:
+Useful commands:
 
 ```bash
 pnpm typecheck
 pnpm lint
 pnpm test -- <focused paths>
-pnpm build
-pnpm build:worker
-pnpm test:e2e
-pnpm check:secrets
-pnpm config:check -- --env=production
+pnpm build:portal
+pnpm cloudflare build
+pnpm vps build
+pnpm config:check --runtime cloudflare --config apps/cloudflare/wrangler.example.jsonc --allow-placeholders
+pnpm config:check --runtime vps --config scripts/templates/vps.env.example --allow-placeholders
 pnpm release:check
 ```
 
-Before the first `pnpm test:e2e` on a machine, run `pnpm setup:local` (the Worker needs the untracked `wrangler.jsonc` and `.dev.vars` it creates) and `pnpm exec playwright install chromium`. `pnpm test:e2e` builds the portal and runs isolated Playwright slots against Worker-served production assets. Use it for cross-layer browser behavior, not as a substitute for focused tests; stop `pnpm dev` first, because the slots start their own Workers.
+`release:check` is local-only. CI does not authenticate to Cloudflare, deploy, or mutate remote D1/R2.
 
 ## Pull request checklist
 
-- [ ] The diff addresses one concern and preserves unrelated workspace changes.
-- [ ] Shared, Worker, portal, schema, and SQL contracts are synchronized where applicable.
-- [ ] Relevant focused tests and checks pass; the PR states exactly what ran.
-- [ ] Security, permission, audit, concurrency, media, and data-cleanup behavior remain intact.
-- [ ] New UI text exists in English and Chinese.
-- [ ] English/Chinese documentation pairs are synchronized when their shared facts change.
-- [ ] `CHANGELOG.md` is updated for notable behavior, security, data, or operational changes.
-- [ ] No secrets or unreviewed production binding changes are included.
-- [ ] No unrelated generated files, test artifacts, or build output are included.
+- [ ] The diff addresses one concern and preserves unrelated work.
+- [ ] Shared contracts, domain rules, persistence, HTTP, and both runtimes are synchronized.
+- [ ] Authorization, audit, concurrency, media, and cleanup invariants have focused negative tests.
+- [ ] Relevant typechecks/tests pass and the PR states exactly what ran.
+- [ ] English/Chinese docs or UI resources are synchronized when shared facts change.
+- [ ] No secrets, private SQL, production identifiers, databases, blobs, or test artifacts are tracked.
+- [ ] No deploy or remote migration is hidden in CI or a release-check script.
 
 ## License
 

@@ -1,0 +1,12 @@
+{
+  "name": "@guild/shared",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./index.ts",
+    "./*": "./*"
+  },
+  "dependencies": {
+    "zod": "^4.4.3"
+  }
+}

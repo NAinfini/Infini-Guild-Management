@@ -378,18 +378,14 @@ test("导出：CSV 和 JSON 都真的落盘、内容就是当前筛选的结果�
     data: AuditRow[];
   };
   /*
-   * 这里是 2 不是 1，如实记录原因：刚才那次 CSV 导出自己写了一行审计，
-   * 而它的 detail 在 D1 detail_text 中存着这次的筛选词（AdminAuditService.ts），
-   * 搜索也匹配这列文本，于是第二次导出把第一次导出的那行一并捞了进来。
-   * 也就是说：同一个筛选连着导两次，后一次一定比前一次多一条。
+   * 搜索合同只匹配摘要、实体 id 和操作者用户名，不扫描 detail JSON。
+   * 所以前一次导出虽然会留痕，但不会污染仍按邀请码 id 筛选的第二次导出。
    */
-  expect(json.total, "第二次导出会把第一次导出留下的那行审计一并算进来").toBe(2);
+  expect(json.total, "第二次导出仍然只包含当前筛选命中的那条记录").toBe(1);
   expect(json.start_at, "导出的时间范围要和界面上筛的一致").toBe(startOf(utcDay(-1)));
   expect(json.end_at).toBe(endOf(utcDay()));
-  const exported = json.data.map((row) => row.entity_id).sort();
-  expect(exported, "导出的两行就是：刚才那次建码，和刚才那次 CSV 导出").toEqual(
-    ["audit-log", invite.id].sort(),
-  );
+  const exported = json.data.map((row) => row.entity_id);
+  expect(exported, "导出的就是屏幕上按邀请码 id 命中的那一条").toEqual([invite.id]);
 
   /* 导出是把全站操作记录带出系统的动作，它自己必须留痕。 */
   const exportsAfter = await serverAudit(api, { entity_type: "audit_log_export" });

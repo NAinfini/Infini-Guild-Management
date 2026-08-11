@@ -66,13 +66,6 @@ test.beforeEach(async ({ api, page }) => {
   await expect(page.locator(".wiki-article-reader-title")).toHaveText(article.title);
 });
 
-test.afterEach(async ({ api }) => {
-  const removed = await api.delete(`/api/wiki/articles/${article.id}/permanent`);
-  expect([200, 204, 404], `清理文章返回 ${removed.status()}`).toContain(removed.status());
-  const removedCategory = await api.delete(`/api/wiki/categories/${category.id}`);
-  expect([200, 204, 404], `清理分类返回 ${removedCategory.status()}`).toContain(removedCategory.status());
-});
-
 function bodyJson(text: string): string {
   return JSON.stringify({
     type: "doc",

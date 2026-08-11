@@ -1,5 +1,5 @@
 import { Badge, Group, HoverCard, Text, ThemeIcon } from "@mantine/core";
-import { GUILD_WAR_KDA_KEY, evaluateKda } from "@guild/shared";
+import { DEFAULT_GAME_RULES, GUILD_WAR_KDA_KEY, evaluateKda } from "@guild/shared";
 import { CircleCheckIcon, AlertTriangleIcon } from "@portal/components/icons";
 import { MetricGridInput } from "@portal/components/shared/MetricGridInput";
 import { useConfirmDialog } from "@portal/hooks/useConfirmDialog";
@@ -18,7 +18,6 @@ import type {
   HistoryMemberStatsUpdate,
   HistorySummaryRow,
 } from "@portal/types/guild-war";
-import { useSiteConfigStore } from "@portal/stores/site-config";
 import { getGuildWarMemberStatLabel } from "@portal/utils/game-rules";
 
 type EditableMetricKey = string;
@@ -74,7 +73,7 @@ export function useWarHistoryTabController({
   onDeleteHistory,
 }: UseWarHistoryTabControllerParams) {
   const { t } = useTranslation("guild-war");
-  const gameRules = useSiteConfigStore((state) => state.gameRules);
+  const gameRules = DEFAULT_GAME_RULES;
   const warRules = gameRules.guild_war;
   const editableMetricKeys = useMemo(
     () => warRules.member_stats.map((definition) => definition.key),
@@ -322,7 +321,7 @@ export function useWarHistoryTabController({
       cell: ({ row }) => row.original.role_tag ?? "-",
     },
     ...warRules.member_stats.map((definition, columnIndex): ColumnDef<HistoryMemberStat, unknown> => ({
-      header: getGuildWarMemberStatLabel(definition.key, undefined, gameRules),
+      header: getGuildWarMemberStatLabel(definition.key),
       id: definition.key,
       accessorFn: (row) => row.stats?.[definition.key] ?? 0,
       cell: ({ row, table }) => {
@@ -338,7 +337,7 @@ export function useWarHistoryTabController({
           <MetricGridInput
             aria-label={t("history.aria.memberMetric", {
               member: row.original.username ?? row.original.user_id,
-              metric: getGuildWarMemberStatLabel(metricKey, undefined, gameRules),
+              metric: getGuildWarMemberStatLabel(metricKey),
             })}
             gridId="guild-war-history-metrics"
             rowIndex={visibleRowIndex}
@@ -357,7 +356,7 @@ export function useWarHistoryTabController({
       },
     })),
     {
-      header: getGuildWarMemberStatLabel(GUILD_WAR_KDA_KEY, undefined, gameRules),
+      header: getGuildWarMemberStatLabel(GUILD_WAR_KDA_KEY),
       id: GUILD_WAR_KDA_KEY,
       enableSorting: true,
       accessorFn: (row) => {

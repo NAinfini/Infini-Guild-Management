@@ -4,7 +4,7 @@
 
 **面向成员、活动、公会战、知识库、媒体、仓储与后台运营的自托管公会门户。**
 
-React 门户与 Hono API 共用 TypeScript 契约，并一起部署到 Cloudflare Workers。
+React 门户与 Hono API 共用 TypeScript 契约，可选择部署到 Cloudflare Workers，或运行在单进程 Node.js VPS 上。
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](./LICENSE)
 [![TypeScript](https://img.shields.io/badge/TypeScript-6-blue?logo=typescript)](https://www.typescriptlang.org/)
@@ -21,7 +21,7 @@ React 门户与 Hono API 共用 TypeScript 契约，并一起部署到 Cloudflar
 
 ## 项目概览
 
-Infini Guild Management 把公会日常工作集中在一个双语、响应式门户中，不再让信息散落在表格、聊天置顶、媒体目录和临时工具里。Worker 同时提供 SPA 与 API，因此常规部署只使用一个来源和一个公开网址。
+Infini Guild Management 把公会日常工作集中在一个双语、响应式门户中，不再让信息散落在表格、聊天置顶、媒体目录和临时工具里。两种后端都从同一来源提供 SPA 与 API；一套部署只能选择 Cloudflare 或 VPS，不要让两端同时操作同一份数据。
 
 ## 面向用户的能力
 
@@ -36,7 +36,7 @@ Infini Guild Management 把公会日常工作集中在一个双语、响应式�
 | 仓储 | 登录后使用的仓库结构、分类、物品、图片、数量与出入库记录 |
 | 工具与设置 | 公开设置页和带骰子工具的工具页 |
 | 管理后台 | 成员、邀请、角色与权限、审计归档/日志、错误与服务状态、站点配置、职业、职业标签、徽章和维护操作 |
-| 搜索与更新 | 命令搜索，以及通过 Durable Object 提供的登录态 WebSocket 更新提示 |
+| 搜索与更新 | 命令搜索，以及通过所选运行时的通知 hub 提供的登录态 WebSocket 更新提示 |
 
 ### 页面访问边界
 
@@ -65,24 +65,31 @@ announcements, events, guildWar, gallery, wiki, tools, storage
 
 ```text
 apps/
-├── shared/   Zod schema、共享类型、限制与源码拥有的领域契约
-├── worker/   Cloudflare Workers 上的 Hono API，使用 D1、R2、Durable Objects
-└── portal/   React SPA，使用 TanStack Router、TanStack Query、Mantine、Zustand
+├── cloudflare/  Workers 入口及 D1/R2/Durable Object 适配器
+├── vps/         SQLite 与文件系统 Blob 的单进程 Node.js 运行时
+├── shared/      Zod schema、共享类型、限制与源码契约
+└── portal/      使用 TanStack Router、TanStack Query、Mantine、Zustand 的 React SPA
+packages/
+├── application/         运行时中立的组合层
+├── kernel/              上下文、错误、授权与端口
+├── persistence-sqlite/  共享 Drizzle schema 与 core SQLite 迁移
+├── server/              领域服务
+└── transport-http/      共享 Hono 路由
 ```
 
 | 层 | 当前技术 |
 | --- | --- |
 | 前端 | React 19.2、Vite 8.2、Mantine 9.5、TanStack Router/Query、Zustand 5、原生 CSS + 自定义属性；不使用 Tailwind |
-| 语言与校验 | 门户和 Worker 共用 TypeScript 6 与 Zod 4 |
+| 语言与校验 | 门户和两种后端共用 TypeScript 6 与 Zod 4 |
 | 内容与图表 | TipTap 3、ECharts 6 |
-| 后端与数据 | Hono、Drizzle ORM、Cloudflare Workers、D1 |
-| 对象与实时通信 | 一个 R2 `MEDIA` 存储桶和一个 WebSocket Durable Object |
+| Cloudflare 后端 | Hono、D1、一个 `BLOBS` R2 桶、Cron Triggers 与通知 Durable Object |
+| VPS 后端 | Node.js 上的 Hono、一个本地 SQLite 文件、一个文件系统 Blob 根目录，以及进程内调度/WebSocket |
 
-唯一的 `MEDIA` 存储桶同时保存持久化内容媒体与审计归档。每个月的审计归档都由同一桶中的权威 `audit-archive/.../manifest.json` 提交；不存在第二个归档桶。
+唯一物理 Blob 命名空间（Cloudflare 的 `BLOBS` 或 VPS 配置的 Blob 根目录）同时保存持久化内容媒体与审计归档。审计批次使用规范的 `audit/YYYY/MM/<archiveId>.ndjson` 对象，其权威大小、摘要、Range 与生命周期元数据保存在共享 SQLite 的 `audit_archives` 表中；不存在第二个归档存储。
 
-持久化图片必须同时具备 WebP `full` 与 `view` 变体，资料音频使用 Ogg/Opus。Worker 会在关联前验证字节、尺寸和完整变体；SVG 与 GIF 不作为图片接收。完整的 D1/R2 契约见 [媒体架构](./docs/media-architecture.md)。
+持久化图片必须同时具备 WebP `full` 与 `view` 变体，资料音频使用 Ogg/Opus。所选后端会在关联前验证字节、尺寸和完整变体；SVG 与 GIF 不作为图片接收。完整持久化契约见 [媒体架构](./docs/media-architecture.md)。
 
-由媒体支持的领域对象会先创建所属父记录和业务子记录，再关联媒体；关联失败时通过删除该父记录进行补偿。删除时先处理非媒体关系，再直接删除父记录，由 D1 生命周期触发器移除关联并安排资产过期。R2 对象键只从不透明的媒体 ID 与固定的 `full`/`view` 变体名派生，绝不使用领域 ID、文件名或上传路径。
+媒体字节会在领域变更前进入 staged 状态；所属父记录、业务子记录、媒体关联与审计行随后在一个 SQLite 事务中提交。事务失败时只留下由有界垃圾回收处理的 staged 资产。父记录删除与审计行同样原子提交，共享 SQLite 生命周期触发器负责移除关联并安排无引用资产过期。Blob key 只从不透明的媒体 ID 与固定的 `full`/`view` 变体名派生，绝不使用领域 ID、文件名或上传路径。
 
 ## API 范围
 
@@ -98,13 +105,13 @@ apps/
 | `/api/announcements` | 公告内容、图片、发布、归档和删除 |
 | `/api/guild-war` | 当前战况、分队、战史、成员数据、导出和分析 |
 | `/api/wiki`、`/api/gallery` | 百科分类/文章/修订/媒体，以及图库图片/视频 |
-| `/api/media` | 经 D1 授权的规范 R2 媒体 `view`/`full` 变体读取 |
+| `/api/media` | 经数据库授权的规范 Blob `view`/`full` 变体读取 |
 | `/api/storage` | 仓库结构、物品、图片、数量和出入库记录 |
 | `/api/classes`、`/api/class-tags`、`/api/badges` | 运行时目录和徽章授予 |
 | `/api/admin`、`/api/admin/maintenance` | 用户、邀请、角色、站点配置、分析设置、审计/错误/状态数据、系统测试和维护 |
-| `/ws` | Durable Object 支持的登录态 WebSocket 入口 |
+| `/ws` | Durable Object 或 VPS 进程内 hub 支持的登录态 WebSocket 入口 |
 
-写操作必须通过来源与 `X-Requested-With` 检查。Worker 还会分别限制认证、读取、写入、上传和凭据修改的请求速率。
+写操作必须通过来源与 `X-Requested-With` 检查。两种后端都会分别限制认证、读取、写入、上传和凭据修改的请求速率。
 
 ## 定时维护
 
@@ -113,17 +120,17 @@ apps/
 | 每天 00:00 UTC | 审计归档、错误日志清理 |
 | 每 15 分钟 | 活动实例生成、抽奖开奖、会话清理、定时公告发布、活动自动归档，以及过期无关联媒体清理 |
 
-媒体清理由定时维护执行：只选择 D1 中已过期且没有关联的资产，并按 `media_variants` 记录的精确 R2 键删除；不会从路径猜测归属，也不会把桶扫描结果当成授权依据。管理台的 API 测试控制台始终可用，由管理员权限把关：测试运行创建的每一个夹具都登记在服务端运行注册表里，运行结束时按精确 ID 删除。
+Cloudflare 使用 Cron Triggers，VPS 则在单个 Node.js 进程中调度相同任务。媒体清理只选择已过期且没有关联的数据库资产，并删除记录中的精确 Blob key；不会从路径猜测归属，也不会把 Blob 扫描结果当成授权依据。
 
 ## 安装与部署
 
-[SETUP.zh.md](./SETUP.zh.md) 是环境要求、本地开发、首次生产初始化、Cloudflare 资源、迁移、部署、更新与故障排查的唯一事实源。对应英文指南为 [SETUP.md](./SETUP.md)。
+[SETUP.zh.md](./SETUP.zh.md) 是选择 Cloudflare/VPS、本地开发、共享 core schema、首位站点所有者引导、旧凭据私有迁移、生产密钥、备份恢复、更新和故障排查的事实源。英文指南见 [SETUP.md](./SETUP.md)。
 
-核心迁移是全新的预发布 schema 基线。首次发布前，获准的 schema 变更直接收敛到该基线；发布后的变更才通过不可修改的增量迁移交付。完整政策见安装指南，包括如何在 Workers 免费版上运行、升级后应调高哪些配置。
+源码中唯一的预发布基线是 `0000_core.sql`，manifest 也只包含这一项。首次发布前，获准的 schema 变更直接收敛到该基线；发布后的变更才通过不可修改的增量迁移交付。已经应用过废弃预发布 `0000`–`0002` 链的部署，必须在下一次部署前重建或显式重基线；运行时不会兼容这段历史。完整政策见安装指南，包括如何在 Workers 免费版上运行、升级后应调高哪些配置。
 
 ## 安全
 
-服务端权限校验是权威来源。会话使用 HTTP-only Cookie；富文本经过清洗；安全响应头包含 CSP、HSTS、禁止嵌入与 `nosniff`。`SIGNING_SECRET` 同时保护审计归档下载 token 和 Worker 到 Durable Object 的内部推送发布。
+服务端权限校验是权威来源。会话使用 HTTP-only Cookie；富文本经过清洗；安全响应头包含 CSP、禁止嵌入与 `nosniff`。`IG_INVITE_TOKEN_SECRET` 与 `IG_AUDIT_DOWNLOAD_SECRET` 都必须至少包含 32 个随机字节，并只保存在 Cloudflare Secret 或私有 VPS 环境文件中。
 
 发现漏洞时，请按 [SECURITY.md](./SECURITY.md) 私下报告。
 

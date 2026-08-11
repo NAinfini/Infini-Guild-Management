@@ -1,0 +1,29 @@
+{
+  "name": "@guild/vps",
+  "private": true,
+  "type": "module",
+  "exports": {
+    "./adapters": "./src/adapters/public.ts",
+    "./testing/notification-runtime": "./src/testing/notification-runtime.ts"
+  },
+  "scripts": {
+    "dev": "pnpm --workspace-root run dev:vps",
+    "build": "pnpm --workspace-root run build:vps",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "test": "vitest run apps/vps/src"
+  },
+  "dependencies": {
+    "@guild/application": "workspace:*",
+    "@guild/kernel": "workspace:*",
+    "@guild/persistence-sqlite": "workspace:*",
+    "@guild/server": "workspace:*",
+    "@guild/shared": "workspace:*",
+    "@guild/transport-http": "workspace:*",
+    "@hono/node-server": "^2.1.0",
+    "hono": "^4.12.34",
+    "ws": "8.21.0"
+  },
+  "devDependencies": {
+    "@types/ws": "^8.18.1"
+  }
+}

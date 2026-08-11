@@ -1,4 +1,4 @@
-import type { WarHistory } from "@guild/shared";
+import { DEFAULT_GAME_RULES, type ExternalDashboardWar } from "@guild/shared";
 import { SectionHeader } from "../shared/SectionHeader";
 import { ActionIcon, Avatar, Button, Paper, Stack, Text } from "@mantine/core";
 import { memo, useState } from "react";
@@ -18,7 +18,6 @@ import { CompareBar } from "../shared/CompareBar";
 import { EmptyState } from "../shared/EmptyState";
 import { cardHeading, formatDateTime, type DashboardLastWarMvp, type DashboardLastWarMvpEntry } from "./shared";
 import { findGuildWarResultDefinition } from "@guild/shared";
-import { useSiteConfigStore } from "@portal/stores/site-config";
 import { getGuildWarResultLabel, getGuildWarTeamStatLabel } from "@portal/utils/game-rules";
 
 const MVP_ICON_MAP: Record<string, React.ReactNode> = {
@@ -29,7 +28,7 @@ const MVP_ICON_MAP: Record<string, React.ReactNode> = {
 };
 
 type LastWarCardProps = {
-  recentWars: WarHistory[];
+  recentWars: ExternalDashboardWar[];
   warMvps: DashboardLastWarMvp[];
   isExternalView: boolean;
   onOpenHistory: (warName: string) => void;
@@ -68,7 +67,7 @@ export const LastWarCard = memo(function LastWarCard({
   onViewHistory,
 }: LastWarCardProps) {
   const { t, i18n } = useTranslation("dashboard");
-  const gameRules = useSiteConfigStore((state) => state.gameRules);
+  const gameRules = DEFAULT_GAME_RULES;
   const [index, setIndex] = useState(0);
 
   const war = recentWars[index] ?? null;
@@ -76,7 +75,7 @@ export const LastWarCard = memo(function LastWarCard({
   const total = recentWars.length;
   const hasPrev = index > 0;
   const hasNext = index < total - 1;
-  const resultDefinition = war?.result ? findGuildWarResultDefinition(gameRules, war.result) : undefined;
+  const resultDefinition = war?.result ? findGuildWarResultDefinition(war.result) : undefined;
   const resultColor = resultDefinition?.tone === "success"
     ? "var(--status-success)"
     : resultDefinition?.tone === "danger"
@@ -140,7 +139,7 @@ export const LastWarCard = memo(function LastWarCard({
             >
               <TrophyOutlined size={14} />
               <span>{war.result
-                ? getGuildWarResultLabel(war.result, i18n.language, gameRules)
+                ? getGuildWarResultLabel(war.result, i18n.language)
                 : t("card.lastWar.result.pending")}</span>
             </div>
           </div>
@@ -159,7 +158,7 @@ export const LastWarCard = memo(function LastWarCard({
                 key={definition.key}
                 classPrefix="war-compare-"
                 icon={statIndex === 0 ? <TargetOutlined size={13} /> : statIndex === 1 ? <CrownOutlined size={13} /> : <ShieldOutlined size={13} />}
-                label={getGuildWarTeamStatLabel(definition.key, i18n.language, gameRules)}
+                label={getGuildWarTeamStatLabel(definition.key)}
                 own={war.own_stats?.[definition.key] ?? 0}
                 enemy={war.enemy_stats?.[definition.key] ?? 0}
               />

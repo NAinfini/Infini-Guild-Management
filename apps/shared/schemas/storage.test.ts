@@ -1,5 +1,17 @@
 import { describe, expect, it } from "vitest";
-import { createStorageBatchTransactionSchema, STORAGE_STOCK_FILTERS, storageBatchTransactionResultSchema, storageItemsListQuerySchema } from "./storage";
+import {
+  createStorageBatchTransactionSchema,
+  createStorageTransactionSchema,
+  STORAGE_STOCK_FILTERS,
+  storageBatchTransactionResultSchema,
+  storageItemSchema,
+  storageItemsCursorResponseSchema,
+  storageItemsListQuerySchema,
+  storageTransactionSchema,
+  storageTransactionsListQuerySchema,
+  storageTransactionsPageResponseSchema,
+  storageTreeResponseSchema,
+} from "./storage";
 
 describe("createStorageBatchTransactionSchema", () => {
   const valid = {
@@ -13,6 +25,19 @@ describe("createStorageBatchTransactionSchema", () => {
       ...valid,
       entries: Array.from({ length: 20 }, (_, index) => ({ item_id: `item-${index}`, quantity: index + 1 })),
     }).success).toBe(true);
+  });
+
+  it("accepts finite decimal quantities and rejects non-positive or non-finite quantities", () => {
+    expect(createStorageBatchTransactionSchema.safeParse({
+      ...valid,
+      entries: [{ item_id: "item-1", quantity: 0.25 }],
+    }).success).toBe(true);
+    for (const quantity of [0, -1, Number.NaN, Number.POSITIVE_INFINITY]) {
+      expect(createStorageBatchTransactionSchema.safeParse({
+        ...valid,
+        entries: [{ item_id: "item-1", quantity }],
+      }).success).toBe(false);
+    }
   });
 
   it("rejects unsafe keys and duplicate items", () => {
@@ -56,5 +81,91 @@ describe("storageItemsListQuerySchema", () => {
     expect(storageItemsListQuerySchema.safeParse({ stock: "missing" }).success).toBe(false);
     expect(storageItemsListQuerySchema.safeParse({ limit: "0" }).success).toBe(false);
     expect(storageItemsListQuerySchema.safeParse({ limit: "101" }).success).toBe(false);
+  });
+
+  it("validates the UTF-8 size after lowercase normalization and LIKE escaping", () => {
+    expect(storageItemsListQuerySchema.safeParse({ search: "İ".repeat(16) }).success).toBe(true);
+    expect(storageItemsListQuerySchema.safeParse({ search: "İ".repeat(17) }).success).toBe(false);
+  });
+});
+
+describe("storage transaction contracts", () => {
+  it("keeps the Portal single-transaction wire while allowing finite decimal stock", () => {
+    expect(createStorageTransactionSchema.parse({
+      type: "intake",
+      quantity: 1.5,
+      recipient_user_id: "user-1",
+      note: null,
+    })).toEqual({
+      type: "intake",
+      quantity: 1.5,
+      recipient_user_id: "user-1",
+      note: null,
+    });
+    expect(createStorageTransactionSchema.safeParse({ type: "intake", quantity: Number.NaN }).success).toBe(false);
+    expect(createStorageTransactionSchema.safeParse({ type: "adjust", target_quantity: Number.POSITIVE_INFINITY }).success).toBe(false);
+  });
+
+  it("requires non-zero finite ledger deltas", () => {
+    const base = {
+      id: "tx-1",
+      item_id: "item-1",
+      item_name: "Potion",
+      type: "intake" as const,
+      recipient_user_id: "user-1",
+      recipient_username: "member",
+      note: null,
+      actor_id: "user-1",
+      actor_username: "member",
+      created_at: "2026-08-09T00:00:00.000Z",
+    };
+    expect(storageTransactionSchema.safeParse({ ...base, quantity_delta: 0.5 }).success).toBe(true);
+    expect(storageTransactionSchema.safeParse({ ...base, quantity_delta: 0 }).success).toBe(false);
+    expect(storageTransactionSchema.safeParse({ ...base, quantity_delta: Number.NEGATIVE_INFINITY }).success).toBe(false);
+  });
+
+  it("bounds the Portal page query and preserves its defaults", () => {
+    expect(storageTransactionsListQuerySchema.parse({})).toEqual({ page: 1, limit: 50 });
+    expect(storageTransactionsListQuerySchema.parse({
+      item_id: "item-1",
+      recipient_user_id: "me",
+      page: "2",
+      limit: "25",
+    })).toEqual({ item_id: "item-1", recipient_user_id: "me", page: 2, limit: 25 });
+    expect(storageTransactionsListQuerySchema.safeParse({ page: "10001" }).success).toBe(false);
+  });
+});
+
+describe("storage Portal response wire", () => {
+  const item = storageItemSchema.parse({
+    id: "item-1",
+    storage_id: "storage-1",
+    category_id: null,
+    name: "Potion",
+    description: null,
+    quantity: 1.5,
+    allow_member_deposit: true,
+    allow_member_withdraw: false,
+    images: [{ media_id: "m".repeat(21) }],
+    created_at: "2026-08-09T00:00:00.000Z",
+    updated_at: "2026-08-09T00:00:00.000Z",
+  });
+
+  it("preserves tree, cursor, and page response envelopes", () => {
+    expect(storageTreeResponseSchema.safeParse({ data: [{
+      id: "storage-1",
+      name: "Guild Vault",
+      description: null,
+      created_at: "2026-08-09T00:00:00.000Z",
+      categories: [],
+    }] }).success).toBe(true);
+    expect(storageItemsCursorResponseSchema.safeParse({ data: [item], next_cursor: null }).success).toBe(true);
+    expect(storageTransactionsPageResponseSchema.safeParse({
+      data: [],
+      total: 0,
+      page: 1,
+      limit: 50,
+      total_pages: 1,
+    }).success).toBe(true);
   });
 });

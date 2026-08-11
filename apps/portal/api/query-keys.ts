@@ -84,7 +84,8 @@ export const queryKeys = {
     members: () => [...queryKeys.dashboard.all, "members"] as const,
     events: (viewerKey: string, externalView: boolean) =>
       [...queryKeys.dashboard.all, "events", viewerKey, externalView] as const,
-    wars: () => [...queryKeys.dashboard.all, "wars"] as const,
+    wars: (viewerKey: string, externalView: boolean) =>
+      [...queryKeys.dashboard.all, "wars", viewerKey, externalView] as const,
     lastWarDetail: (warId: string) => [...queryKeys.dashboard.all, "last-war-detail", warId] as const,
     upcomingEventDetails: (eventIdsKey: string) =>
       [...queryKeys.dashboard.all, "upcoming-event-details", eventIdsKey] as const,
@@ -102,6 +103,7 @@ export const queryKeys = {
     auditArchive: (month?: string | null, page?: number) => [...queryKeys.admin.all, "audit-archive", month ?? null, page ?? 1] as const,
     roles: () => [...queryKeys.admin.all, "roles"] as const,
     status: () => [...queryKeys.admin.all, "status"] as const,
+    loginLock: (userId: string | null) => [...queryKeys.admin.all, "login-lock", userId] as const,
   },
   guildWar: {
     all: ["guild-war"] as const,

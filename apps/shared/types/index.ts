@@ -1,5 +1,12 @@
 import type { z } from "zod";
-import type { PushEntityType, PushHint } from "../constants/push-hints";
+import type {
+  announcementPublishedPushMessageSchema,
+  entityChangedPushMessageSchema,
+  heartbeatAckMessageSchema,
+  heartbeatMessageSchema,
+  memberOnlinePushMessageSchema,
+  pushMessageSchema,
+} from "../schemas/notifications";
 import type { userSchema, memberProfileSchema } from "../schemas/user";
 import type { eventSchema, eventClassQuotaSchema, eventClassQuotaInputSchema, eventParticipantSchema, eventPollSchema, eventRaffleWinnerSchema, recurringTemplateSchema } from "../schemas/event";
 import type { announcementSchema } from "../schemas/announcement";
@@ -22,6 +29,7 @@ import type {
   memberBadgeSchema,
   userBadgeSchema,
   badgeAssignmentSchema,
+  badgeAssignmentsListQuerySchema,
   reorderMemberBadgesSchema,
 } from "../schemas/badge";
 
@@ -53,6 +61,7 @@ export type RolePermissions = z.infer<typeof rolePermissionsSchema>;
 export type MemberBadge = z.infer<typeof memberBadgeSchema>;
 export type UserBadge = z.infer<typeof userBadgeSchema>;
 export type BadgeAssignment = z.infer<typeof badgeAssignmentSchema>;
+export type BadgeAssignmentsListQuery = z.infer<typeof badgeAssignmentsListQuerySchema>;
 export type ReorderMemberBadgesInput = z.infer<typeof reorderMemberBadgesSchema>;
 
 export type PaginatedResponse<T> = {
@@ -68,46 +77,9 @@ export type CursorResponse<T> = {
   next_cursor: string | null;
 };
 
-export type EntityChangedPushMessage = {
-  type: "entity_changed";
-  entity_type: PushEntityType;
-  entity_id: string;
-  updated_at: string;
-  hint: PushHint;
-  display_name?: string;
-};
-
-export type MemberOnlinePushMessage = {
-  type: "member_online";
-  user_id: string;
-  source: "portal";
-  online_at: string;
-};
-
-export type AnnouncementPublishedPushMessage = {
-  type: "announcement_published";
-  announcement_id: string;
-  title: string;
-  published_at: string;
-};
-
-export type HeartbeatMessage = {
-  type: "heartbeat";
-  tab_id: string;
-  seq: number;
-  sent_at: string;
-};
-
-export type HeartbeatAckMessage = {
-  type: "heartbeat_ack";
-  tab_id: string;
-  seq: number;
-  server_at: string;
-  connections: number;
-};
-
-export type PushMessage =
-  | EntityChangedPushMessage
-  | MemberOnlinePushMessage
-  | AnnouncementPublishedPushMessage
-  | HeartbeatAckMessage;
+export type EntityChangedPushMessage = z.infer<typeof entityChangedPushMessageSchema>;
+export type MemberOnlinePushMessage = z.infer<typeof memberOnlinePushMessageSchema>;
+export type AnnouncementPublishedPushMessage = z.infer<typeof announcementPublishedPushMessageSchema>;
+export type HeartbeatMessage = z.infer<typeof heartbeatMessageSchema>;
+export type HeartbeatAckMessage = z.infer<typeof heartbeatAckMessageSchema>;
+export type PushMessage = z.infer<typeof pushMessageSchema>;

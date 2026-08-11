@@ -13,6 +13,8 @@ export const SYSTEM_TEST_HEADER = "X-System-Test";
 export const SYSTEM_TEST_HEADER_VALUE = "admin-console-api";
 /** Server-issued opaque identifier for one isolated admin API test run. */
 export const SYSTEM_TEST_RUN_ID_HEADER = "X-System-Test-Run-Id";
+export const SYSTEM_TEST_AUDIT_HEADER = "X-System-Test-Audit";
+export const SYSTEM_TEST_AUDIT_HEADER_VALUE = "summary";
 
 /**
  * True when a username sits in the reserved system-test namespace.

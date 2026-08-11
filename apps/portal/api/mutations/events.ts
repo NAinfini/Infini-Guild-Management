@@ -1,7 +1,7 @@
 import { type Event, type EventParticipant, type EventRaffleWinner, type RecurringTemplate, createEventSchema, createTemplateSchema, eventParticipantsBatchSchema, pollVoteSchema, updateEventSchema, updateTemplateSchema } from "@guild/shared";
 import type { z } from "zod";
 import { apiRequest } from "../client";
-import { appendImageUploadVariants, convertImagesForUpload } from "@guild/shared/utils/media";
+import { appendImageUploadVariants, convertImagesForUpload } from "../../utils/upload-media";
 
 export type CreateEventPayload = z.input<typeof createEventSchema>;
 export type UpdateEventPayload = z.input<typeof updateEventSchema>;

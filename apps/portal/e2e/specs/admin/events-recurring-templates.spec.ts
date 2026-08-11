@@ -6,7 +6,7 @@ import { confirmDialog, expectNoDialog, field, selectOption, toggleInput } from 
 /*
  * 活动页「Recurring」标签：模板的建、改、暂停、恢复、删，以及三个筛选控件。
  *
- * 模板本身不产生活动——生成是 cron 干的（apps/worker/crons/recurring-events.ts），
+ * 模板本身不产生活动——生成由共享的定时任务负责，
  * 所以这里能断言的「真效果」就是模板那一行：每条用例都回读 /api/events/templates/list，
  * 逐字段跟表单里填的对上，而不是看一句「Template created」。
  *

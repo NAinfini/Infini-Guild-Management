@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { LIMITS } from "../config/limits";
 import { mediaIdSchema } from "./media";
+import { isPortableLowercaseLikeSearch } from "../utils/portable-search";
 
 const L = LIMITS.content;
 
@@ -24,7 +25,7 @@ export const storageItemSchema = z.object({
   category_id: z.string().nullable(),
   name: z.string(),
   description: z.string().nullable(),
-  quantity: z.number().int().min(0),
+  quantity: z.number().finite().min(0),
   allow_member_deposit: z.boolean(),
   allow_member_withdraw: z.boolean(),
   images: z.array(z.object({ media_id: mediaIdSchema })),
@@ -39,7 +40,9 @@ export const storageStockFilterSchema = z.enum(STORAGE_STOCK_FILTERS);
 export const storageItemsListQuerySchema = z.object({
   storage_id: z.string().trim().min(1).optional(),
   category_id: z.string().trim().min(1).optional(),
-  search: z.string().trim().max(L.storageItemName.max).optional(),
+  search: z.string().trim().max(L.storageItemName.max)
+    .refine(isPortableLowercaseLikeSearch, "Search exceeds the portable 50-byte pattern limit")
+    .optional(),
   stock: storageStockFilterSchema.default("all"),
   limit: z.coerce.number().int().min(1).max(100).default(LIMITS.pagination.storage),
   cursor: z.string().min(1).max(512).optional(),
@@ -50,7 +53,9 @@ export const storageTransactionSchema = z.object({
   item_id: z.string(),
   item_name: z.string().nullable(),
   type: z.enum(STORAGE_TRANSACTION_TYPES),
-  quantity_delta: z.number().int(),
+  quantity_delta: z.number().finite().refine((value) => value !== 0, {
+    message: "quantity_delta must be non-zero",
+  }),
   recipient_user_id: z.string().nullable(),
   recipient_username: z.string().nullable(),
   note: z.string().max(L.storageNote.max).nullable(),
@@ -88,8 +93,8 @@ export const createStorageItemSchema = storageItemWriteBaseSchema.extend({
 
 export const updateStorageItemSchema = storageItemWriteBaseSchema.partial();
 
-const txQuantity = z.number().int().min(1).max(L.storageTransactionQuantity.max);
-const txTargetQuantity = z.number().int().min(0).max(L.storageTransactionQuantity.max);
+const txQuantity = z.number().finite().positive().max(L.storageTransactionQuantity.max);
+const txTargetQuantity = z.number().finite().min(0).max(L.storageTransactionQuantity.max);
 
 export const createStorageTransactionSchema = z
   .object({
@@ -137,12 +142,37 @@ export const storageBatchTransactionResultSchema = z.object({
   replayed: z.boolean(),
 });
 
+export const storageTransactionsListQuerySchema = z.object({
+  item_id: z.string().trim().min(1).max(128).optional(),
+  recipient_user_id: z.string().trim().min(1).max(128).optional(),
+  page: z.coerce.number().int().min(1).max(10_000).default(1),
+  limit: z.coerce.number().int().min(1).max(100).default(50),
+});
+
+export const storageTreeResponseSchema = z.object({
+  data: z.array(storageSchema),
+});
+
+export const storageItemsCursorResponseSchema = z.object({
+  data: z.array(storageItemSchema),
+  next_cursor: z.string().nullable(),
+});
+
+export const storageTransactionsPageResponseSchema = z.object({
+  data: z.array(storageTransactionSchema),
+  total: z.number().int().min(0),
+  page: z.number().int().min(1),
+  limit: z.number().int().min(1).max(100),
+  total_pages: z.number().int().min(1),
+});
+
 export type Storage = z.infer<typeof storageSchema>;
 export type StorageCategory = z.infer<typeof storageCategorySchema>;
 export type StorageItem = z.infer<typeof storageItemSchema>;
 export type StorageTransaction = z.infer<typeof storageTransactionSchema>;
 export type StorageStockFilter = z.infer<typeof storageStockFilterSchema>;
 export type StorageItemsListQuery = z.infer<typeof storageItemsListQuerySchema>;
+export type StorageTransactionsListQuery = z.infer<typeof storageTransactionsListQuerySchema>;
 export type CreateStoragePayload = z.input<typeof createStorageSchema>;
 export type CreateStorageCategoryPayload = z.input<typeof createStorageCategorySchema>;
 export type CreateStorageItemPayload = z.input<typeof createStorageItemSchema>;

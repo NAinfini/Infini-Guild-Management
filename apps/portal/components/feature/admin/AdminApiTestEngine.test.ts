@@ -2,10 +2,12 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   buildJsonRequest,
   buildApiCategories,
+  buildSystemTestSummary,
   captureContextFromResponse,
   createInitialTestRunContext,
   filterApiCategoriesForPermissions,
   prepareEndpointRequest,
+  requestSystemTestCleanup,
   resolveEndpointPath,
   runEndpointTest,
   type TestRunContext,
@@ -156,69 +158,44 @@ describe("AdminApiTestEngine request preparation", () => {
     expect(body.icon).toBeUndefined();
   });
 
-  /*
-   * reorder 接口要求整表 id 列全，所以用例只能回放列表抓到的现序并把本次新建的
-   * 那一个补在末尾——断言的正是「现序 + 尾插」，多一位少一位都说明会改动线上顺序。
-   */
-  it("replays the captured server order and appends only this run's fixture on reorder endpoints", () => {
-    const ctx = contextWith({
-      badgeIdsInOrder: ["badge-1", "badge-2"],
-      createdBadgeId: "badge-3",
-      classIdsInOrder: ["class-1"],
-      createdClassId: "class-2",
-      classTagIdsInOrder: [],
-      createdClassTagId: "tag-1",
-    });
+  it("keeps full-catalog reorder endpoints visible but never sends them", () => {
+    const endpoints = [
+      { label: "Reorder Badges", method: "PATCH" as const, path: "/api/badges/reorder" },
+      { label: "Reorder Classes", method: "PATCH" as const, path: "/api/classes/reorder" },
+      { label: "Reorder Class Tags", method: "PATCH" as const, path: "/api/class-tags/reorder" },
+    ];
+    const catalogKeys = buildApiCategories((key) => key)
+      .flatMap((category) => category.endpoints.map((endpoint) => `${endpoint.method} ${endpoint.path}`));
 
-    expect(parseJsonBody(prepareEndpointRequest(
-      { label: "Reorder Badges", method: "PATCH", path: "/api/badges/reorder" },
-      ctx,
-    ))).toEqual({ order: ["badge-1", "badge-2", "badge-3"] });
-    expect(parseJsonBody(prepareEndpointRequest(
-      { label: "Reorder Classes", method: "PATCH", path: "/api/classes/reorder" },
-      ctx,
-    ))).toEqual({ order: ["class-1", "class-2"] });
-    expect(parseJsonBody(prepareEndpointRequest(
-      { label: "Reorder Class Tags", method: "PATCH", path: "/api/class-tags/reorder" },
-      ctx,
-    ))).toEqual({ order: ["tag-1"] });
+    for (const endpoint of endpoints) {
+      const key = `${endpoint.method} ${endpoint.path}`;
+      expect(catalogKeys, key).toContain(key);
+      const prepared = prepareEndpointRequest(endpoint, contextWith({
+        createdBadgeId: "created-badge",
+        createdClassId: "created-class",
+        createdClassTagId: "created-tag",
+      }));
+      expect(prepared.optionalSkip, key).toBe(true);
+      expect(prepared.skipReason, key).toContain("complete live catalog");
+      expect(prepared.body, key).toBeUndefined();
+    }
   });
 
-  it("skips reorder endpoints until their list capture has run", () => {
-    const context = createInitialTestRunContext();
+  it("never restores a revision on an article that predates the current run", () => {
+    const endpoint = {
+      label: "Restore Revision",
+      method: "POST" as const,
+      path: "/api/wiki/articles/:id/revisions/1/restore",
+    };
+    const seededOnly = prepareEndpointRequest(endpoint, contextWith({ wikiArticleId: "existing-article" }));
+    const created = prepareEndpointRequest(endpoint, contextWith({
+      wikiArticleId: "existing-article",
+      createdWikiArticleId: "created-article",
+    }));
 
-    expect(prepareEndpointRequest(
-      { label: "Reorder Badges", method: "PATCH", path: "/api/badges/reorder" },
-      context,
-    ).skipReason).toContain("badge order");
-    expect(prepareEndpointRequest(
-      { label: "Reorder Classes", method: "PATCH", path: "/api/classes/reorder" },
-      context,
-    ).skipReason).toContain("class order");
-    expect(prepareEndpointRequest(
-      { label: "Reorder Class Tags", method: "PATCH", path: "/api/class-tags/reorder" },
-      context,
-    ).skipReason).toContain("class tag order");
-  });
-
-  it("captures the server order from the badge, class, and class-tag list responses", () => {
-    const listResult = (rows: unknown) => ({
-      status: 200,
-      latencyMs: 1,
-      body: "[]",
-      error: null,
-      ranAt: "2026-08-07T00:00:00.000Z",
-      parsedJson: rows,
-    });
-    let ctx = createInitialTestRunContext();
-
-    ctx = captureContextFromResponse(ctx, { label: "Badges", method: "GET", path: "/api/badges" }, listResult([{ id: "badge-1" }, { id: "badge-2" }]));
-    ctx = captureContextFromResponse(ctx, { label: "Classes", method: "GET", path: "/api/classes" }, listResult([{ id: "class-1" }]));
-    ctx = captureContextFromResponse(ctx, { label: "Tags", method: "GET", path: "/api/class-tags" }, listResult([]));
-
-    expect(ctx.badgeIdsInOrder).toEqual(["badge-1", "badge-2"]);
-    expect(ctx.classIdsInOrder).toEqual(["class-1"]);
-    expect(ctx.classTagIdsInOrder).toEqual([]);
+    expect(seededOnly.skipReason).toContain("created wiki article id");
+    expect(JSON.stringify(seededOnly)).not.toContain("existing-article");
+    expect(created.path).toBe("/api/wiki/articles/created-article/revisions/1/restore");
   });
 
   it("runs class-tag mutations only against the tag created by this run", () => {
@@ -1432,14 +1409,10 @@ describe("AdminApiTestEngine request preparation", () => {
     ];
     const endpointKeys = buildApiCategories((key) => key)
       .flatMap((category) => category.endpoints.map((endpoint) => `${endpoint.method} ${endpoint.path}`));
-    /* 给足一次性成员 id，让 :id 能解析出来——否则跳过的理由会是「缺 id」，
-       测不到「就算 id 齐了也照样不发」这个真正要守的性质。 */
-    const ready = contextWith({ adminCreatedUserId: "disposable-user" });
-
     for (const endpoint of alwaysSkipped) {
       const key = `${endpoint.method} ${endpoint.path}`;
       expect(endpointKeys, key).toContain(key);
-      const prepared = prepareEndpointRequest(endpoint, ready);
+      const prepared = prepareEndpointRequest(endpoint, createInitialTestRunContext());
       expect(prepared.skipReason, key).toBeTruthy();
       expect(prepared.optionalSkip, key).toBe(true);
       expect(prepared.body, key).toBeUndefined();
@@ -1634,5 +1607,53 @@ describe("AdminApiTestEngine request preparation", () => {
         }),
       }),
     );
+  });
+
+  it("reports safety exclusions as N/A while keeping prerequisite skips as failures", () => {
+    const base = {
+      category: "Catalog",
+      label: "Endpoint",
+      method: "PATCH",
+      path: "/api/example",
+      latencyMs: 1,
+      body: "",
+      ranAt: "2026-08-10T00:00:00.000Z",
+    };
+    const summary = buildSystemTestSummary([
+      { ...base, id: "passed", status: 200, error: null },
+      { ...base, id: "safe-skip", status: null, error: null, skipped: true },
+      { ...base, id: "missing-fixture", status: null, error: "Skipped", skipped: true },
+      { ...base, id: "failed", status: 500, error: "500 Internal Server Error" },
+      { ...base, id: "cleanup", category: "Cleanup", status: null, error: null, skipped: true },
+    ]);
+
+    expect(summary).toEqual({
+      total: 3,
+      passed: 1,
+      failed: 2,
+      errors: [
+        expect.objectContaining({ error: "Skipped", status: null }),
+        expect.objectContaining({ error: "500 Internal Server Error", status: 500 }),
+      ],
+    });
+  });
+
+  it("retries transient cleanup failures until the run is fully cleaned", async () => {
+    const fetchMock = vi.spyOn(globalThis, "fetch")
+      .mockResolvedValueOnce(new Response(
+        JSON.stringify({ ok: false, status: "cleanup_failed", attempts: 1 }),
+        { status: 409, statusText: "Conflict" },
+      ))
+      .mockResolvedValueOnce(new Response("temporary", { status: 503, statusText: "Unavailable" }))
+      .mockResolvedValueOnce(new Response(
+        JSON.stringify({ ok: true, status: "completed", attempts: 3 }),
+        { status: 200 },
+      ));
+
+    await expect(requestSystemTestCleanup(
+      "014f27f1-6ca1-4c5e-924f-f111b76b9efd",
+      new AbortController().signal,
+    )).resolves.toMatchObject({ status: 200, error: null });
+    expect(fetchMock).toHaveBeenCalledTimes(3);
   });
 });

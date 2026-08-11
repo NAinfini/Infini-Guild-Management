@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   ECHARTS_CHUNK_BUDGET,
+  LOCAL_CLOUDFLARE_PROXY_HEADERS,
   findEChartsChunkBudgetViolation,
   portalLocaleChunkName,
   replaceSiteConfigPlaceholders,
@@ -8,6 +9,12 @@ import {
 } from "./vite.config";
 
 describe("portal Vite API proxy", () => {
+  it("supplies the platform-owned client address to the local Cloudflare backend", () => {
+    expect(LOCAL_CLOUDFLARE_PROXY_HEADERS).toEqual({
+      "CF-Connecting-IP": "127.0.0.1",
+    });
+  });
+
   it("proxies API requests with ISO datetime query strings", () => {
     expect(
       shouldProxyApiRequest(

@@ -1,7 +1,6 @@
 import type { GuildWarActiveResponse } from "@guild/shared";
 import { useEffect, useMemo, type Dispatch, type SetStateAction } from "react";
 import type { UsersListResponse } from "../../services/UserService";
-import { useSiteConfigStore } from "@portal/stores/site-config";
 import { getGuildWarMemberStatLabel, getGuildWarMetricValue } from "@portal/utils/game-rules";
 import { GUILD_WAR_KDA_KEY } from "@guild/shared";
 
@@ -56,7 +55,6 @@ type UseGuildWarDragDataParams = {
 };
 
 export function useGuildWarDragData({ activeData, usersData, poolLabel, draft }: UseGuildWarDragDataParams) {
-  const gameRules = useSiteConfigStore((state) => state.gameRules);
   const teams = activeData?.teams ?? [];
   const pool = activeData?.pool ?? [];
   const { teamDraftNames, setTeamDraftNames, setTeamDraftNotes, teamDraftLocks, setTeamDraftLocks, teamOrder, setTeamOrder } = draft;
@@ -209,7 +207,7 @@ export function useGuildWarDragData({ activeData, usersData, poolLabel, draft }:
           username: userData?.username ?? member.user_id,
           power: userData?.power ?? 0,
           class: userData?.class ?? "Unknown",
-          subtitle: `${member.role_tag ? `[${member.role_tag}] ` : ""}${getGuildWarMemberStatLabel(GUILD_WAR_KDA_KEY, undefined, gameRules)}: ${getGuildWarMetricValue(member.stats, GUILD_WAR_KDA_KEY, gameRules).toFixed(2)}`,
+          subtitle: `${member.role_tag ? `[${member.role_tag}] ` : ""}${getGuildWarMemberStatLabel(GUILD_WAR_KDA_KEY)}: ${getGuildWarMetricValue(member.stats, GUILD_WAR_KDA_KEY).toFixed(2)}`,
         };
       }),
     }));
@@ -232,7 +230,7 @@ export function useGuildWarDragData({ activeData, usersData, poolLabel, draft }:
     };
 
     return [...teamColumns, poolColumn];
-  }, [gameRules, lockedTeamIds, orderedTeams, pool, poolLabel, teamDraftNames, userDataMap]);
+  }, [lockedTeamIds, orderedTeams, pool, poolLabel, teamDraftNames, userDataMap]);
 
   const memberContainerMap = useMemo(() => {
     const map = new Map<string, string>();

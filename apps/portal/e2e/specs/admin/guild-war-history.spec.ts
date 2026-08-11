@@ -84,6 +84,11 @@ test.beforeEach(async ({ api }) => {
     "创建垫底的公会战活动",
   );
 
+  const joined = await api.post(`/api/events/${eventId}/participants`, {
+    data: { user_ids: [member.id] },
+  });
+  expect(joined.ok(), `预置参战成员返回 ${joined.status()}: ${await joined.text()}`).toBe(true);
+
   const saved = await api.post("/api/guild-war/save-teams", {
     data: {
       event_id: eventId,
@@ -113,16 +118,18 @@ test.beforeEach(async ({ api }) => {
 });
 
 test.afterEach(async ({ api }) => {
-  const histories = await readJson(
-    await api.get(`/api/guild-war/history?search=${stamp}&limit=100`),
-    "回读待清理的战史",
-  ) as { data: HistoryRow[] };
-  const ids = histories.data.map((entry) => entry.id);
-  for (let index = 0; index < ids.length; index += 50) {
+  while (true) {
+    const histories = await readJson(
+      await api.get(`/api/guild-war/history?search=${stamp}&limit=20`),
+      "回读待清理的战史",
+    ) as { data: HistoryRow[] };
+    const ids = histories.data.map((entry) => entry.id);
+    if (ids.length === 0) break;
     const response = await api.post("/api/guild-war/history/batch-delete", {
-      data: { ids: ids.slice(index, index + 50) },
+      data: { ids },
     });
     expect(response.ok(), `清理战史返回 ${response.status()}: ${await response.text()}`).toBe(true);
+    if (ids.length < 20) break;
   }
 
   const events = await readJson(
@@ -398,12 +405,12 @@ test("翻页与每页条数：页码、上下页与每页条数都重新向服�
   await page.locator(".war-history-pagination__pages input").fill("2");
   await expect(railItems(page)).toHaveCount(1);
 
-  // 每页 50：21 条并成一页，分页控件整组消失。
+  // 每页 10：服务端重新分页，第一页只返回 10 条。
   const perPage = page.locator(".war-history-pagination input[aria-haspopup='listbox']");
   await flow.act(async () => {
     await perPage.click();
-    await page.getByRole("option", { name: "50", exact: true }).click();
+    await page.getByRole("option", { name: "10", exact: true }).click();
   }, HISTORY_LIST);
-  await expect(railItems(page), "每页 50 之后 21 条应当在同一页").toHaveCount(21);
-  await expect(page.locator(".war-history-pagination")).toHaveCount(0);
+  await expect(railItems(page), "每页 10 之后第一页只能有 10 条").toHaveCount(10);
+  await expect(page.locator(".war-history-pagination")).toBeVisible();
 });

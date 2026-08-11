@@ -6,6 +6,7 @@ import {
   batchRoleChangeSchema,
   createAdminMemberSchema,
   createInviteLinkSchema,
+  resetLoginLockResponseSchema,
 } from "@guild/shared";
 import type { z } from "zod";
 import { apiRequest } from "../client";
@@ -15,6 +16,7 @@ export type CreateAdminMemberPayload = z.input<typeof createAdminMemberSchema>;
 export type BatchRoleChangePayload = z.input<typeof batchRoleChangeSchema>;
 export type BatchDeactivatePayload = z.input<typeof batchDeactivateSchema>;
 export type AdminUpdateProfilePayload = z.input<typeof adminUpdateProfileSchema>;
+export type ResetAdminUserLoginLockResponse = z.infer<typeof resetLoginLockResponseSchema>;
 
 export function adminUpdateProfile(userId: string, payload: AdminUpdateProfilePayload): Promise<MemberProfile> {
   const bodyJson = adminUpdateProfileSchema.parse(payload);
@@ -75,8 +77,8 @@ export function resetAdminUserPassword(
   );
 }
 
-export function resetAdminUserLoginLock(userId: string): Promise<{ ok: true }> {
-  return apiRequest<{ ok: true }>(`/api/admin/users/${userId}/reset-login-lock`, {
+export function resetAdminUserLoginLock(userId: string): Promise<ResetAdminUserLoginLockResponse> {
+  return apiRequest<ResetAdminUserLoginLockResponse>(`/api/admin/users/${userId}/reset-login-lock`, {
     method: "POST",
     bodyJson: {},
   });

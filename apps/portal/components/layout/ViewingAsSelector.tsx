@@ -2,6 +2,8 @@ import type { AdminRole } from "@guild/shared";
 import { Select, Text } from "@mantine/core";
 import { useMemo } from "react";
 import { useTranslation } from "react-i18next";
+import { useAuthStore } from "../../stores/auth";
+import { canPreviewRole } from "../../utils/permissions";
 import { EyeOutlined } from "../../utils/icons";
 
 export type ViewingAsRole = string;
@@ -15,9 +17,11 @@ type ViewingAsSelectorProps = {
 
 export function ViewingAsSelector({ value, compact = false, roles, onChange }: ViewingAsSelectorProps) {
   const { t } = useTranslation(["common", "admin"]);
+  const user = useAuthStore((state) => state.user);
 
   const options = useMemo(() => {
     const items = roles
+      .filter((role) => canPreviewRole(role, user))
       .slice()
       .sort((a, b) => b.level - a.level)
       .map((role) => ({
@@ -27,7 +31,7 @@ export function ViewingAsSelector({ value, compact = false, roles, onChange }: V
 
     items.push({ value: "external", label: t("common:viewingAs.external") });
     return items;
-  }, [roles, t]);
+  }, [roles, t, user]);
 
   if (compact) {
     return (

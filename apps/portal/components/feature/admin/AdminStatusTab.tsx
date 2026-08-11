@@ -14,9 +14,9 @@ import { useAuthStore } from "../../../stores/auth";
 import { userCanViewStatus } from "../../../utils/permissions";
 import { formatDateTime } from "../../../utils/admin";
 import { latencyBand, latencyScalePercent } from "../../../utils/latency-thresholds";
-import { AdminSystemSection } from "./AdminSystemSection";
+import { AdminSystemSection, serviceState } from "./AdminSystemSection";
 import { buildApiCategories, filterApiCategoriesForPermissions } from "./AdminApiTestEngine";
-import { ApiTestCategory } from "./AdminApiTestCategory";
+import { ApiTestCategory, epKey, isEndpointError } from "./AdminApiTestCategory";
 import { AdminApiDebugConsole } from "./AdminApiDebugConsole";
 import { useAdminApiTestRunner } from "./useAdminApiTestRunner";
 import "./AdminApiTest.css";
@@ -103,7 +103,7 @@ export function AdminStatusTab({
     runAllCategories,
     clearDebug,
     stop,
-  } = useAdminApiTestRunner(visibleApiCategories);
+  } = useAdminApiTestRunner(visibleApiCategories, user);
   const isRunning = runningAll || runningSet.size > 0;
 
   /*
@@ -113,6 +113,7 @@ export function AdminStatusTab({
   const [healthLogsOpen, setHealthLogsOpen] = useState(false);
   const [apiConsoleOpen, setApiConsoleOpen] = useState(false);
   const [debugConsoleOpen, setDebugConsoleOpen] = useState(false);
+  const [apiResultFilter, setApiResultFilter] = useState<"all" | "errors">("all");
 
   /*
    * 但一旦跑起来就必须把两台控制台摊开：结果正往里写，盒子却是收着的，
@@ -145,9 +146,15 @@ export function AdminStatusTab({
     else if (r.status !== null && r.status >= 200 && r.status < 400) passedEndpoints++;
     else failedEndpoints++;
   }
+  const displayedApiCategories = apiResultFilter === "errors"
+    ? visibleApiCategories.filter((category) => category.endpoints.some((endpoint) =>
+        isEndpointError(resultMap.get(epKey(category.key, endpoint))),
+      ))
+    : visibleApiCategories;
 
   const renderHealthLogStatus = (value: string) => {
-    const state = value === "ok" ? "ok" : value === "configured" || value === "degraded" ? "warn" : "error";
+    const service = serviceState(value);
+    const state = service === "configured" ? "warn" : service;
     const label = value === "ok" || value === "configured"
       ? t(`status.value.${value}`)
       : value.toUpperCase();
@@ -283,6 +290,29 @@ export function AdminStatusTab({
                 ) : null}
               </div>
             ) : null}
+
+            <div
+              className="api-debug__filters"
+              role="group"
+              aria-label={t("status.api.filter.results")}
+            >
+              <button
+                type="button"
+                className={`api-debug__filter-btn ${apiResultFilter === "all" ? "api-debug__filter-btn--active" : ""}`}
+                aria-pressed={apiResultFilter === "all"}
+                onClick={() => setApiResultFilter("all")}
+              >
+                {t("status.api.filter.all")}
+              </button>
+              <button
+                type="button"
+                className={`api-debug__filter-btn ${apiResultFilter === "errors" ? "api-debug__filter-btn--active" : ""}`}
+                aria-pressed={apiResultFilter === "errors"}
+                onClick={() => setApiResultFilter("errors")}
+              >
+                {t("status.api.filter.errors")}{failedEndpoints > 0 ? ` (${failedEndpoints})` : ""}
+              </button>
+            </div>
           </div>
 
           <div className="api-console__header-actions">
@@ -319,13 +349,16 @@ export function AdminStatusTab({
 
         <Collapse expanded={apiConsoleOpen}>
           <div className="api-cat-list">
-            {visibleApiCategories.map((cat) => (
+            {apiResultFilter === "errors" && displayedApiCategories.length === 0 ? (
+              <div className="api-cat-list__empty">{t("status.api.noErrors")}</div>
+            ) : displayedApiCategories.map((cat) => (
               <ApiTestCategory
                 key={cat.key}
                 category={cat}
                 onRunCategory={runCategory}
                 runningSet={runningSet}
                 resultMap={resultMap}
+                showOnlyErrors={apiResultFilter === "errors"}
               />
             ))}
           </div>

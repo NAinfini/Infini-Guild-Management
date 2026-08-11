@@ -1,0 +1,15 @@
+{
+  "name": "@guild/server",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/public.ts",
+    "./modules/*": "./src/modules/*/public.ts",
+    "./migrations/auth-password-hash": "./src/migrations/auth-password-hash.ts"
+  },
+  "dependencies": {
+    "@guild/kernel": "workspace:*",
+    "@guild/shared": "workspace:*",
+    "nanoid": "^6.0.0"
+  }
+}

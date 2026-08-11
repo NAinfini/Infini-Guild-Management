@@ -7,7 +7,6 @@ import { UserCheckOutlined } from "../../utils/icons";
 import { EmptyState } from "../shared/EmptyState";
 import { cardHeading, eventTypeTagColor, formatDateTime, type DashboardMySignupEvent } from "./shared";
 import { getEventTypeLabel } from "@portal/utils/game-rules";
-import { useSiteConfigStore } from "@portal/stores/site-config";
 
 type MySignupsCardProps = {
   mySignupEvents: DashboardMySignupEvent[];
@@ -32,7 +31,6 @@ export const MySignupsCard = memo(function MySignupsCard({
   onBrowseEvents,
 }: MySignupsCardProps) {
   const { t, i18n } = useTranslation("dashboard");
-  const gameRules = useSiteConfigStore((state) => state.gameRules);
 
   const days = useMemo(() => {
     const result: { date: Date; label: string; dayLabel: string; isYesterday: boolean; events: DashboardMySignupEvent[] }[] = [];
@@ -123,7 +121,7 @@ export const MySignupsCard = memo(function MySignupsCard({
                               <Text size="sm" fw={700} lh={1.3}>{item.event.title}</Text>
                               <Group gap={4} mt={4}>
                                 <Badge size="xs" color={eventTypeTagColor(item.event.type)} variant="light">
-                                  {getEventTypeLabel(item.event.type, i18n.language, gameRules)}
+                                  {getEventTypeLabel(item.event.type, i18n.language)}
                                 </Badge>
                                 <Text size="xs" c="dimmed">{formatDateTime(item.event.start_at)}</Text>
                               </Group>

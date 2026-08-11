@@ -10,7 +10,12 @@ function getAudio(): HTMLAudioElement {
   return audioEl;
 }
 
+function hasUserActivation(): boolean {
+  return !("userActivation" in navigator) || navigator.userActivation.hasBeenActive;
+}
+
 export function playAudio(src: string): void {
+  if (!hasUserActivation()) return;
   const audio = getAudio();
   if (currentSrc !== src) {
     audio.src = src;

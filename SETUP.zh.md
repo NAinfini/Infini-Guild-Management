@@ -1,240 +1,258 @@
 # 自托管安装指南
 
-本文档是本地安装、Cloudflare 部署、生产初始化、更新与安装故障排查的唯一事实源。README 只链接到这里，不重复维护这些命令。
+本文是模块化后端的权威安装指南。每套部署必须二选一：
+
+| 运行时 | 数据库 | Blob | 实时与调度 | 进程模型 |
+| --- | --- | --- | --- | --- |
+| Cloudflare | D1 | 一个 `BLOBS` R2 桶 | Durable Object 与 Cron Triggers | Cloudflare 托管 |
+| VPS | 一个本地 SQLite 文件 | 一个文件系统根目录 | 进程内 WebSocket hub 与 scheduler | 一个 Node.js 进程 |
+
+两端共用应用服务、HTTP 路由、Drizzle schema 和 core migration。绝不能让 Cloudflare 与 VPS 各自修改一份数据后再尝试合并。
 
 English version: [SETUP.md](./SETUP.md)
 
-## 需要准备
+## 环境要求
 
-- [Node.js 24 LTS](https://nodejs.org/) 24.18.0 或更高版本
-- pnpm 11.17.0（需要时运行 `npm install --global pnpm@11.17.0`）
-- Git，或从 GitHub 下载的项目 ZIP
-- 用于生产部署的 [Cloudflare 账号](https://dash.cloudflare.com/sign-up)
+- Node.js 24.18.0 或更新版本
+- pnpm 11.17.0
+- Git 或源码压缩包
+- Cloudflare：支持 Workers、D1、R2、Durable Objects、Cron Triggers 与 Rate Limiting 的账号
+- VPS：当前 64 位 Linux、持久磁盘、TLS 反向代理，以及 systemd 等服务管理器
 
-本地开发不需要 Cloudflare 账号。自定义域名也不是必需项；生产环境可以先使用 `*.workers.dev`。
-
-## 1. 本地运行
-
-在仓库根目录运行：
+在仓库根目录安装：
 
 ```bash
-pnpm install
-pnpm setup:local
+pnpm install --frozen-lockfile
+```
+
+## 命令总览
+
+| 用途 | 命令 |
+| --- | --- |
+| 创建本地配置 | `pnpm setup:local --runtime cloudflare` 或 `pnpm setup:local --runtime vps` |
+| 开发 | `pnpm dev`（默认 Cloudflare）、`pnpm cloudflare dev` 或 `pnpm vps dev` |
+| 构建共享门户 | `pnpm build:portal` |
+| 本地构建 Cloudflare | `pnpm cloudflare build` |
+| 本地构建 VPS | `pnpm vps build` |
+| 检查两种运行时类型 | `pnpm typecheck` |
+| 运行测试 | `pnpm test` |
+| 生成 Drizzle SQL | `pnpm db:generate` |
+| 组装预发布 core migration | `pnpm db:assemble` |
+| 初始化/校验 VPS 数据库 | `pnpm db:migrate:vps --database <sqlite-path>` |
+| 校验 VPS 数据库/Blob 快照 | `pnpm verify:data:vps --database <sqlite-path> --blobs <blob-root>` |
+| 在 VPS 应用已审核私有 SQL | `pnpm db:migrate-private:vps --database <sqlite-path> --migration <sql-path>` |
+| 准备首位站点所有者 | `pnpm prepare:site-owner -- ...` |
+| 准备旧双列凭据 | `pnpm prepare:credential-import -- ...` |
+| 启动 VPS | `pnpm start:vps` |
+| 本地发布门禁 | `pnpm release:check` |
+| 部署 Cloudflare | `pnpm deploy:cloudflare` |
+
+`release:check` 只在本地执行：扫描已跟踪内容、校验两份模板、检查两端类型、运行测试并构建门户。它不会创建、迁移、部署或修改远程资源。`deploy:cloudflare` 与其刻意分离，是真实远程变更。
+
+## 本地开发
+
+### Cloudflare
+
+```bash
 pnpm dev
 ```
 
-`pnpm setup:local` 会在 `apps/worker/wrangler.jsonc` 不存在时从 `wrangler.example.jsonc` 创建这份不入库的配置文件，并创建带随机本地 `SIGNING_SECRET` 的 `apps/worker/.dev.vars`。它不会覆盖已有配置或 `.dev.vars`。两份文件都已被 git 忽略，不要提交它们。
+`pnpm dev` 默认执行 `pnpm cloudflare dev`。它会自动创建缺失且被忽略的本地配置与两个独立密钥，保留已有文件，然后把共享迁移和本地开发 seed 应用到 D1，在 8787 端口启动 Wrangler，并在 5173 端口启动 Vite；不需要 Cloudflare 登录或远程资源。
 
-还有一步一次性安装：E2E 套件（`pnpm test:e2e` 与第 5 步的部署门禁都会运行它）需要 Playwright 浏览器：
+打开 `http://localhost:5173`。
 
-```bash
-pnpm exec playwright install chromium
-```
-
-门户启动后打开 `http://localhost:5173`。本地环境使用可随时重置的演示数据：
-
-| 用户名 | 密码 | 角色 |
-| --- | --- | --- |
-| `admin` | `admin123` | 管理员 |
-| `mod_1` | `moderator123` | 管理组 |
-| `member_01` | `member1234` | 普通成员 |
-
-`pnpm dev` 会重建本地 D1 并重新写入演示数据。这些账号绝不会自动进入生产环境。
-
-## 生产数据库迁移政策
-
-`apps/worker/db/migrations/0000_core_schema.sql` 是完整、全新的预发布 schema 基线。
-
-- 在预发布可重置阶段，获准的 schema 变更直接收敛到该基线，临时数据库必须据此重建。
-- 首次发布后基线冻结；之后每次 schema 变更都以新的单调编号增量迁移发布并保护既有数据，任何已应用的迁移文件都不得再编辑。
-- 绝不要手工修改生产 D1。只通过 Wrangler 应用经过审查的迁移，并在获准的远程迁移前备份生产数据。
-
-数据库刻意不包含运行时游戏规则表。活动类型、战果、战绩键与 KDA 行为是源码拥有的契约，不是站点配置记录。
-
-## 2. 连接 Cloudflare 并创建资源
-
-`apps/worker/wrangler.jsonc` 是你这套部署的 manifest，并且刻意不入库：仓库只跟踪模板 `wrangler.example.jsonc`，`pnpm setup:local` 会把模板复制到位，`.gitignore` 则保证你的副本——连同真实的数据库 ID、桶名、域名与源站——不进版本控制。请把生产 D1 绑定、R2 绑定、路由和默认 Logo 资源填成自己拥有的资源。资源名称、ID 与路由是配置标识符，不是凭据；`SIGNING_SECRET` 和 Cloudflare API Token 才是真正的秘密，永远不要写进这个文件。
-
-登录：
+### VPS
 
 ```bash
-pnpm exec wrangler login
+pnpm vps dev
 ```
 
-创建生产 D1，并更新 `DB` 绑定：
+该命令会在缺失时从 `scripts/templates/vps.env.example` 创建被忽略的 `apps/vps/.env` 和两个独立密钥，且不会覆盖已有文件。随后它初始化或校验 `data/infini-guild.sqlite`，应用与 Cloudflare 相同的本地开发 seed，在 8787 端口启动后端、在 5173 端口启动 Vite。打开 `http://localhost:5173`。
 
-```bash
-pnpm exec wrangler d1 create my-guild-db --binding DB --env production --update-config --config apps/worker/wrangler.jsonc
-```
+开发 seed 只会写入全新数据库，可安全重复执行，也不会进入生产迁移。使用密码 `admin123` 可登录 `admin`、`moderator_01`，以及任意 `member_01`–`member_08`，分别验证站点所有者、管理员和成员流程。种子覆盖全部活动类型、邀请码与公告状态、周期活动、投票、抽奖、Wiki 修订与还原、仓库流水类型、进行中及胜/负/平帮会战、图库、审计/错误记录，并写入可真实读取的本地 WebP/Ogg 媒体对象。若数据库已经存在非开发用户，seed 会直接跳过，避免把 mock 数据混入现有站点。
 
-创建一个生产 R2 存储桶，并更新 `MEDIA` 绑定：
+## 共享 schema 与迁移
 
-```bash
-pnpm exec wrangler r2 bucket create my-guild-media --binding MEDIA --env production --update-config --config apps/worker/wrangler.jsonc
-```
-
-只需要一个 R2 绑定。`MEDIA` 桶同时保存内容媒体、审计归档数据，以及每月归档的权威 manifest。不要另建审计桶，也不要手工重写或删除生产 R2 对象。
-
-资源名已被占用时请更换名称。绑定已有资源时，只修改对应的 `env.production` 绑定。
-
-## 3. 配置生产变量与密钥
-
-在 `apps/worker/wrangler.jsonc` 中连同资源绑定一起核对生产变量：
-
-```jsonc
-"vars": {
-  "ENVIRONMENT": "production",
-  "PORTAL_ORIGIN": "",
-  "SITE_LOGO_URL": "/guild-logo.svg"
-}
-```
-
-普通的一体化部署请让 `PORTAL_ORIGIN` 保持为空。只有单独托管的前端需要调用这个 Worker 时才填写，并且必须是裸源站形式，例如 `https://portal.example.com`——不带路径、查询串或末尾斜杠。Worker 会拿请求的 Origin 与该值逐字比较，`pnpm config:check` 会直接拒绝永远匹配不上的值。
-
-`PBKDF2_ITERATIONS` 控制密码哈希成本。默认值 `10000` 是为了让一次登录派生落在 Workers 免费版 CPU 预算内；付费计划为什么应该调高、升级如何平滑生效，见[在 Workers 免费版上运行](#在-workers-免费版上运行)。
-
-把生产密钥保存到 Cloudflare：
-
-```bash
-pnpm exec wrangler secret put SIGNING_SECRET --env production --config apps/worker/wrangler.jsonc
-```
-
-请使用很长的随机值。`SIGNING_SECRET` 同时用于签发审计归档下载 token，以及认证 Worker 到 Durable Object 的内部推送发布。它只能存放在 Cloudflare Secret 中；不要写入 `wrangler.jsonc`、`.env`、Issue 或提交。
-
-验证 manifest：
-
-```bash
-pnpm config:check -- --env=production
-```
-
-看到下面内容才继续：
+权威预发布基线位于：
 
 ```text
-[config] production configuration is ready.
+packages/persistence-sqlite/src/migrations/generated/0000_core.sql
+packages/persistence-sqlite/src/migrations/generated/manifest.json  # 只含一个 0000 条目
 ```
 
-## 4. 初始化 D1 并创建首位管理员
+Cloudflare D1 与 VPS SQLite 使用完全相同的 `0000_core.sql` 字节。`app_migrations` 是应用自身的序号/校验和账本，也是运行时启动校验的权威来源；Cloudflare 还维护 `d1_migrations`，供 Wrangler 记录已经应用的文件。两张表归属不同、都必须保留；空、未知或错版 schema 会被拒绝，不会静默修补。
 
-应用经过审查的迁移：
+只有修改共享 Drizzle schema 的维护者才在预发布阶段运行：
 
 ```bash
-pnpm exec wrangler d1 migrations apply DB --remote --env production --config apps/worker/wrangler.jsonc
+pnpm db:generate
+pnpm db:assemble
+pnpm test
 ```
 
-创建首位管理员：
+预发布开发期间，应从空的本地 generated migration 目录重新生成 `0000_core.sql`，再运行 `db:assemble` 加入已审核不变量、权威 seed、应用账本行与单条目 manifest。`db:assemble` 不是生产迁移命令。首次公开发布前，获准变更会替换这份基线；发布后，已经应用的文件不可修改，后续变更必须新增编号迁移。
+
+本次预发布折叠取代了废弃的 `0000`–`0002` 历史。任何 `app_migrations` 已包含该链的现有 D1 或 VPS 数据库，都不能直接部署当前 exact manifest。下一次部署前必须先备份，再选择从当前 `0000_core.sql` 重建，或执行经过明确规划与验证的显式重基线。应用不会加入运行时兼容分支，也不会自动改写远程账本；除非操作者另行明确执行获准的 Wrangler `--remote` 命令，仓库命令绝不会修改远程 D1。
+
+初始化或校验 VPS SQLite：
 
 ```bash
-pnpm setup:admin -- --env=production
+pnpm db:migrate:vps --database /srv/infini/data/infini-guild.sqlite
 ```
 
-该命令只在交互式终端运行，密码输入不会回显；密码必须为 12–128 个字符；只操作明确选择的生产环境；数据库已有任何用户时会拒绝运行；并会清理自己的临时 SQL 目录。密码哈希按默认成本写入；之后调高 `PBKDF2_ITERATIONS` 的话，首次登录会自动升级。后续用户都应通过管理后台创建的邀请链接注册。
+该命令只会向空数据库应用基线；未知非空数据库会被拒绝，随后校验精确的 `app_migrations` 账本、全部权威 schema 对象、SQLite 完整性与所有外键。
 
-## 5. 部署
-
-运行：
+可用以下只读命令校验已停止的 VPS 部署、恢复快照或准备好的转移数据；它不会修改任一数据存储：
 
 ```bash
-pnpm deploy:production
+pnpm verify:data:vps --database /srv/infini/data/infini-guild.sqlite --blobs /srv/infini/data/blobs
 ```
 
-该脚本会执行仓库的生产发布检查、构建门户、预演 Worker 部署，并把 Worker 与静态资源一起发布。不要改用裸 `wrangler deploy`，否则可能发布陈旧前端资源或跳过必要检查。发布门禁包含完整的 Playwright E2E 套件，整个命令可能运行数十分钟；如果第 1 步的 Playwright 浏览器没装，它会在早期直接失败。
+校验器以只读方式打开 SQLite，并复用应用使用的 manifest 与 Blob inventory 服务。它会为缺失对象、元数据不一致及超过 24 小时的孤儿候选输出 JSON，发现任何问题时以非零状态退出。扫描期间必须停止应用写入，或针对成对快照运行，避免两个存储在扫描中发生变化。该命令不具备复制或删除能力。
 
-部署完成后 Wrangler 会显示公开网址。打开它并使用第 4 步创建的管理员登录。
-
-## 6. 在管理后台完成配置
-
-进入 **管理后台 → 站点配置**，检查：
-
-1. **品牌**：站点名称与上传的 Logo。
-2. **功能**：`announcements`、`events`、`guildWar`、`gallery`、`wiki`、`tools`、`storage`。
-3. **限制**：单文件上传限制、媒体数量配额、仓储物品图片数。
-4. **政策**：展示给成员的请假政策。
-
-随后在 **管理后台 → 邀请链接** 创建成员邀请。不要让任何其他账号复用首位管理员密码。
-
-fresh D1 迁移会创建权威的 `site_config` 单例，并使用中性站点名 `Infini Guild`；首次登录后在管理后台修改即可。`SITE_LOGO_URL` 只指向部署中的静态默认 Logo，管理后台上传的 Logo 可以覆盖它。`.github` 的 Issue 模板链接指向本仓库，公开分叉应改指自己的仓库，让求助与报告到达自己的维护者。
-
-站点名称和运行时策略始终来自 D1；Wrangler 不再提供生产站点名后备值。
-
-## 每种配置应该改哪里
-
-| 修改内容 | 唯一事实源 | 是否要部署 |
-| --- | --- | --- |
-| 站点名/Logo、七个功能开关、上传限制、媒体配额、仓储策略 | **管理后台 → 站点配置** | 不需要 |
-| 成员资料、角色、权限、邀请、职业、职业标签、徽章 | 对应管理后台流程 | 不需要 |
-| 公会战分析权重 | 带相应权限的 `/api/admin/analytics-settings` | 不需要 |
-| D1、唯一 `MEDIA` R2 桶、环境、域名、默认 Logo 资源 | `apps/worker/wrangler.jsonc` | 需要 |
-| `SIGNING_SECRET` | 通过 `wrangler secret put` 保存的 Cloudflare Secret | 需要 |
-| 活动类型、战果、战绩定义、KDA 公式 | 共享源码契约；需要时配套新增量数据迁移 | 构建并部署 |
-| 硬安全上限、限流、分页默认值 | `apps/shared/config/limits.ts` | 构建并部署 |
-
-不存在 `FEATURES` 环境变量。不要制造第二套配置来源，也不要通过手工修改生产 D1 或 R2 来改变应用行为。
-
-## 在 Workers 免费版上运行
-
-门户按 Workers 免费版可运行来设计。以下默认值都源自免费版的限制，升级后可逐项调高：
-
-- **密码哈希。** 免费版把单次调用的 CPU 时间限制在约 10 毫秒，这是 `PBKDF2_ITERATIONS` 默认 `10000` 的原因——一次登录派生正好落在预算内。OWASP 对 PBKDF2-SHA256 的建议是 600,000 次，所以付费计划（CPU 上限 30 秒）应在生产 vars 中设置 `"PBKDF2_ITERATIONS": "600000"`。存储的哈希是自描述格式，任何时候改都安全：既有账号继续按存储时的成本校验，并在下一次成功登录时透明地升级到新成本。
-
-升级在 Cloudflare 控制台完成（Workers & Pages → 计划）；除了上述 vars 不需要改任何代码。
-
-## 可选：自定义域名
-
-在配置检查前选择一种生产访问方式：
-
-1. 使用 `workers.dev`：保持模板默认的 `env.production.workers_dev` 为 `true`，不配置 `routes`。
-2. 使用 Cloudflare 管理的自定义域名：把 `workers_dev` 设为 `false`，并添加自己域名的 `routes` 条目（模板里有注释示例），例如 `guild.example.com`。
-3. 运行 `pnpm config:check -- --env=production`。
-4. 运行 `pnpm deploy:production`。
-
-门户与 API 通常保持同源，因此 `PORTAL_ORIGIN` 仍可留空。
-
-## 更新已初始化站点
-
-在获准迁移前先备份生产数据，然后运行：
+Cloudflare 必须先备份目标、审核确切迁移与绑定，再由操作者亲自明确授权远程 Wrangler 操作：
 
 ```bash
-pnpm install
-pnpm config:check -- --env=production
-pnpm exec wrangler d1 migrations apply DB --remote --env production --config apps/worker/wrangler.jsonc
-pnpm deploy:production
+pnpm exec wrangler d1 migrations apply DB --remote --config apps/cloudflare/wrangler.jsonc
 ```
 
-已初始化站点绝不能再次运行 `pnpm setup:admin`、编辑已应用过的迁移文件，或直接修改生产 D1/R2。仓库发布的 schema 变化都以增量迁移提供。
+仓库 setup、CI、测试与 release check 永远不会运行这条远程命令。
+
+## 配置与密钥
+
+两端的 `IG_PBKDF2_ITERATIONS` 默认都是 `10000`，可配置到 `10000000`。存储的 hash 自带成本；调高配置后，旧的有效 hash 会在用户下一次成功登录时升级。生产前应在实际运行时上基准测试，绝不能低于 10000。
+
+### Cloudflare 生产
+
+1. 把 `apps/cloudflare/wrangler.example.jsonc` 复制为被忽略的 `apps/cloudflare/wrangler.jsonc`。
+2. 填写自己的 `DB`、`BLOBS`、`ASSETS`、`NOTIFICATIONS`，以及五个限流绑定：`AUTH_RATE_LIMITER`、`READ_RATE_LIMITER`、`MUTATION_RATE_LIMITER`、`UPLOAD_RATE_LIMITER`、`WEBSOCKET_RATE_LIMITER`。
+3. 设置公开 HTTPS 源、允许源、routes 与 cron。
+4. 把两个密钥写入 Cloudflare Secret，绝不能放进 `vars`：
+
+```bash
+pnpm exec wrangler secret put IG_INVITE_TOKEN_SECRET --config apps/cloudflare/wrangler.jsonc
+pnpm exec wrangler secret put IG_AUDIT_DOWNLOAD_SECRET --config apps/cloudflare/wrangler.jsonc
+```
+
+5. 本地校验：
+
+```bash
+pnpm config:check --runtime cloudflare --config apps/cloudflare/wrangler.jsonc
+```
+
+真实账号 ID、数据库 ID、桶名、域名与密钥只能放在被忽略的部署配置或 Cloudflare Secret 中，不得提交。
+
+### VPS 生产
+
+运行一次 setup，然后编辑被忽略的 `apps/vps/.env`：
+
+```bash
+pnpm setup:local --runtime vps
+pnpm config:check --runtime vps --config apps/vps/.env
+```
+
+把 `IG_PUBLIC_URL` 设为外部 HTTPS 源；把 `IG_DATABASE_PATH`、`IG_BLOB_PATH`、`IG_STATIC_PATH` 设为持久化绝对路径；两个密钥分别使用至少 32 字节的独立随机值。让 `IG_HOST` 只监听 TLS 反向代理后的私网/回环地址。`IG_TRUSTED_PROXY_IPS` 只能填写你控制的精确代理 IP。
+
+使用专属操作系统账号保护 `.env`、SQLite、Blob 根目录、备份和 `private-migrations/`。不要运行多个 VPS 应用进程、replica、Node cluster worker 或网络共享 SQLite writer。首版 VPS 只支持一台主机上的一个进程。
+
+## 建立首位 `site_owner`
+
+在 core schema 已存在、开放注册前完成。之后的所有者必须通过登录后的管理流程维护。
+
+先运行一次 `mkdir private-migrations` 创建已被忽略的工作目录。
+
+创建新所有者时，在当前 shell 中设置 `IG_BOOTSTRAP_PASSWORD`，但不要让值进入命令历史；可选设置 `IG_PBKDF2_ITERATIONS`，然后生成私有 SQL：
+
+```bash
+pnpm prepare:site-owner --mode create --user-id owner-1 --username Owner_1 --output private-migrations/0001_site_owner.sql
+```
+
+若要提升一个现有有效用户，请确保未设置 `IG_BOOTSTRAP_PASSWORD`：
+
+```bash
+pnpm prepare:site-owner --mode promote --user-id existing-user-id --output private-migrations/0001_site_owner.sql
+```
+
+生成器拒绝覆盖文件，也不会打印密码或 hash。完成后立即从 shell 清除 `IG_BOOTSTRAP_PASSWORD`。
+
+VPS 上先停止服务并备份两类数据，再用事务化私有迁移命令：
+
+```bash
+pnpm db:migrate-private:vps --database /srv/infini/data/infini-guild.sqlite --migration private-migrations/0001_site_owner.sql
+```
+
+该命令会在执行前后校验 `app_migrations`、SQLite 完整性与外键，拒绝嵌入式事务控制，使用 `BEGIN IMMEDIATE`，并在任意失败时回滚。
+
+Cloudflare 刻意不提供自动远程私有迁移。备份后，把已审核 SQL 放入不入库的部署私有迁移目录，让被忽略的 Wrangler 配置暂时把 `migrations_dir` 指向该目录，再由操作者明确运行上文相同的 `wrangler d1 migrations apply ... --remote` 流程。完成后恢复权威迁移目录。绝不能提交该 SQL。
+
+## 离线迁移旧双列密码
+
+旧 Worker 把密码材料分存在 `password_hash` 与 `salt`。只导出必要行到私有 JSON：
+
+```json
+[
+  { "user_id": "user-1", "password_hash": "pbkdf2-sha256$10000$...", "salt": "..." }
+]
+```
+
+离线生成一次性 SQL：
+
+```bash
+pnpm prepare:credential-import --input private-migrations/legacy-credentials.json --output private-migrations/0002_credentials.sql
+```
+
+生成器最多校验 10,000 个唯一用户，不需要明文密码即可转换旧格式，断言每个目标用户存在，并拒绝覆盖输出。VPS 使用 `db:migrate-private:vps` 应用；Cloudflare 使用上文由操作者明确授权的私有 Wrangler migration 流程。输入和输出都不得进入源码、日志、工单或聊天；完成后按保留政策删除或加密归档。
+
+## 生产启动与部署
+
+### Cloudflare
+
+```bash
+pnpm release:check
+pnpm cloudflare build
+# 先备份，再由操作者明确应用已审核远程迁移。
+pnpm deploy:cloudflare
+```
+
+`deploy:cloudflare` 会发布代码与静态资源。授权前必须核对 Cloudflare 账号、bindings、routes 和 migration 状态。
+
+### VPS
+
+```bash
+pnpm release:check
+pnpm vps build
+pnpm db:migrate:vps --database /srv/infini/data/infini-guild.sqlite
+pnpm verify:data:vps --database /srv/infini/data/infini-guild.sqlite --blobs /srv/infini/data/blobs
+pnpm start:vps
+```
+
+让服务管理器以专属用户运行 `start:vps`，工作目录设为仓库/发布根目录，并确保只有该用户可读 `apps/vps/.env`。TLS 在反向代理终止，`/api`、`/ws` 与静态请求都转发到同一 Node 进程。开放流量前配置失败重启、优雅 `SIGTERM` 与持久磁盘挂载。
+
+## 备份与恢复
+
+### VPS
+
+1. 停止唯一应用进程并确认退出。
+2. 把 SQLite 文件和整个 Blob 根目录复制进同一个带时间戳的加密快照，保留权限与元数据。
+3. 两份复制都完成后才能重启；定期在另一台主机演练恢复。
+
+恢复时停止服务，把损坏数据移开，同时恢复配对的 SQLite 与 Blob 快照，依次运行 `db:migrate:vps` 和 `verify:data:vps`，再启动并检查 `/api/health`。绝不能只恢复其中一侧：数据库记录负责授权精确 Blob key。
+
+### Cloudflare
+
+远程迁移或部署前，由操作者明确授权 Wrangler `d1 export --remote` 导出 D1，并通过 S3 兼容备份工具把全部 R2 对象及元数据复制到独立存储。另行记录不含密钥的 Worker 配置与资源绑定，密钥保存在独立 secret manager。恢复到新的 D1/R2 资源，核对记录数与对象元数据，更新被忽略的 bindings，再部署。源码、单独 D1 导出或单独 R2 版本记录都不是完整备份。
+
+## 更新与 CI
+
+两端通用流程：阅读 release notes，停止写入或安排维护窗口，完整备份，使用锁定 pnpm 版本安装，运行 `release:check`，审核新迁移，向所选后端应用，然后启动/部署并检查健康状态。
+
+GitHub workflow 只执行本地门禁，不登录 Cloudflare、不创建资源、不操作远程 D1/R2、不部署，也不启动生产 VPS。
 
 ## 常见问题
 
-### 缺少 `wrangler.jsonc`
-
-运行 `pnpm setup:local`，它会从 `wrangler.example.jsonc` 创建该文件。这个文件刻意不入库，所以新克隆的仓库在这一步之前不会有它。
-
-### 配置检查提示占位符
-
-按错误指出的具体字段处理。重新运行对应的 D1/R2 `--update-config` 命令，或只替换那一个生产值。
-
-### Cloudflare 登录失败
-
-```bash
-pnpm exec wrangler logout
-pnpm exec wrangler login
-```
-
-### 首位管理员命令提示已有用户
-
-这是安全停止。请使用已有管理员。如果没有可用管理员，不要删除或修改生产数据；求助前删除凭据和私人公会数据。
-
-### 端口 8787 或 5173 被占用
-
-`pnpm dev` 依赖这两个固定端口：Worker 在 `http://localhost:8787`，Vite 必须占住 `http://localhost:5173`——开发环境的 CORS 白名单钉死了这个门户源站。Vite 配置了 `strictPort`，端口被占时立即失败，而不是悄悄挪去 5174（那会让所有带凭据的请求全部失效）。端口被占通常是上一个没退出的 `pnpm dev`；停掉它再重跑。Worker 起不来时，本地种子步骤也会在 60 秒后超时。
-
-### E2E 报 "Executable doesn't exist"
-
-运行一次 `pnpm exec playwright install chromium`。另外在 `pnpm test:e2e` 前先停掉 `pnpm dev`：E2E 槽位会启动自己的 Worker，与运行中的开发服务器抢端口。
-
-### 无法上传
-
-确认 `MEDIA` 指向唯一且正确的 R2 桶。持久化图片必须同时具备 WebP `full`/`view` 变体；资料音频必须是包含 Opus 的 Ogg。Worker 会核对声明类型、字节内容和精确图片尺寸，并拒绝把 SVG 与 GIF 当作图片上传。普通 API 请求体上限为 1 MiB，上传请求为 32 MiB；更小的单变体限制及按逻辑资产计算的配额位于站点配置。完整规则见 [媒体架构](./docs/media-architecture.md)。
-
-### 安全地请求安装帮助
-
-使用仓库的 **Setup help / 安装求助** Issue 表单，附上失败命令与完整错误。删除密码、Cookie、邀请码、`SIGNING_SECRET`、Cloudflare API Token 和私人公会数据。你的 `wrangler.jsonc` 里的资源标识符是配置，不是认证秘密——而且该文件本就不入库，不会被自动公开——但公开 Issue 中仍可自行遮盖不想展示的标识符。
+- 缺少配置：重新运行 `pnpm setup:local --runtime cloudflare|vps`；已有文件会被保留。
+- 端口已占用：先停止占用 5173（以及 VPS 后端使用的 8787）的已有服务，再重新运行命令。开发端口会刻意保持固定；Cloudflare 不会静默跳到其他端口，因为这会破坏已配置的 Origin 与 Cookie。
+- schema 503/启动拒绝：确认所选数据库已应用共享迁移，且有序的 `app_migrations` 账本与当前 release 一致；不要绕过校验。
+- VPS 写竞争：确认只有一个应用进程打开 SQLite，且文件位于本地持久磁盘而非 NFS/SMB。
+- 上传失败：确认唯一 `BLOBS` binding 或 Blob 根目录可写且容量足够；不要创建第二个媒体命名空间。
+- 安装求助：提供运行时、确切命令和已脱敏错误。删除密码、Cookie、邀请 token、`.env`、`.dev.vars`、私有迁移、Cloudflare token 与公会数据。

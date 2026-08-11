@@ -89,6 +89,10 @@ export function computeNextOccurrence(
   }
 
   const next = new Date(anchor);
+  // Move through the first of the target month before clamping. Advancing a
+  // January 31st directly lets Date roll into March and silently skips
+  // February, which makes recurrence replay depend on the previous clamp.
+  next.setUTCDate(1);
   next.setUTCMonth(next.getUTCMonth() + rule.interval);
   if (rule.dayOfMonth) {
     const year = next.getUTCFullYear();

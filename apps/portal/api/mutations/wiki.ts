@@ -10,7 +10,7 @@ import {
 } from "@guild/shared";
 import type { z } from "zod";
 import { apiRequest } from "../client";
-import { appendImageUploadVariants, convertImagesForUpload } from "@guild/shared/utils/media";
+import { appendImageUploadVariants, convertImagesForUpload } from "../../utils/upload-media";
 
 export type CreateWikiCategoryPayload = z.input<typeof createWikiCategorySchema>;
 export type CreateWikiArticlePayload = z.input<typeof createWikiArticleSchema>;

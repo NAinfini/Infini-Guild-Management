@@ -3,7 +3,7 @@ import { MantineProvider } from "@mantine/core";
 import { fireEvent, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
-import type { CategoryDef } from "./AdminApiTestEngine";
+import type { CategoryDef, EndpointResult } from "./AdminApiTestEngine";
 import { ApiTestCategory } from "./AdminApiTestCategory";
 
 const category: CategoryDef = {
@@ -66,5 +66,50 @@ describe("ApiTestCategory", () => {
       "aria-expanded",
       "false",
     );
+  });
+
+  it("shows only failed endpoints while preserving optional skips", async () => {
+    const user = userEvent.setup();
+    const mixedCategory: CategoryDef = {
+      key: "system",
+      label: "System",
+      endpoints: [
+        { label: "Healthy", method: "GET", path: "/api/health" },
+        { label: "Failed", method: "GET", path: "/api/failure" },
+        { label: "Not applicable", method: "GET", path: "/api/optional" },
+      ],
+    };
+    const result = (status: number | null, skipped = false): EndpointResult => ({
+      status,
+      latencyMs: 1,
+      body: "",
+      error: skipped ? null : status === null ? "Request failed" : null,
+      ranAt: "2026-08-10T00:00:00.000Z",
+      parsedJson: null,
+      skipped,
+    });
+    const resultMap = new Map<string, EndpointResult>([
+      ["system:GET-/api/health", result(200)],
+      ["system:GET-/api/failure", result(500)],
+      ["system:GET-/api/optional", result(null, true)],
+    ]);
+
+    render(
+      <MantineProvider>
+        <ApiTestCategory
+          category={mixedCategory}
+          onRunCategory={vi.fn().mockResolvedValue(undefined)}
+          runningSet={new Set()}
+          resultMap={resultMap}
+          showOnlyErrors
+        />
+      </MantineProvider>,
+    );
+
+    await user.click(screen.getByRole("button", { name: "System: 3/3" }));
+
+    expect(screen.getByText("Failed")).toBeInTheDocument();
+    expect(screen.queryByText("Healthy")).not.toBeInTheDocument();
+    expect(screen.queryByText("Not applicable")).not.toBeInTheDocument();
   });
 });

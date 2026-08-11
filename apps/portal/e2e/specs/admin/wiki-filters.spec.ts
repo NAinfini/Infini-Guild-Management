@@ -51,19 +51,6 @@ test.beforeEach(async ({ page, api }) => {
   await expect(page.locator(".wiki-article-list-card")).toBeVisible();
 });
 
-test.afterEach(async ({ api }) => {
-  for (const fixture of [alpha, beta, gamma]) {
-    const response = await api.delete(`/api/wiki/articles/${fixture.id}/permanent`);
-    expect([200, 204, 404], `清理文章 ${fixture.title} 返回 ${response.status()}`)
-      .toContain(response.status());
-  }
-  for (const category of [categoryA, categoryB]) {
-    const response = await api.delete(`/api/wiki/categories/${category.id}`);
-    expect([200, 204, 404], `清理分类 ${category.name} 返回 ${response.status()}`)
-      .toContain(response.status());
-  }
-});
-
 async function createCategory(api: APIRequestContext, name: string): Promise<{ id: string; name: string }> {
   const created = await readJson(
     await api.post("/api/wiki/categories", { data: { name } }),
@@ -256,8 +243,8 @@ test("重置筛选：一次清掉四个条件，列表回到全量", async ({ pa
   await expect(pinnedToggle(page, false)).toHaveAttribute("aria-pressed", "false");
   await expect(field(page, "Article status")).toHaveValue("Not archived");
   await expect(
-    item(page, "Getting Started"),
-    "重置之后应当能看到本用例之外的文章，说明筛选真的撤了",
+    item(page, beta.title),
+    "重置之后要重新显示未置顶的 B 分类文章，证明搜索、分类和置顶条件都撤了",
   ).toBeVisible();
   await expect(reset, "没有条件在生效时重置按钮该收起来").toHaveCount(0);
 });

@@ -73,7 +73,7 @@ export const ALLOWED_IMAGE_TYPES = LIMITS.media.allowedImageTypes;
  * 允许用户在文件选择器里**挑**的图片类型。
  *
  * 和 ALLOWED_IMAGE_TYPES 不是一回事，这两者必须分开：用户手里的是相机出的 JPEG、
- * 截图出的 PNG，上传前由 shared/utils/media.ts 转成 WebP。选择器按落库名单去卡，
+ * 截图出的 PNG，上传前由 Portal 上传管线转成 WebP。选择器按落库名单去卡，
  * 用户会发现自己的照片根本选不了。
  *
  * 三个刻意排除的类型：

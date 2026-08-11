@@ -6,17 +6,28 @@ body:
   - type: markdown
     attributes:
       value: |
-        Read SETUP.md first; it is the canonical setup guide. Remove passwords, cookies, invite codes, SIGNING_SECRET, Cloudflare API tokens, and private guild data. Resource identifiers already present in tracked wrangler.jsonc are configuration, not credentials.
+        Read SETUP.md first; it is the canonical setup guide. Remove passwords, cookies, invite codes, .env/.dev.vars files, private migrations, Cloudflare API tokens, and private guild data.
+  - type: dropdown
+    id: runtime
+    attributes:
+      label: Runtime
+      options:
+        - Cloudflare (D1/R2)
+        - VPS (SQLite/filesystem)
+    validations:
+      required: true
   - type: dropdown
     id: stage
     attributes:
       label: Where are you stuck?
       options:
         - Local installation
-        - Cloudflare login
-        - D1 or MEDIA R2 creation
+        - Cloudflare bindings or login
+        - VPS environment or reverse proxy
         - Database migrations
-        - First administrator
+        - First site owner
+        - Legacy credential import
+        - Backup or restore
         - Deployment
         - Admin Site Config
         - Updating an existing site
@@ -49,5 +60,5 @@ body:
     attributes:
       label: Safety check
       options:
-        - label: I removed all credentials, secrets, tokens, cookies, invite codes, and private guild data.
+        - label: I removed all credentials, secrets, tokens, cookies, invite codes, private migrations, and private guild data.
           required: true

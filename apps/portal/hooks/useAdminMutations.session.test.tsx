@@ -27,6 +27,8 @@ const serviceMocks = vi.hoisted(() => ({
 }));
 const revalidateSessionSnapshotMock = vi.hoisted(() => vi.fn());
 const showErrorMock = vi.hoisted(() => vi.fn());
+const confirmMock = vi.hoisted(() => vi.fn());
+const notifySuccessMock = vi.hoisted(() => vi.fn());
 const notifyWarningMock = vi.hoisted(() => vi.fn());
 
 vi.mock("../services/AdminService", () => serviceMocks);
@@ -34,13 +36,16 @@ vi.mock("../session-transition", () => ({
   revalidateSessionSnapshot: revalidateSessionSnapshotMock,
 }));
 vi.mock("@portal/hooks/useConfirmDialog", () => ({
-  useConfirmDialog: () => vi.fn().mockResolvedValue(true),
+  useConfirmDialog: () => confirmMock,
 }));
 vi.mock("react-i18next", () => ({
-  useTranslation: () => ({ t: (key: string) => key }),
+  useTranslation: () => ({
+    t: (key: string, options?: { seconds?: number }) =>
+      options?.seconds === undefined ? key : `${key}:${options.seconds}`,
+  }),
 }));
 vi.mock("../utils/notifications", () => ({
-  notifySuccess: vi.fn(),
+  notifySuccess: notifySuccessMock,
   notifyWarning: notifyWarningMock,
   notifyError: vi.fn(),
 }));
@@ -78,6 +83,9 @@ describe("useAdminMutations session revalidation", () => {
     revalidateSessionSnapshotMock.mockReset();
     revalidateSessionSnapshotMock.mockResolvedValue(null);
     showErrorMock.mockReset();
+    confirmMock.mockReset();
+    confirmMock.mockResolvedValue(true);
+    notifySuccessMock.mockReset();
     notifyWarningMock.mockReset();
   });
 
@@ -161,5 +169,31 @@ describe("useAdminMutations session revalidation", () => {
     await vi.waitFor(() => {
       expect(notifyWarningMock).toHaveBeenCalledWith("message.sessionRefreshFailed");
     });
+  });
+
+  it("confirms the current lock duration and reports the duration returned by reset", async () => {
+    serviceMocks.resetAdminUserLoginLock.mockResolvedValueOnce({
+      ok: true,
+      fail_count: 5,
+      locked_until: "2026-08-09T12:01:00.000Z",
+      is_locked: true,
+      retry_after_seconds: 60,
+    });
+    const { result } = renderMutations();
+
+    await act(async () => {
+      await result.current.resetUserLoginLock("user-1", {
+        fail_count: 4,
+        locked_until: "2026-08-09T12:00:45.000Z",
+        is_locked: true,
+        retry_after_seconds: 45,
+      });
+    });
+
+    expect(confirmMock).toHaveBeenCalledWith(expect.objectContaining({
+      description: "confirm.loginLockDescription:45",
+    }));
+    expect(serviceMocks.resetAdminUserLoginLock).toHaveBeenCalledWith("user-1");
+    expect(notifySuccessMock).toHaveBeenCalledWith("message.loginLockCleared:60");
   });
 });

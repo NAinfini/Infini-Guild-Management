@@ -201,7 +201,7 @@ export function useAnnouncementsController() {
         status: statusFilter,
         pinned: pinnedFilter ? true : undefined,
         search: debouncedSearch || undefined,
-        archived: statusFilter === "archived",
+        archived: statusFilter === undefined ? undefined : statusFilter === "archived",
         sort: sortOrder,
       }),
     initialPageParam: 1,

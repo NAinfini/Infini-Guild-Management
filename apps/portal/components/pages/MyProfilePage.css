@@ -341,6 +341,13 @@
   min-width: 0;
 }
 
+/* Fieldset 的 Mantine 默认填色不属于资料卡的表面阶梯，会在 raised 卡片里形成
+   三块偏暖的灰色。分组只需要边框表达结构，底色继续使用父级卡片。 */
+.profile-media__group {
+  border-color: var(--border-subtle);
+  background: transparent;
+}
+
 @media (max-width: 1199px) {
   /* 热力图折到编辑区下面，而不是继续压缩：再窄下去一天 12 格就糊成一条。 */
   .my-profile-split {

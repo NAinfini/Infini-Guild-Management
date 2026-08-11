@@ -248,28 +248,34 @@ test("视频：非白名单站点被挡下，回车能加，上移换序，删�
   await expect(videoRows(page), "被挡下的链接不该进列表").toHaveCount(original.video_urls.length);
   await expect(saveButton(page), "什么都没改，就不该出现保存条").toHaveCount(0);
 
-  const added = "https://www.youtube.com/watch?v=e2e-profile-video";
-  await field(page, "Videos").fill(added);
-  await field(page, "Videos").press("Enter");
-  await expect(videoRows(page)).toHaveCount(original.video_urls.length + 1);
+  const firstAdded = "https://www.youtube.com/watch?v=e2evid00001";
+  const secondAdded = "https://www.youtube.com/watch?v=e2evid00002";
+  for (const url of [firstAdded, secondAdded]) {
+    await field(page, "Videos").fill(url);
+    await field(page, "Videos").press("Enter");
+  }
+  await expect(videoRows(page)).toHaveCount(original.video_urls.length + 2);
   await expect(field(page, "Videos"), "加进列表之后输入框要清空").toHaveValue("");
 
   await save(page, flow);
-  expect((await readProfile(api)).video_urls, "新链接排在原有的后面")
-    .toEqual([...original.video_urls, added]);
+  expect((await readProfile(api)).video_urls, "新链接按输入顺序排在原有链接后面")
+    .toEqual([...original.video_urls, firstAdded, secondAdded]);
 
-  /* 上移：新加的那条排在最后，点它的「上」应当和前一条对调。 */
-  const lastRow = videoRows(page).nth(original.video_urls.length);
+  /* 上移最后一条，只和前一条对调；不依赖开发种子预先放了几条视频。 */
+  const lastRow = videoRows(page).nth(original.video_urls.length + 1);
   await flow.clickWithoutApi(lastRow.getByRole("button", { name: "Up", exact: true }));
-  const swapped = [added, ...original.video_urls];
-  await expect(videoRows(page).first().locator(".profile-video-row__url")).toHaveText(swapped[0]!);
+  const swapped = [...original.video_urls, secondAdded, firstAdded];
+  await expect(videoRows(page).nth(original.video_urls.length).locator(".profile-video-row__url"))
+    .toHaveText(secondAdded);
 
   await save(page, flow);
   expect((await readProfile(api)).video_urls, "换序也要落库").toEqual(swapped);
 
-  await flow.clickWithoutApi(
-    videoRows(page).first().getByRole("button", { name: "Delete", exact: true }),
-  );
+  for (const url of [secondAdded, firstAdded]) {
+    await flow.clickWithoutApi(
+      videoRows(page).filter({ hasText: url }).getByRole("button", { name: "Delete", exact: true }),
+    );
+  }
   await expect(videoRows(page)).toHaveCount(original.video_urls.length);
 
   await save(page, flow);

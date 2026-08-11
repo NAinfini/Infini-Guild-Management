@@ -37,4 +37,16 @@ describe("computeNextOccurrence", () => {
 
     expect(next?.toISOString()).toBe("2026-02-28T18:30:00.000Z");
   });
+
+  it("does not skip February when replay starts on the 31st", () => {
+    const next = computeNextOccurrence(
+      new Date("2026-01-31T18:30:00.000Z"),
+      18,
+      30,
+      { frequency: "monthly", interval: 1, dayOfMonth: 31 },
+      new Date("2026-01-01T12:00:00.000Z"),
+    );
+
+    expect(next?.toISOString()).toBe("2026-02-28T18:30:00.000Z");
+  });
 });

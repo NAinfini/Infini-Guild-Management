@@ -9,8 +9,7 @@ import { confirmDialog, expectNoDialog, field } from "../../support/ui";
  * 版式是左清单右编辑器的主从台（.admin-md，和角色、徽章共用），编辑器不再是弹窗，
  * 点左边的一行就等于「编辑这一条」。
  *
- * 靶子一律是本条用例自己建的职业。种子职业被成员档案引用着，改了不会被运行收尾还原，
- * 而收尾指纹只数行数——「行数没变、标签和颜色变了」这种污染一条都查不出来。
+ * 靶子一律是本条用例自己建的职业，不依赖站点预装职业。
  * 自建职业走 POST /api/classes，会被登记进本次运行的清理注册表；图标跟随职业删除。
  *
  * 图标上传这条链路要走到底：浏览器里先把图转成 WebP 再传（mutations/classes.ts），
@@ -117,6 +116,7 @@ async function fillColor(scope: Locator, value: string): Promise<void> {
 
 test("新建职业：没名字存不了；填完之后颜色、图标原样落库，新的排在末尾，清单和计数一起更新", async ({ page, api, flow }) => {
   const label = `E2E ${uniqueTag("cls")}`;
+  await createServerClass(api, `E2E ${uniqueTag("create-anchor")}`);
   const existing = await serverClasses(api);
   await openClasses(page);
   const before = await shownCount(page);
@@ -257,12 +257,12 @@ test("自定义图标：不选图存不了；传完落到 R2 且取得回来；�
  * 一是指针拖 dnd-kit 在 CI 上出了名的会漏帧（见 guild-war-active-board 那条），
  * 二是手柄本来就该能用键盘操作，顺手把这条可访问性一起钉住。
  *
- * 收尾必须把顺序放回去：重排会改到种子职业的 sort_order，而运行收尾的指纹只数行数，
- * 这种「行数没变、顺序变了」的污染一条都查不出来，会一路影响后面的用例。
+ * 两条排序靶子都由本用例创建；finally 仍恢复整表顺序，避免影响同一轮后续用例。
  */
 test("拖拽排序：整张目录一次提交，顺序按下标重新发号落库；残缺的顺序一律回 409", async ({ page, api, flow }) => {
+  await createServerClass(api, `E2E ${uniqueTag("sort-a")}`);
+  await createServerClass(api, `E2E ${uniqueTag("sort-b")}`);
   const before = (await serverClasses(api)).map((item) => item.id);
-  expect(before.length, "目录里至少要有两条才谈得上排序").toBeGreaterThan(1);
   const expected = [before[1] as string, before[0] as string, ...before.slice(2)];
 
   try {

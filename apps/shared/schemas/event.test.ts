@@ -1,8 +1,10 @@
 import { describe, expect, it } from "vitest";
+import { LIMITS } from "../config/limits";
 import {
   createEventSchema,
   createTemplateSchema,
   eventParticipantsBatchSchema,
+  eventIdsBatchSchema,
   eventPollSchema,
   eventSchema,
   pollVoteSchema,
@@ -83,6 +85,32 @@ describe("event schemas", () => {
     expect(eventParticipantsBatchSchema.safeParse({
       user_ids: Array.from({ length: 100 }, (_, index) => `user-${index}`),
     }).success).toBe(false);
+  });
+
+  it("bounds event capacity and raffle winner counts at the same per-event limit", () => {
+    const max = LIMITS.content.eventParticipantsPerEvent.max;
+    const raffle = {
+      type: "raffle" as const,
+      title: "Bounded draw",
+      start_at: "2026-05-07T19:00:00.000Z",
+      end_at: "2026-05-07T21:00:00.000Z",
+    };
+
+    expect(createEventSchema.safeParse({ ...raffle, capacity: max, winner_count: max }).success).toBe(true);
+    expect(createEventSchema.safeParse({ ...raffle, capacity: max + 1, winner_count: 1 }).success).toBe(false);
+    expect(createEventSchema.safeParse({ ...raffle, winner_count: max + 1 }).success).toBe(false);
+    expect(createTemplateSchema.safeParse({
+      type: "social",
+      title: "Bounded template",
+      start_time: "20:00",
+      recurrence_rule: { frequency: "daily", interval: 1 },
+      capacity: max + 1,
+    }).success).toBe(false);
+  });
+
+  it("bounds batch detail reads to the Portal chunk size", () => {
+    expect(eventIdsBatchSchema.safeParse({ ids: Array.from({ length: 50 }, (_, index) => `event-${index}`) }).success).toBe(true);
+    expect(eventIdsBatchSchema.safeParse({ ids: Array.from({ length: 51 }, (_, index) => `event-${index}`) }).success).toBe(false);
   });
 
   it("keeps event auto-archive controls in event and template payloads", () => {
@@ -221,6 +249,17 @@ describe("event schemas", () => {
       start_at: "2026-05-07T21:00:00.000Z",
       end_at: "2026-05-07T19:00:00.000Z",
     }).success).toBe(false);
+  });
+
+  it("rejects update-only poll and raffle fields unless the matching type is explicit", () => {
+    expect(updateEventSchema.safeParse({ poll: { options: ["A", "B"] } }).success).toBe(false);
+    expect(updateEventSchema.safeParse({ type: "social", winner_count: 2 }).success).toBe(false);
+    expect(updateEventSchema.safeParse({ winner_count: 2 }).success).toBe(false);
+    expect(updateEventSchema.safeParse({
+      type: "raffle",
+      end_at: "2026-05-07T21:00:00.000Z",
+      winner_count: 2,
+    }).success).toBe(true);
   });
 
   it("parses poll detail and vote payloads", () => {

@@ -1,0 +1,14 @@
+{
+  "extends": "../../tsconfig.json",
+  "compilerOptions": {
+    "noEmit": true
+  },
+  "include": [
+    "../kernel/src/**/*.ts",
+    "src/database.ts",
+    "src/public.ts",
+    "src/runtime/**/*.ts",
+    "../../apps/cloudflare/src/adapters/**/*.ts",
+    "../../apps/vps/src/adapters/**/*.ts"
+  ]
+}

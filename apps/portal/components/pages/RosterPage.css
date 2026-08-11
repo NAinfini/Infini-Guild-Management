@@ -68,15 +68,28 @@
   margin-inline-start: auto;
 }
 
-.roster-virtual-scroll {
+.roster-page__body {
   flex: 1;
-  min-height: 300px;
+  min-height: 0;
+}
+
+.roster-filter-card {
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  flex: 0 0 auto;
+  box-shadow: 0 8px 24px color-mix(in srgb, var(--text-primary) 10%, transparent);
+}
+
+.roster-grid-region {
+  flex: 1;
+  min-height: 0;
   overflow-y: auto;
   padding: 16px;
-  margin: -16px;
   border-radius: var(--radius-surface);
   background: var(--surface-sunken);
   box-shadow: inset 0 1px 2px color-mix(in srgb, var(--text-primary) 8%, transparent);
+  scrollbar-gutter: stable;
 }
 
 .roster-virtual-inner {
@@ -93,13 +106,9 @@
 
 .roster-card-grid {
   display: grid;
+  align-content: start;
   gap: 8px;
   grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
-  padding: 16px;
-  margin: -16px;
-  border-radius: var(--radius-surface);
-  background: var(--surface-sunken);
-  box-shadow: inset 0 1px 2px color-mix(in srgb, var(--text-primary) 8%, transparent);
 }
 
 /*
@@ -216,14 +225,12 @@
     gap: 8px;
   }
 
-  .roster-card-grid,
-  .roster-virtual-scroll {
+  .roster-grid-region {
     padding: var(--space-md);
-    margin: calc(-1 * var(--space-md));
   }
 
   .roster-virtual-scroll {
-    min-height: 200px;
+    min-height: 0;
   }
 }
 

@@ -1,4 +1,4 @@
-import { findEventTypeDefinition } from "@guild/shared";
+import { DEFAULT_GAME_RULES, findEventTypeDefinition } from "@guild/shared";
 import {
   CalendarEventIcon,
   ChartBarIcon,
@@ -7,7 +7,6 @@ import {
   SwordsIcon,
   TargetArrowIcon,
 } from "@portal/components/icons";
-import { useSiteConfigStore } from "@portal/stores/site-config";
 import type { ComponentType } from "react";
 
 const ICONS: Record<string, ComponentType<{ size?: number }>> = {
@@ -20,8 +19,7 @@ const ICONS: Record<string, ComponentType<{ size?: number }>> = {
 };
 
 export function EventTypeIcon({ eventType, size = 12 }: { eventType: string; size?: number }) {
-  const gameRules = useSiteConfigStore((state) => state.gameRules);
-  const iconId = findEventTypeDefinition(gameRules, eventType)?.icon ?? "calendar";
+  const iconId = findEventTypeDefinition(DEFAULT_GAME_RULES, eventType)?.icon ?? "calendar";
   const Icon = ICONS[iconId] ?? CalendarEventIcon;
   return <Icon size={size} />;
 }

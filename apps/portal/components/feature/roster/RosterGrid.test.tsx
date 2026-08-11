@@ -115,6 +115,34 @@ describe("RosterGrid audio input boundaries", () => {
 });
 
 describe("RosterGrid card sizing", () => {
+  it("keeps the roster surface as a full-height scroll region below the pinned filters", () => {
+    const { container } = render(
+      <RosterGrid
+        rows={[{ user, profile }]}
+        shouldVirtualize={false}
+        columnCount={1}
+        staggerKey="all"
+        ariaLabel="Roster"
+        onCardClick={vi.fn()}
+        onCardMouseEnter={vi.fn()}
+        onCardMouseLeave={vi.fn()}
+        onCardFocus={vi.fn()}
+        onCardBlur={vi.fn()}
+      />,
+    );
+
+    expect(container.querySelector('[role="list"]')).toHaveClass("roster-grid-region");
+
+    const css = readFileSync(
+      resolve(process.cwd(), "apps/portal/components/pages/RosterPage.css"),
+      "utf8",
+    ).replace(/\/\*[\s\S]*?\*\//g, "");
+
+    expect(css).toMatch(/\.roster-page__body\s*\{[^}]*flex:\s*1[^}]*min-height:\s*0/);
+    expect(css).toMatch(/\.roster-filter-card\s*\{[^}]*position:\s*sticky[^}]*top:\s*0[^}]*z-index:/);
+    expect(css).toMatch(/\.roster-grid-region\s*\{[^}]*flex:\s*1[^}]*min-height:\s*0[^}]*overflow-y:\s*auto/);
+  });
+
   it("keeps the full-height interaction wrapper in every virtual grid cell", () => {
     virtualizerHarness.items = [{ key: "row-0", index: 0, start: 0 }];
     const secondUser = { ...user, id: "user-2", username: "Beryl" };
@@ -137,6 +165,7 @@ describe("RosterGrid card sizing", () => {
 
     const cells = [...container.querySelectorAll(".roster-virtual-cell")];
     expect(cells).toHaveLength(2);
+    expect(container.querySelector(".roster-virtual-scroll")).toHaveClass("roster-grid-region");
     expect(cells.every((cell) => cell.firstElementChild?.classList.contains("roster-card-interaction"))).toBe(true);
 
     const css = readFileSync(
