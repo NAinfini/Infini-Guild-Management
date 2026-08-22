@@ -4,8 +4,8 @@ import type { DragEndEvent, DragStartEvent } from "@dnd-kit/core";
 import {
   useCallback,
   useMemo,
+  useState,
   type Dispatch,
-  type ReactNode,
   type SetStateAction,
 } from "react";
 import { useTranslation } from "react-i18next";
@@ -21,7 +21,7 @@ import { copyPlainText } from "../../utils/copy";
 import { notifySuccess, notifyWarning } from "../../utils/notifications";
 import { useGuildWarDragData, type DragMemberColumn } from "./useGuildWarDragData";
 import { useGuildWarSearch } from "./useGuildWarSearch";
-import { TeamStatusPanel } from "../../components/feature/guild-war/TeamStatusPanel";
+import type { GuildWarTeamEditTarget } from "../../components/feature/guild-war/GuildWarTeamEditModal";
 
 type MovePayload = {
   event_id: string;
@@ -72,14 +72,11 @@ function parseUserIdFromDragId(value: string): string | null {
   return userId.length > 0 ? userId : null;
 }
 
-function resolveContainerFromOverId(
-  overId: string | number | null | undefined,
-  memberContainerMap: Map<string, string>,
-): string | null {
+/* 投放目标只有两种：某一列，或回收区。成员行不是 droppable，落在行上命中的也是它所在的列。 */
+function resolveContainerFromOverId(overId: string | number | null | undefined): string | null {
   if (typeof overId !== "string") return null;
   if (overId === "trash-zone") return "remove";
   if (overId.startsWith("container:")) return overId.slice("container:".length);
-  if (overId.startsWith("member:")) return memberContainerMap.get(overId) ?? null;
   return null;
 }
 
@@ -96,6 +93,7 @@ export function useGuildWarDragController({
   const { t } = useTranslation("guild-war");
   const confirm = useConfirmDialog();
   const queryClient = useQueryClient();
+  const [editingTeamId, setEditingTeamId] = useState<string | null>(null);
 
   const {
     activeDragItemId,
@@ -413,7 +411,7 @@ export function useGuildWarDragController({
 
     const activeId = String(event.active.id);
     const sourceContainer = memberContainerMap.get(activeId);
-    const targetContainer = resolveContainerFromOverId(event.over?.id, memberContainerMap);
+    const targetContainer = resolveContainerFromOverId(event.over?.id);
     const userId = parseUserIdFromDragId(activeId);
     if (!sourceContainer || !targetContainer || !userId || sourceContainer === targetContainer) return;
 
@@ -456,26 +454,25 @@ export function useGuildWarDragController({
     }]);
   };
 
-  // Team status controls keyed by their drag container.
+  // Team details editor: name and notes, opened from the column head.
 
-  const teamStatusContentByContainerId = useMemo<Record<string, ReactNode>>(() => {
-    if (!canManageActive) return {};
-    const result: Record<string, ReactNode> = {};
-    for (const team of orderedTeams) {
-      result[team.id] = (
-        <TeamStatusPanel
-          key={team.id}
-          team={team}
-          draftNotes={teamDraftNotes[team.id] ?? team.notes ?? ""}
-          draftLocked={teamDraftLocks[team.id] ?? team.is_locked}
-          onDraftNotesChange={(teamId, value) =>
-            setTeamDraftNotes((cur) => ({ ...cur, [teamId]: value }))
-          }
-        />
-      );
-    }
-    return result;
-  }, [canManageActive, orderedTeams, setTeamDraftNotes, teamDraftLocks, teamDraftNotes]);
+  const teamEditorTarget = useMemo<GuildWarTeamEditTarget | null>(() => {
+    if (!canManageActive || !editingTeamId) return null;
+    const team = orderedTeams.find((entry) => entry.id === editingTeamId);
+    if (!team) return null;
+    return {
+      containerId: team.id,
+      name: teamDraftNames[team.id] ?? team.team_name,
+      notes: teamDraftNotes[team.id] ?? team.notes ?? "",
+      locked: teamDraftLocks[team.id] ?? team.is_locked,
+    };
+  }, [canManageActive, editingTeamId, orderedTeams, teamDraftLocks, teamDraftNames, teamDraftNotes]);
+
+  const handleDraftNotesChange = useCallback((containerId: string, value: string) => {
+    setTeamDraftNotes((cur) => ({ ...cur, [containerId]: value }));
+  }, [setTeamDraftNotes]);
+
+  const closeTeamEditor = useCallback(() => setEditingTeamId(null), []);
 
   const handleToggleLock = useCallback((containerId: string) => {
     setTeamDraftLocks((cur) => ({ ...cur, [containerId]: !cur[containerId] }));
@@ -514,8 +511,7 @@ export function useGuildWarDragController({
     matchedItemIds: search.matchedItemIds,
     activeMatchIndex: search.activeMatchIndex,
     dragColumns,
-    activePoolStatus: null as ReactNode,
-    teamStatusContentByContainerId,
+    teamEditorTarget,
     toMemberDomId: search.toMemberDomId,
     memberContainerMap,
     handleCopyTeamMentions,
@@ -535,6 +531,9 @@ export function useGuildWarDragController({
     handleDragEnd,
     handleToggleLock,
     handleDraftNameChange,
+    handleDraftNotesChange,
+    handleEditTeam: setEditingTeamId,
+    handleCloseTeamEditor: closeTeamEditor,
     handleMoveTeamOrder: moveTeamOrder,
     handleRemoveFromWar,
     lockedTeamIds,

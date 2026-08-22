@@ -8,5 +8,5 @@ const schemaGlob = join(packageRoot, "src", "schema", "*.ts").replaceAll("\\", "
 export default defineConfig({
   dialect: "sqlite",
   schema: schemaGlob,
-  out: join(packageRoot, "src", "migrations", "generated"),
+  out: "packages/persistence-sqlite/src/migrations/generated",
 });

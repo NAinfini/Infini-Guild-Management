@@ -97,9 +97,10 @@ export const queryKeys = {
     inviteLinks: (visibility: string, search: string) =>
       [...queryKeys.admin.inviteLinksAll(), visibility, search] as const,
     inviteStats: () => [...queryKeys.admin.all, "invite-stats"] as const,
-    auditLog: (page: number, search: string, startAt: string, endAt: string, entityType?: string, actorId?: string) =>
-      [...queryKeys.admin.all, "audit-log", page, search, startAt, endAt, entityType ?? null, actorId ?? null] as const,
+    auditLog: (search: string, startAt: string, endAt: string, entityType?: string, entityId?: string, actorId?: string) =>
+      [...queryKeys.admin.all, "audit-log", search, startAt, endAt, entityType ?? null, entityId ?? null, actorId ?? null] as const,
     auditMonths: () => [...queryKeys.admin.all, "audit-months"] as const,
+    operations: () => [...queryKeys.admin.all, "operations"] as const,
     auditArchive: (month?: string | null, page?: number) => [...queryKeys.admin.all, "audit-archive", month ?? null, page ?? 1] as const,
     roles: () => [...queryKeys.admin.all, "roles"] as const,
     status: () => [...queryKeys.admin.all, "status"] as const,

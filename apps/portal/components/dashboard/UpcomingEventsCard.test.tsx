@@ -1,4 +1,3 @@
-// @vitest-environment jsdom
 import { fireEvent, render, screen } from "@testing-library/react";
 import { MantineProvider } from "@mantine/core";
 import { readFileSync } from "node:fs";

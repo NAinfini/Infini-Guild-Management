@@ -1,7 +1,7 @@
-// @vitest-environment jsdom
 import { MantineProvider } from "@mantine/core";
 import { ModalsProvider } from "@mantine/modals";
-import { render, screen, within } from "@testing-library/react";
+import { screen, within } from "@testing-library/react";
+import { renderWithQueryClient as render } from "@portal/tests/query-harness";
 import userEvent from "@testing-library/user-event";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
@@ -193,7 +193,10 @@ describe("AdminBadgesSection", () => {
 
     expect(screen.queryByText("badges.field.sortOrder"), "表单里不该再有排序数字")
       .not.toBeInTheDocument();
-    expect(screen.getAllByRole("button", { name: "badges.aria.dragHandle" })).toHaveLength(2);
+    const handles = screen.getAllByRole("button", { name: "badges.aria.dragHandle" });
+    expect(handles).toHaveLength(2);
+    expect(handles.every((handle) => handle.closest(".admin-md__row") !== null)).toBe(true);
+    expect(handles.every((handle) => handle.closest(".admin-md__item") === null)).toBe(true);
   });
 
   /* 上一次重排还在飞时手柄要锁住，否则两个 PATCH 的响应可能倒序回来。 */

@@ -1,3 +1,4 @@
+// @vitest-environment node
 import { readdirSync, readFileSync, statSync } from "node:fs";
 import { join, relative, resolve } from "node:path";
 import { describe, expect, it } from "vitest";
@@ -238,7 +239,6 @@ const INLINE_SPACING_EXEMPTIONS: Record<string, string[]> = {
   "apps/portal/hooks/guild-war/useWarHistoryTabController.tsx": ["marginTop:2", "marginTop:2"],
 
   /* Local compound-layout geometry that cannot be replaced by one global token. */
-  "apps/portal/components/feature/admin/AdminStatusTab.tsx": ["gap:6"],
   "apps/portal/components/feature/profile/ProfileProfileTab.tsx": ["gap:2", "marginTop:6"],
   "apps/portal/components/shared/ImageGridEditor.tsx": ["padding:0", "margin:0"],
   "apps/portal/components/shared/DataTableAdapter.tsx": ["gap:4"],

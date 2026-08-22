@@ -1,3 +1,4 @@
+// @vitest-environment node
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
@@ -20,13 +21,27 @@ describe("progress state colour parity (AdminApiTestCategory.tsx <-> AdminApiTes
     expect(cssValues).toEqual(PROGRESS_STATE_COLOR_VAR);
   });
 
-  it("keeps the category run control at a real 44px touch target", () => {
+  it("draws the category run control at icon size and leaves the touch target to the shared expander", () => {
     const css = readFileSync(CSS_PATH, "utf8").replace(/\/\*[\s\S]*?\*\//g, "");
     const runButtonRule = css.match(
       /\.api-cat__actions\s+\.api-cat__run-button\s*\{([^}]+)\}/,
     )?.[1];
 
-    expect(runButtonRule).toMatch(/width:\s*44px/);
-    expect(runButtonRule).toMatch(/height:\s*44px/);
+    // 可见尺寸走 Mantine 的 size 档（regular = 28px），44×44 是靶面，由
+    // ThemeProvider 的 .actionIconRoot::before 统一撑开。把靶面令牌当可见尺寸写在
+    // 这里，等于每行右边立一个 44px 方块，还把靶面的事实来源复制了一份。
+    expect(runButtonRule).not.toMatch(/inline-size|block-size|--control-hit-area/);
+
+    const tsx = readFileSync(
+      resolve(repoRoot, "apps/portal/components/feature/admin/AdminApiTestCategory.tsx"),
+      "utf8",
+    );
+    expect(tsx).toMatch(/className="api-cat__run-button"[\s\S]*?size="md"/);
+
+    const themeCss = readFileSync(
+      resolve(repoRoot, "apps/portal/providers/ThemeProvider.module.css"),
+      "utf8",
+    );
+    expect(themeCss).toMatch(/--ai-size-md:\s*var\(--control-icon-size-regular\)/);
   });
 });

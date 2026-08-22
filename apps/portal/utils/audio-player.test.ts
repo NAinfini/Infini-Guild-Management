@@ -1,4 +1,3 @@
-// @vitest-environment jsdom
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { playAudio } from "./audio-player";
 

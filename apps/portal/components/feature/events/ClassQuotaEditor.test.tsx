@@ -1,9 +1,8 @@
-// @vitest-environment jsdom
 import type { ClassCatalogItem, ClassTag, EventClassQuotaInput } from "@guild/shared";
 import { LIMITS } from "@guild/shared/config/limits";
 import { MantineProvider } from "@mantine/core";
-import { useClassCatalogStore } from "@portal/stores/class-catalog";
-import { useClassTagStore } from "@portal/stores/class-tag";
+import { createSeededQueryClient } from "@portal/tests/query-harness";
+import { QueryClientProvider, type QueryClient } from "@tanstack/react-query";
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -61,19 +60,22 @@ const TAGS: ClassTag[] = [
   },
 ];
 
+let queryClient: QueryClient;
+
 function renderEditor(value: EventClassQuotaInput[], onChange = vi.fn()) {
   render(
-    <MantineProvider>
-      <ClassQuotaEditor value={value} onChange={onChange} />
-    </MantineProvider>,
+    <QueryClientProvider client={queryClient}>
+      <MantineProvider>
+        <ClassQuotaEditor value={value} onChange={onChange} />
+      </MantineProvider>
+    </QueryClientProvider>,
   );
   return onChange;
 }
 
 describe("ClassQuotaEditor", () => {
   beforeEach(() => {
-    useClassCatalogStore.setState({ items: CATALOG });
-    useClassTagStore.setState({ tags: TAGS });
+    queryClient = createSeededQueryClient({ classes: CATALOG, classTags: TAGS });
   });
 
   it("shows a catalog tag's classes as a read-only strip that keeps every name in reach", () => {
@@ -81,11 +83,11 @@ describe("ClassQuotaEditor", () => {
 
     const cell = screen.getByRole("group", { name: "quota.editor.classes" });
     const strip = cell.querySelector(".quota-editor__strip");
-    /* 图标只画 6 个，第 7 个收进 +1；名字一个不少地留在 title 上。 */
+    /* 图标只画 6 个，第 7 个收进 +1；名字一个不少地留在无障碍名称和悬浮提示上。 */
     expect(strip?.querySelectorAll(".class-icon")).toHaveLength(6);
     expect(strip?.querySelector(".quota-editor__strip-more")?.textContent).toBe("+1");
     expect(strip).toHaveAttribute(
-      "title",
+      "aria-label",
       "DPS A, DPS B, DPS C, DPS D, DPS E, Healer B, Loner",
     );
     /* 只读那一格不该有可点的东西。 */
@@ -130,8 +132,7 @@ describe("ClassQuotaEditor", () => {
       (_, index) => catalogItem(`class-${index}`, `Class ${index + 1}`, index),
     );
     const selectedClassIds = cappedCatalog.slice(0, MAX_CLASSES).map((item) => item.id);
-    useClassCatalogStore.setState({ items: cappedCatalog });
-    useClassTagStore.setState({ tags: [] });
+    queryClient = createSeededQueryClient({ classes: cappedCatalog });
     const onChange = renderEditor([
       { tag: { label: "Off-tanks", class_ids: selectedClassIds }, required: 1 },
     ]);

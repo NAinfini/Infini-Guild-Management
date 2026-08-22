@@ -76,6 +76,40 @@ export function truncateJson(json: string, maxLen = 2000): string {
   return `${json.slice(0, maxLen)}\n... (truncated)`;
 }
 
+function responseMediaType(response: Response): string {
+  return (response.headers.get("content-type") ?? "").split(";", 1)[0]?.trim().toLowerCase() ?? "";
+}
+
+async function readResponseBody(response: Response): Promise<Readonly<{
+  body: string;
+  parsedJson: unknown | null;
+}>> {
+  if (response.status === 204 || response.status === 205) {
+    await response.body?.cancel();
+    return { body: "", parsedJson: null };
+  }
+
+  const mediaType = responseMediaType(response);
+  if (mediaType === "application/json" || mediaType.endsWith("+json")) {
+    const raw = await response.text();
+    if (!raw) return { body: "", parsedJson: null };
+    const parsedJson = JSON.parse(raw) as unknown;
+    return { body: JSON.stringify(parsedJson, null, 2), parsedJson };
+  }
+
+  if (mediaType.startsWith("text/") || mediaType === "application/x-ndjson" || mediaType === "application/ndjson") {
+    return { body: await response.text(), parsedJson: null };
+  }
+
+  await response.body?.cancel();
+  const contentLength = response.headers.get("content-length");
+  const size = contentLength && /^\d+$/.test(contentLength) ? `; ${contentLength} bytes` : "";
+  return {
+    body: `[binary ${mediaType || "application/octet-stream"}${size}]`,
+    parsedJson: null,
+  };
+}
+
 export function buildSystemTestSummary(logs: readonly DebugLogEntry[]): SystemTestSummary {
   const attempted = logs.filter((entry) => (
     entry.category !== "Cleanup"
@@ -204,21 +238,7 @@ export async function runEndpointTest(
       body: prepared.body,
     });
     const latencyMs = Math.round(performance.now() - started);
-    let body: string;
-    let parsedJson: unknown | null = null;
-    const contentType = response.headers.get("content-type") ?? "";
-    if (contentType.includes("json")) {
-      const raw = await response.text();
-      if (raw) {
-        const json = JSON.parse(raw) as unknown;
-        body = JSON.stringify(json, null, 2);
-        parsedJson = json;
-      } else {
-        body = "";
-      }
-    } else {
-      body = await response.text();
-    }
+    const { body, parsedJson } = await readResponseBody(response);
     return {
       status: response.status,
       latencyMs,

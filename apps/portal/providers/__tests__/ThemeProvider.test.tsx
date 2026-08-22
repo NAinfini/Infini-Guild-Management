@@ -1,7 +1,6 @@
-// @vitest-environment jsdom
-import { Button, Modal } from "@mantine/core";
-import { fireEvent, render, screen } from "@testing-library/react";
-import { beforeEach, describe, expect, it } from "vitest";
+import { Button, Modal, Tooltip } from "@mantine/core";
+import { act, fireEvent, render, screen } from "@testing-library/react";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import i18n from "../../i18n";
 import { usePreferencesStore } from "../../stores/preferences";
 import { PortalThemeProvider, useTheme } from "../ThemeProvider";
@@ -26,6 +25,10 @@ describe("PortalThemeProvider", () => {
     document.documentElement.removeAttribute("data-accent");
     document.documentElement.removeAttribute("data-input-modality");
     document.documentElement.className = "";
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
   });
 
   it("writes both mode and accent onto the document element", () => {
@@ -100,5 +103,46 @@ describe("PortalThemeProvider", () => {
     expect(style).toContain("--button-hover: var(--brand-fill-hover)");
     expect(style).toContain("--button-color: var(--brand-on-fill)");
     expect(style).toContain("--button-hover-color: var(--brand-on-fill-hover)");
+  });
+
+  it("gives every tooltip the shared surface and arrow without per-call props", () => {
+    /* 调用点只写 label。箭头和浮层材质必须由主题给，否则每个页面各写各的，
+     * 站内就会出现好几种提示长相。 */
+    const { container } = render(
+      <PortalThemeProvider>
+        <Tooltip label="Lease expires at 03:00" opened>
+          <span>held</span>
+        </Tooltip>
+      </PortalThemeProvider>,
+    );
+
+    const tooltip = screen.getByText("Lease expires at 03:00");
+
+    expect(tooltip.className).toContain("tooltip");
+    expect(container.ownerDocument.querySelector(".mantine-Tooltip-arrow")).not.toBeNull();
+  });
+
+  it("holds a tooltip closed until the pointer actually rests on the trigger", () => {
+    /* 密集表格里鼠标一路扫过去，没有这段延迟就会串起一排提示。 */
+    vi.useFakeTimers();
+
+    render(
+      <PortalThemeProvider>
+        <Tooltip label="Locked until 04:00">
+          <span>status</span>
+        </Tooltip>
+      </PortalThemeProvider>,
+    );
+
+    /* 断言看触发元素的 aria-describedby：它是「提示已经打开」的那一刻，
+     * 而气泡本身还要等一帧过渡才落进 DOM，掐帧数会让这条断言变得不稳。 */
+    const trigger = screen.getByText("status");
+    fireEvent.mouseEnter(trigger);
+
+    act(() => void vi.advanceTimersByTime(199));
+    expect(trigger).not.toHaveAttribute("aria-describedby");
+
+    act(() => void vi.advanceTimersByTime(1));
+    expect(trigger).toHaveAttribute("aria-describedby");
   });
 });

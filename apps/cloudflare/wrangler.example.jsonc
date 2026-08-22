@@ -3,8 +3,18 @@
   "name": "replace-with-worker-name",
   "main": "src/index.ts",
   "compatibility_date": "2026-07-28",
-  "workers_dev": true,
+  // The worker resolves the per-request ExecutionContext through
+  // AsyncLocalStorage; without this flag workerd refuses to load the bundle.
+  "compatibility_flags": ["nodejs_als"],
+  "workers_dev": false,
   "preview_urls": false,
+  "observability": { "enabled": true, "head_sampling_rate": 0.1 },
+  "routes": [
+    {
+      "pattern": "replace-with-public-origin.example",
+      "custom_domain": true
+    }
+  ],
 
   "assets": {
     "directory": "../portal/dist",
@@ -71,6 +81,11 @@
     {
       "name": "WEBSOCKET_RATE_LIMITER",
       "namespace_id": "1005",
+      "simple": { "limit": 30, "period": 60 }
+    },
+    {
+      "name": "EXPENSIVE_READ_RATE_LIMITER",
+      "namespace_id": "1006",
       "simple": { "limit": 30, "period": 60 }
     }
   ],

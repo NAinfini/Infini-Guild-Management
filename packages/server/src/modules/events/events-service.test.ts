@@ -1,7 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { createAuthorizationContext, createRequestContext } from "@guild/kernel";
-import type { EventAggregate } from "./model.js";
-import type { EventGuildWarLifecycleStore, EventsStore } from "./model.js";
+import type { EventAggregate, EventGuildWarLifecycleStore, EventsStore, RecurringTemplateAggregate } from "./model.js";
 import { EventsService, selectRaffleWinnerIds } from "./events-service.js";
 
 const NOW = "2026-08-09T12:00:00.000Z";
@@ -69,6 +68,34 @@ function aggregate(type: EventAggregate["event"]["type"], visibleAt: string | nu
       { id: "participant-2", event_id: "event-1", user_id: "user-2", joined_at: NOW },
       { id: "participant-3", event_id: "event-1", user_id: "user-3", joined_at: NOW },
     ],
+  };
+}
+
+function templateAggregate(
+  overrides: Partial<RecurringTemplateAggregate["template"]> = {},
+): RecurringTemplateAggregate {
+  return {
+    template: {
+      id: "template-1",
+      type: "social",
+      title: "Template",
+      description: "Private detail",
+      startTime: "12:00",
+      durationMinutes: 60,
+      capacity: 10,
+      recurrenceRule: { frequency: "weekly", interval: 1, daysOfWeek: [1, 3] },
+      visibilityOffsetMinutes: 15,
+      autoArchive: false,
+      paused: false,
+      createdBy: "admin-1",
+      lastGeneratedDate: "2026-08-03",
+      generationCount: 4,
+      createdAt: "2026-08-01T12:00:00.000Z",
+      updatedAt: "2026-08-03T12:00:00.000Z",
+      ...overrides,
+    },
+    attachments: [],
+    classQuotas: [],
   };
 }
 
@@ -155,6 +182,159 @@ describe("EventsService notification invalidation", () => {
     await expect(events.destroy(context(["events.delete"]), archived.event.id))
       .rejects.toMatchObject({ code: "NOT_FOUND" });
     expect(publish).not.toHaveBeenCalled();
+  });
+});
+
+describe("EventsService audit context", () => {
+  it("defers moderator batch outcomes to the atomic store", async () => {
+    const addParticipants = vi.fn().mockResolvedValue([]);
+    const removeParticipants = vi.fn().mockResolvedValue(2);
+    const events = service(fakeStore({
+      get: vi.fn().mockResolvedValue(aggregate("other", null)),
+      addParticipants,
+      removeParticipants,
+    }));
+
+    await events.addParticipants(context(["events.edit"]), "event-1", ["user-2", "user-3", "user-2"]);
+    await events.removeParticipants(context(["events.edit"]), "event-1", ["user-2", "user-3", "user-2"]);
+
+    const expectedContext = [{
+      field: "event_id",
+      value: { type: "reference", value: { id: "event-1", label: "Event" } },
+    }];
+    expect(addParticipants).toHaveBeenCalledWith(
+      "event-1",
+      ["user-2", "user-3"],
+      expect.any(Array),
+      NOW,
+      "moderator",
+      expect.objectContaining({
+        action: "batch_add_by_moderator",
+        payload: expect.objectContaining({ context: expectedContext }),
+      }),
+    );
+    expect(removeParticipants).toHaveBeenCalledWith(
+      "event-1",
+      ["user-2", "user-3"],
+      expect.objectContaining({
+        action: "batch_remove_by_moderator",
+        payload: expect.objectContaining({ context: expectedContext }),
+      }),
+    );
+  });
+
+  it("records safe scalar event changes and keeps descriptions out of the payload", async () => {
+    const current = aggregate("other", null);
+    const update = vi.fn().mockResolvedValue({
+      ...current,
+      event: { ...current.event, title: "Updated", capacity: 20, pinned: true },
+    });
+    const events = service(fakeStore({ get: vi.fn().mockResolvedValue(current), update }));
+
+    await events.update(context(["events.edit"]), "event-1", {
+      title: "Updated",
+      capacity: 20,
+      pinned: true,
+      description: "New private detail",
+    });
+
+    expect(update.mock.calls[0]![0].audit.payload).toEqual({
+      schema_version: 2,
+      changes: [
+        { field: "title", before: { type: "text", value: "Event" }, after: { type: "text", value: "Updated" } },
+        { field: "capacity", before: { type: "number", value: 10 }, after: { type: "number", value: 20 } },
+        { field: "pinned", before: { type: "boolean", value: false }, after: { type: "boolean", value: true } },
+      ],
+      context: [{
+        field: "changed_sections",
+        value: { type: "list", value: [{ type: "code", value: "description" }] },
+      }],
+    });
+    expect(JSON.stringify(update.mock.calls[0]![0].audit.payload)).not.toContain("New private detail");
+  });
+});
+
+describe("EventsService recurrence writes", () => {
+  it("preserves explicit null clears for ordinary event updates", async () => {
+    const current = {
+      ...aggregate("other", null),
+      event: { ...aggregate("other", null).event, description: "Private detail" },
+    };
+    const update = vi.fn().mockResolvedValue({
+      ...current,
+      event: { ...current.event, description: null, endAt: null, capacity: null },
+    });
+    const events = service(fakeStore({ get: vi.fn().mockResolvedValue(current), update }));
+
+    await events.update(context(["events.edit"]), "event-1", {
+      description: null,
+      end_at: null,
+      capacity: null,
+    });
+
+    expect(update).toHaveBeenCalledWith(expect.objectContaining({
+      patch: expect.objectContaining({ description: null, endAt: null, capacity: null }),
+    }));
+  });
+
+  it("uses cron as the only materializer and restarts only changed schedules", async () => {
+    const current = templateAggregate();
+    const created = templateAggregate({ id: "generated-1", title: "Created" });
+    const updated = templateAggregate({ title: "Renamed", updatedAt: NOW });
+    const createTemplate = vi.fn().mockResolvedValue(created);
+    const updateTemplate = vi.fn().mockResolvedValue(updated);
+    const setTemplatePaused = vi.fn().mockResolvedValue(undefined);
+    const materializeDue = vi.fn().mockResolvedValue([]);
+    const events = service(fakeStore({
+      getTemplate: vi.fn().mockResolvedValue(current),
+      createTemplate,
+      updateTemplate,
+      setTemplatePaused,
+      materializeDue,
+    }));
+
+    await expect(events.createTemplate(context(["events.templates"]), {
+      type: "social",
+      title: "Created",
+      start_time: "12:00",
+      recurrence_rule: { frequency: "daily", interval: 1 },
+    })).resolves.toMatchObject({ template: { id: "generated-1" } });
+
+    await expect(events.updateTemplate(context(["events.templates"]), "template-1", {
+      title: "Renamed",
+      description: null,
+      duration_minutes: null,
+      capacity: null,
+      visibility_offset_minutes: 0,
+    })).resolves.toMatchObject({ template: { title: "Renamed" } });
+    expect(updateTemplate.mock.calls[0]![0]).toMatchObject({
+      patch: {
+        title: "Renamed",
+        description: null,
+        durationMinutes: null,
+        capacity: null,
+        visibilityOffsetMinutes: 0,
+      },
+    });
+    expect(updateTemplate.mock.calls[0]![0]).not.toHaveProperty("restartCursorDate");
+
+    await events.updateTemplate(context(["events.templates"]), "template-1", {
+      recurrence_rule: { frequency: "weekly", interval: 1, daysOfWeek: [3, 1] },
+    });
+    expect(updateTemplate.mock.calls[1]![0]).not.toHaveProperty("restartCursorDate");
+
+    await events.updateTemplate(context(["events.templates"]), "template-1", { start_time: "13:00" });
+    expect(updateTemplate.mock.calls[2]![0]).toMatchObject({ restartCursorDate: "2026-08-08" });
+
+    await events.resumeTemplate(context(["events.templates"]), "template-1");
+    expect(setTemplatePaused).toHaveBeenCalledWith(
+      "template-1",
+      false,
+      NOW,
+      expect.any(Object),
+      "2026-08-08",
+    );
+    expect(materializeDue).not.toHaveBeenCalled();
   });
 });
 

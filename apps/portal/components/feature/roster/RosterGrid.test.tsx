@@ -1,4 +1,3 @@
-// @vitest-environment jsdom
 import { PERMISSIONS, type MemberProfile, type Permission, type User } from "@guild/shared";
 import { fireEvent, render, screen } from "@testing-library/react";
 import { readFileSync } from "node:fs";
@@ -56,6 +55,7 @@ const user: User = {
   deleted_at: null,
   created_at: now,
   updated_at: now,
+  last_login_at: null,
 };
 const profile: MemberProfile = {
   user_id: user.id,
@@ -138,9 +138,14 @@ describe("RosterGrid card sizing", () => {
       "utf8",
     ).replace(/\/\*[\s\S]*?\*\//g, "");
 
-    expect(css).toMatch(/\.roster-page__body\s*\{[^}]*flex:\s*1[^}]*min-height:\s*0/);
+    expect(css).toMatch(/\.roster-page\s*\{[^}]*min-width:\s*0[^}]*max-width:\s*100%/);
+    expect(css).toMatch(
+      /\.roster-page__body\s*\{[^}]*flex:\s*1[^}]*min-height:\s*0[^}]*min-width:\s*0[^}]*width:\s*100%[^}]*max-width:\s*100%/,
+    );
     expect(css).toMatch(/\.roster-filter-card\s*\{[^}]*position:\s*sticky[^}]*top:\s*0[^}]*z-index:/);
-    expect(css).toMatch(/\.roster-grid-region\s*\{[^}]*flex:\s*1[^}]*min-height:\s*0[^}]*overflow-y:\s*auto/);
+    expect(css).toMatch(
+      /\.roster-grid-region\s*\{[^}]*flex:\s*1[^}]*min-height:\s*0[^}]*min-width:\s*0[^}]*width:\s*100%[^}]*max-width:\s*100%[^}]*box-sizing:\s*border-box[^}]*overflow-x:\s*clip[^}]*overflow-y:\s*auto/,
+    );
   });
 
   it("keeps the full-height interaction wrapper in every virtual grid cell", () => {

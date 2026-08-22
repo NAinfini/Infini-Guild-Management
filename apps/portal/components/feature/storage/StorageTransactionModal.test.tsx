@@ -1,4 +1,3 @@
-// @vitest-environment jsdom
 import { PERMISSIONS, type CreateStorageTransactionPayload, type StorageItem, type User } from "@guild/shared";
 import { MantineProvider } from "@mantine/core";
 import { render, screen } from "@testing-library/react";
@@ -36,6 +35,7 @@ const member: User = {
   deleted_at: null,
   created_at: "2026-07-28T00:00:00.000Z",
   updated_at: "2026-07-28T00:00:00.000Z",
+  last_login_at: null,
 };
 
 function renderModal(options: {

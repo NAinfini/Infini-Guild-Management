@@ -1,0 +1,360 @@
+.admin-operations {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  gap: var(--space-md);
+  min-width: 0;
+  min-block-size: 0;
+  overflow: hidden;
+}
+
+/* 面板材质（描边、圆角、台面色、顶棱）来自 AdminPage.css 的 .admin-panel。
+   这个文件只负责运维页自己的排布，不再画第二块面板。 */
+
+.operations-health {
+  flex: 0 0 auto;
+}
+
+.operations-workspace {
+  display: grid;
+  grid-template-columns: minmax(0, 12fr) minmax(20rem, 8fr);
+  grid-template-rows: minmax(9rem, 0.7fr) minmax(13rem, 1fr) minmax(9rem, 0.65fr);
+  grid-template-areas:
+    "jobs realtime"
+    "jobs usage"
+    "jobs health-log";
+  flex: 1 1 auto;
+  gap: var(--space-md);
+  min-width: 0;
+  min-block-size: 0;
+  /* 三行的下限（9rem + 13rem + 9rem 加间距）在矮屏上装不下，裁掉的是最后一块面板。
+     面板内部各自有滚动条，但那救不了「整块面板被网格切掉」。高度够时 fr 正常分配、
+     不出现滚动条；不够时这一层滚，信息才不会凭空消失。 */
+  overflow-x: clip;
+  overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: var(--border-strong) transparent;
+}
+
+.operations-panel--jobs { grid-area: jobs; }
+.operations-panel--realtime { grid-area: realtime; }
+.operations-panel--usage { grid-area: usage; }
+.operations-panel--health-log { grid-area: health-log; }
+
+.operations-panel__observed {
+  flex: 0 1 auto;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+/* 面板体内各块之间的行距。留白本身由 .admin-panel__body 给。 */
+.admin-operations .admin-panel__body {
+  gap: var(--space-sm);
+}
+
+.operations-skeleton {
+  display: grid;
+  gap: 1px;
+  background: var(--border-subtle);
+}
+
+.operations-jobs-table,
+.operations-usage-table,
+.operations-health-log__table {
+  width: 100%;
+  min-width: 0;
+  border-collapse: collapse;
+  table-layout: fixed;
+}
+
+.operations-jobs-table th,
+.operations-jobs-table td,
+.operations-usage-table th,
+.operations-usage-table td,
+.operations-health-log__table th,
+.operations-health-log__table td {
+  padding: var(--space-xs) var(--space-sm);
+  border-bottom: 1px solid var(--border-subtle);
+  overflow-wrap: anywhere;
+  text-align: left;
+  vertical-align: top;
+}
+
+/*
+ * 任务表按内容取高，多出来的高度留给面板，不摊到行上。
+ *
+ * 之前这张表写着 height: 100%，而它所在的面板跨了工作区的三行——八行任务被摊
+ * 到一千多像素里，每行一百多像素高，内容还靠 vertical-align: top 贴在行顶。
+ * 读起来是八块彼此够不着的碎片，横着扫一行要越过整片空白。
+ *
+ * 行高改由内容和一档纵向内边距决定，格子内容垂直居中，隔行一层极淡的底色帮眼睛
+ * 横向对齐。任务多到装不下时由面板体滚动，而不是把行压扁或撑开。
+ */
+.operations-jobs-table td {
+  padding-block: var(--space-sm);
+  vertical-align: middle;
+}
+
+/* 隔行底色取 --text-primary 的低透混色，不是表面阶梯上的某一档：阶梯挪一档是
+   整整一级，这里只要「比台面深一点点」，且深浅两个模式同一条配方都成立。 */
+.operations-jobs-table tbody tr:nth-child(even) td {
+  background: color-mix(in srgb, var(--text-primary) 3%, transparent);
+}
+
+/* 面板体滚起来之后表头得跟住，否则滚两行就不知道哪列是哪列了。
+   sticky 的格子必须不透明，且 border-collapse 下它的边框不随之定位——那条分隔线
+   改用 inset 投影画。 */
+.operations-jobs-table thead th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  border-bottom-color: transparent;
+  background: var(--plate-fill);
+  box-shadow: inset 0 -1px 0 var(--border-strong);
+}
+
+/* 表头与 .admin-table 同一条规矩：不铺底色（面板已经是一块台面），
+   靠一条更重的分隔线说明「这里是表头」。 */
+.operations-jobs-table th,
+.operations-usage-table th,
+.operations-health-log__table th {
+  border-bottom-color: var(--border-strong);
+  color: var(--text-muted);
+  background: transparent;
+  font-size: var(--text-meta);
+  font-weight: var(--fw-medium);
+}
+
+.operations-jobs-table tr:last-child td,
+.operations-usage-table tr:last-child td,
+.operations-health-log__table tr:last-child td {
+  border-bottom: 0;
+}
+
+.operations-jobs-table th:nth-child(1) { width: 23%; }
+.operations-jobs-table th:nth-child(2) { width: 12%; }
+.operations-jobs-table th:nth-child(3) { width: 14%; }
+.operations-jobs-table th:nth-child(4) { width: 19%; }
+.operations-jobs-table th:nth-child(5) { width: 19%; }
+.operations-jobs-table th:nth-child(6) { width: 13%; }
+
+.operations-jobs-table tbody tr:hover td,
+.operations-usage-table tbody tr:hover td,
+.operations-health-log__table tbody tr:hover td {
+  background: color-mix(in srgb, var(--brand-fill) 3%, transparent);
+}
+
+.operations-job-name,
+.operations-job-run,
+.operations-job-work {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.operations-job-name__error {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.operations-job-run,
+.operations-job-work,
+.operations-lease,
+.operations-jobs-table td {
+  color: var(--text-secondary);
+  font-size: var(--text-micro);
+  font-variant-numeric: tabular-nums;
+}
+
+/* 「无租约」是八行里的常态，不是要读的信息；被占用才是。降一档让占用中自己跳出来。 */
+.operations-lease {
+  color: var(--text-muted);
+}
+
+.operations-state {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-xs);
+  color: var(--text-secondary);
+  font-size: var(--text-micro);
+  font-weight: var(--fw-strong);
+  white-space: nowrap;
+}
+
+.operations-state__dot,
+.operations-health-log__dot {
+  width: 8px;
+  height: 8px;
+  flex: 0 0 auto;
+  border-radius: 50%;
+  background: var(--text-muted);
+}
+
+.operations-state--completed,
+.operations-state--available { color: var(--status-success); }
+.operations-state--completed .operations-state__dot,
+.operations-state--available .operations-state__dot { background: var(--status-success); }
+.operations-state--running,
+.operations-state--lease-held { color: var(--status-info); }
+.operations-state--running .operations-state__dot,
+.operations-state--lease-held .operations-state__dot { background: var(--status-info); }
+.operations-state--interrupted { color: var(--status-warning); }
+.operations-state--interrupted .operations-state__dot { background: var(--status-warning); }
+.operations-state--failed,
+.operations-state--unavailable { color: var(--status-danger); }
+.operations-state--failed .operations-state__dot,
+.operations-state--unavailable .operations-state__dot { background: var(--status-danger); }
+.operations-state--never-run { color: var(--text-muted); }
+
+.operations-lease--held { color: var(--status-warning); }
+
+.operations-facts,
+.operations-audit-usage {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-sm) var(--space-md);
+  margin: 0;
+}
+
+.operations-facts > div,
+.operations-audit-usage > div {
+  min-width: 0;
+}
+
+.operations-facts dt,
+.operations-audit-usage dt {
+  color: var(--text-muted);
+  font-size: var(--text-micro);
+  font-weight: var(--fw-medium);
+}
+
+.operations-facts dd,
+.operations-audit-usage dd {
+  margin: var(--space-xs) 0 0;
+  color: var(--text-primary);
+  font-size: var(--text-sm);
+  font-weight: var(--fw-strong);
+  overflow-wrap: anywhere;
+}
+
+.operations-value {
+  font-variant-numeric: tabular-nums;
+}
+
+.operations-usage-table th:nth-child(1) { width: 32%; }
+.operations-usage-table th:not(:first-child),
+.operations-usage-table td:not(:first-child) { font-variant-numeric: tabular-nums; }
+
+.operations-audit-usage {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  padding-top: var(--space-sm);
+  border-top: 1px solid var(--border-subtle);
+}
+
+.operations-health-log__table th:first-child,
+.operations-health-log__table td:first-child {
+  width: 10.5rem;
+  overflow-wrap: normal;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.operations-health-log__table th:last-child { width: 4.5rem; }
+
+.operations-health-log__services {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-xs) var(--space-sm);
+}
+
+.operations-health-log__service {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--text-secondary);
+  font-size: var(--text-micro);
+  white-space: nowrap;
+}
+
+.operations-health-log__dot--ok { background: var(--status-success); }
+.operations-health-log__dot--warn { background: var(--status-warning); }
+.operations-health-log__dot--error { background: var(--status-danger); }
+.operations-health-log__latency {
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.operations-health-log__latency--good { color: var(--status-success); }
+.operations-health-log__latency--warn { color: var(--status-warning); }
+.operations-health-log__latency--bad { color: var(--status-danger); }
+
+@media (max-width: 79.99em) {
+  .admin-operations,
+  .operations-workspace {
+    overflow: visible;
+  }
+
+  .operations-workspace {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: auto;
+    grid-template-areas:
+      "jobs"
+      "realtime"
+      "usage"
+      "health-log";
+    flex: 0 0 auto;
+  }
+}
+
+@media (max-width: 39.99em) {
+  /* 排除齐边的那两块，否则这条更高特异度的规则会把 --flush 又撑开。 */
+  .admin-operations .admin-panel__head,
+  .admin-operations .admin-panel__body:not(.admin-panel__body--flush) {
+    padding-inline: var(--space-md);
+  }
+
+  .operations-jobs-table,
+  .operations-jobs-table tbody,
+  .operations-jobs-table tr,
+  .operations-jobs-table td {
+    display: block;
+  }
+
+  .operations-jobs-table thead {
+    display: none;
+  }
+
+  .operations-jobs-table tbody tr {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: var(--space-sm);
+    padding: var(--space-sm);
+    border-bottom: 1px solid var(--border-subtle);
+  }
+
+  .operations-jobs-table td {
+    padding: 0;
+    border: 0;
+  }
+
+  .operations-jobs-table td:first-child {
+    grid-column: 1 / -1;
+  }
+
+  .operations-jobs-table td::before {
+    display: block;
+    margin-bottom: 2px;
+    color: var(--text-muted);
+    content: attr(data-label);
+    font-size: var(--text-micro);
+    font-weight: var(--fw-strong);
+  }
+
+  .operations-jobs-table td:first-child::before {
+    display: none;
+  }
+
+  .operations-audit-usage,
+  .operations-facts {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}

@@ -1,4 +1,3 @@
-// @vitest-environment jsdom
 import { PERMISSIONS, type AdminRole, type Permission, type User } from "@guild/shared";
 import { MantineProvider } from "@mantine/core";
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
@@ -32,6 +31,7 @@ vi.mock("../../../stores/auth", () => ({
         deleted_at: null,
         created_at: "2026-06-11T00:00:00.000Z",
         updated_at: "2026-06-11T00:00:00.000Z",
+        last_login_at: null,
       },
     }),
 }));
@@ -78,6 +78,7 @@ function renderRolesSection(
   const props: React.ComponentProps<typeof AdminRolesSection> = {
     rolesLoading: false,
     rolesError: false,
+    onRetryRoles: vi.fn(),
     roles,
     createRolePending: false,
     updateRolePending: false,
@@ -98,21 +99,36 @@ function renderRolesSection(
 }
 
 describe("AdminRolesSection storage permissions", () => {
-  it("presents every permission and keeps the owner grant immutable", () => {
+  it("presents every capability from the shared permission contract", () => {
     renderRolesSection();
 
     for (const permission of PERMISSIONS) {
       expect(screen.getByText(permission)).toBeInTheDocument();
     }
-    expect(screen.getByRole("button", { name: "admin.owners.manage" })).toBeDisabled();
   });
 
-  it("lets every D1 role edit metadata and exposes server-authoritative deletion", () => {
+  it("lets the actor edit their D1 role while preventing self-deletion", () => {
     renderRolesSection();
 
     expect(screen.getByRole("textbox", { name: "roles.field.name" })).toBeEnabled();
     expect(screen.getByRole("textbox", { name: "roles.field.level" })).toBeEnabled();
-    expect(screen.getAllByRole("button", { name: "roles.delete" })).toHaveLength(2);
+    const deleteButtons = screen.getAllByRole("button", { name: "roles.delete" });
+    expect(deleteButtons).toHaveLength(2);
+    expect(deleteButtons.every((button) => button.hasAttribute("disabled"))).toBe(true);
+    const masterDelete = within(document.querySelector(".admin-md__master") as HTMLElement)
+      .getByRole("button", { name: "roles.delete" });
+    expect(masterDelete.closest(".admin-md__row")).not.toBeNull();
+    expect(masterDelete.closest(".admin-md__item")).toBeNull();
+  });
+
+  it("keeps a different same-level role read-only", async () => {
+    renderRolesSection({
+      roles: [{ ...roles[0]!, id: "peer-admin", name: "Peer Admin" }],
+    });
+
+    await waitFor(() => expect(screen.getByRole("textbox", { name: "roles.field.name" })).toBeDisabled());
+    expect(screen.getByRole("textbox", { name: "roles.field.level" })).toBeDisabled();
+    expect(screen.getAllByRole("button", { name: "roles.delete" }).every((button) => button.hasAttribute("disabled"))).toBe(true);
   });
 
   it("renders granular storage permission controls in the permissions page", () => {
@@ -193,8 +209,8 @@ describe("AdminRolesSection storage permissions", () => {
       onDeleteRole,
     });
 
-    const raidRow = screen.getByText("Raid Lead").closest("button") as HTMLElement;
-    const diplomatRow = screen.getByText("Diplomat").closest("button") as HTMLElement;
+    const raidRow = screen.getByText("Raid Lead").closest(".admin-md__row") as HTMLElement;
+    const diplomatRow = screen.getByText("Diplomat").closest(".admin-md__row") as HTMLElement;
     const raidDelete = within(raidRow).getByRole("button", { name: "roles.delete" });
     const diplomatDelete = within(diplomatRow).getByRole("button", { name: "roles.delete" });
     const detailDelete = within(document.querySelector(".admin-md__detail") as HTMLElement)

@@ -13,7 +13,7 @@ import {
   Tooltip,
 } from "@mantine/core";
 import { ArchiveIcon, PinIcon, PlusIcon, SaveIcon, TrashIcon, XIcon } from "@portal/components/icons";
-import { format } from "date-fns";
+import { formatDateTime } from "@portal/utils/datetime";
 import type { ReactNode } from "react";
 import { useMemo } from "react";
 import { useTranslation } from "react-i18next";
@@ -21,12 +21,6 @@ import { EmptyState } from "../../shared/EmptyState";
 import { notifyError } from "../../../utils/notifications";
 import { TipTapEditor } from "@portal/components/shared/TipTapEditor";
 import { buildTipTapEditorLabels } from "@portal/components/shared/tiptap-meta";
-
-function formatDateTime(iso: string): string {
-  const date = new Date(iso);
-  if (Number.isNaN(date.getTime())) return "-";
-  return format(date, "yyyy-MM-dd HH:mm");
-}
 
 type CategoryOption = {
   value: string;

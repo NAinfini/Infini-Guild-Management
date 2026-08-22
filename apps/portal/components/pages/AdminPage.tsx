@@ -1,7 +1,6 @@
 import {
   Alert,
   Button,
-  Card,
   Group,
   Skeleton,
   Stack,
@@ -15,6 +14,7 @@ import type { ComponentType, ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { useAdminPageController } from "../../hooks/useAdminPageController";
 import { PageLayout } from "../layout/PageLayout";
+import { serviceState } from "../feature/admin/AdminSystemSection";
 import { ErrorBoundary } from "@portal/components/effects";
 import {
   FileSearchIcon,
@@ -25,12 +25,13 @@ import {
   SwordIcon,
   TrophyIcon,
   UsersIcon,
+  WrenchIcon,
 } from "@portal/components/icons";
 import "./AdminPage.css";
 
 type TabValue =
-  | "member" | "invite" | "audit" | "roles"
-  | "siteConfig" | "classes" | "badges" | "status";
+  | "member" | "invite" | "roles" | "classes" | "badges"
+  | "siteConfig" | "operations" | "diagnostics" | "audit";
 
 const TAB_ICONS: Record<TabValue, ComponentType<{ size?: number }>> = {
   member: UsersIcon,
@@ -40,19 +41,22 @@ const TAB_ICONS: Record<TabValue, ComponentType<{ size?: number }>> = {
   siteConfig: SettingsIcon,
   classes: SwordIcon,
   badges: TrophyIcon,
-  status: HeartbeatIcon,
+  operations: HeartbeatIcon,
+  diagnostics: WrenchIcon,
 };
 
-/* 导航按职责分三组，和三种版式一一对应：人员=列表台，配置=主从，运维=设置面。
-   八项平铺成一列时没有任何分层，管理员得逐条读标签才能找到要去的地方。 */
-const NAV_GROUPS: Array<{ id: "people" | "config" | "ops"; values: TabValue[] }> = [
-  { id: "people", values: ["member", "invite", "audit"] },
-  { id: "config", values: ["roles", "siteConfig", "classes", "badges"] },
-  { id: "ops", values: ["status"] },
+const NAV_GROUPS: Array<{ id: "people" | "config" | "ops" | "governance"; values: TabValue[] }> = [
+  { id: "people", values: ["member", "invite"] },
+  { id: "config", values: ["roles", "classes", "badges", "siteConfig"] },
+  { id: "ops", values: ["operations", "diagnostics"] },
+  { id: "governance", values: ["audit"] },
 ];
 
-const LazyAdminStatusTab = lazy(() =>
-  import("../feature/admin/AdminStatusTab").then((mod) => ({ default: mod.AdminStatusTab })),
+const LazyAdminOperationsTab = lazy(() =>
+  import("../feature/admin/AdminOperationsTab").then((mod) => ({ default: mod.AdminOperationsTab })),
+);
+const LazyAdminDiagnosticsTab = lazy(() =>
+  import("../feature/admin/AdminDiagnosticsTab").then((mod) => ({ default: mod.AdminDiagnosticsTab })),
 );
 const LazyAdminUsersSection = lazy(() =>
   import("../feature/admin/AdminUsersSection").then((mod) => ({ default: mod.AdminUsersSection })),
@@ -118,6 +122,7 @@ export function AdminPage() {
     inviteTotal,
     inviteLinksQuery,
     inviteStatsQuery,
+    operationsQuery,
     isInviteInactive,
     canAccessAdmin,
     deleteInvite,
@@ -127,7 +132,6 @@ export function AdminPage() {
     handleBatchDeactivate,
     handleBatchDelete,
     handleBatchRole,
-    handleCopyConfigSummary,
     canEditUsers,
     canAssignUserRoles,
     canActivateUsers,
@@ -148,15 +152,15 @@ export function AdminPage() {
     setAuditDateFrom,
     setAuditDatePreset,
     setAuditDateTo,
-    setAuditPage,
     setAuditSearch,
+    setAuditEntityTarget,
+    clearAuditEntityTarget,
     setInviteSearch,
     setInviteVisibility,
     setMemberDetailId,
     setMemberSearch,
     statusHealthLogs,
     statusLatencyMs,
-    refreshStatus,
     statusQuery,
     siteConfigMutations,
     siteConfigQuery,
@@ -174,13 +178,16 @@ export function AdminPage() {
     userRowsRaw,
     usersQuery,
   } = useAdminPageController();
+  /* 骨架用的是同一套面板配方，加载中和加载完的外框才不会跳一下。 */
   const suspenseFallback = (
-    <Card withBorder p="md">
-      <Stack gap={10}>
-        <Group gap={8}><Skeleton height={28} width="30%" /><Skeleton height={28} width="20%" /></Group>
-        {Array.from({ length: 5 }).map((_, i) => <Skeleton key={i} height={18} />)}
-      </Stack>
-    </Card>
+    <div className="admin-panel">
+      <div className="admin-panel__body">
+        <Stack gap="sm">
+          <Group gap="sm"><Skeleton height={28} width="30%" /><Skeleton height={28} width="20%" /></Group>
+          {Array.from({ length: 5 }).map((_, i) => <Skeleton key={i} height={18} />)}
+        </Stack>
+      </div>
+    </div>
   );
 
   if (!canAccessAdmin) {
@@ -190,12 +197,13 @@ export function AdminPage() {
   const tabs = ([
     { value: "member", label: t("tab.member"), visible: tabAccess.member },
     { value: "invite", label: t("tab.invite"), visible: tabAccess.invite },
-    { value: "audit", label: t("tab.audit"), visible: tabAccess.audit },
     { value: "roles", label: t("tab.roles"), visible: tabAccess.roles },
-    { value: "siteConfig", label: t("tab.siteConfig"), visible: tabAccess.siteConfig },
     { value: "classes", label: t("tab.classes"), visible: tabAccess.classes },
     { value: "badges", label: t("tab.badges"), visible: tabAccess.badges },
-    { value: "status", label: t("tab.status"), visible: tabAccess.status },
+    { value: "siteConfig", label: t("tab.siteConfig"), visible: tabAccess.siteConfig },
+    { value: "operations", label: t("tab.operations"), visible: tabAccess.operations },
+    { value: "diagnostics", label: t("tab.diagnostics"), visible: tabAccess.diagnostics },
+    { value: "audit", label: t("tab.audit"), visible: tabAccess.audit },
   ] as Array<{ value: TabValue; label: string; visible: boolean }>).filter((tab) => tab.visible);
 
   if (tabs.length === 0) {
@@ -231,11 +239,12 @@ export function AdminPage() {
   const inviteStats = inviteStatsQuery.data ?? null;
   const roleCount = rolesQuery.data?.length ?? null;
   /* 已配置但无法由轻量探针主动验证的服务用黄色表达，不能冒充故障。 */
-  const healthState: "ok" | "configured" | "degraded" | "checking" | null = !tabAccess.status
+  const healthState: "ok" | "configured" | "degraded" | "checking" | null = !tabAccess.operations
     ? null
     : statusQuery.data
       ? (() => {
-          const values = [statusQuery.data.db, statusQuery.data.r2, statusQuery.data.ws, statusQuery.data.crons];
+          const values = [statusQuery.data.db, statusQuery.data.r2, statusQuery.data.ws, statusQuery.data.crons]
+            .map(serviceState);
           if (values.every((value) => value === "ok")) return "ok";
           if (values.every((value) => value === "ok" || value === "configured")) return "configured";
           return "degraded";
@@ -244,19 +253,19 @@ export function AdminPage() {
 
   const navCounts: Partial<Record<TabValue, ReactNode>> = {
     member: memberCount === null ? null : (
-      <span className="admin-page__nav-count">{memberCount}</span>
+      <span className="admin-count admin-page__nav-count">{memberCount}</span>
     ),
-    /* 过期的邀请码是唯一需要管理员动手清理的，用它决定徽章要不要转黄。 */
+    /* 过期的邀请码是唯一需要管理员动手清理的，用它决定计数要不要转黄。 */
     invite: inviteStats === null ? null : (
-      <span className={`admin-page__nav-count${inviteStats.expired > 0 ? " admin-page__nav-count--warn" : ""}`}>
+      <span className={`admin-count${inviteStats.expired > 0 ? " admin-count--warn" : ""} admin-page__nav-count`}>
         {inviteStats.active}
       </span>
     ),
     roles: roleCount === null ? null : (
-      <span className="admin-page__nav-count">{roleCount}</span>
+      <span className="admin-count admin-page__nav-count">{roleCount}</span>
     ),
     /* 页签上这颗点是健康状态的唯一载体，必须带可读标签，不能 aria-hidden。 */
-    status: healthState === null ? null : (
+    operations: healthState === null ? null : (
       <span
         className={`admin-page__nav-dot admin-page__nav-dot--${healthState}`}
         role="img"
@@ -312,6 +321,7 @@ export function AdminPage() {
             <LazyAdminUsersSection
               usersLoading={usersQuery.isLoading}
               usersError={usersQuery.isError}
+              onRetryUsers={() => { void usersQuery.refetch(); }}
               canEditUsers={canEditUsers}
               canAssignUserRoles={canAssignUserRoles}
               canActivateUsers={canActivateUsers}
@@ -362,6 +372,7 @@ export function AdminPage() {
               inviteStats={inviteStatsQuery.data ?? null}
               inviteLinksLoading={inviteLinksQuery.isLoading}
               inviteLinksError={inviteLinksQuery.isError}
+              onRetryInviteLinks={() => { void inviteLinksQuery.refetch(); }}
               inviteRows={inviteRows}
               inviteTotal={inviteTotal}
               hasMoreInvites={inviteLinksQuery.hasNextPage}
@@ -398,16 +409,21 @@ export function AdminPage() {
               exportAuditLogPending={exportAuditLogMutation.isPending}
               auditLoading={auditLogQuery.isLoading}
               auditError={auditLogQuery.isError}
+              onRetryAudit={() => { void auditLogQuery.refetch(); }}
               auditRows={auditRows}
-              auditPageCurrent={auditLogQuery.data?.page ?? 1}
-              auditPageSize={auditLogQuery.data?.limit ?? 50}
-              auditTotal={auditLogQuery.data?.total ?? 0}
-              onAuditPageChange={setAuditPage}
+              auditHasMore={auditLogQuery.hasNextPage}
+              auditLoadingMore={auditLogQuery.isFetchingNextPage}
+              onAuditLoadMore={() => { void auditLogQuery.fetchNextPage(); }}
+              auditEntityType={auditFilter.entityType}
+              auditEntityId={auditFilter.entityId}
+              onSelectAuditEntity={setAuditEntityTarget}
+              onClearAuditEntity={clearAuditEntityTarget}
               rolesData={rolesQuery.data ?? []}
               userMap={userMap}
               archiveMonths={auditMonthsQuery.data?.months ?? []}
               archiveMonthsLoading={auditMonthsQuery.isLoading}
               archiveMonthsError={auditMonthsQuery.isError}
+              onRetryArchiveMonths={() => { void auditMonthsQuery.refetch(); }}
             />
           </Suspense>
           </ErrorBoundary>
@@ -421,6 +437,7 @@ export function AdminPage() {
             <LazyAdminRolesSection
               rolesLoading={rolesQuery.isLoading}
               rolesError={rolesQuery.isError}
+              onRetryRoles={() => { void rolesQuery.refetch(); }}
               roles={rolesQuery.data ?? []}
               createRolePending={createRoleMutation.isPending}
               updateRolePending={updateRoleConfigMutation.isPending}
@@ -474,21 +491,32 @@ export function AdminPage() {
           </Tabs.Panel>
         ) : null}
 
-        {tabAccess.status ? (
-        <Tabs.Panel value="status" className="admin-page__panel">
+        {tabAccess.operations ? (
+        <Tabs.Panel value="operations" className="admin-page__panel">
           <ErrorBoundary>
           <Suspense fallback={suspenseFallback}>
-            <LazyAdminStatusTab
-              onRunQuickCheck={() => { void refreshStatus(); }}
-              onCopyConfigSummary={handleCopyConfigSummary}
-              canCopyConfigSummary={Boolean(statusQuery.data)}
+            <LazyAdminOperationsTab
               statusLatencyMs={statusLatencyMs}
               statusLoading={statusQuery.isLoading}
-              statusChecking={statusQuery.isFetching}
               statusError={statusQuery.isError}
+              onRetryStatus={() => { void statusQuery.refetch(); }}
               statusData={statusQuery.data ?? null}
               statusHealthLogs={statusHealthLogs}
+              operationsData={operationsQuery.data ?? null}
+              operationsLoading={operationsQuery.isLoading}
+              operationsError={operationsQuery.isError}
+              onRetryOperations={() => { void operationsQuery.refetch(); }}
             />
+          </Suspense>
+          </ErrorBoundary>
+        </Tabs.Panel>
+        ) : null}
+
+        {tabAccess.diagnostics ? (
+        <Tabs.Panel value="diagnostics" className="admin-page__panel">
+          <ErrorBoundary>
+          <Suspense fallback={suspenseFallback}>
+            <LazyAdminDiagnosticsTab />
           </Suspense>
           </ErrorBoundary>
         </Tabs.Panel>

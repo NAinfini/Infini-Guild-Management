@@ -1,4 +1,3 @@
-// @vitest-environment jsdom
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { act, renderHook, waitFor } from "@testing-library/react";
 import type { ReactNode } from "react";
@@ -213,6 +212,44 @@ describe("useAnnouncementsController", () => {
 
     await waitFor(() => expect(result.current.isCreating).toBe(false));
     expect(result.current.selectedId).toBe(selected.id);
+  });
+
+  it("sends null when clearing a scheduled publication time while saving a draft", async () => {
+    const selected = {
+      id: "announcement-scheduled",
+      title: "Scheduled announcement",
+      body_json: '{"type":"doc","content":[{"type":"paragraph","content":[{"type":"text","text":"Planned work"}]}]}',
+      pinned: false,
+      status: "scheduled" as const,
+      publish_at: "2026-08-10T00:00:00.000Z",
+      expires_at: null,
+      archived_at: null,
+      created_by: "user-1",
+      updated_by: null,
+      created_at: "2026-08-01T00:00:00.000Z",
+      updated_at: "2026-08-01T00:00:00.000Z",
+    };
+    routeSearchMock.announcementId = selected.id;
+    serviceMocks.fetchAnnouncement.mockResolvedValue(selected);
+    serviceMocks.updateAnnouncement.mockResolvedValue(selected);
+
+    const { result } = renderHook(() => useAnnouncementsController(), { wrapper: createWrapper() });
+
+    await waitFor(() => expect(result.current.selected).toEqual(selected));
+    await waitFor(() => expect(result.current.isPublishReady).toBe(true));
+    await waitFor(() => expect(result.current.publishAt).not.toBe(""));
+    act(() => {
+      result.current.setPublishAt("");
+    });
+    act(() => {
+      result.current.handleFinish("draft");
+    });
+
+    await waitFor(() => expect(serviceMocks.updateAnnouncement).toHaveBeenCalledWith(
+      selected.id,
+      expect.objectContaining({ status: "draft", publish_at: null }),
+      `"announcement-${selected.id}-${selected.updated_at}"`,
+    ));
   });
 
   it("uploads create-mode images as pending media without creating a ghost announcement", async () => {

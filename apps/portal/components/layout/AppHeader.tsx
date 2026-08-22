@@ -1,4 +1,6 @@
 import type { User } from "@guild/shared";
+import type { IconProps } from "@tabler/icons-react";
+import type { ComponentType } from "react";
 import {
   ActionIcon,
   AppShell as MantineAppShell,
@@ -35,6 +37,8 @@ type AppHeaderProps = {
   isMobile: boolean;
   isHeaderCompact: boolean;
   activePageTitle: string;
+  /* 当前路由的图标，与侧栏同一份元数据，标题旁做区域标记用。 */
+  activePageIcon: ComponentType<IconProps>;
   user: User | null;
   pushHasUnread: boolean;
   notificationAnnouncementsHasNew: boolean;
@@ -50,6 +54,7 @@ export function AppHeader({
   isMobile,
   isHeaderCompact,
   activePageTitle,
+  activePageIcon: ActivePageIcon,
   user,
   pushHasUnread,
   notificationAnnouncementsHasNew,
@@ -80,7 +85,10 @@ export function AppHeader({
   return (
     <MantineAppShell.Header className="app-header">
       <Title order={1} className="app-header__page-title">
-        {activePageTitle}
+        <span className="app-header__page-glyph" aria-hidden>
+          <ActivePageIcon />
+        </span>
+        <span className="app-header__page-text">{activePageTitle}</span>
       </Title>
 
       <Group className="app-header__right" gap="sm" wrap="nowrap">

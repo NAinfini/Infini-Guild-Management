@@ -7,7 +7,7 @@ import type {
 import type { EventsPollRaffleStore } from "@guild/server/modules/events";
 import type { SqlExecutor, SqlResult, SqlValue } from "@guild/kernel";
 import { LIMITS } from "@guild/shared/config/limits";
-import { auditInsertStatement } from "./audit-statement.js";
+import { auditInsertSelectStatement } from "./audit-statement.js";
 import {
   observedBacklog,
   SCHEDULED_BACKLOG_READ_LIMIT,
@@ -81,49 +81,48 @@ export class SqliteEventAutoArchiveStore implements BoundedEventAutoArchiveStore
     });
 
     const audits = selected.map(({ id, title }) => input.audit({
-        entityType: "event",
-        entityId: id,
+        subjectType: "event",
+        subjectId: id,
+        subjectLabel: title,
         action: "archive",
-        summary: title,
-        details: { auto_archived: true },
+        changes: [{
+          field: "archived",
+          before: { type: "boolean", value: false },
+          after: { type: "boolean", value: true },
+        }],
       }));
-    const payload = JSON.stringify(audits.map((audit) => ({
-      ...audit,
-      details: audit.details === null ? null : JSON.stringify(audit.details),
-    })));
+    const payload = JSON.stringify(audits);
     const results = selected.length === 0 ? [] : await this.sql.batch([
       {
         method: "all",
         columns: ["id"],
         sql: `UPDATE events SET archived_at = ?, updated_at = ?, auto_archived = 1
           WHERE id IN (
-            SELECT CAST(json_extract(value, '$.entityId') AS TEXT) FROM json_each(?)
+            SELECT CAST(json_extract(value, '$.subjectId') AS TEXT) FROM json_each(?)
           ) AND ${dueEventWhere}
           RETURNING id`,
         params: [input.now, input.now, payload, input.now, input.now],
       },
-      {
-        method: "run",
-        sql: `INSERT INTO audit_log (
-            id, request_id, actor_user_id, actor_username, entity_type, entity_id, action, summary, detail_json, occurred_at
-          )
-          SELECT
-            CAST(json_extract(payload.value, '$.id') AS TEXT),
-            CAST(json_extract(payload.value, '$.requestId') AS TEXT),
-            CAST(json_extract(payload.value, '$.actorUserId') AS TEXT),
-            (SELECT username FROM users
-              WHERE id = CAST(json_extract(payload.value, '$.actorUserId') AS TEXT)),
-            CAST(json_extract(payload.value, '$.entityType') AS TEXT),
-            CAST(json_extract(payload.value, '$.entityId') AS TEXT),
-            CAST(json_extract(payload.value, '$.action') AS TEXT),
-            json_extract(payload.value, '$.summary'),
-            json_extract(payload.value, '$.details'),
-            CAST(json_extract(payload.value, '$.occurredAt') AS TEXT)
-          FROM json_each(?) AS payload
-          JOIN events ON events.id = CAST(json_extract(payload.value, '$.entityId') AS TEXT)
-          WHERE events.auto_archived = 1 AND events.archived_at = ? AND events.updated_at = ?`,
-        params: [payload, input.now, input.now],
-      },
+      auditInsertSelectStatement(
+        `SELECT
+          CAST(json_extract(payload.value, '$.eventId') AS TEXT),
+          CAST(json_extract(payload.value, '$.requestId') AS TEXT),
+          CAST(json_extract(payload.value, '$.actorKind') AS TEXT),
+          CAST(json_extract(payload.value, '$.actorId') AS TEXT),
+          CASE WHEN json_extract(payload.value, '$.actorKind') = 'user'
+            THEN (SELECT username FROM users WHERE id = CAST(json_extract(payload.value, '$.actorId') AS TEXT))
+            ELSE json_extract(payload.value, '$.actorLabel') END,
+          CAST(json_extract(payload.value, '$.subjectType') AS TEXT),
+          CAST(json_extract(payload.value, '$.subjectId') AS TEXT),
+          json_extract(payload.value, '$.subjectLabel'),
+          CAST(json_extract(payload.value, '$.action') AS TEXT),
+          json_extract(payload.value, '$.payload'),
+          CAST(json_extract(payload.value, '$.occurredAt') AS TEXT)
+        FROM json_each(?) AS payload
+        JOIN events ON events.id = CAST(json_extract(payload.value, '$.subjectId') AS TEXT)
+        WHERE events.auto_archived = 1 AND events.archived_at = ? AND events.updated_at = ?`,
+        [payload, input.now, input.now],
+      ),
     ]);
     const eventIds = results.length === 0
       ? []
@@ -183,19 +182,21 @@ export class SqliteAnnouncementPublishStore implements BoundedAnnouncementPublis
 
     const payload = JSON.stringify(candidates.map((candidate) => {
       const audit = input.audit({
-        entityType: "announcement",
-        entityId: candidate.id,
+        subjectType: "announcement",
+        subjectId: candidate.id,
+        subjectLabel: candidate.title,
         action: "publish",
-        summary: candidate.title,
-        details: { scheduled: true, publish_at: candidate.publishAt },
+        changes: [{
+          field: "status",
+          before: { type: "code", value: "scheduled" },
+          after: { type: "code", value: "published" },
+        }],
+        context: [{ field: "publish_at", value: { type: "datetime", value: candidate.publishAt } }],
       });
       return {
         announcementId: candidate.id,
-        revisionToken: audit.id,
-        audit: {
-          ...audit,
-          details: audit.details === null ? null : JSON.stringify(audit.details),
-        },
+        revisionToken: audit.eventId,
+        audit,
       };
     }));
     const results = await this.sql.batch([
@@ -228,28 +229,26 @@ export class SqliteAnnouncementPublishStore implements BoundedAnnouncementPublis
             )`,
         params: [payload],
       },
-      {
-        method: "run",
-        sql: `INSERT INTO audit_log (
-            id, request_id, actor_user_id, actor_username, entity_type, entity_id, action, summary, detail_json, occurred_at
-          )
-          SELECT
-            CAST(json_extract(payload.value, '$.audit.id') AS TEXT),
-            CAST(json_extract(payload.value, '$.audit.requestId') AS TEXT),
-            CAST(json_extract(payload.value, '$.audit.actorUserId') AS TEXT),
-            (SELECT username FROM users
-              WHERE id = CAST(json_extract(payload.value, '$.audit.actorUserId') AS TEXT)),
-            CAST(json_extract(payload.value, '$.audit.entityType') AS TEXT),
-            CAST(json_extract(payload.value, '$.audit.entityId') AS TEXT),
-            CAST(json_extract(payload.value, '$.audit.action') AS TEXT),
-            json_extract(payload.value, '$.audit.summary'),
-            json_extract(payload.value, '$.audit.details'),
-            CAST(json_extract(payload.value, '$.audit.occurredAt') AS TEXT)
-          FROM json_each(?) AS payload
-          JOIN announcements ON announcements.id = CAST(json_extract(payload.value, '$.announcementId') AS TEXT)
-            AND announcements.revision_token = CAST(json_extract(payload.value, '$.revisionToken') AS TEXT)`,
-        params: [payload],
-      },
+      auditInsertSelectStatement(
+        `SELECT
+          CAST(json_extract(payload.value, '$.audit.eventId') AS TEXT),
+          CAST(json_extract(payload.value, '$.audit.requestId') AS TEXT),
+          CAST(json_extract(payload.value, '$.audit.actorKind') AS TEXT),
+          CAST(json_extract(payload.value, '$.audit.actorId') AS TEXT),
+          CASE WHEN json_extract(payload.value, '$.audit.actorKind') = 'user'
+            THEN (SELECT username FROM users WHERE id = CAST(json_extract(payload.value, '$.audit.actorId') AS TEXT))
+            ELSE json_extract(payload.value, '$.audit.actorLabel') END,
+          CAST(json_extract(payload.value, '$.audit.subjectType') AS TEXT),
+          CAST(json_extract(payload.value, '$.audit.subjectId') AS TEXT),
+          json_extract(payload.value, '$.audit.subjectLabel'),
+          CAST(json_extract(payload.value, '$.audit.action') AS TEXT),
+          json_extract(payload.value, '$.audit.payload'),
+          CAST(json_extract(payload.value, '$.audit.occurredAt') AS TEXT)
+        FROM json_each(?) AS payload
+        JOIN announcements ON announcements.id = CAST(json_extract(payload.value, '$.announcementId') AS TEXT)
+          AND announcements.revision_token = CAST(json_extract(payload.value, '$.revisionToken') AS TEXT)`,
+        [payload],
+      ),
     ]);
     const announcements = returnedRows(results[0]).map((row) => {
       const [id, title, publishedAt] = row;
@@ -404,16 +403,6 @@ export class SqliteSessionCleanupJob implements SessionCleanupJob {
 
     let processed = 0;
     if (candidates.length > 0) {
-      const audit = input.audit({
-        entityType: "user_auth",
-        entityId: "expired-sessions",
-        action: "delete",
-        summary: "Expired session cleanup",
-        details: {
-          expires_before: input.expiresBefore,
-          created_before: input.createdBefore,
-        },
-      });
       const mutation = await this.sql.batch([
         {
           method: "all",
@@ -424,7 +413,6 @@ export class SqliteSessionCleanupJob implements SessionCleanupJob {
             RETURNING token_digest`,
           params: [JSON.stringify(candidates), input.expiresBefore, input.createdBefore],
         },
-        auditInsertStatement(audit, { sql: "SELECT 1 WHERE changes() > 0" }),
       ]);
       processed = returnedRows(mutation[0]).length;
     }

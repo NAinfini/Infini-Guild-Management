@@ -10,7 +10,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useAppError } from "./useAppError";
 import { notifyWarning } from "../utils/notifications";
-import { buildClassOptions, useClassCatalogStore } from "../stores/class-catalog";
+import { useClassCatalog } from "./data/useClassData";
+import { buildClassOptions } from "../utils/class-catalog";
 
 type UseProfileFormStateParams = {
   profile: MemberProfile | null | undefined;
@@ -88,7 +89,7 @@ export type ProfileFormStateController = ReturnType<typeof useProfileFormState>;
 export function useProfileFormState({ profile }: UseProfileFormStateParams) {
   const { t } = useTranslation("profile");
   const { showError } = useAppError();
-  const classCatalog = useClassCatalogStore((state) => state.items);
+  const classCatalog = useClassCatalog();
 
   const initialBaseline = useRef(profile ? buildProfileDraftBaseline(profile) : null).current;
   const [baseline, setBaseline] = useState<ProfileDraftBaseline | null>(initialBaseline);
@@ -185,8 +186,8 @@ export function useProfileFormState({ profile }: UseProfileFormStateParams) {
   }, []);
 
   const classOptions = useMemo(
-    () => buildClassOptions(classCatalog, classList),
-    [classCatalog, classList],
+    () => buildClassOptions(classCatalog),
+    [classCatalog],
   );
 
   const activeNowEstimate = useMemo(() => {

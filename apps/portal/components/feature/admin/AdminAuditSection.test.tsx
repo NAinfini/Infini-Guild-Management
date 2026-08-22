@@ -1,4 +1,3 @@
-// @vitest-environment jsdom
 import { MantineProvider } from "@mantine/core";
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
@@ -6,21 +5,25 @@ import type { ComponentProps } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { AdminAuditSection } from "./AdminAuditSection";
 
+const { auditViewerSpy } = vi.hoisted(() => ({ auditViewerSpy: vi.fn() }));
+
 vi.mock("react-i18next", () => ({
-  useTranslation: () => ({ t: (key: string) => key }),
+  useTranslation: () => ({
+    t: (key: string, options?: Record<string, unknown>) => {
+      if (key === "audit.entityType.event") return "Event";
+      if (key === "audit.filter.entityTimeline") return `Timeline: ${String(options?.entity ?? "")}`;
+      if (key === "audit.filter.unknownEntity") return "Unknown entity";
+      return key;
+    },
+  }),
 }));
 
-vi.mock("../../../stores/auth", () => ({
-  useAuthStore: (selector: (state: { user: { role: string } }) => unknown) =>
-    selector({ user: { role: "admin" } }),
+vi.mock("./AuditLogViewer", () => ({
+  AuditLogViewer: (props: unknown) => {
+    auditViewerSpy(props);
+    return <div>audit rows</div>;
+  },
 }));
-
-vi.mock("../../../utils/permissions", () => ({
-  canManageRoles: () => true,
-  canViewStatus: () => true,
-}));
-
-vi.mock("./AuditLogViewer", () => ({ AuditLogViewer: () => <div>audit rows</div> }));
 vi.mock("./AuditArchiveExplorer", () => ({ AuditArchiveExplorer: () => <div>archives</div> }));
 
 class WideResizeObserver {
@@ -51,11 +54,16 @@ function renderSection(overrides: Partial<SectionProps> = {}) {
     exportAuditLogPending: false,
     auditLoading: false,
     auditError: false,
+    onRetryAudit: vi.fn(),
+    onRetryArchiveMonths: vi.fn(),
     auditRows: [],
-    auditPageCurrent: 1,
-    auditPageSize: 25,
-    auditTotal: 0,
-    onAuditPageChange: vi.fn(),
+    auditHasMore: false,
+    auditLoadingMore: false,
+    onAuditLoadMore: vi.fn(),
+    auditEntityType: "",
+    auditEntityId: "",
+    onSelectAuditEntity: vi.fn(),
+    onClearAuditEntity: vi.fn(),
     rolesData: [],
     archiveMonths: [],
     archiveMonthsLoading: false,
@@ -81,14 +89,15 @@ function isoDate(offsetDays: number): string {
 
 describe("AdminAuditSection filters", () => {
   beforeEach(() => {
+    auditViewerSpy.mockClear();
     window.ResizeObserver = WideResizeObserver as unknown as typeof ResizeObserver;
   });
 
-  /* 进页面时区间就是最近一天，工具条得指着「1 天」，不能指着「自定义」还摊开两个空手填框。 */
-  it("highlights the preset that produced the current dates", () => {
-    renderSection({ auditDateFrom: isoDate(1), auditDateTo: isoDate(0) });
+  /* 进页面时区间就是最近七天，工具条得指着「7 天」，不能指着「自定义」还摊开两个空手填框。 */
+  it("highlights the default seven-day preset", () => {
+    renderSection({ auditDateFrom: isoDate(7), auditDateTo: isoDate(0) });
 
-    expect(screen.getByRole("radio", { name: "audit.lastDay" })).toBeChecked();
+    expect(screen.getByRole("radio", { name: "audit.last7Days" })).toBeChecked();
     expect(screen.queryByLabelText("audit.aria.dateFrom")).not.toBeInTheDocument();
   });
 
@@ -110,7 +119,7 @@ describe("AdminAuditSection filters", () => {
     expect(onSetDatePreset).toHaveBeenCalledWith("7d");
   });
 
-  it("keeps export visible and lets filters be dismissed individually", async () => {
+  it("keeps export visible and does not repeat the selected date range as an active filter", async () => {
     const user = userEvent.setup();
     const { onAuditSearchChange, onAuditDateFromChange, onAuditDateToChange } = renderSection({
       auditSearch: "member",
@@ -123,10 +132,52 @@ describe("AdminAuditSection filters", () => {
 
     expect(screen.queryByRole("button", { name: "common:filter.clearAll" })).not.toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "audit.filter.searchChip" }));
-    await user.click(screen.getByRole("button", { name: "audit.filter.dateRange" }));
+    expect(screen.queryByRole("button", { name: "audit.filter.dateRange" })).not.toBeInTheDocument();
 
     expect(onAuditSearchChange).toHaveBeenCalledWith("");
-    expect(onAuditDateFromChange).toHaveBeenCalledWith("");
-    expect(onAuditDateToChange).toHaveBeenCalledWith("");
+    expect(onAuditDateFromChange).not.toHaveBeenCalled();
+    expect(onAuditDateToChange).not.toHaveBeenCalled();
+  });
+
+  it("shows an exact entity timeline as a removable filter", async () => {
+    const user = userEvent.setup();
+    const onClearAuditEntity = vi.fn();
+    const entityId = "fcd3254e-6e59-46b9-bf99-6d9fb4e10660";
+    renderSection({
+      auditEntityType: "event",
+      auditEntityId: entityId,
+      auditRows: [{
+        event_id: "event-1",
+        request_id: "request-1",
+        actor: { kind: "user", id: "admin-1", label: "GuildAdmin" },
+        subject: { type: "event", id: entityId, label: "Summer Raid" },
+        action: "update",
+        payload: { schema_version: 2, changes: [], context: [] },
+        occurred_at: "2026-08-14T12:00:00.000-04:00",
+      }],
+      onClearAuditEntity,
+    });
+
+    const chip = screen.getByRole("button", { name: "Timeline: Summer Raid" });
+    expect(chip).not.toHaveTextContent(entityId);
+    expect(chip).not.toHaveTextContent("event/");
+    await user.click(chip);
+    expect(onClearAuditEntity).toHaveBeenCalledOnce();
+  });
+
+  it("passes dynamic role data into the audit value resolver", () => {
+    const rolesData: SectionProps["rolesData"] = [{
+      id: "raid-lead",
+      name: "Raid Lead",
+      level: 200,
+      color: null,
+      created_at: "2026-01-01T00:00:00.000Z",
+      updated_at: "2026-01-01T00:00:00.000Z",
+      permissions: {} as SectionProps["rolesData"][number]["permissions"],
+      assigned_user_count: 0,
+    }];
+    renderSection({ rolesData });
+
+    expect(auditViewerSpy).toHaveBeenCalledWith(expect.objectContaining({ rolesData }));
   });
 });

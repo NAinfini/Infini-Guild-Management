@@ -146,7 +146,7 @@
 }
 
 .dice__roll-btn:active:not(:disabled) {
-  transform: scale(0.97);
+  transform: scale(var(--motion-press));
 }
 
 .dice__roll-btn:disabled {

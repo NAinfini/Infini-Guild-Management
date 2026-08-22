@@ -69,7 +69,20 @@ describe("GalleryService", () => {
     expect(remove.mock.calls[0]![0]).toMatchObject({
       id: image.id,
       expectedRevisionToken: image.revisionToken,
-      audit: { actorUserId: "owner-1", requestId: "request-1" },
+      audit: {
+        actorKind: "user",
+        actorId: "owner-1",
+        requestId: "request-1",
+        subjectType: "gallery_item",
+        subjectId: image.id,
+        subjectLabel: image.caption,
+        action: "delete",
+        payload: {
+          schema_version: 2,
+          changes: [],
+          context: [{ field: "type", value: { type: "code", value: "image" } }],
+        },
+      },
     });
   });
 
@@ -83,7 +96,7 @@ describe("GalleryService", () => {
   });
 
   it("creates an aligned image batch through one store mutation", async () => {
-    const createImages = vi.fn();
+    const createImages = vi.fn<GalleryStore["createImages"]>();
     const gallery = store({ createImages });
     const uploadImages = vi.fn().mockResolvedValue([
       "123456789012345678901",
@@ -100,11 +113,37 @@ describe("GalleryService", () => {
 
     expect(result.data).toHaveLength(2);
     expect(createImages).toHaveBeenCalledOnce();
-    expect(createImages.mock.calls[0]![0]).toMatchObject({
+    const mutation = createImages.mock.calls[0]![0];
+    expect(mutation).toMatchObject({
       mediaIds: ["123456789012345678901", "123456789012345678902"],
       ownerUserId: "owner-1",
       maxItems: 10,
-      audit: { actorUserId: "owner-1", requestId: "request-1" },
+    });
+    expect(mutation.audit).toMatchObject({
+      actorKind: "user",
+      actorId: "owner-1",
+      requestId: "request-1",
+      subjectType: "gallery_item",
+      subjectId: "request-1",
+      subjectLabel: "image",
+      action: "upload_images",
+      payload: {
+        schema_version: 2,
+        changes: [],
+        context: [
+          { field: "item_count", value: { type: "number", value: 2 } },
+          {
+            field: "item_ids",
+            value: {
+              type: "list",
+              value: mutation.records.map(({ id, caption }) => ({
+                type: "reference",
+                value: { id, label: caption ?? "image" },
+              })),
+            },
+          },
+        ],
+      },
     });
     expect(uploadImages.mock.invocationCallOrder[0]).toBeLessThan(createImages.mock.invocationCallOrder[0]!);
   });

@@ -40,7 +40,7 @@ describe("core migration on Miniflare workerd D1", () => {
 
       expect(await database.prepare(
         "SELECT count(*) AS count FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%' AND substr(name, 1, 4) <> '_cf_'",
-      ).first<number>("count")).toBe(58);
+      ).first<number>("count")).toBe(59);
       expect(await database.prepare(
         "SELECT count(*) AS count FROM sqlite_master WHERE type = 'trigger'",
       ).first<number>("count")).toBeGreaterThan(51);

@@ -1,4 +1,3 @@
-// @vitest-environment jsdom
 import { MantineProvider } from "@mantine/core";
 import type { Event } from "@guild/shared";
 import type { ClassQuotaSummary } from "@guild/shared/utils/class-quota";
@@ -377,10 +376,8 @@ describe("EventQuotaBar", () => {
 
     expect(screen.queryByText("quota.role.other")).not.toBeInTheDocument();
     expect(screen.getByRole("list")).toHaveStyle("--quota-slot-count: 2");
-    expect(screen.getByRole("region", { name: /quota\.capacityConflict/ })).toHaveAttribute(
-      "title",
-      "quota.capacityConflict",
-    );
+    /* 配置错是要有人去改的事，不能只在悬停时才出现。 */
+    expect(screen.getByText("quota.capacityConflict")).toBeInTheDocument();
   });
 
   it("shows one neutral signup bar without repeating the header capacity count", () => {

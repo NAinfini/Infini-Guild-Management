@@ -1,6 +1,7 @@
 import { basename, resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 import {
+  cloudflareMediaBindings,
   cloudflareMediaSeedArguments,
   deriveLocalStateVersion,
   cloudflareLocalPaths,
@@ -51,15 +52,51 @@ describe("Cloudflare local development state", () => {
     expect(serve).toContain("8787");
   });
 
-  it("runs the R2 fixture repairer only against the same local persistence directory", () => {
-    const media = cloudflareMediaSeedArguments(paths, root);
+  it("pins Wrangler's local request URL and application origins to loopback", () => {
+    const serve = wranglerArguments("serve", paths);
+
+    expect(serve.slice(serve.indexOf("--host"), serve.indexOf("--host") + 2))
+      .toEqual(["--host", "127.0.0.1"]);
+    expect(serve.filter((argument) => argument === "--var")).toHaveLength(2);
+    expect(serve).toEqual(expect.arrayContaining([
+      "IG_PUBLIC_URL:http://localhost:5173",
+      "IG_ALLOWED_ORIGINS:http://localhost:5173,http://127.0.0.1:5173,http://127.0.0.1",
+    ]));
+  });
+
+  it("passes the configured local D1 and R2 identifiers to the fixture repairer", async () => {
+    const media = await cloudflareMediaSeedArguments({
+      ...paths,
+      configPath: resolve(process.cwd(), "apps/cloudflare/wrangler.example.jsonc"),
+    }, root);
     expect(media).toEqual([
       resolve(root, "node_modules/tsx/dist/cli.mjs"),
       resolve(root, "apps/cloudflare/scripts/seed-local-media.ts"),
       "--persist-to",
       paths.statePath,
+      "--database-id",
+      "00000000-0000-0000-0000-000000000000",
+      "--bucket-name",
+      "replace-with-r2-bucket-name",
     ]);
     expect(media).not.toContain("--remote");
+  });
+
+  it("requires exactly one DB and BLOBS binding", () => {
+    const config = {
+      d1_databases: [{ binding: "DB", database_id: "database-id" }],
+      r2_buckets: [{ binding: "BLOBS", bucket_name: "bucket-name" }],
+    };
+    expect(cloudflareMediaBindings(config)).toEqual({
+      databaseId: "database-id",
+      bucketName: "bucket-name",
+    });
+    expect(() => cloudflareMediaBindings({
+      ...config,
+      d1_databases: [...config.d1_databases, ...config.d1_databases],
+    })).toThrow(/exactly one.*DB/i);
+    expect(() => cloudflareMediaBindings({ ...config, r2_buckets: [] }))
+      .toThrow(/exactly one.*BLOBS/i);
   });
 
   it("accepts only the three explicit local actions", () => {

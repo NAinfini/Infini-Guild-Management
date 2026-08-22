@@ -1,4 +1,3 @@
-// @vitest-environment jsdom
 import { MantineProvider } from "@mantine/core";
 import { fireEvent, render, screen } from "@testing-library/react";
 import {
@@ -49,5 +48,35 @@ describe("DataTableAdapter accessibility", () => {
 
     fireEvent.keyDown(row, { key: "Enter" });
     expect(onRowKeyDown).toHaveBeenCalledWith("user-1", "Enter");
+  });
+});
+
+/* 表头粘住时必须被样式表刷成不透明，否则滚过去的行会从它底下透出来。
+   样式表靠这个标记选中表头，所以标记本身要钉住。 */
+describe("DataTableAdapter sticky header", () => {
+  function StickyHarness({ virtualize }: { virtualize: boolean }) {
+    const table = useReactTable({
+      data: [{ id: "user-1", name: "Alice" }],
+      columns: [column.accessor("name", { header: "Name" })],
+      getCoreRowModel: getCoreRowModel(),
+      getRowId: (row) => row.id,
+    });
+    return <DataTableAdapter table={table} virtualize={virtualize} />;
+  }
+
+  it("marks the header only when the body scrolls under it", () => {
+    const { container, rerender } = render(
+      <MantineProvider>
+        <StickyHarness virtualize />
+      </MantineProvider>,
+    );
+    expect(container.querySelector("thead")).toHaveAttribute("data-sticky-header");
+
+    rerender(
+      <MantineProvider>
+        <StickyHarness virtualize={false} />
+      </MantineProvider>,
+    );
+    expect(container.querySelector("thead")).not.toHaveAttribute("data-sticky-header");
   });
 });

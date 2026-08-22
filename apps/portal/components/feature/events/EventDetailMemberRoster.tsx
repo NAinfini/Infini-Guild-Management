@@ -2,7 +2,8 @@ import type { Event, MemberProfile, User } from "@guild/shared";
 import { Button, Group, Stack, Text, Tooltip } from "@mantine/core";
 import { UserMinusIcon } from "@portal/components/icons";
 import { ClassIcon } from "@portal/components/shared/ClassIcon";
-import { resolveClassCatalogItem, useClassCatalogStore } from "@portal/stores/class-catalog";
+import { useClassCatalog } from "@portal/hooks/data/useClassData";
+import { resolveClassCatalogItem } from "@portal/utils/class-catalog";
 import { useMemo } from "react";
 import { useTranslation } from "react-i18next";
 import { EventMemberIdentity } from "./EventMemberIdentity";
@@ -26,7 +27,7 @@ export function EventDetailMemberRoster({
   onRemoveMember,
 }: EventDetailMemberRosterProps) {
   const { t } = useTranslation("events");
-  const classCatalog = useClassCatalogStore((state) => state.items);
+  const classCatalog = useClassCatalog();
 
   const quotaSummary = useMemo(() => summariseEventClassQuotas(event, members), [event, members]);
   const labelByTagId = useMemo(

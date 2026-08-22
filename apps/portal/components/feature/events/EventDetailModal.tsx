@@ -2,6 +2,7 @@ import type { Event, MemberProfile, User } from "@guild/shared";
 import { Button, Group, Modal, Select, SimpleGrid, Text, Tooltip } from "@mantine/core";
 import { useConfirmDialog } from "@portal/hooks/useConfirmDialog";
 import { MediaGallery, buildMediaGalleryLabels } from "@portal/components/shared/MediaGallery";
+import { formatLocaleParts } from "@portal/utils/datetime";
 import { resolveMediaUrl } from "@portal/utils/media";
 import {
   CalendarEventIcon,
@@ -22,18 +23,19 @@ import "./EventDetailModal.css";
 export type MemberEntry = { user: User; profile: MemberProfile };
 
 function formatLocalDate(startAt: string, locale: string): string {
-  const d = new Date(startAt);
-  return d.toLocaleDateString(locale, { weekday: "short", year: "numeric", month: "short", day: "numeric" });
+  return formatLocaleParts(startAt, locale, {
+    weekday: "short",
+    year: "numeric",
+    month: "short",
+    day: "numeric",
+  });
 }
 
 function formatLocalTime(startAt: string, endAt: string | null, locale: string): string {
-  const start = new Date(startAt);
   const timeOpts: Intl.DateTimeFormatOptions = { hour: "numeric", minute: "2-digit", hour12: true };
-  const startTime = start.toLocaleTimeString(locale, timeOpts);
+  const startTime = formatLocaleParts(startAt, locale, timeOpts);
   if (!endAt) return startTime;
-  const end = new Date(endAt);
-  const endTime = end.toLocaleTimeString(locale, timeOpts);
-  return `${startTime} - ${endTime}`;
+  return `${startTime} - ${formatLocaleParts(endAt, locale, timeOpts)}`;
 }
 
 type EventDetailModalProps = {

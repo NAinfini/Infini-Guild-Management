@@ -65,8 +65,10 @@
   line-height: var(--lh-normal);
 }
 
+/* 数字一行、比例计一行：竖排是为了让计量条落在它注解的那个数字正下方。 */
 .dashboard-kpi__value {
   display: flex;
+  flex-direction: column;
   align-items: center;
   margin: 0;
   color: var(--text-primary);
@@ -75,11 +77,39 @@
   line-height: var(--lh-tight);
 }
 
+/* 分子与分母按基线对齐，两者字号不同，居中对齐会让「/24」浮在半空。 */
+.dashboard-kpi__value-row {
+  display: flex;
+  align-items: baseline;
+}
+
 .dashboard-kpi__subvalue {
   color: var(--text-secondary);
   font-family: var(--font-body);
   font-size: var(--text-body);
   font-weight: var(--fw-medium);
+}
+
+/* 比例计。宽度只有指标数字那一栏的一半多一点：它是数字的注脚，不是第二个主角。
+   没有分母的指标（活动数）不渲染这一层，那一格因此比左右两格短一截——这正是
+   要说的话，不是需要对齐掉的瑕疵。 */
+.dashboard-kpi__meter {
+  inline-size: min(72px, 60%);
+  block-size: 3px;
+  margin-block-start: 2px;
+  border-radius: var(--shape-pill);
+  background: var(--meter-track);
+  overflow: hidden;
+}
+
+.dashboard-kpi__meter-fill {
+  /* --kpi-ratio: ActiveMembersCard 通过 KpiMeter 在运行期写入 0..1 的比值，
+     登记在 theme-tokens.test.ts 的 RUNTIME_INJECTED_VARS 里。 */
+  display: block;
+  inline-size: calc(var(--kpi-ratio) * 100%);
+  block-size: 100%;
+  border-radius: inherit;
+  background: var(--meter-fill);
 }
 
 .dashboard-card .empty-state {
@@ -199,12 +229,16 @@
   background: transparent;
   cursor: pointer;
   text-align: left;
-  transition: background var(--transition-fast);
+  transition: background var(--transition-fast), transform var(--motion-state);
   min-width: 0;
 }
 
 .signup-box-event:hover {
   background: color-mix(in srgb, var(--brand-fill) 10%, transparent);
+}
+
+.signup-box-event:active {
+  transform: scale(var(--motion-press));
 }
 
 .signup-box-event-dot {

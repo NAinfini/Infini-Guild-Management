@@ -1,24 +1,16 @@
 import {
   ApplicationRuntimeHealth,
+  admitWebSocketHandshake,
   assertApplicationSchema,
   createApplication,
-  readSessionCookie,
-  resolveSessionCookieName,
+  createNotificationConnectionPolicy,
+  maintenanceResponse,
+  resolveStaticSiteBranding,
 } from "@guild/application";
 import type { BlobInventory, BlobStore, DeferredTasks, RateLimiter, SqlExecutor } from "@guild/kernel";
-import {
-  AuthStoreNotificationSessionResolver,
-  NotificationConnectionPolicy,
-} from "@guild/server";
-import {
-  appSchema,
-  createAppDatabase,
-  SqliteAuthStore,
-} from "@guild/persistence-sqlite";
 import { LIMITS } from "@guild/shared/config/limits";
 import { serve } from "@hono/node-server";
 import { mkdirSync, realpathSync } from "node:fs";
-import { DatabaseSync } from "node:sqlite";
 import { IncomingMessage, type Server } from "node:http";
 import type { Duplex } from "node:stream";
 import path from "node:path";
@@ -30,6 +22,7 @@ import {
   NodeSqlExecutor,
 } from "../adapters/public.js";
 import { resolveVpsClientAddress } from "./client-address.js";
+import { VpsAdminOperationsRuntime } from "./admin-operations-realtime.js";
 import type { VpsRuntimeConfig } from "./config.js";
 import {
   prepareAuthenticatedVpsNotificationConnection,
@@ -71,11 +64,16 @@ export type VpsHttpServerOptions = Readonly<{
   onListen(address: string, port: number): void;
 }>;
 
+export type CloseableSqlExecutor = SqlExecutor & Readonly<{
+  close(): Promise<void>;
+  terminate(): Promise<void>;
+}>;
+
 export type VpsServerRuntimeDependencies = Readonly<{
   prepareFilesystem(config: VpsRuntimeConfig, signal: AbortSignal): void | Promise<void>;
-  openDatabase(pathname: string): DatabaseSync;
-  configureDatabase(database: DatabaseSync): void;
-  createSql(database: DatabaseSync): SqlExecutor;
+  /* 执行器自持全部 SQLite 连接（写通道 + 只读池），连接级 PRAGMA 随连接走，
+     运行时只交路径、只管关停。 */
+  createSql(databasePath: string): CloseableSqlExecutor;
   assertSchema(sql: SqlExecutor, signal: AbortSignal): Promise<void>;
   createBlobStore(config: VpsRuntimeConfig): BlobStore & BlobInventory;
   createDeferred(report: (message: string, error: unknown) => void): DeferredTasks & { drain(): Promise<void> };
@@ -129,8 +127,7 @@ class DefaultVpsServerRuntime implements VpsServerRuntime {
   private stopRequested = false;
   private startAbort: AbortController | null = null;
   private startTimer: ReturnType<typeof setTimeout> | null = null;
-  private database: DatabaseSync | null = null;
-  private sql: SqlExecutor | null = null;
+  private sql: CloseableSqlExecutor | null = null;
   private deferred: (DeferredTasks & { drain(): Promise<void> }) | null = null;
   private hub: VpsNotificationWebSocketHub | null = null;
   private scheduler: VpsScheduledJobScheduler | null = null;
@@ -201,7 +198,9 @@ class DefaultVpsServerRuntime implements VpsServerRuntime {
 
   async handleHttp(request: Request, incoming: IncomingMessage): Promise<Response> {
     if (this.currentState !== "running") return unavailable();
-    const operation = this.dispatchHttp(request, incoming);
+    const operation = this.config.maintenanceMode
+      ? Promise.resolve(maintenanceResponse(withPublicOrigin(request, this.config.application.publicUrl)))
+      : this.dispatchHttp(request, incoming);
     this.activeRequests.add(operation);
     try {
       return await operation;
@@ -212,6 +211,7 @@ class DefaultVpsServerRuntime implements VpsServerRuntime {
 
   async handleUpgrade(request: IncomingMessage, socket: Duplex, head: Buffer): Promise<void> {
     if (this.currentState !== "running") return rejectUpgrade(socket, 503, "Server stopping");
+    if (this.config.maintenanceMode) return rejectUpgrade(socket, 503, "Maintenance in progress", 300);
     const operation = this.performUpgrade(request, socket, head);
     this.activeHandshakes.add(operation);
     try {
@@ -229,34 +229,28 @@ class DefaultVpsServerRuntime implements VpsServerRuntime {
     const url = new URL(request.url ?? "/", this.config.application.publicUrl);
     if (url.pathname !== "/ws") return rejectUpgrade(socket, 404, "WebSocket route not found");
 
-    const origin = Array.isArray(request.headers.origin) ? request.headers.origin[0] : request.headers.origin;
-    const allowedOrigins = new Set([
-      this.config.application.publicUrl,
-      ...(this.config.application.allowedOrigins ?? []),
-    ]);
-    if (!origin || !allowedOrigins.has(origin)) return rejectUpgrade(socket, 403, "Forbidden WebSocket origin");
-
+    /* 客户端身份要先于闸门定下来：频控键就是这个地址，代理头都对不上的连接
+       谈不上来源可信。 */
     let address: string;
     try {
       address = this.dependencies.resolveClientAddress(request, this.config.trustedProxyAddresses);
     } catch {
       return rejectUpgrade(socket, 400, "Invalid proxy headers");
     }
-    const rate = await handshakeLimiter.consume(`ws:${address}`);
-    if (this.rejectStoppedUpgrade(socket)) return;
-    if (!rate.allowed) {
-      return rejectUpgrade(socket, 429, "Too many WebSocket handshakes", rate.retryAfterSeconds ?? 60);
-    }
 
-    const fetchRequest = new Request(url, { headers: incomingHeaders(request) });
-    const token = readSessionCookie(
-      fetchRequest,
-      resolveSessionCookieName(this.config.application.sessionCookieName),
-    );
-    const { authorization } = await application.services.auth.resolveAuthorization(token, this.dependencies.nowIso());
+    const admission = await admitWebSocketHandshake({
+      request: new Request(url, { headers: incomingHeaders(request) }),
+      clientKey: address,
+      rateLimiter: handshakeLimiter,
+      auth: application.services.auth,
+      config: this.config.application,
+      nowIso: this.dependencies.nowIso(),
+    });
     if (this.rejectStoppedUpgrade(socket)) return;
-    if (!authorization.isAuthenticated()) return rejectUpgrade(socket, 401, "Authentication required");
-    const preparation = await prepareAuthenticatedVpsNotificationConnection(hub, authorization);
+    if (!admission.accepted) {
+      return rejectUpgrade(socket, admission.status, admission.reason, admission.retryAfterSeconds);
+    }
+    const preparation = await prepareAuthenticatedVpsNotificationConnection(hub, admission.authorization);
     if (preparation.accepted) this.handshakeClaims.add(preparation.claim);
     if (this.rejectStoppedUpgrade(socket, preparation.accepted ? preparation.claim : undefined)) return;
     if (!preparation.accepted) {
@@ -307,13 +301,14 @@ class DefaultVpsServerRuntime implements VpsServerRuntime {
     }, this.timings.startTimeoutMs);
     (this.startTimer as { unref?: () => void }).unref?.();
     try {
+      if (this.config.maintenanceMode) {
+        this.startHttpBoundary();
+        this.currentState = "running";
+        return;
+      }
       await this.runStartupTask((signal) => this.dependencies.prepareFilesystem(this.config, signal));
       this.assertStartupActive();
-      this.database = this.dependencies.openDatabase(this.config.databasePath);
-      this.assertStartupActive();
-      this.dependencies.configureDatabase(this.database);
-      this.assertStartupActive();
-      this.sql = this.dependencies.createSql(this.database);
+      this.sql = this.dependencies.createSql(this.config.databasePath);
       this.assertStartupActive();
       await this.runStartupTask((signal) => this.dependencies.assertSchema(required(this.sql, "SQL"), signal));
       this.assertStartupActive();
@@ -338,8 +333,17 @@ class DefaultVpsServerRuntime implements VpsServerRuntime {
           realtime: () => `ok (${this.hub?.connectionCount ?? 0} connections)`,
           scheduler: () => this.schedulerRunning ? "running" : "stopped",
         }),
+        adminOperationsRuntime: new VpsAdminOperationsRuntime(
+          () => this.hubRunning && this.hub ? this.hub.connectionCount : null,
+          this.dependencies.nowIso,
+        ),
         authRateLimiter: rateLimiter(LIMITS.rateLimit.auth.maxRequests, LIMITS.rateLimit.auth.windowMs, 25_000),
         readRateLimiter: rateLimiter(LIMITS.rateLimit.reads.maxRequests, LIMITS.rateLimit.reads.windowMs, 50_000),
+        expensiveReadRateLimiter: rateLimiter(
+          LIMITS.rateLimit.expensiveReads.maxRequests,
+          LIMITS.rateLimit.expensiveReads.windowMs,
+          25_000,
+        ),
         mutationRateLimiter: rateLimiter(LIMITS.rateLimit.mutations.maxRequests, LIMITS.rateLimit.mutations.windowMs, 50_000),
         uploadRateLimiter: rateLimiter(LIMITS.rateLimit.uploads.maxRequests, LIMITS.rateLimit.uploads.windowMs, 25_000),
         clientIdentifier: (request) => {
@@ -352,15 +356,8 @@ class DefaultVpsServerRuntime implements VpsServerRuntime {
       this.assertStartupActive();
       this.staticFiles = this.dependencies.createStaticFiles({
         distRoot: this.config.staticPath,
-        getSiteBranding: async () => {
-          const site = await required(this.application, "application").services.siteConfig.getPublic();
-          return {
-            siteName: site.site_name,
-            siteLogoUrl: site.site_logo_media_id
-              ? `/api/media/${encodeURIComponent(site.site_logo_media_id)}/view`
-              : site.default_site_logo_url,
-          };
-        },
+        getSiteBranding: () =>
+          resolveStaticSiteBranding(required(this.application, "application").services.siteConfig),
       });
       this.assertStartupActive();
       this.handshakeLimiter = rateLimiter(
@@ -383,20 +380,7 @@ class DefaultVpsServerRuntime implements VpsServerRuntime {
       this.schedulerRunning = true;
       this.scheduler.start();
       this.assertStartupActive();
-      this.server = this.dependencies.createHttpServer({
-        hostname: this.config.host,
-        port: this.config.port,
-        fetch: (request, bindings) => this.handleHttp(request, bindings.incoming),
-        onListen: (address, port) => this.dependencies.info(`Infini Guild VPS listening on ${address}:${port}`),
-      });
-      this.assertStartupActive();
-      this.server.on("upgrade", (request, socket, head) => {
-        void this.handleUpgrade(request, socket, head).catch((error: unknown) => {
-          this.report("WebSocket upgrade failed", error);
-          if (!socket.destroyed) rejectUpgrade(socket, 503, "WebSocket unavailable");
-        });
-      });
-      this.assertStartupActive();
+      this.startHttpBoundary();
       this.currentState = "running";
     } catch (error) {
       this.currentState = "stopping";
@@ -415,6 +399,23 @@ class DefaultVpsServerRuntime implements VpsServerRuntime {
       this.startTimer = null;
       this.startAbort = null;
     }
+  }
+
+  private startHttpBoundary(): void {
+    this.server = this.dependencies.createHttpServer({
+      hostname: this.config.host,
+      port: this.config.port,
+      fetch: (request, bindings) => this.handleHttp(request, bindings.incoming),
+      onListen: (address, port) => this.dependencies.info(`Infini Guild VPS listening on ${address}:${port}`),
+    });
+    this.assertStartupActive();
+    this.server.on("upgrade", (request, socket, head) => {
+      void this.handleUpgrade(request, socket, head).catch((error: unknown) => {
+        this.report("WebSocket upgrade failed", error);
+        if (!socket.destroyed) rejectUpgrade(socket, 503, "WebSocket unavailable");
+      });
+    });
+    this.assertStartupActive();
   }
 
   private async runStartupTask<T>(operation: (signal: AbortSignal) => T | Promise<T>): Promise<T> {
@@ -468,6 +469,9 @@ class DefaultVpsServerRuntime implements VpsServerRuntime {
       this.requestClients.set(publicRequest, address);
       return required(this.application, "application").api.fetch(publicRequest);
     }
+    /* 与 CF 对齐：普通 HTTP 打到 /ws 一律 426。真正的升级请求走 Node 的
+       upgrade 事件，不会经过这里。 */
+    if (pathname === "/ws") return new Response("Expected websocket", { status: 426 });
     return await required(this.staticFiles, "static files")(publicRequest)
       ?? new Response("Route not found", { status: 404 });
   }
@@ -563,15 +567,21 @@ class DefaultVpsServerRuntime implements VpsServerRuntime {
     if (failures.length > 0) {
       throw new AggregateError(failures, "VPS runtime could not prove every resource was quiescent");
     }
-    if (this.database) {
-      try {
-        this.database.close();
-        this.database = null;
+    if (this.sql) {
+      const sql = this.sql;
+      if (await this.runBounded("SQLite close", () => sql.close(), this.timings.phaseTimeoutMs)) {
         this.sql = null;
-      } catch (error) {
-        this.report("SQLite close failed", error);
-        throw new AggregateError([asError(error)], "SQLite did not close cleanly");
+        return;
       }
+      try {
+        await sql.terminate();
+      } catch (error) {
+        this.report("SQLite terminate failed", error);
+      }
+      throw new AggregateError(
+        [new Error("SQLite worker pool did not close within its grace period")],
+        "SQLite did not close cleanly",
+      );
     }
   }
 
@@ -664,15 +674,7 @@ function defaultDependencies(): VpsServerRuntimeDependencies {
       realpathSync(config.staticPath);
       signal.throwIfAborted();
     },
-    openDatabase: (pathname) => new DatabaseSync(pathname),
-    configureDatabase: (database) => database.exec(`
-      PRAGMA foreign_keys = ON;
-      PRAGMA journal_mode = WAL;
-      PRAGMA synchronous = NORMAL;
-      PRAGMA busy_timeout = 5000;
-      PRAGMA wal_autocheckpoint = 1000;
-    `),
-    createSql: (database) => new NodeSqlExecutor(database),
+    createSql: (databasePath) => new NodeSqlExecutor(databasePath),
     assertSchema: async (sql, signal) => {
       signal.throwIfAborted();
       await assertApplicationSchema(sql);
@@ -685,13 +687,10 @@ function defaultDependencies(): VpsServerRuntimeDependencies {
       onError: (error) => report("Deferred task failed", error),
     }),
     createRateLimiter: (limit, windowMs, maxEntries) => new NodeRateLimiter({ limit, windowMs, maxEntries }),
-    createHub: (sql, report) => {
-      const authStore = new SqliteAuthStore(createAppDatabase(sql, { schema: appSchema }), sql);
-      return new VpsNotificationWebSocketHub(
-        new NotificationConnectionPolicy(new AuthStoreNotificationSessionResolver(authStore)),
-        { onError: (error) => report("Notification WebSocket hub failed", error) },
-      );
-    },
+    createHub: (sql, report) => new VpsNotificationWebSocketHub(
+      createNotificationConnectionPolicy(sql),
+      { onError: (error) => report("Notification WebSocket hub failed", error) },
+    ),
     createApplication,
     createStaticFiles: createVpsStaticFiles,
     createScheduler: (coordinator, report) => new VpsScheduledJobScheduler(coordinator, {

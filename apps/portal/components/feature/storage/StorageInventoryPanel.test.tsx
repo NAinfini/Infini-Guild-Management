@@ -1,4 +1,3 @@
-// @vitest-environment jsdom
 import type { Storage, StorageItem } from "@guild/shared";
 import { MantineProvider } from "@mantine/core";
 import { fireEvent, render, screen } from "@testing-library/react";

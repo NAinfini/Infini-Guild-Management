@@ -5,10 +5,6 @@ import { useViewingAs } from "../context/ViewingAsContext";
 import { fetchRoles } from "../services/AdminService";
 import { useAuthStore } from "../stores/auth";
 
-export function useEffectiveRole(): string {
-  return useViewingAs();
-}
-
 export function useEffectivePermissions(): {
   viewingAs: string;
   isModerator: boolean;

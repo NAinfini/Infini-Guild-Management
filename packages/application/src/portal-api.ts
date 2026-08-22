@@ -9,6 +9,7 @@ import { AuditArchiveDownloadTokens } from "@guild/server";
 import {
   createAdminRoutes,
   createAdminAnalyticsSettingsRoutes,
+  createAdminOperationsRoutes,
   createAdminSiteConfigRoutes,
   createAdminStatusRoutes,
   createAnnouncementRoutes,
@@ -37,6 +38,7 @@ import {
   createSystemTestRoutes,
   createUsersRoutes,
   createWikiRoutes,
+  DEFAULT_SESSION_COOKIE_NAME,
   parseImageUploads,
   type HttpEnv,
 } from "@guild/transport-http";
@@ -53,6 +55,7 @@ export type PortalApiConfig = Readonly<{
 export type PortalApiRuntime = Readonly<{
   authRateLimiter: RateLimiter;
   readRateLimiter: RateLimiter;
+  expensiveReadRateLimiter: RateLimiter;
   mutationRateLimiter: RateLimiter;
   uploadRateLimiter: RateLimiter;
   deferred: DeferredTasks;
@@ -90,7 +93,6 @@ export function createPortalApiApp(
         message: "HTTP method is not supported",
       });
     }
-    if (context.req.path === "/api/health") return next();
     const client = runtime.clientIdentifier(context.req.raw).trim();
     if (!client) throw new TypeError("Request rate-limit client identifier is required");
     context.set("clientIdentifier", client);
@@ -100,7 +102,6 @@ export function createPortalApiApp(
     allowedOrigins: [publicOrigin, ...(config.allowedOrigins ?? [])],
   }));
   app.use("/api/*", async (context, next) => {
-    if (context.req.path === "/api/health") return next();
     const client = context.get("clientIdentifier");
     const method = context.req.method;
     const read = method === "GET" || method === "HEAD";
@@ -123,6 +124,19 @@ export function createPortalApiApp(
         message: "Too many requests",
         details: { retry_after_seconds: decision.retryAfterSeconds ?? 1 },
       });
+    }
+    if (read && isExpensiveRead(context.req.path)) {
+      const expensiveDecision = await runtime.expensiveReadRateLimiter.consume(
+        `api:expensive-read:${encodeURIComponent(client)}`,
+      );
+      if (!expensiveDecision.allowed) {
+        throw new AppError({
+          code: "RATE_LIMITED",
+          status: 429,
+          message: "Too many expensive requests",
+          details: { retry_after_seconds: expensiveDecision.retryAfterSeconds ?? 1 },
+        });
+      }
     }
     return next();
   });
@@ -185,43 +199,33 @@ export function createPortalApiApp(
     parseImageFormData: parseImageUploads,
   }));
 
+  const imagePolicy = (kind: "announcement" | "gallery" | "wiki") => async () => {
+    const current = await services.siteConfig.getRuntimePolicy();
+    return {
+      maxBytes: current.media_policy.max_file_size_bytes[`${kind}_image`],
+      quota: current.media_policy.quotas[kind],
+    };
+  };
   app.route("/api/announcements", createAnnouncementRoutes({
     service: services.announcements,
     publicOrigin,
-    getImagePolicy: async () => {
-      const current = await services.siteConfig.getRuntimePolicy();
-      return {
-        maxBytes: current.media_policy.max_file_size_bytes.announcement_image,
-        quota: current.media_policy.quotas.announcement,
-      };
-    },
+    getImagePolicy: imagePolicy("announcement"),
   }));
   app.route("/api/gallery", createGalleryRoutes({
     service: services.gallery,
-    getImagePolicy: async () => {
-      const current = await services.siteConfig.getRuntimePolicy();
-      return {
-        maxBytes: current.media_policy.max_file_size_bytes.gallery_image,
-        quota: current.media_policy.quotas.gallery,
-      };
-    },
+    getImagePolicy: imagePolicy("gallery"),
   }));
   app.route("/api/wiki", createWikiRoutes({
     service: services.wiki,
     publicOrigin,
-    getImagePolicy: async () => {
-      const current = await services.siteConfig.getRuntimePolicy();
-      return {
-        maxBytes: current.media_policy.max_file_size_bytes.wiki_image,
-        quota: current.media_policy.quotas.wiki,
-      };
-    },
+    getImagePolicy: imagePolicy("wiki"),
   }));
   app.route("/api/media", createMediaRoutes({ service: services.media }));
 
   app.route("/api/dashboard", createDashboardRoutes({ service: services.portalReadModels }));
   app.route("/api/search", createSearchRoutes({ service: services.portalReadModels }));
   app.route("/api/admin/status", createAdminStatusRoutes({ service: services.adminStatus }));
+  app.route("/api/admin/operations", createAdminOperationsRoutes({ service: services.adminOperations }));
   app.route("/api/admin/analytics-settings", createAdminAnalyticsSettingsRoutes({ service: services.siteConfig }));
   app.route("/api/admin/site-config", createAdminSiteConfigRoutes({ service: services.siteConfig }));
   app.route("/api/admin", createAdminRoutes({ service: services.identityAdmin }));
@@ -255,7 +259,7 @@ function resolvePublicOrigin(value: string): string {
 }
 
 export function resolveSessionCookieName(value: string | undefined): string {
-  const name = value?.trim() || "ig_session";
+  const name = value?.trim() || DEFAULT_SESSION_COOKIE_NAME;
   if (!/^[!#$%&'*+.^_`|~0-9A-Za-z-]+$/.test(name)) throw new TypeError("Invalid session cookie name");
   return name;
 }
@@ -276,3 +280,12 @@ export function readSessionCookie(request: Request, name: string): string | null
 
 const MUTATION_METHODS = new Set(["POST", "PATCH", "DELETE"]);
 const SUPPORTED_API_METHODS = new Set(["GET", "HEAD", ...MUTATION_METHODS]);
+const EXPENSIVE_READ_PATHS = new Set([
+  "/api/guild-war/analytics",
+  "/api/search",
+  "/api/users",
+]);
+
+function isExpensiveRead(pathname: string): boolean {
+  return EXPENSIVE_READ_PATHS.has(pathname);
+}

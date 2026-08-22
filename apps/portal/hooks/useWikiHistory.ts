@@ -11,7 +11,7 @@ import {
 } from "../services/WikiService";
 import { useAppError } from "./useAppError";
 import { notifySuccess } from "../utils/notifications";
-import { extractTipTapText } from "../utils/tiptap-text";
+import { extractTipTapText } from "@guild/shared/utils/tiptap-text";
 
 export type WikiHistoryCompareMode = "current" | "previous";
 
@@ -19,13 +19,26 @@ export type WikiHistoryDiffBlock =
   | { kind: "context" | "added" | "removed"; text: string }
   | { kind: "modified"; parts: Change[] };
 
+/*
+ * diffChars 是 O(len(old)×len(new)) 的 LCS：整篇重写会把全文配成一对
+ * removed/added 块，字符级细化在主线程上二次方爆炸。超过阈值的配对降为
+ * 行级整块展示，字符高亮只留给人眼真正能对比的小段修改。
+ */
+const MAX_CHAR_DIFF_SOURCE = 2000;
+
 function buildDiffBlocks(oldText: string, newText: string): WikiHistoryDiffBlock[] {
   const changes = diffLines(oldText, newText);
   const blocks: WikiHistoryDiffBlock[] = [];
   for (let i = 0; i < changes.length; i++) {
     const change = changes[i]!;
-    if (change.removed && changes[i + 1]?.added) {
-      blocks.push({ kind: "modified", parts: diffChars(change.value, changes[i + 1]!.value) });
+    const paired = change.removed ? changes[i + 1] : undefined;
+    if (paired?.added) {
+      if (change.value.length <= MAX_CHAR_DIFF_SOURCE && paired.value.length <= MAX_CHAR_DIFF_SOURCE) {
+        blocks.push({ kind: "modified", parts: diffChars(change.value, paired.value) });
+      } else {
+        blocks.push({ kind: "removed", text: change.value });
+        blocks.push({ kind: "added", text: paired.value });
+      }
       i++;
       continue;
     }

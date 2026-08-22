@@ -14,7 +14,7 @@ import {
   or,
   sql as drizzleSql,
 } from "drizzle-orm";
-import { PERMISSIONS, type Permission } from "@guild/shared/constants/roles";
+import { PERMISSIONS, PERMISSION_ID, type Permission } from "@guild/shared/constants/roles";
 import { LIMITS } from "@guild/shared/config/limits";
 import type {
   AuthStore,
@@ -28,11 +28,11 @@ import type {
   RoleRecord,
   SessionAuthorizationRecord,
 } from "@guild/server/modules/auth";
-import type { AuditMutation } from "@guild/server/modules/audit";
+import type { AuditEventWrite } from "@guild/server/modules/audit";
 import type { AppDatabase } from "../database.js";
 import type { SqlBatchStatement, SqlExecutor, SqlValue } from "@guild/kernel";
 import { inviteLinks, loginFailures, rolePermissions, roles, sessions, userCredentials, users } from "../schema/auth.js";
-import { auditInsertStatement } from "./audit-statement.js";
+import { auditInsertSelectStatement, auditInsertStatement } from "./audit-statement.js";
 import { returnedRowCount } from "./sql-result.js";
 
 type AuthSchema = {
@@ -64,6 +64,7 @@ type UserPermissionRow = Readonly<{
   deletedAt: string | null;
   createdAt: string;
   updatedAt: string;
+  lastLoginAt: string | null;
   revisionToken: string;
   permission: string | null;
 }>;
@@ -84,6 +85,7 @@ function userFromRows(rows: readonly UserPermissionRow[]): AuthUserRecord | null
     revisionToken: first.revisionToken,
     createdAt: first.createdAt,
     updatedAt: first.updatedAt,
+    lastLoginAt: first.lastLoginAt,
   };
 }
 
@@ -98,6 +100,7 @@ const userColumns = {
   deletedAt: users.deletedAt,
   createdAt: users.createdAt,
   updatedAt: users.updatedAt,
+  lastLoginAt: users.lastLoginAt,
   revisionToken: users.revisionToken,
   permission: rolePermissions.permission,
 } as const;
@@ -108,6 +111,13 @@ function placeholders(values: readonly unknown[]): string {
 
 function run(sql: string, params: readonly SqlValue[] = []): SqlBatchStatement {
   return { method: "run", sql, params };
+}
+
+/* 签发会话和带着 cookie 回访都记「最近登录」，语句只此一条。刻意不动 updated_at /
+   revision_token：那两个字段是资料修改和乐观并发用的，登录一次就把全站的成员 ETag
+   冲掉不值当。 */
+function touchLastLogin(userId: string, at: string): SqlBatchStatement {
+  return run("UPDATE users SET last_login_at = ? WHERE id = ?", [at, userId]);
 }
 
 function returning(sql: string, params: readonly SqlValue[] = []): SqlBatchStatement {
@@ -122,8 +132,8 @@ function isForeignKeyViolation(error: unknown): boolean {
   return error instanceof Error && /FOREIGN KEY constraint failed/i.test(error.message);
 }
 
-function isLastOwnerViolation(error: unknown): boolean {
-  return error instanceof Error && /last (?:role manager|site owner) required/i.test(error.message);
+function isLastRoleManagerViolation(error: unknown): boolean {
+  return error instanceof Error && /last role manager required/i.test(error.message);
 }
 
 const MAX_MANAGED_USER_BATCH = 50;
@@ -191,6 +201,59 @@ const TARGET_SNAPSHOT_MATCH = `COALESCE((
     FROM target_snapshot ORDER BY id
   )
 ), '') = ?`;
+
+function loginLockResetAuditStatement(
+  audit: AuditEventWrite,
+  target: ManagedUserTarget,
+  snapshot: Readonly<{ sql: string; params: readonly SqlValue[] }>,
+): SqlBatchStatement {
+  return auditInsertSelectStatement(
+    `${snapshot.sql}, failure_snapshot AS (
+       SELECT fail_count, locked_until FROM login_failures WHERE username = ?
+     )
+     SELECT ?, ?, ?, ?,
+       CASE WHEN ? = 'user' THEN (SELECT username FROM users WHERE id = ?) ELSE ? END,
+       ?, ?, ?, ?,
+       json_object(
+         'schema_version', 2,
+         'changes', json('[]'),
+         'context', json_array(
+           json_object(
+              'field', 'failed_attempts',
+             'value', json_object(
+               'type', 'number',
+               'value', COALESCE((SELECT fail_count FROM failure_snapshot), 0)
+             )
+           ),
+           json_object(
+              'field', 'locked_until',
+             'value', json_object(
+               'type', CASE WHEN (SELECT locked_until FROM failure_snapshot) IS NULL THEN 'null' ELSE 'datetime' END,
+               'value', (SELECT locked_until FROM failure_snapshot)
+             )
+           )
+         )
+       ), ?
+     WHERE ${TARGET_SNAPSHOT_MATCH}`,
+    [
+      ...snapshot.params,
+      target.username.toLowerCase(),
+      audit.eventId,
+      audit.requestId,
+      audit.actorKind,
+      audit.actorId,
+      audit.actorKind,
+      audit.actorId,
+      audit.actorLabel,
+      audit.subjectType,
+      audit.subjectId,
+      audit.subjectLabel,
+      audit.action,
+      audit.occurredAt,
+      managedTargetSnapshot([target]),
+    ],
+  );
+}
 
 const ROLE_SNAPSHOT_MATCH = `EXISTS (
   SELECT 1 FROM roles AS destination
@@ -318,7 +381,7 @@ export class SqliteAuthStore implements AuthStore {
     await this.db.update(userCredentials).set({ passwordHash, updatedAt: now }).where(eq(userCredentials.userId, userId));
   }
 
-  async createSessionBounded(input: Readonly<{
+  async openUserSession(input: Readonly<{
     userId: string;
     tokenDigest: string;
     expiresAt: string;
@@ -338,7 +401,14 @@ export class SqliteAuthStore implements AuthStore {
         "INSERT INTO sessions (token_digest, user_id, expires_at, created_at) VALUES (?, ?, ?, ?)",
         [input.tokenDigest, input.userId, input.expiresAt, input.createdAt],
       ),
+      /* 「发出会话」就是「这个人登录了」，两件事写在同一个批里，不会出现有会话却没
+         登录时刻的中间态。 */
+      touchLastLogin(input.userId, input.createdAt),
     ]);
+  }
+
+  async recordLastLogin(userId: string, at: string): Promise<void> {
+    await this.executor.execute(touchLastLogin(userId, at));
   }
 
   async renewSession(tokenDigest: string, expiresAt: string): Promise<void> {
@@ -353,7 +423,7 @@ export class SqliteAuthStore implements AuthStore {
     if (userIds.length > 0) await this.db.delete(sessions).where(inArray(sessions.userId, [...userIds]));
   }
 
-  async findActiveInvite(id: string, tokenDigest: string, now: string): Promise<InviteRecord | null> {
+  async findActiveInvite(tokenDigest: string, now: string): Promise<InviteRecord | null> {
     const rows = await this.db.select({
       id: inviteLinks.id,
       createdBy: inviteLinks.createdBy,
@@ -367,7 +437,6 @@ export class SqliteAuthStore implements AuthStore {
       createdAt: inviteLinks.createdAt,
       revokedAt: inviteLinks.revokedAt,
     }).from(inviteLinks).innerJoin(roles, eq(inviteLinks.roleId, roles.id)).where(and(
-      eq(inviteLinks.id, id),
       eq(inviteLinks.tokenDigest, tokenDigest),
       isNull(inviteLinks.revokedAt),
       lt(inviteLinks.usedCount, inviteLinks.maxUses),
@@ -376,7 +445,7 @@ export class SqliteAuthStore implements AuthStore {
     return rows[0] ?? null;
   }
 
-  async changeOwnPassword(userId: string, passwordHash: string, now: string, audit: AuditMutation): Promise<void> {
+  async changeOwnPassword(userId: string, passwordHash: string, now: string, audit: AuditEventWrite): Promise<void> {
     await this.executor.batch([
       run("UPDATE user_credentials SET password_hash = ?, updated_at = ? WHERE user_id = ?", [passwordHash, now, userId]),
       run("DELETE FROM sessions WHERE user_id = ?", [userId]),
@@ -384,10 +453,10 @@ export class SqliteAuthStore implements AuthStore {
     ]);
   }
 
-  async changeOwnUsername(userId: string, username: string, now: string, audit: AuditMutation): Promise<"updated" | "username_taken"> {
+  async changeOwnUsername(userId: string, username: string, now: string, audit: AuditEventWrite): Promise<"updated" | "username_taken"> {
     try {
       await this.executor.batch([
-        run("UPDATE users SET username = ?, revision_token = ?, updated_at = ? WHERE id = ?", [username, audit.id, now, userId]),
+        run("UPDATE users SET username = ?, revision_token = ?, updated_at = ? WHERE id = ?", [username, audit.eventId, now, userId]),
         run("DELETE FROM sessions WHERE user_id = ?", [userId]),
         auditInsertStatement(audit),
       ]);
@@ -407,8 +476,8 @@ export class SqliteAuthStore implements AuthStore {
             gte(inviteLinks.usedCount, inviteLinks.maxUses),
           )!]
         : [isNull(inviteLinks.revokedAt), or(isNull(inviteLinks.expiresAt), gt(inviteLinks.expiresAt, input.now))!, lt(inviteLinks.usedCount, inviteLinks.maxUses)];
-    if (input.exactId) {
-      filters.push(eq(inviteLinks.id, input.exactId));
+    if (input.exactTokenDigest) {
+      filters.push(eq(inviteLinks.tokenDigest, input.exactTokenDigest));
     } else if (input.search) {
       const escaped = input.search.replaceAll("\\", "\\\\").replaceAll("%", "\\%").replaceAll("_", "\\_");
       const pattern = `%${escaped}%`;
@@ -463,7 +532,7 @@ export class SqliteAuthStore implements AuthStore {
     };
   }
 
-  async createInvite(input: Parameters<AuthStore["createInvite"]>[0], audit: AuditMutation): Promise<InviteRecord> {
+  async createInvite(input: Parameters<AuthStore["createInvite"]>[0], audit: AuditEventWrite): Promise<InviteRecord> {
     await this.executor.batch([
       run(
         `INSERT INTO invite_links (id, token_digest, created_by, role_id, max_uses, used_count, expires_at, created_at, revoked_at)
@@ -477,7 +546,7 @@ export class SqliteAuthStore implements AuthStore {
     return created;
   }
 
-  async revokeInvite(id: string, now: string, audit: AuditMutation): Promise<boolean> {
+  async revokeInvite(id: string, now: string, audit: AuditEventWrite): Promise<boolean> {
     const results = await this.executor.batch([
       returning("UPDATE invite_links SET revoked_at = ? WHERE id = ? AND revoked_at IS NULL", [now, id]),
       auditInsertStatement(audit, { sql: "SELECT 1 WHERE changes() = 1" }),
@@ -485,7 +554,7 @@ export class SqliteAuthStore implements AuthStore {
     return returnedRowCount(results[0]) > 0;
   }
 
-  async deleteInvite(id: string, audit: AuditMutation): Promise<boolean> {
+  async deleteInvite(id: string, audit: AuditEventWrite): Promise<boolean> {
     const results = await this.executor.batch([
       returning("DELETE FROM invite_links WHERE id = ?", [id]),
       auditInsertStatement(audit, { sql: "SELECT 1 WHERE changes() = 1" }),
@@ -526,15 +595,15 @@ export class SqliteAuthStore implements AuthStore {
     });
   }
 
-  countActiveOwners(): Promise<number> {
-    return this.countOwners();
+  countActiveRoleManagers(): Promise<number> {
+    return this.countRoleManagers();
   }
 
-  countActiveOwnersAmong(userIds: readonly string[]): Promise<number> {
-    return userIds.length === 0 ? Promise.resolve(0) : this.countOwners(inArray(users.id, [...userIds]));
+  countActiveRoleManagersAmong(userIds: readonly string[]): Promise<number> {
+    return userIds.length === 0 ? Promise.resolve(0) : this.countRoleManagers(inArray(users.id, [...userIds]));
   }
 
-  async setUsersRole(input: Parameters<AuthStore["setUsersRole"]>[0], audit: AuditMutation) {
+  async setUsersRole(input: Parameters<AuthStore["setUsersRole"]>[0], audit: AuditEventWrite) {
     const { targets, destinationRole } = input;
     const snapshot = targetSnapshotCte(targets);
     try {
@@ -546,22 +615,22 @@ export class SqliteAuthStore implements AuthStore {
              AND ${TARGET_SNAPSHOT_MATCH}
              AND ${ROLE_SNAPSHOT_MATCH}`,
           [
-            ...snapshot.params, destinationRole.id, audit.id, input.now,
+            ...snapshot.params, destinationRole.id, audit.eventId, input.now,
             managedTargetSnapshot(targets), destinationRole.id, destinationRole.revisionToken,
             destinationRole.level, permissionSnapshot(destinationRole.permissions),
           ],
         ),
         auditInsertStatement(audit, { sql: `SELECT 1 WHERE changes() = ${targets.length}` }),
-        deleteSessionsAfterMutation(targets, audit.id),
+        deleteSessionsAfterMutation(targets, audit.eventId),
       ]);
       return returnedRowCount(results[0]) === targets.length ? "updated" as const : "conflict" as const;
     } catch (error) {
-      if (isLastOwnerViolation(error)) return "last_owner" as const;
+      if (isLastRoleManagerViolation(error)) return "last_role_manager" as const;
       throw error;
     }
   }
 
-  async setUsersActive(input: Parameters<AuthStore["setUsersActive"]>[0], audit: AuditMutation) {
+  async setUsersActive(input: Parameters<AuthStore["setUsersActive"]>[0], audit: AuditEventWrite) {
     const snapshot = targetSnapshotCte(input.targets);
     try {
       const results = await this.executor.batch([
@@ -570,19 +639,19 @@ export class SqliteAuthStore implements AuthStore {
            UPDATE users SET is_active = ?, deleted_at = CASE WHEN ? = 1 THEN NULL ELSE deleted_at END,
              revision_token = ?, updated_at = ?
            WHERE id IN (SELECT id FROM target_snapshot) AND ${TARGET_SNAPSHOT_MATCH}`,
-          [...snapshot.params, input.active ? 1 : 0, input.active ? 1 : 0, audit.id, input.now, managedTargetSnapshot(input.targets)],
+          [...snapshot.params, input.active ? 1 : 0, input.active ? 1 : 0, audit.eventId, input.now, managedTargetSnapshot(input.targets)],
         ),
         auditInsertStatement(audit, { sql: `SELECT 1 WHERE changes() = ${input.targets.length}` }),
-        ...(!input.active ? [deleteSessionsAfterMutation(input.targets, audit.id)] : []),
+        ...(!input.active ? [deleteSessionsAfterMutation(input.targets, audit.eventId)] : []),
       ]);
       return returnedRowCount(results[0]) === input.targets.length ? "updated" as const : "conflict" as const;
     } catch (error) {
-      if (isLastOwnerViolation(error)) return "last_owner" as const;
+      if (isLastRoleManagerViolation(error)) return "last_role_manager" as const;
       throw error;
     }
   }
 
-  async softDeleteUsers(input: Parameters<AuthStore["softDeleteUsers"]>[0], audit: AuditMutation) {
+  async softDeleteUsers(input: Parameters<AuthStore["softDeleteUsers"]>[0], audit: AuditEventWrite) {
     const snapshot = targetSnapshotCte(input.targets);
     try {
       const results = await this.executor.batch([
@@ -590,19 +659,19 @@ export class SqliteAuthStore implements AuthStore {
           `${snapshot.sql}
            UPDATE users SET is_active = 0, deleted_at = ?, revision_token = ?, updated_at = ?
            WHERE id IN (SELECT id FROM target_snapshot) AND ${TARGET_SNAPSHOT_MATCH}`,
-          [...snapshot.params, input.now, audit.id, input.now, managedTargetSnapshot(input.targets)],
+          [...snapshot.params, input.now, audit.eventId, input.now, managedTargetSnapshot(input.targets)],
         ),
         auditInsertStatement(audit, { sql: `SELECT 1 WHERE changes() = ${input.targets.length}` }),
-        deleteSessionsAfterMutation(input.targets, audit.id),
+        deleteSessionsAfterMutation(input.targets, audit.eventId),
       ]);
       return returnedRowCount(results[0]) === input.targets.length ? "updated" as const : "conflict" as const;
     } catch (error) {
-      if (isLastOwnerViolation(error)) return "last_owner" as const;
+      if (isLastRoleManagerViolation(error)) return "last_role_manager" as const;
       throw error;
     }
   }
 
-  async resetUserPassword(target: ManagedUserTarget, passwordHash: string, now: string, audit: AuditMutation) {
+  async resetUserPassword(target: ManagedUserTarget, passwordHash: string, now: string, audit: AuditEventWrite) {
     const snapshot = targetSnapshotCte([target]);
     const results = await this.executor.batch([
       returning(
@@ -617,7 +686,7 @@ export class SqliteAuthStore implements AuthStore {
     return returnedRowCount(results[0]) === 1 ? "updated" as const : "conflict" as const;
   }
 
-  async resetUserLoginLock(target: ManagedUserTarget, audit: AuditMutation) {
+  async resetUserLoginLock(target: ManagedUserTarget, audit: AuditEventWrite) {
     const snapshot = targetSnapshotCte([target]);
     const results = await this.executor.batch([
       {
@@ -631,15 +700,12 @@ export class SqliteAuthStore implements AuthStore {
           LIMIT 1`,
         params: [...snapshot.params, target.username.toLowerCase(), managedTargetSnapshot([target])],
       },
+      loginLockResetAuditStatement(audit, target, snapshot),
       run(
         `${snapshot.sql}
          DELETE FROM login_failures WHERE username = ? AND ${TARGET_SNAPSHOT_MATCH}`,
         [...snapshot.params, target.username.toLowerCase(), managedTargetSnapshot([target])],
       ),
-      auditInsertStatement(audit, {
-        sql: `${snapshot.sql} SELECT 1 WHERE ${TARGET_SNAPSHOT_MATCH}`,
-        params: [...snapshot.params, managedTargetSnapshot([target])],
-      }),
     ]);
     if (results[0]?.rows === undefined) return { outcome: "conflict" as const };
     const row = results[0].rows;
@@ -716,7 +782,7 @@ export class SqliteAuthStore implements AuthStore {
     };
   }
 
-  async createRole(input: Parameters<AuthStore["createRole"]>[0], audit: AuditMutation): Promise<"created" | "conflict"> {
+  async createRole(input: Parameters<AuthStore["createRole"]>[0], audit: AuditEventWrite): Promise<"created" | "conflict"> {
     try {
       const results = await this.executor.batch([
         {
@@ -726,7 +792,7 @@ export class SqliteAuthStore implements AuthStore {
             SELECT ?, ?, ?, ?, ?, ?, ? WHERE (SELECT count(*) FROM roles) < ?
             RETURNING 1 AS affected`,
           params: [
-            input.id, input.name, input.level, input.color, audit.id, input.now, input.now,
+            input.id, input.name, input.level, input.color, audit.eventId, input.now, input.now,
             LIMITS.content.roleCatalogSize.max,
           ],
         },
@@ -734,11 +800,11 @@ export class SqliteAuthStore implements AuthStore {
           `INSERT INTO role_permissions (role_id, permission)
            SELECT ?, CAST(value AS TEXT) FROM json_each(?)
            WHERE EXISTS (SELECT 1 FROM roles WHERE id = ? AND revision_token = ?)`,
-          [input.id, JSON.stringify(input.permissions), input.id, audit.id],
+          [input.id, JSON.stringify(input.permissions), input.id, audit.eventId],
         ),
         auditInsertStatement(audit, {
           sql: "SELECT 1 FROM roles WHERE id = ? AND revision_token = ?",
-          params: [input.id, audit.id],
+          params: [input.id, audit.eventId],
         }),
       ]);
       return returnedRowCount(results[0]) === 1 ? "created" : "conflict";
@@ -748,9 +814,9 @@ export class SqliteAuthStore implements AuthStore {
     }
   }
 
-  async updateRole(input: Parameters<AuthStore["updateRole"]>[0], audit: AuditMutation) {
+  async updateRole(input: Parameters<AuthStore["updateRole"]>[0], audit: AuditEventWrite) {
     const assignments = ["updated_at = ?", "revision_token = ?"];
-    const params: SqlValue[] = [input.now, audit.id];
+    const params: SqlValue[] = [input.now, audit.eventId];
     if (input.name !== undefined) { assignments.push("name = ?"); params.push(input.name); }
     if (input.level !== undefined) { assignments.push("level = ?"); params.push(input.level); }
     if (input.color !== undefined) { assignments.push("color = ?"); params.push(input.color); }
@@ -768,7 +834,7 @@ export class SqliteAuthStore implements AuthStore {
       statements.push(run(
         `DELETE FROM role_permissions WHERE role_id = ? AND permission IN (${placeholders(input.permissionDelta.remove)})
            AND EXISTS (SELECT 1 FROM roles WHERE id = ? AND revision_token = ?)`,
-        [input.id, ...input.permissionDelta.remove, input.id, audit.id],
+        [input.id, ...input.permissionDelta.remove, input.id, audit.eventId],
       ));
     }
     if (input.permissionDelta.add.length > 0) {
@@ -776,19 +842,19 @@ export class SqliteAuthStore implements AuthStore {
         `INSERT INTO role_permissions (role_id, permission)
          SELECT ?, CAST(value AS TEXT) FROM json_each(?)
          WHERE EXISTS (SELECT 1 FROM roles WHERE id = ? AND revision_token = ?)`,
-        [input.id, JSON.stringify(input.permissionDelta.add), input.id, audit.id],
+        [input.id, JSON.stringify(input.permissionDelta.add), input.id, audit.eventId],
       ));
     }
     try {
       const results = await this.executor.batch(statements);
       return returnedRowCount(results[0]) === 1 ? "updated" as const : "conflict" as const;
     } catch (error) {
-      if (isLastOwnerViolation(error)) return "last_owner" as const;
+      if (isLastRoleManagerViolation(error)) return "last_role_manager" as const;
       throw error;
     }
   }
 
-  async deleteRole(role: RoleRecord, audit: AuditMutation) {
+  async deleteRole(role: RoleRecord, audit: AuditEventWrite) {
     const references = await Promise.all([
       this.db.select({ value: count() }).from(users).where(eq(users.roleId, role.id)),
       this.db.select({ value: count() }).from(inviteLinks).where(eq(inviteLinks.roleId, role.id)),
@@ -809,12 +875,12 @@ export class SqliteAuthStore implements AuthStore {
       return returnedRowCount(results[0]) === 1 ? "deleted" as const : "conflict" as const;
     } catch (error) {
       if (isForeignKeyViolation(error)) return "referenced";
-      if (isLastOwnerViolation(error)) return "last_owner";
+      if (isLastRoleManagerViolation(error)) return "last_role_manager";
       throw error;
     }
   }
 
-  private async findInvite(id: string): Promise<InviteRecord | null> {
+  async findInvite(id: string): Promise<InviteRecord | null> {
     const rows = await this.db.select({
       id: inviteLinks.id,
       createdBy: inviteLinks.createdBy,
@@ -831,11 +897,11 @@ export class SqliteAuthStore implements AuthStore {
     return rows[0] ?? null;
   }
 
-  private async countOwners(extra?: ReturnType<typeof eq> | ReturnType<typeof inArray>): Promise<number> {
+  private async countRoleManagers(extra?: ReturnType<typeof eq> | ReturnType<typeof inArray>): Promise<number> {
     const conditions = [
       eq(users.isActive, true),
       isNull(users.deletedAt),
-      eq(rolePermissions.permission, "admin.owners.manage"),
+      eq(rolePermissions.permission, PERMISSION_ID.ADMIN_ROLES_MANAGE),
       ...(extra ? [extra] : []),
     ];
     const rows = await this.db.select({ value: count() }).from(users)

@@ -15,13 +15,13 @@ import { useTranslation } from "react-i18next";
 import { VolumeOutlined, VolumeMutedOutlined } from "../../../utils/icons";
 import { isAudioPlaying, stopAudio } from "../../../utils/audio-player";
 import type { RosterSortMode } from "../../../hooks/useRosterPageController";
-import { buildClassOptions, useClassCatalogStore } from "../../../stores/class-catalog";
+import { useClassCatalog } from "../../../hooks/data/useClassData";
+import { buildClassOptions } from "../../../utils/class-catalog";
 
 type Props = {
   search: string;
   onSearchChange: (value: string) => void;
   classFilter: string[];
-  loadedClassIds: string[];
   onClassFilterChange: (value: string[]) => void;
   sortMode: RosterSortMode;
   onSortModeChange: (value: RosterSortMode) => void;
@@ -39,7 +39,6 @@ export function RosterFilterCard({
   search,
   onSearchChange,
   classFilter,
-  loadedClassIds,
   onClassFilterChange,
   sortMode,
   onSortModeChange,
@@ -51,7 +50,7 @@ export function RosterFilterCard({
   totalCount,
 }: Props) {
   const { t } = useTranslation("roster");
-  const classCatalog = useClassCatalogStore((state) => state.items);
+  const classCatalog = useClassCatalog();
   const [audioOpen, { close: closeAudio, toggle: toggleAudio }] = useDisclosure(false);
   const audioPreferencesRef = useClickOutside(closeAudio);
 
@@ -116,10 +115,7 @@ export function RosterFilterCard({
     </div>
   );
 
-  const classData = buildClassOptions(
-    classCatalog,
-    [...loadedClassIds, ...classFilter],
-  );
+  const classData = buildClassOptions(classCatalog);
   const sortData = [
     { value: "power", label: t("sort.powerDesc") },
     { value: "username", label: t("sort.usernameAsc") },

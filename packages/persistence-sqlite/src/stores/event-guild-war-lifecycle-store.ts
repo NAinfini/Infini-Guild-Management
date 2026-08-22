@@ -1,9 +1,36 @@
 import type { SqlBatchStatement, SqlExecutor } from "@guild/kernel";
 import type { EventGuildWarLifecycleStore } from "@guild/server/modules/events";
 import type { GuildWarEventRosterStore } from "@guild/server/modules/guild-war";
+import type { AuditEventWrite } from "@guild/server/modules/audit";
 import { auditInsertStatement } from "./audit-statement.js";
 import { versionGuard, versionUpdate } from "./guild-war-store.js";
 import { returnedRowCount, returnedRows } from "./sql-result.js";
+
+function auditWithUserLabels(
+  audit: AuditEventWrite,
+  userIds: readonly string[],
+  labels: ReadonlyMap<string, string>,
+): AuditEventWrite {
+  return {
+    ...audit,
+    payload: {
+      ...audit.payload,
+      context: [
+        ...audit.payload.context,
+        {
+          field: "user_ids",
+          value: {
+            type: "list",
+            value: userIds.map((id) => ({
+              type: "reference" as const,
+              value: { id, label: labels.get(id)! },
+            })),
+          },
+        },
+      ],
+    },
+  };
+}
 
 export class SqliteEventGuildWarLifecycleStore
 implements EventGuildWarLifecycleStore, GuildWarEventRosterStore {
@@ -52,8 +79,22 @@ implements EventGuildWarLifecycleStore, GuildWarEventRosterStore {
 
   async moveMembers(input: Parameters<GuildWarEventRosterStore["moveMembers"]>[0]): Promise<boolean> {
     const nextVersion = input.expectedVersion + 1;
-    const guard = versionGuard(input.warId, nextVersion, "active", input.audit.id);
+    const guard = versionGuard(input.warId, nextVersion, "active", input.audit.eventId);
     const moves = JSON.stringify(input.moves);
+    const labelRows = returnedRows(await this.sql.execute({
+      method: "all",
+      columns: ["id", "username"],
+      sql: `SELECT id, username FROM users
+        WHERE id IN (SELECT CAST(json_extract(value, '$.userId') AS TEXT) FROM json_each(?))`,
+      params: [moves],
+    }));
+    const labels = new Map(labelRows.flatMap(([id, username]) => (
+      typeof id === "string" && typeof username === "string" ? [[id, username] as const] : []
+    )));
+    if (labels.size !== new Set(input.moves.map(({ userId }) => userId)).size) {
+      throw new TypeError("Guild-war roster audit could not resolve every member username");
+    }
+    const audit = auditWithUserLabels(input.audit, input.moves.map(({ userId }) => userId), labels);
     const expectedVersionGuard = `SELECT 1 FROM guild_wars
       WHERE id = ? AND status = 'active' AND roster_version = ?`;
     const statements: SqlBatchStatement[] = [{
@@ -75,7 +116,7 @@ implements EventGuildWarLifecycleStore, GuildWarEventRosterStore {
       input.actorUserId,
       input.now,
       "active",
-      input.audit.id,
+      input.audit.eventId,
       { eventId: input.eventId, userIds: input.moves.map(({ userId }) => userId) },
     ), {
       method: "run",
@@ -134,7 +175,7 @@ implements EventGuildWarLifecycleStore, GuildWarEventRosterStore {
           sort_order = excluded.sort_order`,
       params: [moves, input.warId, input.warId, ...guard.params],
     }];
-    statements.push(auditInsertStatement(input.audit, guard));
+    statements.push(auditInsertStatement(audit, guard));
     const results = await this.sql.batch(statements);
     return returnedRowCount(results[1]) === 1;
   }

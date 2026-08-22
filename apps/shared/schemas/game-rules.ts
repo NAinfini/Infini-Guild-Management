@@ -3,8 +3,6 @@ import {
   type GuildWarResultDefinition,
 } from "../constants/guild-war";
 
-export const GAME_RULE_ID_PATTERN = /^[a-z][a-z0-9_]{0,31}$/;
-
 export const GAME_RULE_ICONS = [
   "calendar",
   "target",

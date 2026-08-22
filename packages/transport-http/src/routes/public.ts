@@ -1,4 +1,5 @@
 export * from "./admin/admin-routes.js";
+export * from "./admin-operations/admin-operations-routes.js";
 export * from "./admin/error-log-routes.js";
 export * from "./admin-status/admin-status-routes.js";
 export * from "./announcements/announcements-routes.js";

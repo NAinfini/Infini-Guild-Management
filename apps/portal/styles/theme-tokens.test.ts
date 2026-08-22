@@ -1,3 +1,4 @@
+// @vitest-environment node
 import { readdirSync, readFileSync, statSync } from "node:fs";
 import { join, relative, resolve } from "node:path";
 import { describe, expect, it } from "vitest";
@@ -54,10 +55,9 @@ const TOKENIZED_CSS_FILES: string[] = [
   /* 行内样式片段编辑器（称号与徽章标签共用）。样式当初随组件从 ToolsPage.css
      拆出来时是原样搬运，没有引入新的字面值。 */
   "apps/portal/components/shared/LabelStyleModal.css",
-  /* 后台状态页签的外壳（Batch 4）。从建立起就只用 L2/L3 变量：
-     卡片走 --surface-base / --border-subtle / --radius-surface，
-     把手走 --text-secondary / --brand-text / --transition-normal。 */
-  "apps/portal/components/feature/admin/AdminStatusTab.css",
+  "apps/portal/components/feature/admin/AdminOperationsTab.css",
+  "apps/portal/components/feature/admin/AdminDiagnosticsTab.css",
+  "apps/portal/components/feature/admin/AdminDataIntegrityTool.css",
   /* 职业配额条只有一个填充色相（活动域色），超员时转危险色，够员靠计数变成功色；
      全部使用语义 token。 */
   "apps/portal/components/feature/events/EventQuotaBar.css",
@@ -144,6 +144,9 @@ const RUNTIME_INJECTED_VARS: string[] = [
    * （`var(--mantine-color-X-5, var(--accent-fill))`，X 来自 eventTypeTagColor()），
    * 随事件类型变化，运行期由该文件的色点 span 无条件内联写入。 */
   "--signup-dot-color",
+  /* --kpi-ratio：仪表盘比例计的 0..1 比值，运行期由 dashboard/shared.tsx 的
+   * KpiMeter 在填充段的内联 style 上无条件写入（值在组件里已钳到 0..1）。 */
+  "--kpi-ratio",
 ];
 /** --mantine-color-* 系列由 Mantine 的 CSS 变量解析器批量写入运行期
  * （@mantine/core 的 MantineCssVariables），逐个列名不现实，按前缀豁免。 */
@@ -245,19 +248,21 @@ const LITERAL_COLOUR_EXEMPTIONS: Record<string, LiteralColourExemption[]> = {
   "apps/portal/styles/semantic.css": [
     {
       source: "[data-theme=\"light\"] 块的 --edge-top / --shadow-overlay",
-      reason: "浅色模式唯一两档层级：表面顶边与浮层投影。它们是模式语义 token 的固定中性色值。",
+      reason: "浅色模式唯一两档层级：表面顶边与浮层投影。它们是模式语义 token 的固定中性色值。--edge-top 是三段（顶边高光、贴地接触影、远投影）：前两段撑不开 #FFFFFF 卡片与 #FAF9F5 工作区之间 5 个亮度点的差，远投影那段才是分层的那一段。",
       values: [
         "rgb(255 255 255 / 0.90)",
-        "rgb(10 10 15 / 0.06)",
+        "rgb(10 10 15 / 0.05)",
+        "rgb(10 10 15 / 0.22)",
         "rgb(10 10 15 / 0.18)",
       ],
     },
     {
       source: "[data-theme=\"dark\"] 块的 --edge-top / --shadow-overlay",
-      reason: "深色模式对应的两档层级值。",
+      reason: "深色模式对应的两档层级值，同样是三段式 --edge-top。",
       values: [
-        "rgb(255 255 255 / 0.06)",
-        "rgb(0 0 0 / 0.20)",
+        "rgb(255 255 255 / 0.07)",
+        "rgb(0 0 0 / 0.24)",
+        "rgb(0 0 0 / 0.55)",
         "rgb(0 0 0 / 0.42)",
       ],
     },
@@ -724,6 +729,103 @@ describe("accent contrast across all 6 theme × accent combinations", () => {
   });
 });
 
+/* ── 双主题对等 ───────────────────────────────────────────── */
+
+/** 收集某个选择器名下所有块里声明过的自定义属性名（注释已剥离）。 */
+function customPropertiesUnder(source: string, selector: string): Set<string> {
+  const withoutComments = source.replace(/\/\*[\s\S]*?\*\//g, "");
+  const escaped = selector.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const names = new Set<string>();
+  for (const block of withoutComments.matchAll(new RegExp(`${escaped}\\s*\\{([^{}]*)\\}`, "g"))) {
+    for (const declaration of (block[1] ?? "").matchAll(/(--[a-z0-9-]+)\s*:/g)) {
+      names.add(declaration[1]!);
+    }
+  }
+  return names;
+}
+
+describe("dual-theme parity", () => {
+  /**
+   * 一个 token 只在一个模式里定义，是这套 token 层唯一会静默失效的错法：
+   * 硬规则 5 只检查「var() 能不能解析到某处定义」，浅色块里有、深色块里没有
+   * 的 token 照样过。真正的表现是换到另一个模式后那条声明整条作废——文字
+   * 拿不到颜色、填充退回透明——而且只在人眼切到那个模式时才看得见。
+   * 两个模式声明的名字集合必须完全相同；模式无关的派生值请写在 :root。
+   */
+  it("both mode blocks declare exactly the same token names", () => {
+    const source = readFileSync(resolve(repoRoot, SEMANTIC_FILE), "utf8");
+    const light = customPropertiesUnder(source, '[data-theme="light"]');
+    const dark = customPropertiesUnder(source, '[data-theme="dark"]');
+
+    expect(light.size).toBeGreaterThan(0);
+    expect([...light].filter((name) => !dark.has(name))).toEqual([]);
+    expect([...dark].filter((name) => !light.has(name))).toEqual([]);
+  });
+
+  /**
+   * 分类色序表达的是「第几项」，四个位次同时出现在一张图或一条配额条上时
+   * 必须互不相同——重复的色值比少一个颜色更糟，两条数据会读成同一条。
+   * 首位 --series-accent 跟着站点主色走，必然与四个固定位次中的一个撞色，
+   * 由消费方去重（见 theme/echarts.ts），所以不参与这条断言。
+   */
+  it("the four fixed series slots stay mutually distinct in both modes", () => {
+    const source = readFileSync(resolve(repoRoot, SEMANTIC_FILE), "utf8").replace(/\/\*[\s\S]*?\*\//g, "");
+
+    for (const mode of ["light", "dark"] as const) {
+      const block = new RegExp(`\\[data-theme="${mode}"\\]\\s*\\{([^{}]*)\\}`, "g");
+      const values = [...source.matchAll(block)]
+        .flatMap((match) => [...(match[1] ?? "").matchAll(/--series-([1-4])\s*:\s*([^;]+);/g)])
+        .map((declaration) => declaration[2]!.trim());
+
+      expect(values).toHaveLength(4);
+      expect(new Set(values).size).toBe(4);
+    }
+  });
+
+  /**
+   * 分类色序的四个色相就是四个可选主色，档位分工也一致（浅 700 / 深 500），
+   * 于是它们的可读性已经被上面那组 accent 对比度断言逐一钉住了。这条断言
+   * 守的是这个复用关系本身：一旦有人往色序里塞一个不在主色集合里的色相，
+   * 那个色相就没有任何对比度覆盖，必须先补断言再进来。
+   */
+  it("draws every series hue from the accent set, so accent contrast already covers them", () => {
+    const source = readFileSync(resolve(repoRoot, SEMANTIC_FILE), "utf8").replace(/\/\*[\s\S]*?\*\//g, "");
+    const stops: Record<string, string> = { light: "700", dark: "500" };
+    const offenders: string[] = [];
+
+    for (const [mode, stop] of Object.entries(stops)) {
+      const block = new RegExp(`\\[data-theme="${mode}"\\]\\s*\\{([^{}]*)\\}`, "g");
+      for (const match of source.matchAll(block)) {
+        for (const declaration of (match[1] ?? "").matchAll(/--series-([1-4])\s*:\s*var\(--palette-([a-z]+)-(\d+)\)/g)) {
+          const [, slot, hue, used] = declaration;
+          if (!ACCENTS.includes(hue as (typeof ACCENTS)[number]) || used !== stop) {
+            offenders.push(`${mode} --series-${slot}: --palette-${hue}-${used}`);
+          }
+        }
+      }
+    }
+
+    expect(offenders).toEqual([]);
+  });
+
+  /**
+   * 比例条的填充压在轨道上，是 WCAG 1.4.11 说的「理解内容所必需的图形部件」，
+   * 下限 3:1。轨道是 --surface-sunken：深色模式它是全站最暗的一档，怎么填都够；
+   * 浅色模式它接近白，只有跟着表面走档位的 accent（700）才读得出来。
+   * 这条断言存在的理由是 --meter-fill 一度取了恒 500 的 --accent-fill，
+   * 浅色实测只有 2.23–2.52:1。
+   */
+  it("meter fill clears the 3:1 non-text floor against its track in both modes", () => {
+    const p = palette();
+    const AA_NON_TEXT = 3;
+
+    for (const accent of ACCENTS) {
+      expect(contrastRatio(token(p, `--palette-${accent}-700`), token(p, SUNKEN_GROUND))).toBeGreaterThanOrEqual(AA_NON_TEXT);
+      expect(contrastRatio(token(p, `--palette-${accent}-500`), token(p, "--palette-neutral-950"))).toBeGreaterThanOrEqual(AA_NON_TEXT);
+    }
+  });
+});
+
 /* ── Mantine light-variant text contrast ─────────── */
 
 /**
@@ -861,6 +963,19 @@ describe("Mantine light variant 的文字色在浅色模式下过 AA", () => {
      * 同时失灵。 */
     expect(entry.includes(PORTAL_BRAND_SELECTOR)).toBe(true);
   });
+
+  /**
+   * Anchor 与 TypographyStylesProvider 里的 <a> 都读 --mantine-color-anchor。
+   * Mantine 默认把它指到主色 shade 6，那是填充档：压在浅色纸底上实测 3.92:1，
+   * 16px 正文过不了 AA。站内的文字档是 --brand-text（浅 700 / 深 500），
+   * 它自己随 [data-theme] 切，所以一条与模式无关的桥接覆盖两个模式。
+   * 选择器同样要两段属性自我重复，否则打不过 Mantine 的 (0,2,0)。
+   */
+  it("bridges the Mantine anchor colour onto the calibrated brand text step", () => {
+    const bridge = entry.match(/:root\[data-theme\]\[data-theme\]\s*\{([^}]*)\}/s);
+    expect(bridge, "缺少与模式无关的 :root[data-theme][data-theme] 桥接块").not.toBeNull();
+    expect(bridge![1]!.replace(/\/\*[\s\S]*?\*\//g, "")).toMatch(/--mantine-color-anchor:\s*var\(--brand-text\)/);
+  });
 });
 
 /* ── primaryShade 护栏（H-2b） ────────────────────────────── */
@@ -926,6 +1041,332 @@ describe("menu single source of truth", () => {
         `会无条件压过 ${ENTRY_FILE} 的菜单区块。菜单外观请写在那个区块里。实际内容：\n${argument}`,
     ).toBe(false);
   });
+});
+
+/* 下面几个函数服务本文件末尾的「ambient contrast budget」一组：把 token 解成
+ * 色值，再按 alpha 把光一层层叠到地面上。 */
+
+function hexChannels(hex: string): [number, number, number] {
+  const n = hex.replace("#", "");
+  return [
+    Number.parseInt(n.slice(0, 2), 16),
+    Number.parseInt(n.slice(2, 4), 16),
+    Number.parseInt(n.slice(4, 6), 16),
+  ];
+}
+
+/** 不透明底上叠一层带 alpha 的色。底不透明，逐通道线性插值即可。 */
+function washOver(tint: string, alpha: number, ground: string): string {
+  const t = hexChannels(tint);
+  const g = hexChannels(ground);
+  return `#${[0, 1, 2]
+    .map((i) => Math.round(t[i]! * alpha + g[i]! * (1 - alpha)).toString(16).padStart(2, "0"))
+    .join("")}`;
+}
+
+/**
+ * 解析某个模式块里的语义 token。值形如 `var(--palette-x)` 的解到色板色值，
+ * 形如 `color-mix(in srgb, var(--palette-x) N%, var(--surface-y))` 的直接算出来。
+ * 不自己抄一份色值，全部回到 tokens.css 与 semantic.css。
+ */
+function themeTokens(theme: "light" | "dark"): Record<string, string> {
+  const source = readFileSync(resolve(repoRoot, SEMANTIC_FILE), "utf8").replace(
+    /\/\*[\s\S]*?\*\//g,
+    "",
+  );
+  const block = source.match(new RegExp(`\\[data-theme="${theme}"\\]\\s*\\{([^{}]*)\\}`));
+  if (!block) throw new Error(`missing [data-theme="${theme}"] block`);
+  const p = palette();
+  const out: Record<string, string> = {};
+
+  for (const [, name, value] of block[1]!.matchAll(/(--[a-z0-9-]+):\s*([^;]+);/g)) {
+    const raw = value!.trim();
+    const direct = raw.match(/^var\((--palette-[a-z0-9-]+)\)$/);
+    if (direct) {
+      out[name!] = token(p, direct[1]!);
+      continue;
+    }
+    const percent = raw.match(/^(\d+)%$/);
+    if (percent) out[name!] = raw;
+  }
+
+  /* 第二遍：解 color-mix 和「指向同块内另一个语义 token」这两种间接写法，
+   * 它们的原料可能是第一遍才刚解出来的。反复扫到不再有新解出的为止，
+   * 这样别名链多长都不必关心声明顺序。 */
+  for (let pass = 0; pass < 4; pass += 1) {
+    let resolved = 0;
+    for (const [, name, value] of block[1]!.matchAll(/(--[a-z0-9-]+):\s*([^;]+);/g)) {
+      if (out[name!] !== undefined) continue;
+      const raw = value!.trim();
+
+      const alias = raw.match(/^var\((--[a-z0-9-]+)\)$/);
+      if (alias && out[alias[1]!] !== undefined) {
+        out[name!] = out[alias[1]!]!;
+        resolved += 1;
+        continue;
+      }
+
+      const mix = raw.match(
+        /^color-mix\(in srgb, var\((--[a-z0-9-]+)\) (\d+)%, var\((--[a-z0-9-]+)\)\)$/,
+      );
+      if (!mix) continue;
+      const tint = p[mix[1]!] ?? out[mix[1]!];
+      const ground = out[mix[3]!];
+      if (tint && ground) {
+        out[name!] = washOver(tint, Number(mix[2]) / 100, ground);
+        resolved += 1;
+      }
+    }
+    if (resolved === 0) break;
+  }
+  return out;
+}
+
+const AMBIENT_CSS = readFileSync(resolve(portalRoot, "styles/semantic.css"), "utf8");
+
+/** @property 上的静止坐标，是圆心位置唯一的出处。 */
+function restingCenter(axis: string): number {
+  const block = new RegExp(`@property\\s+--ambient-${axis}\\s*\\{([^}]*)\\}`).exec(AMBIENT_CSS);
+  return Number.parseFloat(/initial-value:\s*(-?[\d.]+)%/.exec(block![1]!)![1]!);
+}
+
+/** 从配方里读某一团光的半径，不在测试里抄第二份。 */
+function lightRadii(name: string): { rx: number; ry: number } {
+  const block = new RegExp(
+    `--ambient-layer-${name}:\\s*radial-gradient\\(([\\d.]+)% ([\\d.]+)%`,
+  ).exec(AMBIENT_CSS);
+  return { rx: Number.parseFloat(block![1]!), ry: Number.parseFloat(block![2]!) };
+}
+
+/** 九支域色，从配方里读，别处新增一支，用到它的每一组都自动跟上。 */
+const DOMAIN_NAMES = [
+  ...new Set([...AMBIENT_CSS.matchAll(/\[data-domain="([a-z]+)"\]/g)].map((match) => match[1]!)),
+];
+
+/* 三团光：名字、坐标下标、以及「贴着哪条边」——最后一项决定漂移只许往哪走。 */
+const AMBIENT_LIGHTS = [
+  { name: "domain", axis: 1, edge: "bottom" },
+  { name: "companion", axis: 2, edge: "right" },
+  { name: "accent", axis: 3, edge: "top" },
+] as const;
+
+/** radial-gradient(RX% RY% at CX% CY%, c, transparent 100%) 在 (x,y) 的强度。 */
+function radialAt(
+  light: { cx: number; cy: number; rx: number; ry: number },
+  x: number,
+  y: number,
+): number {
+  return Math.max(0, 1 - Math.hypot((x - light.cx) / light.rx, (y - light.cy) / light.ry));
+}
+
+/** linear-gradient(θ, c, transparent STOP%) 在 (x,y) 的强度：起点满、STOP 处归零。 */
+function linearAt(deg: number, stop: number, x: number, y: number): number {
+  const rad = (deg * Math.PI) / 180;
+  const [dx, dy] = [Math.sin(rad), -Math.cos(rad)];
+  const length = Math.abs(100 * dx) + Math.abs(100 * dy);
+  const along = 0.5 + ((x - 50) * dx + (y - 50) * dy) / length;
+  return Math.min(1, Math.max(0, 1 - along / stop));
+}
+
+/* ── 环境光的对比度预算 ─────────────────────────────────────
+ *
+ * 三团光加一层压角铺在地面上，压在全站地面正文底下：每个字的实际背景都被它
+ * 改过。所以「文字档 × 表面档」的对比度不能按干净表面算。
+ *
+ * 上一版用「峰值代数」估：每团算出自己在视口内能达到的最强值，再论证三团分居
+ * 不会叠加。它有两个洞——三团互相的残余没算，压角那一层根本没进预算。现在直接
+ * 在视口上打网格，逐点按 CSS 的合成顺序把四层叠起来，遍历全部配色组合取最差。
+ * 配方与几何都从 semantic.css 读，测试里不存第二份数。 */
+describe("ambient contrast budget", () => {
+  /* 板子不吃光（见 architecture-boundaries 的 "keeps the ambient field on the
+   * ground"），所以受照的只剩地面一档。raised / overlay 退出；sunken 本来就不在
+   * ——侧栏、输入框、进度槽自己画不透明底，光到不了它们背后。 */
+  const GROUND = "--surface-base";
+  const STEPS = 21;
+
+  /** 区域 → 伴色的对照，同样从 [data-domain] 规则里读。 */
+  const COMPANION_OF = new Map(
+    [
+      ...AMBIENT_CSS.matchAll(
+        /\[data-domain="([a-z]+)"\]\s*\{[^}]*--domain-companion:\s*var\(--domain-([a-z]+)\)/g,
+      ),
+    ].map((match) => [match[1]!, match[2]!] as const),
+  );
+
+  it("every domain declares a companion", () => {
+    expect(DOMAIN_NAMES.length).toBeGreaterThanOrEqual(9);
+    expect([...COMPANION_OF.keys()].sort()).toEqual([...DOMAIN_NAMES].sort());
+    /* 伴色是「色环上的下一支」，所以不能指回自己——那样第二团就白加了。 */
+    for (const [domain, companion] of COMPANION_OF) expect(companion).not.toBe(domain);
+  });
+
+  for (const theme of ["light", "dark"] as const) {
+    const t = themeTokens(theme);
+    const p = palette();
+
+    const geometry = Object.fromEntries(
+      AMBIENT_LIGHTS.map((light) => [
+        light.name,
+        {
+          ...lightRadii(light.name),
+          cx: restingCenter(`x${light.axis}`),
+          cy: restingCenter(`y${light.axis}`),
+          mix: Number.parseInt(t[`--ambient-mix-${light.name}`]!, 10) / 100,
+        },
+      ]),
+    );
+
+    const vignette =
+      /linear-gradient\((\d+)deg, var\(--ambient-vignette\), transparent (\d+)%\)/.exec(AMBIENT_CSS)!;
+    const vignetteDeg = Number.parseInt(vignette[1]!, 10);
+    const vignetteStop = Number.parseInt(vignette[2]!, 10) / 100;
+    const vignetteAlpha =
+      Number.parseInt(
+        /--ambient-vignette:\s*color-mix\(in srgb, var\(--surface-sunken\) (\d+)%/.exec(
+          AMBIENT_CSS,
+        )![1]!,
+        10,
+      ) / 100;
+
+    /** 一个采样点上，把四层按 CSS 的顺序（先声明的画在上面）叠出来的地面色。 */
+    function surfaceAt(
+      domainTint: string,
+      companionTint: string,
+      accentTint: string,
+      x: number,
+      y: number,
+    ): string {
+      let surface = washOver(t["--surface-sunken"]!, vignetteAlpha * linearAt(vignetteDeg, vignetteStop, x, y), t[GROUND]!);
+      surface = washOver(accentTint, geometry.accent!.mix * radialAt(geometry.accent!, x, y), surface);
+      surface = washOver(companionTint, geometry.companion!.mix * radialAt(geometry.companion!, x, y), surface);
+      return washOver(domainTint, geometry.domain!.mix * radialAt(geometry.domain!, x, y), surface);
+    }
+
+    /** 强调色四选一都可能被用户选中，两个模式都取 500 档。 */
+    const accentFills = ACCENTS.map((accent) => token(p, `--palette-${accent}-500`));
+
+    it(`${theme}: muted text keeps AA everywhere on the lit ground`, () => {
+      let worst = { ratio: Infinity, label: "" };
+      for (const domain of DOMAIN_NAMES) {
+        const domainTint = t[`--domain-${domain}`]!;
+        const companionTint = t[`--domain-${COMPANION_OF.get(domain)!}`]!;
+        for (const accentTint of accentFills) {
+          for (let i = 0; i < STEPS; i += 1) {
+            for (let j = 0; j < STEPS; j += 1) {
+              const x = (i / (STEPS - 1)) * 100;
+              const y = (j / (STEPS - 1)) * 100;
+              const surface = surfaceAt(domainTint, companionTint, accentTint, x, y);
+              const ratio = contrastRatio(t["--text-muted"]!, surface);
+              if (ratio < worst.ratio) {
+                worst = { ratio, label: `${domain} + ${accentTint} @ (${x}%, ${y}%) → ${surface}` };
+              }
+            }
+          }
+        }
+      }
+      expect(worst.ratio, `${theme} 最差一处：${worst.label}`).toBeGreaterThanOrEqual(AA_TEXT);
+    });
+
+    /* 「只有左上角有背景」是这套光场修过的原始症状：圆心太靠外、停止点又太早，
+     * 光在过中线之前就断干净，整屏大半是死平的底色。这条守的就是那件事不再发生
+     * ——每一个采样点都得有肉眼分得出的颜色。 */
+    it(`${theme}: the field covers the whole viewport, no dead flat corner`, () => {
+      const ground = hexChannels(t[GROUND]!);
+      for (const domain of DOMAIN_NAMES) {
+        const domainTint = t[`--domain-${domain}`]!;
+        const companionTint = t[`--domain-${COMPANION_OF.get(domain)!}`]!;
+        for (let i = 0; i < STEPS; i += 1) {
+          for (let j = 0; j < STEPS; j += 1) {
+            const x = (i / (STEPS - 1)) * 100;
+            const y = (j / (STEPS - 1)) * 100;
+            const lit = hexChannels(surfaceAt(domainTint, companionTint, accentFills[0]!, x, y));
+            const delta = Math.max(...lit.map((channel, k) => Math.abs(channel - ground[k]!)));
+            expect(delta, `${theme} ${domain} @ (${x}%, ${y}%) 与干净地面无差`).toBeGreaterThanOrEqual(2);
+          }
+        }
+      }
+    });
+  }
+
+  /* 上面那个最差值是按静止坐标算的，而圆心会漂。这条守的是几何本身：每团只许
+   * 沿着「离视口更远」的方向漂。
+   *
+   * 只查一个轴：离圆心最近的那个视口内的点就在圆心正对面，另一轴的差为零，椭圆
+   * 距离退化成单轴的 |Δ|/r。另一轴漂多远都不改变峰值，这一轴漂近一点就会。 */
+  it("ambient drift never brings a light closer than its resting clearance", () => {
+    const keyframeStops = (frames: string, name: string): number[] => {
+      const block = new RegExp(`@keyframes\\s+${frames}\\s*\\{([\\s\\S]*?)\\n\\}`).exec(AMBIENT_CSS);
+      return [...block![1]!.matchAll(new RegExp(`--${name}:\\s*(-?[\\d.]+)%`, "g"))].map((match) =>
+        Number.parseFloat(match[1]!),
+      );
+    };
+    /* 贴下边的间距 = y-100，贴右边的 = x-100，贴上边的 = -y。 */
+    const clearanceOf = (edge: string, value: number): number =>
+      edge === "top" ? -value : value - 100;
+
+    for (const light of AMBIENT_LIGHTS) {
+      const axis = light.edge === "right" ? `x${light.axis}` : `y${light.axis}`;
+      const rest = clearanceOf(light.edge, restingCenter(axis));
+      expect(rest, `${light.name} 静止时圆心必须在视口外`).toBeGreaterThan(0);
+
+      const stops = keyframeStops(`ambient-drift-${light.name}`, `ambient-${axis}`);
+      expect(stops.length, `${light.name} 的关键帧里没写 --ambient-${axis}`).toBeGreaterThan(0);
+      for (const value of stops) {
+        expect(
+          clearanceOf(light.edge, value),
+          `${light.name} 漂到 --ambient-${axis}: ${value}% 时比静止更靠近视口`,
+        ).toBeGreaterThanOrEqual(rest);
+      }
+    }
+  });
+});
+
+/* ── 色渍上的文字档 ─────────────────────────────────────────
+ *
+ * --brand-tint 与 --domain-tint 是压在 raised 上的一层色渍，不是阶梯上的一档。
+ * 板子停用环境光之后它们不再被照，但文字档仍旧不能照抄 raised 那套：色渍本身
+ * 就把面推离了 raised，浅色推暗、深色推亮，两边都在吃对比度。
+ *
+ * 这一组盯的是余量而不是及格线。--text-muted 压在色渍上实测最差 4.91（浅）／
+ * 4.51（深）——名义上过了 AA，可 0.01 的余量等于没有，色渍浓度动一格就掉出去。
+ * 所以色渍上一律 --text-secondary；品牌色压在自家色渍上走 --brand-on-tint。
+ * 最后那条负向断言把「muted 在色渍上没有余量」钉成事实：哪天它真宽裕了，这里
+ * 会失败，提醒把规则本身重新想一遍，而不是让规则悬在一个已经不成立的理由上。 */
+describe("tinted surface ink", () => {
+  /** 色渍名 → 色值，两个模式各算一遍。 */
+  function tintsOf(t: Record<string, string>): Map<string, string> {
+    const mix = Number.parseInt(t["--domain-mix-tint"]!, 10) / 100;
+    const tints = new Map([["brand", t["--brand-tint"]!]]);
+    for (const domain of DOMAIN_NAMES) {
+      tints.set(domain, washOver(t[`--domain-${domain}`]!, mix, t["--surface-raised"]!));
+    }
+    return tints;
+  }
+
+  for (const theme of ["light", "dark"] as const) {
+    const t = themeTokens(theme);
+
+    it(`${theme}: secondary ink clears AA on every tint`, () => {
+      for (const [name, tint] of tintsOf(t)) {
+        expect(contrastRatio(t["--text-secondary"]!, tint), `${theme} ${name} 色渍`).toBeGreaterThanOrEqual(
+          AA_TEXT,
+        );
+      }
+    });
+
+    it(`${theme}: brand ink on its own tint goes through --brand-on-tint`, () => {
+      expect(contrastRatio(t["--brand-on-tint"]!, t["--brand-tint"]!)).toBeGreaterThanOrEqual(AA_TEXT);
+      /* 选中的页签既压在色渍上、也可能压在板面上，两种底都得站得住。 */
+      expect(contrastRatio(t["--brand-on-tint"]!, t["--surface-raised"]!)).toBeGreaterThanOrEqual(AA_TEXT);
+    });
+
+    it(`${theme}: muted ink has no headroom left on a tint, which is why it is banned there`, () => {
+      const worst = Math.min(
+        ...[...tintsOf(t).values()].map((tint) => contrastRatio(t["--text-muted"]!, tint)),
+      );
+      expect(worst).toBeLessThan(AA_TEXT + 0.5);
+    });
+  }
 });
 
 describe("token file coverage", () => {

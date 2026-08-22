@@ -1,8 +1,6 @@
-import type { GuildWarActiveResponse } from "@guild/shared";
+import type { GuildWarActiveResponse, MemberAvailability } from "@guild/shared";
 import { useEffect, useMemo, type Dispatch, type SetStateAction } from "react";
 import type { UsersListResponse } from "../../services/UserService";
-import { getGuildWarMemberStatLabel, getGuildWarMetricValue } from "@portal/utils/game-rules";
-import { GUILD_WAR_KDA_KEY } from "@guild/shared";
 
 export type DragMemberItem = {
   itemId: string;
@@ -11,6 +9,7 @@ export type DragMemberItem = {
   power: number;
   class: string;
   subtitle: string;
+  avatarMediaId: string | null;
 };
 
 export type DragMemberColumn = {
@@ -18,6 +17,17 @@ export type DragMemberColumn = {
   title: string;
   locked: boolean;
   members: DragMemberItem[];
+};
+
+export type ActiveGuildWarMemberDetail = {
+  username: string;
+  power: number;
+  classes: string[];
+  titleHtml: string | null;
+  availability: MemberAvailability | null;
+  vacationStart: string | null;
+  vacationEnd: string | null;
+  notes: string | null;
 };
 
 function shallowArrayEqual<T>(left: readonly T[], right: readonly T[]): boolean {
@@ -60,12 +70,22 @@ export function useGuildWarDragData({ activeData, usersData, poolLabel, draft }:
   const { teamDraftNames, setTeamDraftNames, setTeamDraftNotes, teamDraftLocks, setTeamDraftLocks, teamOrder, setTeamOrder } = draft;
 
   const userDataMap = useMemo(() => {
-    const map = new Map<string, { username: string; power: number; class: string }>();
+    const map = new Map<
+      string,
+      ActiveGuildWarMemberDetail & { class: string; avatarMediaId: string | null }
+    >();
     for (const item of usersData ?? []) {
       map.set(item.user.id, {
         username: item.user.username,
         power: item.profile.power,
         class: item.profile.classes[0] ?? "Unknown",
+        classes: item.profile.classes,
+        avatarMediaId: item.profile.avatar_media_id,
+        titleHtml: item.profile.title_html,
+        availability: item.profile.availability,
+        vacationStart: item.profile.vacation_start,
+        vacationEnd: item.profile.vacation_end,
+        notes: item.profile.notes,
       });
     }
     return map;
@@ -145,54 +165,36 @@ export function useGuildWarDragData({ activeData, usersData, poolLabel, draft }:
   );
 
   const activeMemberDetailByUserId = useMemo(() => {
-    const map = new Map<
-      string,
-      {
-        username: string;
-        power: number;
-        classes: string[];
-        titleHtml: string | null;
-        teamName: string;
-        roleTag: string | null;
-        stats: Record<string, number | null>;
-      }
-    >();
+    const map = new Map<string, ActiveGuildWarMemberDetail>();
+
+    const resolveDetail = (userId: string): ActiveGuildWarMemberDetail => {
+      const userData = userDataMap.get(userId);
+      return {
+        username: userData?.username ?? userId,
+        power: userData?.power ?? 0,
+        classes: userData?.classes ?? (userData?.class ? [userData.class] : []),
+        titleHtml: userData?.titleHtml ?? null,
+        availability: userData?.availability ?? null,
+        vacationStart: userData?.vacationStart ?? null,
+        vacationEnd: userData?.vacationEnd ?? null,
+        notes: userData?.notes ?? null,
+      };
+    };
 
     for (const team of orderedTeams) {
-      const teamName = (teamDraftNames[team.id] ?? team.team_name).trim() || team.team_name;
       for (const member of team.members) {
-        const userData = userDataMap.get(member.user_id);
-        const fullUser = (usersData ?? []).find((u) => u.user.id === member.user_id);
-        map.set(member.user_id, {
-          username: userData?.username ?? member.user_id,
-          power: userData?.power ?? 0,
-          classes: fullUser?.profile.classes ?? (userData?.class ? [userData.class] : []),
-          titleHtml: fullUser?.profile.title_html ?? null,
-          teamName,
-          roleTag: member.role_tag ?? null,
-          stats: { ...(member.stats ?? {}) },
-        });
+        map.set(member.user_id, resolveDetail(member.user_id));
       }
     }
 
     for (const member of pool) {
       if (!map.has(member.userId)) {
-        const userData = userDataMap.get(member.userId);
-        const fullUser = (usersData ?? []).find((u) => u.user.id === member.userId);
-        map.set(member.userId, {
-          username: userData?.username ?? member.userId,
-          power: userData?.power ?? 0,
-          classes: fullUser?.profile.classes ?? (userData?.class ? [userData.class] : []),
-          titleHtml: fullUser?.profile.title_html ?? null,
-          teamName: "Pool",
-          roleTag: null,
-          stats: {},
-        });
+        map.set(member.userId, resolveDetail(member.userId));
       }
     }
 
     return map;
-  }, [orderedTeams, pool, teamDraftNames, userDataMap, usersData]);
+  }, [orderedTeams, pool, userDataMap]);
 
   const dragColumns = useMemo<DragMemberColumn[]>(() => {
     const teamColumns = orderedTeams.map((team) => ({
@@ -207,7 +209,8 @@ export function useGuildWarDragData({ activeData, usersData, poolLabel, draft }:
           username: userData?.username ?? member.user_id,
           power: userData?.power ?? 0,
           class: userData?.class ?? "Unknown",
-          subtitle: `${member.role_tag ? `[${member.role_tag}] ` : ""}${getGuildWarMemberStatLabel(GUILD_WAR_KDA_KEY)}: ${getGuildWarMetricValue(member.stats, GUILD_WAR_KDA_KEY).toFixed(2)}`,
+          subtitle: `${userData?.class ?? "Unknown"} ${userData?.power ?? 0}`,
+          avatarMediaId: userData?.avatarMediaId ?? null,
         };
       }),
     }));
@@ -225,6 +228,7 @@ export function useGuildWarDragData({ activeData, usersData, poolLabel, draft }:
           power: userData?.power ?? 0,
           class: userData?.class ?? "Unknown",
           subtitle: "Pool",
+          avatarMediaId: userData?.avatarMediaId ?? null,
         };
       }),
     };

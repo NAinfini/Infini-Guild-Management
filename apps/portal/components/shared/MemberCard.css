@@ -3,7 +3,10 @@
   width: 100%;
   border: 1px solid var(--border-subtle);
   border-radius: var(--member-card-radius);
-  background: var(--surface-base);
+  /* 卡是板子（L2），走和 Mantine Paper 同一条台面配方。原先取的是 base——那正是
+     工作区自己的色值，一张卡和它脚下的地面同色，全靠 1px 描边说明「这是一张卡」。
+     配方本身不带环境光：光打在地面上，板压在光上面。 */
+  background: var(--plate-fill);
   color: inherit;
   text-align: left;
   cursor: pointer;
@@ -18,19 +21,6 @@
   transition: box-shadow var(--transition-smooth), border-color var(--transition-smooth);
 }
 
-/*
- * 非颜色属性差异（backdrop-filter 玻璃模糊只在深色模式加），按附录 E 节把选择器
- * 从 .dark 改成 [data-theme="dark"]，而不是整块删除。background 从基础规则的
- * 纯色 var(--surface-base) 换成 88% 混色，是深色模式专属的玻璃质感处理，也一并
- * 保留；border-color 与基础规则同值，留着只是显式声明，不动它。
- */
-[data-theme="dark"] .member-card {
-  background: color-mix(in srgb, var(--surface-base) 88%, transparent);
-  backdrop-filter: blur(6px);
-  -webkit-backdrop-filter: blur(6px);
-  border-color: var(--border-subtle);
-}
-
 /* 3D 倾斜的「舞台」。perspective 必须挂在卡片的父级上而不是卡片自己身上：
  * 挂在自己身上时每张卡各有一个灭点，鼠标扫过一排会看到透视方向逐张跳变。
  * 附带后果——perspective 会建立层叠上下文，所以悬停时把卡抬到邻居之上的
@@ -40,6 +30,9 @@
   cursor: pointer;
   height: 100%;
   perspective: 800px;
+  /* 光环那层按它定位，见下面 ::before。perspective 已经开了层叠上下文，
+     所以光环的 z-index: -1 只沉到这张卡的按钮底下，不会掉到整块网格背后。 */
+  position: relative;
 }
 
 .member-card:focus-visible {
@@ -64,24 +57,85 @@
    * 那个。 */
   will-change: transform;
   height: 100%;
+  /* 卡是 button，又被拉到整行的高度，内容比它短。button 的 UA 布局会把短内容
+   * 垂直居中——同一行里徽章多一枚的卡，头像就整体往下掉一截，一排头像的上沿
+   * 对不齐。显式给列向 flex，内容从顶上开始排，卡多高都不影响。 */
+  display: flex;
+  flex-direction: column;
+}
+
+/* 头像靠 aspect-ratio 撑成正方形，列向 flex 下默认可压缩：卡比内容矮时会被压扁
+   成长方形。它是这张卡里唯一有固定比例的东西，不参与分配剩余高度。 */
+.member-card--full > .member-card__avatar-wrap {
+  flex: none;
 }
 
 /*
- * 悬停辉光 = 色散投影：左冷、中紫、右暖三束，模拟一束白光穿过卡面之后被
+ * 悬停辉光 = 色散光环：冷、紫、暖三段绕卡一圈，模拟一束白光穿过卡面之后被
  * 拆开（三个色相固定不随主色变，理由见 semantic.css 的 --glow-dispersion-*）；
  * 只有边框跟着当前主色走，让辉光仍然认得出是这个站点的。
+ *
+ * 三段原先是三道方向写死的投影，堆在卡的下方；现在同样这三段铺成整圈并转起来，
+ * 读成同一束光绕着卡走。锥形渐变的起始角是 0deg 那一帧，冷/紫/暖仍落在
+ * 左/下/右，和原来的排布对得上。
+ *
+ * 用伪元素而不是继续用 box-shadow：卡自己带着 transition: box-shadow，逐帧改
+ * 投影会让每一帧都再起一段过渡——和下面写 transform 时躲的是同一个坑。光环不
+ * 参与那条过渡，只有淡入淡出走 opacity。
  *
  * 倾斜与缩放刻意不在这里。CSS transition 是定时长的，光标从半米外甩过来
  * 和贴着边挪一格花的时间一样；弹簧的时长是由 F = -k(x - target) - c·v 解
  * 出来的，快甩会滞后、过冲、再稳住。那个手感是这次改版的全部目的，所以
  * transform 由 MemberCard.tsx 的 useSpring 逐帧写内联样式。
  */
+@property --card-halo-angle {
+  syntax: "<angle>";
+  inherits: false;
+  initial-value: 0deg;
+}
+
+.member-card__frame::before {
+  content: "";
+  position: absolute;
+  /* 上边留得少、下边留得多：光环整体偏下，卡才有原来那道投影给的浮起感。 */
+  inset: -12px -18px -24px;
+  z-index: -1;
+  border-radius: calc(var(--member-card-radius) + 18px);
+  background: conic-gradient(
+    from var(--card-halo-angle),
+    color-mix(in srgb, var(--glow-dispersion-cool) 38%, transparent),
+    color-mix(in srgb, var(--glow-dispersion-mid) 34%, transparent),
+    color-mix(in srgb, var(--glow-dispersion-warm) 34%, transparent),
+    color-mix(in srgb, var(--glow-dispersion-cool) 38%, transparent)
+  );
+  filter: blur(18px);
+  opacity: 0;
+  transition: opacity var(--transition-smooth);
+  pointer-events: none;
+}
+
+/* 浅色模式收成一道投影。附录的明暗对照表把 Roster 效果在浅色下定为
+   「soft coloured drop shadow, no halo」，理由是亮底上绕卡一圈的光读不成光，
+   只会读成一圈脏边。所以这里不另做一套实现，只把上边缘塞进卡里 10px——能看见的
+   部分从整圈收到下缘，转还是照转，露出来的那段色相仍在变。 */
+[data-theme="light"] .member-card__frame::before {
+  inset: 10px -14px -26px;
+  filter: blur(14px);
+}
+
 .member-card__frame:hover .member-card--full {
   border-color: color-mix(in srgb, var(--accent-fill) 40%, transparent);
-  box-shadow:
-    -16px 14px 30px -8px color-mix(in srgb, var(--glow-dispersion-cool) 38%, transparent),
-    0 18px 34px -8px color-mix(in srgb, var(--glow-dispersion-mid) 34%, transparent),
-    16px 14px 30px -8px color-mix(in srgb, var(--glow-dispersion-warm) 34%, transparent);
+}
+
+.member-card__frame:hover::before {
+  opacity: 1;
+  animation: member-card-halo-spin 6s linear infinite;
+}
+
+@keyframes member-card-halo-spin {
+  to {
+    --card-halo-angle: 1turn;
+  }
 }
 
 /*
@@ -331,6 +385,9 @@
   display: inline-flex;
   flex: 0 0 auto;
   line-height: 0;
+  /* 头像是块级图形，不该跟着基线走：字母占位的基线在文字底部，图片那一颗的基线在盒子底边，
+     于是图片头像会额外吃掉外层行盒的下沉空间，在一摞头像里看着比旁边大一圈。 */
+  vertical-align: top;
 }
 
 .member-role-avatar__roles {
@@ -383,4 +440,7 @@
 @media (prefers-reduced-motion: reduce) {
   .member-card { transition: none; }
   .member-card__spec { transition: none; }
+  /* 光环停在起始角，冷/紫/暖还是落在左/下/右——不转，但悬停仍然亮起来。 */
+  .member-card__frame::before,
+  .member-card__frame:hover::before { transition: none; animation: none; }
 }

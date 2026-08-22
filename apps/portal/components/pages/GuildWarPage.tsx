@@ -5,7 +5,7 @@ import {
   useSensor,
   useSensors,
 } from "@dnd-kit/core";
-import { sortableKeyboardCoordinates } from "@dnd-kit/sortable";
+import { guildWarKeyboardCoordinates } from "../feature/guild-war/guildWarDragGeometry";
 import { buildEChartsTheme } from "../../theme/echarts";
 import { useTheme } from "../../providers/ThemeProvider";
 import { useSearch } from "@tanstack/react-router";
@@ -96,7 +96,7 @@ export function GuildWarPage() {
   const guildWarSearch = useSearch({ strict: false }) as GuildWarRouteSearch;
   const navigate = useNavigate();
   const queryClient = useQueryClient();
-  const { theme: currentTheme } = useTheme();
+  const { theme: currentTheme, accent } = useTheme();
 
   useEffect(() => {
     if ("requestIdleCallback" in window) {
@@ -111,10 +111,18 @@ export function GuildWarPage() {
   const { canManage: canManagePermission } = useEffectivePermissions();
   const isModerator = canManagePermission(["guildwar.teams.edit"]);
   const canManageActive = isModerator && !isExternalView;
+  const canViewMemberNotes = canManagePermission(["admin.users.view"]) && !isExternalView;
   const canCreateWarEvent = canManagePermission(["events.create"]) && !isExternalView;
   const { showError } = useAppError();
-  const chartThemeName = useMemo(() => `guild-${currentTheme}`, [currentTheme]);
-  const chartThemeConfig = useMemo(() => buildEChartsTheme(currentTheme), [currentTheme]);
+  /* 主题名要带上主色：ECharts 的 registerTheme 按名字缓存，同名不会重新读配置。
+     只用 currentTheme 的话，换主色后图表会一直用注册时那一套颜色。 */
+  const chartThemeName = useMemo(() => `guild-${currentTheme}-${accent}`, [accent, currentTheme]);
+  const chartThemeConfig = useMemo(
+    () => buildEChartsTheme(currentTheme),
+    /* accent 不出现在函数签名里——它通过 <html data-accent> 影响计算值，
+       依赖数组必须显式列出，否则换主色时不会重建。 */
+    [accent, currentTheme],
+  );
   const chartPalette = chartThemeConfig.color;
   const guildWarService = useMemo(
     () =>
@@ -199,7 +207,7 @@ export function GuildWarPage() {
       },
     }),
     useSensor(KeyboardSensor, {
-      coordinateGetter: sortableKeyboardCoordinates,
+      coordinateGetter: guildWarKeyboardCoordinates,
     }),
   );
 
@@ -345,11 +353,13 @@ export function GuildWarPage() {
           <Tabs.Tab value="analytics">{t("tab.analytics")}</Tabs.Tab>
         </Tabs.List>
         {!isExternalView ? (
-          <Tabs.Panel value="active" pt="md">
+          /* --fill：作战板要顶到内容区底边，池子固定、队伍区自己滚，高度从外层 flex 链上要。 */
+          <Tabs.Panel value="active" pt="md" className="guild-war-page__panel--fill">
             <GuildWarActiveTab
               selectedEventId={activeSelectedEventId}
               setSelectedEventId={setSelectedEventId}
               canManageActive={canManageActive}
+              canViewMemberNotes={canViewMemberNotes}
               activeController={activeController}
               guildWarDrag={guildWarDrag}
               guildWarHistory={guildWarHistory}

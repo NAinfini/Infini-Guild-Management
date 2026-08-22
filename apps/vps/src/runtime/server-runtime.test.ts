@@ -1,15 +1,19 @@
 import { createApplication } from "@guild/application";
 import { createAuthorizationContext, type RateLimitDecision } from "@guild/kernel";
 import type { SqlExecutor } from "@guild/kernel";
-import { DatabaseSync } from "node:sqlite";
+import { mkdirSync, mkdtempSync, rmSync } from "node:fs";
 import type { Server } from "node:http";
+import { tmpdir } from "node:os";
+import path from "node:path";
 import type { Duplex } from "node:stream";
 import type { WebSocketServer } from "ws";
 import { describe, expect, it, vi } from "vitest";
+import { NodeSqlExecutor } from "../adapters/node-sql-executor.js";
 import type { VpsNotificationWebSocketHub } from "./notification-websocket-hub.js";
-import { readVpsRuntimeConfig } from "./config.js";
+import { readVpsRuntimeConfig, type VpsRuntimeConfig } from "./config.js";
 import {
   createVpsServerRuntime,
+  type CloseableSqlExecutor,
   type VpsServerRuntimeDependencies,
   type VpsRuntimeTimings,
 } from "./server-runtime.js";
@@ -32,6 +36,7 @@ const AUTHENTICATED = createAuthorizationContext({
 const ANONYMOUS = createAuthorizationContext(null);
 
 type FixtureOptions = Readonly<{
+  config?: VpsRuntimeConfig;
   apiFetch?: (request: Request) => Promise<Response>;
   staticFetch?: (request: Request) => Promise<Response | null>;
   httpClose?: (callback: (error?: Error) => void) => void;
@@ -40,9 +45,11 @@ type FixtureOptions = Readonly<{
 
 function fixture(options: FixtureOptions = {}) {
   const events: string[] = [];
-  const databaseClose = vi.fn(() => events.push("database"));
-  const database = { close: databaseClose } as unknown as DatabaseSync;
-  const sql = {} as SqlExecutor;
+  const sqlClose = vi.fn(async () => {
+    events.push("database");
+  });
+  const sqlTerminate = vi.fn(async () => undefined);
+  const sql = { close: sqlClose, terminate: sqlTerminate } as unknown as CloseableSqlExecutor;
   const deferredDrain = vi.fn(async () => {
     events.push("deferred");
   });
@@ -116,6 +123,7 @@ function fixture(options: FixtureOptions = {}) {
       siteConfig: {
         getPublic: vi.fn(async () => ({
           site_name: "Guild",
+          site_description: "A focused home for our guild.",
           site_logo_media_id: null,
           default_site_logo_url: "/logo.svg",
         })),
@@ -127,8 +135,6 @@ function fixture(options: FixtureOptions = {}) {
   const createHttpServer = vi.fn(() => server);
   const dependencies: Partial<VpsServerRuntimeDependencies> = {
     prepareFilesystem: vi.fn(),
-    openDatabase: vi.fn(() => database),
-    configureDatabase: vi.fn(),
     createSql: vi.fn(() => sql),
     assertSchema,
     createBlobStore: vi.fn(() => ({} as never)),
@@ -152,7 +158,7 @@ function fixture(options: FixtureOptions = {}) {
     info: vi.fn(),
     error: vi.fn(),
   };
-  const runtime = createVpsServerRuntime(RUNTIME_CONFIG, {
+  const runtime = createVpsServerRuntime(options.config ?? RUNTIME_CONFIG, {
     dependencies,
     timings: options.timings,
   });
@@ -160,7 +166,7 @@ function fixture(options: FixtureOptions = {}) {
     runtime,
     events,
     dependencies,
-    databaseClose,
+    sqlClose,
     deferredDrain,
     scheduler,
     hub,
@@ -208,21 +214,99 @@ async function flushUntil(predicate: () => boolean): Promise<void> {
 
 describe("VPS server composition root", () => {
   it("has no construction side effects and rejects an unmigrated SQLite database", async () => {
-    const database = new DatabaseSync(":memory:");
-    const openDatabase = vi.fn(() => database);
-    const runtime = createVpsServerRuntime(RUNTIME_CONFIG, {
-      dependencies: {
-        prepareFilesystem: vi.fn(),
-        openDatabase,
-        configureDatabase: vi.fn(),
-        error: vi.fn(),
-      },
-    });
+    const directory = mkdtempSync(path.join(tmpdir(), "guild-vps-"));
+    try {
+      const created: NodeSqlExecutor[] = [];
+      const createSql = vi.fn((databasePath: string) => {
+        const executor = new NodeSqlExecutor(databasePath, { readers: 1 });
+        created.push(executor);
+        return executor;
+      });
+      const runtime = createVpsServerRuntime(readVpsRuntimeConfig({
+        IG_PUBLIC_URL: PUBLIC_URL,
+        IG_INVITE_TOKEN_SECRET: SECRET,
+        IG_AUDIT_DOWNLOAD_SECRET: SECRET,
+      }, directory), {
+        dependencies: {
+          prepareFilesystem: (config) => {
+            mkdirSync(path.dirname(config.databasePath), { recursive: true });
+          },
+          createSql,
+          error: vi.fn(),
+        },
+      });
 
-    expect(openDatabase).not.toHaveBeenCalled();
-    await expect(runtime.start()).rejects.toThrow(/schema|migration|initialized/i);
-    expect(runtime.state).toBe("stopped");
-    expect(() => database.exec("SELECT 1")).toThrow();
+      expect(createSql).not.toHaveBeenCalled();
+      await expect(runtime.start()).rejects.toThrow(/schema|migration|initialized/i);
+      expect(runtime.state).toBe("stopped");
+      await expect(created[0]?.execute({ sql: "SELECT 1", method: "get" }))
+        .rejects.toThrow("SQLite executor is closed");
+    } finally {
+      rmSync(directory, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
+    }
+  });
+
+  it("serves maintenance responses using only the HTTP boundary", async () => {
+    const value = fixture({
+      config: Object.freeze({ ...RUNTIME_CONFIG, maintenanceMode: true }),
+    });
+    await value.runtime.start();
+
+    expect(value.runtime.state).toBe("running");
+    expect(value.createHttpServer).toHaveBeenCalledOnce();
+    for (const dependency of [
+      value.dependencies.prepareFilesystem,
+      value.dependencies.createSql,
+      value.dependencies.assertSchema,
+      value.dependencies.createBlobStore,
+      value.dependencies.createDeferred,
+      value.dependencies.createRateLimiter,
+      value.dependencies.createHub,
+      value.dependencies.createApplication,
+      value.dependencies.createStaticFiles,
+      value.dependencies.createScheduler,
+      value.dependencies.createWebSocketServer,
+    ]) {
+      expect(dependency).not.toHaveBeenCalled();
+    }
+
+    const page = await value.runtime.handleHttp(
+      new Request("http://internal/login"),
+      incoming("/login"),
+    );
+    expect(page.status).toBe(503);
+    expect(await page.text()).toContain("系统维护中");
+
+    const api = await value.runtime.handleHttp(
+      new Request("http://internal/api/site-config"),
+      incoming("/api/site-config"),
+    );
+    expect(api.status).toBe(503);
+    expect(api.headers.get("Retry-After")).toBe("300");
+
+    const health = await value.runtime.handleHttp(
+      new Request("http://internal/api/health"),
+      incoming("/api/health"),
+    );
+    expect(health.status).toBe(200);
+    expect(await health.json()).toEqual({ ok: true, maintenance: true });
+
+    const head = await value.runtime.handleHttp(
+      new Request("http://internal/login", { method: "HEAD" }),
+      incoming("/login"),
+    );
+    expect(head.status).toBe(503);
+    expect(await head.text()).toBe("");
+
+    const socket = upgradeSocket();
+    await value.runtime.handleUpgrade(incoming("/ws", PUBLIC_URL), socket.socket, Buffer.alloc(0));
+    expect(socket.end).toHaveBeenCalledWith(expect.stringContaining("503 Maintenance in progress"));
+    expect(socket.end).toHaveBeenCalledWith(expect.stringContaining("Retry-After: 300"));
+
+    await value.runtime.stop();
+    expect(value.runtime.state).toBe("stopped");
+    expect(value.httpClose).toHaveBeenCalledOnce();
+    expect(value.events).toEqual(["http-close"]);
   });
 
   it("aborts a blocked startup without activating services or closing an in-use database", async () => {
@@ -251,11 +335,12 @@ describe("VPS server composition root", () => {
     expect(value.hub.start).not.toHaveBeenCalled();
     expect(value.scheduler.start).not.toHaveBeenCalled();
     expect(value.createHttpServer).not.toHaveBeenCalled();
-    expect(value.databaseClose).not.toHaveBeenCalled();
+    expect(value.sqlClose).not.toHaveBeenCalled();
   });
 
   it("forwards shared API routes and non-API routes to the static fallback", async () => {
     const value = fixture();
+    expect(RUNTIME_CONFIG.maintenanceMode).toBe(false);
     await value.runtime.start();
 
     const apiResponse = await value.runtime.handleHttp(
@@ -272,6 +357,21 @@ describe("VPS server composition root", () => {
     );
     expect(await staticResponse.text()).toBe("static:/guild/members");
     expect(value.apiFetch).toHaveBeenCalledOnce();
+    await value.runtime.stop();
+  });
+
+  it("answers a plain HTTP request to /ws with 426 instead of the static fallback", async () => {
+    const value = fixture();
+    await value.runtime.start();
+
+    const response = await value.runtime.handleHttp(
+      new Request("http://internal/ws"),
+      incoming("/ws"),
+    );
+    expect(response.status).toBe(426);
+    expect(await response.text()).toBe("Expected websocket");
+    expect(value.staticFetch).not.toHaveBeenCalled();
+    expect(value.apiFetch).not.toHaveBeenCalled();
     await value.runtime.stop();
   });
 
@@ -340,7 +440,7 @@ describe("VPS server composition root", () => {
 
     const stopping = value.runtime.stop();
     await flushUntil(() => value.events.includes("hub-stop"));
-    expect(value.databaseClose).not.toHaveBeenCalled();
+    expect(value.sqlClose).not.toHaveBeenCalled();
     releasePreparation({ accepted: true, claim: { id: "paused-claim" } });
     await upgrading;
     await stopping;
@@ -348,7 +448,7 @@ describe("VPS server composition root", () => {
     expect(socket.end).toHaveBeenCalledWith(expect.stringContaining("503 Server stopping"));
     expect(value.cancelConnection).toHaveBeenCalledWith({ id: "paused-claim" });
     expect(value.webSockets.handleUpgrade).not.toHaveBeenCalled();
-    expect(value.databaseClose).toHaveBeenCalledOnce();
+    expect(value.sqlClose).toHaveBeenCalledOnce();
   });
 
   it("stops scheduler, WebSockets, HTTP, deferred work, and SQLite in order", async () => {
@@ -386,7 +486,7 @@ describe("VPS server composition root", () => {
     await value.runtime.stop();
     expect(value.scheduler.stop).toHaveBeenCalledOnce();
     expect(value.hub.stop).toHaveBeenCalledOnce();
-    expect(value.databaseClose).toHaveBeenCalledOnce();
+    expect(value.sqlClose).toHaveBeenCalledOnce();
   });
 
   it("forces lingering HTTP connections but keeps SQLite open when quiescence times out", async () => {
@@ -408,7 +508,7 @@ describe("VPS server composition root", () => {
 
     expect(value.closeAllConnections).toHaveBeenCalledOnce();
     expect(value.events.indexOf("http-force-close")).toBeLessThan(value.events.indexOf("deferred"));
-    expect(value.databaseClose).not.toHaveBeenCalled();
+    expect(value.sqlClose).not.toHaveBeenCalled();
     expect(value.runtime.state).toBe("stopping");
   });
 });

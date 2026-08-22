@@ -10,7 +10,7 @@ import { nanoid } from "nanoid";
 import { useCallback, useEffect, useRef } from "react";
 import { apiRequest } from "../api/client";
 import { useNotificationStore } from "../stores/notifications";
-import { isIsoDate, toIsoOrNow } from "../utils/iso-dates";
+import { isIsoDate, toIsoOrNow } from "../utils/datetime";
 
 type UseNotificationSyncOptions = {
   enabled?: boolean;

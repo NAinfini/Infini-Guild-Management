@@ -143,6 +143,7 @@ export function presentMember(member: WarMemberRecord, includeUsername = false) 
     id: member.id,
     war_team_id: member.teamId ?? "",
     user_id: member.userId,
+    avatar_media_id: member.avatarMediaId,
     role_tag: member.roleTag,
     sort_order: member.sortOrder,
     stats: member.stats,

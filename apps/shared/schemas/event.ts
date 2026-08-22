@@ -209,7 +209,7 @@ function refineEventRules(
   value: {
     type?: string;
     start_at?: string;
-    end_at?: string;
+    end_at?: string | null;
     poll?: unknown;
     capacity?: unknown;
     winner_count?: unknown;
@@ -223,20 +223,20 @@ function refineEventRules(
     ctx.addIssue({ code: "custom", path: ["end_at"], message: "end_at must be after start_at" });
   }
   if (value.type === "poll") {
-    if (isUpdate ? value.end_at === undefined : !value.end_at) {
+    if (isUpdate ? typeof value.end_at !== "string" : !value.end_at) {
       ctx.addIssue({ code: "custom", path: ["end_at"], message: "Poll events require end_at" });
     }
     if (!value.poll) {
       ctx.addIssue({ code: "custom", path: ["poll"], message: "Poll events require poll settings" });
     }
-    if (value.capacity !== undefined) {
+    if (value.capacity !== undefined && value.capacity !== null) {
       ctx.addIssue({ code: "custom", path: ["capacity"], message: "Poll events do not use capacity" });
     }
   } else if (value.poll !== undefined) {
     ctx.addIssue({ code: "custom", path: ["poll"], message: "Only poll events can include poll settings" });
   }
   if (value.type === "raffle") {
-    if (isUpdate ? value.end_at === undefined : !value.end_at) {
+    if (isUpdate ? typeof value.end_at !== "string" : !value.end_at) {
       ctx.addIssue({ code: "custom", path: ["end_at"], message: "Raffle events require end_at" });
     }
     if (!isUpdate && !value.winner_count) {
@@ -250,6 +250,9 @@ function refineEventRules(
 export const createEventSchema = eventMutationSchema.superRefine((v, ctx) => refineEventRules(v, ctx, false));
 
 export const updateEventSchema = eventMutationSchema.partial().extend({
+  description: z.string().max(L.eventDescription.max).nullable().optional(),
+  end_at: z.string().datetime().nullable().optional(),
+  capacity: z.number().int().positive().max(L.eventParticipantsPerEvent.max).nullable().optional(),
   pinned: z.boolean().optional(),
   signup_locked: z.boolean().optional(),
   archived_at: z.string().datetime().nullable().optional(),
@@ -345,6 +348,10 @@ const templateMutationSchema = z.object({
 
 export const createTemplateSchema = templateMutationSchema.superRefine(refineClassQuotas);
 
-export const updateTemplateSchema = templateMutationSchema.partial().superRefine(refineClassQuotas);
+export const updateTemplateSchema = templateMutationSchema.partial().extend({
+  description: z.string().max(L.eventDescription.max).nullable().optional(),
+  duration_minutes: z.number().int().min(0).nullable().optional(),
+  capacity: z.number().int().positive().max(L.eventParticipantsPerEvent.max).nullable().optional(),
+}).superRefine(refineClassQuotas);
 
 export type RecurrenceRule = z.infer<typeof recurrenceRuleSchema>;

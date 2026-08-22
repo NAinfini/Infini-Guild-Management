@@ -1,14 +1,13 @@
-import "@testing-library/jest-dom/vitest";
-import { cleanup } from "@testing-library/react";
 import { afterEach, vi } from "vitest";
 
-afterEach(() => {
-  if (typeof document !== "undefined") {
-    cleanup();
-  }
-});
-
+/* 这个文件只补 jsdom 的缺口。声明了 `@vitest-environment node` 的用例不碰 DOM，
+ * 把 testing-library 整套拉进来是白付一次模块求值——而 setupFiles 是按项目配置的，
+ * 逐文件跑，省下的是每个 node 用例一次。 */
 if (typeof window !== "undefined") {
+  await import("@testing-library/jest-dom/vitest");
+  const { cleanup } = await import("@testing-library/react");
+  afterEach(cleanup);
+
   const emptyClientRect = () => ({
     bottom: 0,
     height: 0,

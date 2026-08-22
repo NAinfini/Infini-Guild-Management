@@ -1,7 +1,7 @@
-// @vitest-environment jsdom
 import { MantineProvider } from "@mantine/core";
 import type { QueryClient } from "@tanstack/react-query";
-import { render, screen, waitFor } from "@testing-library/react";
+import { screen, waitFor } from "@testing-library/react";
+import { renderWithQueryClient as render } from "@portal/tests/query-harness";
 import userEvent from "@testing-library/user-event";
 import type { ReactNode } from "react";
 import { createElement, forwardRef, useState } from "react";

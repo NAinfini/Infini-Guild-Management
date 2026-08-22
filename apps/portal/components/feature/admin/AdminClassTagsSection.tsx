@@ -14,7 +14,6 @@ import {
   useSortable,
   verticalListSortingStrategy,
 } from "@dnd-kit/sortable";
-import { CSS } from "@dnd-kit/utilities";
 import { LIMITS, type ClassTag } from "@guild/shared";
 import {
   ActionIcon,
@@ -32,8 +31,9 @@ import {
 import { PencilIcon, PlusIcon, SaveIcon, TrashIcon } from "@portal/components/icons";
 import { useAdminClassTagsController } from "@portal/hooks/useAdminClassTagsController";
 import { useConfirmDialog } from "@portal/hooks/useConfirmDialog";
-import { useClassCatalogStore } from "@portal/stores/class-catalog";
+import { useClassCatalog } from "@portal/hooks/data/useClassData";
 import { IconGripVertical } from "@tabler/icons-react";
+import { verticalDragTransform } from "@portal/utils/sortable-transform";
 import type { CSSProperties } from "react";
 import { useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
@@ -69,13 +69,17 @@ function SortableTagRow({
     isDragging,
   } = useSortable({ id: tag.id, disabled });
   const style: CSSProperties = {
-    transform: CSS.Transform.toString(transform),
+    transform: verticalDragTransform(transform),
     transition,
     opacity: isDragging ? 0.6 : 1,
   };
 
   return (
-    <div ref={setNodeRef} style={style} className="admin-md__row">
+    <div
+      ref={setNodeRef}
+      style={style}
+      className={`admin-md__row ${active ? "admin-md__row--active" : ""}`}
+    >
       <UnstyledButton
         className={`admin-md__item ${active ? "admin-md__item--active" : ""}`}
         onClick={onOpen}
@@ -112,7 +116,7 @@ export function AdminClassTagsSection() {
   const confirm = useConfirmDialog();
   const controller = useAdminClassTagsController();
   const { draft } = controller;
-  const catalog = useClassCatalogStore((state) => state.items);
+  const catalog = useClassCatalog();
   /* 保留服务端或乐观更新提供的顺序，避免未确认的 sort_order 覆盖拖拽结果。 */
   const tags = controller.query.data;
   const existing = draft.id ? tags?.find((tag) => tag.id === draft.id) ?? null : null;
@@ -202,7 +206,7 @@ export function AdminClassTagsSection() {
   };
 
   return (
-    <div className="admin-md">
+    <div className="admin-panel admin-md">
       <div className="admin-md__master">
         <div className="admin-md__master-head">
           <Group gap={8} justify="space-between" wrap="nowrap">

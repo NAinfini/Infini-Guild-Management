@@ -1,4 +1,4 @@
-import { isAppError, type AppErrorBody } from "@guild/kernel";
+import { isAppError, type StandardErrorResponse } from "@guild/kernel";
 import type { ErrorHandler } from "hono";
 import { HttpPayloadTooLargeError } from "./body-limit.js";
 import { HttpRangeError } from "./http-range-error.js";
@@ -25,6 +25,8 @@ export function createHttpErrorHandler(options: HttpErrorHandlerOptions = {}): E
     });
 
     if (isAppError(error)) {
+      const retryAfter = error.status === 429 ? retryAfterSeconds(error.details) : null;
+      if (retryAfter !== null) headers.set("Retry-After", String(retryAfter));
       return new Response(JSON.stringify(error.toResponseBody(requestId)), {
         status: error.status,
         headers,
@@ -32,7 +34,7 @@ export function createHttpErrorHandler(options: HttpErrorHandlerOptions = {}): E
     }
 
     if (error instanceof HttpRangeError || error instanceof HttpPayloadTooLargeError) {
-      const body: AppErrorBody = {
+      const body: StandardErrorResponse = {
         error_code: "VALIDATION_ERROR",
         message: error.message,
         request_id: requestId,
@@ -55,11 +57,19 @@ export function createHttpErrorHandler(options: HttpErrorHandlerOptions = {}): E
     } catch {
       // Error reporting must never replace the original transport response.
     }
-    const body: AppErrorBody = {
+    const body: StandardErrorResponse = {
       error_code: "SERVER_ERROR",
       message: "An unexpected server error occurred",
       request_id: requestId,
     };
     return new Response(JSON.stringify(body), { status: 500, headers });
   };
+}
+
+function retryAfterSeconds(details: unknown): number | null {
+  if (!details || typeof details !== "object") return null;
+  const value = (details as { retry_after_seconds?: unknown }).retry_after_seconds;
+  return typeof value === "number" && Number.isFinite(value) && value > 0
+    ? Math.ceil(value)
+    : null;
 }

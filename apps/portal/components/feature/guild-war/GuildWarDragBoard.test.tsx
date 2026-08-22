@@ -1,4 +1,3 @@
-// @vitest-environment jsdom
 import { MantineProvider } from "@mantine/core";
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
@@ -15,10 +14,8 @@ vi.mock("@dnd-kit/core", async (importOriginal) => ({
   pointerWithin: collisionMocks.pointerWithin,
 }));
 
-import {
-  GuildWarDragBoard,
-  guildWarCollisionDetection,
-} from "./GuildWarDragBoard";
+import { GuildWarDragBoard } from "./GuildWarDragBoard";
+import { guildWarCollisionDetection } from "./guildWarDragGeometry";
 
 vi.mock("react-i18next", () => ({
   useTranslation: () => ({
@@ -28,12 +25,7 @@ vi.mock("react-i18next", () => ({
 }));
 
 vi.mock("./GuildWarDragBoardSections", () => ({
-  GuildWarDragBoardLayout: ({ readinessContent }: { readinessContent?: React.ReactNode }) => (
-    <div>
-      board-layout
-      {readinessContent}
-    </div>
-  ),
+  GuildWarDragBoardLayout: () => <div>board-layout</div>,
   GuildWarDragOverlayCard: () => null,
 }));
 
@@ -85,25 +77,18 @@ describe("GuildWarDragBoard", () => {
     expect(collisionMocks.closestCenter).toHaveBeenCalledOnce();
   });
 
-  it("uses one direct-drag board with only the three useful readiness totals", () => {
+  it("renders one direct-drag board and no totals of its own", () => {
     render(
       <MantineProvider>
-        <GuildWarDragBoard
-          {...baseProps}
-          teamsDirty
-          saveTeamsPending
-        />
+        <GuildWarDragBoard {...baseProps} />
       </MantineProvider>,
     );
 
-    expect(screen.getByText("board-layout")).toBeInTheDocument();
-    expect(screen.getByText("active.readiness.title")).toBeInTheDocument();
-    expect(screen.getByText("active.readiness.assigned")).toBeInTheDocument();
-    expect(screen.getByText("active.readiness.pool")).toBeInTheDocument();
-    expect(screen.getByText("active.readiness.squads")).toBeInTheDocument();
-    expect(screen.queryByText("active.readiness.locked")).not.toBeInTheDocument();
-    expect(screen.queryByText("active.readiness.absent")).not.toBeInTheDocument();
-    expect(screen.queryByText("active.readiness.selected")).not.toBeInTheDocument();
+    expect(screen.getAllByText("board-layout")).toHaveLength(1);
+
+    // 人数和战力只在各自那一栏的表头上报。板子再挂一条汇总条就是同一批数字的第二个
+    // 出处，两边算法一分岔就会互相打架，而它离要改的那一栏也最远。
+    expect(screen.queryByText(/^active\.readiness\./)).not.toBeInTheDocument();
     expect(screen.queryByText("active.mobile.moveTo")).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "active.saveTeams" })).not.toBeInTheDocument();
     expect(screen.queryByRole("progressbar")).not.toBeInTheDocument();

@@ -1,20 +1,10 @@
-import { readFileSync } from "node:fs";
 import { DatabaseSync, type SQLInputValue } from "node:sqlite";
-import { fileURLToPath } from "node:url";
 import { createAuthorizationContext, createRequestContext } from "@guild/kernel";
-import type { AuditMutation } from "@guild/server/modules/audit";
+import { createAuditEvent, type AuditEventWrite } from "@guild/server/modules/audit";
 import type { MediaService } from "@guild/server/modules/media";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import {
-  assertSqlBatch,
-  assertSqlResultColumns,
-  assertSqlStatement,
-  type SqlBatchStatement,
-  type SqlExecutor,
-  type SqlResult,
-  type SqlRow,
-  type SqlStatement,
-} from "@guild/kernel";
+import { applyAppMigrations } from "../testing/app-migrations.js";
+import { SqliteTestExecutor } from "../testing/sqlite-test-executor.js";
 import { SqliteAbsencePolicyReader } from "./absence-policy-reader.js";
 import { SqliteMemberMediaPort } from "./member-media-store.js";
 
@@ -22,50 +12,11 @@ const NOW = "2026-08-09T12:00:00.000Z";
 const OLD_AVATAR = "aaaaaaaaaaaaaaaaaaaaa";
 const NEW_AVATAR = "bbbbbbbbbbbbbbbbbbbbb";
 const NEW_IMAGE = "ccccccccccccccccccccc";
+const MISSING_IMAGE = "ggggggggggggggggggggg";
 const CLASS_ICON = "ddddddddddddddddddddd";
 const OLD_AUDIO = "eeeeeeeeeeeeeeeeeeeee";
 const NEW_AUDIO = "fffffffffffffffffffff";
-const migration = readFileSync(
-  fileURLToPath(new URL("../migrations/generated/0000_core.sql", import.meta.url)),
-  "utf8",
-).replaceAll("--> statement-breakpoint", "");
 const databases: DatabaseSync[] = [];
-
-class TestExecutor implements SqlExecutor {
-  constructor(readonly database: DatabaseSync) {}
-
-  async execute(statement: SqlStatement): Promise<SqlResult> {
-    assertSqlStatement(statement);
-    return this.run(statement);
-  }
-
-  async batch(statements: readonly SqlBatchStatement[]): Promise<readonly SqlResult[]> {
-    assertSqlBatch(statements);
-    this.database.exec("BEGIN IMMEDIATE");
-    try {
-      const results = statements.map((statement) => this.run(statement));
-      this.database.exec("COMMIT");
-      return results;
-    } catch (error) {
-      this.database.exec("ROLLBACK");
-      throw error;
-    }
-  }
-
-  private run(statement: SqlStatement): SqlResult {
-    const prepared = this.database.prepare(statement.sql);
-    const params = [...(statement.params ?? [])] as SQLInputValue[];
-    if (statement.method === "run") {
-      const result = prepared.run(...params);
-      return { rows: [], ...(result.lastInsertRowid === 0 ? {} : { lastInsertRowId: result.lastInsertRowid }) };
-    }
-    prepared.setReturnArrays(true);
-    assertSqlResultColumns(statement, prepared.columns().map(({ name }) => name));
-    return statement.method === "get"
-      ? { rows: prepared.get(...params) as unknown as SqlRow | undefined }
-      : { rows: prepared.all(...params) as unknown as readonly SqlRow[] };
-  }
-}
 
 afterEach(() => {
   for (const database of databases.splice(0)) database.close();
@@ -74,9 +25,9 @@ afterEach(() => {
 function harness() {
   const database = new DatabaseSync(":memory:");
   databases.push(database);
+  database.exec("PRAGMA foreign_keys = ON");
+  applyAppMigrations(database);
   database.exec(`
-    PRAGMA foreign_keys = ON;
-    ${migration}
     INSERT INTO users (id, username, role_id, revision_token) VALUES
       ('admin-1', 'AdminOne', 'admin', 'admin-one-revision-0001'),
       ('member-1', 'MemberOne', 'member', 'member-one-revision-0001'),
@@ -87,7 +38,7 @@ function harness() {
     INSERT INTO class_catalog (id, label, color, icon_type, vector_icon, updated_at)
       VALUES ('class-1', 'Class One', '#ffffff', 'vector', 'sword', '${NOW}');
   `);
-  const executor = new TestExecutor(database);
+  const executor = new SqliteTestExecutor(database);
   const nextImages: string[] = [];
   const nextAudio: string[] = [];
   const media = {
@@ -127,14 +78,11 @@ function context() {
 
 function audit(
   id: string,
-  action: AuditMutation["action"],
-  entityType: AuditMutation["entityType"] = "member_profile",
-  entityId = "member-1",
-): AuditMutation {
-  return {
-    id, requestId: "request-1", actorUserId: "admin-1", entityType,
-    entityId, action, summary: null, details: null, occurredAt: NOW,
-  };
+  action: AuditEventWrite["action"],
+  subjectType: AuditEventWrite["subjectType"] = "member_profile",
+  subjectId = "member-1",
+): AuditEventWrite {
+  return { ...createAuditEvent(context(), { subjectType, subjectId, action }), eventId: id };
 }
 
 function insertAsset(
@@ -197,17 +145,24 @@ describe("SqliteMemberMediaPort composite media links", () => {
     expect(scalar(value.database, "SELECT count(*) FROM audit_log WHERE id = 'audit-image-upload'")).toBe(1);
 
     expect(await value.port.deleteProfileImages(
-      context(), "member-1", [NEW_IMAGE], audit("audit-image", "delete_images"),
+      context(), "member-1", [NEW_IMAGE, MISSING_IMAGE], audit("audit-image", "delete_images"),
     )).toBe(1);
     expect(text(value.database, "SELECT state FROM media_assets WHERE id = ?", NEW_IMAGE)).toBe("deleting");
     expect(scalar(value.database, "SELECT count(*) FROM audit_log WHERE id = 'audit-image'")).toBe(1);
+    expect(JSON.parse(text(value.database, "SELECT payload_json FROM audit_log WHERE id = ?", "audit-image")!)).toEqual({
+      schema_version: 2,
+      changes: [],
+      context: [{ field: "media_count", value: { type: "number", value: 1 } }],
+    });
   });
 
   it("rolls back profile image links when their audit insert fails and leaves the staged blob for GC", async () => {
     const value = harness();
     value.database.prepare(`INSERT INTO audit_log (
-      id, request_id, actor_user_id, entity_type, entity_id, action, summary, detail_json, occurred_at
-    ) VALUES ('duplicate-image-audit', 'old', 'admin-1', 'member_profile', 'member-1', 'upload_images', NULL, NULL, ?)`).run(NOW);
+      id, request_id, actor_kind, actor_id, actor_label, subject_type, subject_id,
+      subject_label, action, payload_json, occurred_at
+    ) VALUES ('duplicate-image-audit', 'old', 'user', 'admin-1', NULL, 'member_profile',
+      'member-1', NULL, 'upload_images', '{"schema_version":2,"changes":[],"context":[]}', ?)`).run(NOW);
     value.nextImages.push(NEW_IMAGE);
 
     await expect(value.port.uploadProfileImages(
@@ -253,8 +208,10 @@ describe("SqliteMemberMediaPort composite media links", () => {
     insertAsset(value.database, OLD_AUDIO, "member_audio", "audio", "old.opus");
     link(value.database, OLD_AUDIO, "member-1", "audio");
     value.database.prepare(`INSERT INTO audit_log (
-      id, request_id, actor_user_id, entity_type, entity_id, action, summary, detail_json, occurred_at
-    ) VALUES ('duplicate-audit', 'old', 'admin-1', 'member_profile', 'member-1', 'upload_audio', NULL, NULL, ?)`).run(NOW);
+      id, request_id, actor_kind, actor_id, actor_label, subject_type, subject_id,
+      subject_label, action, payload_json, occurred_at
+    ) VALUES ('duplicate-audit', 'old', 'user', 'admin-1', NULL, 'member_profile',
+      'member-1', NULL, 'upload_audio', '{"schema_version":2,"changes":[],"context":[]}', ?)`).run(NOW);
     value.nextAudio.push(NEW_AUDIO);
 
     await expect(value.port.uploadAudio(

@@ -1,4 +1,3 @@
-// @vitest-environment jsdom
 import { MantineProvider } from "@mantine/core";
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
@@ -67,6 +66,7 @@ function createMember(index: number): { user: User; profile: MemberProfile } {
       deleted_at: null,
       created_at: now,
       updated_at: now,
+      last_login_at: null,
     },
     profile: {
       user_id: userId,

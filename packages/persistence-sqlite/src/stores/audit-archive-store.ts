@@ -145,7 +145,7 @@ export class SqliteAuditArchiveStore implements AuditArchiveStore {
           WHERE id = ? AND status = 'pending' AND lease_token = ?
             AND EXISTS (SELECT 1 FROM audit_log WHERE id = ?)
           RETURNING id AS archive_id`,
-        params: [input.sizeBytes, input.sha256, input.completedAt, input.id, input.leaseToken, input.audit.id],
+        params: [input.sizeBytes, input.sha256, input.completedAt, input.id, input.leaseToken, input.audit.eventId],
       },
       {
         method: "run",
@@ -221,8 +221,9 @@ export class SqliteAuditArchiveStore implements AuditArchiveStore {
   ): Promise<AuditArchiveClaim> {
     const rows = allRows(await this.sql.execute({
       method: "all",
-      sql: `SELECT logs.id, logs.entity_type, logs.action, logs.actor_user_id, logs.actor_username,
-          logs.entity_id, logs.summary, logs.detail_json, logs.occurred_at
+      sql: `SELECT logs.id, logs.request_id, logs.actor_kind, logs.actor_id, logs.actor_label,
+          logs.subject_type, logs.subject_id, logs.subject_label, logs.action, logs.payload_json,
+          logs.occurred_at
         FROM audit_archive_items AS items
         JOIN audit_archives AS archives ON archives.id = items.archive_id
         JOIN audit_log AS logs ON logs.id = items.audit_id

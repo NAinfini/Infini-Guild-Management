@@ -1,4 +1,3 @@
-// @vitest-environment jsdom
 import type { MemberProfile, User } from "@guild/shared";
 import { act, renderHook } from "@testing-library/react";
 import { useState } from "react";
@@ -26,9 +25,10 @@ vi.mock("./useEffectivePermissions", () => ({
   useEffectivePermissions: () => ({ canManage: () => false }),
 }));
 vi.mock("../stores/auth", () => ({ useAuthStore: (selector: (state: { user: null }) => unknown) => selector({ user: null }) }));
-vi.mock("../stores/class-catalog", () => ({
-  useClassCatalogStore: (selector: (state: { items: never[] }) => unknown) => selector({ items: [] }),
-  resolveClassCatalogItem: (id: string) => ({ label: id }),
+/* 只截数据钩子；resolveClassCatalogItem 是纯函数，空目录下的真实现就是这里
+   想要的降级行为。 */
+vi.mock("./data/useClassData", () => ({
+  useClassCatalog: () => [],
 }));
 vi.mock("../utils/audio-player", () => ({
   playAudio: vi.fn(),

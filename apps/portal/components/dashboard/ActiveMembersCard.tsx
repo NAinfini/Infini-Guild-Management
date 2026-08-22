@@ -2,7 +2,7 @@ import { Paper, Skeleton } from "@mantine/core";
 import { memo } from "react";
 import { useTranslation } from "react-i18next";
 import { TeamOutlined } from "../../utils/icons";
-import { cardHeading } from "./shared";
+import { cardHeading, KpiMeter } from "./shared";
 
 type ActiveMembersCardProps = {
   activeMemberCount: number;
@@ -38,12 +38,16 @@ export const ActiveMembersCard = memo(function ActiveMembersCard({
             <dl className="dashboard-kpi">
               <dt className="dashboard-kpi__label">{t("card.activeMembers.activeRatio")}</dt>
               <dd className="dashboard-kpi__value portal-kpi-value">
-                <span>{safeActiveMemberCount}</span>
-                <span className="dashboard-kpi__subvalue">/{safeTotalMembersCount}</span>
+                <span className="dashboard-kpi__value-row">
+                  <span>{safeActiveMemberCount}</span>
+                  <span className="dashboard-kpi__subvalue">/{safeTotalMembersCount}</span>
+                </span>
+                <KpiMeter ratio={safeTotalMembersCount > 0 ? safeActiveMemberCount / safeTotalMembersCount : 0} />
               </dd>
             </dl>
           </Skeleton>
 
+          {/* 活动数不是比例，没有分母可画——这一格刻意留空，缺席本身就是信息。 */}
           <Skeleton visible={eventsLoading} radius="md">
             <dl className="dashboard-kpi">
               <dt className="dashboard-kpi__label">{t("card.activeMembers.upcomingEvents")}</dt>
@@ -54,7 +58,10 @@ export const ActiveMembersCard = memo(function ActiveMembersCard({
           <Skeleton visible={warsLoading} radius="md">
             <dl className="dashboard-kpi">
               <dt className="dashboard-kpi__label">{t("card.activeMembers.winRate")}</dt>
-              <dd className="dashboard-kpi__value portal-kpi-value">{safeWinRate.toFixed(1)}%</dd>
+              <dd className="dashboard-kpi__value portal-kpi-value">
+                <span className="dashboard-kpi__value-row">{safeWinRate.toFixed(1)}%</span>
+                <KpiMeter ratio={safeWinRate / 100} />
+              </dd>
             </dl>
           </Skeleton>
         </div>

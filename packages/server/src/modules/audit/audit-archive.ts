@@ -1,8 +1,8 @@
 import { AppError, type BlobMetadata, type BlobRead, type BlobStore, type ScheduledJobBacklog } from "@guild/kernel";
-import type { AuditLogEntry } from "@guild/shared";
+import type { AuditEvent } from "@guild/shared";
 import { PERMISSION_ID } from "@guild/shared/constants/roles";
 import type { RequestContext } from "@guild/kernel";
-import type { AuditMutation } from "./audit.js";
+import type { AuditEventWrite } from "./audit.js";
 
 export const AUDIT_ARCHIVE_BATCH_SIZE = 100;
 const AUDIT_ARCHIVE_LEASE_MS = 10 * 60 * 1_000;
@@ -13,7 +13,7 @@ export type AuditArchiveClaim = Readonly<{
   leaseToken: string;
   objectKey: string;
   month: string;
-  entries: readonly AuditLogEntry[];
+  entries: readonly AuditEvent[];
 }>;
 
 export type AuditArchiveManifest = Readonly<{
@@ -28,7 +28,7 @@ export type AuditArchiveManifest = Readonly<{
   completedAt: string;
 }>;
 
-export type AuditArchiveAuditFactory = (archiveId: string, rowCount: number) => AuditMutation;
+export type AuditArchiveAuditFactory = (archiveId: string, rowCount: number) => AuditEventWrite;
 
 export interface AuditArchiveStore {
   claim(input: Readonly<{
@@ -47,7 +47,7 @@ export interface AuditArchiveStore {
     sizeBytes: number;
     sha256: string;
     completedAt: string;
-    audit: AuditMutation;
+    audit: AuditEventWrite;
   }>): Promise<boolean>;
   inspectBacklog(before: string): Promise<ScheduledJobBacklog>;
   listMonths(): Promise<readonly string[]>;
@@ -270,7 +270,7 @@ export class AuditArchiveDownloadTokens {
 
 const ndjsonEncoder = new TextEncoder();
 
-function measureNdjson(entries: readonly AuditLogEntry[]): Readonly<{ size: number; sha256: string }> {
+function measureNdjson(entries: readonly AuditEvent[]): Readonly<{ size: number; sha256: string }> {
   if (entries.length < 1 || entries.length > AUDIT_ARCHIVE_BATCH_SIZE) {
     throw new TypeError("Audit archive claim must be bounded and non-empty");
   }
@@ -284,7 +284,7 @@ function measureNdjson(entries: readonly AuditLogEntry[]): Readonly<{ size: numb
   return { size, sha256: hash.hex() };
 }
 
-function ndjsonStream(entries: readonly AuditLogEntry[]): ReadableStream<Uint8Array> {
+function ndjsonStream(entries: readonly AuditEvent[]): ReadableStream<Uint8Array> {
   let index = 0;
   return new ReadableStream({
     pull(controller) {
@@ -302,7 +302,7 @@ function ndjsonStream(entries: readonly AuditLogEntry[]): ReadableStream<Uint8Ar
   });
 }
 
-function encodeNdjsonEntry(entry: AuditLogEntry): Uint8Array {
+function encodeNdjsonEntry(entry: AuditEvent): Uint8Array {
   return ndjsonEncoder.encode(`${JSON.stringify(entry)}\n`);
 }
 

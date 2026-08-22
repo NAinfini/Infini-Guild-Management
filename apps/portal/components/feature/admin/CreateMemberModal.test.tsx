@@ -1,4 +1,3 @@
-// @vitest-environment jsdom
 import type { AdminRole } from "@guild/shared";
 import { MantineProvider } from "@mantine/core";
 import { render, screen, waitFor, within } from "@testing-library/react";

@@ -1,3 +1,4 @@
+// @vitest-environment node
 import { DEFAULT_GAME_RULES } from "@guild/shared";
 import { describe, expect, it } from "vitest";
 import { UNKNOWN_EVENT_TYPE_COLOR } from "./event-colors";

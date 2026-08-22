@@ -207,15 +207,13 @@ export const MediaGallery = forwardRef<HTMLDivElement, MediaGalleryProps>(
     };
   }, []);
 
-  useEffect(() => {
-    Object.entries(directVideoRefs.current).forEach(([indexKey, video]) => {
-      const index = Number.parseInt(indexKey, 10);
-      if (!Number.isFinite(index) || !video) return;
-      if (index !== activeIndex && !video.paused) {
-        video.pause();
-        setDirectVideoPlaying((prev) => ({ ...prev, [index]: false }));
-      }
-    });
+  const selectSlide = useCallback((nextIndex: number) => {
+    if (nextIndex === activeIndex) return;
+    directVideoRefs.current[activeIndex]?.pause();
+    setDirectVideoPlaying((prev) => (
+      prev[activeIndex] ? { ...prev, [activeIndex]: false } : prev
+    ));
+    setActiveIndex(nextIndex);
   }, [activeIndex]);
 
   const toggleDirectVideoPlayback = (index: number) => {
@@ -252,8 +250,9 @@ export const MediaGallery = forwardRef<HTMLDivElement, MediaGalleryProps>(
           <Carousel
             withIndicators
             withControls
+            emblaOptions={{ duration: 18 }}
             getEmblaApi={setEmbla}
-            onSlideChange={setActiveIndex}
+            onSlideChange={selectSlide}
           >
             {items.map((item, index) => (
               <Carousel.Slide key={item.key}>
@@ -281,7 +280,7 @@ export const MediaGallery = forwardRef<HTMLDivElement, MediaGalleryProps>(
                   )
                 ) : (
                   <div className="infini-media-gallery-slide infini-media-gallery-video-slide">
-                    {"isDirect" in item && item.isDirect ? (
+                    {index !== activeIndex ? null : "isDirect" in item && item.isDirect ? (
                       <>
                         <video
                           ref={(el) => { directVideoRefs.current[index] = el; }}
@@ -374,7 +373,7 @@ export const MediaGallery = forwardRef<HTMLDivElement, MediaGalleryProps>(
                   key={item.key}
                   type="button"
                   className={`infini-media-gallery-thumb${index === activeIndex ? " infini-media-gallery-thumb-active" : ""}`}
-                  onClick={() => { setActiveIndex(index); (embla as { scrollTo?: (index: number) => void })?.scrollTo?.(index); }}
+                  onClick={() => { selectSlide(index); (embla as { scrollTo?: (index: number) => void })?.scrollTo?.(index); }}
                   aria-label={labels.openItemAria(index + 1)}
                   aria-pressed={index === activeIndex}
                 >
@@ -384,11 +383,6 @@ export const MediaGallery = forwardRef<HTMLDivElement, MediaGalleryProps>(
                     "thumbnailUrl" in item && item.thumbnailUrl ? (
                       <div className="infini-media-gallery-thumb-video">
                         <img src={item.thumbnailUrl} alt={labels.videoThumbnailAlt(index + 1)} loading="lazy" decoding="async" />
-                        <PlayIcon size={16} className="infini-media-gallery-thumb-play" />
-                      </div>
-                    ) : "isDirect" in item && item.isDirect ? (
-                      <div className="infini-media-gallery-thumb-video">
-                        <video src={item.source} preload="metadata" muted className="infini-media-gallery-thumb-vid" />
                         <PlayIcon size={16} className="infini-media-gallery-thumb-play" />
                       </div>
                     ) : (

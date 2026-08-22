@@ -1,4 +1,3 @@
-// @vitest-environment jsdom
 import type { PushMessage } from "@guild/shared";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {

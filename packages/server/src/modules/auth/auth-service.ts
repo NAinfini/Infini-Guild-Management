@@ -8,7 +8,7 @@ import {
   type RequestContext,
 } from "@guild/kernel";
 import { isReservedSystemTestUsername } from "@guild/shared/config/system-test";
-import { createAuditMutation, createAuditMutationForActor } from "../audit/public.js";
+import { createAuditEvent, createAuditEventForUser } from "../audit/public.js";
 import {
   createOpaqueToken,
   createPasswordHash,
@@ -31,6 +31,7 @@ import { projectLoginLock } from "./login-lock";
 
 const SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1_000;
 const SESSION_ABSOLUTE_TTL_MS = 90 * 24 * 60 * 60 * 1_000;
+const LAST_LOGIN_REFRESH_MS = 60 * 60 * 1_000;
 const MAX_SESSIONS_PER_USER = 3;
 const LOGIN_FREE_ATTEMPTS = 3;
 const LOGIN_LOCK_SECONDS = [30, 60, 300, 900, 1_800, 3_600] as const;
@@ -102,6 +103,15 @@ export class AuthService {
       await this.options.store.renewSession(tokenDigest, renewedExpiresAt);
     }
 
+    /* 带着「保持登录」的 cookie 回到站点也是登录，不必再填一次表单。但这条路径每个
+       请求都会走，所以按窗口收敛：同一个人一个窗口内只写一次，而「最近登录」显示到
+       分钟，看不出差别。 */
+    let lastLoginAt = record.lastLoginAt;
+    if (lastLoginAt === null || now - dateMs(lastLoginAt) >= LAST_LOGIN_REFRESH_MS) {
+      lastLoginAt = nowInput;
+      await this.options.store.recordLastLogin(record.id, nowInput);
+    }
+
     return {
       authorization: createAuthorizationContext({
         userId: record.id,
@@ -110,7 +120,7 @@ export class AuthService {
         roleLevel: record.roleLevel,
         permissions: record.permissions,
       }),
-      session: { record, renewedExpiresAt },
+      session: { record: { ...record, lastLoginAt }, renewedExpiresAt },
     };
   }
 
@@ -122,15 +132,16 @@ export class AuthService {
     clientIdentifier?: string;
   }>): Promise<AuthSessionResult> {
     const normalizedUsername = input.username.trim().toLowerCase();
-    const failure = await this.options.store.readLoginFailure(normalizedUsername);
-    this.throwIfLoginLocked(projectLoginLock(failure, input.now));
     await this.consumeLoginRateLimit(input.clientIdentifier, normalizedUsername);
-
-    const account = await this.options.store.findLoginAccount(normalizedUsername);
+    const [failure, account] = await Promise.all([
+      this.options.store.readLoginFailure(normalizedUsername),
+      this.options.store.findLoginAccount(normalizedUsername),
+    ]);
     const usable = account?.isActive === true && account.deletedAt === null;
     const passwordValid = await verifyPassword(input.password, usable ? account.passwordHash : this.dummyPasswordHash);
 
     if (!account || !usable || !passwordValid) {
+      this.throwIfLoginLocked(projectLoginLock(failure, input.now));
       const nextFailure = await this.options.store.recordLoginFailure({
         normalizedUsername,
         now: input.now,
@@ -179,9 +190,9 @@ export class AuthService {
     roleColor: string | null;
     roleLevel: number;
   }>> {
-    const id = await this.options.inviteTokens.decode(token);
-    if (!id) return { valid: false };
-    const invite = await this.options.store.findActiveInvite(id, await digestToken(token), now);
+    const code = this.options.inviteTokens.normalize(token);
+    if (!code) return { valid: false };
+    const invite = await this.options.store.findActiveInvite(await digestToken(code), now);
     return invite
       ? {
           valid: true,
@@ -202,21 +213,31 @@ export class AuthService {
     if (isReservedSystemTestUsername(username)) {
       throw new AppError({ code: "VALIDATION_ERROR", status: 400, message: "Username is reserved" });
     }
-    const inviteId = await this.options.inviteTokens.decode(input.inviteToken);
-    if (!inviteId) throw new AppError({ code: "CONFLICT", status: 409, message: "Invite link is no longer available" });
+    const inviteCode = this.options.inviteTokens.normalize(input.inviteToken);
+    if (!inviteCode) throw new AppError({ code: "CONFLICT", status: 409, message: "Invite link is no longer available" });
+    const tokenDigest = await digestToken(inviteCode);
+    const invite = await this.options.store.findActiveInvite(tokenDigest, context.now);
+    if (!invite) throw new AppError({ code: "CONFLICT", status: 409, message: "Invite link is no longer available" });
 
     const userId = this.generateId();
     const passwordHash = await createPasswordHash(input.password, this.passwordIterations);
-    const audit = createAuditMutationForActor(context, userId, {
-      entityType: "user",
-      entityId: userId,
+    const audit = createAuditEventForUser(context, userId, {
+      subjectType: "user",
+      subjectId: userId,
+      subjectLabel: username,
       action: "register",
-      summary: username,
-      details: { invite_id: inviteId },
+      context: [
+        { field: "invite_id", value: {
+          type: "reference", value: { id: invite.id, label: invite.roleName },
+        } },
+        { field: "role_id", value: {
+          type: "reference", value: { id: invite.roleId, label: invite.roleName },
+        } },
+      ],
     });
     const outcome = await this.options.provisioning.redeemInviteAndCreateMember({
-      inviteId,
-      tokenDigest: await digestToken(input.inviteToken),
+      inviteId: invite.id,
+      tokenDigest,
       userId,
       username,
       passwordHash,
@@ -252,8 +273,11 @@ export class AuthService {
     if (actor.userId !== input.targetUserId) {
       throw new AppError({ code: "FORBIDDEN", status: 403, message: "Password change is allowed for self only" });
     }
-    const current = await this.options.store.findCredential(actor.userId);
-    if (!current) throw new AppError({ code: "NOT_FOUND", status: 404, message: "Password record not found" });
+    const [current, user] = await Promise.all([
+      this.options.store.findCredential(actor.userId),
+      this.options.store.findUser(actor.userId),
+    ]);
+    if (!current || !user) throw new AppError({ code: "NOT_FOUND", status: 404, message: "Password record not found" });
     if (!(await verifyPassword(input.currentPassword, current))) {
       throw new AppError({ code: "UNAUTHORIZED", status: 401, message: "Current password is incorrect" });
     }
@@ -261,9 +285,10 @@ export class AuthService {
       actor.userId,
       await createPasswordHash(input.newPassword, this.passwordIterations),
       context.now,
-      createAuditMutation(context, {
-        entityType: "user_auth",
-        entityId: actor.userId,
+      createAuditEvent(context, {
+        subjectType: "user_auth",
+        subjectId: actor.userId,
+        subjectLabel: user.username,
         action: "change_password",
       }),
     );
@@ -282,8 +307,11 @@ export class AuthService {
     if (isReservedSystemTestUsername(input.newUsername)) {
       throw new AppError({ code: "VALIDATION_ERROR", status: 400, message: "Username is reserved" });
     }
-    const current = await this.options.store.findCredential(actor.userId);
-    if (!current) throw new AppError({ code: "NOT_FOUND", status: 404, message: "Password record not found" });
+    const [current, user] = await Promise.all([
+      this.options.store.findCredential(actor.userId),
+      this.options.store.findUser(actor.userId),
+    ]);
+    if (!current || !user) throw new AppError({ code: "NOT_FOUND", status: 404, message: "Password record not found" });
     if (!(await verifyPassword(input.currentPassword, current))) {
       throw new AppError({ code: "UNAUTHORIZED", status: 401, message: "Current password is incorrect" });
     }
@@ -291,11 +319,16 @@ export class AuthService {
       actor.userId,
       input.newUsername.trim(),
       context.now,
-      createAuditMutation(context, {
-        entityType: "user",
-        entityId: actor.userId,
+      createAuditEvent(context, {
+        subjectType: "user",
+        subjectId: actor.userId,
+        subjectLabel: input.newUsername.trim(),
         action: "change_username",
-        summary: input.newUsername.trim(),
+        changes: [{
+          field: "username",
+          before: { type: "text", value: user.username },
+          after: { type: "text", value: input.newUsername.trim() },
+        }],
       }),
     );
     if (outcome === "username_taken") {
@@ -312,7 +345,7 @@ export class AuthService {
     const rawToken = this.generateToken();
     const tokenDigest = await digestToken(rawToken);
     const expiresAt = new Date(dateMs(now) + SESSION_TTL_MS).toISOString();
-    await this.options.store.createSessionBounded({
+    await this.options.store.openUserSession({
       userId: user.id,
       tokenDigest,
       expiresAt,
@@ -320,7 +353,9 @@ export class AuthService {
       maximumSessions: MAX_SESSIONS_PER_USER,
     });
     return {
-      user,
+      /* user 是发会话之前读出来的，它的 lastLoginAt 还是上一次的值。这次登录的时刻
+         刚由上面那一批写进去，直接带上，省一次回查也不会自相矛盾。 */
+      user: { ...user, lastLoginAt: now },
       profile: requireProfile(await this.options.profiles.readOwnProfile(user.id)),
       session: { rawToken, tokenDigest, expiresAt, stayLoggedIn },
     };

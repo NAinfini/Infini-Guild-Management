@@ -1,4 +1,4 @@
-import { Menu } from "@mantine/core";
+import { Menu, Portal } from "@mantine/core";
 import type { Editor } from "@tiptap/react";
 import { useRef, type CSSProperties } from "react";
 import {
@@ -40,6 +40,7 @@ import type { TipTapEditorLabels } from "./tiptap-meta";
 const TEXT_COLORS = ["#1f6feb", "#16a34a", "#f59e0b", "#dc2626", "#7c3aed", "#ec4899", "#0891b2", "#334155"];
 const HIGHLIGHT_COLORS = ["#fef08a", "#bbf7d0", "#bfdbfe", "#fecdd3", "#e9d5ff", "#fed7aa"];
 const ICON_SIZE = 14;
+const CONTEXT_MENU_Z_INDEX = 1100;
 
 type TipTapEditorContextMenuProps = {
   editor: Editor;
@@ -84,7 +85,7 @@ export function TipTapEditorContextMenu({
       withinPortal
       shadow="md"
       width={220}
-      zIndex={1100}
+      zIndex={CONTEXT_MENU_Z_INDEX}
       returnFocus={false}
     >
       <Menu.Target>
@@ -148,33 +149,35 @@ export function TipTapEditorContextMenu({
               {labels.textColor}
             </Menu.Sub.Item>
           </Menu.Sub.Target>
-          <Menu.Sub.Dropdown w={180}>
-            <div className="infini-tiptap-color-grid">
-              {TEXT_COLORS.map((color) => (
-                <Menu.Item
-                  key={color}
-                  className="infini-tiptap-color-swatch"
-                  style={{ "--swatch-color": color } as CSSProperties}
-                  aria-label={`${labels.textColor} ${color}`}
-                  onClick={() => editor.chain().focus().setColor(color).run()}
+          <Portal>
+            <Menu.Sub.Dropdown w={180} style={{ zIndex: CONTEXT_MENU_Z_INDEX + 1 }}>
+              <div className="infini-tiptap-color-grid">
+                {TEXT_COLORS.map((color) => (
+                  <Menu.Item
+                    key={color}
+                    className="infini-tiptap-color-swatch"
+                    style={{ "--swatch-color": color } as CSSProperties}
+                    aria-label={`${labels.textColor} ${color}`}
+                    onClick={() => editor.chain().focus().setColor(color).run()}
+                  />
+                ))}
+              </div>
+              <Menu.Divider />
+              <label className="infini-tiptap-color-custom">
+                <span>{labels.customTextColor}</span>
+                <input
+                  type="color"
+                  defaultValue={TEXT_COLORS[0]}
+                  onClick={(event) => event.stopPropagation()}
+                  onChange={(event) => editor.chain().focus().setColor(event.currentTarget.value).run()}
                 />
-              ))}
-            </div>
-            <Menu.Divider />
-            <label className="infini-tiptap-color-custom">
-              <span>{labels.customTextColor}</span>
-              <input
-                type="color"
-                defaultValue={TEXT_COLORS[0]}
-                onClick={(event) => event.stopPropagation()}
-                onChange={(event) => editor.chain().focus().setColor(event.currentTarget.value).run()}
-              />
-            </label>
-            <Menu.Divider />
-            <Menu.Item onClick={() => editor.chain().focus().unsetColor().run()}>
-              {labels.clearFormatting}
-            </Menu.Item>
-          </Menu.Sub.Dropdown>
+              </label>
+              <Menu.Divider />
+              <Menu.Item onClick={() => editor.chain().focus().unsetColor().run()}>
+                {labels.clearFormatting}
+              </Menu.Item>
+            </Menu.Sub.Dropdown>
+          </Portal>
         </Menu.Sub>
 
         <Menu.Sub>
@@ -183,33 +186,35 @@ export function TipTapEditorContextMenu({
               {labels.highlight}
             </Menu.Sub.Item>
           </Menu.Sub.Target>
-          <Menu.Sub.Dropdown w={180}>
-            <div className="infini-tiptap-color-grid">
-              {HIGHLIGHT_COLORS.map((color) => (
-                <Menu.Item
-                  key={color}
-                  className="infini-tiptap-color-swatch"
-                  style={{ "--swatch-color": color } as CSSProperties}
-                  aria-label={`${labels.highlight} ${color}`}
-                  onClick={() => editor.chain().focus().setHighlight({ color }).run()}
+          <Portal>
+            <Menu.Sub.Dropdown w={180} style={{ zIndex: CONTEXT_MENU_Z_INDEX + 1 }}>
+              <div className="infini-tiptap-color-grid">
+                {HIGHLIGHT_COLORS.map((color) => (
+                  <Menu.Item
+                    key={color}
+                    className="infini-tiptap-color-swatch"
+                    style={{ "--swatch-color": color } as CSSProperties}
+                    aria-label={`${labels.highlight} ${color}`}
+                    onClick={() => editor.chain().focus().setHighlight({ color }).run()}
+                  />
+                ))}
+              </div>
+              <Menu.Divider />
+              <label className="infini-tiptap-color-custom">
+                <span>{labels.customHighlightColor}</span>
+                <input
+                  type="color"
+                  defaultValue={HIGHLIGHT_COLORS[0]}
+                  onClick={(event) => event.stopPropagation()}
+                  onChange={(event) => editor.chain().focus().setHighlight({ color: event.currentTarget.value }).run()}
                 />
-              ))}
-            </div>
-            <Menu.Divider />
-            <label className="infini-tiptap-color-custom">
-              <span>{labels.customHighlightColor}</span>
-              <input
-                type="color"
-                defaultValue={HIGHLIGHT_COLORS[0]}
-                onClick={(event) => event.stopPropagation()}
-                onChange={(event) => editor.chain().focus().setHighlight({ color: event.currentTarget.value }).run()}
-              />
-            </label>
-            <Menu.Divider />
-            <Menu.Item onClick={() => editor.chain().focus().unsetHighlight().run()}>
-              {labels.clearFormatting}
-            </Menu.Item>
-          </Menu.Sub.Dropdown>
+              </label>
+              <Menu.Divider />
+              <Menu.Item onClick={() => editor.chain().focus().unsetHighlight().run()}>
+                {labels.clearFormatting}
+              </Menu.Item>
+            </Menu.Sub.Dropdown>
+          </Portal>
         </Menu.Sub>
 
         <Menu.Divider />
@@ -293,27 +298,29 @@ export function TipTapEditorContextMenu({
               {labels.table}
             </Menu.Sub.Item>
           </Menu.Sub.Target>
-          <Menu.Sub.Dropdown w={200}>
-            <Menu.Item leftSection={<TableIcon size={ICON_SIZE} />} onClick={() => editor.chain().focus().insertTable({ rows: 3, cols: 3 }).run()}>
-              {labels.table}
-            </Menu.Item>
-            <Menu.Item leftSection={<ColumnInsertRightIcon size={ICON_SIZE} />} onClick={() => editor.chain().focus().addColumnAfter().run()}>
-              {labels.addCol}
-            </Menu.Item>
-            <Menu.Item leftSection={<RowInsertBottomIcon size={ICON_SIZE} />} onClick={() => editor.chain().focus().addRowAfter().run()}>
-              {labels.addRow}
-            </Menu.Item>
-            <Menu.Divider />
-            <Menu.Item leftSection={<ColumnRemoveIcon size={ICON_SIZE} />} onClick={() => editor.chain().focus().deleteColumn().run()}>
-              {labels.delCol}
-            </Menu.Item>
-            <Menu.Item leftSection={<RowRemoveIcon size={ICON_SIZE} />} onClick={() => editor.chain().focus().deleteRow().run()}>
-              {labels.delRow}
-            </Menu.Item>
-            <Menu.Item leftSection={<TableOffIcon size={ICON_SIZE} />} onClick={() => editor.chain().focus().deleteTable().run()}>
-              {labels.delTable}
-            </Menu.Item>
-          </Menu.Sub.Dropdown>
+          <Portal>
+            <Menu.Sub.Dropdown w={200} style={{ zIndex: CONTEXT_MENU_Z_INDEX + 1 }}>
+              <Menu.Item leftSection={<TableIcon size={ICON_SIZE} />} onClick={() => editor.chain().focus().insertTable({ rows: 3, cols: 3 }).run()}>
+                {labels.table}
+              </Menu.Item>
+              <Menu.Item leftSection={<ColumnInsertRightIcon size={ICON_SIZE} />} onClick={() => editor.chain().focus().addColumnAfter().run()}>
+                {labels.addCol}
+              </Menu.Item>
+              <Menu.Item leftSection={<RowInsertBottomIcon size={ICON_SIZE} />} onClick={() => editor.chain().focus().addRowAfter().run()}>
+                {labels.addRow}
+              </Menu.Item>
+              <Menu.Divider />
+              <Menu.Item leftSection={<ColumnRemoveIcon size={ICON_SIZE} />} onClick={() => editor.chain().focus().deleteColumn().run()}>
+                {labels.delCol}
+              </Menu.Item>
+              <Menu.Item leftSection={<RowRemoveIcon size={ICON_SIZE} />} onClick={() => editor.chain().focus().deleteRow().run()}>
+                {labels.delRow}
+              </Menu.Item>
+              <Menu.Item leftSection={<TableOffIcon size={ICON_SIZE} />} onClick={() => editor.chain().focus().deleteTable().run()}>
+                {labels.delTable}
+              </Menu.Item>
+            </Menu.Sub.Dropdown>
+          </Portal>
         </Menu.Sub>
       </Menu.Dropdown>
     </Menu>

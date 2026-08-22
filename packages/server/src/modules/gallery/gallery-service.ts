@@ -1,10 +1,10 @@
 import type { CursorResponse, GalleryItem } from "@guild/shared";
 import type { DeferredTasks, NotificationPublisher, RequestContext } from "@guild/kernel";
 import { AppError } from "@guild/kernel";
-import { isAllowedGalleryVideoUrl } from "@guild/shared/utils/video";
+import { galleryVideoHost } from "@guild/shared/utils/video";
 import { PERMISSION_ID } from "@guild/shared/constants/roles";
 import { nanoid } from "nanoid";
-import { createAuditMutation, type AuditMutation } from "../audit/public.js";
+import { createAuditEvent, type AuditEventWrite } from "../audit/public.js";
 import type { ImageUpload, MediaService } from "../media/public.js";
 import { assertPortableLikeSearch } from "../../portable-search.js";
 
@@ -29,19 +29,19 @@ export interface GalleryStore {
     mediaIds: readonly string[];
     ownerUserId: string;
     maxItems: number;
-    audit: AuditMutation;
+    audit: AuditEventWrite;
   }>): Promise<void>;
-  createVideo(input: Readonly<{ record: GalleryRecord; audit: AuditMutation }>): Promise<void>;
+  createVideo(input: Readonly<{ record: GalleryRecord; audit: AuditEventWrite }>): Promise<void>;
   delete(input: Readonly<{
     id: string;
     expectedRevisionToken: string;
     mutationToken: string;
-    audit: AuditMutation;
+    audit: AuditEventWrite;
   }>): Promise<boolean>;
   batchDelete(input: Readonly<{
     ids: readonly string[];
     mutationToken: string;
-    audit: AuditMutation;
+    audit: AuditEventWrite;
   }>): Promise<number>;
 }
 
@@ -106,12 +106,24 @@ export class GalleryService {
       created_at: context.now,
       revisionToken: crypto.randomUUID(),
     }));
-    const audit = createAuditMutation(context, {
-      entityType: "gallery_item",
-      entityId: records.map((record) => record.id).join(","),
+    const audit = createAuditEvent(context, {
+      subjectType: "gallery_item",
+      subjectId: context.requestId,
+      subjectLabel: "image",
       action: "upload_images",
-      summary: `${records.length} items`,
-      details: { count: records.length },
+      context: [
+        { field: "item_count", value: { type: "number", value: records.length } },
+        {
+          field: "item_ids",
+          value: {
+            type: "list",
+            value: records.map(({ id, caption }) => ({
+              type: "reference" as const,
+              value: { id, label: galleryLabel(caption, "image") },
+            })),
+          },
+        },
+      ],
     });
     await this.store.createImages({ records, mediaIds, ownerUserId: actor.userId, maxItems: quota, audit });
     this.publish("batch", "images_uploaded", context.now);
@@ -123,7 +135,8 @@ export class GalleryService {
     input: Readonly<{ url: string; caption?: string }>,
   ): Promise<GalleryItem> {
     const actor = context.authorization.require(PERMISSION_ID.GALLERY_UPLOAD);
-    if (!isAllowedGalleryVideoUrl(input.url)) throw validation("Video URL must use an allowed host");
+    const host = galleryVideoHost(input.url);
+    if (!host) throw validation("Video URL must use an allowed host");
     const record: GalleryRecord = {
       id: nanoid(),
       type: "video",
@@ -135,11 +148,13 @@ export class GalleryService {
       created_at: context.now,
       revisionToken: crypto.randomUUID(),
     };
-    const audit = createAuditMutation(context, {
-      entityType: "gallery_item",
-      entityId: record.id,
+    const audit = createAuditEvent(context, {
+      subjectType: "gallery_item",
+      subjectId: record.id,
+      subjectLabel: galleryLabel(record.caption, record.type),
       action: "create_video",
-      summary: record.caption ?? record.url,
+      // The URL itself never enters an audit record; the provider is what the log needs to explain the entry.
+      context: [{ field: "video_host", value: { type: "text", value: host } }],
     });
     await this.store.createVideo({ record, audit });
     this.publish(record.id, "video_created", context.now);
@@ -153,11 +168,12 @@ export class GalleryService {
     if (record.uploaded_by !== actor.userId && !context.authorization.has(PERMISSION_ID.GALLERY_DELETE)) {
       throw new AppError({ code: "FORBIDDEN", status: 403, message: "Cannot delete this gallery item" });
     }
-    const audit = createAuditMutation(context, {
-      entityType: "gallery_item",
-      entityId: id,
+    const audit = createAuditEvent(context, {
+      subjectType: "gallery_item",
+      subjectId: id,
+      subjectLabel: galleryLabel(record.caption, record.type),
       action: "delete",
-      summary: record.caption ?? record.type,
+      context: [{ field: "type", value: { type: "code", value: record.type } }],
     });
     if (!await this.store.delete({
       id,
@@ -173,12 +189,12 @@ export class GalleryService {
     context.authorization.require(PERMISSION_ID.GALLERY_DELETE);
     const ids = [...new Set(idsInput)];
     if (ids.length < 1 || ids.length > 50 || ids.length !== idsInput.length) throw validation("Batch delete requires 1 to 50 unique gallery ids");
-    const audit = createAuditMutation(context, {
-      entityType: "gallery_item",
-      entityId: ids.join(","),
+    const audit = createAuditEvent(context, {
+      subjectType: "gallery_item",
+      subjectId: context.requestId,
+      subjectLabel: "Gallery items",
       action: "batch_delete",
-      summary: `${ids.length} requested items`,
-      details: { ids },
+      // The store appends the items it actually removed; a requested count here would contradict it.
     });
     const deleted = await this.store.batchDelete({ ids, mutationToken: crypto.randomUUID(), audit });
     if (deleted > 0) this.publish("batch", "items_deleted", context.now);
@@ -194,6 +210,10 @@ export class GalleryService {
       hint,
     }));
   }
+}
+
+function galleryLabel(caption: string | null, fallback: GalleryRecord["type"]): string {
+  return caption?.trim() || fallback;
 }
 
 function normalizeCaption(value: string | null | undefined): string | null {

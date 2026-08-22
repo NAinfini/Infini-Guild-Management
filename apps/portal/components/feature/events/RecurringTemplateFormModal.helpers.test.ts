@@ -1,6 +1,73 @@
-import { describe, expect, it } from "vitest";
+// @vitest-environment node
+import { describe, expect, it, vi } from "vitest";
 import { localWeekdayToUtc, utcWeekdayToLocal } from "@guild/shared/utils/recurrence";
-import { buildRecurrenceRule, localTimeToUtcTime, utcTimeToLocalTime } from "./RecurringTemplateFormModal.helpers";
+import type { RecurringTemplate } from "@guild/shared";
+import {
+  buildFormState,
+  buildRecurrenceRule,
+  computeNextLifecyclePreview,
+  type RecurringTemplateFormState,
+} from "./RecurringTemplateFormModal.helpers";
+
+function inNewYorkTime<T>(callback: () => T): T {
+  const originalTimeZone = process.env.TZ;
+  process.env.TZ = "America/New_York";
+  try {
+    return callback();
+  } finally {
+    if (originalTimeZone === undefined) delete process.env.TZ;
+    else process.env.TZ = originalTimeZone;
+  }
+}
+
+function formState(overrides: Partial<RecurringTemplateFormState> = {}): RecurringTemplateFormState {
+  return {
+    title: "Weekly Raid",
+    eventType: "social",
+    description: "",
+    startTime: "14:30",
+    durationValue: 2,
+    durationUnit: "hours",
+    capacity: "",
+    classQuotas: [],
+    visibilityOffsetDays: 0,
+    visibilityOffsetHours: 0,
+    visibilityOffsetMinutes: 0,
+    autoArchive: false,
+    recurrenceFreq: "daily",
+    recurrenceInterval: "1",
+    recurrenceDays: [3],
+    recurrenceMonthDay: "1",
+    recurrenceEndMode: "never",
+    recurrenceEndDate: "",
+    recurrenceEndCount: "13",
+    ...overrides,
+  };
+}
+
+function template(overrides: Partial<RecurringTemplate> = {}): RecurringTemplate {
+  return {
+    id: "tpl-1",
+    type: "social",
+    title: "Weekly Raid",
+    description: null,
+    start_time: "04:30",
+    duration_minutes: null,
+    capacity: null,
+    recurrence_rule: { frequency: "weekly", interval: 1, daysOfWeek: [3] },
+    visibility_offset_minutes: 0,
+    auto_archive: false,
+    attachments: [],
+    class_quotas: [],
+    paused: false,
+    created_by: "user-1",
+    last_generated_date: null,
+    generation_count: 0,
+    created_at: "2026-07-01T12:00:00.000Z",
+    updated_at: "2026-07-01T12:00:00.000Z",
+    ...overrides,
+  };
+}
 
 describe("recurring template discriminated rules", () => {
   const state = {
@@ -40,6 +107,19 @@ describe("recurring template discriminated rules", () => {
     }, "not-a-date")).toEqual({
       frequency: "monthly",
       interval: 2,
+      dayOfMonth: 31,
+    });
+  });
+
+  it("preserves monthly day 31 through form state and resave", () => {
+    const form = buildFormState(template({
+      recurrence_rule: { frequency: "monthly", interval: 1, dayOfMonth: 31 },
+    }));
+
+    expect(form.recurrenceMonthDay).toBe("31");
+    expect(buildRecurrenceRule(form, "not-a-date")).toEqual({
+      frequency: "monthly",
+      interval: 1,
       dayOfMonth: 31,
     });
   });
@@ -90,25 +170,33 @@ describe("recurring template weekday timezone conversion", () => {
     expect(localWeekdayToUtc(2, "not-a-date")).toBe(2);
     expect(localWeekdayToUtc(5, "")).toBe(5);
   });
+
+  it("uses the template's actual summer date instead of a fixed winter anchor", () => {
+    inNewYorkTime(() => {
+      const state = buildFormState(template());
+      expect(state.startTime).toBe("00:30");
+      expect(state.recurrenceDays).toEqual([3]);
+    });
+  });
+
 });
 
-describe("start time local↔UTC conversion", () => {
-  it("round-trips every conversion direction, independent of host timezone", () => {
-    for (const time of ["00:00", "04:30", "12:00", "23:59"]) {
-      expect(utcTimeToLocalTime(localTimeToUtcTime(time))).toBe(time);
-      expect(localTimeToUtcTime(utcTimeToLocalTime(time))).toBe(time);
-    }
-  });
-
-  it("applies the viewer's current offset and wraps at midnight", () => {
-    const offsetMinutes = -new Date().getTimezoneOffset();
-    const totalLocal = (((23 * 60 + 30 + offsetMinutes) % 1440) + 1440) % 1440;
-    const expected = `${String(Math.floor(totalLocal / 60)).padStart(2, "0")}:${String(totalLocal % 60).padStart(2, "0")}`;
-    expect(utcTimeToLocalTime("23:30")).toBe(expected);
-  });
-
-  it("returns invalid input verbatim so bad data stays visible", () => {
-    expect(utcTimeToLocalTime("not-a-time")).toBe("not-a-time");
-    expect(localTimeToUtcTime("25:00")).toBe("25:00");
+describe("recurring template lifecycle preview", () => {
+  it("uses the same first cursor as backend materialization", () => {
+    inNewYorkTime(() => {
+      vi.useFakeTimers();
+      vi.setSystemTime("2026-07-01T12:00:00.000Z");
+      try {
+        expect(computeNextLifecyclePreview(formState(), null, "create")?.startTime.toISOString())
+          .toBe("2026-07-01T18:30:00.000Z");
+        expect(computeNextLifecyclePreview(formState(), template({
+          start_time: "18:30",
+          recurrence_rule: { frequency: "daily", interval: 1 },
+          created_at: "2026-06-30T12:00:00.000Z",
+        }), "edit")?.startTime.toISOString()).toBe("2026-07-01T18:30:00.000Z");
+      } finally {
+        vi.useRealTimers();
+      }
+    });
   });
 });

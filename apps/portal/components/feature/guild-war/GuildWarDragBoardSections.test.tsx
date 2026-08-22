@@ -1,6 +1,6 @@
-// @vitest-environment jsdom
 import { MantineProvider } from "@mantine/core";
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, screen } from "@testing-library/react";
+import { renderWithQueryClient as render } from "@portal/tests/query-harness";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 import {
@@ -47,6 +47,7 @@ describe("GuildWarDragBoardSections", () => {
               power: 1234,
               class: "Mage",
               subtitle: "",
+              avatarMediaId: null,
             }],
           }}
           canDrag
@@ -97,6 +98,7 @@ describe("GuildWarDragBoardSections", () => {
             power: 1234,
             class: "鸣金虹",
             subtitle: "",
+            avatarMediaId: null,
           }}
         />
       </MantineProvider>,
@@ -127,6 +129,7 @@ describe("GuildWarDragBoardSections", () => {
               power: 1234,
               class: "Mage",
               subtitle: "",
+              avatarMediaId: null,
             }],
           }}
           canDrag={canDrag}
@@ -164,6 +167,7 @@ describe("GuildWarDragBoardSections", () => {
               power: 1234,
               class: "Mage",
               subtitle: "",
+              avatarMediaId: null,
             }],
           }}
           canDrag
@@ -182,8 +186,9 @@ describe("GuildWarDragBoardSections", () => {
     expect(container.querySelector(".guild-war-member-card--selected")).toBeNull();
   });
 
-  it("allows keyboard users to start editing a team name", async () => {
+  it("opens the team editor from the column head", async () => {
     const user = userEvent.setup();
+    const onEditTeam = vi.fn();
 
     render(
       <MantineProvider>
@@ -197,19 +202,13 @@ describe("GuildWarDragBoardSections", () => {
           canDrag
           activeSearch=""
           toMemberDomId={(id) => id}
-          onDraftNameChange={vi.fn()}
+          onEditTeam={onEditTeam}
         />
       </MantineProvider>,
     );
 
-    const editName = screen.getByRole("button", {
-      name: "active.aria.editTeamName Team One",
-    });
-    editName.focus();
-    await user.keyboard("{Enter}");
+    await user.click(screen.getByRole("button", { name: "active.teamSetup.edit" }));
 
-    expect(screen.getByRole("textbox", {
-      name: "active.aria.teamName Team One",
-    })).toBeInTheDocument();
+    expect(onEditTeam).toHaveBeenCalledWith("team-1");
   });
 });

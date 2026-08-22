@@ -1,0 +1,42 @@
+/* 面板材质来自 AdminPage.css 的 .admin-panel；统计条来自同一处的 .admin-stats。
+   这里只剩这个工具自己的排布。 */
+
+.admin-integrity__body {
+  gap: var(--space-lg);
+}
+
+.admin-integrity__table-wrap {
+  max-block-size: 16rem;
+  overflow: auto;
+  border-block-start: 1px solid var(--border-subtle);
+}
+
+.admin-integrity__table {
+  min-inline-size: 30rem;
+}
+
+/* 标题旁的说明图标：不抢标题的视觉重量，但键盘能聚焦到。 */
+.admin-integrity__hint {
+  display: inline-flex;
+  align-items: center;
+  color: var(--text-secondary);
+  cursor: help;
+}
+
+.admin-integrity__object-key {
+  overflow-wrap: anywhere;
+  font-family: var(--font-code);
+  font-size: var(--text-micro);
+}
+
+/* 统计条折两列由 .admin-stats 自己管，这里只处理头部的按钮组。 */
+@media (max-width: 47.99em) {
+  .admin-integrity > .admin-panel__head {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .admin-integrity > .admin-panel__head > .mantine-Group-root > button {
+    flex: 1;
+  }
+}

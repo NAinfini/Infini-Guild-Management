@@ -1,3 +1,4 @@
+// @vitest-environment node
 import { afterAll, describe, expect, it } from "vitest";
 import i18n, { i18nReady, setI18nLocale } from "./index";
 

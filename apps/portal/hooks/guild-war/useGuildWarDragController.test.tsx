@@ -1,4 +1,3 @@
-// @vitest-environment jsdom
 import type { GuildWarActiveResponse } from "@guild/shared";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { act, renderHook, waitFor } from "@testing-library/react";
@@ -46,7 +45,7 @@ vi.mock("./useGuildWarDragData", () => ({
     teamById: new Map([[fixtures.oldTeam.id, fixtures.oldTeam], [fixtures.remainingTeam.id, fixtures.remainingTeam]]),
     memberTeamByUserId: new Map(), allTeamMembers: [], userDataMap: new Map(), lockedTeamIds: new Set(),
     activeMemberDetailByUserId: new Map(), dragColumns: [], memberContainerMap: new Map(), dragItemMap: new Map(), pool: [],
-    activePoolStatus: null, teamCount: 2, teamIndexMap: new Map(),
+    teamCount: 2, teamIndexMap: new Map(),
   }),
 }));
 

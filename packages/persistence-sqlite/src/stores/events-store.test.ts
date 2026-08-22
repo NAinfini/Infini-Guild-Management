@@ -3,7 +3,7 @@ import { DatabaseSync, type SQLInputValue } from "node:sqlite";
 import { fileURLToPath } from "node:url";
 import { afterEach, describe, expect, it } from "vitest";
 import { createAuthorizationContext, createRequestContext } from "@guild/kernel";
-import { createAuditMutation, type AuditMutation } from "@guild/server/modules/audit";
+import { createAuditEvent, type AuditEventWrite } from "@guild/server/modules/audit";
 import { type TemplateCreateWrite } from "@guild/server/modules/events";
 import {
   createSchedulerAuditFactory,
@@ -11,7 +11,8 @@ import {
 } from "@guild/server/modules/jobs";
 import { LIMITS } from "@guild/shared";
 import { createAppDatabase } from "../database.js";
-import type { SqlExecutor, SqlResult, SqlRow, SqlStatement } from "@guild/kernel";
+import type { SqlExecutor, SqlStatement } from "@guild/kernel";
+import { SqliteTestExecutor } from "../testing/sqlite-test-executor.js";
 import { SqliteEventMediaPort, SqliteEventsStore } from "./events-store.js";
 import { SqliteRaffleAutoDrawStore } from "./scheduled-job-store.js";
 
@@ -25,9 +26,9 @@ const BASE_SCHEMA = `
     is_active INTEGER NOT NULL DEFAULT 1, deleted_at TEXT
   );
   CREATE TABLE audit_log (
-    id TEXT PRIMARY KEY, request_id TEXT NOT NULL, actor_user_id TEXT NOT NULL, actor_username TEXT,
-    entity_type TEXT NOT NULL, entity_id TEXT NOT NULL, action TEXT NOT NULL,
-    summary TEXT, detail_json TEXT, occurred_at TEXT NOT NULL
+    id TEXT PRIMARY KEY, request_id TEXT NOT NULL, actor_kind TEXT NOT NULL, actor_id TEXT NOT NULL,
+    actor_label TEXT, subject_type TEXT NOT NULL, subject_id TEXT NOT NULL, subject_label TEXT,
+    action TEXT NOT NULL, payload_json TEXT NOT NULL, occurred_at TEXT NOT NULL
   );
   CREATE TABLE class_tags (
     id TEXT PRIMARY KEY, label TEXT NOT NULL, sort_order INTEGER NOT NULL DEFAULT 0,
@@ -58,9 +59,10 @@ const BASE_SCHEMA = `
     pinned INTEGER NOT NULL DEFAULT 0, signup_locked INTEGER NOT NULL DEFAULT 0,
     auto_archive INTEGER NOT NULL DEFAULT 0, auto_archived INTEGER NOT NULL DEFAULT 0,
     visible_at TEXT, archived_at TEXT, created_by TEXT NOT NULL REFERENCES users(id),
-    updated_by TEXT REFERENCES users(id), series_id TEXT REFERENCES recurring_templates(id),
+    updated_by TEXT REFERENCES users(id), series_id TEXT REFERENCES recurring_templates(id) ON DELETE SET NULL,
     instance_date TEXT, winner_count INTEGER, created_at TEXT NOT NULL, updated_at TEXT NOT NULL,
-    UNIQUE(series_id, instance_date)
+    UNIQUE(series_id, instance_date),
+    CHECK((series_id IS NULL AND instance_date IS NULL) OR (series_id IS NOT NULL AND instance_date IS NOT NULL))
   );
   CREATE INDEX idx_events_public_start ON events(archived_at, visible_at, start_at, id);
   CREATE INDEX idx_events_list_start ON events(start_at, id);
@@ -128,50 +130,6 @@ const RENDERED_EVENT_INVARIANTS = EVENT_INVARIANTS.replaceAll(
   String(LIMITS.content.eventParticipantsPerEvent.max),
 );
 
-class TestSqlExecutor implements SqlExecutor {
-  lastBatchStatementCount = 0;
-  readonly reads: Array<Readonly<{
-    sql: string;
-    params: SqlStatement["params"];
-    rowCount: number;
-  }>> = [];
-
-  constructor(readonly database: DatabaseSync) {}
-
-  async execute(statement: SqlStatement): Promise<SqlResult> {
-    return this.run(statement);
-  }
-
-  async batch(statements: readonly SqlStatement[]): Promise<readonly SqlResult[]> {
-    this.lastBatchStatementCount = statements.length;
-    this.database.exec("BEGIN IMMEDIATE");
-    try {
-      const results = statements.map((statement) => this.run(statement));
-      this.database.exec("COMMIT");
-      return results;
-    } catch (error) {
-      this.database.exec("ROLLBACK");
-      throw error;
-    }
-  }
-
-  private run(statement: SqlStatement): SqlResult {
-    const prepared = this.database.prepare(statement.sql);
-    const params = [...(statement.params ?? [])] as SQLInputValue[];
-    if (statement.method === "run") {
-      const result = prepared.run(...params);
-      return { rows: [], lastInsertRowId: result.lastInsertRowid };
-    }
-    prepared.setReturnArrays(true);
-    if (statement.method === "get") {
-      return { rows: prepared.get(...params) as unknown as SqlRow | undefined };
-    }
-    const rows = prepared.all(...params) as unknown as readonly SqlRow[];
-    this.reads.push({ sql: statement.sql, params: statement.params, rowCount: rows.length });
-    return { rows };
-  }
-}
-
 afterEach(() => {
   for (const database of databases.splice(0)) database.close();
 });
@@ -209,7 +167,7 @@ function harness(includeEventsInvariants = true) {
   if (includeEventsInvariants) database.exec(RENDERED_EVENT_INVARIANTS);
   database.prepare("INSERT INTO users (id, username) VALUES (?, ?), (?, ?), (?, ?)")
     .run("admin-1", "Admin", "user-1", "One", "user-2", "Two");
-  const executor = new TestSqlExecutor(database);
+  const executor = new SqliteTestExecutor(database);
   return { database, executor, store: new SqliteEventsStore(createAppDatabase(executor), executor) };
 }
 
@@ -227,40 +185,53 @@ function context(requestId: string) {
   });
 }
 
-function eventAudit(requestId: string, eventId: string, action: "create" | "raffle_draw"): AuditMutation {
-  return createAuditMutation(context(requestId), {
-    entityType: "event",
-    entityId: eventId,
+function eventAudit(requestId: string, eventId: string, action: "create" | "raffle_draw"): AuditEventWrite {
+  return createAuditEvent(context(requestId), {
+    subjectType: "event",
+    subjectId: eventId,
+    subjectLabel: eventId,
     action,
-    summary: eventId,
+  });
+}
+
+function participantAudit(
+  requestId: string,
+  eventId: string,
+  userId: string,
+  action: "join" | "leave" | "batch_add_by_moderator" | "batch_remove_by_moderator",
+): AuditEventWrite {
+  return createAuditEvent(context(requestId), {
+    subjectType: "event_participant",
+    subjectId: `${eventId}:${userId}`,
+    subjectLabel: "Participant event",
+    action,
+    context: [{
+      field: "event_id",
+      value: { type: "reference", value: { id: eventId, label: "Participant event" } },
+    }],
   });
 }
 
 function auditFactory(requestPrefix: string) {
-  return (eventId: string, title: string, templateId: string) => createAuditMutation(
-    context(`${requestPrefix}:${eventId}`),
-    {
-      entityType: "event",
-      entityId: eventId,
-      action: "create",
-      summary: title,
-      details: { recurring_template_id: templateId },
-    },
+  let sequence = 0;
+  return (input: Parameters<typeof createAuditEvent>[1]) => createAuditEvent(
+    context(`${requestPrefix}:${++sequence}`),
+    input,
   );
 }
 
-function templateAudit(requestId: string, templateId: string): AuditMutation {
-  return createAuditMutation(context(requestId), {
-    entityType: "recurring_template",
-    entityId: templateId,
+function templateAudit(requestId: string, templateId: string): AuditEventWrite {
+  return createAuditEvent(context(requestId), {
+    subjectType: "recurring_template",
+    subjectId: templateId,
+    subjectLabel: templateId,
     action: "create",
-    summary: templateId,
   });
 }
 
 function templateWrite(
   id: string,
-  audit: AuditMutation,
+  audit: AuditEventWrite,
   mediaIds: readonly string[] = [],
 ): TemplateCreateWrite {
   return {
@@ -351,11 +322,19 @@ describe("SqliteEventsStore raffle claims", () => {
     expect(outcomes.filter(({ status }) => status === "fulfilled")).toHaveLength(1);
     const winner = candidates[outcomes.findIndex(({ status }) => status === "fulfilled")]!;
     expect(text(database, "SELECT user_id FROM event_raffle_winners WHERE event_id = 'raffle-1'")).toBe(winner.userId);
-    expect(text(database, "SELECT mutation_token FROM event_raffle_draws WHERE event_id = 'raffle-1'")).toBe(winner.audit.id);
+    expect(text(database, "SELECT mutation_token FROM event_raffle_draws WHERE event_id = 'raffle-1'")).toBe(winner.audit.eventId);
     expect(text(database, "SELECT request_id FROM audit_log WHERE action = 'raffle_draw'")).toBe(winner.audit.requestId);
     expect(scalar(database, "SELECT signup_locked FROM events WHERE id = 'raffle-1'")).toBe(1);
     expect(scalar(database, "SELECT count(*) FROM event_raffle_winners")).toBe(1);
     expect(scalar(database, "SELECT count(*) FROM audit_log WHERE action = 'raffle_draw'")).toBe(1);
+    expect(auditContext(database, winner.audit.requestId, "winner_count")).toEqual({ type: "number", value: 1 });
+    expect(auditContext(database, winner.audit.requestId, "winner_user_ids")).toEqual({
+      type: "list",
+      value: [{
+        type: "reference",
+        value: { id: winner.userId, label: winner.userId === "user-1" ? "One" : "Two" },
+      }],
+    });
   });
 
   it("makes manual and scheduled draws compete on the same claim and notifies only a scheduled winner", async () => {
@@ -395,7 +374,7 @@ describe("SqliteEventsStore raffle claims", () => {
     expect(scheduledResult).toMatchObject({ value: { processed: 0 } });
     expect(scalar(database, "SELECT count(*) FROM event_raffle_draws WHERE event_id = 'raffle-1'")).toBe(1);
     expect(scalar(database, "SELECT count(*) FROM event_raffle_winners WHERE event_id = 'raffle-1'")).toBe(1);
-    expect(scalar(database, "SELECT count(*) FROM audit_log WHERE entity_id = 'raffle-1' AND action = 'raffle_draw'")).toBe(1);
+    expect(scalar(database, "SELECT count(*) FROM audit_log WHERE subject_id = 'raffle-1' AND action = 'raffle_draw'")).toBe(1);
 
     database.prepare(`INSERT INTO events (
       id, type, title, start_at, end_at, signup_locked, winner_count, created_by, created_at, updated_at
@@ -417,7 +396,7 @@ describe("SqliteEventsStore raffle claims", () => {
       limit: 25,
       audit: createSchedulerAuditFactory("scheduled-raffle-success", drawNow),
     })).resolves.toEqual({ processed: 1, hasMore: false });
-    expect(text(database, "SELECT actor_user_id FROM audit_log WHERE entity_id = 'raffle-2'")).toBe("system:scheduler");
+    expect(text(database, "SELECT actor_id FROM audit_log WHERE subject_id = 'raffle-2'")).toBe("system:scheduler");
     expect(notifications).toEqual([expect.objectContaining({ hint: "raffle_drawn", entity_id: "raffle-2" })]);
   });
 });
@@ -431,10 +410,20 @@ describe("SqliteEventsStore media transaction", () => {
       .run(NOW, NOW);
     const duplicate = eventAudit("duplicate-create", "event-media", "create");
     database.prepare(`INSERT INTO audit_log (
-      id, request_id, actor_user_id, entity_type, entity_id, action, occurred_at
-    ) VALUES (?, ?, ?, ?, ?, ?, ?)`)
-      .run(duplicate.id, duplicate.requestId, duplicate.actorUserId, duplicate.entityType, duplicate.entityId, duplicate.action, duplicate.occurredAt);
-    const create = (audit: AuditMutation) => store.create({
+      id, request_id, actor_kind, actor_id, subject_type, subject_id, action, payload_json, occurred_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+      .run(
+        duplicate.eventId,
+        duplicate.requestId,
+        duplicate.actorKind,
+        duplicate.actorId,
+        duplicate.subjectType,
+        duplicate.subjectId,
+        duplicate.action,
+        JSON.stringify(duplicate.payload),
+        duplicate.occurredAt,
+      );
+    const create = (audit: AuditEventWrite) => store.create({
       id: "event-media",
       type: "social",
       title: "Media event",
@@ -461,6 +450,65 @@ describe("SqliteEventsStore media transaction", () => {
   });
 });
 
+describe("SqliteEventsStore participant audit no-ops", () => {
+  it("audits only participants changed by the same batch and skips all no-ops", async () => {
+    const { database, store } = harness();
+    database.prepare(`INSERT INTO events (
+      id, type, title, start_at, end_at, created_by, created_at, updated_at
+    ) VALUES ('participant-event', 'social', 'Participant event',
+      '2027-08-10T12:00:00.000Z', '2027-08-11T12:00:00.000Z', 'admin-1', ?, ?)`).run(NOW, NOW);
+
+    await store.addParticipants(
+      "participant-event",
+      ["user-1"],
+      ["participant-1"],
+      NOW,
+      "moderator",
+      participantAudit("participant-add-1", "participant-event", "user-1", "join"),
+    );
+    await store.addParticipants(
+      "participant-event",
+      ["user-1", "user-2"],
+      ["participant-duplicate", "participant-2"],
+      NOW,
+      "moderator",
+      participantAudit("participant-add-2", "participant-event", "user-1", "batch_add_by_moderator"),
+    );
+    await store.addParticipants(
+      "participant-event",
+      ["user-1", "user-2"],
+      ["participant-noop-1", "participant-noop-2"],
+      NOW,
+      "moderator",
+      participantAudit("participant-add-3", "participant-event", "user-1", "batch_add_by_moderator"),
+    );
+    expect(scalar(database, "SELECT count(*) FROM event_participants WHERE event_id = 'participant-event'")).toBe(2);
+    expect(scalar(database, "SELECT count(*) FROM audit_log WHERE action = 'batch_add_by_moderator'")).toBe(1);
+    expect(auditContext(database, "participant-add-2", "user_count")).toEqual({ type: "number", value: 1 });
+    expect(auditContext(database, "participant-add-2", "user_ids")).toEqual({
+      type: "list",
+      value: [{ type: "reference", value: { id: "user-2", label: "Two" } }],
+    });
+
+    await expect(store.removeParticipants(
+      "participant-event",
+      ["user-1", "admin-1"],
+      participantAudit("participant-remove-1", "participant-event", "user-1", "batch_remove_by_moderator"),
+    )).resolves.toBe(1);
+    await expect(store.removeParticipants(
+      "participant-event",
+      ["user-1", "admin-1"],
+      participantAudit("participant-remove-2", "participant-event", "user-1", "batch_remove_by_moderator"),
+    )).resolves.toBe(0);
+    expect(scalar(database, "SELECT count(*) FROM audit_log WHERE action = 'batch_remove_by_moderator'")).toBe(1);
+    expect(auditContext(database, "participant-remove-1", "user_count")).toEqual({ type: "number", value: 1 });
+    expect(auditContext(database, "participant-remove-1", "user_ids")).toEqual({
+      type: "list",
+      value: [{ type: "reference", value: { id: "user-1", label: "One" } }],
+    });
+  });
+});
+
 describe("SqliteEventsStore recurring template catalog", () => {
   it("allows the 100th template", async () => {
     const { database, executor, store } = harness();
@@ -470,7 +518,7 @@ describe("SqliteEventsStore recurring template catalog", () => {
       .resolves.toMatchObject({ template: { id: "catalog-100" } });
 
     await expect(store.listTemplates()).resolves.toHaveLength(LIMITS.content.recurringTemplateCatalog.max);
-    expect(executor.lastBatchStatementCount).toBeLessThanOrEqual(50);
+    expect(executor.batches.at(-1)?.length ?? 0).toBeLessThanOrEqual(50);
   });
 
   it("rejects the 101st template without child, media, or audit side effects", async () => {
@@ -497,8 +545,8 @@ describe("SqliteEventsStore recurring template catalog", () => {
     expect(scalar(database, "SELECT count(*) FROM recurring_template_weekdays WHERE template_id = 'catalog-101'")).toBe(0);
     expect(scalar(database, "SELECT count(*) FROM class_tags WHERE id = 'catalog-101-tag'")).toBe(0);
     expect(scalar(database, "SELECT count(*) FROM media_links WHERE entity_id = 'catalog-101'")).toBe(0);
-    expect(scalar(database, "SELECT count(*) FROM audit_log WHERE id = ?", [audit.id])).toBe(0);
-    expect(executor.lastBatchStatementCount).toBeLessThanOrEqual(50);
+    expect(scalar(database, "SELECT count(*) FROM audit_log WHERE id = ?", [audit.eventId])).toBe(0);
+    expect(executor.batches.at(-1)?.length ?? 0).toBeLessThanOrEqual(50);
   });
 
   it("does not mutate an existing template when a full catalog rejects its duplicate id", async () => {
@@ -519,7 +567,7 @@ describe("SqliteEventsStore recurring template catalog", () => {
     expect(scalar(database, "SELECT count(*) FROM recurring_templates")).toBe(LIMITS.content.recurringTemplateCatalog.max);
     expect(scalar(database, "SELECT count(*) FROM media_links WHERE entity_id = 'catalog-000'")).toBe(1);
     expect(scalar(database, "SELECT sort_order FROM media_links WHERE entity_id = 'catalog-000'")).toBe(0);
-    expect(scalar(database, "SELECT count(*) FROM audit_log WHERE id = ?", [audit.id])).toBe(0);
+    expect(scalar(database, "SELECT count(*) FROM audit_log WHERE id = ?", [audit.eventId])).toBe(0);
   });
 
   it("fails explicitly when persisted catalog data exceeds the limit", async () => {
@@ -538,15 +586,43 @@ describe("SqliteEventsStore recurring template catalog", () => {
     seedEventMedia(database, "template-media");
     const duplicate = templateAudit("template-duplicate", "template-media");
     database.prepare(`INSERT INTO audit_log (
-      id, request_id, actor_user_id, entity_type, entity_id, action, occurred_at
-    ) VALUES (?, ?, ?, ?, ?, ?, ?)`)
-      .run(duplicate.id, duplicate.requestId, duplicate.actorUserId, duplicate.entityType, duplicate.entityId, duplicate.action, duplicate.occurredAt);
+      id, request_id, actor_kind, actor_id, subject_type, subject_id, action, payload_json, occurred_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+      .run(
+        duplicate.eventId,
+        duplicate.requestId,
+        duplicate.actorKind,
+        duplicate.actorId,
+        duplicate.subjectType,
+        duplicate.subjectId,
+        duplicate.action,
+        JSON.stringify(duplicate.payload),
+        duplicate.occurredAt,
+      );
 
     await expect(store.createTemplate(templateWrite("template-media", duplicate, ["template-media"]))).rejects.toThrow();
 
     expect(scalar(database, "SELECT count(*) FROM recurring_templates WHERE id = 'template-media'")).toBe(0);
     expect(scalar(database, "SELECT count(*) FROM media_links WHERE entity_id = 'template-media'")).toBe(0);
-    expect(scalar(database, "SELECT count(*) FROM audit_log WHERE id = ?", [duplicate.id])).toBe(1);
+    expect(scalar(database, "SELECT count(*) FROM audit_log WHERE id = ?", [duplicate.eventId])).toBe(1);
+  });
+
+  it("keeps published instances as independent snapshots when deleting a template", async () => {
+    const { database, store } = harness();
+    seedTemplate(database);
+    database.prepare(`INSERT INTO events (
+      id, type, title, description, start_at, capacity, created_by, series_id, instance_date, created_at, updated_at
+    ) VALUES ('future-instance', 'social', 'Published title', 'Published detail',
+      '2026-12-01T12:00:00.000Z', 25, 'admin-1', 'template-1', '2026-12-01', ?, ?)`)
+      .run(NOW, NOW);
+
+    await store.deleteTemplate("template-1", templateAudit("delete-template", "template-1"));
+
+    expect(scalar(database, "SELECT count(*) FROM recurring_templates WHERE id = 'template-1'")).toBe(0);
+    expect(scalar(database, "SELECT count(*) FROM events WHERE id = 'future-instance'")).toBe(1);
+    expect(text(database, "SELECT series_id FROM events WHERE id = 'future-instance'")).toBeNull();
+    expect(text(database, "SELECT instance_date FROM events WHERE id = 'future-instance'")).toBeNull();
+    expect(text(database, "SELECT title FROM events WHERE id = 'future-instance'")).toBe("Published title");
   });
 });
 
@@ -609,7 +685,7 @@ describe("SqliteEventsStore statement budgets", () => {
       rowCount: LIMITS.content.eventClassQuotas.max * LIMITS.content.classesPerTag.max,
     });
     expect(memberRead?.params?.at(-1)).toBe(memberRowLimit + 1);
-    expect(executor.lastBatchStatementCount).toBe(2);
+    expect(executor.batches.at(-1)).toHaveLength(2);
     const sharedClassIds = aggregates[0]!.classQuotas[0]!.class_ids;
     for (const aggregate of aggregates) {
       expect(aggregate.classQuotas[0]!.class_ids).toBe(sharedClassIds);
@@ -644,7 +720,7 @@ describe("SqliteEventsStore statement budgets", () => {
       mediaIds: [],
       audit: eventAudit("event-budget", "event-budget", "create"),
     });
-    expect(executor.lastBatchStatementCount).toBeLessThanOrEqual(10);
+    expect(executor.batches.at(-1)?.length ?? 0).toBeLessThanOrEqual(10);
   });
 });
 
@@ -654,23 +730,57 @@ describe("SqliteEventsStore recurrence materialization", () => {
     seedTemplate(database, { endAfter: 2 });
     const first = await store.materializeDue(NOW, "template-1", auditFactory("first"));
     const second = await store.materializeDue(NOW, "template-1", auditFactory("second"));
-    expect(first[0]?.createdEventIds).toHaveLength(2);
+    expect(first[0]?.createdEventIds).toHaveLength(1);
     expect(second).toEqual([]);
-    expect(scalar(database, "SELECT count(*) FROM events WHERE series_id = 'template-1'")).toBe(2);
-    expect(scalar(database, "SELECT generation_count FROM recurring_templates WHERE id = 'template-1'")).toBe(2);
-    expect(scalar(database, "SELECT count(*) FROM audit_log WHERE entity_type = 'event'")).toBe(2);
+    expect(scalar(database, "SELECT count(*) FROM events WHERE series_id = 'template-1'")).toBe(1);
+    expect(scalar(database, "SELECT generation_count FROM recurring_templates WHERE id = 'template-1'")).toBe(1);
+    expect(scalar(database, "SELECT count(*) FROM audit_log WHERE subject_type = 'event'")).toBe(1);
+    expect(scalar(database, "SELECT count(*) FROM audit_log WHERE subject_type = 'recurring_template' AND action = 'update'")).toBe(1);
+    expect(text(database, "SELECT actor_label FROM audit_log WHERE subject_type = 'event' LIMIT 1")).toBe("Admin");
+  });
+
+  it("starts an ungenerated old template from today instead of backfilling history", async () => {
+    const { database, store } = harness();
+    seedTemplate(database, { endAfter: 1 });
+
+    await store.materializeDue(NOW, "template-1", auditFactory("old-template"));
+
+    expect(text(database, "SELECT instance_date FROM events WHERE series_id = 'template-1'")).toBe("2026-08-09");
+    expect(scalar(database, "SELECT count(*) FROM events WHERE start_at < '2026-08-09T00:00:00.000Z'")).toBe(0);
+  });
+
+  it("advances the cursor without recounting existing instances", async () => {
+    const { database, store } = harness();
+    seedTemplate(database, { endAfter: 2 });
+    await store.materializeDue(NOW, "template-1", auditFactory("seed"));
+    database.prepare("UPDATE recurring_templates SET last_generated_date = NULL, generation_count = 0 WHERE id = 'template-1'").run();
+    database.prepare("DELETE FROM audit_log").run();
+
+    const replay = await store.materializeDue(NOW, "template-1", auditFactory("cursor-only"));
+
+    expect(replay[0]).toMatchObject({ createdEventIds: [] });
+    expect(scalar(database, "SELECT generation_count FROM recurring_templates WHERE id = 'template-1'")).toBe(0);
+    expect(scalar(database, "SELECT count(*) FROM audit_log WHERE subject_type = 'event'")).toBe(0);
+    expect(scalar(database, "SELECT count(*) FROM audit_log WHERE subject_type = 'recurring_template' AND action = 'update'")).toBe(1);
+    expect(auditChanges(database, "recurring_template")).toEqual([
+      { field: "last_generated_date", before: { type: "null", value: null }, after: { type: "date", value: "2026-08-09" } },
+    ]);
   });
 
   it("keeps each template catch-up at ten occurrences and includes the end date", async () => {
     const { database, executor, store } = harness();
     seedTemplate(database, { id: "bounded", visibilityOffsetMinutes: 60 * 24 * 30 });
-    seedTemplate(database, { id: "ended", endAt: "2026-08-02T23:59:59.999Z" });
+    seedTemplate(database, {
+      id: "ended",
+      endAt: "2026-08-10T23:59:59.999Z",
+      visibilityOffsetMinutes: 60 * 24 * 2,
+    });
     const bounded = await store.materializeDue(NOW, "bounded", auditFactory("bounded"));
     const ended = await store.materializeDue(NOW, "ended", auditFactory("ended"));
     expect(bounded[0]?.createdEventIds).toHaveLength(10);
-    expect(ended[0]?.createdEventIds).toHaveLength(1);
-    expect(text(database, "SELECT instance_date FROM events WHERE series_id = 'ended'")).toBe("2026-08-02");
-    expect(executor.lastBatchStatementCount).toBeLessThanOrEqual(8);
+    expect(ended[0]?.createdEventIds).toHaveLength(2);
+    expect(text(database, "SELECT max(instance_date) FROM events WHERE series_id = 'ended'")).toBe("2026-08-10");
+    expect(executor.batches.at(-1)?.length ?? 0).toBeLessThanOrEqual(8);
   });
 
   it("uses generation CAS so concurrent replays create and audit each occurrence once", async () => {
@@ -682,7 +792,56 @@ describe("SqliteEventsStore recurrence materialization", () => {
     ]);
     expect(outcomes.flatMap((rows) => rows).flatMap(({ createdEventIds }) => createdEventIds)).toHaveLength(1);
     expect(scalar(database, "SELECT count(*) FROM events WHERE series_id = 'template-1'")).toBe(1);
-    expect(scalar(database, "SELECT count(*) FROM audit_log WHERE entity_type = 'event'")).toBe(1);
+    expect(scalar(database, "SELECT count(*) FROM audit_log WHERE subject_type = 'event'")).toBe(1);
+    expect(scalar(database, "SELECT count(*) FROM audit_log WHERE subject_type = 'recurring_template'")).toBe(1);
+  });
+
+  it("abandons a stale materialization when template metadata changes before its CAS", async () => {
+    const { database, executor, store } = harness();
+    seedTemplate(database, { endAfter: 1 });
+    executor.beforeNextBatch = () => {
+      database.prepare("UPDATE recurring_templates SET title = ?, updated_at = ? WHERE id = ?")
+        .run("Changed title", NOW, "template-1");
+    };
+
+    await expect(store.materializeDue(NOW, "template-1", auditFactory("stale"))).resolves.toEqual([]);
+    expect(scalar(database, "SELECT count(*) FROM events WHERE series_id = 'template-1'")).toBe(0);
+    expect(scalar(database, "SELECT generation_count FROM recurring_templates WHERE id = 'template-1'")).toBe(0);
+
+    const retry = await store.materializeDue(NOW, "template-1", auditFactory("fresh"));
+    expect(retry[0]?.createdEventIds).toHaveLength(1);
+    expect(text(database, "SELECT title FROM events WHERE series_id = 'template-1'")).toBe("Changed title");
+  });
+
+  it("does not claim a recurring event inserted after planning but before the materialization batch", async () => {
+    const { database, executor, store } = harness();
+    seedTemplate(database, { endAfter: 1 });
+    let plannedEventId = "";
+    let occurrenceAuditId = "";
+    executor.beforeNextBatch = () => {
+      database.prepare(`INSERT INTO events (
+        id, type, title, start_at, created_by, series_id, instance_date, created_at, updated_at
+      ) VALUES (?, 'social', 'Concurrent event', '2026-08-09T12:00:00.000Z',
+        'admin-1', 'template-1', '2026-08-09', ?, ?)`).run(plannedEventId, NOW, NOW);
+    };
+
+    const materialized = await store.materializeDue(NOW, "template-1", (input) => {
+      const audit = createAuditEvent(context(`concurrent:${input.subjectType}`), input);
+      if (input.subjectType === "event") {
+        plannedEventId = input.subjectId;
+        occurrenceAuditId = audit.eventId;
+      }
+      return audit;
+    });
+
+    expect(materialized[0]).toEqual({
+      templateId: "template-1",
+      eventIds: [plannedEventId],
+      createdEventIds: [],
+    });
+    expect(scalar(database, "SELECT count(*) FROM audit_log WHERE id = ?", [occurrenceAuditId])).toBe(0);
+    expect(scalar(database, "SELECT count(*) FROM audit_log WHERE subject_type = 'event'")).toBe(0);
+    expect(scalar(database, "SELECT generation_count FROM recurring_templates WHERE id = 'template-1'")).toBe(0);
   });
 
   it("advances a bounded keyset window so templates beyond the first batch are not starved", async () => {
@@ -703,7 +862,8 @@ describe("SqliteEventsStore recurrence materialization", () => {
     expect(first.nextTemplateCursor).toBe("template-24");
     expect(second).toMatchObject({ inspected: 1, hasMore: false, nextTemplateCursor: null });
     expect(scalar(database, "SELECT count(*) FROM events")).toBe(26);
-    expect(scalar(database, "SELECT count(*) FROM audit_log WHERE entity_type = 'event'")).toBe(26);
+    expect(scalar(database, "SELECT count(*) FROM audit_log WHERE subject_type = 'event'")).toBe(26);
+    expect(scalar(database, "SELECT count(*) FROM audit_log WHERE subject_type = 'recurring_template'")).toBe(26);
   });
 
   it("rolls back parent, shared media links, and generation when an audit in the batch fails", async () => {
@@ -717,15 +877,34 @@ describe("SqliteEventsStore recurrence materialization", () => {
       media_id, entity_type, entity_id, slot, audience, sort_order
     ) VALUES ('media-1', 'recurring_template', 'template-1', 'attachment', 'private', 0)`).run();
     const duplicateAudit = eventAudit("duplicate", "generated", "create");
-    await expect(store.materializeDue(NOW, "template-1", () => duplicateAudit)).rejects.toThrow();
+    database.prepare(`INSERT INTO audit_log (
+      id, request_id, actor_kind, actor_id, subject_type, subject_id, action, payload_json, occurred_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+      .run(
+        duplicateAudit.eventId,
+        duplicateAudit.requestId,
+        duplicateAudit.actorKind,
+        duplicateAudit.actorId,
+        duplicateAudit.subjectType,
+        duplicateAudit.subjectId,
+        duplicateAudit.action,
+        JSON.stringify(duplicateAudit.payload),
+        duplicateAudit.occurredAt,
+      );
+    let sequence = 0;
+    await expect(store.materializeDue(NOW, "template-1", (input) => input.subjectType === "recurring_template"
+      ? { ...createAuditEvent(context("template-failure"), input), eventId: duplicateAudit.eventId }
+      : createAuditEvent(context(`event-success-${++sequence}`), input))).rejects.toThrow();
     expect(scalar(database, "SELECT count(*) FROM events WHERE series_id = 'template-1'")).toBe(0);
     expect(scalar(database, "SELECT count(*) FROM media_links WHERE entity_type = 'event'")).toBe(0);
     expect(scalar(database, "SELECT generation_count FROM recurring_templates WHERE id = 'template-1'")).toBe(0);
+    expect(scalar(database, `SELECT count(*) FROM audit_log
+      WHERE request_id LIKE 'event-success-%' OR request_id = 'template-failure'`)).toBe(0);
 
     await store.materializeDue(NOW, "template-1", auditFactory("retry"));
-    expect(scalar(database, "SELECT count(*) FROM events WHERE series_id = 'template-1'")).toBe(2);
-    expect(scalar(database, "SELECT count(*) FROM media_links WHERE entity_type = 'event'")).toBe(2);
-    expect(scalar(database, "SELECT count(*) FROM media_links WHERE media_id = 'media-1'")).toBe(3);
+    expect(scalar(database, "SELECT count(*) FROM events WHERE series_id = 'template-1'")).toBe(1);
+    expect(scalar(database, "SELECT count(*) FROM media_links WHERE entity_type = 'event'")).toBe(1);
+    expect(scalar(database, "SELECT count(*) FROM media_links WHERE media_id = 'media-1'")).toBe(2);
   });
 
   it("uses stable keyset and event-list indexes", () => {
@@ -745,6 +924,20 @@ function scalar(database: DatabaseSync, sql: string, params: readonly SQLInputVa
 function text(database: DatabaseSync, sql: string): string | null {
   const row = database.prepare(sql).get() as Record<string, string | null>;
   return Object.values(row)[0] ?? null;
+}
+
+function auditContext(database: DatabaseSync, requestId: string, field: string): unknown {
+  const payload = JSON.parse(text(database, `SELECT payload_json FROM audit_log WHERE request_id = '${requestId}'`) ?? "null") as {
+    context: Array<{ field: string; value: unknown }>;
+  };
+  return payload.context.find((entry) => entry.field === field)?.value;
+}
+
+function auditChanges(database: DatabaseSync, subjectType: string): unknown[] {
+  const payload = JSON.parse(text(database, `SELECT payload_json FROM audit_log WHERE subject_type = '${subjectType}'`) ?? "null") as {
+    changes: unknown[];
+  };
+  return payload.changes;
 }
 
 function plan(database: DatabaseSync, sql: string, ...params: SQLInputValue[]): string {

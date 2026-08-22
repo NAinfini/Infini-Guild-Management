@@ -21,6 +21,7 @@ import { z } from "zod";
 import { isApiRequestError, login as requestLogin } from "../../services/AuthService";
 import { useSiteConfigStore } from "../../stores/site-config";
 import { transitionSession } from "../../session-transition";
+import { AuthLightfall } from "./AuthLightfall";
 import "./AuthPages.css";
 
 const LOGIN_FORM_SCHEMA = loginSchema.extend({
@@ -154,6 +155,7 @@ export function LoginPage() {
 
   return (
     <div className="login-page">
+      <AuthLightfall />
       <div className="login-page__content">
         <header className="login-page__heading">
           <div className="login-page__brand">

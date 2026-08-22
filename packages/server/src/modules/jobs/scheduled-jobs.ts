@@ -1,9 +1,12 @@
-import type { JsonObject } from "@guild/shared";
-import type { AuditAction, AuditEntityType } from "@guild/shared/constants/audit";
+import {
+  ADMIN_OPERATION_JOB_NAMES,
+  type AdminOperationJobName,
+} from "@guild/shared/schemas/admin-operations";
 import { createAuthorizationContext, createRequestContext, type ScheduledJobBacklog } from "@guild/kernel";
 import {
-  createAuditMutationForActor,
-  type AuditMutation,
+  createAuditEventForActor,
+  type AuditEventInput,
+  type AuditEventWrite,
 } from "../audit/public.js";
 
 const JOB_LEASE_MS = 10 * 60_000;
@@ -25,18 +28,9 @@ export const SCHEDULED_JOB_LIMITS = Object.freeze({
   systemTestCleanup: 25,
 } as const);
 
-export const SCHEDULED_JOB_NAMES = [
-  "recurrence-materialization",
-  "announcement-publish",
-  "raffle-auto-draw",
-  "event-auto-archive",
-  "media-gc",
-  "audit-archive",
-  "session-cleanup",
-  "system-test-cleanup",
-] as const;
+export const SCHEDULED_JOB_NAMES = ADMIN_OPERATION_JOB_NAMES;
 
-export type ScheduledJobName = (typeof SCHEDULED_JOB_NAMES)[number];
+export type ScheduledJobName = AdminOperationJobName;
 export type ScheduledJobSchedule = "quarter-hourly" | "daily";
 
 export const SCHEDULED_JOB_GROUPS = Object.freeze({
@@ -57,13 +51,7 @@ export type SchedulerSystemActor = Readonly<{
   id: typeof SCHEDULER_SYSTEM_ACTOR_ID;
 }>;
 
-export type SchedulerAuditFactory = (input: Readonly<{
-  entityType: AuditEntityType;
-  entityId: string;
-  action: AuditAction;
-  summary?: string | null;
-  details?: JsonObject | null;
-}>) => AuditMutation;
+export type SchedulerAuditFactory = (input: AuditEventInput) => AuditEventWrite;
 
 export type ScheduledJobBatchResult = Readonly<{
   processed: number;
@@ -132,7 +120,6 @@ export interface SessionCleanupJob {
     expiresBefore: string;
     createdBefore: string;
     limit: number;
-    audit: SchedulerAuditFactory;
   }>): Promise<ScheduledJobBatchResult>;
   inspectBacklog(input: Readonly<{
     expiresBefore: string;
@@ -171,8 +158,22 @@ export interface ScheduledJobLeaseStore {
   release(jobName: ScheduledJobName, leaseToken: string): Promise<void>;
 }
 
+export interface ScheduledJobStatusStore {
+  recordRunning(input: Readonly<{
+    name: ScheduledJobName;
+    startedAt: string;
+  }>): Promise<void>;
+  recordOutcome(input: Readonly<{
+    startedAt: string;
+    finishedAt: string;
+    durationMs: number;
+    outcome: ScheduledJobOutcome;
+  }>): Promise<void>;
+}
+
 export type ScheduledJobCoordinatorDependencies = Readonly<{
   leases: ScheduledJobLeaseStore;
+  statuses: ScheduledJobStatusStore;
   recurrenceMaterialization: RecurrenceMaterializationJob;
   announcementPublish: AnnouncementPublishJob;
   raffleAutoDraw: RaffleAutoDrawJob;
@@ -230,7 +231,11 @@ export function createSchedulerAuditFactory(runId: string, now: string): Schedul
     authorization: createAuthorizationContext(null),
     now,
   });
-  return (input) => createAuditMutationForActor(context, actor.id, input);
+  return (input) => createAuditEventForActor(
+    context,
+    { kind: "system", id: actor.id, label: null },
+    input,
+  );
 }
 
 function auditArchiveCutoff(now: Date): string {
@@ -259,7 +264,21 @@ function unknownBacklog(
 }
 
 function errorMessage(error: unknown): string {
-  return (error instanceof Error ? error.message : String(error)).slice(0, 500);
+  return ((error instanceof Error ? error.message : String(error)).trim() || "Unknown scheduled job failure")
+    .slice(0, 500);
+}
+
+function failedOutcome(name: ScheduledJobName, error: unknown): FailedScheduledJobOutcome {
+  const message = errorMessage(error);
+  return {
+    name,
+    status: "failed",
+    processed: null,
+    hasMore: null,
+    batches: null,
+    backlog: unknownBacklog("job-failed", message),
+    error: message,
+  };
 }
 
 function assertBacklog(backlog: ScheduledJobBacklog, name: ScheduledJobName): void {
@@ -287,6 +306,30 @@ export class ScheduledJobCoordinator {
   }
 
   async run(name: ScheduledJobName): Promise<ScheduledJobOutcome> {
+    const startedAtDate = this.now();
+    if (!Number.isFinite(startedAtDate.getTime())) {
+      throw new TypeError("Scheduled job clock returned an invalid date");
+    }
+    const startedAt = startedAtDate.toISOString();
+    const startedTick = this.monotonicNow();
+    if (!Number.isFinite(startedTick)) {
+      throw new TypeError("Scheduled job monotonic clock returned an invalid value");
+    }
+    await this.dependencies.statuses.recordRunning({ name, startedAt });
+
+    let outcome: ScheduledJobOutcome;
+    try {
+      outcome = await this.execute(name);
+    } catch (error) {
+      outcome = failedOutcome(name, error);
+      await this.recordOutcome(startedAt, startedTick, outcome);
+      throw error;
+    }
+    await this.recordOutcome(startedAt, startedTick, outcome);
+    return outcome;
+  }
+
+  private async execute(name: ScheduledJobName): Promise<ScheduledJobOutcome> {
     const nowDate = this.now();
     if (!Number.isFinite(nowDate.getTime())) throw new TypeError("Scheduled job clock returned an invalid date");
     const now = nowDate.toISOString();
@@ -365,6 +408,27 @@ export class ScheduledJobCoordinator {
       batches: result.batches,
       backlog: result.backlog,
     };
+  }
+
+  private async recordOutcome(
+    startedAt: string,
+    startedTick: number,
+    outcome: ScheduledJobOutcome,
+  ): Promise<void> {
+    const finishedAtDate = this.now();
+    const finishedTick = this.monotonicNow();
+    if (!Number.isFinite(finishedAtDate.getTime())) {
+      throw new TypeError("Scheduled job clock returned an invalid date");
+    }
+    if (!Number.isFinite(finishedTick) || finishedTick < startedTick) {
+      throw new TypeError("Scheduled job monotonic clock returned an invalid duration");
+    }
+    await this.dependencies.statuses.recordOutcome({
+      startedAt,
+      finishedAt: finishedAtDate.toISOString(),
+      durationMs: Math.round(finishedTick - startedTick),
+      outcome,
+    });
   }
 
   private maintainLease(jobName: ScheduledJobName, leaseToken: string): Readonly<{
@@ -485,16 +549,7 @@ export class ScheduledJobCoordinator {
       try {
         outcomes.push(await this.run(name));
       } catch (error) {
-        const message = errorMessage(error);
-        outcomes.push({
-          name,
-          status: "failed",
-          processed: null,
-          hasMore: null,
-          batches: null,
-          backlog: unknownBacklog("job-failed", message),
-          error: message,
-        });
+        outcomes.push(failedOutcome(name, error));
       }
     }
     return outcomes;
@@ -588,7 +643,6 @@ export class ScheduledJobCoordinator {
           expiresBefore: now,
           createdBefore: new Date(nowDate.getTime() - SESSION_ABSOLUTE_TTL_MS).toISOString(),
           limit: SCHEDULED_JOB_LIMITS.sessionCleanup,
-          audit,
         });
         break;
       case "system-test-cleanup":

@@ -1,16 +1,17 @@
-// @vitest-environment jsdom
 import { MantineProvider } from "@mantine/core";
 import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import type { ReactNode } from "react";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { buildMediaGalleryLabels, MediaGallery } from "./MediaGallery";
 
 vi.mock("@mantine/carousel", () => ({
   Carousel: Object.assign(
-    ({ children }: { children: ReactNode }) => <div>{children}</div>,
+    ({ children, emblaOptions }: { children: ReactNode; emblaOptions?: { duration?: number } }) => (
+      <div data-testid="media-carousel" data-duration={emblaOptions?.duration}>{children}</div>
+    ),
     {
       Slide: ({ children }: { children: ReactNode }) => <div>{children}</div>,
     },
@@ -25,8 +26,22 @@ const MEDIA_ID_ONE = "abcdefghijklmnopqrstu";
 const MEDIA_ID_TWO = "bcdefghijklmnopqrstuv";
 const MEDIA_ID_THREE = "cdefghijklmnopqrstuvw";
 
+afterEach(() => {
+  vi.restoreAllMocks();
+});
+
 describe("MediaGallery", () => {
-  it("localizes image and video alt text while interpolating each item index once", () => {
+  it("uses the measured snappy animation duration", () => {
+    render(
+      <MantineProvider>
+        <MediaGallery images={[MEDIA_ID_ONE, MEDIA_ID_TWO]} />
+      </MantineProvider>,
+    );
+
+    expect(screen.getByTestId("media-carousel")).toHaveAttribute("data-duration", "18");
+  });
+
+  it("localizes image and video alt text while interpolating each item index once", async () => {
     const labels = buildMediaGalleryLabels((key, options?: { index?: number }) => {
       if (key === "media.aria.openItem") return `Open media item ${options?.index}`;
       if (key === "media.aria.imageAlt") return `Localized media image ${options?.index}`;
@@ -53,11 +68,38 @@ describe("MediaGallery", () => {
     expect(screen.getByAltText("Localized media thumbnail 1")).toBeInTheDocument();
     expect(screen.getByAltText("Localized media thumbnail 2")).toBeInTheDocument();
     expect(screen.getByAltText("Localized video thumbnail 3")).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "Open media item 3" }));
     expect(screen.getByTitle("https://www.youtube.com/watch?v=dQw4w9WgXcQ")).toHaveAttribute(
       "src",
       "https://www.youtube-nocookie.com/embed/dQw4w9WgXcQ",
     );
     expect(screen.queryByRole("button", { name: /\{\{index\}\}/ })).not.toBeInTheDocument();
+  });
+
+  it("mounts only the active player so leaving any video stops it", async () => {
+    const embeddedVideo = "https://www.youtube.com/watch?v=dQw4w9WgXcQ";
+    const directVideo = "https://cdn.example.com/raid.mp4";
+    const pause = vi.spyOn(window.HTMLMediaElement.prototype, "pause").mockImplementation(() => {});
+
+    const { container } = render(
+      <MantineProvider>
+        <MediaGallery images={[MEDIA_ID_ONE]} videos={[embeddedVideo, directVideo]} />
+      </MantineProvider>,
+    );
+
+    expect(container.querySelector("iframe, video")).not.toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole("button", { name: "Open item 2" }));
+    expect(screen.getByTitle(embeddedVideo)).toBeInTheDocument();
+    expect(container.querySelector("video")).not.toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole("button", { name: "Open item 3" }));
+    expect(screen.queryByTitle(embeddedVideo)).not.toBeInTheDocument();
+    expect(container.querySelector("video")).toHaveAttribute("src", directVideo);
+
+    await userEvent.click(screen.getByRole("button", { name: "Open item 1" }));
+    expect(container.querySelector("iframe, video")).not.toBeInTheDocument();
+    expect(pause).toHaveBeenCalledOnce();
   });
 
   it("holds the neighbouring slides ready so stepping through does not wait on the network", () => {

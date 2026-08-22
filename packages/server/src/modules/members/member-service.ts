@@ -9,8 +9,9 @@ import {
   userSchema,
 } from "@guild/shared";
 import { PERMISSION_ID } from "@guild/shared/constants/roles";
+import { LIMITS } from "@guild/shared/config/limits";
 import { AppError, type RequestContext } from "@guild/kernel";
-import { createAuditMutation } from "../audit/public.js";
+import { createAuditEvent } from "../audit/public.js";
 import { assertTargetBelowActor } from "../auth/public.js";
 import type { AudioUpload, ImageUpload } from "../media/public.js";
 import type {
@@ -52,6 +53,7 @@ export function buildUserWire(record: MemberRecord["user"]): User {
     deleted_at: record.deletedAt,
     created_at: record.createdAt,
     updated_at: record.updatedAt,
+    last_login_at: record.lastLoginAt,
   });
 }
 
@@ -119,6 +121,13 @@ export class MemberService {
     totalPages: number;
   }>> {
     const projection = resolveMemberProjection(context, input.externalView);
+    if (projection === "public" && input.limit > LIMITS.pagination.publicUsers) {
+      throw new AppError({
+        code: "VALIDATION_ERROR",
+        status: 400,
+        message: `Public roster limit must not exceed ${LIMITS.pagination.publicUsers}`,
+      });
+    }
     const search = input.search?.trim().toLowerCase() ?? "";
     assertPortableLikeSearch(search, "Member search");
     const page = await this.options.store.listRoster({
@@ -217,15 +226,26 @@ export class MemberService {
         ...(notes === undefined ? {} : { notes }),
         ...(input.images === undefined ? {} : { images: input.images }),
         updatedAt: context.now,
-      }, target, currentMedia.images, createAuditMutation(context, {
-        entityType: "member_profile",
-        entityId: userId,
+      }, target, currentMedia.images, createAuditEvent(context, {
+        subjectType: "member_profile",
+        subjectId: userId,
+        subjectLabel: target.username,
         action: "update",
-        summary: userId,
-        details: {
-          fields: Object.keys(input).filter((field) => field !== "images"),
-          ...(input.images === undefined ? {} : { image_count: input.images.length }),
-        },
+        context: [
+          {
+            field: "changed_sections",
+            value: {
+              type: "list",
+              value: Object.keys(input)
+                .filter((field) => field !== "images")
+                .map((value) => ({ type: "code" as const, value })),
+            },
+          },
+          ...(input.images === undefined ? [] : [{
+            field: "media_count" as const,
+            value: { type: "number" as const, value: input.images.length },
+          }]),
+        ],
       }));
     if (!profile) {
       throw new AppError({
@@ -287,12 +307,16 @@ export class MemberService {
       note: input.note?.trim() || null,
       maximumEntries: policy.maxEntriesPerUser,
       now: context.now,
-    }, createAuditMutation(context, {
-      entityType: "member_absence",
-      entityId: id,
+    }, createAuditEvent(context, {
+      subjectType: "member_absence",
+      subjectId: id,
+      subjectLabel: target.target.username,
       action: "create",
-      summary: target.target.username,
-      details: { user_id: userId, start_date: input.startDate, end_date: input.endDate },
+      context: [
+        { field: "subject_id", value: { type: "reference", value: { id: userId, label: target.target.username } } },
+        { field: "start_at", value: { type: "date", value: input.startDate } },
+        { field: "end_at", value: { type: "date", value: input.endDate } },
+      ],
     }));
     if (!created) {
       throw new AppError({ code: "VALIDATION_ERROR", status: 400, message: "Absence limit reached" });
@@ -302,12 +326,26 @@ export class MemberService {
 
   async deleteAbsence(context: RequestContext, userId: string, absenceId: string): Promise<{ ok: true }> {
     const target = await this.requireEditableTarget(context, userId);
-    const removed = await this.options.store.deleteAbsence(userId, absenceId, createAuditMutation(context, {
-      entityType: "member_absence",
-      entityId: absenceId,
+    const actor = context.authorization.requireAuthenticated();
+    const absence = (await this.options.store.listAbsences({
+      userId,
+      viewerUserId: actor.userId,
+      projection: "admin",
+    })).find((entry) => entry.id === absenceId);
+    if (!absence) throw new AppError({ code: "NOT_FOUND", status: 404, message: "Absence not found" });
+    const removed = await this.options.store.deleteAbsence(userId, absenceId, createAuditEvent(context, {
+      subjectType: "member_absence",
+      subjectId: absenceId,
+      subjectLabel: target.target.username,
       action: "delete",
-      summary: target.target.username,
-      details: { user_id: userId },
+      context: [
+        {
+          field: "subject_id",
+          value: { type: "reference", value: { id: userId, label: target.target.username } },
+        },
+        { field: "start_at", value: { type: "date", value: absence.start_date } },
+        { field: "end_at", value: { type: "date", value: absence.end_date } },
+      ],
     }));
     if (!removed) throw new AppError({ code: "NOT_FOUND", status: 404, message: "Absence not found" });
     return { ok: true };
@@ -319,68 +357,72 @@ export class MemberService {
       context,
       userId,
       uploads,
-      createAuditMutation(context, {
-        entityType: "member_profile",
-        entityId: userId,
+      createAuditEvent(context, {
+        subjectType: "member_profile",
+        subjectId: userId,
+        subjectLabel: target.target.username,
         action: "upload_images",
-        summary: target.target.username,
-        details: { upload_count: uploads.length },
+        context: [{ field: "upload_count", value: { type: "number", value: uploads.length } }],
       }),
     ) };
   }
 
   async deleteImages(context: RequestContext, userId: string, mediaIds: readonly string[]) {
     const target = await this.requireEditableTarget(context, userId);
-    const deleted = await this.options.media.deleteProfileImages(context, userId, mediaIds, createAuditMutation(context, {
-      entityType: "member_profile",
-      entityId: userId,
+    const deleted = await this.options.media.deleteProfileImages(context, userId, mediaIds, createAuditEvent(context, {
+      subjectType: "member_profile",
+      subjectId: userId,
+      subjectLabel: target.target.username,
       action: "delete_images",
-      summary: target.target.username,
-      details: { media_ids: [...mediaIds] },
+      // The store appends the images it actually removed; a requested count here would contradict it.
     }));
     return { ok: true as const, deleted };
   }
 
   async uploadAvatar(context: RequestContext, userId: string, upload: ImageUpload) {
     const target = await this.requireEditableTarget(context, userId);
-    const mediaId = await this.options.media.uploadAvatar(context, userId, upload, createAuditMutation(context, {
-      entityType: "member_profile",
-      entityId: userId,
+    const mediaId = await this.options.media.uploadAvatar(context, userId, upload, createAuditEvent(context, {
+      subjectType: "member_profile",
+      subjectId: userId,
+      subjectLabel: target.target.username,
       action: "upload_avatar",
-      summary: target.target.username,
+      context: [],
     }));
     return { media_id: mediaId };
   }
 
   async deleteAvatar(context: RequestContext, userId: string) {
     const target = await this.requireEditableTarget(context, userId);
-    await this.options.media.deleteAvatar(context, userId, createAuditMutation(context, {
-      entityType: "member_profile",
-      entityId: userId,
+    await this.options.media.deleteAvatar(context, userId, createAuditEvent(context, {
+      subjectType: "member_profile",
+      subjectId: userId,
+      subjectLabel: target.target.username,
       action: "delete_avatar",
-      summary: target.target.username,
+      context: [],
     }));
     return { ok: true as const };
   }
 
   async uploadAudio(context: RequestContext, userId: string, upload: AudioUpload) {
     const target = await this.requireEditableTarget(context, userId);
-    const mediaId = await this.options.media.uploadAudio(context, userId, upload, createAuditMutation(context, {
-      entityType: "member_profile",
-      entityId: userId,
+    const mediaId = await this.options.media.uploadAudio(context, userId, upload, createAuditEvent(context, {
+      subjectType: "member_profile",
+      subjectId: userId,
+      subjectLabel: target.target.username,
       action: "upload_audio",
-      summary: target.target.username,
+      context: [],
     }));
     return { media_id: mediaId };
   }
 
   async deleteAudio(context: RequestContext, userId: string) {
     const target = await this.requireEditableTarget(context, userId);
-    await this.options.media.deleteAudio(context, userId, createAuditMutation(context, {
-      entityType: "member_profile",
-      entityId: userId,
+    await this.options.media.deleteAudio(context, userId, createAuditEvent(context, {
+      subjectType: "member_profile",
+      subjectId: userId,
+      subjectLabel: target.target.username,
       action: "delete_audio",
-      summary: target.target.username,
+      context: [],
     }));
     return { ok: true as const };
   }

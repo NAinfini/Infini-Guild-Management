@@ -50,10 +50,10 @@ export class SqliteAccountProvisioningStore implements AccountProvisioningStore 
           `INSERT INTO users (id, username, role_id, is_active, deleted_at, revision_token, created_at, updated_at)
            SELECT ?, ?, role_id, 1, NULL, ?, ?, ? FROM invite_links
            WHERE id = ? AND changes() = 1`,
-          [input.userId, input.username, audit.id, input.now, input.now, input.inviteId],
+          [input.userId, input.username, audit.eventId, input.now, input.now, input.inviteId],
         ),
         run("INSERT INTO user_credentials (user_id, password_hash, updated_at) VALUES (?, ?, ?)", [input.userId, input.passwordHash, input.now]),
-        run("INSERT INTO member_profiles (user_id, power, revision_token, created_at, updated_at) VALUES (?, 0, ?, ?, ?)", [input.userId, audit.id, input.now, input.now]),
+        run("INSERT INTO member_profiles (user_id, power, revision_token, created_at, updated_at) VALUES (?, 0, ?, ?, ?)", [input.userId, audit.eventId, input.now, input.now]),
         auditInsertStatement(audit),
       ]);
       return "created";
@@ -82,7 +82,7 @@ export class SqliteAccountProvisioningStore implements AccountProvisioningStore 
                )
              ), '') = ?`,
           [
-            input.id, input.username, audit.id, input.now, input.now,
+            input.id, input.username, audit.eventId, input.now, input.now,
             input.destinationRole.id, input.destinationRole.revisionToken, input.destinationRole.level,
             permissionSnapshot(input.destinationRole.permissions),
           ],
@@ -90,11 +90,11 @@ export class SqliteAccountProvisioningStore implements AccountProvisioningStore 
         auditInsertStatement(audit, { sql: "SELECT 1 WHERE changes() = 1" }),
         run(
           "INSERT INTO user_credentials (user_id, password_hash, updated_at) SELECT ?, ?, ? WHERE EXISTS (SELECT 1 FROM users WHERE id = ? AND revision_token = ?)",
-          [input.id, input.passwordHash, input.now, input.id, audit.id],
+          [input.id, input.passwordHash, input.now, input.id, audit.eventId],
         ),
         run(
           "INSERT INTO member_profiles (user_id, power, revision_token, created_at, updated_at) SELECT ?, 0, ?, ?, ? WHERE EXISTS (SELECT 1 FROM users WHERE id = ? AND revision_token = ?)",
-          [input.id, audit.id, input.now, input.now, input.id, audit.id],
+          [input.id, audit.eventId, input.now, input.now, input.id, audit.eventId],
         ),
       ]);
       return returnedRowCount(results[0]) === 1 ? "created" : "conflict";

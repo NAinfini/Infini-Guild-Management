@@ -1,6 +1,14 @@
 import { DEFAULT_GAME_RULES, type RecurringTemplate } from "@guild/shared";
 import { utcWeekdayToLocal } from "@guild/shared/utils/recurrence";
-import { tzOffsetToAnchorIso, buildFormState, computeNextLifecyclePreview, formatLifecycleDate, utcTimeToLocalTime } from "./RecurringTemplateFormModal.helpers";
+import type { CreateTemplatePayload, UpdateTemplatePayload } from "../../../services/EventService";
+import {
+  buildFormState,
+  computeNextLifecyclePreview,
+  formatLifecycleDate,
+  templateScheduleAnchor,
+  utcClockToLocalAt,
+} from "./RecurringTemplateFormModal.helpers";
+import { formatCalendarDate } from "../../../utils/datetime";
 import { useConfirmDialog } from "@portal/hooks/useConfirmDialog";
 import { CalendarRepeatIcon, CircleCheckIcon, ClockIcon, PauseIcon, SearchIcon, UsersIcon } from "@portal/components/icons";
 import { ContentFilterToolbar } from "@portal/components/shared/ContentFilterToolbar";
@@ -36,7 +44,7 @@ type TemplateStatusFilter = "all" | "active" | "paused";
 function buildRecurrenceSummary(
   t: (key: string, opts?: Record<string, unknown>) => string,
   rule: RecurringTemplate["recurrence_rule"],
-  startTime: string,
+  referenceDate: Date,
 ): string {
   const freq = rule.frequency;
   const interval = rule.interval;
@@ -44,9 +52,7 @@ function buildRecurrenceSummary(
     return t("recurring.summary.daily", { interval });
   }
   if (freq === "weekly") {
-    // start_time is stored as UTC; anchor on that UTC instant for the
-    // UTC→local weekday conversion.
-    const anchorIso = tzOffsetToAnchorIso(0, startTime);
+    const anchorIso = new Date(referenceDate).toISOString();
     const dayNames = rule.daysOfWeek
       .map((d) => utcWeekdayToLocal(d, anchorIso))
       .sort((a, b) => a - b)
@@ -54,7 +60,10 @@ function buildRecurrenceSummary(
       .join(", ");
     return t("recurring.summary.weekly", { interval, days: dayNames });
   }
-  return t("recurring.summary.monthly", { interval, day: rule.dayOfMonth });
+  return t("recurring.summary.monthly", {
+    interval,
+    day: rule.dayOfMonth,
+  });
 }
 
 
@@ -69,8 +78,8 @@ type RecurringTemplatesTabProps = {
   templates: RecurringTemplate[];
   loading: boolean;
   formSaving: boolean;
-  onCreateTemplate: (payload: RecurringTemplateFormPayload) => Promise<unknown>;
-  onUpdateTemplate: (id: string, payload: RecurringTemplateFormPayload) => Promise<unknown>;
+  onCreateTemplate: (payload: CreateTemplatePayload) => Promise<unknown>;
+  onUpdateTemplate: (id: string, payload: UpdateTemplatePayload) => Promise<unknown>;
   onPauseTemplate: (id: string) => Promise<unknown>;
   onResumeTemplate: (id: string) => Promise<unknown>;
   onDeleteTemplate: (id: string) => Promise<unknown>;
@@ -148,7 +157,9 @@ export function RecurringTemplatesTab({
         cancelLabel: t("common:action.cancel"),
         intent: "danger",
       });
-      if (accepted) await onDeleteTemplate(template.id);
+      if (!accepted) return false;
+      await onDeleteTemplate(template.id);
+      return true;
     },
     [confirm, onDeleteTemplate, t],
   );
@@ -156,7 +167,12 @@ export function RecurringTemplatesTab({
   const handleFormSave = useCallback(
     async (payload: RecurringTemplateFormPayload) => {
       if (formMode === "create") {
-        await onCreateTemplate(payload);
+        await onCreateTemplate({
+          ...payload,
+          description: payload.description ?? undefined,
+          duration_minutes: payload.duration_minutes ?? undefined,
+          capacity: payload.capacity ?? undefined,
+        });
         formHandlers.close();
         setEditingTemplate(null);
         return;
@@ -169,6 +185,18 @@ export function RecurringTemplatesTab({
       }
     },
     [editingTemplate, formMode, onCreateTemplate, onUpdateTemplate],
+  );
+
+  const handleFormDelete = useCallback(
+    async (templateId: string) => {
+      const template = templates.find((item) => item.id === templateId);
+      if (!template) return;
+      const deleted = await handleDelete(template);
+      if (!deleted) return;
+      formHandlers.close();
+      setEditingTemplate(null);
+    },
+    [handleDelete, templates],
   );
 
   const viewSwitcher = (
@@ -292,8 +320,9 @@ export function RecurringTemplatesTab({
           filteredTemplates.map((template) => {
             const isPaused = template.paused;
             const typeDef = gameRules.events.types.find((definition) => definition.id === template.type);
-            const time = template.start_time ? utcTimeToLocalTime(template.start_time) : "--:--";
             const lifecycle = isPaused ? null : computeNextLifecyclePreview(buildFormState(template), template, "edit");
+            const scheduleAnchor = lifecycle?.startTime ?? templateScheduleAnchor(template) ?? new Date();
+            const time = template.start_time ? utcClockToLocalAt(template.start_time, scheduleAnchor) : "--:--";
             const lang = i18n.language;
             return (
               <Paper
@@ -379,7 +408,7 @@ export function RecurringTemplatesTab({
                             <Text size="xs" c="dimmed">{time}</Text>
                           </Group>
                           <Text size="xs" c="dimmed">
-                            {buildRecurrenceSummary(t, template.recurrence_rule, template.start_time)}
+                            {buildRecurrenceSummary(t, template.recurrence_rule, scheduleAnchor)}
                           </Text>
                           {template.capacity != null && (
                             <Group gap={4} align="center">
@@ -425,7 +454,8 @@ export function RecurringTemplatesTab({
                               </ThemeIcon>
                               <div style={{ minWidth: 0 }}>
                                 <Text size="sm" fw={700} lh={1.3}>{t("recurring.hovercard.lastGenerated.title")}</Text>
-                                <Text size="xs" c="dimmed" lh={1.5}>{t("recurring.lastGenerated", { date: new Date(template.last_generated_date).toLocaleDateString(i18n.language) })}</Text>
+                                {/* last_generated_date 是「生成到哪一天」的日历日期，不是瞬时点，按字面显示。 */}
+                                <Text size="xs" c="dimmed" lh={1.5}>{t("recurring.lastGenerated", { date: formatCalendarDate(template.last_generated_date, i18n.language, "short") })}</Text>
                                 <Text size="xs" c="dimmed" lh={1.5}>{t("recurring.hovercard.lastGenerated.desc")}</Text>
                               </div>
                             </Group>
@@ -453,10 +483,7 @@ export function RecurringTemplatesTab({
         onSave={handleFormSave}
         onPause={onPauseTemplate}
         onResume={onResumeTemplate}
-        onDelete={(id) => {
-          const tpl = templates.find((t) => t.id === id);
-          if (tpl) handleDelete(tpl);
-        }}
+        onDelete={handleFormDelete}
       />
     </>
   );

@@ -83,7 +83,7 @@ export const DEVELOPMENT_MEDIA_ASSETS = Object.freeze([
   imageAsset("dev-media-00000000001", "site_logo", "dev-owner", target("site_config", "site", "logo", "public"), files.sceneSquare),
   imageAsset("dev-media-00000000002", "class_icon", "dev-owner", target("class_catalog", "dev-class-vanguard", "icon", "public"), files.avatar01),
   imageAsset("dev-media-00000000003", "member_avatar", "dev-owner", target("member_profile", "dev-owner", "avatar", "public"), files.avatar01),
-  imageAsset("dev-media-00000000004", "member_avatar", "dev-moderator-01", target("member_profile", "dev-moderator-01", "avatar", "public"), files.avatar02),
+  imageAsset("dev-media-00000000004", "member_avatar", "dev-moderator-29", target("member_profile", "dev-moderator-29", "avatar", "public"), files.avatar02),
   imageAsset("dev-media-00000000005", "member_avatar", "dev-member-01", target("member_profile", "dev-member-01", "avatar", "public"), files.avatar03),
   imageAsset("dev-media-00000000006", "member_avatar", "dev-member-02", target("member_profile", "dev-member-02", "avatar", "public"), files.avatar04),
   imageAsset("dev-media-00000000007", "member_avatar", "dev-member-03", target("member_profile", "dev-member-03", "avatar", "public"), files.avatar05),

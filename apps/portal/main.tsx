@@ -1,6 +1,9 @@
 import { createRoot } from "react-dom/client";
+import { config as configureZod } from "zod";
 import { dismissSplash } from "./splash";
 import "./styles.css";
+
+configureZod({ jitless: true });
 
 const rootElement = document.getElementById("root");
 if (!rootElement) {
@@ -10,9 +13,7 @@ if (!rootElement) {
 const root = createRoot(rootElement);
 
 void import("./bootstrap")
-  .then(({ mountApp }) => {
-    mountApp(root);
-  })
+  .then(({ mountApp }) => mountApp(root))
   .catch((error) => {
     console.error("Failed to bootstrap portal app", error);
     document.documentElement.dataset.theme ||= "dark";

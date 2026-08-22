@@ -1,16 +1,23 @@
 import { access, readFile } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
+import { LIMITS } from "@guild/shared/config/limits.ts";
 
 const runtimeConfigScriptDirectory = dirname(fileURLToPath(import.meta.url));
 const repositoryRoot = resolve(runtimeConfigScriptDirectory, "..");
-const RATE_LIMIT_BINDINGS = [
-  "AUTH_RATE_LIMITER",
-  "READ_RATE_LIMITER",
-  "MUTATION_RATE_LIMITER",
-  "UPLOAD_RATE_LIMITER",
-  "WEBSOCKET_RATE_LIMITER",
-];
+/*
+ * 限流额度的唯一事实来源是共享 LIMITS。wrangler 是静态平台配置、运行时读不到
+ * LIMITS，预检强制它成为 LIMITS 的精确镜像——否则 Cloudflare 平台限流会和按
+ * LIMITS 窗口计算的 Retry-After 脱节。
+ */
+export const RATE_LIMIT_EXPECTATIONS = {
+  AUTH_RATE_LIMITER: LIMITS.rateLimit.auth,
+  READ_RATE_LIMITER: LIMITS.rateLimit.reads,
+  EXPENSIVE_READ_RATE_LIMITER: LIMITS.rateLimit.expensiveReads,
+  MUTATION_RATE_LIMITER: LIMITS.rateLimit.mutations,
+  UPLOAD_RATE_LIMITER: LIMITS.rateLimit.uploads,
+  WEBSOCKET_RATE_LIMITER: LIMITS.websocket.handshakes,
+};
 const SECRET_KEYS = ["IG_INVITE_TOKEN_SECRET", "IG_AUDIT_DOWNLOAD_SECRET"];
 const SHARED_MIGRATIONS_DIRECTORY = "../../packages/persistence-sqlite/src/migrations/generated";
 
@@ -153,6 +160,12 @@ export function validateCloudflareConfig(config, options = {}) {
   if (!isObject(config)) return ["Cloudflare config must be an object."];
   requiredString(config, "name", "cloudflare", errors, settings);
   if (config.main !== "src/index.ts") errors.push("cloudflare.main must be src/index.ts.");
+  // Worker 通过 AsyncLocalStorage 取请求域 ExecutionContext；缺这个标志
+  // workerd 直接拒绝加载产物，必须在构建期拦下来。
+  const compatibilityFlags = Array.isArray(config.compatibility_flags) ? config.compatibility_flags : [];
+  if (!compatibilityFlags.includes("nodejs_als")) {
+    errors.push('cloudflare.compatibility_flags must include "nodejs_als" for AsyncLocalStorage support.');
+  }
 
   const assets = isObject(config.assets) ? config.assets : {};
   if (assets.binding !== "ASSETS" || assets.run_worker_first !== true
@@ -197,7 +210,7 @@ export function validateCloudflareConfig(config, options = {}) {
   }
 
   const rateLimits = Array.isArray(config.ratelimits) ? config.ratelimits : [];
-  for (const binding of RATE_LIMIT_BINDINGS) {
+  for (const [binding, expected] of Object.entries(RATE_LIMIT_EXPECTATIONS)) {
     const entry = rateLimits.find((candidate) => isObject(candidate) && candidate.name === binding);
     if (!isObject(entry)) {
       errors.push(`Cloudflare rate limiter ${binding} is missing.`);
@@ -205,8 +218,11 @@ export function validateCloudflareConfig(config, options = {}) {
     }
     requiredString(entry, "namespace_id", `cloudflare.${binding}`, errors, settings);
     const simple = isObject(entry.simple) ? entry.simple : {};
-    if (!Number.isInteger(simple.limit) || simple.limit <= 0 || ![10, 60].includes(simple.period)) {
-      errors.push(`Cloudflare rate limiter ${binding} needs a positive integer limit and a 10 or 60 second period.`);
+    const expectedPeriod = expected.windowMs / 1000;
+    if (simple.limit !== expected.maxRequests || simple.period !== expectedPeriod) {
+      errors.push(
+        `Cloudflare rate limiter ${binding} must mirror shared LIMITS: limit ${expected.maxRequests}, period ${expectedPeriod}s.`,
+      );
     }
   }
 
@@ -237,7 +253,10 @@ export function validateVpsConfig(config, options = {}) {
   const errors = [];
   if (!isObject(config)) return ["VPS config must be an environment map."];
   const publicUrl = requiredString(config, "IG_PUBLIC_URL", "vps", errors, settings);
-  if (publicUrl && !validOrigin(publicUrl, false)) errors.push("vps.IG_PUBLIC_URL must be a root HTTP(S) origin.");
+  // 与 VPS 运行时同一条规则：非回环地址必须 HTTPS，预检不得放行运行时会拒绝的配置。
+  if (publicUrl && !validOrigin(publicUrl, true)) {
+    errors.push("vps.IG_PUBLIC_URL must be a root HTTPS origin, except for loopback local development.");
+  }
   for (const key of SECRET_KEYS) {
     const value = requiredString(config, key, "vps", errors, settings);
     if (value && !settings.allowPlaceholders && new TextEncoder().encode(value).byteLength < 32) {

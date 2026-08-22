@@ -1,4 +1,3 @@
-// @vitest-environment jsdom
 
 import { notifications } from "@mantine/notifications";
 import { render } from "@testing-library/react";

@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   adminRoleSchema,
-  auditLogSchema,
+  auditEventSchema,
   createAdminMemberSchema,
   createInviteLinkSchema,
   inviteLinkSchema,
@@ -30,7 +30,7 @@ describe("admin role-target schemas", () => {
   it("returns the assigned role metadata with invite links", () => {
     const parsed = inviteLinkSchema.safeParse({
       id: "invite-1",
-      code: "CODE",
+      code: "A1b2C3d4E5",
       created_by: "user-1",
       max_uses: 2,
       used_count: 0,
@@ -41,6 +41,10 @@ describe("admin role-target schemas", () => {
     });
 
     expect(parsed.success).toBe(true);
+    expect(inviteLinkSchema.safeParse({
+      ...(parsed.success ? parsed.data : {}),
+      code: "TOO-LONG-123",
+    }).success).toBe(false);
   });
 
   it("treats every role as editable data instead of exposing a built-in flag", () => {
@@ -74,7 +78,7 @@ describe("admin login-lock schemas", () => {
   });
 });
 
-describe("audit JSON object contract", () => {
+describe("audit event contract", () => {
   it("accepts nested JSON values and rejects non-JSON or non-object roots", () => {
     expect(jsonObjectSchema.parse({ nested: [true, 1, "value", null, { ok: false }] })).toEqual({
       nested: [true, 1, "value", null, { ok: false }],
@@ -84,20 +88,31 @@ describe("audit JSON object contract", () => {
     expect(jsonObjectSchema.safeParse({ invalid: Number.POSITIVE_INFINITY }).success).toBe(false);
   });
 
-  it("exposes audit detail as an object without a detail_text compatibility field", () => {
-    const parsed = auditLogSchema.parse({
-      id: "audit-1",
-      entity_type: "event",
+  it("exposes a typed v2 payload without legacy detail fields", () => {
+    const parsed = auditEventSchema.parse({
+      event_id: "audit-1",
+      request_id: "request-1",
+      actor: { kind: "user", id: "actor-1", label: "Admin" },
+      subject: { type: "event", id: "event-1", label: "Launch" },
       action: "update",
-      actor_id: "actor-1",
-      entity_id: "event-1",
-      diff_title: null,
-      detail: { title: { from: "Before", to: "After" } },
-      created_at: "2026-08-08T00:00:00.000Z",
+      payload: {
+        schema_version: 2,
+        changes: [{
+          field: "title",
+          before: { type: "text", value: "Before" },
+          after: { type: "text", value: "After" },
+        }],
+        context: [],
+      },
+      occurred_at: "2026-08-08T00:00:00.000Z",
     });
 
-    expect(parsed.detail).toEqual({ title: { from: "Before", to: "After" } });
-    expect(parsed).not.toHaveProperty("detail_text");
-    expect(auditLogSchema.safeParse({ ...parsed, detail: "{}" }).success).toBe(false);
+    expect(parsed.payload.changes[0]).toEqual({
+      field: "title",
+      before: { type: "text", value: "Before" },
+      after: { type: "text", value: "After" },
+    });
+    expect(parsed).not.toHaveProperty("detail");
+    expect(auditEventSchema.safeParse({ ...parsed, payload: "{}" }).success).toBe(false);
   });
 });

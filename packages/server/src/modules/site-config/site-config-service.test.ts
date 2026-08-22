@@ -3,6 +3,7 @@ import {
   DEFAULT_FEATURE_FLAGS,
   DEFAULT_SITE_ABSENCE_POLICY,
   DEFAULT_SITE_ANALYTICS_SETTINGS,
+  DEFAULT_SITE_DESCRIPTION,
   DEFAULT_SITE_MEDIA_POLICY,
   DEFAULT_SITE_STORAGE_POLICY,
 } from "@guild/shared";
@@ -12,6 +13,7 @@ import type { MediaService } from "../media/public.js";
 
 const record: SiteConfigRecord = {
   site_name: "Guild",
+  site_description: DEFAULT_SITE_DESCRIPTION,
   site_logo_media_id: null,
   default_site_logo_url: "/logo.svg",
   features: DEFAULT_FEATURE_FLAGS,
@@ -74,7 +76,24 @@ describe("SiteConfigService", () => {
     });
     expect(update.mock.calls[0]![0]).toMatchObject({
       expectedRevisionToken: record.revisionToken,
-      audit: { entityType: "analytics_settings", requestId: "request-1" },
+      audit: {
+        actorKind: "user",
+        actorId: "user-1",
+        requestId: "request-1",
+        subjectType: "analytics_settings",
+        subjectId: "site",
+        subjectLabel: record.site_name,
+        action: "update",
+        payload: {
+          schema_version: 2,
+          changes: [{
+            field: "kills_weight",
+            before: { type: "number", value: DEFAULT_SITE_ANALYTICS_SETTINGS.modifier_weights.kills },
+            after: { type: "number", value: result.modifier_weights.kills },
+          }],
+          context: [],
+        },
+      },
     });
   });
 
@@ -91,6 +110,38 @@ describe("SiteConfigService", () => {
     expect(mutation.record.media_policy.quotas).toEqual({ ...DEFAULT_SITE_MEDIA_POLICY.quotas, wiki: 7 });
     expect(mutation.expectedRevisionToken).toBe(record.revisionToken);
     expect(mutation.audit.requestId).toBe("request-1");
+  });
+
+  it("projects and audits a public branding description update", async () => {
+    const update = vi.fn().mockResolvedValue(true);
+    const value = service(store({ update }));
+
+    expect((await value.getPublic()).site_description).toBe(DEFAULT_SITE_DESCRIPTION);
+    await value.update(context(["admin.siteConfig.manage"]), {
+      site_description: "A focused home for our guild.",
+    });
+
+    expect(update.mock.calls[0]![0]).toMatchObject({
+      record: { site_description: "A focused home for our guild." },
+      audit: {
+        actorKind: "user",
+        actorId: "user-1",
+        requestId: "request-1",
+        subjectType: "site_config",
+        subjectId: "site",
+        subjectLabel: record.site_name,
+        action: "update",
+        payload: {
+          schema_version: 2,
+          changes: [{
+            field: "description",
+            before: { type: "text", value: DEFAULT_SITE_DESCRIPTION },
+            after: { type: "text", value: "A focused home for our guild." },
+          }],
+          context: [],
+        },
+      },
+    });
   });
 
   it("uploads one staged logo and attaches it through the atomic config store mutation", async () => {

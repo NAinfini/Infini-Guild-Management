@@ -2,18 +2,11 @@ import type { Announcement } from "@guild/shared";
 import { PushpinOutlined } from "@portal/utils/icons";
 import { Alert, Badge, Button, Group, Indicator, Paper, Skeleton, Stack, Text, ThemeIcon, Tooltip, VisuallyHidden } from "@mantine/core";
 import { ArchiveIcon, CalendarTimeIcon, CircleCheckIcon, FileTextIcon, PlusIcon } from "@portal/components/icons";
-import { format } from "date-fns";
+import { formatDateTime } from "@portal/utils/datetime";
 import type { ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 
 import type { AnnouncementStatus } from "@guild/shared/constants/announcements";
-
-function formatDateTime(iso: string | null): string {
-  if (!iso) return "-";
-  const date = new Date(iso);
-  if (Number.isNaN(date.getTime())) return "-";
-  return format(date, "yyyy-MM-dd HH:mm");
-}
 
 const STATUS_ICON = {
   draft: <FileTextIcon size={14} className="announcement-item-status-icon--draft" />,
@@ -156,7 +149,7 @@ export function AnnouncementListCard({
                             <Badge color="blue">{t("meta.scheduled", { datetime: formatDateTime(item.publish_at) })}</Badge>
                           ) : null}
                         </Group>
-                        <Text c="dimmed" size="sm" className="announcement-item-time">
+                        <Text size="sm" className="announcement-item-time">
                           {formatDateTime(item.updated_at)}
                         </Text>
                       </Stack>

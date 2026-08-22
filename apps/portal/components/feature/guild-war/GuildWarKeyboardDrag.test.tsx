@@ -1,4 +1,3 @@
-// @vitest-environment jsdom
 import {
   DndContext,
   KeyboardSensor,
@@ -6,13 +5,18 @@ import {
   useSensors,
   type DragEndEvent,
 } from "@dnd-kit/core";
-import { sortableKeyboardCoordinates } from "@dnd-kit/sortable";
 import { MantineProvider } from "@mantine/core";
-import { render, screen, waitFor } from "@testing-library/react";
+import { screen, waitFor } from "@testing-library/react";
+import { renderWithQueryClient as render } from "@portal/tests/query-harness";
 import userEvent from "@testing-library/user-event";
 import { useState } from "react";
 import { describe, expect, it, vi } from "vitest";
 import { DroppableMemberColumn } from "./GuildWarDragBoardSections";
+import {
+  guildWarCollisionDetection,
+  guildWarKeyboardCoordinates,
+  guildWarMeasuring,
+} from "./guildWarDragGeometry";
 
 vi.mock("react-i18next", () => ({
   useTranslation: () => ({
@@ -28,13 +32,15 @@ const rects = new Map<string, DOMRect>([
 
 function KeyboardDragHarness({ onDragEnd }: { onDragEnd: (event: DragEndEvent) => void }) {
   const sensors = useSensors(useSensor(KeyboardSensor, {
-    coordinateGetter: sortableKeyboardCoordinates,
+    coordinateGetter: guildWarKeyboardCoordinates,
   }));
   const [activeId, setActiveId] = useState<string | null>(null);
 
   return (
     <DndContext
       sensors={sensors}
+      collisionDetection={guildWarCollisionDetection}
+      measuring={guildWarMeasuring}
       onDragStart={(event) => setActiveId(String(event.active.id))}
       onDragCancel={() => setActiveId(null)}
       onDragEnd={(event) => {
@@ -60,6 +66,7 @@ function KeyboardDragHarness({ onDragEnd }: { onDragEnd: (event: DragEndEvent) =
                 power: 100,
                 class: "",
                 subtitle: "",
+                avatarMediaId: null,
               }],
             }}
             canDrag
@@ -75,8 +82,17 @@ function KeyboardDragHarness({ onDragEnd }: { onDragEnd: (event: DragEndEvent) =
 describe("guild war keyboard dragging", () => {
   it("moves between member cards with Space, ArrowRight, Space", async () => {
     const originalGetBoundingClientRect = HTMLElement.prototype.getBoundingClientRect;
+    /* 列的投放区没有 id，量它就量它那一行：这两列各只有一个人，行在哪儿列就在哪儿。
+       jsdom 一律返回全零矩形，不喂尺寸的话键盘找不到「右边那一列」。 */
     HTMLElement.prototype.getBoundingClientRect = function getBoundingClientRect() {
-      return rects.get(this.id) ?? originalGetBoundingClientRect.call(this);
+      const own = rects.get(this.id);
+      if (own) return own;
+      if (this.classList.contains("guild-war-column-card__body")) {
+        const row = this.querySelector<HTMLElement>(".guild-war-member-card");
+        const rowRect = row ? rects.get(row.id) : undefined;
+        if (rowRect) return rowRect;
+      }
+      return originalGetBoundingClientRect.call(this);
     };
 
     try {
@@ -104,7 +120,8 @@ describe("guild war keyboard dragging", () => {
 
       expect(onDragEnd).toHaveBeenCalledOnce();
       expect(onDragEnd.mock.calls[0]?.[0].active.id).toBe("member:user-1");
-      expect(onDragEnd.mock.calls[0]?.[0].over?.id).toBe("member:user-2");
+      // 落点是列，不是行：行不是投放目标，键盘和鼠标必须落到同一种目标上。
+      expect(onDragEnd.mock.calls[0]?.[0].over?.id).toBe("container:team-1");
     } finally {
       HTMLElement.prototype.getBoundingClientRect = originalGetBoundingClientRect;
     }

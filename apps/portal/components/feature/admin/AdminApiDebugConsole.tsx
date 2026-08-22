@@ -1,15 +1,17 @@
-import { ActionIcon, Badge, Collapse, Group, HoverCard, Text, ThemeIcon } from "@mantine/core";
+import { ActionIcon, Group, HoverCard, SegmentedControl, Text, ThemeIcon } from "@mantine/core";
 import { useClipboard } from "@mantine/hooks";
 import { ChevronRightIcon, ClipboardIcon, TrashIcon } from "@portal/components/icons";
 import { useCallback, useEffect, useId, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { formatClock } from "@portal/utils/datetime";
+import { EmptyState } from "../../shared/EmptyState";
 import { type DebugLogEntry } from "./AdminApiTestEngine";
 import "./AdminApiTest.css";
 
 type DebugFilter = "all" | "errors" | "slow";
 
-function formatLogEntry(entry: DebugLogEntry): string {
-  const statusStr = entry.status !== null ? String(entry.status) : "ERR";
+export function formatLogEntry(entry: DebugLogEntry): string {
+  const statusStr = entry.status !== null ? String(entry.status) : isOptionalSkip(entry) ? "N/A" : "ERR";
   const errorStr = entry.error ? ` | ERROR: ${entry.error}` : "";
   const header = `[${entry.ranAt}] ${entry.method} ${entry.path} → ${statusStr} (${entry.latencyMs}ms)${errorStr}`;
   if (!entry.body) return header;
@@ -42,15 +44,6 @@ function isSlow(entry: DebugLogEntry): boolean {
   return entry.latencyMs >= 300;
 }
 
-function formatTime(ranAt: string): string {
-  try {
-    const d = new Date(ranAt);
-    return d.toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false });
-  } catch {
-    return ranAt;
-  }
-}
-
 function DebugRow({ entry }: { entry: DebugLogEntry }) {
   const [expanded, setExpanded] = useState(false);
   const bodyId = useId();
@@ -67,7 +60,7 @@ function DebugRow({ entry }: { entry: DebugLogEntry }) {
         {entry.status ?? (isOptionalSkip(entry) ? "N/A" : "ERR")}
       </span>
       <span className="api-debug__row-latency">{entry.latencyMs}ms</span>
-      <span className="api-debug__row-time">{formatTime(entry.ranAt)}</span>
+      <span className="api-debug__row-time">{formatClock(entry.ranAt, { seconds: true })}</span>
       {hasBody ? (
         <span className={`api-debug__row-chevron ${expanded ? "api-debug__row-chevron--open" : ""}`}>
           <ChevronRightIcon size={11} />
@@ -109,14 +102,9 @@ function DebugRow({ entry }: { entry: DebugLogEntry }) {
 export function AdminApiDebugConsole({
   logs,
   onClear,
-  open,
-  onToggle,
 }: {
   logs: DebugLogEntry[];
   onClear: () => void;
-  /** 折叠状态由 AdminStatusTab 持有：开跑时它要把这台控制台一并摊开。 */
-  open: boolean;
-  onToggle: () => void;
 }) {
   const { t } = useTranslation("admin");
   const clipboard = useClipboard();
@@ -145,45 +133,34 @@ export function AdminApiDebugConsole({
   const slowCount = logs.filter(isSlow).length;
 
   return (
-    <div className="api-debug">
-      <div className="api-debug__header">
-        <div className="api-debug__header-left">
-          <button
-            type="button"
-            className="admin-status-toggle"
-            aria-expanded={open}
-            onClick={onToggle}
-          >
-            <span className={`admin-status-toggle__chevron${open ? " admin-status-toggle__chevron--open" : ""}`}>
-              <ChevronRightIcon size={14} />
-            </span>
-            <Text fw={700} size="sm">{t("status.api.debugTitle")}</Text>
-            <Badge size="xs" variant="default">{logs.length}</Badge>
-          </button>
+    <div className="admin-panel api-debug">
+      <div className="admin-panel__head">
+        <div className="api-debug__header-main">
+          <div className="admin-panel__title">
+            <Text>{t("status.api.debugTitle")}</Text>
+            <span className="admin-count">{logs.length}</span>
+          </div>
 
           {logs.length > 0 ? (
-            <div className="api-debug__filters">
-              <button
-                type="button"
-                className={`api-debug__filter-btn ${filter === "all" ? "api-debug__filter-btn--active" : ""}`}
-                onClick={() => setFilter("all")}
-              >
-                {t("status.api.filter.all")}
-              </button>
-              <button
-                type="button"
-                className={`api-debug__filter-btn ${filter === "errors" ? "api-debug__filter-btn--active" : ""}`}
-                onClick={() => setFilter("errors")}
-              >
-                {t("status.api.filter.errors")}{errorCount > 0 ? ` (${errorCount})` : ""}
-              </button>
-              <button
-                type="button"
-                className={`api-debug__filter-btn ${filter === "slow" ? "api-debug__filter-btn--active" : ""}`}
-                onClick={() => setFilter("slow")}
-              >
-                {t("status.api.filter.slow")}{slowCount > 0 ? ` (${slowCount})` : ""}
-              </button>
+            <div className="api-filter" role="group" aria-label={t("status.api.filter.results")}>
+              <SegmentedControl
+                size="xs"
+                radius="sm"
+                withItemsBorders={false}
+                value={filter}
+                onChange={(value) => setFilter(value as DebugFilter)}
+                data={[
+                  { label: t("status.api.filter.all"), value: "all" },
+                  {
+                    label: `${t("status.api.filter.errors")}${errorCount > 0 ? ` (${errorCount})` : ""}`,
+                    value: "errors",
+                  },
+                  {
+                    label: `${t("status.api.filter.slow")}${slowCount > 0 ? ` (${slowCount})` : ""}`,
+                    value: "slow",
+                  },
+                ]}
+              />
             </div>
           ) : null}
         </div>
@@ -192,7 +169,8 @@ export function AdminApiDebugConsole({
           <HoverCard width={220} shadow="lg" withArrow arrowSize={10} openDelay={350} closeDelay={80} position="top">
             <HoverCard.Target>
               <ActionIcon
-                size={44}
+                className="api-debug__action"
+                size={32}
                 variant="subtle"
                 onClick={copyAll}
                 disabled={logs.length === 0}
@@ -216,7 +194,8 @@ export function AdminApiDebugConsole({
           <HoverCard width={220} shadow="lg" withArrow arrowSize={10} openDelay={350} closeDelay={80} position="top">
             <HoverCard.Target>
               <ActionIcon
-                size={44}
+                className="api-debug__action"
+                size={32}
                 variant="subtle"
                 color="red"
                 onClick={onClear}
@@ -241,21 +220,20 @@ export function AdminApiDebugConsole({
         </div>
       </div>
 
-      <Collapse expanded={open}>
-        <div className="api-debug__body" ref={bodyRef}>
-          {filteredLogs.length === 0 ? (
-            <div className="api-debug__empty">
-              {logs.length === 0
-                ? t("status.api.debugEmpty")
-                : t(filter === "errors" ? "status.api.noErrors" : "status.api.noSlow")}
-            </div>
-          ) : (
-            filteredLogs.map((entry) => (
-              <DebugRow key={entry.id} entry={entry} />
-            ))
-          )}
-        </div>
-      </Collapse>
+      <div className="api-debug__body" ref={bodyRef}>
+        {filteredLogs.length === 0 ? (
+          <EmptyState
+            className="admin-empty"
+            title={logs.length === 0
+              ? t("status.api.debugEmpty")
+              : t(filter === "errors" ? "status.api.noErrors" : "status.api.noSlow")}
+          />
+        ) : (
+          filteredLogs.map((entry) => (
+            <DebugRow key={entry.id} entry={entry} />
+          ))
+        )}
+      </div>
     </div>
   );
 }

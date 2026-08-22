@@ -1,4 +1,3 @@
-// @vitest-environment jsdom
 import { Drawer, MantineProvider } from "@mantine/core";
 import {
   fireEvent,

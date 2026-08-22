@@ -1,43 +1,76 @@
 import { Badge, Group, Modal, Stack, Text } from "@mantine/core";
 import { useMemo } from "react";
 import { useTranslation } from "react-i18next";
+import type { AvailabilityDayKey } from "@guild/shared";
 import { BoltIcon } from "@portal/components/icons";
 import { ClassIcon } from "@portal/components/shared/ClassIcon";
-import { resolveClassCatalogItem, useClassCatalogStore } from "@portal/stores/class-catalog";
+import { useClassCatalog } from "@portal/hooks/data/useClassData";
+import { resolveClassCatalogItem } from "@portal/utils/class-catalog";
+import { convertAvailabilityToLocalDays } from "../../../utils/availability";
+import { formatCalendarDate, viewerTimeZone, viewerUtcOffsetMinutes } from "../../../utils/datetime";
 import { sanitizeTitleHtml } from "../../../utils/sanitize";
-import { getGuildWarMemberStatLabel, getGuildWarMetricValue } from "@portal/utils/game-rules";
-import { DEFAULT_GAME_RULES, GUILD_WAR_KDA_KEY } from "@guild/shared";
+import type { ActiveGuildWarMemberDetail } from "../../../hooks/guild-war/useGuildWarDragData";
 
-type ActiveMemberDetail = {
-  username: string;
-  power: number;
-  classes: string[];
-  titleHtml: string | null;
-  teamName: string;
-  roleTag: string | null;
-  stats: Record<string, number | null>;
-};
+const DETAIL_DAYS: readonly AvailabilityDayKey[] = [
+  "monday",
+  "tuesday",
+  "wednesday",
+  "thursday",
+  "friday",
+  "saturday",
+  "sunday",
+];
 
 type WarMemberDetailModalProps = {
   open: boolean;
   activeDetailUserId: string | null;
-  activeDetail: ActiveMemberDetail | null;
+  activeDetail: ActiveGuildWarMemberDetail | null;
+  canViewNotes: boolean;
   onClose: () => void;
 };
+
+function formatVacationRange(start: string | null, end: string | null, locale: string): string | null {
+  if (!start && !end) return null;
+  if (!start) return formatCalendarDate(end, locale);
+  if (!end || start === end) return formatCalendarDate(start, locale);
+  return `${formatCalendarDate(start, locale)} – ${formatCalendarDate(end, locale)}`;
+}
 
 export function WarMemberDetailModal({
   open,
   activeDetailUserId,
   activeDetail,
+  canViewNotes,
   onClose,
 }: WarMemberDetailModalProps) {
-  const { t } = useTranslation("guild-war");
-  const gameRules = DEFAULT_GAME_RULES;
-  const classCatalog = useClassCatalogStore((state) => state.items);
+  const { t, i18n } = useTranslation("guild-war");
+  const classCatalog = useClassCatalog();
   const safeTitleHtml = useMemo(
     () => (activeDetail?.titleHtml ? sanitizeTitleHtml(activeDetail.titleHtml) : ""),
     [activeDetail?.titleHtml],
   );
+  const viewerTimezone = useMemo(() => viewerTimeZone(), []);
+  const offsetMinutes = useMemo(() => viewerUtcOffsetMinutes(), []);
+  /*
+   * 时段按阅读者的时区显示。存的是 UTC，读的人却要拿它对自己的表——UTC 周五 23:00
+   * 在 UTC+8 是周六 07:00，直接把库里的数字摆出来，看的人得自己心算，还容易忘了换星期。
+   */
+  const availabilityRows = useMemo(() => {
+    if (!activeDetail?.availability) return [];
+    const localDays = convertAvailabilityToLocalDays(activeDetail.availability, offsetMinutes);
+    return DETAIL_DAYS.flatMap((day) => {
+      const blocks = localDays[day];
+      if (blocks.length === 0) return [];
+      return [{
+        day,
+        ranges: blocks.map((block) => `${block.start}–${block.end}`).join(", "),
+      }];
+    });
+  }, [activeDetail?.availability, offsetMinutes]);
+  const vacationRange = activeDetail
+    ? formatVacationRange(activeDetail.vacationStart, activeDetail.vacationEnd, i18n.language)
+    : null;
+
   return (
     <Modal
       opened={open}
@@ -45,7 +78,7 @@ export function WarMemberDetailModal({
       onClose={onClose}
       withCloseButton
       centered
-      size="md"
+      size="lg"
       classNames={{
         content: "guild-war-member-detail",
         body: "guild-war-member-detail__body",
@@ -85,46 +118,70 @@ export function WarMemberDetailModal({
             </div>
           </div>
 
-          <div className="guild-war-member-detail__assignment">
-            <div>
-              <Text size="xs" c="dimmed">{t("memberDetail.team")}</Text>
-              <Text size="sm" fw={600}>{activeDetail.teamName}</Text>
-            </div>
-            <div>
-              <Text size="xs" c="dimmed">{t("memberDetail.roleTag")}</Text>
-              <Text size="sm" fw={600}>{activeDetail.roleTag ?? "-"}</Text>
-            </div>
+          <div className="guild-war-member-detail__schedule">
+            <section className="guild-war-member-detail__panel">
+              <Text component="h3" size="sm" fw={700}>
+                {t("memberDetail.availability")}
+              </Text>
+              {availabilityRows.length > 0 ? (
+                <dl className="guild-war-member-detail__availability-list">
+                  {availabilityRows.map((row) => (
+                    <div key={row.day} className="guild-war-member-detail__availability-row">
+                      <Text component="dt" size="xs" c="dimmed">
+                        {t(`memberDetail.day.${row.day}`)}
+                      </Text>
+                      <Text component="dd" size="sm" className="tabular-nums">
+                        {row.ranges}
+                      </Text>
+                    </div>
+                  ))}
+                </dl>
+              ) : (
+                <Text size="sm" c="dimmed" mt="xs">{t("memberDetail.notAvailable")}</Text>
+              )}
+              {activeDetail.availability ? (
+                <Stack gap={2} mt="sm">
+                  {/* 两行都要有：上面一行说明这些时刻按谁的表读，下面一行是成员自己报的
+                      时区。只留成员时区，看的人会以为时刻也是那个时区的。 */}
+                  <Text size="xs" c="dimmed">
+                    {t("memberDetail.viewerTimezone", { timezone: viewerTimezone })}
+                  </Text>
+                  <Text size="xs" c="dimmed">
+                    {t("memberDetail.profileTimezone", {
+                      timezone: activeDetail.availability.timezone,
+                    })}
+                  </Text>
+                </Stack>
+              ) : null}
+            </section>
+
+            <section className="guild-war-member-detail__panel">
+              <Text component="h3" size="sm" fw={700}>
+                {t("memberDetail.vacation")}
+              </Text>
+              <Text size="sm" c={vacationRange ? undefined : "dimmed"} mt="xs">
+                {vacationRange ?? t("memberDetail.notAvailable")}
+              </Text>
+            </section>
           </div>
 
-          <section className="guild-war-member-detail__stats">
-            <Text size="xs" fw={600} c="dimmed">{t("memberDetail.statsHeader")}</Text>
-            <div className="guild-war-member-detail__stat-grid">
-              {gameRules.guild_war.member_stats.map((definition) => (
-                <MemberStat
-                  key={definition.key}
-                  label={getGuildWarMemberStatLabel(definition.key)}
-                  value={(activeDetail.stats[definition.key] ?? 0).toLocaleString(undefined, {
-                    maximumFractionDigits: 20,
-                  })}
-                />
-              ))}
-              <MemberStat
-                label={getGuildWarMemberStatLabel(GUILD_WAR_KDA_KEY)}
-                value={getGuildWarMetricValue(activeDetail.stats, GUILD_WAR_KDA_KEY).toFixed(2)}
-              />
-            </div>
-          </section>
+          {canViewNotes ? (
+            <section className="guild-war-member-detail__panel">
+              <Text component="h3" size="sm" fw={700}>
+                {t("memberDetail.note")}
+              </Text>
+              <Text
+                size="sm"
+                c={activeDetail.notes?.trim() ? undefined : "dimmed"}
+                mt="xs"
+                className="guild-war-member-detail__note"
+              >
+                {activeDetail.notes?.trim() || t("memberDetail.notAvailable")}
+              </Text>
+            </section>
+          ) : null}
         </Stack>
       ) : null}
     </Modal>
-  );
-}
-
-function MemberStat({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="guild-war-member-detail__stat">
-      <Text size="xs" c="dimmed">{label}</Text>
-      <Text fw={700} className="tabular-nums">{value}</Text>
-    </div>
   );
 }

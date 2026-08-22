@@ -3,15 +3,12 @@ import { useDraggable, useDroppable } from "@dnd-kit/core";
 import {
   ActionIcon,
   Badge,
-  Card,
   Group,
   Menu,
   Paper,
   Stack,
   Text,
-  TextInput,
   Tooltip,
-  UnstyledButton,
 } from "@mantine/core";
 import {
   BoltIcon,
@@ -20,40 +17,32 @@ import {
   CopyIcon,
   DotsIcon,
   LockIcon,
+  PencilIcon,
   ShieldIcon,
   TrashIcon,
   UnlockIcon,
   UserIcon,
   UserPlusIcon,
 } from "@portal/components/icons";
+import { IconGripVertical } from "@tabler/icons-react";
 import { memo, useCallback, useMemo, useRef, useState } from "react";
 import type {
   CSSProperties,
   PointerEvent as ReactPointerEvent,
-  ReactNode,
 } from "react";
 import { useTranslation } from "react-i18next";
 import { ClassIcon } from "@portal/components/shared/ClassIcon";
-import {
-  resolveClassCatalogItem,
-  useClassCatalogStore,
-} from "@portal/stores/class-catalog";
+import { MemberRoleAvatar } from "@portal/components/shared/MemberRoleAvatar";
+import type {
+  DragMemberColumn,
+  DragMemberItem,
+} from "../../../hooks/guild-war/useGuildWarDragData";
+import { useClassCatalog } from "@portal/hooks/data/useClassData";
+import { resolveClassCatalogItem } from "@portal/utils/class-catalog";
 
-export type DragMemberItem = {
-  itemId: string;
-  userId: string;
-  username: string;
-  power: number;
-  class: string;
-  subtitle: string;
-};
-
-export type DragMemberColumn = {
-  containerId: string;
-  title: ReactNode;
-  locked: boolean;
-  members: DragMemberItem[];
-};
+/* 列与成员的形状由产出它的 useGuildWarDragData 定义，这里只转出去给既有的
+   引用方用。之前两边各写了一份同名类型，加字段时只会改到其中一份。 */
+export type { DragMemberColumn, DragMemberItem };
 
 export type ActiveDragItem = {
   userId: string;
@@ -61,9 +50,68 @@ export type ActiveDragItem = {
   power: number;
   class: string;
   subtitle: string;
+  avatarMediaId: string | null;
 };
 
 const DRAG_HOLD_MS = 150;
+
+type MemberRowCellsProps = {
+  username: string;
+  power: number;
+  classItem: ClassCatalogItem;
+  avatarMediaId: string | null;
+  isAbsent?: boolean;
+  isDraggable?: boolean;
+};
+
+/*
+ * 一行的格子内容。拖拽行和拖拽时跟着光标的影子共用这一份 —— 影子就是「你拿起来的
+ * 那一行」，两处各画一遍的话，改了行就得记得同步改影子。
+ *
+ * 头像用花名册那只 MemberRoleAvatar：职能圈关掉（职能名就在右边两格，圈圈是重复），
+ * 悬浮卡也关掉（它内部是 UnstyledButton，套进本行这个 button 里就是按钮套按钮）。
+ */
+function MemberRowCells({
+  username,
+  power,
+  classItem,
+  avatarMediaId,
+  isAbsent = false,
+  isDraggable = true,
+}: MemberRowCellsProps) {
+  const { t } = useTranslation("guild-war");
+
+  return (
+    <>
+      <span className="guild-war-member-card__rail" style={{ "--class-color": classItem.color } as CSSProperties} aria-hidden="true" />
+      {/*
+        * 把手只是提示，不是唯一入口：整行都能拿起来，所以它不是按钮——行本身就是按钮，
+        * 里面再套一个按钮既非法也会让人以为只有这一小块能拖。锁定的队伍不画，画了就是
+        * 骗人。这一格永远占位，有没有把手都不会让后面几格错位。
+        */}
+      <span className="guild-war-member-card__grip" aria-hidden="true">
+        {isDraggable ? <IconGripVertical size={14} /> : null}
+      </span>
+      <MemberRoleAvatar
+        user={{ username }}
+        profile={{ classes: [classItem.id], power, avatar_media_id: avatarMediaId }}
+        size={22}
+        withTooltip={false}
+        withClassCircles={false}
+      />
+      <span className="guild-war-member-card__name">
+        <span className="guild-war-member-card__username">{username}</span>
+        {isAbsent ? (
+          <Badge color="orange" size="xs" variant="light" className="guild-war-member-card__absent">
+            {t("active.absent")}
+          </Badge>
+        ) : null}
+      </span>
+      <ClassIdentity item={classItem} />
+      <span className="guild-war-member-card__power tabular-nums">{power.toLocaleString()}</span>
+    </>
+  );
+}
 
 type DraggableMemberCardProps = {
   itemId: string;
@@ -71,6 +119,7 @@ type DraggableMemberCardProps = {
   username: string;
   power: number;
   classItem: ClassCatalogItem;
+  avatarMediaId: string | null;
   dragDisabled: boolean;
   isMatched: boolean;
   isAbsent: boolean;
@@ -84,33 +133,30 @@ const DraggableMemberCard = memo(function DraggableMemberCard({
   username,
   power,
   classItem,
+  avatarMediaId,
   dragDisabled,
   isMatched,
   isAbsent,
   userId,
   onOpenMember,
 }: DraggableMemberCardProps) {
+  /*
+   * 行只是拖拽源，不是投放目标：投放的单位是「哪一列」，行落在列的任何位置结果都一样。
+   * 行上再挂一个 droppable，pointerWithin 会挑中心离指针更近的那个，于是指针压在某一行
+   * 上时命中的是行、压在名册下方空白处命中的是列——同一次拖拽里列的高亮时有时无。
+   */
   const {
     attributes,
     listeners,
-    setNodeRef: setDraggableNodeRef,
+    setNodeRef,
     isDragging,
   } = useDraggable({
-    id: itemId,
-    disabled: dragDisabled,
-  });
-  const { setNodeRef: setDroppableNodeRef } = useDroppable({
     id: itemId,
     disabled: dragDisabled,
   });
   const { t } = useTranslation("guild-war");
   const [holding, setHolding] = useState(false);
   const holdTimerRef = useRef<number | null>(null);
-
-  const setNodeRef = useCallback((node: HTMLButtonElement | null) => {
-    setDraggableNodeRef(node);
-    setDroppableNodeRef(node);
-  }, [setDraggableNodeRef, setDroppableNodeRef]);
 
   const handleOpen = useCallback(() => {
     onOpenMember?.(userId);
@@ -172,26 +218,53 @@ const DraggableMemberCard = memo(function DraggableMemberCard({
       onPointerLeave={clearHold}
     >
       <div className="guild-war-member-card__progress" />
-      <Stack gap={2}>
-        <Group gap={6} wrap="nowrap">
-          <Text size="sm" fw={500} truncate>{username}</Text>
-          {isAbsent ? (
-            <Badge color="orange" size="xs" variant="light" style={{ flexShrink: 0 }}>
-              {t("active.absent")}
-            </Badge>
-          ) : null}
-        </Group>
-        <Group gap={8} wrap="nowrap">
-          <ClassIdentity item={classItem} />
-          <Group gap={4} wrap="nowrap">
-            <BoltIcon size={12} aria-hidden="true" />
-            <Text component="span" c="dimmed" size="xs">{power}</Text>
-          </Group>
-        </Group>
-      </Stack>
+      <MemberRowCells
+        username={username}
+        power={power}
+        classItem={classItem}
+        avatarMediaId={avatarMediaId}
+        isAbsent={isAbsent}
+        isDraggable={!dragDisabled}
+      />
     </button>
   );
 });
+
+type MemberSortField = "username" | "class" | "power";
+
+type SortHeadProps = {
+  field: MemberSortField;
+  label: string;
+  sortBy: MemberSortField | null;
+  sortDir: "asc" | "desc";
+  onToggle: (field: MemberSortField) => void;
+  align?: "start" | "end";
+};
+
+/*
+ * 列头和「⋯」菜单里的排序项是同一个 toggleSort 的两个入口，共用同一份排序状态。
+ * 菜单留着是因为列头在窄屏会被藏掉，那时仍要有地方排序。
+ *
+ * 不挂 role="columnheader"/aria-sort：行是可拖拽的 button，整块并不是 table，
+ * 补一半的表格角色比不补更难被辅助技术解释。排序方向由按钮内的箭头表达。
+ */
+function SortHead({ field, label, sortBy, sortDir, onToggle, align = "start" }: SortHeadProps) {
+  const isActive = sortBy === field;
+
+  return (
+    <button
+      type="button"
+      className={`guild-war-column-head__cell${isActive ? " guild-war-column-head__cell--active" : ""}`}
+      data-align={align}
+      onClick={() => onToggle(field)}
+    >
+      <span className="guild-war-column-head__label">{label}</span>
+      {isActive
+        ? (sortDir === "asc" ? <ChevronUpIcon size={11} /> : <ChevronDownIcon size={11} />)
+        : null}
+    </button>
+  );
+}
 
 function ClassIdentity({ item }: { item: ClassCatalogItem }) {
   return (
@@ -199,7 +272,7 @@ function ClassIdentity({ item }: { item: ClassCatalogItem }) {
       className="guild-war-class-identity"
       style={{ "--class-color": item.color } as CSSProperties}
     >
-      <ClassIcon item={item} size={18} />
+      <ClassIcon item={item} size={16} />
       <span className="guild-war-class-identity__label">{item.label}</span>
     </span>
   );
@@ -208,7 +281,6 @@ function ClassIdentity({ item }: { item: ClassCatalogItem }) {
 type DroppableMemberColumnProps = {
   column: DragMemberColumn;
   canDrag: boolean;
-  statusContent?: ReactNode;
   activeSearch: string;
   toMemberDomId: (itemId: string) => string;
   onOpenMember?: (userId: string) => void;
@@ -220,7 +292,7 @@ type DroppableMemberColumnProps = {
   teamIndex?: number;
   teamCount?: number;
   onAddToPool?: () => void;
-  onDraftNameChange?: (containerId: string, value: string) => void;
+  onEditTeam?: (containerId: string) => void;
   isDragActive?: boolean;
   absentUserIds?: Set<string>;
 };
@@ -228,7 +300,6 @@ type DroppableMemberColumnProps = {
 export function DroppableMemberColumn({
   column,
   canDrag,
-  statusContent,
   activeSearch,
   toMemberDomId,
   onOpenMember,
@@ -240,7 +311,7 @@ export function DroppableMemberColumn({
   teamIndex,
   teamCount,
   onAddToPool,
-  onDraftNameChange,
+  onEditTeam,
   isDragActive,
   absentUserIds,
 }: DroppableMemberColumnProps) {
@@ -248,11 +319,10 @@ export function DroppableMemberColumn({
     id: `container:${column.containerId}`,
   });
   const { t } = useTranslation("guild-war");
-  const classCatalog = useClassCatalogStore((state) => state.items);
+  const classCatalog = useClassCatalog();
   const isPoolColumn = column.containerId === "pool";
   const isTeamColumn = !isPoolColumn;
-  const [isEditingName, setIsEditingName] = useState(false);
-  const [sortBy, setSortBy] = useState<"username" | "class" | "power" | null>(null);
+  const [sortBy, setSortBy] = useState<MemberSortField | null>(null);
   const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
 
   const sortedMembers = useMemo(() => {
@@ -272,7 +342,7 @@ export function DroppableMemberColumn({
     });
   }, [classCatalog, column.members, sortBy, sortDir]);
 
-  const toggleSort = (field: "username" | "class" | "power") => {
+  const toggleSort = (field: MemberSortField) => {
     if (sortBy === field) {
       if (sortDir === "asc") setSortDir("desc");
       else {
@@ -285,6 +355,11 @@ export function DroppableMemberColumn({
     setSortDir("asc");
   };
 
+  const totalPower = useMemo(
+    () => column.members.reduce((sum, member) => sum + member.power, 0),
+    [column.members],
+  );
+
   return (
     <Paper
       withBorder
@@ -292,39 +367,16 @@ export function DroppableMemberColumn({
       className={`guild-war-column-card${isOver ? " guild-war-column-card--over" : ""}${isDragActive && !isOver ? " guild-war-column-card--drag-active" : ""}`}
       style={{ overflow: "visible" }}
     >
-      <div ref={setNodeRef} style={{ display: "flex", flexDirection: "column", flex: 1 }}>
+      <div ref={setNodeRef} className="guild-war-column-card__body">
         <Stack gap={8} mb="sm" className="guild-war-column-header">
           <Group gap={8} justify="space-between" wrap="wrap">
             <Group gap={8} wrap="nowrap" style={{ minWidth: 0 }}>
-              {isTeamColumn && isEditingName && onDraftNameChange ? (
-                <TextInput
-                  value={String(column.title)}
-                  onChange={(event) => onDraftNameChange(column.containerId, event.currentTarget.value)}
-                  onBlur={() => setIsEditingName(false)}
-                  onKeyDown={(event) => {
-                    if (event.key === "Enter") setIsEditingName(false);
-                  }}
-                  size="xs"
-                  autoFocus
-                  aria-label={t("active.aria.teamName", { teamName: column.title })}
-                  styles={{ input: { fontWeight: 600, fontSize: 14, padding: "0 6px", height: 24, minHeight: 24 } }}
-                />
-              ) : isTeamColumn && onDraftNameChange ? (
-                <UnstyledButton
-                  className="guild-war-team-name-trigger"
-                  onClick={() => setIsEditingName(true)}
-                  aria-label={t("active.aria.editTeamName", { teamName: column.title })}
-                >
-                  <Text size="sm" fw={600} truncate>
-                    {column.title}
-                  </Text>
-                </UnstyledButton>
-              ) : (
-                <Text size="sm" fw={600} truncate>
-                  {column.title}
-                </Text>
-              )}
-              <Badge size="sm" variant="default">{column.members.length}</Badge>
+              <Text size="sm" fw={600} truncate>
+                {column.title}
+              </Text>
+              <Badge size="sm" variant="default" className="guild-war-column-count">
+                {column.members.length}
+              </Badge>
               {column.locked ? (
                 <Badge color="red" size="sm">{t("active.locked")}</Badge>
               ) : null}
@@ -335,6 +387,34 @@ export function DroppableMemberColumn({
               wrap="nowrap"
               className="guild-war-column-actions"
             >
+              {/* 总战力挂在列头，不另起一行汇总：一整行只为了一个数，等于把空白搬进卡片里。 */}
+              {column.members.length > 0 ? (
+                <div className="guild-war-column-total">
+                  <span className="guild-war-column-total__label">{t("active.totalPower")}</span>
+                  <span className="guild-war-column-total__value tabular-nums">
+                    {totalPower.toLocaleString()}
+                  </span>
+                  <span className="guild-war-column-total__average tabular-nums">
+                    {t("active.averagePower", {
+                      value: Math.round(totalPower / column.members.length).toLocaleString(),
+                    })}
+                  </span>
+                </div>
+              ) : null}
+              {/* 队名和备注都在这道门后面。以前备注常驻在列头下面，一整行输入框写满全场，
+                  而队名要点中标题才知道能改——两条改法两个入口，还占着名册的高度。 */}
+              {isTeamColumn && onEditTeam ? (
+                <Tooltip label={t("active.teamSetup.edit")}>
+                  <ActionIcon
+                    size={44}
+                    variant="subtle"
+                    onClick={() => onEditTeam(column.containerId)}
+                    aria-label={t("active.teamSetup.edit")}
+                  >
+                    <PencilIcon size={16} />
+                  </ActionIcon>
+                </Tooltip>
+              ) : null}
               {isTeamColumn && onToggleLock ? (
                 <Tooltip label={isLocked ? t("hovercard.unlock.title") : t("hovercard.lock.title")}>
                   <ActionIcon
@@ -436,8 +516,38 @@ export function DroppableMemberColumn({
               </Menu>
             </Group>
           </Group>
-          {statusContent ? <div className="guild-war-column-header-status">{statusContent}</div> : null}
         </Stack>
+        {/* 列头与成员行共用 --guild-war-row-columns 那套栅格（见 GuildWarPage.css），
+            所以标签永远压在它标注的那一格上；前三格是职业色条、把手和头像，无标签。 */}
+        {column.members.length > 0 ? (
+          <div className="guild-war-column-head">
+            <span aria-hidden="true" />
+            <span aria-hidden="true" />
+            <span aria-hidden="true" />
+            <SortHead
+              field="username"
+              label={t("active.column.member")}
+              sortBy={sortBy}
+              sortDir={sortDir}
+              onToggle={toggleSort}
+            />
+            <SortHead
+              field="class"
+              label={t("active.column.class")}
+              sortBy={sortBy}
+              sortDir={sortDir}
+              onToggle={toggleSort}
+            />
+            <SortHead
+              field="power"
+              label={t("active.column.power")}
+              sortBy={sortBy}
+              sortDir={sortDir}
+              onToggle={toggleSort}
+              align="end"
+            />
+          </div>
+        ) : null}
         <div className="guild-war-column-stack">
           {sortedMembers.map((member) => (
             <DraggableMemberCard
@@ -447,6 +557,7 @@ export function DroppableMemberColumn({
               username={member.username}
               power={member.power}
               classItem={resolveClassCatalogItem(member.class, classCatalog)}
+              avatarMediaId={member.avatarMediaId}
               userId={member.userId}
               dragDisabled={!canDrag || column.locked}
               isAbsent={absentUserIds?.has(member.userId) ?? false}
@@ -471,7 +582,9 @@ type TrashDropZoneProps = {
 
 export function TrashDropZone({ visible }: TrashDropZoneProps) {
   const { t } = useTranslation("guild-war");
-  const { setNodeRef, isOver } = useDroppable({ id: "trash-zone" });
+  /* 藏起来的时候必须停用，不能只靠不可见：投放判定量的是矩形，
+     visibility:hidden 的元素照样有矩形，落在池子底边就会被当成「移出这场战」。 */
+  const { setNodeRef, isOver } = useDroppable({ id: "trash-zone", disabled: !visible });
 
   return (
     <div
@@ -489,21 +602,20 @@ type GuildWarDragOverlayCardProps = {
 };
 
 export function GuildWarDragOverlayCard({ activeDragItem }: GuildWarDragOverlayCardProps) {
-  const classCatalog = useClassCatalogStore((state) => state.items);
+  const classCatalog = useClassCatalog();
   const classItem = resolveClassCatalogItem(activeDragItem.class, classCatalog);
+  /* 影子不套 Mantine Card：Card 根节点自带 flex 列向布局，和行的 grid 打架，
+     压过去要靠选择器权重。行的外观本来就在 .guild-war-member-card 里，
+     --overlay 只补上抬起时的底和投影。 */
   return (
-    <Card withBorder p="sm">
-      <Stack gap={2}>
-        <Text size="sm" fw={500}>{activeDragItem.username}</Text>
-        <Group gap={8} wrap="nowrap">
-          <ClassIdentity item={classItem} />
-          <Group gap={4} wrap="nowrap">
-            <BoltIcon size={12} aria-hidden="true" />
-            <Text component="span" c="dimmed" size="xs">{activeDragItem.power}</Text>
-          </Group>
-        </Group>
-      </Stack>
-    </Card>
+    <div className="guild-war-member-card guild-war-member-card--overlay">
+      <MemberRowCells
+        username={activeDragItem.username}
+        power={activeDragItem.power}
+        classItem={classItem}
+        avatarMediaId={activeDragItem.avatarMediaId}
+      />
+    </div>
   );
 }
 
@@ -516,8 +628,6 @@ type GuildWarDragBoardLayoutProps = {
   activeDragItem: ActiveDragItem | null;
   toMemberDomId: (itemId: string) => string;
   onOpenMember?: (userId: string) => void;
-  activePoolStatus?: ReactNode;
-  teamStatusContentByContainerId?: Record<string, ReactNode>;
   disabled?: boolean;
   onCopyTeamMentions?: (containerId: string) => void;
   onToggleLock?: (containerId: string) => void;
@@ -527,9 +637,8 @@ type GuildWarDragBoardLayoutProps = {
   teamCount?: number;
   teamIndexMap?: Map<string, number>;
   onAddToPool?: () => void;
-  onDraftNameChange?: (containerId: string, value: string) => void;
+  onEditTeam?: (containerId: string) => void;
   absentUserIds?: Set<string>;
-  readinessContent?: ReactNode;
 };
 
 export function GuildWarDragBoardLayout({
@@ -541,8 +650,6 @@ export function GuildWarDragBoardLayout({
   activeDragItem,
   toMemberDomId,
   onOpenMember,
-  activePoolStatus,
-  teamStatusContentByContainerId,
   disabled,
   onCopyTeamMentions,
   onToggleLock,
@@ -552,9 +659,8 @@ export function GuildWarDragBoardLayout({
   teamCount,
   teamIndexMap,
   onAddToPool,
-  onDraftNameChange,
+  onEditTeam,
   absentUserIds,
-  readinessContent,
 }: GuildWarDragBoardLayoutProps) {
   return (
     <div className={`guild-war-dnd-split ${disabled ? "guild-war-dnd-split--disabled" : ""}`}>
@@ -564,7 +670,6 @@ export function GuildWarDragBoardLayout({
             <DroppableMemberColumn
               column={poolColumn}
               canDrag={canDrag}
-              statusContent={activePoolStatus}
               activeSearch={activeSearch}
               toMemberDomId={toMemberDomId}
               onOpenMember={onOpenMember}
@@ -584,7 +689,6 @@ export function GuildWarDragBoardLayout({
               key={column.containerId}
               column={column}
               canDrag={canDrag}
-              statusContent={teamStatusContentByContainerId?.[column.containerId] ?? null}
               activeSearch={activeSearch}
               toMemberDomId={toMemberDomId}
               onOpenMember={onOpenMember}
@@ -595,17 +699,13 @@ export function GuildWarDragBoardLayout({
               isLocked={lockedTeamIds?.has(column.containerId)}
               teamIndex={teamIndexMap?.get(column.containerId)}
               teamCount={teamCount}
-              onDraftNameChange={onDraftNameChange}
+              onEditTeam={onEditTeam}
               isDragActive={Boolean(activeDragItem)}
               absentUserIds={absentUserIds}
             />
           ))}
         </div>
       </div> : null}
-
-      {view === "all" && readinessContent ? (
-        <div className="guild-war-dnd-readiness">{readinessContent}</div>
-      ) : null}
     </div>
   );
 }

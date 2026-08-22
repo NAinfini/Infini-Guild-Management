@@ -1,4 +1,3 @@
-// @vitest-environment jsdom
 import {
   PERMISSIONS,
   type ClassCatalogItem,
@@ -7,13 +6,34 @@ import {
   type User,
   type UserBadge,
 } from "@guild/shared";
-import { fireEvent, render, screen } from "@testing-library/react";
+import { QueryClientProvider, type QueryClient } from "@tanstack/react-query";
+import {
+  fireEvent,
+  render as renderWithoutProviders,
+  screen,
+  type RenderOptions,
+  type RenderResult,
+} from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
+import type { ReactElement } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { useClassCatalogStore } from "../../stores/class-catalog";
+import { createSeededQueryClient } from "../../tests/query-harness";
 import { MemberCard } from "./MemberCard";
+
+/* MemberCard 的职业目录来自 TanStack Query 缓存，每次渲染都要挂上带种子
+   数据的 QueryClientProvider。 */
+let queryClient: QueryClient;
+
+function render(ui: ReactElement, options?: RenderOptions): RenderResult {
+  return renderWithoutProviders(ui, {
+    wrapper: ({ children }) => (
+      <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
+    ),
+    ...options,
+  });
+}
 
 const motionHarness = vi.hoisted(() => ({
   reducedMotion: false,
@@ -95,6 +115,7 @@ const user: User = {
   deleted_at: null,
   created_at: now,
   updated_at: now,
+  last_login_at: null,
 };
 
 const profile: MemberProfile = {
@@ -125,7 +146,9 @@ const badge: UserBadge = {
 beforeEach(() => {
   motionHarness.reducedMotion = false;
   motionHarness.springs = [];
-  useClassCatalogStore.getState().setItems([classCatalogItem, secondaryClassCatalogItem]);
+  queryClient = createSeededQueryClient({
+    classes: [classCatalogItem, secondaryClassCatalogItem],
+  });
 });
 
 describe("MemberCard protected runtime interaction", () => {

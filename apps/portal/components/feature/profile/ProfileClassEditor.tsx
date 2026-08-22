@@ -17,7 +17,8 @@ import { CSS } from "@dnd-kit/utilities";
 import { ActionIcon, Popover, Select, Text, Tooltip } from "@mantine/core";
 import { PlusIcon, TrashIcon } from "@portal/components/icons";
 import { ClassIcon } from "@portal/components/shared/ClassIcon";
-import { resolveClassCatalogItem, useClassCatalogStore } from "@portal/stores/class-catalog";
+import { useClassCatalog } from "@portal/hooks/data/useClassData";
+import { resolveClassCatalogItem } from "@portal/utils/class-catalog";
 import { IconGripVertical } from "@tabler/icons-react";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
@@ -44,7 +45,7 @@ function SortableClassRow({
   onRemove,
 }: SortableClassRowProps) {
   const { t } = useTranslation("profile");
-  const catalog = useClassCatalogStore((state) => state.items);
+  const catalog = useClassCatalog();
   const item = resolveClassCatalogItem(value, catalog);
   const {
     attributes,

@@ -1,4 +1,5 @@
 export * from "./modules/audit/public.js";
+export * from "./modules/admin-operations/public.js";
 export * from "./modules/blob-reconciliation/public.js";
 export * from "./modules/announcements/public.js";
 export * from "./modules/auth/public.js";

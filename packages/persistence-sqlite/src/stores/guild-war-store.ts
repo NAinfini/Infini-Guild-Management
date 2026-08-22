@@ -6,6 +6,7 @@ import {
   gte,
   inArray,
   isNotNull,
+  isNull,
   lte,
   or,
   sql as dsql,
@@ -27,7 +28,8 @@ import type { AppDatabase } from "../database.js";
 import type { SqlBatchStatement, SqlExecutor, SqlValue } from "@guild/kernel";
 import { users } from "../schema/auth.js";
 import { guildWars, warMembers, warTeams } from "../schema/guild-war.js";
-import { auditInsertStatement } from "./audit-statement.js";
+import { mediaLinks } from "../schema/media.js";
+import { auditInsertSelectStatement, auditInsertStatement } from "./audit-statement.js";
 import { returnedRowCount, returnedRows } from "./sql-result.js";
 
 type GuildWarSchema = {
@@ -35,6 +37,7 @@ type GuildWarSchema = {
   warTeams: typeof warTeams;
   warMembers: typeof warMembers;
   users: typeof users;
+  mediaLinks: typeof mediaLinks;
 };
 
 const WAR_FIELDS = {
@@ -65,12 +68,17 @@ const WAR_FIELDS = {
   updatedAt: guildWars.updatedAt,
 };
 
+/* 谁还能站上进行中的公会战名册：停用或已软删除的账号登不进来，也就打不了仗，
+   把位置排给他们等于空一个坑。名册和候补池共用这一条判据，避免两边各判各的。 */
+const ROSTER_ELIGIBLE = and(eq(users.isActive, true), isNull(users.deletedAt))!;
+
 const MEMBER_FIELDS = {
   id: warMembers.id,
   warId: warMembers.warId,
   teamId: warMembers.teamId,
   userId: warMembers.userId,
   username: users.username,
+  avatarMediaId: mediaLinks.mediaId,
   roleTag: warMembers.roleTag,
   sortOrder: warMembers.sortOrder,
   kills: warMembers.kills,
@@ -91,6 +99,7 @@ type MemberJoinedRow = {
   teamId: string | null;
   userId: string;
   username: string;
+  avatarMediaId: string | null;
   roleTag: string | null;
   sortOrder: number;
   kills: number | null;
@@ -113,6 +122,15 @@ export class SqliteGuildWarStore implements GuildWarStore {
   async getByEvent(eventId: string): Promise<GuildWarAggregate | null> {
     const row = (await this.db.select(WAR_FIELDS).from(guildWars).where(eq(guildWars.eventId, eventId)).limit(1))[0];
     return row ? (await this.hydrate([row]))[0]! : null;
+  }
+
+  async listRosterEligible(userIds: readonly string[]): Promise<readonly string[]> {
+    if (userIds.length === 0) return [];
+    const rows = await this.db
+      .select({ id: users.id })
+      .from(users)
+      .where(and(inArray(users.id, [...userIds]), ROSTER_ELIGIBLE));
+    return rows.map(({ id }) => id);
   }
 
   async getById(warId: string): Promise<GuildWarAggregate | null> {
@@ -187,14 +205,14 @@ export class SqliteGuildWarStore implements GuildWarStore {
       ) VALUES (?, ?, 'active', ?, 0, ?, ?, ?, ?)
       ON CONFLICT(event_id) DO NOTHING
       RETURNING 1 AS affected`,
-      params: [input.id, input.eventId, input.warName, input.audit.id, input.actorUserId, input.now, input.now],
+      params: [input.id, input.eventId, input.warName, input.audit.eventId, input.actorUserId, input.now, input.now],
     }, auditInsertStatement(input.audit, guard)]);
     return returnedRowCount(results[0]) === 1;
   }
 
   async replaceRoster(input: Parameters<GuildWarStore["replaceRoster"]>[0]): Promise<boolean> {
     const nextVersion = input.expectedVersion + 1;
-    const guard = versionGuard(input.warId, nextVersion, "active", input.audit.id);
+    const guard = versionGuard(input.warId, nextVersion, "active", input.audit.eventId);
     const participantUserIds = [
       ...input.teams.flatMap((team) => team.members.map(({ userId }) => userId)),
       ...input.pool.map(({ userId }) => userId),
@@ -228,7 +246,7 @@ export class SqliteGuildWarStore implements GuildWarStore {
       input.actorUserId,
       input.now,
       "active",
-      input.audit.id,
+      input.audit.eventId,
       { eventId: input.eventId, userIds: participantUserIds },
     ), {
       method: "run",
@@ -272,7 +290,7 @@ export class SqliteGuildWarStore implements GuildWarStore {
 
   async setRoleTags(input: Parameters<GuildWarStore["setRoleTags"]>[0]): Promise<boolean> {
     const nextVersion = input.expectedVersion + 1;
-    const guard = versionGuard(input.warId, nextVersion, "active", input.audit.id);
+    const guard = versionGuard(input.warId, nextVersion, "active", input.audit.eventId);
     const updates = JSON.stringify(input.updates);
     const statements: SqlBatchStatement[] = [versionUpdate(
       input.warId,
@@ -280,7 +298,7 @@ export class SqliteGuildWarStore implements GuildWarStore {
       input.actorUserId,
       input.now,
       "active",
-      input.audit.id,
+      input.audit.eventId,
     ), {
       method: "run",
       sql: `WITH requested AS (
@@ -314,7 +332,7 @@ export class SqliteGuildWarStore implements GuildWarStore {
 
   async conclude(input: Parameters<GuildWarStore["conclude"]>[0]): Promise<boolean> {
     const nextVersion = input.expectedVersion + 1;
-    const guard = versionGuard(input.warId, nextVersion, "concluded", input.audit.id);
+    const guard = versionGuard(input.warId, nextVersion, "concluded", input.audit.eventId);
     const own = teamColumns(input.ownStats);
     const enemy = teamColumns(input.enemyStats);
     const memberStats = JSON.stringify(input.memberStats.map((member) => ({
@@ -335,7 +353,7 @@ export class SqliteGuildWarStore implements GuildWarStore {
         input.enemyName, input.result,
         own.kills, own.towers, own.baseHp, own.credits, own.distance,
         enemy.kills, enemy.towers, enemy.baseHp, enemy.credits, enemy.distance,
-        input.durationMinutes, input.now, input.actorUserId, input.now, nextVersion, input.audit.id,
+        input.durationMinutes, input.now, input.actorUserId, input.now, nextVersion, input.audit.eventId,
         input.warId, input.expectedVersion,
       ],
     }, {
@@ -400,7 +418,7 @@ export class SqliteGuildWarStore implements GuildWarStore {
         record.id, record.eventId, record.warName, record.enemyName, record.result,
         own.kills, own.towers, own.baseHp, own.credits, own.distance,
         enemy.kills, enemy.towers, enemy.baseHp, enemy.credits, enemy.distance,
-        record.durationMinutes, record.notes, record.rosterVersion, input.audit.id, record.concludedAt,
+        record.durationMinutes, record.notes, record.rosterVersion, input.audit.eventId, record.concludedAt,
         record.createdBy, record.updatedBy, record.createdAt, record.updatedAt,
       ],
     }, auditInsertStatement(input.audit, guard)]);
@@ -410,7 +428,7 @@ export class SqliteGuildWarStore implements GuildWarStore {
   async updateHistory(input: Parameters<GuildWarStore["updateHistory"]>[0]): Promise<boolean> {
     const nextVersion = input.expectedVersion + 1;
     const sets: string[] = ["updated_by = ?", "updated_at = ?", "roster_version = ?", "mutation_token = ?"];
-    const params: SqlValue[] = [input.actorUserId, input.now, nextVersion, input.audit.id];
+    const params: SqlValue[] = [input.actorUserId, input.now, nextVersion, input.audit.eventId];
     if (input.patch.eventId !== undefined) addSet(sets, params, "event_id", input.patch.eventId);
     if (input.patch.warName !== undefined) addSet(sets, params, "war_name", input.patch.warName);
     if (input.patch.enemyName !== undefined) addSet(sets, params, "enemy_name", input.patch.enemyName);
@@ -419,7 +437,7 @@ export class SqliteGuildWarStore implements GuildWarStore {
     if (input.patch.notes !== undefined) addSet(sets, params, "notes", input.patch.notes);
     if (input.patch.ownStats !== undefined) addTeamSets("own", input.patch.ownStats, sets, params);
     if (input.patch.enemyStats !== undefined) addTeamSets("enemy", input.patch.enemyStats, sets, params);
-    const guard = versionGuard(input.warId, nextVersion, "concluded", input.audit.id);
+    const guard = versionGuard(input.warId, nextVersion, "concluded", input.audit.eventId);
     params.push(input.warId, input.expectedVersion);
     const results = await this.sql.batch([{
       method: "all",
@@ -433,9 +451,9 @@ export class SqliteGuildWarStore implements GuildWarStore {
   }
 
   async deleteHistory(input: Parameters<GuildWarStore["deleteHistory"]>[0]): Promise<boolean> {
-    const guard = versionGuard(input.warId, input.expectedVersion, "concluded", input.audit.id);
+    const guard = versionGuard(input.warId, input.expectedVersion, "concluded", input.audit.eventId);
     const results = await this.sql.batch([
-      mutationClaim(input.warId, input.expectedVersion, "concluded", input.audit.id),
+      mutationClaim(input.warId, input.expectedVersion, "concluded", input.audit.eventId),
       auditInsertStatement(input.audit, guard),
       {
         method: "all",
@@ -451,15 +469,8 @@ export class SqliteGuildWarStore implements GuildWarStore {
     const requested = JSON.stringify(input.rows.map((row) => ({
       warId: row.warId,
       expectedVersion: row.expectedVersion,
-      auditId: row.audit.id,
-      requestId: row.audit.requestId,
-      actorUserId: row.audit.actorUserId,
-      entityType: row.audit.entityType,
-      entityId: row.audit.entityId,
-      action: row.audit.action,
-      summary: row.audit.summary,
-      detailJson: row.audit.details === null ? null : JSON.stringify(row.audit.details),
-      occurredAt: row.audit.occurredAt,
+      auditId: row.audit.eventId,
+      audit: row.audit,
     })));
     const results = await this.sql.batch([{
       method: "all",
@@ -477,33 +488,32 @@ export class SqliteGuildWarStore implements GuildWarStore {
         )
         RETURNING id`,
       params: [requested, requested],
-    }, {
-      method: "run",
-      sql: `INSERT INTO audit_log (
-          id, request_id, actor_user_id, actor_username, entity_type, entity_id, action, summary, detail_json, occurred_at
-        )
-        SELECT
-          CAST(json_extract(value, '$.auditId') AS TEXT),
-          CAST(json_extract(value, '$.requestId') AS TEXT),
-          json_extract(value, '$.actorUserId'),
-          (SELECT username FROM users
-            WHERE id = CAST(json_extract(requested.value, '$.actorUserId') AS TEXT)),
-          CAST(json_extract(value, '$.entityType') AS TEXT),
-          CAST(json_extract(value, '$.entityId') AS TEXT),
-          CAST(json_extract(value, '$.action') AS TEXT),
-          CAST(json_extract(value, '$.summary') AS TEXT),
-          json_extract(value, '$.detailJson'),
-          CAST(json_extract(value, '$.occurredAt') AS TEXT)
-        FROM json_each(?) requested
-        WHERE EXISTS (
-          SELECT 1 FROM guild_wars
-          WHERE id = CAST(json_extract(requested.value, '$.warId') AS TEXT)
-            AND status = 'concluded'
-            AND roster_version = CAST(json_extract(requested.value, '$.expectedVersion') AS INTEGER)
-            AND mutation_token = CAST(json_extract(requested.value, '$.auditId') AS TEXT)
-        )`,
-      params: [requested],
-    }, {
+    }, auditInsertSelectStatement(
+      `SELECT
+        CAST(json_extract(requested.value, '$.audit.eventId') AS TEXT),
+        CAST(json_extract(requested.value, '$.audit.requestId') AS TEXT),
+        CAST(json_extract(requested.value, '$.audit.actorKind') AS TEXT),
+        CAST(json_extract(requested.value, '$.audit.actorId') AS TEXT),
+        CASE WHEN json_extract(requested.value, '$.audit.actorKind') = 'user'
+          THEN (SELECT username FROM users
+            WHERE id = CAST(json_extract(requested.value, '$.audit.actorId') AS TEXT))
+          ELSE json_extract(requested.value, '$.audit.actorLabel') END,
+        CAST(json_extract(requested.value, '$.audit.subjectType') AS TEXT),
+        CAST(json_extract(requested.value, '$.audit.subjectId') AS TEXT),
+        json_extract(requested.value, '$.audit.subjectLabel'),
+        CAST(json_extract(requested.value, '$.audit.action') AS TEXT),
+        json_extract(requested.value, '$.audit.payload'),
+        CAST(json_extract(requested.value, '$.audit.occurredAt') AS TEXT)
+      FROM json_each(?) requested
+      WHERE EXISTS (
+        SELECT 1 FROM guild_wars
+        WHERE id = CAST(json_extract(requested.value, '$.warId') AS TEXT)
+          AND status = 'concluded'
+          AND roster_version = CAST(json_extract(requested.value, '$.expectedVersion') AS INTEGER)
+          AND mutation_token = CAST(json_extract(requested.value, '$.auditId') AS TEXT)
+      )`,
+      [requested],
+    ), {
       method: "all",
       columns: ["id"],
       sql: `DELETE FROM guild_wars
@@ -522,7 +532,7 @@ export class SqliteGuildWarStore implements GuildWarStore {
 
   async updateMemberStats(input: Parameters<GuildWarStore["updateMemberStats"]>[0]): Promise<boolean> {
     const nextVersion = input.expectedVersion + 1;
-    const guard = versionGuard(input.warId, nextVersion, "concluded", input.audit.id);
+    const guard = versionGuard(input.warId, nextVersion, "concluded", input.audit.eventId);
     const updates = JSON.stringify(input.updates.map((update) => ({
       userId: update.userId,
       hasStats: update.stats !== undefined,
@@ -545,7 +555,7 @@ export class SqliteGuildWarStore implements GuildWarStore {
       input.actorUserId,
       input.now,
       "concluded",
-      input.audit.id,
+      input.audit.eventId,
     ), {
       method: "run",
       sql: `WITH requested AS (
@@ -708,6 +718,12 @@ export class SqliteGuildWarStore implements GuildWarStore {
   private async hydrate(rows: readonly WarRow[]): Promise<GuildWarAggregate[]> {
     if (rows.length === 0) return [];
     const warIds = rows.map(({ id }) => id);
+    /* 已结算的场次是战绩记录：谁上过场就是谁上过场，之后被停用不能倒回去把人从
+       历史里抹掉，否则名册人数会和这场战的队伍规模、逐人战绩对不上。 */
+    const concludedWarIds = rows.filter(({ status }) => status === "concluded").map(({ id }) => id);
+    const memberVisibility = concludedWarIds.length === 0
+      ? ROSTER_ELIGIBLE
+      : or(inArray(warMembers.warId, concludedWarIds), ROSTER_ELIGIBLE);
     const [teams, members] = await Promise.all([
       this.db
         .select({
@@ -725,7 +741,13 @@ export class SqliteGuildWarStore implements GuildWarStore {
         .select(MEMBER_FIELDS)
         .from(warMembers)
         .innerJoin(users, eq(users.id, warMembers.userId))
-        .where(inArray(warMembers.warId, warIds))
+        .leftJoin(mediaLinks, and(
+          eq(mediaLinks.entityType, "member_profile"),
+          eq(mediaLinks.entityId, warMembers.userId),
+          eq(mediaLinks.slot, "avatar"),
+          eq(mediaLinks.audience, "public"),
+        ))
+        .where(and(inArray(warMembers.warId, warIds), memberVisibility))
         .orderBy(asc(warMembers.warId), asc(warMembers.teamId), asc(warMembers.sortOrder), asc(warMembers.id)),
     ]);
     const memberRecords = members.map((row) => toMemberRecord(row as MemberJoinedRow));
@@ -809,6 +831,7 @@ function toMemberRecord(row: MemberJoinedRow): WarMemberRecord {
     teamId: row.teamId,
     userId: row.userId,
     username: row.username,
+    avatarMediaId: row.avatarMediaId,
     roleTag: row.roleTag,
     sortOrder: row.sortOrder,
     stats: memberStatsFromRow(row),

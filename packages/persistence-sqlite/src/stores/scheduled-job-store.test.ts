@@ -43,9 +43,9 @@ function database(): DatabaseSync {
       slot TEXT NOT NULL, audience TEXT NOT NULL
     );
     CREATE TABLE audit_log (
-      id TEXT PRIMARY KEY, request_id TEXT NOT NULL, actor_user_id TEXT NOT NULL, actor_username TEXT,
-      entity_type TEXT NOT NULL, entity_id TEXT NOT NULL, action TEXT NOT NULL,
-      summary TEXT, detail_json TEXT, occurred_at TEXT NOT NULL
+      id TEXT PRIMARY KEY, request_id TEXT NOT NULL, actor_kind TEXT NOT NULL, actor_id TEXT NOT NULL,
+      actor_label TEXT, subject_type TEXT NOT NULL, subject_id TEXT NOT NULL, subject_label TEXT,
+      action TEXT NOT NULL, payload_json TEXT NOT NULL, occurred_at TEXT NOT NULL
     );
     CREATE TABLE sessions (
       token_digest TEXT PRIMARY KEY, expires_at TEXT NOT NULL, created_at TEXT NOT NULL
@@ -91,8 +91,8 @@ describe("SQLite scheduled job stores", () => {
       expect(second).toMatchObject({ eventIds: expect.any(Array), hasMore: false });
       expect(second.eventIds).toHaveLength(1);
       expect((db.prepare("SELECT count(*) AS count FROM audit_log").get() as { count: number }).count).toBe(51);
-      expect(db.prepare("SELECT DISTINCT actor_username FROM audit_log").all())
-        .toEqual([{ actor_username: null }]);
+      expect(db.prepare("SELECT DISTINCT actor_label FROM audit_log").all())
+        .toEqual([{ actor_label: null }]);
       expect((db.prepare("SELECT auto_archived FROM events WHERE id = 'raffle-1'").get() as { auto_archived: number }).auto_archived)
         .toBe(0);
     } finally {
@@ -126,8 +126,8 @@ describe("SQLite scheduled job stores", () => {
         .toBe("public");
       expect((db.prepare("SELECT count(*) AS count FROM audit_log WHERE action = 'publish'").get() as { count: number }).count)
         .toBe(1);
-      expect(db.prepare("SELECT DISTINCT actor_username FROM audit_log WHERE action = 'publish'").all())
-        .toEqual([{ actor_username: null }]);
+      expect(db.prepare("SELECT DISTINCT actor_label FROM audit_log WHERE action = 'publish'").all())
+        .toEqual([{ actor_label: null }]);
       await expect(stores[0]!.inspectBacklog(NOW)).resolves.toEqual({
         status: "known",
         pendingCount: 0,
@@ -236,7 +236,6 @@ describe("SQLite scheduled job stores", () => {
         expiresBefore: NOW,
         createdBefore: "2026-05-11T00:00:00.000Z",
         limit: 500,
-        audit: createSchedulerAuditFactory("sessions-1", NOW),
       })).toEqual({ processed: 500, hasMore: true });
       await expect(job.inspectBacklog({
         expiresBefore: NOW,
@@ -251,31 +250,7 @@ describe("SQLite scheduled job stores", () => {
         expiresBefore: NOW,
         createdBefore: "2026-05-11T00:00:00.000Z",
         limit: 500,
-        audit: createSchedulerAuditFactory("sessions-2", NOW),
       })).toEqual({ processed: 1, hasMore: false });
-      expect((db.prepare("SELECT count(*) AS count FROM sessions").get() as { count: number }).count).toBe(1);
-      expect((db.prepare(`SELECT count(*) AS count FROM audit_log
-        WHERE actor_user_id = 'system:scheduler' AND entity_type = 'user_auth'`).get() as { count: number }).count)
-        .toBe(2);
-    } finally {
-      db.close();
-    }
-  });
-
-  it("rolls back session deletion when its scheduler audit cannot be inserted", async () => {
-    const db = database();
-    try {
-      db.prepare("INSERT INTO sessions (token_digest, expires_at, created_at) VALUES (?, ?, ?)")
-        .run("expired", "2026-08-01T00:00:00.000Z", "2026-08-01T00:00:00.000Z");
-      db.exec(`CREATE TRIGGER reject_session_cleanup_audit
-        BEFORE INSERT ON audit_log BEGIN SELECT RAISE(ABORT, 'audit rejected'); END;`);
-      const job = new SqliteSessionCleanupJob(new SqliteTestExecutor(db));
-      await expect(job.run({
-        expiresBefore: NOW,
-        createdBefore: "2026-05-11T00:00:00.000Z",
-        limit: 500,
-        audit: createSchedulerAuditFactory("sessions-failure", NOW),
-      })).rejects.toThrow("audit rejected");
       expect((db.prepare("SELECT count(*) AS count FROM sessions").get() as { count: number }).count).toBe(1);
     } finally {
       db.close();

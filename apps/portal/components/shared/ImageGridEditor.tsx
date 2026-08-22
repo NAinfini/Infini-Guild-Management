@@ -244,7 +244,7 @@ export const ImageGridEditor = forwardRef<HTMLDivElement, ImageGridEditorProps>(
         if (allowedTypes && allowedTypes.length > 0) {
           const rejected = selected.filter((f) => !allowedTypes.includes(f.type));
           if (rejected.length > 0) {
-            try { onError?.(new Error(`File type not allowed: ${rejected.map((f) => f.name).join(", ")}`)); } catch { /* swallow */ }
+            onError?.(new Error(`File type not allowed: ${rejected.map((f) => f.name).join(", ")}`));
           }
           selected = selected.filter((f) => allowedTypes.includes(f.type));
         }

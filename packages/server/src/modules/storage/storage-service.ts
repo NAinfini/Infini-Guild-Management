@@ -9,6 +9,7 @@ import {
   updateStorageItemSchema,
   type CreateStorageBatchTransactionPayload,
   type CreateStorageTransactionPayload,
+  type AuditChange,
   type CursorResponse,
   type PaginatedResponse,
   type Storage,
@@ -25,7 +26,7 @@ import {
   type NotificationPublisher,
   type RequestContext,
 } from "@guild/kernel";
-import { createAuditMutation, type AuditMutation } from "../audit/public.js";
+import { createAuditEvent, type AuditEventWrite } from "../audit/public.js";
 import type { ImageUpload } from "../media/public.js";
 
 const STRUCTURE_PERMISSION = PERMISSION_ID.ADMIN_STORAGE_STRUCTURE;
@@ -79,7 +80,7 @@ export type StockCommit = Readonly<{
   targetQuantity: number | null;
   createdAt: string;
   transactions: readonly StorageTransaction[];
-  audit: AuditMutation;
+  audit: AuditEventWrite;
 }>;
 
 export type StorageLedgerQuery = Readonly<{
@@ -93,31 +94,31 @@ export type StorageLedgerQuery = Readonly<{
 
 export interface StorageStore {
   getTree(): Promise<{ data: Storage[] }>;
-  createStorage(input: Readonly<{ storage: Storage; audit: AuditMutation }>): Promise<"created" | "limit_reached">;
+  createStorage(input: Readonly<{ storage: Storage; audit: AuditEventWrite }>): Promise<"created" | "limit_reached">;
   updateStorage(input: Readonly<{
     id: string;
     patch: Readonly<{ name?: string; description?: string | null }>;
     updatedAt: string;
-    audit: AuditMutation;
+    audit: AuditEventWrite;
   }>): Promise<Storage | null>;
-  deleteStorage(id: string, audit: AuditMutation): Promise<StorageDeleteResult>;
+  deleteStorage(id: string, audit: AuditEventWrite): Promise<StorageDeleteResult>;
   createCategory(input: Readonly<{
     storageId: string;
     category: StorageCategory;
     createdAt: string;
-    audit: AuditMutation;
+    audit: AuditEventWrite;
   }>): Promise<StoragePlacement>;
   updateCategory(input: Readonly<{
     storageId: string;
     categoryId: string;
     name: string;
-    audit: AuditMutation;
+    audit: AuditEventWrite;
   }>): Promise<StorageCategory | null>;
-  deleteCategory(storageId: string, categoryId: string, audit: AuditMutation): Promise<StorageDeleteResult>;
+  deleteCategory(storageId: string, categoryId: string, audit: AuditEventWrite): Promise<StorageDeleteResult>;
   listItems(query: StorageItemsListQuery): Promise<CursorResponse<StorageItemRecord>>;
   getItem(itemId: string): Promise<StorageItemRecord | null>;
   validateItemPlacement(storageId: string, categoryId: string | null): Promise<StoragePlacement>;
-  createItem(item: StorageItemRecord, audit: AuditMutation): Promise<void>;
+  createItem(item: StorageItemRecord, audit: AuditEventWrite): Promise<void>;
   updateItem(input: Readonly<{
     id: string;
     patch: Readonly<{
@@ -128,9 +129,9 @@ export interface StorageStore {
       allowMemberWithdraw?: boolean;
     }>;
     updatedAt: string;
-    audit: AuditMutation;
+    audit: AuditEventWrite;
   }>): Promise<StorageItemRecord | null>;
-  deleteItem(itemId: string, audit: AuditMutation): Promise<StorageDeleteResult>;
+  deleteItem(itemId: string, audit: AuditEventWrite): Promise<StorageDeleteResult>;
   getSubmissionSnapshot(
     actorId: string,
     recipientUserId: string | null,
@@ -147,13 +148,13 @@ export interface StorageMediaPort {
     context: RequestContext;
     itemId: string;
     uploads: readonly ImageUpload[];
-    audit: AuditMutation;
+    audit: AuditEventWrite;
   }>): Promise<readonly string[]>;
   detachItemImage(input: Readonly<{
     context: RequestContext;
     itemId: string;
     mediaId: string;
-    audit: AuditMutation;
+    audit: AuditEventWrite;
   }>): Promise<boolean>;
 }
 
@@ -200,11 +201,12 @@ export class StorageService {
       created_at: context.now,
       categories: [],
     };
-    const audit = createAuditMutation(context, {
-      entityType: "storage",
-      entityId: storage.id,
+    const audit = createAuditEvent(context, {
+      subjectType: "storage",
+      subjectId: storage.id,
+      subjectLabel: storage.name,
       action: "create",
-      summary: storage.name,
+      context: [],
     });
     if (await this.store.createStorage({ storage, audit }) === "limit_reached") {
       throw invalid("Storage structure limit reached");
@@ -217,15 +219,42 @@ export class StorageService {
     const parsed = createStorageSchema.partial().safeParse(body);
     if (!parsed.success) throw invalid("Invalid storage payload", parsed.error.flatten());
     if (Object.keys(parsed.data).length === 0) throw invalid("No fields to update");
-    const audit = createAuditMutation(context, {
-      entityType: "storage",
-      entityId: requiredId(storageId, "storage"),
+    const id = requiredId(storageId, "storage");
+    const existing = (await this.store.getTree()).data.find((storage) => storage.id === id);
+    if (!existing) throw notFound("Storage not found");
+    const patch: { name?: string; description?: string | null } = {};
+    const changes: AuditChange[] = [];
+    if (parsed.data.name !== undefined && parsed.data.name !== existing.name) {
+      patch.name = parsed.data.name;
+      changes.push({
+        field: "name",
+        before: { type: "text", value: existing.name },
+        after: { type: "text", value: parsed.data.name },
+      });
+    }
+    if (parsed.data.description !== undefined && parsed.data.description !== existing.description) {
+      patch.description = parsed.data.description;
+      changes.push({
+        field: "description",
+        before: existing.description === null
+          ? { type: "null", value: null }
+          : { type: "text", value: existing.description },
+        after: parsed.data.description === null
+          ? { type: "null", value: null }
+          : { type: "text", value: parsed.data.description },
+      });
+    }
+    if (changes.length === 0) return existing;
+    const audit = createAuditEvent(context, {
+      subjectType: "storage",
+      subjectId: id,
+      subjectLabel: patch.name ?? existing.name,
       action: "update",
-      summary: parsed.data.name ?? null,
+      changes,
     });
     const storage = await this.store.updateStorage({
-      id: storageId,
-      patch: parsed.data,
+      id,
+      patch,
       updatedAt: context.now,
       audit,
     });
@@ -236,10 +265,14 @@ export class StorageService {
   async deleteStorage(context: RequestContext, storageId: string): Promise<{ ok: true }> {
     context.authorization.require(STRUCTURE_PERMISSION);
     const id = requiredId(storageId, "storage");
-    const audit = createAuditMutation(context, {
-      entityType: "storage",
-      entityId: id,
+    const existing = (await this.store.getTree()).data.find((storage) => storage.id === id);
+    if (!existing) throw notFound("Storage not found");
+    const audit = createAuditEvent(context, {
+      subjectType: "storage",
+      subjectId: id,
+      subjectLabel: existing.name,
       action: "delete",
+      context: [],
     });
     const result = await this.store.deleteStorage(id, audit);
     if (result === "not_found") throw notFound("Storage not found");
@@ -255,15 +288,22 @@ export class StorageService {
     context.authorization.require(STRUCTURE_PERMISSION);
     const parsed = createStorageCategorySchema.safeParse(body);
     if (!parsed.success) throw invalid("Invalid category payload", parsed.error.flatten());
+    const targetStorageId = requiredId(storageId, "storage");
+    const storage = (await this.store.getTree()).data.find(({ id }) => id === targetStorageId);
+    if (!storage) throw notFound("Storage not found");
     const category = { id: this.createId(), name: parsed.data.name };
-    const audit = createAuditMutation(context, {
-      entityType: "storage_category",
-      entityId: category.id,
+    const audit = createAuditEvent(context, {
+      subjectType: "storage_category",
+      subjectId: category.id,
+      subjectLabel: category.name,
       action: "create",
-      summary: category.name,
+      context: [{
+        field: "storage_id",
+        value: { type: "reference", value: { id: targetStorageId, label: storage.name } },
+      }],
     });
     const placement = await this.store.createCategory({
-      storageId: requiredId(storageId, "storage"),
+      storageId: targetStorageId,
       category,
       createdAt: context.now,
       audit,
@@ -282,11 +322,21 @@ export class StorageService {
     context.authorization.require(STRUCTURE_PERMISSION);
     const parsed = createStorageCategorySchema.safeParse(body);
     if (!parsed.success) throw invalid("Invalid category payload", parsed.error.flatten());
-    const audit = createAuditMutation(context, {
-      entityType: "storage_category",
-      entityId: requiredId(categoryId, "category"),
+    const id = requiredId(categoryId, "category");
+    const storage = (await this.store.getTree()).data.find((item) => item.id === storageId);
+    const existing = storage?.categories.find((category) => category.id === id);
+    if (!existing) throw notFound("Category not found");
+    if (parsed.data.name === existing.name) return existing;
+    const audit = createAuditEvent(context, {
+      subjectType: "storage_category",
+      subjectId: id,
+      subjectLabel: parsed.data.name,
       action: "update",
-      summary: parsed.data.name,
+      changes: [{
+        field: "name",
+        before: { type: "text", value: existing.name },
+        after: { type: "text", value: parsed.data.name },
+      }],
     });
     const category = await this.store.updateCategory({
       storageId: requiredId(storageId, "storage"),
@@ -305,10 +355,18 @@ export class StorageService {
   ): Promise<{ ok: true }> {
     context.authorization.require(STRUCTURE_PERMISSION);
     const id = requiredId(categoryId, "category");
-    const audit = createAuditMutation(context, {
-      entityType: "storage_category",
-      entityId: id,
+    const storage = (await this.store.getTree()).data.find((item) => item.id === storageId);
+    const existing = storage?.categories.find((category) => category.id === id);
+    if (!storage || !existing) throw notFound("Category not found");
+    const audit = createAuditEvent(context, {
+      subjectType: "storage_category",
+      subjectId: id,
+      subjectLabel: existing.name,
       action: "delete",
+      context: [{
+        field: "storage_id",
+        value: { type: "reference", value: { id: storage.id, label: storage.name } },
+      }],
     });
     const result = await this.store.deleteCategory(requiredId(storageId, "storage"), id, audit);
     if (result === "not_found") throw notFound("Category not found");
@@ -347,7 +405,13 @@ export class StorageService {
     const parsed = createStorageItemSchema.safeParse(body);
     if (!parsed.success) throw invalid("Invalid item payload", parsed.error.flatten());
     const categoryId = parsed.data.category_id ?? null;
-    assertPlacement(await this.store.validateItemPlacement(parsed.data.storage_id, categoryId));
+    const [placement, tree] = await Promise.all([
+      this.store.validateItemPlacement(parsed.data.storage_id, categoryId),
+      this.store.getTree(),
+    ]);
+    assertPlacement(placement);
+    const storage = tree.data.find(({ id }) => id === parsed.data.storage_id);
+    if (!storage) throw notFound("Storage not found");
     const item: StorageItemRecord = {
       id: this.createId(),
       storage_id: parsed.data.storage_id,
@@ -360,11 +424,15 @@ export class StorageService {
       created_at: context.now,
       updated_at: context.now,
     };
-    const audit = createAuditMutation(context, {
-      entityType: "storage_item",
-      entityId: item.id,
+    const audit = createAuditEvent(context, {
+      subjectType: "storage_item",
+      subjectId: item.id,
+      subjectLabel: item.name,
       action: "create",
-      summary: item.name,
+      context: [{
+        field: "storage_id",
+        value: { type: "reference", value: { id: item.storage_id, label: storage.name } },
+      }],
     });
     try {
       await this.store.createItem(item, audit);
@@ -382,30 +450,78 @@ export class StorageService {
     const id = requiredId(itemId, "item");
     const current = await this.store.getItem(id);
     if (!current) throw notFound("Item not found");
+    let tree: { data: Storage[] } | null = null;
     if (parsed.data.category_id !== undefined) {
       assertPlacement(await this.store.validateItemPlacement(current.storage_id, parsed.data.category_id));
+      tree = await this.store.getTree();
     }
-    const audit = createAuditMutation(context, {
-      entityType: "storage_item",
-      entityId: id,
+    const patch: {
+      categoryId?: string | null;
+      name?: string;
+      description?: string | null;
+      allowMemberDeposit?: boolean;
+      allowMemberWithdraw?: boolean;
+    } = {};
+    const changes: AuditChange[] = [];
+    const sectionKeys: string[] = [];
+    if (parsed.data.category_id !== undefined && parsed.data.category_id !== current.category_id) {
+      patch.categoryId = parsed.data.category_id;
+      const storage = tree!.data.find(({ id: storageId }) => storageId === current.storage_id);
+      const labelFor = (categoryId: string | null) => categoryId === null
+        ? null
+        : storage?.categories.find(({ id: candidateId }) => candidateId === categoryId)?.name ?? null;
+      changes.push({
+        field: "category_id",
+        before: current.category_id === null
+          ? { type: "null", value: null }
+          : { type: "reference", value: { id: current.category_id, label: labelFor(current.category_id) } },
+        after: parsed.data.category_id === null
+          ? { type: "null", value: null }
+          : { type: "reference", value: { id: parsed.data.category_id, label: labelFor(parsed.data.category_id) } },
+      });
+    }
+    if (parsed.data.name !== undefined && parsed.data.name !== current.name) {
+      patch.name = parsed.data.name;
+      changes.push({
+        field: "name",
+        before: { type: "text", value: current.name },
+        after: { type: "text", value: parsed.data.name },
+      });
+    }
+    if (parsed.data.description !== undefined && (parsed.data.description ?? null) !== current.description) {
+      patch.description = parsed.data.description ?? null;
+      sectionKeys.push("description");
+    }
+    if (parsed.data.allow_member_deposit !== undefined
+      && parsed.data.allow_member_deposit !== current.allow_member_deposit) {
+      patch.allowMemberDeposit = parsed.data.allow_member_deposit;
+      sectionKeys.push("allow_member_deposit");
+    }
+    if (parsed.data.allow_member_withdraw !== undefined
+      && parsed.data.allow_member_withdraw !== current.allow_member_withdraw) {
+      patch.allowMemberWithdraw = parsed.data.allow_member_withdraw;
+      sectionKeys.push("allow_member_withdraw");
+    }
+    if (changes.length === 0 && sectionKeys.length === 0) return (await this.withMedia([current]))[0]!;
+    const audit = createAuditEvent(context, {
+      subjectType: "storage_item",
+      subjectId: id,
+      subjectLabel: parsed.data.name ?? current.name,
       action: "update",
-      summary: parsed.data.name ?? current.name,
+      changes,
+      context: sectionKeys.length === 0 ? [] : [{
+        field: "changed_sections",
+        value: {
+          type: "list",
+          value: sectionKeys.map((value) => ({ type: "code" as const, value })),
+        },
+      }],
     });
     let item: StorageItemRecord | null;
     try {
       item = await this.store.updateItem({
         id,
-        patch: {
-          ...(parsed.data.category_id !== undefined ? { categoryId: parsed.data.category_id } : {}),
-          ...(parsed.data.name !== undefined ? { name: parsed.data.name } : {}),
-          ...(parsed.data.description !== undefined ? { description: parsed.data.description ?? null } : {}),
-          ...(parsed.data.allow_member_deposit !== undefined
-            ? { allowMemberDeposit: parsed.data.allow_member_deposit }
-            : {}),
-          ...(parsed.data.allow_member_withdraw !== undefined
-            ? { allowMemberWithdraw: parsed.data.allow_member_withdraw }
-            : {}),
-        },
+        patch,
         updatedAt: context.now,
         audit,
       });
@@ -419,10 +535,19 @@ export class StorageService {
   async deleteItem(context: RequestContext, itemId: string): Promise<{ ok: true }> {
     context.authorization.require(ITEMS_PERMISSION);
     const id = requiredId(itemId, "item");
-    const audit = createAuditMutation(context, {
-      entityType: "storage_item",
-      entityId: id,
+    const item = await this.store.getItem(id);
+    if (!item) throw notFound("Item not found");
+    const storage = (await this.store.getTree()).data.find(({ id: storageId }) => storageId === item.storage_id);
+    if (!storage) throw notFound("Storage not found");
+    const audit = createAuditEvent(context, {
+      subjectType: "storage_item",
+      subjectId: id,
+      subjectLabel: item.name,
       action: "delete",
+      context: [{
+        field: "storage_id",
+        value: { type: "reference", value: { id: storage.id, label: storage.name } },
+      }],
     });
     const result = await this.store.deleteItem(id, audit);
     if (result === "not_found") throw notFound("Item not found");
@@ -439,12 +564,12 @@ export class StorageService {
     const id = requiredId(itemId, "item");
     const item = await this.store.getItem(id);
     if (!item) throw notFound("Item not found");
-    const audit = createAuditMutation(context, {
-      entityType: "storage_item",
-      entityId: id,
+    const audit = createAuditEvent(context, {
+      subjectType: "storage_item",
+      subjectId: id,
+      subjectLabel: item.name,
       action: "upload_images",
-      summary: item.name,
-      details: { count: uploads.length },
+      context: [{ field: "upload_count", value: { type: "number", value: uploads.length } }],
     });
     const mediaIds = await this.media.attachItemImages({ context, itemId: id, uploads, audit });
     return this.changed(mediaIds.map((mediaId) => ({ media_id: mediaId })), id, context.now);
@@ -460,12 +585,12 @@ export class StorageService {
     const media = requiredId(mediaId, "media");
     const item = await this.store.getItem(id);
     if (!item) throw notFound("Item not found");
-    const audit = createAuditMutation(context, {
-      entityType: "storage_item",
-      entityId: id,
+    const audit = createAuditEvent(context, {
+      subjectType: "storage_item",
+      subjectId: id,
+      subjectLabel: item.name,
       action: "delete_images",
-      summary: item.name,
-      details: { media_id: media },
+      context: [{ field: "media_count", value: { type: "number", value: 1 } }],
     });
     if (!await this.media.detachItemImage({ context, itemId: id, mediaId: media, audit })) {
       throw notFound("Image not found");
@@ -587,6 +712,9 @@ export class StorageService {
     const snapshot = await this.store.getSubmissionSnapshot(actor.userId, recipientUserId, input.entries);
     if (!snapshot.actorExists) throw new AppError({ code: "UNAUTHORIZED", status: 401, message: "Authentication required" });
     if (recipientUserId !== null && !snapshot.recipientExists) throw notFound("Recipient not found");
+    if (recipientUserId !== null && snapshot.recipientUsername === null) {
+      throw new AppError({ code: "SERVER_ERROR", status: 500, message: "Recipient username is unavailable" });
+    }
     const missing = snapshot.entries.find((entry) => entry.item === null);
     if (missing) throw notFound("Item not found", { item_id: missing.requestedItemId });
 
@@ -632,18 +760,42 @@ export class StorageService {
         created_at: createdAt,
       } satisfies StorageTransaction;
     });
-    const audit = createAuditMutation(context, {
-      entityType: "storage_transaction",
-      entityId: batchId,
+    const audit = createAuditEvent(context, {
+      subjectType: "storage_transaction",
+      subjectId: batchId,
+      subjectLabel: transactions.length === 1 ? transactions[0]!.item_name : null,
       action: input.type,
-      summary: `${input.type} (${transactions.length})`,
-      details: {
-        batch_id: batchId,
-        entries: input.entries.map((entry) => ({ item_id: entry.itemId, quantity: entry.quantity })),
-        target_quantity: input.type === "adjust" ? input.targetQuantity ?? null : null,
-        recipient_user_id: recipientUserId,
-        transaction_ids: transactions.map((transaction) => transaction.id),
-      },
+      context: [
+        { field: "transaction_count", value: { type: "number", value: transactions.length } },
+        { field: "type", value: { type: "code", value: input.type } },
+        {
+          field: "item_ids",
+          value: {
+            type: "list",
+            value: transactions.map(({ item_id: id, item_name: label }) => ({
+              type: "reference" as const,
+              value: { id, label },
+            })),
+          },
+        },
+        {
+          field: "quantity",
+          value: {
+            type: "list",
+            value: transactions.map(({ quantity_delta: quantity }) => ({ type: "number" as const, value: quantity })),
+          },
+        },
+        ...(recipientUserId === null ? [] : [{
+          field: "user_ids" as const,
+          value: {
+            type: "list" as const,
+            value: [{
+              type: "reference" as const,
+              value: { id: recipientUserId, label: snapshot.recipientUsername },
+            }],
+          },
+        }]),
+      ],
     });
     const commit: StockCommit = {
       batchId,

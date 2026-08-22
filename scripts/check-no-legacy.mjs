@@ -7,7 +7,17 @@ const FORBIDDEN_PATHS = new Set([
   "scripts/create-admin.mjs",
   "scripts/create-admin.test.ts",
   "scripts/reset-e2e-slot-state.mjs",
+  "packages/server/src/migrations/auth-password-hash.ts",
+  "packages/server/src/migrations/auth-password-hash.test.ts",
+  "scripts/vps/credential-import.ts",
+  "scripts/vps/credential-import.test.ts",
+  "scripts/vps/prepare-credential-import.ts",
+  "packages/persistence-sqlite/scripts/assemble-core-migration.ts",
+  "packages/persistence-sqlite/src/migrations/assemble-core-migration.test.ts",
 ]);
+
+// 整目录退役后不许回流：旧 worker 运行时与 VPS 脚本的旧目录名。
+const FORBIDDEN_PATH_PREFIXES = ["apps/worker/", "scripts/modular-backend/"];
 
 const FORBIDDEN_REFERENCES = [
   "apps/worker/",
@@ -15,15 +25,26 @@ const FORBIDDEN_REFERENCES = [
   "@worker/",
   "check-worker-config",
   "reset-e2e-slot-state",
+  "@guild/server/migrations/auth-password-hash",
+  "convertLegacyWorkerPasswordHash",
+  "buildLegacyCredentialImportBundle",
+  "prepareCredentialImport",
+  "prepare:credential-import",
+  "db:assemble",
+  "legacy_detail",
+  "legacy_summary",
+  "preservedIds",
+  "modular-backend",
 ];
 
-const SCANNABLE_EXTENSIONS = new Set([".cjs", ".js", ".json", ".jsonc", ".mjs", ".ts", ".tsx", ".yaml", ".yml"]);
+const SCANNABLE_EXTENSIONS = new Set([".cjs", ".js", ".json", ".jsonc", ".md", ".mjs", ".ts", ".tsx", ".yaml", ".yml"]);
 const SELF = new Set(["scripts/check-no-legacy.mjs", "scripts/check-no-legacy.test.ts"]);
 
 function repositoryFiles() {
-  return execFileSync("git", ["ls-files", "--cached", "--others", "--exclude-standard", "-z"], {
+  return execFileSync("git", ["-c", "core.fsmonitor=false", "ls-files", "--cached", "--others", "--exclude-standard", "-z"], {
     encoding: "utf8",
     maxBuffer: 64 * 1024 * 1024,
+    timeout: 10_000,
   }).split("\0").filter(Boolean);
 }
 
@@ -36,12 +57,12 @@ export function findLegacyViolations(
   for (const rawFile of files) {
     const file = rawFile.replace(/\\/g, "/");
     if (!exists(rawFile)) continue;
-    if (file.startsWith("apps/worker/") || FORBIDDEN_PATHS.has(file)) {
+    if (FORBIDDEN_PATH_PREFIXES.some((prefix) => file.startsWith(prefix)) || FORBIDDEN_PATHS.has(file)) {
       violations.push(`${file}: legacy source path`);
       continue;
     }
     if (SELF.has(file) || !SCANNABLE_EXTENSIONS.has(extname(file).toLowerCase())) continue;
-    if (!(file.startsWith("apps/") || file.startsWith("packages/") || file.startsWith("scripts/") || file.startsWith(".github/") || !file.includes("/"))) continue;
+    if (!(file.startsWith("apps/") || file.startsWith("packages/") || file.startsWith("scripts/") || file.startsWith("docs/") || file.startsWith(".github/") || !file.includes("/"))) continue;
     const content = read(rawFile);
     for (const reference of FORBIDDEN_REFERENCES) {
       if (content.includes(reference)) violations.push(`${file}: references ${reference}`);

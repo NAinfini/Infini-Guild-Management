@@ -1,49 +1,50 @@
 # Product
 
-## Platform
+## What it is
 
-Responsive bilingual web application for desktop and mobile.
+Infini Guild Management is a responsive bilingual web app for running a guild on desktop and mobile.
 
-## Users
+## Who it serves
 
-- Guild members browse current information, manage their profiles and absences, join events, vote or enter raffles, review war plans and history, use shared knowledge/media/storage, and interact with permitted tools.
-- Moderators and administrators publish content, coordinate events and wars, maintain members and catalogs, manage storage, review operational records, and administer permissions and site policy.
-- Guests may read the dashboard, events, roster, announcements, guild-war, gallery, wiki, settings, and tools surfaces. Profile, storage, administration, and privileged mutations require authentication and server-side permission checks.
+- **Guild members** can find current guild information, manage their profiles and absences, join events, vote or enter raffles, review war plans and history, use shared knowledge, media, and storage, and use the tools available to them.
+- **Moderators and administrators** publish content, coordinate events and wars, maintain members and catalogs, manage storage, review operational records, and administer roles, permissions, and site policy.
+- **Guests** can browse the dashboard, events, roster, announcements, guild-war, gallery, wiki, settings, and tools. Profiles, storage, administration, and other privileged changes require authentication and server-side permission checks.
 
 ## Product purpose
 
-Infini Guild Management gives a game guild one self-hosted operational home instead of splitting authoritative information across spreadsheets, chat pins, media folders, and isolated utilities. Success means members can find current information and complete common actions without technical guidance, while staff can operate the guild with traceable permissions and audit history.
+The app gives a guild one operational home instead of scattering authoritative information across spreadsheets, chat pins, media folders, and one-off utilities. Members should be able to find what they need and finish common tasks without technical help. Staff should be able to run the guild with clear permissions and a useful audit history.
 
-## Current user capabilities
+## What the app supports today
 
-- Dashboard summaries, command search, member roster, rich profiles, classes, badges, availability, absences, media, and user-controlled profile audio.
-- Invite registration, account settings, cookie sessions, profile-title styling, and responsive English/Chinese presentation.
-- Events with fixed behaviors, recurring templates, quotas, signups, participant management, polls, raffles, and automatic archival.
-- Scheduled rich-text announcements, wiki categories/articles/revisions, gallery images/external videos, and content moderation.
-- Active guild-war planning, team/pool movement, conclusion, history, member stats, export, and analytics.
-- Authenticated storage structures, categories, items, quantities, images, and transaction history.
-- A Tools surface currently containing the dice roller, plus administration for members, invites, roles, permissions, Site Config, classes, class tags, badges, audit/error/status data, and maintenance.
-- Authenticated realtime update hints through WebSocket connections backed by a Cloudflare Durable Object or the VPS in-process hub.
+- Use dashboard summaries and command search; browse the roster, profiles, classes, badges, availability, absences, media, and member-controlled profile audio.
+- Register through an invite, manage account settings, use cookie sessions, style profile titles, and use the app in English or Chinese on any supported screen size.
+- Take part in events with fixed behaviors, recurring templates, quotas, signups, participant management, polls, raffles, and automatic archival.
+- Read scheduled rich-text announcements, wiki categories/articles/revisions, gallery images and external videos, and moderated content.
+- Plan active guild wars, move teams and pools, conclude wars, review history and member stats, and export analytics.
+- Use authenticated storage structures, categories, items, quantities, images, and transaction history.
+- Use the dice roller and, when authorized, administer members, invites, roles, permissions, Site Config, classes, class tags, badges, and audit/error/status data.
+- During planned data or blob-storage work, operators can place either runtime behind a dependency-free bilingual maintenance response without exposing an in-app maintenance control.
+- Receive authenticated realtime update hints through WebSocket connections backed by a Cloudflare Durable Object or the VPS in-process hub.
 
 ## Product boundaries
 
 - Runtime feature visibility is limited to `announcements`, `events`, `guildWar`, `gallery`, `wiki`, `tools`, and `storage`.
-- Site Config covers branding, those feature flags, and media/storage/absence policies. Game rules remain source-owned contracts.
+- Site Config owns branding, those feature flags, and media, storage, and absence policies. Game rules remain source-owned contracts.
 - Event types are source-owned and limited to `weekly_mission`, `guild_war`, `social`, `poll`, `raffle`, and `other`.
-- Guild-war results are source-owned and limited to `win`, `loss`, and `draw`. KDA is `(kills + assists) / max(deaths, 1)` without pre-rounding. Stat definitions own one `name`, not localized `labels` or a configurable `precision`.
-- Admin cannot redefine those persisted contracts. They are not represented by dynamic D1 rule tables and require coordinated code/data migration when changed.
-- One physical BlobStore contains persisted media and audit archives: the Cloudflare `BLOBS` R2 bucket or the configured VPS filesystem root. Audit objects are canonical NDJSON with authoritative metadata in SQLite. Persisted images are WebP and profile audio is Ogg/Opus; server validation rejects mismatched bytes, SVG, and GIF.
-- Public visibility never grants mutation rights. Backend authorization remains authoritative even when the interface hides or disables an action.
+- Guild-war results are source-owned and limited to `win`, `loss`, and `draw`. KDA is `(kills + assists) / max(deaths, 1)` without pre-rounding. Each stat definition has one `name`; localized `labels` and configurable `precision` are not supported.
+- Administrators cannot redefine these persisted contracts. They are not dynamic D1 rule tables, and changing them requires a coordinated code and data migration.
+- One physical BlobStore holds persisted media and audit archives: the Cloudflare `BLOBS` R2 bucket or the configured VPS filesystem root. Audit objects are canonical NDJSON, with authoritative metadata in SQLite. Persisted images are WebP and profile audio is Ogg/Opus; the server rejects mismatched bytes, SVG, and GIF.
+- Public visibility never grants the right to mutate data. Backend authorization remains authoritative even when the interface hides or disables an action.
 - Demo data is representative development content, not evidence of real users, adoption, performance, or customer claims.
 
 ## Product principles
 
-1. **One task model on every device.** Mobile and desktop may compose information differently, but neither is an intentionally reduced product.
-2. **Guild-specific character with predictable controls.** Identity comes from hierarchy, media, data, and deliberate interaction; standard controls keep standard behavior.
-3. **Progressive complexity.** Members see current information and common actions first; administrative depth remains permission-gated and discoverable.
-4. **Traceable operations.** Sensitive changes have server authorization, audit context, and explicit destructive actions.
-5. **Preserve useful identity.** Portrait-led roster cards, reduced-motion behavior, and user-controlled member audio are product assets rather than decoration.
+1. **The same task model on every device.** Mobile and desktop may arrange information differently, but neither is intentionally reduced.
+2. **Guild character, familiar controls.** Hierarchy, media, data, and deliberate interaction give the app its identity; standard controls keep standard behavior.
+3. **Complexity appears when needed.** Members see current information and common actions first. Administrative depth is permission-gated and discoverable.
+4. **Operations should be traceable.** Sensitive changes require server authorization, carry audit context, and make destructive actions explicit.
+5. **Useful identity is worth preserving.** Portrait-led roster cards, reduced-motion support, and member-controlled audio are product features, not decoration.
 
 ## Accessibility and inclusion
 
-Keyboard navigation, visible focus, semantic labels, readable contrast, reduced-motion handling, touch targets, zoom, long translated strings, and content reflow are baseline requirements. Audio is user-controlled and never the only carrier of information.
+Keyboard navigation, visible focus, semantic labels, readable contrast, reduced-motion handling, touch targets, zoom, long translated strings, and content reflow are baseline requirements. Audio is always user-controlled and never the only way to convey information.

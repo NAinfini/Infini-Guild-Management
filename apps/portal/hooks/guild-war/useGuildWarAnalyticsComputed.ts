@@ -2,6 +2,7 @@ import { useCallback, useMemo } from "react";
 import { useTranslation } from "react-i18next";
 import { DEFAULT_GAME_RULES, GUILD_WAR_KDA_KEY, evaluateKda, findGuildWarResultDefinition } from "@guild/shared";
 import type { AnalyticsAggregation, AnalyticsMetricKey, AnalyticsTableColumn } from "../../types/guild-war";
+import { localDateKey } from "@portal/utils/datetime";
 import { aggregateValues, computeStdDev, hashToPaletteColor } from "@portal/utils/guild-war-analytics";
 import { getGuildWarResultLabel } from "@portal/utils/game-rules";
 
@@ -171,7 +172,7 @@ export function useGuildWarAnalyticsComputed({
       return {
         key: war.id,
         war_name: war.war_name,
-        created_at: war.created_at.slice(0, 10),
+        created_at: localDateKey(war.created_at),
         enemy_name: war.enemy_name ?? "—",
         result: war.result ? getGuildWarResultLabel(war.result) : "—",
         own,
@@ -237,7 +238,7 @@ export function useGuildWarAnalyticsComputed({
     const poolEntriesByUser = new Map<string, Array<{ warId: string; date: string }>>();
     const foughtWarIdsByUser = new Map<string, Set<string>>();
     for (const war of analyticsTimeline) {
-      const warDate = war.created_at.slice(0, 10);
+      const warDate = localDateKey(war.created_at);
       for (const member of war.member_stats) {
         const current = valuesByUser.get(member.user_id) ?? [];
         current.push(getNormalizedMetricValue(war.id, member, primaryMetric));

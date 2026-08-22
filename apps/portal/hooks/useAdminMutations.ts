@@ -27,7 +27,8 @@ import {
 } from "../services/AdminService";
 import { queryKeys } from "../api/query-keys";
 import { copyPlainText } from "../utils/copy";
-import { auditExportDatePart, downloadFileBlob, toIsoOrUndefined } from "../utils/admin";
+import { auditExportDatePart, downloadFileBlob } from "../utils/admin";
+import { fromDateTimeLocalValue } from "../utils/datetime";
 import { useAdminPendingActions } from "./useAdminPendingActions";
 import { revalidateSessionSnapshot } from "../session-transition";
 
@@ -45,6 +46,7 @@ type AuditFilterState = {
   dateFrom: string;
   dateTo: string;
   entityType: string;
+  entityId: string;
   actorId: string;
 };
 
@@ -221,7 +223,7 @@ export function useAdminMutations({
       createAdminInviteLink({
         role_id: roleId,
         max_uses: maxUses,
-        expires_at: toIsoOrUndefined(expiresAt),
+        expires_at: fromDateTimeLocalValue(expiresAt),
       }),
     onSuccess: async () => {
       notifySuccess(t("message.inviteCreated"));
@@ -235,9 +237,10 @@ export function useAdminMutations({
       downloadAdminAuditLogExport({
         format,
         search: auditFilter.search.trim() || undefined,
-        start_at: auditFilter.dateFrom ? `${auditFilter.dateFrom}T00:00:00.000Z` : undefined,
-        end_at: auditFilter.dateTo ? `${auditFilter.dateTo}T23:59:59.999Z` : undefined,
+        start_at: auditFilter.dateFrom && auditFilter.dateTo ? `${auditFilter.dateFrom}T00:00:00.000Z` : undefined,
+        end_at: auditFilter.dateFrom && auditFilter.dateTo ? `${auditFilter.dateTo}T23:59:59.999Z` : undefined,
         entity_type: auditFilter.entityType || undefined,
+        entity_id: auditFilter.entityId || undefined,
         actor_id: auditFilter.actorId || undefined,
       }),
     onSuccess: (blob, format) => {

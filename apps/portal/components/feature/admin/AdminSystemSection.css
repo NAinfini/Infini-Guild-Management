@@ -1,222 +1,134 @@
-/* ── System Health Grid ── */
-
-.system-health-grid {
-  display: flex;
-  gap: 10px;
-  flex-wrap: wrap;
-  align-items: stretch;
+/* 健康台账嵌在运维页的面板里，材质由外层 .admin-panel 给，这里不再画一层。 */
+.system-health-ledger {
+  min-width: 0;
+  overflow: hidden;
 }
 
-.system-health-tile {
+.system-health-ledger--loading {
+  display: grid;
+  gap: 1px;
+  background: var(--border-subtle);
+}
+
+.system-health-ledger__summary {
   display: flex;
-  flex-direction: column;
+  min-height: 44px;
   align-items: center;
-  justify-content: center;
-  gap: 6px;
-  padding: 14px 16px;
-  border-radius: var(--radius-surface);
-  border: 1px solid color-mix(in srgb, var(--text-primary) 8%, transparent);
-  background: color-mix(in srgb, var(--surface-base) 97%, var(--text-primary));
-  min-width: 80px;
+  gap: var(--space-xs);
+  padding: 0 var(--space-lg);
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.system-health-ledger__summary-spacer {
   flex: 1;
-  transition: border-color 200ms ease, background 200ms ease;
 }
 
-.system-health-tile:hover {
-  border-color: var(--border-strong);
-}
-
-.system-health-tile--ok {
-  border-color: color-mix(in srgb, var(--status-success) 20%, transparent);
-}
-
-.system-health-tile--ok:hover {
-  border-color: color-mix(in srgb, var(--status-success) 40%, transparent);
-}
-
-.system-health-tile--configured {
-  border-color: color-mix(in srgb, var(--status-warning) 25%, transparent);
-  background: color-mix(in srgb, var(--status-warning) 3%, var(--surface-base));
-}
-
-.system-health-tile--configured:hover {
-  border-color: color-mix(in srgb, var(--status-warning) 45%, transparent);
-}
-
-.system-health-tile--error {
-  border-color: color-mix(in srgb, var(--status-danger) 25%, transparent);
-  background: color-mix(in srgb, var(--status-danger) 3%, var(--surface-base));
-}
-
-.system-health-tile--error:hover {
-  border-color: color-mix(in srgb, var(--status-danger) 45%, transparent);
-}
-
-.system-health-tile--latency {
-  flex-direction: row;
-  gap: 10px;
-  padding: 10px 16px;
-  min-width: 140px;
-}
-
-.system-health-tile__icon {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 36px;
-  height: 36px;
-  border-radius: 50%;
-  background: color-mix(in srgb, currentColor 10%, transparent);
-  transition: transform 200ms ease;
-}
-
-.system-health-tile:hover .system-health-tile__icon {
-  transform: scale(1.1);
-}
-
-/* Service icons use the exhaustive health-state palette. */
-.system-health-tile__icon--ok { color: var(--status-success); }
-.system-health-tile__icon--warning { color: var(--status-warning); }
-.system-health-tile__icon--danger { color: var(--status-danger); }
-
-.system-health-tile__label {
-  letter-spacing: 0.03em;
+/* 延迟是这一行里唯一的读数，用显示字体让它盖过左边的服务名。 */
+.system-health-ledger__latency {
   color: var(--text-primary);
-}
-
-.system-health-tile__badge {
-  font-weight: 800;
-  letter-spacing: 0.08em;
-}
-
-/* ── Overall Status Indicator ── */
-
-.system-health-overall {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 10px 18px;
-  border-radius: var(--radius-surface);
-  border: 1px solid;
-  flex: 1;
-  min-width: 120px;
-  justify-content: center;
-  transition: border-color 200ms ease, box-shadow 200ms ease;
-}
-
-.system-health-overall--ok {
-  border-color: color-mix(in srgb, var(--status-success) 25%, transparent);
-  background: color-mix(in srgb, var(--status-success) 4%, var(--surface-base));
-}
-
-.system-health-overall--warn {
-  border-color: color-mix(in srgb, var(--status-warning) 30%, transparent);
-  background: color-mix(in srgb, var(--status-warning) 5%, var(--surface-base));
-}
-
-.system-health-overall__dot {
-  width: 10px;
-  height: 10px;
-  border-radius: 50%;
-  flex-shrink: 0;
-}
-
-.system-health-overall__dot--ok {
-  background: var(--status-success);
-}
-
-.system-health-overall__dot--warn {
-  background: var(--status-warning);
-}
-
-/* ── Health Log Table ── */
-
-.health-log-table {
-  width: 100%;
-  border-collapse: separate;
-  border-spacing: 0;
-  font-size: 12px;
-}
-
-.health-log-table th {
-  padding: 6px 10px;
-  text-align: left;
-  font-weight: 700;
-  font-size: 10px;
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-  color: color-mix(in srgb, var(--text-primary) 65%, transparent);
-  border-bottom: 1px solid color-mix(in srgb, var(--text-primary) 10%, transparent);
-  white-space: nowrap;
-  position: sticky;
-  top: 0;
-  background: var(--surface-base);
-  z-index: 1;
-}
-
-.health-log-table td {
-  padding: 5px 10px;
-  border-bottom: 1px solid color-mix(in srgb, var(--text-primary) 5%, transparent);
-  white-space: nowrap;
+  font-family: var(--font-display);
+  font-size: var(--text-h3);
+  font-weight: var(--fw-strong);
   font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum" 1;
 }
 
-.health-log-table tr:last-child td {
-  border-bottom: none;
+.system-health-ledger__table-wrap {
+  overflow-x: hidden;
 }
 
-.health-log-table tr:hover td {
+.system-health-ledger__table {
+  width: 100%;
+  min-width: 0;
+  border-collapse: collapse;
+  table-layout: fixed;
+}
+
+.system-health-ledger__table th,
+.system-health-ledger__table td {
+  padding: var(--space-xs) var(--space-sm);
+  border-bottom: 1px solid var(--border-subtle);
+  text-align: left;
+}
+
+/* 表头与全台一致：不铺底色，靠一条更重的线区分。 */
+.system-health-ledger__table th {
+  border-bottom-color: var(--border-strong);
+  color: var(--text-muted);
+  background: transparent;
+  font-size: var(--text-meta);
+  font-weight: var(--fw-medium);
+}
+
+.system-health-ledger__table th:first-child { width: 37%; }
+.system-health-ledger__table th:nth-child(2) { width: 27%; }
+
+.system-health-ledger__table tr:last-child td {
+  border-bottom: 0;
+}
+
+.system-health-ledger__row:hover td {
   background: color-mix(in srgb, var(--brand-fill) 3%, transparent);
 }
 
-.health-log-dot {
-  display: inline-block;
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  vertical-align: middle;
-  margin-right: 4px;
-}
-
-.health-log-dot--ok { background: var(--status-success); }
-.health-log-dot--warn { background: var(--status-warning); }
-.health-log-dot--error { background: var(--status-danger); }
-
-.health-log-latency {
+.system-health-ledger__service,
+.system-health-ledger__state {
   display: inline-flex;
   align-items: center;
-  gap: 4px;
+  gap: var(--space-sm);
+  min-width: 0;
+  font-size: var(--text-sm);
+  font-weight: var(--fw-medium);
 }
 
-.health-log-latency-bar {
-  height: 4px;
-  border-radius: 2px;
-  /* Bounds keep zero-latency visible without exceeding the table column. */
-  min-width: 4px;
-  max-width: 40px;
+.system-health-ledger__state {
+  gap: var(--space-xs);
+  font-weight: var(--fw-strong);
+  white-space: nowrap;
 }
 
-/* Latency log timestamp. */
-.health-log-time {
-  color: color-mix(in srgb, var(--text-primary) 65%, transparent);
+.system-health-ledger__icon {
+  display: grid;
+  width: 28px;
+  height: 28px;
+  place-items: center;
+  flex: 0 0 auto;
+  border-radius: var(--radius-control);
+  background: color-mix(in srgb, currentColor 9%, transparent);
 }
 
-/* Latency bars, values, and rings share the same exhaustive good/warn/bad palette. */
-.health-log-latency-bar--good { background: var(--status-success); }
-.health-log-latency-bar--warn { background: var(--status-warning); }
-.health-log-latency-bar--bad { background: var(--status-danger); }
+.system-health-ledger__icon--ok,
+.system-health-ledger__state--ok { color: var(--status-success); }
+.system-health-ledger__icon--configured,
+.system-health-ledger__state--configured { color: var(--status-warning); }
+.system-health-ledger__icon--error,
+.system-health-ledger__state--error { color: var(--status-danger); }
 
-.health-log-latency-value {
-  font-weight: 600;
+.system-health-ledger__dot {
+  width: 8px;
+  height: 8px;
+  flex: 0 0 auto;
+  border-radius: 50%;
 }
 
-.health-log-latency-value--good { color: var(--status-success); }
-.health-log-latency-value--warn { color: var(--status-warning); }
-.health-log-latency-value--bad { color: var(--status-danger); }
+.system-health-ledger__dot--ok { background: var(--status-success); }
+.system-health-ledger__dot--configured { background: var(--status-warning); }
+.system-health-ledger__dot--error { background: var(--status-danger); }
 
-@media (prefers-reduced-motion: reduce) {
-  .system-health-overall__dot--ok,
-  .system-health-overall__dot--warn {
-    animation: none;
+.system-health-ledger__signal {
+  color: var(--text-secondary);
+  font-family: inherit;
+  font-size: var(--text-meta);
+  font-weight: var(--fw-medium);
+  font-variant-numeric: tabular-nums;
+  line-height: var(--lh-normal);
+  overflow-wrap: anywhere;
+}
+
+@media (max-width: 39.99em) {
+  .system-health-ledger__summary,
+  .system-health-ledger__table th,
+  .system-health-ledger__table td {
+    padding-inline: var(--space-md);
   }
 }

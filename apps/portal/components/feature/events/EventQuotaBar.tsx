@@ -122,11 +122,7 @@ export function EventQuotaBar({ summary, event, participantCount, className }: E
   return (
     <section
       className={rootClassName}
-      aria-label={capacityConflictText
-        ? `${t("quota.roles.label")}. ${capacityConflictText}`
-        : t("quota.roles.label")}
-      title={capacityConflictText}
-      data-capacity-conflict={capacityConflict || undefined}
+      aria-label={t("quota.roles.label")}
     >
       <div className="quota-bar__slots" role="list" style={slotGridStyle}>
         {summary.slots.map((slot, index) => {
@@ -209,6 +205,12 @@ export function EventQuotaBar({ summary, event, participantCount, className }: E
           </div>
         ) : null}
       </div>
+
+      {/* 容量小于岗位需求总和是活动自己的配置错，按这套设置永远凑不齐人。
+          这种事不能只挂在悬停上：鼠标不停在这儿的人、用键盘的人都读不到。 */}
+      {capacityConflictText ? (
+        <p className="quota-bar__conflict">{capacityConflictText}</p>
+      ) : null}
     </section>
   );
 }

@@ -1,28 +1,14 @@
-import type { GuildWarActiveResponse, PaginatedResponse, SiteAnalyticsSettings, WarHistory } from "@guild/shared";
+import type {
+  GuildWarActiveResponse,
+  GuildWarHistoryDetailResponse,
+  PaginatedResponse,
+  SiteAnalyticsSettings,
+  WarHistory,
+} from "@guild/shared";
 import { LIMITS } from "@guild/shared/config/limits";
 import { apiDownload, apiRequest } from "../client";
 
-type WarTeamMember = {
-  id: string;
-  war_team_id: string;
-  user_id: string;
-  username?: string;
-  role_tag: string | null;
-  sort_order: number;
-  stats: Record<string, number | null> | null;
-  note: string | null;
-};
-
-type WarTeam = {
-  id: string;
-  war_history_id: string | null;
-  event_id: string | null;
-  team_name: string;
-  sort_order: number;
-  notes: string | null;
-  is_locked: boolean;
-  members: WarTeamMember[];
-};
+export type { GuildWarHistoryDetailResponse } from "@guild/shared";
 
 export type GuildWarAnalyticsMemberStat = {
   user_id: string;
@@ -48,12 +34,6 @@ export type GuildWarAnalyticsResponse = {
   wars: AnalyticsWarEntry[];
   member_stats: GuildWarAnalyticsMemberStat[];
   analytics_settings: AnalyticsSettings;
-};
-
-export type GuildWarHistoryDetailResponse = WarHistory & {
-  teams: WarTeam[];
-  pool: Array<{ id: string; warHistoryId: string; userId: string; username?: string }>;
-  member_stats: WarTeamMember[];
 };
 
 export function fetchGuildWarActive(eventId?: string): Promise<GuildWarActiveResponse> {

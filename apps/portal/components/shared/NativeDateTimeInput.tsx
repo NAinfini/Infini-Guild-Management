@@ -1,4 +1,5 @@
 import { Box, TextInput, type TextInputProps } from "@mantine/core";
+import { formatCalendarParts } from "@portal/utils/datetime";
 import { usePreferencesStore } from "@portal/stores/preferences";
 import { useCallback, useMemo, type MouseEvent } from "react";
 import "./NativeDateTimeInput.css";
@@ -6,34 +7,20 @@ import "./NativeDateTimeInput.css";
 type NativePickerType = "date" | "time" | "datetime-local";
 type SupportedLocale = "en" | "zh";
 
+/* 控件里的值是 <input type="date"> 的 YYYY-MM-DD：一个日历日期，不是瞬时点，
+   所以走 formatCalendarParts 而不是任何按时区换算的格式化。 */
 function formatLocalizedDate(value: TextInputProps["value"], locale: SupportedLocale): string {
   const rawValue = typeof value === "string"
     ? value
     : value == null
       ? ""
       : String(value);
-  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(rawValue);
-  if (!match) {
-    return "";
-  }
 
-  const year = Number(match[1]);
-  const month = Number(match[2]);
-  const day = Number(match[3]);
-  const date = new Date(year, month - 1, day);
-  if (
-    date.getFullYear() !== year
-    || date.getMonth() !== month - 1
-    || date.getDate() !== day
-  ) {
-    return "";
-  }
-
-  return new Intl.DateTimeFormat(locale === "zh" ? "zh-CN" : "en-US", {
+  return formatCalendarParts(rawValue, locale === "zh" ? "zh-CN" : "en-US", {
     year: "numeric",
     month: locale === "zh" ? "long" : "short",
     day: "numeric",
-  }).format(date);
+  });
 }
 
 /* 原生 <input type="date"> 只有右侧那颗日历图标能唤出选择器；点文字区只会把光标

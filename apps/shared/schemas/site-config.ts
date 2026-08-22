@@ -1,11 +1,19 @@
 import { z } from "zod";
 import { featureFlagsSchema } from "../config/features";
+import { DEFAULT_SITE_DESCRIPTION, SITE_DESCRIPTION_MAX_LENGTH } from "../config/site-branding";
 import {
   LIMITS,
   MAX_CONFIGURABLE_AUDIO_BYTES,
   MAX_CONFIGURABLE_IMAGE_VARIANT_BYTES,
 } from "../config/limits";
 import { mediaIdSchema } from "./media";
+
+export { DEFAULT_SITE_DESCRIPTION, SITE_DESCRIPTION_MAX_LENGTH };
+
+export const siteDescriptionSchema = z.string()
+  .min(1)
+  .max(SITE_DESCRIPTION_MAX_LENGTH)
+  .refine((value) => value === value.trim(), "Site description must be trimmed");
 
 export const siteMediaPolicySchema = z.object({
   max_file_size_bytes: z.object({
@@ -94,6 +102,7 @@ export const DEFAULT_SITE_ANALYTICS_SETTINGS = siteAnalyticsSettingsSchema.parse
 
 export const siteConfigSchema = z.object({
   site_name: z.string().min(1).max(100).refine((value) => value === value.trim(), "Site name must be trimmed"),
+  site_description: siteDescriptionSchema,
   site_logo_media_id: mediaIdSchema.nullable(),
   default_site_logo_url: z.string().min(1),
   features: featureFlagsSchema,
@@ -107,6 +116,7 @@ export const siteConfigSchema = z.object({
 
 export const publicSiteConfigSchema = siteConfigSchema.pick({
   site_name: true,
+  site_description: true,
   site_logo_media_id: true,
   default_site_logo_url: true,
   features: true,
@@ -122,6 +132,7 @@ const updateSiteMediaPolicySchema = z.object({
 
 export const updateSiteConfigSchema = z.object({
   site_name: z.string().trim().min(1).max(100).optional(),
+  site_description: z.string().trim().min(1).max(SITE_DESCRIPTION_MAX_LENGTH).optional(),
   features: featureFlagsSchema.partial().optional(),
   media_policy: updateSiteMediaPolicySchema.optional(),
   storage_policy: siteStoragePolicySchema.partial().optional(),

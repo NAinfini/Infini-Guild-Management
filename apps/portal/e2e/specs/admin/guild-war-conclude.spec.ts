@@ -209,7 +209,7 @@ test("结束战争：填完的每一项都落进战史，活动同时退出可�
   await selectOption(modal, "Result", "Win");
   await expect(submit, "选完结果就该允许提交").toBeEnabled();
 
-  await field(modal, "Duration").fill("42");
+  await field(modal, "Duration (minutes)").fill("42");
   await field(modal, "Our Kills").fill("7");
   await field(modal, "Enemy Kills").fill("3");
   await field(modal, `${member.username} — Kills`).fill("5");
@@ -224,7 +224,7 @@ test("结束战争：填完的每一项都落进战史，活动同时退出可�
   expect(history.war_name, "战名取自活动标题").toBe(title);
   expect(history.enemy_name).toBe(`Crimson ${stamp}`);
   expect(history.result).toBe("win");
-  expect(history.duration_minutes, "时长带 min 后缀显示，存的必须是纯数字").toBe(42);
+  expect(history.duration_minutes, "时长明确标注分钟，存的必须是纯数字").toBe(42);
   expect(history.own_stats?.kills, "己方战果必须逐项写进去").toBe(7);
   expect(history.enemy_stats?.kills).toBe(3);
   /* 没填的目标不该被当成 0 混进去：前端只上送非 null 的项，这是「未记录」和

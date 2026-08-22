@@ -4,6 +4,7 @@ import { useCallback, useState } from "react";
 import { useDisclosure } from "@mantine/hooks";
 import { useTranslation } from "react-i18next";
 import { useBeforeUnloadPrompt } from "../../../hooks/useBeforeUnloadPrompt";
+import { fromDateTimeLocalValue, toDateTimeLocalValue } from "../../../utils/datetime";
 import { toClassQuotaInputs } from "./class-quota-view";
 
 type EditorSnapshot = {
@@ -35,21 +36,6 @@ function buildEditorSnapshot(input: EditorSnapshot): string {
   });
 }
 
-function toLocalInput(iso: string | null): string {
-  if (!iso) return "";
-  const parsed = new Date(iso);
-  if (Number.isNaN(parsed.getTime())) return "";
-  const shifted = new Date(parsed.getTime() - parsed.getTimezoneOffset() * 60_000);
-  return shifted.toISOString().slice(0, 16);
-}
-
-function toIso(input: string): string | undefined {
-  if (!input.trim()) return undefined;
-  const parsed = new Date(input);
-  if (Number.isNaN(parsed.getTime())) return undefined;
-  return parsed.toISOString();
-}
-
 type UseEventsEditorControllerParams = {
   attachmentSnapshot: string;
 };
@@ -77,8 +63,8 @@ export function useEventsEditorController({ attachmentSnapshot }: UseEventsEdito
   const [editorClassQuotas, setEditorClassQuotas] = useState<EventClassQuotaInput[]>([]);
   const [editorBaseline, setEditorBaseline] = useState<string | null>(null);
 
-  const editorStartIso = toIso(editorStartAt);
-  const editorEndIso = toIso(editorEndAt) ?? editorStartIso;
+  const editorStartIso = fromDateTimeLocalValue(editorStartAt);
+  const editorEndIso = fromDateTimeLocalValue(editorEndAt) ?? editorStartIso;
 
   const editorCurrentSnapshot = buildEditorSnapshot({
     mode: editorMode,
@@ -179,21 +165,18 @@ export function useEventsEditorController({ attachmentSnapshot }: UseEventsEdito
   const openCreateEditor = useCallback((initialDateKey?: string) => {
     const now = new Date();
     const fallbackStart = new Date(now.getTime() + 60 * 60_000);
+    /* initialDateKey 是日历上点的那一天，本来就是阅读者本地日期；不带 Z 的字面量按本地
+       挂钟解析，正是要的语义——点 8 月 13 号就开在他自己表上的 13 号晚八点。 */
     const dateStart = initialDateKey ? new Date(`${initialDateKey}T20:00:00`) : fallbackStart;
-    const initialStartAt = toLocalInput(
-      Number.isNaN(dateStart.getTime()) ? fallbackStart.toISOString() : dateStart.toISOString(),
-    );
+    const start = Number.isNaN(dateStart.getTime()) ? fallbackStart : dateStart;
+    const initialStartAt = toDateTimeLocalValue(start);
     setEditorTouched(false);
     setEditorMode("create");
     setEditingEventId(null);
     setEditorType("");
     setEditorTitle("");
     setEditorDescription("");
-    const initialEndAt = toLocalInput(
-      new Date(
-        (Number.isNaN(dateStart.getTime()) ? fallbackStart : dateStart).getTime() + 2 * 60 * 60_000,
-      ).toISOString(),
-    );
+    const initialEndAt = toDateTimeLocalValue(new Date(start.getTime() + 2 * 60 * 60_000));
     setEditorStartAt(initialStartAt);
     setEditorEndAt(initialEndAt);
     setEditorCapacity("");
@@ -230,8 +213,8 @@ export function useEventsEditorController({ attachmentSnapshot }: UseEventsEdito
   }, []);
 
   const openEditEditor = useCallback((event: Event, initialAttachmentSnapshot?: string) => {
-    const startAt = toLocalInput(event.start_at);
-    const endAt = toLocalInput(event.end_at);
+    const startAt = toDateTimeLocalValue(event.start_at);
+    const endAt = toDateTimeLocalValue(event.end_at);
     const capacity = event.capacity === null ? "" : String(event.capacity);
 
     setEditorTouched(false);

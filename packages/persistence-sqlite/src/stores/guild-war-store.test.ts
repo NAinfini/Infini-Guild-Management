@@ -4,23 +4,28 @@ import { fileURLToPath } from "node:url";
 import { afterEach, describe, expect, it } from "vitest";
 import {
   MAX_SQL_BATCH_STATEMENTS,
-  assertSqlBatch,
   createAuthorizationContext,
   createRequestContext,
 } from "@guild/kernel";
-import { createAuditMutation } from "@guild/server/modules/audit";
+import { createAuditEvent } from "@guild/server/modules/audit";
 import { MAX_GUILD_WAR_MEMBERS } from "@guild/shared";
 import { createAppDatabase } from "../database.js";
-import type { SqlBatchStatement, SqlExecutor, SqlResult, SqlRow, SqlStatement } from "@guild/kernel";
+import { SqliteTestExecutor } from "../testing/sqlite-test-executor.js";
 import { SqliteGuildWarStore } from "./guild-war-store.js";
 import { SqliteEventGuildWarLifecycleStore } from "./event-guild-war-lifecycle-store.js";
 
 const NOW = "2026-08-09T12:00:00.000Z";
+const AVATAR_MEDIA_ID = "avatar1234567890abcde";
 const databases: DatabaseSync[] = [];
 
 const BASE_SCHEMA = `
   PRAGMA foreign_keys = ON;
-  CREATE TABLE users (id TEXT PRIMARY KEY, username TEXT NOT NULL);
+  CREATE TABLE users (
+    id TEXT PRIMARY KEY,
+    username TEXT NOT NULL,
+    is_active INTEGER NOT NULL DEFAULT 1,
+    deleted_at TEXT
+  );
   CREATE TABLE events (id TEXT PRIMARY KEY);
   CREATE TABLE event_participants (
     id TEXT PRIMARY KEY,
@@ -30,9 +35,9 @@ const BASE_SCHEMA = `
     UNIQUE(event_id, user_id)
   );
   CREATE TABLE audit_log (
-    id TEXT PRIMARY KEY, request_id TEXT NOT NULL, actor_user_id TEXT NOT NULL, actor_username TEXT,
-    entity_type TEXT NOT NULL, entity_id TEXT NOT NULL, action TEXT NOT NULL,
-    summary TEXT, detail_json TEXT, occurred_at TEXT NOT NULL
+    id TEXT PRIMARY KEY, request_id TEXT NOT NULL, actor_kind TEXT NOT NULL, actor_id TEXT NOT NULL,
+    actor_label TEXT, subject_type TEXT NOT NULL, subject_id TEXT NOT NULL, subject_label TEXT,
+    action TEXT NOT NULL, payload_json TEXT NOT NULL, occurred_at TEXT NOT NULL
   );
   CREATE TABLE guild_wars (
     id TEXT PRIMARY KEY,
@@ -81,48 +86,17 @@ const BASE_SCHEMA = `
   CREATE INDEX idx_war_members_team_sort ON war_members(team_id, sort_order, id);
   CREATE INDEX idx_war_members_war_pool_sort ON war_members(war_id, team_id, sort_order, id);
   CREATE INDEX idx_war_members_user_war ON war_members(user_id, war_id);
+  CREATE TABLE media_links (
+    media_id TEXT NOT NULL,
+    entity_type TEXT NOT NULL,
+    entity_id TEXT NOT NULL,
+    slot TEXT NOT NULL,
+    audience TEXT NOT NULL,
+    sort_order INTEGER NOT NULL DEFAULT 0
+  );
+  CREATE UNIQUE INDEX ux_media_links_target_order
+    ON media_links(entity_type, entity_id, slot, sort_order);
 `;
-
-class TestSqlExecutor implements SqlExecutor {
-  readonly statements: SqlStatement[] = [];
-  readonly batches: SqlBatchStatement[][] = [];
-
-  constructor(readonly database: DatabaseSync) {}
-
-  async execute(statement: SqlStatement): Promise<SqlResult> {
-    this.statements.push(statement);
-    return this.run(statement);
-  }
-
-  async batch(statements: readonly SqlBatchStatement[]): Promise<readonly SqlResult[]> {
-    assertSqlBatch(statements);
-    this.batches.push([...statements]);
-    this.statements.push(...statements);
-    this.database.exec("BEGIN IMMEDIATE");
-    try {
-      const results = statements.map((statement) => this.run(statement));
-      this.database.exec("COMMIT");
-      return results;
-    } catch (error) {
-      this.database.exec("ROLLBACK");
-      throw error;
-    }
-  }
-
-  private run(statement: SqlStatement): SqlResult {
-    const prepared = this.database.prepare(statement.sql);
-    const params = [...(statement.params ?? [])] as SQLInputValue[];
-    if (statement.method === "run") {
-      const result = prepared.run(...params);
-      return { rows: [], lastInsertRowId: result.lastInsertRowid };
-    }
-    prepared.setReturnArrays(true);
-    if (statement.method === "get") {
-      return { rows: prepared.get(...params) as unknown as SqlRow | undefined };
-    }
-    return { rows: prepared.all(...params) as unknown as readonly SqlRow[] };
-  }
-}
 
 afterEach(() => {
   for (const database of databases.splice(0)) database.close();
@@ -141,7 +115,7 @@ function harness() {
     database.prepare("INSERT INTO users (id, username) VALUES (?, ?)").run(id, username);
   }
   database.prepare("INSERT INTO events (id) VALUES ('event-1')").run();
-  const executor = new TestSqlExecutor(database);
+  const executor = new SqliteTestExecutor(database);
   return {
     database,
     executor,
@@ -168,13 +142,13 @@ function audit(
   requestId: string,
   action: "init" | "save_teams" | "move_member" | "set_role_tag" | "conclude" | "batch_update",
 ) {
-  return createAuditMutation(context(requestId), {
-    entityType: action === "conclude"
+  return createAuditEvent(context(requestId), {
+    subjectType: action === "conclude"
       ? "guild_war_history"
       : action === "batch_update"
         ? "guild_war_member_stats"
         : "guild_war",
-    entityId: "war-1",
+    subjectId: "war-1",
     action,
   });
 }
@@ -221,6 +195,9 @@ async function seededRoster() {
     pool: [{ id: "pool-2", userId: "user-2", sortOrder: 0 }],
     audit: audit("request-roster", "save_teams"),
   });
+  value.database.prepare(`INSERT INTO media_links (
+    media_id, entity_type, entity_id, slot, audience, sort_order
+  ) VALUES (?, 'member_profile', 'user-1', 'avatar', 'public', 0)`).run(AVATAR_MEDIA_ID);
   return value;
 }
 
@@ -305,7 +282,7 @@ describe("SqliteGuildWarStore concurrency", () => {
     expect(outcomes.filter(Boolean)).toHaveLength(1);
     const winner = candidates[outcomes.findIndex(Boolean)]!;
     expect(scalar(database, "SELECT roster_version FROM guild_wars WHERE id = 'war-1'")).toBe(2);
-    expect(text(database, "SELECT mutation_token FROM guild_wars WHERE id = 'war-1'")).toBe(winner.audit.id);
+    expect(text(database, "SELECT mutation_token FROM guild_wars WHERE id = 'war-1'")).toBe(winner.audit.eventId);
     expect(text(database, "SELECT COALESCE(team_id, 'pool') FROM war_members WHERE war_id = 'war-1' AND user_id = 'user-2'"))
       .toBe(winner.moves[0]!.to);
     expect(text(database, "SELECT request_id FROM audit_log WHERE action = 'move_member'")).toBe(winner.audit.requestId);
@@ -336,20 +313,29 @@ describe("SqliteGuildWarStore concurrency", () => {
       WHERE war_id = 'war-1' AND user_id = 'admin-1' AND team_id IS NULL`)).toBe(1);
     expect(scalar(database, "SELECT roster_version FROM guild_wars WHERE id = 'war-1'")).toBe(2);
     expect(scalar(database, "SELECT count(*) FROM audit_log WHERE request_id = 'request-enroll-and-move'")).toBe(1);
+    expect(auditContext(database, "request-enroll-and-move", "user_ids")).toEqual({
+      type: "list",
+      value: [{ type: "reference", value: { id: "admin-1", label: "Admin" } }],
+    });
   });
 
   it("rolls back roster, participant, version, and audit when a joint move fails", async () => {
     const { database, lifecycle } = await seededRoster();
     const duplicateAudit = audit("request-move-rollback", "move_member");
     database.prepare(`INSERT INTO audit_log (
-      id, request_id, actor_user_id, entity_type, entity_id, action, occurred_at
-    ) VALUES (?, ?, ?, ?, ?, ?, ?)`).run(
-      duplicateAudit.id,
+      id, request_id, actor_kind, actor_id, actor_label, subject_type, subject_id,
+      subject_label, action, payload_json, occurred_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(
+      duplicateAudit.eventId,
       duplicateAudit.requestId,
-      duplicateAudit.actorUserId,
-      duplicateAudit.entityType,
-      duplicateAudit.entityId,
+      duplicateAudit.actorKind,
+      duplicateAudit.actorId,
+      duplicateAudit.actorLabel,
+      duplicateAudit.subjectType,
+      duplicateAudit.subjectId,
+      duplicateAudit.subjectLabel,
       duplicateAudit.action,
+      JSON.stringify(duplicateAudit.payload),
       duplicateAudit.occurredAt,
     );
 
@@ -377,19 +363,24 @@ describe("SqliteGuildWarStore concurrency", () => {
     })).resolves.toBe("active_war_permission_required");
     expect(scalar(database, "SELECT count(*) FROM events WHERE id = 'event-1'")).toBe(1);
     expect(scalar(database, "SELECT count(*) FROM guild_wars WHERE id = 'war-1'")).toBe(1);
-    expect(database.prepare("SELECT count(*) AS value FROM audit_log WHERE id = ?").get(blockedAudit.id))
+    expect(database.prepare("SELECT count(*) AS value FROM audit_log WHERE id = ?").get(blockedAudit.eventId))
       .toMatchObject({ value: 0 });
 
     const duplicateAudit = audit("request-event-rollback", "move_member");
     database.prepare(`INSERT INTO audit_log (
-      id, request_id, actor_user_id, entity_type, entity_id, action, occurred_at
-    ) VALUES (?, ?, ?, ?, ?, ?, ?)`).run(
-      duplicateAudit.id,
+      id, request_id, actor_kind, actor_id, actor_label, subject_type, subject_id,
+      subject_label, action, payload_json, occurred_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(
+      duplicateAudit.eventId,
       duplicateAudit.requestId,
-      duplicateAudit.actorUserId,
-      duplicateAudit.entityType,
-      duplicateAudit.entityId,
+      duplicateAudit.actorKind,
+      duplicateAudit.actorId,
+      duplicateAudit.actorLabel,
+      duplicateAudit.subjectType,
+      duplicateAudit.subjectId,
+      duplicateAudit.subjectLabel,
       duplicateAudit.action,
+      JSON.stringify(duplicateAudit.payload),
       duplicateAudit.occurredAt,
     );
     await expect(lifecycle.destroyEvent({
@@ -409,6 +400,29 @@ describe("SqliteGuildWarStore concurrency", () => {
     })).resolves.toBe("deleted");
     expect(scalar(database, "SELECT count(*) FROM events WHERE id = 'event-1'")).toBe(0);
     expect(scalar(database, "SELECT count(*) FROM guild_wars WHERE id = 'war-1'")).toBe(0);
+  });
+
+  it("drops a deactivated member from a live roster but keeps them in the concluded record", async () => {
+    /* 停用只影响还能不能上场，不能改写已经打完的那场谁在阵中——否则名册人数会和
+       这场战的队伍规模、逐人战绩对不上。 */
+    const { database, store } = await seededRoster();
+    database.prepare("UPDATE users SET is_active = 0 WHERE id = 'user-1'").run();
+
+    const live = await store.getByEvent("event-1");
+    expect(live?.war.status).toBe("active");
+    expect(live?.teams.flatMap((team) => team.members.map(({ userId }) => userId))).toEqual([]);
+    expect(await store.listRosterEligible(["user-1", "user-2"])).toEqual(["user-2"]);
+
+    await store.conclude({
+      warId: "war-1", expectedVersion: 1, actorUserId: "admin-1", now: NOW,
+      enemyName: "Rivals", result: "win", ownStats: { kills: 2 }, enemyStats: { kills: 5 },
+      durationMinutes: 30.5, memberStats: [{ userId: "user-1", stats: { kills: 2, deaths: 1, assists: 3 } }],
+      audit: audit("request-conclude-deactivated", "conclude"),
+    });
+
+    const concluded = await store.getByEvent("event-1");
+    expect(concluded?.war.status).toBe("concluded");
+    expect(concluded?.teams.flatMap((team) => team.members.map(({ userId }) => userId))).toEqual(["user-1"]);
   });
 
   it("allows one conclude CAS, preserves the same aggregate, and aggregates fixed stats", async () => {
@@ -433,10 +447,11 @@ describe("SqliteGuildWarStore concurrency", () => {
     const aggregate = await store.getByEvent("event-1");
     expect(aggregate?.war).toMatchObject({ id: "war-1", status: "concluded", result: winner.result });
     expect(aggregate?.teams[0]?.members[0]?.stats).toMatchObject({ kills: winner.memberStats[0]!.stats.kills, deaths: 1, assists: 3 });
+    expect(aggregate?.teams[0]?.members[0]?.avatarMediaId).toBe(AVATAR_MEDIA_ID);
     const analytics = await store.readAnalytics(["war-1"], []);
     expect(analytics.teamSizes.get("war-1")).toBe(1);
     expect(analytics.memberStats).toEqual([{ userId: "user-1", stats: { kills: winner.memberStats[0]!.stats.kills, deaths: 1, assists: 3 } }]);
-    expect(text(database, "SELECT mutation_token FROM guild_wars WHERE id = 'war-1'")).toBe(winner.audit.id);
+    expect(text(database, "SELECT mutation_token FROM guild_wars WHERE id = 'war-1'")).toBe(winner.audit.eventId);
     expect(text(database, "SELECT request_id FROM audit_log WHERE action = 'conclude'")).toBe(winner.audit.requestId);
     expect(scalar(database, "SELECT count(*) FROM guild_wars")).toBe(1);
     expect(scalar(database, "SELECT count(*) FROM audit_log WHERE action = 'conclude'")).toBe(1);
@@ -579,6 +594,16 @@ function scalar(database: DatabaseSync, sql: string): number {
 function text(database: DatabaseSync, sql: string): string | null {
   const row = database.prepare(sql).get() as Record<string, string | null>;
   return Object.values(row)[0] ?? null;
+}
+
+function auditContext(database: DatabaseSync, requestId: string, field: string): unknown {
+  const row = database.prepare("SELECT payload_json FROM audit_log WHERE request_id = ?").get(requestId) as {
+    payload_json?: string;
+  } | undefined;
+  const payload = JSON.parse(row?.payload_json ?? "null") as {
+    context: Array<{ field: string; value: unknown }>;
+  };
+  return payload.context.find((entry) => entry.field === field)?.value;
 }
 
 function plan(database: DatabaseSync, sql: string, ...params: SQLInputValue[]): string {

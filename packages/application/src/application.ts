@@ -6,7 +6,7 @@ import type {
   RateLimiter,
   SqlExecutor,
 } from "@guild/kernel";
-import type { RuntimeHealthPort } from "@guild/server";
+import type { AdminOperationsRuntimePort, RuntimeHealthPort } from "@guild/server";
 import { createPortalApiApp, type PortalApiConfig } from "./portal-api.js";
 import { createApplicationServices } from "./services.js";
 
@@ -17,8 +17,10 @@ export type ApplicationDependencies = Readonly<{
   notifications: NotificationPublisher;
   deferred: DeferredTasks;
   health: RuntimeHealthPort;
+  adminOperationsRuntime: AdminOperationsRuntimePort;
   authRateLimiter: RateLimiter;
   readRateLimiter: RateLimiter;
+  expensiveReadRateLimiter: RateLimiter;
   mutationRateLimiter: RateLimiter;
   uploadRateLimiter: RateLimiter;
   clientIdentifier(request: Request): string;
@@ -41,6 +43,7 @@ export function createApplication(dependencies: ApplicationDependencies, config:
   const api = createPortalApiApp(services, {
     authRateLimiter: dependencies.authRateLimiter,
     readRateLimiter: dependencies.readRateLimiter,
+    expensiveReadRateLimiter: dependencies.expensiveReadRateLimiter,
     mutationRateLimiter: dependencies.mutationRateLimiter,
     uploadRateLimiter: dependencies.uploadRateLimiter,
     deferred: dependencies.deferred,

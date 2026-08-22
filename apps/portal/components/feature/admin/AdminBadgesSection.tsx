@@ -14,8 +14,8 @@ import {
   useSortable,
   verticalListSortingStrategy,
 } from "@dnd-kit/sortable";
-import { CSS } from "@dnd-kit/utilities";
 import type { MemberBadge } from "@guild/shared";
+import { verticalDragTransform } from "@portal/utils/sortable-transform";
 import { useConfirmDialog } from "@portal/hooks/useConfirmDialog";
 import type { AdminBadgesController, BadgeForm } from "@portal/hooks/useAdminBadgesController";
 import {
@@ -80,13 +80,17 @@ function SortableBadgeRow({
     isDragging,
   } = useSortable({ id: badge.id, disabled });
   const style: CSSProperties = {
-    transform: CSS.Transform.toString(transform),
+    transform: verticalDragTransform(transform),
     transition,
     opacity: isDragging ? 0.6 : 1,
   };
 
   return (
-    <div ref={setNodeRef} style={style} className="admin-md__row">
+    <div
+      ref={setNodeRef}
+      style={style}
+      className={`admin-md__row ${active ? "admin-md__row--active" : ""}`}
+    >
       <UnstyledButton
         className={`admin-md__item ${active ? "admin-md__item--active" : ""}`}
         onClick={onOpen}
@@ -321,7 +325,7 @@ export function AdminBadgesSection({ userRows, controller }: AdminBadgesSectionP
   const membershipDirty = draftAdded.length > 0 || draftRemoved.length > 0;
 
   return (
-    <div className="admin-md">
+    <div className="admin-panel admin-md">
       <div className="admin-md__master">
         <div className="admin-md__master-head">
           <Group gap={8} justify="space-between" wrap="nowrap">

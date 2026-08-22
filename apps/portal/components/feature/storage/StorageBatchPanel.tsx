@@ -11,6 +11,7 @@ import {
   Stack,
   Text,
   Textarea,
+  Tooltip,
 } from "@mantine/core";
 import { useMediaQuery } from "@mantine/hooks";
 import { TrashIcon, XIcon } from "@portal/components/icons";
@@ -215,9 +216,11 @@ export function StorageBatchPanel({
                   wrap="nowrap"
                   className="storage-batch-review__item"
                 >
-                  <Text size="sm" lineClamp={1} title={item?.name ?? itemId}>
-                    {item?.name ?? itemId}
-                  </Text>
+                  <Tooltip label={item?.name ?? itemId}>
+                    <Text size="sm" lineClamp={1} tabIndex={0}>
+                      {item?.name ?? itemId}
+                    </Text>
+                  </Tooltip>
                   <Group gap={6} wrap="nowrap">
                     <Badge variant="light">×{quantity}</Badge>
                     <ActionIcon

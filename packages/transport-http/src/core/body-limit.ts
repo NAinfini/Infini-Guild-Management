@@ -24,8 +24,6 @@ export function createRequestBodyLimitMiddleware(): MiddlewareHandler<HttpEnv> {
   };
 }
 
-export const createBodyLimitMiddleware = createRequestBodyLimitMiddleware;
-
 export async function readBodyBytes(request: Request, limit: number): Promise<Uint8Array<ArrayBuffer>> {
   const contentLength = assertRequestBodyLength(request, limit);
   const buffered = bufferedRequestBodies.get(request);

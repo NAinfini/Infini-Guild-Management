@@ -1,7 +1,7 @@
-// @vitest-environment jsdom
 import type { MemberProfile, User } from "@guild/shared";
 import { MantineProvider } from "@mantine/core";
-import { render, screen } from "@testing-library/react";
+import { screen } from "@testing-library/react";
+import { renderWithQueryClient as render } from "@portal/tests/query-harness";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import type { ReactNode } from "react";
@@ -41,6 +41,7 @@ const user: User = {
   deleted_at: null,
   created_at: now,
   updated_at: now,
+  last_login_at: null,
 };
 const youtubeUrl = "https://www.youtube.com/watch?v=dQw4w9WgXcQ";
 const profile: MemberProfile = {

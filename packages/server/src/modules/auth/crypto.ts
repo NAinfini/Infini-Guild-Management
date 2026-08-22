@@ -1,3 +1,5 @@
+import { INVITE_CODE_LENGTH, INVITE_CODE_PATTERN } from "@guild/shared";
+
 const encoder = new TextEncoder();
 const PASSWORD_PREFIX = "pbkdf2-sha256";
 const PASSWORD_KEY_BITS = 256;
@@ -87,8 +89,23 @@ export async function digestToken(token: string): Promise<string> {
 
 export type InviteTokenCodec = {
   encode(id: string): Promise<string>;
-  decode(token: string): Promise<string | null>;
+  normalize(token: string): string | null;
 };
+
+const INVITE_CODE_ALPHABET = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz";
+const INVITE_CODE_RADIX = BigInt(INVITE_CODE_ALPHABET.length);
+
+function encodeInviteCode(bytes: Uint8Array): string {
+  let value = 0n;
+  for (const byte of bytes) value = (value << 8n) | BigInt(byte);
+
+  let code = "";
+  for (let index = 0; index < INVITE_CODE_LENGTH; index += 1) {
+    code = INVITE_CODE_ALPHABET[Number(value % INVITE_CODE_RADIX)]! + code;
+    value /= INVITE_CODE_RADIX;
+  }
+  return code;
+}
 
 export function createInviteTokenCodec(secret: string): InviteTokenCodec {
   if (encoder.encode(secret).byteLength < 32) throw new Error("Invite token secret must contain at least 32 bytes");
@@ -106,19 +123,11 @@ export function createInviteTokenCodec(secret: string): InviteTokenCodec {
 
   return {
     async encode(id) {
-      return `${id}.${base64Url(await signature(id))}`;
+      return encodeInviteCode(await signature(id));
     },
-    async decode(token) {
-      const separator = token.lastIndexOf(".");
-      if (separator < 1) return null;
-      const id = token.slice(0, separator);
-      let supplied: Uint8Array;
-      try {
-        supplied = fromBase64Url(token.slice(separator + 1));
-      } catch {
-        return null;
-      }
-      return constantTimeEqual(await signature(id), supplied) ? id : null;
+    normalize(token) {
+      const code = token.trim();
+      return INVITE_CODE_PATTERN.test(code) ? code : null;
     },
   };
 }

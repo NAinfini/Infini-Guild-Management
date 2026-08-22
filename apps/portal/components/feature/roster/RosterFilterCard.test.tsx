@@ -1,6 +1,6 @@
-// @vitest-environment jsdom
 import { MantineProvider } from "@mantine/core";
-import { render, screen } from "@testing-library/react";
+import { screen } from "@testing-library/react";
+import { renderWithQueryClient as render } from "@portal/tests/query-harness";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { RosterFilterCard } from "./RosterFilterCard";
@@ -40,7 +40,6 @@ describe("RosterFilterCard", () => {
           search=""
           onSearchChange={vi.fn()}
           classFilter={[]}
-          loadedClassIds={[]}
           onClassFilterChange={vi.fn()}
           sortMode="power"
           onSortModeChange={vi.fn()}
@@ -66,30 +65,4 @@ describe("RosterFilterCard", () => {
     ).toBeInTheDocument();
   });
 
-  it("keeps a referenced class selectable after it leaves the catalog", async () => {
-    const user = userEvent.setup();
-    render(
-      <MantineProvider>
-        <RosterFilterCard
-          search=""
-          onSearchChange={vi.fn()}
-          classFilter={[]}
-          loadedClassIds={["retired-class"]}
-          onClassFilterChange={vi.fn()}
-          sortMode="power"
-          onSortModeChange={vi.fn()}
-          audioMuted={false}
-          onAudioMutedChange={vi.fn()}
-          audioVolume={60}
-          onAudioVolumeChange={vi.fn()}
-          renderedCount={1}
-          totalCount={1}
-        />
-      </MantineProvider>,
-    );
-
-    await user.click(screen.getByRole("combobox", { name: "filter.class.aria" }));
-
-    expect(await screen.findByText("retired-class")).toBeInTheDocument();
-  });
 });

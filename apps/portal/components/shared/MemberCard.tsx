@@ -7,7 +7,8 @@ import { useTranslation } from "react-i18next";
 import { resolveMediaUrl as resolvePortalMediaUrl } from "../../utils/media";
 import { parseAvailabilityRanges } from "../../utils/availability";
 import { sanitizeTitleHtml } from "../../utils/sanitize";
-import { resolveClassCatalogItem, useClassCatalogStore } from "../../stores/class-catalog";
+import { useClassCatalog } from "../../hooks/data/useClassData";
+import { resolveClassCatalogItem } from "../../utils/class-catalog";
 import { ClassIcon } from "./ClassIcon";
 import "./MemberCard.css";
 
@@ -115,7 +116,7 @@ export const MemberCard = memo(function MemberCard({
   resolveMediaUrl = resolvePortalMediaUrl,
 }: MemberCardProps) {
   const { t } = useTranslation("common");
-  const classCatalog = useClassCatalogStore((state) => state.items);
+  const classCatalog = useClassCatalog();
   const primaryClass = profile.classes[0] ?? null;
   const primaryClassItem = resolveClassCatalogItem(primaryClass, classCatalog);
   const visibleBadges = badges?.slice(0, VISIBLE_BADGE_LIMIT) ?? [];

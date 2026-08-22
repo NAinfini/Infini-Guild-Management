@@ -1,16 +1,10 @@
 import type { WikiArticle } from "@guild/shared";
 import { ActionIcon, Alert, Button, Group, HoverCard, Paper, Skeleton, Stack, Text, ThemeIcon, Tooltip } from "@mantine/core";
 import { ArchiveIcon, PencilIcon, PinIcon, PlusIcon } from "@portal/components/icons";
-import { format } from "date-fns";
+import { formatDateTime } from "@portal/utils/datetime";
 import type { ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { EmptyState } from "../../shared/EmptyState";
-
-function formatDateTime(iso: string): string {
-  const date = new Date(iso);
-  if (Number.isNaN(date.getTime())) return "-";
-  return format(date, "yyyy-MM-dd HH:mm");
-}
 
 type WikiArticleListCardProps = {
   title: ReactNode;

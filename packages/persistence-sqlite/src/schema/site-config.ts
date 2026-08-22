@@ -5,6 +5,7 @@ import {
   MAX_CONFIGURABLE_AUDIO_BYTES,
   MAX_CONFIGURABLE_IMAGE_VARIANT_BYTES,
 } from "@guild/shared/config/limits";
+import { DEFAULT_SITE_DESCRIPTION, SITE_DESCRIPTION_MAX_LENGTH } from "@guild/shared/schemas/site-config";
 
 const nowUtc = sql`(strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))`;
 const maxImageBytes = sql.raw(String(MAX_CONFIGURABLE_IMAGE_VARIANT_BYTES));
@@ -55,10 +56,12 @@ export const siteConfig = sqliteTable(
     revisionToken: text("revision_token").notNull(),
     createdAt: text("created_at").notNull().default(nowUtc),
     updatedAt: text("updated_at").notNull().default(nowUtc),
+    siteDescription: text("site_description").notNull().default(DEFAULT_SITE_DESCRIPTION),
   },
   (table) => [
     check("site_config_singleton", sql`${table.singleton} = 1`),
     check("site_config_name_bounded", sql`length(trim(${table.siteName})) BETWEEN 1 AND 100`),
+    check("site_config_description_bounded", sql`length(trim(${table.siteDescription})) BETWEEN 1 AND ${sql.raw(String(SITE_DESCRIPTION_MAX_LENGTH))}`),
     check("site_config_logo_url_present", sql`length(trim(${table.defaultSiteLogoUrl})) >= 1`),
     check("site_config_features_boolean", sql`
       ${table.featureAnnouncements} IN (0, 1) AND ${table.featureEvents} IN (0, 1)

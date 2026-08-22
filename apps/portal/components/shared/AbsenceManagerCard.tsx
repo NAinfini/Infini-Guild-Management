@@ -4,15 +4,12 @@ import { TrashIcon } from "@portal/components/icons";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useMemberAbsences } from "../../hooks/useMemberAbsences";
+import { localDateKey } from "../../utils/datetime";
 import { NativeDateTimeInput } from "./NativeDateTimeInput";
 
 type AbsenceManagerCardProps = {
   userId: string | undefined;
 };
-
-function todayIsoDate(): string {
-  return new Date().toISOString().slice(0, 10);
-}
 
 export function AbsenceManagerCard({ userId }: AbsenceManagerCardProps) {
   const { t } = useTranslation("profile");
@@ -38,7 +35,8 @@ export function AbsenceManagerCard({ userId }: AbsenceManagerCardProps) {
     );
   };
 
-  const today = todayIsoDate();
+  /* 请假起止是日历日期，要和阅读者日历上的今天比，不是和 UTC 的今天比。 */
+  const today = localDateKey();
   const statusOf = (start: string, end: string): { key: string; color: string } => {
     if (end < today) return { key: "absence.status.past", color: "gray" };
     if (start > today) return { key: "absence.status.upcoming", color: "blue" };

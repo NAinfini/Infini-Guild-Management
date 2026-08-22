@@ -4,7 +4,7 @@ import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { createVpsStaticFiles } from "./static-files.js";
 
-const INDEX = "<!doctype html><title>{{SITE_NAME}}</title><img src=\"{{SITE_LOGO_URL}}\">";
+const INDEX = "<!doctype html><title>{{SITE_NAME}}</title><meta name=\"description\" content=\"{{SITE_DESCRIPTION}}\"><img src=\"{{SITE_LOGO_URL}}\">";
 const ASSET = Buffer.alloc(2 * 1024 * 1024, "a");
 ASSET.set(Buffer.from("0123456789abcdefghijklmnopqrstuvwxyz"), 0);
 
@@ -43,7 +43,11 @@ describe("VPS static files", () => {
       sandbox,
       handler: createVpsStaticFiles({
         distRoot: root,
-        getSiteBranding: () => ({ siteName: "Guild & Co", siteLogoUrl: "/brand?a=1&b=2" }),
+        getSiteBranding: () => ({
+          siteName: "Guild & Co",
+          siteDescription: 'Events & wiki <together> "safely" today\'s',
+          siteLogoUrl: "/brand?a=1&b=2",
+        }),
       }),
     };
   }
@@ -94,6 +98,7 @@ describe("VPS static files", () => {
       expect(response?.status).toBe(200);
       const html = await response?.text();
       expect(html).toContain("<title>Guild &amp; Co</title>");
+      expect(html).toContain('content="Events &amp; wiki &lt;together&gt; &quot;safely&quot; today&#39;s"');
       expect(html).toContain("src=\"/brand?a=1&amp;b=2\"");
       expect(response?.headers.get("Cache-Control")).toContain("no-cache");
       expectSecurityHeaders(response!);

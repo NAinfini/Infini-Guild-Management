@@ -27,6 +27,10 @@ function createDependencies(): ScheduledJobCoordinatorDependencies {
       writeCursor: vi.fn().mockResolvedValue(true),
       release: vi.fn().mockResolvedValue(undefined),
     },
+    statuses: {
+      recordRunning: vi.fn().mockResolvedValue(undefined),
+      recordOutcome: vi.fn().mockResolvedValue(undefined),
+    },
     recurrenceMaterialization: {
       run: vi.fn().mockResolvedValue({ processed: 1, hasMore: false, nextTemplateCursor: null }),
       inspectBacklog: vi.fn().mockResolvedValue(emptyBacklog),
@@ -64,11 +68,11 @@ describe("ScheduledJobCoordinator", () => {
       maxOccurrencesPerTemplate: SCHEDULED_JOB_LIMITS.recurrenceMaterialization.occurrencesPerTemplate,
     });
     const audit = recurrenceInput.audit({
-      entityType: "event",
-      entityId: "event-1",
+      subjectType: "event",
+      subjectId: "event-1",
       action: "create",
     });
-    expect(audit.actorUserId).toBe(SCHEDULER_SYSTEM_ACTOR_ID);
+    expect(audit.actorId).toBe(SCHEDULER_SYSTEM_ACTOR_ID);
     expect(audit.requestId).toBe("scheduled:lease-token-00000001");
     expect(vi.mocked(dependencies.sessionCleanup.run).mock.calls[0]![0]).toMatchObject({
       expiresBefore: "2026-08-09T00:00:00.000Z",
@@ -95,6 +99,8 @@ describe("ScheduledJobCoordinator", () => {
       "2026-08-09T00:00:00.000Z",
     );
     expect(outcomes.every(({ backlog }) => backlog.status === "known")).toBe(true);
+    expect(dependencies.statuses.recordRunning).toHaveBeenCalledTimes(7);
+    expect(dependencies.statuses.recordOutcome).toHaveBeenCalledTimes(7);
   });
 
   it("uses a three-full-month cutoff for the bounded daily audit batch", async () => {
@@ -114,6 +120,9 @@ describe("ScheduledJobCoordinator", () => {
       status: "lease-held",
       processed: 0,
     });
+    expect(held.statuses.recordOutcome).toHaveBeenCalledWith(expect.objectContaining({
+      outcome: expect.objectContaining({ name: "media-gc", status: "lease-held" }),
+    }));
     expect(held.mediaGarbageCollection.run).not.toHaveBeenCalled();
 
     const overflowing = createDependencies();
@@ -177,6 +186,13 @@ describe("ScheduledJobCoordinator", () => {
       processed: null,
       backlog: { status: "unknown", reason: "job-failed" },
     });
+    expect(dependencies.statuses.recordOutcome).toHaveBeenCalledWith(expect.objectContaining({
+      outcome: expect.objectContaining({
+        name: "recurrence-materialization",
+        status: "failed",
+        error: "recurrence failed",
+      }),
+    }));
     expect(outcomes[3]).toMatchObject({
       name: "session-cleanup",
       status: "completed",
@@ -188,12 +204,12 @@ describe("ScheduledJobCoordinator", () => {
 
   it("creates scheduler audit entries without an authenticated-user context", () => {
     const audit = createSchedulerAuditFactory("run-1", "2026-08-09T00:00:00.000Z")({
-      entityType: "media_cleanup",
-      entityId: "run-1",
+      subjectType: "media_cleanup",
+      subjectId: "run-1",
       action: "run",
     });
     expect(audit).toMatchObject({
-      actorUserId: "system:scheduler",
+      actorId: "system:scheduler",
       requestId: "scheduled:run-1",
     });
   });

@@ -1,4 +1,3 @@
-// @vitest-environment jsdom
 import { Badge, HoverCard, MantineProvider } from "@mantine/core";
 import { getCoreRowModel, useReactTable, type ColumnDef } from "@tanstack/react-table";
 import { render, screen, within } from "@testing-library/react";
@@ -9,6 +8,8 @@ import { useMemo } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { HistoryDetailData, HistoryMemberStat } from "@portal/types/guild-war";
 import { WarHistoryDetail } from "./WarHistoryDetail";
+
+const AVATAR_MEDIA_ID = "avatar1234567890abcde";
 
 vi.mock("react-i18next", () => ({
   useTranslation: () => ({
@@ -100,7 +101,17 @@ function HistoryDetailHarness({
     enemy_stats: { kills: 28, towers: 2, base_hp: 0, distance: 730, credits: 11100 },
     notes: null,
     member_stats: memberRows,
-    teams: [],
+    teams: [{
+      id: "team-1",
+      team_name: "Alpha",
+      notes: null,
+      members: [{
+        user_id: "user-1",
+        username: "Lyra",
+        avatar_media_id: AVATAR_MEDIA_ID,
+        role_tag: "core",
+      }],
+    }],
   };
 
   return (
@@ -175,9 +186,41 @@ describe("WarHistoryDetail", () => {
     );
 
     const board = screen.getByTestId("war-history-scoreboard");
+    expect(board).toHaveClass("whd-board--win");
     expect(board).toHaveTextContent("35");
     expect(board).toHaveTextContent("28");
     expect(board).toHaveTextContent("Kills");
+    expect(board.querySelector(".whd-board__metric-icon")).not.toBeNull();
+  });
+
+  it("uses semantic icons to make the history summary easier to scan", () => {
+    const { container } = render(
+      <MantineProvider>
+        <HistoryDetailHarness onBackToList={vi.fn()} />
+      </MantineProvider>,
+    );
+
+    expect(container.querySelectorAll(".whd-strip__cell[data-metric]")).toHaveLength(5);
+    expect(container.querySelectorAll(".whd-strip__icon")).toHaveLength(5);
+    expect(container.querySelectorAll(".whd-identity__meta-item .whd-identity__meta-icon")).toHaveLength(2);
+    expect(container.querySelectorAll(".whd-section-title__icon")).toHaveLength(2);
+    expect(container.querySelectorAll(".whd-view-option__icon")).toHaveLength(2);
+    expect(container.querySelectorAll(".whd-export-icon")).toHaveLength(2);
+  });
+
+  it("shows each member avatar in the team snapshot", () => {
+    render(
+      <MantineProvider>
+        <HistoryDetailHarness onBackToList={vi.fn()} />
+      </MantineProvider>,
+    );
+
+    const memberChip = document.querySelector(".whd-chip");
+    expect(memberChip).not.toBeNull();
+    expect(memberChip?.querySelector("img")).toHaveAttribute(
+      "src",
+      expect.stringContaining(`/api/media/${AVATAR_MEDIA_ID}/view`),
+    );
   });
 
   it("renders the TanStack row model as scan-friendly member cards on mobile", async () => {

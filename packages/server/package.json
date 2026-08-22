@@ -4,8 +4,7 @@
   "type": "module",
   "exports": {
     ".": "./src/public.ts",
-    "./modules/*": "./src/modules/*/public.ts",
-    "./migrations/auth-password-hash": "./src/migrations/auth-password-hash.ts"
+    "./modules/*": "./src/modules/*/public.ts"
   },
   "dependencies": {
     "@guild/kernel": "workspace:*",

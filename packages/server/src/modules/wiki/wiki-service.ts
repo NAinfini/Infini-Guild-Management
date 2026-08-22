@@ -1,8 +1,8 @@
 import {
   findRichTextProblem,
   LIMITS,
+  type AuditChange,
   type BatchUpdateWikiCategoryItem,
-  type JsonObject,
   type PaginatedResponse,
   type WikiArticle,
   type WikiCategory,
@@ -13,7 +13,7 @@ import type { DeferredTasks, NotificationPublisher, RequestContext } from "@guil
 import { PERMISSION_ID } from "@guild/shared/constants/roles";
 import { AppError } from "@guild/kernel";
 import { nanoid } from "nanoid";
-import { createAuditMutation, type AuditMutation } from "../audit/public.js";
+import { createAuditEvent, type AuditEventWrite } from "../audit/public.js";
 import {
   canonicalizeRichTextMedia,
   extractRichTextMediaIds,
@@ -61,19 +61,19 @@ export interface WikiStore {
     record: WikiCategoryRecord;
     expectedStateToken: string;
     stateToken: string;
-    audit: AuditMutation;
+    audit: AuditEventWrite;
   }>): Promise<"created" | "conflict" | "limit_reached">;
   updateCategories(input: Readonly<{
     records: readonly WikiCategoryRecord[];
     expectedStateToken: string;
     stateToken: string;
-    audit: AuditMutation;
+    audit: AuditEventWrite;
   }>): Promise<boolean>;
   deleteCategory(input: Readonly<{
     id: string;
     expectedStateToken: string;
     stateToken: string;
-    audit: AuditMutation;
+    audit: AuditEventWrite;
   }>): Promise<boolean>;
   listArticles(query: WikiArticleListQuery): Promise<PaginatedResponse<WikiArticle>>;
   getArticleBySlug(slug: string, canReadArchived: boolean): Promise<WikiArticleRecord | null>;
@@ -82,17 +82,18 @@ export interface WikiStore {
     record: WikiArticleRecord;
     initialRevision: WikiRevisionRecord;
     mediaIds: readonly string[];
-    audit: AuditMutation;
+    audit: AuditEventWrite;
   }>): Promise<void>;
   mutateArticle(input: Readonly<{
     record: WikiArticleRecord;
     expectedRevisionToken: string;
     revision: WikiRevisionRecord;
     mediaIds: readonly string[];
-    audit: AuditMutation;
+    audit: AuditEventWrite;
   }>): Promise<boolean>;
   listRevisions(articleId: string, query: WikiRevisionListQuery): Promise<readonly WikiRevisionListItem[]>;
   getRevision(articleId: string, revision: number): Promise<WikiRevisionRecord | null>;
+  recordAudit(audit: AuditEventWrite): Promise<void>;
 }
 
 export type CreateWikiCategoryInput = Readonly<{
@@ -140,11 +141,22 @@ export class WikiService {
       updated_at: context.now,
       revisionToken: crypto.randomUUID(),
     };
-    const audit = createAuditMutation(context, {
-      entityType: "wiki_category",
-      entityId: record.id,
+    const audit = createAuditEvent(context, {
+      subjectType: "wiki_category",
+      subjectId: record.id,
+      subjectLabel: record.name,
       action: "create",
-      summary: record.name,
+      context: [
+        { field: "slug", value: { type: "code", value: record.slug } },
+        { field: "sort_order", value: { type: "number", value: record.sort_order } },
+        ...(parentId === null ? [] : [{
+          field: "parent_id" as const,
+          value: {
+            type: "reference" as const,
+            value: { id: parentId, label: tree.records.find(({ id }) => id === parentId)?.name ?? null },
+          },
+        }]),
+      ],
     });
     const outcome = await this.store.createCategory({
       record,
@@ -166,12 +178,12 @@ export class WikiService {
     const projected = applyCategoryPatch(existing, input, context.now);
     assertProjectedCategoryTree(tree.records.map((category) => category.id === id ? projected : category));
     if (sameCategory(existing, projected)) return withoutCategoryRevision(existing);
-    const audit = createAuditMutation(context, {
-      entityType: "wiki_category",
-      entityId: id,
+    const audit = createAuditEvent(context, {
+      subjectType: "wiki_category",
+      subjectId: id,
+      subjectLabel: projected.name,
       action: "update",
-      summary: projected.name,
-      details: categoryDiff(existing, projected),
+      changes: categoryChanges(existing, projected, categoryLabelMap(tree.records)),
     });
     if (!await this.store.updateCategories({
       records: [projected],
@@ -207,12 +219,32 @@ export class WikiService {
       return !sameCategory(existing, category);
     });
     if (changedRecords.length === 0) return projected.map(withoutCategoryRevision);
-    const audit = createAuditMutation(context, {
-      entityType: "wiki_category",
-      entityId: changedRecords.map(({ id }) => id).join(","),
+    const audit = createAuditEvent(context, {
+      subjectType: "wiki_category",
+      subjectId: context.requestId,
+      subjectLabel: null,
       action: "batch_update",
-      summary: `${changedRecords.length} categories`,
-      details: { ids: changedRecords.map(({ id }) => id) },
+      context: [
+        {
+          field: "item_ids",
+          value: {
+            type: "list",
+            value: changedRecords.map(({ id, name }) => ({
+              type: "reference" as const,
+              value: { id, label: name },
+            })),
+          },
+        },
+        // Renaming, re-parenting, and reordering all land here, so the log names which of them happened.
+        {
+          field: "changed_sections",
+          value: {
+            type: "list",
+            value: categoryBatchSections(tree.records, changedRecords)
+              .map((value) => ({ type: "code" as const, value })),
+          },
+        },
+      ],
     });
     if (!await this.store.updateCategories({
       records: changedRecords,
@@ -230,11 +262,24 @@ export class WikiService {
     const existing = tree.records.find((category) => category.id === id);
     if (!existing) throw notFound("Wiki category not found");
     if (tree.records.some((category) => category.parent_id === id)) throw conflict("Category still has children");
-    const audit = createAuditMutation(context, {
-      entityType: "wiki_category",
-      entityId: id,
+    const audit = createAuditEvent(context, {
+      subjectType: "wiki_category",
+      subjectId: id,
+      subjectLabel: existing.name,
       action: "delete",
-      summary: existing.name,
+      context: [
+        { field: "slug", value: { type: "code", value: existing.slug } },
+        { field: "sort_order", value: { type: "number", value: existing.sort_order } },
+        { field: "parent_id", value: existing.parent_id === null
+          ? { type: "null", value: null }
+          : {
+              type: "reference",
+              value: {
+                id: existing.parent_id,
+                label: tree.records.find(({ id: categoryId }) => categoryId === existing.parent_id)?.name ?? null,
+              },
+            } },
+      ],
     });
     if (!await this.store.deleteCategory({
       id,
@@ -267,6 +312,7 @@ export class WikiService {
     const actor = context.authorization.require(PERMISSION_ID.WIKI_ARTICLES_CREATE);
     const title = normalizeName(input.title, "Article title", 200);
     const bodyJson = this.canonicalizeBody(input.body_json, requestOrigin);
+    const categoryLabels = await this.categoryLabels([input.category_id]);
     const mediaIds = extractRichTextMediaIds(bodyJson);
     const record: WikiArticleRecord = {
       id: nanoid(),
@@ -287,11 +333,24 @@ export class WikiService {
       currentRevision: 1,
       mediaIds,
     };
-    const audit = createAuditMutation(context, {
-      entityType: "wiki_article",
-      entityId: record.id,
+    const audit = createAuditEvent(context, {
+      subjectType: "wiki_article",
+      subjectId: record.id,
+      subjectLabel: record.title,
       action: "create",
-      summary: record.title,
+      context: [
+        {
+          field: "category_id",
+          value: {
+            type: "reference",
+            value: { id: record.category_id, label: categoryLabels.get(record.category_id) ?? null },
+          },
+        },
+        { field: "slug", value: { type: "code", value: record.slug } },
+        { field: "sort_order", value: { type: "number", value: record.sort_order } },
+        { field: "pinned", value: { type: "boolean", value: record.pinned } },
+        { field: "revision", value: { type: "number", value: record.currentRevision } },
+      ],
     });
     await this.store.createArticle({
       record,
@@ -338,12 +397,22 @@ export class WikiService {
       mediaIds,
     };
     if (!articleChanged(existing, record)) return withoutArticleRevision(existing);
-    const audit = createAuditMutation(context, {
-      entityType: "wiki_article",
-      entityId: id,
+    const categoryLabels = existing.category_id === record.category_id
+      ? new Map<string, string>()
+      : await this.categoryLabels([existing.category_id, record.category_id]);
+    const audit = createAuditEvent(context, {
+      subjectType: "wiki_article",
+      subjectId: id,
+      subjectLabel: record.title,
       action: "update",
-      summary: record.title,
-      details: articleDiff(existing, record),
+      changes: articleChanges(existing, record, categoryLabels),
+      context: input.body_json === undefined ? [] : [{
+        field: "changed_sections",
+        value: {
+          type: "list",
+          value: [{ type: "code", value: "body_json" }],
+        },
+      }],
     });
     if (!await this.store.mutateArticle({
       record,
@@ -372,11 +441,16 @@ export class WikiService {
       currentRevision: existing.currentRevision + 1,
       mediaIds: existing.mediaIds,
     };
-    const audit = createAuditMutation(context, {
-      entityType: "wiki_article",
-      entityId: id,
+    const audit = createAuditEvent(context, {
+      subjectType: "wiki_article",
+      subjectId: id,
+      subjectLabel: record.title,
       action: "archive",
-      summary: record.title,
+      changes: [{
+        field: "archived_at",
+        before: { type: "null", value: null },
+        after: { type: "datetime", value: record.archived_at! },
+      }],
     });
     if (!await this.store.mutateArticle({
       record,
@@ -395,11 +469,26 @@ export class WikiService {
     const actor = context.authorization.require(PERMISSION_ID.WIKI_ARTICLES_DELETE);
     const existing = await this.store.getArticleById(id);
     if (!existing) throw notFound("Wiki article not found");
-    const audit = createAuditMutation(context, {
-      entityType: "wiki_article",
-      entityId: id,
+    const categoryLabels = await this.categoryLabels([existing.category_id]);
+    const audit = createAuditEvent(context, {
+      subjectType: "wiki_article",
+      subjectId: id,
+      subjectLabel: existing.title,
       action: "delete",
-      summary: existing.title,
+      context: [
+        {
+          field: "category_id",
+          value: {
+            type: "reference",
+            value: { id: existing.category_id, label: categoryLabels.get(existing.category_id) ?? null },
+          },
+        },
+        { field: "slug", value: { type: "code", value: existing.slug } },
+        { field: "sort_order", value: { type: "number", value: existing.sort_order } },
+        { field: "pinned", value: { type: "boolean", value: existing.pinned } },
+        { field: "status", value: { type: "code", value: existing.archived_at === null ? "active" : "archived" } },
+        { field: "revision", value: { type: "number", value: existing.currentRevision } },
+      ],
     });
     const record: WikiArticleRecord = {
       ...existing,
@@ -472,12 +561,26 @@ export class WikiService {
       revisionToken: crypto.randomUUID(),
       currentRevision: existing.currentRevision + 1,
     };
-    const audit = createAuditMutation(context, {
-      entityType: "wiki_article",
-      entityId: articleId,
+    const categoryLabels = existing.category_id === record.category_id
+      ? new Map<string, string>()
+      : await this.categoryLabels([existing.category_id, record.category_id]);
+    const audit = createAuditEvent(context, {
+      subjectType: "wiki_article",
+      subjectId: articleId,
+      subjectLabel: record.title,
       action: "rollback",
-      summary: record.title,
-      details: { restored_from: revisionNumber },
+      changes: articleChanges(existing, record, categoryLabels),
+      context: [
+        { field: "restored_from", value: { type: "number", value: revisionNumber } },
+        ...(existing.body_json === record.body_json ? [] : [{
+          field: "changed_sections" as const,
+          value: { type: "list" as const, value: [{ type: "code" as const, value: "body_json" }] },
+        }]),
+        ...(sameIds(existing.mediaIds, record.mediaIds) ? [] : [{
+          field: "media_count" as const,
+          value: { type: "number" as const, value: record.mediaIds.length },
+        }]),
+      ],
     });
     if (!await this.store.mutateArticle({
       record,
@@ -498,9 +601,25 @@ export class WikiService {
     maxBytes: number,
   ): Promise<Readonly<{ media_ids: readonly string[] }>> {
     context.authorization.require(PERMISSION_ID.WIKI_ARTICLES_EDIT);
-    if (!await this.store.getArticleById(articleId)) throw notFound("Wiki article not found");
+    const article = await this.store.getArticleById(articleId);
+    if (!article) throw notFound("Wiki article not found");
     if (uploads.length < 1 || uploads.length > quota) throw validation(`Wiki image quota is ${quota}`);
-    return { media_ids: await this.media.uploadImages(context, "wiki_image", uploads, maxBytes) };
+    const mediaIds = await this.media.uploadImages(context, "wiki_image", uploads, maxBytes);
+    await this.store.recordAudit(createAuditEvent(context, {
+      subjectType: "wiki_article",
+      subjectId: articleId,
+      subjectLabel: article.title,
+      action: "upload_images",
+      context: [{ field: "upload_count", value: { type: "number", value: mediaIds.length } }],
+    }));
+    return { media_ids: mediaIds };
+  }
+
+  private async categoryLabels(ids: readonly string[]): Promise<ReadonlyMap<string, string>> {
+    const labels = categoryLabelMap((await this.store.listCategories()).records);
+    const missing = [...new Set(ids)].filter((id) => !labels.has(id));
+    if (missing.length > 0) throw notFound("Wiki category not found");
+    return labels;
   }
 
   private canonicalizeBody(value: string, requestOrigin: string): string {
@@ -622,21 +741,101 @@ function sameCategory(before: WikiCategoryRecord, after: WikiCategoryRecord): bo
     && before.parent_id === after.parent_id;
 }
 
-function categoryDiff(before: WikiCategoryRecord, after: WikiCategoryRecord): JsonObject {
-  const diff: JsonObject = {};
-  for (const key of ["name", "slug", "sort_order", "parent_id"] as const) {
-    if (before[key] !== after[key]) diff[key] = { from: before[key], to: after[key] };
+function categoryBatchSections(
+  before: readonly WikiCategoryRecord[],
+  after: readonly WikiCategoryRecord[],
+): readonly string[] {
+  const previous = new Map(before.map((category) => [category.id, category]));
+  const sections = new Set<string>();
+  for (const category of after) {
+    const existing = previous.get(category.id);
+    if (!existing) continue;
+    if (existing.name !== category.name) sections.add("name");
+    if (existing.slug !== category.slug) sections.add("slug");
+    if (existing.parent_id !== category.parent_id) sections.add("parent_id");
+    if (existing.sort_order !== category.sort_order) sections.add("sort_order");
   }
-  return diff;
+  return [...sections];
 }
 
-function articleDiff(before: WikiArticleRecord, after: WikiArticleRecord): JsonObject {
-  const diff: JsonObject = {};
-  for (const key of ["title", "slug", "category_id", "sort_order", "pinned", "archived_at"] as const) {
-    if (before[key] !== after[key]) diff[key] = { from: before[key], to: after[key] };
-  }
-  if (before.body_json !== after.body_json) diff.body_json = { changed: true };
-  return diff;
+function categoryLabelMap(records: readonly WikiCategoryRecord[]): ReadonlyMap<string, string> {
+  return new Map(records.map(({ id, name }) => [id, name]));
+}
+
+function categoryChanges(
+  before: WikiCategoryRecord,
+  after: WikiCategoryRecord,
+  labels: ReadonlyMap<string, string>,
+): AuditChange[] {
+  const changes: AuditChange[] = [];
+  if (before.name !== after.name) changes.push({
+    field: "name",
+    before: { type: "text", value: before.name },
+    after: { type: "text", value: after.name },
+  });
+  if (before.slug !== after.slug) changes.push({
+    field: "slug",
+    before: { type: "code", value: before.slug },
+    after: { type: "code", value: after.slug },
+  });
+  if (before.sort_order !== after.sort_order) changes.push({
+    field: "sort_order",
+    before: { type: "number", value: before.sort_order },
+    after: { type: "number", value: after.sort_order },
+  });
+  if (before.parent_id !== after.parent_id) changes.push({
+    field: "parent_id",
+    before: before.parent_id === null
+      ? { type: "null", value: null }
+      : { type: "reference", value: { id: before.parent_id, label: labels.get(before.parent_id) ?? null } },
+    after: after.parent_id === null
+      ? { type: "null", value: null }
+      : { type: "reference", value: { id: after.parent_id, label: labels.get(after.parent_id) ?? null } },
+  });
+  return changes;
+}
+
+function articleChanges(
+  before: WikiArticleRecord,
+  after: WikiArticleRecord,
+  labels: ReadonlyMap<string, string>,
+): AuditChange[] {
+  const changes: AuditChange[] = [];
+  if (before.title !== after.title) changes.push({
+    field: "title",
+    before: { type: "text", value: before.title },
+    after: { type: "text", value: after.title },
+  });
+  if (before.slug !== after.slug) changes.push({
+    field: "slug",
+    before: { type: "code", value: before.slug },
+    after: { type: "code", value: after.slug },
+  });
+  if (before.category_id !== after.category_id) changes.push({
+    field: "category_id",
+    before: { type: "reference", value: { id: before.category_id, label: labels.get(before.category_id) ?? null } },
+    after: { type: "reference", value: { id: after.category_id, label: labels.get(after.category_id) ?? null } },
+  });
+  if (before.sort_order !== after.sort_order) changes.push({
+    field: "sort_order",
+    before: { type: "number", value: before.sort_order },
+    after: { type: "number", value: after.sort_order },
+  });
+  if (before.pinned !== after.pinned) changes.push({
+    field: "pinned",
+    before: { type: "boolean", value: before.pinned },
+    after: { type: "boolean", value: after.pinned },
+  });
+  if (before.archived_at !== after.archived_at) changes.push({
+    field: "archived_at",
+    before: before.archived_at === null
+      ? { type: "null", value: null }
+      : { type: "datetime", value: before.archived_at },
+    after: after.archived_at === null
+      ? { type: "null", value: null }
+      : { type: "datetime", value: after.archived_at },
+  });
+  return changes;
 }
 
 function canManageArticles(context: RequestContext): boolean {

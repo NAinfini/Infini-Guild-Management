@@ -5,6 +5,7 @@ import {
   disposableMemberId,
 } from "./types";
 import { DEFAULT_GAME_RULES } from "@guild/shared";
+import { LIMITS } from "@guild/shared/config/limits";
 
 export function toIso(hoursFromNow: number): string {
   return new Date(Date.now() + hoursFromNow * 60 * 60 * 1000).toISOString();
@@ -74,6 +75,10 @@ function buildImageUploadRequest(
 
 function stripTestFixture(path: string): string {
   return path.replace(/\?fixture=[^&]+&?/, "?").replace(/[?&]$/, "");
+}
+
+function fixtureName(prefix: string, id: string, maxLength: number): string {
+  return `${prefix}${id}`.slice(0, maxLength);
 }
 
 function isMutableMethod(method: EndpointDef["method"]): boolean {
@@ -430,6 +435,9 @@ export function prepareEndpointRequest(endpoint: EndpointDef, context: TestRunCo
     if (endpoint.path === "/api/admin/audit-archive/download/file") {
       return skipEndpoint(endpoint.path, "No audit archive download token is available in this environment", true);
     }
+    if (endpoint.path === "/api/media/:mediaId/:variant" && endpoint.mediaIdContext === "siteLogoMediaId") {
+      return skipEndpoint(endpoint.path, "No site logo is configured; the test intentionally does not replace the live logo", true);
+    }
     return skipEndpoint(endpoint.path, `Missing ${resolved.missing}`);
   }
   const path = resolved.path;
@@ -461,13 +469,6 @@ export function prepareEndpointRequest(endpoint: EndpointDef, context: TestRunCo
   }
 
   if (endpoint.method === "GET") {
-    if (endpoint.path === "/api/auth/me") {
-      return skipEndpoint(
-        path,
-        "Skipping auth profile read because the endpoint may lazily create a production admin profile",
-        true,
-      );
-    }
     if (endpoint.path === "/api/guild-war/history/batch") {
       const historyId = context.createdWarHistoryId ?? context.warHistoryId;
       if (!historyId) {
@@ -768,11 +769,7 @@ export function prepareEndpointRequest(endpoint: EndpointDef, context: TestRunCo
       });
 
     case "POST /api/guild-war/history":
-      if (!context.createdGuildWarEventId) {
-        return skipEndpoint(path, "Missing created guild war event for history");
-      }
       return buildJsonRequest(path, {
-        event_id: context.createdGuildWarEventId,
         war_name: `[systemtest] API Test War ${nowId}`,
         result: winningResultId,
       });
@@ -916,6 +913,9 @@ export function prepareEndpointRequest(endpoint: EndpointDef, context: TestRunCo
         temporary_password: "TempPass123!",
       });
 
+    case "POST /api/admin/users/:id/reset-login-lock":
+      return buildJsonRequest(path, {});
+
     case "POST /api/admin/roles":
       return buildJsonRequest(path, {
         id: `systemtest_role_${nowId}`,
@@ -1042,35 +1042,56 @@ export function prepareEndpointRequest(endpoint: EndpointDef, context: TestRunCo
       });
 
     case "POST /api/storage/storages":
-      return buildJsonRequest(path, {
-        name: `[systemtest] API Storage ${nowId}`,
+    case "POST /api/storage/storages?fixture=transactions":
+      return buildJsonRequest(stripTestFixture(path), {
+        name: fixtureName(
+          endpoint.path.includes("fixture=transactions")
+            ? "[systemtest] Transaction Storage "
+            : "[systemtest] API Storage ",
+          nowId,
+          LIMITS.content.storageName.max,
+        ),
         description: "[systemtest] Created by admin API tester",
       });
 
     case "PATCH /api/storage/storages/:id":
       return buildJsonRequest(path, {
-        name: `[systemtest] API Storage Updated ${nowId}`,
+        name: fixtureName("[systemtest] API Storage Updated ", nowId, LIMITS.content.storageName.max),
         description: "[systemtest] Updated by admin API tester",
       });
 
     case "POST /api/storage/storages/:storageId/categories":
-      return buildJsonRequest(path, {
-        name: `[systemtest] API Category ${nowId}`,
+    case "POST /api/storage/storages/:storageId/categories?fixture=transactions":
+      return buildJsonRequest(stripTestFixture(path), {
+        name: fixtureName(
+          endpoint.path.includes("fixture=transactions")
+            ? "[systemtest] Transaction Category "
+            : "[systemtest] API Category ",
+          nowId,
+          LIMITS.content.storageCategoryName.max,
+        ),
       });
 
     case "PATCH /api/storage/storages/:storageId/categories/:id":
       return buildJsonRequest(path, {
-        name: `[systemtest] API Category Updated ${nowId}`,
+        name: fixtureName("[systemtest] API Category Updated ", nowId, LIMITS.content.storageCategoryName.max),
       });
 
     case "POST /api/storage/items":
+    case "POST /api/storage/items?fixture=transactions":
       if (!context.createdStorageId) {
         return skipEndpoint(path, "Missing created storage id for storage item");
       }
-      return buildJsonRequest(path, {
+      return buildJsonRequest(stripTestFixture(path), {
         storage_id: context.createdStorageId,
         category_id: context.createdStorageCategoryId,
-        name: `[systemtest] API Item ${nowId}`,
+        name: fixtureName(
+          endpoint.path.includes("fixture=transactions")
+            ? "[systemtest] Transaction Item "
+            : "[systemtest] API Item ",
+          nowId,
+          LIMITS.content.storageItemName.max,
+        ),
         description: "[systemtest] Created by admin API tester",
         allow_member_deposit: true,
         allow_member_withdraw: false,
@@ -1078,7 +1099,7 @@ export function prepareEndpointRequest(endpoint: EndpointDef, context: TestRunCo
 
     case "PATCH /api/storage/items/:id":
       return buildJsonRequest(path, {
-        name: `[systemtest] API Item Updated ${nowId}`,
+        name: fixtureName("[systemtest] API Item Updated ", nowId, LIMITS.content.storageItemName.max),
         description: "[systemtest] Updated by admin API tester",
         allow_member_deposit: true,
         allow_member_withdraw: true,

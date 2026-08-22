@@ -5,5 +5,8 @@
   "exports": {
     ".": "./src/public.ts",
     "./testing": "./src/testing.ts"
+  },
+  "dependencies": {
+    "@guild/shared": "workspace:*"
   }
 }

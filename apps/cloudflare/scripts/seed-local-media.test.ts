@@ -5,16 +5,15 @@ import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { Miniflare } from "miniflare";
 import { DEVELOPMENT_MEDIA_OBJECTS } from "../../../scripts/dev/media-fixtures.mjs";
+import { APPLICATION_MIGRATION_STATEMENTS } from "../../../scripts/testing/application-migrations.js";
 import {
-  LOCAL_D1_DATABASE_ID,
-  LOCAL_R2_BUCKET_NAME,
+  parseCloudflareLocalMediaSeedArguments,
   seedCloudflareLocalMedia,
 } from "./seed-local-media.js";
 
-const migrationStatements = statements(readFileSync(path.resolve(
-  process.cwd(),
-  "packages/persistence-sqlite/src/migrations/generated/0000_core.sql",
-), "utf8"));
+const LOCAL_D1_DATABASE_ID = "00000000-0000-0000-0000-000000000000";
+const LOCAL_R2_BUCKET_NAME = "replace-with-r2-bucket-name";
+
 const relationalSeedStatements = statements(readFileSync(path.resolve(process.cwd(), "scripts/dev/seed.sql"), "utf8"));
 
 const states: string[] = [];
@@ -24,10 +23,24 @@ afterEach(async () => {
 });
 
 describe("Cloudflare local media seed", () => {
+  it("requires the local D1 and R2 binding identifiers", () => {
+    expect(parseCloudflareLocalMediaSeedArguments([
+      "--persist-to", "state",
+      "--database-id", "database-id",
+      "--bucket-name", "bucket-name",
+    ])).toEqual({
+      persistTo: "state",
+      databaseId: "database-id",
+      bucketName: "bucket-name",
+    });
+    expect(() => parseCloudflareLocalMediaSeedArguments(["--persist-to", "state"]))
+      .toThrow(/database-id.*bucket-name/i);
+  });
+
   it("leaves local R2 untouched without the development owner", async () => {
     const state = await localState();
     await prepareDatabase(state, false);
-    await expect(seedCloudflareLocalMedia({ persistTo: state })).resolves.toEqual({
+    await expect(seedCloudflareLocalMedia(localSeedOptions(state))).resolves.toEqual({
       result: "skipped",
       media: null,
     });
@@ -43,7 +56,7 @@ describe("Cloudflare local media seed", () => {
     const state = await localState();
     await prepareDatabase(state, true);
 
-    await expect(seedCloudflareLocalMedia({ persistTo: state })).resolves.toEqual({
+    await expect(seedCloudflareLocalMedia(localSeedOptions(state))).resolves.toEqual({
       result: "applied",
       media: { processed: DEVELOPMENT_MEDIA_OBJECTS.length, total: DEVELOPMENT_MEDIA_OBJECTS.length },
     });
@@ -61,7 +74,7 @@ describe("Cloudflare local media seed", () => {
       await mutator.dispose();
     }
 
-    await expect(seedCloudflareLocalMedia({ persistTo: state })).resolves.toEqual({
+    await expect(seedCloudflareLocalMedia(localSeedOptions(state))).resolves.toEqual({
       result: "applied",
       media: { processed: DEVELOPMENT_MEDIA_OBJECTS.length, total: DEVELOPMENT_MEDIA_OBJECTS.length },
     });
@@ -121,7 +134,7 @@ describe("Cloudflare local media seed", () => {
       await mutator.dispose();
     }
 
-    await expect(seedCloudflareLocalMedia({ persistTo: state }))
+    await expect(seedCloudflareLocalMedia(localSeedOptions(state)))
       .rejects.toThrow(/already exists with different metadata/i);
 
     const inspector = createMiniflare(state);
@@ -143,11 +156,19 @@ async function localState(): Promise<string> {
   return state;
 }
 
+function localSeedOptions(persistTo: string) {
+  return {
+    persistTo,
+    databaseId: LOCAL_D1_DATABASE_ID,
+    bucketName: LOCAL_R2_BUCKET_NAME,
+  };
+}
+
 async function prepareDatabase(state: string, seed: boolean): Promise<void> {
   const miniflare = createMiniflare(state);
   try {
     const database = await miniflare.getD1Database("DB");
-    await execute(database, migrationStatements);
+    await execute(database, APPLICATION_MIGRATION_STATEMENTS);
     if (seed) await execute(database, relationalSeedStatements);
   } finally {
     await miniflare.dispose();
@@ -159,7 +180,7 @@ function createMiniflare(state: string): Miniflare {
     compatibilityDate: "2026-07-28",
     d1Databases: { DB: LOCAL_D1_DATABASE_ID },
     r2Buckets: { BLOBS: LOCAL_R2_BUCKET_NAME },
-    resourcePersistencePath: state,
+    resourcePersistencePath: path.join(state, "v3"),
     modules: true,
     script: "export default {}",
   });

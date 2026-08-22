@@ -1,51 +1,43 @@
-import { AppError } from "@guild/kernel";
-import { jsonObjectSchema, type AuditLogEntry, type PaginatedResponse } from "@guild/shared";
-import type { AuditMutation, AuditQuery, AuditStore } from "@guild/server/modules/audit";
-import type { SqlExecutor, SqlResult, SqlValue } from "@guild/kernel";
+import { AppError, type SqlExecutor, type SqlResult, type SqlValue } from "@guild/kernel";
+import { auditEventSchema, auditPayloadV2Schema, type AuditEvent } from "@guild/shared";
+import type {
+  AuditEventWrite,
+  AuditFilter,
+  AuditStore,
+  AuditStorePage,
+  AuditStoreQuery,
+} from "@guild/server/modules/audit";
 import { auditInsertStatement } from "./audit-statement.js";
 
 const EXPORT_PAGE_SIZE = 100;
 const AUDIT_COLUMNS = [
-  "id", "entity_type", "action", "actor_user_id", "actor_username", "entity_id", "summary", "detail_json", "occurred_at",
+  "id", "request_id", "actor_kind", "actor_id", "actor_label", "subject_type",
+  "subject_id", "subject_label", "action", "payload_json", "occurred_at",
 ] as const;
 
 export class SqliteAuditStore implements AuditStore {
   constructor(private readonly sql: SqlExecutor) {}
 
-  async list(query: AuditQuery): Promise<PaginatedResponse<AuditLogEntry>> {
+  async list(query: AuditStoreQuery): Promise<AuditStorePage> {
     const filter = auditFilter(query);
-    const [countResult, listResult] = await this.sql.batch([
-      {
-        method: "get",
-        columns: ["total"],
-        sql: `SELECT COUNT(*) AS total ${auditFrom()} ${filter.where}`,
-        params: filter.params,
-      },
-      {
-        method: "all",
-        columns: AUDIT_COLUMNS,
-        sql: `${auditSelect()} ${filter.where}
-          ORDER BY logs.occurred_at DESC, logs.id DESC LIMIT ? OFFSET ?`,
-        params: [...filter.params, query.limit, (query.page - 1) * query.limit],
-      },
-    ]);
-    const count = oneRow(required(countResult))?.[0];
-    if (typeof count !== "number" || !Number.isSafeInteger(count) || count < 0) throw corrupt("Invalid audit count");
-    return {
-      data: allRows(required(listResult)).map(mapAuditSqlRow),
-      total: count,
-      page: query.page,
-      limit: query.limit,
-      total_pages: Math.ceil(count / query.limit),
-    };
+    const rows = allRows(await this.sql.execute({
+      method: "all",
+      columns: AUDIT_COLUMNS,
+      sql: `${auditSelect()} ${filter.where}
+        ORDER BY logs.occurred_at DESC, logs.id DESC LIMIT ?`,
+      params: [...filter.params, query.limit + 1],
+    })).map(mapAuditSqlRow);
+    const hasMore = rows.length > query.limit;
+    return { data: hasMore ? rows.slice(0, query.limit) : rows, hasMore };
   }
 
-  async *export(query: Omit<AuditQuery, "page" | "limit">): AsyncIterable<AuditLogEntry> {
-    let cursor: Readonly<{ occurredAt: string; id: string }> | null = null;
+  async *export(query: AuditFilter): AsyncIterable<AuditEvent> {
+    let cursor: Readonly<{ occurredAt: string; eventId: string }> | null = null;
     while (true) {
-      const filter = auditFilter({ ...query, page: 1, limit: EXPORT_PAGE_SIZE }, cursor);
+      const filter = auditFilter({ ...query, limit: EXPORT_PAGE_SIZE, cursor });
       const rows = allRows(await this.sql.execute({
         method: "all",
+        columns: AUDIT_COLUMNS,
         sql: `${auditSelect()} ${filter.where}
           ORDER BY logs.occurred_at DESC, logs.id DESC LIMIT ?`,
         params: [...filter.params, EXPORT_PAGE_SIZE],
@@ -53,92 +45,68 @@ export class SqliteAuditStore implements AuditStore {
       for (const row of rows) yield mapAuditSqlRow(row);
       if (rows.length < EXPORT_PAGE_SIZE) return;
       const last = mapAuditSqlRow(rows.at(-1)!);
-      cursor = { occurredAt: last.created_at, id: last.id };
+      cursor = { occurredAt: last.occurred_at, eventId: last.event_id };
     }
   }
 
-  async recordExport(audit: AuditMutation): Promise<void> {
+  async recordExport(audit: AuditEventWrite): Promise<void> {
     await this.sql.execute(auditInsertStatement(audit));
   }
 }
 
 function auditSelect(): string {
-  return `SELECT logs.id, logs.entity_type, logs.action, logs.actor_user_id, logs.actor_username,
-    logs.entity_id, logs.summary, logs.detail_json, logs.occurred_at ${auditFrom()}`;
+  return `SELECT logs.id, logs.request_id, logs.actor_kind, logs.actor_id, logs.actor_label,
+    logs.subject_type, logs.subject_id, logs.subject_label, logs.action, logs.payload_json,
+    logs.occurred_at FROM audit_log AS logs`;
 }
 
-function auditFrom(): string {
-  return "FROM audit_log AS logs";
-}
-
-function auditFilter(
-  query: AuditQuery,
-  cursor: Readonly<{ occurredAt: string; id: string }> | null = null,
-): Readonly<{ where: string; params: SqlValue[] }> {
+function auditFilter(query: AuditStoreQuery): Readonly<{ where: string; params: SqlValue[] }> {
   const clauses: string[] = [];
   const params: SqlValue[] = [];
   if (query.startAt) { clauses.push("logs.occurred_at >= ?"); params.push(query.startAt); }
   if (query.endAt) { clauses.push("logs.occurred_at <= ?"); params.push(query.endAt); }
-  if (query.entityType) { clauses.push("logs.entity_type = ?"); params.push(query.entityType); }
-  if (query.actorUserId) { clauses.push("logs.actor_user_id = ?"); params.push(query.actorUserId); }
+  if (query.subjectType) { clauses.push("logs.subject_type = ?"); params.push(query.subjectType); }
+  if (query.subjectId) { clauses.push("logs.subject_id = ?"); params.push(query.subjectId); }
+  if (query.actorId) { clauses.push("logs.actor_id = ?"); params.push(query.actorId); }
   if (query.search) {
     const pattern = `%${escapeLike(query.search.toLowerCase())}%`;
-    clauses.push(`(lower(COALESCE(logs.summary, '')) LIKE ? ESCAPE '\\'
-      OR lower(logs.entity_id) LIKE ? ESCAPE '\\'
-      OR lower(COALESCE(logs.actor_username, '')) LIKE ? ESCAPE '\\')`);
+    clauses.push(`(lower(COALESCE(logs.subject_label, '')) LIKE ? ESCAPE '\\'
+      OR lower(logs.subject_id) LIKE ? ESCAPE '\\'
+      OR lower(COALESCE(logs.actor_label, '')) LIKE ? ESCAPE '\\')`);
     params.push(pattern, pattern, pattern);
   }
-  if (cursor) {
+  if (query.cursor) {
     clauses.push("(logs.occurred_at < ? OR (logs.occurred_at = ? AND logs.id < ?))");
-    params.push(cursor.occurredAt, cursor.occurredAt, cursor.id);
+    params.push(query.cursor.occurredAt, query.cursor.occurredAt, query.cursor.eventId);
   }
   return { where: clauses.length ? `WHERE ${clauses.join(" AND ")}` : "", params };
 }
 
-export function mapAuditSqlRow(row: readonly SqlValue[]): AuditLogEntry {
-  const [id, entityType, action, actorId, actorUsername, entityId, summary, detailJson, createdAt] = row;
-  if (typeof id !== "string" || typeof entityType !== "string" || typeof action !== "string"
-    || typeof actorId !== "string" || (actorUsername !== null && typeof actorUsername !== "string")
-    || typeof entityId !== "string" || (summary !== null && typeof summary !== "string")
-    || (detailJson !== null && typeof detailJson !== "string") || typeof createdAt !== "string") {
-    throw corrupt("Invalid audit row");
+export function mapAuditSqlRow(row: readonly SqlValue[]): AuditEvent {
+  const [eventId, requestId, actorKind, actorId, actorLabel, subjectType, subjectId,
+    subjectLabel, action, payloadJson, occurredAt] = row;
+  if (typeof payloadJson !== "string") throw corrupt("Invalid audit payload");
+  let payload: AuditEvent["payload"];
+  try {
+    payload = auditPayloadV2Schema.parse(JSON.parse(payloadJson) as unknown);
+  } catch (cause) {
+    throw new AppError({ code: "SERVER_ERROR", status: 500, message: "Invalid audit payload", cause });
   }
-  let detail = null;
-  if (detailJson !== null) {
-    try {
-      detail = jsonObjectSchema.parse(JSON.parse(detailJson) as unknown);
-    } catch (cause) {
-      throw new AppError({ code: "SERVER_ERROR", status: 500, message: "Invalid audit detail", cause });
-    }
-  }
-  return {
-    id,
-    entity_type: entityType as AuditLogEntry["entity_type"],
-    action: action as AuditLogEntry["action"],
-    actor_id: actorId,
-    actor_username: actorUsername,
-    entity_id: entityId,
-    diff_title: summary,
-    detail,
-    created_at: createdAt,
-  };
-}
-
-function oneRow(result: SqlResult): readonly SqlValue[] | null {
-  if (result.rows === undefined) return null;
-  if (!Array.isArray(result.rows) || (result.rows.length > 0 && Array.isArray(result.rows[0]))) throw corrupt("Invalid SQLite get result");
-  return result.rows as readonly SqlValue[];
+  return auditEventSchema.parse({
+    event_id: eventId,
+    request_id: requestId,
+    actor: { kind: actorKind, id: actorId, label: actorLabel },
+    subject: { type: subjectType, id: subjectId, label: subjectLabel },
+    action,
+    payload,
+    occurred_at: occurredAt,
+  });
 }
 
 function allRows(result: SqlResult): readonly (readonly SqlValue[])[] {
   if (result.rows === undefined) return [];
   if (!Array.isArray(result.rows) || result.rows.some((row) => !Array.isArray(row))) throw corrupt("Invalid SQLite all result");
   return result.rows as readonly (readonly SqlValue[])[];
-}
-
-function required(result: SqlResult | undefined): SqlResult {
-  if (!result) throw corrupt("SQLite batch result is missing");
-  return result;
 }
 
 function escapeLike(value: string): string {

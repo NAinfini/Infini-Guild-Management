@@ -199,7 +199,6 @@ export function ConcludeWarModal({
                   onChange={(value) => updateWarInfoField("durationMinutes", typeof value === "number" ? value : null)}
                   min={0}
                   hideControls
-                  suffix=" min"
                 />
               </div>
 

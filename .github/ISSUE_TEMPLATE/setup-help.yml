@@ -25,7 +25,7 @@ body:
         - Cloudflare bindings or login
         - VPS environment or reverse proxy
         - Database migrations
-        - First site owner
+        - First administrator
         - Legacy credential import
         - Backup or restore
         - Deployment

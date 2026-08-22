@@ -1,4 +1,3 @@
-// @vitest-environment jsdom
 import { DEFAULT_SITE_MEDIA_POLICY } from "@guild/shared";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { renderHook, waitFor, act } from "@testing-library/react";

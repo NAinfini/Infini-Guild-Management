@@ -1,4 +1,3 @@
-// @vitest-environment jsdom
 import { act, renderHook } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 import { matchAuditDatePreset, useAdminAuditFilter } from "./useAdminAuditFilter";
@@ -13,11 +12,11 @@ function isoDate(offsetDays = 0): string {
 }
 
 describe("useAdminAuditFilter", () => {
-  /* 审计日志按时间倒序，不设区间等于把整本翻出来。 */
-  it("starts on the last day instead of an open-ended range", () => {
+  /* 七天兼顾近期排障和趋势回看，且不会把整本审计日志拉出来。 */
+  it("starts on the last seven days instead of an open-ended range", () => {
     const { result } = renderHook(() => useAdminAuditFilter());
 
-    expect(result.current.auditFilter.dateFrom).toBe(isoDate(1));
+    expect(result.current.auditFilter.dateFrom).toBe(isoDate(7));
     expect(result.current.auditFilter.dateTo).toBe(isoDate(0));
   });
 
@@ -40,13 +39,13 @@ describe("useAdminAuditFilter", () => {
     expect(matchAuditDatePreset("2020-01-01", "2020-03-05")).toBeNull();
   });
 
-  it("returns to the first page whenever the range changes", () => {
+  it("sets and clears one exact entity timeline without a second state source", () => {
     const { result } = renderHook(() => useAdminAuditFilter());
 
-    act(() => result.current.setAuditPage(4));
-    expect(result.current.auditFilter.page).toBe(4);
+    act(() => result.current.setAuditEntityTarget("event", "event-42"));
+    expect(result.current.auditFilter).toMatchObject({ entityType: "event", entityId: "event-42" });
 
-    act(() => result.current.setAuditDatePreset("7d"));
-    expect(result.current.auditFilter.page).toBe(1);
+    act(() => result.current.clearAuditEntityTarget());
+    expect(result.current.auditFilter).toMatchObject({ entityType: "", entityId: "" });
   });
 });

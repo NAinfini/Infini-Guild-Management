@@ -1,45 +1,25 @@
-import { readFileSync } from "node:fs";
 import { DatabaseSync, type SQLInputValue } from "node:sqlite";
-import { fileURLToPath } from "node:url";
 import { afterEach, describe, expect, it } from "vitest";
-import type { SqlBatchStatement, SqlExecutor, SqlResult, SqlStatement } from "@guild/kernel";
+import type { SqlStatement } from "@guild/kernel";
+import { applyAppMigrations } from "../testing/app-migrations.js";
 import { SqliteTestExecutor } from "../testing/sqlite-test-executor.js";
 import { SqlitePortalReadModelStore } from "./portal-read-model-store.js";
 
 const NOW = "2099-08-09T12:00:00.000Z";
 const WINDOW_END = "2099-08-16T12:00:00.000Z";
-const migration = readFileSync(fileURLToPath(new URL("../migrations/generated/0000_core.sql", import.meta.url)), "utf8")
-  .replaceAll("--> statement-breakpoint", "");
 const databases: DatabaseSync[] = [];
 
 afterEach(() => {
   for (const database of databases.splice(0)) database.close();
 });
 
-class RecordingExecutor implements SqlExecutor {
-  readonly executions: SqlStatement[] = [];
-  readonly batches: SqlBatchStatement[][] = [];
-
-  constructor(private readonly delegate: SqlExecutor) {}
-
-  execute(statement: SqlStatement): Promise<SqlResult> {
-    this.executions.push(statement);
-    return this.delegate.execute(statement);
-  }
-
-  batch(statements: readonly SqlBatchStatement[]): Promise<readonly SqlResult[]> {
-    this.batches.push([...statements]);
-    return this.delegate.batch(statements);
-  }
-}
-
 function harness() {
   const database = new DatabaseSync(":memory:");
   databases.push(database);
   database.exec("PRAGMA foreign_keys = ON; PRAGMA journal_mode = WAL;");
-  database.exec(migration);
+  applyAppMigrations(database);
   seed(database);
-  const executor = new RecordingExecutor(new SqliteTestExecutor(database));
+  const executor = new SqliteTestExecutor(database);
   return { database, executor, store: new SqlitePortalReadModelStore(executor) };
 }
 
@@ -81,7 +61,7 @@ describe("SqlitePortalReadModelStore", () => {
     });
     expect(value.executor.batches).toHaveLength(1);
     expect(value.executor.batches[0]).toHaveLength(6);
-    expect(value.executor.executions).toHaveLength(0);
+    expect(value.executor.statements).toHaveLength(0);
     expect(value.executor.batches[0]![2]!.sql).toContain("preview_rank <= 5");
     expect(value.executor.batches[0]![2]!.sql).toContain("LIMIT 51");
     expect(value.executor.batches[0]![3]!.sql).toContain("LIMIT 201");
@@ -224,8 +204,8 @@ describe("SqlitePortalReadModelStore", () => {
   it("uses the roster index for the single member-count query", async () => {
     const value = harness();
     expect(await value.store.dashboardMembers()).toEqual({ activeMemberCount: 2, totalMemberCount: 2 });
-    expect(value.executor.executions).toHaveLength(1);
-    expect(explain(value.database, value.executor.executions[0]!)).toContain("idx_users_roster");
+    expect(value.executor.statements).toHaveLength(1);
+    expect(explain(value.database, value.executor.statements[0]!)).toContain("idx_users_roster");
   });
 });
 

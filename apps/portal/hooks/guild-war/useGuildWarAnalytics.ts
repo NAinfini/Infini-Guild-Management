@@ -14,6 +14,7 @@ import { useGuildWarStore } from "../../stores/guildWar";
 import { useAuthStore } from "../../stores/auth";
 import type { AnalyticsDatePreset } from "../../types/guild-war";
 import { copyPlainText } from "../../utils/copy";
+import { localDateKey } from "../../utils/datetime";
 import { useGuildWarAnalyticsComputed } from "./useGuildWarAnalyticsComputed";
 import { notifySuccess, notifyWarning } from "../../utils/notifications";
 import {
@@ -159,15 +160,16 @@ export function useGuildWarAnalytics({
   const analyticsRows = analyticsQuery.data?.member_stats ?? [];
   const analyticsWarDetails = analyticsDetailsQuery.data ?? [];
 
-  // One absence window covers every selected war used by attendance analytics.
+  /* 一次窗口覆盖出勤分析选中的全部战役。按阅读者本地日期取——请假是日历日期，
+     窗口要和界面上显示的战役日期对得上，否则边界那天的请假会查不出来。 */
   const absencesWindow = useMemo(() => {
     if (analyticsWarDetails.length === 0) {
       return null;
     }
-    let from = analyticsWarDetails[0]!.created_at.slice(0, 10);
+    let from = localDateKey(analyticsWarDetails[0]!.created_at);
     let to = from;
     for (const war of analyticsWarDetails) {
-      const date = war.created_at.slice(0, 10);
+      const date = localDateKey(war.created_at);
       if (date < from) from = date;
       if (date > to) to = date;
     }
@@ -187,7 +189,7 @@ export function useGuildWarAnalytics({
     () =>
       historyRows.map((row) => ({
         value: row.id,
-        label: `${row.war_name} (${row.created_at.slice(0, 10)})`,
+        label: `${row.war_name} (${localDateKey(row.created_at)})`,
       })),
     [historyRows],
   );

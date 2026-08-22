@@ -25,8 +25,10 @@ import type { AdminUserRow, MemberDetailFormState } from "@portal/types/admin";
 import { useEffect, useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import styles from "./AdminMemberDetailModal.module.css";
-import { buildClassOptions, resolveClassCatalogItem, useClassCatalogStore } from "@portal/stores/class-catalog";
+import { useClassCatalog } from "@portal/hooks/data/useClassData";
+import { buildClassOptions, resolveClassCatalogItem } from "@portal/utils/class-catalog";
 import { useAuthStore } from "@portal/stores/auth";
+import { formatCalendarDate } from "@portal/utils/datetime";
 import { canManageUserByRoleLevel } from "@portal/utils/permissions";
 
 /* 弹窗只有看和改两种态。 */
@@ -101,9 +103,9 @@ export function AdminMemberDetailModal({
 }: AdminMemberDetailModalProps) {
   const { t, i18n } = useTranslation("admin");
   const confirm = useConfirmDialog();
-  const classCatalog = useClassCatalogStore((state) => state.items);
+  const classCatalog = useClassCatalog();
   const currentUser = useAuthStore((state) => state.user);
-  const classOptions = buildClassOptions(classCatalog, form.classes);
+  const classOptions = buildClassOptions(classCatalog);
   const canManageTarget = Boolean(member && canManageUserByRoleLevel(member.user, currentUser));
   const canEditMember = canManageTarget && canEditProfile;
   const canAssignMemberRole = canManageTarget && canAssignRole;
@@ -151,7 +153,8 @@ export function AdminMemberDetailModal({
   const instantNote = <Text size="xs" c="dimmed">{t("detail.hint.instant")}</Text>;
 
   const renderBody = (target: AdminUserRow) => {
-    const formatDay = (value: string) => new Date(value).toLocaleDateString(i18n.language);
+    /* 请假起止是日历日期，不是瞬时点：按本地时区渲染会让西边的人整整差一天。 */
+    const formatDay = (value: string) => formatCalendarDate(value, i18n.language, "numeric");
     const absenceSummary = isOnVacation(target.profile) && target.profile.vacation_start && target.profile.vacation_end
       ? t("detail.absence.active", {
         start: formatDay(target.profile.vacation_start),

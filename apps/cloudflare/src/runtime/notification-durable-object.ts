@@ -1,7 +1,6 @@
+import { createNotificationConnectionPolicy } from "@guild/application";
 import type { AuthorizationContext } from "@guild/kernel";
-import { createAppDatabase, SqliteAuthStore } from "@guild/persistence-sqlite";
 import {
-  AuthStoreNotificationSessionResolver,
   INTERNAL_NOTIFICATION_SESSION_HEADER,
   NOTIFICATION_CONNECTION_POLICY,
   NotificationConnectionPolicy,
@@ -20,9 +19,7 @@ export type CloudflareNotificationTarget = Readonly<{
 }>;
 
 function defaultPolicy(database: D1Database): NotificationConnectionPolicy {
-  const executor = new D1SqlExecutor(database);
-  const store = new SqliteAuthStore(createAppDatabase(executor), executor);
-  return new NotificationConnectionPolicy(new AuthStoreNotificationSessionResolver(store));
+  return createNotificationConnectionPolicy(new D1SqlExecutor(database));
 }
 
 function rejectionResponse(status: 401 | 429 | 503, reason: string): Response {
@@ -71,6 +68,12 @@ export class CloudflareNotificationDurableObject {
 
   async fetch(request: Request): Promise<Response> {
     const url = new URL(request.url);
+    if (request.method === "GET" && url.pathname === "/status") {
+      return Response.json({
+        observed_at: new Date().toISOString(),
+        connection_count: this.state.getWebSockets().length,
+      });
+    }
     if (request.method === "POST" && url.pathname === "/publish") {
       return this.publish(request);
     }

@@ -1,4 +1,8 @@
-import { readApplicationConfig, type ApplicationConfig } from "@guild/application";
+import {
+  isMaintenanceModeEnabled,
+  readApplicationConfig,
+  type ApplicationConfig,
+} from "@guild/application";
 import { isIP } from "node:net";
 import path from "node:path";
 
@@ -10,6 +14,7 @@ export type VpsRuntimeConfig = Readonly<{
   blobPath: string;
   staticPath: string;
   trustedProxyAddresses: ReadonlySet<string>;
+  maintenanceMode: boolean;
 }>;
 
 export function readVpsRuntimeConfig(
@@ -34,6 +39,7 @@ export function readVpsRuntimeConfig(
     blobPath: resolvePath(environment.IG_BLOB_PATH, workingDirectory, "data/blobs"),
     staticPath: resolvePath(environment.IG_STATIC_PATH, workingDirectory, "dist"),
     trustedProxyAddresses,
+    maintenanceMode: isMaintenanceModeEnabled(environment.IG_MAINTENANCE_MODE),
   });
 }
 

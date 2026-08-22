@@ -1,4 +1,3 @@
-// @vitest-environment jsdom
 import { act, renderHook, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { useAdminStatusController } from "./useAdminStatusController";
@@ -11,6 +10,17 @@ type StatusResponse = {
 };
 
 const STORAGE_KEY = "admin.status.health.logs";
+const storageData = new Map<string, string>();
+
+Object.defineProperty(globalThis, "localStorage", {
+  configurable: true,
+  value: {
+    clear: () => storageData.clear(),
+    getItem: (key: string) => storageData.get(key) ?? null,
+    removeItem: (key: string) => storageData.delete(key),
+    setItem: (key: string, value: string) => storageData.set(key, value),
+  },
+});
 
 function createStatusQuery(data: StatusResponse) {
   return {
@@ -101,7 +111,7 @@ describe("useAdminStatusController", () => {
     });
   });
 
-  it("polls status only while the status tab is active for admins", async () => {
+  it("polls status only while the operations overview is active for admins", async () => {
     vi.useFakeTimers();
     const statusQuery = createStatusQuery({ db: "ok", r2: "ok", ws: "ok", crons: "ok" });
 
@@ -118,7 +128,7 @@ describe("useAdminStatusController", () => {
     const { unmount } = renderHook(() =>
       useAdminStatusController({
         statusQuery,
-        activeTab: "status",
+        activeTab: "operations",
         isAdmin: true,
       }),
     );

@@ -8,7 +8,10 @@ import type {
 } from "@guild/shared";
 import type { EventType } from "@guild/shared/constants/event-types";
 import type { PollResultsVisibility } from "@guild/shared/constants/events";
-import type { AuditMutation } from "@guild/server/modules/audit";
+import type {
+  AuditEventInput,
+  AuditEventWrite as AuditMutation,
+} from "@guild/server/modules/audit";
 
 export type EventRecord = Readonly<{
   id: string;
@@ -238,7 +241,7 @@ export type TemplateUpdateWrite = Readonly<{
   }>>;
   quotas?: readonly EventQuotaWrite[];
   mediaIds?: readonly string[];
-  resetGeneration: boolean;
+  restartCursorDate?: string;
   audit: AuditMutation;
 }>;
 
@@ -248,11 +251,7 @@ export type RecurrenceMaterialization = Readonly<{
   createdEventIds: readonly string[];
 }>;
 
-export type MaterializationAuditFactory = (
-  eventId: string,
-  eventTitle: string,
-  templateId: string,
-) => AuditMutation;
+export type MaterializationAuditFactory = (input: AuditEventInput) => AuditMutation;
 
 export interface EventsCatalogStore {
   list(query: EventListQuery, visibility: EventVisibilityScope): Promise<EventListResult>;
@@ -292,7 +291,13 @@ export interface EventsRecurrenceStore {
   getTemplate(templateId: string): Promise<RecurringTemplateAggregate | null>;
   createTemplate(input: TemplateCreateWrite): Promise<RecurringTemplateAggregate>;
   updateTemplate(input: TemplateUpdateWrite): Promise<RecurringTemplateAggregate>;
-  setTemplatePaused(templateId: string, paused: boolean, now: string, audit: AuditMutation): Promise<void>;
+  setTemplatePaused(
+    templateId: string,
+    paused: boolean,
+    now: string,
+    audit: AuditMutation,
+    resumeCursorDate?: string,
+  ): Promise<void>;
   deleteTemplate(templateId: string, audit: AuditMutation): Promise<void>;
   materializeDue(now: string, templateId: string | undefined, createAudit: MaterializationAuditFactory): Promise<readonly RecurrenceMaterialization[]>;
 }
@@ -335,7 +340,10 @@ export type EventMutationInput = Readonly<{
   winner_count?: number;
 }>;
 
-export type EventUpdateInput = Partial<EventMutationInput> & Readonly<{
+export type EventUpdateInput = Omit<Partial<EventMutationInput>, "description" | "end_at" | "capacity"> & Readonly<{
+  description?: string | null;
+  end_at?: string | null;
+  capacity?: number | null;
   pinned?: boolean;
   signup_locked?: boolean;
   archived_at?: string | null;
@@ -355,6 +363,10 @@ export type TemplateMutationInput = Readonly<{
   class_quotas?: readonly EventClassQuotaInput[];
 }>;
 
-export type TemplateUpdateInput = Partial<TemplateMutationInput>;
+export type TemplateUpdateInput = Omit<Partial<TemplateMutationInput>, "description" | "duration_minutes" | "capacity"> & Readonly<{
+  description?: string | null;
+  duration_minutes?: number | null;
+  capacity?: number | null;
+}>;
 
 export type EventsRequestContext = RequestContext;

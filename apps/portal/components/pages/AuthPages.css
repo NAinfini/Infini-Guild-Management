@@ -1,12 +1,42 @@
 .login-page {
+  position: relative;
+  isolation: isolate;
   display: grid;
   min-height: 100dvh;
   place-items: center;
+  overflow: hidden;
   padding: clamp(1rem, 4vw, 3rem);
   background: var(--surface-sunken);
 }
 
+.login-page__lightfall {
+  position: absolute;
+  z-index: 0;
+  inset: 0;
+  overflow: hidden;
+  background: var(--auth-lightfall-background);
+  pointer-events: none;
+}
+
+.login-page__lightfall::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: var(--auth-lightfall-veil);
+}
+
+.login-page__lightfall-canvas {
+  position: absolute;
+  inset: 0;
+  display: block;
+  width: 100%;
+  height: 100%;
+  opacity: var(--auth-lightfall-opacity);
+}
+
 .login-page__content {
+  position: relative;
+  z-index: 1;
   display: grid;
   width: min(100%, 28rem);
   gap: var(--space-xl);
@@ -15,6 +45,9 @@
 .login-page__heading {
   display: grid;
   gap: var(--space-xs);
+  padding: var(--space-sm) var(--space-md);
+  border-radius: var(--radius-surface);
+  background: color-mix(in srgb, var(--surface-sunken) 78%, transparent);
   text-align: center;
 }
 
@@ -43,7 +76,6 @@
 
 .login-page__card {
   padding: clamp(1.25rem, 4vw, 2rem);
-  background: var(--surface-raised);
 }
 
 .login-floating-field {
@@ -105,6 +137,7 @@
 }
 
 .login-page__eye-btn {
+  position: relative;
   display: inline-grid;
   width: var(--control-hit-area);
   height: var(--control-hit-area);
@@ -116,8 +149,26 @@
   cursor: pointer;
 }
 
+.login-page__eye-btn::before {
+  content: "";
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: var(--control-icon-size-regular);
+  height: var(--control-icon-size-regular);
+  border-radius: var(--radius-control);
+  background: transparent;
+  pointer-events: none;
+  transform: translate(-50%, -50%);
+  transition: background-color var(--motion-state);
+}
+
 .login-page__eye-btn:hover {
   color: var(--text-primary);
+  background: transparent;
+}
+
+.login-page__eye-btn:hover::before {
   background: var(--surface-sunken);
 }
 

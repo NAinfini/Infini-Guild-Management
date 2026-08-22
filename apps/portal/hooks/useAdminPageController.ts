@@ -5,7 +5,6 @@ import { useTranslation } from "react-i18next";
 import type { ColumnDef as TanStackColumnDef } from "@tanstack/react-table";
 import { usePageHeaderActions } from "../context/PageHeaderContext";
 import { useAuthStore } from "../stores/auth";
-import { copyPlainText } from "../utils/copy";
 import { canManageUserByRoleLevel, isRoleAssignableToUser, userCanAccessAdmin } from "../utils/permissions";
 import { useAdminBadgesController } from "./useAdminBadgesController";
 import { useAdminAuditFilter } from "./useAdminAuditFilter";
@@ -18,7 +17,9 @@ import { useEffectivePermissions } from "./useEffectivePermissions";
 import { useLoadWarningToast } from "./useLoadWarningToast";
 import { useAdminData } from "./data/useAdminData";
 import { useSiteConfigMutations } from "./useSiteConfigMutations";
-import { resolveClassCatalogItem, useClassCatalogStore } from "../stores/class-catalog";
+import { useClassCatalog } from "./data/useClassData";
+import { resolveClassCatalogItem } from "../utils/class-catalog";
+import { formatDateTime } from "../utils/datetime";
 
 export const BATCH_SELECTION_LIMIT = 50;
 const ROLE_METADATA_PERMISSIONS = [
@@ -29,7 +30,17 @@ const ROLE_METADATA_PERMISSIONS = [
   "admin.users.role",
 ] as const;
 
-const ADMIN_TABS = ["member", "invite", "audit", "roles", "siteConfig", "classes", "badges", "status"] as const;
+const ADMIN_TABS = [
+  "member",
+  "invite",
+  "roles",
+  "classes",
+  "badges",
+  "siteConfig",
+  "operations",
+  "diagnostics",
+  "audit",
+] as const;
 export type AdminTab = (typeof ADMIN_TABS)[number];
 
 function isAdminTab(value: string): value is AdminTab {
@@ -46,7 +57,7 @@ const BadgeCell = Badge as ComponentType<{
 export function useAdminPageController() {
   const { t } = useTranslation("admin");
   const user = useAuthStore((state) => state.user);
-  const classCatalog = useClassCatalogStore((state) => state.items);
+  const classCatalog = useClassCatalog();
   const { viewingAs, isModerator, canManage: canManagePermission } = useEffectivePermissions();
   const { showError } = useAppError();
   const { member: memberSearchParam, tab: tabSearchParam } = useSearch({ strict: false }) as { member?: string; tab?: string };
@@ -62,11 +73,12 @@ export function useAdminPageController() {
 
   const {
     auditFilter,
-    setAuditPage,
     setAuditSearch,
     setAuditDateFrom,
     setAuditDateTo,
     setAuditDatePreset,
+    setAuditEntityTarget,
+    clearAuditEntityTarget,
   } = useAdminAuditFilter();
   const inviteController = useAdminInviteController();
 
@@ -91,6 +103,7 @@ export function useAdminPageController() {
     usersQuery,
     inviteLinksQuery,
     inviteStatsQuery,
+    operationsQuery,
     auditLogQuery,
     auditMonthsQuery,
     rolesQuery,
@@ -103,11 +116,11 @@ export function useAdminPageController() {
     activeTab,
     effectivePermissions: effectiveAdminPermissions,
     canReadRoleMetadata,
-    auditPage: auditFilter.page,
     auditSearch: auditFilter.search,
     auditDateFrom: auditFilter.dateFrom,
     auditDateTo: auditFilter.dateTo,
     auditEntityType: auditFilter.entityType,
+    auditEntityId: auditFilter.entityId,
     auditActorId: auditFilter.actorId,
     inviteVisibility: inviteController.invite.visibility,
     inviteSearch: inviteController.debouncedInviteSearch,
@@ -165,7 +178,8 @@ export function useAdminPageController() {
     siteConfig: canManageSiteConfig,
     classes: canManageClasses,
     badges: canManageBadges,
-    status: canViewStatus,
+    operations: canViewStatus,
+    diagnostics: canViewStatus,
   }), [
     canManageBadges,
     canManageClasses,
@@ -233,7 +247,13 @@ export function useAdminPageController() {
     () => (rolesQuery.data ?? []).filter((role) => isRoleAssignableToUser(role, user)),
     [rolesQuery.data, user],
   );
-  const auditRows = auditLogQuery.data?.data ?? [];
+  const auditRows = useMemo(() => {
+    const rows = new Map<string, NonNullable<typeof auditLogQuery.data>["pages"][number]["data"][number]>();
+    for (const page of auditLogQuery.data?.pages ?? []) {
+      for (const row of page.data) rows.set(row.event_id, row);
+    }
+    return [...rows.values()];
+  }, [auditLogQuery.data]);
 
   const userColumns = useMemo((): TanStackColumnDef<(typeof userRows)[number], unknown>[] => [
     {
@@ -281,6 +301,20 @@ export function useAdminPageController() {
       },
     },
     {
+      header: t("member.table.lastLogin"),
+      id: "lastLogin",
+      /* 排序键用原始 ISO 串：它按字典序排就是按时间排，不用为排序再解析一次日期。
+         从未登录过的排在最前（空串最小），正好是最该被管理员看到的一批。 */
+      accessorFn: (row) => row.user.last_login_at ?? "",
+      cell: ({ row }) => createElement(
+        "span",
+        { className: "admin-cell-timestamp" },
+        row.original.user.last_login_at
+          ? formatDateTime(row.original.user.last_login_at)
+          : t("member.table.lastLogin.never"),
+      ),
+    },
+    {
       header: t("member.table.active"),
       id: "active",
       accessorFn: (row) => row.user.is_active,
@@ -297,20 +331,6 @@ export function useAdminPageController() {
       },
     },
   ], [canEditUsers, classCatalog, t]);
-
-  const handleCopyConfigSummary = useCallback(() => {
-    const data = statusQuery.data;
-    if (!data) return;
-    const lines = [
-      `DB: ${data.db}`,
-      `R2: ${data.r2}`,
-      `WS: ${data.ws}`,
-      `Crons: ${data.crons}`,
-      statusLatencyMs !== null ? `Latency: ${statusLatencyMs}ms` : null,
-      `Checked: ${new Date().toISOString()}`,
-    ].filter(Boolean);
-    void copyPlainText(lines.join("\n"));
-  }, [statusLatencyMs, statusQuery.data]);
 
   const closeMemberDetail = useCallback(() => setMemberDetailId(null), [setMemberDetailId]);
   const patchMemberDetailForm = useCallback(
@@ -362,6 +382,7 @@ export function useAdminPageController() {
       auditMonthsQuery.isError ||
       rolesQuery.isError ||
       siteConfigQuery.isError ||
+      operationsQuery.isError ||
       statusQuery.isError,
     t("common:loadErrorRetry"),
   );
@@ -379,11 +400,11 @@ export function useAdminPageController() {
     createMemberModalHandlers,
     createMemberModalOpen,
     firstAvailableTab,
-    handleCopyConfigSummary,
     inviteLinksQuery,
     inviteRows,
     inviteTotal,
     inviteStatsQuery,
+    operationsQuery,
     ...inviteController,
     isModerator,
     canEditUsers,
@@ -401,8 +422,9 @@ export function useAdminPageController() {
     setAuditDateFrom,
     setAuditDatePreset,
     setAuditDateTo,
-    setAuditPage,
     setAuditSearch,
+    setAuditEntityTarget,
+    clearAuditEntityTarget,
     setMemberDetailId,
     setMemberSearch,
     statusHealthLogs,

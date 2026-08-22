@@ -14,6 +14,7 @@ const PUBLIC_ORIGIN = "https://guild.example";
 const TOKEN_SECRET = new Uint8Array(32).fill(7);
 const PUBLIC_SITE_CONFIG = publicSiteConfigSchema.parse({
   site_name: "Guild",
+  site_description: "A focused home for our guild.",
   site_logo_media_id: null,
   default_site_logo_url: "/guild-logo.svg",
   features: DEFAULT_FEATURE_FLAGS,
@@ -114,6 +115,19 @@ describe("Portal API composition", () => {
     expect(fixture.resolveAuthorization).not.toHaveBeenCalled();
   });
 
+  it("applies the additional expensive-read budget to public search", async () => {
+    const fixture = createFixture();
+    fixture.expensiveReadConsume.mockResolvedValueOnce({ allowed: false, retryAfterSeconds: 12 });
+
+    const response = await fixture.app.request("/api/search?q=member");
+
+    expect(response.status).toBe(429);
+    expect(response.headers.get("Retry-After")).toBe("12");
+    expect(fixture.readConsume).toHaveBeenCalledOnce();
+    expect(fixture.expensiveReadConsume).toHaveBeenCalledWith("api:expensive-read:127.0.0.1");
+    expect(fixture.resolveAuthorization).not.toHaveBeenCalled();
+  });
+
   it("rejects unsupported methods before body or session work", async () => {
     const fixture = createFixture();
 
@@ -125,18 +139,19 @@ describe("Portal API composition", () => {
     expect(fixture.resolveAuthorization).not.toHaveBeenCalled();
   });
 
-  it("keeps health independent from session resolution when the database is unavailable", async () => {
+  it("rate-limits health without resolving a session", async () => {
     const fixture = createFixture();
-    fixture.healthCheck.mockRejectedValueOnce(new Error("database unavailable"));
+    fixture.readConsume.mockResolvedValueOnce({ allowed: false, retryAfterSeconds: 6 });
 
     const response = await fixture.app.request("/api/health", {
       headers: { Cookie: "ig_session=session-token" },
     });
 
-    expect(response.status).toBe(503);
-    expect(await response.json()).toMatchObject({ ok: false, request_id: expect.any(String) });
-    expect(fixture.clientIdentifier).not.toHaveBeenCalled();
-    expect(fixture.readConsume).not.toHaveBeenCalled();
+    expect(response.status).toBe(429);
+    expect(response.headers.get("Retry-After")).toBe("6");
+    expect(fixture.clientIdentifier).toHaveBeenCalledOnce();
+    expect(fixture.readConsume).toHaveBeenCalledOnce();
+    expect(fixture.healthCheck).not.toHaveBeenCalled();
     expect(fixture.resolveAuthorization).not.toHaveBeenCalled();
   });
 });
@@ -148,6 +163,7 @@ function createFixture() {
     session: null,
   }));
   const services = {
+    adminOperations: {},
     adminStatus: {},
     announcements: {},
     audit: {},
@@ -169,10 +185,12 @@ function createFixture() {
   } as unknown as ApplicationServices;
   const mutationConsume = vi.fn(async (): Promise<RateLimitDecision> => ({ allowed: true }));
   const readConsume = vi.fn(async (): Promise<RateLimitDecision> => ({ allowed: true }));
+  const expensiveReadConsume = vi.fn(async (): Promise<RateLimitDecision> => ({ allowed: true }));
   const clientIdentifier = vi.fn(() => "127.0.0.1");
   const app = createPortalApiApp(services, {
     authRateLimiter: { consume: vi.fn(async () => ({ allowed: true })) },
     readRateLimiter: { consume: readConsume },
+    expensiveReadRateLimiter: { consume: expensiveReadConsume },
     mutationRateLimiter: { consume: mutationConsume },
     uploadRateLimiter: { consume: vi.fn(async () => ({ allowed: true })) },
     deferred: { defer: vi.fn() },
@@ -181,5 +199,13 @@ function createFixture() {
     publicUrl: PUBLIC_ORIGIN,
     auditDownloadSecret: TOKEN_SECRET,
   });
-  return { app, clientIdentifier, healthCheck, mutationConsume, readConsume, resolveAuthorization };
+  return {
+    app,
+    clientIdentifier,
+    expensiveReadConsume,
+    healthCheck,
+    mutationConsume,
+    readConsume,
+    resolveAuthorization,
+  };
 }

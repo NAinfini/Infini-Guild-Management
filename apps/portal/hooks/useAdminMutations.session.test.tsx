@@ -1,4 +1,3 @@
-// @vitest-environment jsdom
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { act, renderHook, waitFor } from "@testing-library/react";
 import type { ReactNode } from "react";
@@ -53,7 +52,6 @@ vi.mock("../utils/copy", () => ({ copyPlainText: vi.fn().mockResolvedValue(undef
 vi.mock("../utils/admin", () => ({
   auditExportDatePart: (value: string) => value || "all",
   downloadFileBlob: vi.fn(),
-  toIsoOrUndefined: (value: string) => value || undefined,
 }));
 
 function createWrapper(): ({ children }: { children: ReactNode }) => ReactNode {
@@ -67,7 +65,7 @@ function createWrapper(): ({ children }: { children: ReactNode }) => ReactNode {
 
 function renderMutations() {
   return renderHook(() => useAdminMutations({
-    auditFilter: { search: "", dateFrom: "", dateTo: "", entityType: "", actorId: "" },
+    auditFilter: { search: "", dateFrom: "", dateTo: "", entityType: "", entityId: "", actorId: "" },
     batchSelectionLimit: 50,
     showError: showErrorMock,
     resolveUsername: (id) => id,

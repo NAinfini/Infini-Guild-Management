@@ -1,7 +1,7 @@
 import { AppError } from "@guild/kernel";
 import type { GalleryListQuery, GalleryRecord, GalleryStore } from "@guild/server/modules/gallery";
 import type { SqlBatchStatement, SqlExecutor, SqlResult, SqlValue } from "@guild/kernel";
-import { auditInsertStatement } from "./audit-statement.js";
+import { auditInsertSelectStatement, auditInsertStatement } from "./audit-statement.js";
 import { assertOwnedStagedMedia } from "./media-link-statements.js";
 import { returnedRowCount } from "./sql-result.js";
 
@@ -116,10 +116,6 @@ export class SqliteGalleryStore implements GalleryStore {
 
   async batchDelete(input: Parameters<GalleryStore["batchDelete"]>[0]): Promise<number> {
     const placeholders = input.ids.map(() => "?").join(", ");
-    const guard = {
-      sql: "SELECT 1 FROM gallery_items WHERE revision_token = ? LIMIT 1",
-      params: [input.mutationToken],
-    } as const;
     const results = await this.sql.batch([
       {
         method: "all",
@@ -127,7 +123,7 @@ export class SqliteGalleryStore implements GalleryStore {
         sql: `UPDATE gallery_items SET revision_token = ? WHERE id IN (${placeholders}) RETURNING 1 AS affected`,
         params: [input.mutationToken, ...input.ids],
       },
-      auditInsertStatement(input.audit, guard),
+      galleryBatchDeleteAuditStatement(input.audit, input.mutationToken),
       {
         method: "run",
         sql: `DELETE FROM media_links
@@ -191,6 +187,59 @@ function insertGallery(
       ...(guard?.params ?? []),
     ],
   };
+}
+
+function galleryBatchDeleteAuditStatement(
+  audit: Parameters<GalleryStore["batchDelete"]>[0]["audit"],
+  mutationToken: string,
+) {
+  return auditInsertSelectStatement(
+    `WITH changed AS (
+       SELECT id, type, caption FROM gallery_items WHERE revision_token = ?
+     )
+     SELECT ?, ?, ?, ?,
+       CASE WHEN ? = 'user' THEN (SELECT username FROM users WHERE id = ?) ELSE ? END,
+       ?, ?, ?, ?,
+       json_set(json_set(
+         json(?), '$.context[#]',
+         json_object(
+           'field', 'item_count',
+           'value', json_object('type', 'number', 'value', (SELECT count(*) FROM changed))
+         )
+       ),
+         '$.context[#]',
+         json_object(
+           'field', 'item_ids',
+           'value', json_object(
+             'type', 'list',
+             'value', json((
+               SELECT json_group_array(json_object(
+                 'type', 'reference',
+                 'value', json_object('id', id, 'label', COALESCE(NULLIF(TRIM(caption), ''), type))
+               ))
+               FROM (SELECT id, type, caption FROM changed ORDER BY id)
+             ))
+           )
+         )
+       ), ?
+     WHERE EXISTS (SELECT 1 FROM changed)`,
+    [
+      mutationToken,
+      audit.eventId,
+      audit.requestId,
+      audit.actorKind,
+      audit.actorId,
+      audit.actorKind,
+      audit.actorId,
+      audit.actorLabel,
+      audit.subjectType,
+      audit.subjectId,
+      audit.subjectLabel,
+      audit.action,
+      JSON.stringify(audit.payload),
+      audit.occurredAt,
+    ],
+  );
 }
 
 function mapGallery(row: readonly SqlValue[]): GalleryRecord {

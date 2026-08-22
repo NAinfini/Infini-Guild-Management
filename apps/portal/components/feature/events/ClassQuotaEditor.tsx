@@ -1,9 +1,8 @@
-import type { ClassTag, EventClassQuotaInput } from "@guild/shared";
+import type { ClassCatalogItem, ClassTag, EventClassQuotaInput } from "@guild/shared";
 import { LIMITS } from "@guild/shared/config/limits";
 import { ActionIcon, Button, Group, NumberInput, Select, Stack, Text, TextInput } from "@mantine/core";
 import { PlusIcon, TrashIcon } from "@portal/components/icons";
-import { useClassCatalogStore } from "@portal/stores/class-catalog";
-import { useClassTagStore } from "@portal/stores/class-tag";
+import { useClassCatalog, useClassTags } from "@portal/hooks/data/useClassData";
 import { useTranslation } from "react-i18next";
 import { ClassIconStrip } from "./ClassIconStrip";
 import { ClassPickerPopover } from "./ClassPickerPopover";
@@ -12,7 +11,7 @@ import "./ClassQuotaEditor.css";
 const MAX_QUOTAS = LIMITS.content.eventClassQuotas.max;
 const MAX_LABEL = LIMITS.content.classTagLabel.max;
 
-type Catalog = ReturnType<typeof useClassCatalogStore.getState>["items"];
+type Catalog = ClassCatalogItem[];
 type CatalogQuota = Extract<EventClassQuotaInput, { tag_id: string }>;
 
 function isCatalogQuota(quota: EventClassQuotaInput): quota is CatalogQuota {
@@ -45,8 +44,8 @@ type ClassQuotaEditorProps = {
 
 export function ClassQuotaEditor({ value, onChange, disabled = false }: ClassQuotaEditorProps) {
   const { t } = useTranslation("events");
-  const catalog = useClassCatalogStore((state) => state.items);
-  const tags = useClassTagStore((state) => state.tags);
+  const catalog = useClassCatalog();
+  const tags = useClassTags();
 
   const used = new Set(value.flatMap((quota) => (isCatalogQuota(quota) ? [quota.tag_id] : [])));
   const unusedTags = tags.filter((tag) => !used.has(tag.id));

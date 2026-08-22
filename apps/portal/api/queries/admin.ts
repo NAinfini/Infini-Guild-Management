@@ -1,13 +1,23 @@
 import {
   loginLockStateSchema,
-  type AuditLogEntry,
+  type AuditEvent,
   type CursorResponse,
   type InviteLink,
-  type PaginatedResponse,
 } from "@guild/shared";
+import {
+  adminOperationsResponseSchema,
+  type AdminOperationsResponse,
+} from "@guild/shared/schemas/admin-operations";
+import {
+  blobReconciliationResponseSchema,
+  type BlobReconciliationCheckpointWire,
+  type BlobReconciliationResponse,
+} from "@guild/shared/schemas/blob-reconciliation";
 import { LIMITS } from "@guild/shared/config/limits";
 import type { z } from "zod";
 import { apiDownload, apiRequest } from "../client";
+
+export type { AdminOperationsResponse };
 
 export type AdminLoginLockState = z.infer<typeof loginLockStateSchema>;
 
@@ -48,6 +58,7 @@ export type AdminAuditArchiveDownloadResponse = {
 export type AdminAuditExportParams = {
   format: "csv" | "json";
   entity_type?: string;
+  entity_id?: string;
   actor_id?: string;
   search?: string;
   start_at?: string;
@@ -74,24 +85,26 @@ export function fetchAdminInviteStats(): Promise<InviteLinkStatsSummary> {
 }
 
 export function fetchAdminAuditLog(params: {
-  page?: number;
+  cursor?: string;
   limit?: number;
   entity_type?: string;
+  entity_id?: string;
   actor_id?: string;
   search?: string;
   start_at?: string;
   end_at?: string;
-}): Promise<PaginatedResponse<AuditLogEntry>> {
+}): Promise<CursorResponse<AuditEvent>> {
   const query = new URLSearchParams();
-  query.set("page", String(params.page ?? 1));
+  if (params.cursor) query.set("cursor", params.cursor);
   query.set("limit", String(params.limit ?? LIMITS.pagination.admin));
   if (params.entity_type) query.set("entity_type", params.entity_type);
+  if (params.entity_id) query.set("entity_id", params.entity_id);
   if (params.actor_id) query.set("actor_id", params.actor_id);
   if (params.search) query.set("search", params.search);
   if (params.start_at) query.set("start_at", params.start_at);
   if (params.end_at) query.set("end_at", params.end_at);
 
-  return apiRequest<PaginatedResponse<AuditLogEntry>>(`/api/admin/audit-log?${query.toString()}`);
+  return apiRequest<CursorResponse<AuditEvent>>(`/api/admin/audit-log?${query.toString()}`);
 }
 
 export async function downloadAdminAuditLogExport(params: AdminAuditExportParams): Promise<Blob> {
@@ -125,6 +138,23 @@ export async function downloadAdminAuditArchiveFile(url: string): Promise<Blob> 
 
 export function fetchAdminStatus(): Promise<AdminStatus> {
   return apiRequest<AdminStatus>("/api/admin/status");
+}
+
+export async function fetchAdminOperations(): Promise<AdminOperationsResponse> {
+  return adminOperationsResponseSchema.parse(
+    await apiRequest<unknown>("/api/admin/operations"),
+  );
+}
+
+export async function fetchBlobReconciliationPage(
+  checkpoint: BlobReconciliationCheckpointWire = { phase: "manifest" },
+): Promise<BlobReconciliationResponse> {
+  const query = new URLSearchParams({ phase: checkpoint.phase, limit: "50" });
+  if (checkpoint.phase === "inventory") query.set("prefix", checkpoint.prefix);
+  if (checkpoint.checkpoint) query.set("checkpoint", checkpoint.checkpoint);
+  return blobReconciliationResponseSchema.parse(
+    await apiRequest<unknown>(`/api/admin/blob-reconciliation?${query.toString()}`),
+  );
 }
 
 export function fetchAdminUserLoginLock(userId: string): Promise<AdminLoginLockState> {

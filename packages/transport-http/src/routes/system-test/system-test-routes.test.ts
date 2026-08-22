@@ -48,8 +48,26 @@ function buildRoutes() {
 }
 
 describe("system-test Portal HTTP contract", () => {
-  it("treats the public health check as an anonymous system-test request", () => {
-    expect(isAnonymousSystemTestPath("GET", "/api/health")).toBe(true);
+  it("keeps the public health check outside system-test persistence", async () => {
+    const service = {
+      beginRequest: vi.fn().mockResolvedValue(undefined),
+      endRequest: vi.fn().mockResolvedValue(undefined),
+    };
+    const app = appWithContext();
+    app.use("*", createSystemTestRequestMiddleware(service));
+    app.get("/api/health", (context) => context.json({ ok: true }));
+
+    const response = await app.request("/api/health", {
+      headers: {
+        [SYSTEM_TEST_HEADER]: SYSTEM_TEST_HEADER_VALUE,
+        [SYSTEM_TEST_RUN_ID_HEADER]: RUN_ID,
+      },
+    });
+
+    expect(response.status).toBe(200);
+    expect(isAnonymousSystemTestPath("GET", "/api/health")).toBe(false);
+    expect(service.beginRequest).not.toHaveBeenCalled();
+    expect(service.endRequest).not.toHaveBeenCalled();
   });
 
   it("preserves the four management paths and their DTOs", async () => {

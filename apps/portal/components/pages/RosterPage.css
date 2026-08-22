@@ -68,9 +68,17 @@
   margin-inline-start: auto;
 }
 
+.roster-page {
+  min-width: 0;
+  max-width: 100%;
+}
+
 .roster-page__body {
   flex: 1;
   min-height: 0;
+  min-width: 0;
+  width: 100%;
+  max-width: 100%;
 }
 
 .roster-filter-card {
@@ -81,19 +89,27 @@
   box-shadow: 0 8px 24px color-mix(in srgb, var(--text-primary) 10%, transparent);
 }
 
+/* 卡片网格就是这一页的内容画布，画布即工作区：不铺底色，环境光直接落进卡与卡
+   之间的缝里。原先的下沉面 + 内阴影是把它做成一口「井」，可下沉面是导航外壳那
+   一档，结果整块网格比页面本身还暗，卡片浮在一片死黑上。 */
 .roster-grid-region {
   flex: 1;
   min-height: 0;
+  min-width: 0;
+  width: 100%;
+  max-width: 100%;
+  box-sizing: border-box;
+  overflow-x: clip;
   overflow-y: auto;
   padding: 16px;
   border-radius: var(--radius-surface);
-  background: var(--surface-sunken);
-  box-shadow: inset 0 1px 2px color-mix(in srgb, var(--text-primary) 8%, transparent);
   scrollbar-gutter: stable;
 }
 
 .roster-virtual-inner {
   position: relative;
+  min-width: 0;
+  max-width: 100%;
 }
 
 .roster-virtual-row {

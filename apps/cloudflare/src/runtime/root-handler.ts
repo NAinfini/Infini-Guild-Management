@@ -1,14 +1,18 @@
+import { AsyncLocalStorage } from "node:async_hooks";
 import { AppError, type SqlExecutor } from "@guild/kernel";
 import {
   ApplicationRuntimeHealth,
+  admitWebSocketHandshake,
   assertApplicationSchema,
   createApplication,
-  readSessionCookie,
-  resolveSessionCookieName,
+  isMaintenanceModeEnabled,
+  maintenanceResponse,
+  resolveStaticSiteBranding,
   type ApplicationConfig,
 } from "@guild/application";
 import { LIMITS } from "@guild/shared/config/limits";
 import { CloudflareDeferredTasks } from "../adapters/deferred-tasks.js";
+import { CloudflareAdminOperationsRuntime } from "../adapters/admin-operations-realtime.js";
 import { D1SqlExecutor } from "../adapters/d1-sql-executor.js";
 import { CloudflareNotificationPublisher } from "../adapters/notification-publisher.js";
 import { R2BlobStore } from "../adapters/r2-blob-store.js";
@@ -31,12 +35,14 @@ export interface CloudflareEnvironment {
   MUTATION_RATE_LIMITER: RateLimit;
   UPLOAD_RATE_LIMITER: RateLimit;
   WEBSOCKET_RATE_LIMITER: RateLimit;
+  EXPENSIVE_READ_RATE_LIMITER: RateLimit;
   IG_PUBLIC_URL: string;
   IG_ALLOWED_ORIGINS?: string;
   IG_SESSION_COOKIE_NAME?: string;
   IG_INVITE_TOKEN_SECRET: string;
   IG_AUDIT_DOWNLOAD_SECRET: string;
   IG_PBKDF2_ITERATIONS?: string;
+  IG_MAINTENANCE_MODE?: string;
 }
 
 type CloudflareApplication = ReturnType<typeof createApplication>;
@@ -54,20 +60,32 @@ export type CloudflareComposition = Readonly<{
 
 export type CloudflareCompositionFactory = (
   environment: CloudflareEnvironment,
-  execution: ExecutionContext,
+  currentExecution: () => ExecutionContext,
 ) => CloudflareComposition;
+
+type CloudflareResponseCache = Pick<Cache, "match" | "put">;
+type CloudflareResponseCacheFactory = () => CloudflareResponseCache;
+type CloudflareCacheStorage = CacheStorage & Readonly<{ default: Cache }>;
 
 const seconds = (milliseconds: number) => milliseconds / 1_000;
 
+/*
+ * Durable Object stub 是 I/O 对象，绑在创建它的请求上下文上；组合体跨请求
+ * 缓存之后，stub 必须每次使用现取，否则第二个请求会踩到 workerd 的
+ * "Cannot perform I/O on behalf of a different request"。
+ */
 function notificationTarget(environment: CloudflareEnvironment): NotificationBinding {
-  return environment.NOTIFICATIONS.get(
+  const stub = () => environment.NOTIFICATIONS.get(
     environment.NOTIFICATIONS.idFromName("global"),
   ) as NotificationBinding;
+  return {
+    fetch: (input: Request | string, init?: RequestInit) => stub().fetch(input as string, init as RequestInit),
+  };
 }
 
 export function createCloudflareComposition(
   environment: CloudflareEnvironment,
-  execution: ExecutionContext,
+  currentExecution: () => ExecutionContext,
 ): CloudflareComposition {
   const runtimeConfig = readCloudflareRuntimeConfig({
     IG_PUBLIC_URL: environment.IG_PUBLIC_URL,
@@ -87,13 +105,14 @@ export function createCloudflareComposition(
     blobs,
     blobInventory: blobs,
     notifications: new CloudflareNotificationPublisher(notifications),
-    deferred: new CloudflareDeferredTasks(execution),
+    deferred: new CloudflareDeferredTasks(currentExecution),
     health: new ApplicationRuntimeHealth({
       sql,
       blobs,
       realtime: () => "ok (Durable Object)",
       scheduler: () => "configured (Cron Triggers)",
     }),
+    adminOperationsRuntime: new CloudflareAdminOperationsRuntime(notifications),
     authRateLimiter: new CloudflareRateLimiter(
       environment.AUTH_RATE_LIMITER,
       seconds(LIMITS.rateLimit.auth.windowMs),
@@ -110,6 +129,10 @@ export function createCloudflareComposition(
       environment.UPLOAD_RATE_LIMITER,
       seconds(LIMITS.rateLimit.uploads.windowMs),
     ),
+    expensiveReadRateLimiter: new CloudflareRateLimiter(
+      environment.EXPENSIVE_READ_RATE_LIMITER,
+      seconds(LIMITS.rateLimit.expensiveReads.windowMs),
+    ),
     clientIdentifier,
     onUnexpectedError: (error, requestId) => console.error("Portal API request failed", { requestId, error }),
   }, config);
@@ -118,8 +141,49 @@ export function createCloudflareComposition(
 
 export function createCloudflareHandler(
   compose: CloudflareCompositionFactory = createCloudflareComposition,
+  responseCache: CloudflareResponseCacheFactory = () => (caches as CloudflareCacheStorage).default,
 ) {
   const schemaChecks = new WeakMap<D1Database, Promise<void>>();
+  /*
+   * 组合图只依赖 environment（绑定与配置），按隔离区缓存一份；请求域的
+   * ExecutionContext 通过 AsyncLocalStorage 流进 defer 路径，而不是把
+   * 某次请求的上下文烙进组合体——那正是过去每请求重建整张图的根因。
+   */
+  const compositions = new WeakMap<CloudflareEnvironment, CloudflareComposition>();
+  const staticHandlers = new WeakMap<
+    CloudflareEnvironment,
+    ReturnType<typeof createCloudflareStaticAssets>
+  >();
+  const executionScope = new AsyncLocalStorage<ExecutionContext>();
+  const currentExecution = (): ExecutionContext => {
+    const execution = executionScope.getStore();
+    if (!execution) throw new Error("No Cloudflare execution context is active");
+    return execution;
+  };
+
+  function composition(environment: CloudflareEnvironment): CloudflareComposition {
+    let cached = compositions.get(environment);
+    if (!cached) {
+      cached = compose(environment, currentExecution);
+      compositions.set(environment, cached);
+    }
+    return cached;
+  }
+
+  function staticHandler(
+    environment: CloudflareEnvironment,
+    runtime: CloudflareComposition,
+  ): ReturnType<typeof createCloudflareStaticAssets> {
+    let cached = staticHandlers.get(environment);
+    if (!cached) {
+      cached = createCloudflareStaticAssets({
+        assets: environment.ASSETS,
+        getSiteBranding: () => resolveStaticSiteBranding(runtime.application.services.siteConfig),
+      });
+      staticHandlers.set(environment, cached);
+    }
+    return cached;
+  }
 
   async function assertSchema(database: D1Database, sql: SqlExecutor): Promise<void> {
     let check = schemaChecks.get(database);
@@ -134,61 +198,99 @@ export function createCloudflareHandler(
   }
 
   return {
-    async fetch(
+    fetch(
       request: Request,
       environment: CloudflareEnvironment,
       execution: ExecutionContext,
     ): Promise<Response> {
-      const requestUrl = new URL(request.url);
-      if (shouldRedirectToHttps(requestUrl)) return redirectToHttps(requestUrl);
-      try {
-        const runtime = compose(environment, execution);
-        await assertSchema(environment.DB, runtime.sql);
-        const pathname = requestUrl.pathname;
-        if (pathname === "/ws") return handleWebSocket(request, environment, runtime);
-        if (isApiPath(pathname)) {
-          return withTransportSecurity(await runtime.application.api.fetch(request), requestUrl);
+      return executionScope.run(execution, async () => {
+        const requestUrl = new URL(request.url);
+        if (shouldRedirectToHttps(requestUrl)) return redirectToHttps(requestUrl);
+        if (isMaintenanceModeEnabled(environment.IG_MAINTENANCE_MODE)) {
+          return withTransportSecurity(maintenanceResponse(request), requestUrl);
         }
+        try {
+          const runtime = composition(environment);
+          const pathname = requestUrl.pathname;
+          if (pathname !== "/api/health") await assertSchema(environment.DB, runtime.sql);
+          if (pathname === "/ws") return handleWebSocket(request, environment, runtime);
+          if (isApiPath(pathname)) {
+            return withTransportSecurity(
+              await handleApiRequest(request, runtime, execution, responseCache),
+              requestUrl,
+            );
+          }
 
-        const staticFiles = createCloudflareStaticAssets({
-          assets: environment.ASSETS,
-          getSiteBranding: async () => {
-            const site = await runtime.application.services.siteConfig.getPublic();
-            return {
-              siteName: site.site_name,
-              siteLogoUrl: site.site_logo_media_id
-                ? `/api/media/${encodeURIComponent(site.site_logo_media_id)}/view`
-                : site.default_site_logo_url,
-            };
-          },
-        });
-        return withTransportSecurity(
-          await staticFiles(request) ?? unavailable(request, 404, "Route not found"),
-          requestUrl,
-        );
-      } catch (error) {
-        console.error("Cloudflare runtime request failed", error);
-        return withTransportSecurity(unavailable(request, 503, "Service unavailable"), requestUrl);
-      }
+          return withTransportSecurity(
+            await staticHandler(environment, runtime)(request) ?? unavailable(request, 404, "Route not found"),
+            requestUrl,
+          );
+        } catch (error) {
+          console.error("Cloudflare runtime request failed", error);
+          return withTransportSecurity(unavailable(request, 503, "Service unavailable"), requestUrl);
+        }
+      });
     },
 
-    async scheduled(
+    scheduled(
       event: ScheduledController,
       environment: CloudflareEnvironment,
       execution: ExecutionContext,
     ): Promise<void> {
-      try {
-        const runtime = compose(environment, execution);
-        await assertSchema(environment.DB, runtime.sql);
-        if (!dispatchCloudflareScheduledJobs(event, execution, runtime.application.services.scheduledJobs)) {
-          console.warn("Ignoring unknown Cloudflare schedule", { cron: event.cron });
+      if (isMaintenanceModeEnabled(environment.IG_MAINTENANCE_MODE)) return Promise.resolve();
+      return executionScope.run(execution, async () => {
+        try {
+          const runtime = composition(environment);
+          await assertSchema(environment.DB, runtime.sql);
+          if (!dispatchCloudflareScheduledJobs(event, execution, runtime.application.services.scheduledJobs)) {
+            console.warn("Ignoring unknown Cloudflare schedule", { cron: event.cron });
+          }
+        } catch (error) {
+          console.error("Cloudflare scheduled dispatch failed", error);
+          throw error;
         }
-      } catch (error) {
-        console.error("Cloudflare scheduled dispatch failed", error);
-        throw error;
-      }
+      });
     },
   } satisfies ExportedHandler<CloudflareEnvironment>;
+}
+
+async function handleApiRequest(
+  request: Request,
+  runtime: CloudflareComposition,
+  execution: ExecutionContext,
+  responseCache: CloudflareResponseCacheFactory,
+): Promise<Response> {
+  if (!isCacheableMediaRequest(request)) return runtime.application.api.fetch(request);
+  const cache = responseCache();
+  const cacheKey = mediaCacheKey(request);
+  const cached = await cache.match(cacheKey);
+  if (cached) return cached;
+
+  const response = await runtime.application.api.fetch(request);
+  if (isPublicCacheableResponse(response)) {
+    execution.waitUntil(cache.put(cacheKey, response.clone()));
+  }
+  return response;
+}
+
+function isCacheableMediaRequest(request: Request): boolean {
+  return request.method === "GET"
+    && new URL(request.url).pathname.startsWith("/api/media/")
+    && !request.headers.has("Range");
+}
+
+function mediaCacheKey(request: Request): Request {
+  const url = new URL(request.url);
+  url.search = "";
+  return new Request(url, { method: "GET" });
+}
+
+function isPublicCacheableResponse(response: Response): boolean {
+  if (!response.ok) return false;
+  const directives = new Set((response.headers.get("Cache-Control") ?? "")
+    .split(",")
+    .map((directive) => directive.trim().toLowerCase()));
+  return directives.has("public") && !directives.has("private") && !directives.has("no-store");
 }
 
 async function handleWebSocket(
@@ -196,30 +298,32 @@ async function handleWebSocket(
   environment: CloudflareEnvironment,
   runtime: CloudflareComposition,
 ): Promise<Response> {
-  const origin = request.headers.get("Origin");
-  const allowed = new Set([runtime.config.publicUrl, ...(runtime.config.allowedOrigins ?? [])]);
-  if (!origin || !allowed.has(origin)) return new Response("Forbidden WebSocket origin", { status: 403 });
+  /* 426 在闸门之前：普通 HTTP 打到 /ws 是协议用错了，与来源无关，两个运行时
+     对这一点的答复必须一致。 */
   if (request.headers.get("Upgrade")?.toLowerCase() !== "websocket") {
     return new Response("Expected websocket", { status: 426 });
   }
 
-  const retryAfterSeconds = seconds(LIMITS.websocket.handshakes.windowMs);
-  const rate = await new CloudflareRateLimiter(environment.WEBSOCKET_RATE_LIMITER, retryAfterSeconds)
-    .consume(`ws:${runtime.clientIdentifier(request)}`);
-  if (!rate.allowed) {
-    return new Response("Too many WebSocket handshakes", {
-      status: 429,
-      headers: { "Retry-After": String(rate.retryAfterSeconds ?? retryAfterSeconds) },
+  const admission = await admitWebSocketHandshake({
+    request,
+    clientKey: runtime.clientIdentifier(request),
+    rateLimiter: new CloudflareRateLimiter(
+      environment.WEBSOCKET_RATE_LIMITER,
+      seconds(LIMITS.websocket.handshakes.windowMs),
+    ),
+    auth: runtime.application.services.auth,
+    config: runtime.config,
+    nowIso: new Date().toISOString(),
+  });
+  if (!admission.accepted) {
+    return new Response(admission.reason, {
+      status: admission.status,
+      ...(admission.retryAfterSeconds !== undefined
+        ? { headers: { "Retry-After": String(admission.retryAfterSeconds) } }
+        : {}),
     });
   }
-
-  const token = readSessionCookie(request, resolveSessionCookieName(runtime.config.sessionCookieName));
-  const { authorization } = await runtime.application.services.auth.resolveAuthorization(
-    token,
-    new Date().toISOString(),
-  );
-  if (!authorization.isAuthenticated()) return new Response("Authentication required", { status: 401 });
-  return forwardCloudflareNotificationWebSocket(request, authorization, runtime.notifications);
+  return forwardCloudflareNotificationWebSocket(request, admission.authorization, runtime.notifications);
 }
 
 function isApiPath(pathname: string): boolean {
@@ -246,7 +350,7 @@ function redirectToHttps(url: URL): Response {
 function withTransportSecurity(response: Response, url: URL): Response {
   if (url.protocol !== "https:" || isLoopbackHostname(url.hostname)) return response;
   const headers = new Headers(response.headers);
-  headers.set("Strict-Transport-Security", "max-age=31536000");
+  headers.set("Strict-Transport-Security", "max-age=31536000; includeSubDomains");
   return new Response(response.body, {
     status: response.status,
     statusText: response.statusText,

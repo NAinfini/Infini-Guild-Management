@@ -22,7 +22,7 @@ import { readSlotFingerprint } from "./support/fingerprint";
 /**
  * 每次 e2e 运行的起点，对**每个并行槽位**各做一遍：
  * 1. 等该槽位的 Cloudflare runtime 起来；core migration/fixture 已在启动前离线完成；
- * 2. 登录 site_owner 并存一份管理员会话；
+ * 2. 登录种子中的 admin 身份并保存管理员会话；
  * 3. 直接读取本槽位 D1/R2 元数据作为基线；
  * 4. 开一次权限门禁的系统测试运行，变更产物靠它按主键清理。
  *

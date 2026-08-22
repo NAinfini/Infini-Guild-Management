@@ -2,9 +2,9 @@
 
 # Infini Guild Management Portal
 
-**A self-hosted guild portal for members, events, wars, knowledge, media, storage, and staff operations.**
+**A self-hosted portal for running a guild: members, events, wars, knowledge, media, storage, and administration.**
 
-The React portal and Hono API share TypeScript contracts and run on either Cloudflare Workers or a single-process Node.js VPS.
+The React portal and Hono API share TypeScript contracts. Deploy them to Cloudflare Workers or a single-process Node.js VPS.
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](./LICENSE)
 [![TypeScript](https://img.shields.io/badge/TypeScript-6-blue?logo=typescript)](https://www.typescriptlang.org/)
@@ -21,30 +21,30 @@ The React portal and Hono API share TypeScript contracts and run on either Cloud
 
 ## Overview
 
-Infini Guild Management keeps routine guild work in one bilingual, responsive portal instead of spreading it across spreadsheets, chat pins, media folders, and one-off utilities. Both supported backends serve the SPA and API from one origin; choose Cloudflare or VPS for a deployment, never both over the same data.
+Infini Guild Management brings day-to-day guild work into one bilingual, responsive portal instead of scattering it across spreadsheets, pinned chat messages, media folders, and one-off tools. Both backends serve the SPA and API from the same origin. A deployment uses either Cloudflare or VPS, never both against the same data.
 
 ## User-facing capabilities
 
 | Area | Current capability |
 | --- | --- |
-| Dashboard and roster | Public dashboard summaries; searchable member cards; classes, badges, stats, availability, profiles, images, video links, avatars, and optional profile audio |
-| Accounts and profiles | Invite registration, cookie sessions, username/password changes, profile editing, absences, media management, and profile-title styling |
-| Events | Six fixed event types, recurring templates, attachments, capacity and class quotas, signups, participant management, polls, raffles, and automatic archival |
-| Announcements | Rich-text drafts with pending inline media, scheduled publishing, pinning, archive, and permanent-delete workflows |
-| Guild war | Active-war teams and pool, member moves and role tags, conclusion, history, batch editing, export, and analytics |
-| Wiki and gallery | Categorized rich-text articles with revisions and restore; gallery images, external videos, captions, and moderation |
+| Dashboard and roster | Public dashboard summaries and searchable member cards with classes, badges, stats, availability, profiles, images, video links, avatars, and optional profile audio |
+| Accounts and profiles | Invite-based registration, cookie sessions, username and password changes, profile editing, absences, media management, and profile-title styling |
+| Events | Six fixed event types, recurring templates, attachments, capacity and class quotas, signups, participant management, polls, raffles, and automatic archiving |
+| Announcements | Rich-text drafts with pending inline media, scheduled publishing, pinning, archiving, and permanent deletion |
+| Guild war | Active-war teams and pool, member moves, role tags, conclusion, history, batch editing, export, and analytics |
+| Wiki and gallery | Categorized rich-text articles with revisions and restore, plus gallery images, external videos, captions, and moderation |
 | Storage | Authenticated inventory structures, categories, items, images, quantities, and transaction history |
-| Tools and settings | Public settings and a Tools page with the dice roller |
-| Administration | Members, invites, roles and permissions, audit archives/logs, error and service status, Site Config, classes, class tags, badges, and maintenance actions |
-| Discovery and updates | Command search plus authenticated WebSocket update hints through the selected runtime's notification hub |
+| Tools and settings | Public settings and a dice roller on the Tools page |
+| Administration | Members, invites, roles and permissions, audit archives and logs, error and service status, Site Config, classes, class tags, and badges |
+| Discovery and updates | Command search and authenticated WebSocket update hints through the selected runtime's notification hub |
 
 ### Page access
 
-Guest-readable pages are `/`, `/events`, `/roster`, `/announcements`, `/guild-war`, `/gallery`, `/wiki`, `/settings`, and `/tools`. Login and invite registration use `/login` and `/register`. `/profile`, `/storage`, `/storage/manage`, and `/admin` require a session, with privileged actions checked again by the API.
+Guests can read `/`, `/events`, `/roster`, `/announcements`, `/guild-war`, `/gallery`, `/wiki`, `/settings`, and `/tools`. Login and invite registration are available at `/login` and `/register`. `/profile`, `/storage`, `/storage/manage`, and `/admin` require a session; the API checks privileged actions again.
 
 ## Configuration boundaries
 
-Admin → Site Config and its API contract cover the site name and logo, feature flags, media policy, storage policy, and absence policy. The current module switches are exactly:
+Admin → Site Config and its API contract manage the site name and logo, feature flags, media policy, storage policy, and absence policy. These are the complete set of module switches:
 
 ```text
 announcements, events, guildWar, gallery, wiki, tools, storage
@@ -52,14 +52,14 @@ announcements, events, guildWar, gallery, wiki, tools, storage
 
 Guild-war analytics settings use their separate admin endpoint.
 
-Rules that affect persisted event and guild-war data remain source-owned contracts:
+Rules that affect persisted event and guild-war data are defined in source:
 
 - Event types are exactly `weekly_mission`, `guild_war`, `social`, `poll`, `raffle`, and `other`.
 - Guild-war results are exactly `win`, `loss`, and `draw`.
 - KDA is `(kills + assists) / max(deaths, 1)` and is not rounded before consumers format it.
 - Team and member stat definitions have one source-owned `name`; they do not carry localized `labels` or a `precision` setting.
 
-Admin and Site Config cannot edit these rules. D1 contains no runtime game-rule columns or tables. Changing a persisted contract requires coordinated code and data migration work.
+Neither Admin nor Site Config can edit these rules. D1 contains no runtime game-rule columns or tables. Changing a persisted contract requires coordinated code and data migrations.
 
 ## Architecture and stack
 
@@ -79,17 +79,17 @@ packages/
 
 | Layer | Current stack |
 | --- | --- |
-| Frontend | React 19.2, Vite 8.2, Mantine 9.5, TanStack Router/Query, Zustand 5, and plain CSS with custom properties; Tailwind is not used |
-| Language and validation | TypeScript 6 and Zod 4 shared across portal and both backends |
+| Frontend | React 19.2, Vite 8.2, Mantine 9.5, TanStack Router/Query, Zustand 5, and plain CSS with custom properties; no Tailwind |
+| Language and validation | TypeScript 6 and Zod 4, shared by the portal and both backends |
 | Content and charts | TipTap 3 and ECharts 6 |
 | Cloudflare backend | Hono, D1, one `BLOBS` R2 bucket, Cron Triggers, and a notification Durable Object |
 | VPS backend | Hono on Node.js, one local SQLite file, one filesystem blob root, and in-process scheduling/WebSockets |
 
-The single physical blob namespace (`BLOBS` on Cloudflare or the configured VPS blob root) stores both persisted content media and audit archive data. Audit batches use canonical `audit/YYYY/MM/<archiveId>.ndjson` objects; their authoritative size, digest, range, and lifecycle metadata lives in the shared SQLite `audit_archives` table. There is no second archive store.
+One physical blob namespace (`BLOBS` on Cloudflare or the configured VPS blob root) stores persisted content media and audit archives. Audit batches use canonical `audit/YYYY/MM/<archiveId>.ndjson` objects. The shared SQLite `audit_archives` table is authoritative for their size, digest, range, and lifecycle metadata; there is no second archive store.
 
-Persisted images use mandatory WebP `full` and `view` variants; profile audio uses Ogg/Opus. The selected backend verifies bytes, dimensions, and required variants before attachment. SVG and GIF are not accepted as images. See [Media Architecture](./docs/media-architecture.md) for the canonical persistence contract.
+Persisted images require WebP `full` and `view` variants; profile audio uses Ogg/Opus. Before attachment, the selected backend verifies the bytes, dimensions, and required variants. SVG and GIF are not accepted as images.
 
-Media bytes are staged before a domain mutation. The owning parent, business children, media links, and audit row are then committed in one SQLite transaction; a failed transaction leaves only staged assets for bounded garbage collection. Parent deletion and its audit row are also atomic, while shared SQLite lifecycle triggers remove links and schedule unreferenced assets for expiry. Blob keys derive only from the opaque media ID plus the fixed `full`/`view` variant name, never from a domain ID, filename, or upload path.
+Media bytes are staged before a domain mutation. The owning parent, business children, media links, and audit row then commit in one SQLite transaction. A failed transaction leaves only staged assets for bounded garbage collection. Parent deletion and its audit row are also atomic. Shared SQLite lifecycle triggers remove links and schedule unreferenced assets for expiry. Blob keys use only the opaque media ID and fixed `full`/`view` variant name, never a domain ID, filename, or upload path.
 
 ## API surface
 
@@ -108,10 +108,10 @@ All HTTP APIs are under `/api/`; authentication uses HTTP-only session cookies.
 | `/api/media` | Database-authorized `view`/`full` delivery for canonical blob variants |
 | `/api/storage` | Storage structures, items, images, quantities, and transactions |
 | `/api/classes`, `/api/class-tags`, `/api/badges` | Runtime catalogs and badge assignments |
-| `/api/admin`, `/api/admin/maintenance` | Users, invites, roles, Site Config, analytics settings, audit/error/status data, system tests, and maintenance |
+| `/api/admin` | Users, invites, roles, Site Config, analytics settings, audit/error/status data, and system tests |
 | `/ws` | Authenticated WebSocket endpoint backed by a Durable Object or the VPS in-process hub |
 
-Mutations require origin and `X-Requested-With` checks. Both backends apply separate rate limits for authentication, reads, writes, uploads, and credential changes.
+Mutations require origin and `X-Requested-With` checks. Both backends rate-limit authentication, reads, writes, uploads, and credential changes separately.
 
 ## Scheduled maintenance
 
@@ -120,17 +120,17 @@ Mutations require origin and `X-Requested-With` checks. Both backends apply sepa
 | Daily at 00:00 UTC | Audit archive and error-log cleanup |
 | Every 15 minutes | Event instance generation, raffle draws, session cleanup, scheduled announcement publishing, event auto-archive, and expired unlinked-media cleanup |
 
-Cloudflare uses Cron Triggers; the VPS runtime schedules the same jobs in its single Node.js process. Media cleanup selects only expired, unlinked database assets and deletes the exact recorded blob keys; it never guesses ownership from paths or scans blob storage as an authorization source.
+Cloudflare uses Cron Triggers. The VPS runtime schedules the same jobs in its single Node.js process. Media cleanup selects only expired, unlinked database assets and deletes their exact recorded blob keys. It never infers ownership from paths or treats a blob-storage scan as an authorization source.
 
 ## Setup and deployment
 
-[SETUP.md](./SETUP.md) is the source of truth for choosing Cloudflare or VPS, local development, the shared core schema, first-site-owner bootstrap, private legacy credential migration, production secrets, backup/restore, updates, and troubleshooting. Use [SETUP.zh.md](./SETUP.zh.md) for Chinese.
+[SETUP.md](./SETUP.md) is the authoritative guide to choosing Cloudflare or VPS, local development, the shared schema, first-admin bootstrap, production secrets, backup and restore, updates, and troubleshooting. For Chinese, use [SETUP.zh.md](./SETUP.zh.md).
 
-The sole checked-in pre-release baseline is `0000_core.sql`, and its manifest contains only that entry. Approved schema changes fold into it until the first release; later changes ship as immutable incremental migrations. A deployment that already applied the abandoned pre-release `0000`–`0002` chain must be rebuilt or explicitly rebaselined before its next deployment; there is no runtime compatibility path for that history. The setup guide states the full policy, including how to run on the Workers free plan and what to raise after upgrading.
+`0000_core.sql` is the released, frozen baseline; the manifest currently contains only that migration. Never edit or regenerate it. Every later change must add the next ordinal migration and update the manifest. Runtime validation applies the same ordered chain to Cloudflare D1 and VPS SQLite. The setup guide contains the full policy, including running on the Workers free plan and settings to raise after upgrading.
 
 ## Security
 
-Server-side permission checks are authoritative. Sessions use HTTP-only cookies; rich text is sanitized; security headers include CSP, frame denial, and `nosniff`. `IG_INVITE_TOKEN_SECRET` and `IG_AUDIT_DOWNLOAD_SECRET` must each contain at least 32 random bytes and stay in Cloudflare secret storage or the private VPS environment file.
+Server-side permission checks are authoritative. Sessions use HTTP-only cookies, rich text is sanitized, and security headers include CSP, frame denial, and `nosniff`. `IG_INVITE_TOKEN_SECRET` and `IG_AUDIT_DOWNLOAD_SECRET` must each contain at least 32 random bytes and stay in Cloudflare secret storage or the private VPS environment file.
 
 Report vulnerabilities privately according to [SECURITY.md](./SECURITY.md).
 

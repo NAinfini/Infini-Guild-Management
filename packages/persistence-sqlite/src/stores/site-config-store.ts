@@ -62,7 +62,7 @@ export class SqliteSiteConfigStore implements SiteConfigStore {
 
 function selectSiteConfig(): string {
   return `SELECT
-    site_name, site_logo_media_id, default_site_logo_url,
+    site_name, site_description, site_logo_media_id, default_site_logo_url,
     feature_announcements, feature_events, feature_guild_war, feature_gallery, feature_wiki, feature_tools, feature_storage,
     max_site_logo_bytes, max_class_icon_bytes, max_profile_image_bytes, max_profile_audio_bytes,
     max_announcement_image_bytes, max_wiki_image_bytes, max_event_image_bytes, max_gallery_image_bytes, max_storage_image_bytes,
@@ -79,7 +79,7 @@ function updateSiteConfig(record: SiteConfigRecord, expectedRevisionToken: strin
     method: "all",
     columns: ["affected"],
     sql: `UPDATE site_config SET
-      site_name = ?, site_logo_media_id = ?, default_site_logo_url = ?,
+      site_name = ?, site_description = ?, site_logo_media_id = ?, default_site_logo_url = ?,
       feature_announcements = ?, feature_events = ?, feature_guild_war = ?, feature_gallery = ?,
       feature_wiki = ?, feature_tools = ?, feature_storage = ?,
       max_site_logo_bytes = ?, max_class_icon_bytes = ?, max_profile_image_bytes = ?, max_profile_audio_bytes = ?,
@@ -100,7 +100,7 @@ function recordParams(record: SiteConfigRecord, expectedRevisionToken: string): 
   const quotas = record.media_policy.quotas;
   const weights = record.analytics_settings.modifier_weights;
   return [
-    record.site_name, record.site_logo_media_id, record.default_site_logo_url,
+    record.site_name, record.site_description, record.site_logo_media_id, record.default_site_logo_url,
     flag(record.features.announcements), flag(record.features.events), flag(record.features.guildWar),
     flag(record.features.gallery), flag(record.features.wiki), flag(record.features.tools), flag(record.features.storage),
     sizes.site_logo, sizes.class_icon, sizes.profile_image, sizes.profile_audio, sizes.announcement_image,
@@ -113,7 +113,7 @@ function recordParams(record: SiteConfigRecord, expectedRevisionToken: string): 
 }
 
 function mapSiteConfig(row: readonly SqlValue[]): SiteConfigRecord {
-  if (row.length !== 35) throw corrupt("Invalid site configuration projection");
+  if (row.length !== 36) throw corrupt("Invalid site configuration projection");
   const string = (index: number) => {
     const value = row[index];
     if (typeof value !== "string") throw corrupt("Invalid site configuration string");
@@ -136,30 +136,31 @@ function mapSiteConfig(row: readonly SqlValue[]): SiteConfigRecord {
   };
   const site = siteConfigSchema.parse({
     site_name: string(0),
-    site_logo_media_id: nullableString(1),
-    default_site_logo_url: string(2),
+    site_description: string(1),
+    site_logo_media_id: nullableString(2),
+    default_site_logo_url: string(3),
     features: {
-      announcements: boolean(3), events: boolean(4), guildWar: boolean(5), gallery: boolean(6),
-      wiki: boolean(7), tools: boolean(8), storage: boolean(9),
+      announcements: boolean(4), events: boolean(5), guildWar: boolean(6), gallery: boolean(7),
+      wiki: boolean(8), tools: boolean(9), storage: boolean(10),
     },
     media_policy: {
       max_file_size_bytes: {
-        site_logo: number(10), class_icon: number(11), profile_image: number(12), profile_audio: number(13),
-        announcement_image: number(14), wiki_image: number(15), event_image: number(16),
-        gallery_image: number(17), storage_image: number(18),
+        site_logo: number(11), class_icon: number(12), profile_image: number(13), profile_audio: number(14),
+        announcement_image: number(15), wiki_image: number(16), event_image: number(17),
+        gallery_image: number(18), storage_image: number(19),
       },
-      quotas: { profile: number(19), announcement: number(20), gallery: number(21), wiki: number(22) },
+      quotas: { profile: number(20), announcement: number(21), gallery: number(22), wiki: number(23) },
     },
-    storage_policy: { images_per_item: number(23) },
-    absence_policy: { max_span_days: number(24), max_entries_per_user: number(25) },
+    storage_policy: { images_per_item: number(24) },
+    absence_policy: { max_span_days: number(25), max_entries_per_user: number(26) },
     analytics_settings: {
-      reference_duration_minutes: number(26),
-      modifier_weights: { kills: number(27), towers: number(28), base_hp: number(29), credits: number(30), distance: number(31) },
+      reference_duration_minutes: number(27),
+      modifier_weights: { kills: number(28), towers: number(29), base_hp: number(30), credits: number(31), distance: number(32) },
     },
-    created_at: string(33),
-    updated_at: string(34),
+    created_at: string(34),
+    updated_at: string(35),
   });
-  return { ...site, revisionToken: string(32) };
+  return { ...site, revisionToken: string(33) };
 }
 
 function configGuard(revisionToken: string) {

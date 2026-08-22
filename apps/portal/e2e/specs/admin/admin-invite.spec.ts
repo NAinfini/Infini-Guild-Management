@@ -89,7 +89,7 @@ function searchBox(page: Page): Locator {
 function inviteRows(page: Page): Locator {
   return page.locator(".admin-table tbody tr");
 }
-/** 邀请码是 16 位随机串，用它挑行不会撞车。 */
+/** 邀请码是 10 位随机串，用它挑行不会撞车。 */
 function inviteRow(page: Page, code: string): Locator {
   return page.locator(".admin-table tbody tr").filter({ hasText: code });
 }

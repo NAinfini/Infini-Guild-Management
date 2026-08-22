@@ -1,34 +1,56 @@
+import { MantineProvider } from "@mantine/core";
+import { render, screen } from "@testing-library/react";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
-import { describe, expect, it } from "vitest";
-import { LATENCY_BAND_COLOR_VAR } from "./AdminSystemSection";
+import { createElement } from "react";
+import { describe, expect, it, vi } from "vitest";
+import { AdminSystemSection } from "./AdminSystemSection";
 
-const repoRoot = process.cwd();
-const CSS_PATH = resolve(repoRoot, "apps/portal/components/feature/admin/AdminSystemSection.css");
+vi.mock("react-i18next", () => ({
+  useTranslation: () => ({ t: (key: string) => key }),
+}));
 
-/* Latency rings, bars, and values project one shared band palette into JS and CSS. */
-describe("latency band colour parity (AdminSystemSection.tsx <-> AdminSystemSection.css)", () => {
-  it("keeps LATENCY_BAND_COLOR_VAR in sync with .health-log-latency-bar--* backgrounds", () => {
-    const css = readFileSync(CSS_PATH, "utf8").replace(/\/\*[\s\S]*?\*\//g, "");
-    const cssValues: Record<string, string> = {};
-    for (const rule of css.matchAll(/\.health-log-latency-bar--(\w+)\s*\{\s*background:\s*([^;]+);/g)) {
-      const band = rule[1] ?? "";
-      const value = rule[2] ?? "";
-      cssValues[band] = value.trim();
-    }
+function renderSection() {
+  render(createElement(
+    MantineProvider,
+    null,
+    createElement(AdminSystemSection, {
+      statusLoading: false,
+      statusError: false,
+      onRetryStatus: () => {},
+      statusData: {
+        db: "ok (D1)",
+        r2: "ok (R2)",
+        ws: "ok (Durable Object)",
+        crons: "configured (Cron Triggers)",
+      },
+      statusLatencyMs: 12,
+    }),
+  ));
+}
 
-    expect(cssValues).toEqual(LATENCY_BAND_COLOR_VAR);
+describe("AdminSystemSection", () => {
+  it("localizes decorated runtime signals without exposing backend details", () => {
+    renderSection();
+
+    expect(screen.getByText("D1")).toBeInTheDocument();
+    expect(screen.getByText("R2")).toBeInTheDocument();
+    expect(screen.getByText("status.signal.ok")).toBeInTheDocument();
+    expect(screen.getByText("status.signal.configured")).toBeInTheDocument();
+    expect(screen.queryByText(/DURABLE OBJECT/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/CRON TRIGGERS/i)).not.toBeInTheDocument();
   });
 
-  it("keeps LATENCY_BAND_COLOR_VAR in sync with .health-log-latency-value--* text colours", () => {
-    const css = readFileSync(CSS_PATH, "utf8").replace(/\/\*[\s\S]*?\*\//g, "");
-    const cssValues: Record<string, string> = {};
-    for (const rule of css.matchAll(/\.health-log-latency-value--(\w+)\s*\{\s*color:\s*([^;]+);/g)) {
-      const band = rule[1] ?? "";
-      const value = rule[2] ?? "";
-      cssValues[band] = value.trim();
-    }
+  it("uses the normal UI font and a width-safe table", () => {
+    const css = readFileSync(
+      resolve(process.cwd(), "apps/portal/components/feature/admin/AdminSystemSection.css"),
+      "utf8",
+    );
+    const signalRule = css.match(/\.system-health-ledger__signal\s*\{([^}]*)\}/)?.[1] ?? "";
+    const tableRule = css.match(/\.system-health-ledger__table\s*\{([^}]*)\}/)?.[1] ?? "";
 
-    expect(cssValues).toEqual(LATENCY_BAND_COLOR_VAR);
+    expect(signalRule).toContain("font-family: inherit");
+    expect(signalRule).not.toContain("monospace");
+    expect(tableRule).toContain("min-width: 0");
   });
 });

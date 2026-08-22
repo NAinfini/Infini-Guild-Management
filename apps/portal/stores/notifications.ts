@@ -1,7 +1,7 @@
 import type { PushMessage } from "@guild/shared";
 import i18n from "i18next";
 import { create } from "zustand";
-import { isIsoDate, toIsoOrNow } from "../utils/iso-dates";
+import { isIsoDate, toIsoOrNow } from "../utils/datetime";
 import { userScopedStorageKey } from "../session-storage";
 
 export type NotificationFeature = "announcements" | "members";

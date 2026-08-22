@@ -1,77 +1,22 @@
-import { readFileSync } from "node:fs";
 import { DatabaseSync, type SQLInputValue } from "node:sqlite";
-import { fileURLToPath } from "node:url";
 import { afterEach, describe, expect, it } from "vitest";
 import type { MediaReservation } from "@guild/server/modules/media";
-import {
-  MAX_SQL_BATCH_STATEMENTS,
-  assertSqlBatch,
-  assertSqlResultColumns,
-  assertSqlStatement,
-  type SqlBatchStatement,
-  type SqlExecutor,
-  type SqlResult,
-  type SqlRow,
-  type SqlStatement,
-} from "@guild/kernel";
+import { MAX_SQL_BATCH_STATEMENTS } from "@guild/kernel";
 import { createSchedulerAuditFactory } from "@guild/server/modules/jobs";
+import { applyAppMigrations } from "../testing/app-migrations.js";
+import { SqliteTestExecutor } from "../testing/sqlite-test-executor.js";
 import { assertMediaAttachments } from "./media-link-statements.js";
 import { SqliteMediaStore } from "./media-store.js";
 
 const NOW = "2026-08-09T12:00:00.000Z";
 const MEDIA_ID = "abcdefghijklmnopqrstu";
 const SECOND_MEDIA_ID = "vwxyzabcdefghijklmnop";
-const FRESH_MIGRATION = readFileSync(
-  fileURLToPath(new URL("../migrations/generated/0000_core.sql", import.meta.url)),
-  "utf8",
-).replaceAll("--> statement-breakpoint", "");
 const WIKI_REVISION_MEDIA_TABLE = `CREATE TABLE IF NOT EXISTS wiki_revision_media (
   revision_id TEXT NOT NULL,
   media_id TEXT NOT NULL,
   audience TEXT NOT NULL
 )`;
 const databases: DatabaseSync[] = [];
-
-class TestExecutor implements SqlExecutor {
-  readonly statements: SqlStatement[] = [];
-  readonly batches: SqlBatchStatement[][] = [];
-  batchCalls = 0;
-
-  constructor(private readonly database: DatabaseSync) {}
-
-  async execute(statement: SqlStatement): Promise<SqlResult> {
-    assertSqlStatement(statement);
-    this.statements.push(statement);
-    const prepared = this.database.prepare(statement.sql);
-    prepared.setReturnArrays(true);
-    const params = [...(statement.params ?? [])] as SQLInputValue[];
-    if (statement.method === "run") {
-      const result = prepared.run(...params);
-      return { rows: [], ...(result.lastInsertRowid === 0 ? {} : { lastInsertRowId: result.lastInsertRowid }) };
-    }
-    assertSqlResultColumns(statement, prepared.columns().map(({ name }) => name));
-    if (statement.method === "get") {
-      return { rows: prepared.get(...params) as unknown as SqlRow | undefined };
-    }
-    return { rows: prepared.all(...params) as unknown as readonly SqlRow[] };
-  }
-
-  async batch(statements: readonly SqlBatchStatement[]): Promise<readonly SqlResult[]> {
-    assertSqlBatch(statements);
-    this.batches.push([...statements]);
-    this.batchCalls += 1;
-    this.database.exec("BEGIN IMMEDIATE");
-    try {
-      const results: SqlResult[] = [];
-      for (const statement of statements) results.push(await this.execute(statement));
-      this.database.exec("COMMIT");
-      return results;
-    } catch (error) {
-      this.database.exec("ROLLBACK");
-      throw error;
-    }
-  }
-}
 
 afterEach(() => {
   for (const database of databases.splice(0)) database.close();
@@ -82,7 +27,7 @@ describe("SqliteMediaStore shared asset links", () => {
     const database = new DatabaseSync(":memory:");
     databases.push(database);
     database.exec("PRAGMA foreign_keys = ON");
-    database.exec(FRESH_MIGRATION);
+    applyAppMigrations(database);
     database.exec(WIKI_REVISION_MEDIA_TABLE);
     database.prepare(`INSERT INTO users (id, username, role_id, revision_token)
       VALUES ('owner-1', 'Owner', 'member', 'owner-revision-0001')`).run();
@@ -104,7 +49,7 @@ describe("SqliteMediaStore shared asset links", () => {
       (media_id, entity_type, entity_id, slot, audience, sort_order)
       VALUES (?, 'recurring_template', 'template-1', 'attachment', 'private', 0)`)
       .run(MEDIA_ID);
-    const sql = new TestExecutor(database);
+    const sql = new SqliteTestExecutor(database);
     await expect(assertMediaAttachments(sql, {
       actorUserId: "owner-1",
       entityType: "event",
@@ -170,21 +115,16 @@ describe("SqliteMediaStore shared asset links", () => {
     const database = new DatabaseSync(":memory:");
     databases.push(database);
     database.exec("PRAGMA foreign_keys = ON");
-    database.exec(FRESH_MIGRATION);
+    applyAppMigrations(database);
     database.prepare(`INSERT INTO users (id, username, role_id, revision_token)
       VALUES ('owner-1', 'Owner', 'member', 'owner-revision-0001')`).run();
-    const executor = new TestExecutor(database);
+    const executor = new SqliteTestExecutor(database);
     const store = new SqliteMediaStore(executor);
     const reservations = [reservation(MEDIA_ID), reservation(SECOND_MEDIA_ID)];
-    const audits = reservations.map(({ id }, index) => createSchedulerAuditFactory(`reserve-${index}`, NOW)({
-      entityType: "media_asset",
-      entityId: id,
-      action: "upload",
-    }));
 
-    await store.reserveUploads(reservations, audits);
-    expect(executor.batchCalls).toBe(1);
-    expect(executor.statements).toHaveLength(3);
+    await store.reserveUploads(reservations);
+    expect(executor.batches).toHaveLength(1);
+    expect(executor.batches[0]).toHaveLength(2);
     const beforeStage = executor.statements.length;
     await store.markStaged([MEDIA_ID, SECOND_MEDIA_ID], NOW);
 
@@ -193,49 +133,31 @@ describe("SqliteMediaStore shared asset links", () => {
       .toEqual([{ state: "staged" }, { state: "staged" }]);
   });
 
-  it("keeps the maximum upload reservation set bounded and rolls it back on a late audit failure", async () => {
+  it("keeps the maximum upload reservation set bounded and rolls it back on a late variant failure", async () => {
     const success = mediaFixture();
     const reservations = Array.from({ length: 50 }, (_, index) => imageReservation(mediaId(index)));
-    const audits = reservations.map(({ id }, index) => createSchedulerAuditFactory(`reserve-max-${index}`, NOW)({
-      entityType: "media_asset",
-      entityId: id,
-      action: "upload",
-      details: { purpose: "event_image" },
-    }));
 
-    await success.store.reserveUploads(reservations, audits);
+    await success.store.reserveUploads(reservations);
     expect(success.executor.batches.at(-1)?.length).toBeLessThanOrEqual(MAX_SQL_BATCH_STATEMENTS);
     expect(success.database.prepare("SELECT count(*) AS count FROM media_assets").get()).toMatchObject({ count: 50 });
     expect(success.database.prepare("SELECT count(*) AS count FROM media_variants").get()).toMatchObject({ count: 100 });
-    expect(success.database.prepare("SELECT count(*) AS count FROM audit_log").get()).toMatchObject({ count: 50 });
 
     const failed = mediaFixture();
-    const duplicate = audits.at(-1)!;
-    failed.database.prepare(`INSERT INTO audit_log (
-      id, request_id, actor_user_id, entity_type, entity_id, action, occurred_at
-    ) VALUES (?, ?, ?, ?, ?, ?, ?)`).run(
-      duplicate.id,
-      duplicate.requestId,
-      duplicate.actorUserId,
-      duplicate.entityType,
-      duplicate.entityId,
-      duplicate.action,
-      duplicate.occurredAt,
-    );
+    const last = reservations.at(-1)!;
+    const invalid = [...reservations.slice(0, -1), { ...last, variants: [last.variants[0]!, last.variants[0]!] }];
 
-    await expect(failed.store.reserveUploads(reservations, audits)).rejects.toThrow(/UNIQUE/i);
+    await expect(failed.store.reserveUploads(invalid)).rejects.toThrow(/UNIQUE/i);
     expect(failed.executor.batches.at(-1)?.length).toBeLessThanOrEqual(MAX_SQL_BATCH_STATEMENTS);
     expect(failed.database.prepare("SELECT count(*) AS count FROM media_assets").get()).toMatchObject({ count: 0 });
     expect(failed.database.prepare("SELECT count(*) AS count FROM media_variants").get()).toMatchObject({ count: 0 });
-    expect(failed.database.prepare("SELECT count(*) AS count FROM audit_log").get()).toMatchObject({ count: 1 });
   });
 
   it("uses media-id indexes for every read-link source", async () => {
     const database = new DatabaseSync(":memory:");
     databases.push(database);
     database.exec("PRAGMA foreign_keys = ON");
-    database.exec(FRESH_MIGRATION);
-    const sql = new TestExecutor(database);
+    applyAppMigrations(database);
+    const sql = new SqliteTestExecutor(database);
     const store = new SqliteMediaStore(sql);
 
     await store.describeRead(MEDIA_ID, "view", NOW);
@@ -254,37 +176,37 @@ describe("SqliteMediaStore shared asset links", () => {
     const database = new DatabaseSync(":memory:");
     databases.push(database);
     database.exec("PRAGMA foreign_keys = ON");
-    database.exec(FRESH_MIGRATION);
+    applyAppMigrations(database);
     database.exec(WIKI_REVISION_MEDIA_TABLE);
     const insert = database.prepare(`INSERT INTO media_assets (
       id, purpose, media_type, state, delete_claim_token, delete_claim_until, created_at, updated_at
     ) VALUES (?, 'event_image', 'image', 'deleting', ?, ?, ?, ?)`);
     insert.run(MEDIA_ID, "claim-success", "2026-08-09T12:10:00.000Z", NOW, NOW);
-    const store = new SqliteMediaStore(new TestExecutor(database));
+    const store = new SqliteMediaStore(new SqliteTestExecutor(database));
     await store.finalizeDeletion(
       MEDIA_ID,
       "claim-success",
       createSchedulerAuditFactory("media-success", NOW)({
-        entityType: "media_cleanup",
-        entityId: MEDIA_ID,
+        subjectType: "media_cleanup",
+        subjectId: MEDIA_ID,
         action: "delete",
       }),
     );
     expect(database.prepare("SELECT id FROM media_assets WHERE id = ?").get(MEDIA_ID)).toBeUndefined();
-    expect(database.prepare("SELECT actor_user_id FROM audit_log WHERE entity_id = ?").get(MEDIA_ID))
-      .toMatchObject({ actor_user_id: "system:scheduler" });
+    expect(database.prepare("SELECT actor_id FROM audit_log WHERE subject_id = ?").get(MEDIA_ID))
+      .toMatchObject({ actor_id: "system:scheduler" });
 
     const failedId = SECOND_MEDIA_ID;
     insert.run(failedId, "claim-failure", "2026-08-09T12:10:00.000Z", NOW, NOW);
     database.exec(`CREATE TRIGGER reject_media_cleanup_audit
-      BEFORE INSERT ON audit_log WHEN NEW.entity_id = '${failedId}'
+      BEFORE INSERT ON audit_log WHEN NEW.subject_id = '${failedId}'
       BEGIN SELECT RAISE(ABORT, 'media audit rejected'); END;`);
     await expect(store.finalizeDeletion(
       failedId,
       "claim-failure",
       createSchedulerAuditFactory("media-failure", NOW)({
-        entityType: "media_cleanup",
-        entityId: failedId,
+        subjectType: "media_cleanup",
+        subjectId: failedId,
         action: "delete",
       }),
     )).rejects.toThrow("media audit rejected");
@@ -296,7 +218,7 @@ describe("SqliteMediaStore shared asset links", () => {
     const database = new DatabaseSync(":memory:");
     databases.push(database);
     database.exec("PRAGMA foreign_keys = ON");
-    database.exec(FRESH_MIGRATION);
+    applyAppMigrations(database);
     const expiresAt = "2026-08-09T11:00:00.000Z";
     const insertAsset = database.prepare(`INSERT INTO media_assets (
       id, purpose, media_type, state, expires_at, created_at, updated_at
@@ -309,7 +231,7 @@ describe("SqliteMediaStore shared asset links", () => {
       insertVariant.run(mediaId, `media/${mediaId}/view.webp`, "b".repeat(64));
     }
 
-    const store = new SqliteMediaStore(new TestExecutor(database));
+    const store = new SqliteMediaStore(new SqliteTestExecutor(database));
     await expect(store.inspectGarbageBacklog(NOW)).resolves.toEqual({
       status: "known",
       pendingCount: 2,
@@ -350,10 +272,10 @@ function mediaFixture() {
   const database = new DatabaseSync(":memory:");
   databases.push(database);
   database.exec("PRAGMA foreign_keys = ON");
-  database.exec(FRESH_MIGRATION);
+  applyAppMigrations(database);
   database.prepare(`INSERT INTO users (id, username, role_id, revision_token)
     VALUES ('owner-1', 'Owner', 'member', 'owner-revision-0001')`).run();
-  const executor = new TestExecutor(database);
+  const executor = new SqliteTestExecutor(database);
   return { database, executor, store: new SqliteMediaStore(executor) };
 }
 

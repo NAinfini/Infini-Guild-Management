@@ -17,6 +17,7 @@ const UPDATE_CONFIG = { method: "PATCH", path: /^\/api\/admin\/site-config$/ } a
 
 type SiteConfig = {
   site_name: string;
+  site_description: string;
   site_logo_media_id: string | null;
   features: Record<string, boolean>;
   media_policy: {
@@ -49,6 +50,7 @@ test.afterEach(async ({ api }) => {
     await api.patch("/api/admin/site-config", {
       data: {
         site_name: previous.site_name,
+        site_description: previous.site_description,
         features: previous.features,
         media_policy: previous.media_policy,
         storage_policy: previous.storage_policy,

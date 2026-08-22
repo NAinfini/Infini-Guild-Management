@@ -1,3 +1,4 @@
+// @vitest-environment node
 import { describe, expect, it, vi, beforeEach } from "vitest";
 
 const mockFetch = vi.fn();
@@ -124,7 +125,7 @@ describe("AdminService mutations", () => {
   });
 
   it("createAdminInviteLink sends POST with payload", async () => {
-    mockFetch.mockResolvedValueOnce(mockJsonResponse({ id: "inv-1", code: "ABC" }));
+    mockFetch.mockResolvedValueOnce(mockJsonResponse({ id: "inv-1", code: "A1b2C3d4E5" }));
     await createAdminInviteLink({ role_id: "member", max_uses: 10 });
     const [url, init] = mockFetch.mock.calls[0]!;
     expect(url).toContain("/api/admin/invite-links");

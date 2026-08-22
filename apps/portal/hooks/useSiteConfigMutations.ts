@@ -34,26 +34,20 @@ export function useSiteConfigMutations({ showError }: UseSiteConfigMutationsPara
     queryClient.setQueryData(queryKeys.siteConfig.admin(), data);
   };
 
-  const invalidateSiteConfig = async () => {
-    await queryClient.invalidateQueries({ queryKey: queryKeys.siteConfig.all });
-  };
-
   const updateSiteConfigMutation = useMutation({
     mutationFn: (payload: UpdateSiteConfigPayload) => updateAdminSiteConfig(payload),
-    onSuccess: async (data) => {
+    onSuccess: (data) => {
       applySiteConfig(data);
       notifySuccess(t("siteConfig.message.saved"));
-      await invalidateSiteConfig();
     },
     onError: (error) => showError(error, t("siteConfig.message.saveFailed")),
   });
 
   const uploadSiteLogoMutation = useMutation({
     mutationFn: (file: File) => uploadAdminSiteLogo(file),
-    onSuccess: async (data) => {
+    onSuccess: (data) => {
       applySiteConfig(data);
       notifySuccess(t("siteConfig.message.logoUploaded"));
-      await invalidateSiteConfig();
     },
     onError: (error) => showError(error, t("siteConfig.message.logoUploadFailed")),
   });

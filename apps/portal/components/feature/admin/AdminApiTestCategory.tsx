@@ -1,4 +1,4 @@
-import { ActionIcon, RingProgress } from "@mantine/core";
+import { ActionIcon } from "@mantine/core";
 import {
   AlertTriangleIcon,
   BoltIcon,
@@ -17,7 +17,8 @@ import {
   TrophyIcon,
   UsersIcon,
 } from "@portal/components/icons";
-import { type ComponentType, useId, useState } from "react";
+import { type ComponentType, useEffect, useId, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { type CategoryDef, type EndpointResult, type EndpointDef } from "./AdminApiTestEngine";
 import "./AdminApiTest.css";
 
@@ -68,9 +69,7 @@ function progressState(allPassed: boolean, hasFail: boolean): ProgressState {
   return "pending";
 }
 
-/* RingProgress accepts literal CSS variables, but this pattern must not be reused
- * in auto-contrast components because Mantine classifies var() colors as dark. */
-// Exported so the CSS parity test keeps progress bars and rings on the same palette.
+// Exported so the CSS parity test keeps every category progress state on one palette.
 export const PROGRESS_STATE_COLOR_VAR: Record<ProgressState, string> = {
   fail: "var(--status-danger)",
   pass: "var(--status-success)",
@@ -120,9 +119,11 @@ export function ApiTestCategory({
   resultMap: Map<string, EndpointResult>;
   showOnlyErrors?: boolean;
 }) {
+  const { t } = useTranslation("admin");
   const [open, setOpen] = useState(false);
   const endpointsId = useId();
 
+  const anyCategoryRunning = runningSet.size > 0;
   const catRunning = category.endpoints.some((ep) => runningSet.has(epKey(category.key, ep)));
   const catDone = category.endpoints.filter((ep) => resultMap.has(epKey(category.key, ep))).length;
   const catTotal = category.endpoints.length;
@@ -134,6 +135,15 @@ export function ApiTestCategory({
     return isEndpointError(resultMap.get(epKey(category.key, ep)));
   });
   const pct = catTotal > 0 ? Math.round((catDone / catTotal) * 100) : 0;
+
+  let catPassed = 0;
+  let catFailed = 0;
+  for (const endpoint of category.endpoints) {
+    const result = resultMap.get(epKey(category.key, endpoint));
+    if (!result) continue;
+    if (isEndpointError(result)) catFailed++;
+    else catPassed++;
+  }
 
   let avgLatency = 0;
   let latencyCount = 0;
@@ -148,10 +158,6 @@ export function ApiTestCategory({
 
   const Icon = CATEGORY_ICONS[category.key] ?? DatabaseIcon;
 
-  const accentCls = catRunning
-    ? "api-cat__accent--running"
-    : catDone === 0 ? "" : catDone < catTotal ? "api-cat__accent--partial" : allPassed ? "api-cat__accent--pass" : "api-cat__accent--fail";
-
   const statusDot = catDone === 0
     ? null
     : allPassed
@@ -161,18 +167,27 @@ export function ApiTestCategory({
         : "api-cat__status-dot--partial";
 
   const progressStateValue = progressState(allPassed, hasFail);
-  const ringColor = PROGRESS_STATE_COLOR_VAR[progressStateValue];
+  const statusLabel = catRunning
+    ? t("status.api.state.running")
+    : catDone === 0
+      ? t("status.api.state.notRun")
+      : allPassed
+        ? t("status.api.state.passed")
+        : hasFail
+          ? t("status.api.state.failed")
+          : t("status.api.state.incomplete");
 
-  const shouldAutoOpen = catRunning || (catDone > 0 && catDone < catTotal);
-  const isOpen = open || shouldAutoOpen;
+  useEffect(() => {
+    if (anyCategoryRunning) setOpen(false);
+  }, [anyCategoryRunning]);
+
+  const isOpen = catRunning || (!anyCategoryRunning && open);
   const displayedEndpoints = showOnlyErrors
     ? category.endpoints.filter((ep) => isEndpointError(resultMap.get(epKey(category.key, ep))))
     : category.endpoints;
 
   return (
     <div className="api-cat">
-      <div className={`api-cat__accent ${accentCls}`} />
-
       <div className="api-cat__row">
         <button
           type="button"
@@ -180,38 +195,32 @@ export function ApiTestCategory({
           aria-expanded={isOpen}
           aria-controls={endpointsId}
           aria-label={`${category.label}: ${catDone}/${catTotal}`}
+          disabled={anyCategoryRunning}
           onClick={() => setOpen((previous) => !previous)}
         >
-          <span className={`api-cat__chevron ${isOpen ? "api-cat__chevron--open" : ""}`}>
-            <ChevronRightIcon size={13} />
+          <span className="api-cat__identity">
+            <span className={`api-cat__chevron ${isOpen ? "api-cat__chevron--open" : ""}`}>
+              <ChevronRightIcon size={13} />
+            </span>
+            <span className="api-cat__icon"><Icon size={15} /></span>
+            <span className="api-cat__name">{category.label}</span>
           </span>
-
-          <span className="api-cat__icon">
-            <Icon size={15} />
+          <span className="api-cat__metric api-cat__metric--total">{catTotal}</span>
+          <span className="api-cat__metric api-cat__metric--pass">{catPassed}</span>
+          <span className="api-cat__metric api-cat__metric--fail">{catFailed}</span>
+          <span className="api-cat__metric api-cat__avg-latency">
+            {latencyCount > 0 ? `${avgLatency} ms` : "—"}
           </span>
-
-          <span className="api-cat__name">{category.label}</span>
-
-          {catDone > 0 ? (
-            <RingProgress
-              className="api-cat__ring"
-              size={28}
-              thickness={3}
-              roundCaps
-              sections={[{ value: pct, color: ringColor }]}
-            />
-          ) : null}
-
-          <span className="api-cat__fraction">{catDone}/{catTotal}</span>
-          {catDone > 0 ? <span className="api-cat__pct">{pct}%</span> : null}
-          {latencyCount > 0 ? <span className="api-cat__avg-latency">{avgLatency}ms</span> : null}
-          {statusDot ? <span className={`api-cat__status-dot ${statusDot}`} /> : null}
-
-          <span className="api-cat__spacer" />
+          <span className={`api-cat__state api-cat__state--${progressStateValue}`}>
+            {statusDot ? <span className={`api-cat__status-dot ${statusDot}`} /> : null}
+            {statusLabel}
+          </span>
         </button>
 
         <div className="api-cat__actions">
           {catRunning ? <span className="api-ep__running" /> : null}
+          {/* size="md" 是 regular 档的可见图标控件（28px）。44px 是触控靶面，不是可见尺寸：
+              靶面由 ThemeProvider 里 .actionIconRoot::before 那层透明扩展块提供。 */}
           <ActionIcon
             className="api-cat__run-button"
             aria-label={category.label}
@@ -219,9 +228,9 @@ export function ApiTestCategory({
             disabled={catRunning}
             loading={catRunning}
             variant="light"
-            size={44}
+            size="md"
           >
-            <PlayIcon size={11} />
+            <PlayIcon size={14} />
           </ActionIcon>
         </div>
       </div>

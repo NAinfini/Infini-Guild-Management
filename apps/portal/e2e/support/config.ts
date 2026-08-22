@@ -40,7 +40,7 @@ export const SLOT_INDEX = Number(process.env.TEST_PARALLEL_INDEX ?? 0);
 export const PORTAL_ORIGIN = originForSlot(SLOT_INDEX);
 
 /*
- * scripts/e2e/fixture-seed.sql 中固定的本地 E2E site_owner 与共享成员。
+ * scripts/e2e/fixture-seed.sql 中固定的本地 E2E admin 与共享成员。
  */
 export const ADMIN_USERNAME = "admin";
 export const ADMIN_PASSWORD = "admin123";

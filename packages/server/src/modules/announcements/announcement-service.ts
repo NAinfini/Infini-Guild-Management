@@ -1,10 +1,10 @@
-import type { Announcement, PaginatedResponse } from "@guild/shared";
+import type { Announcement, AuditChange, PaginatedResponse } from "@guild/shared";
 import type { AnnouncementStatus } from "@guild/shared/constants/announcements";
 import { PERMISSION_ID } from "@guild/shared/constants/roles";
 import type { DeferredTasks, NotificationPublisher, RequestContext } from "@guild/kernel";
 import { AppError } from "@guild/kernel";
 import { nanoid } from "nanoid";
-import { createAuditMutation, type AuditMutation } from "../audit/public.js";
+import { createAuditEvent, type AuditEventWrite } from "../audit/public.js";
 import { canonicalizeRichTextMedia, extractRichTextMediaIds, type ImageUpload, type MediaService } from "../media/public.js";
 import { assertPortableLikeSearch } from "../../portable-search.js";
 
@@ -36,14 +36,14 @@ export interface AnnouncementStore {
     record: AnnouncementRecord;
     mediaIds: readonly string[];
     maxItems: number;
-    audit: AuditMutation;
+    audit: AuditEventWrite;
   }>): Promise<void>;
   update(input: Readonly<{
     record: AnnouncementRecord;
     expectedRevisionToken: string;
     mediaIds: readonly string[] | null;
     maxItems: number;
-    audit: AuditMutation;
+    audit: AuditEventWrite;
   }>): Promise<boolean>;
   archive(input: Readonly<{
     id: string;
@@ -51,9 +51,9 @@ export interface AnnouncementStore {
     revisionToken: string;
     updatedAt: string;
     actorUserId: string;
-    audit: AuditMutation;
+    audit: AuditEventWrite;
   }>): Promise<boolean>;
-  delete(input: Readonly<{ id: string; expectedRevisionToken: string; mutationToken: string; audit: AuditMutation }>): Promise<boolean>;
+  delete(input: Readonly<{ id: string; expectedRevisionToken: string; mutationToken: string; audit: AuditEventWrite }>): Promise<boolean>;
   appendImages(input: Readonly<{
     id: string;
     expectedRevisionToken: string;
@@ -64,7 +64,7 @@ export interface AnnouncementStore {
     mediaIds: readonly string[];
     audience: "public" | "private";
     maxItems: number;
-    audit: AuditMutation;
+    audit: AuditEventWrite;
   }>): Promise<boolean>;
 }
 
@@ -125,12 +125,18 @@ export class AnnouncementService {
       updated_at: context.now,
       revisionToken: crypto.randomUUID(),
     };
-    const audit = createAuditMutation(context, {
-      entityType: "announcement",
-      entityId: record.id,
+    const audit = createAuditEvent(context, {
+      subjectType: "announcement",
+      subjectId: record.id,
+      subjectLabel: record.title,
       action: "create",
-      summary: record.title,
-      details: { status: record.status, pinned: record.pinned },
+      context: [
+        { field: "status", value: { type: "code", value: record.status } },
+        { field: "pinned", value: { type: "boolean", value: record.pinned } },
+        { field: "publish_at", value: record.publish_at === null
+          ? { type: "null", value: null }
+          : { type: "datetime", value: record.publish_at } },
+      ],
     });
     await this.store.create({ record, mediaIds, maxItems: imageQuota, audit });
     this.publishChange(record, "announcement_created");
@@ -173,12 +179,15 @@ export class AnnouncementService {
       updated_at: updatedAt,
       revisionToken: crypto.randomUUID(),
     };
-    const audit = createAuditMutation(context, {
-      entityType: "announcement",
-      entityId: id,
+    const audit = createAuditEvent(context, {
+      subjectType: "announcement",
+      subjectId: id,
+      subjectLabel: record.title,
       action: "update",
-      summary: record.title,
-      details: announcementDiff(existing, record),
+      changes: announcementChanges(existing, record),
+      context: existing.body_json === record.body_json ? [] : [{
+        field: "changed_sections", value: { type: "list", value: [{ type: "code", value: "body_json" }] },
+      }],
     });
     const changed = await this.store.update({
       record,
@@ -198,11 +207,16 @@ export class AnnouncementService {
     const existing = await this.store.get(id, true, context.now);
     if (!existing) throw notFound();
     const updatedAt = monotonicTimestamp(context.now, existing.updated_at);
-    const audit = createAuditMutation(context, {
-      entityType: "announcement",
-      entityId: id,
+    const audit = createAuditEvent(context, {
+      subjectType: "announcement",
+      subjectId: id,
+      subjectLabel: existing.title,
       action: "archive",
-      summary: existing.title,
+      changes: [{
+        field: "archived",
+        before: { type: "boolean", value: false },
+        after: { type: "boolean", value: true },
+      }],
     });
     const changed = await this.store.archive({
       id,
@@ -221,11 +235,18 @@ export class AnnouncementService {
     context.authorization.require(PERMISSION_ID.ANNOUNCEMENTS_DELETE);
     const existing = await this.store.get(id, true, context.now);
     if (!existing) throw notFound();
-    const audit = createAuditMutation(context, {
-      entityType: "announcement",
-      entityId: id,
+    const audit = createAuditEvent(context, {
+      subjectType: "announcement",
+      subjectId: id,
+      subjectLabel: existing.title,
       action: "delete",
-      summary: existing.title,
+      context: [
+        { field: "status", value: { type: "code", value: existing.status } },
+        { field: "pinned", value: { type: "boolean", value: existing.pinned } },
+        { field: "publish_at", value: existing.publish_at === null
+          ? { type: "null", value: null }
+          : { type: "datetime", value: existing.publish_at } },
+      ],
     });
     const changed = await this.store.delete({
       id,
@@ -267,12 +288,12 @@ export class AnnouncementService {
       throw new AppError({ code: "VALIDATION_ERROR", status: 400, message: `Announcement image quota is ${quota}` });
     }
     const mediaIds = await this.media.uploadImages(context, "announcement_image", uploads, maxBytes);
-    const audit = createAuditMutation(context, {
-      entityType: "announcement",
-      entityId: id,
+    const audit = createAuditEvent(context, {
+      subjectType: "announcement",
+      subjectId: id,
+      subjectLabel: existing.title,
       action: "upload_images",
-      summary: existing.title,
-      details: { count: mediaIds.length },
+      context: [{ field: "media_count", value: { type: "number", value: mediaIds.length } }],
     });
     const updatedAt = monotonicTimestamp(context.now, existing.updated_at);
     const changed = await this.store.appendImages({
@@ -344,13 +365,23 @@ function announcementAudience(record: Announcement, now: string): "public" | "pr
     : "private";
 }
 
-function announcementDiff(before: Announcement, after: Announcement): Record<string, string | boolean | null> {
-  const diff: Record<string, string | boolean | null> = {};
-  for (const key of ["title", "pinned", "status", "publish_at"] as const) {
-    if (before[key] !== after[key]) diff[key] = after[key];
-  }
-  if (before.body_json !== after.body_json) diff.body = "changed";
-  return diff;
+function announcementChanges(before: Announcement, after: Announcement): AuditChange[] {
+  const changes: AuditChange[] = [];
+  if (before.title !== after.title) changes.push({
+    field: "title", before: { type: "text", value: before.title }, after: { type: "text", value: after.title },
+  });
+  if (before.pinned !== after.pinned) changes.push({
+    field: "pinned", before: { type: "boolean", value: before.pinned }, after: { type: "boolean", value: after.pinned },
+  });
+  if (before.status !== after.status) changes.push({
+    field: "status", before: { type: "code", value: before.status }, after: { type: "code", value: after.status },
+  });
+  if (before.publish_at !== after.publish_at) changes.push({
+    field: "publish_at",
+    before: before.publish_at === null ? { type: "null", value: null } : { type: "datetime", value: before.publish_at },
+    after: after.publish_at === null ? { type: "null", value: null } : { type: "datetime", value: after.publish_at },
+  });
+  return changes;
 }
 
 function announcementEtag(record: Announcement): string {

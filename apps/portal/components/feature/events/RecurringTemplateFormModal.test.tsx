@@ -1,8 +1,9 @@
-// @vitest-environment jsdom
 import { MantineProvider } from "@mantine/core";
-import { render, screen } from "@testing-library/react";
+import { screen, waitFor } from "@testing-library/react";
+import { renderWithQueryClient as render } from "@portal/tests/query-harness";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
+import type { RecurringTemplate } from "@guild/shared";
 import { RecurringTemplateFormModal } from "./RecurringTemplateFormModal";
 
 vi.mock("react-i18next", () => ({
@@ -30,6 +31,8 @@ vi.mock("react-i18next", () => ({
         "recurrence.endAfterSuffix": "times",
         "button.cancel": "Cancel",
         "button.save": "Save",
+        "recurring.pause": "Pause",
+        "recurring.resume": "Resume",
       };
       return labels[key] ?? key;
     },
@@ -140,7 +143,7 @@ describe("RecurringTemplateFormModal", () => {
     expect(screen.queryByDisplayValue("Mutated title")).not.toBeInTheDocument();
   });
 
-  it("includes auto-archive setting in saved template payloads", async () => {
+  it("sends explicit supported clear values and a zero visibility offset", async () => {
     const user = userEvent.setup();
     const onSave = vi.fn();
 
@@ -164,6 +167,158 @@ describe("RecurringTemplateFormModal", () => {
     await user.click(screen.getByText("Auto archive"));
     await user.click(screen.getByRole("button", { name: "Create recurring template" }));
 
-    expect(onSave).toHaveBeenCalledWith(expect.objectContaining({ auto_archive: true }));
+    expect(onSave).toHaveBeenCalledWith(expect.objectContaining({
+      auto_archive: true,
+      description: "",
+      visibility_offset_minutes: 0,
+    }));
+  });
+
+  it("sends null for cleared template fields when updating", async () => {
+    const user = userEvent.setup();
+    const onSave = vi.fn();
+    const template = {
+      id: "tpl-1",
+      type: "social",
+      title: "Weekly Run",
+      description: "Old description",
+      start_time: "19:00",
+      duration_minutes: 120,
+      capacity: 20,
+      paused: false,
+      recurrence_rule: { frequency: "weekly", interval: 1, daysOfWeek: [3] },
+      visibility_offset_minutes: 0,
+      generation_count: 0,
+      last_generated_date: null,
+      auto_archive: false,
+      created_at: "2026-07-01T00:00:00.000Z",
+      updated_at: "2026-07-01T00:00:00.000Z",
+      created_by: "user-1",
+      attachments: [],
+      class_quotas: [],
+    } as RecurringTemplate;
+
+    render(
+      <MantineProvider>
+        <RecurringTemplateFormModal
+          open
+          mode="edit"
+          template={template}
+          confirmLoading={false}
+          onCancel={() => {}}
+          onSave={onSave}
+        />
+      </MantineProvider>,
+    );
+
+    await user.clear(screen.getByLabelText("Description"));
+    await user.clear(screen.getByLabelText("Duration"));
+    await user.clear(screen.getByLabelText("Capacity"));
+    await user.click(screen.getByRole("button", { name: "Save" }));
+
+    expect(onSave).toHaveBeenCalledWith(expect.objectContaining({
+      description: null,
+      duration_minutes: null,
+      capacity: null,
+    }));
+  });
+
+  it("waits for lifecycle actions and keeps the modal open when they fail", async () => {
+    const user = userEvent.setup();
+    let resolvePause: (() => void) | undefined;
+    let resolveResume: (() => void) | undefined;
+    const onPause = vi.fn(() => new Promise<void>((resolve) => { resolvePause = resolve; }));
+    const onResume = vi.fn(() => new Promise<void>((resolve) => { resolveResume = resolve; }));
+    const onDelete = vi.fn().mockRejectedValue(new Error("delete failed"));
+    const onCancel = vi.fn();
+    const activeTemplate = {
+      id: "tpl-1",
+      type: "social",
+      title: "Weekly Run",
+      description: null,
+      start_time: "19:00",
+      duration_minutes: null,
+      capacity: null,
+      paused: false,
+      recurrence_rule: { frequency: "weekly", interval: 1, daysOfWeek: [3] },
+      visibility_offset_minutes: 0,
+      generation_count: 0,
+      last_generated_date: null,
+      auto_archive: false,
+      created_at: "2026-07-01T00:00:00.000Z",
+      updated_at: "2026-07-01T00:00:00.000Z",
+      created_by: "user-1",
+      attachments: [],
+      class_quotas: [],
+    } as RecurringTemplate;
+
+    const { rerender } = render(
+      <MantineProvider>
+        <RecurringTemplateFormModal
+          open
+          mode="edit"
+          template={activeTemplate}
+          confirmLoading={false}
+          onCancel={onCancel}
+          onSave={() => {}}
+          onPause={onPause}
+          onResume={onResume}
+          onDelete={onDelete}
+        />
+      </MantineProvider>,
+    );
+
+    await user.click(screen.getByRole("button", { name: "Pause" }));
+    expect(onPause).toHaveBeenCalledWith("tpl-1");
+    expect(onCancel).not.toHaveBeenCalled();
+    resolvePause?.();
+    await waitFor(() => expect(onCancel).toHaveBeenCalledTimes(1));
+
+    rerender(
+      <MantineProvider>
+        <RecurringTemplateFormModal
+          open
+          mode="edit"
+          template={{ ...activeTemplate, paused: true }}
+          confirmLoading={false}
+          onCancel={onCancel}
+          onSave={() => {}}
+          onPause={onPause}
+          onResume={onResume}
+          onDelete={onDelete}
+        />
+      </MantineProvider>,
+    );
+
+    await user.click(screen.getByRole("button", { name: "Resume" }));
+    expect(onResume).toHaveBeenCalledWith("tpl-1");
+    expect(onCancel).toHaveBeenCalledTimes(1);
+    resolveResume?.();
+    await waitFor(() => expect(onCancel).toHaveBeenCalledTimes(2));
+
+    rerender(
+      <MantineProvider>
+        <RecurringTemplateFormModal
+          open
+          mode="edit"
+          template={activeTemplate}
+          confirmLoading={false}
+          onCancel={onCancel}
+          onSave={() => {}}
+          onPause={onPause}
+          onResume={onResume}
+          onDelete={onDelete}
+        />
+      </MantineProvider>,
+    );
+
+    onPause.mockRejectedValueOnce(new Error("pause failed"));
+    await user.click(screen.getByRole("button", { name: "Pause" }));
+    await waitFor(() => expect(onPause).toHaveBeenCalledTimes(2));
+    expect(onCancel).toHaveBeenCalledTimes(2);
+
+    await user.click(screen.getByRole("button", { name: "recurring.delete" }));
+    await waitFor(() => expect(onDelete).toHaveBeenCalledWith("tpl-1"));
+    expect(onCancel).toHaveBeenCalledTimes(2);
   });
 });

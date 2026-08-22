@@ -1,16 +1,12 @@
-import { auditLogSchema, type AuditLogEntry, type PaginatedResponse } from "@guild/shared";
-import { z } from "zod";
+import {
+  auditEventCursorResponseSchema,
+  auditEventSchema,
+  type AuditEvent,
+  type CursorResponse,
+} from "@guild/shared";
 
-const auditPageSchema = z.object({
-  data: z.array(auditLogSchema),
-  total: z.number().int().nonnegative(),
-  page: z.number().int().positive(),
-  limit: z.number().int().positive(),
-  total_pages: z.number().int().nonnegative(),
-});
-
-export function presentAuditPage(value: unknown): PaginatedResponse<AuditLogEntry> {
-  return auditPageSchema.parse(value);
+export function presentAuditPage(value: unknown): CursorResponse<AuditEvent> {
+  return auditEventCursorResponseSchema.parse(value);
 }
 
 export type AuditExportOptions = Readonly<{
@@ -21,7 +17,7 @@ export type AuditExportOptions = Readonly<{
 }>;
 
 export function presentAuditExport(
-  entries: AsyncIterable<AuditLogEntry>,
+  entries: AsyncIterable<AuditEvent>,
   options: AuditExportOptions,
 ): Response {
   const iterator = entries[Symbol.asyncIterator]();
@@ -36,7 +32,7 @@ export function presentAuditExport(
         if (!started) {
           started = true;
           controller.enqueue(encoder.encode(options.format === "csv"
-            ? "id,entity_type,action,actor_id,actor_username,entity_id,diff_title,detail,created_at"
+            ? "event_id,subject_type,action,actor_id,actor_label,subject_id,subject_label,payload,occurred_at"
             : `{"exported_at":${JSON.stringify(options.exportedAt)},"start_at":${JSON.stringify(options.startAt)},"end_at":${JSON.stringify(options.endAt)},"data":[`));
           return;
         }
@@ -48,7 +44,7 @@ export function presentAuditExport(
           return;
         }
 
-        const row = auditLogSchema.parse(next.value);
+        const row = auditEventSchema.parse(next.value);
         total += 1;
         if (options.format === "csv") {
           controller.enqueue(encoder.encode(`\n${auditCsvRow(row)}`));
@@ -76,17 +72,17 @@ export function presentAuditExport(
   });
 }
 
-function auditCsvRow(row: AuditLogEntry): string {
+function auditCsvRow(row: AuditEvent): string {
   return [
-    row.id,
-    row.entity_type,
+    row.event_id,
+    row.subject.type,
     row.action,
-    row.actor_id,
-    row.actor_username ?? null,
-    row.entity_id,
-    row.diff_title,
-    row.detail === null ? null : JSON.stringify(row.detail),
-    row.created_at,
+    row.actor.id,
+    row.actor.label,
+    row.subject.id,
+    row.subject.label,
+    JSON.stringify(row.payload),
+    row.occurred_at,
   ].map(csvCell).join(",");
 }
 

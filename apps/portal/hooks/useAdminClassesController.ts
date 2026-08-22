@@ -16,8 +16,7 @@ import {
   uploadClassCatalogIcon,
 } from "../api/mutations/classes";
 import { queryKeys } from "../api/query-keys";
-import { fetchClassCatalog } from "../api/queries/classes";
-import { useClassCatalogStore } from "../stores/class-catalog";
+import { classCatalogQueryOptions } from "./data/useClassData";
 import { notifyError, notifySuccess } from "../utils/notifications";
 
 /* sort_order 不在草稿里：顺序由左栏拖拽决定，走整表重排接口。留在草稿里的话
@@ -55,28 +54,18 @@ function itemToDraft(item: ClassCatalogItem): ClassEditorDraft {
 export function useAdminClassesController() {
   const { t } = useTranslation("admin");
   const queryClient = useQueryClient();
-  const setCatalogItems = useClassCatalogStore((state) => state.setItems);
   const [opened, setOpened] = useState(false);
   const [draft, setDraft] = useState<ClassEditorDraft>(EMPTY_CLASS_EDITOR_DRAFT);
   const [uploadProgress, setUploadProgress] = useState(0);
 
-  const query = useQuery({
-    queryKey: queryKeys.classes.list(),
-    queryFn: fetchClassCatalog,
-    staleTime: 5 * 60_000,
-  });
+  /* 管理列表直接用服务端顺序（sort_order,id），不套 useClassCatalog 的排序
+     select：拖拽重排读写的就是这份顺序本身。 */
+  const query = useQuery(classCatalogQueryOptions);
 
-  useEffect(() => {
-    if (query.data) setCatalogItems(query.data);
-  }, [query.data, setCatalogItems]);
-
+  /* 全站展示读的是同一个 queryKey 的缓存（useClassCatalog），refetch 写回缓存
+     即全站生效，不需要再往任何 store 镜像一份。 */
   const refresh = async () => {
-    await queryClient.invalidateQueries({ queryKey: queryKeys.classes.all });
-    const next = await queryClient.fetchQuery({
-      queryKey: queryKeys.classes.list(),
-      queryFn: fetchClassCatalog,
-    });
-    setCatalogItems(next);
+    await query.refetch();
   };
 
   const saveMutation = useMutation({
@@ -175,7 +164,6 @@ export function useAdminClassesController() {
     },
     onSuccess: (items) => {
       queryClient.setQueryData(queryKeys.classes.list(), items);
-      setCatalogItems(items);
     },
   });
 

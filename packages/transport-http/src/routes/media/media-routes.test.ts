@@ -17,6 +17,21 @@ import { createMediaRoutes } from "./media-routes.js";
 const bytes = new TextEncoder().encode("0123456789");
 
 describe("media HTTP route", () => {
+  it("shares only public non-range media at the edge", async () => {
+    const publicMedia = buildApp("public");
+    const publicResponse = await publicMedia.app.request("/api/media/media-1/view");
+    expect(publicResponse.headers.get("Cache-Control")).toBe("public, max-age=3600, s-maxage=60");
+
+    const ranged = await publicMedia.app.request("/api/media/media-1/view", {
+      headers: { Range: "bytes=0-2" },
+    });
+    expect(ranged.headers.get("Cache-Control")).toBe("private, max-age=3600");
+
+    const privateMedia = buildApp("private");
+    const privateResponse = await privateMedia.app.request("/api/media/media-1/view");
+    expect(privateResponse.headers.get("Cache-Control")).toBe("private, max-age=3600");
+  });
+
   it("pushes explicit and suffix ranges into the media service", async () => {
     const { app, head, read } = buildApp();
 
@@ -94,7 +109,7 @@ describe("media HTTP route", () => {
   });
 });
 
-function buildApp() {
+function buildApp(audience: "public" | "authenticated" | "private" = "public") {
   const metadata: BlobMetadata = {
     key: "media/media-1/full.webp",
     size: bytes.byteLength,
@@ -103,13 +118,13 @@ function buildApp() {
     etag: "media-etag",
     lastModified: "2026-08-09T12:00:00.000Z",
   };
-  const head = vi.fn(async (): Promise<BlobMetadata> => metadata);
+  const head = vi.fn(async () => ({ metadata, audience }));
   const read = vi.fn(async (
     _context: RequestContext,
     _mediaId: string,
     _variant: MediaVariant,
     range?: MediaRangeRequest,
-  ): Promise<BlobRead> => {
+  ) => {
     const offset = range?.kind === "suffix"
       ? Math.max(0, bytes.byteLength - range.length)
       : range?.offset ?? 0;
@@ -119,9 +134,12 @@ function buildApp() {
       : range?.length ?? bytes.byteLength;
     const length = Math.min(requestedLength, bytes.byteLength - offset);
     return {
-      metadata,
-      body: byteStream(bytes.subarray(offset, offset + length)),
-      ...(range ? { range: { offset, length, total: bytes.byteLength } } : {}),
+      object: {
+        metadata,
+        body: byteStream(bytes.subarray(offset, offset + length)),
+        ...(range ? { range: { offset, length, total: bytes.byteLength } } : {}),
+      } satisfies BlobRead,
+      audience,
     };
   });
   const app = new Hono<HttpEnv>();

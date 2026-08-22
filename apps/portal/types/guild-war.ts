@@ -1,3 +1,5 @@
+import type { GuildWarMemberResponse } from "@guild/shared";
+
 export type AnalyticsMode = "player" | "rankings" | "teams" | "radar" | "wars";
 export type AnalyticsMetricKey = string;
 export type AnalyticsAggregation = "total" | "average" | "best" | "median";
@@ -26,23 +28,19 @@ export type HistorySummaryRow = {
   enemy_stats: Record<string, number | null> | null;
 };
 
-export type HistoryMemberStat = {
-  id: string;
-  user_id: string;
-  username?: string;
-  role_tag: string | null;
-  stats: Record<string, number | null> | null;
-};
+export type HistoryMemberStat = Pick<
+  GuildWarMemberResponse,
+  "id" | "user_id" | "username" | "role_tag" | "stats"
+>;
 
 export type HistoryDetailTeam = {
   id: string;
   team_name: string;
   notes: string | null;
-  members: Array<{
-    user_id: string;
-    username?: string;
-    role_tag: string | null;
-  }>;
+  members: Array<Pick<
+    GuildWarMemberResponse,
+    "user_id" | "username" | "avatar_media_id" | "role_tag"
+  >>;
 };
 
 export type HistoryDetailData = {

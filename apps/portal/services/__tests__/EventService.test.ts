@@ -1,3 +1,4 @@
+// @vitest-environment node
 import type { QueryClient } from "@tanstack/react-query";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { queryKeys } from "../../api/query-keys";
@@ -137,6 +138,9 @@ describe("EventService", () => {
       "evt-1",
       expect.objectContaining({
         title: "War Review",
+        description: null,
+        end_at: null,
+        capacity: null,
         pinned: true,
         signup_locked: true,
         auto_archive: false,

@@ -117,13 +117,16 @@ export function createWikiRoutes(dependencies: WikiRouteDependencies): Hono<Http
     ));
   });
 
-  routes.get("/articles/:id/revisions/:revision", async (context) => jsonWithEtag(context.req.raw, presentWikiRevision(
-    await dependencies.service.getRevision(
-      requestContext(context),
-      context.req.param("id"),
-      parseRevision(context.req.param("revision")),
-    ),
-  )));
+  routes.get("/articles/:id/revisions/:revision", async (context) => {
+    const articleId = context.req.param("id");
+    const revision = parseRevision(context.req.param("revision"));
+    // 修订一经写入不可变，(文章, 修订号) 即是稳定的强 ETag，无需哈希大正文。
+    return jsonWithEtag(
+      context.req.raw,
+      presentWikiRevision(await dependencies.service.getRevision(requestContext(context), articleId, revision)),
+      `"wiki-revision-${articleId}-${revision}"`,
+    );
+  });
 
   routes.post("/articles/:id/revisions/:revision/restore", async (context) => context.json(presentWikiArticle(
     await dependencies.service.restoreRevision(

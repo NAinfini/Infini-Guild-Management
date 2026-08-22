@@ -1,4 +1,3 @@
-// @vitest-environment jsdom
 import { Button, MantineProvider, Text, TextInput } from "@mantine/core";
 import { act, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";

@@ -1,4 +1,3 @@
-// @vitest-environment jsdom
 import { MantineProvider } from "@mantine/core";
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
@@ -101,11 +100,12 @@ describe("AdminClassesSection drag-to-sort", () => {
     query: { data: CLASS_ROWS, isLoading: false, isError: false, refetch: vi.fn() },
   } as unknown as Partial<ReturnType<typeof useAdminClassesController>>;
 
-  it("keeps the drag handle outside the row's edit button", async () => {
+  it("keeps the drag handle in the row surface without nesting it in the edit button", async () => {
     const { openEdit } = renderSection("vector", "light", withRows);
 
     const handle = screen.getByRole("button", { name: "classes.aria.dragHandle:Warden" });
-    /* 手柄嵌进编辑按钮里的话，HTML 非法且点手柄会顺带打开编辑器。 */
+    expect(handle.closest(".admin-md__row")).not.toBeNull();
+    /* 手柄和编辑按钮共享视觉行，但不能嵌套，否则 HTML 非法且会顺带打开编辑器。 */
     expect(handle.closest(".admin-md__item")).toBeNull();
 
     await userEvent.click(screen.getByText("Warden"));

@@ -1,0 +1,65 @@
+.admin-diagnostics {
+  display: flex;
+  flex: 1 1 auto;
+  min-width: 0;
+  min-block-size: 0;
+  overflow: hidden;
+}
+
+/*
+ * 左边一整列是端点清单，右边上下分别是调试输出和 D1/R2 比对。
+ *
+ * 分左右而不是三段竖排，是因为这三块的用法是「跑左边、看右边」：竖排时点一下
+ * 分类，输出在屏幕外，得滚下去看完再滚回来选下一类。清单列跨满两行，右列的
+ * 一致性面板按内容取高、剩下的高度全归调试输出——它是唯一会长的那块。
+ */
+.admin-diagnostics__workspace {
+  display: grid;
+  grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr);
+  /* 调试输出的下限压到 14rem（约八条日志），把余量留给下面按内容取高的一致性面板
+     ——工作区总高不够时，先被挤掉的应该是日志的可见条数，不是整块面板。 */
+  grid-template-rows: minmax(14rem, 1fr) auto;
+  grid-template-areas:
+    "console debug"
+    "console integrity";
+  flex: 1 1 auto;
+  gap: var(--space-md);
+  min-width: 0;
+  min-block-size: 0;
+  overflow: hidden;
+}
+
+.admin-diagnostics__console {
+  grid-area: console;
+  min-width: 0;
+  min-block-size: 0;
+}
+
+.admin-diagnostics .api-debug {
+  grid-area: debug;
+  min-width: 0;
+  min-block-size: 0;
+}
+
+.admin-diagnostics .admin-integrity {
+  grid-area: integrity;
+  min-width: 0;
+}
+
+/* 端点表最窄要 40rem 才排得下七列，两列并排要到这个宽度才成立；再窄就退回竖排。 */
+@media (max-width: 79.99em) {
+  .admin-diagnostics,
+  .admin-diagnostics__workspace {
+    overflow: visible;
+  }
+
+  .admin-diagnostics__workspace {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: minmax(20rem, auto) minmax(13rem, auto) auto;
+    grid-template-areas:
+      "console"
+      "debug"
+      "integrity";
+    flex: 0 0 auto;
+  }
+}

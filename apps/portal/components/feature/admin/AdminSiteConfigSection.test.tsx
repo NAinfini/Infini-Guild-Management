@@ -1,4 +1,3 @@
-// @vitest-environment jsdom
 import { DEFAULT_FEATURE_FLAGS, DEFAULT_SITE_MEDIA_POLICY, DEFAULT_SITE_STORAGE_POLICY, type AdminSiteConfigResponse } from "@guild/shared";
 import { MantineProvider } from "@mantine/core";
 import { render, screen, waitFor } from "@testing-library/react";
@@ -19,6 +18,7 @@ vi.mock("react-i18next", () => ({
 const siteConfig: AdminSiteConfigResponse = {
   site: {
     site_name: "Infini Guild",
+    site_description: "A focused home for our guild.",
     site_logo_media_id: "logo1234567890abcdefg",
     default_site_logo_url: "/assets/default-site-logo.webp",
     features: DEFAULT_FEATURE_FLAGS,
@@ -90,7 +90,19 @@ describe("AdminSiteConfigSection layout", () => {
     const { container } = renderSiteConfig();
 
     expect(screen.queryByText("siteConfig.policy.featuresDescription")).not.toBeInTheDocument();
+    expect(screen.queryByText("siteConfig.field.siteDescriptionDescription")).not.toBeInTheDocument();
     expect(container.querySelectorAll(".site-config-info-trigger").length).toBeGreaterThan(0);
+  });
+
+  it("groups the logo preview and upload as one branding field", () => {
+    const { container } = renderSiteConfig();
+    const logoField = container.querySelector(".site-config-logo-field");
+
+    expect(logoField).toContainElement(container.querySelector(".site-config-logo-preview"));
+    expect(logoField).toContainElement(screen.getByRole("button", {
+      name: "siteConfig.action.uploadLogo",
+    }));
+    expect(container.querySelector(".site-config-brand-fields .site-config-logo-upload")).toBeNull();
   });
 
   it("saves only valid changes and hides the save bar when the parent supplies the saved data", async () => {
@@ -133,6 +145,22 @@ describe("AdminSiteConfigSection layout", () => {
       expect(siteNameInput).toHaveValue("Infini Guild Prime");
       expect(querySaveButton(), "父层回填保存结果后保存条应当收起").toBeNull();
     });
+  });
+
+  it("includes the compact public preview description in the shared save payload", async () => {
+    const user = userEvent.setup();
+    const onSaveSite = vi.fn();
+    renderSiteConfig({ onSaveSite });
+    const description = screen.getByRole("textbox", { name: "siteConfig.field.siteDescription" });
+
+    await user.clear(description);
+    await user.type(description, "Our guild, in one place.");
+    await user.click(querySaveButton()!);
+
+    expect(onSaveSite).toHaveBeenCalledWith(expect.objectContaining({
+      site_description: "Our guild, in one place.",
+    }));
+    expect(description).toHaveAttribute("maxlength", "300");
   });
 
   it("keeps the save bar visible but disabled for whitespace-only site names", async () => {

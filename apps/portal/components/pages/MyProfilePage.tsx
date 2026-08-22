@@ -224,6 +224,9 @@ export function MyProfilePage() {
                   身份和媒体并排（--wide）。 */}
               <div className="my-profile-split__editor my-profile-split__editor--wide">
                 <ProfileProfileTab
+                  roleName={user?.role_name ?? null}
+                  roleColor={user?.role_color ?? null}
+                  badges={badges}
                   power={form.power}
                   classDraft={form.classDraft}
                   classOptions={form.classOptions}

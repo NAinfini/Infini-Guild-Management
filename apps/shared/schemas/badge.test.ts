@@ -3,6 +3,8 @@ import { LIMITS } from "../config/limits";
 import {
   badgeAssignmentsCursorResponseSchema,
   badgeAssignmentsListQuerySchema,
+  createMemberBadgeSchema,
+  updateMemberBadgeSchema,
 } from "./badge";
 
 const assignment = {
@@ -32,6 +34,17 @@ describe("badge assignment pagination contract", () => {
     expect(badgeAssignmentsCursorResponseSchema.safeParse({
       data: Array.from({ length: LIMITS.pagination.badgeAssignments + 1 }, () => assignment),
       next_cursor: null,
+    }).success).toBe(false);
+  });
+});
+
+describe("badge write contracts", () => {
+  it("allows PATCH to clear a description without widening create", () => {
+    expect(updateMemberBadgeSchema.parse({ description: null })).toEqual({ description: null });
+    expect(createMemberBadgeSchema.safeParse({
+      name: "Veteran",
+      label_html: "Veteran",
+      description: null,
     }).success).toBe(false);
   });
 });

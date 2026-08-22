@@ -10,8 +10,7 @@ import {
   updateClassTag,
 } from "../api/mutations/class-tags";
 import { queryKeys } from "../api/query-keys";
-import { fetchClassTags } from "../api/queries/class-tags";
-import { useClassTagStore } from "../stores/class-tag";
+import { classTagsQueryOptions } from "./data/useClassData";
 import { notifyError, notifySuccess } from "../utils/notifications";
 
 /* sort_order 不在草稿里：顺序由左栏拖拽决定，走的是整表重排接口。保存标签时不再
@@ -39,30 +38,18 @@ function tagToDraft(tag: ClassTag): ClassTagDraft {
 export function useAdminClassTagsController() {
   const { t } = useTranslation("admin");
   const queryClient = useQueryClient();
-  const setTags = useClassTagStore((state) => state.setTags);
   const [opened, setOpened] = useState(false);
   // Selection opens a read-only detail; editing requires a separate action.
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState<ClassTagDraft>(EMPTY_CLASS_TAG_DRAFT);
 
-  const query = useQuery({
-    queryKey: queryKeys.classTags.list(),
-    queryFn: fetchClassTags,
-    staleTime: 5 * 60_000,
-  });
-
-  /* 全站的筹码和配额编辑器读的是 store，不是这份查询。管理页改完标签必须把 store 也
-     推一次，否则同一个会话里刚改的名字要等下一次刷新页面才生效。 */
-  useEffect(() => {
-    if (query.data) setTags(query.data);
-  }, [query.data, setTags]);
+  /* 管理列表直接用服务端顺序（sort_order,id），不套 useClassTags 的排序 select：
+     拖拽重排读写的就是这份顺序本身。全站的筹码和配额编辑器读的是同一个
+     queryKey 的缓存，refetch 写回缓存即全站生效。 */
+  const query = useQuery(classTagsQueryOptions);
 
   const refresh = async () => {
-    await queryClient.invalidateQueries({ queryKey: queryKeys.classTags.all });
-    setTags(await queryClient.fetchQuery({
-      queryKey: queryKeys.classTags.list(),
-      queryFn: fetchClassTags,
-    }));
+    await query.refetch();
   };
 
   const saveMutation = useMutation({
@@ -128,7 +115,6 @@ export function useAdminClassTagsController() {
     },
     onSuccess: (tags) => {
       queryClient.setQueryData(queryKeys.classTags.list(), tags);
-      setTags(tags);
     },
   });
 

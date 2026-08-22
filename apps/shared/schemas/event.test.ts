@@ -181,6 +181,53 @@ describe("event schemas", () => {
     expect(updateTemplateSchema.parse({ auto_archive: false })).toMatchObject({ auto_archive: false });
   });
 
+  it("allows update-only clearing and a zero visibility offset", () => {
+    expect(updateEventSchema.parse({
+      description: null,
+      end_at: null,
+      capacity: null,
+    })).toEqual({ description: null, end_at: null, capacity: null });
+    expect(updateTemplateSchema.parse({
+      description: null,
+      duration_minutes: null,
+      capacity: null,
+      visibility_offset_minutes: 0,
+    })).toEqual({
+      description: null,
+      duration_minutes: null,
+      capacity: null,
+      visibility_offset_minutes: 0,
+    });
+    expect(createEventSchema.safeParse({
+      type: "social",
+      title: "Guild Run",
+      start_at: "2026-05-04T19:00:00.000Z",
+      description: null,
+    }).success).toBe(false);
+    expect(createTemplateSchema.safeParse({
+      type: "social",
+      title: "Guild Run",
+      start_time: "20:00",
+      recurrence_rule: { frequency: "daily", interval: 1 },
+      duration_minutes: null,
+    }).success).toBe(false);
+    expect(updateEventSchema.safeParse({
+      type: "poll",
+      end_at: null,
+      poll: { options: ["One", "Two"] },
+    }).success).toBe(false);
+    expect(updateEventSchema.parse({
+      type: "poll",
+      end_at: "2026-05-04T21:00:00.000Z",
+      capacity: null,
+      poll: { options: ["One", "Two"] },
+    })).toMatchObject({ capacity: null });
+    expect(updateEventSchema.safeParse({
+      type: "raffle",
+      end_at: null,
+    }).success).toBe(false);
+  });
+
   it("accepts canonical media ids in template create and update payloads", () => {
     const attachments = ["Abcdefghijklmnopqrstu"];
 

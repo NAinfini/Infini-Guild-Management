@@ -144,7 +144,7 @@ export function EventDetailPoll({
                       <Text size="xs" fw={900} className="event-detail-modal__poll-percent">{percent}%</Text>
                     </Group>
                   </div>
-                  <Progress value={percent} color="portal-brand" size="md" className="event-detail-modal__poll-progress" />
+                  <Progress value={percent} size="md" className="event-detail-modal__poll-progress" />
                   {renderVoters(option.voter_ids)}
                 </div>
               </div>

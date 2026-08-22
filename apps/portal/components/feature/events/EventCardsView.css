@@ -3,24 +3,51 @@
   --event-card-accent: var(--domain-event);
   display: flex;
   flex-direction: column;
-  overflow: visible;
+  overflow: hidden;
+  isolation: isolate;
   position: relative;
   border-radius: var(--radius-surface);
-  transition: border-color 160ms ease, background 160ms ease;
+  transition:
+    border-color var(--motion-state),
+    background var(--motion-state),
+    box-shadow var(--motion-state),
+    transform var(--motion-state);
 }
 
+/* 悬停改吃活动类型色而不是品牌色：一屏卡片各是各的类型，用同一个品牌绿回应
+   等于告诉用户「悬停跟你指的是哪张卡无关」。抬起两像素并加深投影，是整站
+   「可点的东西会回应」这条约定在卡片上的落点。 */
 .event-card:hover {
-  border-color: color-mix(in srgb, var(--brand-fill) 26%, transparent);
-  background: color-mix(in srgb, var(--brand-fill) 3%, var(--surface-raised));
+  border-color: color-mix(in srgb, var(--event-card-accent) 46%, transparent);
+  background: color-mix(in srgb, var(--event-card-accent) 4%, var(--surface-raised));
+  box-shadow: var(--shadow-overlay);
+  transform: translateY(var(--motion-lift));
+}
+
+.event-card:active {
+  transform: translateY(0) scale(var(--motion-press));
 }
 
 .event-card--focused {
   box-shadow: 0 0 0 2px color-mix(in srgb, var(--brand-fill) 52%, transparent);
 }
 
-/* 色带：类型徽章、状态图标、复制与管理菜单都住在这里，正文里一个管理件都没有。
-   底色取类型色的两档淡化，加一条同色分隔线，让色带读起来是卡片的一部分而不是
-   贴上去的一条。 */
+/* 类型色铺满整张卡，而不是只染顶上一条带。色带方案要么细到读不出颜色，要么
+   为了读得出而吃掉七十多像素的垂直空间——两头都不划算。改成 160deg 的渐变从
+   左上淌下来、到卡片中段化尽：颜色的面积够大，占的版面却是零。 */
+.event-card.event-card {
+  background:
+    linear-gradient(
+      160deg,
+      color-mix(in srgb, var(--event-card-accent) 16%, transparent),
+      color-mix(in srgb, var(--event-card-accent) 3%, transparent) 52%,
+      transparent 76%
+    ),
+    var(--surface-raised);
+}
+
+/* 管理行：类型徽章、状态图标、复制与管理菜单都住在这里，正文里一个管理件都没有。
+   它自己不再画底色——底色已经是整张卡的事了，再叠一层只会多出一道假边界。 */
 .event-card__header {
   display: flex;
   align-items: center;
@@ -28,14 +55,21 @@
   min-width: 0;
   gap: 5px;
   padding: 5px var(--space-sm) 5px var(--space-md);
-  border-radius: var(--radius-surface) var(--radius-surface) 0 0;
-  /* 全站材质渐变统一 160deg，由 architecture-boundaries 守着，色带不能自成一套。 */
-  background: linear-gradient(
-    160deg,
-    color-mix(in srgb, var(--event-card-accent) 16%, transparent),
-    color-mix(in srgb, var(--event-card-accent) 4%, transparent)
-  );
-  border-bottom: 1px solid color-mix(in srgb, var(--event-card-accent) 24%, transparent);
+  border-bottom: 1px solid color-mix(in srgb, var(--event-card-accent) 22%, transparent);
+}
+
+/* 水印：类型图标放大后压在管理行正下方的右侧，越界部分由卡片裁掉。
+   z-index -1 配合卡片自身的 isolation，保证它永远在正文之下、不吃点击。
+   不放右下角：那儿是报名按钮的位置，按钮压在图形上两边都看不清。这一带只有
+   标题的行尾余白，水印落在这里既不挡字也不被挡。 */
+.event-card__watermark {
+  position: absolute;
+  inset-block-start: 42px;
+  inset-inline-end: -8px;
+  z-index: -1;
+  display: flex;
+  color: color-mix(in srgb, var(--event-card-accent) 22%, transparent);
+  pointer-events: none;
 }
 
 .event-card__header-left {

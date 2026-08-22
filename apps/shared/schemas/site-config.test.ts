@@ -4,6 +4,7 @@ import { DEFAULT_FEATURE_FLAGS } from "../config/features";
 import {
   DEFAULT_SITE_ABSENCE_POLICY,
   DEFAULT_SITE_ANALYTICS_SETTINGS,
+  DEFAULT_SITE_DESCRIPTION,
   DEFAULT_SITE_MEDIA_POLICY,
   DEFAULT_SITE_STORAGE_POLICY,
   siteAbsencePolicySchema,
@@ -103,9 +104,17 @@ describe("site media policy", () => {
     expect(updateSiteConfigSchema.safeParse({ game_rules: {} }).success).toBe(false);
   });
 
+  it("trims and bounds the public site description", () => {
+    expect(updateSiteConfigSchema.parse({ site_description: "  A guild for everyone.  " }))
+      .toEqual({ site_description: "A guild for everyone." });
+    expect(updateSiteConfigSchema.safeParse({ site_description: "   " }).success).toBe(false);
+    expect(updateSiteConfigSchema.safeParse({ site_description: "x".repeat(301) }).success).toBe(false);
+  });
+
   it("requires canonical persisted timestamps", () => {
     const config = {
       site_name: "Guild",
+      site_description: DEFAULT_SITE_DESCRIPTION,
       site_logo_media_id: null,
       default_site_logo_url: "/logo.svg",
       features: DEFAULT_FEATURE_FLAGS,

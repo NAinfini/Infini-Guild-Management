@@ -1,5 +1,6 @@
 import { MantineProvider } from "@mantine/core";
-import { render, screen } from "@testing-library/react";
+import { screen } from "@testing-library/react";
+import { renderWithQueryClient as render } from "@portal/tests/query-harness";
 import { describe, expect, it } from "vitest";
 import { MemberRoleAvatar } from "./MemberRoleAvatar";
 

@@ -1,8 +1,8 @@
 import { AppError, type AuthenticatedActor, type RequestContext } from "@guild/kernel";
 import { PERMISSIONS, PERMISSION_ID, type Permission } from "@guild/shared/constants/roles";
 import { isReservedSystemTestUsername } from "@guild/shared/config/system-test";
-import { createAuditMutation } from "../audit/public.js";
-import { assertOwnerRoleDefinition, assertRoleAssignable, assertTargetBelowActor, requirePermission } from "./authorization";
+import { createAuditEvent } from "../audit/public.js";
+import { assertRoleAssignable, assertTargetBelowActor, requirePermission } from "./authorization";
 import {
   createOpaqueToken,
   createPasswordHash,
@@ -32,6 +32,31 @@ type InviteWithCode = InviteRecord & Readonly<{ code: string }>;
 
 function unique(values: readonly string[]): string[] {
   return [...new Set(values)];
+}
+
+function inviteStatus(invite: InviteRecord, now: string): "active" | "expired" | "fully_used" | "revoked" {
+  if (invite.revokedAt !== null) return "revoked";
+  if (invite.usedCount >= invite.maxUses) return "fully_used";
+  if (invite.expiresAt !== null && invite.expiresAt <= now) return "expired";
+  return "active";
+}
+
+function inviteSnapshot(invite: InviteRecord, now: string, includeStatus = true) {
+  return [
+    { field: "role_id" as const, value: {
+      type: "reference" as const, value: { id: invite.roleId, label: invite.roleName },
+    } },
+    { field: "role_name" as const, value: { type: "text" as const, value: invite.roleName } },
+    { field: "max_uses" as const, value: { type: "number" as const, value: invite.maxUses } },
+    { field: "used_count" as const, value: { type: "number" as const, value: invite.usedCount } },
+    { field: "expires_at" as const, value: invite.expiresAt === null
+      ? { type: "null" as const, value: null }
+      : { type: "datetime" as const, value: invite.expiresAt } },
+    ...(includeStatus ? [{
+      field: "status" as const,
+      value: { type: "code" as const, value: inviteStatus(invite, now) },
+    }] : []),
+  ];
 }
 
 function requireExistingTargets(
@@ -99,15 +124,16 @@ export class IdentityAdminService {
   }>): Promise<Readonly<{ data: readonly InviteWithCode[]; nextCursor: string | null; total: number }>> {
     requirePermission(context.authorization, PERMISSION_ID.ADMIN_INVITE_VIEW);
     const suppliedSearch = input.search?.trim() ?? "";
-    const exactId = suppliedSearch ? await this.options.inviteTokens.decode(suppliedSearch) : null;
-    const search = exactId ? "" : suppliedSearch.toLowerCase();
-    if (!exactId) assertPortableLikeSearch(search, "Invite search");
+    const exactCode = suppliedSearch ? this.options.inviteTokens.normalize(suppliedSearch) : null;
+    const exactTokenDigest = exactCode ? await digestToken(exactCode) : null;
+    const search = exactTokenDigest ? "" : suppliedSearch.toLowerCase();
+    if (!exactTokenDigest) assertPortableLikeSearch(search, "Invite search");
     const page = await this.options.store.listInvites({
       visibility: input.visibility,
       limit: input.limit,
       cursor: parseCursor(input.cursor),
       search,
-      ...(exactId ? { exactId } : {}),
+      ...(exactTokenDigest ? { exactTokenDigest } : {}),
       now: context.now,
     });
     return {
@@ -142,23 +168,40 @@ export class IdentityAdminService {
       maxUses: input.maxUses,
       expiresAt: input.expiresAt,
       now: context.now,
-    }, createAuditMutation(context, {
-      entityType: "invite_link",
-      entityId: id,
+    }, createAuditEvent(context, {
+      subjectType: "invite_link",
+      subjectId: id,
+      subjectLabel: role.name,
       action: "create",
-      summary: id,
-      details: { role_id: role.id, max_uses: input.maxUses, expires_at: input.expiresAt },
+      context: [
+        { field: "role_id", value: { type: "reference", value: { id: role.id, label: role.name } } },
+        { field: "role_name", value: { type: "text", value: role.name } },
+        { field: "max_uses", value: { type: "number", value: input.maxUses } },
+        { field: "used_count", value: { type: "number", value: 0 } },
+        { field: "expires_at", value: input.expiresAt === null
+          ? { type: "null", value: null }
+          : { type: "datetime", value: input.expiresAt } },
+        { field: "status", value: { type: "code", value: "active" } },
+      ],
     }));
     return { ...invite, code };
   }
 
   async revokeInvite(context: RequestContext, inviteId: string): Promise<{ ok: true }> {
     requirePermission(context.authorization, PERMISSION_ID.ADMIN_INVITE_MANAGE);
-    const changed = await this.options.store.revokeInvite(inviteId, context.now, createAuditMutation(context, {
-      entityType: "invite_link",
-      entityId: inviteId,
+    const invite = await this.options.store.findInvite(inviteId);
+    if (!invite) throw new AppError({ code: "NOT_FOUND", status: 404, message: "Invite link not found" });
+    const changed = await this.options.store.revokeInvite(inviteId, context.now, createAuditEvent(context, {
+      subjectType: "invite_link",
+      subjectId: inviteId,
+      subjectLabel: invite.roleName,
       action: "revoke",
-      summary: inviteId,
+      changes: [{
+        field: "status",
+        before: { type: "code", value: inviteStatus(invite, context.now) },
+        after: { type: "code", value: "revoked" },
+      }],
+      context: inviteSnapshot(invite, context.now, false),
     }));
     if (!changed) throw new AppError({ code: "NOT_FOUND", status: 404, message: "Invite link not found" });
     return { ok: true };
@@ -166,11 +209,14 @@ export class IdentityAdminService {
 
   async deleteInvite(context: RequestContext, inviteId: string): Promise<{ ok: true }> {
     requirePermission(context.authorization, PERMISSION_ID.ADMIN_INVITE_MANAGE);
-    const changed = await this.options.store.deleteInvite(inviteId, createAuditMutation(context, {
-      entityType: "invite_link",
-      entityId: inviteId,
+    const invite = await this.options.store.findInvite(inviteId);
+    if (!invite) throw new AppError({ code: "NOT_FOUND", status: 404, message: "Invite link not found" });
+    const changed = await this.options.store.deleteInvite(inviteId, createAuditEvent(context, {
+      subjectType: "invite_link",
+      subjectId: inviteId,
+      subjectLabel: invite.roleName,
       action: "delete",
-      summary: inviteId,
+      context: inviteSnapshot(invite, context.now),
     }));
     if (!changed) throw new AppError({ code: "NOT_FOUND", status: 404, message: "Invite link not found" });
     return { ok: true };
@@ -194,12 +240,14 @@ export class IdentityAdminService {
       passwordHash: await createPasswordHash(temporaryPassword, this.passwordIterations),
       destinationRole,
       now: context.now,
-    }, createAuditMutation(context, {
-      entityType: "user",
-      entityId: id,
+    }, createAuditEvent(context, {
+      subjectType: "user",
+      subjectId: id,
+      subjectLabel: input.username.trim(),
       action: "admin_create_member",
-      summary: input.username.trim(),
-      details: { role_id: input.roleId },
+      context: [{ field: "role_id", value: {
+        type: "reference", value: { id: destinationRole.id, label: destinationRole.name },
+      } }],
     }));
     if (outcome === "username_taken") {
       throw new AppError({ code: "CONFLICT", status: 409, message: "Username already taken" });
@@ -211,14 +259,21 @@ export class IdentityAdminService {
   async updateUserRole(context: RequestContext, targetUserId: string, roleId: string): Promise<{ ok: true }> {
     const actor = requirePermission(context.authorization, PERMISSION_ID.ADMIN_USERS_ROLE);
     const target = await this.requireTarget(actor, targetUserId, false);
-    const role = await this.requireAssignableRole(actor, roleId);
-    if (!role.permissions.has(PERMISSION_ID.ADMIN_OWNERS_MANAGE)) await this.assertOwnersRemain([target.id]);
-    this.handleGuardedMutation(await this.options.store.setUsersRole({ targets: [target], destinationRole: role, now: context.now }, createAuditMutation(context, {
-      entityType: "user",
-      entityId: target.id,
+    const [currentRole, role] = await Promise.all([
+      this.requireRole(target.roleId),
+      this.requireAssignableRole(actor, roleId),
+    ]);
+    if (!role.permissions.has(PERMISSION_ID.ADMIN_ROLES_MANAGE)) await this.assertRoleManagersRemain([target.id]);
+    this.handleGuardedMutation(await this.options.store.setUsersRole({ targets: [target], destinationRole: role, now: context.now }, createAuditEvent(context, {
+      subjectType: "user",
+      subjectId: target.id,
+      subjectLabel: target.username,
       action: "update_role",
-      summary: target.username,
-      details: { role: { from: target.roleId, to: role.id } },
+      changes: [{
+        field: "role_id",
+        before: { type: "reference", value: { id: target.roleId, label: currentRole.name } },
+        after: { type: "reference", value: { id: role.id, label: role.name } },
+      }],
     })));
     return { ok: true };
   }
@@ -234,13 +289,18 @@ export class IdentityAdminService {
     if (target.isActive === active) {
       throw new AppError({ code: "CONFLICT", status: 409, message: active ? "User is already active" : "User already deactivated" });
     }
-    if (!active) await this.assertOwnersRemain([target.id]);
-    this.handleGuardedMutation(await this.options.store.setUsersActive({ targets: [target], active, now: context.now }, createAuditMutation(context, {
-      entityType: "user",
-      entityId: target.id,
+    if (!active) await this.assertRoleManagersRemain([target.id]);
+    this.handleGuardedMutation(await this.options.store.setUsersActive({ targets: [target], active, now: context.now }, createAuditEvent(context, {
+      subjectType: "user",
+      subjectId: target.id,
+      subjectLabel: target.username,
       action: active ? "reactivate" : "deactivate",
-      summary: target.username,
-      details: { reason: reason ?? null },
+      changes: [{
+        field: "active",
+        before: { type: "boolean", value: target.isActive },
+        after: { type: "boolean", value: active },
+      }],
+      context: reason === undefined ? [] : [{ field: "reason", value: { type: "text", value: reason } }],
     })));
     return { ok: true };
   }
@@ -257,11 +317,11 @@ export class IdentityAdminService {
       target,
       await createPasswordHash(temporaryPassword, this.passwordIterations),
       context.now,
-      createAuditMutation(context, {
-        entityType: "user_auth",
-        entityId: target.id,
+      createAuditEvent(context, {
+        subjectType: "user_auth",
+        subjectId: target.id,
+        subjectLabel: target.username,
         action: "reset_password",
-        summary: target.username,
       }),
     );
     if (outcome === "conflict") this.throwConcurrentAuthorizationChange();
@@ -277,11 +337,11 @@ export class IdentityAdminService {
   async resetLoginLock(context: RequestContext, targetUserId: string): Promise<LoginLockState & { ok: true }> {
     const actor = requirePermission(context.authorization, PERMISSION_ID.ADMIN_USERS_PASSWORD);
     const target = await this.requireTarget(actor, targetUserId, false);
-    const outcome = await this.options.store.resetUserLoginLock(target, createAuditMutation(context, {
-      entityType: "user_auth",
-      entityId: target.id,
+    const outcome = await this.options.store.resetUserLoginLock(target, createAuditEvent(context, {
+      subjectType: "user_auth",
+      subjectId: target.id,
+      subjectLabel: target.username,
       action: "reset_login_lock",
-      summary: target.username,
     }));
     if (outcome.outcome === "conflict") this.throwConcurrentAuthorizationChange();
     return { ok: true, ...projectLoginLock(outcome.previous, context.now) };
@@ -330,12 +390,17 @@ export class IdentityAdminService {
       color: input.color ?? null,
       permissions: [...permissions],
       now: context.now,
-    }, createAuditMutation(context, {
-      entityType: "role",
-      entityId: id,
+    }, createAuditEvent(context, {
+      subjectType: "role",
+      subjectId: id,
+      subjectLabel: input.name.trim(),
       action: "create",
-      summary: input.name.trim(),
-      details: { level: input.level, permissions: [...permissions] },
+      context: [
+        { field: "level", value: { type: "number", value: input.level } },
+        { field: "permissions", value: { type: "list", value: [...permissions].map((value) => ({
+          type: "code" as const, value,
+        })) } },
+      ],
     }));
     if (outcome === "conflict") throw new AppError({ code: "CONFLICT", status: 409, message: "Role already exists" });
     return this.requireRole(id);
@@ -370,7 +435,6 @@ export class IdentityAdminService {
         }
       }
     }
-    assertOwnerRoleDefinition({ id: existing.id, level: input.level ?? existing.level, permissions: nextPermissions });
     const escalated = [...nextPermissions].filter((permission) => !actor.permissions.has(permission));
     if (escalated.length > 0) {
       throw new AppError({
@@ -392,12 +456,40 @@ export class IdentityAdminService {
       expectedRevisionToken: existing.revisionToken,
       expectedPermissions: [...existing.permissions],
       now: context.now,
-    }, createAuditMutation(context, {
-      entityType: "role",
-      entityId: roleId,
+    }, createAuditEvent(context, {
+      subjectType: "role",
+      subjectId: roleId,
+      subjectLabel: input.name?.trim() ?? existing.name,
       action: "update",
-      summary: input.name?.trim() ?? existing.name,
-      details: { permissions_added: add, permissions_removed: remove },
+      changes: [
+        ...(input.name === undefined ? [] : [{
+          field: "name" as const,
+          before: { type: "text" as const, value: existing.name },
+          after: { type: "text" as const, value: input.name.trim() },
+        }]),
+        ...(input.level === undefined ? [] : [{
+          field: "level" as const,
+          before: { type: "number" as const, value: existing.level },
+          after: { type: "number" as const, value: input.level },
+        }]),
+        ...(input.color === undefined ? [] : [{
+          field: "color" as const,
+          before: existing.color === null
+            ? { type: "null" as const, value: null }
+            : { type: "text" as const, value: existing.color },
+          after: input.color === null
+            ? { type: "null" as const, value: null }
+            : { type: "text" as const, value: input.color },
+        }]),
+      ],
+      context: [
+        { field: "permissions_added", value: { type: "list", value: add.map((value) => ({
+          type: "code" as const, value,
+        })) } },
+        { field: "permissions_removed", value: { type: "list", value: remove.map((value) => ({
+          type: "code" as const, value,
+        })) } },
+      ],
     }));
     this.handleGuardedMutation(outcome);
     return this.requireRole(roleId);
@@ -409,15 +501,26 @@ export class IdentityAdminService {
     if (role.level >= actor.roleLevel) {
       throw new AppError({ code: "FORBIDDEN", status: 403, message: "You cannot delete a role at or above your level" });
     }
-    const outcome = await this.options.store.deleteRole(role, createAuditMutation(context, {
-      entityType: "role",
-      entityId: roleId,
+    const outcome = await this.options.store.deleteRole(role, createAuditEvent(context, {
+      subjectType: "role",
+      subjectId: roleId,
+      subjectLabel: role.name,
       action: "delete",
-      summary: role.name,
+      context: [
+        { field: "level", value: { type: "number", value: role.level } },
+        { field: "color", value: role.color === null
+          ? { type: "null", value: null }
+          : { type: "text", value: role.color } },
+        { field: "permissions", value: { type: "list", value: [...role.permissions].sort().map((value) => ({
+          type: "code" as const,
+          value,
+        })) } },
+        { field: "assigned_user_count", value: { type: "number", value: role.assignedUserCount } },
+      ],
     }));
     if (outcome === "referenced") throw new AppError({ code: "CONFLICT", status: 409, message: "Role is still referenced" });
     if (outcome === "not_found") throw new AppError({ code: "NOT_FOUND", status: 404, message: "Role not found" });
-    if (outcome === "last_owner") this.throwLastOwner();
+    if (outcome === "last_role_manager") this.throwLastRoleManager();
     if (outcome === "conflict") this.throwConcurrentAuthorizationChange();
     return { ok: true };
   }
@@ -435,14 +538,20 @@ export class IdentityAdminService {
     this.requireNotDeleted(targets);
     for (const target of targets) assertTargetBelowActor(actor, {
       userId: target.id, roleId: target.roleId, roleLevel: target.roleLevel,
-    }, { allowSelf: false, allowOwnerPeer: true });
-    if (!role.permissions.has(PERMISSION_ID.ADMIN_OWNERS_MANAGE)) await this.assertOwnersRemain(userIds);
-    const outcome = await this.options.store.setUsersRole({ targets, destinationRole: role, now: context.now }, createAuditMutation(context, {
-      entityType: "user",
-      entityId: "batch",
+    }, { allowSelf: false });
+    if (!role.permissions.has(PERMISSION_ID.ADMIN_ROLES_MANAGE)) await this.assertRoleManagersRemain(userIds);
+    const outcome = await this.options.store.setUsersRole({ targets, destinationRole: role, now: context.now }, createAuditEvent(context, {
+      subjectType: "user",
+      subjectId: "batch",
+      subjectLabel: null,
       action: "batch_role_update",
-      summary: targets.map((target) => target.username).join(", ").slice(0, 200),
-      details: { user_ids: userIds, new_role: role.id, count: targets.length },
+      context: [
+        { field: "user_ids", value: { type: "list", value: targets.map((target) => ({
+          type: "reference" as const, value: { id: target.id, label: target.username },
+        })) } },
+        { field: "role_id", value: { type: "reference", value: { id: role.id, label: role.name } } },
+        { field: "count", value: { type: "number", value: targets.length } },
+      ],
     }));
     this.handleGuardedMutation(outcome);
     return { ok: true as const, updated: targets.length };
@@ -461,7 +570,7 @@ export class IdentityAdminService {
     this.requireNotDeleted(targets);
     for (const target of targets) assertTargetBelowActor(actor, {
       userId: target.id, roleId: target.roleId, roleLevel: target.roleLevel,
-    }, { allowSelf: false, allowOwnerPeer: true });
+    }, { allowSelf: false });
     if (action !== "delete") {
       const desiredActive = action === "reactivate";
       if (targets.some((target) => target.isActive === desiredActive)) {
@@ -472,14 +581,19 @@ export class IdentityAdminService {
         });
       }
     }
-    if (action !== "reactivate") await this.assertOwnersRemain(userIds);
+    if (action !== "reactivate") await this.assertRoleManagersRemain(userIds);
     const auditAction = action === "delete" ? "batch_delete" : action === "deactivate" ? "batch_deactivate" : "batch_reactivate";
-    const audit = createAuditMutation(context, {
-      entityType: "user",
-      entityId: "batch",
+    const audit = createAuditEvent(context, {
+      subjectType: "user",
+      subjectId: "batch",
+      subjectLabel: null,
       action: auditAction,
-      summary: targets.map((target) => target.username).join(", ").slice(0, 200),
-      details: { user_ids: userIds, count: targets.length },
+      context: [
+        { field: "user_ids", value: { type: "list", value: targets.map((target) => ({
+          type: "reference" as const, value: { id: target.id, label: target.username },
+        })) } },
+        { field: "count", value: { type: "number", value: targets.length } },
+      ],
     });
     const outcome = action === "delete"
       ? await this.options.store.softDeleteUsers({ targets, now: context.now }, audit)
@@ -495,7 +609,7 @@ export class IdentityAdminService {
     }
     assertTargetBelowActor(actor, {
       userId: target.id, roleId: target.roleId, roleLevel: target.roleLevel,
-    }, { allowSelf, allowOwnerPeer: true });
+    }, { allowSelf });
     return target;
   }
 
@@ -511,20 +625,20 @@ export class IdentityAdminService {
     return role;
   }
 
-  private async assertOwnersRemain(userIds: readonly string[]): Promise<void> {
+  private async assertRoleManagersRemain(userIds: readonly string[]): Promise<void> {
     if (userIds.length === 0) return;
     const [total, affected] = await Promise.all([
-      this.options.store.countActiveOwners(),
-      this.options.store.countActiveOwnersAmong(userIds),
+      this.options.store.countActiveRoleManagers(),
+      this.options.store.countActiveRoleManagersAmong(userIds),
     ]);
-    if (affected > 0 && total <= affected) this.throwLastOwner();
+    if (affected > 0 && total <= affected) this.throwLastRoleManager();
   }
 
-  private throwLastOwner(): never {
+  private throwLastRoleManager(): never {
     throw new AppError({
       code: "CONFLICT",
       status: 409,
-      message: "At least one active site owner is required",
+      message: "At least one active role manager is required",
     });
   }
 
@@ -546,7 +660,7 @@ export class IdentityAdminService {
   }
 
   private handleGuardedMutation(outcome: GuardedAuthMutationResult): void {
-    if (outcome === "last_owner") this.throwLastOwner();
+    if (outcome === "last_role_manager") this.throwLastRoleManager();
     if (outcome === "conflict") this.throwConcurrentAuthorizationChange();
   }
 

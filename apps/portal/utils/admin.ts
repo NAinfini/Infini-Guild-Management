@@ -1,17 +1,3 @@
-import { format } from "date-fns";
-export { toIsoOrUndefined } from "./iso-dates";
-
-export function formatDateTime(iso: string | null): string {
-  if (!iso) {
-    return "-";
-  }
-  const date = new Date(iso);
-  if (Number.isNaN(date.getTime())) {
-    return "-";
-  }
-  return format(date, "yyyy-MM-dd HH:mm");
-}
-
 export function downloadFileBlob(filename: string, blob: Blob) {
   const url = URL.createObjectURL(blob);
   const link = document.createElement("a");

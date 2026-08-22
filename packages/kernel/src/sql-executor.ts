@@ -30,7 +30,11 @@ export interface SqlExecutor {
   batch(statements: readonly SqlBatchStatement[]): Promise<readonly SqlResult[]>;
 }
 
-function firstSqlToken(sql: string): string | undefined {
+/*
+ * 词法上的首个 SQL 关键字（跳过前导注释与空语句）。执行器靠它做两件事：
+ * 拒绝绕过 batch() 的事务控制语句，以及把纯 SELECT 路由到只读通道。
+ */
+export function firstSqlToken(sql: string): string | undefined {
   let remaining = sql;
   while (true) {
     remaining = remaining.trimStart();

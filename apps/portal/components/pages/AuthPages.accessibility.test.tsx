@@ -1,4 +1,3 @@
-// @vitest-environment jsdom
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { MantineProvider } from "@mantine/core";
@@ -76,6 +75,10 @@ vi.mock("../../services/AuthService", () => ({
   verifyInvite: vi.fn(),
 }));
 
+vi.mock("./AuthLightfall", () => ({
+  AuthLightfall: () => <div data-testid="auth-lightfall" aria-hidden="true" />,
+}));
+
 function renderLogin() {
   render(
     <MantineProvider>
@@ -123,6 +126,19 @@ describe("Auth page semantics", () => {
       "href",
       "/register",
     );
+  });
+
+  it("shares one decorative Lightfall background across login and registration", () => {
+    const { unmount } = render(
+      <MantineProvider>
+        <LoginPage />
+      </MantineProvider>,
+    );
+    expect(screen.getByTestId("auth-lightfall")).toHaveAttribute("aria-hidden", "true");
+    unmount();
+
+    renderRegister();
+    expect(screen.getByTestId("auth-lightfall")).toHaveAttribute("aria-hidden", "true");
   });
 
   it("shows and announces a localized Caps Lock warning without sharing the eye control", () => {
@@ -202,11 +218,44 @@ describe("Auth page semantics", () => {
       resolve(process.cwd(), "apps/portal/components/pages/AuthPages.css"),
       "utf8",
     );
+    const lightfallSource = readFileSync(
+      resolve(process.cwd(), "apps/portal/components/pages/AuthLightfall.tsx"),
+      "utf8",
+    );
+    const semanticTokens = readFileSync(
+      resolve(process.cwd(), "apps/portal/styles/semantic.css"),
+      "utf8",
+    );
+    const designContract = readFileSync(resolve(process.cwd(), "DESIGN.md"), "utf8");
 
     expect(loginSource).not.toMatch(/<Anchor\b[^>]*\bonClick=/);
     expect(registerSource).not.toMatch(/<Anchor\b[^>]*\bonClick=/);
     expect(styles).toMatch(
       /\.login-page__eye-btn\s*\{[^}]*width:\s*var\(--control-hit-area\)[^}]*height:\s*var\(--control-hit-area\)/s,
     );
+    expect(loginSource).toContain('className="login-page__eye-btn"');
+    expect(registerSource.match(/className="login-page__eye-btn"/g)).toHaveLength(2);
+    expect(styles).toMatch(
+      /\.login-page__eye-btn::before\s*\{[^}]*width:\s*var\(--control-icon-size-regular\)[^}]*height:\s*var\(--control-icon-size-regular\)/s,
+    );
+    expect(styles).toMatch(
+      /\.login-page__eye-btn:hover\s*\{[^}]*background:\s*transparent/s,
+    );
+    expect(styles).toMatch(
+      /\.login-page__eye-btn:hover::before\s*\{[^}]*background:\s*var\(--surface-sunken\)/s,
+    );
+    expect(lightfallSource).toContain("const MAX_DEVICE_PIXEL_RATIO = 1.25");
+    expect(lightfallSource).toContain("for (int streak = 0; streak < 3; streak++)");
+    expect(lightfallSource).toContain("prefers-reduced-motion: reduce");
+    expect(lightfallSource).toContain("animationFrame !== null || reducedMotion");
+    expect(lightfallSource).toContain('document.addEventListener("visibilitychange"');
+    expect(lightfallSource).toContain('import("ogl")');
+    expect(semanticTokens).toContain("--auth-lightfall-opacity: 0.34");
+    expect(semanticTokens).toContain("--auth-lightfall-opacity: 0.64");
+    expect(designContract).toContain("auth Lightfall remains auth-only");
+    expect(styles).toMatch(
+      /\.login-page__lightfall\s*\{[^}]*pointer-events:\s*none/s,
+    );
+    expect(styles).not.toContain("auth-lightfall-reveal");
   });
 });

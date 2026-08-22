@@ -1,10 +1,5 @@
-import {
-  PERMISSIONS,
-  SITE_OWNER_LEVEL,
-  SITE_OWNER_ROLE_ID,
-  type AdminRole,
-  type User,
-} from "@guild/shared";
+// @vitest-environment node
+import { type AdminRole, type User } from "@guild/shared";
 import { describe, expect, it } from "vitest";
 import {
   canPreviewRole,
@@ -75,29 +70,19 @@ describe("role authority rules", () => {
     expect(canManageUserByRoleLevel({ role_level: 1 } as User, null)).toBe(false);
   });
 
-  it("matches the server's site-owner peer and assignment exception", () => {
-    const ownerPermissions = Object.fromEntries(
-      PERMISSIONS.map((permission) => [permission, true]),
-    ) as User["permissions"];
-    const owner = {
-      id: "owner-1",
-      role: SITE_OWNER_ROLE_ID,
-      role_level: SITE_OWNER_LEVEL,
-      permissions: ownerPermissions,
-    } as User;
-    const ownerRole = {
-      id: SITE_OWNER_ROLE_ID,
-      level: SITE_OWNER_LEVEL,
-      permissions: ownerPermissions,
+  it("allows assigning the actor's exact role without allowing peer management", () => {
+    const actorRole = {
+      id: actor.role,
+      level: actor.role_level,
+      permissions: actor.permissions,
     } as AdminRole;
-
     expect(canManageUserByRoleLevel({
-      id: "owner-2",
-      role: SITE_OWNER_ROLE_ID,
-      role_level: SITE_OWNER_LEVEL,
-    } as User, owner)).toBe(true);
-    expect(canManageUserByRoleLevel(owner, owner)).toBe(false);
-    expect(isRoleAssignableToUser(ownerRole, owner)).toBe(true);
+      id: "officer-2",
+      role: actor.role,
+      role_level: actor.role_level,
+    } as User, actor)).toBe(false);
+    expect(isRoleAssignableToUser(actorRole, actor)).toBe(true);
+    expect(isRoleAssignableToUser({ ...actorRole, id: "peer-role" }, actor)).toBe(false);
   });
 
   it("does not offer Viewing As roles above the actual session role", () => {

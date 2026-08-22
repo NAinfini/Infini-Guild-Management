@@ -6,10 +6,14 @@ import { getTableConfig, SQLiteSyncDialect } from "drizzle-orm/sqlite-core";
 import { describe, expect, it } from "vitest";
 import { appSchema } from "../schema/app-schema.js";
 
-const migration = readFileSync(
-  fileURLToPath(new URL("./generated/0000_core.sql", import.meta.url)),
+const manifest = JSON.parse(readFileSync(
+  fileURLToPath(new URL("./generated/manifest.json", import.meta.url)),
   "utf8",
-).replaceAll("--> statement-breakpoint", "");
+)) as Array<{ file: string }>;
+const migration = manifest.map(({ file }) => readFileSync(
+  fileURLToPath(new URL(`./generated/${file}`, import.meta.url)),
+  "utf8",
+)).join("\n").replaceAll("--> statement-breakpoint", "");
 const dialect = new SQLiteSyncDialect();
 
 describe("Drizzle schema and core migration parity", () => {
@@ -24,8 +28,8 @@ describe("Drizzle schema and core migration parity", () => {
         database,
         "SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%' ORDER BY name",
       );
-      expect(configs).toHaveLength(58);
-      expect(new Set(expectedTableNames).size).toBe(58);
+      expect(configs).toHaveLength(59);
+      expect(new Set(expectedTableNames).size).toBe(59);
       expect(actualTableNames).toEqual(expectedTableNames);
 
       for (const config of configs) {
@@ -71,11 +75,12 @@ describe("Drizzle schema and core migration parity", () => {
           .sort();
         expect(actualCheckNames, `${config.name} checks`).toEqual(config.checks.map(({ name }) => name).sort());
         const normalizedTableSql = normalizeSql(tableSql);
+        const normalizedCheckSql = withoutTableQualifiers(normalizedTableSql);
         for (const check of config.checks) {
-          const expectedCheck = normalizeSql(
+          const expectedCheck = withoutTableQualifiers(normalizeSql(
             `CONSTRAINT ${check.name} CHECK(${dialect.sqlToQuery(check.value).sql})`,
-          );
-          expect(normalizedTableSql, `${config.name}.${check.name}`).toContain(expectedCheck);
+          ));
+          expect(normalizedCheckSql, `${config.name}.${check.name}`).toContain(expectedCheck);
         }
 
         const actualIndexes = database.prepare(
@@ -188,7 +193,11 @@ function normalizeSql(sql: string): string {
 }
 
 function normalizeIndexSql(sql: string): string {
-  return normalizeSql(sql).replace(/\b[a-z_][a-z0-9_]*\./g, "");
+  return withoutTableQualifiers(normalizeSql(sql));
+}
+
+function withoutTableQualifiers(sql: string): string {
+  return sql.replace(/\b[a-z_][a-z0-9_]*\./g, "");
 }
 
 function compareJson(left: unknown, right: unknown): number {

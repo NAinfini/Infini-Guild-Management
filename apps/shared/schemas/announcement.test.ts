@@ -33,6 +33,17 @@ describe("announcement contracts", () => {
     ).toEqual({ title: "Updated" });
   });
 
+  it("allows an update to clear a publication time without widening create input", () => {
+    expect(updateAnnouncementSchema.parse({ publish_at: null })).toEqual({ publish_at: null });
+    expect(
+      createAnnouncementSchema.safeParse({
+        title: "Maintenance",
+        body_json: '{"type":"doc","content":[]}',
+        publish_at: null,
+      }).success,
+    ).toBe(false);
+  });
+
   it("validates the pending image upload response", () => {
     expect(
       announcementImageUploadResponseSchema.parse({

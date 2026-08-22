@@ -9,7 +9,9 @@ export type CreateBadgePayload = {
   sort_order?: number;
 };
 
-export type UpdateBadgePayload = Partial<CreateBadgePayload>;
+export type UpdateBadgePayload = Omit<Partial<CreateBadgePayload>, "description"> & {
+  description?: string | null;
+};
 
 export function createBadge(payload: CreateBadgePayload): Promise<MemberBadge> {
   return apiRequest<MemberBadge>("/api/badges", {

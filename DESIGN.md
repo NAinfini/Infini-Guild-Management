@@ -31,14 +31,24 @@ colors:
   accent-indigo: "#6E93F7"
   accent-violet: "#9C8CF5"
   accent-orange: "#EC7F13"
-  domain-war-light: "#534AB7"
-  domain-war-dark: "#9C8CF5"
+  domain-announce-light: "#954804"
+  domain-announce-dark: "#EC7F13"
+  domain-ops-light: "#4F6412"
+  domain-ops-dark: "#86A91E"
+  domain-gallery-light: "#136C13"
+  domain-gallery-dark: "#1FB21F"
   domain-event-light: "#0369A1"
   domain-event-dark: "#7DD3FC"
-  domain-ops-light: "#3A3833"
-  domain-ops-dark: "#D6D2C8"
-  domain-community-light: "#954804"
-  domain-community-dark: "#EC7F13"
+  domain-wiki-light: "#185FA5"
+  domain-wiki-dark: "#6E93F7"
+  domain-war-light: "#534AB7"
+  domain-war-dark: "#9C8CF5"
+  domain-personal-light: "#8823C7"
+  domain-personal-dark: "#C181E9"
+  domain-admin-light: "#8E3687"
+  domain-admin-dark: "#DE72D5"
+  domain-roster-light: "#AD1F5F"
+  domain-roster-dark: "#E779AA"
   status-success-light: "#15803D"
   status-success-dark: "#4ADE80"
   status-warning-light: "#A16207"
@@ -241,27 +251,15 @@ components:
     backgroundColor: "{colors.accent-orange}"
     rounded: "{rounded.control}"
     size: "32px"
-  domain-war-label-light:
+  domain-announce-label-light:
     backgroundColor: "{colors.surface-base-light}"
-    textColor: "{colors.domain-war-light}"
+    textColor: "{colors.domain-announce-light}"
     typography: "{typography.meta}"
     rounded: "{rounded.control}"
     padding: "4px 8px"
-  domain-war-label-dark:
+  domain-announce-label-dark:
     backgroundColor: "{colors.surface-base-dark}"
-    textColor: "{colors.domain-war-dark}"
-    typography: "{typography.meta}"
-    rounded: "{rounded.control}"
-    padding: "4px 8px"
-  domain-event-label-light:
-    backgroundColor: "{colors.surface-base-light}"
-    textColor: "{colors.domain-event-light}"
-    typography: "{typography.meta}"
-    rounded: "{rounded.control}"
-    padding: "4px 8px"
-  domain-event-label-dark:
-    backgroundColor: "{colors.surface-base-dark}"
-    textColor: "{colors.domain-event-dark}"
+    textColor: "{colors.domain-announce-dark}"
     typography: "{typography.meta}"
     rounded: "{rounded.control}"
     padding: "4px 8px"
@@ -277,15 +275,87 @@ components:
     typography: "{typography.meta}"
     rounded: "{rounded.control}"
     padding: "4px 8px"
-  domain-community-label-light:
+  domain-gallery-label-light:
     backgroundColor: "{colors.surface-base-light}"
-    textColor: "{colors.domain-community-light}"
+    textColor: "{colors.domain-gallery-light}"
     typography: "{typography.meta}"
     rounded: "{rounded.control}"
     padding: "4px 8px"
-  domain-community-label-dark:
+  domain-gallery-label-dark:
     backgroundColor: "{colors.surface-base-dark}"
-    textColor: "{colors.domain-community-dark}"
+    textColor: "{colors.domain-gallery-dark}"
+    typography: "{typography.meta}"
+    rounded: "{rounded.control}"
+    padding: "4px 8px"
+  domain-event-label-light:
+    backgroundColor: "{colors.surface-base-light}"
+    textColor: "{colors.domain-event-light}"
+    typography: "{typography.meta}"
+    rounded: "{rounded.control}"
+    padding: "4px 8px"
+  domain-event-label-dark:
+    backgroundColor: "{colors.surface-base-dark}"
+    textColor: "{colors.domain-event-dark}"
+    typography: "{typography.meta}"
+    rounded: "{rounded.control}"
+    padding: "4px 8px"
+  domain-wiki-label-light:
+    backgroundColor: "{colors.surface-base-light}"
+    textColor: "{colors.domain-wiki-light}"
+    typography: "{typography.meta}"
+    rounded: "{rounded.control}"
+    padding: "4px 8px"
+  domain-wiki-label-dark:
+    backgroundColor: "{colors.surface-base-dark}"
+    textColor: "{colors.domain-wiki-dark}"
+    typography: "{typography.meta}"
+    rounded: "{rounded.control}"
+    padding: "4px 8px"
+  domain-war-label-light:
+    backgroundColor: "{colors.surface-base-light}"
+    textColor: "{colors.domain-war-light}"
+    typography: "{typography.meta}"
+    rounded: "{rounded.control}"
+    padding: "4px 8px"
+  domain-war-label-dark:
+    backgroundColor: "{colors.surface-base-dark}"
+    textColor: "{colors.domain-war-dark}"
+    typography: "{typography.meta}"
+    rounded: "{rounded.control}"
+    padding: "4px 8px"
+  domain-personal-label-light:
+    backgroundColor: "{colors.surface-base-light}"
+    textColor: "{colors.domain-personal-light}"
+    typography: "{typography.meta}"
+    rounded: "{rounded.control}"
+    padding: "4px 8px"
+  domain-personal-label-dark:
+    backgroundColor: "{colors.surface-base-dark}"
+    textColor: "{colors.domain-personal-dark}"
+    typography: "{typography.meta}"
+    rounded: "{rounded.control}"
+    padding: "4px 8px"
+  domain-admin-label-light:
+    backgroundColor: "{colors.surface-base-light}"
+    textColor: "{colors.domain-admin-light}"
+    typography: "{typography.meta}"
+    rounded: "{rounded.control}"
+    padding: "4px 8px"
+  domain-admin-label-dark:
+    backgroundColor: "{colors.surface-base-dark}"
+    textColor: "{colors.domain-admin-dark}"
+    typography: "{typography.meta}"
+    rounded: "{rounded.control}"
+    padding: "4px 8px"
+  domain-roster-label-light:
+    backgroundColor: "{colors.surface-base-light}"
+    textColor: "{colors.domain-roster-light}"
+    typography: "{typography.meta}"
+    rounded: "{rounded.control}"
+    padding: "4px 8px"
+  domain-roster-label-dark:
+    backgroundColor: "{colors.surface-base-dark}"
+    textColor: "{colors.domain-roster-dark}"
     typography: "{typography.meta}"
     rounded: "{rounded.control}"
     padding: "4px 8px"
@@ -349,49 +419,49 @@ components:
 
 ### Contract and authority
 
-This file is the foundational visual specification for the portal. The frontmatter is a compact index; exact implemented values live in `apps/portal/styles/tokens.css`, `semantic.css`, `scale.css`, and `apps/portal/providers/ThemeProvider.tsx`. If prose or frontmatter drifts from those files, source wins and this document must be corrected in the same change.
+This document is the portal's visual contract. The frontmatter is a compact index; the implemented values live in `apps/portal/styles/tokens.css`, `semantic.css`, `scale.css`, and `apps/portal/providers/ThemeProvider.tsx`. If this document disagrees with those sources, the source wins and this file must be corrected in the same change.
 
-`AppShell`, `route-metadata.ts`, `SectionHeader`, and `ContentFilterToolbar` define the maintained shell, heading, and responsive-filter compositions. Intentional foundational changes update the relevant source, focused tests, and this document together.
+`AppShell`, `route-metadata.ts`, `SectionHeader`, and `ContentFilterToolbar` define the maintained shell, heading, and responsive-filter compositions. Any intentional foundational change updates the source, focused tests, and this document together.
 
 Normative words:
 
 - **MUST / MUST NOT** are enforced and, where practical, covered by `apps/portal/styles/theme-tokens.test.ts` or a focused component test.
-- **SHOULD** is the default. A deviation requires a comment at the call site explaining the product reason.
+- **SHOULD** is the default. Any deviation needs a call-site comment that explains the product reason.
 - Exact values are normative. Vague value ranges are not allowed.
 
 ### Product constraints
 
-- Desktop and mobile are equally important. Desktop supports dense management; mobile supports fast viewing, registration, and interaction without becoming a reduced product.
-- The portal is Chinese-first and bilingual. Long Chinese and English strings are both first-class test inputs.
+- Desktop and mobile are equally important: desktop supports dense management, while mobile supports fast viewing, registration, and interaction without becoming a reduced product.
+- The portal is Chinese-first and bilingual. Long Chinese and English strings are first-class test inputs.
 - Light and dark modes ship together.
-- Public and protected routes keep the same visual system; visual affordances must not weaken permission or session enforcement.
+- Public and protected routes use the same visual system. Visual affordances must not weaken permission or session enforcement.
 - Mantine is the sole foundational component library. Co-located or scoped CSS may style domain content, but may not recreate foundational component behavior.
 - Roster's existing member card, pointer response, hover treatment, and audio signature are protected product character.
 
 ### Direction: Forged Material
 
-The portal is a restrained guild operations console: anodised metal and smoked glass under one overhead light. It must not look like a neon launcher or a generic admin template.
+The portal is a restrained guild-operations console: anodised metal and smoked glass under a single overhead light. It must not resemble a neon launcher or a generic admin template.
 
 Identity comes from material, typography, content, and controlled domain colour:
 
-- surfaces have one physical read: field, plate, recess, or overlay;
-- numbers are the loudest element on data-heavy screens;
-- colour is spent on actions, data, status, and member identity, not general chrome;
-- outside Roster, motion explains state and never performs decoration.
+- Each surface has one physical role: field, plate, recess, or overlay.
+- Numbers are the loudest element on data-heavy screens.
+- Colour is reserved for actions, data, status, and member identity, not general chrome.
+- Outside Roster, motion explains state rather than decorating it.
 
 ### Reference synthesis
 
-The direction learns from, but does not copy, three references:
+The system takes principles from, but does not copy, three references:
 
 - [Linear](https://github.com/voltagent/awesome-design-md/blob/main/design-md/linear.app/DESIGN.md): machine-readable token discipline, scarce accent colour, and a clear dark surface ladder.
 - [IBM](https://github.com/voltagent/awesome-design-md/blob/main/design-md/ibm/DESIGN.md): explicit component states, dense information hierarchy, and accessibility rigor.
 - [PlayStation](https://github.com/voltagent/awesome-design-md/blob/main/design-md/playstation/DESIGN.md): game identity carried by content and media while interface chrome remains controlled.
 
-Marketing-page patterns from those references are explicitly rejected: oversized display type, full-bleed campaign layouts, excessive empty space, dark-only assumptions, pill-heavy navigation, and English-only typography.
+The portal explicitly rejects their marketing-page patterns: oversized display type, full-bleed campaign layouts, excessive empty space, dark-only assumptions, pill-heavy navigation, and English-only typography.
 
 ### Material versus effect
 
-This distinction is load-bearing:
+Keep material and effect distinct:
 
 | | Material | Effect |
 |---|---|---|
@@ -401,7 +471,16 @@ This distinction is load-bearing:
 | Runtime cost | one bounded paint | compositing and continuous response |
 | Budget | only the recipes in this document | one component on one page |
 
-Any glow, `filter: blur()`, dispersion shadow, 3D transform, or specular layer outside `apps/portal/components/shared/MemberCard.css` is forbidden. A surface that needs more presence gets a stronger edge or clearer hierarchy, not another effect.
+Glow, `filter: blur()`, dispersion shadow, 3D transform, and specular layers are forbidden outside `apps/portal/components/shared/MemberCard.css`. If a surface needs more presence, strengthen its edge or hierarchy instead of adding an effect.
+
+**Radial gradients are the only named exception.** Exactly two files may contain `radial-gradient`; a third occurrence anywhere is a violation.
+
+| File | What it owns |
+|---|---|
+| `styles/semantic.css` | the ambient recipe — the three lights of `--ambient-field` |
+| `styles.css` | the empty-state icon well |
+
+The guard names both files and asserts that each still contains a radial gradient, so the exception stays tied to its intended use.
 
 ## Colors
 
@@ -420,7 +499,7 @@ The values in the frontmatter are sourced from the existing L1 palette. Implemen
 
 ### Action, personalisation, domain, and status
 
-The implemented system keeps four independent colour roles:
+The system keeps four separate colour roles:
 
 | Role | Prefix | User-selectable | Purpose |
 |---|---|---:|---|
@@ -429,7 +508,7 @@ The implemented system keeps four independent colour roles:
 | Domain | `--domain-*` | No | entity category and chart meaning |
 | Status | `--status-*` | No | success, warning, danger, and information |
 
-The action group is fixed teal and seeded from the existing teal ramp:
+The action group is fixed teal and comes from the existing teal ramp:
 
 | Token | Source |
 |---|---|
@@ -441,55 +520,97 @@ The action group is fixed teal and seeded from the existing teal ramp:
 | `--brand-on-fill` | `--palette-teal-900` |
 | `--brand-on-fill-hover` | `--palette-ink-black` |
 
-Verified contrast against `--surface-base`: brand text is 5.89:1 in light and 7.11:1 in dark; brand-on-fill is 5.30:1; hover text is 5.36:1. These values must not drift below WCAG AA.
+Against `--surface-base`, brand text is 5.89:1 in light mode and 7.11:1 in dark mode; brand-on-fill is 5.30:1; hover text is 5.36:1. These values must remain at or above WCAG AA.
 
 ### Personalisation allowlist
 
-`--accent-*` may appear only in:
+`--accent-*` may be used only in:
 
 1. the active sidebar indicator;
 2. the signed-in user's avatar ring;
 3. the signed-in user's own `MemberCard` frame;
 4. the accent picker in Settings;
-5. the shell brand mark.
+5. the shell brand mark;
+6. the shell's ambient field.
 
-All other selection, focus, action, and link states use `--brand-*`. Add a guard so `var(--accent-` is rejected outside the allowlisted files.
+All other selection, focus, action, and link states use `--brand-*`. A guard rejects `var(--accent-` outside the allowlisted files.
+
+**Quantity uses accent through named tokens, not the identity allowlist.** The list above is only for surfaces that identify the signed-in user. Amounts use semantic aliases so the allowlist stays meaningful.
+
+Quantity surfaces consume a semantic name instead:
+
+| Token | Value | Consumers |
+|---|---|---|
+| `--meter-fill` | `--accent-on-surface` | Progress fills, dashboard ratio meters |
+| `--meter-track` | `--surface-sunken` | the same components' empty portion |
+| `--series-accent` | `--accent-on-surface` | the lead slot of the categorical series, i.e. a single-series chart |
+
+Only `semantic.css` maps these names to `--accent-*`; consumers reference `--meter-*` and `--series-accent`. Accent may fill a quantity bar or lead a chart's colour sequence, but it must not colour a button, link, or other action control. Those use `--brand-*`.
+
+**Choose accent steps by their background, not by the thing being drawn.** `--accent-fill` stays at 500 in both modes because it is calibrated for ink on top of it, as in a button; `--accent-on-fill` is the matching ink. `--accent-on-surface` is 700 in light mode and 500 in dark mode because it is calibrated to read against a surface. Text (`--accent-text`), the lead series slot, and a meter fill all use this second case through the same token.
+
+The distinction is essential: `--accent-fill` on `--meter-track` measures only 2.23–2.52:1 in light mode, making both halves of a progress bar blend together. `--accent-on-surface` measures 5.35–5.98:1 on the same track. A guard enforces the 3:1 non-text minimum for all four accents in both modes.
 
 ### Domain colours
 
-Domain colour is fixed across accent choices but has a light and dark text-safe value:
+Domain colour is fixed across accent choices and has a text-safe value for each theme:
 
-| Token | Light | Dark | Meaning |
-|---|---|---|---|
-| `--domain-war` | violet-700 | violet-500 | Guild War |
-| `--domain-event` | info-deep | info-bright | Events |
-| `--domain-ops` | neutral-700 | neutral-200 | Storage, Tools, routine operations |
-| `--domain-community` | orange-700 | orange-500 | Announcements, Gallery, Wiki |
+| Token | Hue | Light | Dark | Destination |
+|---|---:|---|---|---|
+| `--domain-announce` | 30° | orange-700 | orange-500 | Announcements |
+| `--domain-ops` | 75° | moss-700 | moss-500 | Storage, Tools |
+| `--domain-gallery` | 120° | fern-700 | fern-500 | Gallery |
+| `--domain-event` | 199° | info-deep | info-bright | Events |
+| `--domain-wiki` | 224° | indigo-700 | indigo-500 | Wiki |
+| `--domain-war` | 249° | violet-700 | violet-500 | Guild War |
+| `--domain-personal` | 277° | orchid-700 | orchid-500 | Profile, Settings |
+| `--domain-admin` | 305° | magenta-700 | magenta-500 | Admin console |
+| `--domain-roster` | 333° | rose-700 | rose-500 | Roster |
 
-Each pair passes AA on `--surface-base`; the lowest measured pair is 5.63:1. Domain colour is allowed only as a Badge colour, a 3px leading rule, an icon tint, or a chart series. It must not fill an entire card, colour a routine button, or outline a whole panel.
+Every pair passes AA on `--surface-base`; the lowest measured pair is 5.63:1. Domain colour is allowed only for a Badge, 3px leading rule, icon tint, chart series, or the ambient field's first light. It must not fill a whole card, colour a routine button, or outline a whole panel.
+
+**Nine, and nine is the ceiling.** The sidebar lists twelve destinations, so "one hue per tab" is the obvious reading of the requirement and it is not achievable. Three constraints bound the ring, and each is a rule the palette already obeys rather than a preference invented here:
+
+- the brand teal at 169° is reserved — it is what a selected sidebar item is painted with, and a route that tinted its page the same colour would make the selected row read as chrome;
+- a domain stays at least 13° off a status hue (danger 0°, warning 43°, success 142°), 13° being the clearance the shipping orange-vs-warning pair already has and the tightest anywhere in the palette;
+- domains stay at least 24° apart, the info-vs-indigo step that already ships as two distinguishable series colours.
+
+Those leave room for nine. A tenth lands inside 13° of a neighbour, and the two pages stop being told apart — which is worse than sharing a hue on purpose, because the user cannot tell whether they moved. So two pairs merge, both times where the pair is already one thing: Storage and Tools are the same operational surface, and Settings is the configuration panel of Profile. Only the dashboard carries no domain at all; it is the site itself rather than a section of it, and leaving it on the user's chosen accent puts that choice on the first screen.
+
+Domains never appear side by side — `data-domain` is singular on `<html>` — so the bar the ring has to clear is "recognisably changed after navigating", not "separable when adjacent". Within each hue the two steps are matched to the family's luminance profile (700 at ≈0.11, 500 at ≈0.33) at the family-median 70% saturation, so every ratio involving `--domain` lands within a few hundredths of war's and no single domain becomes the binding case for the ambient contrast budget. Derivation and the ramps themselves live in `tokens.css`.
 
 ### Status colours
 
-`--status-success`, `--status-warning`, `--status-danger`, and `--status-info` keep their existing palette mapping. Status must always be paired with an icon, label, or shape. Colour alone never carries meaning.
+`--status-success`, `--status-warning`, `--status-danger`, and `--status-info` keep their existing palette mapping. Status always needs an icon, label, or shape; colour alone never carries meaning.
 
 ### Colour usage rules
 
 - Neutral chrome is the default.
-- One composition should normally contain one action colour plus any genuinely meaningful domain or status colours.
+- A composition should normally contain one action colour plus only genuinely meaningful domain or status colours.
 - Text uses `--text-primary`, `--text-secondary`, or `--text-muted`; opacity is not a substitute for a text token.
 - Selected does not mean success. Primary does not mean personalised accent.
 - Colour literals remain confined to `styles/tokens.css`.
+- Links use `--brand-text`. Mantine's `--mantine-color-anchor` defaults to the primary ramp's *fill* step, which measures 3.92:1 on light paper and fails AA for body text. `styles.css` therefore maps it to the calibrated text step. The mapping is mode-independent because `--brand-text` already changes with `[data-theme]`, and it reaches both `Anchor` and anchors inside `TypographyStylesProvider` content.
 
 ## Typography
 
 ### Bilingual constraint
 
-A Latin display family has no CJK coverage. Chinese headings silently fall back to the UI stack, so hierarchy for Chinese must come from size, weight, and spacing.
+A Latin display family has no CJK coverage. Chinese headings therefore fall back to the UI stack, so their hierarchy must come from size, weight, and spacing.
 
 - The display face is used only for numerals, short Latin labels, and the brand mark.
 - Chinese headings use the UI stack.
 - Negative letter-spacing must never be applied to CJK.
 - English and Chinese must preserve the same hierarchy even when their glyph shape differs.
+
+`text-transform: uppercase` and positive `letter-spacing` are Latin typographic devices. Chinese has no letter case, so uppercasing does nothing and tracking separates related characters. Neither may be declared unconditionally. Both belong in a `:lang(en)` branch; the base rule carries the shared size, weight, and colour:
+
+```css
+.thing__label { font-size: var(--text-meta); font-weight: var(--fw-medium); }
+.thing__label:lang(en) { font-weight: var(--fw-strong); letter-spacing: 0.06em; text-transform: uppercase; }
+```
+
+The selector is part of the contract: reviewers can grep for `text-transform: uppercase` and confirm every use is language-guarded.
 
 ### Families
 
@@ -500,13 +621,13 @@ A Latin display family has no CJK coverage. Chinese headings silently fall back 
 
 Display font loading:
 
-- self-host two `woff2` files, Latin and Latin-Ext subset only, at or below 30 KB total;
+- self-host two `woff2` files, with Latin and Latin-Ext subsets only, at or below 30 KB total;
 - apply `font-display: swap`;
 - preload weight 700 only;
 - declare `size-adjust` to keep CLS at or below 0.1;
 - do not add another webfont.
 
-The only family declaration exposed to components is:
+Components use this family declaration only:
 
 ```css
 --font-display: "Saira Semi Condensed", var(--font-body);
@@ -525,7 +646,7 @@ The only family declaration exposed to components is:
 | `--text-meta` | 12px | 600 | 1.35 | labels, captions, `SectionHeader` |
 | `--text-micro` | 11px | 600 | 1.35 | badges and chart ticks, never sentences |
 
-The scale ratio is 40:11, or 3.6. Hierarchy is carried primarily by type, not nested card backgrounds.
+The scale ratio is 40:11, or 3.6. Use type, not nested card backgrounds, as the primary hierarchy signal.
 
 Letter-spacing:
 
@@ -533,38 +654,44 @@ Letter-spacing:
 |---|---|
 | display numerals and short Latin display labels | `-0.02em` |
 | Latin `h1` opt-in only | `-0.02em` |
-| `SectionHeader` or overline | `0.06em`, uppercase for Latin only |
+| `SectionHeader` or overline | `0.06em` and uppercase, both behind `:lang(en)` |
 | CJK and normal text | `0` |
 
 ### Numerals
 
-Every numeric value in a column, stat, progress readout, countdown, or chart axis uses:
+Use the following for every numeric value in a column, stat, progress readout, countdown, or chart axis:
 
 ```css
 font-variant-numeric: tabular-nums;
 font-feature-settings: "tnum" 1;
 ```
 
-Expose this through one utility or shared style. KPI values additionally use `--font-display` at weight 700.
+Expose this through one utility or shared style. KPI values also use `--font-display` at weight 700.
 
 ## Layout
 
 ### Surface ladder
 
-Every page composition starts by choosing one of four levels. Skipping a level is allowed; inventing a fifth is not.
+Every page composition starts with one of four levels. A composition may skip a level, but it may not invent a fifth.
 
 | Level | Surface | Owner | Typical content |
 |---|---|---|---|
-| L0 Field | `--surface-sunken` | root shell | ambient app background |
-| L1 Workspace | `--surface-base` | `AppShell.Main` / `PageLayout` | page content canvas |
-| L2 Plate | `--surface-raised` | Mantine `Paper` or `Card` | one semantic group |
+| L0 Field | `--surface-sunken` | navigation sidebar | permanent chrome |
+| L1 Workspace | `--surface-base` + ambient field | shell root, header, `PageLayout` | page content canvas |
+| L2 Plate | `--plate-fill` (the raised surface, opaque) | Mantine `Paper` or `Card` | one semantic group |
 | L3 Overlay | `--surface-overlay` | Mantine overlay primitives | temporary content above the page |
 
-A page may place content directly on the workspace. A Plate exists only when it groups content semantically, not to make a heading look important. A Plate inside a Plate requires an interaction reason such as a recess, selected item, editor canvas, or drag target.
+**Only L1 is lit.** The ambient field belongs to the ground; L0, L2, and L3 are opaque and do not carry it. Letting a plate inherit the field would make its material depend on its page position. Keep sunken chrome, a lit workspace, and opaque plates as distinct levels of depth; only the most distant level moves.
+
+The sidebar also stays unlit because the field carries the current route's domain hue. A permanent navigation rail must not change colour with the route it is pointing to.
+
+A page may place content directly on the workspace. Use a Plate only for a semantic group, not to make a heading look important. A Plate inside a Plate needs an interaction reason, such as a recess, selected item, editor canvas, or drag target.
+
+List rows are not a surface level. A row inside a Plate stays transparent, separated by a hairline and, for long lists, an alternating tint made from `--text-primary` at 3%. Giving every row its own surface makes it read as a slot rather than a list item. A row becomes a real surface only when detached: a drag overlay under the cursor uses `--surface-overlay` and `--shadow-overlay` because it has left the Plate.
 
 ### Responsive shell contract
 
-`AppShell` uses Mantine `AppShell` and owns all global offsets:
+`AppShell` uses Mantine `AppShell` and owns every global offset:
 
 | Metric | Target |
 |---|---:|
@@ -577,16 +704,27 @@ A page may place content directly on the workspace. A Plate exists only when it 
 
 The shell contract:
 
-- exactly one visible route title, a semantic `h1` with the compact `--text-h2` visual size, appears in the header's left side;
-- search, notifications, appearance/language, and account controls occupy the right side;
-- no empty row or differently coloured strip may appear above the header;
-- the content area must not repeat the route title or description;
-- page actions and filters begin in the first content action row, not the global header;
-- secondary global actions collapse into Mantine `Menu` or `Drawer` on small screens;
-- route content must not add a compensating top margin;
-- the shell owns scroll offset, safe-area padding, and the mobile navigation clearance.
+- The header's left side contains exactly one visible route title: a semantic `h1` at the compact `--text-h2` visual size.
+- Search, notifications, appearance/language, and account controls occupy the right side.
+- No empty row or differently coloured strip may appear above the header.
+- The content area must not repeat the route title or description.
+- Page actions and filters begin in the first content action row, not the global header.
+- Secondary global actions collapse into Mantine `Menu` or `Drawer` on small screens.
+- Route content must not add a compensating top margin.
+- The shell owns scroll offset, safe-area padding, and mobile-navigation clearance.
 
-At viewport widths up to 1023px, compact navigation replaces the desktop sidebar. The phone-specific header breakpoint remains 767px. The same route metadata generates the sidebar and compact navigation.
+At viewport widths up to 1023px, compact navigation replaces the desktop sidebar. The phone-specific header breakpoint remains 767px. The same route metadata drives both navigation forms.
+
+Within a route, a media query must reuse one of four widths rather than introduce a new one. Each marks a real change in what fits and is declared in `em` with `max-width`:
+
+| Query | Equivalent | What changes |
+|---|---:|---|
+| `39.99em` | 640px | phone portrait: tables become cards, multi-column collapses to one |
+| `47.99em` | 768px | small tablet: master-detail stacks, four-up stat bars fold to two |
+| `63.99em` | 1024px | tablet: panel heads stack, three-column groups narrow |
+| `79.99em` | 1280px | narrow desktop: a vertical nav rail turns horizontal |
+
+A JavaScript `useMediaQuery` that drives the same transformation must use its CSS counterpart's exact width.
 
 ### Page padding and content width
 
@@ -605,7 +743,7 @@ Named width modes:
 | Wide | 2200px | Dashboard, Gallery, dense data |
 | Workbench | available width | Guild War, Storage Management, Admin |
 
-Horizontal centring applies to Reading, Standard, and Wide. Workbench keeps the page padding and uses the remaining width.
+Reading, Standard, and Wide are horizontally centred. Workbench keeps page padding and uses the remaining width.
 
 ### Page templates
 
@@ -621,21 +759,37 @@ Templates are composition contracts, not new UI primitives:
 
 Login and Register use a simplified auth composition built from Mantine `Paper`, form controls, `Alert`, and `Button`.
 
+### Filled work surfaces
+
+A Workbench work area that reaches the bottom of the content region is a layout contract, not a per-page style:
+
+- **The fill is one unbroken chain.** Every element between the shell content slot and the filled region declares `flex: 1 1 auto` together with `min-block-size: 0`. A single missing `min-block-size: 0` restores the flex item's automatic minimum size, the chain collapses to content height, and the page grows a second scrollbar instead.
+- **One region, one scroll owner.** Exactly one element inside a filled area declares `overflow-y: auto`; the panels within it scroll as a group. A panel that opens its own scroller inside a scrolling group traps the pointer and hides the list the fill existed to expose.
+- **What must stay in view stays outside the scroller.** A reference panel — the source a user drags from, the totals they read against — sits beside the scrolling group, never inside it. That is the point of filling the height: the fixed side stays put while the variable side moves.
+- **A filled list pins its rows to the start.** A flex or grid container that has just been handed extra height distributes it to its own tracks by default, so a list holding one row renders that row at full container height — its indicator rules stretch end to end and its content floats in the middle. Filled row containers declare `align-content: start`.
+- **Below the desktop breakpoint the contract inverts.** The chain resets to `flex: 0 1 auto`, the region returns to content height, and the page scrolls as one column. Nested scroll regions on a phone are a trap, not a density gain.
+
 ### Spacing ownership
 
 The only spacing steps are `4 / 8 / 12 / 16 / 24 / 32 / 48`.
+
+Three quantities are not spacing and are therefore not held to this scale: hairlines and indicator rules (`1px` borders, the `2px` tab underline, the `3px` selected-row rule), the `44px` hit-area token, and control heights. They are measured against the thing they mark, not against the layout rhythm, and each already has its own token.
 
 | Step | Owner |
 |---:|---|
 | 4px | icon-to-label micro-gap, compact inline metadata |
 | 8px | tight rows, chip groups, field label-to-control |
-| 12px | toolbar-to-result, mobile page gap |
-| 16px | card padding, sibling sections, desktop header-to-content gap |
+| 12px | page rhythm (`--page-rhythm`), toolbar-to-result, mobile page gap |
+| 16px | card padding, sibling sections |
 | 24px | large section separation and desktop page edge |
 | 32px | distinct task phases |
 | 48px | deliberate separation between major work areas only |
 
 The parent owns the gap between siblings. Children must not add top margin to repair the parent's layout.
+
+**One page rhythm, one token.** The gap between top-level blocks on a page — filter toolbar to work area, section to section — is `--page-rhythm`, defined once on `.page-layout` as `--space-md`. It matches the shell page padding, the shell content gap, and the two-pane grid gap, so a page reads as one grid instead of several.
+
+Pages that wrap their children in a further `Stack` (to pass remaining height down to a full-height workbench) must pass `gap="var(--page-rhythm)"`. They may not type a number. Before this rule the five workbench pages carried five different values — 24, 16, 16, 12, 12 — and the same visual gap was a different width on each page. Spacing is a property of the layout, not a per-page decision.
 
 ### Density and responsive transformation
 
@@ -652,23 +806,83 @@ Exactly five treatments exist.
 
 #### M1 — App field
 
-Applied once at the root:
+One ambient image, defined once in `semantic.css` and painted on the ground:
 
 ```css
-background: var(--surface-sunken);
+--ambient-layer-domain:
+  radial-gradient(120% 105% at var(--ambient-x1) var(--ambient-y1),
+    var(--ambient-domain), transparent 100%);
+--ambient-layer-companion:
+  radial-gradient(112% 118% at var(--ambient-x2) var(--ambient-y2),
+    var(--ambient-companion), transparent 100%);
+--ambient-layer-accent:
+  radial-gradient(118% 108% at var(--ambient-x3) var(--ambient-y3),
+    var(--ambient-accent), transparent 100%);
+
+--ambient-field:
+  var(--ambient-layer-domain),
+  var(--ambient-layer-companion),
+  var(--ambient-layer-accent),
+  linear-gradient(160deg, var(--ambient-vignette), transparent 56%);
+
+background-color: var(--surface-base);
+background-image: var(--ambient-field);
+background-attachment: fixed;
 ```
 
-Add one pre-baked 128×128 monochrome noise tile at opacity 0.03 in dark mode and 0.02 in light mode. A repeating CSS image is acceptable. SVG `feTurbulence` and per-card noise are forbidden.
+Mix ratios live in `semantic.css` as `--ambient-mix-domain` / `--ambient-mix-companion` / `--ambient-mix-accent`, so the light and dark difference is six numbers rather than two copies of the recipe.
+
+**Three lights, none of them centred.** Two lights on opposite corners with near-equal radii sum to a straight diagonal ramp — the eye reads "one colour at the bottom left fading to another at the top right", which is the most generic gradient there is. Three fixes it structurally rather than by taste: the centres sit at (6%, 116%), (114%, 58%), and (42%, −14%), roughly 120° apart around the viewport and deliberately not collinear, so the field has a bend in it that no straight ramp can produce. The radii differ too (120×105, 112×118, 118×108) so the three falloffs never track each other.
+
+**The third light turns a route into a colour pair.** Each domain declares a companion, and the companion is not hand-picked: it is the next hue clockwise on the domain ring, so the pairing has one rule instead of nine decisions and is guaranteed to sit at least 24° away. The consequence is that the nine sections give nine visibly different grounds — teal-into-indigo, violet-into-orchid — rather than nine hue rotations of the same picture. The third light is the user's accent, which is the same in every section and is what keeps the whole set recognisably one product.
+
+Every centre sits outside the viewport, so no light reaches its own peak on screen; across a 21×21 grid all 441 sample points carry colour, averaging 0.85 of the strongest point. "The background only exists in the top-left" was the original defect, and it is now a test rather than an impression: every sample point must differ from the clean ground by at least 2/255 in some channel.
+
+**Only the ground is lit.** Panels once painted the same image over their own `--surface-raised`, on the reasoning that panels cover most of the viewport and an unlit panel would leave the light showing only in the gutters. Two things came out of that. The light became the effective background of every word in the product, so the contrast budget had to be computed on washed surfaces and the mix ratios pressed down to where the light was barely visible at all — the fix defeating its own purpose. And because the image is fixed to the viewport rather than to the panel, a tall panel spanned a large slice of it: a card filled to the bottom of the content area read as a colour wash across its lower half, and a member card picked up a blue tint that belonged to the route, not to the member.
+
+So the light is now the floor's, and panels are opaque. What makes that legible instead of empty is the field itself covering the whole viewport (above) — the ground is visible in every gutter, margin, and gap between plates, in every direction, rather than in one bright corner.
+
+**The vignette is a floor move, not a panel move.** Darkening the far corner is how a floor shows which way the light runs; a panel that dimmed with its position would read as a different rung of the ladder rather than the same plate. Its colour is `--surface-sunken` at 62% rather than black, because sunken is below base in *both* modes and one recipe therefore covers each. Its dark end has to land where the light is weakest — measured at the top-left, 8.1% total light against 18.5% mid-screen — and 160° is the site's only material-gradient angle, so what flips is the colour stops rather than the axis: the vignette is written at the gradient's start and clears by 56%, and that start is the top-left end of the 160° axis.
+
+**The ambient carries a contrast budget.** Body text sits directly on the ground wherever a page skips the plate level, so the mix ratios are not free-hand aesthetic values: they are bounded by the weakest ink step still clearing AA on the lit surface.
+
+The budget is measured, not estimated. The previous version reasoned about each light's peak and argued the two could not sum — an argument with two holes, since the residue of one light under another was never counted and the vignette layer never entered the calculation at all. Three overlapping lights have no closed form worth trusting, so `theme-tokens.test.ts` samples instead: a 21×21 grid over the viewport, the four layers composited in CSS order at each point, swept across all 9 domains × their companions × 4 accents, taking the worst ratio found. `--text-muted` on `--surface-base` measures **4.55 light** and **4.68 dark**.
+
+Only `--surface-base` is in the budget. `raised` and `overlay` left it when panels stopped carrying the light; `sunken` was never in it, because the sidebar, inputs, and meter tracks paint it opaquely and nothing reaches behind them.
+
+Each mode's ceiling is set by its own clean headroom, and the two are not symmetric. Light's binding surface has always been `base` (`#FAF9F5`), which is *darker* than `raised` — muted starts at 5.41 there, leaving 0.91 to spend, and 12/10/9 is the strongest the three lights go on that line. Dark's binding surface used to be `raised` (`#1C1C22`, brighter than base `#141418`), so removing the light from panels genuinely raised its ceiling: muted on base starts at 6.83, and the two lights at 16/15 became three at 20/16/14. Within each mode the extreme is `--domain-event`, whose dark step is `info-bright` `#7DD3FC` and lifts the surface further than the other eight; the five hues added with the ring were pinned to the 0.33 luminance line specifically so as not to create a second outlier.
+
+**Tinted surfaces take `--text-secondary`, never muted** — enforced by the `tinted surface ink` group. `--brand-tint` and `--domain-tint` are washes over `raised`, not ladder steps, and they leave muted at 4.91 light / 4.51 dark: nominally passing, with no margin at all. The guard asserts that absence of margin directly, so the rule fails loudly if the tint percentages are ever changed enough to make it obsolete.
+
+A selected state still needs to read as *branded*, so dropping it to neutral secondary is not an option. That is what `--brand-on-tint` is for — the same "the step is chosen by what sits behind the colour" split as `--accent-on-surface`. In light the tint is pale enough that the text step already works and the two names resolve to one value. In dark they diverge: `--brand-text` is calibrated for the ladder and measures 5.26 on its own tint, the thinnest text ratio anywhere in the dark theme. `--brand-on-tint` moves up to `teal-300` for 7.32 on the tint and 9.14 on `raised`, so it holds on either ground with room to spare. Every place that paints brand ink on brand tint — the admin rail's selected tab in both orientations, the header icon hover, the active menu item — reaches through this one name.
+
+**The three lights drift, and the budget constrains how.** Each runs its own loop — `ambient-drift-domain` over 53s, `ambient-drift-companion` over 67s, `ambient-drift-accent` over 43s. The three periods are pairwise co-prime, so the set does not visibly repeat. The six centre coordinates are registered with `@property` as `<percentage>`, because unregistered custom properties interpolate discretely and would make the lights jump rather than travel. `initial-value` is the sole statement of each resting position — no second copy in `:root`, and no `var()` fallback, which Don't rule 10 forbids for exactly that reason. This makes `@property` a hard dependency: an engine without it treats the coordinates as invalid and drops `--ambient-field` entirely. Every engine has shipped it since mid-2024 and the repo declares no earlier baseline.
+
+Motion is bounded by the sampled budget, not by taste. The nearest in-viewport point to a centre lies directly across the edge it hides behind, where the other term vanishes and the elliptical distance reduces to a single axis — so drift along the other axis cannot change a peak, and only drift on the clearance axis can. Every keyframe therefore moves its centre *further* out: the domain light from `y: 116%` to `122%`, the companion from `x: 114%` to `120%`, the accent from `y: −14%` to `−20%`. No point in the viewport ever sees more light than the resting sample measured, so 4.55 and 4.68 hold for the whole cycle. `theme-tokens.test.ts` parses the `@property` initial values and all three keyframe blocks and fails if any stop reduces a clearance.
+
+The timing function is `steps(200)`, and that is a performance decision rather than a stylistic one. One coordinate change repaints the whole ground. A half-cycle moves a centre 22% of the viewport width over 26.5s, so at 60Hz most frames shift it less than 0.4px and change nothing visible. Quantising to 200 steps makes each step 0.11% of viewport width — about 3px on a 2560px display, against a horizontal radius wider than the viewport, which moves any given pixel by under 0.05 of a colour level — while dropping the repaint rate to roughly 7.5Hz per layer. The cost is the soft turnaround that `ease-in-out` gave; it falls at the midpoint of a 26.5-second sweep, where constant speed is indistinguishable.
+
+**`background-attachment: fixed` is what keeps the header seamless.** The shell root and the fixed header are separate elements with different boxes; painting the same gradient on both normally produces two different crops and a visible seam at the header edge. The header cannot simply let the ground show through — it has to be opaque over scrolling content — so it paints the image a second time, and `fixed` makes the viewport the positioning area for both, so the two elements paint pixel-identical regions. Any new element that needs to continue the field must set all three properties together; setting `background-image` alone re-introduces the seam.
+
+Add one pre-baked 128×128 monochrome noise tile at opacity 0.05 in dark mode and 0.035 in light mode. At the previous 0.03 / 0.02 the grain was below the visible threshold on ordinary displays — it satisfied the rule while doing nothing, which left the workspace reading as one flat colour. The current values remain far below the level that interferes with body text. A repeating CSS image is acceptable. SVG `feTurbulence` and per-card noise are forbidden.
 
 #### M2 — Plate
 
 The default Mantine `Paper`, `Card`, and panel treatment:
 
 ```css
-background: var(--surface-raised);
+background: var(--plate-fill);
 border: 1px solid var(--border-subtle);
 box-shadow: var(--edge-top);
 ```
+
+`--plate-fill` is the site's only plate material. It resolves to `--surface-raised` and nothing else — the plate is an opaque block, for the reasons under M1 — but `background: var(--surface-raised)` is still not a shorter way of writing it. `--surface-*` is the ladder rung, the raw stock; `--plate-fill` is the material made from it. Writing the rung directly puts the same statement in two layers, and the material is then unable to change without leaving every hand-written copy behind on the old one. That is not hypothetical: the material *did* carry an extra layer for a while, and the six panels that had spelled out their own `background: var(--surface-raised)` were the six that silently stopped matching.
+
+A plate that has to be tinted — a drop target under a drag — writes its own surface colour outright, because there is no second layer left to preserve. What it must not do is invent a new border, radius, or shadow along with it.
+
+A managed panel — any titled, bordered region that frames a body of content — must take this material from one shared class, never by redeclaring the three properties locally. Local redeclaration is how a console ends up with six panel materials that differ by a border colour and a radius, and no reviewer can tell which one is canonical. Panel-local CSS may set layout, padding, and scroll behaviour; it may not set `background`, `border`, `border-radius`, or `box-shadow`.
+
+The admin console's implementation of that class is `.admin-panel` in `AdminPage.css`, with `.admin-panel__head`, `__title`, and `__body` (plus `--flush` and `--scroll` modifiers) supplying the internal structure.
 
 #### M3 — Edge highlight
 
@@ -713,7 +927,7 @@ Foundational overlays remain solid. Backdrop blur is reserved for the protected 
 4. Grain appears once at the root.
 5. A surface has at most two material layers: gradient plus edge.
 6. A coloured surface tint may contain at most 4% brand or domain hue.
-7. Gradient text, gradient borders, animated backgrounds, and gradient progress fills are forbidden.
+7. Gradient text, gradient borders, and gradient progress fills are forbidden. A background may animate only in the two places named in M1 and *Roster protected signature*, and only within the limits stated there: motion that cannot raise a glow's in-viewport peak, and a rate quantised to what the eye can actually resolve.
 
 ### Elevation inventory
 
@@ -751,7 +965,18 @@ Every component phase implements and reviews light and dark together.
 
 Enter easing is `cubic-bezier(.2,.8,.2,1)`; exit easing is `cubic-bezier(.4,0,1,1)`.
 
+Displacement amounts are tokens too, so that `prefers-reduced-motion` degrades at one point instead of in every component that happens to remember it:
+
+| Token | Value | Use |
+|---|---:|---|
+| `--motion-lift` | `-2px` | hover raise on a pressable surface |
+| `--motion-press` | `0.98` | press on a whole surface — card, list row |
+| `--motion-sink` | `1px` | press on a small control — button, icon button |
+
+Two press vocabularies exist because the feel differs with size: scaling a 36px button reads as blur, sinking a whole card reads as nothing. Under `prefers-reduced-motion` all three go to zero in `scale.css`; a component that writes a literal `1px` or `0.98` instead of the token silently opts out of that and is a defect.
+
 - Animate transform and opacity only; do not animate width, height, top, left, or margin.
+- Every clickable surface answers the pointer on press, not only on hover.
 - Do not apply route transitions, page entrance choreography, or continuous loops.
 - Do not layer a CSS transform transition onto an element whose transform is written per frame by Motion.
 - `prefers-reduced-motion` disables non-essential translation and scale while retaining immediate state, colour, and opacity feedback.
@@ -780,6 +1005,10 @@ Circles use `50%` only for avatars, indicators, and circular icon buttons. A 999
 | large | 52px | 40px | 52×52px |
 
 Dense icon controls may use a transparent hit expander. Expanded hit areas must not overlap adjacent controls or be clipped by an ancestor.
+
+A row of a list is a control, and stacked rows are vertically adjacent, so a row's height *is* its hit area: it takes the 44px floor and may not reach it with an expander, which would necessarily overlap the row above or below. A list therefore never fixes its height to a row count. `block-size: 5 × row` leaves a four-member roster with half a card of void beneath it and forces a second scroller inside the card once the sixth member arrives; the list is sized by its content and scrolls only against a viewport-relative cap.
+
+Column heads of a dense list are the one control exempt from the 44px floor. They take a 28px minimum, which clears the 24×24 of WCAG 2.2 SC 2.5.8 (Target Size, Minimum) — the level the floor exists to exceed rather than to meet. The exemption is bounded by what makes a head different from a row: a head cell is as wide as the column it labels, its neighbours are beside it rather than above and below it, and it never carries the destructive action. A column head must also leave a second route to the same sort, since the head is the first thing a narrow viewport drops.
 
 ### Icons
 
@@ -834,6 +1063,9 @@ Foundational controls use Mantine directly. Parallel button, menu, and style-onl
 | temporary supporting detail | `Popover` or `HoverCard` | modal |
 | task requiring focus or confirmation | `Modal` or `Drawer` | Popover |
 | destructive confirmation | `Modal`, cancel initially focused | browser confirm |
+| editing a record's own fields | one named edit control opening `Modal` or `Drawer` | a live input parked in the record's display surface |
+
+**Editing is a mode you enter.** A display surface — a card head, a list row, a column header — shows values; it does not host live inputs for them. An always-editable field costs its full control height on every record whether or not anyone is editing, and it teaches nothing: the reader cannot tell which values are editable until they click one. Route every field of a record through a single edit control, so the affordance is discoverable in one place and the record itself stays a compact, readable line.
 
 ### State matrix
 
@@ -850,6 +1082,7 @@ Every foundational component implements every applicable state. Hover may never 
 | `SegmentedControl` | neutral M4 track | hover changes neutral surface | one visible group focus plus item keyboard state | selected item uses raised surface and brand text |
 | `Tabs` | Mantine default/underline variant | text and underline strengthen | focus on each tab | active uses 2px brand underline; disabled stays readable; no pill background |
 | `NavLink` | flat neutral row | neutral tint | two-ring focus | active has 3px indicator plus restrained tint; collapsed mode supplies Tooltip |
+| Vertical nav rail (`Tabs` in `orientation="vertical"`) | flat transparent row | neutral surface tint | two-ring focus | selected raises to `--surface-raised` with `inset 3px 0 0 var(--brand-fill)` and `--edge-top`; brand appears only as that rule and the icon tint, never as a filled row background |
 | `Paper` / `Card` | M2 Plate | no hover unless interactive | interactive card gets focus ring | interactive hover changes border/surface only; no generic lift, glow, or scale |
 | `Menu`, `Popover`, `Tooltip` | M5 Overlay | item uses flat neutral tint | Mantine roving focus remains visible | destructive item uses danger icon and label; unavailable item includes reason |
 | `Modal` / `Drawer` | M5 Overlay, labelled title, trapped focus | not applicable | initial and return focus are explicit | async submit locks duplicate action but keeps cancel rules clear |
@@ -871,7 +1104,9 @@ It must remain visible on Plate, Recess, and Overlay surfaces in both themes.
 
 - **Loading:** structural Mantine `Skeleton` blocks match the final layout. Do not use a full-page centred spinner. Skeletons use the recess treatment without shimmer.
 - **Empty:** one restrained icon, one-line reason, and exactly one next action. Never ship a dead end that only says “no data”.
-- **Error:** preserve page structure and show an `Alert` with retry. A failed request must never render as a real zero or empty collection.
+- **Error:** preserve page structure. A failed request must never render as a real zero or empty collection. Two shapes, chosen by what the failure costs the user:
+  - *The content cannot render at all.* Use the empty-state block in its error status — icon, reason, and exactly one action, which is retry. It occupies the space the content would have, so it must offer the way out; telling the user to reload the page is not one, because a reload discards their filters, selection, and scroll position. The retry action is a required prop, not an optional one, so a call site cannot silently omit it.
+  - *The content still renders and the message only qualifies it.* Use an `Alert`. It carries no retry when the recovery control is already on screen, and none is possible when the failure is a permission denial rather than a transport failure.
 - **Disabled:** explain why through Tooltip or adjacent text.
 - **Destructive confirmation:** use Mantine `Modal`; cancel takes initial focus; the danger action is visually separated from routine save actions.
 - **Success:** use a bounded notification or inline confirmation. Do not replace content with a celebratory state.
@@ -884,24 +1119,49 @@ Protected behavior:
 
 - existing card composition and radius;
 - hover scale, pointer tilt, specular response, and colour dispersion;
+- the dispersion halo's rotation (see below);
 - existing audio response and timing;
 - keyboard focus affordance;
 - touch fallback;
 - reduced-motion branch;
 - light-mode translation to a soft coloured shadow rather than a halo.
 
+**The dispersion is a rotating halo, not three fixed shadows.** The same three fixed hues — `--glow-dispersion-cool`, `-mid`, `-warm` — now fill a `conic-gradient` on a blurred pseudo-element behind the card, turning once every 6s. At the resting angle cool, mid, and warm still fall left, below, and right, so the static frame matches the three-shadow arrangement it replaces.
+
+It has to be its own layer rather than an animated `box-shadow`, and for the same reason the tilt is not a CSS transition: the card carries `transition: box-shadow`, so a per-frame shadow change would restart a transition every frame and smear the motion. The halo does not participate in that transition; only its `opacity` fade does. The layer is inset asymmetrically — less at the top, more at the bottom — to keep the lift the offset drop shadow used to give. Under `prefers-reduced-motion` the rotation stops at the resting angle and the hover still lights up, since the glow is the hover's only surface-level feedback.
+
+Light mode keeps its "soft coloured drop shadow, no halo" rule without a second implementation. The same rotating layer is re-inset so its top edge sits *inside* the card by 10px: the card covers the upper arc, and only the lower fringe shows. What reads as a ring on a dark ground reads as a coloured shadow on paper, and the hue of that fringe still travels as the layer turns.
+
 The audio is enhancement only and never the sole carrier of state. A global user preference must be able to mute it. Refactoring may change data plumbing or Mantine primitives around the card, but must not flatten, restyle, or silently remove this signature interaction. Before-and-after visual, pointer, keyboard, touch, audio, and reduced-motion checks are required.
 
 ### Data visualisation
 
-ECharts remains the charting library:
+ECharts remains the charting library.
 
-- series order is war → event → ops → community using `--domain-*`;
-- value-axis grid lines use an 8% text-primary mix; category-axis grid, chart border, and chart background are absent;
-- axis and data labels use `--text-micro` with tabular numerals;
-- area charts may use one vertical fade from 20% series colour to transparent;
-- progress tracks use M4; fills are flat brand or threshold status colours;
-- chart options consume the existing theme bridge and contain no hard-coded colour literals.
+**The chart theme is built from the live token layer, not from a palette of its own.** `theme/echarts.ts` reads the computed custom properties off `<html>` — that is, the result of `[data-theme] × [data-accent]` — and hands ECharts concrete strings, because ECharts cannot resolve `var()`. It previously held a private six-colour gold-and-brown ramp plus its own `Inter` stack and its own axis greys, none of which matched anything else in the portal and none of which responded to the accent. A chart is part of the page, not a guest on it.
+
+- The series palette is `--series-accent` followed by `--series-1` … `--series-4`, de-duplicated by value: when the chosen accent belongs to a hue family the sequence already contains, the repeat is dropped rather than shown twice.
+- Text is `--text-primary`, labels and legends `--text-muted`, axis lines `--border-subtle`, grid lines a 55% mix of the same, tooltips `--surface-overlay`, font `--font-body`.
+- Radar split areas derive from `--text-primary`. The previous fixed white overlays were invisible against a light-mode plate.
+- The caller must rebuild the theme when either the mode or the accent changes, and must vary the registered theme *name* with both — `echarts.registerTheme` caches by name, so a same-named re-registration is ignored.
+- Axis and data labels use `--text-micro` with tabular numerals; category-axis grid, chart border, and chart background are absent.
+- Area charts may use one vertical fade from 20% series colour to transparent.
+- Progress tracks use `--meter-track`; fills use `--meter-fill`, or a status colour when the bar is reporting a state (failed, complete) rather than an amount.
+- Chart options contain no hard-coded colour literals.
+
+### Time
+
+**The server stores UTC; the interface displays and edits in the viewer's local zone. Every crossing of that boundary goes through `utils/datetime.ts` — no module converts on its own.**
+
+The rule exists because hand-rolled conversion does not fail loudly, it forks. Three splits had already appeared, each individually plausible:
+
+- **The sign of an offset.** `Date.getTimezoneOffset()` returns *how many minutes local is behind UTC*, so UTC+8 yields −480. Two modules each picked one sign, and a reader of an `offsetMinutes` parameter had no way to tell which was meant. The offset is now east-positive (UTC+8 → +480) and comes only from `viewerUtcOffsetMinutes()`.
+- **Whose "today".** `toISOString().slice(0, 10)` is the UTC day, not the reader's. East of UTC it is a day behind from early evening onward, which silently shifted absence windows, war-history grouping, and date-input bounds. Local day keys come from `localDateKey()`.
+- **What a `datetime-local` value is.** It is a timezone-less local wall clock — neither ISO nor storable — and must cross through `toDateTimeLocalValue` / `fromDateTimeLocalValue` in both directions. Passing the raw string to `new Date()` is not equivalent: `"2026-08"` parses successfully and invents a day, an hour, and a timezone.
+
+**A calendar date is not an instant.** `YYYY-MM-DD` values — absence start and end, a template's last generated day — carry no time and no zone. Rendering them through the local zone moves them a day for western viewers. They go through `formatCalendarDate` / `formatCalendarParts`, which pin UTC to mean *this value never had a zone*, and which reject a day that does not exist rather than rolling it forward into a real but different one.
+
+Unreadable input renders as `EMPTY_TIME_TEXT`, never `Invalid Date` and never a blank; a wall-clock string that cannot be parsed is returned verbatim so bad data stays visible instead of being quietly rounded into something plausible.
 
 ## Do's and Don'ts
 
@@ -919,13 +1179,13 @@ ECharts remains the charting library:
 
 ### Don't
 
-1. Do not use glow, blur, dispersion, 3D tilt, or specular layers outside `MemberCard.css`; only the full-screen Gallery lightbox may additionally use its guarded backdrop blur.
+1. Do not use glow, blur, dispersion, 3D tilt, or specular layers outside `MemberCard.css`; only the full-screen Gallery lightbox may additionally use its guarded backdrop blur, and only `styles/semantic.css` and `styles.css` may hold a radial gradient.
 2. Do not put gradients on buttons, inputs, selects, switches, tabs, or menu items.
-3. Do not use gradient text, gradient borders, animated backgrounds, or looping decoration.
+3. Do not use gradient text or gradient borders. Looping background motion exists in exactly three places — the app field's two drifting glows (M1), the Roster card's rotating dispersion halo (*Roster protected signature*), and the authentication-only Lightfall field. Lightfall is capped at 1.25 device pixels per CSS pixel and three streak layers; its canvas opacity is capped at 0.34 in light mode and 0.64 in dark mode, it sits behind an opaque form card and semantic veil, pauses while the document is hidden, and renders only a static frame under `prefers-reduced-motion`. Adding another looping field requires the same stated contrast/performance bound, guard test, and reduced-motion stop.
 4. Do not define generic shadows outside `--edge-top` and `--shadow-overlay`.
 5. Do not define a general radius outside the three shape tokens.
-6. Do not use spacing outside the seven-step scale.
-7. Do not consume `--accent-*` outside the personalisation allowlist.
+6. Do not use spacing outside the seven-step scale, and do not type a page-level block gap as a number instead of `--page-rhythm`.
+7. Do not consume `--accent-*` outside the personalisation allowlist; quantity surfaces use `--meter-*` and `--series-accent` instead of widening that list.
 8. Do not consume `--palette-*` in a component.
 9. Do not place colour literals outside `styles/tokens.css`.
 10. Do not add `var()` fallbacks inside token layers.
@@ -961,8 +1221,10 @@ For every page or component batch:
 | A1 | exactly eight distinct font-size steps; max/min ratio at least 3.0 | token test |
 | A2 | exactly two generic elevation tokens and three general radius tokens | token test |
 | A3 | effects stay inside `MemberCard.css`, with only the guarded Gallery lightbox backdrop blur exception | architecture guard |
+| A3b | `radial-gradient` appears in exactly the two named owner files (`styles/semantic.css`, `styles.css`), and each of them still contains one | architecture guard |
+| A3c | auth Lightfall remains auth-only, decorative, non-interactive, capped at DPR 1.25 / three streak layers / opacity 0.34 light and 0.64 dark, pauses while hidden, and stops looping under reduced motion | auth source and token guard |
 | A4 | no gradient in a foundational control selector | grep guard |
-| A5 | `var(--accent-` appears only in allowlisted files | token guard |
+| A5 | `var(--accent-` appears only in allowlisted files; quantity surfaces reach the accent through `--meter-*` / `--series-accent` | token guard |
 | A6 | every surface gradient uses 160deg | grep guard |
 | A7 | light theme contains no halo glow | grep guard and visual check |
 | A8 | numeric columns and stats use tabular figures | component test |
@@ -973,8 +1235,32 @@ For every page or component batch:
 | A13 | foundational behavior imports from Mantine rather than a parallel UI library | dependency and import audit |
 | A14 | Tabs use underline/default presentation and never global pills | theme and component test |
 | A15 | shell owns one header-to-content gap; pages add none | layout test |
+| A15b | every page-level block gap resolves through `--page-rhythm`; no page passes a literal `Stack gap` at that level | architecture guard |
+| A21 | the root grain sits at 0.05 dark / 0.035 light | architecture guard |
+| A22 | the chart theme reads `--series-*`, `--text-*`, `--border-subtle`, `--surface-overlay`, and `--font-body`, and holds no colour literal of its own | chart theme test |
+| A23 | press displacement uses `--motion-press` or `--motion-sink`, never a literal, so reduced motion degrades at one point | grep guard |
+| A24 | the light and dark blocks of `semantic.css` declare exactly the same token names | token test |
+| A25 | the four fixed series slots are mutually distinct in both modes, and every series hue is drawn from the accent set at that mode's step | token test |
+| A26 | `--meter-fill` clears 3:1 against `--meter-track` for all four accents in both modes | contrast test |
+| A27 | `--mantine-color-anchor` is bridged to `--brand-text` from a selector that outranks Mantine's own | token test |
+| A28 | on a 21×21 sample of the lit `--surface-base`, `--text-muted` clears 4.5:1 at every point, for all nine domains with their companions and all four accents, in both modes | contrast test |
+| A29 | tinted surfaces (`--brand-tint`, `--domain-tint`) carry `--text-secondary`, which clears 4.5:1; `--text-muted` is left with under 0.5 of margin there, which is why it is banned | contrast test |
+| A30 | `--brand-on-tint` clears 4.5:1 on both `--brand-tint` and `--surface-raised`, in both modes | contrast test |
+| A31 | every ambient drift keyframe moves a light's centre further from the viewport than its resting position, so the sampled worst case behind A28 holds for the whole cycle | token test |
+| A32 | no `Paper` or `Card` root restates a ladder surface as its own background instead of taking the plate material | boundary test |
 | A16 | page content does not duplicate route title or description | render test |
 | A17 | Roster pointer, keyboard, touch, audio, reduced-motion, light, and dark signatures remain | focused regression checklist |
+| A18 | in the admin console, a managed panel's own class declares no `background`, `border`, `border-radius`, or `box-shadow`; the material comes only from `.admin-panel` | grep guard |
+| A19 | in `SectionHeader` and the admin console, `text-transform: uppercase` and positive `letter-spacing` appear only on a `:lang(en)` selector | grep guard |
+| A20 | a load failure that replaces content offers retry, and the retry callback is a required prop | typecheck plus render test |
+| A33 | a list row declares no surface of its own and no fixed height; its floor is the 44px hit-area token and its column template is shared with the column head | CSS contract test |
+| A34 | a filled work region has exactly one `overflow-y: auto` owner, and every ancestor in its fill chain declares `min-block-size: 0` | CSS contract test |
+| A35 | a record's display surface hosts no live input; its fields are reached through one named edit control | source contract test |
+| A36 | the ambient stays on the ground: only `semantic.css` composes the `--ambient-layer-*` gradients, only it and `AppShell.css` name `--ambient-field`, `--plate-fill` resolves to the bare raised surface, and no `--plate-glow` comes back | boundary test |
+| A38 | every route `domain` has a `[data-domain]` block and a companion, and the field leaves no dead flat corner — every one of the 441 sample points differs from the clean ground | token test, route metadata test |
+| A37 | no portal module outside `utils/datetime.ts` reaches for `getTimezoneOffset`, `toISOString().slice(`, `toLocaleDateString`, `toLocaleTimeString`, or `Intl.DateTimeFormat`; a calendar date renders the day it was written on in every timezone | boundary test, unit test |
+
+A18 and A19 are scoped to where the convergence has actually landed. Widening either to the whole portal is a migration, not a re-reading of the check — see Known risks.
 
 ### Maintenance and validation
 
@@ -992,6 +1278,8 @@ pnpm test -- apps/portal/styles/theme-tokens.test.ts \
 
 Add `pnpm typecheck` and `pnpm build` when implementation code changes. Use `pnpm release:check` only for a release candidate. Review representative phone, tablet, desktop, and zoomed layouts in both themes and languages; include keyboard, coarse pointer, and reduced-motion behavior when affected.
 
+**Checking a theme in a live browser means loading the page in that theme.** Setting `data-theme` and `data-mantine-color-scheme` from the console does move the token layer, but Mantine's component rules sit behind `:where([data-mantine-color-scheme='…'])` and can keep their already-computed values for a subtree — a `SegmentedControl` measured this way reported a black active label on a dark indicator that the same page never shows on a real load. Switch the theme through the app, then reload, and audit that one theme per pass. The token layer itself is safe to sweep in place, because `[data-theme]` custom properties do re-resolve; that is how the accent × theme numbers in this document were measured.
+
 ### Known risks
 
 1. Forged Material becomes cheap-looking as soon as controls receive gradients, chrome becomes saturated, or multiple noise/effect layers accumulate.
@@ -1000,3 +1288,4 @@ Add `pnpm typecheck` and `pnpm build` when implementation code changes. Use `pnp
 4. Fixed action teal and user-selectable personal accents have distinct semantics; validation must ensure routine action states never inherit the personal accent.
 5. Root grain may cost paint time on large screens. If measurement shows a regression, remove grain before weakening the structural surface ladder.
 6. Style-only wrappers can bypass Mantine keyboard, focus, and overlay behavior; foundational interactions must stay on Mantine primitives.
+7. The single-panel-material rule (A18) and the `:lang(en)` typography guard (A19) hold in the admin console and `SectionHeader`, not yet across the whole portal. Sixteen unguarded `text-transform: uppercase` declarations remain outside that scope — including `DashboardPage.css`, `GuildWarPage.css`, `StoragePage.css`, `ToolsPage.css`, `MyProfilePage.css`, `ProfileModal.module.css`, `AdminMemberDetailModal.module.css`, `LabelStyleModal.css`, `EventMonthView.css`, `tiptap-editor.css`, and `ThemeProvider.module.css` — and each one currently letter-spaces Chinese labels apart. Until those are migrated the two checks must be read with their stated scope, never as portal-wide guarantees.

@@ -4,6 +4,7 @@ import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { gzipSync } from "node:zlib";
 import { defineConfig, loadEnv, type Plugin } from "vite";
+import { DEFAULT_SITE_DESCRIPTION } from "../shared/config/site-branding.js";
 
 const portalDir = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(portalDir, "..", "..");
@@ -75,11 +76,23 @@ export function shouldProxyApiRequest(url: string): boolean {
 export function replaceSiteConfigPlaceholders(
   html: string,
   siteName: string,
+  siteDescription: string,
   siteLogoUrl: string,
 ): string {
   return html
-    .replaceAll("{{SITE_NAME}}", siteName)
-    .replaceAll("{{SITE_LOGO_URL}}", siteLogoUrl);
+    .replaceAll("{{SITE_NAME}}", escapeHtml(siteName))
+    .replaceAll("{{SITE_DESCRIPTION}}", escapeHtml(siteDescription))
+    .replaceAll("{{SITE_LOGO_URL}}", escapeHtml(siteLogoUrl));
+}
+
+function escapeHtml(value: string): string {
+  return value.replace(/[&<>"']/g, (character) => ({
+    "&": "&amp;",
+    "<": "&lt;",
+    ">": "&gt;",
+    "\"": "&quot;",
+    "'": "&#39;",
+  })[character]!);
 }
 
 function normalizeTarget(value: string): string {
@@ -103,6 +116,7 @@ export default defineConfig(({ mode }) => {
   );
   const workerWsTarget = toWsTarget(workerHttpTarget);
   const localSiteName = env.VITE_SITE_NAME?.trim() || "Infini Guild";
+  const localSiteDescription = env.VITE_SITE_DESCRIPTION?.trim() || DEFAULT_SITE_DESCRIPTION;
   const localSiteLogoUrl = env.VITE_SITE_LOGO_URL?.trim() || "/guild-logo.svg";
 
   return {
@@ -112,7 +126,7 @@ export default defineConfig(({ mode }) => {
         name: "local-site-config",
         apply: "serve",
         transformIndexHtml(html) {
-          return replaceSiteConfigPlaceholders(html, localSiteName, localSiteLogoUrl);
+          return replaceSiteConfigPlaceholders(html, localSiteName, localSiteDescription, localSiteLogoUrl);
         },
       },
       echartsBundleBudgetPlugin(),

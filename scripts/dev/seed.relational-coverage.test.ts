@@ -2,11 +2,17 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { Miniflare } from "miniflare";
 import { describe, expect, it } from "vitest";
+import { auditPayloadV2Schema } from "@guild/shared";
 
-const migrationStatements = statements(readFileSync(resolve(
+const migrationManifest = JSON.parse(readFileSync(resolve(
   process.cwd(),
-  "packages/persistence-sqlite/src/migrations/generated/0000_core.sql",
-), "utf8"));
+  "packages/persistence-sqlite/src/migrations/generated/manifest.json",
+), "utf8")) as Array<{ file: string }>;
+const migrationStatements = migrationManifest.flatMap(({ file }) => statements(readFileSync(resolve(
+  process.cwd(),
+  "packages/persistence-sqlite/src/migrations/generated",
+  file,
+), "utf8")));
 const seedStatements = statements(readFileSync(resolve(process.cwd(), "scripts/dev/seed.sql"), "utf8"));
 
 describe("development relational seed coverage", () => {
@@ -96,7 +102,7 @@ describe("development relational seed coverage", () => {
       `).first<Record<string, number>>();
 
       expect(row).toMatchObject({
-        credentials: 10,
+        credentials: 32,
         activeLoginLocks: 1,
         activeInvites: 1,
         expiredInvites: 1,
@@ -113,7 +119,7 @@ describe("development relational seed coverage", () => {
         recurringQuotas: 2,
         eventQuotas: 3,
         pollOptions: 3,
-        pollVotes: 4,
+        pollVotes: 20,
         raffleDraws: 1,
         raffleWinners: 2,
         playbookRevisions: 3,
@@ -122,7 +128,7 @@ describe("development relational seed coverage", () => {
         storageTransactionTypes: 3,
         drawWars: 1,
         lockedTeams: 1,
-        poolMembers: 1,
+        poolMembers: 3,
         galleryItems: 4,
         auditRows: 4,
         errorRows: 4,
@@ -134,6 +140,56 @@ describe("development relational seed coverage", () => {
         announcementRows: 5,
         absenceRows: 1,
       });
+
+      const auditResult = await database.prepare(`SELECT id, subject_label, payload_json
+        FROM audit_log WHERE id LIKE 'dev-audit-%' ORDER BY id`).all<{
+          id: string;
+          subject_label: string | null;
+          payload_json: string;
+        }>();
+      const auditRows = new Map(auditResult.results.map((audit) => [audit.id, {
+        subjectLabel: audit.subject_label,
+        payload: auditPayloadV2Schema.parse(JSON.parse(audit.payload_json)),
+      }]));
+      const requireAudit = (id: string) => {
+        const audit = auditRows.get(id);
+        if (!audit) throw new Error(`Missing development audit fixture: ${id}`);
+        return audit;
+      };
+      const fields = (id: string) => requireAudit(id).payload.context.map(({ field }) => field);
+
+      expect(requireAudit("dev-audit-seed-init").subjectLabel).toBe("Development database");
+      expect(fields("dev-audit-seed-init")).toEqual(["type"]);
+
+      const inviteAudit = requireAudit("dev-audit-invite-create");
+      expect(inviteAudit.subjectLabel).toBe("Member");
+      expect(fields("dev-audit-invite-create")).toEqual([
+        "role_id",
+        "role_name",
+        "max_uses",
+        "used_count",
+        "status",
+        "expires_at",
+      ]);
+      expect(inviteAudit.payload.context.find(({ field }) => field === "used_count")?.value)
+        .toEqual({ type: "number", value: 0 });
+      expect(inviteAudit.payload.context.find(({ field }) => field === "status")?.value)
+        .toEqual({ type: "code", value: "active" });
+      const inviteExpiry = inviteAudit.payload.context.find(({ field }) => field === "expires_at")?.value;
+      expect(inviteExpiry?.type).toBe("datetime");
+      if (inviteExpiry?.type === "datetime") expect(Date.parse(inviteExpiry.value)).toBeGreaterThan(Date.now());
+
+      expect(requireAudit("dev-audit-storage-distribute").subjectLabel).toBe("Recovery Potion distribution");
+      expect(fields("dev-audit-storage-distribute")).toEqual([
+        "transaction_count",
+        "type",
+        "item_ids",
+        "quantity",
+        "user_ids",
+      ]);
+
+      expect(requireAudit("dev-audit-war-draw").subjectLabel).toBe("Guild War: Frost Reapers");
+      expect(fields("dev-audit-war-draw")).toEqual(["event_id", "result", "member_count"]);
     } finally {
       await miniflare.dispose();
     }

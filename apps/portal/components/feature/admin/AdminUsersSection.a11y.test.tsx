@@ -1,4 +1,3 @@
-// @vitest-environment jsdom
 import type { AdminRole } from "@guild/shared";
 import { MantineProvider } from "@mantine/core";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
@@ -119,6 +118,7 @@ function renderUsers(
   const props: React.ComponentProps<typeof AdminUsersSection> = {
     usersLoading: false,
     usersError: false,
+    onRetryUsers: vi.fn(),
     canEditUsers: true,
     canAssignUserRoles: true,
     canActivateUsers: true,

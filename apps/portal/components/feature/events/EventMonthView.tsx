@@ -1,7 +1,8 @@
 import type { Event as GuildEvent } from "@guild/shared";
 import { eventTypeColor } from "@portal/utils/event-colors";
 import { Badge, Button, Group, HoverCard, Paper, Popover, Stack, Text, ThemeIcon, UnstyledButton } from "@mantine/core";
-import { addDays, format, getDate, getDay, getMonth, isSameDay, startOfMonth, startOfWeek } from "date-fns";
+import { addDays, getDate, getDay, getMonth, isSameDay, startOfMonth, startOfWeek } from "date-fns";
+import { formatClock, localDateKey } from "@portal/utils/datetime";
 import type { CSSProperties, ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { getEventTypeLabel } from "@portal/utils/game-rules";
@@ -69,7 +70,7 @@ function MonthCalendar({ onSelect, cellRender, value }: MonthCalendarProps) {
                 type="button"
                 className="month-calendar__date-button"
                 onClick={() => onSelect(day)}
-                aria-label={t("month.selectAria", { date: format(day, "yyyy-MM-dd") })}
+                aria-label={t("month.selectAria", { date: localDateKey(day) })}
               >
                 <span className="month-calendar__date">{getDate(day)}</span>
               </UnstyledButton>
@@ -109,9 +110,9 @@ export function EventMonthView({
     <Paper withBorder radius="md">
       <div>
         <MonthCalendar
-        onSelect={(value) => onSelectDate(format(value, "yyyy-MM-dd"))}
+        onSelect={(value) => onSelectDate(localDateKey(value))}
         cellRender={(value: Date) => {
-          const key = format(value, "yyyy-MM-dd");
+          const key = localDateKey(value);
           const dayEvents = eventsByDay.get(key) ?? [];
           const dayIndex = getDay(value);
           const overlayIntensity = availabilityDayPeakByDay.get(dayIndex) ?? 0;
@@ -180,7 +181,7 @@ export function EventMonthView({
                             <Text size="sm" fw={700} lh={1.3}>{event.title}</Text>
                             <Group gap={4} mt={4}>
                               <Text size="xs">{getEventTypeLabel(event.type)}</Text>
-                              <Text size="xs" c="dimmed">{format(new Date(event.start_at), "HH:mm")}</Text>
+                              <Text size="xs" c="dimmed">{formatClock(event.start_at)}</Text>
                             </Group>
                             {event.description ? (
                               <Text size="xs" c="dimmed" lh={1.5} mt={4} lineClamp={2}>{event.description}</Text>

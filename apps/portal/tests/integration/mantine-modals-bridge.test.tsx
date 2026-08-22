@@ -1,4 +1,3 @@
-// @vitest-environment jsdom
 import { PortalThemeProvider } from "../../providers/ThemeProvider";
 import { modals } from "@mantine/modals";
 import { render, screen } from "@testing-library/react";

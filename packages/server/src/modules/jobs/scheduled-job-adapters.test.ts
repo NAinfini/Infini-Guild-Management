@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { AppError, type RequestContext } from "@guild/kernel";
+import type { MaterializationAuditFactory } from "@guild/server/modules/events";
 import { createSchedulerAuditFactory } from "./scheduled-jobs.js";
 import {
   ScheduledAuditArchiveJob,
@@ -28,10 +29,12 @@ describe("scheduled job domain adapters", () => {
       afterTemplateId: string | null,
       _maxTemplates: number,
       _maxOccurrences: number,
-      audit: (eventId: string, title: string, templateId: string) => unknown,
+      audit: MaterializationAuditFactory,
     ) => {
       expect(afterTemplateId).toBe("template-000");
-      expect(audit("event-1", "Event", "template-1")).toMatchObject({ actorUserId: "system:scheduler" });
+      expect(audit({ subjectType: "event", subjectId: "event-1", action: "create" })).toMatchObject({ actorId: "system:scheduler" });
+      expect(audit({ subjectType: "recurring_template", subjectId: "template-1", action: "update" }))
+        .toMatchObject({ actorId: "system:scheduler" });
       return {
         materialized: [{ templateId: "template-1", eventIds: ["event-1"], createdEventIds: ["event-1"] }],
         inspected: 1,
@@ -81,10 +84,10 @@ describe("scheduled job domain adapters", () => {
     const publish = vi.fn().mockResolvedValue(undefined);
     const publishDue = vi.fn(async (input: Parameters<BoundedAnnouncementPublishStore["publishDue"]>[0]) => {
       expect(input.audit({
-        entityType: "announcement",
-        entityId: "announcement-1",
+        subjectType: "announcement",
+        subjectId: "announcement-1",
         action: "publish",
-      })).toMatchObject({ actorUserId: "system:scheduler" });
+      })).toMatchObject({ actorId: "system:scheduler" });
       return {
         announcements: [{ id: "announcement-1", title: "Notice", publishedAt: NOW }],
         hasMore: false,
@@ -137,7 +140,7 @@ describe("scheduled job domain adapters", () => {
       eventId: "raffle-1",
       winnerIds: ["user-1", "user-2"],
       drawnByUserId: "owner-1",
-      audit: expect.objectContaining({ actorUserId: "system:scheduler", action: "raffle_draw" }),
+      audit: expect.objectContaining({ actorId: "system:scheduler", action: "raffle_draw" }),
     }));
     expect(publish).toHaveBeenCalledWith(expect.objectContaining({ hint: "raffle_drawn" }));
 
@@ -162,10 +165,13 @@ describe("scheduled job domain adapters", () => {
     ) => {
       expect(context.authorization.actor).toBeNull();
       expect(audit("media-1")).toMatchObject({
-        actorUserId: "system:scheduler",
-        entityType: "media_cleanup",
+        actorId: "system:scheduler",
+        subjectType: "media_cleanup",
+        payload: {
+          context: [{ field: "reason", value: { type: "code", value: "garbage_collection" } }],
+        },
       });
-      return { deleted: 2, failed: 1 };
+      return { deleted: 2 };
     });
     const inspectGarbageBacklog = vi.fn().mockResolvedValue(backlog);
     const media = new ScheduledMediaGarbageCollectionJob({ collectGarbage, inspectGarbageBacklog } as never);
@@ -173,7 +179,7 @@ describe("scheduled job domain adapters", () => {
       before: NOW,
       limit: 50,
       audit: createSchedulerAuditFactory("media", NOW),
-    })).resolves.toEqual({ processed: 3, hasMore: false });
+    })).resolves.toEqual({ processed: 2, hasMore: false });
     await expect(media.inspectBacklog({ before: NOW })).resolves.toEqual(backlog);
 
     const archiveBatch = vi.fn(async (
@@ -182,8 +188,8 @@ describe("scheduled job domain adapters", () => {
       audit: (archiveId: string, rowCount: number) => unknown,
     ) => {
       expect(audit("archive-1", 100)).toMatchObject({
-        actorUserId: "system:scheduler",
-        entityType: "audit_archive_export",
+        actorId: "system:scheduler",
+        subjectType: "audit_archive_export",
       });
       return { archived: 100, archiveId: "archive-1" };
     });
@@ -197,6 +203,19 @@ describe("scheduled job domain adapters", () => {
     }))
       .resolves.toEqual({ processed: 100, hasMore: true });
     await expect(audit.inspectBacklog({ before: "2026-05-01T00:00:00.000Z" })).resolves.toEqual(backlog);
+  });
+
+  it("propagates media garbage-collection failures instead of reporting completed work", async () => {
+    const failure = new AggregateError([new Error("R2 delete failed")], "Media garbage collection failed");
+    const collectGarbage = vi.fn().mockRejectedValue(failure);
+    const inspectGarbageBacklog = vi.fn().mockResolvedValue(backlog);
+    const media = new ScheduledMediaGarbageCollectionJob({ collectGarbage, inspectGarbageBacklog } as never);
+
+    await expect(media.run({
+      before: NOW,
+      limit: 50,
+      audit: createSchedulerAuditFactory("media-failure", NOW),
+    })).rejects.toBe(failure);
   });
 
   it("cleans expired system-test runs in fixed batches of 25", async () => {

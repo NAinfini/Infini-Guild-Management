@@ -21,6 +21,7 @@ const user: AuthUserRecord = {
   revisionToken: "user-v1",
   createdAt: NOW,
   updatedAt: NOW,
+  lastLoginAt: null,
 };
 const profile: MemberProfile = {
   user_id: user.id,
@@ -140,8 +141,8 @@ describe("auth Portal HTTP contract", () => {
 
     const allowed = buildApp();
     await allowed.app.request("/api/auth/check-username?username=NewMember");
-    await allowed.app.request("/api/auth/verify-invite/invite-code");
-    await allowed.app.request("/api/auth/register/invite-code", {
+    await allowed.app.request("/api/auth/verify-invite/A1b2C3d4E5");
+    await allowed.app.request("/api/auth/register/A1b2C3d4E5", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ username: "NewMember", password: "password", confirmPassword: "password" }),
@@ -183,7 +184,7 @@ describe("auth Portal HTTP contract", () => {
 
   it("presents invite and current-session fields in the Portal snake_case shape", async () => {
     const { app } = buildApp();
-    const invite = await app.request("/api/auth/verify-invite/code");
+    const invite = await app.request("/api/auth/verify-invite/A1b2C3d4E5");
     expect(await invite.json()).toEqual({
       valid: true,
       role_id: "member",

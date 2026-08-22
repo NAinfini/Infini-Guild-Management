@@ -21,6 +21,9 @@ export const announcements = sqliteTable(
     revisionToken: text("revision_token").notNull(),
     createdAt: text("created_at").notNull().default(nowUtc),
     updatedAt: text("updated_at").notNull().default(nowUtc),
+    // body_json 的纯文本投影，供搜索 LIKE 使用；声明必须保持末位以匹配
+    // ALTER TABLE ADD COLUMN 的物理列序。
+    searchText: text("search_text").notNull().default(""),
   },
   (table) => [
     index("idx_announcements_public").on(table.status, table.pinned, table.updatedAt, table.id, table.publishAt, table.expiresAt),

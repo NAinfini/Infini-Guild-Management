@@ -1,6 +1,7 @@
 import type { BadgeAssignment } from "@guild/shared";
 import { ActionIcon, Avatar, Text, Tooltip } from "@mantine/core";
 import { XIcon } from "@portal/components/icons";
+import { formatLocaleDate, formatLocaleDateTime } from "@portal/utils/datetime";
 import { useTranslation } from "react-i18next";
 import { MemberRoleAvatar } from "../../shared/MemberRoleAvatar";
 import { PickListFrame, PickListStaticRow } from "../../shared/PickList";
@@ -19,10 +20,8 @@ export function AdminBadgeMemberList({
   onUnassign: (userId: string) => void;
 }) {
   const { t, i18n } = useTranslation("admin");
-  const formatDay = (iso: string) =>
-    new Date(iso).toLocaleDateString(i18n.language, { year: "numeric", month: "short", day: "numeric" });
-  const formatMoment = (iso: string) =>
-    new Date(iso).toLocaleString(i18n.language, { dateStyle: "medium", timeStyle: "short" });
+  const formatDay = (iso: string) => formatLocaleDate(iso, i18n.language, "medium");
+  const formatMoment = (iso: string) => formatLocaleDateTime(iso, i18n.language, "medium");
 
   return (
     <PickListFrame>

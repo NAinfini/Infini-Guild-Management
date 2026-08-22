@@ -9,7 +9,6 @@ import {
   type InfiniteData,
 } from "@tanstack/react-query";
 import { useNavigate, useSearch } from "@tanstack/react-router";
-import { format, isValid, parseISO } from "date-fns";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { flushSync } from "react-dom";
 import { useDisclosure } from "@mantine/hooks";
@@ -18,7 +17,7 @@ import { useTranslation } from "react-i18next";
 import { useAppError } from "./useAppError";
 import { useBeforeUnloadPrompt } from "./useBeforeUnloadPrompt";
 import { useExternalView } from "./useExternalView";
-import { extractTipTapText } from "../utils/tiptap-text";
+import { extractTipTapText } from "@guild/shared/utils/tiptap-text";
 import {
   archiveAnnouncement,
   createAnnouncement,
@@ -32,7 +31,7 @@ import {
 } from "../services/AnnouncementService";
 import { queryKeys } from "../api/query-keys";
 import { useEffectivePermissions } from "./useEffectivePermissions";
-import { toIsoOrUndefined } from "../utils/iso-dates";
+import { fromDateTimeLocalValue, toDateTimeLocalValue } from "../utils/datetime";
 import { notifySuccess } from "../utils/notifications";
 import { useAuthStore } from "../stores/auth";
 import { userScopedStorageKey } from "../session-storage";
@@ -97,13 +96,6 @@ function flattenUniqueAnnouncements(data: AnnouncementListCache | undefined): An
     }
   }
   return [...byId.values()];
-}
-
-function toDateTimePickerValue(iso: string | null): string {
-  if (!iso) return "";
-  const date = parseISO(iso);
-  if (!isValid(date)) return "";
-  return format(date, "yyyy-MM-dd'T'HH:mm");
 }
 
 function readAnnouncementsLastSeenAt(storageKey: string): string | null {
@@ -425,7 +417,7 @@ export function useAnnouncementsController() {
       setPinned(selected.pinned);
       setArchived(selected.status === "archived");
       setDraftEnabled(selected.status === "draft");
-      setPublishAt(toDateTimePickerValue(selected.publish_at));
+      setPublishAt(toDateTimeLocalValue(selected.publish_at));
       setScheduleEnabled(selected.status === "scheduled");
     }
   }, [isCreating, selected]);
@@ -440,7 +432,7 @@ export function useAnnouncementsController() {
         title !== selected.title ||
         bodyJson !== selected.body_json ||
         pinned !== selected.pinned ||
-        publishAt !== toDateTimePickerValue(selected.publish_at) ||
+        publishAt !== toDateTimeLocalValue(selected.publish_at) ||
         scheduleEnabled !== (selected.status === "scheduled") ||
         draftEnabled !== (selected.status === "draft") ||
         archived !== (selected.status === "archived")
@@ -505,7 +497,7 @@ export function useAnnouncementsController() {
         body_json: bodyJson,
         pinned,
         status,
-        publish_at: status === "published" ? new Date().toISOString() : toIsoOrUndefined(publishAt),
+        publish_at: status === "published" ? new Date().toISOString() : fromDateTimeLocalValue(publishAt),
       });
       return;
     }
@@ -529,7 +521,9 @@ export function useAnnouncementsController() {
         body_json: bodyJson,
         pinned,
         status,
-        publish_at: status === "published" ? new Date().toISOString() : toIsoOrUndefined(publishAt),
+        publish_at: status === "published"
+          ? new Date().toISOString()
+          : fromDateTimeLocalValue(publishAt) ?? null,
       },
       ifMatch: `"announcement-${selected.id}-${selected.updated_at}"`,
     });
@@ -552,7 +546,7 @@ export function useAnnouncementsController() {
     setPinned(selected.pinned);
     setArchived(selected.status === "archived");
     setDraftEnabled(selected.status === "draft");
-    setPublishAt(toDateTimePickerValue(selected.publish_at));
+    setPublishAt(toDateTimeLocalValue(selected.publish_at));
     setScheduleEnabled(selected.status === "scheduled");
   };
 

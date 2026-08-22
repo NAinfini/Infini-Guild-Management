@@ -2,7 +2,8 @@ import type { MemberProfile, User } from "@guild/shared";
 import { Group, Text } from "@mantine/core";
 import { ClassIcon } from "@portal/components/shared/ClassIcon";
 import { MemberRoleAvatar } from "@portal/components/shared/MemberRoleAvatar";
-import { resolveClassCatalogItem, useClassCatalogStore } from "@portal/stores/class-catalog";
+import { useClassCatalog } from "@portal/hooks/data/useClassData";
+import { resolveClassCatalogItem } from "@portal/utils/class-catalog";
 import { useTranslation } from "react-i18next";
 
 type MemberEntry = { user: User; profile: MemberProfile };
@@ -11,7 +12,7 @@ type MemberEntry = { user: User; profile: MemberProfile };
 // visible beside icons in profile order instead of relying on hover-only rings.
 export function EventMemberIdentity({ entry }: { entry: MemberEntry }) {
   const { t } = useTranslation("events");
-  const classCatalog = useClassCatalogStore((state) => state.items);
+  const classCatalog = useClassCatalog();
   const classItems = [...new Set(entry.profile.classes.filter(Boolean))].map((id) =>
     resolveClassCatalogItem(id, classCatalog),
   );

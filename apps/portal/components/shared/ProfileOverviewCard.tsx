@@ -4,9 +4,11 @@ import { ActionIcon, FileButton, Text, Tooltip } from "@mantine/core";
 import { BoltIcon, PhotoIcon, ClockIcon, SwordsIcon, TrashIcon, UploadIcon, VideoIcon } from "@portal/components/icons";
 import { getMemberStatus, MemberBadgeChip } from "@portal/components/shared/MemberCard";
 import { useConfirmDialog } from "@portal/hooks/useConfirmDialog";
-import { resolveClassCatalogItem, useClassCatalogStore } from "@portal/stores/class-catalog";
+import { useClassCatalog } from "@portal/hooks/data/useClassData";
+import { resolveClassCatalogItem } from "@portal/utils/class-catalog";
 import { sanitizeTitleHtml } from "@portal/utils/sanitize";
 import { weeklyAvailableMinutes } from "@portal/utils/availability";
+import { formatLocaleDate } from "@portal/utils/datetime";
 import { useMemo, type CSSProperties, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { ClassIcon } from "./ClassIcon";
@@ -55,7 +57,7 @@ export function ProfileOverviewCard({
   onRemoveAvatar,
 }: ProfileOverviewCardProps) {
   const { t, i18n } = useTranslation("profile");
-  const classCatalog = useClassCatalogStore((state) => state.items);
+  const classCatalog = useClassCatalog();
   const confirm = useConfirmDialog();
 
   const safeTitleHtml = useMemo(
@@ -70,7 +72,7 @@ export function ProfileOverviewCard({
   const primaryColor = classItems[0]?.color ?? null;
   const avatarSrc = profile.avatar_media_id ? resolveMediaUrl(profile.avatar_media_id) : null;
   const weekHours = Math.round(weeklyAvailableMinutes(availabilityData) / 60);
-  const formatDay = (value: string) => new Date(value).toLocaleDateString(i18n.language);
+  const formatDay = (value: string) => formatLocaleDate(value, i18n.language, "numeric");
 
   const handleRemoveAvatar = async () => {
     if (!onRemoveAvatar) return;
@@ -192,6 +194,10 @@ export function ProfileOverviewCard({
           <div className="profile-overview__meta">
             <span>{t("overview.joined")} {formatDay(user.created_at)}</span>
             <span>{t("overview.updated")} {formatDay(profile.updated_at)}</span>
+            <span>
+              {t("overview.lastLogin")}{" "}
+              {user.last_login_at ? formatDay(user.last_login_at) : t("overview.lastLogin.never")}
+            </span>
           </div>
         </div>
       </div>

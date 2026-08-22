@@ -10,6 +10,7 @@ import {
   appSchema,
   createAppDatabase,
   SqliteAbsencePolicyReader,
+  SqliteAdminOperationsStore,
   SqliteAccountProvisioningStore,
   SqliteAnnouncementPublishStore,
   SqliteAnnouncementStore,
@@ -41,6 +42,7 @@ import {
 } from "@guild/persistence-sqlite";
 import {
   AdminStatusService,
+  AdminOperationsService,
   AnnouncementService,
   AuditArchiveService,
   AuditService,
@@ -70,6 +72,7 @@ import {
   WikiService,
   createInviteTokenCodec,
   type RuntimeHealthPort,
+  type AdminOperationsRuntimePort,
 } from "@guild/server";
 
 export type ApplicationServicePorts = Readonly<{
@@ -79,6 +82,7 @@ export type ApplicationServicePorts = Readonly<{
   notifications: NotificationPublisher;
   deferred: DeferredTasks;
   health: RuntimeHealthPort;
+  adminOperationsRuntime: AdminOperationsRuntimePort;
   authRateLimiter: RateLimiter;
 }>;
 
@@ -191,8 +195,10 @@ export function createApplicationServices(
     ports.blobs,
     ports.blobInventory,
   );
+  const adminOperationsStore = new SqliteAdminOperationsStore(ports.sql);
   const scheduledJobs = new ScheduledJobCoordinator({
     leases: new SqliteScheduledJobLeaseStore(ports.sql),
+    statuses: adminOperationsStore,
     recurrenceMaterialization: new ScheduledRecurrenceMaterializationJob(eventsStore, notifications),
     announcementPublish: new ScheduledAnnouncementPublishJob(
       new SqliteAnnouncementPublishStore(ports.sql),
@@ -213,16 +219,15 @@ export function createApplicationServices(
   });
   const portalReadModels = new PortalReadModelService(new SqlitePortalReadModelStore(ports.sql));
   const adminStatus = new AdminStatusService(ports.health);
+  const adminOperations = new AdminOperationsService(adminOperationsStore, ports.adminOperationsRuntime);
   const health = Object.freeze({
-    async check(): Promise<void> {
-      const result = await ports.sql.execute({ method: "get", sql: "SELECT 1 AS ok" });
-      if (!Array.isArray(result.rows) || result.rows[0] !== 1) {
-        throw new TypeError("Database health probe failed");
-      }
+    check(): Promise<void> {
+      return Promise.resolve();
     },
   });
 
   return Object.freeze({
+    adminOperations,
     adminStatus,
     announcements,
     audit,

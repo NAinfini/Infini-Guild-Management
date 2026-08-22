@@ -14,7 +14,10 @@ import {
 } from "drizzle-orm";
 import { AppError } from "@guild/kernel";
 import { LIMITS } from "@guild/shared";
-import { computeNextOccurrence } from "@guild/shared/utils/recurrence";
+import {
+  computeNextOccurrenceFromCursor,
+  recurrenceCursorBefore,
+} from "@guild/shared/utils/recurrence";
 import type {
   EventAggregate,
   EventCreateWrite,
@@ -52,9 +55,9 @@ import {
 } from "../schema/events.js";
 import { users } from "../schema/auth.js";
 import { classTagMembers, classTags } from "../schema/members.js";
-import { auditInsertStatement } from "./audit-statement.js";
+import { auditInsertSelectStatement, auditInsertStatement } from "./audit-statement.js";
 import { assertMediaAttachments, replaceMediaLinksStatements } from "./media-link-statements.js";
-import { returnedRowCount } from "./sql-result.js";
+import { returnedRowCount, returnedRows } from "./sql-result.js";
 
 type EventsSchema = {
   events: typeof events;
@@ -230,6 +233,143 @@ function recurrenceColumns(rule: RecurringTemplateRecord["recurrenceRule"]): Rec
 
 function booleanValue(value: boolean): number {
   return value ? 1 : 0;
+}
+
+function participantAuditStatement(
+  audit: EventUpdateWrite["audit"],
+  eventId: string,
+  requestedJson: string,
+  phase: "added" | "removing",
+): SqlBatchStatement {
+  const actualJoin = phase === "added"
+    ? `participant.id = requested.participant_id
+      AND participant.event_id = ?
+      AND participant.user_id = requested.user_id`
+    : `participant.event_id = ?
+      AND participant.user_id = requested.user_id`;
+  return auditInsertSelectStatement(
+    `WITH requested AS (
+        SELECT CAST(key AS INTEGER) AS ordinal,
+          CAST(json_extract(value, '$.participantId') AS TEXT) AS participant_id,
+          CAST(json_extract(value, '$.userId') AS TEXT) AS user_id
+        FROM json_each(?)
+      ), actual_payload AS (
+        SELECT count(*) AS user_count,
+          json_group_array(json_object(
+            'type', 'reference',
+            'value', json_object('id', user_id, 'label', username)
+          )) AS value
+        FROM (
+          SELECT requested.ordinal, requested.user_id,
+            (SELECT username FROM users WHERE users.id = requested.user_id) AS username
+          FROM requested
+          JOIN event_participants AS participant ON ${actualJoin}
+          ORDER BY requested.ordinal
+        )
+      )
+      SELECT ?, ?, ?, ?,
+        CASE WHEN ? = 'user' THEN (SELECT username FROM users WHERE id = ?) ELSE ? END,
+        ?, ?, ?, ?,
+        json_set(json_set(
+          json(?), '$.context[#]',
+          json_object(
+            'field', 'user_count',
+            'value', json_object('type', 'number', 'value', actual_payload.user_count)
+          )
+        ),
+          '$.context[#]',
+          json_object(
+            'field', 'user_ids',
+            'value', json_object('type', 'list', 'value', json(actual_payload.value))
+          )
+        ), ?
+      FROM actual_payload
+      WHERE json_array_length(actual_payload.value) > 0`,
+    [
+      requestedJson,
+      eventId,
+      audit.eventId,
+      audit.requestId,
+      audit.actorKind,
+      audit.actorId,
+      audit.actorKind,
+      audit.actorId,
+      audit.actorLabel,
+      audit.subjectType,
+      audit.subjectId,
+      audit.subjectLabel,
+      audit.action,
+      JSON.stringify(audit.payload),
+      audit.occurredAt,
+    ],
+  );
+}
+
+function raffleAuditStatement(
+  audit: EventUpdateWrite["audit"],
+  eventId: string,
+  requestedJson: string,
+): SqlBatchStatement {
+  return auditInsertSelectStatement(
+    `WITH requested AS (
+        SELECT CAST(key AS INTEGER) AS ordinal,
+          CAST(json_extract(value, '$.userId') AS TEXT) AS user_id
+        FROM json_each(?)
+      ), actual_payload AS (
+        SELECT count(*) AS winner_count,
+          json_group_array(json_object(
+            'type', 'reference',
+            'value', json_object('id', user_id, 'label', username)
+          )) AS value
+        FROM (
+          SELECT requested.ordinal, requested.user_id, users.username
+          FROM requested
+          JOIN event_raffle_winners AS winner
+            ON winner.event_id = ? AND winner.user_id = requested.user_id
+          JOIN users ON users.id = requested.user_id
+          ORDER BY requested.ordinal
+        )
+      )
+      SELECT ?, ?, ?, ?,
+        CASE WHEN ? = 'user' THEN (SELECT username FROM users WHERE id = ?) ELSE ? END,
+        ?, ?, ?, ?,
+        json_set(json_set(
+          json(?), '$.context[#]',
+          json_object(
+            'field', 'winner_count',
+            'value', json_object('type', 'number', 'value', actual_payload.winner_count)
+          )
+        ), '$.context[#]',
+          json_object(
+            'field', 'winner_user_ids',
+            'value', json_object('type', 'list', 'value', json(actual_payload.value))
+          )
+        ), ?
+      FROM actual_payload
+      WHERE actual_payload.winner_count > 0
+        AND EXISTS (
+          SELECT 1 FROM event_raffle_draws WHERE event_id = ? AND mutation_token = ?
+        )`,
+    [
+      requestedJson,
+      eventId,
+      audit.eventId,
+      audit.requestId,
+      audit.actorKind,
+      audit.actorId,
+      audit.actorKind,
+      audit.actorId,
+      audit.actorLabel,
+      audit.subjectType,
+      audit.subjectId,
+      audit.subjectLabel,
+      audit.action,
+      JSON.stringify(audit.payload),
+      audit.occurredAt,
+      eventId,
+      audit.eventId,
+    ],
+  );
 }
 
 function parseStartTime(value: string): { hour: number; minute: number } | null {
@@ -581,16 +721,7 @@ export class SqliteEventsStore implements EventsStore {
     try {
       await this.sql.batch([
         insert,
-        auditInsertStatement(audit, {
-          sql: `SELECT 1 WHERE NOT EXISTS (
-            SELECT 1 FROM json_each(?) requested
-            WHERE NOT EXISTS (
-            SELECT 1 FROM event_participants
-              WHERE event_id = ? AND user_id = CAST(json_extract(requested.value, '$.userId') AS TEXT)
-            )
-          )`,
-          params: [requestedJson, eventId],
-        }),
+        participantAuditStatement(audit, eventId, requestedJson, "added"),
       ]);
     } catch (error) {
       if (String(error).includes("event signup is unavailable")) {
@@ -625,17 +756,18 @@ export class SqliteEventsStore implements EventsStore {
   ): Promise<number> {
     const ids = [...new Set(userIds)];
     if (ids.length === 0) return 0;
+    const requestedJson = JSON.stringify(ids.map((userId) => ({ participantId: null, userId })));
     try {
       const results = await this.sql.batch([
+        participantAuditStatement(audit, eventId, requestedJson, "removing"),
         {
           method: "all",
           columns: ["affected"],
           sql: `DELETE FROM event_participants WHERE event_id = ? AND user_id IN (${placeholders(ids.length)}) RETURNING 1 AS affected`,
           params: [eventId, ...ids],
         },
-        auditInsertStatement(audit, { sql: "SELECT 1 FROM events WHERE id = ?", params: [eventId] }),
       ]);
-      return returnedRowCount(results[0]);
+      return returnedRowCount(results[1]);
     } catch (error) {
       if (String(error).includes("active guild war roster member")) {
         throw failure("CONFLICT", 409, "Remove the member from the active guild war roster first", error);
@@ -687,7 +819,7 @@ export class SqliteEventsStore implements EventsStore {
     })));
     const guard = {
       sql: "SELECT 1 FROM event_raffle_draws WHERE event_id = ? AND mutation_token = ?",
-      params: [eventId, audit.id],
+      params: [eventId, audit.eventId],
     };
     const statements: SqlBatchStatement[] = [{
       method: "all",
@@ -721,7 +853,7 @@ export class SqliteEventsStore implements EventsStore {
         )
         AND NOT EXISTS (SELECT 1 FROM event_raffle_draws draw WHERE draw.event_id = e.id)
       RETURNING 1 AS affected`,
-      params: [requestedJson, actorUserId, now, audit.id, eventId],
+      params: [requestedJson, actorUserId, now, audit.eventId, eventId],
     }, {
       method: "run",
       sql: `UPDATE events SET signup_locked = 1, updated_by = ?, updated_at = ?
@@ -740,7 +872,7 @@ export class SqliteEventsStore implements EventsStore {
       FROM requested
       WHERE EXISTS (${guard.sql})`,
       params: [requestedJson, eventId, now, ...guard.params],
-    }, auditInsertStatement(audit, guard)];
+    }, raffleAuditStatement(audit, eventId, requestedJson)];
     try {
       const results = await this.sql.batch(statements);
       if (returnedRowCount(results[0]) === 0) {
@@ -875,10 +1007,7 @@ export class SqliteEventsStore implements EventsStore {
         }
       }
     }
-    if (input.resetGeneration) {
-      add("last_generated_date", null);
-      add("generation_count", 0);
-    }
+    if (input.restartCursorDate) add("last_generated_date", input.restartCursorDate);
     add("updated_at", input.now);
     const statements: SqlBatchStatement[] = [{
       method: "all",
@@ -921,9 +1050,18 @@ export class SqliteEventsStore implements EventsStore {
     paused: boolean,
     now: string,
     audit: TemplateUpdateWrite["audit"],
+    resumeCursorDate?: string,
   ): Promise<void> {
+    const resumeCursor = paused ? undefined : resumeCursorDate;
     const results = await this.sql.batch([
-      { method: "all", columns: ["affected"], sql: "UPDATE recurring_templates SET paused = ?, updated_at = ? WHERE id = ? RETURNING 1 AS affected", params: [booleanValue(paused), now, templateId] },
+      {
+        method: "all",
+        columns: ["affected"],
+        sql: `UPDATE recurring_templates
+          SET paused = ?, ${resumeCursor === undefined ? "" : "last_generated_date = ?, "}updated_at = ?
+          WHERE id = ? RETURNING 1 AS affected`,
+        params: [booleanValue(paused), ...(resumeCursor === undefined ? [] : [resumeCursor]), now, templateId],
+      },
       auditInsertStatement(audit, { sql: "SELECT 1 FROM recurring_templates WHERE id = ? AND paused = ?", params: [templateId, booleanValue(paused)] }),
     ]);
     if (returnedRowCount(results[0]) === 0) throw failure("NOT_FOUND", 404, "Template not found");
@@ -932,9 +1070,14 @@ export class SqliteEventsStore implements EventsStore {
   async deleteTemplate(templateId: string, audit: TemplateUpdateWrite["audit"]): Promise<void> {
     const results = await this.sql.batch([
       auditInsertStatement(audit, { sql: "SELECT 1 FROM recurring_templates WHERE id = ?", params: [templateId] }),
+      {
+        method: "run",
+        sql: "UPDATE events SET series_id = NULL, instance_date = NULL WHERE series_id = ?",
+        params: [templateId],
+      },
       { method: "all", columns: ["affected"], sql: "DELETE FROM recurring_templates WHERE id = ? RETURNING 1 AS affected", params: [templateId] },
     ]);
-    if (returnedRowCount(results[1]) === 0) throw failure("NOT_FOUND", 404, "Template not found");
+    if (returnedRowCount(results[2]) === 0) throw failure("NOT_FOUND", 404, "Template not found");
   }
 
   async materializeDue(
@@ -1043,14 +1186,13 @@ export class SqliteEventsStore implements EventsStore {
       return { templateId: template.id, eventIds: [], createdEventIds: [] };
     }
 
-    let anchor: Date;
+    let cursor: Date | null;
     if (template.lastGeneratedDate) {
-      anchor = new Date(`${template.lastGeneratedDate}T${template.startTime}:00.000Z`);
+      cursor = new Date(`${template.lastGeneratedDate}T00:00:00.000Z`);
     } else {
-      anchor = new Date(reference);
-      anchor.setUTCHours(time.hour, time.minute, 0, 0);
+      cursor = recurrenceCursorBefore(now);
     }
-    if (!Number.isFinite(anchor.getTime())) {
+    if (!cursor || !Number.isFinite(cursor.getTime())) {
       return { templateId: template.id, eventIds: [], createdEventIds: [] };
     }
     const horizon = new Date(now.getTime() + (3 * 24 * 60 + template.visibilityOffsetMinutes) * 60_000);
@@ -1061,9 +1203,8 @@ export class SqliteEventsStore implements EventsStore {
       return { templateId: template.id, eventIds: [], createdEventIds: [] };
     }
     const planned: Array<{ dateKey: string; startAt: string; endAt: string | null }> = [];
-    let cursor = anchor;
     while (planned.length < maxOccurrences) {
-      const next = computeNextOccurrence(
+      const next = computeNextOccurrenceFromCursor(
         cursor,
         time.hour,
         time.minute,
@@ -1103,7 +1244,24 @@ export class SqliteEventsStore implements EventsStore {
     const allEventIds = planned.map((item) => existingByDate.get(item.dateKey) ?? freshByDate.get(item.dateKey)!);
 
     const materializations = fresh.map((item) => {
-      const audit = createAudit(item.eventId, template.title, template.id);
+      const audit = createAudit({
+        subjectType: "event",
+        subjectId: item.eventId,
+        subjectLabel: template.title,
+        action: "create",
+        context: [
+          {
+            field: "recurring_template_id",
+            value: { type: "reference", value: { id: template.id, label: template.title } },
+          },
+          { field: "type", value: { type: "code", value: template.type } },
+          { field: "start_at", value: { type: "datetime", value: item.startAt } },
+          ...(template.capacity === null ? [] : [{
+            field: "capacity" as const,
+            value: { type: "number" as const, value: template.capacity },
+          }]),
+        ],
+      });
       return {
         eventId: item.eventId,
         startAt: item.startAt,
@@ -1119,21 +1277,89 @@ export class SqliteEventsStore implements EventsStore {
           label: quota.label ?? "",
           classIds: quota.class_ids,
         })),
-        audit: {
-          id: audit.id,
-          requestId: audit.requestId,
-          actorUserId: audit.actorUserId,
-          entityType: audit.entityType,
-          entityId: audit.entityId,
-          action: audit.action,
-          summary: audit.summary,
-          detailsJson: audit.details === null ? null : JSON.stringify(audit.details),
-          occurredAt: audit.occurredAt,
-        },
+        audit,
       };
     });
     const payload = JSON.stringify(materializations);
+    const finalDate = planned[planned.length - 1]!.dateKey;
+    const templateAudit = createAudit({
+      subjectType: "recurring_template",
+      subjectId: template.id,
+      subjectLabel: template.title,
+      action: "update",
+      changes: [
+        {
+          field: "last_generated_date",
+          before: template.lastGeneratedDate === null
+            ? { type: "null", value: null }
+            : { type: "date", value: template.lastGeneratedDate },
+          after: { type: "date", value: finalDate },
+        },
+        ...(fresh.length === 0 ? [] : [{
+          field: "generation_count" as const,
+          before: { type: "number" as const, value: template.generationCount },
+          after: { type: "number" as const, value: template.generationCount + fresh.length },
+        }]),
+      ],
+    });
     const statements: SqlBatchStatement[] = [
+      {
+        method: "all",
+        columns: ["affected"],
+        sql: `UPDATE recurring_templates
+          SET last_generated_date = ?, generation_count = generation_count + ?, updated_at = ?
+          WHERE id = ? AND paused = 0 AND generation_count = ? AND updated_at = ?
+            AND NOT EXISTS (
+              SELECT 1
+              FROM json_each(?) AS requested
+              JOIN events AS existing
+                ON existing.series_id = recurring_templates.id
+                AND existing.instance_date = CAST(json_extract(requested.value, '$.dateKey') AS TEXT)
+            )
+          RETURNING 1 AS affected`,
+        params: [
+          finalDate,
+          fresh.length,
+          now.toISOString(),
+          template.id,
+          template.generationCount,
+          template.updatedAt,
+          payload,
+        ],
+      },
+      auditInsertStatement(templateAudit, { sql: "SELECT 1 WHERE changes() > 0" }),
+      {
+        method: "all",
+        columns: ["subject_id"],
+        sql: `INSERT INTO audit_log (
+            id, request_id, actor_kind, actor_id, actor_label, subject_type, subject_id,
+            subject_label, action, payload_json, occurred_at
+          )
+          WITH requested AS (SELECT value AS item FROM json_each(?))
+          SELECT CAST(json_extract(item, '$.audit.eventId') AS TEXT),
+            CAST(json_extract(item, '$.audit.requestId') AS TEXT),
+            CAST(json_extract(item, '$.audit.actorKind') AS TEXT),
+            CAST(json_extract(item, '$.audit.actorId') AS TEXT),
+            CASE WHEN json_extract(item, '$.audit.actorKind') = 'user'
+              THEN (SELECT username FROM users WHERE id = CAST(json_extract(item, '$.audit.actorId') AS TEXT))
+              ELSE json_extract(item, '$.audit.actorLabel') END,
+            CAST(json_extract(item, '$.audit.subjectType') AS TEXT),
+            CAST(json_extract(item, '$.audit.subjectId') AS TEXT),
+            json_extract(item, '$.audit.subjectLabel'),
+            CAST(json_extract(item, '$.audit.action') AS TEXT),
+            json_extract(item, '$.audit.payload'),
+            CAST(json_extract(item, '$.audit.occurredAt') AS TEXT)
+          FROM requested
+          JOIN recurring_templates AS template ON template.id = ?
+          WHERE template.paused = 0 AND template.generation_count = ? AND template.updated_at = ?
+            AND NOT EXISTS (
+              SELECT 1 FROM events
+              WHERE series_id = template.id
+                AND instance_date = CAST(json_extract(item, '$.dateKey') AS TEXT)
+            )
+          RETURNING subject_id`,
+        params: [payload, template.id, template.generationCount + fresh.length, now.toISOString()],
+      },
       {
         method: "run",
         sql: `WITH requested AS (SELECT value AS item FROM json_each(?))
@@ -1151,9 +1377,22 @@ export class SqliteEventsStore implements EventsStore {
             CAST(json_extract(requested.item, '$.dateKey') AS TEXT), ?, ?
           FROM requested
           JOIN recurring_templates AS template ON template.id = ?
-          WHERE template.paused = 0 AND template.generation_count = ?
+          WHERE template.paused = 0 AND template.generation_count = ? AND template.updated_at = ?
+            AND EXISTS (
+              SELECT 1 FROM audit_log
+              WHERE id = CAST(json_extract(requested.item, '$.audit.eventId') AS TEXT)
+                AND subject_type = 'event'
+                AND subject_id = CAST(json_extract(requested.item, '$.eventId') AS TEXT)
+            )
           ON CONFLICT(series_id, instance_date) DO NOTHING`,
-        params: [payload, now.toISOString(), now.toISOString(), template.id, template.generationCount],
+        params: [
+          payload,
+          now.toISOString(),
+          now.toISOString(),
+          template.id,
+          template.generationCount + fresh.length,
+          now.toISOString(),
+        ],
       },
       {
         method: "run",
@@ -1217,53 +1456,25 @@ export class SqliteEventsStore implements EventsStore {
           ON CONFLICT DO NOTHING`,
         params: [payload, template.id],
       },
-      {
-        method: "run",
-        sql: `WITH requested AS (SELECT value AS item FROM json_each(?))
-          INSERT INTO audit_log (
-            id, request_id, actor_user_id, actor_username, entity_type, entity_id, action,
-            summary, detail_json, occurred_at
-          )
-          SELECT CAST(json_extract(item, '$.audit.id') AS TEXT),
-            CAST(json_extract(item, '$.audit.requestId') AS TEXT),
-            CAST(json_extract(item, '$.audit.actorUserId') AS TEXT),
-            (SELECT username FROM users
-              WHERE id = CAST(json_extract(item, '$.audit.actorUserId') AS TEXT)),
-            CAST(json_extract(item, '$.audit.entityType') AS TEXT),
-            CAST(json_extract(item, '$.audit.entityId') AS TEXT),
-            CAST(json_extract(item, '$.audit.action') AS TEXT),
-            CAST(json_extract(item, '$.audit.summary') AS TEXT),
-            CAST(json_extract(item, '$.audit.detailsJson') AS TEXT),
-            CAST(json_extract(item, '$.audit.occurredAt') AS TEXT)
-          FROM requested
-          WHERE EXISTS (
-            SELECT 1 FROM events
-            WHERE id = CAST(json_extract(item, '$.eventId') AS TEXT)
-              AND series_id = ?
-              AND instance_date = CAST(json_extract(item, '$.dateKey') AS TEXT)
-          )`,
-        params: [payload, template.id],
-      },
     ];
-    const finalDate = planned[planned.length - 1]!.dateKey;
-    statements.push({
-      method: "all",
-      columns: ["affected"],
-      sql: `UPDATE recurring_templates
-        SET last_generated_date = ?, generation_count = generation_count + ?, updated_at = ?
-        WHERE id = ? AND paused = 0 AND generation_count = ?
-        RETURNING 1 AS affected`,
-      params: [finalDate, planned.length, now.toISOString(), template.id, template.generationCount],
-    });
     const batch = await this.sql.batch(statements);
-    if (returnedRowCount(batch[batch.length - 1]) === 0) {
+    const generationAdvanced = returnedRowCount(batch[0]) === 1;
+    const createdEventIds = generationAdvanced
+      ? returnedRows(batch[2]).flatMap((row) => typeof row[0] === "string" ? [row[0]] : [])
+      : [];
+    if (!generationAdvanced || createdEventIds.length !== fresh.length) {
       const raced = await this.db
-        .select({ id: events.id })
+        .select({ id: events.id, instanceDate: events.instanceDate })
         .from(events)
         .where(and(eq(events.seriesId, template.id), inArray(events.instanceDate, planned.map((item) => item.dateKey))));
-      return { templateId: template.id, eventIds: raced.map((row) => row.id), createdEventIds: [] };
+      const racedByDate = new Map(raced.flatMap((row) => row.instanceDate ? [[row.instanceDate, row.id] as const] : []));
+      return {
+        templateId: template.id,
+        eventIds: planned.flatMap((item) => racedByDate.get(item.dateKey) ?? []),
+        createdEventIds,
+      };
     }
-    return { templateId: template.id, eventIds: allEventIds, createdEventIds: fresh.map((item) => item.eventId) };
+    return { templateId: template.id, eventIds: allEventIds, createdEventIds };
   }
 
   private quotaStatements(

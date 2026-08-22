@@ -1,4 +1,3 @@
-// @vitest-environment jsdom
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { act, renderHook, waitFor } from "@testing-library/react";
 import type { ReactNode } from "react";
@@ -121,6 +120,27 @@ describe("useAdminClassesController", () => {
       "generated-class-id",
       expect.objectContaining({ label: "Warden" }),
     );
+  });
+
+  it("refetches the catalog once after save and renders that response", async () => {
+    const refreshed = catalog.map((item, index) => index === 0
+      ? { ...item, label: "Warden Prime" }
+      : item);
+    apiMocks.fetch.mockResolvedValueOnce(catalog).mockResolvedValue(refreshed);
+    apiMocks.update.mockResolvedValue(refreshed[0]);
+
+    const { result } = renderHook(() => useAdminClassesController(), {
+      wrapper: createWrapper(),
+    });
+    await waitFor(() => expect(result.current.draft.id).toBe("warden"));
+
+    act(() => result.current.save());
+
+    await waitFor(() => {
+      expect(result.current.savePending).toBe(false);
+      expect(result.current.query.data?.[0]?.label).toBe("Warden Prime");
+    });
+    expect(apiMocks.fetch).toHaveBeenCalledTimes(2);
   });
 
   it("submits the whole catalog order and shows it before the server answers", async () => {

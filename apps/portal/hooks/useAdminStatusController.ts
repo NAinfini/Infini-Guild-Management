@@ -80,9 +80,9 @@ export function useAdminStatusController({
     return result;
   }, [statusQuery.refetch]);
 
-  // Poll every 30s when status tab is active
+  // Poll only while the operations overview is visible.
   useEffect(() => {
-    if (!isAdmin || activeTab !== "status") return;
+    if (!isAdmin || activeTab !== "operations") return;
     void refreshStatus();
     const timer = window.setInterval(() => {
       void refreshStatus();

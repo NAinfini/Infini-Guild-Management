@@ -4,6 +4,7 @@ import { describe, expect, it } from "vitest";
 import {
   parseEnv,
   parseJsonc,
+  RATE_LIMIT_EXPECTATIONS,
   validateCloudflareConfig,
   validateVpsConfig,
 } from "./check-runtime-config.mjs";
@@ -13,6 +14,7 @@ function cloudflareConfig(): Record<string, unknown> {
     name: "guild",
     main: "src/index.ts",
     compatibility_date: "2026-08-09",
+    compatibility_flags: ["nodejs_als"],
     workers_dev: true,
     assets: {
       directory: "../portal/dist",
@@ -33,16 +35,10 @@ function cloudflareConfig(): Record<string, unknown> {
       bindings: [{ name: "NOTIFICATIONS", class_name: "CloudflareNotificationDurableObject" }],
     },
     migrations: [{ tag: "notifications-v1", new_sqlite_classes: ["CloudflareNotificationDurableObject"] }],
-    ratelimits: [
-      "AUTH_RATE_LIMITER",
-      "READ_RATE_LIMITER",
-      "MUTATION_RATE_LIMITER",
-      "UPLOAD_RATE_LIMITER",
-      "WEBSOCKET_RATE_LIMITER",
-    ].map((name, index) => ({
+    ratelimits: Object.entries(RATE_LIMIT_EXPECTATIONS).map(([name, expected], index) => ({
       name,
       namespace_id: `namespace-${index}`,
-      simple: { limit: 10, period: 60 },
+      simple: { limit: expected.maxRequests, period: expected.windowMs / 1000 },
     })),
     triggers: { crons: ["*/15 * * * *", "0 0 * * *"] },
     vars: {
@@ -67,7 +63,7 @@ function vpsConfig(): Record<string, string> {
 }
 
 describe("dual-runtime config preflight", () => {
-  it("keeps Cloudflare and E2E fixtures on the shared migration directory", () => {
+  it("keeps Cloudflare and E2E fixtures on the shared migration and rate-limit contract", () => {
     for (const relativePath of [
       "../apps/cloudflare/wrangler.example.jsonc",
       "./e2e/wrangler.e2e.jsonc",
@@ -75,7 +71,29 @@ describe("dual-runtime config preflight", () => {
       const config = parseJsonc(readFileSync(fileURLToPath(new URL(relativePath, import.meta.url)), "utf8"));
       const database = config.d1_databases.find((entry: { binding?: string }) => entry.binding === "DB");
       expect(database.migrations_dir).toBe("../../packages/persistence-sqlite/src/migrations/generated");
+      for (const [name, expected] of Object.entries(RATE_LIMIT_EXPECTATIONS)) {
+        expect(config.ratelimits).toContainEqual(expect.objectContaining({
+          name,
+          simple: {
+            limit: expected.maxRequests,
+            period: expected.windowMs / 1000,
+          },
+        }));
+      }
     }
+  });
+
+  it("keeps the production template off alternate Worker hostnames", () => {
+    const config = parseJsonc(readFileSync(
+      fileURLToPath(new URL("../apps/cloudflare/wrangler.example.jsonc", import.meta.url)),
+      "utf8",
+    ));
+
+    expect(config.workers_dev).toBe(false);
+    expect(config.preview_urls).toBe(false);
+    expect(config.routes).toEqual(expect.arrayContaining([
+      expect.objectContaining({ custom_domain: true }),
+    ]));
   });
 
   it("parses JSONC and dotenv templates without corrupting URLs", () => {
@@ -112,6 +130,26 @@ describe("dual-runtime config preflight", () => {
       expect.stringContaining("READ_RATE_LIMITER"),
       expect.stringContaining("IG_INVITE_TOKEN_SECRET"),
     ]));
+  });
+
+  it("requires the nodejs_als compatibility flag the worker needs to load", () => {
+    const config = cloudflareConfig();
+    delete config.compatibility_flags;
+    expect(validateCloudflareConfig(config)).toContainEqual(expect.stringContaining("nodejs_als"));
+  });
+
+  it("rejects rate limiter quotas that drift from the shared LIMITS mirror", () => {
+    const config = cloudflareConfig();
+    const auth = (config.ratelimits as Array<{ name: string; simple: { limit: number } }>)
+      .find((entry) => entry.name === "AUTH_RATE_LIMITER")!;
+    auth.simple.limit += 1;
+    expect(validateCloudflareConfig(config)).toContainEqual(expect.stringContaining("must mirror shared LIMITS"));
+  });
+
+  it("holds the VPS preflight to the runtime HTTPS rule for public origins", () => {
+    expect(validateVpsConfig({ ...vpsConfig(), IG_PUBLIC_URL: "http://guild.example" }))
+      .toContainEqual(expect.stringContaining("HTTPS"));
+    expect(validateVpsConfig({ ...vpsConfig(), IG_PUBLIC_URL: "http://localhost:8787" })).toEqual([]);
   });
 
   it("rejects local Cloudflare configurations that can reach remote D1 or R2", () => {

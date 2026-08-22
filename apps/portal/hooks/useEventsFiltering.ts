@@ -3,7 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate, useSearch } from "@tanstack/react-router";
 import { useTranslation } from "react-i18next";
-import { format } from "date-fns";
+import { localDateKey } from "../utils/datetime";
 import { useEventsData } from "./data/useEventsData";
 import { fetchEventDetail, fetchEventDetailBatch } from "../services/EventService";
 import { queryKeys } from "../api/query-keys";
@@ -224,7 +224,7 @@ export function useEventsFiltering({ currentUserId }: UseEventsFilteringParams) 
   const eventsByDay = useMemo(() => {
     const byDay = new Map<string, Event[]>();
     for (const event of sortedEvents) {
-      const key = format(new Date(event.start_at), "yyyy-MM-dd");
+      const key = localDateKey(event.start_at);
       const list = byDay.get(key) ?? [];
       list.push(event);
       byDay.set(key, list);

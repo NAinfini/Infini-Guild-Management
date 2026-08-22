@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { createAuthorizationContext, createRequestContext } from "@guild/kernel";
 import { PERMISSION_ID } from "@guild/shared/constants/roles";
+import { LIMITS } from "@guild/shared/config/limits";
 import type { MemberMediaPort, MembersStore, MemberTarget } from "./member-types";
 import { MemberService } from "./member-service";
 
@@ -20,7 +21,31 @@ function context() {
   });
 }
 
+function publicContext() {
+  return createRequestContext({
+    requestId: "request-public", now: NOW,
+    authorization: createAuthorizationContext(null),
+  });
+}
+
 describe("MemberService guarded profile edits", () => {
+  it("rejects oversized guest roster pages before storage access", async () => {
+    const listRoster = vi.fn();
+    const service = new MemberService({
+      store: { listRoster } as unknown as MembersStore,
+      media: {} as MemberMediaPort,
+      absencePolicy: { readAbsencePolicy: async () => ({ maxSpanDays: 30, maxEntriesPerUser: 5 }) },
+    });
+
+    await expect(service.list(publicContext(), {
+      page: 1,
+      limit: LIMITS.pagination.publicUsers + 1,
+      includeTotal: false,
+      externalView: false,
+    })).rejects.toMatchObject({ code: "VALIDATION_ERROR", status: 400 });
+    expect(listRoster).not.toHaveBeenCalled();
+  });
+
   it("returns 409 when the target authorization snapshot becomes stale", async () => {
     const store = {
       getMemberTarget: async () => target,
@@ -50,5 +75,32 @@ describe("MemberService guarded profile edits", () => {
     await expect(service.listAbsenceWindow(context(), "2026-01-01", "2027-01-02"))
       .rejects.toMatchObject({ code: "VALIDATION_ERROR", status: 400 });
     expect(listAbsences).not.toHaveBeenCalled();
+  });
+
+  it("preserves absence dates in the deletion audit without storing its note", async () => {
+    const deleteAbsence = vi.fn().mockResolvedValue(true);
+    const absence = {
+      id: "absence-1", user_id: target.userId, username: target.username, role_id: "member",
+      role_name: "Member", role_color: null, role_level: 100,
+      start_date: "2026-08-10", end_date: "2026-08-12", note: "private", created_at: NOW,
+    };
+    const service = new MemberService({
+      store: {
+        getMemberTarget: vi.fn().mockResolvedValue(target),
+        listAbsences: vi.fn().mockResolvedValue([absence]),
+        deleteAbsence,
+      } as unknown as MembersStore,
+      media: {} as MemberMediaPort,
+      absencePolicy: { readAbsencePolicy: async () => ({ maxSpanDays: 30, maxEntriesPerUser: 5 }) },
+    });
+
+    await service.deleteAbsence(context(), target.userId, absence.id);
+    const audit = deleteAbsence.mock.calls[0]![2];
+    expect(audit.payload.context).toEqual([
+      { field: "subject_id", value: { type: "reference", value: { id: target.userId, label: target.username } } },
+      { field: "start_at", value: { type: "date", value: absence.start_date } },
+      { field: "end_at", value: { type: "date", value: absence.end_date } },
+    ]);
+    expect(JSON.stringify(audit.payload)).not.toContain(absence.note);
   });
 });

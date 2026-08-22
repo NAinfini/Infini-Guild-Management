@@ -1,4 +1,3 @@
-// @vitest-environment jsdom
 import type { MemberProfile, User } from "@guild/shared";
 import { MantineProvider } from "@mantine/core";
 import { render, screen } from "@testing-library/react";
@@ -20,9 +19,10 @@ vi.mock("@portal/components/shared/MemberCard", () => ({
   MemberBadgeChip: () => null,
 }));
 
-vi.mock("@portal/stores/class-catalog", () => ({
-  useClassCatalogStore: () => [],
-  resolveClassCatalogItem: (id: string) => ({ id, label: id, color: "#61B8AA" }),
+/* 只截数据钩子；resolveClassCatalogItem 是纯函数，空目录下的真实现就是这里
+   想要的降级行为。 */
+vi.mock("@portal/hooks/data/useClassData", () => ({
+  useClassCatalog: () => [],
 }));
 
 const user = {

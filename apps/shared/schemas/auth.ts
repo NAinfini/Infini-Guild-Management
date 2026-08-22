@@ -7,6 +7,10 @@ const L = LIMITS.content;
 
 const usernameSchema = z.string().min(L.username.min).max(L.username.max).regex(/^[a-zA-Z0-9_一-鿿]+$/);
 
+export const INVITE_CODE_LENGTH = 10;
+export const INVITE_CODE_PATTERN = /^[A-Za-z0-9]{10}$/;
+export const inviteCodeSchema = z.string().length(INVITE_CODE_LENGTH).regex(INVITE_CODE_PATTERN);
+
 export const loginSchema = z.object({
   username: usernameSchema,
   password: z.string().min(1).max(L.password.max),

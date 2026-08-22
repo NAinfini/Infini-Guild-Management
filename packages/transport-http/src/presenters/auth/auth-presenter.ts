@@ -21,6 +21,7 @@ export function presentAuthUser(user: AuthUserRecord): User {
     deleted_at: user.deletedAt,
     created_at: user.createdAt,
     updated_at: user.updatedAt,
+    last_login_at: user.lastLoginAt,
   });
 }
 

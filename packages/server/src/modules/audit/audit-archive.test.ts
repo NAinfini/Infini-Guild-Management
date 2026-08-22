@@ -1,5 +1,5 @@
 import type { BlobStore } from "@guild/kernel";
-import type { AuditLogEntry } from "@guild/shared";
+import type { AuditEvent } from "@guild/shared";
 import { describe, expect, it, vi } from "vitest";
 import {
   AUDIT_ARCHIVE_CONTENT_TYPE,
@@ -12,16 +12,18 @@ const BEFORE = "2026-07-01T00:00:00.000Z";
 
 describe("AuditArchiveService streaming", () => {
   it("hashes one entry at a time and uploads one NDJSON chunk per entry", async () => {
-    const entries = Array.from({ length: 3 }, (_, index): AuditLogEntry => ({
-      id: `audit-${index}`,
-      entity_type: "event",
+    const entries = Array.from({ length: 3 }, (_, index): AuditEvent => ({
+      event_id: `audit-${index}`,
+      request_id: `request-${index}`,
+      actor: { kind: "user", id: "admin-1", label: "admin" },
+      subject: { type: "event", id: `event-${index}`, label: `Updated event ${index}` },
       action: "update",
-      actor_id: "admin-1",
-      actor_username: "admin",
-      entity_id: `event-${index}`,
-      diff_title: `Updated event ${index}`,
-      detail: { note: "x".repeat(256) },
-      created_at: `2026-06-0${index + 1}T00:00:00.000Z`,
+      payload: {
+        schema_version: 2,
+        changes: [],
+        context: [{ field: "notes", value: { type: "text", value: "x".repeat(256) } }],
+      },
+      occurred_at: `2026-06-0${index + 1}T00:00:00.000Z`,
     }));
     const finalize = vi.fn().mockResolvedValue(true);
     const store = {
@@ -59,15 +61,21 @@ describe("AuditArchiveService streaming", () => {
     });
     const service = new AuditArchiveService(store, { putIfAbsent } as unknown as BlobStore);
 
-    await expect(service.archiveBatch(BEFORE, NOW, () => ({
-      id: "audit-export-1",
+    await expect(service.archiveBatch(BEFORE, NOW, (archiveId, rowCount) => ({
+      eventId: "audit-export-1",
       requestId: "scheduled-job",
-      actorUserId: "system",
-      entityType: "audit_archive_export",
-      entityId: "archive-1",
+      actorKind: "system",
+      actorId: "system",
+      actorLabel: null,
+      subjectType: "audit_archive_export",
+      subjectId: archiveId,
+      subjectLabel: null,
       action: "archive",
-      summary: null,
-      details: null,
+      payload: {
+        schema_version: 2,
+        changes: [],
+        context: [{ field: "row_count", value: { type: "number", value: rowCount } }],
+      },
       occurredAt: NOW,
     }))).resolves.toEqual({ archived: 3, archiveId: "archive-1" });
 

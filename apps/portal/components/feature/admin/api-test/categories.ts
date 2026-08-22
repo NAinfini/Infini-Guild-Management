@@ -147,10 +147,10 @@ export function buildApiCategories(t: (key: string) => string): CategoryDef[] {
         { label: t("status.api.ep.saveTeams"), method: "POST", path: "/api/guild-war/save-teams" },
         { label: t("status.api.ep.updateRoleTag"), method: "PATCH", path: "/api/guild-war/role-tag" },
         { label: t("status.api.ep.exportGuildWar"), method: "GET", path: "/api/guild-war/export?format=json" },
+        { label: t("status.api.ep.createHistory"), method: "POST", path: "/api/guild-war/history" },
         { label: t("status.api.ep.warHistory"), method: "GET", path: "/api/guild-war/history?page=1&limit=5" },
         { label: t("status.api.ep.historyDetail"), method: "GET", path: "/api/guild-war/history/:id" },
         { label: t("status.api.ep.batchHistoryDetails"), method: "GET", path: "/api/guild-war/history/batch" },
-        { label: t("status.api.ep.createHistory"), method: "POST", path: "/api/guild-war/history" },
         { label: t("status.api.ep.analytics"), method: "GET", path: "/api/guild-war/analytics" },
         { label: t("status.api.ep.concludeWar"), method: "POST", path: "/api/guild-war/conclude" },
         { label: t("status.api.ep.updateMemberStats"), method: "PATCH", path: "/api/guild-war/history/:id/member-stats/:userId" },
@@ -210,14 +210,17 @@ export function buildApiCategories(t: (key: string) => string): CategoryDef[] {
           mediaVariant: "view",
         },
         { label: t("status.api.ep.deleteStorageItemImage"), method: "DELETE", path: "/api/storage/items/:id/images/:imageId" },
+        { label: t("status.api.ep.deleteStorageItem"), method: "DELETE", path: "/api/storage/items/:id" },
+        { label: t("status.api.ep.deleteStorageCategory"), method: "DELETE", path: "/api/storage/storages/:storageId/categories/:id" },
+        { label: t("status.api.ep.deleteStorage"), method: "DELETE", path: "/api/storage/storages/:id" },
+        { label: t("status.api.ep.createStorage"), method: "POST", path: "/api/storage/storages?fixture=transactions" },
+        { label: t("status.api.ep.createStorageCategory"), method: "POST", path: "/api/storage/storages/:storageId/categories?fixture=transactions" },
+        { label: t("status.api.ep.createStorageItem"), method: "POST", path: "/api/storage/items?fixture=transactions" },
         { label: t("status.api.ep.storageTransactionIntake"), method: "POST", path: "/api/storage/items/:id/transactions?fixture=intake" },
         { label: t("status.api.ep.storageTransactionDistribute"), method: "POST", path: "/api/storage/items/:id/transactions?fixture=distribute" },
         { label: t("status.api.ep.storageTransactionAdjust"), method: "POST", path: "/api/storage/items/:id/transactions?fixture=adjust" },
         { label: t("status.api.ep.storageTransactionBatch"), method: "POST", path: "/api/storage/transactions/batch" },
         { label: t("status.api.ep.listStorageTransactions"), method: "GET", path: "/api/storage/transactions?page=1&limit=5" },
-        { label: t("status.api.ep.deleteStorageItem"), method: "DELETE", path: "/api/storage/items/:id" },
-        { label: t("status.api.ep.deleteStorageCategory"), method: "DELETE", path: "/api/storage/storages/:storageId/categories/:id" },
-        { label: t("status.api.ep.deleteStorage"), method: "DELETE", path: "/api/storage/storages/:id" },
       ],
     },
     {
@@ -342,6 +345,24 @@ export function buildApiCategories(t: (key: string) => string): CategoryDef[] {
       ],
     },
   ];
+}
+
+const CRITICAL_API_ENDPOINT_KEYS = new Set([
+  "system:GET:/api/health",
+  "system:GET:/api/site-config",
+  "system:GET:/api/admin/status",
+  "auth:GET:/api/auth/me",
+]);
+
+export function buildCriticalApiCategories(categories: CategoryDef[]): CategoryDef[] {
+  return categories
+    .map((category) => ({
+      ...category,
+      endpoints: category.endpoints.filter((endpoint) =>
+        CRITICAL_API_ENDPOINT_KEYS.has(`${category.key}:${endpoint.method}:${endpoint.path}`),
+      ),
+    }))
+    .filter((category) => category.endpoints.length > 0);
 }
 
 export function filterApiCategoriesForPermissions(

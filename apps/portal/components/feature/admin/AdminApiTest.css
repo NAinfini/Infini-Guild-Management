@@ -1,25 +1,12 @@
 /* ── API Test Console — Ops Dashboard ── */
 
-/* The console uses the same surface tier as adjacent admin panels. */
-.api-console {
-  display: flex;
-  flex-direction: column;
-  border-radius: var(--radius-surface);
-  border: 1px solid var(--border-subtle);
-  background: var(--surface-base);
-  overflow: hidden;
-}
+/* 面板材质来自 AdminPage.css 的 .admin-panel，这个文件只写诊断台自己的排布。 */
 
 /* ── Console Header ── */
 
+/* 提示语靠 flex-basis:100% 换行到第二行，所以这块头部必须允许换行。 */
 .api-console__header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--space-sm);
-  padding: var(--space-sm) var(--space-md);
-  border-bottom: 1px solid var(--border-subtle);
-  background: var(--surface-sunken);
+  flex-wrap: wrap;
 }
 
 /* Scope sizing to Mantine actions so the independent collapse trigger is unaffected. */
@@ -45,10 +32,9 @@
   flex-shrink: 0;
 }
 
-/* Primary console actions retain a 44px touch target. */
-.api-console__header .api-console__run-all,
-.api-console__header .api-console__stop {
-  min-height: 44px;
+.api-console__hint {
+  flex-basis: 100%;
+  line-height: 1.4;
 }
 
 .api-console__stats {
@@ -86,9 +72,11 @@
 /*
  * 进度条露面时表头不再自己画线：那条 3px 的进度条就是表头和内容之间的分界。
  * 两条一起画就是 1px 细线上面再压一条 3px 粗带，看着像给表头描了两道边。
- * 条件同 AdminStatusTab.tsx 的 hasProgress，两处一起变。
+ * 条件同 AdminDiagnosticsTab.tsx 的 hasProgress，两处一起变。
  */
-.api-console__header--with-progress {
+/* 选择器带上父级：这条要压过 AdminPage.css 里 .admin-panel__head 的下边线，
+   不能只靠两个文件谁先加载。 */
+.api-console .api-console__header--with-progress {
   border-bottom: 0;
 }
 
@@ -111,18 +99,80 @@
   background: var(--status-info);
 }
 
+.api-debug__header-main {
+  display: flex;
+  min-width: 0;
+  flex: 1 1 auto;
+  align-items: center;
+  gap: var(--space-sm);
+}
+
+.api-filter {
+  display: inline-flex;
+  min-width: 0;
+  max-width: 100%;
+}
+
+.api-filter .mantine-SegmentedControl-root {
+  max-width: 100%;
+  padding: 3px;
+  border: 1px solid var(--border-subtle);
+  background: var(--surface-sunken);
+}
+
+.api-filter .mantine-SegmentedControl-label {
+  min-height: 28px;
+  padding: 5px 10px;
+  color: var(--text-secondary);
+  font-size: var(--text-micro);
+  font-weight: var(--fw-strong);
+  line-height: 1;
+  transition: color 120ms ease, background-color 120ms ease;
+}
+
+.api-filter .mantine-SegmentedControl-control[data-active] .mantine-SegmentedControl-label {
+  color: var(--brand-text);
+}
+
+.api-filter .mantine-SegmentedControl-control:not([data-active]) .mantine-SegmentedControl-label:hover {
+  color: var(--text-primary);
+  background: color-mix(in srgb, var(--text-primary) 4%, transparent);
+}
+
+.api-filter .mantine-SegmentedControl-indicator {
+  background: var(--surface-raised);
+  box-shadow: inset 0 0 0 1px var(--border-strong), var(--edge-top);
+}
+
 /* ── Category Accordion ── */
 
 .api-cat-list {
   display: flex;
   flex-direction: column;
+  min-block-size: 0;
+  flex: 1 1 auto;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  background: var(--plate-fill);
+  scrollbar-width: thin;
 }
 
-.api-cat-list__empty {
-  padding: 32px 16px;
-  text-align: center;
-  font-size: 12px;
-  color: color-mix(in srgb, var(--text-primary) 65%, transparent);
+.api-cat-list__head {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  display: grid;
+  grid-template-columns: minmax(10rem, 1fr) 4rem 4rem 4rem 5.5rem minmax(6rem, 0.7fr) 44px;
+  gap: var(--space-sm);
+  align-items: center;
+  min-height: 36px;
+  padding: 0 var(--space-sm) 0 var(--space-lg);
+  border-bottom: 1px solid var(--border-strong);
+  color: var(--text-muted);
+  /* 粘顶行必须不透明，用台面色而不是另起一层下沉底色。 */
+  background: var(--plate-fill);
+  font-size: var(--text-meta);
+  font-weight: var(--fw-medium);
 }
 
 /* ── Category Row (Collapsed) ── */
@@ -130,65 +180,57 @@
 .api-cat {
   display: flex;
   flex-direction: column;
-  border-bottom: 1px solid color-mix(in srgb, var(--text-primary) 5%, transparent);
-  position: relative;
+  border-bottom: 1px solid var(--border-subtle);
 }
 
 .api-cat:last-child {
   border-bottom: none;
 }
 
-.api-cat__accent {
-  position: absolute;
-  top: 0;
-  left: 0;
-  width: 3px;
-  height: 100%;
-  background: transparent;
-  transition: background 400ms ease;
-}
-
-.api-cat__accent--running {
-  background: var(--brand-fill);
-  animation: accentPulse 1.2s ease-in-out infinite;
-}
-
-.api-cat__accent--pass { background: var(--status-success); }
-.api-cat__accent--partial { background: var(--status-warning); }
-.api-cat__accent--fail { background: var(--status-danger); }
-
-@keyframes accentPulse {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.3; }
-}
-
 .api-cat__row {
-  display: flex;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 44px;
   align-items: center;
-  min-height: 48px;
-  padding-right: 8px;
+  min-height: 52px;
+  padding-right: var(--space-sm);
   user-select: none;
   transition: background 150ms ease;
 }
 
 .api-cat__row:hover {
-  background: color-mix(in srgb, var(--brand-fill) 3%, transparent);
+  background: color-mix(in srgb, var(--brand-fill) 4%, var(--surface-raised));
 }
 
 .api-cat__toggle {
-  display: flex;
-  flex: 1;
+  display: grid;
+  grid-template-columns: minmax(10rem, 1fr) 4rem 4rem 4rem 5.5rem minmax(6rem, 0.7fr);
+  gap: var(--space-sm);
   min-width: 0;
   align-items: center;
-  gap: 10px;
   align-self: stretch;
-  padding: 10px 4px 10px 18px;
+  padding: 0 8px 0 18px;
   border: 0;
   background: transparent;
   color: inherit;
   font: inherit;
   text-align: left;
   cursor: pointer;
+}
+
+.api-cat__toggle:focus-visible {
+  outline: 2px solid var(--brand-fill);
+  outline-offset: -2px;
+}
+
+.api-cat__toggle:disabled {
+  cursor: default;
+}
+
+.api-cat__identity {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: var(--space-sm);
 }
 
 .api-cat__chevron {
@@ -225,40 +267,40 @@
 }
 
 .api-cat__name {
-  font-size: 13px;
-  font-weight: 700;
+  min-width: 0;
+  overflow: hidden;
   color: var(--text-primary);
+  font-size: var(--text-sm);
+  font-weight: var(--fw-strong);
+  text-overflow: ellipsis;
   white-space: nowrap;
-  min-width: 90px;
 }
 
-.api-cat__ring {
-  flex-shrink: 0;
-}
-
-.api-cat__fraction {
-  font-size: 11.5px;
-  font-weight: 700;
+.api-cat__metric {
+  color: var(--text-secondary);
+  font-size: var(--text-sm);
+  font-weight: var(--fw-medium);
   font-variant-numeric: tabular-nums;
-  color: color-mix(in srgb, var(--text-primary) 65%, transparent);
-  min-width: 32px;
 }
 
-.api-cat__pct {
-  font-size: 10.5px;
-  font-weight: 700;
-  font-variant-numeric: tabular-nums;
-  color: color-mix(in srgb, var(--text-primary) 65%, transparent);
-  min-width: 32px;
+.api-cat__metric--pass { color: var(--status-success); }
+.api-cat__metric--fail { color: var(--status-danger); }
+
+.api-cat__state {
+  display: inline-flex;
+  min-width: 0;
+  align-items: center;
+  gap: var(--space-xs);
+  font-size: var(--text-micro);
+  font-weight: var(--fw-strong);
+  white-space: nowrap;
 }
 
-.api-cat__avg-latency {
-  font-size: 10.5px;
-  font-weight: 600;
-  font-variant-numeric: tabular-nums;
-  color: color-mix(in srgb, var(--text-primary) 65%, transparent);
-  min-width: 50px;
-}
+.api-cat__state--pass { color: var(--status-success); }
+.api-cat__state--fail { color: var(--status-danger); }
+.api-cat__state--pending { color: var(--text-muted); }
+
+.api-cat__avg-latency { color: var(--text-secondary); }
 
 .api-cat__status-dot {
   width: 8px;
@@ -271,26 +313,25 @@
 .api-cat__status-dot--fail { background: var(--status-danger); }
 .api-cat__status-dot--partial { background: var(--status-warning); }
 
-.api-cat__spacer {
-  flex: 1;
-}
-
+/* 居中而不是靠右：这一格宽 44px，正好是触控靶面的宽度，28px 的按钮居中之后
+   透明扩展块刚好填满这一格，不会越过面板右缘。 */
 .api-cat__actions {
   display: flex;
   align-items: center;
-  gap: 6px;
+  justify-content: center;
   flex-shrink: 0;
 }
 
-/* 图标操作保持 44px 触控目标，并适配窄视口。 */
+/*
+ * 运行按钮只写形状，尺寸交给控件标度。
+ *
+ * 原来这里把 --control-hit-area 直接当可见尺寸用，于是每行右边都立着一个 44px
+ * 的方块，里面装一个 11px 的三角——十几行排下来，一列方块比数据本身还抢眼。
+ * 按 DESIGN.md 的控件表，regular 档可见图标控件是 28px，44×44 是靶面；靶面由
+ * ThemeProvider 的 .actionIconRoot::before 透明扩展块统一提供，这里不该复制一份。
+ */
 .api-cat__actions .api-cat__run-button {
-  width: 44px;
-  min-height: 44px;
-  min-width: 44px;
-  padding: 0;
-  font-size: 11px;
   border-radius: var(--radius-control);
-  line-height: 1;
 }
 
 /* ── Category Progress Bar (inline in row) ── */
@@ -319,6 +360,8 @@
   flex-direction: column;
   padding: 0 14px 8px 46px;
   overflow: hidden;
+  border-top: 1px solid var(--border-subtle);
+  background: var(--surface-base);
   animation: expandEndpoints 200ms ease forwards;
 }
 
@@ -340,7 +383,7 @@
 }
 
 .api-ep:hover {
-  background: color-mix(in srgb, var(--brand-fill) 3%, transparent);
+  background: color-mix(in srgb, var(--brand-fill) 4%, var(--surface-raised));
 }
 
 .api-ep__method {
@@ -421,84 +464,42 @@
 
 /* ── Debug Console ── */
 
+/* 材质同样来自 .admin-panel。 */
 .api-debug {
-  border-radius: var(--radius-surface);
-  border: 1px solid var(--border-subtle);
-  background: var(--surface-base);
-  overflow: hidden;
-}
-
-.api-debug__header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--space-sm);
-  padding: var(--space-xs) var(--space-md);
-  border-bottom: 1px solid var(--border-subtle);
-  background: var(--surface-sunken);
-}
-
-.api-debug__header-left {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  min-width: 0;
-  flex: 1;
+  grid-area: debug;
 }
 
 .api-debug__header-right {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 12px;
 }
 
-.api-debug__filters {
-  display: flex;
-  align-items: center;
-  gap: 2px;
-  padding: 2px;
-  border-radius: 6px;
-  background: color-mix(in srgb, var(--text-primary) 4%, transparent);
+.api-debug__action {
+  position: relative;
 }
 
-.api-debug__filter-btn {
-  min-width: 44px;
-  min-height: 44px;
-  font-size: 10.5px;
-  font-weight: 600;
-  padding: 3px 10px;
-  border-radius: 4px;
-  border: none;
-  background: transparent;
-  color: color-mix(in srgb, var(--text-primary) 65%, transparent);
-  cursor: pointer;
-  transition: background 150ms ease, color 150ms ease;
-  white-space: nowrap;
+.api-debug__action::after {
+  content: "";
+  position: absolute;
+  inset: -6px;
+  border-radius: var(--radius-control);
 }
 
-.api-debug__filter-btn:hover {
-  color: var(--text-primary);
-}
-
-.api-debug__filter-btn--active {
-  background: var(--surface-base);
-  color: var(--text-primary);
-  box-shadow: 0 1px 2px color-mix(in srgb, var(--text-primary) 8%, transparent);
+.api-debug__action:focus-visible {
+  outline: 2px solid var(--brand-fill);
+  outline-offset: 3px;
 }
 
 /* ── Debug Log Rows ── */
 
 .api-debug__body {
-  max-height: 400px;
+  min-block-size: 0;
+  flex: 1 1 auto;
   overflow-y: auto;
+  overscroll-behavior: contain;
+  background: var(--plate-fill);
   scrollbar-width: thin;
-}
-
-.api-debug__empty {
-  padding: 32px 16px;
-  text-align: center;
-  font-size: 12px;
-  color: color-mix(in srgb, var(--text-primary) 65%, transparent);
 }
 
 .api-debug__row {
@@ -512,7 +513,7 @@
 }
 
 .api-debug__row--error {
-  background: color-mix(in srgb, var(--status-danger) 3%, transparent);
+  box-shadow: inset 3px 0 0 color-mix(in srgb, var(--status-danger) 72%, transparent);
 }
 
 .api-debug__row-main {
@@ -532,7 +533,7 @@
 }
 
 .api-debug__row-main:hover {
-  background: color-mix(in srgb, var(--brand-fill) 3%, transparent);
+  background: color-mix(in srgb, var(--brand-fill) 4%, var(--surface-raised));
 }
 
 .api-debug__row-main--static {
@@ -650,7 +651,7 @@
   /* AdminPage.css 等已迁文件里同款「表面 + 一点墨色」的写法本身就是跨模式的
      （深色模式下 --text-primary 是暖白，3% 会把面板往亮里带一点点），
      不需要像旧写法那样在 .dark 里另起一份不同底色的高不透明度覆盖。 */
-  background: color-mix(in srgb, var(--text-primary) 3%, transparent);
+  background: var(--surface-sunken);
   max-height: 200px;
   overflow-y: auto;
   scrollbar-width: thin;
@@ -663,7 +664,7 @@
   padding: 0 16px 6px 50px;
 }
 
-@media (max-width: 600px) {
+@media (max-width: 39.99em) {
   .api-console__header,
   .api-console__header-actions {
     align-items: stretch;
@@ -678,8 +679,13 @@
   }
 
   .api-cat__toggle {
+    grid-template-columns: minmax(0, 1fr) 3rem minmax(5rem, auto);
     gap: 8px;
     padding-left: 12px;
+  }
+
+  .api-cat-list__head {
+    display: none;
   }
 
   .api-cat__name {
@@ -688,8 +694,8 @@
     text-overflow: ellipsis;
   }
 
-  .api-cat__ring,
-  .api-cat__pct,
+  .api-cat__metric--pass,
+  .api-cat__metric--fail,
   .api-cat__avg-latency {
     display: none;
   }
@@ -699,10 +705,20 @@
   }
 }
 
+@media (max-width: 79.99em) {
+  .api-cat-list {
+    max-block-size: min(60dvh, 42rem);
+    flex: 0 1 auto;
+  }
+
+  .api-debug__body {
+    max-block-size: 24rem;
+  }
+}
+
 /* ── Reduced Motion ── */
 
 @media (prefers-reduced-motion: reduce) {
-  .api-cat__accent--running,
   .api-console__progress-fill--running {
     animation: none;
   }
@@ -710,7 +726,6 @@
     animation: none;
     border-color: var(--brand-fill);
   }
-  .api-cat__accent,
   .api-cat__progress-fill,
   .api-console__progress-fill,
   .api-cat__chevron,

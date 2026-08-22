@@ -1,4 +1,3 @@
-// @vitest-environment jsdom
 import { permissionSetToRecord } from "@guild/shared";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { act, renderHook, waitFor } from "@testing-library/react";
@@ -40,6 +39,7 @@ function member(id: string, username: string, bio: string): AdminUserRow {
       deleted_at: null,
       created_at: timestamp,
       updated_at: timestamp,
+      last_login_at: null,
     },
     profile: {
       user_id: id,

@@ -1,4 +1,3 @@
-// @vitest-environment jsdom
 import { MantineProvider } from "@mantine/core";
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
@@ -17,10 +16,10 @@ vi.mock("@portal/stores/auth", () => ({
     selector({ user: { role_level: currentRoleLevel } }),
 }));
 
-vi.mock("@portal/stores/class-catalog", () => ({
-  useClassCatalogStore: () => [],
-  buildClassOptions: () => [],
-  resolveClassCatalogItem: (id: string) => ({ id, label: id, color: "#61B8AA" }),
+/* 只截数据钩子；buildClassOptions/resolveClassCatalogItem 是纯函数，空目录下
+   的真实现就是这里想要的行为。 */
+vi.mock("@portal/hooks/data/useClassData", () => ({
+  useClassCatalog: () => [],
 }));
 
 vi.mock("@portal/components/shared/ProfileOverviewCard", () => ({

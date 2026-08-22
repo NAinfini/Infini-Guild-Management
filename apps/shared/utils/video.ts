@@ -65,6 +65,14 @@ export function isAllowedGalleryVideoUrl(url: string): boolean {
   return isEmbeddableVideoUrl(url);
 }
 
+/** The allow-list entry a gallery video resolves to. Audit records may keep the host but never the URL,
+    which can carry identifiers that do not belong in a log. */
+export function galleryVideoHost(url: string): string | null {
+  const host = safeUrl(url)?.hostname.toLowerCase();
+  if (!host) return null;
+  return EMBEDDABLE_VIDEO_HOSTS.find((candidate) => hostMatches(host, [candidate])) ?? null;
+}
+
 export function toEmbedVideoUrl(url: string): string {
   const parsed = safeUrl(url);
   if (!parsed) {

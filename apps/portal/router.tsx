@@ -3,10 +3,7 @@ import type {
   MemberProfile,
   User,
 } from "@guild/shared";
-import {
-  QueryClient,
-  QueryClientProvider,
-} from "@tanstack/react-query";
+import { QueryClientProvider } from "@tanstack/react-query";
 import {
   Outlet,
   RouterProvider,
@@ -14,14 +11,16 @@ import {
   createRoute,
   createRouter,
   redirect,
+  retainSearchParams,
 } from "@tanstack/react-router";
 import { userCanAccessAdmin } from "./utils/permissions";
-import { Button, Paper, Stack, Text, Title } from "@mantine/core";
+import { Button, Paper, Stack, Text, Title, VisuallyHidden } from "@mantine/core";
 import { NavigationProgress, nprogress } from "@mantine/nprogress";
 import { Suspense, lazy, useEffect, type ReactNode } from "react";
 import { z } from "zod";
 import { useTranslation } from "react-i18next";
 import { apiRequest } from "./api/client";
+import { queryClient } from "./api/query-client";
 import { fetchEventDetail } from "./api/queries/events";
 import { AppShell } from "./components/layout/AppShell";
 import { resolveRouteSession } from "./router-session";
@@ -32,6 +31,10 @@ import { buildEventWorkbenchSearch, EVENTS_ROUTE_SEARCH_SCHEMA, sanitizeEventsRo
 import { isExternalViewSearch } from "./utils/external-view";
 
 type AuthSessionResponse = { user: User; profile: MemberProfile };
+
+const PORTAL_PREVIEW_SEARCH_SCHEMA = z.object({
+  preview: z.literal("external").optional(),
+}).passthrough();
 
 const LOGIN_SEARCH_SCHEMA = z.object({
   returnTo: z.string().optional(),
@@ -123,12 +126,9 @@ function RouteLoadingFallback(): ReactNode {
   const { t } = useTranslation("common");
 
   return (
-    <div className="route-loading" role="status" aria-live="polite">
-      <div className="route-loading__card">
-        <div className="route-loading__spinner" aria-hidden="true" />
-        <span className="route-loading__label">{t("message.loading")}</span>
-      </div>
-    </div>
+    <VisuallyHidden role="status" aria-live="polite">
+      {t("message.loading")}
+    </VisuallyHidden>
   );
 }
 
@@ -252,17 +252,6 @@ function SettingsRoutePage() {
   );
 }
 
-const queryClient = new QueryClient({
-  defaultOptions: {
-    queries: {
-      staleTime: 5 * 60_000,
-      gcTime: 30 * 60_000,
-      retry: 1,
-      refetchOnWindowFocus: false,
-    },
-  },
-});
-
 async function ensureSession(): Promise<AuthSessionResponse | null> {
   return resolveRouteSession({
     getCachedSession: () => {
@@ -319,6 +308,10 @@ const rootRoute = createRootRoute({
   component: AppShell,
   notFoundComponent: NotFoundPage,
   errorComponent: RouteErrorFallback,
+  validateSearch: (search) => PORTAL_PREVIEW_SEARCH_SCHEMA.parse(search),
+  search: {
+    middlewares: [retainSearchParams<z.infer<typeof PORTAL_PREVIEW_SEARCH_SCHEMA>>(["preview"])],
+  },
   beforeLoad: async () => {
     if (!useAuthStore.getState().user) {
       try {
@@ -509,7 +502,17 @@ const wikiSlugRoute = createRoute({
 
 const ADMIN_SEARCH_SCHEMA = z.object({
   member: z.string().optional(),
-  tab: z.enum(["member", "invite", "audit", "roles", "siteConfig", "classes", "badges", "status"]).optional(),
+  tab: z.enum([
+    "member",
+    "invite",
+    "roles",
+    "classes",
+    "badges",
+    "siteConfig",
+    "operations",
+    "diagnostics",
+    "audit",
+  ]).optional(),
 });
 
 const adminRoute = createRoute({

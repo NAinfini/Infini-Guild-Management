@@ -1,4 +1,3 @@
-// @vitest-environment jsdom
 import type { AdminRole, InviteLink } from "@guild/shared";
 import { MantineProvider } from "@mantine/core";
 import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
@@ -30,7 +29,7 @@ vi.mock("../../../hooks/useEffectivePermissions", () => ({
 
 const revokedInvite: InviteLink = {
   id: "invite-1",
-  code: "REVOKED",
+  code: "R3v0k3d123",
   created_by: "admin-1",
   role_id: "raid-lead",
   role_name: "Raid Lead",
@@ -57,7 +56,7 @@ const roles = [{
 const activeInvite: InviteLink = {
   ...revokedInvite,
   id: "invite-2",
-  code: "ACTIVE",
+  code: "A8t1v3C0d3",
   used_count: 2,
   expires_at: "2026-08-28T00:00:00.000Z",
   revoked_at: null,
@@ -76,6 +75,7 @@ function renderSection(
     inviteStats: null,
     inviteLinksLoading: false,
     inviteLinksError: false,
+    onRetryInviteLinks: vi.fn(),
     inviteRows: [revokedInvite],
     inviteTotal: 1,
     hasMoreInvites: false,
@@ -229,7 +229,7 @@ describe("AdminInviteSection", () => {
 
     expect(screen.queryByRole("table")).not.toBeInTheDocument();
     const card = screen.getByRole("article", { name: "invite.cardAria" });
-    expect(within(card).getByText("ACTIVE")).toBeInTheDocument();
+    expect(within(card).getByText("A8t1v3C0d3")).toBeInTheDocument();
     expect(within(card).getByText("2/5")).toBeInTheDocument();
     expect(within(card).getByText("invite.status.active")).toBeInTheDocument();
     expect(within(card).getByText("invite.table.expires")).toBeInTheDocument();
@@ -255,7 +255,7 @@ describe("AdminInviteSection", () => {
     const otherInvite: InviteLink = {
       ...activeInvite,
       id: "invite-3",
-      code: "OTHER",
+      code: "0th3rC0d35",
     };
     renderSection({
       inviteVisibility: "active",

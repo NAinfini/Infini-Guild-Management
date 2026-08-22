@@ -25,6 +25,7 @@ import { useAttachmentService } from "../../services/AttachmentService";
 import { useAuthStore } from "../../stores/auth";
 import { useEffectivePermissions } from "../../hooks/useEffectivePermissions";
 import { buildMentionList } from "../../utils/copy";
+import { localDateKey } from "../../utils/datetime";
 import { sanitizeEventsRouteSearch, type EventWorkbenchViewMode, type EventsRouteSearch } from "../../utils/event-navigation";
 import { useEventsEditorController } from "../feature/events/useEventsEditorController";
 import { useRecurringTemplatesController } from "../feature/events/useRecurringTemplatesController";
@@ -81,7 +82,7 @@ export function EventsPage() {
   const requestedView = eventsRouteSearch.view ?? "cards";
   const viewMode: EventWorkbenchViewMode =
     requestedView === "recurring" && !canManage ? "cards" : requestedView;
-  const [, setSelectedDate] = useState(() => new Date().toISOString().slice(0, 10));
+  const [, setSelectedDate] = useState(localDateKey);
   const [monthDetailEvent, setMonthDetailEvent] = useState<Event | null>(null);
   const [attachmentItems, setAttachmentItems] = useState<ImageGridEditorItem[]>([]);
 
@@ -255,7 +256,7 @@ export function EventsPage() {
 
   return (
     <PageLayout className="events-page">
-      <Stack gap={12}>
+      <Stack gap="var(--page-rhythm)">
             {/*
               * 模板档不渲染这张卡：那一档的视图切换器挂在 RecurringTemplatesTab
               * 自己那条筛选栏上，两边都渲染就是上下并排的两条工具栏。

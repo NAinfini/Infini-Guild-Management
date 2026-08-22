@@ -24,10 +24,15 @@ describe("auth crypto", () => {
     await expect(digestToken(token)).resolves.not.toBe(token);
   });
 
-  it("rejects a modified deterministic invite token", async () => {
+  it("derives stable ten-character alphanumeric invite codes", async () => {
     const codec = createInviteTokenCodec("0123456789abcdef0123456789abcdef");
-    const token = await codec.encode("invite-1");
-    await expect(codec.decode(token)).resolves.toBe("invite-1");
-    await expect(codec.decode(`${token}x`)).resolves.toBeNull();
+    const code = await codec.encode("invite-1");
+
+    expect(code).toMatch(/^[A-Za-z0-9]{10}$/);
+    await expect(codec.encode("invite-1")).resolves.toBe(code);
+    await expect(codec.encode("invite-2")).resolves.not.toBe(code);
+    expect(codec.normalize(` ${code} `)).toBe(code);
+    expect(codec.normalize(`${code}x`)).toBeNull();
+    expect(codec.normalize("not-valid")).toBeNull();
   });
 });

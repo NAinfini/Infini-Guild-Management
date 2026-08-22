@@ -17,6 +17,7 @@ const view: MemberView = {
     user: {
       id: "user-1", username: "Member", roleId: "member", roleName: "Member", roleColor: null,
       roleLevel: 100, isActive: true, deletedAt: null, createdAt: NOW, updatedAt: NOW,
+      lastLoginAt: null,
     },
     profile: {
       userId: "user-1", power: 12, classes: ["class-1"], titleHtml: null, bio: "Bio",

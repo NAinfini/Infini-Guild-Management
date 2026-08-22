@@ -1,68 +1,16 @@
-import { readFileSync } from "node:fs";
-import { DatabaseSync, type SQLInputValue } from "node:sqlite";
-import { fileURLToPath } from "node:url";
+import { DatabaseSync } from "node:sqlite";
 import { afterEach, describe, expect, it } from "vitest";
-import { MAX_SQL_BATCH_STATEMENTS, assertSqlBatch, createAuthorizationContext, createRequestContext } from "@guild/kernel";
-import { createAuditMutation } from "@guild/server/modules/audit";
+import { MAX_SQL_BATCH_STATEMENTS, createAuthorizationContext, createRequestContext } from "@guild/kernel";
+import { createAuditEvent } from "@guild/server/modules/audit";
 import type { GalleryRecord } from "@guild/server/modules/gallery";
-import type { SqlBatchStatement, SqlExecutor, SqlResult, SqlRow, SqlStatement } from "@guild/kernel";
+import { applyAppMigrations } from "../testing/app-migrations.js";
+import { SqliteTestExecutor } from "../testing/sqlite-test-executor.js";
 import { SqliteGalleryStore } from "./gallery-store.js";
 
 const NOW = "2026-08-09T12:00:00.000Z";
 const OWNER = "owner-1";
 const MEDIA_IDS = ["ddddddddddddddddddddd", "eeeeeeeeeeeeeeeeeeeee"] as const;
-const FRESH_MIGRATION = readFileSync(
-  fileURLToPath(new URL("../migrations/generated/0000_core.sql", import.meta.url)),
-  "utf8",
-).replaceAll("--> statement-breakpoint", "");
 const databases: DatabaseSync[] = [];
-
-class SerialTestExecutor implements SqlExecutor {
-  private tail: Promise<void> = Promise.resolve();
-  readonly batches: SqlBatchStatement[][] = [];
-
-  constructor(private readonly database: DatabaseSync) {}
-
-  execute(statement: SqlStatement): Promise<SqlResult> {
-    return this.enqueue(() => this.executeNow(statement));
-  }
-
-  batch(statements: readonly SqlBatchStatement[]): Promise<readonly SqlResult[]> {
-    return this.enqueue(() => {
-      assertSqlBatch(statements);
-      this.batches.push([...statements]);
-      this.database.exec("BEGIN IMMEDIATE");
-      try {
-        const results = statements.map((statement) => this.executeNow(statement));
-        this.database.exec("COMMIT");
-        return results;
-      } catch (error) {
-        this.database.exec("ROLLBACK");
-        throw error;
-      }
-    });
-  }
-
-  private enqueue<T>(operation: () => T): Promise<T> {
-    const result = this.tail.then(operation, operation);
-    this.tail = result.then(() => undefined, () => undefined);
-    return result;
-  }
-
-  private executeNow(statement: SqlStatement): SqlResult {
-    const prepared = this.database.prepare(statement.sql);
-    prepared.setReturnArrays(true);
-    const params = [...(statement.params ?? [])] as SQLInputValue[];
-    if (statement.method === "run") {
-      prepared.run(...params);
-      return { rows: [] };
-    }
-    if (statement.method === "get") {
-      return { rows: prepared.get(...params) as unknown as SqlRow | undefined };
-    }
-    return { rows: prepared.all(...params) as unknown as readonly SqlRow[] };
-  }
-}
 
 afterEach(() => {
   for (const database of databases.splice(0)) database.close();
@@ -127,14 +75,19 @@ describe("SqliteGalleryStore quota claims", () => {
     ids.forEach((id) => insertMedia(failed.database, id));
     const rejectedAudit = audit("gallery-max-failed");
     failed.database.prepare(`INSERT INTO audit_log (
-      id, request_id, actor_user_id, entity_type, entity_id, action, occurred_at
-    ) VALUES (?, ?, ?, ?, ?, ?, ?)`).run(
-      rejectedAudit.id,
+      id, request_id, actor_kind, actor_id, actor_label, subject_type, subject_id,
+      subject_label, action, payload_json, occurred_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(
+      rejectedAudit.eventId,
       rejectedAudit.requestId,
-      rejectedAudit.actorUserId,
-      rejectedAudit.entityType,
-      rejectedAudit.entityId,
+      rejectedAudit.actorKind,
+      rejectedAudit.actorId,
+      rejectedAudit.actorLabel,
+      rejectedAudit.subjectType,
+      rejectedAudit.subjectId,
+      rejectedAudit.subjectLabel,
       rejectedAudit.action,
+      JSON.stringify(rejectedAudit.payload),
       rejectedAudit.occurredAt,
     );
     await expect(failed.store.createImages({
@@ -150,16 +103,53 @@ describe("SqliteGalleryStore quota claims", () => {
     expect(failed.database.prepare("SELECT count(*) AS count FROM media_assets WHERE state = 'staged'").get())
       .toMatchObject({ count: 50 });
   });
+
+  it("audits only the gallery rows actually deleted with readable labels", async () => {
+    const value = fixture();
+    const insert = value.database.prepare(`INSERT INTO gallery_items (
+      id, type, url, caption, uploaded_by, revision_token, created_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?)`);
+    insert.run("gallery-blank", "video", "https://example.com/video", "   ", OWNER, "revision-gallery-blank-0001", NOW);
+    insert.run("gallery-named", "video", "https://example.com/video", "Named video", OWNER, "revision-gallery-named-0001", NOW);
+    const mutation = createAuditEvent(requestContext(), {
+      subjectType: "gallery_item",
+      subjectId: "request-batch",
+      subjectLabel: "Gallery items",
+      action: "batch_delete",
+    });
+
+    await expect(value.store.batchDelete({
+      ids: ["gallery-named", "gallery-missing", "gallery-blank"],
+      mutationToken: "gallery-batch-delete-token",
+      audit: mutation,
+    })).resolves.toBe(2);
+
+    const row = value.database.prepare(
+      "SELECT actor_label, payload_json FROM audit_log WHERE id = ?",
+    ).get(mutation.eventId) as { actor_label: string; payload_json: string };
+    expect(row.actor_label).toBe("Owner");
+    expect(JSON.parse(row.payload_json)).toEqual({
+      schema_version: 2,
+      changes: [],
+      context: [
+        { field: "item_count", value: { type: "number", value: 2 } },
+        { field: "item_ids", value: { type: "list", value: [
+          { type: "reference", value: { id: "gallery-blank", label: "video" } },
+          { type: "reference", value: { id: "gallery-named", label: "Named video" } },
+        ] } },
+      ],
+    });
+  });
 });
 
-function fixture(): { database: DatabaseSync; executor: SerialTestExecutor; store: SqliteGalleryStore } {
+function fixture(): { database: DatabaseSync; executor: SqliteTestExecutor; store: SqliteGalleryStore } {
   const database = new DatabaseSync(":memory:");
   databases.push(database);
   database.exec("PRAGMA foreign_keys = ON");
-  database.exec(FRESH_MIGRATION);
+  applyAppMigrations(database);
   database.prepare(`INSERT INTO users (id, username, role_id, revision_token)
     VALUES (?, 'Owner', 'member', 'owner-revision-0001')`).run(OWNER);
-  const executor = new SerialTestExecutor(database);
+  const executor = new SqliteTestExecutor(database);
   return { database, executor, store: new SqliteGalleryStore(executor) };
 }
 
@@ -189,9 +179,9 @@ function galleryMediaId(index: number): string {
 }
 
 function audit(entityId: string) {
-  return createAuditMutation(requestContext(), {
-    entityType: "gallery_item",
-    entityId,
+  return createAuditEvent(requestContext(), {
+    subjectType: "gallery_item",
+    subjectId: entityId,
     action: "upload_images",
   });
 }

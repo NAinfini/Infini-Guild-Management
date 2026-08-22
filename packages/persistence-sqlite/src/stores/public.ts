@@ -1,4 +1,5 @@
 export * from "./announcement-store.js";
+export * from "./admin-operations-store.js";
 export * from "./audit-store.js";
 export * from "./audit-archive-store.js";
 export * from "./blob-manifest-store.js";

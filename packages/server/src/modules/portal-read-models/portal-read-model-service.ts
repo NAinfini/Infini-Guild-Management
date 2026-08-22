@@ -1,6 +1,7 @@
 import { AppError, type RequestContext } from "@guild/kernel";
 import { eventViewer, projectEventForViewer } from "@guild/server/modules/events";
 import { PERMISSION_ID } from "@guild/shared/constants/roles";
+import { LIMITS } from "@guild/shared/config/limits";
 import type {
   DashboardEventsViewerRead,
   PortalReadModelStore,
@@ -9,7 +10,7 @@ import type {
 import { assertPortableLikeSearch } from "../../portable-search.js";
 
 const SEARCH_DEFAULT_LIMIT = 24;
-const SEARCH_MAX_LIMIT = 50;
+const SEARCH_MAX_LIMIT = LIMITS.pagination.search;
 const SEARCH_MIN_LENGTH = 2;
 const SEARCH_MAX_LENGTH = 80;
 const DASHBOARD_WINDOW_MS = 7 * 24 * 60 * 60 * 1_000;

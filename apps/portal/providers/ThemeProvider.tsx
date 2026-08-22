@@ -19,6 +19,7 @@ import {
   Paper,
   PasswordInput,
   Popover,
+  Progress,
   SegmentedControl,
   Select,
   Skeleton,
@@ -158,6 +159,18 @@ const portalTheme = createTheme({
         };
       },
     }),
+    /*
+     * 进度条读的是「进行到哪儿了」，不是产品身份，所以它吃个人主色而不是品牌青瓷。
+     * --brand-* 留给按钮那类代表产品自己的控件。
+     *
+     * 颜色写在 root 的类里而不是 vars 里，靠 --progress-section-color 继承到填充段：
+     * 调用方传了 color 时 Mantine 会把这个变量直接写在段元素的行内样式上，行内值
+     * 压过继承值——于是上传队列的 red/green 这类状态色不需要额外判断就仍然生效。
+     * （vars 那条路也走不通：Progress.Root 的变量类型里只有尺寸和圆角。）
+     */
+    Progress: Progress.extend({
+      defaultProps: { classNames: { root: classes.progressRoot } },
+    }),
     ActionIcon: ActionIcon.extend({
       defaultProps: {
         radius: "sm",
@@ -218,9 +231,14 @@ const portalTheme = createTheme({
         classNames: { dropdown: classes.overlaySurface },
       },
     }),
+    /* 全站悬浮提示只有这一种长相：浮层材质、箭头指向触发元素、进入前一小段延迟，
+       免得鼠标扫过密集的表格时一路弹提示。浏览器原生 title 不在这套体系里——它
+       不受主题控制、键盘够不到、还会被裁切，所以站内不用它。 */
     Tooltip: Tooltip.extend({
       defaultProps: {
         radius: "sm",
+        withArrow: true,
+        openDelay: 200,
         classNames: { tooltip: classes.tooltip },
       },
     }),

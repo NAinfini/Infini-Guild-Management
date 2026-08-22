@@ -5,7 +5,7 @@ import type {
   MediaReservation,
   MediaStore,
 } from "@guild/server/modules/media";
-import type { AuditMutation } from "@guild/server/modules/audit";
+import type { AuditEventWrite } from "@guild/server/modules/audit";
 import type { MediaEntityType, MediaVariant } from "@guild/shared";
 import type { SqlBatchStatement, SqlExecutor, SqlResult, SqlValue } from "@guild/kernel";
 import { auditInsertStatement } from "./audit-statement.js";
@@ -19,15 +19,9 @@ const DELETE_LEASE_MS = 10 * 60 * 1_000;
 export class SqliteMediaStore implements MediaStore {
   constructor(private readonly sql: SqlExecutor) {}
 
-  async reserveUploads(inputs: readonly MediaReservation[], audits: readonly AuditMutation[]): Promise<void> {
-    if (inputs.length < 1 || inputs.length !== audits.length) {
-      throw new TypeError("Media reservations and audits must be non-empty and have equal lengths");
-    }
+  async reserveUploads(inputs: readonly MediaReservation[]): Promise<void> {
+    if (inputs.length < 1) throw new TypeError("Media reservations must be non-empty");
     const reservationsJson = JSON.stringify(inputs);
-    const auditsJson = JSON.stringify(audits.map((audit) => ({
-      ...audit,
-      detailJson: audit.details === null ? null : JSON.stringify(audit.details),
-    })));
     const statements: readonly SqlBatchStatement[] = [
       {
         method: "run",
@@ -64,26 +58,6 @@ export class SqliteMediaStore implements MediaStore {
         CROSS JOIN json_each(reservation.value, '$.variants') AS variant
         ORDER BY CAST(reservation.key AS INTEGER), CAST(variant.key AS INTEGER)`,
         params: [reservationsJson],
-      },
-      {
-        method: "run",
-        sql: `INSERT INTO audit_log (
-          id, request_id, actor_user_id, actor_username, entity_type, entity_id, action, summary, detail_json, occurred_at
-        ) SELECT
-          json_extract(audit.value, '$.id'),
-          json_extract(audit.value, '$.requestId'),
-          json_extract(audit.value, '$.actorUserId'),
-          (SELECT username FROM users
-            WHERE id = CAST(json_extract(audit.value, '$.actorUserId') AS TEXT)),
-          json_extract(audit.value, '$.entityType'),
-          json_extract(audit.value, '$.entityId'),
-          json_extract(audit.value, '$.action'),
-          json_extract(audit.value, '$.summary'),
-          json_extract(audit.value, '$.detailJson'),
-          json_extract(audit.value, '$.occurredAt')
-        FROM json_each(?) AS audit
-        ORDER BY CAST(audit.key AS INTEGER)`,
-        params: [auditsJson],
       },
     ];
     await this.sql.batch(statements);
@@ -255,7 +229,7 @@ export class SqliteMediaStore implements MediaStore {
     return observedBacklog(pendingAt);
   }
 
-  async finalizeDeletion(mediaId: string, claimToken: string, audit: AuditMutation): Promise<void> {
+  async finalizeDeletion(mediaId: string, claimToken: string, audit: AuditEventWrite): Promise<void> {
     const results = await this.sql.batch([
       auditInsertStatement(audit, {
         sql: `SELECT 1 FROM media_assets
@@ -268,7 +242,7 @@ export class SqliteMediaStore implements MediaStore {
           WHERE id = ? AND state = 'deleting' AND delete_claim_token = ?
             AND EXISTS (SELECT 1 FROM audit_log WHERE id = ?)
           RETURNING id AS deleted_id`,
-        params: [mediaId, claimToken, audit.id],
+        params: [mediaId, claimToken, audit.eventId],
         columns: ["deleted_id"],
       },
     ]);

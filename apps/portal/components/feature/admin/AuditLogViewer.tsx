@@ -1,65 +1,143 @@
-import type { AuditLogEntry, JsonObject } from "@guild/shared";
-import type { AuditAction, AuditEntityType } from "@guild/shared/constants/audit";
-import { Alert, Badge, Group, NumberInput, Pagination, Skeleton, Stack, Text, Tooltip } from "@mantine/core";
-import { ArrowRightIcon, ChevronDownIcon } from "@portal/components/icons";
+import type {
+  AdminRole,
+  AuditEvent,
+  AuditField,
+  AuditValue,
+} from "@guild/shared";
+import {
+  ActionIcon,
+  Button,
+  CopyButton,
+  Group,
+  Skeleton,
+  Stack,
+  Text,
+  ThemeIcon,
+  Tooltip,
+} from "@mantine/core";
+import {
+  ArchiveIcon,
+  ArrowDownIcon,
+  ArrowRightIcon,
+  BoltIcon,
+  CheckIcon,
+  ChevronDownIcon,
+  CopyIcon,
+  KeyIcon,
+  PencilIcon,
+  PlusIcon,
+  TrashIcon,
+  UploadIcon,
+  UserPlusIcon,
+} from "@portal/components/icons";
+import { formatLocaleDateTime } from "@portal/utils/datetime";
+import type { TFunction } from "i18next";
 import { useId, useMemo, useState } from "react";
-import { useTranslation } from "react-i18next";
+import { Trans, useTranslation } from "react-i18next";
 import "./AuditLogViewer.css";
-
-type AuditRow = AuditLogEntry;
+import { AdminLoadError } from "./AdminLoadError";
+import {
+  ACTION_COLOR,
+  ACTION_FAMILY,
+  type ActionFamily,
+  contextLabel,
+  contextNumber,
+  formatAuditValue,
+  formatRelativeTime,
+  rawAuditValue,
+  resolveReference,
+  safeLabel,
+  TECHNICAL_FIELDS,
+} from "./audit-presentation";
 
 type AuditLogViewerProps = {
   auditLoading: boolean;
   auditError: boolean;
-  loadErrorMessage: string;
-  auditRows: AuditRow[];
-  auditPageCurrent: number;
-  auditPageSize: number;
-  auditTotal: number;
-  onAuditPageChange: (nextPage: number) => void;
-  isAdmin: boolean;
-  maskIdentifier: (value: string, isAdmin: boolean) => string;
-  formatDateTime: (iso: string | null) => string;
+  onRetryAudit: () => void;
+  auditRows: AuditEvent[];
+  auditHasMore: boolean;
+  auditLoadingMore: boolean;
+  onAuditLoadMore: () => void;
+  onSelectEntityTimeline: (entityType: string, entityId: string) => void;
+  rolesData: AdminRole[];
   userMap?: Map<string, string>;
 };
 
-type DiffEntry = { field: string; from: string; to: string };
-type InfoEntry = { field: string; value: string };
-type DetailData =
-  | { kind: "diff"; entries: DiffEntry[] }
-  | { kind: "info"; entries: InfoEntry[] }
-  | null;
-
-const ISO_DATE_RE = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/;
-
-const DAY_KEYS = ["sun", "mon", "tue", "wed", "thu", "fri", "sat"];
 const AUDIT_VALUE_PREVIEW_LENGTH = 360;
 
-type AuditValueProps = {
-  value: string;
-  className: string;
-  t: (key: string, opts?: Record<string, unknown>) => string;
-};
+function ActionGlyph({ family }: { family: ActionFamily }) {
+  const props = { size: 15, "aria-hidden": true } as const;
+  if (family === "create") return <PlusIcon {...props} />;
+  if (family === "change") return <PencilIcon {...props} />;
+  if (family === "remove") return <TrashIcon {...props} />;
+  if (family === "state") return <ArchiveIcon {...props} />;
+  if (family === "membership") return <UserPlusIcon {...props} />;
+  if (family === "media") return <UploadIcon {...props} />;
+  if (family === "export") return <ArrowDownIcon {...props} />;
+  if (family === "security") return <KeyIcon {...props} />;
+  return <BoltIcon {...props} />;
+}
 
-function AuditValue({ value, className, t }: AuditValueProps) {
+function EventDescription({
+  event,
+  actorLabel,
+  subjectLabel,
+  inviteSubjectLabel,
+  entityLabel,
+  t,
+}: {
+  event: AuditEvent;
+  actorLabel: string;
+  subjectLabel: string | null;
+  inviteSubjectLabel: string | null;
+  entityLabel: string;
+  t: TFunction<"admin">;
+}) {
+  // The self-test is the one action whose sentence carries its own outcome, so it reads the counts directly.
+  if (event.subject.type === "system_test" && event.action === "run") {
+    const passed = contextNumber(event.payload.context, "passed");
+    const total = contextNumber(event.payload.context, "total");
+    if (passed !== null && total !== null) {
+      return (
+        <Trans
+          t={t}
+          i18nKey="audit.sentence.system_test.run"
+          values={{ actor: actorLabel, passed, total }}
+          components={{ actor: <strong /> }}
+        />
+      );
+    }
+  }
+  /* Two subjects are not named by their own label: an invite link is recognisable only by the role it
+     grants, and a seeded row carries developer-facing English that no localized sentence may repeat. */
+  const subject = event.subject.type === "invite_link"
+    ? inviteSubjectLabel
+    : event.subject.type === "seed"
+      ? null
+      : subjectLabel;
+  const variant = subject ? "" : ".noSubject";
+  return (
+    <Trans
+      t={t}
+      i18nKey={[
+        `audit.sentence.${event.subject.type}.${event.action}${variant}`,
+        `audit.sentence.${event.action}${variant}`,
+      ]}
+      values={{ actor: actorLabel, subject, entity: entityLabel }}
+      components={{ actor: <strong />, subject: <strong /> }}
+    />
+  );
+}
+
+function AuditValueText({ value, className, t }: { value: string; className?: string; t: TFunction<"admin"> }) {
   const [expanded, setExpanded] = useState(false);
   const contentId = useId();
-
-  if (value.length <= AUDIT_VALUE_PREVIEW_LENGTH) {
-    return <span className={className}>{value}</span>;
-  }
-
+  if (value.length <= AUDIT_VALUE_PREVIEW_LENGTH) return <span className={className}>{value}</span>;
   return (
     <span className="audit-detail-value">
-      <span
-        id={contentId}
-        className={`${className} audit-detail-value__content ${expanded ? "audit-detail-value__content--expanded" : ""}`.trim()}
-      >
+      <span id={contentId} className={className}>
         {expanded ? value : (
-          <>
-            {value.slice(0, AUDIT_VALUE_PREVIEW_LENGTH)}
-            <span className="audit-detail-value__truncated">{t("audit.detail.truncated")}</span>
-          </>
+          <>{value.slice(0, AUDIT_VALUE_PREVIEW_LENGTH)}<span className="audit-detail-value__truncated">{t("audit.detail.truncated")}</span></>
         )}
       </span>
       <button
@@ -75,480 +153,295 @@ function AuditValue({ value, className, t }: AuditValueProps) {
   );
 }
 
-function formatDiffValue(
-  value: unknown,
-  field?: string,
-  t?: (key: string, opts?: Record<string, unknown>) => string,
-  userMap?: Map<string, string>,
-): string {
-  if (value === null || value === undefined) return "—";
-  if (typeof value === "boolean") return value ? "✓" : "✗";
-  if (typeof value === "number") return String(value);
-  if (Array.isArray(value)) {
-    if (field === "recurrence_rule.daysOfWeek" && t) {
-      return value.map((d) => t(`audit.weekday.${DAY_KEYS[d as number] ?? d}`)).join(", ");
-    }
-    const resolved = value.map((v) => {
-      const s = String(v);
-      return (field && /user_id/i.test(field) && userMap?.has(s)) ? userMap.get(s)! : s;
-    });
-    if (resolved.length <= 5) return resolved.join(", ");
-    return `${resolved.slice(0, 5).join(", ")} (+${value.length - 5})`;
-  }
-  if (typeof value === "object") {
-    const entries = Object.entries(value as Record<string, unknown>);
-    if (entries.length <= 6) {
-      return entries.map(([k, v]) => `${k}: ${v ?? "—"}`).join(", ");
-    }
-    return entries.slice(0, 6).map(([k, v]) => `${k}: ${v ?? "—"}`).join(", ") + ` (+${entries.length - 6})`;
-  }
-  const str = String(value);
-  if (userMap?.has(str)) return userMap.get(str)!;
-  if (ISO_DATE_RE.test(str)) {
-    const d = new Date(str);
-    if (!Number.isNaN(d.getTime())) {
-      return d.toLocaleString(undefined, { dateStyle: "short", timeStyle: "short" });
-    }
-  }
-  return str;
-}
-
-function formatInfoValue(value: unknown, userMap?: Map<string, string>): string {
-  if (value === null || value === undefined) return "—";
-  if (typeof value === "boolean") return value ? "✓" : "✗";
-  if (typeof value === "number") return String(value);
-  if (Array.isArray(value)) {
-    const resolved = value.map((v) => {
-      const s = String(v);
-      return userMap?.get(s) ?? s;
-    });
-    if (resolved.length <= 5) return resolved.join(", ");
-    return `${resolved.slice(0, 5).join(", ")} (+${resolved.length - 5})`;
-  }
-  if (typeof value === "object") {
-    const entries = Object.entries(value as Record<string, unknown>);
-    if (entries.length <= 6) {
-      return entries.map(([k, v]) => `${k}: ${v ?? "—"}`).join(", ");
-    }
-    return entries.slice(0, 6).map(([k, v]) => `${k}: ${v ?? "—"}`).join(", ") + ` (+${entries.length - 6})`;
-  }
-  const str = String(value);
-  if (userMap?.has(str)) return userMap.get(str)!;
-  if (ISO_DATE_RE.test(str)) {
-    const d = new Date(str);
-    if (!Number.isNaN(d.getTime())) {
-      return d.toLocaleString(undefined, { dateStyle: "short", timeStyle: "short" });
-    }
-  }
-  return str;
-}
-
-function buildDetailData(
-  detail: JsonObject | null,
-  t?: (key: string, opts?: Record<string, unknown>) => string,
-  userMap?: Map<string, string>,
-): DetailData {
-  if (!detail) return null;
-  const HIDDEN_FIELDS = new Set(["password", "body_json"]);
-  const entries = Object.entries(detail).filter(([field]) => !HIDDEN_FIELDS.has(field));
-  if (entries.length === 0) return null;
-
-  const isDiffFormat = entries.every(
-    ([, value]) => value && typeof value === "object" && !Array.isArray(value) && "from" in value && "to" in value,
+function TechnicalRow({ label, value, copyValue, t }: { label: string; value: string; copyValue: string; t: TFunction<"admin"> }) {
+  return (
+    <div className="audit-technical-row">
+      <dt>{label}</dt>
+      <dd><AuditValueText value={value} className="audit-technical-row__value" t={t} /></dd>
+      <CopyButton value={copyValue} timeout={1_500}>
+        {({ copied, copy }) => (
+          <Tooltip label={t(copied ? "audit.technical.copied" : "audit.technical.copy", { field: label })} withArrow>
+            <ActionIcon
+              variant="subtle"
+              size="sm"
+              aria-label={t(copied ? "audit.technical.copied" : "audit.technical.copy", { field: label })}
+              onClick={copy}
+            >
+              {copied ? <CheckIcon size={14} aria-hidden /> : <CopyIcon size={14} aria-hidden />}
+            </ActionIcon>
+          </Tooltip>
+        )}
+      </CopyButton>
+    </div>
   );
-
-  if (isDiffFormat) {
-    return {
-      kind: "diff",
-      entries: entries.map(([field, value]) => {
-        const { from, to } = value as { from: unknown; to: unknown };
-        const label = t?.(`audit.field.${field}`, { defaultValue: field }) ?? field;
-        return { field: label, from: formatDiffValue(from, field, t, userMap), to: formatDiffValue(to, field, t, userMap) };
-      }),
-    };
-  }
-
-  const hiddenFields = new Set<string>();
-  if ("usernames" in detail) hiddenFields.add("user_ids");
-  if ("event_name" in detail) hiddenFields.add("event_id");
-  if ("username" in detail) hiddenFields.add("user_id");
-
-  return {
-    kind: "info",
-    entries: entries
-      .filter(([field]) => !hiddenFields.has(field))
-      .map(([field, value]) => {
-        const label = t?.(`audit.field.${field}`, { defaultValue: field }) ?? field;
-        return { field: label, value: formatInfoValue(value, userMap) };
-      }),
-  };
-}
-
-type ActionColor = "blue" | "green" | "red" | "yellow" | "grape" | "cyan" | "orange" | "gray" | "teal";
-
-const ACTION_COLOR_MAP = {
-  create: "green",
-  init: "green",
-  admin_create_member: "green",
-  create_video: "green",
-  share_video: "green",
-  register: "green",
-  complete: "green",
-  resume: "green",
-  reactivate: "green",
-  batch_reactivate: "green",
-  intake: "green",
-  delete: "red",
-  batch_remove_by_moderator: "red",
-  batch_delete: "red",
-  revoke: "red",
-  update: "blue",
-  update_role: "blue",
-  batch_role_update: "blue",
-  batch_update: "blue",
-  set_role_tag: "blue",
-  change_username: "blue",
-  save_teams: "blue",
-  move_member: "blue",
-  conclude: "blue",
-  archive: "yellow",
-  acknowledge: "green",
-  pause: "yellow",
-  publish: "green",
-  deactivate: "yellow",
-  batch_deactivate: "yellow",
-  join: "cyan",
-  batch_add_by_moderator: "cyan",
-  vote: "cyan",
-  leave: "orange",
-  distribute: "orange",
-  adjust: "orange",
-  change_password: "orange",
-  reset_password: "orange",
-  upload_images: "grape",
-  upload_avatar: "grape",
-  upload_audio: "grape",
-  assign: "grape",
-  unassign: "grape",
-  delete_images: "grape",
-  delete_avatar: "grape",
-  delete_audio: "grape",
-  export_filtered_csv: "gray",
-  export_filtered_json: "gray",
-  download_raw_ndjson_gz: "gray",
-  raffle_draw: "cyan",
-  rollback: "red",
-  run: "orange",
-  upload: "green",
-  upload_icon: "grape",
-  login_failed: "red",
-  reset_login_lock: "orange",
-} satisfies Record<AuditAction, ActionColor>;
-
-const ENTITY_COLOR_MAP = {
-  event: "blue",
-  event_participant: "blue",
-  event_poll_vote: "blue",
-  analytics_settings: "blue",
-  recurring_template: "grape",
-  gallery: "grape",
-  gallery_item: "grape",
-  class_catalog: "grape",
-  class_tag: "grape",
-  member_absence: "orange",
-  member_badge: "grape",
-  badge: "grape",
-  announcement: "cyan",
-  wiki_article: "cyan",
-  wiki_category: "cyan",
-  user: "green",
-  member_profile: "green",
-  user_auth: "green",
-  invite_link: "orange",
-  role: "yellow",
-  guild_war: "red",
-  guild_war_history: "red",
-  guild_war_member_stats: "red",
-  audit_log_export: "gray",
-  audit_archive_export: "gray",
-  media_cleanup: "gray",
-  media_asset: "gray",
-  seed: "gray",
-  system_test: "gray",
-  site_config: "teal",
-  storage: "cyan",
-  storage_category: "cyan",
-  storage_item: "cyan",
-  storage_transaction: "teal",
-  wiki: "cyan",
-} satisfies Record<AuditEntityType, ActionColor>;
-
-function formatRelativeTime(iso: string, t: (key: string, opts?: Record<string, unknown>) => string): string {
-  const diff = Date.now() - new Date(iso).getTime();
-  const minutes = Math.floor(diff / 60000);
-  if (minutes < 1) return t("audit.relativeTime.justNow");
-  if (minutes < 60) return t("audit.relativeTime.minutesAgo", { count: minutes });
-  const hours = Math.floor(minutes / 60);
-  if (hours < 24) return t("audit.relativeTime.hoursAgo", { count: hours });
-  const days = Math.floor(hours / 24);
-  if (days < 7) return t("audit.relativeTime.daysAgo", { count: days });
-  return "";
-}
-
-function buildSummaryParts(
-  row: AuditRow,
-  resolvedAction: string,
-  resolvedEntityType: string,
-  resolvedActor: string,
-  detailData: DetailData,
-): { summary: string; entityName: string | null; targetName: string | null } {
-  const entityName = row.diff_title ?? null;
-
-  let targetName: string | null = null;
-  if (row.entity_type === "event_participant" && entityName) {
-    const parts = entityName.split(" | ");
-    if (parts.length >= 2) {
-      targetName = parts[1]!;
-      const eventName = parts[0]!;
-      return {
-        summary: `${resolvedActor} ${resolvedAction} ${resolvedEntityType}`,
-        entityName: eventName,
-        targetName,
-      };
-    }
-  }
-
-  let changedFieldsHint = "";
-  if (detailData?.kind === "diff" && detailData.entries.length > 0) {
-    const fields = detailData.entries.map((e) => e.field);
-    changedFieldsHint = fields.length <= 3
-      ? ` — ${fields.join(", ")}`
-      : ` — ${fields.slice(0, 3).join(", ")} +${fields.length - 3}`;
-  }
-
-  return {
-    summary: `${resolvedActor} ${resolvedAction} ${resolvedEntityType}${changedFieldsHint}`,
-    entityName,
-    targetName,
-  };
 }
 
 export function AuditLogViewer({
   auditLoading,
   auditError,
-  loadErrorMessage,
+  onRetryAudit,
   auditRows,
-  auditPageCurrent,
-  auditPageSize,
-  auditTotal,
-  onAuditPageChange,
-  isAdmin,
-  maskIdentifier,
-  formatDateTime,
+  auditHasMore,
+  auditLoadingMore,
+  onAuditLoadMore,
+  onSelectEntityTimeline,
+  rolesData,
   userMap,
 }: AuditLogViewerProps) {
-  const { t } = useTranslation("admin");
-  const { t: tCommon } = useTranslation("common");
-  const totalPages = Math.max(1, Math.ceil(auditTotal / Math.max(1, auditPageSize)));
+  const { t, i18n } = useTranslation("admin");
   const [expandedId, setExpandedId] = useState<string | null>(null);
+  const rolesById = useMemo(
+    () => new Map(rolesData.map((role) => [role.id, role.name])),
+    [rolesData],
+  );
 
-  const rows = useMemo(() => {
-    const resolveEntityType = (raw: string) =>
-      t(`audit.entityType.${raw}`, { defaultValue: raw });
-
-    const resolveAction = (raw: string) =>
-      t(`audit.action.${raw}`, { defaultValue: raw });
-
-    const resolveActor = (actorId: string, actorUsername?: string | null) => {
-      if (actorUsername) return actorUsername;
-      if (userMap?.has(actorId)) return userMap.get(actorId)!;
-      return maskIdentifier(actorId, isAdmin);
+  const rows = useMemo(() => auditRows.map((event) => {
+    const roleNameFallback = contextLabel(event.payload.context, "role_name", t);
+    const hasRoleReference = event.payload.context.some((entry) => entry.field === "role_id");
+    const formatValue = (value: AuditValue, field: AuditField, technical = false) => formatAuditValue(
+      value,
+      field,
+      i18n.language,
+      t,
+      rolesById,
+      userMap,
+      roleNameFallback,
+      technical,
+    );
+    const changes = event.payload.changes
+      .filter((entry) => !TECHNICAL_FIELDS.has(entry.field))
+      .map((entry) => ({
+        ...entry,
+        label: t(`audit.field.${entry.field}`),
+        beforeText: formatValue(entry.before, entry.field),
+        afterText: formatValue(entry.after, entry.field),
+      }));
+    const context = event.payload.context
+      .filter((entry) => !TECHNICAL_FIELDS.has(entry.field))
+      .filter((entry) => !(entry.field === "role_name" && hasRoleReference))
+      .map((entry) => ({
+        ...entry,
+        label: t(event.subject.type === "seed" && entry.field === "type"
+          ? "audit.detail.environment"
+          : event.subject.type === "invite_link" && (entry.field === "role_id" || entry.field === "role_name")
+            ? "audit.detail.grantedRole"
+            : `audit.field.${entry.field}`),
+        valueText: formatValue(entry.value, entry.field),
+      }));
+    if (event.subject.type === "invite_link" && event.action === "create") {
+      if (!event.payload.context.some(({ field }) => field === "role_id" || field === "role_name")) {
+        context.unshift({
+          field: "role_id",
+          value: { type: "null", value: null },
+          label: t("audit.detail.grantedRole"),
+          valueText: t("audit.detail.notRecorded"),
+        });
+      }
+      if (!event.payload.context.some(({ field }) => field === "expires_at")) {
+        context.push({
+          field: "expires_at",
+          value: { type: "null", value: null },
+          label: t("audit.field.expires_at"),
+          valueText: t("audit.detail.notRecorded"),
+        });
+      }
+    }
+    const technical = [
+      { key: "event_id", label: t("audit.technical.eventId"), value: event.event_id, copyValue: event.event_id },
+      { key: "request_id", label: t("audit.technical.requestId"), value: event.request_id, copyValue: event.request_id },
+      { key: "actor_id", label: t("audit.technical.actorId"), value: event.actor.id, copyValue: event.actor.id },
+      { key: "subject_id", label: t("audit.technical.subjectId"), value: event.subject.id, copyValue: event.subject.id },
+      ...event.payload.context
+        .filter((entry) => TECHNICAL_FIELDS.has(entry.field))
+        .map((entry) => ({
+          key: entry.field,
+          label: t(`audit.field.${entry.field}`),
+          value: formatValue(entry.value, entry.field, true),
+          copyValue: rawAuditValue(entry.value),
+        })),
+      ...event.payload.changes
+        .filter((entry) => TECHNICAL_FIELDS.has(entry.field))
+        .map((entry) => ({
+          key: `${entry.field}-change`,
+          label: t(`audit.field.${entry.field}`),
+          value: t("audit.technical.change", {
+            before: formatValue(entry.before, entry.field, true),
+            after: formatValue(entry.after, entry.field, true),
+          }),
+          copyValue: JSON.stringify({ before: rawAuditValue(entry.before), after: rawAuditValue(entry.after) }),
+        })),
+    ];
+    const actorLabel = safeLabel(event.actor.label, t)
+      ?? (event.actor.kind === "system"
+        ? t("audit.actor.system")
+        : userMap?.get(event.actor.id) ?? t("audit.actor.unknown"));
+    const subjectLabel = safeLabel(event.subject.label, t);
+    const roleReference = event.payload.context.find((entry) => entry.field === "role_id")?.value;
+    const inviteSubjectLabel = roleReference?.type === "reference"
+      ? resolveReference(roleReference.value, "role_id", t, rolesById, userMap, roleNameFallback, false)
+      : roleNameFallback;
+    const entityLabel = t(`audit.entityType.${event.subject.type}`);
+    return {
+      event,
+      actorLabel,
+      subjectLabel,
+      inviteSubjectLabel,
+      actionLabel: t(`audit.action.${event.action}`),
+      entityLabel,
+      timelineLabel: event.subject.type === "seed" ? entityLabel : subjectLabel ?? entityLabel,
+      family: ACTION_FAMILY[event.action],
+      changes,
+      context,
+      technical,
+      formattedTime: formatLocaleDateTime(event.occurred_at, i18n.language, "medium"),
+      relativeTime: formatRelativeTime(event.occurred_at, t),
     };
-
-    return auditRows.map((row) => {
-      const detailData = buildDetailData(row.detail, t, userMap);
-      const resolvedAction = resolveAction(row.action);
-      const resolvedEntityType = resolveEntityType(row.entity_type);
-      const resolvedActor = resolveActor(String(row.actor_id ?? ""), row.actor_username);
-
-      const { summary, entityName, targetName } = buildSummaryParts(
-        row, resolvedAction, resolvedEntityType, resolvedActor, detailData,
-      );
-
-      return {
-        ...row,
-        resolvedEntityType,
-        resolvedAction,
-        resolvedActor,
-        summary,
-        entityName,
-        targetName,
-        detailData,
-        formattedTime: formatDateTime(row.created_at),
-        relativeTime: formatRelativeTime(row.created_at, t),
-        actionColor: ACTION_COLOR_MAP[row.action],
-        entityColor: ENTITY_COLOR_MAP[row.entity_type],
-      };
-    });
-  }, [auditRows, t, maskIdentifier, formatDateTime, isAdmin, userMap]);
+  }), [auditRows, i18n.language, rolesById, t, userMap]);
 
   return (
-    <Stack gap={12}>
+    <Stack gap={12} className="admin-fill audit-log-fill">
       {auditLoading ? (
         <Stack gap={8}>
-          {Array.from({ length: 6 }).map((_, i) => (
-            <Skeleton key={i} height={64} radius="md" />
-          ))}
+          {Array.from({ length: 6 }).map((_, index) => <Skeleton key={index} height={64} radius="md" />)}
         </Stack>
       ) : null}
 
-      {auditError ? <Alert color="red" title={loadErrorMessage} /> : null}
+      {auditError ? <AdminLoadError onRetry={onRetryAudit} /> : null}
 
       {!auditLoading && !auditError ? (
         <>
           {rows.length === 0 ? (
-            <Text size="sm" c="dimmed" ta="center" py={32}>
-              {t("audit.noResults", { defaultValue: "No audit log entries found" })}
-            </Text>
+            <Text size="sm" c="dimmed" ta="center" py={32}>{t("audit.noResults")}</Text>
           ) : (
-          <div className="audit-log-list">
-            {rows.map((row) => {
-              const isExpanded = expandedId === row.id;
-              const hasDetail = row.detailData !== null;
-
-              return (
-                <div key={row.id} className={`audit-log-row ${isExpanded ? "audit-log-row--expanded" : ""}`}>
-                  <button
-                    type="button"
-                    className="audit-log-row__header"
-                    onClick={() => setExpandedId(isExpanded ? null : row.id)}
-                    aria-expanded={isExpanded}
-                  >
-                    <div className="audit-log-row__badges">
-                      <Badge
-                        size="sm"
-                        variant="light"
-                        color={row.entityColor}
-                        className="audit-log-row__entity-badge"
+            <div className="admin-panel audit-log-list">
+              <div className="admin-panel__body admin-panel__body--flush admin-panel__body--scroll">
+                {rows.map((row, index) => {
+                  const { event } = row;
+                  const isExpanded = expandedId === event.event_id;
+                  const detailsId = `audit-event-details-${index}`;
+                  return (
+                    <article key={event.event_id} className="audit-log-row">
+                      <button
+                        type="button"
+                        className="audit-log-row__header"
+                        onClick={() => setExpandedId(isExpanded ? null : event.event_id)}
+                        aria-expanded={isExpanded}
+                        aria-controls={detailsId}
                       >
-                        {row.resolvedEntityType}
-                      </Badge>
-                      <Badge
-                        size="sm"
-                        variant="dot"
-                        color={row.actionColor}
-                        className="audit-log-row__action-badge"
-                      >
-                        {row.resolvedAction}
-                      </Badge>
-                    </div>
+                        <ThemeIcon
+                          size={28}
+                          radius="sm"
+                          variant="light"
+                          color={ACTION_COLOR[row.family]}
+                          className="audit-log-row__icon"
+                        >
+                          <ActionGlyph family={row.family} />
+                        </ThemeIcon>
 
-                    <div className="audit-log-row__summary">
-                      <Text size="sm" fw={500} lineClamp={1} className="audit-log-row__summary-text">
-                        {row.summary}
-                      </Text>
-                      {row.entityName ? (
-                        <Text size="xs" fw={600} c="var(--brand-text)" lineClamp={1} className="audit-log-row__entity-name">
-                          {row.entityName}
-                        </Text>
-                      ) : null}
-                      {row.targetName ? (
-                        <Text size="xs" c="dimmed" lineClamp={1}>
-                          → {row.targetName}
-                        </Text>
-                      ) : null}
-                    </div>
+                        <span className="audit-log-row__content">
+                          <span className="audit-log-row__description">
+                            <EventDescription
+                              event={event}
+                              actorLabel={row.actorLabel}
+                              subjectLabel={row.subjectLabel}
+                              inviteSubjectLabel={row.inviteSubjectLabel}
+                              entityLabel={row.entityLabel}
+                              t={t}
+                            />
+                          </span>
+                          <span className="audit-log-row__meta">
+                            <span>{row.entityLabel}</span><span aria-hidden>·</span><span>{row.actionLabel}</span>
+                          </span>
+                        </span>
 
-                    <div className="audit-log-row__time-col">
-                      <Tooltip label={row.formattedTime} position="left" withArrow>
-                        <Text size="xs" c="dimmed" className="audit-log-row__time">
-                          {row.relativeTime || row.formattedTime}
-                        </Text>
-                      </Tooltip>
-                    </div>
+                        <Tooltip label={row.formattedTime} position="left" withArrow>
+                          <Text component="time" dateTime={event.occurred_at} size="xs" c="dimmed" className="audit-log-row__time">
+                            {row.relativeTime || row.formattedTime}
+                          </Text>
+                        </Tooltip>
+                        <ChevronDownIcon
+                          size={14}
+                          aria-hidden
+                          className={`audit-log-row__chevron ${isExpanded ? "audit-log-row__chevron--open" : ""}`.trim()}
+                        />
+                      </button>
 
-                    {hasDetail ? (
-                      <ChevronDownIcon
-                        size={14}
-                        className={`audit-log-row__chevron ${isExpanded ? "audit-log-row__chevron--open" : ""}`}
-                      />
-                    ) : (
-                      <span className="audit-log-row__chevron-spacer" />
-                    )}
-                  </button>
+                      {isExpanded ? (
+                        <div id={detailsId} className="audit-log-row__details" role="region" aria-label={t("audit.detail.region", { event: row.entityLabel })}>
+                          {row.changes.length > 0 ? (
+                            <section className="audit-detail-section">
+                              <Text component="h3" className="audit-detail-section__title">{t("audit.detail.changes")}</Text>
+                              <div className="audit-change-list">
+                                {row.changes.map((entry) => (
+                                  <div key={entry.field} className="audit-change-row">
+                                    <span className="audit-change-row__field">{entry.label}</span>
+                                    <span className="audit-change-row__value">
+                                      <span className="audit-change-row__value-label">{t("audit.detail.before")}</span>
+                                      <AuditValueText value={entry.beforeText} t={t} />
+                                    </span>
+                                    <ArrowRightIcon size={14} aria-hidden className="audit-change-row__arrow" />
+                                    <span className="audit-change-row__value audit-change-row__value--after">
+                                      <span className="audit-change-row__value-label">{t("audit.detail.after")}</span>
+                                      <AuditValueText value={entry.afterText} t={t} />
+                                    </span>
+                                  </div>
+                                ))}
+                              </div>
+                            </section>
+                          ) : null}
 
-                  {isExpanded && hasDetail ? (
-                    <div className="audit-log-row__detail-panel">
-                      <div className="audit-detail__header">
-                        <Text size="xs" fw={600} tt="uppercase" c="dimmed" className="audit-detail__title">
-                          {row.detailData!.kind === "diff" ? t("audit.detail.changes") : t("audit.detail.info")}
-                        </Text>
-                      </div>
-                      {row.detailData!.kind === "diff" ? (
-                        <div className="audit-detail__table">
-                          <div className="audit-detail__table-head">
-                            <span className="audit-detail__col-field">{t("audit.detail.field")}</span>
-                            <span className="audit-detail__col-from">{t("audit.detail.before")}</span>
-                            <span className="audit-detail__col-arrow" />
-                            <span className="audit-detail__col-to">{t("audit.detail.after")}</span>
+                          {row.context.length > 0 ? (
+                            <section className="audit-detail-section audit-context-section">
+                              <Text component="h3" className="audit-detail-section__title">{t("audit.detail.context")}</Text>
+                              <dl className="audit-context-list">
+                                {row.context.map((entry) => (
+                                  <div key={entry.field} className="audit-context-row">
+                                    <dt>{entry.label}</dt>
+                                    <dd><AuditValueText value={entry.valueText} t={t} /></dd>
+                                  </div>
+                                ))}
+                              </dl>
+                            </section>
+                          ) : null}
+
+                          <details className="audit-detail-disclosure audit-technical-disclosure">
+                            <summary className="audit-detail-disclosure__summary">
+                              <span role="heading" aria-level={3} className="audit-detail-disclosure__title">
+                                {t("audit.technical.title")}
+                              </span>
+                              <ChevronDownIcon size={14} aria-hidden className="audit-detail-disclosure__chevron" />
+                            </summary>
+                            <div className="audit-detail-disclosure__content">
+                              <Text size="xs" c="dimmed" className="audit-technical-disclosure__hint">{t("audit.technical.description")}</Text>
+                              <dl className="audit-technical-list">
+                                {row.technical.map(({ key, ...entry }) => <TechnicalRow key={key} {...entry} t={t} />)}
+                              </dl>
+                            </div>
+                          </details>
+
+                          <div className="audit-detail-actions">
+                            <Button
+                              size="compact-sm"
+                              variant="subtle"
+                              onClick={() => onSelectEntityTimeline(event.subject.type, event.subject.id)}
+                            >
+                              {t("audit.timeline.view", { entity: row.timelineLabel })}
+                            </Button>
                           </div>
-                          {row.detailData!.entries.map((entry) => (
-                            <div key={entry.field} className="audit-diff-entry">
-                              <span className="audit-diff-entry__field">{entry.field}</span>
-                              <AuditValue className="audit-diff-entry__from" value={(entry as DiffEntry).from} t={t} />
-                              <ArrowRightIcon size={12} className="audit-diff-entry__arrow" />
-                              <AuditValue className="audit-diff-entry__to" value={(entry as DiffEntry).to} t={t} />
-                            </div>
-                          ))}
                         </div>
-                      ) : (
-                        <div className="audit-detail__table">
-                          {row.detailData!.entries.map((entry) => (
-                            <div key={entry.field} className="audit-info-entry">
-                              <span className="audit-info-entry__field">{entry.field}</span>
-                              <AuditValue className="audit-info-entry__value" value={(entry as InfoEntry).value} t={t} />
-                            </div>
-                          ))}
-                        </div>
-                      )}
-                    </div>
-                  ) : null}
-                </div>
-              );
-            })}
-          </div>
+                      ) : null}
+                    </article>
+                  );
+                })}
+              </div>
+            </div>
           )}
 
-          <Group justify="flex-end" align="center" gap={8}>
-            <Pagination
-              value={auditPageCurrent}
-              total={totalPages}
-              onChange={onAuditPageChange}
-              withEdges
-              size="sm"
-              getControlProps={(control) => ({
-                "aria-label": tCommon(
-                  control === "previous" ? "pagination.prev" : `pagination.${control}`,
-                ),
-              })}
-            />
-            <NumberInput
-              aria-label={tCommon("pagination.page")}
-              size="sm"
-              min={1}
-              max={totalPages}
-              value={auditPageCurrent}
-              onChange={(val) => {
-                if (typeof val === "number" && val >= 1 && val <= totalPages) {
-                  onAuditPageChange(val);
-                }
-              }}
-              hideControls
-              style={{ width: 56 }}
-              styles={{ input: { textAlign: "center" } }}
-            />
-            <Text size="sm" c="dimmed">/ {totalPages}</Text>
-          </Group>
+          {auditHasMore ? (
+            <Group justify="center">
+              <Button variant="default" loading={auditLoadingMore} onClick={onAuditLoadMore}>{t("audit.loadMore")}</Button>
+            </Group>
+          ) : null}
         </>
       ) : null}
     </Stack>

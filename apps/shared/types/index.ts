@@ -12,6 +12,8 @@ import type { eventSchema, eventClassQuotaSchema, eventClassQuotaInputSchema, ev
 import type { announcementSchema } from "../schemas/announcement";
 import type {
   guildWarActiveResponseSchema,
+  guildWarHistoryDetailResponseSchema,
+  guildWarMemberResponseSchema,
   warHistorySchema,
   warTeamSchema,
   warTeamMemberSchema,
@@ -21,7 +23,13 @@ import type { galleryItemSchema } from "../schemas/gallery";
 import type {
   inviteLinkSchema,
   inviteLinkStatsSchema,
-  auditLogSchema,
+  auditActorSchema,
+  auditChangeSchema,
+  auditContextSchema,
+  auditEventSchema,
+  auditPayloadV2Schema,
+  auditSubjectSchema,
+  auditValueSchema,
   adminRoleSchema,
   rolePermissionsSchema,
 } from "../schemas/admin";
@@ -48,6 +56,8 @@ export type WarHistory = z.infer<typeof warHistorySchema>;
 export type WarTeam = z.infer<typeof warTeamSchema>;
 export type WarTeamMember = z.infer<typeof warTeamMemberSchema>;
 export type GuildWarActiveResponse = z.infer<typeof guildWarActiveResponseSchema>;
+export type GuildWarHistoryDetailResponse = z.infer<typeof guildWarHistoryDetailResponseSchema>;
+export type GuildWarMemberResponse = z.infer<typeof guildWarMemberResponseSchema>;
 export type WikiCategory = z.infer<typeof wikiCategorySchema>;
 export type WikiArticle = z.infer<typeof wikiArticleSchema>;
 export type WikiRevisionListItem = z.infer<typeof wikiRevisionListItemSchema>;
@@ -55,7 +65,13 @@ export type WikiRevision = z.infer<typeof wikiRevisionSchema>;
 export type GalleryItem = z.infer<typeof galleryItemSchema>;
 export type InviteLink = z.infer<typeof inviteLinkSchema>;
 export type InviteLinkStats = z.infer<typeof inviteLinkStatsSchema>;
-export type AuditLogEntry = z.infer<typeof auditLogSchema>;
+export type AuditValue = z.infer<typeof auditValueSchema>;
+export type AuditChange = z.infer<typeof auditChangeSchema>;
+export type AuditContext = z.infer<typeof auditContextSchema>;
+export type AuditPayloadV2 = z.infer<typeof auditPayloadV2Schema>;
+export type AuditActor = z.infer<typeof auditActorSchema>;
+export type AuditSubject = z.infer<typeof auditSubjectSchema>;
+export type AuditEvent = z.infer<typeof auditEventSchema>;
 export type AdminRole = z.infer<typeof adminRoleSchema>;
 export type RolePermissions = z.infer<typeof rolePermissionsSchema>;
 export type MemberBadge = z.infer<typeof memberBadgeSchema>;

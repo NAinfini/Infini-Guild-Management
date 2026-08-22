@@ -18,9 +18,9 @@
   padding: var(--space-lg);
   border: 1px solid var(--border-subtle);
   border-radius: var(--radius-surface);
-  background:
-    linear-gradient(160deg, color-mix(in srgb, var(--brand-fill) 10%, transparent), transparent 55%),
-    var(--surface-sunken);
+  /* 预览台是承托图标的背景板，不是数据也不是动作：渐变只是在这里加了一层
+     跟内容无关的品牌色，平铺的下沉面就够。 */
+  background: var(--surface-sunken);
 }
 
 .admin-classes__preview-icon {
@@ -37,7 +37,7 @@
   padding: 3px;
   border: 1px solid var(--border-strong);
   border-radius: 50%;
-  background: var(--surface-raised);
+  background: var(--plate-fill);
   object-fit: contain;
 }
 

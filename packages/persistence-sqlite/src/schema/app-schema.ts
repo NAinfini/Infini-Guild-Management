@@ -39,7 +39,7 @@ import {
   memberProfileVideos,
 } from "./members.js";
 import { siteConfig } from "./site-config.js";
-import { scheduledJobLeases } from "./scheduled-jobs.js";
+import { scheduledJobLeases, scheduledJobStatuses } from "./scheduled-jobs.js";
 import { appMigrations } from "./schema-metadata.js";
 import {
   storageBalances,
@@ -101,6 +101,7 @@ export const appSchema = {
   rolePermissions,
   roles,
   scheduledJobLeases,
+  scheduledJobStatuses,
   sessions,
   siteConfig,
   storageBalances,

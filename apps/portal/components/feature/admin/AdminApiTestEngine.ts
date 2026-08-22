@@ -15,6 +15,7 @@ export {
 } from "./api-test/types";
 export {
   buildApiCategories,
+  buildCriticalApiCategories,
   filterApiCategoriesForPermissions,
 } from "./api-test/categories";
 export {

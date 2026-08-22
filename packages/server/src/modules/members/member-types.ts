@@ -9,7 +9,7 @@ import type {
 } from "@guild/shared";
 import type { ClassVectorIconId } from "@guild/shared/constants/class-icons";
 import type { RequestContext } from "@guild/kernel";
-import type { AuditMutation } from "../audit/public.js";
+import type { AuditEventWrite as AuditMutation } from "../audit/public.js";
 import type { AudioUpload, ImageUpload } from "../media/public.js";
 
 export type MemberProjection = "public" | "member" | "admin";
@@ -25,6 +25,8 @@ export type MemberUserRecord = Readonly<{
   deletedAt: string | null;
   createdAt: string;
   updatedAt: string;
+  /** 最近一次成功登录；从未登录或对外视图为 null。 */
+  lastLoginAt: string | null;
 }>;
 
 export type MemberProfileRecord = Readonly<{

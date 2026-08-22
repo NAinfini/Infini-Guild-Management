@@ -1,7 +1,9 @@
+// @vitest-environment node
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   buildJsonRequest,
   buildApiCategories,
+  buildCriticalApiCategories,
   buildSystemTestSummary,
   captureContextFromResponse,
   createInitialTestRunContext,
@@ -12,6 +14,25 @@ import {
   runEndpointTest,
   type TestRunContext,
 } from "./AdminApiTestEngine";
+
+describe("critical API suite", () => {
+  it("contains exactly the four independent read endpoints", () => {
+    const categories = buildCriticalApiCategories(buildApiCategories((key) => key));
+    const keys = categories.flatMap((category) => category.endpoints.map((endpoint) =>
+      `${category.key}:${endpoint.method}:${endpoint.path}`,
+    ));
+
+    expect(keys).toEqual([
+      "system:GET:/api/health",
+      "system:GET:/api/site-config",
+      "system:GET:/api/admin/status",
+      "auth:GET:/api/auth/me",
+    ]);
+    expect(categories.flatMap((category) => category.endpoints).every((endpoint) =>
+      endpoint.method === "GET" && !endpoint.path.includes(":"),
+    )).toBe(true);
+  });
+});
 
 function contextWith(values: Partial<TestRunContext>): TestRunContext {
   return { ...createInitialTestRunContext(), ...values };
@@ -234,7 +255,7 @@ describe("AdminApiTestEngine request preparation", () => {
     ))).toEqual({ updates: [{ id: "cat-1", sort_order: 0 }] });
   });
 
-  it("uses the recurring-template contract and never writes a profile during auth read smoke tests", () => {
+  it("uses the recurring-template contract and runs the read-only auth profile check", () => {
     const template = prepareEndpointRequest(
       { label: "Create Template", method: "POST", path: "/api/events/templates" },
       contextWith({ fixtureId: "488488b7-b293-4149-88ba-5eef4f202dcb" }),
@@ -249,8 +270,7 @@ describe("AdminApiTestEngine request preparation", () => {
     expect(templateBody.duration_minutes).toBe(60);
     expect(templateBody).not.toHaveProperty("start_at");
     expect(templateBody).not.toHaveProperty("end_at");
-    expect(currentUser.skipReason).toContain("production admin profile");
-    expect(currentUser.optionalSkip).toBe(true);
+    expect(currentUser).toEqual({ path: "/api/auth/me" });
   });
 
   it("sends guild war member stats in the nested route contract shape", () => {
@@ -384,19 +404,15 @@ describe("AdminApiTestEngine request preparation", () => {
     ).path).toBe("/api/guild-war/history/batch?ids=created-war");
   });
 
-  it("creates guild-war history only for the guild-war event made by this run", () => {
+  it("creates standalone guild-war history without colliding with the concluded test event", () => {
     const endpoint = { label: "Create History", method: "POST" as const, path: "/api/guild-war/history" };
-    const unsafe = prepareEndpointRequest(endpoint, contextWith({
-      eventId: "seed-event",
-      warEventId: "live-war-event",
-      createdEventId: "other-test-event",
-    }));
-    const safe = prepareEndpointRequest(endpoint, contextWith({
+    const prepared = prepareEndpointRequest(endpoint, contextWith({
       createdGuildWarEventId: "test-guild-war-event",
     }));
+    const body = parseJsonBody(prepared) as Record<string, unknown>;
 
-    expect(unsafe.skipReason).toContain("created guild war event");
-    expect(parseJsonBody(safe)).toMatchObject({ event_id: "test-guild-war-event" });
+    expect(body).toMatchObject({ result: "win" });
+    expect(body).not.toHaveProperty("event_id");
   });
 
   it("resolves every image read through the canonical media route", () => {
@@ -488,7 +504,7 @@ describe("AdminApiTestEngine request preparation", () => {
         error: null,
         ranAt: "2026-07-28T00:00:00.000Z",
         parsedJson: {
-          data: [{ id: "invite-1", code: "CURSOR-INVITE-CODE" }],
+          data: [{ id: "invite-1", code: "A1b2C3d4E5" }],
           next_cursor: null,
           total: 1,
         },
@@ -1085,7 +1101,7 @@ describe("AdminApiTestEngine request preparation", () => {
     const visibleStorageEndpoints = filtered.find((category) => category.key === "storage")?.endpoints ?? [];
     const visibleEndpointKeys = visibleStorageEndpoints.map((endpoint) => `${endpoint.method} ${endpoint.path}`);
 
-    expect(storageEndpoints).toHaveLength(20);
+    expect(storageEndpoints).toHaveLength(23);
     expect(visibleStorageEndpoints).toHaveLength(storageEndpoints.length);
     expect(visibleEndpointKeys).toEqual(storageEndpoints.map((endpoint) => `${endpoint.method} ${endpoint.path}`));
     expect(visibleEndpointKeys).toEqual(expect.arrayContaining([
@@ -1097,6 +1113,9 @@ describe("AdminApiTestEngine request preparation", () => {
       "PATCH /api/storage/items/:id",
       "POST /api/storage/items/:id/images",
       "DELETE /api/storage/items/:id/images/:imageId",
+      "POST /api/storage/storages?fixture=transactions",
+      "POST /api/storage/storages/:storageId/categories?fixture=transactions",
+      "POST /api/storage/items?fixture=transactions",
       "POST /api/storage/items/:id/transactions?fixture=intake",
       "POST /api/storage/items/:id/transactions?fixture=distribute",
       "POST /api/storage/items/:id/transactions?fixture=adjust",
@@ -1174,12 +1193,34 @@ describe("AdminApiTestEngine request preparation", () => {
   });
 
   it("prepares storage lifecycle requests only against disposable storage fixtures", () => {
+    const fixtureContext = contextWith({ fixtureId: "488488b7-b293-4149-88ba-5eef4f202dcb" });
     const createStorage = prepareEndpointRequest(
       { label: "Create Storage", method: "POST", path: "/api/storage/storages" },
-      createInitialTestRunContext(),
+      fixtureContext,
     );
     const createStorageBody = parseJsonBody(createStorage) as Record<string, unknown>;
     expect(createStorageBody.name).toContain("[systemtest]");
+    expect(String(createStorageBody.name)).toHaveLength(50);
+
+    const updateStorageBody = parseJsonBody(prepareEndpointRequest(
+      { label: "Update Storage", method: "PATCH", path: "/api/storage/storages/:id" },
+      contextWith({ ...fixtureContext, createdStorageId: "storage-1" }),
+    )) as Record<string, unknown>;
+    const createCategoryBody = parseJsonBody(prepareEndpointRequest(
+      { label: "Create Category", method: "POST", path: "/api/storage/storages/:storageId/categories" },
+      contextWith({ ...fixtureContext, createdStorageId: "storage-1" }),
+    )) as Record<string, unknown>;
+    const updateCategoryBody = parseJsonBody(prepareEndpointRequest(
+      { label: "Update Category", method: "PATCH", path: "/api/storage/storages/:storageId/categories/:id" },
+      contextWith({
+        ...fixtureContext,
+        createdStorageId: "storage-1",
+        createdStorageCategoryId: "category-1",
+      }),
+    )) as Record<string, unknown>;
+    expect(String(updateStorageBody.name).length).toBeLessThanOrEqual(50);
+    expect(String(createCategoryBody.name).length).toBeLessThanOrEqual(50);
+    expect(String(updateCategoryBody.name).length).toBeLessThanOrEqual(50);
 
     const ctx = contextWith({
       storageId: "seed-storage",
@@ -1255,6 +1296,41 @@ describe("AdminApiTestEngine request preparation", () => {
     expect(JSON.stringify([intake, distribute, adjust])).not.toContain("seed-item");
   });
 
+  it("deletes one disposable storage hierarchy before creating the transaction fixture", () => {
+    const endpointKeys = buildApiCategories((key) => key)
+      .find((category) => category.key === "storage")
+      ?.endpoints.map((endpoint) => `${endpoint.method} ${endpoint.path}`) ?? [];
+
+    const deleteStorage = endpointKeys.indexOf("DELETE /api/storage/storages/:id");
+    const createTransactionStorage = endpointKeys.indexOf("POST /api/storage/storages?fixture=transactions");
+    const intake = endpointKeys.indexOf("POST /api/storage/items/:id/transactions?fixture=intake");
+    expect(deleteStorage).toBeGreaterThanOrEqual(0);
+    expect(createTransactionStorage).toBeGreaterThan(deleteStorage);
+    expect(intake).toBeGreaterThan(createTransactionStorage);
+
+    const context = contextWith({ fixtureId: "488488b7-b293-4149-88ba-5eef4f202dcb" });
+    const storage = prepareEndpointRequest(
+      { label: "Transaction Storage", method: "POST", path: "/api/storage/storages?fixture=transactions" },
+      context,
+    );
+    expect(storage.path).toBe("/api/storage/storages");
+    expect(String((parseJsonBody(storage) as Record<string, unknown>).name).length).toBeLessThanOrEqual(50);
+
+    const captured = captureContextFromResponse(
+      context,
+      { label: "Transaction Storage", method: "POST", path: "/api/storage/storages?fixture=transactions" },
+      {
+        status: 201,
+        latencyMs: 1,
+        body: "{}",
+        error: null,
+        ranAt: "2026-08-11T00:00:00.000Z",
+        parsedJson: { id: "transaction-storage" },
+      },
+    );
+    expect(captured.createdStorageId).toBe("transaction-storage");
+  });
+
   it("captures storage fixture ids from storage responses", () => {
     const storageCtx = captureContextFromResponse(
       createInitialTestRunContext(),
@@ -1327,6 +1403,46 @@ describe("AdminApiTestEngine request preparation", () => {
     );
 
     expect(resolved.path).toBe("/api/admin/invite-links/created-invite/permanent");
+  });
+
+  it("retains a run-created invite after revoke and clears it only after permanent delete", () => {
+    const context = contextWith({ inviteLinkId: "created-invite", createdInviteLinkId: "created-invite" });
+    const result = {
+      status: 200,
+      latencyMs: 1,
+      body: "{}",
+      error: null,
+      ranAt: "2026-08-11T00:00:00.000Z",
+      parsedJson: { ok: true },
+    };
+    const revoked = captureContextFromResponse(
+      context,
+      { label: "Revoke Invite", method: "DELETE", path: "/api/admin/invite-links/:id" },
+      result,
+    );
+    expect(revoked.createdInviteLinkId).toBe("created-invite");
+    expect(resolveEndpointPath(
+      { label: "Permanent Delete", method: "DELETE", path: "/api/admin/invite-links/:id/permanent" },
+      revoked,
+    ).path).toBe("/api/admin/invite-links/created-invite/permanent");
+
+    const deleted = captureContextFromResponse(
+      revoked,
+      { label: "Permanent Delete", method: "DELETE", path: "/api/admin/invite-links/:id/permanent" },
+      result,
+    );
+    expect(deleted.createdInviteLinkId).toBeNull();
+  });
+
+  it("sends the strict empty JSON payload required by login-lock reset", () => {
+    const prepared = prepareEndpointRequest(
+      { label: "Reset Login Lock", method: "POST", path: "/api/admin/users/:id/reset-login-lock" },
+      contextWith({ adminCreatedUserId: "created-user" }),
+    );
+
+    expect(prepared.path).toBe("/api/admin/users/created-user/reset-login-lock");
+    expect(prepared.headers).toEqual({ "Content-Type": "application/json" });
+    expect(parseJsonBody(prepared)).toEqual({});
   });
 
   it("covers website read actions that were missing from the smoke registry", () => {
@@ -1507,6 +1623,22 @@ describe("AdminApiTestEngine request preparation", () => {
     expect(prepared.optionalSkip).toBe(true);
   });
 
+  it("reports a missing site logo as an intentional N/A without uploading over the live logo", () => {
+    const prepared = prepareEndpointRequest(
+      {
+        label: "Site Logo",
+        method: "GET",
+        path: "/api/media/:mediaId/:variant",
+        mediaIdContext: "siteLogoMediaId",
+        mediaVariant: "view",
+      },
+      createInitialTestRunContext(),
+    );
+
+    expect(prepared.skipReason).toContain("does not replace the live logo");
+    expect(prepared.optionalSkip).toBe(true);
+  });
+
   it("skips mutable smoke requests when only seeded fixture ids are available", () => {
     const seededOnly = contextWith({
       eventId: "seed-event",
@@ -1607,6 +1739,48 @@ describe("AdminApiTestEngine request preparation", () => {
         }),
       }),
     );
+  });
+
+  it("logs binary media as metadata instead of copying control bytes", async () => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
+      new Response(new Uint8Array([82, 73, 70, 70, 0, 1, 2, 3]), {
+        status: 200,
+        headers: {
+          "Content-Type": "image/webp",
+          "Content-Length": "8",
+        },
+      }),
+    );
+
+    const result = await runEndpointTest(
+      { label: "Media", method: "GET", path: "/api/media/test/view" },
+      { path: "/api/media/test/view" },
+      "014f27f1-6ca1-4c5e-924f-f111b76b9efd",
+    );
+
+    expect(result.body).toBe("[binary image/webp; 8 bytes]");
+    expect(result.body).not.toContain("RIFF");
+    expect(result.parsedJson).toBeNull();
+  });
+
+  it("keeps NDJSON exports as text instead of parsing them as one JSON document", async () => {
+    const ndjson = "{\"id\":1}\n{\"id\":2}\n";
+    vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
+      new Response(ndjson, {
+        status: 200,
+        headers: { "Content-Type": "application/x-ndjson" },
+      }),
+    );
+
+    const result = await runEndpointTest(
+      { label: "Audit Export", method: "GET", path: "/api/admin/audit-log/export" },
+      { path: "/api/admin/audit-log/export" },
+      "014f27f1-6ca1-4c5e-924f-f111b76b9efd",
+    );
+
+    expect(result.body).toBe(ndjson);
+    expect(result.error).toBeNull();
+    expect(result.parsedJson).toBeNull();
   });
 
   it("reports safety exclusions as N/A while keeping prerequisite skips as failures", () => {

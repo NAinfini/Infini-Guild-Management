@@ -4,7 +4,6 @@ import {
 } from "../../../services/AdminService";
 import { downloadFileBlob } from "../../../utils/admin";
 import {
-  Alert,
   Button,
   Collapse,
   Group,
@@ -18,20 +17,23 @@ import { useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { ArchiveIcon } from "@portal/components/icons";
 import { notifySuccess, notifyError } from "../../../utils/notifications";
+import { EmptyState } from "../../shared/EmptyState";
+import { AdminLoadError } from "./AdminLoadError";
 
 type AuditArchiveExplorerProps = {
   months: string[];
   monthsLoading: boolean;
   monthsError: boolean;
+  onRetryMonths: () => void;
 };
 
 export function AuditArchiveExplorer({
   months,
   monthsLoading,
   monthsError,
+  onRetryMonths,
 }: AuditArchiveExplorerProps) {
   const { t } = useTranslation("admin");
-  const { t: tc } = useTranslation("common");
   const [opened, setOpened] = useState(false);
   const [selectedMonth, setSelectedMonth] = useState<string | null>(null);
   const [downloading, setDownloading] = useState(false);
@@ -72,10 +74,10 @@ export function AuditArchiveExplorer({
         <Collapse expanded={opened}>
           <Stack gap={12} pt="xs">
             {monthsLoading ? <Skeleton height={36} /> : null}
-            {monthsError ? <Alert color="red" title={tc("loadError")} /> : null}
+            {monthsError ? <AdminLoadError onRetry={onRetryMonths} /> : null}
 
             {!monthsLoading && !monthsError && months.length === 0 ? (
-              <Alert color="gray">{t("auditArchive.empty")}</Alert>
+              <EmptyState className="admin-empty" title={t("auditArchive.empty")} />
             ) : null}
 
             {!monthsLoading && !monthsError && months.length > 0 ? (

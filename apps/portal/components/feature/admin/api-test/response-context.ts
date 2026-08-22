@@ -30,9 +30,6 @@ export function captureContextFromResponse(
     if (endpoint.path === "/api/guild-war/history/:id" && next.createdWarHistoryId === next.warHistoryId) {
       next.createdWarHistoryId = null;
     }
-    if (endpoint.path === "/api/guild-war/history/:id" && next.createdWarHistoryId === next.warHistoryId) {
-      next.createdWarHistoryId = null;
-    }
     if (endpoint.path === "/api/guild-war/history/:id" && next.createdConcludedWarHistoryId === next.warHistoryId) {
       next.createdConcludedWarHistoryId = null;
     }
@@ -63,9 +60,6 @@ export function captureContextFromResponse(
     }
     if (endpoint.path === "/api/badges/:id" && next.createdBadgeId === next.badgeId) {
       next.createdBadgeId = null;
-    }
-    if (endpoint.path === "/api/admin/invite-links/:id" && next.createdInviteLinkId === next.inviteLinkId) {
-      next.createdInviteLinkId = null;
     }
     if (endpoint.path === "/api/admin/invite-links/:id/permanent" && next.createdInviteLinkId === next.inviteLinkId) {
       next.createdInviteLinkId = null;
@@ -497,7 +491,9 @@ export function captureContextFromResponse(
     return next;
   }
 
-  if (endpoint.path === "/api/storage/storages") {
+  const fixturelessPath = endpoint.path.replace(/\?fixture=[^&]+$/, "");
+
+  if (fixturelessPath === "/api/storage/storages") {
     const id = readString(payload.id);
     next.storageId = id ?? next.storageId;
     if (endpoint.method === "POST") {
@@ -506,7 +502,7 @@ export function captureContextFromResponse(
     return next;
   }
 
-  if (endpoint.path === "/api/storage/storages/:storageId/categories") {
+  if (fixturelessPath === "/api/storage/storages/:storageId/categories") {
     const id = readString(payload.id);
     next.storageCategoryId = id ?? next.storageCategoryId;
     if (endpoint.method === "POST") {
@@ -515,7 +511,7 @@ export function captureContextFromResponse(
     return next;
   }
 
-  if (endpoint.path === "/api/storage/items") {
+  if (fixturelessPath === "/api/storage/items") {
     if (Array.isArray(payload.data)) {
       const first = firstArrayItem(payload.data);
       next.storageItemId = readString(first?.id) ?? next.storageItemId;

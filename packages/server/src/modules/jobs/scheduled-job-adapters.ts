@@ -2,6 +2,7 @@ import {
   AppError,
   createAuthorizationContext,
   createRequestContext,
+  secureRandom,
   type NotificationPublisher,
   type ScheduledJobBacklog,
 } from "@guild/kernel";
@@ -106,13 +107,7 @@ export class ScheduledRecurrenceMaterializationJob implements RecurrenceMaterial
       input.afterTemplateId,
       input.maxTemplates,
       input.maxOccurrencesPerTemplate,
-      (eventId, eventTitle, templateId) => input.audit({
-        entityType: "event",
-        entityId: eventId,
-        action: "create",
-        summary: eventTitle,
-        details: { recurring_template_id: templateId },
-      }),
+      input.audit,
     );
     const eventIds = batch.materialized.flatMap(({ createdEventIds }) => createdEventIds);
     for (const eventId of eventIds) {
@@ -206,7 +201,7 @@ export class ScheduledRaffleAutoDrawJob implements RaffleAutoDrawJob {
     private readonly notifications: NotificationPublisher,
     options: Readonly<{ random?: () => number; createId?: () => string }> = {},
   ) {
-    this.random = options.random ?? Math.random;
+    this.random = options.random ?? secureRandom;
     this.createId = options.createId ?? nanoid;
   }
 
@@ -228,11 +223,11 @@ export class ScheduledRaffleAutoDrawJob implements RaffleAutoDrawJob {
           now: input.now,
           drawnByUserId: raffle.drawnByUserId,
           audit: input.audit({
-            entityType: "event",
-            entityId: raffle.eventId,
+            subjectType: "event",
+            subjectId: raffle.eventId,
+            subjectLabel: raffle.title,
             action: "raffle_draw",
-            summary: raffle.title,
-            details: { winner_user_ids: winnerIds },
+            context: [],
           }),
         });
       } catch (error) {
@@ -267,12 +262,13 @@ export class ScheduledMediaGarbageCollectionJob implements MediaGarbageCollectio
       now: input.before,
     });
     const result = await this.media.collectGarbage(context, input.before, (mediaId) => input.audit({
-      entityType: "media_cleanup",
-      entityId: mediaId,
+      subjectType: "media_cleanup",
+      subjectId: mediaId,
+      subjectLabel: null,
       action: "delete",
-      summary: "Expired media asset",
+      context: [{ field: "reason", value: { type: "code", value: "garbage_collection" } }],
     }));
-    const processed = result.deleted + result.failed;
+    const processed = result.deleted;
     return { processed, hasMore: processed === input.limit };
   }
 
@@ -289,11 +285,11 @@ export class ScheduledAuditArchiveJob implements AuditArchiveJob {
       throw new RangeError(`Audit archive batches must contain ${AUDIT_ARCHIVE_BATCH_SIZE} rows`);
     }
     const result = await this.archives.archiveBatch(input.before, input.now, (archiveId, rowCount) => input.audit({
-      entityType: "audit_archive_export",
-      entityId: archiveId,
+      subjectType: "audit_archive_export",
+      subjectId: archiveId,
+      subjectLabel: null,
       action: "archive",
-      summary: `Archived ${rowCount} audit entries`,
-      details: { row_count: rowCount },
+      context: [{ field: "row_count", value: { type: "number", value: rowCount } }],
     }));
     return { processed: result.archived, hasMore: result.archived === input.limit };
   }

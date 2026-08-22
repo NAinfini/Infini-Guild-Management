@@ -65,7 +65,10 @@ export function GalleryUploadQueueCard({
               </Group>
               <Progress
                 value={PROGRESS_BY_STATUS[task.status]}
-                color={task.status === "error" ? "red" : task.status === "done" ? "green" : "blue"}
+                color={
+                  // 失败与完成是状态，用状态色；上传中不是状态，交回主题的主色。
+                  task.status === "error" ? "red" : task.status === "done" ? "green" : undefined
+                }
                 size="sm"
                 animated={task.status === "uploading"}
                 mt={6}

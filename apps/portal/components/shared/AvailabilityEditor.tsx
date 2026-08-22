@@ -4,23 +4,22 @@ import { PlusIcon, XIcon } from "@portal/components/icons";
    mouseenter/mouseleave 来驱动 motion 动画；放进 Menu.Target 里会把刚打开的
    菜单又关掉（AvailabilityEditor.test.tsx 的复制用例可复现）。 */
 import { IconChevronDown } from "@tabler/icons-react";
-import {
-  AVAILABILITY_DAY_KEYS,
-  availabilityFromWindows,
-  availabilityToWindows,
-  type AvailabilityDayKey,
-  type AvailabilityWindow,
-  type MemberAvailability,
-} from "@guild/shared";
+import { type AvailabilityDayKey, type MemberAvailability } from "@guild/shared";
 import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
+import {
+  convertAvailabilityToLocalDays,
+  convertLocalDaysToAvailability,
+  emptyDays,
+  minutesToTime,
+  normalizeBlocks,
+  timeToMinutes,
+  type DayBlocks,
+  type TimeBlock,
+} from "@portal/utils/availability";
+import { viewerTimeZone, viewerUtcOffsetMinutes } from "@portal/utils/datetime";
 
 export type DayKey = AvailabilityDayKey;
-
-export type TimeBlock = {
-  start: string;
-  end: string;
-};
 
 export type AvailabilityPayload = MemberAvailability;
 
@@ -68,134 +67,12 @@ const PRESETS: Array<{ id: string; days: DayKey[]; block: TimeBlock }> = [
   { id: "lateNight", days: DAYS, block: { start: "00:00", end: "03:00" } },
 ];
 
-function pad2(value: number): string {
-  return String(value).padStart(2, "0");
-}
-
-function minutesToTime(minutes: number): string {
-  return `${pad2(Math.floor(minutes / 60))}:${pad2(minutes % 60)}`;
-}
-
-function timeToMinutes(time: string): number {
-  const [h, m] = time.split(":").map((v) => Number.parseInt(v, 10));
-  return (h || 0) * 60 + (m || 0);
-}
-
-export type DayBlocks = Record<DayKey, TimeBlock[]>;
-
-function emptyDays(): DayBlocks {
-  return {
-    monday: [],
-    tuesday: [],
-    wednesday: [],
-    thursday: [],
-    friday: [],
-    saturday: [],
-    sunday: [],
-  };
-}
-
-/**
- * 排序并合并重叠或相接的时段。合并是必需的：预设会往已有时段上叠加，不合并就会
- * 在同一天里排出「20:00–24:00」和「22:00–24:00」两条，读的人无法判断哪条算数。
- */
-function normalizeBlocks(blocks: TimeBlock[]): TimeBlock[] {
-  const sorted = blocks
-    .map((block) => ({ start: timeToMinutes(block.start), end: timeToMinutes(block.end) }))
-    .filter((block) => block.end > block.start)
-    .sort((a, b) => a.start - b.start);
-
-  const merged: Array<{ start: number; end: number }> = [];
-  for (const block of sorted) {
-    const last = merged[merged.length - 1];
-    if (last && block.start <= last.end) {
-      last.end = Math.max(last.end, block.end);
-    } else {
-      merged.push({ ...block });
-    }
-  }
-  return merged.map((block) => ({
-    start: minutesToTime(block.start),
-    end: minutesToTime(block.end),
-  }));
-}
-
-const WEEK_MINUTES = 7 * DAY_MINUTES;
-
-function wrapWeekMinute(value: number): number {
-  return ((value % WEEK_MINUTES) + WEEK_MINUTES) % WEEK_MINUTES;
-}
-
-function shiftWindows(windows: readonly AvailabilityWindow[], deltaMinutes: number): AvailabilityWindow[] {
-  const shifted: AvailabilityWindow[] = [];
-  for (const window of windows) {
-    let cursor = wrapWeekMinute(window.weekday * DAY_MINUTES + window.startMinute + deltaMinutes);
-    let remaining = window.endMinute - window.startMinute;
-    while (remaining > 0) {
-      const weekday = Math.floor(cursor / DAY_MINUTES);
-      const startMinute = cursor % DAY_MINUTES;
-      const duration = Math.min(remaining, DAY_MINUTES - startMinute);
-      shifted.push({ weekday, startMinute, endMinute: startMinute + duration });
-      remaining -= duration;
-      cursor = wrapWeekMinute(cursor + duration);
-    }
-  }
-
-  const merged: AvailabilityWindow[] = [];
-  for (const window of shifted.sort(
-    (left, right) => left.weekday - right.weekday || left.startMinute - right.startMinute,
-  )) {
-    const previous = merged[merged.length - 1];
-    if (previous && previous.weekday === window.weekday && window.startMinute <= previous.endMinute) {
-      previous.endMinute = Math.max(previous.endMinute, window.endMinute);
-    } else {
-      merged.push({ ...window });
-    }
-  }
-  return merged;
-}
-
-function localBlocksToWindows(days: DayBlocks): AvailabilityWindow[] {
-  return DAYS.flatMap((day) => days[day].map((block) => ({
-    weekday: AVAILABILITY_DAY_KEYS.indexOf(day),
-    startMinute: timeToMinutes(block.start),
-    endMinute: timeToMinutes(block.end),
-  })));
-}
-
-export function convertLocalDaysToAvailability(
-  days: DayBlocks,
-  timezone: string,
-  offsetMinutes: number,
-): MemberAvailability | null {
-  const localWindows = localBlocksToWindows(days);
-  if (localWindows.length === 0) return null;
-  return availabilityFromWindows(timezone, shiftWindows(localWindows, offsetMinutes));
-}
-
-export function convertAvailabilityToLocalDays(
-  availability: MemberAvailability | null,
-  offsetMinutes: number,
-): DayBlocks {
-  const days = emptyDays();
-  if (availability === null) return days;
-  for (const window of shiftWindows(availabilityToWindows(availability), -offsetMinutes)) {
-    const day = AVAILABILITY_DAY_KEYS[window.weekday]!;
-    days[day].push({
-      start: minutesToTime(window.startMinute),
-      end: minutesToTime(window.endMinute),
-    });
-  }
-  for (const day of DAYS) days[day] = normalizeBlocks(days[day]);
-  return days;
-}
-
-/* UTC day keys are the API and D1 contract. The editor shows local clock rows,
- * so conversion moves both the minute and weekday and splits at day boundaries. */
+/* UTC 的星期与时刻是 API 和 D1 的契约，编辑器排的是本地时钟行。换算住在
+   utils/availability.ts，同一份作息在资料页和公会战详情里必须读出同一个时刻。 */
 export function AvailabilityEditor({ value, onChange }: AvailabilityEditorProps) {
   const { t } = useTranslation("profile");
-  const timezone = useMemo(() => Intl.DateTimeFormat().resolvedOptions().timeZone, []);
-  const offsetMinutes = useMemo(() => new Date().getTimezoneOffset(), []);
+  const timezone = useMemo(() => viewerTimeZone(), []);
+  const offsetMinutes = useMemo(() => viewerUtcOffsetMinutes(), []);
   const [days, setDays] = useState<DayBlocks>(() => convertAvailabilityToLocalDays(value, offsetMinutes));
   const [pickerDay, setPickerDay] = useState<DayKey | null>(null);
   const [draftStart, setDraftStart] = useState("20:00");

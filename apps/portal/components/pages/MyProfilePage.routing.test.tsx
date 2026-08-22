@@ -1,4 +1,3 @@
-// @vitest-environment jsdom
 import { DEFAULT_SITE_MEDIA_POLICY } from "@guild/shared";
 import { MantineProvider } from "@mantine/core";
 import { render, screen } from "@testing-library/react";

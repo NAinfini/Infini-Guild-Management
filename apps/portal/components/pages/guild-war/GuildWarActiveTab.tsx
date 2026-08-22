@@ -7,8 +7,10 @@ import { useTranslation } from "react-i18next";
 import { useAppError } from "../../../hooks/useAppError";
 import { absenceQueryKeys, concludeGuildWar, guildWarQueryKeys, moveGuildWarMember, usersQueryKeys } from "../../../services/GuildWarService";
 import { fetchAbsencesWindow, fetchAllUsersListWithOptions } from "../../../services/UserService";
+import { localDateKey } from "../../../utils/datetime";
 import { notifySuccess } from "../../../utils/notifications";
 import { SwordsIcon } from "../../icons";
+import { GuildWarTeamEditModal } from "../../feature/guild-war/GuildWarTeamEditModal";
 import type { ConcludeWarMember, ConcludeWarSubmitData } from "../../feature/guild-war/ConcludeWarModal";
 import type { useGuildWarActiveController } from "../../feature/guild-war/useGuildWarActiveController";
 import type { useGuildWarDragController } from "../../../hooks/guild-war/useGuildWarDragController";
@@ -33,6 +35,7 @@ type GuildWarActiveTabProps = {
   selectedEventId: string | undefined;
   setSelectedEventId: (id: string) => void;
   canManageActive: boolean;
+  canViewMemberNotes: boolean;
   activeController: ReturnType<typeof useGuildWarActiveController>;
   guildWarDrag: ReturnType<typeof useGuildWarDragController>;
   guildWarHistory: ReturnType<typeof useGuildWarHistory>;
@@ -50,7 +53,8 @@ type GuildWarActiveTabProps = {
 export function resolveGuildWarAbsenceWindow(
   startAt: string | null | undefined,
 ): { from: string; to: string } | null {
-  const day = startAt?.slice(0, 10);
+  /* 请假是日历日期，按阅读者本地日期取战役那天，才和界面上显示的日期一致。 */
+  const day = startAt ? localDateKey(startAt) : undefined;
   if (!day || !/^\d{4}-\d{2}-\d{2}$/.test(day)) {
     return null;
   }
@@ -132,6 +136,7 @@ export function GuildWarActiveTab({
   selectedEventId,
   setSelectedEventId,
   canManageActive,
+  canViewMemberNotes,
   activeController,
   guildWarDrag,
   guildWarHistory,
@@ -308,7 +313,7 @@ export function GuildWarActiveTab({
   }
 
   return (
-    <Stack gap={12} style={{ display: "flex" }}>
+    <Stack gap={12} className="guild-war-active-shell">
       <Suspense fallback={<Card><Stack gap={10} p="md"><Skeleton height={32} width="40%" /><Skeleton height={32} /><Group gap={8}><Skeleton height={32} width="30%" /><Skeleton height={32} width="30%" /></Group></Stack></Card>}>
         <LazyGuildWarActiveTopCard
           selectedEventId={selectedEventId}
@@ -356,7 +361,6 @@ export function GuildWarActiveTab({
           dragColumns={guildWarDrag.dragColumns}
           canDrag={canManageActive && Boolean(selectedEventId)}
           emptyText={t("empty")}
-          activePoolStatus={guildWarDrag.activePoolStatus}
           activeSearch={activeController.activeSearch}
           activeDragItem={guildWarDrag.activeDragItem}
           toMemberDomId={guildWarDrag.toMemberDomId}
@@ -369,7 +373,6 @@ export function GuildWarActiveTab({
           onDragStart={guildWarDrag.handleDragStart}
           onDragCancel={guildWarDrag.handleDragCancel}
           onDragEnd={guildWarDrag.handleDragEnd}
-          teamStatusContentByContainerId={guildWarDrag.teamStatusContentByContainerId}
           onCopyTeamMentions={guildWarDrag.handleCopyTeamMentions}
           onToggleLock={canManageActive ? guildWarDrag.handleToggleLock : undefined}
           onMoveTeam={canManageActive ? guildWarDrag.handleMoveTeamOrder : undefined}
@@ -378,19 +381,25 @@ export function GuildWarActiveTab({
           teamCount={guildWarDrag.teamCount}
           teamIndexMap={guildWarDrag.teamIndexMap}
           onAddToPool={canManageActive && selectedEventId ? () => addToPoolHandlers.open() : undefined}
-          onDraftNameChange={canManageActive ? guildWarDrag.handleDraftNameChange : undefined}
+          onEditTeam={canManageActive ? guildWarDrag.handleEditTeam : undefined}
           disabled={!selectedEventId}
           absentUserIds={absentUserIds}
-          teamsDirty={activeController.isTeamsDirty}
-          saveTeamsPending={activeController.saveTeamsPending}
         />
       </Suspense>
+
+      <GuildWarTeamEditModal
+        target={guildWarDrag.teamEditorTarget}
+        onNameChange={guildWarDrag.handleDraftNameChange}
+        onNotesChange={guildWarDrag.handleDraftNotesChange}
+        onClose={guildWarDrag.handleCloseTeamEditor}
+      />
 
       <Suspense fallback={null}>
         <LazyWarMemberDetailModal
           open={Boolean(activeController.activeDetailUserId && guildWarDrag.activeDetail)}
           activeDetailUserId={activeController.activeDetailUserId}
           activeDetail={guildWarDrag.activeDetail}
+          canViewNotes={canViewMemberNotes}
           onClose={() => activeController.setActiveDetailUserId(null)}
         />
       </Suspense>

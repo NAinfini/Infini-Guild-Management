@@ -39,7 +39,7 @@ export const updateMemberBadgeSchema = z.object({
   name: z.string().min(1).max(80),
   label_html: z.string().min(1).max(2000),
   color: badgeColorSchema,
-  description: z.string().max(500),
+  description: z.string().max(500).nullable(),
   sort_order: badgeSortOrderSchema,
 }).partial().strict().refine((value) => Object.keys(value).length > 0, {
   message: "At least one badge field is required",

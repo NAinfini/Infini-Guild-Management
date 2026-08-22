@@ -26,10 +26,35 @@ export type PortalRouteGroup =
 
 export type PortalContentWidth = "reading" | "standard" | "wide" | "workbench";
 
+/*
+ * 站点分区。它与 group 是两件事：group 决定侧栏怎么分组，domain 决定页面用
+ * 哪个色相。两者大体重合但不完全——公会战在 group 里属于 operations，配色上
+ * 却该是自己的紫罗兰，所以这里单列一个字段，而不是从 group 推导出来再打两个补丁。
+ *
+ * 九个区，不是十二个。色环在「不占品牌青、离状态色够远、彼此够远」三条约束下
+ * 最多塞得进九支可辨的色相（推导见 tokens.css 的域色专用色支那节），所以有两处
+ * 合并：仓库与工具同属 ops，我的资料与设置同属 personal。两处都是同组相邻、
+ * 且后者本就是前者的配置面，合并读起来是一件事而不是省下来的。
+ *
+ * 不写 domain 的只剩仪表盘（以及登录、404）：那是「站点本身」，不属于任何内容
+ * 分区，正好让用户选的强调色在首屏露出来。
+ */
+export type PortalDomain =
+  | "announce"
+  | "ops"
+  | "gallery"
+  | "event"
+  | "wiki"
+  | "war"
+  | "personal"
+  | "admin"
+  | "roster";
+
 export type PortalRouteMetadata = {
   to: string;
   labelKey: string;
   group: PortalRouteGroup;
+  domain?: PortalDomain;
   icon: ComponentType<IconProps>;
   contentWidth: PortalContentWidth;
   /*
@@ -66,6 +91,7 @@ export const PORTAL_ROUTES: readonly PortalRouteMetadata[] = [
     to: "/announcements",
     labelKey: "nav.announcements",
     group: "community",
+    domain: "announce",
     icon: NotificationOutlined,
     contentWidth: "wide",
     fillsViewport: true,
@@ -76,6 +102,7 @@ export const PORTAL_ROUTES: readonly PortalRouteMetadata[] = [
     to: "/events",
     labelKey: "nav.events",
     group: "community",
+    domain: "event",
     icon: CalendarOutlined,
     contentWidth: "standard",
     mobilePrimary: 2,
@@ -85,6 +112,7 @@ export const PORTAL_ROUTES: readonly PortalRouteMetadata[] = [
     to: "/roster",
     labelKey: "nav.roster",
     group: "community",
+    domain: "roster",
     icon: TeamOutlined,
     contentWidth: "wide",
     fillsViewport: true,
@@ -95,6 +123,7 @@ export const PORTAL_ROUTES: readonly PortalRouteMetadata[] = [
     to: "/gallery",
     labelKey: "nav.gallery",
     group: "community",
+    domain: "gallery",
     icon: PictureOutlined,
     contentWidth: "wide",
     featureFlag: "gallery",
@@ -103,6 +132,7 @@ export const PORTAL_ROUTES: readonly PortalRouteMetadata[] = [
     to: "/wiki",
     labelKey: "nav.wiki",
     group: "community",
+    domain: "wiki",
     icon: BookOutlined,
     contentWidth: "wide",
     fillsViewport: true,
@@ -112,8 +142,10 @@ export const PORTAL_ROUTES: readonly PortalRouteMetadata[] = [
     to: "/guild-war",
     labelKey: "nav.guild-war",
     group: "operations",
+    domain: "war",
     icon: ThunderboltOutlined,
     contentWidth: "workbench",
+    fillsViewport: true,
     mobilePrimary: 3,
     featureFlag: "guildWar",
   },
@@ -121,6 +153,7 @@ export const PORTAL_ROUTES: readonly PortalRouteMetadata[] = [
     to: "/storage",
     labelKey: "nav.storage",
     group: "operations",
+    domain: "ops",
     icon: WarehouseOutlined,
     contentWidth: "workbench",
     requiresSession: true,
@@ -130,6 +163,7 @@ export const PORTAL_ROUTES: readonly PortalRouteMetadata[] = [
     to: "/tools",
     labelKey: "nav.tools",
     group: "operations",
+    domain: "ops",
     icon: ToolOutlined,
     contentWidth: "standard",
     featureFlag: "tools",
@@ -138,14 +172,17 @@ export const PORTAL_ROUTES: readonly PortalRouteMetadata[] = [
     to: "/profile",
     labelKey: "nav.profile",
     group: "personal",
+    domain: "personal",
     icon: UserOutlined,
     contentWidth: "standard",
+    fillsViewport: true,
     requiresSession: true,
   },
   {
     to: "/settings",
     labelKey: "nav.settings",
     group: "personal",
+    domain: "personal",
     icon: SettingOutlined,
     contentWidth: "standard",
   },
@@ -153,6 +190,7 @@ export const PORTAL_ROUTES: readonly PortalRouteMetadata[] = [
     to: "/admin",
     labelKey: "nav.admin",
     group: "administration",
+    domain: "admin",
     /* 和「设置」共用齿轮时，折叠成图标轨道后两项完全分不出来。 */
     icon: ShieldOutlined,
     contentWidth: "workbench",

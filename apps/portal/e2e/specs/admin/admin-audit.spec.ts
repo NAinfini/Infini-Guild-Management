@@ -1,55 +1,20 @@
 import { readFileSync } from "node:fs";
 import type { APIRequestContext, Locator, Page } from "@playwright/test";
-import type { JsonObject } from "@guild/shared";
+import type { AuditEvent, CursorResponse } from "@guild/shared";
 import { readAssignableRole } from "../../support/members";
 import { expect, readJson, test } from "../../support/test";
 import { ensureFiltersOpen, field, selectSegmentedControlOption } from "../../support/ui";
 
-/*
- * 后台「审计日志」页签的全部控件：搜索、时间预设分段、两个自定义日期框、筛选摘要上的
- * 清除按钮、行展开、分页（页码条 + 页码输入框）、CSV/JSON 导出、以及归档下载面板。
- *
- * 这一页所有筛选都是服务端做的，所以每一次操作都验到「请求真的带着这个条件发出去了」，
- * 再拿回来的 total / data 和界面对账——只看界面的话，前端在内存里过滤也能装得一样，
- * 而那样一超过一页就开始漏数据。
- *
- * 造数据的手法是「做一件会被记账的事」：建一个邀请码，服务端就会写下一行
- * entity_id = diff_title = 邀请码 id 的审计。这一行是本条用例独有的锚点，
- * 搜它就只剩一条，导出的内容也因此可以逐字断言。邀请码和审计行都会被
- * 系统测试注册表登记（audit.ts:84 会把每条审计行登记进本次运行），收尾时一起删掉。
- */
+/* Filters are server-owned; each interaction checks the outgoing query before asserting the UI. */
 
-/*
- * 这个文件必须关掉 trace，原因是量出来的，不是猜的：
- * 开着 trace（配置里是 retain-on-failure，等于每条用例全程都在录）时，浏览器进程会在
- * 渲染进程那次 fetch 之外，对同一个导出 URL 再补发一次请求——服务端日志里两条 GET，
- * 而 page.on("request") 只看得到一条；补发的那条没有 X-Request-Id、没有系统测试运行头，
- * user-agent 是 HeadlessChrome 而不是上下文覆盖过的那个，可见它绕开了渲染进程。
- * 同一条用例加 --trace=off 再跑，服务端就只剩一条 GET。
- *
- * 后果有两个，都不能靠放宽断言绕过去：
- *   - 导出接口每被调一次就写一行审计（这是有意的留痕），补发那次于是多写一行，
- *     后一次导出算出来的 total 就凭空多一条；
- *   - 补发的请求没带运行头，那行审计不会被登记进本次运行，收尾时删不掉，
- *     站点指纹对不上（table:audit_log 多一行），整轮 e2e 以「有数据没清干净」告终。
- * 两者都源自量测工具本身，不是产品缺陷，所以关掉的是工具，断言保持严格。
- * trace 只能在文件级设置（放进 describe 会被 Playwright 拒绝），所以这一整个文件都不录；
- * 需要排查时把下面这行注释掉重跑，只是别把导出那条的结果当真。
- */
+/* Trace replays export downloads outside the instrumented request context, creating an
+   unregistered audit event that cleanup cannot remove. Keep it disabled for this file. */
 test.use({ trace: "off" });
 
 const AUDIT_LOG_PATH = "/api/admin/audit-log";
 const PAGE_SIZE = 50;
 
-type AuditRow = {
-  id: string;
-  entity_type: string;
-  action: string;
-  entity_id: string;
-  diff_title: string | null;
-  detail: JsonObject | null;
-};
-type AuditPage = { data: AuditRow[]; total: number };
+type AuditPage = CursorResponse<AuditEvent>;
 
 /**
  * 默认时间范围：昨天 00:00 到今天 23:59（useAdminAuditFilter.ts:38）。
@@ -74,23 +39,12 @@ function searchBox(page: Page): Locator {
 function auditRows(page: Page): Locator {
   return page.locator(".audit-log-row");
 }
-function auditRowFor(page: Page, text: string): Locator {
-  return page.locator(".audit-log-row").filter({ hasText: text });
-}
 function filterSummary(page: Page): Locator {
   return page.locator(".admin-filter-summary");
 }
 function filterChip(page: Page, text: string): Locator {
   return page.locator(".admin-filter-chip").filter({ hasText: text });
 }
-/*
- * Mantine 的 Pagination 只给首/末/前/后四颗控件配了 aria-label，页码本身的无障碍名
- * 就是那个数字。限定在分页条里取，免得撞上页面上别处同名的按钮。
- */
-function pageButton(page: Page, name: string): Locator {
-  return page.locator(".mantine-Pagination-root").getByRole("button", { name, exact: true });
-}
-
 /**
  * 触发一次导出并等服务端把文件吐出来。
  * 这里不复用 flow.click：导出的响应体会被页面拿去建 blob 下载，读第二遍拿到的是空的。
@@ -109,7 +63,7 @@ async function clickExport(page: Page, item: Locator, contentType: string): Prom
 
 /**
  * 等一次审计列表请求，并要求它带着预期的查询参数（值写 null 表示这个参数必须不存在）。
- * 返回服务端的响应体，好让调用方拿 total / data 和界面对账。
+ * 返回服务端的 cursor page，好让调用方和界面对账。
  */
 async function expectAuditRequest(
   page: Page,
@@ -133,7 +87,6 @@ async function expectAuditRequest(
 /** 进审计页签，并把首屏那次取数接住。 */
 async function openAudit(page: Page): Promise<AuditPage> {
   const first = await expectAuditRequest(page, () => page.goto("/admin?tab=audit").then(() => undefined), {
-    page: "1",
     limit: String(PAGE_SIZE),
     start_at: startOf(utcDay(-1)),
     end_at: endOf(utcDay()),
@@ -144,19 +97,20 @@ async function openAudit(page: Page): Promise<AuditPage> {
 }
 
 /** 做一件会被记账的事：建个邀请码，换回它在审计里的那行锚点。 */
-async function makeAuditedEvent(api: APIRequestContext): Promise<{ id: string; code: string }> {
+async function makeAuditedEvent(api: APIRequestContext): Promise<{ id: string; code: string; roleName: string }> {
   const role = await readAssignableRole(api);
-  return await readJson(
+  const invite = await readJson(
     await api.post("/api/admin/invite-links", { data: { max_uses: 5, role_id: role.id } }),
     "创建邀请码以产生一行审计",
   ) as { id: string; code: string };
+  return { ...invite, roleName: role.name };
 }
 
 async function serverAudit(
   api: APIRequestContext,
   params: Record<string, string>,
 ): Promise<AuditPage> {
-  const query = new URLSearchParams({ page: "1", limit: String(PAGE_SIZE), ...params });
+  const query = new URLSearchParams({ limit: String(PAGE_SIZE), ...params });
   return await readJson(await api.get(`${AUDIT_LOG_PATH}?${query.toString()}`), "读取审计日志") as AuditPage;
 }
 
@@ -184,7 +138,7 @@ async function expectNoApiCalls(page: Page, action: () => Promise<void>): Promis
   expect(calls, "这段操作本不该发请求").toEqual([]);
 }
 
-test("进页签：默认按「昨天到今天」取第一页，筛选摘要报的条数和服务端一致", async ({ page }) => {
+test("进页签：默认按「昨天到今天」取首批事件，筛选摘要报的已加载条数和服务端一致", async ({ page }) => {
   const first = await openAudit(page);
 
   await expect(auditRows(page), "界面上的行数必须等于这一页真的取回来多少行")
@@ -194,38 +148,39 @@ test("进页签：默认按「昨天到今天」取第一页，筛选摘要报�
     filterChip(page, `${utcDay(-1)} to ${utcDay()}`),
     "默认就带着时间筛选，摘要必须如实说出来，否则看到的是被筛过的数据却以为是全量",
   ).toBeVisible();
-  await expect(filterSummary(page)).toContainText(`${first.total} entries`);
+  await expect(filterSummary(page)).toContainText(`${first.data.length} loaded`);
 });
 
 test("搜索：词送到服务端，命中的就是刚才那次操作，展开能看到当时的入参", async ({ page, api }) => {
   const invite = await makeAuditedEvent(api);
   const before = await openAudit(page);
-  expect(before.total, "刚建完邀请码，审计里至少该有这一行").toBeGreaterThan(0);
+  expect(before.data.length, "刚建完邀请码，审计里至少该有这一行").toBeGreaterThan(0);
 
   const searched = await expectAuditRequest(
     page,
     () => searchBox(page).fill(invite.id),
-    { search: invite.id, page: "1" },
+    { search: invite.id, cursor: null },
   );
-  expect(searched.total, "邀请码 id 是唯一的，只该命中它自己那一行").toBe(1);
-  expect(searched.data[0]?.entity_type).toBe("invite_link");
+  expect(searched.data, "邀请码 id 是唯一的，只该命中它自己那一行").toHaveLength(1);
+  expect(searched.data[0]?.subject.type).toBe("invite_link");
   expect(searched.data[0]?.action).toBe("create");
 
   await expect(auditRows(page)).toHaveCount(1);
   const row = auditRows(page).first();
-  await expect(row, "行上要看得出是什么对象、做了什么").toContainText("Invite");
-  await expect(row).toContainText("Created");
-  await expect(row, "标题位上是这条记录指向的实体").toContainText(invite.id);
-
-  /* 详情面板是这一页唯一能看到「当时到底传了什么」的地方。 */
   const header = row.locator(".audit-log-row__header");
+  await expect(header, "主行应使用完整自然语言描述").toContainText("created an invite link");
+  await expect(header).toContainText(invite.roleName);
+  await expect(header, "技术标识不应出现在主行").not.toContainText(invite.id);
+
   await expect(header).toHaveAttribute("aria-expanded", "false");
   await expectNoApiCalls(page, () => header.click());
   await expect(header).toHaveAttribute("aria-expanded", "true");
-  const detail = row.locator(".audit-log-row__detail-panel");
+  const detail = row.locator(".audit-log-row__details");
   await expect(detail).toBeVisible();
-  await expect(detail).toContainText("Max uses");
+  await expect(detail).toContainText("Maximum uses");
   await expect(detail).toContainText("5");
+  await detail.locator(".audit-technical-disclosure summary").click();
+  await expect(detail.getByText(invite.id, { exact: true })).toBeVisible();
 
   /* 摘要上的搜索标签是撤销这次筛选的唯一入口。 */
   await expect(filterChip(page, `Search: ${invite.id}`)).toBeVisible();
@@ -242,7 +197,6 @@ test("时间范围：三个预设各自改的是起始日，切回「自定义�
   const week = await expectAuditRequest(page, () => selectSegmentedControlOption(page, "7D"), {
     start_at: startOf(utcDay(-7)),
     end_at: endOf(utcDay()),
-    page: "1",
   });
   await expect(filterChip(page, `${utcDay(-7)} to ${utcDay()}`)).toBeVisible();
   await expect(
@@ -253,9 +207,8 @@ test("时间范围：三个预设各自改的是起始日，切回「自定义�
   await ensureFiltersOpen(toolbar(page));
   const month = await expectAuditRequest(page, () => selectSegmentedControlOption(page, "1M"), {
     start_at: startOf(utcDay(-30)),
-    page: "1",
   });
-  expect(month.total, "范围放宽之后条数只会多不会少").toBeGreaterThanOrEqual(week.total);
+  expect(month.data.length).toBeGreaterThanOrEqual(week.data.length);
 
   /* 切回「自定义」只是把两个日期框放出来，筛选条件一个字没变，不该重新取数。 */
   await ensureFiltersOpen(toolbar(page));
@@ -276,72 +229,44 @@ test("时间范围：三个预设各自改的是起始日，切回「自定义�
     () => filterChip(page, `${utcDay(-3)} to ${utcDay()}`).click(),
     { start_at: null, end_at: null },
   );
-  expect(cleared.total, "不限时间之后条数只会多不会少").toBeGreaterThanOrEqual(month.total);
+  expect(cleared.data.length).toBeGreaterThanOrEqual(month.data.length);
   await expect(filterSummary(page), "筛选全清之后摘要整条消失").toHaveCount(0);
 });
 
-test("翻页：页码条和页码输入框各自能换页；但换页之后再搜索不会回到第一页", async ({ page, api }) => {
-  /* 分页条要有第二页才有意义，先把当天的审计行顶到 51 条以上。 */
-  let total = (await serverAudit(api, { start_at: startOf(utcDay(-1)), end_at: endOf(utcDay()) })).total;
-  while (total <= PAGE_SIZE) {
+test("加载更多：使用游标追加事件，随后搜索会开启新的首批结果", async ({ page, api }) => {
+  const range = { start_at: startOf(utcDay(-1)), end_at: endOf(utcDay()) };
+  let firstServerPage = await serverAudit(api, range);
+  while (!firstServerPage.next_cursor) {
     await makeAuditedEvent(api);
-    total += 1;
+    firstServerPage = await serverAudit(api, range);
   }
   const anchor = await makeAuditedEvent(api);
-  total += 1;
 
   const first = await openAudit(page);
-  expect(first.total).toBe(total);
-  await expect(auditRows(page)).toHaveCount(PAGE_SIZE);
-  const firstPageTop = await auditRows(page).first().innerText();
+  expect(first.next_cursor).not.toBeNull();
+  await expect(auditRows(page)).toHaveCount(first.data.length);
 
-  const second = await expectAuditRequest(page, () => pageButton(page, "2").click(), {
-    page: "2",
-  });
-  await expect(auditRows(page)).toHaveCount(second.data.length);
-  expect(second.data.length, "第二页的行数就是剩下的那些").toBe(Math.min(PAGE_SIZE, total - PAGE_SIZE));
-  expect(
-    await auditRows(page).first().innerText(),
-    "第二页的第一行不该还是第一页那条，否则等于没换页",
-  ).not.toBe(firstPageTop);
+  const second = await expectAuditRequest(
+    page,
+    () => page.getByRole("button", { name: "Load more", exact: true }).click(),
+    { cursor: first.next_cursor },
+  );
+  await expect(auditRows(page)).toHaveCount(first.data.length + second.data.length);
 
-  /*
-   * 页码输入框是另一条换页路径。这里只断言渲染结果，不等请求：
-   * 全局 QueryClient 的 staleTime 是 5 分钟（router.tsx:263），第一页刚才已经取过，
-   * 回到第一页是命中缓存、一个请求都不发的——这是设计如此，不是没换页。
-   * 所以验收改成「屏幕上确实回到了第一页」：行数满页，且首行就是刚才记下的那一条。
-   */
-  await field(page, "Page").fill("1");
-  await expect(auditRows(page)).toHaveCount(PAGE_SIZE);
-  await expect
-    .poll(async () => await auditRows(page).first().innerText(), { message: "页码输入框没把界面切回第一页" })
-    .toBe(firstPageTop);
-
-  /* 同理，回到第二页也是命中缓存。 */
-  await pageButton(page, "2").click();
-  await expect(auditRows(page)).toHaveCount(second.data.length);
-
-  /*
-   * 现状如实记录，这是一处缺陷：
-   * SET_SEARCH 只改 search 不重置 page（useAdminAuditFilter.ts:25），
-   * 于是在第二页上开始搜索，请求带着 page=2 发出去。搜索结果只有一条时，
-   * 第二页当然是空的——界面给出的是「没有任何记录」，而那条记录明明就在。
-   * 修的时候把 SET_SEARCH 一并置 page: 1，然后把下面的断言换成「命中一行」。
-   */
   const searched = await expectAuditRequest(
     page,
     () => searchBox(page).fill(anchor.id),
-    { search: anchor.id, page: "2" },
+    { search: anchor.id, cursor: null },
   );
-  expect(searched.total, "服务端确实只有这一条命中").toBe(1);
-  expect(searched.data, "但请求要的是第二页，所以什么都拿不到").toEqual([]);
-  await expect(page.getByText("No audit log entries found")).toBeVisible();
-  await expect(auditRowFor(page, anchor.id), "记录就在库里，界面上却一行都看不到").toHaveCount(0);
+  expect(searched.data).toHaveLength(1);
+  await expect(auditRows(page)).toHaveCount(1);
+  await expect(auditRows(page).first().locator(".audit-log-row__header")).not.toContainText(anchor.id);
 });
 
 test("导出：CSV 和 JSON 都真的落盘、内容就是当前筛选的结果，且导出本身也被记进审计", async ({ page, api }) => {
   const invite = await makeAuditedEvent(api);
-  const exportsBefore = (await serverAudit(api, { entity_type: "audit_log_export" })).total;
+  const exportsBefore = await serverAudit(api, { entity_type: "audit_log_export" });
+  const exportIdsBefore = new Set(exportsBefore.data.map((event) => event.event_id));
 
   await openAudit(page);
   await expectAuditRequest(page, () => searchBox(page).fill(invite.id), { search: invite.id });
@@ -359,7 +284,7 @@ test("导出：CSV 和 JSON 都真的落盘、内容就是当前筛选的结果�
     .toBe(`${filenameBase}.csv`);
   const csv = readFileSync(await csvFile.path(), "utf8").trim().split("\n");
   expect(csv[0], "表头必须齐全，缺一列就意味着导出的数据不完整").toBe(
-    "id,entity_type,action,actor_id,actor_username,entity_id,diff_title,detail,created_at",
+    "event_id,subject_type,action,actor_id,actor_label,subject_id,subject_label,payload,occurred_at",
   );
   expect(csv.length, "当前筛选只剩一条，导出的就该只有这一条——导出必须跟着筛选走").toBe(2);
   expect(csv[1], "导出的正是屏幕上那一条").toContain(invite.id);
@@ -375,22 +300,20 @@ test("导出：CSV 和 JSON 都真的落盘、内容就是当前筛选的结果�
     total: number;
     start_at: string;
     end_at: string;
-    data: AuditRow[];
+    data: AuditEvent[];
   };
-  /*
-   * 搜索合同只匹配摘要、实体 id 和操作者用户名，不扫描 detail JSON。
-   * 所以前一次导出虽然会留痕，但不会污染仍按邀请码 id 筛选的第二次导出。
-   */
+  /* 导出留痕不会命中仍按邀请码 id 过滤的下一次导出。 */
   expect(json.total, "第二次导出仍然只包含当前筛选命中的那条记录").toBe(1);
   expect(json.start_at, "导出的时间范围要和界面上筛的一致").toBe(startOf(utcDay(-1)));
   expect(json.end_at).toBe(endOf(utcDay()));
-  const exported = json.data.map((row) => row.entity_id);
+  const exported = json.data.map((row) => row.subject.id);
   expect(exported, "导出的就是屏幕上按邀请码 id 命中的那一条").toEqual([invite.id]);
 
   /* 导出是把全站操作记录带出系统的动作，它自己必须留痕。 */
   const exportsAfter = await serverAudit(api, { entity_type: "audit_log_export" });
-  expect(exportsAfter.total, "两次导出要各自记下一行").toBe(exportsBefore + 2);
-  const actions = exportsAfter.data.slice(0, 2).map((row) => row.action).sort();
+  const newExports = exportsAfter.data.filter((event) => !exportIdsBefore.has(event.event_id));
+  expect(newExports, "两次导出要各自记下一行").toHaveLength(2);
+  const actions = newExports.map((row) => row.action).sort();
   expect(actions).toEqual(["export_filtered_csv", "export_filtered_json"]);
 });
 

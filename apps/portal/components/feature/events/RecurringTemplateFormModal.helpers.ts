@@ -1,5 +1,14 @@
 import type { EventClassQuotaInput, EventType, RecurrenceRule, RecurringTemplate } from "@guild/shared";
-import { computeNextOccurrence, localWeekdayToUtc, utcWeekdayToLocal } from "@guild/shared/utils/recurrence";
+import {
+  computeNextOccurrenceFromCursor,
+  localWeekdayToUtc,
+  recurrenceCursorBefore,
+  utcWeekdayToLocal,
+} from "@guild/shared/utils/recurrence";
+import {
+  formatLocaleParts,
+  parseClockMinutes,
+} from "../../../utils/datetime";
 import { toClassQuotaInputs } from "./class-quota-view";
 
 export { localWeekdayToUtc, utcWeekdayToLocal };
@@ -11,13 +20,13 @@ export type DurationUnit = "minutes" | "hours";
 export type RecurringTemplateFormPayload = {
   type: EventType;
   title: string;
-  description?: string;
+  description: string | null;
   /** UTC wall-clock "HH:mm" — converted from the local form input before submit. */
   start_time: string;
-  duration_minutes?: number;
-  capacity?: number;
+  duration_minutes?: number | null;
+  capacity?: number | null;
   recurrence_rule: RecurrenceRule;
-  visibility_offset_minutes?: number;
+  visibility_offset_minutes: number;
   auto_archive?: boolean;
   class_quotas: EventClassQuotaInput[];
 };
@@ -87,43 +96,49 @@ export function buildRecurrenceRule(
   };
 }
 
-/**
- * Build a synthetic ISO string whose local-vs-UTC day shift matches the given
- * timezone offset and start time.  The day-shift depends on the *actual event
- * time*, not midnight — e.g. 17:00 in UTC+8 is 09:00 UTC (same day), while
- * 00:00 in UTC+8 is 16:00 UTC the previous day.
- */
-export function tzOffsetToAnchorIso(offsetMinutes: number, startTime = "12:00"): string {
-  const match = startTime.match(/^(\d{1,2}):(\d{2})$/);
-  const localHour = match ? Number(match[1]) : 12;
-  const localMinute = match ? Number(match[2]) : 0;
-  const baseMs = Date.UTC(2026, 0, 4, localHour, localMinute);
-  return new Date(baseMs - offsetMinutes * 60_000).toISOString();
+function formatClock(hour: number, minute: number): string {
+  return `${String(hour).padStart(2, "0")}:${String(minute).padStart(2, "0")}`;
 }
 
-/** Shift an "HH:mm" wall-clock by deltaMinutes, wrapping at midnight. */
-function shiftHHmm(time: string, deltaMinutes: number): string | null {
-  const match = time.match(/^(\d{1,2}):(\d{2})$/);
-  if (!match) return null;
-  const hour = Number(match[1]);
-  const minute = Number(match[2]);
-  if (hour > 23 || minute > 59) return null;
-  const total = (((hour * 60 + minute + deltaMinutes) % 1440) + 1440) % 1440;
-  return `${String(Math.floor(total / 60)).padStart(2, "0")}:${String(total % 60).padStart(2, "0")}`;
+function localDateAtClock(referenceDate: Date, time: string): Date | null {
+  const minutes = parseClockMinutes(time);
+  if (minutes === null || !Number.isFinite(referenceDate.getTime())) return null;
+  const date = new Date(referenceDate);
+  date.setHours(Math.floor(minutes / 60), minutes % 60, 0, 0);
+  return date;
 }
 
-/**
- * Convert a stored UTC "HH:mm" to the viewer's local wall-clock for display.
- * Returns the input verbatim if it is not a valid "HH:mm" so bad data stays
- * visible instead of being masked.
- */
-export function utcTimeToLocalTime(utcTime: string): string {
-  return shiftHHmm(utcTime, -new Date().getTimezoneOffset()) ?? utcTime;
+function utcDateAtClock(referenceDate: Date, time: string): Date | null {
+  const minutes = parseClockMinutes(time);
+  if (minutes === null || !Number.isFinite(referenceDate.getTime())) return null;
+  const date = new Date(referenceDate);
+  date.setUTCHours(Math.floor(minutes / 60), minutes % 60, 0, 0);
+  return date;
 }
 
-/** Convert a locally-entered "HH:mm" to the UTC "HH:mm" to persist. */
-export function localTimeToUtcTime(localTime: string): string {
-  return shiftHHmm(localTime, new Date().getTimezoneOffset()) ?? localTime;
+/** An actual local date/time anchor for a form clock value, including that date's DST offset. */
+export function localClockAnchorIso(time: string, referenceDate = new Date()): string {
+  return localDateAtClock(referenceDate, time)?.toISOString() ?? "";
+}
+
+/** Convert a local form clock using the offset at its relevant calendar date. */
+export function localClockToUtcAt(time: string, referenceDate: Date): string {
+  const date = localDateAtClock(referenceDate, time);
+  return date ? formatClock(date.getUTCHours(), date.getUTCMinutes()) : time;
+}
+
+/** Convert a stored UTC clock using the offset at its relevant calendar date. */
+export function utcClockToLocalAt(time: string, referenceDate: Date): string {
+  const date = utcDateAtClock(referenceDate, time);
+  return date ? formatClock(date.getHours(), date.getMinutes()) : time;
+}
+
+/** The actual UTC start instant for the template date that drives local display. */
+export function templateScheduleAnchor(template: RecurringTemplate): Date | null {
+  const referenceDate = template.last_generated_date
+    ? new Date(`${template.last_generated_date}T00:00:00.000Z`)
+    : new Date(template.created_at);
+  return utcDateAtClock(referenceDate, template.start_time);
 }
 
 function durationFromMinutes(totalMinutes: number | null): { value: number; unit: DurationUnit } {
@@ -138,9 +153,10 @@ export function buildFormState(template: RecurringTemplate | null): RecurringTem
   const totalMinutes = template?.visibility_offset_minutes ?? null;
   const recurrenceRule = template?.recurrence_rule;
   const storedDays = recurrenceRule?.frequency === "weekly" ? recurrenceRule.daysOfWeek : [1, 3, 5];
-  // start_time is stored as UTC; anchor on the instant at that UTC time so the
-  // weekday conversion matches the viewer's actual local offset.
-  const anchorIso = template ? tzOffsetToAnchorIso(0, template.start_time) : null;
+  // start_time is stored as UTC; anchor on an actual template-related instant
+  // so weekday conversion uses that date's real DST offset.
+  const scheduleAnchor = template ? templateScheduleAnchor(template) : null;
+  const anchorIso = scheduleAnchor?.toISOString() ?? null;
   const localDays = anchorIso
     ? storedDays.map((d) => utcWeekdayToLocal(d, anchorIso))
     : storedDays;
@@ -148,7 +164,9 @@ export function buildFormState(template: RecurringTemplate | null): RecurringTem
     title: template?.title ?? "",
     eventType: template?.type ?? "",
     description: template?.description ?? "",
-    startTime: template ? utcTimeToLocalTime(template.start_time) : "00:00",
+    startTime: template && scheduleAnchor
+      ? formatClock(scheduleAnchor.getHours(), scheduleAnchor.getMinutes())
+      : template?.start_time ?? "00:00",
     durationValue: duration.value,
     durationUnit: duration.unit,
     capacity: template?.capacity === null ? "" : String(template?.capacity ?? ""),
@@ -156,7 +174,9 @@ export function buildFormState(template: RecurringTemplate | null): RecurringTem
     recurrenceFreq: recurrenceRule?.frequency ?? "weekly",
     recurrenceInterval: String(recurrenceRule?.interval ?? 1),
     recurrenceDays: localDays,
-    recurrenceMonthDay: recurrenceRule?.frequency === "monthly" ? String(recurrenceRule.dayOfMonth) : "1",
+    recurrenceMonthDay: recurrenceRule?.frequency === "monthly"
+      ? String(recurrenceRule.dayOfMonth)
+      : "1",
     recurrenceEndMode: recurrenceRule?.endDate
       ? "date"
       : recurrenceRule?.endAfter
@@ -183,19 +203,14 @@ export type LifecyclePreview = {
   endTime: Date | null;
 };
 
-function parseStartTimeToUtc(
-  startTime: string,
-  timezoneOffsetMinutes: number,
+/* 共享游标计算要 UTC 的时与分；无效挂钟会保留原值并在此解析失败。 */
+function parseUtcStartTime(
+  localStartTime: string,
+  referenceDate: Date,
 ): { utcHour: number; utcMinute: number } | null {
-  const match = startTime.match(/^(\d{1,2}):(\d{2})$/);
-  if (!match) return null;
-  const localHour = Number(match[1]);
-  const localMinute = Number(match[2]);
-  if (localHour < 0 || localHour > 23 || localMinute < 0 || localMinute > 59) return null;
-  const totalMinutesLocal = localHour * 60 + localMinute;
-  let totalMinutesUtc = totalMinutesLocal - timezoneOffsetMinutes;
-  totalMinutesUtc = ((totalMinutesUtc % 1440) + 1440) % 1440;
-  return { utcHour: Math.floor(totalMinutesUtc / 60), utcMinute: totalMinutesUtc % 60 };
+  const utcMinutes = parseClockMinutes(localClockToUtcAt(localStartTime, referenceDate));
+  if (utcMinutes === null) return null;
+  return { utcHour: Math.floor(utcMinutes / 60), utcMinute: utcMinutes % 60 };
 }
 
 export function computeNextLifecyclePreview(
@@ -205,35 +220,29 @@ export function computeNextLifecyclePreview(
 ): LifecyclePreview | null {
   if (!formState.startTime) return null;
 
-  const timezoneOffsetMinutes = -new Date().getTimezoneOffset();
-  const utcTime = parseStartTimeToUtc(formState.startTime, timezoneOffsetMinutes);
+  const now = new Date();
+  const referenceDate = mode === "edit" && template ? new Date(template.created_at) : now;
+  if (!Number.isFinite(referenceDate.getTime())) return null;
+
+  const cursor = mode === "edit" && template?.last_generated_date
+    ? new Date(`${template.last_generated_date}T00:00:00.000Z`)
+    : recurrenceCursorBefore(now);
+  if (!cursor || !Number.isFinite(cursor.getTime())) return null;
+
+  const timezoneReference = mode === "edit" && template?.last_generated_date ? cursor : now;
+  const utcTime = parseUtcStartTime(formState.startTime, timezoneReference);
   if (!utcTime) return null;
 
-  const anchorIso = tzOffsetToAnchorIso(timezoneOffsetMinutes, formState.startTime);
+  const anchorIso = localClockAnchorIso(formState.startTime, timezoneReference);
   const rule = buildRecurrenceRule(formState, anchorIso);
 
-  const now = new Date();
-  let referenceDate: Date;
-  let anchor: Date;
-
-  if (mode === "edit" && template) {
-    referenceDate = new Date(template.created_at);
-    if (template.last_generated_date) {
-      anchor = new Date(`${template.last_generated_date}T00:00:00Z`);
-      anchor.setUTCHours(utcTime.utcHour, utcTime.utcMinute, 0, 0);
-    } else {
-      anchor = new Date(referenceDate);
-      anchor.setUTCDate(anchor.getUTCDate() - 1);
-      anchor.setUTCHours(utcTime.utcHour, utcTime.utcMinute, 0, 0);
-    }
-  } else {
-    referenceDate = now;
-    anchor = new Date(now);
-    anchor.setUTCDate(anchor.getUTCDate() - 1);
-    anchor.setUTCHours(utcTime.utcHour, utcTime.utcMinute, 0, 0);
-  }
-
-  const nextStart = computeNextOccurrence(anchor, utcTime.utcHour, utcTime.utcMinute, rule, referenceDate);
+  const nextStart = computeNextOccurrenceFromCursor(
+    cursor,
+    utcTime.utcHour,
+    utcTime.utcMinute,
+    rule,
+    referenceDate,
+  );
   if (!nextStart) return null;
 
   const offsetD = typeof formState.visibilityOffsetDays === "number" ? formState.visibilityOffsetDays : 0;
@@ -253,17 +262,8 @@ export function computeNextLifecyclePreview(
 }
 
 export function formatLifecycleDate(date: Date, locale: string): string {
-  const datePart = new Intl.DateTimeFormat(locale, {
-    month: "2-digit",
-    day: "2-digit",
-  }).format(date);
-  const weekdayPart = new Intl.DateTimeFormat(locale, {
-    weekday: "short",
-  }).format(date);
-  const timePart = new Intl.DateTimeFormat(locale, {
-    hour: "2-digit",
-    minute: "2-digit",
-    hour12: false,
-  }).format(date);
+  const datePart = formatLocaleParts(date, locale, { month: "2-digit", day: "2-digit" });
+  const weekdayPart = formatLocaleParts(date, locale, { weekday: "short" });
+  const timePart = formatLocaleParts(date, locale, { hour: "2-digit", minute: "2-digit", hour12: false });
   return `${datePart} (${weekdayPart}) ${timePart}`;
 }

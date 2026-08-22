@@ -1,3 +1,4 @@
+// @vitest-environment node
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { queryKeys } from "../query-keys";
 import { fetchAnnouncements } from "./announcements";

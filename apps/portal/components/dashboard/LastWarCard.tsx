@@ -16,7 +16,8 @@ import {
 import { FlameIcon, HeartIcon, HammerIcon, ShieldIcon } from "@portal/components/icons";
 import { CompareBar } from "../shared/CompareBar";
 import { EmptyState } from "../shared/EmptyState";
-import { cardHeading, formatDateTime, type DashboardLastWarMvp, type DashboardLastWarMvpEntry } from "./shared";
+import { formatDateTime } from "@portal/utils/datetime";
+import { cardHeading, type DashboardLastWarMvp, type DashboardLastWarMvpEntry } from "./shared";
 import { findGuildWarResultDefinition } from "@guild/shared";
 import { getGuildWarResultLabel, getGuildWarTeamStatLabel } from "@portal/utils/game-rules";
 

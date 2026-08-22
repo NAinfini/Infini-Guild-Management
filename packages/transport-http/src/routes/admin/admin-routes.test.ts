@@ -13,7 +13,7 @@ const role: RoleRecord = {
   revisionToken: "role-v1", createdAt: NOW, updatedAt: NOW,
 };
 const invite: InviteRecord & { code: string } = {
-  id: "invite-1", code: "invite-code", createdBy: "admin-1", roleId: "member", roleName: "Member",
+  id: "invite-1", code: "A1b2C3d4E5", createdBy: "admin-1", roleId: "member", roleName: "Member",
   roleColor: null, roleLevel: 100, maxUses: 5, usedCount: 1, expiresAt: null, createdAt: NOW, revokedAt: null,
 };
 
@@ -67,7 +67,7 @@ describe("admin identity Portal HTTP contract", () => {
     const invites = await app.request("/api/admin/invite-links?visibility=active&limit=25&cursor=current&search=member");
     expect(await invites.json()).toEqual({
       data: [{
-        id: "invite-1", code: "invite-code", created_by: "admin-1", role_id: "member",
+        id: "invite-1", code: "A1b2C3d4E5", created_by: "admin-1", role_id: "member",
         role_name: "Member", role_color: null, role_level: 100, max_uses: 5, used_count: 1,
         expires_at: null, created_at: NOW, revoked_at: null,
       }],

@@ -9,7 +9,7 @@
 
 .settings-section {
   border: 1px solid color-mix(in srgb, var(--border-subtle) 80%, transparent);
-  background: var(--surface-raised);
+  background: var(--plate-fill);
   padding: 24px;
 }
 

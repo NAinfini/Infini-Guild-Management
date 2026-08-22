@@ -1,54 +1,36 @@
-import { readFileSync } from "node:fs";
-import { DatabaseSync, type SQLInputValue } from "node:sqlite";
-import { fileURLToPath } from "node:url";
+import { DatabaseSync } from "node:sqlite";
 import type { BlobStore } from "@guild/kernel";
 import { createAuthorizationContext, createRequestContext } from "@guild/kernel";
 import { SystemTestService } from "@guild/server/modules/system-test";
 import { SYSTEM_TEST_ARTIFACT_TYPES } from "@guild/shared/schemas/system-test";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import type {
-  SqlBatchStatement,
-  SqlExecutor,
-  SqlResult,
-  SqlRow,
-  SqlStatement,
-} from "@guild/kernel";
+import { migratedApplicationSchemaSql } from "../../../../scripts/testing/application-migrations.js";
+import { SqliteTestExecutor } from "../testing/sqlite-test-executor.js";
 import { SqliteSystemTestArtifactCleaner } from "./system-test-artifact-cleaner.js";
 import { SqliteSystemTestStore } from "./system-test-store.js";
 
 const NOW = "2026-08-09T12:00:00.000Z";
-const SYSTEM_TEST_TRIGGERS = readFileSync(
-  fileURLToPath(new URL("../schema/system-test.invariants.sql", import.meta.url)),
-  "utf8",
-);
+const EMPTY_AUDIT_PAYLOAD = JSON.stringify({ schema_version: 2, changes: [], context: [] });
+const AUDIT_LOG_SCHEMA = migratedApplicationSchemaSql(["audit_log"]);
+const SYSTEM_TEST_TRIGGERS = migratedApplicationSchemaSql([
+  "system_test_runs_identity_immutable",
+  "system_test_runs_status_transition",
+  "system_test_requests_active_run_insert",
+  "system_test_requests_immutable",
+  "system_test_artifacts_active_request_insert",
+  "system_test_artifacts_immutable",
+  "system_test_artifacts_cleanup_delete_only",
+  "system_test_before_images_active_request_insert",
+  "system_test_before_images_guard_update",
+  "system_test_before_images_cleanup_delete_only",
+  "system_test_audit_artifact_registry",
+  "system_test_error_artifact_registry",
+]);
+const INSERT_AUDIT_SQL = `INSERT INTO audit_log (
+  id, request_id, actor_kind, actor_id, actor_label, subject_type, subject_id,
+  subject_label, action, payload_json, occurred_at
+) VALUES (?, ?, 'user', ?, NULL, ?, ?, NULL, ?, ?, ?)`;
 const databases: DatabaseSync[] = [];
-
-class TestExecutor implements SqlExecutor {
-  constructor(readonly database: DatabaseSync) {}
-  async execute(statement: SqlStatement): Promise<SqlResult> { return this.run(statement); }
-  async batch(statements: readonly SqlBatchStatement[]): Promise<readonly SqlResult[]> {
-    this.database.exec("BEGIN IMMEDIATE");
-    try {
-      const results = statements.map((statement) => this.run(statement));
-      this.database.exec("COMMIT");
-      return results;
-    } catch (error) {
-      this.database.exec("ROLLBACK");
-      throw error;
-    }
-  }
-  private run(statement: SqlStatement): SqlResult {
-    const prepared = this.database.prepare(statement.sql);
-    const params = [...(statement.params ?? [])] as SQLInputValue[];
-    if (statement.method === "run") {
-      const result = prepared.run(...params);
-      return { rows: [], lastInsertRowId: result.lastInsertRowid };
-    }
-    prepared.setReturnArrays(true);
-    if (statement.method === "get") return { rows: prepared.get(...params) as unknown as SqlRow | undefined };
-    return { rows: prepared.all(...params) as unknown as readonly SqlRow[] };
-  }
-}
 
 afterEach(() => {
   for (const database of databases.splice(0)) database.close();
@@ -70,7 +52,7 @@ function harness() {
     )
     BEGIN SELECT RAISE(ABORT, 'audit immutable'); END;`);
   database.prepare("INSERT INTO users (id, username) VALUES ('admin-1', 'admin'), ('admin-2', 'other')").run();
-  const executor = new TestExecutor(database);
+  const executor = new SqliteTestExecutor(database);
   const store = new SqliteSystemTestStore(executor);
   const artifacts = new SqliteSystemTestArtifactCleaner(executor);
   const deleteBlobs = vi.fn();
@@ -90,6 +72,16 @@ function context(userId = "admin-1", requestId: string = crypto.randomUUID()) {
     }),
     now: NOW,
   });
+}
+
+function auditParams(
+  id: string,
+  requestId: string,
+  subjectType: string,
+  subjectId: string,
+  action: string,
+): [string, string, string, string, string, string, string, string] {
+  return [id, requestId, "admin-1", subjectType, subjectId, action, EMPTY_AUDIT_PAYLOAD, NOW];
 }
 
 describe("SqliteSystemTestStore", () => {
@@ -125,10 +117,8 @@ describe("SqliteSystemTestStore", () => {
       },
       {
         method: "run",
-        sql: `INSERT INTO audit_log
-          (id, request_id, actor_user_id, entity_type, entity_id, action, occurred_at)
-          VALUES ('audit-test', 'request-run', 'admin-1', 'wiki_category', 'category-test', 'create', ?)`,
-        params: [NOW],
+        sql: INSERT_AUDIT_SQL,
+        params: auditParams("audit-test", "request-run", "wiki_category", "category-test", "create"),
       },
     ]);
 
@@ -166,11 +156,9 @@ describe("SqliteSystemTestStore", () => {
       ["class_tag", "create", "tag-created", "class_tag"],
       ["member_absence", "create", "absence-created", "member_absence"],
     ] as const;
-    const insert = database.prepare(`INSERT INTO audit_log
-      (id, request_id, actor_user_id, entity_type, entity_id, action, occurred_at)
-      VALUES (?, ?, 'admin-1', ?, ?, ?, ?)`);
+    const insert = database.prepare(INSERT_AUDIT_SQL);
     cases.forEach(([entityType, action, entityId], index) => {
-      insert.run(`audit-map-${index}`, owner.requestId, entityType, entityId, action, NOW);
+      insert.run(...auditParams(`audit-map-${index}`, owner.requestId, entityType, entityId, action));
     });
 
     const actual = database.prepare(`SELECT artifact_type, artifact_key
@@ -196,18 +184,14 @@ describe("SqliteSystemTestStore", () => {
       { method: "run", sql: "INSERT INTO gallery_items (id) VALUES ('gallery-a'), ('gallery-b')" },
       {
         method: "run",
-        sql: `INSERT INTO audit_log
-          (id, request_id, actor_user_id, entity_type, entity_id, action, occurred_at)
-          VALUES ('audit-gallery', 'request-run', 'admin-1', 'gallery_item', 'gallery-a,gallery-b', 'upload_images', ?)`,
-        params: [NOW],
+        sql: INSERT_AUDIT_SQL,
+        params: auditParams("audit-gallery", "request-run", "gallery_item", "gallery-a,gallery-b", "upload_images"),
       },
       { method: "run", sql: "INSERT INTO guild_wars (id, event_id) VALUES ('war-exact', 'event-public')" },
       {
         method: "run",
-        sql: `INSERT INTO audit_log
-          (id, request_id, actor_user_id, entity_type, entity_id, action, occurred_at)
-          VALUES ('audit-war', 'request-run', 'admin-1', 'guild_war', 'event-public', 'init', ?)`,
-        params: [NOW],
+        sql: INSERT_AUDIT_SQL,
+        params: auditParams("audit-war", "request-run", "guild_war", "event-public", "init"),
       },
     ]);
 
@@ -289,10 +273,13 @@ describe("SqliteSystemTestStore", () => {
       (run_id, artifact_type, artifact_key, request_id, created_at)
       VALUES (?, ?, ?, ?, ?)`);
     for (const [type, key] of artifacts) register.run(runId, type, key, owner.requestId, NOW);
-    database.prepare(`INSERT INTO audit_log
-      (id, request_id, actor_user_id, entity_type, entity_id, action, occurred_at)
-      VALUES ('audit-created', ?, 'admin-1', 'system_test_probe', 'probe', 'probe', ?)`)
-      .run(owner.requestId, NOW);
+    database.prepare(INSERT_AUDIT_SQL).run(...auditParams(
+      "audit-created",
+      owner.requestId,
+      "system_test",
+      "probe",
+      "run",
+    ));
     database.prepare("INSERT INTO error_log (id, request_id, created_at) VALUES ('error-created', ?, ?)")
       .run(owner.requestId, NOW);
 
@@ -326,9 +313,13 @@ describe("SqliteSystemTestStore", () => {
     const { runId } = await service.createRun(owner);
     await service.beginRequest(owner, runId);
 
-    database.prepare(`INSERT INTO audit_log
-      (id, request_id, actor_user_id, entity_type, entity_id, action, occurred_at)
-      VALUES ('audit-forged', 'forged-request', 'admin-1', 'wiki_category', 'forged', 'create', ?)`).run(NOW);
+    database.prepare(INSERT_AUDIT_SQL).run(...auditParams(
+      "audit-forged",
+      "forged-request",
+      "wiki_category",
+      "forged",
+      "create",
+    ));
     expect(database.prepare("SELECT count(*) AS count FROM system_test_artifacts WHERE artifact_key = 'forged'").get())
       .toMatchObject({ count: 0 });
 
@@ -336,10 +327,8 @@ describe("SqliteSystemTestStore", () => {
       { method: "run", sql: "INSERT INTO wiki_categories (id, name) VALUES ('rolled-back', 'Rollback')" },
       {
         method: "run",
-        sql: `INSERT INTO audit_log
-          (id, request_id, actor_user_id, entity_type, entity_id, action, occurred_at)
-          VALUES ('audit-rollback', 'request-run', 'admin-1', 'wiki_category', 'rolled-back', 'create', ?)`,
-        params: [NOW],
+        sql: INSERT_AUDIT_SQL,
+        params: auditParams("audit-rollback", "request-run", "wiki_category", "rolled-back", "create"),
       },
       { method: "run", sql: "INSERT INTO wiki_categories (id, name) VALUES ('rolled-back', 'Duplicate')" },
     ])).rejects.toThrow();
@@ -370,10 +359,8 @@ describe("SqliteSystemTestStore", () => {
       },
       {
         method: "run",
-        sql: `INSERT INTO audit_log
-          (id, request_id, actor_user_id, entity_type, entity_id, action, occurred_at)
-          VALUES ('audit-test', 'request-run', 'admin-1', 'wiki_category', 'category-test', 'create', ?)`,
-        params: [NOW],
+        sql: INSERT_AUDIT_SQL,
+        params: auditParams("audit-test", "request-run", "wiki_category", "category-test", "create"),
       },
     ]);
 
@@ -463,10 +450,23 @@ describe("SqliteSystemTestStore", () => {
     expect(await service.cleanupRun(owner, runId)).toEqual({ ok: true, status: "completed", attempts: 1 });
     await service.finalizeRun(owner, runId, { total: 1, passed: 1, failed: 0, errors: [] });
 
-    expect(database.prepare("SELECT entity_type, action, detail_json FROM audit_log").get()).toEqual({
-      entity_type: "system_test",
+    const audit = database.prepare("SELECT subject_type, action, payload_json FROM audit_log").get() as {
+      subject_type: string;
+      action: string;
+      payload_json: string;
+    };
+    expect({ ...audit, payload_json: JSON.parse(audit.payload_json) }).toEqual({
+      subject_type: "system_test",
       action: "run",
-      detail_json: JSON.stringify({ total: 1, passed: 1, failed: 0, errors: [] }),
+      payload_json: {
+        schema_version: 2,
+        changes: [],
+        context: [
+          { field: "total", value: { type: "number", value: 1 } },
+          { field: "passed", value: { type: "number", value: 1 } },
+          { field: "failed", value: { type: "number", value: 0 } },
+        ],
+      },
     });
     for (const table of ["system_test_before_images", "system_test_artifacts", "system_test_requests", "system_test_runs"]) {
       expect(database.prepare(`SELECT count(*) AS count FROM ${table}`).get(), table).toMatchObject({ count: 0 });
@@ -474,23 +474,19 @@ describe("SqliteSystemTestStore", () => {
   });
 
   it("continues bounded cleanup pages without incrementing the same attempt", async () => {
-    const { database, executor, service } = harness();
+    const { database, service } = harness();
     const owner = context("admin-1", "request-run");
     const { runId } = await service.createRun(owner);
     await service.beginRequest(owner, runId);
-    const statements: SqlBatchStatement[] = [];
+    const insertCategory = database.prepare("INSERT INTO wiki_categories (id, name) VALUES (?, ?)");
+    const insertArtifact = database.prepare(`INSERT INTO system_test_artifacts
+      (run_id, artifact_type, artifact_key, request_id, created_at)
+      VALUES (?, 'wiki_category', ?, ?, ?)`);
     for (let index = 0; index < 51; index += 1) {
       const id = `category-${index}`;
-      statements.push({ method: "run", sql: "INSERT INTO wiki_categories (id, name) VALUES (?, ?)", params: [id, id] });
-      statements.push({
-        method: "run",
-        sql: `INSERT INTO system_test_artifacts
-          (run_id, artifact_type, artifact_key, request_id, created_at)
-          VALUES (?, 'wiki_category', ?, ?, ?)`,
-        params: [runId, id, owner.requestId, NOW],
-      });
+      insertCategory.run(id, id);
+      insertArtifact.run(runId, id, owner.requestId, NOW);
     }
-    await executor.batch(statements);
     await service.endRequest(owner.requestId);
 
     expect(await service.cleanupRun(owner, runId)).toEqual({ ok: false, status: "cleaning", attempts: 1 });
@@ -514,11 +510,7 @@ describe("SqliteSystemTestStore", () => {
 const SCHEMA = `
   PRAGMA foreign_keys = ON;
   CREATE TABLE users (id TEXT PRIMARY KEY, username TEXT NOT NULL);
-  CREATE TABLE audit_log (
-    id TEXT PRIMARY KEY, request_id TEXT NOT NULL, actor_user_id TEXT NOT NULL, actor_username TEXT,
-    entity_type TEXT NOT NULL, entity_id TEXT NOT NULL, action TEXT NOT NULL,
-    summary TEXT, detail_json TEXT, occurred_at TEXT NOT NULL
-  );
+  ${AUDIT_LOG_SCHEMA}
   CREATE TABLE error_log (id TEXT PRIMARY KEY, request_id TEXT, created_at TEXT NOT NULL);
   CREATE TABLE wiki_categories (id TEXT PRIMARY KEY, name TEXT NOT NULL);
   CREATE TABLE roles (id TEXT PRIMARY KEY);

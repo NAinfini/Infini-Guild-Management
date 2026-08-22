@@ -2,7 +2,7 @@ import { ActionIcon, Alert, Badge, Group, HoverCard, NumberInput, Paper, Select,
 import { DEFAULT_GAME_RULES } from "@guild/shared";
 import { CalendarOffIcon } from "@portal/components/icons";
 import { NativeDateTimeInput } from "@portal/components/shared/NativeDateTimeInput";
-import { format } from "date-fns";
+import { formatDateTime } from "@portal/utils/datetime";
 import { useTranslation } from "react-i18next";
 import { resolveResultTagColor } from "@portal/utils/guild-war";
 import type { HistorySummaryRow } from "@portal/types/guild-war";
@@ -32,11 +32,6 @@ type WarHistoryTableProps = {
   onHistoryPageChange: (page: number) => void;
   onHistoryPerPageChange: (perPage: number) => void;
 };
-
-function formatHistorySummaryDate(value: string): string {
-  const date = new Date(value);
-  return Number.isNaN(date.getTime()) ? "-" : format(date, "yyyy-MM-dd HH:mm");
-}
 
 export function WarHistoryTable({
   historyDateFrom,
@@ -117,7 +112,7 @@ export function WarHistoryTable({
 
       {!historyLoading && !historyError ? (
         <Paper withBorder radius="md" p="var(--card-padding)" className="war-history-list-card">
-          <Stack gap={8}>
+          <Stack gap={8} className="war-history-list-card__body">
             <Group justify="space-between" className="war-history-list-card__header">
               <Text fw={600}>{t("history.warList")}</Text>
               <Badge color="gray">{historyRows.length} / {historyTotal}</Badge>
@@ -178,7 +173,7 @@ export function WarHistoryTable({
                             className="war-history-rail-item__date tabular-nums"
                             dateTime={item.created_at}
                           >
-                            {formatHistorySummaryDate(item.created_at)}
+                            {formatDateTime(item.created_at)}
                           </time>
                         </span>
                       </UnstyledButton>

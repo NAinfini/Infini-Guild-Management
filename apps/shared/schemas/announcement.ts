@@ -36,6 +36,7 @@ export const createAnnouncementSchema = announcementWriteSchema.extend({
 });
 
 export const updateAnnouncementSchema = announcementWriteSchema.partial().extend({
+  publish_at: z.string().datetime().nullable().optional(),
   archived_at: z.string().datetime().nullable().optional(),
 });
 

@@ -1,4 +1,3 @@
-// @vitest-environment jsdom
 import type { MemberProfile, PushMessage, User } from "@guild/shared";
 import { QueryClient } from "@tanstack/react-query";
 import { beforeEach, describe, expect, it, vi } from "vitest";

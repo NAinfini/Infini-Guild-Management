@@ -1,11 +1,16 @@
 import type { DragEndEvent } from "@dnd-kit/core";
+import type { UserBadge } from "@guild/shared";
 import { SectionHeader } from "../../shared/SectionHeader";
-import { NumberInput, Paper, Textarea } from "@mantine/core";
+import { Badge, NumberInput, Paper, Text, Textarea } from "@mantine/core";
 import { useTranslation } from "react-i18next";
+import { MemberBadgeChip } from "../../shared/MemberCard";
 import { TitleField } from "../../shared/TitleField";
 import { ProfileClassEditor } from "./ProfileClassEditor";
 
 type ProfileProfileTabProps = {
+  roleName: string | null;
+  roleColor: string | null;
+  badges: readonly UserBadge[];
   power: number;
   classDraft: string;
   classOptions: Array<{ value: string; label: string }>;
@@ -23,6 +28,9 @@ type ProfileProfileTabProps = {
 
 /** Identity fields; title editing shares the validated title-sandbox contract. */
 export function ProfileProfileTab({
+  roleName,
+  roleColor,
+  badges,
   power,
   classDraft,
   classOptions,
@@ -76,6 +84,47 @@ export function ProfileProfileTab({
           maxRows={10}
           placeholder={t("field.bioPlaceholder")}
         />
+
+        <section className="profile-access profile-identity__wide" aria-label={t("section.access")}>
+          <div className="profile-access__header">
+            <h3 className="profile-access__title">{t("section.access")}</h3>
+            <Text size="xs" c="dimmed">{t("access.readOnly")}</Text>
+          </div>
+
+          <div className="profile-access__group">
+            <div className="profile-access__group-heading">
+              <h4>{t("access.role")}</h4>
+            </div>
+            {roleName ? (
+              <Badge
+                className="profile-access__role"
+                color={roleColor ?? "gray"}
+                size="lg"
+                variant="light"
+              >
+                {roleName}
+              </Badge>
+            ) : (
+              <Text size="sm" c="dimmed">{t("access.emptyRole")}</Text>
+            )}
+          </div>
+
+          <div className="profile-access__group">
+            <div className="profile-access__group-heading">
+              <h4>{t("access.badges")}</h4>
+            </div>
+            {badges.length > 0 ? (
+              <ul className="profile-access__badges">
+                {badges.map((badge) => (
+                  <li key={badge.id}><MemberBadgeChip badge={badge} /></li>
+                ))}
+              </ul>
+            ) : (
+              <Text size="sm" c="dimmed">{t("access.emptyBadges")}</Text>
+            )}
+          </div>
+
+        </section>
       </div>
     </Paper>
   );

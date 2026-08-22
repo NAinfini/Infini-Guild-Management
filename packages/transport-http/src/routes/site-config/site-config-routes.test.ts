@@ -13,6 +13,7 @@ import {
 
 const site = {
   site_name: "Infini Guild",
+  site_description: "A focused home for our guild.",
   site_logo_media_id: null,
   default_site_logo_url: "/guild-logo.svg",
   features: {
@@ -113,6 +114,16 @@ describe("site config HTTP routes", () => {
     expect(valid.status).toBe(200);
     expect(update).toHaveBeenCalledWith(expect.objectContaining({ requestId: "request-1" }), {
       site_name: "New Guild",
+    });
+
+    const description = await app.request("/api/admin/site-config", {
+      method: "PATCH",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ site_description: "  A new public preview.  " }),
+    });
+    expect(description.status).toBe(200);
+    expect(update).toHaveBeenLastCalledWith(expect.objectContaining({ requestId: "request-1" }), {
+      site_description: "A new public preview.",
     });
   });
 

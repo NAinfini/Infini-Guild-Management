@@ -5,7 +5,8 @@ import { memo, useMemo } from "react";
 import { useTranslation } from "react-i18next";
 import { UserCheckOutlined } from "../../utils/icons";
 import { EmptyState } from "../shared/EmptyState";
-import { cardHeading, eventTypeTagColor, formatDateTime, type DashboardMySignupEvent } from "./shared";
+import { cardHeading, eventTypeTagColor, type DashboardMySignupEvent } from "./shared";
+import { formatClock, formatDateTime, formatLocaleParts } from "@portal/utils/datetime";
 import { getEventTypeLabel } from "@portal/utils/game-rules";
 
 type MySignupsCardProps = {
@@ -17,11 +18,6 @@ type MySignupsCardProps = {
 
 function isSameDay(a: Date, b: Date): boolean {
   return a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate();
-}
-
-function formatTime(dateStr: string): string {
-  const d = new Date(dateStr);
-  return d.toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit", hour12: false });
 }
 
 export const MySignupsCard = memo(function MySignupsCard({
@@ -39,7 +35,7 @@ export const MySignupsCard = memo(function MySignupsCard({
       date.setDate(date.getDate() + offset);
       date.setHours(0, 0, 0, 0);
 
-      const dayLabel = date.toLocaleString(i18n.language, { weekday: "short" });
+      const dayLabel = formatLocaleParts(date, i18n.language, { weekday: "short" });
       const label = `${date.getDate()}`;
 
       const dayEvents = mySignupEvents.filter((item) => {
@@ -109,7 +105,7 @@ export const MySignupsCard = memo(function MySignupsCard({
                               style={{ "--signup-dot-color": color } as React.CSSProperties}
                             />
                             <span className="signup-box-event-title">{item.event.title}</span>
-                            <span className="signup-box-event-time">{formatTime(item.event.start_at)}</span>
+                            <span className="signup-box-event-time">{formatClock(item.event.start_at)}</span>
                           </button>
                         </HoverCard.Target>
                         <HoverCard.Dropdown p="sm" style={{ borderRadius: 10 }}>

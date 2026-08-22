@@ -149,7 +149,7 @@ export class SqliteStorageMediaPort implements StorageMediaPort {
           WHERE media_id = ? AND entity_type = 'storage_item' AND entity_id = ? AND slot = 'image'
             AND EXISTS (SELECT 1 FROM audit_log WHERE id = ?)
           RETURNING media_id AS media_id`,
-        params: [input.mediaId, input.itemId, input.audit.id],
+        params: [input.mediaId, input.itemId, input.audit.eventId],
         columns: ["media_id"],
       },
     ]);
@@ -217,23 +217,31 @@ export class SqliteStorageStore implements StorageStore {
     if (!existing[0]) return null;
     const assignments: string[] = [];
     const params: SqlValue[] = [];
+    const differences: string[] = [];
+    const differenceParams: SqlValue[] = [];
     if (input.patch.name !== undefined) {
       assignments.push("name = ?");
       params.push(input.patch.name);
+      differences.push("name IS NOT ?");
+      differenceParams.push(input.patch.name);
     }
     if (input.patch.description !== undefined) {
       assignments.push("description = ?");
       params.push(input.patch.description);
+      differences.push("description IS NOT ?");
+      differenceParams.push(input.patch.description);
     }
-    params.push(input.id);
-    await this.sql.batch([{
-      method: "run",
-      sql: `UPDATE storages SET ${assignments.join(", ")} WHERE id = ?`,
-      params,
-    }, auditInsertStatement(input.audit, {
-      sql: "SELECT 1 FROM storages WHERE id = ?",
-      params: [input.id],
-    })]);
+    if (differences.length > 0) {
+      params.push(input.id, ...differenceParams);
+      await this.sql.batch([{
+        method: "all",
+        columns: ["storage_id"],
+        sql: `UPDATE storages SET ${assignments.join(", ")}
+          WHERE id = ? AND (${differences.join(" OR ")})
+          RETURNING id AS storage_id`,
+        params,
+      }, auditInsertStatement(input.audit, { sql: "SELECT 1 WHERE changes() = 1" })]);
+    }
     const categories = await this.db.select().from(storageCategories)
       .where(eq(storageCategories.storageId, input.id))
       .orderBy(asc(storageCategories.name), asc(storageCategories.id))
@@ -266,7 +274,7 @@ export class SqliteStorageStore implements StorageStore {
         WHERE id = ? AND NOT EXISTS (SELECT 1 FROM storage_items WHERE storage_id = ?)
           AND EXISTS (SELECT 1 FROM audit_log WHERE id = ?)
         RETURNING id AS storage_id`,
-      params: [id, id, audit.id],
+      params: [id, id, audit.eventId],
       columns: ["storage_id"],
     }]);
     if (returnedRowCount(results[1]) === 1) return "deleted";
@@ -308,16 +316,19 @@ export class SqliteStorageStore implements StorageStore {
     if (!existing) return null;
     const results = await this.sql.batch([{
       method: "get",
-      sql: `UPDATE storage_categories SET name = ? WHERE id = ? AND storage_id = ?
+      sql: `UPDATE storage_categories SET name = ?
+        WHERE id = ? AND storage_id = ? AND name IS NOT ?
         RETURNING id AS category_id`,
-      params: [input.name, input.categoryId, input.storageId],
+      params: [input.name, input.categoryId, input.storageId, input.name],
       columns: ["category_id"],
-    }, auditInsertStatement(input.audit, {
-      sql: "SELECT 1 FROM storage_categories WHERE id = ? AND storage_id = ?",
-      params: [input.categoryId, input.storageId],
-    })]);
-    if (returnedRowCount(results[0]) !== 1) return null;
-    return { id: input.categoryId, name: input.name };
+    }, auditInsertStatement(input.audit, { sql: "SELECT 1 WHERE changes() = 1" })]);
+    if (returnedRowCount(results[0]) === 1) return { id: input.categoryId, name: input.name };
+    const current = (await this.db.select({ id: storageCategories.id, name: storageCategories.name })
+      .from(storageCategories).where(and(
+        eq(storageCategories.id, input.categoryId),
+        eq(storageCategories.storageId, input.storageId),
+      )).limit(1))[0];
+    return current ?? null;
   }
 
   async deleteCategory(
@@ -345,7 +356,7 @@ export class SqliteStorageStore implements StorageStore {
           AND NOT EXISTS (SELECT 1 FROM storage_items WHERE category_id = ?)
           AND EXISTS (SELECT 1 FROM audit_log WHERE id = ?)
         RETURNING id AS category_id`,
-      params: [categoryId, storageId, categoryId, audit.id],
+      params: [categoryId, storageId, categoryId, audit.eventId],
       columns: ["category_id"],
     }]);
     if (returnedRowCount(results[1]) === 1) return "deleted";
@@ -519,14 +530,14 @@ export class SqliteStorageStore implements StorageStore {
               WHERE id = ?
                 AND NOT EXISTS (SELECT 1 FROM storage_ledger_entries WHERE item_id = ?)
             )`,
-        params: [itemId, audit.id, itemId, itemId],
+        params: [itemId, audit.eventId, itemId, itemId],
       }, {
         method: "get",
         sql: `DELETE FROM storage_items
           WHERE id = ? AND NOT EXISTS (SELECT 1 FROM storage_ledger_entries WHERE item_id = ?)
             AND EXISTS (SELECT 1 FROM audit_log WHERE id = ?)
           RETURNING id AS item_id`,
-        params: [itemId, itemId, audit.id],
+        params: [itemId, itemId, audit.eventId],
         columns: ["item_id"],
       }]);
       if (returnedRowCount(results[2]) === 1) return "deleted";

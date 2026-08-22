@@ -393,7 +393,7 @@ export class SqlitePortalReadModelStore implements PortalReadModelStore {
           WHERE a.status = 'published' AND a.archived_at IS NULL
             AND a.publish_at <= ? AND (a.expires_at IS NULL OR a.expires_at > ?)
             AND ${enabled("feature_announcements")}
-            AND (lower(a.title) LIKE ? ESCAPE '\\' OR lower(a.body_json) LIKE ? ESCAPE '\\')
+            AND (lower(a.title) LIKE ? ESCAPE '\\' OR lower(a.search_text) LIKE ? ESCAPE '\\')
           ORDER BY a.pinned DESC, a.updated_at DESC, a.id DESC
           LIMIT ?`,
         params: [input.now, input.now, pattern, pattern, input.perTypeLimit],
@@ -404,7 +404,7 @@ export class SqlitePortalReadModelStore implements PortalReadModelStore {
         sql: `SELECT w.id, w.title, w.slug
           FROM wiki_articles w INDEXED BY idx_wiki_articles_visibility_updated
           WHERE w.deleted_at IS NULL AND w.archived_at IS NULL AND ${enabled("feature_wiki")}
-            AND (lower(w.title) LIKE ? ESCAPE '\\' OR lower(w.body_json) LIKE ? ESCAPE '\\')
+            AND (lower(w.title) LIKE ? ESCAPE '\\' OR lower(w.search_text) LIKE ? ESCAPE '\\')
           ORDER BY w.updated_at DESC, w.id DESC
           LIMIT ?`,
         params: [pattern, pattern, input.perTypeLimit],

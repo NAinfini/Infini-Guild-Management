@@ -4,8 +4,10 @@ import { PencilIcon } from "@portal/components/icons";
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
 import { useTranslation } from "react-i18next";
 import { MediaGallery, buildMediaGalleryLabels } from "@portal/components/shared/MediaGallery";
+import { formatLocaleDateTime } from "../../utils/datetime";
 import { sanitizeTitleHtml } from "../../utils/sanitize";
-import { resolveClassCatalogItem, useClassCatalogStore } from "../../stores/class-catalog";
+import { useClassCatalog } from "../../hooks/data/useClassData";
+import { resolveClassCatalogItem } from "../../utils/class-catalog";
 import { ClassIcon } from "./ClassIcon";
 import { resolveMediaUrl as resolvePortalMediaUrl } from "../../utils/media";
 import styles from "./ProfileModal.module.css";
@@ -32,7 +34,7 @@ export function ProfileModal({
   resolveMediaUrl = resolvePortalMediaUrl,
 }: ProfileModalProps) {
   const { t, i18n } = useTranslation("common");
-  const classCatalog = useClassCatalogStore((state) => state.items);
+  const classCatalog = useClassCatalog();
   const mediaLabels = useMemo(() => buildMediaGalleryLabels(t), [t]);
   const [avatarLoaded, setAvatarLoaded] = useState(false);
   const [avatarError, setAvatarError] = useState(false);
@@ -44,7 +46,7 @@ export function ProfileModal({
   /* 图标按钮没有可见文案，这句同时当 tooltip 和无障碍名，两处不能各写各的。 */
   const editTitle = editLabel || t("profile.editProfile");
   const avatarUrl = profile?.avatar_media_id ? resolveMediaUrl(profile.avatar_media_id) : null;
-  const accountUpdated = user?.updated_at ? new Date(user.updated_at).toLocaleString(i18n.language) : "-";
+  const accountUpdated = formatLocaleDateTime(user?.updated_at, i18n.language, "numeric");
   const classItems = useMemo(
     () => (profile?.classes ?? []).map((id) => resolveClassCatalogItem(id, classCatalog)),
     [classCatalog, profile?.classes],

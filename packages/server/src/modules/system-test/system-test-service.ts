@@ -4,7 +4,7 @@ import type {
   SystemTestSummary,
 } from "@guild/shared/schemas/system-test";
 import { PERMISSION_ID } from "@guild/shared/constants/roles";
-import { createAuditMutation, type AuditMutation } from "../audit/public.js";
+import { createAuditEvent, type AuditEventWrite } from "../audit/public.js";
 
 const RUN_TTL_MS = 24 * 60 * 60 * 1_000;
 const CLEANUP_PAGE = 50;
@@ -56,7 +56,7 @@ export interface SystemTestStore {
   finalizeRun(input: Readonly<{
     runId: string;
     actorUserId: string;
-    audit: AuditMutation | null;
+    audit: AuditEventWrite | null;
   }>): Promise<boolean>;
 }
 
@@ -118,17 +118,16 @@ export class SystemTestService {
     const actor = context.authorization.require(PERMISSION_ID.ADMIN_STATUS_VIEW);
     const run = await this.requiredOwnedRun(runId, actor.userId);
     if (run.status !== "completed") throw conflict(`System test run is not ready to finalize (${run.status})`);
-    const audit = summary ? createAuditMutation(context, {
-      entityType: "system_test",
-      entityId: "admin-console-api",
+    const audit = summary ? createAuditEvent(context, {
+      subjectType: "system_test",
+      subjectId: runId,
+      subjectLabel: null,
       action: "run",
-      summary: `Full system test: ${summary.passed}/${summary.total} passed`,
-      details: {
-        total: summary.total,
-        passed: summary.passed,
-        failed: summary.failed,
-        errors: summary.errors,
-      },
+      context: [
+        { field: "total", value: { type: "number", value: summary.total } },
+        { field: "passed", value: { type: "number", value: summary.passed } },
+        { field: "failed", value: { type: "number", value: summary.failed } },
+      ],
     }) : null;
     if (!await this.store.finalizeRun({ runId, actorUserId: actor.userId, audit })) {
       throw conflict("System test run still has registered artifacts or active requests");

@@ -4,6 +4,7 @@ import {
   createAuthorizationContext,
   createRequestContext,
   normalizeBlobRange,
+  secureRandom,
 } from "./public.js";
 
 describe("kernel invariants", () => {
@@ -93,5 +94,14 @@ describe("kernel invariants", () => {
   it("clamps valid byte ranges and rejects ranges outside the object", () => {
     expect(normalizeBlobRange({ offset: 8, length: 10 }, 12)).toEqual({ offset: 8, length: 4 });
     expect(() => normalizeBlobRange({ offset: 12, length: 1 }, 12)).toThrow(RangeError);
+  });
+
+  it("keeps secureRandom inside the Math.random contract without being constant", () => {
+    const draws = Array.from({ length: 1000 }, () => secureRandom());
+    for (const value of draws) {
+      expect(value).toBeGreaterThanOrEqual(0);
+      expect(value).toBeLessThan(1);
+    }
+    expect(new Set(draws).size).toBeGreaterThan(1);
   });
 });

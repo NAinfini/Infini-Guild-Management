@@ -1,4 +1,3 @@
-// @vitest-environment jsdom
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { act, renderHook, waitFor } from "@testing-library/react";
 import type { ReactNode } from "react";
@@ -14,6 +13,7 @@ const serviceMocks = vi.hoisted(() => ({
   fetchAdminAuditLog: vi.fn(),
   fetchAdminInviteLinks: vi.fn(),
   fetchAdminInviteStats: vi.fn(),
+  fetchAdminOperations: vi.fn(),
   fetchAdminStatus: vi.fn(),
   fetchAdminSiteConfig: vi.fn(),
   fetchEventDetail: vi.fn(),
@@ -51,6 +51,7 @@ vi.mock("../../services/AdminService", () => ({
   fetchAdminAuditLog: serviceMocks.fetchAdminAuditLog,
   fetchAdminInviteLinks: serviceMocks.fetchAdminInviteLinks,
   fetchAdminInviteStats: serviceMocks.fetchAdminInviteStats,
+  fetchAdminOperations: serviceMocks.fetchAdminOperations,
   fetchAdminStatus: serviceMocks.fetchAdminStatus,
   fetchRoles: serviceMocks.fetchRoles,
 }));
@@ -212,8 +213,9 @@ describe("portal data hooks", () => {
       }),
     );
     serviceMocks.fetchAdminInviteStats.mockResolvedValue({});
-    serviceMocks.fetchAdminAuditLog.mockResolvedValue({ data: [] });
+    serviceMocks.fetchAdminAuditLog.mockResolvedValue({ data: [], next_cursor: null });
     serviceMocks.fetchAdminAuditArchiveMonths.mockResolvedValue([]);
+    serviceMocks.fetchAdminOperations.mockResolvedValue({});
     serviceMocks.fetchAdminStatus.mockResolvedValue({});
     serviceMocks.fetchAdminSiteConfig.mockResolvedValue({ site: {} });
 
@@ -231,18 +233,18 @@ describe("portal data hooks", () => {
           isModerator: true,
           userRole: "admin",
           activeTab,
-          auditPage: 2,
           auditSearch: "raid",
           auditDateFrom: "2026-03-01",
           auditDateTo: "2026-03-08",
           auditEntityType: "",
+          auditEntityId: "",
           auditActorId: "",
           inviteVisibility,
           inviteSearch,
         }),
       {
         initialProps: {
-          activeTab: "status",
+          activeTab: "operations",
           inviteVisibility: "active" as "active" | "expired" | "revoked",
           inviteSearch: "",
         },
@@ -253,10 +255,12 @@ describe("portal data hooks", () => {
     await waitFor(() => {
       expect(result.current.rolesQuery.isSuccess).toBe(true);
       expect(result.current.statusQuery.isSuccess).toBe(true);
+      expect(result.current.operationsQuery.isSuccess).toBe(true);
     });
 
     expect(serviceMocks.fetchRoles).toHaveBeenCalled();
     expect(serviceMocks.fetchAdminStatus).toHaveBeenCalled();
+    expect(serviceMocks.fetchAdminOperations).toHaveBeenCalled();
     expect(serviceMocks.fetchAllUsersListWithOptions).not.toHaveBeenCalled();
     expect(serviceMocks.fetchAdminInviteLinks).not.toHaveBeenCalled();
     expect(serviceMocks.fetchAdminAuditLog).not.toHaveBeenCalled();
@@ -299,16 +303,18 @@ describe("portal data hooks", () => {
 
     rerender({ activeTab: "audit", inviteVisibility: "expired", inviteSearch: "2026-07" });
     await waitFor(() => {
-      expect(result.current.usersQuery.isSuccess).toBe(true);
       expect(result.current.auditLogQuery.isSuccess).toBe(true);
       expect(result.current.auditMonthsQuery.isSuccess).toBe(true);
     });
     expect(serviceMocks.fetchAdminAuditLog).toHaveBeenCalledWith({
-      page: 2,
+      cursor: undefined,
       limit: 50,
       search: "raid",
       start_at: "2026-03-01T00:00:00.000Z",
       end_at: "2026-03-08T23:59:59.999Z",
+      entity_type: undefined,
+      entity_id: undefined,
+      actor_id: undefined,
     });
 
     rerender({ activeTab: "siteConfig", inviteVisibility: "expired", inviteSearch: "2026-07" });
@@ -336,8 +342,7 @@ describe("portal data hooks", () => {
       id: "auditor",
       permissions: { "admin.audit.view": true },
     }]);
-    serviceMocks.fetchAdminAuditLog.mockResolvedValueOnce({ data: [] });
-    serviceMocks.fetchAllUsersListWithOptions.mockResolvedValueOnce({ data: [] });
+    serviceMocks.fetchAdminAuditLog.mockResolvedValueOnce({ data: [], next_cursor: null });
     const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
 
     const { result } = renderHook(
@@ -345,11 +350,11 @@ describe("portal data hooks", () => {
         isModerator: true,
         userRole: "auditor",
         activeTab: "audit",
-        auditPage: 1,
         auditSearch: "  raid  ",
         auditDateFrom: "",
         auditDateTo: "",
-        auditEntityType: "",
+        auditEntityType: "event",
+        auditEntityId: "event-1",
         auditActorId: "",
         inviteVisibility: "active",
         inviteSearch: "",
@@ -359,16 +364,18 @@ describe("portal data hooks", () => {
 
     await waitFor(() => expect(result.current.auditLogQuery.isSuccess).toBe(true));
     expect(serviceMocks.fetchAdminAuditLog).toHaveBeenCalledWith({
-      page: 1,
+      cursor: undefined,
       limit: 50,
       search: "raid",
       start_at: undefined,
       end_at: undefined,
-      entity_type: undefined,
+      entity_type: "event",
+      entity_id: "event-1",
       actor_id: undefined,
     });
-    expect(queryClient.getQueryState(queryKeys.admin.auditLog(1, "raid", "", ""))).toBeDefined();
-    expect(queryClient.getQueryState(queryKeys.admin.auditLog(1, "  raid  ", "", ""))).toBeUndefined();
+    expect(queryClient.getQueryState(queryKeys.admin.auditLog("raid", "", "", "event", "event-1"))).toBeDefined();
+    expect(queryClient.getQueryState(queryKeys.admin.auditLog("  raid  ", "", "", "event", "event-1"))).toBeUndefined();
+    expect(serviceMocks.fetchAllUsersListWithOptions).not.toHaveBeenCalled();
   });
 
   it("does not fetch unrelated admin sections without exact permissions", async () => {
@@ -381,18 +388,19 @@ describe("portal data hooks", () => {
       },
     ]);
     serviceMocks.fetchAdminStatus.mockResolvedValueOnce({});
+    serviceMocks.fetchAdminOperations.mockResolvedValueOnce({});
 
     const { result } = renderHook(
       () =>
         useAdminData({
           isModerator: true,
           userRole: "status-only",
-          activeTab: "status",
-          auditPage: 1,
+          activeTab: "operations",
           auditSearch: "",
           auditDateFrom: "",
           auditDateTo: "",
           auditEntityType: "",
+          auditEntityId: "",
           auditActorId: "",
           inviteVisibility: "active",
           inviteSearch: "",
@@ -403,6 +411,7 @@ describe("portal data hooks", () => {
     await waitFor(() => {
       expect(result.current.rolesQuery.isSuccess).toBe(true);
       expect(result.current.statusQuery.isSuccess).toBe(true);
+      expect(result.current.operationsQuery.isSuccess).toBe(true);
     });
 
     expect(serviceMocks.fetchAllUsersListWithOptions).not.toHaveBeenCalled();
@@ -441,11 +450,11 @@ describe("portal data hooks", () => {
           isModerator: true,
           userRole: "roles-view-only",
           activeTab: "roles",
-          auditPage: 1,
           auditSearch: "",
           auditDateFrom: "",
           auditDateTo: "",
           auditEntityType: "",
+          auditEntityId: "",
           auditActorId: "",
           inviteVisibility: "active",
           inviteSearch: "",
@@ -488,11 +497,11 @@ describe("portal data hooks", () => {
           isModerator: true,
           userRole: "admin",
           activeTab: "siteConfig",
-          auditPage: 1,
           auditSearch: "",
           auditDateFrom: "",
           auditDateTo: "",
           auditEntityType: "",
+          auditEntityId: "",
           auditActorId: "",
           inviteVisibility: "active",
           inviteSearch: "",
@@ -552,11 +561,11 @@ describe("portal data hooks", () => {
         activeTab: "invite",
         effectivePermissions,
         canReadRoleMetadata: true,
-        auditPage: 1,
         auditSearch: "",
         auditDateFrom: "",
         auditDateTo: "",
         auditEntityType: "",
+        auditEntityId: "",
         auditActorId: "",
         inviteVisibility: "active",
         inviteSearch: "",

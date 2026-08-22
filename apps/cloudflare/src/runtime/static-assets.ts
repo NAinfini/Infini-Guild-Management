@@ -1,12 +1,11 @@
+import type { StaticSiteBranding } from "@guild/application";
+import { applyStaticSecurityHeaders } from "@guild/shared/utils/static-security-headers";
+
 const INDEX_PATH = "/index.html";
 const MAX_INDEX_BYTES = 1024 * 1024;
 const IMMUTABLE_CACHE = "public, max-age=31536000, immutable";
-const INDEX_CACHE = "no-cache, no-store, must-revalidate, no-transform";
-
-export type StaticSiteBranding = Readonly<{
-  siteName: string;
-  siteLogoUrl: string;
-}>;
+const INDEX_CACHE = "public, max-age=0, s-maxage=60, must-revalidate, no-transform";
+const BRANDING_CACHE_MILLISECONDS = 60_000;
 
 export type CloudflareStaticAssetsDependencies = Readonly<{
   assets: { fetch(request: Request): Promise<Response> };
@@ -18,6 +17,21 @@ export type CloudflareStaticAssetsHandler = (request: Request) => Promise<Respon
 export function createCloudflareStaticAssets(
   dependencies: CloudflareStaticAssetsDependencies,
 ): CloudflareStaticAssetsHandler {
+  let cachedBranding: Readonly<{
+    expiresAt: number;
+    value: Promise<StaticSiteBranding>;
+  }> | null = null;
+  const getSiteBranding = (): Promise<StaticSiteBranding> => {
+    const now = Date.now();
+    if (cachedBranding && now < cachedBranding.expiresAt) return cachedBranding.value;
+    const value = Promise.resolve().then(() => dependencies.getSiteBranding());
+    cachedBranding = { expiresAt: now + BRANDING_CACHE_MILLISECONDS, value };
+    void value.catch(() => {
+      if (cachedBranding?.value === value) cachedBranding = null;
+    });
+    return value;
+  };
+
   return async (request) => {
     const url = new URL(request.url);
     const pathname = decodePath(url.pathname);
@@ -31,11 +45,11 @@ export function createCloudflareStaticAssets(
 
     const htmlNavigation = acceptsHtml(request);
     if (pathname === INDEX_PATH) {
-      return serveIndex(request, await fetchIndex(dependencies.assets, request), dependencies.getSiteBranding);
+      return serveIndex(request, await fetchIndex(dependencies.assets, request), getSiteBranding);
     }
     if (pathname === "/" || pathname.endsWith("/")) {
       if (!htmlNavigation) return staticError(request, 404, "Static asset not found");
-      return serveIndex(request, await fetchIndex(dependencies.assets, request), dependencies.getSiteBranding);
+      return serveIndex(request, await fetchIndex(dependencies.assets, request), getSiteBranding);
     }
 
     const asset = await dependencies.assets.fetch(request);
@@ -43,13 +57,13 @@ export function createCloudflareStaticAssets(
     if (asset.status === 404) {
       await asset.body?.cancel().catch(() => undefined);
       if (htmlNavigation && !looksLikeAsset(pathname)) {
-        return serveIndex(request, await fetchIndex(dependencies.assets, request), dependencies.getSiteBranding);
+        return serveIndex(request, await fetchIndex(dependencies.assets, request), getSiteBranding);
       }
       return staticError(request, 404, "Static asset not found");
     }
     if (contentType.includes("text/html") && pathname !== INDEX_PATH) {
       if (asset.ok && htmlNavigation && !looksLikeAsset(pathname)) {
-        return serveIndex(request, asset, dependencies.getSiteBranding);
+        return serveIndex(request, asset, getSiteBranding);
       }
       await asset.body?.cancel().catch(() => undefined);
       return staticError(request, 404, "Static asset not found");
@@ -84,10 +98,12 @@ async function serveIndex(
   try {
     const branding = await getSiteBranding();
     const siteName = branding.siteName.trim();
+    const siteDescription = branding.siteDescription.trim();
     const siteLogoUrl = branding.siteLogoUrl.trim();
-    if (!siteName || !siteLogoUrl) throw new Error("Invalid site branding");
+    if (!siteName || !siteDescription || !siteLogoUrl) throw new Error("Invalid site branding");
     const html = (await readTextBounded(asset.body, asset.headers.get("Content-Length"), MAX_INDEX_BYTES))
       .replaceAll("{{SITE_NAME}}", () => escapeHtml(siteName))
+      .replaceAll("{{SITE_DESCRIPTION}}", () => escapeHtml(siteDescription))
       .replaceAll("{{SITE_LOGO_URL}}", () => escapeHtml(siteLogoUrl));
     const bytes = new TextEncoder().encode(html);
     const etag = `"${await sha256(bytes)}"`;
@@ -120,7 +136,7 @@ function finalizeStaticResponse(
     : cacheable && isImmutableCloudflareBuildAsset(pathname) ? IMMUTABLE_CACHE : "no-cache");
   const mime = mimeType(pathname);
   if (mime && upstream.ok) headers.set("Content-Type", mime);
-  applySecurityHeaders(headers, request.url);
+  applyStaticSecurityHeaders(headers, request.url);
 
   const noBody = request.method === "HEAD" || upstream.status === 204 || upstream.status === 304;
   if (noBody) void upstream.body?.cancel().catch(() => undefined);
@@ -136,30 +152,8 @@ function staticError(request: Request, status: number, message: string): Respons
     "Cache-Control": "no-cache",
     "Content-Type": "text/plain; charset=UTF-8",
   });
-  applySecurityHeaders(headers, request.url);
+  applyStaticSecurityHeaders(headers, request.url);
   return new Response(request.method === "HEAD" ? null : message, { status, headers });
-}
-
-function applySecurityHeaders(headers: Headers, requestUrl: string): void {
-  const url = new URL(requestUrl);
-  const socketSource = `${url.protocol === "https:" ? "wss:" : "ws:"}//${url.host}`;
-  headers.set("X-Content-Type-Options", "nosniff");
-  headers.set("X-Frame-Options", "DENY");
-  headers.set("Referrer-Policy", "strict-origin-when-cross-origin");
-  headers.set("Permissions-Policy", "camera=(), microphone=(), geolocation=()");
-  headers.set("Content-Security-Policy", [
-    "default-src 'self'",
-    "script-src 'self'",
-    "style-src 'self' 'unsafe-inline'",
-    "img-src 'self' data: blob: https:",
-    "media-src 'self' blob:",
-    `connect-src 'self' ${socketSource}`,
-    "font-src 'self' data:",
-    "worker-src 'self' blob:",
-    "object-src 'none'",
-    "frame-src https://www.youtube-nocookie.com https://player.bilibili.com https://player.vimeo.com https://www.tiktok.com",
-    "frame-ancestors 'none'",
-  ].join("; "));
 }
 
 async function readTextBounded(

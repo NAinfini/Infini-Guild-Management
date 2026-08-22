@@ -1,69 +1,17 @@
-import { readFileSync } from "node:fs";
-import { DatabaseSync, type SQLInputValue } from "node:sqlite";
-import { fileURLToPath } from "node:url";
+import { DatabaseSync } from "node:sqlite";
 import { afterEach, describe, expect, it } from "vitest";
-import { MAX_SQL_BATCH_STATEMENTS, assertSqlBatch, createAuthorizationContext, createRequestContext } from "@guild/kernel";
-import { createAuditMutation } from "@guild/server/modules/audit";
+import { MAX_SQL_BATCH_STATEMENTS, createAuthorizationContext, createRequestContext } from "@guild/kernel";
+import { createAuditEvent } from "@guild/server/modules/audit";
 import type { AnnouncementRecord } from "@guild/server/modules/announcements";
-import type { SqlBatchStatement, SqlExecutor, SqlResult, SqlRow, SqlStatement } from "@guild/kernel";
+import { applyAppMigrations } from "../testing/app-migrations.js";
+import { SqliteTestExecutor } from "../testing/sqlite-test-executor.js";
 import { SqliteAnnouncementStore } from "./announcement-store.js";
 
 const NOW = "2026-08-09T12:00:00.000Z";
 const OWNER = "owner-1";
 const ANNOUNCEMENT = "announcement-1";
 const MEDIA_IDS = ["aaaaaaaaaaaaaaaaaaaaa", "bbbbbbbbbbbbbbbbbbbbb", "ccccccccccccccccccccc"] as const;
-const FRESH_MIGRATION = readFileSync(
-  fileURLToPath(new URL("../migrations/generated/0000_core.sql", import.meta.url)),
-  "utf8",
-).replaceAll("--> statement-breakpoint", "");
 const databases: DatabaseSync[] = [];
-
-class SerialTestExecutor implements SqlExecutor {
-  private tail: Promise<void> = Promise.resolve();
-  readonly batches: SqlBatchStatement[][] = [];
-
-  constructor(private readonly database: DatabaseSync) {}
-
-  execute(statement: SqlStatement): Promise<SqlResult> {
-    return this.enqueue(() => this.executeNow(statement));
-  }
-
-  batch(statements: readonly SqlBatchStatement[]): Promise<readonly SqlResult[]> {
-    return this.enqueue(() => {
-      assertSqlBatch(statements);
-      this.batches.push([...statements]);
-      this.database.exec("BEGIN IMMEDIATE");
-      try {
-        const results = statements.map((statement) => this.executeNow(statement));
-        this.database.exec("COMMIT");
-        return results;
-      } catch (error) {
-        this.database.exec("ROLLBACK");
-        throw error;
-      }
-    });
-  }
-
-  private enqueue<T>(operation: () => T): Promise<T> {
-    const result = this.tail.then(operation, operation);
-    this.tail = result.then(() => undefined, () => undefined);
-    return result;
-  }
-
-  private executeNow(statement: SqlStatement): SqlResult {
-    const prepared = this.database.prepare(statement.sql);
-    prepared.setReturnArrays(true);
-    const params = [...(statement.params ?? [])] as SQLInputValue[];
-    if (statement.method === "run") {
-      prepared.run(...params);
-      return { rows: [] };
-    }
-    if (statement.method === "get") {
-      return { rows: prepared.get(...params) as unknown as SqlRow | undefined };
-    }
-    return { rows: prepared.all(...params) as unknown as readonly SqlRow[] };
-  }
-}
 
 afterEach(() => {
   for (const database of databases.splice(0)) database.close();
@@ -144,14 +92,19 @@ describe("SqliteAnnouncementStore", () => {
     ids.forEach((id) => insertMedia(failed.database, id));
     const rejectedAudit = announcementAudit("announcement-max-failed");
     failed.database.prepare(`INSERT INTO audit_log (
-      id, request_id, actor_user_id, entity_type, entity_id, action, occurred_at
-    ) VALUES (?, ?, ?, ?, ?, ?, ?)`).run(
-      rejectedAudit.id,
+      id, request_id, actor_kind, actor_id, actor_label, subject_type, subject_id,
+      subject_label, action, payload_json, occurred_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(
+      rejectedAudit.eventId,
       rejectedAudit.requestId,
-      rejectedAudit.actorUserId,
-      rejectedAudit.entityType,
-      rejectedAudit.entityId,
+      rejectedAudit.actorKind,
+      rejectedAudit.actorId,
+      rejectedAudit.actorLabel,
+      rejectedAudit.subjectType,
+      rejectedAudit.subjectId,
+      rejectedAudit.subjectLabel,
       rejectedAudit.action,
+      JSON.stringify(rejectedAudit.payload),
       rejectedAudit.occurredAt,
     );
     await expect(failed.store.create({
@@ -168,14 +121,14 @@ describe("SqliteAnnouncementStore", () => {
   });
 });
 
-function fixture(): { database: DatabaseSync; executor: SerialTestExecutor; store: SqliteAnnouncementStore } {
+function fixture(): { database: DatabaseSync; executor: SqliteTestExecutor; store: SqliteAnnouncementStore } {
   const database = new DatabaseSync(":memory:");
   databases.push(database);
   database.exec("PRAGMA foreign_keys = ON");
-  database.exec(FRESH_MIGRATION);
+  applyAppMigrations(database);
   database.prepare(`INSERT INTO users (id, username, role_id, revision_token)
     VALUES (?, 'Owner', 'member', 'owner-revision-0001')`).run(OWNER);
-  const executor = new SerialTestExecutor(database);
+  const executor = new SqliteTestExecutor(database);
   return { database, executor, store: new SqliteAnnouncementStore(executor) };
 }
 
@@ -216,9 +169,9 @@ function announcementRecord(): AnnouncementRecord {
 }
 
 function announcementAudit(requestId: string) {
-  return createAuditMutation({ ...requestContext(), requestId }, {
-    entityType: "announcement",
-    entityId: ANNOUNCEMENT,
+  return createAuditEvent({ ...requestContext(), requestId }, {
+    subjectType: "announcement",
+    subjectId: ANNOUNCEMENT,
     action: "create",
   });
 }
@@ -234,9 +187,9 @@ function appendInput(mediaId: string, revisionToken: string) {
     mediaIds: [mediaId],
     audience: "public" as const,
     maxItems: 1,
-    audit: createAuditMutation(requestContext(), {
-      entityType: "announcement",
-      entityId: ANNOUNCEMENT,
+    audit: createAuditEvent(requestContext(), {
+      subjectType: "announcement",
+      subjectId: ANNOUNCEMENT,
       action: "upload_images",
     }),
   };

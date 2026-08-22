@@ -28,8 +28,27 @@ export default defineConfig({
         test: {
           name: "portal",
           include: ["apps/portal/**/*.test.ts", "apps/portal/**/*.test.tsx"],
+          exclude: ["apps/portal/components/feature/events/RecurringTemplateFormModal.helpers.test.ts"],
           environment: "jsdom",
           setupFiles: [path.resolve(repoRoot, "apps/portal/tests/setup.ts")],
+          /* Node 自带的 localStorage 全局挡在 jsdom 前面。vitest 搬运 window 的键时
+           * 会跳过 globalThis 上已存在的同名键，而 Node 无条件定义 localStorage——
+           * 没有 --localstorage-file 时它取出来是 undefined，于是 stores、i18n、
+           * ThemeProvider 这些读写偏好的模块在测试里全线 TypeError。关掉这个全局，
+           * jsdom 自己的 Storage 才搬得进来；只有本项目跑 jsdom，另两个项目不需要。
+           * execArgv 默认是空数组，标志写在命令行进不了 worker 线程。 */
+          execArgv: ["--no-experimental-webstorage"],
+        },
+      },
+      {
+        extends: true,
+        test: {
+          // Changing TZ takes effect for a Node process, not for a Vitest worker thread.
+          // This file deliberately verifies DST behavior in a named timezone.
+          name: "portal-timezone",
+          include: ["apps/portal/components/feature/events/RecurringTemplateFormModal.helpers.test.ts"],
+          environment: "node",
+          pool: "forks",
         },
       },
       {
@@ -47,7 +66,7 @@ export default defineConfig({
       {
         extends: true,
         test: {
-          name: "modular-backend",
+          name: "backend",
           include: [
             "packages/**/*.test.ts",
             "apps/cloudflare/**/*.test.ts",

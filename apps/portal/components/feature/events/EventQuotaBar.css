@@ -146,6 +146,14 @@
   color: var(--status-danger);
 }
 
+/* 配置错的一行字：跟「超员」同色，因为两者都是要有人去改的事，不是进度。 */
+.quota-bar__conflict {
+  margin: var(--space-xs) 0 0;
+  color: var(--status-danger);
+  font-size: var(--text-micro);
+  line-height: 1.4;
+}
+
 /* The detail roster keeps its assigned-member count; flexible coverage is no longer a warning. */
 .quota-status-text[data-quota-status="filled"],
 .quota-status-text[data-quota-status="flex"] {

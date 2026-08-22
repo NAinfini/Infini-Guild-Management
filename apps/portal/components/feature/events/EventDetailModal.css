@@ -239,8 +239,8 @@
   --progress-radius: 999px;
 }
 
+/* 轨道底色由主题里的 Progress 统一提供，这里只补投票条自己要的圆角裁切。 */
 .event-detail-modal__poll-progress.mantine-Progress-root {
-  background: color-mix(in srgb, var(--text-primary) 8%, transparent);
   overflow: hidden;
 }
 

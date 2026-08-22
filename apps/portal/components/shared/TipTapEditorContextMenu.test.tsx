@@ -1,4 +1,3 @@
-// @vitest-environment jsdom
 import { MantineProvider } from "@mantine/core";
 import type { Editor } from "@tiptap/react";
 import { render, screen, waitFor } from "@testing-library/react";
@@ -115,10 +114,16 @@ describe("TipTapEditorContextMenu", () => {
     await user.keyboard("{ArrowRight}");
 
     expect(textColor).toHaveAttribute("aria-expanded", "true");
-    expect(await screen.findByRole("menuitem", {
+    const swatch = await screen.findByRole("menuitem", {
       name: "toolbar.textColor #1f6feb",
       hidden: true,
-    })).toBeInTheDocument();
+    });
+    const rootMenu = document.querySelector(".infini-tiptap-context-menu");
+    const colorMenu = swatch.closest<HTMLElement>('[role="menu"]');
+    expect(rootMenu).not.toBeNull();
+    expect(colorMenu).not.toBeNull();
+    expect(rootMenu).not.toContainElement(colorMenu);
+    expect(colorMenu).toHaveStyle({ zIndex: "1101" });
   });
 
   it("keeps dialog commands wired while the menu owns closing", async () => {
@@ -131,7 +136,7 @@ describe("TipTapEditorContextMenu", () => {
     expect(onClose).toHaveBeenCalledOnce();
   });
 
-  it("removes the hover-only custom submenu implementation", () => {
+  it("portals every submenu outside the scrollable context menu", () => {
     const source = readFileSync(
       resolve(process.cwd(), "apps/portal/components/shared/TipTapEditorContextMenu.tsx"),
       "utf8",
@@ -142,7 +147,7 @@ describe("TipTapEditorContextMenu", () => {
     );
 
     expect(source).toContain("<Menu.Sub>");
-    expect(source).not.toContain("createPortal");
+    expect(source.match(/<Portal>/g)).toHaveLength(3);
     expect(css).not.toContain("infini-tiptap-context-submenu-wrapper");
     expect(css).not.toMatch(/context-submenu[^}]*display:\s*none/);
   });

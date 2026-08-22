@@ -6,6 +6,7 @@ import {
   WAR_TEAM_OBJECTIVE_KEYS,
 } from "../constants/guild-war";
 import { eventSchema } from "./event";
+import { mediaIdSchema } from "./media";
 import { siteAnalyticsSettingsSchema } from "./site-config";
 import { isPortableLikeSearch } from "../utils/portable-search";
 
@@ -52,7 +53,10 @@ export const createWarHistorySchema = z.object({
   notes: z.string().max(L.warNotes.max).optional(),
 });
 
-export const updateWarHistorySchema = createWarHistorySchema.partial();
+export const updateWarHistorySchema = createWarHistorySchema.partial().extend({
+  event_id: z.string().nullable().optional(),
+  duration_minutes: z.number().positive().nullable().optional(),
+});
 
 export const warTeamSchema = z.object({
   id: z.string(),
@@ -72,6 +76,11 @@ export const warTeamMemberSchema = z.object({
   sort_order: z.number().int(),
   stats: memberStatsObjectSchema,
   note: z.string().nullable(),
+});
+
+const guildWarMemberReadSchema = warTeamMemberSchema.extend({
+  username: z.string().optional(),
+  avatar_media_id: mediaIdSchema.nullable(),
 });
 
 export const saveTeamsPayloadSchema = z.object({
@@ -214,7 +223,7 @@ export const guildWarActiveResponseSchema = z.object({
 
 export const guildWarHistoryDetailResponseSchema = warHistorySchema.extend({
   teams: z.array(warTeamSchema.extend({
-    members: z.array(warTeamMemberSchema.extend({ username: z.string().optional() })),
+    members: z.array(guildWarMemberReadSchema),
   })),
   pool: z.array(z.object({
     id: z.string(),
@@ -222,7 +231,7 @@ export const guildWarHistoryDetailResponseSchema = warHistorySchema.extend({
     userId: z.string(),
     username: z.string().optional(),
   })),
-  member_stats: z.array(warTeamMemberSchema.extend({ username: z.string().optional() })),
+  member_stats: z.array(guildWarMemberReadSchema),
 });
 
 export const guildWarHistoryBatchResponseSchema = z.object({
@@ -270,7 +279,7 @@ export const guildWarHistoryDeleteBatchResponseSchema = guildWarOkResponseSchema
   deleted: z.number().int().nonnegative().max(50),
 });
 
-export const guildWarMemberResponseSchema = warTeamMemberSchema.extend({ username: z.string().optional() });
+export const guildWarMemberResponseSchema = guildWarMemberReadSchema;
 
 export const guildWarMemberStatsResponseSchema = z.object({
   data: z.array(guildWarMemberResponseSchema).max(MAX_GUILD_WAR_MEMBERS),

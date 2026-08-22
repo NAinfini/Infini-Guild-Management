@@ -12,6 +12,7 @@ CREATE TABLE `announcements` (
 	`revision_token` text NOT NULL,
 	`created_at` text DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')) NOT NULL,
 	`updated_at` text DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')) NOT NULL,
+	`search_text` text DEFAULT '' NOT NULL,
 	FOREIGN KEY (`created_by`) REFERENCES `users`(`id`) ON UPDATE no action ON DELETE restrict,
 	FOREIGN KEY (`updated_by`) REFERENCES `users`(`id`) ON UPDATE no action ON DELETE set null,
 	CONSTRAINT "announcements_title_present" CHECK(length(trim("announcements"."title")) BETWEEN 1 AND 200),
@@ -88,26 +89,35 @@ CREATE INDEX `idx_audit_archives_month_ready` ON `audit_archives` (`month`,`stat
 CREATE TABLE `audit_log` (
 	`id` text PRIMARY KEY NOT NULL,
 	`request_id` text NOT NULL,
-	`actor_user_id` text NOT NULL,
-	`actor_username` text,
-	`entity_type` text NOT NULL,
-	`entity_id` text NOT NULL,
+	`actor_kind` text NOT NULL,
+	`actor_id` text NOT NULL,
+	`actor_label` text,
+	`subject_type` text NOT NULL,
+	`subject_id` text NOT NULL,
+	`subject_label` text,
 	`action` text NOT NULL,
-	`summary` text,
-	`detail_json` text,
+	`payload_json` text NOT NULL,
 	`occurred_at` text NOT NULL,
-	CONSTRAINT "audit_log_entity_type_valid" CHECK("audit_log"."entity_type" IN ('analytics_settings', 'announcement', 'audit_archive_export', 'audit_log_export', 'badge', 'class_catalog', 'class_tag', 'event', 'event_participant', 'event_poll_vote', 'gallery', 'gallery_item', 'guild_war', 'guild_war_history', 'guild_war_member_stats', 'invite_link', 'media_cleanup', 'media_asset', 'member_absence', 'member_badge', 'member_profile', 'recurring_template', 'role', 'seed', 'site_config', 'system_test', 'storage', 'storage_category', 'storage_item', 'storage_transaction', 'user', 'user_auth', 'wiki', 'wiki_article', 'wiki_category')),
-	CONSTRAINT "audit_log_action_valid" CHECK("audit_log"."action" IN ('admin_create_member', 'archive', 'adjust', 'acknowledge', 'assign', 'batch_add_by_moderator', 'batch_deactivate', 'batch_delete', 'batch_reactivate', 'batch_remove_by_moderator', 'batch_role_update', 'batch_update', 'change_password', 'change_username', 'complete', 'conclude', 'create', 'create_video', 'deactivate', 'delete', 'delete_audio', 'delete_avatar', 'delete_images', 'distribute', 'download_raw_ndjson_gz', 'export_filtered_csv', 'export_filtered_json', 'init', 'intake', 'join', 'leave', 'login_failed', 'move_member', 'pause', 'publish', 'raffle_draw', 'reactivate', 'register', 'reset_login_lock', 'reset_password', 'rollback', 'run', 'resume', 'revoke', 'save_teams', 'set_role_tag', 'share_video', 'unassign', 'update', 'update_role', 'upload', 'upload_audio', 'upload_avatar', 'upload_icon', 'upload_images', 'vote')),
-	CONSTRAINT "audit_log_entity_id_present" CHECK(length(trim("audit_log"."entity_id")) > 0),
+	CONSTRAINT "audit_log_actor_kind_valid" CHECK("audit_log"."actor_kind" IN ('user', 'system')),
+	CONSTRAINT "audit_log_subject_type_valid" CHECK("audit_log"."subject_type" IN ('analytics_settings', 'announcement', 'audit_archive_export', 'audit_log_export', 'badge', 'class_catalog', 'class_tag', 'event', 'event_participant', 'event_poll_vote', 'gallery', 'gallery_item', 'guild_war', 'guild_war_history', 'guild_war_member_stats', 'invite_link', 'media_cleanup', 'media_asset', 'member_absence', 'member_badge', 'member_profile', 'recurring_template', 'role', 'seed', 'site_config', 'system_test', 'storage', 'storage_category', 'storage_item', 'storage_transaction', 'user', 'user_auth', 'wiki', 'wiki_article', 'wiki_category')),
+	CONSTRAINT "audit_log_action_valid" CHECK("audit_log"."action" IN ('admin_create_member', 'archive', 'adjust', 'assign', 'batch_add_by_moderator', 'batch_deactivate', 'batch_delete', 'batch_reactivate', 'batch_remove_by_moderator', 'batch_role_update', 'batch_update', 'change_password', 'change_username', 'conclude', 'create', 'create_video', 'deactivate', 'delete', 'delete_audio', 'delete_avatar', 'delete_images', 'distribute', 'export_filtered_csv', 'export_filtered_json', 'init', 'intake', 'join', 'leave', 'login_failed', 'move_member', 'pause', 'publish', 'raffle_draw', 'reactivate', 'register', 'reorder', 'reset_login_lock', 'reset_password', 'rollback', 'run', 'resume', 'revoke', 'save_teams', 'set_role_tag', 'unassign', 'update', 'update_role', 'upload', 'upload_audio', 'upload_avatar', 'upload_icon', 'upload_images', 'vote')),
+	CONSTRAINT "audit_log_actor_id_present" CHECK(length(trim("audit_log"."actor_id")) > 0),
+	CONSTRAINT "audit_log_actor_label_bounded" CHECK("audit_log"."actor_label" IS NULL OR length(trim("audit_log"."actor_label")) BETWEEN 1 AND 200),
+	CONSTRAINT "audit_log_subject_id_present" CHECK(length(trim("audit_log"."subject_id")) > 0),
 	CONSTRAINT "audit_log_request_id_present" CHECK(length(trim("audit_log"."request_id")) > 0),
-	CONSTRAINT "audit_log_summary_bounded" CHECK("audit_log"."summary" IS NULL OR length("audit_log"."summary") BETWEEN 1 AND 200),
-	CONSTRAINT "audit_log_detail_object" CHECK("audit_log"."detail_json" IS NULL OR (json_valid("audit_log"."detail_json") AND json_type("audit_log"."detail_json") = 'object' AND length("audit_log"."detail_json") <= 16384))
+	CONSTRAINT "audit_log_subject_label_bounded" CHECK("audit_log"."subject_label" IS NULL OR length(trim("audit_log"."subject_label")) BETWEEN 1 AND 200),
+	CONSTRAINT "audit_log_payload_v2" CHECK(json_valid("audit_log"."payload_json")
+        AND json_type("audit_log"."payload_json") = 'object'
+        AND json_extract("audit_log"."payload_json", '$.schema_version') = 2
+        AND json_type("audit_log"."payload_json", '$.changes') = 'array'
+        AND json_type("audit_log"."payload_json", '$.context') = 'array'
+        AND length("audit_log"."payload_json") <= 32768)
 );
 --> statement-breakpoint
 CREATE INDEX `idx_audit_log_occurred` ON `audit_log` (`occurred_at`,`id`);--> statement-breakpoint
-CREATE INDEX `idx_audit_log_actor_occurred` ON `audit_log` (`actor_user_id`,`occurred_at`,`id`);--> statement-breakpoint
-CREATE INDEX `idx_audit_log_entity_occurred` ON `audit_log` (`entity_type`,`occurred_at`,`id`);--> statement-breakpoint
-CREATE INDEX `idx_audit_log_target_occurred` ON `audit_log` (`entity_type`,`entity_id`,`occurred_at`,`id`);--> statement-breakpoint
+CREATE INDEX `idx_audit_log_actor_occurred` ON `audit_log` (`actor_id`,`occurred_at`,`id`);--> statement-breakpoint
+CREATE INDEX `idx_audit_log_subject_occurred` ON `audit_log` (`subject_type`,`occurred_at`,`id`);--> statement-breakpoint
+CREATE INDEX `idx_audit_log_target_occurred` ON `audit_log` (`subject_type`,`subject_id`,`occurred_at`,`id`);--> statement-breakpoint
 CREATE INDEX `idx_audit_log_request` ON `audit_log` (`request_id`);--> statement-breakpoint
 CREATE TABLE `invite_links` (
 	`id` text PRIMARY KEY NOT NULL,
@@ -143,7 +153,7 @@ CREATE TABLE `role_permissions` (
 	`permission` text NOT NULL,
 	PRIMARY KEY(`role_id`, `permission`),
 	FOREIGN KEY (`role_id`) REFERENCES `roles`(`id`) ON UPDATE no action ON DELETE cascade,
-	CONSTRAINT "role_permissions_permission_valid" CHECK("role_permissions"."permission" IN ('admin.users.view', 'admin.users.edit', 'admin.users.role', 'admin.users.activate', 'admin.users.delete', 'admin.users.password', 'admin.owners.manage', 'admin.invite.view', 'admin.invite.manage', 'admin.audit.view', 'admin.audit.export', 'admin.status.view', 'admin.analytics.view', 'admin.analytics.manage', 'admin.roles.view', 'admin.roles.manage', 'admin.siteConfig.manage', 'admin.classes.manage', 'guildwar.teams.edit', 'guildwar.history.edit', 'events.create', 'events.edit', 'events.archive', 'events.delete', 'events.templates', 'announcements.create', 'announcements.edit', 'announcements.archive', 'announcements.delete', 'gallery.upload', 'gallery.manage', 'gallery.delete', 'wiki.articles.create', 'wiki.articles.edit', 'wiki.articles.archive', 'wiki.articles.delete', 'wiki.categories.manage', 'admin.badges.manage', 'admin.storage.structure', 'admin.storage.items', 'admin.storage.stock'))
+	CONSTRAINT "role_permissions_permission_valid" CHECK("role_permissions"."permission" IN ('admin.users.view', 'admin.users.edit', 'admin.users.role', 'admin.users.activate', 'admin.users.delete', 'admin.users.password', 'admin.invite.view', 'admin.invite.manage', 'admin.audit.view', 'admin.audit.export', 'admin.status.view', 'admin.analytics.view', 'admin.analytics.manage', 'admin.roles.view', 'admin.roles.manage', 'admin.siteConfig.manage', 'admin.classes.manage', 'guildwar.teams.edit', 'guildwar.history.edit', 'events.create', 'events.edit', 'events.archive', 'events.delete', 'events.templates', 'announcements.create', 'announcements.edit', 'announcements.archive', 'announcements.delete', 'gallery.upload', 'gallery.manage', 'gallery.delete', 'wiki.articles.create', 'wiki.articles.edit', 'wiki.articles.archive', 'wiki.articles.delete', 'wiki.categories.manage', 'admin.badges.manage', 'admin.storage.structure', 'admin.storage.items', 'admin.storage.stock'))
 );
 --> statement-breakpoint
 CREATE INDEX `idx_role_permissions_permission` ON `role_permissions` (`permission`,`role_id`);--> statement-breakpoint
@@ -155,10 +165,7 @@ CREATE TABLE `roles` (
 	`revision_token` text NOT NULL,
 	`created_at` text DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')) NOT NULL,
 	`updated_at` text DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')) NOT NULL,
-	CONSTRAINT "roles_level_valid" CHECK((
-        ("roles"."id" = 'site_owner' AND "roles"."level" = 1000)
-        OR ("roles"."id" <> 'site_owner' AND "roles"."level" BETWEEN 1 AND 999)
-      )),
+	CONSTRAINT "roles_level_valid" CHECK("roles"."level" BETWEEN 1 AND 1000),
 	CONSTRAINT "roles_revision_present" CHECK(length("roles"."revision_token") >= 16)
 );
 --> statement-breakpoint
@@ -191,6 +198,7 @@ CREATE TABLE `users` (
 	`revision_token` text NOT NULL,
 	`created_at` text DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')) NOT NULL,
 	`updated_at` text DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')) NOT NULL,
+	`last_login_at` text,
 	FOREIGN KEY (`role_id`) REFERENCES `roles`(`id`) ON UPDATE no action ON DELETE restrict,
 	CONSTRAINT "users_active_boolean" CHECK("users"."is_active" IN (0, 1)),
 	CONSTRAINT "users_revision_present" CHECK(length("users"."revision_token") >= 16)
@@ -733,6 +741,88 @@ CREATE TABLE `scheduled_job_leases` (
 	CONSTRAINT "scheduled_job_leases_interval_valid" CHECK("scheduled_job_leases"."acquired_at" < "scheduled_job_leases"."expires_at")
 ) WITHOUT ROWID;
 --> statement-breakpoint
+CREATE TABLE `scheduled_job_statuses` (
+	`job_name` text PRIMARY KEY NOT NULL,
+	`status` text NOT NULL,
+	`started_at` text NOT NULL,
+	`finished_at` text,
+	`duration_ms` integer,
+	`processed` integer,
+	`batches` integer,
+	`has_more` integer,
+	`backlog_count_precision` text,
+	`backlog_pending_count` integer,
+	`backlog_oldest_pending_at` text,
+	`backlog_reason` text,
+	`backlog_detail` text,
+	`error_summary` text,
+	CONSTRAINT "scheduled_job_statuses_job_name_valid" CHECK("scheduled_job_statuses"."job_name" IN ('recurrence-materialization', 'announcement-publish', 'raffle-auto-draw', 'event-auto-archive', 'media-gc', 'audit-archive', 'session-cleanup', 'system-test-cleanup')),
+	CONSTRAINT "scheduled_job_statuses_status_valid" CHECK("scheduled_job_statuses"."status" IN ('running', 'completed', 'lease-held', 'failed')),
+	CONSTRAINT "scheduled_job_statuses_duration_valid" CHECK("scheduled_job_statuses"."duration_ms" IS NULL OR "scheduled_job_statuses"."duration_ms" >= 0),
+	CONSTRAINT "scheduled_job_statuses_processed_valid" CHECK("scheduled_job_statuses"."processed" IS NULL OR "scheduled_job_statuses"."processed" >= 0),
+	CONSTRAINT "scheduled_job_statuses_batches_valid" CHECK("scheduled_job_statuses"."batches" IS NULL OR "scheduled_job_statuses"."batches" >= 0),
+	CONSTRAINT "scheduled_job_statuses_backlog_count_valid" CHECK("scheduled_job_statuses"."backlog_pending_count" IS NULL OR "scheduled_job_statuses"."backlog_pending_count" >= 0),
+	CONSTRAINT "scheduled_job_statuses_backlog_valid" CHECK((
+        "scheduled_job_statuses"."backlog_count_precision" IS NULL
+        AND "scheduled_job_statuses"."backlog_pending_count" IS NULL
+        AND "scheduled_job_statuses"."backlog_oldest_pending_at" IS NULL
+        AND "scheduled_job_statuses"."backlog_reason" IS NULL
+        AND "scheduled_job_statuses"."backlog_detail" IS NULL
+      ) OR (
+        "scheduled_job_statuses"."backlog_count_precision" = 'unknown'
+        AND "scheduled_job_statuses"."backlog_pending_count" IS NULL
+        AND "scheduled_job_statuses"."backlog_oldest_pending_at" IS NULL
+        AND "scheduled_job_statuses"."backlog_reason" IS NOT NULL
+        AND ("scheduled_job_statuses"."backlog_detail" IS NULL OR length("scheduled_job_statuses"."backlog_detail") BETWEEN 1 AND 500)
+      ) OR (
+        "scheduled_job_statuses"."backlog_count_precision" IN ('exact', 'at-least')
+        AND "scheduled_job_statuses"."backlog_pending_count" IS NOT NULL
+        AND (("scheduled_job_statuses"."backlog_pending_count" = 0 AND "scheduled_job_statuses"."backlog_oldest_pending_at" IS NULL)
+          OR ("scheduled_job_statuses"."backlog_pending_count" > 0 AND "scheduled_job_statuses"."backlog_oldest_pending_at" IS NOT NULL))
+        AND "scheduled_job_statuses"."backlog_reason" IS NULL
+        AND "scheduled_job_statuses"."backlog_detail" IS NULL
+      )),
+	CONSTRAINT "scheduled_job_statuses_state_valid" CHECK((
+        "scheduled_job_statuses"."status" = 'running'
+        AND "scheduled_job_statuses"."finished_at" IS NULL
+        AND "scheduled_job_statuses"."duration_ms" IS NULL
+        AND "scheduled_job_statuses"."processed" IS NULL
+        AND "scheduled_job_statuses"."batches" IS NULL
+        AND "scheduled_job_statuses"."has_more" IS NULL
+        AND "scheduled_job_statuses"."backlog_count_precision" IS NULL
+        AND "scheduled_job_statuses"."error_summary" IS NULL
+      ) OR (
+        "scheduled_job_statuses"."status" = 'completed'
+        AND "scheduled_job_statuses"."finished_at" IS NOT NULL
+        AND "scheduled_job_statuses"."duration_ms" IS NOT NULL
+        AND "scheduled_job_statuses"."processed" IS NOT NULL
+        AND "scheduled_job_statuses"."batches" IS NOT NULL
+        AND "scheduled_job_statuses"."has_more" IS NOT NULL
+        AND "scheduled_job_statuses"."backlog_count_precision" IS NOT NULL
+        AND "scheduled_job_statuses"."error_summary" IS NULL
+      ) OR (
+        "scheduled_job_statuses"."status" = 'lease-held'
+        AND "scheduled_job_statuses"."finished_at" IS NOT NULL
+        AND "scheduled_job_statuses"."duration_ms" IS NOT NULL
+        AND "scheduled_job_statuses"."processed" = 0
+        AND "scheduled_job_statuses"."batches" = 0
+        AND "scheduled_job_statuses"."has_more" = 1
+        AND "scheduled_job_statuses"."backlog_count_precision" = 'unknown'
+        AND "scheduled_job_statuses"."backlog_reason" = 'lease-held'
+        AND "scheduled_job_statuses"."error_summary" IS NULL
+      ) OR (
+        "scheduled_job_statuses"."status" = 'failed'
+        AND "scheduled_job_statuses"."finished_at" IS NOT NULL
+        AND "scheduled_job_statuses"."duration_ms" IS NOT NULL
+        AND "scheduled_job_statuses"."processed" IS NULL
+        AND "scheduled_job_statuses"."batches" IS NULL
+        AND "scheduled_job_statuses"."has_more" IS NULL
+        AND "scheduled_job_statuses"."backlog_count_precision" = 'unknown'
+        AND "scheduled_job_statuses"."backlog_reason" = 'job-failed'
+        AND length("scheduled_job_statuses"."error_summary") BETWEEN 1 AND 500
+      ))
+);
+--> statement-breakpoint
 CREATE TABLE `app_migrations` (
 	`id` text PRIMARY KEY NOT NULL,
 	`ordinal` integer NOT NULL,
@@ -781,8 +871,10 @@ CREATE TABLE `site_config` (
 	`revision_token` text NOT NULL,
 	`created_at` text DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')) NOT NULL,
 	`updated_at` text DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')) NOT NULL,
+	`site_description` text DEFAULT 'Guild Management Portal — roster, events, wiki, and tools for your guild.' NOT NULL,
 	CONSTRAINT "site_config_singleton" CHECK("site_config"."singleton" = 1),
 	CONSTRAINT "site_config_name_bounded" CHECK(length(trim("site_config"."site_name")) BETWEEN 1 AND 100),
+	CONSTRAINT "site_config_description_bounded" CHECK(length(trim("site_config"."site_description")) BETWEEN 1 AND 300),
 	CONSTRAINT "site_config_logo_url_present" CHECK(length(trim("site_config"."default_site_logo_url")) >= 1),
 	CONSTRAINT "site_config_features_boolean" CHECK(
       "site_config"."feature_announcements" IN (0, 1) AND "site_config"."feature_events" IN (0, 1)
@@ -1027,6 +1119,7 @@ CREATE TABLE `wiki_articles` (
 	`revision_token` text NOT NULL,
 	`created_at` text DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')) NOT NULL,
 	`updated_at` text DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')) NOT NULL,
+	`search_text` text DEFAULT '' NOT NULL,
 	FOREIGN KEY (`category_id`) REFERENCES `wiki_categories`(`id`) ON UPDATE no action ON DELETE restrict,
 	FOREIGN KEY (`created_by`) REFERENCES `users`(`id`) ON UPDATE no action ON DELETE restrict,
 	FOREIGN KEY (`updated_by`) REFERENCES `users`(`id`) ON UPDATE no action ON DELETE set null,
@@ -1203,8 +1296,8 @@ BEGIN
 END;
 --> statement-breakpoint
 -- auth-triggers.sql
--- The built-in site_owner role is the trust root. There may be multiple owners,
--- but the system must always retain at least one active, non-deleted owner.
+-- Role management is dynamic. The system must retain at least one active,
+-- non-deleted user whose current role grants admin.roles.manage.
 
 CREATE TRIGGER auth_role_permission_identity_immutable
 BEFORE UPDATE OF role_id, permission ON role_permissions
@@ -1214,76 +1307,79 @@ BEGIN
 END;
 --> statement-breakpoint
 
-CREATE TRIGGER auth_site_owner_role_identity_immutable
-BEFORE UPDATE OF id ON roles
-WHEN OLD.id = 'site_owner' OR NEW.id = 'site_owner'
-BEGIN
-  SELECT RAISE(ABORT, 'site owner role identity is immutable');
-END;
---> statement-breakpoint
-
-CREATE TRIGGER auth_site_owner_role_required
-BEFORE DELETE ON roles
-WHEN OLD.id = 'site_owner'
-BEGIN
-  SELECT RAISE(ABORT, 'last site owner required');
-END;
---> statement-breakpoint
-
-CREATE TRIGGER auth_owner_permission_site_owner_only_insert
-BEFORE INSERT ON role_permissions
-WHEN NEW.permission = 'admin.owners.manage' AND NEW.role_id <> 'site_owner'
-BEGIN
-  SELECT RAISE(ABORT, 'owner permission is reserved for site owner');
-END;
---> statement-breakpoint
-
-CREATE TRIGGER auth_owner_permission_site_owner_only_delete
+CREATE TRIGGER auth_keep_last_role_manager_on_permission_delete
 BEFORE DELETE ON role_permissions
-WHEN OLD.permission = 'admin.owners.manage' AND OLD.role_id = 'site_owner'
+WHEN OLD.permission = 'admin.roles.manage'
+ AND EXISTS (
+   SELECT 1
+   FROM users u
+   WHERE u.role_id = OLD.role_id
+     AND u.is_active = 1
+     AND u.deleted_at IS NULL
+ )
+ AND NOT EXISTS (
+   SELECT 1
+   FROM users u
+   JOIN role_permissions rp ON rp.role_id = u.role_id
+   WHERE u.role_id <> OLD.role_id
+     AND u.is_active = 1
+     AND u.deleted_at IS NULL
+     AND rp.permission = 'admin.roles.manage'
+ )
 BEGIN
-  SELECT RAISE(ABORT, 'last site owner required');
+  SELECT RAISE(ABORT, 'last role manager required');
 END;
 --> statement-breakpoint
 
-CREATE TRIGGER auth_keep_last_site_owner_on_user_update
+CREATE TRIGGER auth_keep_last_role_manager_on_user_update
 BEFORE UPDATE OF role_id, is_active, deleted_at ON users
 WHEN OLD.is_active = 1
  AND OLD.deleted_at IS NULL
- AND OLD.role_id = 'site_owner'
+ AND EXISTS (
+   SELECT 1 FROM role_permissions rp
+   WHERE rp.role_id = OLD.role_id AND rp.permission = 'admin.roles.manage'
+ )
  AND (
    NEW.is_active = 0
    OR NEW.deleted_at IS NOT NULL
-   OR NEW.role_id <> 'site_owner'
+   OR NOT EXISTS (
+     SELECT 1 FROM role_permissions rp
+     WHERE rp.role_id = NEW.role_id AND rp.permission = 'admin.roles.manage'
+   )
  )
  AND NOT EXISTS (
    SELECT 1
    FROM users u
+   JOIN role_permissions rp ON rp.role_id = u.role_id
    WHERE u.id <> OLD.id
      AND u.is_active = 1
      AND u.deleted_at IS NULL
-     AND u.role_id = 'site_owner'
+     AND rp.permission = 'admin.roles.manage'
  )
 BEGIN
-  SELECT RAISE(ABORT, 'last site owner required');
+  SELECT RAISE(ABORT, 'last role manager required');
 END;
 --> statement-breakpoint
 
-CREATE TRIGGER auth_keep_last_site_owner_on_user_delete
+CREATE TRIGGER auth_keep_last_role_manager_on_user_delete
 BEFORE DELETE ON users
 WHEN OLD.is_active = 1
  AND OLD.deleted_at IS NULL
- AND OLD.role_id = 'site_owner'
+ AND EXISTS (
+   SELECT 1 FROM role_permissions rp
+   WHERE rp.role_id = OLD.role_id AND rp.permission = 'admin.roles.manage'
+ )
  AND NOT EXISTS (
    SELECT 1
    FROM users u
+   JOIN role_permissions rp ON rp.role_id = u.role_id
    WHERE u.id <> OLD.id
      AND u.is_active = 1
      AND u.deleted_at IS NULL
-     AND u.role_id = 'site_owner'
+     AND rp.permission = 'admin.roles.manage'
  )
 BEGIN
-  SELECT RAISE(ABORT, 'last site owner required');
+  SELECT RAISE(ABORT, 'last role manager required');
 END;
 --> statement-breakpoint
 
@@ -2055,51 +2151,51 @@ BEGIN
     (run_id, artifact_type, artifact_key, request_id, created_at)
   SELECT requests.run_id,
     CASE
-      WHEN NEW.entity_type = 'user' AND NEW.action IN ('create', 'register', 'admin_create_member') THEN 'user'
-      WHEN NEW.entity_type = 'invite_link' AND NEW.action = 'create' THEN 'invite_link'
-      WHEN NEW.entity_type = 'role' AND NEW.action = 'create' THEN 'role'
-      WHEN NEW.entity_type = 'event' AND NEW.action = 'create' THEN 'event'
-      WHEN NEW.entity_type = 'recurring_template' AND NEW.action = 'create' THEN 'recurring_template'
-      WHEN NEW.entity_type = 'announcement' AND NEW.action = 'create' THEN 'announcement'
-      WHEN NEW.entity_type = 'gallery_item' AND NEW.action = 'create_video' THEN 'gallery_item'
-      WHEN NEW.entity_type = 'guild_war_history' AND NEW.action IN ('create', 'conclude') THEN 'guild_war'
-      WHEN NEW.entity_type = 'wiki_category' AND NEW.action = 'create' THEN 'wiki_category'
-      WHEN NEW.entity_type = 'wiki_article' AND NEW.action = 'create' THEN 'wiki_article'
-      WHEN NEW.entity_type IN ('badge', 'member_badge') AND NEW.action = 'create' THEN 'badge'
-      WHEN NEW.entity_type = 'storage' AND NEW.action = 'create' THEN 'storage'
-      WHEN NEW.entity_type = 'storage_category' AND NEW.action = 'create' THEN 'storage_category'
-      WHEN NEW.entity_type = 'storage_item' AND NEW.action = 'create' THEN 'storage_item'
-      WHEN NEW.entity_type = 'storage_transaction' AND NEW.action IN ('intake', 'distribute', 'adjust') THEN 'storage_batch'
-      WHEN NEW.entity_type = 'media_asset' AND NEW.action = 'upload' THEN 'media_asset'
-      WHEN NEW.entity_type = 'class_catalog' AND NEW.action = 'create' THEN 'class_catalog'
-      WHEN NEW.entity_type = 'class_tag' AND NEW.action = 'create' THEN 'class_tag'
-      WHEN NEW.entity_type = 'member_absence' AND NEW.action = 'create' THEN 'member_absence'
+      WHEN NEW.subject_type = 'user' AND NEW.action IN ('create', 'register', 'admin_create_member') THEN 'user'
+      WHEN NEW.subject_type = 'invite_link' AND NEW.action = 'create' THEN 'invite_link'
+      WHEN NEW.subject_type = 'role' AND NEW.action = 'create' THEN 'role'
+      WHEN NEW.subject_type = 'event' AND NEW.action = 'create' THEN 'event'
+      WHEN NEW.subject_type = 'recurring_template' AND NEW.action = 'create' THEN 'recurring_template'
+      WHEN NEW.subject_type = 'announcement' AND NEW.action = 'create' THEN 'announcement'
+      WHEN NEW.subject_type = 'gallery_item' AND NEW.action = 'create_video' THEN 'gallery_item'
+      WHEN NEW.subject_type = 'guild_war_history' AND NEW.action IN ('create', 'conclude') THEN 'guild_war'
+      WHEN NEW.subject_type = 'wiki_category' AND NEW.action = 'create' THEN 'wiki_category'
+      WHEN NEW.subject_type = 'wiki_article' AND NEW.action = 'create' THEN 'wiki_article'
+      WHEN NEW.subject_type IN ('badge', 'member_badge') AND NEW.action = 'create' THEN 'badge'
+      WHEN NEW.subject_type = 'storage' AND NEW.action = 'create' THEN 'storage'
+      WHEN NEW.subject_type = 'storage_category' AND NEW.action = 'create' THEN 'storage_category'
+      WHEN NEW.subject_type = 'storage_item' AND NEW.action = 'create' THEN 'storage_item'
+      WHEN NEW.subject_type = 'storage_transaction' AND NEW.action IN ('intake', 'distribute', 'adjust') THEN 'storage_batch'
+      WHEN NEW.subject_type = 'media_asset' AND NEW.action = 'upload' THEN 'media_asset'
+      WHEN NEW.subject_type = 'class_catalog' AND NEW.action = 'create' THEN 'class_catalog'
+      WHEN NEW.subject_type = 'class_tag' AND NEW.action = 'create' THEN 'class_tag'
+      WHEN NEW.subject_type = 'member_absence' AND NEW.action = 'create' THEN 'member_absence'
     END,
-    NEW.entity_id,
+    NEW.subject_id,
     NEW.request_id,
     NEW.occurred_at
   FROM system_test_requests AS requests
   WHERE requests.request_id = NEW.request_id
     AND (
-      (NEW.entity_type = 'user' AND NEW.action IN ('create', 'register', 'admin_create_member'))
-      OR (NEW.entity_type = 'invite_link' AND NEW.action = 'create')
-      OR (NEW.entity_type = 'role' AND NEW.action = 'create')
-      OR (NEW.entity_type = 'event' AND NEW.action = 'create')
-      OR (NEW.entity_type = 'recurring_template' AND NEW.action = 'create')
-      OR (NEW.entity_type = 'announcement' AND NEW.action = 'create')
-      OR (NEW.entity_type = 'gallery_item' AND NEW.action = 'create_video')
-      OR (NEW.entity_type = 'guild_war_history' AND NEW.action IN ('create', 'conclude'))
-      OR (NEW.entity_type = 'wiki_category' AND NEW.action = 'create')
-      OR (NEW.entity_type = 'wiki_article' AND NEW.action = 'create')
-      OR (NEW.entity_type IN ('badge', 'member_badge') AND NEW.action = 'create')
-      OR (NEW.entity_type = 'storage' AND NEW.action = 'create')
-      OR (NEW.entity_type = 'storage_category' AND NEW.action = 'create')
-      OR (NEW.entity_type = 'storage_item' AND NEW.action = 'create')
-      OR (NEW.entity_type = 'storage_transaction' AND NEW.action IN ('intake', 'distribute', 'adjust'))
-      OR (NEW.entity_type = 'media_asset' AND NEW.action = 'upload')
-      OR (NEW.entity_type = 'class_catalog' AND NEW.action = 'create')
-      OR (NEW.entity_type = 'class_tag' AND NEW.action = 'create')
-      OR (NEW.entity_type = 'member_absence' AND NEW.action = 'create')
+      (NEW.subject_type = 'user' AND NEW.action IN ('create', 'register', 'admin_create_member'))
+      OR (NEW.subject_type = 'invite_link' AND NEW.action = 'create')
+      OR (NEW.subject_type = 'role' AND NEW.action = 'create')
+      OR (NEW.subject_type = 'event' AND NEW.action = 'create')
+      OR (NEW.subject_type = 'recurring_template' AND NEW.action = 'create')
+      OR (NEW.subject_type = 'announcement' AND NEW.action = 'create')
+      OR (NEW.subject_type = 'gallery_item' AND NEW.action = 'create_video')
+      OR (NEW.subject_type = 'guild_war_history' AND NEW.action IN ('create', 'conclude'))
+      OR (NEW.subject_type = 'wiki_category' AND NEW.action = 'create')
+      OR (NEW.subject_type = 'wiki_article' AND NEW.action = 'create')
+      OR (NEW.subject_type IN ('badge', 'member_badge') AND NEW.action = 'create')
+      OR (NEW.subject_type = 'storage' AND NEW.action = 'create')
+      OR (NEW.subject_type = 'storage_category' AND NEW.action = 'create')
+      OR (NEW.subject_type = 'storage_item' AND NEW.action = 'create')
+      OR (NEW.subject_type = 'storage_transaction' AND NEW.action IN ('intake', 'distribute', 'adjust'))
+      OR (NEW.subject_type = 'media_asset' AND NEW.action = 'upload')
+      OR (NEW.subject_type = 'class_catalog' AND NEW.action = 'create')
+      OR (NEW.subject_type = 'class_tag' AND NEW.action = 'create')
+      OR (NEW.subject_type = 'member_absence' AND NEW.action = 'create')
     );
 
   INSERT OR IGNORE INTO system_test_artifacts
@@ -2107,22 +2203,22 @@ BEGIN
   SELECT requests.run_id, 'gallery_item', items.id, NEW.request_id, NEW.occurred_at
   FROM system_test_requests AS requests
   JOIN json_each(CASE
-    WHEN NEW.entity_type = 'gallery_item' AND NEW.action = 'upload_images'
-      THEN '["' || replace(NEW.entity_id, ',', '","') || '"]'
+    WHEN NEW.subject_type = 'gallery_item' AND NEW.action = 'upload_images'
+      THEN '["' || replace(NEW.subject_id, ',', '","') || '"]'
     ELSE '[]'
   END) AS ids
   JOIN gallery_items AS items ON items.id = ids.value
   WHERE requests.request_id = NEW.request_id
-    AND NEW.entity_type = 'gallery_item'
+    AND NEW.subject_type = 'gallery_item'
     AND NEW.action = 'upload_images';
 
   INSERT OR IGNORE INTO system_test_artifacts
     (run_id, artifact_type, artifact_key, request_id, created_at)
   SELECT requests.run_id, 'guild_war', wars.id, NEW.request_id, NEW.occurred_at
   FROM system_test_requests AS requests
-  JOIN guild_wars AS wars ON wars.event_id = NEW.entity_id
+  JOIN guild_wars AS wars ON wars.event_id = NEW.subject_id
   WHERE requests.request_id = NEW.request_id
-    AND NEW.entity_type = 'guild_war'
+    AND NEW.subject_type = 'guild_war'
     AND NEW.action = 'init';
 END;
 --> statement-breakpoint
@@ -2312,55 +2408,13 @@ BEGIN
     AND NOT EXISTS (SELECT 1 FROM wiki_revision_media WHERE media_id = OLD.media_id);
 END;
 --> statement-breakpoint
--- Canonical built-ins. Parity tests compare these rows with apps/shared/constants/roles.ts.
+-- Initial editable roles. Parity tests compare these rows with apps/shared/constants/roles.ts.
 INSERT INTO roles (id, name, level, color, revision_token) VALUES
-  ('site_owner', 'Site Owner', 1000, '#d4af37', 'seed-role-site_owner-0001'),
-  ('admin', 'Admin', 900, 'red', 'seed-role-admin-0001'),
+  ('admin', 'Admin', 1000, 'red', 'seed-role-admin-0001'),
   ('moderator', 'Moderator', 500, '#756047', 'seed-role-moderator-0001'),
   ('member', 'Member', 100, 'gray', 'seed-role-member-0001');
 --> statement-breakpoint
 INSERT INTO role_permissions (role_id, permission) VALUES
-  ('site_owner', 'admin.users.view'),
-  ('site_owner', 'admin.users.edit'),
-  ('site_owner', 'admin.users.role'),
-  ('site_owner', 'admin.users.activate'),
-  ('site_owner', 'admin.users.delete'),
-  ('site_owner', 'admin.users.password'),
-  ('site_owner', 'admin.owners.manage'),
-  ('site_owner', 'admin.invite.view'),
-  ('site_owner', 'admin.invite.manage'),
-  ('site_owner', 'admin.audit.view'),
-  ('site_owner', 'admin.audit.export'),
-  ('site_owner', 'admin.status.view'),
-  ('site_owner', 'admin.analytics.view'),
-  ('site_owner', 'admin.analytics.manage'),
-  ('site_owner', 'admin.roles.view'),
-  ('site_owner', 'admin.roles.manage'),
-  ('site_owner', 'admin.siteConfig.manage'),
-  ('site_owner', 'admin.classes.manage'),
-  ('site_owner', 'guildwar.teams.edit'),
-  ('site_owner', 'guildwar.history.edit'),
-  ('site_owner', 'events.create'),
-  ('site_owner', 'events.edit'),
-  ('site_owner', 'events.archive'),
-  ('site_owner', 'events.delete'),
-  ('site_owner', 'events.templates'),
-  ('site_owner', 'announcements.create'),
-  ('site_owner', 'announcements.edit'),
-  ('site_owner', 'announcements.archive'),
-  ('site_owner', 'announcements.delete'),
-  ('site_owner', 'gallery.upload'),
-  ('site_owner', 'gallery.manage'),
-  ('site_owner', 'gallery.delete'),
-  ('site_owner', 'wiki.articles.create'),
-  ('site_owner', 'wiki.articles.edit'),
-  ('site_owner', 'wiki.articles.archive'),
-  ('site_owner', 'wiki.articles.delete'),
-  ('site_owner', 'wiki.categories.manage'),
-  ('site_owner', 'admin.badges.manage'),
-  ('site_owner', 'admin.storage.structure'),
-  ('site_owner', 'admin.storage.items'),
-  ('site_owner', 'admin.storage.stock'),
   ('admin', 'admin.users.view'),
   ('admin', 'admin.users.edit'),
   ('admin', 'admin.users.role'),
@@ -2458,4 +2512,4 @@ INSERT INTO site_config (
 INSERT INTO wiki_category_state (singleton, revision_token) VALUES (1, 'seed-wiki-state-0001');
 --> statement-breakpoint
 -- app-migration-ledger
-INSERT INTO app_migrations (id, ordinal, checksum) VALUES ('0000_core', 0, '358d40d7378c39c4d013830fea94f33a882bc5287e66debdfba72f83c2f99f7a');
+INSERT INTO app_migrations (id, ordinal, checksum) VALUES ('0000_core', 0, '41628b837f51067411bc253a896abded22bcfb89ec0b46612733790ce4de3f52');

@@ -5,9 +5,9 @@ import type {
 } from "@guild/server/modules/members";
 import type { MediaService } from "@guild/server/modules/media";
 import { LIMITS } from "@guild/shared/config/limits";
-import type { AuditMutation } from "@guild/server/modules/audit";
+import type { AuditEventWrite as AuditMutation } from "@guild/server/modules/audit";
 import type { SqlBatchStatement, SqlExecutor, SqlResult, SqlRow, SqlValue } from "@guild/kernel";
-import { auditInsertStatement } from "./audit-statement.js";
+import { auditInsertSelectStatement, auditInsertStatement } from "./audit-statement.js";
 import { assertMediaAttachments, replaceMediaLinksStatements } from "./media-link-statements.js";
 import { returnedRowCount } from "./sql-result.js";
 
@@ -107,7 +107,7 @@ export class SqliteMemberMediaPort implements MemberMediaPort {
     const results = await this.sql.batch([
       ...business,
       auditInsertStatement(audit, memberGuard(userId)),
-      operationOutcome(audit.id),
+      operationOutcome(audit.eventId),
     ]);
     if (returnedRowCount(results.at(-1)) !== 1) throw targetChanged();
     return uploaded;
@@ -122,12 +122,7 @@ export class SqliteMemberMediaPort implements MemberMediaPort {
     context.authorization.requireAuthenticated();
     const ids = uniqueBounded(mediaIds, LIMITS.content.profileImagesDeleteBatch.max, "Profile image delete", false);
     const results = await this.sql.batch([
-      auditInsertStatement(audit, {
-        sql: `SELECT 1 FROM media_links
-          WHERE entity_type = 'member_profile' AND entity_id = ? AND slot = 'image'
-            AND media_id IN (${placeholders(ids)})`,
-        params: [userId, ...ids],
-      }),
+      profileImageDeletionAuditStatement(audit, userId, ids),
       {
         method: "all",
         sql: `DELETE FROM media_links
@@ -135,7 +130,7 @@ export class SqliteMemberMediaPort implements MemberMediaPort {
             AND media_id IN (${placeholders(ids)})
             AND EXISTS (SELECT 1 FROM audit_log WHERE id = ?)
           RETURNING media_id AS media_id`,
-        params: [userId, ...ids, audit.id],
+        params: [userId, ...ids, audit.eventId],
         columns: ["media_id"],
       },
     ]);
@@ -195,7 +190,7 @@ export class SqliteMemberMediaPort implements MemberMediaPort {
       mediaIds: [mediaId],
       maxItems: 1,
     });
-    const operationGuard = auditGuard(audit.id);
+    const operationGuard = auditGuard(audit.eventId);
     const business = replaceMediaLinksStatements({
       entityType: "class_catalog",
       entityId: classId,
@@ -209,10 +204,10 @@ export class SqliteMemberMediaPort implements MemberMediaPort {
         method: "run",
         sql: `UPDATE class_catalog SET icon_type = 'image', vector_icon = NULL, updated_at = ?
           WHERE id = ? AND EXISTS (SELECT 1 FROM audit_log WHERE id = ?)`,
-        params: [context.now, classId, audit.id],
+        params: [context.now, classId, audit.eventId],
       },
       ...business,
-      operationOutcome(audit.id),
+      operationOutcome(audit.eventId),
     ]);
     if (returnedRowCount(results.at(-1)) !== 1) throw targetChanged();
     return mediaId;
@@ -220,7 +215,7 @@ export class SqliteMemberMediaPort implements MemberMediaPort {
 
   async deleteClassIcon(context: RequestContext, classId: string, audit: AuditMutation): Promise<void> {
     context.authorization.requireAuthenticated();
-    const operationGuard = auditGuard(audit.id);
+    const operationGuard = auditGuard(audit.eventId);
     const results = await this.sql.batch([
       auditInsertStatement(audit, {
         sql: "SELECT 1 FROM class_catalog WHERE id = ? AND icon_type = 'image'",
@@ -239,7 +234,7 @@ export class SqliteMemberMediaPort implements MemberMediaPort {
             AND EXISTS (${operationGuard.sql})`,
         params: [classId, ...operationGuard.params],
       },
-      operationOutcome(audit.id),
+      operationOutcome(audit.eventId),
     ]);
     if (returnedRowCount(results.at(-1)) !== 1) throw targetChanged();
   }
@@ -291,7 +286,7 @@ export class SqliteMemberMediaPort implements MemberMediaPort {
     const results = await this.sql.batch([
       ...business,
       auditInsertStatement(audit, guard),
-      operationOutcome(audit.id),
+      operationOutcome(audit.eventId),
     ]);
     if (returnedRowCount(results.at(-1)) !== 1) throw targetChanged();
   }
@@ -314,7 +309,7 @@ export class SqliteMemberMediaPort implements MemberMediaPort {
         sql: `DELETE FROM media_links
           WHERE entity_type = 'member_profile' AND entity_id = ? AND slot = ?
             AND EXISTS (SELECT 1 FROM audit_log WHERE id = ?)`,
-        params: [userId, slot, audit.id],
+        params: [userId, slot, audit.eventId],
       },
     ]);
   }
@@ -344,6 +339,48 @@ function uniqueBounded(values: readonly string[], maximum: number, label: string
 
 function* chunks<T>(values: readonly T[], size: number): Generator<readonly T[]> {
   for (let index = 0; index < values.length; index += size) yield values.slice(index, index + size);
+}
+
+function profileImageDeletionAuditStatement(
+  audit: AuditMutation,
+  userId: string,
+  mediaIds: readonly string[],
+): SqlBatchStatement {
+  return auditInsertSelectStatement(
+    `WITH matched AS (
+       SELECT media_id FROM media_links
+       WHERE entity_type = 'member_profile' AND entity_id = ? AND slot = 'image'
+         AND media_id IN (${placeholders(mediaIds)})
+     )
+     SELECT ?, ?, ?, ?,
+       CASE WHEN ? = 'user' THEN (SELECT username FROM users WHERE id = ?) ELSE ? END,
+       ?, ?, ?, ?,
+       json_set(
+         json(?), '$.context[#]',
+         json_object(
+           'field', 'media_count',
+           'value', json_object('type', 'number', 'value', (SELECT count(*) FROM matched))
+         )
+       ), ?
+     WHERE EXISTS (SELECT 1 FROM matched)`,
+    [
+      userId,
+      ...mediaIds,
+      audit.eventId,
+      audit.requestId,
+      audit.actorKind,
+      audit.actorId,
+      audit.actorKind,
+      audit.actorId,
+      audit.actorLabel,
+      audit.subjectType,
+      audit.subjectId,
+      audit.subjectLabel,
+      audit.action,
+      JSON.stringify(audit.payload),
+      audit.occurredAt,
+    ],
+  );
 }
 
 function placeholders(values: readonly unknown[]): string {

@@ -1,4 +1,3 @@
-// @vitest-environment jsdom
 import { MantineProvider } from "@mantine/core";
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
@@ -6,7 +5,7 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, expect, it, vi } from "vitest";
 import type { DebugLogEntry } from "./AdminApiTestEngine";
-import { AdminApiDebugConsole } from "./AdminApiDebugConsole";
+import { AdminApiDebugConsole, formatLogEntry } from "./AdminApiDebugConsole";
 
 vi.mock("react-i18next", () => ({
   useTranslation: () => ({
@@ -27,18 +26,16 @@ const successLog: DebugLogEntry = {
   ranAt: "2026-07-28T12:00:00.000Z",
 };
 
-function renderConsole(logs: DebugLogEntry[], open = true) {
-  const onToggle = vi.fn();
+function renderConsole(logs: DebugLogEntry[]) {
   render(
     <MantineProvider>
-      <AdminApiDebugConsole logs={logs} onClear={vi.fn()} open={open} onToggle={onToggle} />
+      <AdminApiDebugConsole logs={logs} onClear={vi.fn()} />
     </MantineProvider>,
   );
-  return { onToggle };
 }
 
 describe("AdminApiDebugConsole", () => {
-  it("keeps filters, rows, and both console actions at 44px minimum targets", () => {
+  it("keeps rows and primary actions touch-sized while the result filter stays compact", () => {
     const css = readFileSync(
       resolve(
         process.cwd(),
@@ -46,29 +43,34 @@ describe("AdminApiDebugConsole", () => {
       ),
       "utf8",
     ).replace(/\/\*[\s\S]*?\*\//g, "");
-    const filterRule = css.match(/\.api-debug__filter-btn\s*\{([^}]+)\}/)?.[1];
+    const filterRule = css.match(/\.api-filter \.mantine-SegmentedControl-label\s*\{([^}]+)\}/)?.[1];
     const rowRule = css.match(/\.api-debug__row-main\s*\{([^}]+)\}/)?.[1];
-    /* Run and stop share the same touch-target rule. */
-    const consoleActionRule = css.match(
-      /\.api-console__header\s+\.api-console__run-all,\s*\.api-console__header\s+\.api-console__stop\s*\{([^}]+)\}/,
-    )?.[1];
 
-    expect(filterRule).toMatch(/min-width:\s*44px/);
-    expect(filterRule).toMatch(/min-height:\s*44px/);
+    expect(filterRule).toMatch(/min-height:\s*28px/);
     expect(rowRule).toMatch(/min-height:\s*44px/);
-    expect(consoleActionRule).toMatch(/min-height:\s*44px/);
+
+    /* 表头三个按钮是文字控件，高度归 --control-height-regular 管：细指针 36px、
+       粗指针 44px，一处切换。在这里钉死 44px 就是把它们比同屏按钮抬高一档，
+       而且触控档位的事实来源被复制成两份。 */
+    expect(css).not.toMatch(/\.api-console__(run-all|run-critical|stop)[^{}]*\{[^}]*(min-)?height:/);
   });
 
-  it("hides its body behind a disclosure that reports the collapsed state", async () => {
-    const user = userEvent.setup();
-    const { onToggle } = renderConsole([successLog], false);
+  it("keeps the console body expanded without a second disclosure layer", () => {
+    renderConsole([successLog]);
 
-    const disclosure = screen.getByRole("button", { name: /status\.api\.debugTitle/ });
-    expect(disclosure).toHaveAttribute("aria-expanded", "false");
-    expect(screen.getByText("/api/health"), "折起时内容仍在 DOM 里，只是不可见").not.toBeVisible();
+    expect(screen.getByText("/api/health")).toBeVisible();
+    expect(document.querySelector(".admin-status-toggle")).toBeNull();
+  });
 
-    await user.click(disclosure);
-    expect(onToggle).toHaveBeenCalledOnce();
+  it("keeps the result filter in the title row without segmented dividers", () => {
+    renderConsole([successLog]);
+
+    const header = document.querySelector(".api-debug .admin-panel__head");
+    const filter = screen.getByRole("group", { name: "status.api.filter.results" });
+
+    expect(header).toContainElement(filter);
+    expect(document.querySelector(".api-debug__toolbar")).toBeNull();
+    expect(document.querySelector(".mantine-SegmentedControl-separator")).toBeNull();
   });
 
   it("exposes log details through a keyboard-operable disclosure", async () => {
@@ -93,10 +95,20 @@ describe("AdminApiDebugConsole", () => {
     renderConsole([successLog]);
 
     await user.click(
-      screen.getByRole("button", { name: "status.api.filter.errors" }),
+      screen.getByRole("radio", { name: "status.api.filter.errors" }),
     );
 
     expect(screen.getByText("status.api.noErrors")).toBeInTheDocument();
     expect(screen.queryByText("No errors found")).not.toBeInTheDocument();
+  });
+
+  it("copies intentional safety exclusions as N/A instead of errors", () => {
+    expect(formatLogEntry({
+      ...successLog,
+      status: null,
+      error: null,
+      skipped: true,
+      body: "Global mutation intentionally excluded",
+    })).toContain("→ N/A");
   });
 });

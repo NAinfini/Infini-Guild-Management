@@ -1,3 +1,4 @@
+// @vitest-environment node
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
@@ -7,10 +8,14 @@ function readPortalFile(path: string) {
 }
 
 describe("App shell accessibility structure", () => {
-  it("keeps the route progress indicator hidden from assistive technology", () => {
+  it("uses one visible route progress indicator and an assistive loading announcement", () => {
     const source = readPortalFile("apps/portal/router.tsx");
+    const styles = readPortalFile("apps/portal/styles.css");
 
     expect(source).toContain('<NavigationProgress aria-hidden="true" />');
+    expect(source).toContain('<VisuallyHidden role="status" aria-live="polite">');
+    expect(source).not.toContain('className="route-loading"');
+    expect(styles).not.toContain(".route-loading");
   });
 
   it("labels the view-as selector input", () => {
@@ -34,6 +39,13 @@ describe("App shell accessibility structure", () => {
     expect(appShell).toMatch(
       /member_badge:\s*\[queryKeys\.users\.all,\s*queryKeys\.myProfile\.all\]/,
     );
+  });
+
+  it("shows a localized warning when session revalidation fails", () => {
+    const appShell = readPortalFile("apps/portal/components/layout/AppShell.tsx");
+
+    expect(appShell).toContain('notifyWarning(t("admin:message.sessionRefreshFailed"))');
+    expect(appShell).not.toContain("[auth] Session revalidation failed");
   });
 
   it("keeps AppHeader as the only page-title source", () => {
@@ -76,6 +88,15 @@ describe("App shell accessibility structure", () => {
 
     expect(appShell).toContain('activeRoute.fillsViewport ? " app-main--fill" : ""');
     expect(appShellCss).toMatch(/\.app-main--fill\s*\{[^}]*height:\s*100%/);
+  });
+
+  it("keeps the shell as a vertical-only scroll container", () => {
+    const appShellCss = readPortalFile("apps/portal/components/layout/AppShell.css");
+    const contentRule = appShellCss.match(/\.app-content\.app-content\s*\{([^}]*)\}/)?.[1] ?? "";
+
+    expect(contentRule).toContain("min-width: 0");
+    expect(contentRule).toContain("overflow-x: clip");
+    expect(contentRule).toContain("overflow-y: auto");
   });
 
   it("keeps the shell title compact and desktop workspaces broad", () => {

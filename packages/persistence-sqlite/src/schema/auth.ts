@@ -28,13 +28,7 @@ export const roles = sqliteTable(
   (table) => [
     uniqueIndex("ux_roles_name_nocase").on(sql`${table.name} COLLATE NOCASE`),
     index("idx_roles_level").on(table.level, table.id),
-    check(
-      "roles_level_valid",
-      sql`(
-        (${table.id} = 'site_owner' AND ${table.level} = 1000)
-        OR (${table.id} <> 'site_owner' AND ${table.level} BETWEEN 1 AND 999)
-      )`,
-    ),
+    check("roles_level_valid", sql`${table.level} BETWEEN 1 AND 1000`),
     check("roles_revision_present", sql`length(${table.revisionToken}) >= 16`),
   ],
 );
@@ -67,6 +61,11 @@ export const users = sqliteTable(
     revisionToken: text("revision_token").notNull(),
     createdAt: text("created_at").notNull().default(nowUtc),
     updatedAt: text("updated_at").notNull().default(nowUtc),
+    /* 最近一次成功登录的时刻。会话表留不住这个信息：会话有条数上限、过期后还会被
+       清掉，翻不出「上次是什么时候来的」。空值表示建号以来一次都没登录过。
+       它不参与并发校验，所以写它时不动 revision_token 和 updated_at。
+       字段排在最后是因为它由 ALTER TABLE 追加，列序必须与迁移后的实际表一致。 */
+    lastLoginAt: text("last_login_at"),
   },
   (table) => [
     uniqueIndex("ux_users_username_nocase").on(sql`${table.username} COLLATE NOCASE`),

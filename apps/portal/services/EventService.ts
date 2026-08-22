@@ -8,6 +8,9 @@ import {
   deleteEvent,
   drawRaffle,
   type CreateEventPayload,
+  type CreateTemplatePayload,
+  type UpdateEventPayload,
+  type UpdateTemplatePayload,
   joinEvent,
   leaveEvent,
   removeEventParticipant,
@@ -57,7 +60,12 @@ export {
   uploadEventImagesMutation as uploadEventImages,
   votePoll,
 };
-export type { CreateEventPayload, EventDetailResponse };
+export type {
+  CreateEventPayload,
+  CreateTemplatePayload,
+  EventDetailResponse,
+  UpdateTemplatePayload,
+};
 
 type EventValidationReason =
   | "missing_start"
@@ -165,13 +173,17 @@ export class EventService {
       : [];
     const nextAttachments = [...existingAttachments, ...uploadedMediaIds];
 
-    const response = await this.updateEventFn(input.editingEventId, {
+    const updatePayload: UpdateEventPayload = {
       ...payload,
+      description: payload.description ?? null,
+      end_at: payload.end_at ?? null,
+      capacity: payload.capacity ?? null,
       pinned: input.pinned,
       signup_locked: input.signupLocked,
       auto_archive: input.autoArchive,
       attachments: nextAttachments,
-    });
+    };
+    const response = await this.updateEventFn(input.editingEventId, updatePayload);
     await this.invalidateEvents();
     return response;
   }

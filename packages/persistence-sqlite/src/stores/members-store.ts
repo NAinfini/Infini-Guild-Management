@@ -29,7 +29,7 @@ import type {
   RosterPage,
   RosterQuery,
 } from "@guild/server/modules/members";
-import type { AuditMutation } from "@guild/server/modules/audit";
+import type { AuditEventWrite as AuditMutation } from "@guild/server/modules/audit";
 import type { AppDatabase } from "../database.js";
 import type { SqlBatchStatement, SqlExecutor, SqlResult, SqlValue } from "@guild/kernel";
 import { roles, users } from "../schema/auth.js";
@@ -45,7 +45,7 @@ import {
   memberProfiles,
   memberProfileVideos,
 } from "../schema/members.js";
-import { auditInsertStatement } from "./audit-statement.js";
+import { auditInsertSelectStatement, auditInsertStatement } from "./audit-statement.js";
 import { returnedRowCount } from "./sql-result.js";
 
 type MembersSchema = {
@@ -74,6 +74,7 @@ type BaseMemberRow = Readonly<{
   deletedAt: string | null;
   userCreatedAt: string;
   userUpdatedAt: string;
+  userLastLoginAt: string | null;
   power: number;
   titleHtml: string | null;
   bio: string | null;
@@ -96,6 +97,9 @@ const publicMemberColumns = {
   deletedAt: users.deletedAt,
   userCreatedAt: users.createdAt,
   userUpdatedAt: users.updatedAt,
+  /* 最近登录时刻只给登录后的视图。对外视图跟 notes、休假一样按 NULL 投影：
+     公开名单没有理由透露谁什么时候上过站。 */
+  userLastLoginAt: drizzleSql<string | null>`NULL`,
   power: memberProfiles.power,
   titleHtml: memberProfiles.titleHtml,
   bio: memberProfiles.bio,
@@ -109,6 +113,7 @@ const publicMemberColumns = {
 
 const memberColumns = {
   ...publicMemberColumns,
+  userLastLoginAt: users.lastLoginAt,
   availabilityTimezone: memberProfiles.availabilityTimezone,
   vacationStart: drizzleSql<string | null>`(
     SELECT ma.start_date FROM member_absences ma
@@ -156,8 +161,9 @@ function captureSystemTestSortOrder(
      FROM system_test_requests AS requests
      JOIN desired
      JOIN ${table} AS target ON target.id = desired.id
-     WHERE requests.request_id = ? ${catalogOnly}
-       AND NOT EXISTS (
+      WHERE requests.request_id = ? ${catalogOnly}
+        AND target.sort_order IS NOT desired.sort_order
+        AND NOT EXISTS (
          SELECT 1 FROM system_test_artifacts AS artifacts
          WHERE artifacts.run_id = requests.run_id
            AND artifacts.artifact_type = ?
@@ -180,14 +186,78 @@ function reorderCatalog(
   const catalogOnly = targetType === "class_tag" ? "AND owner_kind IS NULL" : "";
   const desired = JSON.stringify(ids.map((id, index) => ({ id, sortOrder: index * 10 })));
   return run(
-    `UPDATE ${table}
+    `WITH desired AS (
+       SELECT CAST(json_extract(value, '$.id') AS TEXT) AS id,
+              CAST(json_extract(value, '$.sortOrder') AS INTEGER) AS sort_order
+       FROM json_each(?)
+     )
+     UPDATE ${table}
      SET sort_order = (
-       SELECT CAST(json_extract(value, '$.sortOrder') AS INTEGER)
-       FROM json_each(?) desired
-       WHERE CAST(json_extract(value, '$.id') AS TEXT) = ${table}.id
+       SELECT desired.sort_order FROM desired WHERE desired.id = ${table}.id
      ), updated_at = ?
-     WHERE id IN (SELECT CAST(json_extract(value, '$.id') AS TEXT) FROM json_each(?)) ${catalogOnly}`,
-    [desired, now, desired],
+     WHERE id IN (SELECT desired.id FROM desired) ${catalogOnly}
+       AND sort_order IS NOT (SELECT desired.sort_order FROM desired WHERE desired.id = ${table}.id)`,
+    [desired, now],
+  );
+}
+
+function badgeAssignmentAuditStatement(
+  audit: AuditMutation,
+  badgeId: string,
+  requested: string,
+  action: "assign" | "unassign",
+): SqlBatchStatement {
+  const membership = action === "assign" ? "NOT EXISTS" : "EXISTS";
+  return auditInsertSelectStatement(
+    `WITH requested(user_id, position) AS (
+       SELECT CAST(value AS TEXT), CAST(key AS INTEGER) FROM json_each(?)
+     ), changed(user_id, position) AS (
+       SELECT requested.user_id, requested.position FROM requested
+       WHERE ${membership} (
+         SELECT 1 FROM member_badge_assignments existing
+         WHERE existing.badge_id = ? AND existing.user_id = requested.user_id
+       )
+     )
+     SELECT ?, ?, ?, ?,
+       CASE WHEN ? = 'user' THEN (SELECT username FROM users WHERE id = ?) ELSE ? END,
+       ?, ?, ?, ?,
+       json_set(
+         json(?), '$.context[#]',
+         json_object(
+           'field', 'user_ids',
+           'value', json_object(
+             'type', 'list',
+             'value', json((
+               SELECT json_group_array(json_object(
+                 'type', 'reference',
+                 'value', json_object(
+                   'id', user_id,
+                   'label', (SELECT username FROM users WHERE id = user_id)
+                 )
+               ))
+               FROM (SELECT user_id FROM changed ORDER BY position)
+             ))
+           )
+         )
+       ), ?
+     WHERE EXISTS (SELECT 1 FROM changed)`,
+    [
+      requested,
+      badgeId,
+      audit.eventId,
+      audit.requestId,
+      audit.actorKind,
+      audit.actorId,
+      audit.actorKind,
+      audit.actorId,
+      audit.actorLabel,
+      audit.subjectType,
+      audit.subjectId,
+      audit.subjectLabel,
+      audit.action,
+      JSON.stringify(audit.payload),
+      audit.occurredAt,
+    ],
   );
 }
 
@@ -323,7 +393,7 @@ export class SqliteMembersStore implements MembersStore {
     assertBoundedUnique(expectedImageIds, LIMITS.content.profileImages.max, "Profile images", true);
     if (patch.images !== undefined) assertBoundedUnique(patch.images, LIMITS.content.profileImages.max, "Profile images", true);
     const assignments = ["updated_at = ?", "revision_token = ?"];
-    const params: SqlValue[] = [patch.updatedAt, audit.id];
+    const params: SqlValue[] = [patch.updatedAt, audit.eventId];
     if (patch.power !== undefined) { assignments.push("power = ?"); params.push(patch.power); }
     if (patch.titleHtml !== undefined) { assignments.push("title_html = ?"); params.push(patch.titleHtml); }
     if (patch.bio !== undefined) { assignments.push("bio = ?"); params.push(patch.bio); }
@@ -365,26 +435,26 @@ export class SqliteMembersStore implements MembersStore {
     ];
     if (patch.classes !== undefined) {
       assertBoundedUnique(patch.classes, LIMITS.content.classesPerProfile.max, "Profile classes", true);
-      statements.push(run("DELETE FROM member_profile_classes WHERE user_id = ? AND EXISTS (SELECT 1 FROM member_profiles WHERE user_id = ? AND revision_token = ?)", [userId, userId, audit.id]));
+      statements.push(run("DELETE FROM member_profile_classes WHERE user_id = ? AND EXISTS (SELECT 1 FROM member_profiles WHERE user_id = ? AND revision_token = ?)", [userId, userId, audit.eventId]));
       statements.push(run(
         `INSERT INTO member_profile_classes (user_id, class_id, sort_order)
          SELECT ?, CAST(value AS TEXT), CAST(key AS INTEGER) FROM json_each(?)
          WHERE EXISTS (SELECT 1 FROM member_profiles WHERE user_id = ? AND revision_token = ?)`,
-        [userId, JSON.stringify(patch.classes), userId, audit.id],
+        [userId, JSON.stringify(patch.classes), userId, audit.eventId],
       ));
     }
     if (patch.videoUrls !== undefined) {
       assertBoundedUnique(patch.videoUrls, LIMITS.content.profileVideoUrls.max, "Profile videos", true);
-      statements.push(run("DELETE FROM member_profile_videos WHERE user_id = ? AND EXISTS (SELECT 1 FROM member_profiles WHERE user_id = ? AND revision_token = ?)", [userId, userId, audit.id]));
+      statements.push(run("DELETE FROM member_profile_videos WHERE user_id = ? AND EXISTS (SELECT 1 FROM member_profiles WHERE user_id = ? AND revision_token = ?)", [userId, userId, audit.eventId]));
       statements.push(run(
         `INSERT INTO member_profile_videos (user_id, url, sort_order)
          SELECT ?, CAST(value AS TEXT), CAST(key AS INTEGER) FROM json_each(?)
          WHERE EXISTS (SELECT 1 FROM member_profiles WHERE user_id = ? AND revision_token = ?)`,
-        [userId, JSON.stringify(patch.videoUrls), userId, audit.id],
+        [userId, JSON.stringify(patch.videoUrls), userId, audit.eventId],
       ));
     }
     if (patch.availability !== undefined) {
-      statements.push(run("DELETE FROM member_availability_windows WHERE user_id = ? AND EXISTS (SELECT 1 FROM member_profiles WHERE user_id = ? AND revision_token = ?)", [userId, userId, audit.id]));
+      statements.push(run("DELETE FROM member_availability_windows WHERE user_id = ? AND EXISTS (SELECT 1 FROM member_profiles WHERE user_id = ? AND revision_token = ?)", [userId, userId, audit.eventId]));
       const windows = patch.availability ? availabilityToWindows(patch.availability) : [];
       statements.push(run(
         `INSERT INTO member_availability_windows (user_id, weekday, start_minute, end_minute)
@@ -393,7 +463,7 @@ export class SqliteMembersStore implements MembersStore {
            CAST(json_extract(value, '$.endMinute') AS INTEGER)
          FROM json_each(?)
          WHERE EXISTS (SELECT 1 FROM member_profiles WHERE user_id = ? AND revision_token = ?)`,
-        [userId, JSON.stringify(windows), userId, audit.id],
+        [userId, JSON.stringify(windows), userId, audit.eventId],
       ));
     }
     if (patch.images !== undefined) {
@@ -401,13 +471,13 @@ export class SqliteMembersStore implements MembersStore {
         `UPDATE media_links SET sort_order = sort_order + 1000
          WHERE entity_type = 'member_profile' AND entity_id = ? AND slot = 'image'
            AND EXISTS (SELECT 1 FROM member_profiles WHERE user_id = ? AND revision_token = ?)`,
-        [userId, userId, audit.id],
+        [userId, userId, audit.eventId],
       ));
       const keep = patch.images.length === 0 ? "" : `AND media_id NOT IN (${placeholders(patch.images)})`;
       statements.push(run(
         `DELETE FROM media_links WHERE entity_type = 'member_profile' AND entity_id = ? AND slot = 'image' ${keep}
            AND EXISTS (SELECT 1 FROM member_profiles WHERE user_id = ? AND revision_token = ?)`,
-        [userId, ...patch.images, userId, audit.id],
+        [userId, ...patch.images, userId, audit.eventId],
       ));
       statements.push(run(
         `UPDATE media_links
@@ -418,7 +488,7 @@ export class SqliteMembersStore implements MembersStore {
          WHERE entity_type = 'member_profile' AND entity_id = ? AND slot = 'image'
            AND media_id IN (SELECT CAST(value AS TEXT) FROM json_each(?))
            AND EXISTS (SELECT 1 FROM member_profiles WHERE user_id = ? AND revision_token = ?)`,
-        [JSON.stringify(patch.images), userId, JSON.stringify(patch.images), userId, audit.id],
+        [JSON.stringify(patch.images), userId, JSON.stringify(patch.images), userId, audit.eventId],
       ));
     }
     const results = await this.executor.batch(statements);
@@ -509,20 +579,12 @@ export class SqliteMembersStore implements MembersStore {
 
   async listClasses(): Promise<readonly ClassCatalogStoreRecord[]> {
     const rows = await this.db.select().from(classCatalog).orderBy(asc(classCatalog.sortOrder), asc(classCatalog.id));
-    return rows.map((row) => ({
-      id: row.id,
-      label: row.label,
-      color: row.color,
-      icon_type: row.iconType,
-      vector_icon: row.vectorIcon as ClassVectorIconId | null,
-      sort_order: row.sortOrder,
-      created_at: row.createdAt,
-      updated_at: row.updatedAt,
-    }));
+    return rows.map(classRecord);
   }
 
   async findClass(id: string): Promise<ClassCatalogStoreRecord | null> {
-    return (await this.listClasses()).find((row) => row.id === id) ?? null;
+    const rows = await this.db.select().from(classCatalog).where(eq(classCatalog.id, id)).limit(1);
+    return rows[0] ? classRecord(rows[0]) : null;
   }
 
   async createClass(input: Parameters<MembersStore["createClass"]>[0], audit: AuditMutation) {
@@ -561,7 +623,7 @@ export class SqliteMembersStore implements MembersStore {
         `DELETE FROM media_links
          WHERE entity_type = 'class_catalog' AND entity_id = ? AND slot = 'icon'
            AND EXISTS (SELECT 1 FROM audit_log WHERE id = ?)`,
-        [id, audit.id],
+        [id, audit.eventId],
       ));
     }
     try {
@@ -580,7 +642,7 @@ export class SqliteMembersStore implements MembersStore {
     await this.executor.batch([
       captureSystemTestSortOrder("class_catalog", ids, now, audit),
       reorderCatalog("class_catalog", ids, now),
-      auditInsertStatement(audit),
+      auditInsertStatement(audit, { sql: "SELECT 1 WHERE changes() > 0", params: [] }),
     ]);
     return "updated" as const;
   }
@@ -619,7 +681,31 @@ export class SqliteMembersStore implements MembersStore {
   }
 
   async findClassTag(id: string): Promise<ClassTagStoreRecord | null> {
-    return (await this.listClassTags()).find((tag) => tag.id === id) ?? null;
+    const rows = await this.db.select({
+      id: classTags.id,
+      label: classTags.label,
+      sortOrder: classTags.sortOrder,
+      createdAt: classTags.createdAt,
+      updatedAt: classTags.updatedAt,
+      classIdsJson: drizzleSql<string>`(
+        SELECT COALESCE(json_group_array(class_id), '[]')
+        FROM (
+          SELECT ${classTagMembers.classId} AS class_id
+          FROM ${classTagMembers}
+          WHERE ${classTagMembers.tagId} = ${classTags.id}
+          ORDER BY ${classTagMembers.classId}
+        )
+      )`,
+    }).from(classTags).where(and(eq(classTags.id, id), isNull(classTags.ownerKind))).limit(1);
+    const tag = rows[0];
+    return tag ? {
+      id: tag.id,
+      label: tag.label,
+      class_ids: JSON.parse(tag.classIdsJson) as string[],
+      sort_order: tag.sortOrder,
+      created_at: tag.createdAt,
+      updated_at: tag.updatedAt,
+    } : null;
   }
 
   async createClassTag(input: Parameters<MembersStore["createClassTag"]>[0], audit: AuditMutation) {
@@ -639,7 +725,7 @@ export class SqliteMembersStore implements MembersStore {
           `INSERT INTO class_tag_members (tag_id, class_id)
            SELECT ?, CAST(value AS TEXT) FROM json_each(?)
            WHERE EXISTS (SELECT 1 FROM audit_log WHERE id = ?)`,
-          [input.id, JSON.stringify(input.classIds), audit.id],
+          [input.id, JSON.stringify(input.classIds), audit.eventId],
         ),
       ]);
       return returnedRowCount(results[0]) === 1 ? "created" as const : "limit_reached" as const;
@@ -654,22 +740,61 @@ export class SqliteMembersStore implements MembersStore {
     if (!(await this.findClassTag(id))) return "not_found" as const;
     const assignments = ["updated_at = ?"];
     const params: SqlValue[] = [input.now];
-    if (input.label !== undefined) { assignments.push("label = ?"); params.push(input.label); }
-    if (input.sortOrder !== undefined) { assignments.push("sort_order = ?"); params.push(input.sortOrder); }
-    params.push(id);
-    const statements: SqlBatchStatement[] = [run(`UPDATE class_tags SET ${assignments.join(", ")} WHERE id = ? AND owner_kind IS NULL`, params)];
+    const differences: string[] = [];
+    const differenceParams: SqlValue[] = [];
+    if (input.label !== undefined) {
+      assignments.push("label = ?");
+      params.push(input.label);
+      differences.push("label IS NOT ?");
+      differenceParams.push(input.label);
+    }
+    if (input.sortOrder !== undefined) {
+      assignments.push("sort_order = ?");
+      params.push(input.sortOrder);
+      differences.push("sort_order IS NOT ?");
+      differenceParams.push(input.sortOrder);
+    }
+    const classIds = input.classIds === undefined ? null : JSON.stringify(input.classIds);
+    if (classIds !== null) {
+      differences.push(`(
+        (SELECT count(*) FROM class_tag_members current WHERE current.tag_id = class_tags.id) IS NOT json_array_length(?)
+        OR EXISTS (
+          SELECT 1 FROM json_each(?) desired
+          WHERE NOT EXISTS (
+            SELECT 1 FROM class_tag_members current
+            WHERE current.tag_id = class_tags.id AND current.class_id = CAST(desired.value AS TEXT)
+          )
+        )
+      )`);
+      differenceParams.push(classIds, classIds);
+    }
+    if (differences.length === 0) return "updated" as const;
+    params.push(id, ...differenceParams);
+    const statements: SqlBatchStatement[] = [returning(
+      `UPDATE class_tags SET ${assignments.join(", ")}
+       WHERE id = ? AND owner_kind IS NULL AND (${differences.join(" OR ")})`,
+      params,
+    ), auditInsertStatement(audit, { sql: "SELECT 1 WHERE changes() = 1" })];
     if (input.classIds !== undefined) {
-      statements.push(run("DELETE FROM class_tag_members WHERE tag_id = ?", [id]));
       statements.push(run(
-        `INSERT INTO class_tag_members (tag_id, class_id)
-         SELECT ?, CAST(value AS TEXT) FROM json_each(?)`,
-        [id, JSON.stringify(input.classIds)],
+        `INSERT OR IGNORE INTO class_tag_members (tag_id, class_id)
+         SELECT ?, CAST(value AS TEXT) FROM json_each(?)
+         WHERE EXISTS (SELECT 1 FROM audit_log WHERE id = ?)`,
+        [id, classIds, audit.eventId],
+      ));
+      statements.push(run(
+        `DELETE FROM class_tag_members
+         WHERE tag_id = ?
+           AND class_id NOT IN (SELECT CAST(value AS TEXT) FROM json_each(?))
+           AND EXISTS (SELECT 1 FROM audit_log WHERE id = ?)`,
+        [id, classIds, audit.eventId],
       ));
     }
-    statements.push(auditInsertStatement(audit));
     try {
-      await this.executor.batch(statements);
-      return "updated" as const;
+      const results = await this.executor.batch(statements);
+      return returnedRowCount(results[0]) === 1 || await this.findClassTag(id)
+        ? "updated" as const
+        : "not_found" as const;
     } catch (error) {
       if (uniqueViolation(error)) return "conflict" as const;
       throw error;
@@ -683,7 +808,7 @@ export class SqliteMembersStore implements MembersStore {
     await this.executor.batch([
       captureSystemTestSortOrder("class_tag", ids, now, audit),
       reorderCatalog("class_tag", ids, now),
-      auditInsertStatement(audit),
+      auditInsertStatement(audit, { sql: "SELECT 1 WHERE changes() > 0", params: [] }),
     ]);
     return "updated" as const;
   }
@@ -698,20 +823,12 @@ export class SqliteMembersStore implements MembersStore {
 
   async listBadges(): Promise<readonly MemberBadge[]> {
     const rows = await this.db.select().from(memberBadges).orderBy(asc(memberBadges.sortOrder), asc(memberBadges.id));
-    return rows.map((row) => ({
-      id: row.id,
-      name: row.name,
-      label_html: row.labelHtml,
-      color: row.color,
-      description: row.description,
-      sort_order: row.sortOrder,
-      created_at: row.createdAt,
-      updated_at: row.updatedAt,
-    }));
+    return rows.map(badgeRecord);
   }
 
   async findBadge(id: string): Promise<MemberBadge | null> {
-    return (await this.listBadges()).find((badge) => badge.id === id) ?? null;
+    const rows = await this.db.select().from(memberBadges).where(eq(memberBadges.id, id)).limit(1);
+    return rows[0] ? badgeRecord(rows[0]) : null;
   }
 
   async createBadge(input: Parameters<MembersStore["createBadge"]>[0], audit: AuditMutation) {
@@ -736,18 +853,33 @@ export class SqliteMembersStore implements MembersStore {
     if (!(await this.findBadge(id))) return "not_found" as const;
     const assignments = ["updated_at = ?"];
     const params: SqlValue[] = [input.now];
-    if (input.name !== undefined) { assignments.push("name = ?"); params.push(input.name); }
-    if (input.labelHtml !== undefined) { assignments.push("label_html = ?"); params.push(input.labelHtml); }
-    if (input.color !== undefined) { assignments.push("color = ?"); params.push(input.color); }
-    if (input.description !== undefined) { assignments.push("description = ?"); params.push(input.description); }
-    if (input.sortOrder !== undefined) { assignments.push("sort_order = ?"); params.push(input.sortOrder); }
-    params.push(id);
+    const differences: string[] = [];
+    const differenceParams: SqlValue[] = [];
+    const add = (column: string, value: SqlValue) => {
+      assignments.push(`${column} = ?`);
+      params.push(value);
+      differences.push(`${column} IS NOT ?`);
+      differenceParams.push(value);
+    };
+    if (input.name !== undefined) add("name", input.name);
+    if (input.labelHtml !== undefined) add("label_html", input.labelHtml);
+    if (input.color !== undefined) add("color", input.color);
+    if (input.description !== undefined) add("description", input.description);
+    if (input.sortOrder !== undefined) add("sort_order", input.sortOrder);
+    if (differences.length === 0) return "updated" as const;
+    params.push(id, ...differenceParams);
     try {
-      await this.executor.batch([
-        run(`UPDATE member_badges SET ${assignments.join(", ")} WHERE id = ?`, params),
-        auditInsertStatement(audit),
+      const results = await this.executor.batch([
+        returning(
+          `UPDATE member_badges SET ${assignments.join(", ")}
+           WHERE id = ? AND (${differences.join(" OR ")})`,
+          params,
+        ),
+        auditInsertStatement(audit, { sql: "SELECT 1 WHERE changes() = 1" }),
       ]);
-      return "updated" as const;
+      return returnedRowCount(results[0]) === 1 || await this.findBadge(id)
+        ? "updated" as const
+        : "not_found" as const;
     } catch (error) {
       if (uniqueViolation(error)) return "conflict" as const;
       throw error;
@@ -761,7 +893,7 @@ export class SqliteMembersStore implements MembersStore {
     await this.executor.batch([
       captureSystemTestSortOrder("badge", ids, now, audit),
       reorderCatalog("badge", ids, now),
-      auditInsertStatement(audit),
+      auditInsertStatement(audit, { sql: "SELECT 1 WHERE changes() > 0", params: [] }),
     ]);
     return "updated" as const;
   }
@@ -804,27 +936,33 @@ export class SqliteMembersStore implements MembersStore {
 
   async assignBadge(badgeId: string, userIds: readonly string[], actorUserId: string, now: string, audit: AuditMutation): Promise<number> {
     assertBoundedUnique(userIds, 100, "Badge assignments");
+    const requested = JSON.stringify(userIds);
     const results = await this.executor.batch([
+      badgeAssignmentAuditStatement(audit, badgeId, requested, "assign"),
       returning(
         `INSERT OR IGNORE INTO member_badge_assignments (badge_id, user_id, assigned_by, assigned_at)
-         SELECT ?, CAST(value AS TEXT), ?, ? FROM json_each(?)`,
-        [badgeId, actorUserId, now, JSON.stringify(userIds)],
+         SELECT ?, CAST(value AS TEXT), ?, ? FROM json_each(?)
+         WHERE EXISTS (SELECT 1 FROM audit_log WHERE id = ?)`,
+        [badgeId, actorUserId, now, requested, audit.eventId],
       ),
-      auditInsertStatement(audit),
     ]);
-    return returnedRowCount(results[0]);
+    return returnedRowCount(results[1]);
   }
 
   async unassignBadge(badgeId: string, userIds: readonly string[], audit: AuditMutation): Promise<number> {
     assertBoundedUnique(userIds, 100, "Badge assignments");
+    const requested = JSON.stringify(userIds);
     const results = await this.executor.batch([
+      badgeAssignmentAuditStatement(audit, badgeId, requested, "unassign"),
       returning(
-        "DELETE FROM member_badge_assignments WHERE badge_id = ? AND user_id IN (SELECT CAST(value AS TEXT) FROM json_each(?))",
-        [badgeId, JSON.stringify(userIds)],
+        `DELETE FROM member_badge_assignments
+         WHERE badge_id = ?
+           AND user_id IN (SELECT CAST(value AS TEXT) FROM json_each(?))
+           AND EXISTS (SELECT 1 FROM audit_log WHERE id = ?)`,
+        [badgeId, requested, audit.eventId],
       ),
-      auditInsertStatement(audit),
     ]);
-    return returnedRowCount(results[0]);
+    return returnedRowCount(results[1]);
   }
 
   private selectMemberRows(projection: "public" | "member" | "admin", where: SQL<unknown> | undefined) {
@@ -909,6 +1047,7 @@ export class SqliteMembersStore implements MembersStore {
         deletedAt: row.deletedAt,
         createdAt: row.userCreatedAt,
         updatedAt: row.userUpdatedAt,
+        lastLoginAt: row.userLastLoginAt,
       },
       profile: {
         userId: row.userId,
@@ -929,6 +1068,32 @@ export class SqliteMembersStore implements MembersStore {
       badges: badges.get(row.userId) ?? [],
     }));
   }
+}
+
+function classRecord(row: typeof classCatalog.$inferSelect): ClassCatalogStoreRecord {
+  return {
+    id: row.id,
+    label: row.label,
+    color: row.color,
+    icon_type: row.iconType,
+    vector_icon: row.vectorIcon as ClassVectorIconId | null,
+    sort_order: row.sortOrder,
+    created_at: row.createdAt,
+    updated_at: row.updatedAt,
+  };
+}
+
+function badgeRecord(row: typeof memberBadges.$inferSelect): MemberBadge {
+  return {
+    id: row.id,
+    name: row.name,
+    label_html: row.labelHtml,
+    color: row.color,
+    description: row.description,
+    sort_order: row.sortOrder,
+    created_at: row.createdAt,
+    updated_at: row.updatedAt,
+  };
 }
 
 function sqlRows(result: SqlResult, width: number, label: string): readonly (readonly SqlValue[])[] {

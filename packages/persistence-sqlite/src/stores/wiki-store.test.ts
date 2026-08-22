@@ -2,11 +2,16 @@ import { readFileSync } from "node:fs";
 import { DatabaseSync, type SQLInputValue } from "node:sqlite";
 import { fileURLToPath } from "node:url";
 import type { WikiArticleRecord, WikiRevisionRecord } from "@guild/server/modules/wiki";
-import type { AuditMutation } from "@guild/server/modules/audit";
+import { createAuditEvent, type AuditEventWrite } from "@guild/server/modules/audit";
 import { afterEach, describe, expect, it } from "vitest";
-import { MAX_SQL_BATCH_STATEMENTS, assertSqlBatch } from "@guild/kernel";
+import {
+  MAX_SQL_BATCH_STATEMENTS,
+  createAuthorizationContext,
+  createRequestContext,
+} from "@guild/kernel";
 import { LIMITS } from "@guild/shared/config/limits";
-import type { SqlBatchStatement, SqlExecutor, SqlResult, SqlRow, SqlStatement } from "@guild/kernel";
+import type { SqlStatement } from "@guild/kernel";
+import { SqliteTestExecutor } from "../testing/sqlite-test-executor.js";
 import { SqliteMediaStore } from "./media-store.js";
 import { SqliteWikiStore } from "./wiki-store.js";
 
@@ -21,43 +26,6 @@ const MEDIA_TRIGGERS = readFileSync(
 );
 const databases: DatabaseSync[] = [];
 
-class TestExecutor implements SqlExecutor {
-  readonly batches: SqlBatchStatement[][] = [];
-  constructor(readonly database: DatabaseSync) {}
-
-  async execute(statement: SqlStatement): Promise<SqlResult> {
-    return this.run(statement);
-  }
-
-  async batch(statements: readonly SqlBatchStatement[]): Promise<readonly SqlResult[]> {
-    assertSqlBatch(statements);
-    this.batches.push([...statements]);
-    this.database.exec("BEGIN IMMEDIATE");
-    try {
-      const results = statements.map((statement) => this.run(statement));
-      this.database.exec("COMMIT");
-      return results;
-    } catch (error) {
-      this.database.exec("ROLLBACK");
-      throw error;
-    }
-  }
-
-  private run(statement: SqlStatement): SqlResult {
-    const prepared = this.database.prepare(statement.sql);
-    const params = [...(statement.params ?? [])] as SQLInputValue[];
-    if (statement.method === "run") {
-      const result = prepared.run(...params);
-      return { rows: [], lastInsertRowId: result.lastInsertRowid };
-    }
-    prepared.setReturnArrays(true);
-    if (statement.method === "get") {
-      return { rows: prepared.get(...params) as unknown as SqlRow | undefined };
-    }
-    return { rows: prepared.all(...params) as unknown as readonly SqlRow[] };
-  }
-}
-
 afterEach(() => {
   for (const database of databases.splice(0)) database.close();
 });
@@ -71,7 +39,7 @@ function harness() {
   database.prepare("INSERT INTO users (id, username) VALUES ('user-1', 'owner')").run();
   database.prepare("INSERT INTO wiki_category_state (singleton, revision_token, updated_at) VALUES (1, 'state-1', ?)").run(NOW);
   database.prepare("INSERT INTO wiki_categories (id, name, slug, revision_token) VALUES ('category-1', 'Root', 'root', 'category-revision-1')").run();
-  const executor = new TestExecutor(database);
+  const executor = new SqliteTestExecutor(database);
   return { database, executor, store: new SqliteWikiStore(executor) };
 }
 
@@ -119,17 +87,26 @@ function revision(record: WikiArticleRecord, id = `revision-${record.currentRevi
   };
 }
 
-function audit(id: string): AuditMutation {
-  return {
-    id,
+function audit(id: string): AuditEventWrite {
+  const context = createRequestContext({
     requestId: `request-${id}`,
-    actorUserId: "user-1",
-    entityType: "wiki_article",
-    entityId: "article-1",
-    action: "update",
-    summary: "Guide",
-    details: null,
-    occurredAt: NOW,
+    authorization: createAuthorizationContext({
+      userId: "user-1",
+      sessionId: "session-1",
+      roleId: "member",
+      roleLevel: 100,
+      permissions: [],
+    }),
+    now: NOW,
+  });
+  return {
+    ...createAuditEvent(context, {
+      subjectType: "wiki_article",
+      subjectId: "article-1",
+      subjectLabel: "Guide",
+      action: "update",
+    }),
+    eventId: id,
   };
 }
 
@@ -343,14 +320,19 @@ describe("SqliteWikiStore immutable snapshots", () => {
     ids.forEach((id) => seedMedia(failed.database, id));
     const rejectedAudit = { ...audit("audit-max-failed"), action: "create" as const };
     failed.database.prepare(`INSERT INTO audit_log (
-      id, request_id, actor_user_id, entity_type, entity_id, action, occurred_at
-    ) VALUES (?, ?, ?, ?, ?, ?, ?)`).run(
-      rejectedAudit.id,
+      id, request_id, actor_kind, actor_id, actor_label, subject_type, subject_id,
+      subject_label, action, payload_json, occurred_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(
+      rejectedAudit.eventId,
       rejectedAudit.requestId,
-      rejectedAudit.actorUserId,
-      rejectedAudit.entityType,
-      rejectedAudit.entityId,
+      rejectedAudit.actorKind,
+      rejectedAudit.actorId,
+      rejectedAudit.actorLabel,
+      rejectedAudit.subjectType,
+      rejectedAudit.subjectId,
+      rejectedAudit.subjectLabel,
       rejectedAudit.action,
+      JSON.stringify(rejectedAudit.payload),
       rejectedAudit.occurredAt,
     );
     await expect(failed.store.createArticle({
@@ -478,9 +460,9 @@ const SCHEMA = `
     UNIQUE(entity_type, entity_id, slot, sort_order)
   );
   CREATE TABLE audit_log (
-    id TEXT PRIMARY KEY, request_id TEXT NOT NULL, actor_user_id TEXT NOT NULL, actor_username TEXT,
-    entity_type TEXT NOT NULL, entity_id TEXT NOT NULL, action TEXT NOT NULL,
-    summary TEXT, detail_json TEXT, occurred_at TEXT NOT NULL
+    id TEXT PRIMARY KEY, request_id TEXT NOT NULL, actor_kind TEXT NOT NULL, actor_id TEXT NOT NULL,
+    actor_label TEXT, subject_type TEXT NOT NULL, subject_id TEXT NOT NULL, subject_label TEXT,
+    action TEXT NOT NULL, payload_json TEXT NOT NULL, occurred_at TEXT NOT NULL
   );
   CREATE TABLE system_test_runs (id TEXT PRIMARY KEY, status TEXT NOT NULL);
   CREATE TABLE system_test_artifacts (
@@ -501,7 +483,8 @@ const SCHEMA = `
     sort_order INTEGER NOT NULL, pinned INTEGER NOT NULL, archived_at TEXT, deleted_at TEXT,
     created_by TEXT NOT NULL REFERENCES users(id), updated_by TEXT REFERENCES users(id),
     current_revision INTEGER NOT NULL, revision_token TEXT NOT NULL,
-    created_at TEXT NOT NULL, updated_at TEXT NOT NULL
+    created_at TEXT NOT NULL, updated_at TEXT NOT NULL,
+    search_text TEXT NOT NULL DEFAULT ''
   );
   CREATE INDEX idx_wiki_articles_admin_curated
     ON wiki_articles(deleted_at, pinned DESC, sort_order, title, id);

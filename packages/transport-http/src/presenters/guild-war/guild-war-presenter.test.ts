@@ -15,6 +15,7 @@ import {
 } from "./guild-war-presenter.js";
 
 const NOW = "2026-08-09T12:00:00.000Z";
+const AVATAR_MEDIA_ID = "avatar1234567890abcde";
 
 const event: EventViewerAggregate = {
   event: {
@@ -39,12 +40,13 @@ function aggregate(status: "active" | "concluded"): GuildWarAggregate {
       id: "team-1", warId: "war-1", teamName: "Alpha", sortOrder: 0, notes: null, isLocked: false,
       members: [{
         id: "member-1", warId: "war-1", teamId: "team-1", userId: "user-1", username: "One",
-        roleTag: "Captain", sortOrder: 0, stats: { kills: 2, deaths: 1, assists: 3 }, note: null,
+        avatarMediaId: AVATAR_MEDIA_ID, roleTag: "Captain", sortOrder: 0,
+        stats: { kills: 2, deaths: 1, assists: 3 }, note: null,
       }],
     }],
     pool: [{
       id: "pool-1", warId: "war-1", teamId: null, userId: "user-2", username: "Two",
-      roleTag: null, sortOrder: 0, stats: null, note: null,
+      avatarMediaId: null, roleTag: null, sortOrder: 0, stats: null, note: null,
     }],
   };
 }
@@ -67,7 +69,11 @@ describe("guild-war Portal presenters", () => {
   it("preserves history detail and analytics fixed-stat wire", () => {
     const history = aggregate("concluded");
     const detail = guildWarHistoryDetailResponseSchema.parse(presentHistoryDetail(history));
-    expect(detail.teams[0]?.members[0]).toMatchObject({ user_id: "user-1", username: "One" });
+    expect(detail.teams[0]?.members[0]).toMatchObject({
+      user_id: "user-1",
+      username: "One",
+      avatar_media_id: AVATAR_MEDIA_ID,
+    });
     expect(detail.pool[0]).toMatchObject({ warHistoryId: "war-1", userId: "user-2", username: "Two" });
     const analytics = guildWarAnalyticsResponseSchema.parse(presentAnalytics({
       wars: [{ ...history.war, teamSize: 1, modifier: 2, modifierBreakdown: [{ factor: "kills", ratio: 2, weight: 1, contribution: 2 }] }],

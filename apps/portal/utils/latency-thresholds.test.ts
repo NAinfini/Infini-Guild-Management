@@ -1,3 +1,4 @@
+// @vitest-environment node
 import { describe, expect, it } from "vitest";
 import { LATENCY_BAD_THRESHOLD_MS, LATENCY_WARN_THRESHOLD_MS, latencyBand } from "./latency-thresholds";
 

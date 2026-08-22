@@ -1,5 +1,5 @@
 import { AppError, type BlobMetadata, type BlobRange, type BlobRead } from "@guild/kernel";
-import { MediaRangeError, type MediaService } from "@guild/server/modules/media";
+import { MediaRangeError, type MediaHeadResult, type MediaService } from "@guild/server/modules/media";
 import { mediaVariantSchema, type MediaVariant } from "@guild/shared";
 import { Hono } from "hono";
 import type { HttpEnv } from "../../core/http-env.js";
@@ -21,41 +21,41 @@ export function createMediaRoutes(dependencies: MediaRouteDependencies): Hono<Ht
     const variant = parseVariant(context.req.param("variant"));
     const request = context.req.raw;
     const rangeHeader = context.req.header("Range");
-    let metadata: BlobMetadata | undefined;
+    let headResult: MediaHeadResult | undefined;
     try {
       if (request.method === "HEAD") {
-        metadata = await dependencies.service.head(
+        headResult = await dependencies.service.head(
           requestContext(context),
           context.req.param("mediaId"),
           variant,
         );
-        const range = resolveRange(parseRange(rangeHeader), metadata.size);
-        return presentMedia(request, metadataOnly(metadata, range));
+        const range = resolveRange(parseRange(rangeHeader), headResult.metadata.size);
+        return presentMedia(request, metadataOnly(headResult.metadata, range), headResult.audience);
       }
-      const object = requiredObject(await dependencies.service.read(
+      const result = await dependencies.service.read(
         requestContext(context),
         context.req.param("mediaId"),
         variant,
         parseRange(rangeHeader) ?? undefined,
-      ));
-      return presentMedia(request, object);
+      );
+      return presentMedia(request, result.object, result.audience);
     } catch (error) {
       if (error instanceof MediaRangeError) {
         throw new HttpRangeError(error.message, error.total);
       }
       if (error instanceof HttpRangeError) {
-        if (error.total !== undefined || metadata) {
-          throw error.total === undefined ? new HttpRangeError(error.message, metadata!.size) : error;
+        if (error.total !== undefined || headResult) {
+          throw error.total === undefined ? new HttpRangeError(error.message, headResult!.metadata.size) : error;
         }
         const total = await dependencies.service.head(
           requestContext(context),
           context.req.param("mediaId"),
           variant,
         );
-        throw new HttpRangeError(error.message, total.size);
+        throw new HttpRangeError(error.message, total.metadata.size);
       }
       if (error instanceof RangeError) {
-        throw new HttpRangeError("Requested byte range is not satisfiable", metadata?.size);
+        throw new HttpRangeError("Requested byte range is not satisfiable", headResult?.metadata.size);
       }
       throw error;
     }
@@ -77,11 +77,6 @@ function resolveRange(requested: RequestedByteRange | null, total: number): Blob
   const requestedLength = requested.kind === "open" ? total - offset : requested.length;
   const length = Math.min(requestedLength, total - offset);
   return { offset, length };
-}
-
-function requiredObject(value: BlobRead | null): BlobRead {
-  if (!value) throw new AppError({ code: "NOT_FOUND", status: 404, message: "Media not found" });
-  return value;
 }
 
 function metadataOnly(metadata: BlobMetadata, range?: BlobRange): BlobRead {

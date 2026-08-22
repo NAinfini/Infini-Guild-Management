@@ -125,6 +125,17 @@
   --transition-normal: var(--motion-overlay);
   --transition-smooth: var(--motion-panel);
 
+  /* 位移量本身也当令牌。全站的「悬停抬起」和「按下」只有这三个数，
+   * 降级时把它们改成零，所有消费点一次性退化成纯颜色反馈——不必在十几个
+   * 组件里各写一遍 prefers-reduced-motion，也就不会有人漏写。
+   *
+   * 按下分两种写法，因为手感不同：整块表面（卡片、列表行）缩一点像被压下去，
+   * 小控件（按钮、图标钮）下沉一像素像被摁住。缩放用在 36px 的按钮上只是模糊，
+   * 下沉用在整张卡上则看不见。 */
+  --motion-lift: -2px;
+  --motion-press: 0.98;
+  --motion-sink: 1px;
+
   /* 字体。L3 使用站点语义名称，ThemeProvider 再桥接给 Mantine。 */
   --font-body: "Inter", system-ui, sans-serif;
   --font-display: "Saira Semi Condensed", var(--font-body);
@@ -160,6 +171,15 @@
 @media (any-pointer: fine) {
   :root {
     --control-height-regular: 36px;
+  }
+}
+
+/* 位移归零，颜色反馈照常。见上面 --motion-lift 的说明。 */
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --motion-lift: 0px;
+    --motion-press: 1;
+    --motion-sink: 0px;
   }
 }
 

@@ -20,6 +20,7 @@ import {
   PhotoOffIcon,
 } from "@portal/components/icons";
 import { useStorageTransactions } from "@portal/hooks/useStorage";
+import { formatLocaleDateTime } from "@portal/utils/datetime";
 import { resolveMediaUrl } from "@portal/utils/media";
 import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
@@ -34,12 +35,6 @@ type StorageItemDetailModalProps = {
   onWithdraw: (item: StorageItem) => void;
   onEdit: (item: StorageItem) => void;
 };
-
-function formatDateTime(iso: string): string {
-  const date = new Date(iso);
-  if (Number.isNaN(date.getTime())) return "-";
-  return `${date.toLocaleDateString()} ${date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}`;
-}
 
 function txClassName(type: StorageTransaction["type"]): string {
   if (type === "intake") return "storage-ledger-row--intake";
@@ -250,7 +245,7 @@ export function StorageItemDetailModal({
                         {tx.note ? <Text size="sm" mt={4}>{tx.note}</Text> : null}
                       </div>
                       <Text size="xs" c="dimmed" className="storage-ledger-row__date">
-                        {formatDateTime(tx.created_at)}
+                        {formatLocaleDateTime(tx.created_at, undefined, "numeric")}
                       </Text>
                     </Group>
                   </div>

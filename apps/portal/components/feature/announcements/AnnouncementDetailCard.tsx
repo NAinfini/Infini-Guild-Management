@@ -18,7 +18,7 @@ import {
   Title,
 } from "@mantine/core";
 import { useDisclosure } from "@mantine/hooks";
-import { format } from "date-fns";
+import { formatDateTime } from "@portal/utils/datetime";
 import { type ReactNode, lazy, Suspense, useEffect, useMemo } from "react";
 import { useTranslation } from "react-i18next";
 import { ArchiveIcon, CalendarTimeIcon, ChevronDownIcon, NoteIcon, PinIcon, SendIcon, TrashIcon, XIcon } from "@portal/components/icons";
@@ -32,20 +32,6 @@ const LazyTipTapEditor = lazy(() =>
   import("@portal/components/shared/TipTapEditor").then((m) => ({ default: m.TipTapEditor })),
 );
 
-function formatDateTime(iso: string | null): string {
-  if (!iso) return "-";
-  const date = new Date(iso);
-  if (Number.isNaN(date.getTime())) return "-";
-  return format(date, "yyyy-MM-dd HH:mm");
-}
-
-function toDateTimeLocalValue(value: string): string {
-  return value ? value.replace(" ", "T") : "";
-}
-
-function fromDateTimeLocalValue(value: string): string {
-  return value ? value.replace("T", " ") : "";
-}
 
 type StatusMode = "none" | "draft" | "archived" | "scheduled";
 
@@ -132,7 +118,8 @@ export function AnnouncementDetailCard({
     if (!isPublishReady) return;
 
     if (mode === "scheduled" && publishAt) {
-      const scheduledDate = new Date(publishAt.replace(" ", "T"));
+      /* publishAt 是 datetime-local 控件的值：不带时区的本地挂钟，按用户自己的表解析。 */
+      const scheduledDate = new Date(publishAt);
       if (!Number.isNaN(scheduledDate.getTime()) && scheduledDate <= new Date()) {
         notifyError(t("validation.schedulePast"));
         return;
@@ -373,8 +360,8 @@ export function AnnouncementDetailCard({
                       <Text size="xs" c="dimmed">{t("field.publishAt")}</Text>
                       <NativeDateTimeInput
                         type="datetime-local"
-                        value={toDateTimeLocalValue(publishAt) || undefined}
-                        onChange={(event) => onPublishAtChange(fromDateTimeLocalValue(event.currentTarget.value))}
+                        value={publishAt || undefined}
+                        onChange={(event) => onPublishAtChange(event.currentTarget.value)}
                         aria-label={t("aria.publishTime")}
                         size="sm"
                       />

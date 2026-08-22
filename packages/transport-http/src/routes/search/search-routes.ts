@@ -1,4 +1,5 @@
 import type { PortalReadModelService } from "@guild/server/modules/portal-read-models";
+import { LIMITS } from "@guild/shared/config/limits";
 import { Hono } from "hono";
 import { z } from "zod";
 import { requestContext, type HttpEnv } from "../../core/http-env.js";
@@ -7,7 +8,7 @@ import { presentSearch } from "../../presenters/portal-read-models/portal-read-m
 
 const searchQuerySchema = z.object({
   q: z.string().max(80).default(""),
-  limit: z.coerce.number().int().min(1).max(50).default(24),
+  limit: z.coerce.number().int().min(1).max(LIMITS.pagination.search).default(24),
 }).strict();
 
 type SearchHttpService = Pick<PortalReadModelService, "search">;

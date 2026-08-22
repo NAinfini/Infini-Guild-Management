@@ -179,6 +179,8 @@ export const userSchema = z.object({
   deleted_at: z.string().nullable(),
   created_at: z.string(),
   updated_at: z.string(),
+  // 从未登录过、以及未登录者看到的对外视图，都是 null。
+  last_login_at: z.string().nullable(),
 }).extend(roleMetadataSchema.shape);
 
 export const memberProfileSchema = z.object({

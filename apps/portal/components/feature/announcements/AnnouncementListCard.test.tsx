@@ -1,4 +1,3 @@
-// @vitest-environment jsdom
 import type { Announcement } from "@guild/shared";
 import { PortalThemeProvider } from "@portal/providers/ThemeProvider";
 import { render, screen } from "@testing-library/react";

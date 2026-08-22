@@ -1,5 +1,5 @@
 import type { MemberProfile, Permission } from "@guild/shared";
-import type { AuditMutation } from "../audit/public.js";
+import type { AuditEventWrite } from "../audit/public.js";
 
 export type AuthUserRecord = Readonly<{
   id: string;
@@ -14,6 +14,8 @@ export type AuthUserRecord = Readonly<{
   revisionToken: string;
   createdAt: string;
   updatedAt: string;
+  /** 最近一次成功登录；从未登录过为 null。 */
+  lastLoginAt: string | null;
 }>;
 
 export type LoginAccountRecord = AuthUserRecord & Readonly<{ passwordHash: string }>;
@@ -91,7 +93,7 @@ export type RolePermissionDelta = Readonly<{
   remove: readonly Permission[];
 }>;
 
-export type GuardedAuthMutationResult = "updated" | "conflict" | "last_owner";
+export type GuardedAuthMutationResult = "updated" | "conflict" | "last_role_manager";
 
 export type AuthSessionResult = Readonly<{
   user: AuthUserRecord;
@@ -116,7 +118,7 @@ export interface AccountProvisioningStore {
     username: string;
     passwordHash: string;
     now: string;
-  }>, audit: AuditMutation): Promise<"created" | "invite_unavailable" | "username_taken">;
+  }>, audit: AuditEventWrite): Promise<"created" | "invite_unavailable" | "username_taken">;
   createManagedUser(input: Readonly<{
     id: string;
     username: string;
@@ -124,7 +126,7 @@ export interface AccountProvisioningStore {
     passwordHash: string;
     destinationRole: RoleRecord;
     now: string;
-  }>, audit: AuditMutation): Promise<"created" | "username_taken" | "conflict">;
+  }>, audit: AuditEventWrite): Promise<"created" | "username_taken" | "conflict">;
 }
 
 export interface AuthStore {
@@ -143,7 +145,7 @@ export interface AuthStore {
   clearLoginFailures(normalizedUsername: string): Promise<void>;
   pruneLoginFailures(before: string, now: string, limit: number): Promise<void>;
   rehashPassword(userId: string, passwordHash: string, now: string): Promise<void>;
-  createSessionBounded(input: Readonly<{
+  openUserSession(input: Readonly<{
     userId: string;
     tokenDigest: string;
     expiresAt: string;
@@ -151,21 +153,23 @@ export interface AuthStore {
     maximumSessions: number;
   }>): Promise<void>;
   renewSession(tokenDigest: string, expiresAt: string): Promise<void>;
+  recordLastLogin(userId: string, at: string): Promise<void>;
   deleteSession(tokenDigest: string): Promise<void>;
   deleteSessionsForUsers(userIds: readonly string[]): Promise<void>;
-  findActiveInvite(id: string, tokenDigest: string, now: string): Promise<InviteRecord | null>;
-  changeOwnPassword(userId: string, passwordHash: string, now: string, audit: AuditMutation): Promise<void>;
-  changeOwnUsername(userId: string, username: string, now: string, audit: AuditMutation): Promise<"updated" | "username_taken">;
+  findActiveInvite(tokenDigest: string, now: string): Promise<InviteRecord | null>;
+  changeOwnPassword(userId: string, passwordHash: string, now: string, audit: AuditEventWrite): Promise<void>;
+  changeOwnUsername(userId: string, username: string, now: string, audit: AuditEventWrite): Promise<"updated" | "username_taken">;
 
   listInvites(input: Readonly<{
     visibility: InviteVisibility;
     limit: number;
     cursor: InviteCursor | null;
     search: string;
-    exactId?: string;
+    exactTokenDigest?: string;
     now: string;
   }>): Promise<InvitePage>;
   getInviteStats(now: string): Promise<InviteStats>;
+  findInvite(id: string): Promise<InviteRecord | null>;
   createInvite(input: Readonly<{
     id: string;
     tokenDigest: string;
@@ -174,34 +178,34 @@ export interface AuthStore {
     maxUses: number;
     expiresAt: string | null;
     now: string;
-  }>, audit: AuditMutation): Promise<InviteRecord>;
-  revokeInvite(id: string, now: string, audit: AuditMutation): Promise<boolean>;
-  deleteInvite(id: string, audit: AuditMutation): Promise<boolean>;
+  }>, audit: AuditEventWrite): Promise<InviteRecord>;
+  revokeInvite(id: string, now: string, audit: AuditEventWrite): Promise<boolean>;
+  deleteInvite(id: string, audit: AuditEventWrite): Promise<boolean>;
 
   findManagedUsers(userIds: readonly string[]): Promise<readonly ManagedUserTarget[]>;
-  countActiveOwners(): Promise<number>;
-  countActiveOwnersAmong(userIds: readonly string[]): Promise<number>;
+  countActiveRoleManagers(): Promise<number>;
+  countActiveRoleManagersAmong(userIds: readonly string[]): Promise<number>;
   setUsersRole(input: Readonly<{
     targets: readonly ManagedUserTarget[];
     destinationRole: RoleRecord;
     now: string;
-  }>, audit: AuditMutation): Promise<GuardedAuthMutationResult>;
+  }>, audit: AuditEventWrite): Promise<GuardedAuthMutationResult>;
   setUsersActive(input: Readonly<{
     targets: readonly ManagedUserTarget[];
     active: boolean;
     now: string;
-  }>, audit: AuditMutation): Promise<GuardedAuthMutationResult>;
+  }>, audit: AuditEventWrite): Promise<GuardedAuthMutationResult>;
   softDeleteUsers(input: Readonly<{
     targets: readonly ManagedUserTarget[];
     now: string;
-  }>, audit: AuditMutation): Promise<GuardedAuthMutationResult>;
+  }>, audit: AuditEventWrite): Promise<GuardedAuthMutationResult>;
   resetUserPassword(
     target: ManagedUserTarget,
     passwordHash: string,
     now: string,
-    audit: AuditMutation,
+    audit: AuditEventWrite,
   ): Promise<"updated" | "conflict">;
-  resetUserLoginLock(target: ManagedUserTarget, audit: AuditMutation): Promise<
+  resetUserLoginLock(target: ManagedUserTarget, audit: AuditEventWrite): Promise<
     | Readonly<{ outcome: "updated"; previous: LoginFailureRecord | null }>
     | Readonly<{ outcome: "conflict" }>
   >;
@@ -215,7 +219,7 @@ export interface AuthStore {
     color: string | null;
     permissions: readonly Permission[];
     now: string;
-  }>, audit: AuditMutation): Promise<"created" | "conflict">;
+  }>, audit: AuditEventWrite): Promise<"created" | "conflict">;
   updateRole(input: Readonly<{
     id: string;
     name?: string;
@@ -225,6 +229,6 @@ export interface AuthStore {
     expectedRevisionToken: string;
     expectedPermissions: readonly Permission[];
     now: string;
-  }>, audit: AuditMutation): Promise<GuardedAuthMutationResult>;
-  deleteRole(role: RoleRecord, audit: AuditMutation): Promise<"deleted" | "referenced" | "not_found" | "conflict" | "last_owner">;
+  }>, audit: AuditEventWrite): Promise<GuardedAuthMutationResult>;
+  deleteRole(role: RoleRecord, audit: AuditEventWrite): Promise<"deleted" | "referenced" | "not_found" | "conflict" | "last_role_manager">;
 }

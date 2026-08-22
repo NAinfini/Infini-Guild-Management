@@ -24,12 +24,11 @@
   min-width: 0;
 }
 
-/* 宽屏编辑区分为等宽双列，使表单字段保持可读量度。
-   两列各自按内容收高：媒体卡比身份卡矮得多，拉平会在卡框内留出一大片空白。 */
+/* 宽屏编辑区分为等宽双列，并让同一行的两张主卡等高，避免较短一列下方露出背景。 */
 @media (min-width: 1200px) {
   .my-profile-split__editor--wide {
     grid-template-columns: repeat(2, minmax(0, 1fr));
-    align-items: start;
+    align-items: stretch;
   }
 }
 
@@ -123,6 +122,30 @@
   flex: 1 1 auto;
 }
 
+/* 宽屏资料页固定在主内容视口内；页签保持可见，长表单只在当前面板中滚动。
+   平板和手机继续使用自然页面滚动，避免出现嵌套滚动手势。 */
+@media (min-width: 1200px) {
+  .my-profile-page {
+    overflow: hidden;
+  }
+
+  .my-profile-page__tabs {
+    flex: 1 1 auto;
+    min-block-size: 0;
+    display: flex;
+    flex-direction: column;
+  }
+
+  .my-profile-page__tabs > .mantine-Tabs-panel {
+    flex: 1 1 auto;
+    min-block-size: 0;
+    overflow-x: clip;
+    overflow-y: auto;
+    scrollbar-gutter: stable;
+    padding-inline-end: var(--space-xs);
+  }
+}
+
 .my-profile-tab-label {
   display: inline-flex;
   align-items: center;
@@ -169,7 +192,7 @@
   padding: var(--card-padding);
   border: 1px solid var(--border-subtle);
   border-radius: var(--radius-surface);
-  background: var(--surface-raised);
+  background: var(--plate-fill);
   min-width: 0;
 }
 
@@ -246,6 +269,90 @@
   .profile-identity {
     grid-template-columns: minmax(0, 1fr);
   }
+}
+
+/* 角色与徽章属于管理员分配的账号事实，不和上面的可编辑字段混在一起。
+   轻分隔线保持它仍是身份卡的一部分，只读徽标避免暗示可操作。 */
+.profile-access {
+  display: grid;
+  gap: var(--space-md);
+  padding-block-start: var(--space-sm);
+  border-block-start: 1px solid var(--border-subtle);
+}
+
+.profile-access__header,
+.profile-access__group-heading {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-sm);
+  flex-wrap: wrap;
+}
+
+.profile-access__title,
+.profile-access__group-heading h4 {
+  margin: 0;
+  color: var(--text-primary);
+  line-height: var(--lh-tight);
+}
+
+.profile-access__title {
+  font-size: var(--text-body);
+  font-weight: var(--fw-strong);
+}
+
+.profile-access__group {
+  display: grid;
+  gap: var(--space-xs);
+  min-inline-size: 0;
+}
+
+.profile-access__group + .profile-access__group {
+  margin-block-start: var(--space-sm);
+}
+
+.profile-access__group-heading h4 {
+  font-size: var(--text-meta);
+  font-weight: var(--fw-medium);
+}
+
+.profile-access__group-heading span {
+  color: var(--text-muted);
+  font-size: var(--text-meta);
+  font-variant-numeric: tabular-nums;
+}
+
+.profile-access__badges {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.profile-access__role {
+  inline-size: fit-content;
+  max-inline-size: 100%;
+  text-transform: none;
+}
+
+.profile-access__role .mantine-Badge-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.profile-access__badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-xs);
+}
+
+.profile-access__badges > li {
+  display: flex;
+  min-inline-size: 0;
+}
+
+.profile-access__badges .member-card__badge {
+  --badge-padding: 2px 8px;
+  --badge-font-size: var(--text-meta);
 }
 
 /* ── 职业 ── */

@@ -13,15 +13,16 @@ const DEFAULT_RANGE_DAYS = 90;
 const MAX_RANGE_DAYS = 365;
 
 const auditQuerySchema = z.object({
-  page: z.coerce.number().int().min(1).default(1),
   limit: z.coerce.number().int().min(1).max(100).default(50),
+  cursor: z.string().trim().min(1).max(512).optional(),
   entity_type: z.enum(AUDIT_ENTITY_TYPES).optional(),
+  entity_id: z.string().trim().min(1).max(200).optional(),
   actor_id: z.string().trim().min(1).max(200).optional(),
   search: z.string().trim().max(200).optional(),
   start_at: z.string().datetime().optional(),
   end_at: z.string().datetime().optional(),
 });
-const auditExportQuerySchema = auditQuerySchema.omit({ page: true, limit: true }).extend({
+const auditExportQuerySchema = auditQuerySchema.omit({ limit: true, cursor: true }).extend({
   format: z.enum(["csv", "json"]).default("csv"),
 });
 
@@ -39,10 +40,11 @@ export function createAuditRoutes(dependencies: AuditRouteDependencies): Hono<Ht
     const parsed = parseQuery(context.req.raw, auditQuerySchema, "Invalid audit query");
     const range = resolveDateRange(parsed.start_at, parsed.end_at, request.now);
     const page = await dependencies.service.list(request, {
-      page: parsed.page,
       limit: parsed.limit,
-      ...optional("entityType", parsed.entity_type),
-      ...optional("actorUserId", parsed.actor_id),
+      ...optional("cursor", parsed.cursor),
+      ...optional("subjectType", parsed.entity_type),
+      ...optional("subjectId", parsed.entity_id),
+      ...optional("actorId", parsed.actor_id),
       ...optional("search", parsed.search),
       startAt: range.startAt,
       endAt: range.endAt,
@@ -55,8 +57,9 @@ export function createAuditRoutes(dependencies: AuditRouteDependencies): Hono<Ht
     const parsed = parseQuery(context.req.raw, auditExportQuerySchema, "Invalid audit export query");
     const range = resolveDateRange(parsed.start_at, parsed.end_at, request.now);
     const query = {
-      ...optional("entityType", parsed.entity_type),
-      ...optional("actorUserId", parsed.actor_id),
+      ...optional("subjectType", parsed.entity_type),
+      ...optional("subjectId", parsed.entity_id),
+      ...optional("actorId", parsed.actor_id),
       ...optional("search", parsed.search),
       startAt: range.startAt,
       endAt: range.endAt,

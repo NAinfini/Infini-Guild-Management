@@ -1,3 +1,4 @@
+// @vitest-environment node
 import { describe, expect, it, vi } from "vitest";
 import { ApiRequestError } from "./api/client";
 import { resolveRouteSession, type RouteSession } from "./router-session";

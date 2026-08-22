@@ -1,13 +1,7 @@
 import { useMemo } from "react";
-import { format } from "date-fns";
+import { formatDateTime } from "../../utils/datetime";
 import { DEFAULT_GAME_RULES } from "@guild/shared";
 import { getGuildWarMemberStatLabel } from "@portal/utils/game-rules";
-
-function formatDateTime(iso: string): string {
-  const date = new Date(iso);
-  if (Number.isNaN(date.getTime())) return "-";
-  return format(date, "yyyy-MM-dd HH:mm");
-}
 
 type UseGuildWarHistoryParams = {
   historyDetailData: {

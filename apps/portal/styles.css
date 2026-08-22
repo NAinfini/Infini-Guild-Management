@@ -14,6 +14,19 @@ html, body {
 }
 
 /*
+ * 图标一律块级。svg 默认是 inline，会坐在文字基线上，于是包着它的那层 div
+ * 高度 = 图标 + 基线以下的下沉空间（本仓库实测约 6.8px）。居中容器居中的是
+ * 这层 div，图标因此整体偏上——72px 的空态圆井里偏了 3.4px，一眼看得出来。
+ *
+ * 收在这里而不是逐个图标写：components/icons 下 160 多个组件是同一套外壳
+ * （一层 div 包一个 svg），全站的 <svg> 也只出自那里，没有一处图标是排在
+ * 正文行内的。同一件事只该有一份写法。
+ */
+svg {
+  display: block;
+}
+
+/*
  * Mantine's base stylesheet is loaded by the async bootstrap chunk after this
  * entry stylesheet. This descendant selector intentionally outranks its `body`
  * reset so the document never settles on Mantine's unrelated gray.
@@ -64,51 +77,6 @@ html:not([data-input-modality="pointer"]) :focus-visible {
   color: var(--text-primary);
 }
 
-@keyframes spin {
-  to { transform: rotate(360deg); }
-}
-
-/* ── Route loading fallback ── */
-.route-loading {
-  min-height: 60vh;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: var(--space-xl);
-}
-
-.route-loading__card {
-  display: inline-flex;
-  align-items: center;
-  gap: 10px;
-  padding: 12px 16px;
-  border: 1px solid var(--border-subtle);
-  border-radius: var(--radius-surface);
-  background: var(--surface-raised);
-  box-shadow: var(--edge-top);
-}
-
-.route-loading__spinner {
-  width: 28px;
-  height: 28px;
-  border: 3px solid var(--border-strong);
-  border-top-color: var(--brand-fill);
-  border-radius: 50%;
-  animation: spin 0.7s linear infinite;
-}
-
-.route-loading__label {
-  font-size: 13px;
-  font-weight: 600;
-  color: var(--text-secondary);
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .route-loading__spinner {
-    animation: none;
-  }
-}
-
 /* Router and bootstrap fallback screens. */
 /* main.tsx establishes theme variables and dismisses the splash before this renders. */
 .main-bootstrap-error {
@@ -137,34 +105,46 @@ html:not([data-input-modality="pointer"]) :focus-visible {
   text-align: center;
 }
 
+/*
+ * 空态图标井。四种状态共用一套配方，差别只有 --empty-hue 一个变量：
+ * 井底的渐变、外圈的描边和外扩的光晕都从它派生，改一种状态不必改三处。
+ *
+ * info 走区域色而不是中性灰：空列表是页面上最大的一块留白，把它做成一整块
+ * 灰会让「这页什么都没有」读成「这页坏了」。给它当前分区的色相，空态就仍
+ * 然是这个分区的一部分——这也是本次放宽「空态一律中性」那条约束的原因。
+ */
 .empty-state__icon {
-  margin-bottom: var(--space-md);
+  --empty-hue: var(--domain-ink);
+  margin-bottom: var(--space-lg);
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 56px;
-  height: 56px;
-  border-radius: var(--radius-overlay);
-  /* Neutral by default: an empty list is not an event worth spending the accent
-     colour or motion on. Only the three real status colours below stay saturated. */
-  background: color-mix(in srgb, var(--text-primary) 5%, transparent);
+  inline-size: 72px;
+  block-size: 72px;
+  border-radius: 50%;
+  border: 1px solid color-mix(in srgb, var(--empty-hue) 28%, transparent);
+  /* 只铺一层半透明光晕，不填不透明底色：空态出现在深浅不一的面板上，一旦填死
+     底色，这个圆在任何不是 --surface-raised 的面板上都会露成一块补丁。 */
+  background: radial-gradient(circle at 50% 40%, color-mix(in srgb, var(--empty-hue) 22%, transparent), transparent 72%);
+  color: var(--empty-hue);
 }
 
-.empty-state__icon--info { color: var(--text-muted); }
-.empty-state__icon--success { color: var(--status-success); }
-.empty-state__icon--error { color: var(--status-danger); }
-.empty-state__icon--warning { color: var(--status-warning); }
+.empty-state__icon--info { color: var(--empty-hue); }
+.empty-state__icon--success { --empty-hue: var(--status-success); }
+.empty-state__icon--error { --empty-hue: var(--status-danger); }
+.empty-state__icon--warning { --empty-hue: var(--status-warning); }
 
 .empty-state__title {
   margin: 0;
-  font-size: 1.125rem;
-  font-weight: 600;
+  font-size: var(--text-h3);
+  font-weight: var(--fw-medium);
   color: var(--text-primary);
+  text-wrap: balance;
 }
 
 .empty-state__description {
   margin: var(--space-xs) 0 0;
-  font-size: 0.875rem;
+  font-size: var(--text-body);
   color: var(--text-muted);
 }
 
@@ -212,6 +192,16 @@ html:not([data-input-modality="pointer"]) :focus-visible {
  * --text-muted 自己随 [data-theme] 切换，一条规则覆盖两个模式。 */
 :root[data-theme][data-theme] {
   --mantine-color-dimmed: var(--text-muted);
+
+  /* ── Mantine 桥接 · 链接色 ──
+   *
+   * Anchor（.m_849cf0da）和 TypographyStylesProvider 里的 <a> 都读
+   * --mantine-color-anchor，Mantine 默认给的是主色 shade 6（#23907D）。
+   * 那一档是填充档，压在浅色纸底上只有 3.92:1，16px 正文过不了 AA；
+   * 站内的文字档是 --brand-text（浅 700 / 深 500），两个模式都已在
+   * theme-tokens.test.ts 里验过。选择器同上，用属性自我重复抬到 (0,3,0)
+   * 压过 Mantine 那条 :root[data-mantine-color-scheme=…]。 */
+  --mantine-color-anchor: var(--brand-text);
 }
 
 /* ── Mantine 桥接 · light variant 的文字对比度（浅色模式） ──

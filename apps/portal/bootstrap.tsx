@@ -12,10 +12,8 @@ import { PortalThemeProvider } from "./providers/ThemeProvider";
 import { dismissSplash } from "./splash";
 import { AppRouter } from "./router";
 import { useSiteConfigStore } from "./stores/site-config";
-import { fetchClassCatalog } from "./api/queries/classes";
-import { fetchClassTags } from "./api/queries/class-tags";
-import { useClassCatalogStore } from "./stores/class-catalog";
-import { useClassTagStore } from "./stores/class-tag";
+import { queryClient } from "./api/query-client";
+import { classCatalogQueryOptions, classTagsQueryOptions } from "./hooks/data/useClassData";
 import { resolveMediaUrl } from "./utils/media";
 
 async function loadSiteConfig(): Promise<void> {
@@ -45,28 +43,14 @@ async function loadSiteConfig(): Promise<void> {
   }
 }
 
-async function loadClassCatalog(): Promise<void> {
-  const items = await fetchClassCatalog();
-  useClassCatalogStore.getState().setItems(items);
-}
-
-async function loadClassTags(): Promise<void> {
-  const tags = await fetchClassTags();
-  useClassTagStore.getState().setTags(tags);
-}
-
 export async function mountApp(root: Root): Promise<void> {
   await i18nReady;
+  /* fetchQuery 会把请求错误抛出来：目录拉不下来就中止挂载、走可见的启动
+     失败路径，不允许换成任何吞错的预取变体。 */
   await Promise.all([
-    loadSiteConfig().catch((error: unknown) => {
-      console.error("[bootstrap] Failed to load site config", error);
-    }),
-    loadClassCatalog().catch((error: unknown) => {
-      console.error("[bootstrap] Failed to load class catalog", error);
-    }),
-    loadClassTags().catch((error: unknown) => {
-      console.error("[bootstrap] Failed to load class tags", error);
-    }),
+    loadSiteConfig(),
+    queryClient.fetchQuery(classCatalogQueryOptions),
+    queryClient.fetchQuery(classTagsQueryOptions),
   ]);
   root.render(
     <StrictMode>

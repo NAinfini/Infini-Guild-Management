@@ -1,9 +1,9 @@
-// @vitest-environment jsdom
 import { MantineProvider } from "@mantine/core";
+import { createSeededQueryClient } from "@portal/tests/query-harness";
+import { QueryClientProvider, type QueryClient } from "@tanstack/react-query";
 import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { useAdminClassTagsController } from "@portal/hooks/useAdminClassTagsController";
-import { useClassCatalogStore } from "@portal/stores/class-catalog";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { AdminClassTagsSection } from "./AdminClassTagsSection";
 
@@ -70,16 +70,20 @@ function renderSection(overrides: Record<string, unknown> = {}) {
     toggleClass,
     remove,
     ...render(
-      <MantineProvider>
-        <AdminClassTagsSection />
-      </MantineProvider>,
+      <QueryClientProvider client={queryClient}>
+        <MantineProvider>
+          <AdminClassTagsSection />
+        </MantineProvider>
+      </QueryClientProvider>,
     ),
   };
 }
 
+let queryClient: QueryClient;
+
 beforeEach(() => {
   confirm.mockReset().mockResolvedValue(true);
-  useClassCatalogStore.getState().setItems(CATALOG);
+  queryClient = createSeededQueryClient({ classes: CATALOG });
 });
 
 describe("AdminClassTagsSection", () => {
@@ -140,10 +144,11 @@ describe("AdminClassTagsSection", () => {
     expect(screen.getByRole("button", { name: "classTags.action.save" })).toBeEnabled();
   });
 
-  it("renders the drag handle outside the row's open button", () => {
+  it("renders the drag handle in the row surface but outside the open button", () => {
     renderSection();
 
     const handle = screen.getByRole("button", { name: "classTags.aria.dragHandle:Healer" });
+    expect(handle.closest(".admin-md__row")).not.toBeNull();
     expect(handle.closest(".admin-md__item")).toBeNull();
   });
 

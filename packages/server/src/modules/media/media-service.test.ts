@@ -41,7 +41,10 @@ describe("MediaService reads", () => {
       kind: "closed",
       offset: 2,
       length: 4,
-    })).resolves.toMatchObject({ range: { offset: 2, length: 4, total: 10 } });
+    })).resolves.toMatchObject({
+      audience: "public",
+      object: { range: { offset: 2, length: 4, total: 10 } },
+    });
 
     expect(describeRead).toHaveBeenCalledOnce();
     expect(get).toHaveBeenCalledOnce();
@@ -108,6 +111,18 @@ describe("MediaService reads", () => {
     expect(head).toHaveBeenCalledOnce();
   });
 
+  it("preserves the manifest audience for HTTP cache policy", async () => {
+    const head = vi.fn().mockResolvedValue(metadata);
+    const { service } = mediaService({ audience: "authenticated" }, { head });
+
+    await expect(service.head(anonymousContext(), "media-1", "view"))
+      .rejects.toMatchObject({ code: "UNAUTHORIZED" });
+
+    const authenticated = mediaService({ audience: "authenticated" }, { head });
+    await expect(authenticated.service.head(authenticatedContext(), "media-1", "view"))
+      .resolves.toEqual({ metadata, audience: "authenticated" });
+  });
+
   it("rejects private media before touching BlobStore", async () => {
     const head = vi.fn();
     const get = vi.fn();
@@ -156,8 +171,8 @@ describe("MediaService uploads", () => {
 
     expect(ids).toHaveLength(3);
     expect(reserveUploads).toHaveBeenCalledOnce();
+    expect(reserveUploads.mock.calls[0]).toHaveLength(1);
     expect(reserveUploads.mock.calls[0]?.[0]).toHaveLength(3);
-    expect(reserveUploads.mock.calls[0]?.[1]).toHaveLength(3);
     expect(putIfAbsent).toHaveBeenCalledTimes(6);
     expect(maxActive).toBe(1);
     expect(markStaged).toHaveBeenCalledOnce();
@@ -187,6 +202,65 @@ describe("MediaService uploads", () => {
     expect(markStaged).not.toHaveBeenCalled();
     expect(markDeleting).toHaveBeenCalledOnce();
     expect(markDeleting).toHaveBeenCalledWith(reservations.map(({ id }) => id), NOW);
+  });
+
+  it("preserves both the upload and cleanup errors when marking reservations for deletion fails", async () => {
+    const uploadError = new Error("injected write failure");
+    const cleanupError = new Error("injected cleanup failure");
+    const reserveUploads = vi.fn().mockResolvedValue(undefined);
+    const markStaged = vi.fn().mockResolvedValue(undefined);
+    const markDeleting = vi.fn().mockRejectedValue(cleanupError);
+    const putIfAbsent = vi.fn().mockRejectedValue(uploadError);
+    const service = new MediaService(
+      { reserveUploads, markStaged, markDeleting } as unknown as MediaStore,
+      { putIfAbsent } as unknown as BlobStore,
+    );
+
+    let thrown: unknown;
+    try {
+      await service.uploadImages(
+        authenticatedContext(),
+        "gallery_image",
+        [{ full: minimalWebP(), view: minimalWebP() }],
+        1_024,
+      );
+    } catch (error) {
+      thrown = error;
+    }
+
+    expect(thrown).toMatchObject({ code: "UPSTREAM_ERROR", status: 503 });
+    const cause = (thrown as { cause?: unknown }).cause;
+    expect(cause).toBeInstanceOf(AggregateError);
+    expect((cause as AggregateError).errors).toEqual([uploadError, cleanupError]);
+  });
+});
+
+describe("MediaService garbage collection", () => {
+  it("finishes the claimed batch and rejects when any deletion fails", async () => {
+    const claims = [
+      { mediaId: "media-1", claimToken: "claim-1", objectKeys: ["media/1"] },
+      { mediaId: "media-2", claimToken: "claim-2", objectKeys: ["media/2"] },
+      { mediaId: "media-3", claimToken: "claim-3", objectKeys: ["media/3"] },
+    ];
+    const claimGarbage = vi.fn().mockResolvedValue(claims);
+    const finalizeDeletion = vi.fn().mockResolvedValue(undefined);
+    const deleteObjects = vi.fn(async (keys: readonly string[]) => {
+      if (keys.includes("media/2")) throw new Error("injected object deletion failure");
+    });
+    const service = new MediaService(
+      { claimGarbage, finalizeDeletion } as unknown as MediaStore,
+      { delete: deleteObjects } as unknown as BlobStore,
+    );
+
+    await expect(service.collectGarbage(anonymousContext(), NOW, () => ({} as never)))
+      .rejects.toMatchObject({
+        name: "AggregateError",
+        message: "Media garbage collection deleted 2 item(s) and failed 1: media-2",
+      });
+
+    expect(deleteObjects).toHaveBeenCalledTimes(3);
+    expect(finalizeDeletion).toHaveBeenCalledTimes(2);
+    expect(finalizeDeletion.mock.calls.map(([mediaId]) => mediaId)).toEqual(["media-1", "media-3"]);
   });
 });
 

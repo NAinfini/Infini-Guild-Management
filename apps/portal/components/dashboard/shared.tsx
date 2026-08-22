@@ -2,17 +2,7 @@ import type { Event } from "@guild/shared";
 import type { EventQuotaBarSummary } from "../feature/events/EventQuotaBar";
 import { eventTypeColor } from "@portal/utils/event-colors";
 import { Group, Title } from "@mantine/core";
-import { format } from "date-fns";
-import type { ReactNode } from "react";
-
-export function formatDateTime(iso: string | null): string {
-  if (!iso) return "-";
-  const date = new Date(iso);
-  if (Number.isNaN(date.getTime())) {
-    return "-";
-  }
-  return format(date, "yyyy-MM-dd HH:mm");
-}
+import type { CSSProperties, ReactNode } from "react";
 
 export function eventTypeTagColor(value: string): string {
   return eventTypeColor(value);
@@ -26,6 +16,27 @@ export function cardHeading(text: string, icon?: ReactNode) {
         {text}
       </Title>
     </Group>
+  );
+}
+
+/**
+ * 比例计：把「几分之几」画出来，只给有分母的指标用。
+ *
+ * 三个 KPI 里有两个本来就是比例（活跃/总人数、胜率），但卡片只印了分子，
+ * 比例这层信息在版面上是丢掉的——一眼扫过去 43 和 91% 一样重。
+ *
+ * aria-hidden 是有意的：同一个 <dl> 里的 <dd> 已经把数字念出来了，
+ * 这条只是同一份信息的第二种编码，读屏再念一遍是噪音。
+ */
+export function KpiMeter({ ratio }: { ratio: number }) {
+  const clamped = Number.isFinite(ratio) ? Math.max(0, Math.min(1, ratio)) : 0;
+  return (
+    <div className="dashboard-kpi__meter" aria-hidden>
+      <span
+        className="dashboard-kpi__meter-fill"
+        style={{ "--kpi-ratio": clamped } as CSSProperties}
+      />
+    </div>
   );
 }
 

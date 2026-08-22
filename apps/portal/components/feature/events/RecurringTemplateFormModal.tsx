@@ -14,8 +14,9 @@ import {
   buildFormState,
   buildRecurrenceRule,
   computeNextLifecyclePreview,
-  localTimeToUtcTime,
-  tzOffsetToAnchorIso,
+  localClockAnchorIso,
+  localClockToUtcAt,
+  templateScheduleAnchor,
   type RecurringTemplateFormPayload,
   type RecurringTemplateFormState,
 } from "./RecurringTemplateFormModal.helpers";
@@ -32,7 +33,7 @@ type RecurringTemplateFormModalProps = {
   onSave: (payload: RecurringTemplateFormPayload) => void;
   onPause?: (id: string) => Promise<unknown>;
   onResume?: (id: string) => Promise<unknown>;
-  onDelete?: (id: string) => void;
+  onDelete?: (id: string) => Promise<void>;
 };
 
 // The two columns separate generated event content from recurrence timing.
@@ -68,11 +69,10 @@ export function RecurringTemplateFormModal({
 
     const durationMinutes = durationValue > 0
       ? durationValue * (durationUnit === "hours" ? 60 : 1)
-      : undefined;
+      : mode === "edit" ? null : undefined;
 
-    // Anchor on the event's actual instant (local time + current offset) so the
-    // local→UTC weekday conversion below is exact across midnight boundaries.
-    const anchorIso = tzOffsetToAnchorIso(-new Date().getTimezoneOffset(), startTime);
+    const recurrenceReference = template ? templateScheduleAnchor(template) ?? new Date() : new Date();
+    const anchorIso = localClockAnchorIso(startTime, recurrenceReference);
 
     const offsetD = typeof visibilityOffsetDays === "number" ? visibilityOffsetDays : 0;
     const offsetH = typeof visibilityOffsetHours === "number" ? visibilityOffsetHours : 0;
@@ -82,12 +82,12 @@ export function RecurringTemplateFormModal({
     onSave({
       type: eventType,
       title: title.trim(),
-      description: description.trim() || undefined,
-      start_time: localTimeToUtcTime(startTime),
+      description: description.trim() || (mode === "edit" ? null : ""),
+      start_time: localClockToUtcAt(startTime, recurrenceReference),
       duration_minutes: durationMinutes,
-      capacity: capacity.trim() ? Math.max(1, Number.parseInt(capacity, 10)) : undefined,
+      capacity: capacity.trim() ? Math.max(1, Number.parseInt(capacity, 10)) : mode === "edit" ? null : undefined,
       recurrence_rule: buildRecurrenceRule(formState, anchorIso),
-      visibility_offset_minutes: totalOffsetMinutes > 0 ? totalOffsetMinutes : undefined,
+      visibility_offset_minutes: totalOffsetMinutes,
       auto_archive: autoArchive,
       /* 切成投票/抽奖时控件只是藏了，状态还在；这两种类型带着配额会被服务端整个拒收。 */
       class_quotas: eventHasBehavior(eventType, "poll") || eventHasBehavior(eventType, "raffle") ? [] : classQuotas,
@@ -102,6 +102,26 @@ export function RecurringTemplateFormModal({
   const isPaused = mode === "edit" && (template?.paused ?? false);
   const locale = i18n?.language ?? "en";
   const isSaveDisabled = !formState.title.trim() || !formState.startTime || !formState.eventType;
+  const handlePauseResume = useCallback(async () => {
+    if (!template) return;
+    const action = template.paused ? onResume : onPause;
+    if (!action) return;
+    try {
+      await action(template.id);
+    } catch {
+      // The mutation owner reports failures; retain the modal for correction.
+      return;
+    }
+    onCancel();
+  }, [onCancel, onPause, onResume, template]);
+  const handleDelete = useCallback(async () => {
+    if (!template || !onDelete) return;
+    try {
+      await onDelete(template.id);
+    } catch {
+      // The mutation owner reports failures; retain the modal for correction.
+    }
+  }, [onDelete, template]);
 
   return (
     <Modal
@@ -142,7 +162,7 @@ export function RecurringTemplateFormModal({
                   variant="light"
                   color="green"
                   leftSection={<PlayerPlayIcon size={16} />}
-                  onClick={() => { void onResume?.(template.id); onCancel(); }}
+                  onClick={() => { void handlePauseResume(); }}
                 >
                   {t("recurring.resume")}
                 </Button>
@@ -151,7 +171,7 @@ export function RecurringTemplateFormModal({
                   variant="light"
                   color="orange"
                   leftSection={<PlayerPauseIcon size={16} />}
-                  onClick={() => { void onPause?.(template.id); onCancel(); }}
+                  onClick={() => { void handlePauseResume(); }}
                 >
                   {t("recurring.pause")}
                 </Button>
@@ -160,7 +180,7 @@ export function RecurringTemplateFormModal({
                 variant="light"
                 color="red"
                 leftSection={<TrashIcon size={16} />}
-                onClick={() => { onDelete?.(template.id); }}
+                onClick={() => { void handleDelete(); }}
               >
                 {t("recurring.delete")}
               </Button>

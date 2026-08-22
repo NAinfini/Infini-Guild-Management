@@ -19,7 +19,7 @@ function context(permissions: readonly string[]) {
 
 function store(overrides: Partial<WikiStore> = {}): WikiStore {
   return {
-    listCategories: vi.fn(),
+    listCategories: vi.fn().mockResolvedValue({ records: [rootCategory], stateToken: "state-1" }),
     createCategory: vi.fn(),
     updateCategories: vi.fn(),
     deleteCategory: vi.fn(),
@@ -30,14 +30,15 @@ function store(overrides: Partial<WikiStore> = {}): WikiStore {
     mutateArticle: vi.fn(),
     listRevisions: vi.fn(),
     getRevision: vi.fn(),
+    recordAudit: vi.fn(),
     ...overrides,
   };
 }
 
-function service(value: WikiStore) {
+function service(value: WikiStore, media: Partial<MediaService> = {}) {
   return new WikiService(
     value,
-    {} as MediaService,
+    media as MediaService,
     { publish: vi.fn() },
     { defer: vi.fn() },
   );
@@ -238,6 +239,13 @@ describe("WikiService", () => {
     } as const;
     const mutateArticle = vi.fn().mockResolvedValue(true);
     const wiki = store({
+      listCategories: vi.fn().mockResolvedValue({
+        records: [
+          rootCategory,
+          { ...rootCategory, id: "category-original", name: "Original", slug: "original-category" },
+        ],
+        stateToken: "state-1",
+      }),
       getArticleById: vi.fn().mockResolvedValue(deleted),
       getRevision: vi.fn().mockResolvedValue(snapshot),
       mutateArticle,
@@ -280,5 +288,33 @@ describe("WikiService", () => {
     )).rejects.toMatchObject({ code: "VALIDATION_ERROR" });
 
     expect(createArticle).not.toHaveBeenCalled();
+  });
+
+  it("records a safe article-scoped audit after image upload", async () => {
+    const recordAudit = vi.fn().mockResolvedValue(undefined);
+    const uploadImages = vi.fn().mockResolvedValue(["123456789012345678901"]);
+    const result = await service(store({
+      getArticleById: vi.fn().mockResolvedValue(article),
+      recordAudit,
+    }), { uploadImages }).uploadArticleImages(
+      context(["wiki.articles.edit"]),
+      article.id,
+      [{ full: new Uint8Array([1]), view: new Uint8Array([2]) }],
+      5,
+      10_000,
+    );
+
+    expect(result.media_ids).toEqual(["123456789012345678901"]);
+    expect(recordAudit).toHaveBeenCalledWith(expect.objectContaining({
+      subjectType: "wiki_article",
+      subjectId: article.id,
+      subjectLabel: article.title,
+      action: "upload_images",
+      payload: {
+        schema_version: 2,
+        changes: [],
+        context: [{ field: "upload_count", value: { type: "number", value: 1 } }],
+      },
+    }));
   });
 });

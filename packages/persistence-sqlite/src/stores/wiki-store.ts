@@ -7,6 +7,7 @@ import type {
   WikiStore,
 } from "@guild/server/modules/wiki";
 import { LIMITS, type PaginatedResponse, type WikiArticle, type WikiRevisionListItem } from "@guild/shared";
+import { extractTipTapText } from "@guild/shared/utils/tiptap-text";
 import type { SqlBatchStatement, SqlExecutor, SqlResult, SqlValue } from "@guild/kernel";
 import { auditInsertStatement } from "./audit-statement.js";
 import { returnedRowCount } from "./sql-result.js";
@@ -294,6 +295,10 @@ export class SqliteWikiStore implements WikiStore {
     return row ? mapRevision(row) : null;
   }
 
+  async recordAudit(audit: Parameters<WikiStore["recordAudit"]>[0]): Promise<void> {
+    await this.sql.execute(auditInsertStatement(audit));
+  }
+
   private async assertArticleMedia(record: WikiArticleRecord, mediaIds: readonly string[]): Promise<readonly string[]> {
     if (mediaIds.length > MAX_WIKI_MEDIA || new Set(mediaIds).size !== mediaIds.length) {
       throw new AppError({ code: "VALIDATION_ERROR", status: 400, message: "Wiki media must contain at most 50 unique assets" });
@@ -386,17 +391,19 @@ function selectRevision(withBody: boolean): string {
     LEFT JOIN users AS editor ON editor.id = revisions.edited_by`;
 }
 
+// search_text 由正文在每次写入时派生，是搜索投影的规范来源；迁移回填仅是近似。
 function insertArticle(record: WikiArticleRecord): SqlBatchStatement {
   return {
     method: "run",
     sql: `INSERT INTO wiki_articles
       (id, title, slug, category_id, body_json, sort_order, pinned, archived_at, created_by,
-       deleted_at, updated_by, current_revision, revision_token, created_at, updated_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+       deleted_at, updated_by, current_revision, revision_token, created_at, updated_at, search_text)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     params: [
       record.id, record.title, record.slug, record.category_id, record.body_json, record.sort_order,
       record.pinned ? 1 : 0, record.archived_at, record.created_by, record.deletedAt, record.updated_by,
       record.currentRevision, record.revisionToken, record.created_at, record.updated_at,
+      extractTipTapText(record.body_json),
     ],
   };
 }
@@ -407,13 +414,14 @@ function updateArticle(record: WikiArticleRecord, expectedRevisionToken: string)
     columns: ["affected"],
     sql: `UPDATE wiki_articles SET
       title = ?, slug = ?, category_id = ?, body_json = ?, sort_order = ?, pinned = ?, archived_at = ?,
-      deleted_at = ?, updated_by = ?, current_revision = ?, revision_token = ?, updated_at = ?
+      deleted_at = ?, updated_by = ?, current_revision = ?, revision_token = ?, updated_at = ?, search_text = ?
       WHERE id = ? AND revision_token = ?
       RETURNING 1 AS affected`,
     params: [
       record.title, record.slug, record.category_id, record.body_json, record.sort_order,
       record.pinned ? 1 : 0, record.archived_at, record.deletedAt, record.updated_by, record.currentRevision,
-      record.revisionToken, record.updated_at, record.id, expectedRevisionToken,
+      record.revisionToken, record.updated_at, extractTipTapText(record.body_json),
+      record.id, expectedRevisionToken,
     ],
   };
 }

@@ -1,6 +1,6 @@
-// @vitest-environment jsdom
 import type { MemberAvailability, MemberProfile } from "@guild/shared";
 import { act, renderHook, waitFor } from "@testing-library/react";
+import { QueryHarness } from "@portal/tests/query-harness";
 import { describe, expect, it, vi } from "vitest";
 import { useProfileFormState } from "./useProfileFormState";
 
@@ -62,7 +62,7 @@ describe("useProfileFormState", () => {
     const initialProfile = createProfile();
     const { result, rerender } = renderHook(
       ({ profile }) => useProfileFormState({ profile }),
-      { initialProps: { profile: initialProfile } },
+      { initialProps: { profile: initialProfile }, wrapper: QueryHarness },
     );
 
     act(() => {
@@ -106,7 +106,7 @@ describe("useProfileFormState", () => {
     /* 必须在 renderHook 外面建好：profile 的 identity 变了就会重跑基线同步，
        每次渲染新建一个对象会把 hook 送进死循环。 */
     const profile = createProfile();
-    const { result } = renderHook(() => useProfileFormState({ profile }));
+    const { result } = renderHook(() => useProfileFormState({ profile }), { wrapper: QueryHarness });
 
     act(() => {
       result.current.setAvailabilityData(availability({
@@ -136,7 +136,7 @@ describe("useProfileFormState", () => {
         monday: [{ start_utc: "12:00", end_utc: "16:00" }],
       }),
     });
-    const { result } = renderHook(() => useProfileFormState({ profile }));
+    const { result } = renderHook(() => useProfileFormState({ profile }), { wrapper: QueryHarness });
 
     act(() => {
       result.current.setAvailabilityData({
@@ -153,7 +153,7 @@ describe("useProfileFormState", () => {
 
   it("accepts a successful save as the new baseline without overwriting newer edits", () => {
     const initialProfile = createProfile();
-    const { result } = renderHook(() => useProfileFormState({ profile: initialProfile }));
+    const { result } = renderHook(() => useProfileFormState({ profile: initialProfile }), { wrapper: QueryHarness });
 
     act(() => {
       result.current.setBio("Saved bio");
@@ -180,7 +180,7 @@ describe("useProfileFormState", () => {
     /* profile 必须在 renderHook 外面建好：每次渲染都传一个新对象的话，
        同步基线的 effect 会每渲染一次就 setState 一次，直接转成死循环。 */
     const initialProfile = createProfile();
-    const { result } = renderHook(() => useProfileFormState({ profile: initialProfile }));
+    const { result } = renderHook(() => useProfileFormState({ profile: initialProfile }), { wrapper: QueryHarness });
 
     act(() => {
       result.current.setTitleHtml("<p>Guild Leader</p>");

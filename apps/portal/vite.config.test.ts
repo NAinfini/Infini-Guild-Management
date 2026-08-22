@@ -1,3 +1,6 @@
+// @vitest-environment node
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 import {
   ECHARTS_CHUNK_BUDGET,
@@ -35,14 +38,27 @@ describe("portal Vite API proxy", () => {
 });
 
 describe("portal Vite development HTML", () => {
+  it("uses one description placeholder for every public preview tag", () => {
+    const html = readFileSync(resolve(process.cwd(), "apps/portal/index.html"), "utf8");
+
+    expect(html.match(/content="{{SITE_DESCRIPTION}}"/g)).toHaveLength(3);
+    expect(html).not.toContain("Guild Management Portal — roster, events, wiki, and tools for your guild.");
+  });
+
   it("replaces site config placeholders before the browser requests them", () => {
     const html = [
       "<title>{{SITE_NAME}}</title>",
+      '<meta name="description" content="{{SITE_DESCRIPTION}}">',
       '<img src="{{SITE_LOGO_URL}}" alt="">',
     ].join("");
 
-    expect(replaceSiteConfigPlaceholders(html, "Infini Guild", "/guild-logo.svg")).toBe(
-      '<title>Infini Guild</title><img src="/guild-logo.svg" alt="">',
+    expect(replaceSiteConfigPlaceholders(
+      html,
+      "Infini & Guild",
+      'Events & wiki <together> "safely" today\'s',
+      "/guild-logo.svg?a=1&b=2",
+    )).toBe(
+      '<title>Infini &amp; Guild</title><meta name="description" content="Events &amp; wiki &lt;together&gt; &quot;safely&quot; today&#39;s"><img src="/guild-logo.svg?a=1&amp;b=2" alt="">',
     );
   });
 });

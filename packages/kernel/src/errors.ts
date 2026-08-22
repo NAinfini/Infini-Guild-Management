@@ -1,25 +1,17 @@
-export type ErrorCode =
-  | "VALIDATION_ERROR"
-  | "UNAUTHORIZED"
-  | "FORBIDDEN"
-  | "NOT_FOUND"
-  | "CONFLICT"
-  | "RATE_LIMITED"
-  | "SERVER_ERROR"
-  | "UPSTREAM_ERROR";
+import {
+  ERROR_STATUS,
+  type ErrorCode,
+  type StandardErrorResponse,
+} from "@guild/shared/constants/errors";
 
-export type AppErrorStatus = 400 | 401 | 403 | 404 | 409 | 429 | 500 | 503;
+/*
+ * 错误码与状态码的对照表唯一定义在 @guild/shared（portal 只能依赖 shared）。
+ * kernel 在此之上提供后端抛错载体 AppError，并复导出契约类型，
+ * 让后端消费方从一个入口拿到抛错类与其公开字段的类型。
+ */
+export type { ErrorCode, StandardErrorResponse };
 
-const ERROR_STATUS: Readonly<Record<ErrorCode, AppErrorStatus>> = Object.freeze({
-  VALIDATION_ERROR: 400,
-  UNAUTHORIZED: 401,
-  FORBIDDEN: 403,
-  NOT_FOUND: 404,
-  CONFLICT: 409,
-  RATE_LIMITED: 429,
-  SERVER_ERROR: 500,
-  UPSTREAM_ERROR: 503,
-});
+export type AppErrorStatus = (typeof ERROR_STATUS)[ErrorCode];
 
 export type AppErrorOptions = {
   code: ErrorCode;
@@ -27,13 +19,6 @@ export type AppErrorOptions = {
   message: string;
   details?: unknown;
   cause?: unknown;
-};
-
-export type AppErrorBody = {
-  error_code: ErrorCode;
-  message: string;
-  request_id: string;
-  details?: unknown;
 };
 
 export class AppError extends Error {
@@ -54,7 +39,7 @@ export class AppError extends Error {
     this.details = options.details;
   }
 
-  toResponseBody(requestId: string): AppErrorBody {
+  toResponseBody(requestId: string): StandardErrorResponse {
     if (!requestId.trim()) throw new TypeError("requestId is required");
     return {
       error_code: this.code,

@@ -1,7 +1,5 @@
 import {
   PERMISSIONS,
-  SITE_OWNER_LEVEL,
-  SITE_OWNER_ROLE_ID,
   type AdminRole,
   type Permission,
   type User,
@@ -114,20 +112,13 @@ export function userCanViewStatus(user: User | null): boolean {
   return userHasPermission(user, "admin.status.view");
 }
 
-function isSiteOwner(user: User | null): user is User {
-  return Boolean(
-    user
-    && user.role === SITE_OWNER_ROLE_ID
-    && user.role_level === SITE_OWNER_LEVEL
-    && user.permissions["admin.owners.manage"] === true,
-  );
-}
-
 export function isRoleAssignableToUser(role: AdminRole, user: User | null): boolean {
-  const ownerAssignment = isSiteOwner(user)
-    && role.id === SITE_OWNER_ROLE_ID
-    && role.level === SITE_OWNER_LEVEL;
-  if (!user || (role.level >= user.role_level && !ownerAssignment)) {
+  const sameRoleAssignment = Boolean(
+    user
+    && role.id === user.role
+    && role.level === user.role_level,
+  );
+  if (!user || (role.level >= user.role_level && !sameRoleAssignment)) {
     return false;
   }
 
@@ -137,11 +128,7 @@ export function isRoleAssignableToUser(role: AdminRole, user: User | null): bool
 }
 
 export function canManageUserByRoleLevel(target: User, user: User | null): boolean {
-  if (!user || target.id === user.id) return false;
-  if (target.role_level < user.role_level) return true;
-  return isSiteOwner(user)
-    && target.role === SITE_OWNER_ROLE_ID
-    && target.role_level === SITE_OWNER_LEVEL;
+  return Boolean(user && target.id !== user.id && target.role_level < user.role_level);
 }
 
 export function canPreviewRole(role: AdminRole, user: User | null): boolean {

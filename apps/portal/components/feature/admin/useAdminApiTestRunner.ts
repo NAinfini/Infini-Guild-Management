@@ -4,6 +4,7 @@ import { useNotificationStore } from "../../../stores/notifications";
 import {
   API_TEST_GAP_GET_MS,
   API_TEST_GAP_MUTATION_MS,
+  buildCriticalApiCategories,
   buildSystemTestSummary,
   captureContextFromResponse,
   createInitialTestRunContext,
@@ -137,7 +138,8 @@ export function useAdminApiTestRunner(
     });
   }, [pushLog]);
 
-  const [runningAll, setRunningAll] = useState(false);
+  const [runningSuite, setRunningSuite] = useState<"all" | "critical" | null>(null);
+  const [selectedSuiteEndpointTotal, setSelectedSuiteEndpointTotal] = useState(0);
 
   const runCleanup = useCallback(async (signal: AbortSignal) => {
     const runId = contextRef.current.runId;
@@ -316,6 +318,7 @@ export function useAdminApiTestRunner(
     const controller = await beginRun();
     clearRunConsole();
     setResultMap(new Map());
+    setSelectedSuiteEndpointTotal(category.endpoints.length);
     const serverRun = await createServerRun(controller.signal);
     contextRef.current = {
       ...createInitialTestRunContext(),
@@ -343,10 +346,14 @@ export function useAdminApiTestRunner(
     await run;
   }, [actor, beginRun, clearRunConsole, createServerRun, finalizeServerRun, runCategoryInternal, runTeardown, setSuppressed]);
 
-  const runAllCategories = useCallback(async () => {
+  const runSuite = useCallback(async (
+    categories: CategoryDef[],
+    suite: "all" | "critical",
+  ) => {
     const controller = await beginRun();
     clearRunConsole();
     setResultMap(new Map());
+    setSelectedSuiteEndpointTotal(categories.reduce((sum, category) => sum + category.endpoints.length, 0));
     const serverRun = await createServerRun(controller.signal);
     contextRef.current = {
       ...createInitialTestRunContext(),
@@ -356,11 +363,11 @@ export function useAdminApiTestRunner(
       meRoleLevel: actor?.role_level ?? null,
       mePermissions: actor?.permissions ?? null,
     };
-    setRunningAll(true);
+    setRunningSuite(suite);
     setSuppressed(true);
     const run = (async () => {
       try {
-        for (const cat of visibleApiCategories) {
+        for (const cat of categories) {
           if (controller.signal.aborted) break;
           await runCategoryInternal(cat, controller.signal);
         }
@@ -384,19 +391,30 @@ export function useAdminApiTestRunner(
             }
           }
         } finally {
-          setRunningAll(false);
+          setRunningSuite(null);
           setSuppressed(false);
         }
       }
     })();
     inFlightRef.current = run;
     await run;
-  }, [actor, beginRun, clearRunConsole, createServerRun, finalizeServerRun, runCategoryInternal, runTeardown, setSuppressed, visibleApiCategories, writeSystemTestAuditSummary]);
+  }, [actor, beginRun, clearRunConsole, createServerRun, finalizeServerRun, runCategoryInternal, runTeardown, setSuppressed, writeSystemTestAuditSummary]);
+
+  const runAllCategories = useCallback(
+    () => runSuite(visibleApiCategories, "all"),
+    [runSuite, visibleApiCategories],
+  );
+
+  const runCriticalCategories = useCallback(
+    () => runSuite(buildCriticalApiCategories(visibleApiCategories), "critical"),
+    [runSuite, visibleApiCategories],
+  );
 
   const clearDebug = useCallback(() => {
     runLogRef.current = [];
     setDebugLogs([]);
     setResultMap(new Map());
+    setSelectedSuiteEndpointTotal(0);
     contextRef.current = createInitialTestRunContext();
   }, []);
 
@@ -408,9 +426,12 @@ export function useAdminApiTestRunner(
     debugLogs,
     runningSet,
     resultMap,
-    runningAll,
+    runningAll: runningSuite === "all",
+    runningCritical: runningSuite === "critical",
+    selectedSuiteEndpointTotal,
     runCategory,
     runAllCategories,
+    runCriticalCategories,
     clearDebug,
     stop,
   };

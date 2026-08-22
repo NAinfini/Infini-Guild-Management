@@ -121,14 +121,14 @@ html:not([data-input-modality="pointer"]) .storage-batch-drawer .mantine-Textare
   scroll-margin-top: calc(var(--header-height) + var(--space-md));
 }
 
+/* 只改边框：--storage-border-strong 是带品牌色的一档，用来把这条工作栏从周围
+   的板子里挑出来。底、投影和面板其它部分都由 .paperRoot 出，这里不重复。 */
 .storage-batch-bar {
   position: sticky;
   top: var(--space-sm);
   padding: var(--space-md);
   border-color: var(--storage-border-strong);
   border-radius: var(--radius-surface);
-  background: var(--storage-plate);
-  box-shadow: var(--edge-top);
 }
 
 .storage-batch-bar__identity {

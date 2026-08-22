@@ -1,378 +1,394 @@
 .audit-log-list {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  border-radius: var(--radius-overlay);
-  overflow: hidden;
-  border: 1px solid color-mix(in srgb, var(--text-primary) 8%, transparent);
-}
-
-.audit-log-row {
-  background: var(--surface-base);
-  transition: background-color 0.15s ease;
-}
-
-.audit-log-row:hover {
-  background: color-mix(in srgb, var(--brand-fill) 4%, var(--surface-base));
-}
-
-.audit-log-row--expanded {
-  background: color-mix(in srgb, var(--brand-fill) 4%, var(--surface-base));
+  flex: 1 1 auto;
+  min-block-size: 0;
 }
 
 .audit-log-row + .audit-log-row {
-  border-top: 1px solid color-mix(in srgb, var(--text-primary) 6%, transparent);
+  border-block-start: 1px solid var(--border-subtle);
 }
-
-/* ── Clickable header row ── */
 
 .audit-log-row__header {
   display: grid;
-  grid-template-columns: auto 1fr auto 20px;
+  grid-template-columns: auto minmax(0, 1fr) auto auto;
   align-items: center;
-  gap: 16px;
-  padding: 12px 16px;
-  border: none;
-  text-align: left;
-  cursor: pointer;
-  width: 100%;
-  font: inherit;
-  color: inherit;
+  gap: var(--space-sm) var(--space-md);
+  inline-size: 100%;
+  min-block-size: var(--control-hit-area);
+  padding: var(--space-sm) var(--space-lg);
+  border: 0;
   background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: start;
+  cursor: pointer;
 }
 
-.audit-log-row__badges {
+.audit-log-row__header:hover .audit-log-row__description,
+.audit-log-row__header[aria-expanded="true"] .audit-log-row__description {
+  color: var(--brand-text);
+}
+
+.audit-log-row__header:focus-visible {
+  outline: 2px solid var(--brand-fill);
+  outline-offset: -2px;
+}
+
+.audit-log-row__icon {
+  align-self: start;
+  margin-block-start: 2px;
+}
+
+.audit-log-row__content {
+  display: grid;
+  gap: var(--space-xs);
+  min-inline-size: 0;
+}
+
+.audit-log-row__description {
+  color: var(--text-primary);
+  font-size: var(--text-body);
+  font-weight: var(--fw-medium);
+  line-height: var(--lh-normal);
+  overflow-wrap: anywhere;
+  transition: color var(--motion-state);
+}
+
+.audit-log-row__description strong {
+  font-weight: var(--fw-strong);
+}
+
+.audit-log-row__meta {
   display: flex;
-  flex-direction: column;
-  gap: 4px;
-  min-width: 100px;
+  flex-wrap: wrap;
+  align-items: center;
+  min-inline-size: 0;
+  color: var(--text-muted);
+  font-size: var(--text-micro);
+  line-height: var(--lh-normal);
 }
 
-/* Component badge classes load after Mantine base styles and need no priority override. */
-.audit-log-row__entity-badge {
-  width: fit-content;
-  text-transform: none;
+.audit-log-row__meta {
+  gap: var(--space-xs);
   font-weight: var(--fw-medium);
 }
 
-.audit-log-row__action-badge {
-  width: fit-content;
-  text-transform: none;
-}
-
-/* ── Summary column ── */
-
-.audit-log-row__summary {
-  min-width: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-}
-
-.audit-log-row__summary-text {
-  word-break: break-word;
-}
-
-.audit-log-row__entity-name {
-  word-break: break-word;
-}
-
-/* ── Time column ── */
-
-.audit-log-row__time-col {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-end;
-  gap: 2px;
-  min-width: 80px;
-  flex-shrink: 0;
-}
-
 .audit-log-row__time {
+  align-self: start;
   white-space: nowrap;
-  /* The timestamp already renders in the dimmed colour; the extra 0.7 opacity
-   * stacked on top of that put it at 3.0:1. */
   font-variant-numeric: tabular-nums;
 }
 
-/* ── Expand chevron ── */
-
 .audit-log-row__chevron {
-  color: color-mix(in srgb, var(--text-primary) 65%, transparent);
-  transition: transform 200ms ease, opacity 150ms ease;
-  flex-shrink: 0;
-  opacity: 0.5;
+  align-self: start;
+  margin-block-start: var(--space-sm);
+  color: var(--text-muted);
+  transition: transform var(--motion-state), color var(--motion-state);
 }
 
-.audit-log-row:hover .audit-log-row__chevron {
-  opacity: 1;
+.audit-log-row__header:hover .audit-log-row__chevron,
+.audit-log-row__header[aria-expanded="true"] .audit-log-row__chevron {
+  color: var(--text-primary);
 }
 
 .audit-log-row__chevron--open {
   transform: rotate(180deg);
-  opacity: 1;
 }
 
-.audit-log-row__chevron-spacer {
-  width: 14px;
-  flex-shrink: 0;
+.audit-log-row__details {
+  padding: 0 var(--space-lg) var(--space-md) calc(var(--space-lg) + 28px + var(--space-md));
 }
 
-/* ── Detail Panel (expanded) ── */
-
-.audit-log-row__detail-panel {
-  padding: 0 16px 14px 132px;
-  animation: auditDiffSlideIn 150ms ease-out;
+.audit-detail-section,
+.audit-detail-disclosure,
+.audit-detail-actions {
+  border-block-start: 1px solid var(--border-subtle);
 }
 
-.audit-detail__header {
-  padding: 4px 0 8px;
-  border-bottom: 1px solid color-mix(in srgb, var(--text-primary) 8%, transparent);
-  margin-bottom: 6px;
+.audit-detail-section {
+  padding-block: var(--space-sm);
 }
 
-/* Compact audit-detail labels intentionally sit below the shared 12px metadata tier. */
-.audit-detail__title {
+.audit-detail-section__title {
+  margin: 0 0 var(--space-sm);
+  color: var(--text-secondary);
+  font-size: var(--text-meta);
+  font-weight: var(--fw-strong);
+  line-height: var(--lh-tight);
+}
+
+.audit-detail-section__title:lang(en) {
   letter-spacing: 0.05em;
-  font-size: 10px;
+  text-transform: uppercase;
 }
 
-.audit-detail__table {
-  display: flex;
-  flex-direction: column;
-  gap: 0;
+.audit-change-list,
+.audit-technical-list {
+  display: grid;
+  margin: 0;
+}
+
+.audit-context-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(14rem, 100%), 1fr));
+  gap: var(--space-xs) var(--space-xl);
+  margin: 0;
+}
+
+.audit-change-row {
+  display: grid;
+  grid-template-columns: minmax(7rem, 0.36fr) minmax(0, 1fr) auto minmax(0, 1fr);
+  align-items: start;
+  gap: var(--space-md);
+  padding-block: var(--space-sm);
+}
+
+.audit-change-row + .audit-change-row,
+.audit-technical-row + .audit-technical-row {
+  border-block-start: 1px solid var(--border-subtle);
+}
+
+.audit-change-row__field,
+.audit-context-row dt,
+.audit-technical-row dt {
+  color: var(--text-muted);
+  font-size: var(--text-meta);
+  font-weight: var(--fw-medium);
+  overflow-wrap: anywhere;
+}
+
+.audit-change-row__value {
+  display: grid;
+  gap: var(--space-xs);
+  min-inline-size: 0;
+  color: var(--text-secondary);
+  font-size: var(--text-sm);
+  overflow-wrap: anywhere;
+}
+
+.audit-change-row__value--after {
+  color: var(--text-primary);
+  font-weight: var(--fw-medium);
+}
+
+.audit-change-row__value-label {
+  color: var(--text-muted);
+  font-size: var(--text-micro);
+  font-weight: var(--fw-medium);
+}
+
+.audit-change-row__arrow {
+  margin-block-start: calc(var(--space-lg) + 2px);
+  color: var(--text-muted);
+}
+
+.audit-context-row {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: var(--space-sm);
+  padding-block: var(--space-xs);
+}
+
+.audit-context-row dd,
+.audit-technical-row dd {
+  min-inline-size: 0;
+  margin: 0;
+  color: var(--text-primary);
+  font-size: var(--text-sm);
+  overflow-wrap: anywhere;
 }
 
 .audit-detail-value {
   display: grid;
-  flex: 1;
-  gap: 4px;
-  min-width: 0;
-  max-width: 100%;
-}
-
-.audit-detail-value__content {
-  display: block;
-  min-width: 0;
-  max-width: 100%;
+  gap: var(--space-xs);
+  min-inline-size: 0;
   overflow-wrap: anywhere;
-}
-
-.audit-detail-value__content--expanded {
-  max-height: 12rem;
-  overflow: auto;
-  overscroll-behavior: contain;
 }
 
 .audit-detail-value__truncated {
   margin-inline-start: 0.25em;
-  white-space: nowrap;
+  color: var(--text-muted);
 }
 
 .audit-detail-value__toggle {
-  width: fit-content;
-  padding: 2px 0;
+  inline-size: fit-content;
+  min-block-size: var(--control-hit-area);
+  padding: 0;
   border: 0;
-  color: var(--brand-text);
   background: transparent;
+  color: var(--brand-text);
   font: inherit;
   font-size: var(--text-meta);
-  font-weight: 600;
-  line-height: 1.4;
+  font-weight: var(--fw-medium);
   text-decoration: underline;
   text-underline-offset: 2px;
   cursor: pointer;
 }
 
-.audit-detail-value__toggle:focus-visible {
+.audit-detail-value__toggle:focus-visible,
+.audit-detail-disclosure__summary:focus-visible {
   outline: 2px solid var(--brand-fill);
   outline-offset: 2px;
 }
 
-.audit-detail__table-head {
+.audit-detail-disclosure {
+  padding-block: var(--space-sm);
+}
+
+.audit-detail-disclosure__summary {
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 4px 10px;
-  font-size: 10px;
-  font-weight: 600;
-  text-transform: uppercase;
+  justify-content: space-between;
+  gap: var(--space-sm);
+  min-block-size: var(--control-hit-area);
+  padding-inline: var(--space-sm);
+  border-radius: var(--radius-control);
+  list-style: none;
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: background-color var(--motion-state), color var(--motion-state);
+}
+
+.audit-detail-disclosure__summary::-webkit-details-marker {
+  display: none;
+}
+
+.audit-detail-disclosure__summary:hover,
+.audit-detail-disclosure[open] > .audit-detail-disclosure__summary {
+  background: var(--surface-sunken);
+  color: var(--text-primary);
+}
+
+.audit-detail-disclosure__title {
+  color: inherit;
+  font-size: var(--text-meta);
+  font-weight: var(--fw-strong);
+  line-height: var(--lh-tight);
+}
+
+.audit-detail-disclosure__title:lang(en) {
   letter-spacing: 0.05em;
-  color: color-mix(in srgb, var(--text-primary) 65%, transparent);
-}
-
-.audit-detail__col-field {
-  min-width: 100px;
-  flex-shrink: 0;
-}
-
-.audit-detail__col-from {
-  min-width: 120px;
-  flex: 1;
-}
-
-.audit-detail__col-arrow {
-  width: 12px;
-  flex-shrink: 0;
-}
-
-.audit-detail__col-to {
-  min-width: 120px;
-  flex: 1;
-}
-
-@keyframes auditDiffSlideIn {
-  from { opacity: 0; transform: translateY(-4px); }
-  to { opacity: 1; transform: translateY(0); }
-}
-
-/* ── Diff entries (from → to) ── */
-
-.audit-diff-entry {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 6px 10px;
-  border-radius: var(--radius-control);
-  font-size: 12px;
-  transition: background 120ms ease;
-}
-
-.audit-diff-entry:hover {
-  background: color-mix(in srgb, var(--text-primary) 4%, transparent);
-}
-
-.audit-diff-entry__field {
-  min-width: 100px;
-  flex-shrink: 0;
-  font-weight: 600;
-  font-size: 11px;
   text-transform: uppercase;
-  letter-spacing: 0.04em;
-  color: color-mix(in srgb, var(--text-primary) 65%, transparent);
 }
 
-/* #ef4444/#dc2626 都是裸 hex 的危险色，替换表 danger 分支覆盖
-   --color-danger 这一族（含兜底写法），这里直接落到 --status-danger。 */
-.audit-diff-entry__from {
-  padding: 2px 6px;
-  border-radius: 3px;
-  background: color-mix(in srgb, var(--status-danger) 10%, transparent);
-  color: var(--status-danger);
-  font-weight: 500;
-  text-decoration: line-through;
-  text-decoration-color: color-mix(in srgb, var(--status-danger) 40%, transparent);
-  white-space: pre-wrap;
-  word-break: break-all;
-  flex: 1;
-  min-width: 0;
+.audit-detail-disclosure__chevron {
+  flex: 0 0 auto;
+  color: var(--text-muted);
+  transition: color var(--motion-state), transform var(--motion-state);
 }
 
-.audit-diff-entry__arrow {
-  flex-shrink: 0;
-  color: color-mix(in srgb, var(--text-primary) 65%, transparent);
+.audit-detail-disclosure[open] > .audit-detail-disclosure__summary .audit-detail-disclosure__chevron {
+  color: var(--text-primary);
+  transform: rotate(180deg);
 }
 
-/* #10b981/#059669 同理落到 --status-success。 */
-.audit-diff-entry__to {
-  padding: 2px 6px;
-  border-radius: 3px;
-  background: color-mix(in srgb, var(--status-success) 10%, transparent);
-  color: var(--status-success);
-  font-weight: 600;
-  white-space: pre-wrap;
-  word-break: break-all;
-  flex: 1;
-  min-width: 0;
+.audit-detail-disclosure__content {
+  padding: var(--space-xs) var(--space-sm) 0;
 }
 
-/* ── Info entries (key: value) ── */
+.audit-technical-disclosure__hint {
+  margin-block-end: var(--space-sm);
+}
 
-.audit-info-entry {
-  display: flex;
+.audit-technical-row {
+  display: grid;
+  grid-template-columns: minmax(7rem, 0.36fr) minmax(0, 1fr) auto;
   align-items: center;
-  gap: 10px;
-  padding: 6px 10px;
-  border-radius: var(--radius-control);
-  font-size: 12px;
-  transition: background 120ms ease;
+  gap: var(--space-md);
+  padding-block: var(--space-sm);
 }
 
-.audit-info-entry:hover {
-  background: color-mix(in srgb, var(--text-primary) 4%, transparent);
+.audit-technical-row__value {
+  font-family: var(--font-code);
+  font-size: var(--text-meta);
+  overflow-wrap: anywhere;
 }
 
-.audit-info-entry__field {
-  min-width: 100px;
-  flex-shrink: 0;
-  font-weight: 600;
-  font-size: 11px;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-  color: color-mix(in srgb, var(--text-primary) 65%, transparent);
+.audit-detail-actions {
+  display: flex;
+  justify-content: flex-start;
+  padding-block-start: var(--space-sm);
 }
 
-.audit-info-entry__value {
-  padding: 2px 6px;
-  border-radius: 3px;
-  background: color-mix(in srgb, var(--brand-fill) 8%, transparent);
-  color: color-mix(in srgb, var(--text-primary) 85%, transparent);
-  font-weight: 500;
-  white-space: pre-wrap;
-  word-break: break-all;
-}
+@media (max-width: 47.99em) {
+  /* On phones the page owns scrolling; desktop keeps the list as the single fill-region owner. */
+  .audit-log-fill.admin-fill,
+  .audit-log-list {
+    flex: 0 1 auto;
+    min-block-size: auto;
+  }
 
-/* ── Responsive ── */
+  .audit-log-list .admin-panel__body--scroll {
+    overflow-y: visible;
+  }
 
-@media (max-width: 767px) {
   .audit-log-row__header {
-    grid-template-columns: 1fr 20px;
-    gap: 8px;
-    padding: 10px 12px;
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    align-items: start;
+    gap: var(--space-sm) var(--space-md);
+    padding: var(--space-md);
   }
 
-  .audit-log-row__badges {
-    flex-direction: row;
-    gap: 6px;
-    min-width: 0;
+  .audit-log-row__icon {
     grid-column: 1;
+    grid-row: 1;
   }
 
-  .audit-log-row__summary {
-    grid-column: 1;
-  }
-
-  .audit-log-row__time-col {
-    flex-direction: row;
-    align-items: center;
-    justify-content: space-between;
-    min-width: 0;
-    grid-column: 1;
-  }
-
-  .audit-log-row__chevron,
-  .audit-log-row__chevron-spacer {
+  .audit-log-row__content {
     grid-column: 2;
-    grid-row: 1 / -1;
-    align-self: center;
+    grid-row: 1 / span 2;
   }
 
-  .audit-log-row__detail-panel {
-    padding-left: 12px;
-    padding-right: 12px;
+  .audit-log-row__time {
+    grid-column: 2;
+    grid-row: 3;
+    justify-self: start;
   }
 
-  .audit-diff-entry {
-    flex-wrap: wrap;
+  .audit-log-row__chevron {
+    grid-column: 3;
+    grid-row: 1 / span 3;
   }
 
-  .audit-info-entry {
-    flex-wrap: wrap;
+  .audit-log-row__details {
+    padding: 0 var(--space-md) var(--space-md);
+  }
+
+  .audit-change-row {
+    grid-template-columns: minmax(0, 1fr);
+    gap: var(--space-sm);
+  }
+
+  .audit-change-row__arrow {
+    margin: 0;
+    transform: rotate(90deg);
+  }
+
+  .audit-technical-row {
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: var(--space-xs) var(--space-sm);
+  }
+
+  .audit-technical-row dt {
+    grid-column: 1 / -1;
+  }
+
+  .audit-technical-row dd {
+    grid-column: 1;
+  }
+
+  .audit-detail-actions {
+    justify-content: stretch;
+  }
+
+  .audit-detail-actions .mantine-Button-root {
+    inline-size: 100%;
+    min-block-size: var(--control-hit-area);
   }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .audit-log-row__detail-panel {
-    animation: none;
+  .audit-log-row__description,
+  .audit-log-row__chevron {
+    transition: none;
   }
 }

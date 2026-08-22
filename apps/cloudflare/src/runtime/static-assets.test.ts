@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { createCloudflareStaticAssets } from "./static-assets.js";
 
-const INDEX = "<!doctype html><title>{{SITE_NAME}}</title><img src=\"{{SITE_LOGO_URL}}\">";
+const INDEX = "<!doctype html><title>{{SITE_NAME}}</title><meta name=\"description\" content=\"{{SITE_DESCRIPTION}}\"><img src=\"{{SITE_LOGO_URL}}\">";
 const ASSET = "console.log('streamed asset')";
 const ASSET_ETAG = '"asset-v1"';
 
@@ -17,6 +17,11 @@ function expectSecurityHeaders(response: Response): void {
 
 function fixture(indexAvailable = true) {
   const pulls = { value: 0 };
+  const getSiteBranding = vi.fn(() => ({
+    siteName: "Guild & Co",
+    siteDescription: 'Events & wiki <together> "safely" today\'s',
+    siteLogoUrl: "/brand?a=1&b=2",
+  }));
   const assets = {
     fetch: vi.fn(async (request: Request): Promise<Response> => {
       const pathname = new URL(request.url).pathname;
@@ -84,10 +89,11 @@ function fixture(indexAvailable = true) {
   };
   return {
     assets,
+    getSiteBranding,
     pulls,
     handler: createCloudflareStaticAssets({
       assets,
-      getSiteBranding: () => ({ siteName: "Guild & Co", siteLogoUrl: "/brand?a=1&b=2" }),
+      getSiteBranding,
     }),
   };
 }
@@ -119,15 +125,18 @@ describe("Cloudflare static assets", () => {
   it("serves the branded index for roots, directories, and unknown application routes", async () => {
     const { handler } = fixture();
 
-    for (const pathname of ["/", "/settings/", "/guild/members"]) {
+    for (const pathname of ["/", "/settings/", "/guild/members", "/register/A1b2C3d4E5"]) {
       const response = await handler(new Request(`https://guild.test${pathname}`, {
         headers: { Accept: "text/html" },
       }));
       expect(response?.status).toBe(200);
       const html = await response?.text();
       expect(html).toContain("<title>Guild &amp; Co</title>");
+      expect(html).toContain('content="Events &amp; wiki &lt;together&gt; &quot;safely&quot; today&#39;s"');
       expect(html).toContain("src=\"/brand?a=1&amp;b=2\"");
-      expect(response?.headers.get("Cache-Control")).toContain("no-cache");
+      expect(response?.headers.get("Cache-Control")).toBe(
+        "public, max-age=0, s-maxage=60, must-revalidate, no-transform",
+      );
       expectSecurityHeaders(response!);
     }
     expect((await handler(new Request("https://guild.test/missing.js")))?.status).toBe(404);
@@ -137,6 +146,22 @@ describe("Cloudflare static assets", () => {
     }));
     expect(head?.status).toBe(200);
     expect(await head?.text()).toBe("");
+  });
+
+  it("reuses public branding for at most 60 seconds", async () => {
+    const now = vi.spyOn(Date, "now").mockReturnValue(1_000);
+    const { getSiteBranding, handler } = fixture();
+    const request = () => new Request("https://guild.test/", { headers: { Accept: "text/html" } });
+
+    await handler(request());
+    now.mockReturnValue(60_999);
+    await handler(request());
+    expect(getSiteBranding).toHaveBeenCalledOnce();
+
+    now.mockReturnValue(61_000);
+    await handler(request());
+    expect(getSiteBranding).toHaveBeenCalledTimes(2);
+    now.mockRestore();
   });
 
   it("does not use the SPA fallback for JSON, wildcard, or rejected HTML requests", async () => {

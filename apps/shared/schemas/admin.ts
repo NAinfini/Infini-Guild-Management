@@ -1,10 +1,10 @@
 import { z } from "zod";
 import { PERMISSIONS } from "../constants/roles";
-import { AUDIT_ENTITY_TYPES, AUDIT_ACTIONS } from "../constants/audit";
+import { AUDIT_ACTIONS, AUDIT_ENTITY_TYPES, AUDIT_FIELDS } from "../constants/audit";
 import { LIMITS } from "../config/limits";
 import { roleIdSchema, roleMetadataSchema } from "./role";
 import { siteAnalyticsModifierWeightsSchema } from "./site-config";
-import { jsonObjectSchema } from "./json";
+import { inviteCodeSchema } from "./auth";
 
 const L_admin = LIMITS.content;
 const usernameSchema = z.string().min(L_admin.username.min).max(L_admin.username.max).regex(/^[a-zA-Z0-9_一-鿿]+$/);
@@ -13,7 +13,7 @@ const colorSchema = z.string().min(1).max(32).regex(/^[a-zA-Z0-9#()., %]+$/);
 
 export const inviteLinkSchema = z.object({
   id: z.string(),
-  code: z.string(),
+  code: inviteCodeSchema,
   created_by: z.string(),
   role_id: roleIdSchema,
   max_uses: z.number().int().positive(),
@@ -37,17 +37,70 @@ export const createInviteLinkSchema = z.object({
   expires_at: z.string().datetime().optional(),
 });
 
-export const auditLogSchema = z.object({
-  id: z.string(),
-  entity_type: z.enum(AUDIT_ENTITY_TYPES),
+const auditReferenceSchema = z.object({
+  id: z.string().min(1).max(512),
+  label: z.string().min(1).max(200).nullable(),
+}).strict();
+
+export const auditScalarValueSchema = z.discriminatedUnion("type", [
+  z.object({ type: z.literal("text"), value: z.string().max(16_384) }).strict(),
+  z.object({ type: z.literal("number"), value: z.number().finite() }).strict(),
+  z.object({ type: z.literal("boolean"), value: z.boolean() }).strict(),
+  z.object({ type: z.literal("date"), value: z.string().regex(/^\d{4}-\d{2}-\d{2}$/) }).strict(),
+  z.object({ type: z.literal("datetime"), value: z.string().datetime({ offset: true }) }).strict(),
+  z.object({ type: z.literal("code"), value: z.string().max(32_768) }).strict(),
+  z.object({ type: z.literal("reference"), value: auditReferenceSchema }).strict(),
+  z.object({ type: z.literal("null"), value: z.null() }).strict(),
+]);
+
+export const auditValueSchema = z.union([
+  auditScalarValueSchema,
+  z.object({ type: z.literal("list"), value: z.array(auditScalarValueSchema).max(100) }).strict(),
+]);
+
+export const auditChangeSchema = z.object({
+  field: z.enum(AUDIT_FIELDS),
+  before: auditValueSchema,
+  after: auditValueSchema,
+}).strict();
+
+export const auditContextSchema = z.object({
+  field: z.enum(AUDIT_FIELDS),
+  value: auditValueSchema,
+}).strict();
+
+export const auditPayloadV2Schema = z.object({
+  schema_version: z.literal(2),
+  changes: z.array(auditChangeSchema).max(100),
+  context: z.array(auditContextSchema).max(100),
+}).strict();
+
+export const auditActorSchema = z.object({
+  kind: z.enum(["user", "system"]),
+  id: z.string().min(1).max(512),
+  label: z.string().min(1).max(200).nullable(),
+}).strict();
+
+export const auditSubjectSchema = z.object({
+  type: z.enum(AUDIT_ENTITY_TYPES),
+  id: z.string().min(1).max(512),
+  label: z.string().min(1).max(200).nullable(),
+}).strict();
+
+export const auditEventSchema = z.object({
+  event_id: z.string().min(1).max(128),
+  request_id: z.string().min(1).max(512),
+  actor: auditActorSchema,
+  subject: auditSubjectSchema,
   action: z.enum(AUDIT_ACTIONS),
-  actor_id: z.string(),
-  actor_username: z.string().nullable().optional(),
-  entity_id: z.string(),
-  diff_title: z.string().nullable(),
-  detail: jsonObjectSchema.nullable(),
-  created_at: z.string(),
-});
+  payload: auditPayloadV2Schema,
+  occurred_at: z.string().datetime({ offset: true }),
+}).strict();
+
+export const auditEventCursorResponseSchema = z.object({
+  data: z.array(auditEventSchema),
+  next_cursor: z.string().max(512).nullable(),
+}).strict();
 
 
 export const batchRoleChangeSchema = z.object({

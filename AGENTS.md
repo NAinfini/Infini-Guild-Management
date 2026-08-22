@@ -20,8 +20,8 @@ This file defines the stable working contract for coding agents in this reposito
 - `apps/cloudflare/`: D1/R2/DO/rate-limit/static/scheduled adapters and the Cloudflare root handler.
 - `apps/vps/`: Node SQLite/filesystem/WebSocket/scheduler/static adapters and the VPS runtime.
 - `apps/portal/`: the SPA. `router.tsx` owns routing; `components/layout/route-metadata.ts` owns navigation; services/hooks own orchestration.
-- `packages/persistence-sqlite/src/migrations/generated/0000_core.sql`: the core pre-release schema assembled from Drizzle plus named invariant SQL.
-- `SETUP.md` and `SETUP.zh.md`: deployment, migration, bootstrap, credential import, backup, and recovery procedures.
+- `packages/persistence-sqlite/src/migrations/generated/0000_core.sql`: the released, frozen core schema assembled from Drizzle plus named invariant SQL.
+- `SETUP.md` and `SETUP.zh.md`: deployment, migration, bootstrap, backup, and recovery procedures.
 
 Use `rg --files` and targeted symbol search before editing. Do not maintain a second exhaustive file list.
 
@@ -39,8 +39,7 @@ pnpm typecheck
 pnpm lint
 pnpm test
 pnpm test:e2e
-pnpm db:generate
-pnpm db:assemble
+pnpm db:generate -- --name <migration-name>
 pnpm db:migrate:cloudflare:local
 pnpm db:migrate:vps --database <path>
 pnpm config:check --runtime cloudflare --config apps/cloudflare/wrangler.jsonc
@@ -62,12 +61,12 @@ Use the narrowest validation that covers a change. `release:check` is local-only
 
 ## Contracts and authorization
 
-- Request/response validation belongs in `apps/shared/schemas/`; infer TypeScript types from those schemas.
+- Request/response body schemas belong in `apps/shared/schemas/`; infer TypeScript types from those schemas. Query-string schemas are transport details and live beside their route factory in `packages/transport-http`.
 - Route factories parse HTTP and call a service. Business policy and authorization belong in domain services; Portal permission gates are UX only.
 - Every request receives one immutable `RequestContext`. `AuthorizationContext` comes only from the server-resolved session. A Portal “view as” choice must never enter authorization or persistence queries.
 - Protected mutations write their audit row in the same SQL transaction as the business change. Blob bytes may be staged first; attachment and lifecycle state are database-owned.
 - Mutations require an allowed `Origin` and `X-Requested-With: XMLHttpRequest`. Keep body limits, rate limits, ETags, security headers, session resolution, and feature gates centralized.
-- `site_owner` is the trust root above admin. Multiple owners are allowed, peer-owner actions require both `admin.owners.manage` and the concrete permission, and the database preserves the final active owner.
+- Authorization comes from D1 roles and their permission rows. Role management is dynamic, and the database preserves the final active user whose role grants `admin.roles.manage`.
 - Login locking is persistent and progressive. Locked requests must be rejected before account lookup or PBKDF2 work; lock inspection/reset is permission-gated and audited.
 
 ## Portal
@@ -92,8 +91,6 @@ Do not add a dynamic game-rules table or a second translation/precision model.
 
 ## Media and blobs
 
-The canonical contract is in `docs/media-architecture.md`.
-
 - `MediaService` and D1/SQLite metadata own identity, authorization, quota, lifecycle, and attachment.
 - `BlobStore` stores streams and verified metadata only. Cloudflare maps it to R2; VPS maps it to the configured filesystem root.
 - API responses expose media IDs, never storage keys.
@@ -103,11 +100,11 @@ The canonical contract is in `docs/media-architecture.md`.
 ## Schema and migrations
 
 - Drizzle modules under `packages/persistence-sqlite/src/schema/` are the relational source of truth. Named `.sql` invariants cover behavior Drizzle cannot express.
-- `0000_core.sql` is the only pre-release baseline. Generate it from an empty migration directory, then run `pnpm db:assemble`; never hand-maintain a parallel D1 schema.
+- `0000_core.sql` is the released, frozen baseline. Never regenerate, assemble, or edit it; later schema changes add the next contiguous ordinal migration and an exact manifest entry.
 - Node SQLite and local workerd D1 must apply the same bytes and pass schema/index/trigger parity tests.
 - Built-in roles, permissions, Site Config defaults, and schema metadata are generated from shared constants.
-- Private first-owner and credential-import SQL is generated under ignored `private-migrations/` and is never committed.
-- After the first public release, applied migration files become immutable and later changes use monotonic migrations.
+- Private first-owner SQL is generated under ignored `private-migrations/` and is never committed.
+- Runtime migration validation supports ordered multi-file chains. Never edit a migration that has been released or applied to a protected database.
 
 ## System tests and cleanup
 

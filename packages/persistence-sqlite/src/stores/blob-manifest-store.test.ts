@@ -1,32 +1,22 @@
-import { readFileSync } from "node:fs";
 import { DatabaseSync, type SQLInputValue } from "node:sqlite";
-import { fileURLToPath } from "node:url";
-import {
-  assertSqlResultColumns,
-  assertSqlStatement,
-  type SqlExecutor,
-  type SqlResult,
-  type SqlStatement,
-} from "@guild/kernel";
+import type { SqlStatement } from "@guild/kernel";
 import { describe, expect, it } from "vitest";
+import { applyAppMigrations } from "../testing/app-migrations.js";
+import { SqliteTestExecutor } from "../testing/sqlite-test-executor.js";
 import { SqliteBlobManifestStore } from "./blob-manifest-store.js";
 
 const NOW = "2026-08-09T12:00:00.000Z";
 const SHA = "a".repeat(64);
-const CORE = readFileSync(
-  fileURLToPath(new URL("../migrations/generated/0000_core.sql", import.meta.url)),
-  "utf8",
-).replaceAll("--> statement-breakpoint", "");
 
 describe("SqliteBlobManifestStore", () => {
   it("pages stable media and ready-audit descriptors and resolves inventory keys set-wise", async () => {
     const database = new DatabaseSync(":memory:");
     try {
-      database.exec(CORE);
+      applyAppMigrations(database);
       insertMedia(database, "abcdefghijklmnopqrstu", "staged");
       insertMedia(database, "vwxyzabcdefghijklmnop", "uploading");
       insertAudit(database, "archive-1", "audit/2026/08/archive-1.ndjson");
-      const store = new SqliteBlobManifestStore(new TestExecutor(database));
+      const store = new SqliteBlobManifestStore(new SqliteTestExecutor(database));
 
       const first = await store.listPage({ limit: 1 });
       expect(first.descriptors).toEqual([expect.objectContaining({
@@ -55,19 +45,19 @@ describe("SqliteBlobManifestStore", () => {
   it("resumes across audit and media phases without gaps or duplicates", async () => {
     const database = new DatabaseSync(":memory:");
     try {
-      database.exec(CORE);
+      applyAppMigrations(database);
       insertAudit(database, "archive-1", "audit/2026/08/archive-1.ndjson");
       insertAudit(database, "archive-2", "audit/2026/08/archive-2.ndjson");
       insertMedia(database, "abcdefghijklmnopqrstu", "staged");
       insertMedia(database, "bcdefghijklmnopqrstuv", "staged");
       insertMedia(database, "cdefghijklmnopqrstuvw", "staged");
 
-      const first = await new SqliteBlobManifestStore(new TestExecutor(database)).listPage({ limit: 2 });
-      const second = await new SqliteBlobManifestStore(new TestExecutor(database)).listPage({
+      const first = await new SqliteBlobManifestStore(new SqliteTestExecutor(database)).listPage({ limit: 2 });
+      const second = await new SqliteBlobManifestStore(new SqliteTestExecutor(database)).listPage({
         checkpoint: first.nextCheckpoint!,
         limit: 2,
       });
-      const third = await new SqliteBlobManifestStore(new TestExecutor(database)).listPage({
+      const third = await new SqliteBlobManifestStore(new SqliteTestExecutor(database)).listPage({
         checkpoint: second.nextCheckpoint!,
         limit: 2,
       });
@@ -91,10 +81,10 @@ describe("SqliteBlobManifestStore", () => {
   it("uses each phase's object-key index without materialization or temporary sorting", async () => {
     const database = new DatabaseSync(":memory:");
     try {
-      database.exec(CORE);
+      applyAppMigrations(database);
       insertAudit(database, "archive-1", "audit/2026/08/archive-1.ndjson");
       insertMedia(database, "abcdefghijklmnopqrstu", "staged");
-      const executor = new TestExecutor(database);
+      const executor = new SqliteTestExecutor(database);
       const store = new SqliteBlobManifestStore(executor);
 
       await store.listPage({ checkpoint: "audit/2026/07/before.ndjson", limit: 50 });
@@ -115,34 +105,6 @@ describe("SqliteBlobManifestStore", () => {
     }
   });
 });
-
-class TestExecutor implements SqlExecutor {
-  readonly statements: SqlStatement[] = [];
-
-  constructor(private readonly database: DatabaseSync) {}
-
-  async execute(statement: SqlStatement): Promise<SqlResult> {
-    assertSqlStatement(statement);
-    this.statements.push(statement);
-    const prepared = this.database.prepare(statement.sql);
-    prepared.setReturnArrays(true);
-    assertSqlResultColumns(statement, prepared.columns().map(({ name }) => name));
-    const params = [...(statement.params ?? [])] as SQLInputValue[];
-    if (statement.method === "run") {
-      prepared.run(...params);
-      return { rows: [] };
-    }
-    return {
-      rows: statement.method === "get"
-        ? prepared.get(...params) as never
-        : prepared.all(...params) as never,
-    };
-  }
-
-  async batch(): Promise<readonly SqlResult[]> {
-    throw new Error("Batch is not used by this store");
-  }
-}
 
 function explain(database: DatabaseSync, statement: SqlStatement): string {
   return (database.prepare(`EXPLAIN QUERY PLAN ${statement.sql}`)

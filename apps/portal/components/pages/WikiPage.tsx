@@ -25,7 +25,7 @@ import { WikiArticleListCard } from "../feature/wiki/WikiArticleListCard";
 import { WikiCategoryEditorCard } from "../feature/wiki/WikiCategoryEditorCard";
 import { PageLayout } from "../layout/PageLayout";
 import { EmptyState } from "../shared/EmptyState";
-import { format } from "date-fns";
+import { formatDateTime } from "@portal/utils/datetime";
 import "./WikiPage.css";
 
 const LazyWikiArticleEditorCard = lazy(() =>
@@ -37,14 +37,6 @@ const LazyTipTapEditor = lazy(() =>
 const LazyWikiHistoryModal = lazy(() =>
   import("../feature/wiki/WikiHistoryModal").then((m) => ({ default: m.WikiHistoryModal })),
 );
-
-function formatDateTime(iso: string): string {
-  const date = new Date(iso);
-  if (Number.isNaN(date.getTime())) {
-    return "-";
-  }
-  return format(date, "yyyy-MM-dd HH:mm");
-}
 
 export function WikiPage() {
   const { t } = useTranslation("wiki");

@@ -3,6 +3,7 @@ import { spawn } from "node:child_process";
 import { readFile } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
+import { parseJsonc } from "../check-runtime-config.mjs";
 
 const scriptDirectory = dirname(fileURLToPath(import.meta.url));
 const defaultRoot = resolve(scriptDirectory, "../..");
@@ -71,19 +72,36 @@ export function wranglerArguments(action, paths) {
       "127.0.0.1",
       "--port",
       "8787",
+      "--host",
+      "127.0.0.1",
       "--local-protocol",
       "http",
+      "--var",
+      "IG_PUBLIC_URL:http://localhost:5173",
+      "--var",
+      "IG_ALLOWED_ORIGINS:http://localhost:5173,http://127.0.0.1:5173,http://127.0.0.1",
     ];
   }
   throw new TypeError("Cloudflare local action must be migrate, seed, or serve");
 }
 
-export function cloudflareMediaSeedArguments(paths, root = defaultRoot) {
+export function cloudflareMediaBindings(config) {
+  const databaseId = uniqueBindingValue(config?.d1_databases, "DB", "database_id");
+  const bucketName = uniqueBindingValue(config?.r2_buckets, "BLOBS", "bucket_name");
+  return Object.freeze({ databaseId, bucketName });
+}
+
+export async function cloudflareMediaSeedArguments(paths, root = defaultRoot) {
+  const bindings = cloudflareMediaBindings(parseJsonc(await readFile(paths.configPath, "utf8")));
   return [
     resolve(root, "node_modules/tsx/dist/cli.mjs"),
     resolve(root, "apps/cloudflare/scripts/seed-local-media.ts"),
     "--persist-to",
     paths.statePath,
+    "--database-id",
+    bindings.databaseId,
+    "--bucket-name",
+    bindings.bucketName,
   ];
 }
 
@@ -93,9 +111,26 @@ export async function runCloudflareLocal(action, root = defaultRoot) {
   console.log(`[cloudflare-local] schema state ${paths.stateVersion.slice(0, 12)}`);
   await runChild(process.execPath, [wranglerPath, ...wranglerArguments(action, paths)], root);
   if (action === "seed") {
-    await runChild(process.execPath, cloudflareMediaSeedArguments(paths, root), root, "media seed");
+    await runChild(process.execPath, await cloudflareMediaSeedArguments(paths, root), root, "media seed");
   }
   return 0;
+}
+
+function uniqueBindingValue(entries, binding, property) {
+  const matches = Array.isArray(entries)
+    ? entries.filter((entry) => entry !== null
+      && typeof entry === "object"
+      && !Array.isArray(entry)
+      && entry.binding === binding)
+    : [];
+  if (matches.length !== 1) {
+    throw new TypeError(`Cloudflare config must define exactly one ${binding} binding`);
+  }
+  const value = matches[0][property];
+  if (typeof value !== "string" || !value.trim()) {
+    throw new TypeError(`Cloudflare ${binding} binding must define ${property}`);
+  }
+  return value.trim();
 }
 
 function runChild(command, args, cwd, label = actionLabel(args)) {

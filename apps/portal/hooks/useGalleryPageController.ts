@@ -1,5 +1,5 @@
 import { useInfiniteQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { format } from "date-fns";
+import { formatDateTime } from "../utils/datetime";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useDisclosure } from "@mantine/hooks";
 import { useConfirmDialog } from "@portal/hooks/useConfirmDialog";
@@ -76,12 +76,6 @@ export function summarizeGalleryUploadBatch(total: number, failed: number) {
     succeeded: total - failed,
     failed,
   };
-}
-
-export function formatDateTime(iso: string): string {
-  const date = new Date(iso);
-  if (Number.isNaN(date.getTime())) return "-";
-  return format(date, "yyyy-MM-dd HH:mm");
 }
 
 export function useGalleryPageController() {

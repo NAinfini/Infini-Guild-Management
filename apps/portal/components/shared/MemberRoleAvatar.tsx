@@ -1,10 +1,8 @@
 import { Avatar, Group, HoverCard, Stack, Text, UnstyledButton } from "@mantine/core";
 import { BoltIcon } from "@portal/components/icons";
 import { resolveMediaUrl } from "../../utils/media";
-import {
-  resolveClassCatalogItem,
-  useClassCatalogStore,
-} from "../../stores/class-catalog";
+import { useClassCatalog } from "../../hooks/data/useClassData";
+import { resolveClassCatalogItem } from "../../utils/class-catalog";
 import { ClassIcon } from "./ClassIcon";
 import "./MemberCard.css";
 
@@ -38,7 +36,7 @@ export function MemberRoleAvatar({
   withTooltip = true,
   withClassCircles = true,
 }: MemberRoleAvatarProps) {
-  const catalog = useClassCatalogStore((state) => state.items);
+  const catalog = useClassCatalog();
   const classItems = getUniqueClassIds(profile.classes).map((id) =>
     resolveClassCatalogItem(id, catalog)
   );

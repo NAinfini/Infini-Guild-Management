@@ -17,9 +17,10 @@
     transform var(--motion-state);
 }
 
-/* Hover text color remains owned by Mantine's per-variant button variables. */
+/* Hover text color remains owned by Mantine's per-variant button variables.
+   下沉量走 --motion-sink：写死 1px 的话，用户开了「减少动态效果」这里照样会动。 */
 .buttonRoot:active:not(:disabled, [data-disabled]) {
-  transform: translateY(1px);
+  transform: translateY(var(--motion-sink));
 }
 
 .actionIconRoot {
@@ -54,7 +55,7 @@
 }
 
 .actionIconRoot:active:not(:disabled, [data-disabled]) {
-  transform: translateY(1px);
+  transform: translateY(var(--motion-sink));
 }
 
 .inputWrapper {
@@ -84,9 +85,19 @@
     0 0 0 4px var(--brand-fill);
 }
 
+/* 面板也铺一层环境光。
+ *
+ * 光只画在地面上时，面板占掉视口的四分之三还多，剩下的缝隙不足以让人看出
+ * 那是一片光——实测采样 160 点，地面一个点都没露出来，整屏只有页头附近那
+ * 一角有颜色。fixed 定位保证面板上这一张与地面那一张像素对齐，所以铺满之后
+ * 没有接缝，读起来是一束打在整屏上的光，而不是每块板自己在发光。
+ *
+ * 表面阶梯不受影响：地面和面板拿到的是同一处、同一透明度的光，两者的差值
+ * 只按 (1 - α) 收窄，raised 仍然比 base 亮。压角不铺到面板上——那是地面的
+ * 做法，面板跟着一起压会把下半屏的卡片读成另一档表面。 */
 .paperRoot,
 .cardRoot {
-  background: var(--surface-raised);
+  background: var(--plate-fill);
   border-color: var(--border-subtle);
   box-shadow: var(--edge-top);
 }
@@ -98,6 +109,13 @@
 
 .skeletonRoot {
   background: var(--surface-sunken);
+}
+
+/* 进度条：填充段走 --meter-fill（「量」的颜色，见 semantic.css 那段的说明）。
+   轨道压在 sunken 档，让空的部分读成一条凹槽而不是另一块台面。 */
+.progressRoot {
+  --progress-section-color: var(--meter-fill);
+  background: var(--meter-track);
 }
 
 .tabsList {

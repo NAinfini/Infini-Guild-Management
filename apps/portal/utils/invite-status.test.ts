@@ -1,10 +1,11 @@
+// @vitest-environment node
 import type { InviteLink } from "@guild/shared";
 import { describe, expect, it } from "vitest";
 import { resolveInviteStatus } from "./invite-status";
 
 const baseInvite: InviteLink = {
   id: "invite-1",
-  code: "CODE",
+  code: "A1b2C3d4E5",
   created_by: "admin-1",
   role_id: "member",
   role_name: "Member",

@@ -97,7 +97,7 @@ describe("audit archive", () => {
       .toMatchObject({ archived: 5 });
     expect(scalar(harness.database, "SELECT COUNT(*) FROM audit_log")).toBe(3);
     expect(scalar(harness.database, `SELECT COUNT(*) FROM audit_log
-      WHERE actor_user_id = 'system:scheduler' AND entity_type = 'audit_archive_export'`)).toBe(2);
+      WHERE actor_id = 'system:scheduler' AND subject_type = 'audit_archive_export'`)).toBe(2);
   });
 
   it("leaves hot rows intact across blob and finalize failures and resumes the same pending claim", async () => {
@@ -125,7 +125,7 @@ describe("audit archive", () => {
     await expect(archive(second.service, CUTOFF, "2026-08-09T12:11:00.000Z"))
       .resolves.toMatchObject({ archived: 2 });
     expect(new TextDecoder().decode([...second.blobs.objects.values()][0]!.bytes)).toBe(originalBytes);
-    expect(originalBytes).toContain('"actor_username":"Admin"');
+    expect(originalBytes).toContain('"label":"Admin"');
     expect(originalBytes).not.toContain("Renamed Admin");
     expect(scalar(second.database, "SELECT COUNT(*) FROM audit_log")).toBe(1);
   });
@@ -161,7 +161,7 @@ describe("audit archive", () => {
   it("rolls back archive finalization and hot-row deletion when its scheduler audit fails", async () => {
     const harness = setup(2, false);
     harness.database.exec(`CREATE TRIGGER reject_archive_scheduler_audit
-      BEFORE INSERT ON audit_log WHEN NEW.actor_user_id = 'system:scheduler'
+      BEFORE INSERT ON audit_log WHEN NEW.actor_id = 'system:scheduler'
       BEGIN SELECT RAISE(ABORT, 'archive audit rejected'); END;`);
 
     await expect(archive(harness.service, CUTOFF, NOW)).rejects.toThrow("archive audit rejected");
@@ -193,10 +193,10 @@ function archive(service: AuditArchiveService, before: string, now: string) {
     `audit-archive-${now}`,
     now,
   )({
-    entityType: "audit_archive_export",
-    entityId: archiveId,
+    subjectType: "audit_archive_export",
+    subjectId: archiveId,
     action: "archive",
-    details: { row_count: rowCount },
+    context: [{ field: "row_count", value: { type: "number", value: rowCount } }],
   }));
 }
 
@@ -209,13 +209,14 @@ function setup(oldRows: number, addRecent: boolean) {
     CREATE TABLE audit_log (
       id TEXT PRIMARY KEY,
       request_id TEXT NOT NULL,
-      actor_user_id TEXT NOT NULL,
-      actor_username TEXT,
-      entity_type TEXT NOT NULL,
-      entity_id TEXT NOT NULL,
+      actor_kind TEXT NOT NULL,
+      actor_id TEXT NOT NULL,
+      actor_label TEXT,
+      subject_type TEXT NOT NULL,
+      subject_id TEXT NOT NULL,
+      subject_label TEXT,
       action TEXT NOT NULL,
-      summary TEXT,
-      detail_json TEXT,
+      payload_json TEXT NOT NULL,
       occurred_at TEXT NOT NULL
     );
     CREATE INDEX idx_audit_log_occurred ON audit_log(occurred_at, id);
@@ -254,8 +255,10 @@ function setup(oldRows: number, addRecent: boolean) {
   database.exec(readFileSync(fileURLToPath(new URL("../schema/audit-invariants.sql", import.meta.url)), "utf8"));
   database.prepare("INSERT INTO users (id, username) VALUES ('admin-1', 'Admin')").run();
   const insert = database.prepare(`INSERT INTO audit_log (
-    id, request_id, actor_user_id, actor_username, entity_type, entity_id, action, summary, detail_json, occurred_at
-  ) VALUES (?, ?, 'admin-1', 'Admin', 'member', ?, 'update', ?, NULL, ?)`);
+    id, request_id, actor_kind, actor_id, actor_label, subject_type, subject_id,
+    subject_label, action, payload_json, occurred_at
+  ) VALUES (?, ?, 'user', 'admin-1', 'Admin', 'member_profile', ?, ?, 'update',
+    '{"schema_version":2,"changes":[],"context":[]}', ?)`);
   for (let index = 0; index < oldRows; index += 1) {
     insert.run(
       `audit-${String(index).padStart(3, "0")}`,

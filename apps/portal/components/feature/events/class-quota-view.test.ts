@@ -1,3 +1,4 @@
+// @vitest-environment node
 import { describe, expect, it } from "vitest";
 import type { Event, MemberProfile, User } from "@guild/shared";
 import { groupMembersByClassQuota, summariseEventClassQuotas } from "./class-quota-view";

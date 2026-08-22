@@ -1,5 +1,6 @@
 import {
   Alert,
+  Avatar,
   Badge,
   Button,
   Group,
@@ -8,19 +9,33 @@ import {
   Skeleton,
   Stack,
   Text,
+  Tooltip,
 } from "@mantine/core";
 import { useMediaQuery } from "@mantine/hooks";
 import { DEFAULT_GAME_RULES } from "@guild/shared";
 import {
   ArrowLeftIcon,
+  ChartBarIcon,
+  CodeIcon,
+  FlagIcon,
+  GemIcon,
+  LayoutGridIcon,
+  NoteIcon,
   PencilIcon,
   SaveIcon,
+  ShieldIcon,
+  SwordsIcon,
+  TableIcon,
+  TargetArrowIcon,
   TrashIcon,
+  TrophyIcon,
+  UsersIcon,
 } from "@portal/components/icons";
 import { DataTableAdapter } from "@portal/components/shared/DataTableAdapter";
 import { EmptyState } from "@portal/components/shared/EmptyState";
 import { SectionHeader } from "@portal/components/shared/SectionHeader";
 import { resolveResultTagColor } from "@portal/utils/guild-war";
+import { resolveMediaUrl } from "@portal/utils/media";
 import { useSiteConfigStore } from "@portal/stores/site-config";
 import { flexRender, useReactTable } from "@tanstack/react-table";
 import ReactEChartsCore from "echarts-for-react/esm/core";
@@ -196,7 +211,7 @@ export function WarHistoryDetail({
         {!historyDetailLoading && !historyDetailError && historyDetail ? (
           <Stack gap={0}>
             <header
-              className="whd-board"
+              className={resultKey ? `whd-board whd-board--${resultKey}` : "whd-board"}
               data-testid="war-history-scoreboard"
             >
               <div className="whd-board__side">
@@ -213,7 +228,10 @@ export function WarHistoryDetail({
                   </span>
                 </div>
                 <div className="whd-board__caption">
-                  <span className="whd-board__metric">{headline?.label}</span>
+                  <span className="whd-board__metric">
+                    <SwordsIcon className="whd-board__metric-icon" size={15} aria-hidden="true" />
+                    {headline?.label}
+                  </span>
                   <Badge size="sm" color={resultColor} variant="light">
                     {historyDetail.result
                       ? getGuildWarResultLabel(historyDetail.result)
@@ -232,14 +250,19 @@ export function WarHistoryDetail({
               <div className="whd-identity__copy">
                 <h2 className="whd-identity__title">{historyDetail.war_name}</h2>
                 <div className="whd-identity__meta">
-                  <span>{t("history.membersCount", { count: historyDetail.member_stats.length })}</span>
-                  <span className="whd-identity__sep" aria-hidden="true" />
-                  <span>{t("history.teamsCount", { count: historyDetail.teams.length })}</span>
+                  <span className="whd-identity__meta-item">
+                    <UsersIcon className="whd-identity__meta-icon" size={15} aria-hidden="true" />
+                    {t("history.membersCount", { count: historyDetail.member_stats.length })}
+                  </span>
+                  <span className="whd-identity__meta-item">
+                    <LayoutGridIcon className="whd-identity__meta-icon" size={15} aria-hidden="true" />
+                    {t("history.teamsCount", { count: historyDetail.teams.length })}
+                  </span>
                   {historyDetail.notes ? (
-                    <>
-                      <span className="whd-identity__sep" aria-hidden="true" />
-                      <span className="whd-identity__note">{historyDetail.notes}</span>
-                    </>
+                    <span className="whd-identity__meta-item whd-identity__note">
+                      <NoteIcon className="whd-identity__meta-icon" size={15} aria-hidden="true" />
+                      {historyDetail.notes}
+                    </span>
                   ) : null}
                   {hasUnsavedMemberChanges ? (
                     <Badge color="orange" variant="light" size="sm">
@@ -255,6 +278,7 @@ export function WarHistoryDetail({
                   loading={exportPending}
                   disabled={historyRows.length === 0}
                   aria-label={`${exportCsvLabel}: ${historyDetail.war_name}`}
+                  leftSection={<TableIcon className="whd-export-icon" size={15} aria-hidden="true" />}
                 >
                   {exportCsvLabel}
                 </Button>
@@ -264,6 +288,7 @@ export function WarHistoryDetail({
                   loading={exportPending}
                   disabled={historyRows.length === 0}
                   aria-label={`${exportJsonLabel}: ${historyDetail.war_name}`}
+                  leftSection={<CodeIcon className="whd-export-icon" size={15} aria-hidden="true" />}
                 >
                   {exportJsonLabel}
                 </Button>
@@ -279,7 +304,12 @@ export function WarHistoryDetail({
             <div className="whd-split">
               {historyMvp ? (
                 <section className="whd-panel">
-                  <SectionHeader title={t("history.mvpHighlights")} />
+                  <SectionHeader title={(
+                    <span className="whd-section-title whd-section-title--mvp">
+                      <TrophyIcon className="whd-section-title__icon" size={16} aria-hidden="true" />
+                      {t("history.mvpHighlights")}
+                    </span>
+                  )} />
                   <div className="whd-mvp">
                     {historyMvp.map((entry) => (
                       <MvpRow key={entry.key} label={entry.label} value={entry.value} />
@@ -290,7 +320,12 @@ export function WarHistoryDetail({
 
               {historyDetail.teams.length > 0 ? (
                 <section className="whd-panel">
-                  <SectionHeader title={t("history.teamSnapshot")} />
+                  <SectionHeader title={(
+                    <span className="whd-section-title whd-section-title--team">
+                      <UsersIcon className="whd-section-title__icon" size={16} aria-hidden="true" />
+                      {t("history.teamSnapshot")}
+                    </span>
+                  )} />
                   <Stack gap={12}>
                     {historyDetail.teams.map((team) => (
                       <div key={team.id} className="whd-team">
@@ -300,16 +335,28 @@ export function WarHistoryDetail({
                         </div>
                         {team.members.length > 0 ? (
                           <div className="whd-team__chips">
-                            {team.members.map((member) => (
-                              <span
-                                key={member.user_id}
-                                className="whd-chip"
-                                data-role={member.role_tag ?? "none"}
-                              >
-                                {member.username ?? member.user_id}
-                                {member.role_tag ? <em>{member.role_tag}</em> : null}
-                              </span>
-                            ))}
+                            {team.members.map((member) => {
+                              const label = member.username ?? member.user_id;
+                              return (
+                                <span
+                                  key={member.user_id}
+                                  className="whd-chip"
+                                  data-role={member.role_tag ?? "none"}
+                                >
+                                  <Avatar
+                                    aria-hidden="true"
+                                    className="whd-chip__avatar"
+                                    radius="xl"
+                                    size={20}
+                                    src={member.avatar_media_id ? resolveMediaUrl(member.avatar_media_id) : undefined}
+                                  >
+                                    {label.slice(0, 2).toUpperCase()}
+                                  </Avatar>
+                                  <span>{label}</span>
+                                  {member.role_tag ? <em>{member.role_tag}</em> : null}
+                                </span>
+                              );
+                            })}
                           </div>
                         ) : (
                           <Text size="xs" c="dimmed">{t("history.emptyTeam")}</Text>
@@ -323,7 +370,12 @@ export function WarHistoryDetail({
 
             <section className="whd-data">
               <div className="whd-data__toolbar">
-                <SectionHeader title={t("history.memberData")} />
+                <SectionHeader title={(
+                  <span className="whd-section-title whd-section-title--data">
+                    <ChartBarIcon className="whd-section-title__icon" size={16} aria-hidden="true" />
+                    {t("history.memberData")}
+                  </span>
+                )} />
                 <Group gap={8} wrap="nowrap">
                   {historyViewMode === "chart" ? (
                     <Select
@@ -345,8 +397,24 @@ export function WarHistoryDetail({
                     value={historyViewMode}
                     onChange={(value) => onHistoryViewModeChange(value as HistoryViewMode)}
                     data={[
-                      { value: "table", label: t("history.view.table") },
-                      { value: "chart", label: t("history.view.chart") },
+                      {
+                        value: "table",
+                        label: (
+                          <span className="whd-view-option">
+                            <TableIcon className="whd-view-option__icon" size={14} aria-hidden="true" />
+                            {t("history.view.table")}
+                          </span>
+                        ),
+                      },
+                      {
+                        value: "chart",
+                        label: (
+                          <span className="whd-view-option">
+                            <ChartBarIcon className="whd-view-option__icon" size={14} aria-hidden="true" />
+                            {t("history.view.chart")}
+                          </span>
+                        ),
+                      },
                     ]}
                   />
                 </Group>
@@ -512,6 +580,7 @@ function WarHistoryMemberCards({
 }
 
 function MetricColumn({
+  id,
   label,
   own,
   enemy,
@@ -522,17 +591,32 @@ function MetricColumn({
   const formattedMargin = margin > 0 ? `+${margin.toLocaleString()}` : margin.toLocaleString();
 
   return (
-    <article className="whd-strip__cell">
-      <span className="whd-strip__label">{label}</span>
+    <article className="whd-strip__cell" data-metric={id}>
+      <span className="whd-strip__heading">
+        <HistoryMetricIcon id={id} />
+        <span className="whd-strip__label">{label}</span>
+      </span>
       <span className="whd-strip__values">
         <strong className="tabular-nums">{own.toLocaleString()}</strong>
-        <span className="tabular-nums" title={enemyLabel}>/ {enemy.toLocaleString()}</span>
+        <Tooltip label={enemyLabel}>
+          <span className="tabular-nums" tabIndex={0}>/ {enemy.toLocaleString()}</span>
+        </Tooltip>
       </span>
       <span className={`whd-strip__margin whd-strip__margin--${outcome} tabular-nums`}>
         {formattedMargin}
       </span>
     </article>
   );
+}
+
+function HistoryMetricIcon({ id }: { id: string }) {
+  const props = { className: "whd-strip__icon", size: 15, "aria-hidden": true } as const;
+
+  if (id === "kills") return <SwordsIcon {...props} />;
+  if (id === "towers") return <FlagIcon {...props} />;
+  if (id === "base_hp") return <ShieldIcon {...props} />;
+  if (id === "credits") return <GemIcon {...props} />;
+  return <TargetArrowIcon {...props} />;
 }
 
 function MvpRow({ label, value }: { label: string; value: string }) {

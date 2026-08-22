@@ -195,6 +195,7 @@ describe("userSchema role metadata", () => {
       deleted_at: null,
       created_at: "2026-08-05T00:00:00.000Z",
       updated_at: "2026-08-05T00:00:00.000Z",
+      last_login_at: null,
     };
 
     expect(userSchema.safeParse(base).success).toBe(false);

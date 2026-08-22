@@ -16,7 +16,6 @@ import {
   useSortable,
   verticalListSortingStrategy,
 } from "@dnd-kit/sortable";
-import { CSS } from "@dnd-kit/utilities";
 import { ActionIcon, Button, Group, Paper, Stack, Text, TextInput } from "@mantine/core";
 import {
   ChevronLeftIcon,
@@ -28,6 +27,7 @@ import {
 } from "@portal/components/icons";
 import { IconGripVertical } from "@tabler/icons-react";
 import type { WikiCategoryDraft } from "@portal/types/wiki";
+import { verticalDragTransform } from "@portal/utils/sortable-transform";
 import type { CSSProperties } from "react";
 import { useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
@@ -89,7 +89,7 @@ function SortableCategoryRow({
   });
 
   const style = {
-    transform: CSS.Transform.toString(transform),
+    transform: verticalDragTransform(transform),
     transition,
     "--wiki-category-depth": depth,
   } as CSSProperties;

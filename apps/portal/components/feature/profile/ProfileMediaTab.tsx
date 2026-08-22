@@ -188,15 +188,16 @@ export function ProfileMediaTab({
                   </span>
                   <span className="profile-video-row__meta">
                     <span className="profile-video-row__host">{videoHostLabel(item)}</span>
-                    <a
-                      className="profile-video-row__url"
-                      href={item}
-                      target="_blank"
-                      rel="noreferrer noopener"
-                      title={item}
-                    >
-                      {item}
-                    </a>
+                    <Tooltip label={item} multiline w={320}>
+                      <a
+                        className="profile-video-row__url"
+                        href={item}
+                        target="_blank"
+                        rel="noreferrer noopener"
+                      >
+                        {item}
+                      </a>
+                    </Tooltip>
                   </span>
                   <Group gap={4} wrap="nowrap">
                     <Tooltip label={t("action.up")} withArrow>

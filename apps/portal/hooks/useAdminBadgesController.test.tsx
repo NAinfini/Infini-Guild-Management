@@ -1,4 +1,3 @@
-// @vitest-environment jsdom
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { act, renderHook, waitFor } from "@testing-library/react";
 import type { ReactNode } from "react";
@@ -160,5 +159,25 @@ describe("useAdminBadgesController", () => {
         queryKeys.myProfile.all,
       ]));
     });
+  });
+
+  it("sends null when an edited badge description is cleared", async () => {
+    serviceMocks.fetchBadges.mockResolvedValue([{ ...badge, description: "Original description" }]);
+    serviceMocks.updateBadge.mockResolvedValue(badge);
+    const { result } = renderHook(() => useAdminBadgesController(true), {
+      wrapper: createWrapper(new QueryClient({ defaultOptions: { queries: { retry: false } } })),
+    });
+
+    await waitFor(() => expect(result.current.selectedBadge).not.toBeNull());
+    act(() => {
+      result.current.startEdit({ ...badge, description: "Original description" });
+      result.current.setForm((current) => ({ ...current, description: "" }));
+      result.current.updateBadge(badge.id);
+    });
+
+    await waitFor(() => expect(serviceMocks.updateBadge).toHaveBeenCalledWith(
+      badge.id,
+      expect.objectContaining({ description: null }),
+    ));
   });
 });

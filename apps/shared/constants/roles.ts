@@ -8,7 +8,6 @@ export const PERMISSIONS = [
   "admin.users.activate",
   "admin.users.delete",
   "admin.users.password",
-  "admin.owners.manage",
   "admin.invite.view",
   "admin.invite.manage",
   "admin.audit.view",
@@ -55,7 +54,6 @@ export const PERMISSION_ID = {
   ADMIN_USERS_ACTIVATE: "admin.users.activate",
   ADMIN_USERS_DELETE: "admin.users.delete",
   ADMIN_USERS_PASSWORD: "admin.users.password",
-  ADMIN_OWNERS_MANAGE: "admin.owners.manage",
   ADMIN_INVITE_VIEW: "admin.invite.view",
   ADMIN_INVITE_MANAGE: "admin.invite.manage",
   ADMIN_AUDIT_VIEW: "admin.audit.view",
@@ -93,27 +91,13 @@ export const PERMISSION_ID = {
 } as const satisfies Record<string, Permission>;
 
 export const DEFAULT_ROLE_ID = "member";
-export const SITE_OWNER_ROLE_ID = "site_owner";
-export const SITE_OWNER_LEVEL = 1_000;
-
-const ADMIN_PERMISSIONS: readonly Permission[] = PERMISSIONS.filter(
-  (permission) => permission !== PERMISSION_ID.ADMIN_OWNERS_MANAGE,
-);
-
-export const BUILT_IN_ROLES = [
-  {
-    id: SITE_OWNER_ROLE_ID,
-    name: "Site Owner",
-    level: SITE_OWNER_LEVEL,
-    color: "#d4af37",
-    permissions: PERMISSIONS,
-  },
+export const SEEDED_ROLES = [
   {
     id: "admin",
     name: "Admin",
-    level: 900,
+    level: 1_000,
     color: "red",
-    permissions: ADMIN_PERMISSIONS,
+    permissions: PERMISSIONS,
   },
   {
     id: "moderator",

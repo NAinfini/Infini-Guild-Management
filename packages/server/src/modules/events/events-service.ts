@@ -1,8 +1,10 @@
 import { nanoid } from "nanoid";
-import { AppError, type AuthorizationContext, type RequestContext } from "@guild/kernel";
+import { AppError, secureRandom, type AuthorizationContext, type RequestContext } from "@guild/kernel";
+import type { AuditChange, AuditContext, AuditValue, RecurrenceRule } from "@guild/shared";
 import type { PushHint } from "@guild/shared/constants/push-hints";
 import { PERMISSION_ID } from "@guild/shared/constants/roles";
-import { createAuditMutation } from "@guild/server/modules/audit";
+import { recurrenceCursorBefore } from "@guild/shared/utils/recurrence";
+import { createAuditEvent } from "@guild/server/modules/audit";
 import type {
   EventAggregate,
   EventCreateWrite,
@@ -27,7 +29,6 @@ import { assertPortableLikeSearch } from "../../portable-search.js";
 
 const MAX_EVENT_PAGE = 100;
 const MAX_BATCH_DETAILS = 50;
-const MAX_CATCH_UP = 10;
 
 function appError(
   code: "VALIDATION_ERROR" | "NOT_FOUND" | "CONFLICT" | "SERVER_ERROR",
@@ -40,6 +41,27 @@ function appError(
 
 function hasOwn(value: object, key: PropertyKey): boolean {
   return Object.prototype.hasOwnProperty.call(value, key);
+}
+
+function recurrenceRulesEqual(left: RecurrenceRule, right: RecurrenceRule): boolean {
+  if (
+    left.frequency !== right.frequency
+    || left.interval !== right.interval
+    || left.endAfter !== right.endAfter
+    || left.endDate !== right.endDate
+  ) return false;
+  if (left.frequency === "weekly" && right.frequency === "weekly") {
+    const leftDays = [...left.daysOfWeek].sort((first, second) => first - second);
+    const rightDays = [...right.daysOfWeek].sort((first, second) => first - second);
+    return leftDays.length === rightDays.length && leftDays.every((day, index) => day === rightDays[index]);
+  }
+  return left.frequency !== "monthly" || right.frequency !== "monthly" || left.dayOfMonth === right.dayOfMonth;
+}
+
+function recurrenceCursorDate(now: string): string {
+  const cursor = recurrenceCursorBefore(new Date(now));
+  if (!cursor) throw appError("SERVER_ERROR", 500, "Invalid recurrence cursor time");
+  return cursor.toISOString().slice(0, 10);
 }
 
 export function eventVisibilityScope(
@@ -135,7 +157,7 @@ function assertActiveEvent(event: EventAggregate["event"]): void {
 export function selectRaffleWinnerIds(
   participantIds: readonly string[],
   winnerCount: number,
-  random: () => number = Math.random,
+  random: () => number = secureRandom,
 ): string[] {
   const shuffled = [...participantIds];
   const count = Math.min(winnerCount, shuffled.length);
@@ -152,13 +174,84 @@ function normalizeMediaIds(ids: readonly string[] | undefined): string[] {
   return [...new Set((ids ?? []).map((id) => id.trim()).filter(Boolean))];
 }
 
+function nullableAuditValue(type: "text" | "number" | "datetime", value: string | number | null): AuditValue {
+  return value === null ? { type: "null", value: null } : { type, value } as AuditValue;
+}
+
+function eventAuditChanges(
+  existing: EventAggregate,
+  input: EventUpdateInput,
+  next: Readonly<{
+    type: EventAggregate["event"]["type"];
+    endAt: string | null;
+    capacity: number | null;
+    winnerCount: number | null;
+  }>,
+): AuditChange[] {
+  const changes: AuditChange[] = [];
+  const event = existing.event;
+  if (next.type !== event.type) changes.push({
+    field: "type",
+    before: { type: "code", value: event.type },
+    after: { type: "code", value: next.type },
+  });
+  if (input.title !== undefined && input.title !== event.title) changes.push({
+    field: "title",
+    before: { type: "text", value: event.title },
+    after: { type: "text", value: input.title },
+  });
+  if (input.start_at !== undefined && input.start_at !== event.startAt) changes.push({
+    field: "start_at",
+    before: { type: "datetime", value: event.startAt },
+    after: { type: "datetime", value: input.start_at },
+  });
+  if (next.endAt !== event.endAt) changes.push({
+    field: "end_at",
+    before: nullableAuditValue("datetime", event.endAt),
+    after: nullableAuditValue("datetime", next.endAt),
+  });
+  if (next.capacity !== event.capacity) changes.push({
+    field: "capacity",
+    before: nullableAuditValue("number", event.capacity),
+    after: nullableAuditValue("number", next.capacity),
+  });
+  if (input.pinned !== undefined && input.pinned !== event.pinned) changes.push({
+    field: "pinned",
+    before: { type: "boolean", value: event.pinned },
+    after: { type: "boolean", value: input.pinned },
+  });
+  if (input.signup_locked !== undefined && input.signup_locked !== event.signupLocked) changes.push({
+    field: "signup_locked",
+    before: { type: "boolean", value: event.signupLocked },
+    after: { type: "boolean", value: input.signup_locked },
+  });
+  if (input.archived_at !== undefined && input.archived_at !== event.archivedAt) changes.push({
+    field: "archived_at",
+    before: nullableAuditValue("datetime", event.archivedAt),
+    after: nullableAuditValue("datetime", input.archived_at),
+  });
+  if (next.winnerCount !== event.winnerCount) changes.push({
+    field: "winner_count",
+    before: nullableAuditValue("number", event.winnerCount),
+    after: nullableAuditValue("number", next.winnerCount),
+  });
+  return changes;
+}
+
+function changedSections(values: readonly string[]): AuditContext[] {
+  return values.length === 0 ? [] : [{
+    field: "changed_sections",
+    value: { type: "list", value: values.map((value) => ({ type: "code", value })) },
+  }];
+}
+
 export class EventsService {
   private readonly createId: () => string;
   private readonly random: () => number;
 
   constructor(private readonly dependencies: EventsServiceDependencies) {
     this.createId = dependencies.createId ?? nanoid;
-    this.random = dependencies.random ?? Math.random;
+    this.random = dependencies.random ?? secureRandom;
   }
 
   async list(context: RequestContext, query: EventListQuery): Promise<EventViewerListResult> {
@@ -242,11 +335,16 @@ export class EventsService {
     const actor = context.authorization.require(PERMISSION_ID.EVENTS_ARCHIVE);
     const existing = await this.requireEvent(eventId);
     if (existing.event.archivedAt !== null) return;
-    const audit = createAuditMutation(context, {
-      entityType: "event",
-      entityId: eventId,
+    const audit = createAuditEvent(context, {
+      subjectType: "event",
+      subjectId: eventId,
+      subjectLabel: existing.event.title,
       action: "archive",
-      summary: existing.event.title,
+      changes: [{
+        field: "archived",
+        before: { type: "boolean", value: false },
+        after: { type: "boolean", value: true },
+      }],
     });
     await this.dependencies.store.setArchived(eventId, context.now, actor.userId, audit);
     this.publish(eventId, "event_archived", context.now);
@@ -255,11 +353,24 @@ export class EventsService {
   async destroy(context: RequestContext, eventId: string): Promise<void> {
     context.authorization.require(PERMISSION_ID.EVENTS_DELETE);
     const existing = await this.requireEvent(eventId, true);
-    const audit = createAuditMutation(context, {
-      entityType: "event",
-      entityId: eventId,
+    const audit = createAuditEvent(context, {
+      subjectType: "event",
+      subjectId: eventId,
+      subjectLabel: existing.event.title,
       action: "delete",
-      summary: existing.event.title,
+      // A deleted event leaves no other trace, so the log keeps what its creation recorded.
+      context: [
+        { field: "type", value: { type: "code", value: existing.event.type } },
+        { field: "start_at", value: { type: "datetime", value: existing.event.startAt } },
+        ...(existing.event.endAt === null ? [] : [{
+          field: "end_at" as const,
+          value: { type: "datetime" as const, value: existing.event.endAt },
+        }]),
+        ...(existing.event.capacity === null ? [] : [{
+          field: "capacity" as const,
+          value: { type: "number" as const, value: existing.event.capacity },
+        }]),
+      ],
     });
     const outcome = await this.dependencies.lifecycle.destroyEvent({
       eventId,
@@ -281,12 +392,12 @@ export class EventsService {
     const actor = context.authorization.require(PERMISSION_ID.EVENTS_EDIT);
     const existing = await this.requireEvent(eventId, true);
     const next = normalizeMediaIds([...existing.attachments, ...mediaIds]);
-    const audit = createAuditMutation(context, {
-      entityType: "event",
-      entityId: eventId,
+    const audit = createAuditEvent(context, {
+      subjectType: "event",
+      subjectId: eventId,
+      subjectLabel: existing.event.title,
       action: "upload_images",
-      summary: existing.event.title,
-      details: { count: mediaIds.length },
+      context: [{ field: "media_count", value: { type: "number", value: mediaIds.length } }],
     });
     await this.dependencies.store.touch(
       eventId,
@@ -305,11 +416,15 @@ export class EventsService {
     assertActiveEvent(event.event);
     if (event.event.type === "poll") throw appError("CONFLICT", 409, "Poll events do not use signups");
     if (event.event.signupLocked) throw appError("CONFLICT", 409, "Event signups are locked");
-    const audit = createAuditMutation(context, {
-      entityType: "event_participant",
-      entityId: `${eventId}:${actor.userId}`,
+    const audit = createAuditEvent(context, {
+      subjectType: "event_participant",
+      subjectId: `${eventId}:${actor.userId}`,
+      subjectLabel: event.event.title,
       action: "join",
-      summary: event.event.title,
+      context: [{
+        field: "event_id",
+        value: { type: "reference", value: { id: eventId, label: event.event.title } },
+      }],
     });
     const participants = await this.dependencies.store.addParticipants(
       eventId,
@@ -329,11 +444,15 @@ export class EventsService {
     const actor = context.authorization.requireAuthenticated();
     const event = await this.requireVisibleEvent(context, eventId);
     assertActiveEvent(event.event);
-    const audit = createAuditMutation(context, {
-      entityType: "event_participant",
-      entityId: `${eventId}:${actor.userId}`,
+    const audit = createAuditEvent(context, {
+      subjectType: "event_participant",
+      subjectId: `${eventId}:${actor.userId}`,
+      subjectLabel: event.event.title,
       action: "leave",
-      summary: event.event.title,
+      context: [{
+        field: "event_id",
+        value: { type: "reference", value: { id: eventId, label: event.event.title } },
+      }],
     });
     const removed = await this.dependencies.store.removeParticipants(eventId, [actor.userId], audit);
     if (removed === 0) throw appError("NOT_FOUND", 404, "Event signup not found");
@@ -350,12 +469,15 @@ export class EventsService {
     assertActiveEvent(event.event);
     if (event.event.type === "poll") throw appError("CONFLICT", 409, "Poll events do not use signups");
     const ids = [...new Set(userIds)];
-    const audit = createAuditMutation(context, {
-      entityType: "event_participant",
-      entityId: eventId,
+    const audit = createAuditEvent(context, {
+      subjectType: "event_participant",
+      subjectId: eventId,
+      subjectLabel: event.event.title,
       action: "batch_add_by_moderator",
-      summary: event.event.title,
-      details: { user_ids: ids },
+      context: [{
+        field: "event_id",
+        value: { type: "reference", value: { id: eventId, label: event.event.title } },
+      }],
     });
     const participants = await this.dependencies.store.addParticipants(
       eventId,
@@ -377,12 +499,15 @@ export class EventsService {
     context.authorization.require(PERMISSION_ID.EVENTS_EDIT);
     const event = await this.requireEvent(eventId);
     const ids = [...new Set(userIds)];
-    const audit = createAuditMutation(context, {
-      entityType: "event_participant",
-      entityId: eventId,
+    const audit = createAuditEvent(context, {
+      subjectType: "event_participant",
+      subjectId: eventId,
+      subjectLabel: event.event.title,
       action: "batch_remove_by_moderator",
-      summary: event.event.title,
-      details: { user_ids: ids },
+      context: [{
+        field: "event_id",
+        value: { type: "reference", value: { id: eventId, label: event.event.title } },
+      }],
     });
     const removed = await this.dependencies.store.removeParticipants(eventId, ids, audit);
     this.publish(eventId, "participants_removed_by_moderator", context.now);
@@ -404,12 +529,12 @@ export class EventsService {
     if (ids.length === 0 || ids.some((id) => !valid.has(id))) {
       throw appError("VALIDATION_ERROR", 400, "Invalid poll option");
     }
-    const audit = createAuditMutation(context, {
-      entityType: "event_poll_vote",
-      entityId: `${eventId}:${actor.userId}`,
+    const audit = createAuditEvent(context, {
+      subjectType: "event_poll_vote",
+      subjectId: `${eventId}:${actor.userId}`,
+      subjectLabel: event.event.title,
       action: "vote",
-      summary: event.event.title,
-      details: { option_count: ids.length },
+      context: [{ field: "option_count", value: { type: "number", value: ids.length } }],
     });
     await this.dependencies.store.replacePollVote(eventId, actor.userId, ids, context.now, audit);
     this.publish(eventId, "poll_voted", context.now);
@@ -429,12 +554,12 @@ export class EventsService {
       event.event.winnerCount,
       this.random,
     );
-    const audit = createAuditMutation(context, {
-      entityType: "event",
-      entityId: eventId,
+    const audit = createAuditEvent(context, {
+      subjectType: "event",
+      subjectId: eventId,
+      subjectLabel: event.event.title,
       action: "raffle_draw",
-      summary: event.event.title,
-      details: { winner_user_ids: winners },
+      context: [],
     });
     const result = await this.dependencies.store.drawRaffle(
       eventId,
@@ -460,11 +585,21 @@ export class EventsService {
     const actor = context.authorization.require(PERMISSION_ID.EVENTS_TEMPLATES);
     this.assertTemplateType(input.type);
     const templateId = this.createId();
-    const audit = createAuditMutation(context, {
-      entityType: "recurring_template",
-      entityId: templateId,
+    const audit = createAuditEvent(context, {
+      subjectType: "recurring_template",
+      subjectId: templateId,
+      subjectLabel: input.title,
       action: "create",
-      summary: input.title,
+      context: [
+        { field: "type", value: { type: "code", value: input.type } },
+        { field: "start_at", value: { type: "text", value: input.start_time } },
+        { field: "recurrence_frequency", value: { type: "code", value: input.recurrence_rule.frequency } },
+        { field: "recurrence_interval", value: { type: "number", value: input.recurrence_rule.interval } },
+        ...(input.capacity === undefined ? [] : [{
+          field: "capacity" as const,
+          value: { type: "number" as const, value: input.capacity },
+        }]),
+      ],
     });
     const write: TemplateCreateWrite = {
       id: templateId,
@@ -483,9 +618,7 @@ export class EventsService {
       mediaIds: normalizeMediaIds(input.attachments),
       audit,
     };
-    const created = await this.dependencies.store.createTemplate(write);
-    await this.materializeDue(context, templateId);
-    return this.attachTemplateOne(created);
+    return this.attachTemplateOne(await this.dependencies.store.createTemplate(write));
   }
 
   async updateTemplate(
@@ -497,12 +630,61 @@ export class EventsService {
     const existing = await this.requireTemplate(templateId);
     const effectiveType = input.type ?? existing.template.type;
     this.assertTemplateType(effectiveType);
-    const recurrenceChanged = hasOwn(input, "recurrence_rule") || hasOwn(input, "start_time");
-    const audit = createAuditMutation(context, {
-      entityType: "recurring_template",
-      entityId: templateId,
+    const recurrenceChanged = (
+      input.start_time !== undefined && input.start_time !== existing.template.startTime
+    ) || (
+      input.recurrence_rule !== undefined
+      && !recurrenceRulesEqual(input.recurrence_rule, existing.template.recurrenceRule)
+    );
+    const changes: AuditChange[] = [];
+    if (effectiveType !== existing.template.type) changes.push({
+      field: "type",
+      before: { type: "code", value: existing.template.type },
+      after: { type: "code", value: effectiveType },
+    });
+    if (input.title !== undefined && input.title !== existing.template.title) changes.push({
+      field: "title",
+      before: { type: "text", value: existing.template.title },
+      after: { type: "text", value: input.title },
+    });
+    if (input.start_time !== undefined && input.start_time !== existing.template.startTime) changes.push({
+      field: "start_at",
+      before: { type: "text", value: existing.template.startTime },
+      after: { type: "text", value: input.start_time },
+    });
+    if (input.capacity !== undefined && input.capacity !== existing.template.capacity) changes.push({
+      field: "capacity",
+      before: nullableAuditValue("number", existing.template.capacity),
+      after: nullableAuditValue("number", input.capacity),
+    });
+    if (input.recurrence_rule !== undefined) {
+      if (input.recurrence_rule.frequency !== existing.template.recurrenceRule.frequency) changes.push({
+        field: "recurrence_frequency",
+        before: { type: "code", value: existing.template.recurrenceRule.frequency },
+        after: { type: "code", value: input.recurrence_rule.frequency },
+      });
+      if (input.recurrence_rule.interval !== existing.template.recurrenceRule.interval) changes.push({
+        field: "recurrence_interval",
+        before: { type: "number", value: existing.template.recurrenceRule.interval },
+        after: { type: "number", value: input.recurrence_rule.interval },
+      });
+    }
+    const sectionKeys = [
+      "description",
+      "duration_minutes",
+      "recurrence_rule",
+      "visibility_offset_minutes",
+      "auto_archive",
+      "attachments",
+      "class_quotas",
+    ].filter((key) => hasOwn(input, key));
+    const audit = createAuditEvent(context, {
+      subjectType: "recurring_template",
+      subjectId: templateId,
+      subjectLabel: input.title ?? existing.template.title,
       action: "update",
-      summary: input.title ?? existing.template.title,
+      changes,
+      context: changedSections(sectionKeys),
     });
     const patch: TemplateUpdateWrite["patch"] = {
       ...(input.type === undefined ? {} : { type: input.type }),
@@ -524,22 +706,25 @@ export class EventsService {
         ? {}
         : { quotas: this.prepareQuotas(input.class_quotas) }),
       ...(hasOwn(input, "attachments") ? { mediaIds: normalizeMediaIds(input.attachments) } : {}),
-      resetGeneration: recurrenceChanged,
+      ...(recurrenceChanged ? { restartCursorDate: recurrenceCursorDate(context.now) } : {}),
       audit,
     };
-    const updated = await this.dependencies.store.updateTemplate(write);
-    await this.materializeDue(context, templateId);
-    return this.attachTemplateOne(updated);
+    return this.attachTemplateOne(await this.dependencies.store.updateTemplate(write));
   }
 
   async pauseTemplate(context: RequestContext, templateId: string): Promise<void> {
     context.authorization.require(PERMISSION_ID.EVENTS_TEMPLATES);
     const template = await this.requireTemplate(templateId);
-    const audit = createAuditMutation(context, {
-      entityType: "recurring_template",
-      entityId: templateId,
+    const audit = createAuditEvent(context, {
+      subjectType: "recurring_template",
+      subjectId: templateId,
+      subjectLabel: template.template.title,
       action: "pause",
-      summary: template.template.title,
+      changes: [{
+        field: "status",
+        before: { type: "code", value: "active" },
+        after: { type: "code", value: "paused" },
+      }],
     });
     await this.dependencies.store.setTemplatePaused(templateId, true, context.now, audit);
   }
@@ -547,45 +732,49 @@ export class EventsService {
   async resumeTemplate(context: RequestContext, templateId: string): Promise<void> {
     context.authorization.require(PERMISSION_ID.EVENTS_TEMPLATES);
     const template = await this.requireTemplate(templateId);
-    const audit = createAuditMutation(context, {
-      entityType: "recurring_template",
-      entityId: templateId,
+    const audit = createAuditEvent(context, {
+      subjectType: "recurring_template",
+      subjectId: templateId,
+      subjectLabel: template.template.title,
       action: "resume",
-      summary: template.template.title,
+      changes: [{
+        field: "status",
+        before: { type: "code", value: "paused" },
+        after: { type: "code", value: "active" },
+      }],
     });
-    await this.dependencies.store.setTemplatePaused(templateId, false, context.now, audit);
-    await this.materializeDue(context, templateId);
+    await this.dependencies.store.setTemplatePaused(
+      templateId,
+      false,
+      context.now,
+      audit,
+      recurrenceCursorDate(context.now),
+    );
   }
 
   async deleteTemplate(context: RequestContext, templateId: string): Promise<void> {
     context.authorization.require(PERMISSION_ID.EVENTS_TEMPLATES);
     const template = await this.requireTemplate(templateId);
-    const audit = createAuditMutation(context, {
-      entityType: "recurring_template",
-      entityId: templateId,
+    const audit = createAuditEvent(context, {
+      subjectType: "recurring_template",
+      subjectId: templateId,
+      subjectLabel: template.template.title,
       action: "delete",
-      summary: template.template.title,
+      // A deleted template leaves no other trace, so the log keeps what its creation recorded.
+      context: [
+        { field: "type", value: { type: "code", value: template.template.type } },
+        { field: "start_at", value: { type: "text", value: template.template.startTime } },
+        {
+          field: "recurrence_frequency",
+          value: { type: "code", value: template.template.recurrenceRule.frequency },
+        },
+        {
+          field: "recurrence_interval",
+          value: { type: "number", value: template.template.recurrenceRule.interval },
+        },
+      ],
     });
     await this.dependencies.store.deleteTemplate(templateId, audit);
-  }
-
-  async materializeDue(context: RequestContext, templateId?: string): Promise<void> {
-    const materialized = await this.dependencies.store.materializeDue(
-      context.now,
-      templateId,
-      (eventId, eventTitle, sourceTemplateId) => createAuditMutation(context, {
-        entityType: "event",
-        entityId: eventId,
-        action: "create",
-        summary: eventTitle,
-        details: { recurring_template_id: sourceTemplateId },
-      }),
-    );
-    for (const result of materialized) {
-      for (const eventId of result.createdEventIds.slice(0, MAX_CATCH_UP)) {
-        this.publish(eventId, "event_created", context.now);
-      }
-    }
   }
 
   private prepareCreate(
@@ -603,11 +792,31 @@ export class EventsService {
     if ((input.type === "poll" || input.type === "raffle") && (input.class_quotas?.length ?? 0) > 0) {
       throw appError("VALIDATION_ERROR", 400, `${input.type} events do not use class quotas`);
     }
-    const audit = createAuditMutation(context, {
-      entityType: "event",
-      entityId: eventId,
+    const audit = createAuditEvent(context, {
+      subjectType: "event",
+      subjectId: eventId,
+      subjectLabel: input.title,
       action: "create",
-      summary: input.title,
+      context: [
+        { field: "type", value: { type: "code", value: input.type } },
+        { field: "start_at", value: { type: "datetime", value: input.start_at } },
+        ...(input.end_at === undefined ? [] : [{
+          field: "end_at" as const,
+          value: { type: "datetime" as const, value: input.end_at },
+        }]),
+        ...(input.type === "poll" || input.capacity === undefined ? [] : [{
+          field: "capacity" as const,
+          value: { type: "number" as const, value: input.capacity },
+        }]),
+        ...(input.type !== "raffle" || input.winner_count === undefined ? [] : [{
+          field: "winner_count" as const,
+          value: { type: "number" as const, value: input.winner_count },
+        }]),
+        ...(poll === null ? [] : [{
+          field: "option_count" as const,
+          value: { type: "number" as const, value: poll.options.length },
+        }]),
+      ],
     });
     return {
       id: eventId,
@@ -636,7 +845,7 @@ export class EventsService {
   ): EventUpdateWrite {
     const type = input.type ?? existing.event.type;
     const startAt = input.start_at ?? existing.event.startAt;
-    const endAt = input.end_at ?? existing.event.endAt;
+    const endAt = input.end_at === undefined ? existing.event.endAt : input.end_at;
     assertEventTimes(startAt, endAt);
     const currentHasVotes = existing.poll?.options.some((option) => option.voterIds.length > 0) ?? false;
     const nextPoll = input.poll === undefined
@@ -654,6 +863,9 @@ export class EventsService {
     const winnerCount = type === "raffle"
       ? input.winner_count ?? existing.event.winnerCount
       : null;
+    const nextCapacity = type === "poll"
+      ? null
+      : input.capacity === undefined ? existing.event.capacity : input.capacity;
     if (type === "raffle" && !winnerCount) throw appError("VALIDATION_ERROR", 400, "Raffle events require winner_count");
     if ((type === "poll" || type === "raffle") && (input.class_quotas?.length ?? 0) > 0) {
       throw appError("VALIDATION_ERROR", 400, `${type} events do not use class quotas`);
@@ -686,11 +898,23 @@ export class EventsService {
       ...(type === "poll" ? { capacity: null, winnerCount: null } : {}),
       ...(type !== "raffle" ? { winnerCount: null } : {}),
     };
-    const audit = createAuditMutation(context, {
-      entityType: "event",
-      entityId: existing.event.id,
+    const nonScalarSections = [
+      input.description !== undefined && input.description !== existing.event.description ? "description" : null,
+      input.auto_archive !== undefined && input.auto_archive !== existing.event.autoArchive ? "auto_archive" : null,
+      input.class_quotas !== undefined ? "class_quotas" : null,
+      input.poll !== undefined ? "poll" : null,
+      input.attachments !== undefined
+        && JSON.stringify(normalizeMediaIds(input.attachments)) !== JSON.stringify(existing.attachments)
+        ? "attachments"
+        : null,
+    ].filter((value): value is string => value !== null);
+    const audit = createAuditEvent(context, {
+      subjectType: "event",
+      subjectId: existing.event.id,
+      subjectLabel: input.title ?? existing.event.title,
       action: "update",
-      summary: input.title ?? existing.event.title,
+      changes: eventAuditChanges(existing, input, { type, endAt, capacity: nextCapacity, winnerCount }),
+      context: changedSections(nonScalarSections),
     });
     return {
       eventId: existing.event.id,

@@ -7,6 +7,7 @@ import { useTranslation } from "react-i18next";
 import { CalendarEventOutlined } from "../../utils/icons";
 import { EventQuotaBar } from "../feature/events/EventQuotaBar";
 import { EventTypeIcon } from "../shared/EventTypeIcon";
+import { formatClock, formatLocaleParts } from "@portal/utils/datetime";
 import { getEventTypeLabel } from "@portal/utils/game-rules";
 import { EmptyState } from "../shared/EmptyState";
 import {
@@ -58,7 +59,7 @@ export const UpcomingEventsCard = memo(function UpcomingEventsCard({
               const signedUpCount = item.participantCount;
               const capacity = item.item.capacity ?? 0;
               const startDate = new Date(item.item.start_at);
-              const month = startDate.toLocaleString(i18n.language, { month: "short" }).toUpperCase();
+              const month = formatLocaleParts(startDate, i18n.language, { month: "short" }).toUpperCase();
               const day = startDate.getDate();
 
               return (
@@ -93,7 +94,7 @@ export const UpcomingEventsCard = memo(function UpcomingEventsCard({
                         <Group gap={4}>
                           <ClockIcon size={12} style={{ opacity: 0.6 }} />
                           <Text size="xs" c="dimmed">
-                            {startDate.toLocaleTimeString(i18n.language, { hour: "2-digit", minute: "2-digit", hour12: false })}
+                            {formatClock(startDate)}
                           </Text>
                         </Group>
                       </Group>

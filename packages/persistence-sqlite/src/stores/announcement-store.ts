@@ -5,6 +5,7 @@ import type {
   AnnouncementStore,
 } from "@guild/server/modules/announcements";
 import type { Announcement, PaginatedResponse } from "@guild/shared";
+import { extractTipTapText } from "@guild/shared/utils/tiptap-text";
 import type { SqlBatchStatement, SqlExecutor, SqlResult, SqlValue } from "@guild/kernel";
 import { auditInsertStatement } from "./audit-statement.js";
 import { assertMediaAttachments, replaceMediaLinksStatements } from "./media-link-statements.js";
@@ -57,7 +58,7 @@ export class SqliteAnnouncementStore implements AnnouncementStore {
 
   async create(input: Parameters<AnnouncementStore["create"]>[0]): Promise<void> {
     await assertMediaAttachments(this.sql, {
-      actorUserId: input.audit.actorUserId,
+      actorUserId: input.audit.actorId,
       entityType: "announcement",
       entityId: input.record.id,
       slot: "body",
@@ -76,7 +77,7 @@ export class SqliteAnnouncementStore implements AnnouncementStore {
   async update(input: Parameters<AnnouncementStore["update"]>[0]): Promise<boolean> {
     if (input.mediaIds) {
       await assertMediaAttachments(this.sql, {
-        actorUserId: input.audit.actorUserId,
+        actorUserId: input.audit.actorId,
         entityType: "announcement",
         entityId: input.record.id,
         slot: "body",
@@ -245,17 +246,19 @@ function announcementWhere(query: AnnouncementListQuery): Readonly<{ where: stri
   return { where: clauses.length ? `WHERE ${clauses.join(" AND ")}` : "", params };
 }
 
+// search_text 由正文在每次写入时派生，是搜索投影的规范来源；迁移回填仅是近似。
 function insertAnnouncement(record: AnnouncementRecord): SqlBatchStatement {
   return {
     method: "run",
     sql: `INSERT INTO announcements (
       id, title, body_json, pinned, status, publish_at, expires_at, archived_at,
-      created_by, updated_by, revision_token, created_at, updated_at
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      created_by, updated_by, revision_token, created_at, updated_at, search_text
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     params: [
       record.id, record.title, record.body_json, record.pinned ? 1 : 0, record.status,
       record.publish_at, record.expires_at, record.archived_at, record.created_by,
       record.updated_by, record.revisionToken, record.created_at, record.updated_at,
+      extractTipTapText(record.body_json),
     ],
   };
 }
@@ -280,13 +283,13 @@ function updateAnnouncement(record: AnnouncementRecord, expectedRevisionToken: s
     columns: ["id"],
     sql: `UPDATE announcements SET
       title = ?, body_json = ?, pinned = ?, status = ?, publish_at = ?, expires_at = ?,
-      archived_at = ?, updated_by = ?, revision_token = ?, updated_at = ?
+      archived_at = ?, updated_by = ?, revision_token = ?, updated_at = ?, search_text = ?
       WHERE id = ? AND revision_token = ?
       RETURNING id`,
     params: [
       record.title, record.body_json, record.pinned ? 1 : 0, record.status, record.publish_at,
       record.expires_at, record.archived_at, record.updated_by, record.revisionToken,
-      record.updated_at, record.id, expectedRevisionToken,
+      record.updated_at, extractTipTapText(record.body_json), record.id, expectedRevisionToken,
     ],
   };
 }

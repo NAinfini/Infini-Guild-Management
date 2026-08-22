@@ -1,5 +1,5 @@
 import type { AdminRole, InviteLink } from "@guild/shared";
-import { ActionIcon, Alert, Badge, Button, ColorSwatch, Group, HoverCard, Loader, Menu, Modal, NumberInput, Paper, SegmentedControl, Select, Skeleton, Stack, Text, TextInput, ThemeIcon, Tooltip } from "@mantine/core";
+import { ActionIcon, Badge, Button, ColorSwatch, Group, HoverCard, Loader, Menu, Modal, NumberInput, Paper, SegmentedControl, Select, Skeleton, Stack, Text, TextInput, ThemeIcon, Tooltip } from "@mantine/core";
 import { AlertTriangleIcon, BanIcon, CircleCheckIcon, CircleXIcon, CopyIcon, DotsIcon, InfoCircleIcon, PlusIcon, SearchIcon, TrashIcon } from "@portal/components/icons";
 import { useConfirmDialog } from "@portal/hooks/useConfirmDialog";
 import {
@@ -13,10 +13,11 @@ import { useCallback, useMemo, useState } from "react";
 import { useDisclosure, useMediaQuery } from "@mantine/hooks";
 import { useTranslation } from "react-i18next";
 import { useEffectivePermissions } from "../../../hooks/useEffectivePermissions";
-import { formatDateTime } from "../../../utils/admin";
+import { formatDateTime } from "../../../utils/datetime";
 import { copyPlainText } from "../../../utils/copy";
 import { resolveInviteStatus, type InviteStatus } from "../../../utils/invite-status";
 import type { InviteLinkStatsSummary } from "../../../services/AdminService";
+import { AdminLoadError } from "./AdminLoadError";
 
 type InviteRow = InviteLink;
 type InviteStats = InviteLinkStatsSummary;
@@ -79,6 +80,7 @@ type AdminInviteSectionProps = {
   inviteStats: InviteStats | null;
   inviteLinksLoading: boolean;
   inviteLinksError: boolean;
+  onRetryInviteLinks: () => void;
   inviteRows: InviteRow[];
   inviteTotal: number;
   hasMoreInvites: boolean;
@@ -102,6 +104,7 @@ export function AdminInviteSection({
   inviteStats,
   inviteLinksLoading,
   inviteLinksError,
+  onRetryInviteLinks,
   inviteRows,
   inviteTotal,
   hasMoreInvites,
@@ -115,11 +118,9 @@ export function AdminInviteSection({
   onDeleteInvite,
 }: AdminInviteSectionProps) {
   const { t } = useTranslation("admin");
-  const { t: tc } = useTranslation("common");
   const confirm = useConfirmDialog();
   const { canManage: canManagePermission } = useEffectivePermissions();
   const isAdmin = canManagePermission(["admin.invite.manage"]);
-  const loadErrorMessage = tc("loadError");
   const [createModalOpen, createModalHandlers] = useDisclosure(false);
   const isCompactLayout = useMediaQuery("(max-width: 64em)");
   const [inviteMaxUses, setInviteMaxUses] = useState(10);
@@ -391,7 +392,7 @@ export function AdminInviteSection({
       </div>
 
       {inviteStats ? (
-        <div className="admin-stats">
+        <div className="admin-panel admin-stats">
           <div className="admin-stat">
             <div className="admin-stat__value">{inviteStats.total}</div>
             <div className="admin-stat__label">{t("invite.stats.total")}</div>
@@ -415,7 +416,7 @@ export function AdminInviteSection({
 
       {/* Table */}
       {inviteLinksLoading ? <Stack gap={8}>{Array.from({ length: 4 }).map((_, i) => <Skeleton key={i} height={18} />)}</Stack> : null}
-      {inviteLinksError ? <Alert color="red" title={loadErrorMessage} /> : null}
+      {inviteLinksError ? <AdminLoadError onRetry={onRetryInviteLinks} /> : null}
       {!inviteLinksLoading && !inviteLinksError ? (
         isCompactLayout ? (
           <Stack gap="md">

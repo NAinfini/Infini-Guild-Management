@@ -11,7 +11,7 @@
   align-items: start;
 }
 
-@media (max-width: 767px) {
+@media (max-width: 47.99em) {
   .readGrid {
     grid-template-columns: minmax(0, 1fr);
   }

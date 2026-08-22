@@ -27,25 +27,19 @@ export interface EChartsThemeConfig {
   };
 }
 
-const PALETTE = {
-  primary: "#D4A843",
-  secondary: "#8B7355",
-  accent: "#C17F3E",
-  success: "#4ADE80",
-  warning: "#FBBF24",
-  danger: "#F87171",
-} as const;
-
-const COLOR_PALETTE = [
-  PALETTE.primary,
-  PALETTE.secondary,
-  PALETTE.accent,
-  PALETTE.success,
-  PALETTE.warning,
-  PALETTE.danger,
-];
-
-const FONT_FAMILY = "Inter, system-ui, -apple-system, sans-serif";
+/*
+ * 图表取的是分类色序 --series-*，首位是跟随主色的 --series-accent。
+ * 序列本身按「相邻色相拉到最开」排过，而主色可能正好落在其中一族上
+ * （teal 主色 + --series-1 就是同一个青瓷），所以按值去重：两条线用同一个
+ * 颜色比少一个颜色更糟。
+ */
+const SERIES_TOKENS = [
+  "--series-accent",
+  "--series-1",
+  "--series-2",
+  "--series-3",
+  "--series-4",
+] as const;
 
 function buildAxisTemplate(axisLineColor: string, splitLineColor: string, textColor: string): EChartsAxisStyle {
   return {
@@ -56,27 +50,41 @@ function buildAxisTemplate(axisLineColor: string, splitLineColor: string, textCo
   };
 }
 
-export function buildEChartsTheme(mode: "light" | "dark"): EChartsThemeConfig {
-  const isDark = mode === "dark";
+/**
+ * ECharts 只吃具体颜色字符串，认不了 var()，所以主题必须在构建时把 token 解析成值。
+ *
+ * 这里读的是 <html> 上的计算值，也就是 [data-theme] × [data-accent] 之后的最终结果：
+ * 图表因此和站内其余部分共用同一套颜色，换主题或换主色时跟着变。调用方负责在这两个
+ * 值变化时重建（见 GuildWarPage 的 useMemo 依赖）。
+ *
+ * mode 只用来告诉 ECharts 自己的内建组件走深色还是浅色分支——颜色全部来自 token。
+ */
+export function buildEChartsTheme(
+  mode: "light" | "dark",
+  root: HTMLElement = document.documentElement,
+): EChartsThemeConfig {
+  const styles = getComputedStyle(root);
+  const token = (name: string): string => styles.getPropertyValue(name).trim();
 
-  const textColor = isDark ? "#E2DDD6" : "#333333";
-  const axisLineColor = isDark ? "rgba(212,168,67,0.2)" : "#cccccc";
-  const splitLineColor = isDark ? "rgba(212,168,67,0.06)" : "#eeeeee";
-  const tooltipBg = isDark ? "#141418" : "#ffffff";
-  const tooltipBorder = isDark ? "rgba(212,168,67,0.3)" : "#cccccc";
+  const textColor = token("--text-primary");
+  const mutedColor = token("--text-muted");
+  const axisLineColor = token("--border-subtle");
+  /* 网格线要比轴线更退后一档：轴线是结构，网格线只是读数的辅助。 */
+  const splitLineColor = `color-mix(in srgb, ${axisLineColor} 55%, transparent)`;
+  const fontFamily = token("--font-body");
 
-  const axisTemplate = buildAxisTemplate(axisLineColor, splitLineColor, textColor);
+  const axisTemplate = buildAxisTemplate(axisLineColor, splitLineColor, mutedColor);
 
   return {
-    darkMode: isDark,
-    color: COLOR_PALETTE,
+    darkMode: mode === "dark",
+    color: [...new Set(SERIES_TOKENS.map((name) => token(name)).filter(Boolean))],
     backgroundColor: "transparent",
-    textStyle: { color: textColor, fontFamily: FONT_FAMILY },
-    title: { textStyle: { color: textColor, fontFamily: FONT_FAMILY } },
-    legend: { textStyle: { color: textColor } },
+    textStyle: { color: textColor, fontFamily },
+    title: { textStyle: { color: textColor, fontFamily } },
+    legend: { textStyle: { color: mutedColor } },
     tooltip: {
-      backgroundColor: tooltipBg,
-      borderColor: tooltipBorder,
+      backgroundColor: token("--surface-overlay"),
+      borderColor: axisLineColor,
       textStyle: { color: textColor },
     },
     categoryAxis: axisTemplate,
@@ -84,16 +92,17 @@ export function buildEChartsTheme(mode: "light" | "dark"): EChartsThemeConfig {
     radar: {
       axisLine: { lineStyle: { color: axisLineColor } },
       splitLine: { lineStyle: { color: splitLineColor } },
+      /* 雷达图的环形分区：原本是三档写死的白色叠加，浅色模式下压在白卡片上等于没画。
+         改成从正文色里兑，两个模式都能看见同一组环。 */
       splitArea: {
         areaStyle: {
           color: [
-            "rgba(255,255,255,0.04)",
-            "rgba(255,255,255,0.02)",
-            "rgba(255,255,255,0.01)",
+            `color-mix(in srgb, ${textColor} 5%, transparent)`,
+            `color-mix(in srgb, ${textColor} 2%, transparent)`,
           ],
         },
       },
-      axisName: { color: textColor },
+      axisName: { color: mutedColor },
     },
   };
 }

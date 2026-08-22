@@ -8,6 +8,7 @@ import {
   moveGuildWarMemberSchema,
   saveTeamsPayloadSchema,
   updateMemberStatsSchema,
+  updateWarHistorySchema,
 } from "./guild-war";
 
 describe("guild war history query", () => {
@@ -52,6 +53,19 @@ describe("guild war history query", () => {
 });
 
 describe("guild war decimal stats", () => {
+  it("allows PATCH to clear nullable fields without relaxing create", () => {
+    expect(updateWarHistorySchema.parse({ event_id: null, duration_minutes: null })).toEqual({
+      event_id: null,
+      duration_minutes: null,
+    });
+    expect(createWarHistorySchema.safeParse({
+      war_name: "Manual", result: "draw", event_id: null,
+    }).success).toBe(false);
+    expect(createWarHistorySchema.safeParse({
+      war_name: "Manual", result: "draw", duration_minutes: null,
+    }).success).toBe(false);
+  });
+
   it.each(["win", "loss", "draw"])("accepts the fixed %s result", (result) => {
     expect(createWarHistorySchema.parse({ war_name: "Result test", result }).result).toBe(result);
   });

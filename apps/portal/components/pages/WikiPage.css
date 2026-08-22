@@ -1,7 +1,3 @@
-.wiki-page-toolbar {
-  background: var(--surface-raised);
-}
-
 .wiki-page-toolbar__categories {
   width: 15rem;
 }
@@ -54,7 +50,6 @@
    在圆角处裁掉。 */
 .wiki-article-reader-card {
   overflow: hidden;
-  background: var(--surface-raised);
 }
 
 .wiki-article-reader-title,
@@ -115,7 +110,15 @@
   width: 100%; cursor: pointer; text-align: left;
   border-radius: var(--radius-control); border: 1px solid transparent;
   padding: 8px; background: transparent;
-  transition: background var(--transition-fast), border-color var(--transition-fast);
+  transition:
+    background var(--transition-fast),
+    border-color var(--transition-fast),
+    transform var(--motion-state);
+}
+
+/* 与公告清单同一套按下反馈。 */
+.wiki-article-item:active {
+  transform: scale(var(--motion-press));
 }
 
 .wiki-article-item:hover {

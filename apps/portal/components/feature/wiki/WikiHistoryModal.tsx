@@ -1,6 +1,6 @@
 import type { WikiArticle, WikiRevisionListItem } from "@guild/shared";
 import { Badge, Button, Group, Loader, Modal, ScrollArea, SegmentedControl, Stack, Text, UnstyledButton } from "@mantine/core";
-import { format } from "date-fns";
+import { formatDateTime } from "@portal/utils/datetime";
 import { useTranslation } from "react-i18next";
 import { useWikiHistory, type WikiHistoryDiffBlock } from "../../../hooks/useWikiHistory";
 import { useConfirmDialog } from "@portal/hooks/useConfirmDialog";
@@ -48,12 +48,6 @@ function DiffView({ blocks, ellipsis }: { blocks: WikiHistoryDiffBlock[]; ellips
       })}
     </Stack>
   );
-}
-
-function formatDateTime(iso: string): string {
-  const date = new Date(iso);
-  if (Number.isNaN(date.getTime())) return "-";
-  return format(date, "yyyy-MM-dd HH:mm");
 }
 
 type WikiHistoryModalProps = {

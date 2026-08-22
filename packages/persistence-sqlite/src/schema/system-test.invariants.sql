@@ -190,51 +190,51 @@ BEGIN
     (run_id, artifact_type, artifact_key, request_id, created_at)
   SELECT requests.run_id,
     CASE
-      WHEN NEW.entity_type = 'user' AND NEW.action IN ('create', 'register', 'admin_create_member') THEN 'user'
-      WHEN NEW.entity_type = 'invite_link' AND NEW.action = 'create' THEN 'invite_link'
-      WHEN NEW.entity_type = 'role' AND NEW.action = 'create' THEN 'role'
-      WHEN NEW.entity_type = 'event' AND NEW.action = 'create' THEN 'event'
-      WHEN NEW.entity_type = 'recurring_template' AND NEW.action = 'create' THEN 'recurring_template'
-      WHEN NEW.entity_type = 'announcement' AND NEW.action = 'create' THEN 'announcement'
-      WHEN NEW.entity_type = 'gallery_item' AND NEW.action = 'create_video' THEN 'gallery_item'
-      WHEN NEW.entity_type = 'guild_war_history' AND NEW.action IN ('create', 'conclude') THEN 'guild_war'
-      WHEN NEW.entity_type = 'wiki_category' AND NEW.action = 'create' THEN 'wiki_category'
-      WHEN NEW.entity_type = 'wiki_article' AND NEW.action = 'create' THEN 'wiki_article'
-      WHEN NEW.entity_type IN ('badge', 'member_badge') AND NEW.action = 'create' THEN 'badge'
-      WHEN NEW.entity_type = 'storage' AND NEW.action = 'create' THEN 'storage'
-      WHEN NEW.entity_type = 'storage_category' AND NEW.action = 'create' THEN 'storage_category'
-      WHEN NEW.entity_type = 'storage_item' AND NEW.action = 'create' THEN 'storage_item'
-      WHEN NEW.entity_type = 'storage_transaction' AND NEW.action IN ('intake', 'distribute', 'adjust') THEN 'storage_batch'
-      WHEN NEW.entity_type = 'media_asset' AND NEW.action = 'upload' THEN 'media_asset'
-      WHEN NEW.entity_type = 'class_catalog' AND NEW.action = 'create' THEN 'class_catalog'
-      WHEN NEW.entity_type = 'class_tag' AND NEW.action = 'create' THEN 'class_tag'
-      WHEN NEW.entity_type = 'member_absence' AND NEW.action = 'create' THEN 'member_absence'
+      WHEN NEW.subject_type = 'user' AND NEW.action IN ('create', 'register', 'admin_create_member') THEN 'user'
+      WHEN NEW.subject_type = 'invite_link' AND NEW.action = 'create' THEN 'invite_link'
+      WHEN NEW.subject_type = 'role' AND NEW.action = 'create' THEN 'role'
+      WHEN NEW.subject_type = 'event' AND NEW.action = 'create' THEN 'event'
+      WHEN NEW.subject_type = 'recurring_template' AND NEW.action = 'create' THEN 'recurring_template'
+      WHEN NEW.subject_type = 'announcement' AND NEW.action = 'create' THEN 'announcement'
+      WHEN NEW.subject_type = 'gallery_item' AND NEW.action = 'create_video' THEN 'gallery_item'
+      WHEN NEW.subject_type = 'guild_war_history' AND NEW.action IN ('create', 'conclude') THEN 'guild_war'
+      WHEN NEW.subject_type = 'wiki_category' AND NEW.action = 'create' THEN 'wiki_category'
+      WHEN NEW.subject_type = 'wiki_article' AND NEW.action = 'create' THEN 'wiki_article'
+      WHEN NEW.subject_type IN ('badge', 'member_badge') AND NEW.action = 'create' THEN 'badge'
+      WHEN NEW.subject_type = 'storage' AND NEW.action = 'create' THEN 'storage'
+      WHEN NEW.subject_type = 'storage_category' AND NEW.action = 'create' THEN 'storage_category'
+      WHEN NEW.subject_type = 'storage_item' AND NEW.action = 'create' THEN 'storage_item'
+      WHEN NEW.subject_type = 'storage_transaction' AND NEW.action IN ('intake', 'distribute', 'adjust') THEN 'storage_batch'
+      WHEN NEW.subject_type = 'media_asset' AND NEW.action = 'upload' THEN 'media_asset'
+      WHEN NEW.subject_type = 'class_catalog' AND NEW.action = 'create' THEN 'class_catalog'
+      WHEN NEW.subject_type = 'class_tag' AND NEW.action = 'create' THEN 'class_tag'
+      WHEN NEW.subject_type = 'member_absence' AND NEW.action = 'create' THEN 'member_absence'
     END,
-    NEW.entity_id,
+    NEW.subject_id,
     NEW.request_id,
     NEW.occurred_at
   FROM system_test_requests AS requests
   WHERE requests.request_id = NEW.request_id
     AND (
-      (NEW.entity_type = 'user' AND NEW.action IN ('create', 'register', 'admin_create_member'))
-      OR (NEW.entity_type = 'invite_link' AND NEW.action = 'create')
-      OR (NEW.entity_type = 'role' AND NEW.action = 'create')
-      OR (NEW.entity_type = 'event' AND NEW.action = 'create')
-      OR (NEW.entity_type = 'recurring_template' AND NEW.action = 'create')
-      OR (NEW.entity_type = 'announcement' AND NEW.action = 'create')
-      OR (NEW.entity_type = 'gallery_item' AND NEW.action = 'create_video')
-      OR (NEW.entity_type = 'guild_war_history' AND NEW.action IN ('create', 'conclude'))
-      OR (NEW.entity_type = 'wiki_category' AND NEW.action = 'create')
-      OR (NEW.entity_type = 'wiki_article' AND NEW.action = 'create')
-      OR (NEW.entity_type IN ('badge', 'member_badge') AND NEW.action = 'create')
-      OR (NEW.entity_type = 'storage' AND NEW.action = 'create')
-      OR (NEW.entity_type = 'storage_category' AND NEW.action = 'create')
-      OR (NEW.entity_type = 'storage_item' AND NEW.action = 'create')
-      OR (NEW.entity_type = 'storage_transaction' AND NEW.action IN ('intake', 'distribute', 'adjust'))
-      OR (NEW.entity_type = 'media_asset' AND NEW.action = 'upload')
-      OR (NEW.entity_type = 'class_catalog' AND NEW.action = 'create')
-      OR (NEW.entity_type = 'class_tag' AND NEW.action = 'create')
-      OR (NEW.entity_type = 'member_absence' AND NEW.action = 'create')
+      (NEW.subject_type = 'user' AND NEW.action IN ('create', 'register', 'admin_create_member'))
+      OR (NEW.subject_type = 'invite_link' AND NEW.action = 'create')
+      OR (NEW.subject_type = 'role' AND NEW.action = 'create')
+      OR (NEW.subject_type = 'event' AND NEW.action = 'create')
+      OR (NEW.subject_type = 'recurring_template' AND NEW.action = 'create')
+      OR (NEW.subject_type = 'announcement' AND NEW.action = 'create')
+      OR (NEW.subject_type = 'gallery_item' AND NEW.action = 'create_video')
+      OR (NEW.subject_type = 'guild_war_history' AND NEW.action IN ('create', 'conclude'))
+      OR (NEW.subject_type = 'wiki_category' AND NEW.action = 'create')
+      OR (NEW.subject_type = 'wiki_article' AND NEW.action = 'create')
+      OR (NEW.subject_type IN ('badge', 'member_badge') AND NEW.action = 'create')
+      OR (NEW.subject_type = 'storage' AND NEW.action = 'create')
+      OR (NEW.subject_type = 'storage_category' AND NEW.action = 'create')
+      OR (NEW.subject_type = 'storage_item' AND NEW.action = 'create')
+      OR (NEW.subject_type = 'storage_transaction' AND NEW.action IN ('intake', 'distribute', 'adjust'))
+      OR (NEW.subject_type = 'media_asset' AND NEW.action = 'upload')
+      OR (NEW.subject_type = 'class_catalog' AND NEW.action = 'create')
+      OR (NEW.subject_type = 'class_tag' AND NEW.action = 'create')
+      OR (NEW.subject_type = 'member_absence' AND NEW.action = 'create')
     );
 
   INSERT OR IGNORE INTO system_test_artifacts
@@ -242,22 +242,22 @@ BEGIN
   SELECT requests.run_id, 'gallery_item', items.id, NEW.request_id, NEW.occurred_at
   FROM system_test_requests AS requests
   JOIN json_each(CASE
-    WHEN NEW.entity_type = 'gallery_item' AND NEW.action = 'upload_images'
-      THEN '["' || replace(NEW.entity_id, ',', '","') || '"]'
+    WHEN NEW.subject_type = 'gallery_item' AND NEW.action = 'upload_images'
+      THEN '["' || replace(NEW.subject_id, ',', '","') || '"]'
     ELSE '[]'
   END) AS ids
   JOIN gallery_items AS items ON items.id = ids.value
   WHERE requests.request_id = NEW.request_id
-    AND NEW.entity_type = 'gallery_item'
+    AND NEW.subject_type = 'gallery_item'
     AND NEW.action = 'upload_images';
 
   INSERT OR IGNORE INTO system_test_artifacts
     (run_id, artifact_type, artifact_key, request_id, created_at)
   SELECT requests.run_id, 'guild_war', wars.id, NEW.request_id, NEW.occurred_at
   FROM system_test_requests AS requests
-  JOIN guild_wars AS wars ON wars.event_id = NEW.entity_id
+  JOIN guild_wars AS wars ON wars.event_id = NEW.subject_id
   WHERE requests.request_id = NEW.request_id
-    AND NEW.entity_type = 'guild_war'
+    AND NEW.subject_type = 'guild_war'
     AND NEW.action = 'init';
 END;
 

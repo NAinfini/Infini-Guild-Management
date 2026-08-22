@@ -3,6 +3,7 @@ import { Button, Paper, PasswordInput, Stack, Text, TextInput } from "@mantine/c
 import { SaveIcon, LogOutIcon } from "@portal/components/icons";
 import type { CSSProperties } from "react";
 import { useTranslation } from "react-i18next";
+import { formatLocaleDate } from "../../../utils/datetime";
 import { notifyError } from "../../../utils/notifications";
 
 const USERNAME_PATTERN = /^[a-zA-Z0-9_一-鿿]+$/;
@@ -98,7 +99,7 @@ export function ProfileAccountTab({
 
   /* 只到日；这四行是「我这个号是什么」，不是审计时间线，精确到分秒没人要读。 */
   const formatDay = (value: string | null) =>
-    value ? new Date(value).toLocaleDateString(i18n.language) : null;
+    value ? formatLocaleDate(value, i18n.language, "numeric") : null;
   const facts = [
     { key: "username", label: t("account.field.username"), value: username },
     { key: "role", label: t("overview.role"), value: role },

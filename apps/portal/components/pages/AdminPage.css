@@ -1,6 +1,16 @@
 /* ── 控制台外壳 ──────────────────────────────────────────────
-   分组页签栏。八个页签共用这一套框架，改这里会影响全部页签。
-   刻意不做页头：控制台的竖向空间全部留给内容，计数挂在页签徽章上。 */
+   分组页签栏。九个页签共用这一套框架，改这里会影响全部页签。
+   刻意不做页头：控制台的竖向空间全部留给内容，计数挂在页签右侧。
+
+   断点只有四档，管理台全部样式文件（含 feature/admin/*.css）都只用这四个值：
+
+     39.99em  640px   手机竖屏：表格换卡片、多列压成一列
+     47.99em  768px   小平板：主从台上下排、四格统计条折两列
+     63.99em  1024px  平板：面板头竖排、邀请卡三列
+     79.99em  1280px  窄桌面：页签栏转横排（同 AdminPage.tsx 的 useMediaQuery）
+
+   一律用 em 且一律 max-width，只有邀请卡的三列区间用了 min-width。
+   新增断点前先确认这四档真的容不下——原本十一个断点就是这么攒出来的。 */
 
 .admin-page__nav-dot {
   flex: 0 0 auto;
@@ -42,16 +52,46 @@
   position: sticky;
   top: var(--space-md);
   gap: 2px;
-  /* The selected item owns the navigation indicator. */
-  border-inline-end: none;
   /* Mantine 的纵向 tab 列表默认会裁掉溢出，右侧计数徽章会被切掉一半。 */
   overflow: visible;
 }
 
+/*
+ * 撤掉 Mantine default 变体挂在 tab 列表上的那条 ::before 分隔线。
+ *
+ * 竖排时它钉在右缘、拉满全高，把导航和工作区切成两块看板；选中项自己已经有底色
+ * 和竖条，这条线是第二套边界，不承担任何信息。横排那一档还会和下面显式声明的
+ * border-block-end 叠成双线。
+ *
+ * 只能取消 content：这条线画在伪元素里，border 是写死的 1px，元素自身的
+ * border-* 覆盖不到它。
+ */
+.admin-page__domain-nav::before {
+  content: none;
+}
+
+/* 中文没有大小写，字距只会把「人员」拆成「人 员」。大写与字距按 SectionHeader
+   同一条规则处理：只给拉丁字母。 */
+/* 组标题后面接一条细线补满剩余宽度。九个页签分四组，光靠字号和间距分组，扫
+   视时读到的是一列长短不一的文字；一条线把「这里换组了」说清楚，不占高度。 */
 .admin-page__nav-group {
-  padding: var(--space-md) 10px var(--space-xs);
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+  padding: var(--space-lg) var(--space-sm) var(--space-sm);
   color: var(--text-muted);
   font-size: var(--text-micro);
+  font-weight: var(--fw-medium);
+}
+
+.admin-page__nav-group::after {
+  content: "";
+  flex: 1 1 auto;
+  block-size: 1px;
+  background: var(--border-subtle);
+}
+
+.admin-page__nav-group:lang(en) {
   font-weight: var(--fw-strong);
   letter-spacing: 0.08em;
   text-transform: uppercase;
@@ -66,19 +106,23 @@
   gap: var(--space-sm);
   inline-size: 100%;
   min-inline-size: 0;
-  padding: 9px 10px;
+  min-block-size: var(--control-height-regular);
+  padding: var(--space-sm) var(--space-md);
   border: 0;
-  border-radius: var(--radius-control);
+  border-radius: var(--radius-surface);
   color: var(--text-secondary);
-  font-size: var(--text-sm);
+  font-size: var(--text-body);
   font-weight: var(--fw-medium);
   transition: background var(--transition-fast), color var(--transition-fast);
 }
 
+/* 单行省略号要 overflow:hidden，行盒就必须真的装得下字形：Mantine 给 tabLabel 的
+   行高等于字号，而中文字形比 em 盒高，上下各被切掉 1px。行高按正文档给。 */
 .admin-page__domain-nav .mantine-Tabs-tabLabel {
   flex: 1 1 auto;
   min-inline-size: 0;
   overflow: hidden;
+  line-height: var(--lh-tight);
   text-align: start;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -88,42 +132,57 @@
   flex: 0 0 auto;
 }
 
-.admin-page__domain-nav .mantine-Tabs-tab:hover {
-  background: var(--surface-raised);
+/* 悬停用中性提亮，与下面的选中态刻意不同源：两者都用 raised 时，鼠标扫过一列
+   页签会让每一项轮流长得跟「当前所在」一样，反而看不出自己在哪。 */
+.admin-page__domain-nav .mantine-Tabs-tab:hover:not([data-active]) {
+  background: color-mix(in srgb, var(--text-primary) 6%, transparent);
   color: var(--text-primary);
 }
 
+/*
+ * 选中态：品牌色底 + 一条同色竖条 + 加重的字。
+ *
+ * 原本是中性 raised 台面，理由是「控制台导航是 chrome，颜色留给数据」。但
+ * raised 在深色模式下只比工作区高 8 个亮度点，实机上这块台面几乎看不见，
+ * 唯一有效的线索是那条 3px 竖条——一个只靠 3 像素表达的状态太弱了。改用
+ * --brand-tint：它是专为「压在表面上的品牌色底」调的档，饱和度不足以喧宾夺主，
+ * 但一眼能认。用内阴影而不是 ::before 画竖条，避开 Mantine 自己的伪元素。
+ */
 .admin-page__domain-nav .mantine-Tabs-tab[data-active] {
   background: var(--brand-tint);
-  color: var(--brand-text);
-  /* 用内阴影而不是 ::before 画选中条，避开 Mantine 自己的伪元素。 */
+  color: var(--brand-on-tint);
+  font-weight: var(--fw-strong);
   box-shadow: inset 3px 0 0 var(--brand-fill);
 }
 
-.admin-page__nav-count {
-  display: inline-block;
-  min-inline-size: 1.5rem;
-  padding: 1px 7px;
-  border: 1px solid var(--border-subtle);
-  border-radius: var(--shape-pill);
-  background: var(--surface-raised);
-  color: var(--text-muted);
-  font-size: var(--text-micro);
-  font-variant-numeric: tabular-nums;
-  font-weight: var(--fw-medium);
-  text-align: center;
+/* 图标是选中项里唯一着色的东西，负责把「选中」和「悬停」区分开。 */
+.admin-page__domain-nav .mantine-Tabs-tab[data-active] .mantine-Tabs-tabSection {
+  color: var(--brand-on-tint);
 }
 
-.admin-page__nav-count--warn {
-  border-color: var(--status-warning);
-  background: color-mix(in srgb, var(--status-warning) 12%, transparent);
+/*
+ * 计数是数据，不是标签：裸数字 + 显示字体 + 表格数字对齐，不套药丸。药丸的边框和
+ * 底色会在导航右缘排出一列与内容无关的方块，在面板头上则是第二种徽章画法。
+ * 导航轨和面板头共用这一份，管理台内不再有第二种计数写法。
+ */
+.admin-count {
+  display: inline-block;
+  color: var(--text-muted);
+  font-family: var(--font-display);
+  font-size: var(--text-meta);
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum" 1;
+  font-weight: var(--fw-strong);
+  text-align: end;
+}
+
+/* 需要管理员动手的数量才转警示色，仍然只染字不加容器。 */
+.admin-count--warn {
   color: var(--status-warning);
 }
 
-.admin-page__domain-nav .mantine-Tabs-tab[data-active] .admin-page__nav-count {
-  border-color: var(--brand-border);
-  background: var(--brand-tint);
-  color: var(--brand-text);
+.admin-page__domain-nav .mantine-Tabs-tab[data-active] .admin-count {
+  color: var(--text-secondary);
 }
 
 /* Compact layout preserves tablist semantics in a horizontally scrollable rail. */
@@ -151,7 +210,7 @@
   /* 竖排那套是「占满整列」，横排必须收回按内容撑开。
      继承 100% 之后每个胶囊都占满整行宽，一屏只看得见一个，其余全靠横滚。 */
   inline-size: auto;
-  padding: 7px var(--space-md);
+  padding: var(--space-xs) var(--space-md);
   border: 1px solid var(--border-subtle);
   border-radius: var(--shape-pill);
   background: var(--surface-base);
@@ -163,10 +222,12 @@
   flex: 0 0 auto;
 }
 
+/* 横排放不下竖条，青瓷改由描边承担；底色与文字沿用竖排那一档，两种排布对
+   「你在这里」说的是同一句话。 */
 .admin-page__workspace--compact .admin-page__domain-nav .mantine-Tabs-tab[data-active] {
-  border-color: var(--brand-border);
+  border-color: var(--brand-fill);
   background: var(--brand-tint);
-  color: var(--brand-text);
+  color: var(--brand-on-tint);
   box-shadow: none;
 }
 
@@ -205,6 +266,116 @@
   min-block-size: 0;
 }
 
+/* ── 面板 ────────────────────────────────────────────────────
+ *
+ * 管理台唯一的受管面板配方，就是 DESIGN.md 的 M2 Plate：台面色 + 一道发丝描边 +
+ * 顶棱。九个页签里所有带边框的内容块都从这里取材质。
+ *
+ * 边界很硬：admin 目录下的其它样式文件不得再自行声明 border / border-radius /
+ * background 来造第二种面板——那正是这次要消掉的东西（原本六套并存）。各页签的
+ * 样式只描述自己怎么排版（grid、flex、尺寸），材质一律来自这里。
+ */
+.admin-panel {
+  display: flex;
+  flex-direction: column;
+  min-inline-size: 0;
+  min-block-size: 0;
+  overflow: hidden;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-surface);
+  background: var(--plate-fill);
+  box-shadow: var(--edge-top);
+}
+
+/* 面板头。44px 是触控靶面下限，不是间距标度的一档。 */
+.admin-panel__head {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-sm);
+  min-block-size: 44px;
+  padding: var(--space-sm) var(--space-lg);
+  border-block-end: 1px solid var(--border-subtle);
+}
+
+.admin-panel__title {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-sm);
+  min-inline-size: 0;
+  font-size: var(--text-card);
+  font-weight: var(--fw-medium);
+  line-height: var(--lh-tight);
+}
+
+/* Mantine 的 Text 自带字号和字重，不显式收回来就会在每个调用点各写一份
+   size/fw，面板标题也就有了第二、第三种写法。 */
+.admin-panel__title > .mantine-Text-root {
+  min-inline-size: 0;
+  font-size: inherit;
+  font-weight: inherit;
+  line-height: inherit;
+}
+
+/* 头部两侧都可能是长文本，交叉轴上必须允许收缩。 */
+.admin-panel__head > * {
+  min-inline-size: 0;
+}
+
+.admin-panel__body {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-block-size: 0;
+  padding: var(--space-lg);
+}
+
+/* 表格和清单自带行距与分隔线，面板不再补一层内边距，否则左缘会出现两级缩进。 */
+.admin-panel__body--flush {
+  padding: 0;
+}
+
+/* 面板内滚动交给 body 自己，避免外层再套一条滚动条。 */
+.admin-panel__body--scroll {
+  overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: var(--border-strong) transparent;
+}
+
+/*
+ * 面板里的空位仍然是同一个 EmptyState（一个图标 + 一句原因 + 至多一个动作），
+ * 只把图标和留白收一档，好装进运维页那种 9rem 高的小面板。
+ * 这是尺寸修饰，不是第二种空状态。
+ */
+.admin-empty {
+  padding: var(--space-lg) var(--space-md);
+}
+
+.admin-empty .empty-state__icon {
+  inline-size: 36px;
+  block-size: 36px;
+  margin-block-end: var(--space-sm);
+}
+
+/* 图标的宽高由组件以属性给出，属性压不过声明，这里必须显式收。 */
+.admin-empty .empty-state__icon svg {
+  inline-size: 20px;
+  block-size: 20px;
+}
+
+.admin-empty .empty-state__title {
+  font-size: var(--text-body);
+}
+
+.admin-empty .empty-state__description {
+  font-size: var(--text-sm);
+}
+
+.admin-empty .empty-state__actions {
+  margin-block-start: var(--space-md);
+}
+
 /* ── 版式 A：列表台 ──────────────────────────────────────────
    成员 / 邀请 / 审计 三个页签共用。工具条语序固定，三个页签一致：
    搜索（伸展）→ 筛选 → ——— → 主操作。 */
@@ -235,27 +406,52 @@
   width: 100%;
 }
 
+/* 统计条是一块面板（材质来自 .admin-panel），内部只负责分栏。
+   分隔线画在格子上，不再靠「容器铺描边色 + 1px 网格间隙」露底——那种做法要求
+   容器底色等于描边色，与面板的台面色互斥。 */
 .admin-stats {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 1px;
-  overflow: hidden;
-  border: 1px solid var(--border-subtle);
-  border-radius: var(--radius-surface);
-  /* 网格间隙露出的就是描边色，省掉每格各画一条分隔线。 */
-  background: var(--border-subtle);
+  /* 统计条是页签列里的固定高度部件。默认可收缩，父列高度一紧就被压掉几像素，
+     而 .admin-panel 自带 overflow:hidden，压掉的正好是底部那行标签。
+     高度不足要由下面能滚的表格吸收，不是由这条读数吸收。 */
+  flex: 0 0 auto;
 }
 
 .admin-stat {
-  padding: 10px var(--space-md);
-  background: var(--surface-base);
+  padding: var(--space-md) var(--space-lg);
+  border-inline-start: 1px solid var(--border-subtle);
 }
 
+.admin-stat:first-child {
+  border-inline-start: 0;
+}
+
+/* 面板内部的统计条不是独立面板，只用上下两条发丝线与相邻块分开。 */
+.admin-stats--inset {
+  border-block: 1px solid var(--border-subtle);
+}
+
+/* 三格的统计条（运维页的用量摘要）。列数是排布，不是材质。 */
+.admin-stats--3 {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+/* 数据密集的页面上，数字是最响的元素：显示字体、h1 字号、表格数字对齐。
+   周围的标签退到 micro，读数与说明的对比就此拉开。 */
 .admin-stat__value {
-  font-size: var(--text-h3);
+  font-family: var(--font-display);
+  font-size: var(--text-h1);
   font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum" 1;
   font-weight: var(--fw-strong);
-  line-height: 1.15;
+  letter-spacing: -0.02em;
+  line-height: 1.05;
+}
+
+/* 数字全是拉丁字形，负字距安全；但标签可能是中文，必须复位。 */
+.admin-stat__label {
+  letter-spacing: normal;
 }
 
 .admin-stat__value--ok {
@@ -264,6 +460,10 @@
 
 .admin-stat__value--warn {
   color: var(--status-warning);
+}
+
+.admin-stat__value--danger {
+  color: var(--status-danger);
 }
 
 .admin-stat__label {
@@ -275,6 +475,15 @@
 @media (max-width: 47.99em) {
   .admin-stats {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  /* 折成两列后，每行首格的竖线要撤掉，第二行整体补一条横线。 */
+  .admin-stat:nth-child(odd) {
+    border-inline-start: 0;
+  }
+
+  .admin-stat:nth-child(n + 3) {
+    border-block-start: 1px solid var(--border-subtle);
   }
 
   .admin-filter-chip {
@@ -379,19 +588,40 @@
 }
 
 /* Tables separate rows with horizontal rules; spacing and alignment distinguish columns. */
+
+/* 表头不再铺一层下沉底色：面板已经是一块台面，表头换个底色就是在同一块面板里
+   再嵌一层表面。改用一条更重的分隔线承担「这里是表头」。 */
 .admin-table .mantine-Table-thead {
-  background: var(--surface-sunken);
+  background: transparent;
 }
 
+/* 大写和字距对中文列名（「战力」「加入时间」）只会拆字，按字符集分支。 */
 .admin-table .mantine-Table-th {
   padding: var(--space-sm) var(--space-md);
-  border-block-end: 1px solid var(--border-subtle);
+  border-block-end: 1px solid var(--border-strong);
   color: var(--text-muted);
+  font-size: var(--text-meta);
+  font-weight: var(--fw-medium);
+  white-space: nowrap;
+}
+
+/* 虚拟化的成员表把表头粘在滚动区顶部，而 sticky 的格子必须不透明，否则滚过去的
+   行会从表头底下透出来。底色取台面本身，看上去仍是「表头不另铺一层」；分隔线在
+   border-collapse 下不随格子定位，改用 inset 投影画。 */
+.admin-table [data-sticky-header] .mantine-Table-th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  border-block-end-color: transparent;
+  background: var(--plate-fill);
+  box-shadow: inset 0 -1px 0 var(--border-strong);
+}
+
+.admin-table .mantine-Table-th:lang(en) {
   font-size: var(--text-micro);
   font-weight: var(--fw-strong);
   letter-spacing: 0.04em;
   text-transform: uppercase;
-  white-space: nowrap;
 }
 
 .admin-table .mantine-Table-td {
@@ -457,6 +687,14 @@
 
 .admin-cell-status--inactive {
   color: var(--status-danger);
+}
+
+/* 时间列：等宽数字让上下两行的年月日对齐，扫一列就能看出谁很久没来了。 */
+.admin-cell-timestamp {
+  color: var(--text-secondary);
+  font-size: var(--text-meta);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
 }
 
 .admin-invite-usage {
@@ -578,7 +816,7 @@
   display: none;
 }
 
-@media (max-width: 640px) {
+@media (max-width: 39.99em) {
   .admin-member-table-desktop {
     display: none;
   }
@@ -586,7 +824,7 @@
   .admin-member-cards-mobile {
     display: flex;
     flex-direction: column;
-    gap: 6px;
+    gap: var(--space-sm);
   }
 
   .admin-member-card {
@@ -612,7 +850,7 @@
   }
 }
 
-@media (min-width: 40em) and (max-width: 64em) {
+@media (min-width: 40em) and (max-width: 63.99em) {
   .admin-invite-card__details,
   .admin-invite-card__actions {
     grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -623,7 +861,7 @@
   }
 }
 
-@media (max-width: 30em) {
+@media (max-width: 39.99em) {
   .admin-invite-search {
     width: 100%;
   }
@@ -631,6 +869,7 @@
 
 /* ── Shared master-detail workspace for roles, badges, and classes ── */
 
+/* 材质来自 .admin-panel；这里只描述两栏怎么分。 */
 .admin-md {
   /* 左栏宽度：容得下最长的角色名加状态徽标，又不至于把右边挤窄。 */
   --admin-md-master: 15rem;
@@ -639,19 +878,17 @@
   grid-template-columns: var(--admin-md-master) minmax(0, 1fr);
   flex: 1 1 auto;
   min-block-size: 30rem;
-  overflow: hidden;
-  border: 1px solid var(--border-subtle);
-  border-radius: var(--radius-surface);
-  background: var(--surface-base);
 }
 
+/* 不铺底色：左右两栏是同一块板子的两半，中间那条竖线就是分界。原先铺下沉面是想
+   把左栏标成「轨」，但下沉面是导航外壳那一档，比它所在的板子低两级——深色模式下
+   那是全站最暗的色值，于是一列清单看上去像板子上挖出来的洞。 */
 .admin-md__master {
   display: flex;
   min-block-size: 0;
   flex-direction: column;
   overflow: hidden;
   border-inline-end: 1px solid var(--border-subtle);
-  background: var(--surface-sunken);
 }
 
 .admin-md__master-head {
@@ -666,25 +903,43 @@
   min-block-size: 0;
 }
 
-/* 可拖拽清单行的外壳：手柄 + .admin-md__item。手柄是独立按钮，不能嵌进那个
-   按钮里，所以行外层多一层 div。职业、职业标签、徽章三张清单共用这一份。 */
+/* 整行负责选中/悬停底色；编辑、拖拽和删除仍是并列按钮，避免嵌套交互元素。 */
 .admin-md__row {
   display: flex;
   align-items: center;
-  gap: 2px;
+  inline-size: 100%;
   min-inline-size: 0;
+  min-block-size: 44px;
+  border-radius: var(--radius-control);
+  background: transparent;
+  color: var(--text-secondary);
+  transition: background var(--transition-fast), color var(--transition-fast);
+}
+
+/* 悬停中性提亮、选中品牌色底，两个态刻意不同源——与导航轨同一对配方，理由也是
+   同一条：都从表面阶梯取色时，鼠标扫过一列会让每一项轮流长得跟「当前项」一样。
+   左栏不再是下沉面之后 raised 恰好等于脚下的板子，这两个态本来也必须换掉。 */
+.admin-md__row:hover {
+  background: color-mix(in srgb, var(--text-primary) 6%, transparent);
+  color: var(--text-primary);
+}
+
+.admin-md__row--active {
+  background: var(--brand-tint);
+  color: var(--brand-on-tint);
+  box-shadow: inset 3px 0 0 var(--brand-fill);
 }
 
 .admin-md__grip {
   display: grid;
   place-items: center;
   flex: 0 0 auto;
-  inline-size: 26px;
+  inline-size: 34px;
   /* 44px 触控靶面，和 .admin-md__item 同一档。 */
   min-block-size: 44px;
   padding: 0;
   border: 0;
-  border-radius: var(--radius-control);
+  border-radius: 0;
   background: transparent;
   color: var(--text-muted);
   cursor: grab;
@@ -693,7 +948,7 @@
 
 .admin-md__grip:hover {
   color: var(--text-primary);
-  background: var(--surface-raised);
+  background: transparent;
 }
 
 .admin-md__grip:focus-visible {
@@ -711,31 +966,39 @@
   align-items: center;
   justify-content: space-between;
   gap: var(--space-sm);
-  inline-size: 100%;
+  flex: 1 1 auto;
+  inline-size: auto;
+  min-inline-size: 0;
   /* 44px 触控靶面：清单项是这一页最主要的点击目标。 */
   min-block-size: 44px;
   padding: var(--space-xs) var(--space-sm);
   border: 0;
-  border-radius: var(--radius-control);
+  border-radius: 0;
   background: transparent;
-  color: var(--text-secondary);
+  color: inherit;
   font: inherit;
   text-align: start;
   cursor: pointer;
   transition: background var(--transition-fast), color var(--transition-fast);
 }
 
-.admin-md__item:hover {
-  background: var(--surface-raised);
-  color: var(--text-primary);
+/* 选中色由整行给，按钮本体跟着继承，避免同一行出现两种前景色。 */
+.admin-md__item--active {
+  color: inherit;
+  font-weight: var(--fw-medium);
 }
 
-/* 选中态和左侧页签栏同一套：品牌底色加一条内阴影当指示条，
-   不用 ::before 画竖线，免得和 Mantine 自己的伪元素打架。 */
-.admin-md__item--active {
-  background: var(--brand-tint);
-  color: var(--brand-text);
-  box-shadow: inset 3px 0 0 var(--brand-fill);
+.admin-md__row-action {
+  align-self: stretch;
+  flex: 0 0 36px;
+  inline-size: 36px;
+  min-block-size: 44px;
+  border-radius: 0;
+  background: transparent;
+}
+
+.admin-md__row-action:where(:disabled, [data-disabled]) {
+  background: transparent;
 }
 
 /* Labels may shrink; status metadata must remain visible. */
@@ -787,7 +1050,7 @@
   gap: var(--space-sm);
   padding: var(--space-sm) var(--space-lg);
   border-block-start: 1px solid var(--border-subtle);
-  background: var(--surface-base);
+  background: var(--plate-fill);
 }
 
 .admin-md__empty {
@@ -855,15 +1118,9 @@
   min-width: 0;
 }
 
+/* 材质来自 .admin-panel；这里只留锚点跳转时的让位距离。 */
 .site-config-card {
-  display: grid;
-  gap: 16px;
-  min-width: 0;
-  padding: var(--card-padding);
-  scroll-margin-top: 18px;
-  border: 1px solid var(--border-subtle);
-  border-radius: var(--radius-surface);
-  background: var(--surface-base);
+  scroll-margin-top: var(--space-lg);
 }
 
 /* 保存条。粘在视口底部，滚到哪里都够得着；只有 hasPendingChanges 时才渲染。 */
@@ -879,23 +1136,8 @@
   padding: var(--space-sm) var(--space-md);
   border: 1px solid var(--brand-border);
   border-radius: var(--radius-surface);
-  background: var(--surface-raised);
+  background: var(--plate-fill);
   box-shadow: var(--edge-top);
-}
-
-/* A divider and card-scale title establish the section boundary. */
-.site-config-card__header {
-  display: flex;
-  gap: var(--space-md);
-  align-items: center;
-  justify-content: space-between;
-  min-width: 0;
-  padding-block-end: var(--space-md);
-  border-block-end: 1px solid var(--border-subtle);
-}
-
-.site-config-card__header > div {
-  min-width: 0;
 }
 
 .site-config-title-row,
@@ -933,36 +1175,30 @@
   background: color-mix(in srgb, var(--brand-fill) 10%, transparent);
 }
 
-/* Explicit title class avoids coupling typography to DOM order. */
-.site-config-card__title {
-  font-size: var(--text-card);
-  line-height: var(--lh-tight);
-}
-
+/* 与导航轨的计数同一条规矩：数字裸着放，不套药丸也不占用品牌色。 */
 .site-config-count {
   flex: 0 0 auto;
-  padding: 3px var(--space-sm);
-  border-radius: var(--shape-pill);
-  color: var(--brand-text);
-  background: var(--brand-tint);
+  color: var(--text-muted);
   font-variant-numeric: tabular-nums;
 }
 
 .site-config-brand-block {
   display: grid;
-  /* 预览框从 160px 收到 104px：它只是确认「传上去的是哪张图」，
-     不需要占掉右边输入框一半的横向空间。
-     字段列封顶 26rem：公会名称是一行短文本，输入框宽过它装得下的内容，
-     只会让人以为这里该填一长串东西。 */
-  grid-template-columns: 104px minmax(0, 26rem);
+  grid-template-columns: 10rem minmax(0, 36rem);
   gap: var(--space-lg);
-  align-items: center;
+  align-items: start;
   justify-content: start;
+}
+
+.site-config-logo-field {
+  display: grid;
+  gap: var(--space-sm);
+  min-width: 0;
 }
 
 .site-config-logo-preview {
   display: grid;
-  width: 104px;
+  width: 100%;
   aspect-ratio: 1;
   place-items: center;
   overflow: hidden;
@@ -981,15 +1217,7 @@
 
 .site-config-brand-fields {
   display: grid;
-  gap: 14px;
-  min-width: 0;
-}
-
-/* Keep the upload action with its label; this row is not a separate surface. */
-.site-config-logo-upload {
-  display: grid;
-  gap: var(--space-sm);
-  justify-items: start;
+  gap: var(--space-md);
   min-width: 0;
 }
 
@@ -1015,8 +1243,10 @@
   transition: background var(--transition-normal);
 }
 
+/* 悬停只抬一档表面，不上品牌色：这一列开关有十来行，逐行染青瓷等于把整块表单
+   变成品牌色的走马灯。 */
 .site-config-feature-row:hover {
-  background: var(--brand-tint);
+  background: var(--surface-base);
 }
 
 .site-config-limits-sections {
@@ -1039,26 +1269,22 @@
   border-block-start: 1px solid var(--border-subtle);
 }
 
-@media (max-width: 820px) {
-  .site-config-card__header {
+@media (max-width: 63.99em) {
+  .site-config-card > .admin-panel__head {
+    align-items: flex-start;
     flex-direction: column;
-    align-items: stretch;
-  }
-
-  /* 卡头转成竖排后交叉轴变成横向，align-items: stretch 会把计数药丸拉成通栏一条。 */
-  .site-config-count {
-    align-self: start;
+    gap: var(--space-xs);
   }
 }
 
-@media (max-width: 560px) {
+@media (max-width: 39.99em) {
   .site-config-brand-block {
     grid-template-columns: 1fr;
     min-height: 0;
     justify-items: start;
   }
 
-  .site-config-card {
-    padding: 14px;
+  .site-config-logo-field {
+    width: 10rem;
   }
 }

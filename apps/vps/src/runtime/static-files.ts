@@ -1,3 +1,5 @@
+import type { StaticSiteBranding } from "@guild/application";
+import { applyStaticSecurityHeaders } from "@guild/shared/utils/static-security-headers";
 import { createHash } from "node:crypto";
 import { constants, type Stats } from "node:fs";
 import { lstat, open, realpath, type FileHandle } from "node:fs/promises";
@@ -8,11 +10,6 @@ const INDEX_PATH = "/index.html";
 const MAX_INDEX_BYTES = 1024 * 1024;
 const IMMUTABLE_CACHE = "public, max-age=31536000, immutable";
 const INDEX_CACHE = "no-cache, no-store, must-revalidate, no-transform";
-
-export type StaticSiteBranding = Readonly<{
-  siteName: string;
-  siteLogoUrl: string;
-}>;
 
 export type VpsStaticFilesDependencies = Readonly<{
   distRoot: string;
@@ -34,6 +31,53 @@ export function createVpsStaticFiles(dependencies: VpsStaticFilesDependencies): 
   if (!dependencies.distRoot.trim()) throw new TypeError("Static dist root is required");
   const configuredRoot = path.resolve(dependencies.distRoot);
   let root: Promise<string> | undefined;
+  /*
+   * index.html 随部署不可变（发布流程先停进程再替换 dist），进程内只读一次；
+   * 渲染结果按品牌三元组缓存，站点配置变更时自动重渲染。读取失败不缓存，
+   * 修复 dist 后下一请求即恢复，无需重启进程。
+   */
+  let rawIndexHtml: string | undefined;
+  let renderedIndex: Readonly<{ key: string; bytes: Uint8Array<ArrayBuffer>; etag: string }> | null = null;
+
+  const serveIndex = async (request: Request, rootPath: string): Promise<Response> => {
+    try {
+      const html = rawIndexHtml ?? (rawIndexHtml = await loadIndexHtml(rootPath));
+      const branding = await dependencies.getSiteBranding();
+      const siteName = branding.siteName.trim();
+      const siteDescription = branding.siteDescription.trim();
+      const siteLogoUrl = branding.siteLogoUrl.trim();
+      if (!siteName || !siteDescription || !siteLogoUrl) throw new Error("Invalid site branding");
+      const key = JSON.stringify([siteName, siteDescription, siteLogoUrl]);
+      if (renderedIndex?.key !== key) {
+        const bytes = new TextEncoder().encode(html
+          .replaceAll("{{SITE_NAME}}", () => escapeHtml(siteName))
+          .replaceAll("{{SITE_DESCRIPTION}}", () => escapeHtml(siteDescription))
+          .replaceAll("{{SITE_LOGO_URL}}", () => escapeHtml(siteLogoUrl)));
+        renderedIndex = { key, bytes, etag: `"${createHash("sha256").update(bytes).digest("hex")}"` };
+      }
+      const { bytes, etag } = renderedIndex;
+      const headers = new Headers({
+        "Cache-Control": INDEX_CACHE,
+        "Content-Length": String(bytes.byteLength),
+        "Content-Type": "text/html; charset=UTF-8",
+        ETag: etag,
+      });
+      applyStaticSecurityHeaders(headers, request.url);
+      if (ifNoneMatch(request.headers.get("If-None-Match"), etag)) {
+        return new Response(null, { status: 304, headers });
+      }
+      return new Response(request.method === "HEAD" ? null : bytes, { status: 200, headers });
+    } catch (error) {
+      if (
+        isErrno(error, "ENOENT")
+        || isErrno(error, "ELOOP")
+        || (error instanceof Error && error.message === "Static index unavailable")
+      ) {
+        return staticError(request, 500, "Static index unavailable");
+      }
+      return staticError(request, 500, "Static site configuration unavailable");
+    }
+  };
 
   return async (request) => {
     const url = new URL(request.url);
@@ -49,11 +93,11 @@ export function createVpsStaticFiles(dependencies: VpsStaticFilesDependencies): 
     const rootPath = await (root ??= realpath(configuredRoot));
     const htmlNavigation = acceptsHtml(request);
     if (pathname === INDEX_PATH) {
-      return serveIndex(request, rootPath, dependencies.getSiteBranding);
+      return serveIndex(request, rootPath);
     }
     if (pathname === "/" || pathname.endsWith("/")) {
       return htmlNavigation
-        ? serveIndex(request, rootPath, dependencies.getSiteBranding)
+        ? serveIndex(request, rootPath)
         : staticError(request, 404, "Static asset not found");
     }
 
@@ -61,7 +105,7 @@ export function createVpsStaticFiles(dependencies: VpsStaticFilesDependencies): 
     if (located.kind === "outside") return staticError(request, 404, "Static asset not found");
     if (located.kind === "directory" || (located.kind === "missing" && !looksLikeAsset(pathname))) {
       return htmlNavigation
-        ? serveIndex(request, rootPath, dependencies.getSiteBranding)
+        ? serveIndex(request, rootPath)
         : staticError(request, 404, "Static asset not found");
     }
     if (located.kind === "missing") return staticError(request, 404, "Static asset not found");
@@ -93,51 +137,15 @@ async function locate(root: string, pathname: string): Promise<LocatedPath> {
   }
 }
 
-async function serveIndex(
-  request: Request,
-  root: string,
-  getSiteBranding: VpsStaticFilesDependencies["getSiteBranding"],
-): Promise<Response> {
+async function loadIndexHtml(root: string): Promise<string> {
   const located = await locate(root, INDEX_PATH);
-  if (located.kind !== "file") return staticError(request, 500, "Static index unavailable");
-
-  let handle: FileHandle | null = null;
+  if (located.kind !== "file") throw new Error("Static index unavailable");
+  const opened = await openVerifiedFile(root, located);
+  if (!opened) throw new Error("Static index unavailable");
   try {
-    const opened = await openVerifiedFile(root, located);
-    if (!opened) return staticError(request, 500, "Static index unavailable");
-    handle = opened.handle;
-    const html = await readIndexBounded(handle);
-    await handle.close();
-    handle = null;
-
-    const branding = await getSiteBranding();
-    const siteName = branding.siteName.trim();
-    const siteLogoUrl = branding.siteLogoUrl.trim();
-    if (!siteName || !siteLogoUrl) throw new Error("Invalid site branding");
-    const bytes = Buffer.from(html
-      .replaceAll("{{SITE_NAME}}", () => escapeHtml(siteName))
-      .replaceAll("{{SITE_LOGO_URL}}", () => escapeHtml(siteLogoUrl)), "utf8");
-    const etag = `"${createHash("sha256").update(bytes).digest("hex")}"`;
-    const headers = new Headers({
-      "Cache-Control": INDEX_CACHE,
-      "Content-Length": String(bytes.byteLength),
-      "Content-Type": "text/html; charset=UTF-8",
-      ETag: etag,
-    });
-    applySecurityHeaders(headers, request.url);
-    if (ifNoneMatch(request.headers.get("If-None-Match"), etag)) {
-      return new Response(null, { status: 304, headers });
-    }
-    return new Response(request.method === "HEAD" ? null : bytes, { status: 200, headers });
-  } catch (error) {
-    await handle?.close().catch(() => undefined);
-    if (isErrno(error, "ENOENT") || isErrno(error, "ELOOP")) {
-      return staticError(request, 500, "Static index unavailable");
-    }
-    if (error instanceof RangeError || (error instanceof Error && error.message === "Invalid site branding")) {
-      return staticError(request, 500, "Static site configuration unavailable");
-    }
-    return staticError(request, 500, "Static site configuration unavailable");
+    return await readIndexBounded(opened.handle);
+  } finally {
+    await opened.handle.close().catch(() => undefined);
   }
 }
 
@@ -163,7 +171,7 @@ async function serveFile(
       ETag: etag,
       "Last-Modified": stats.mtime.toUTCString(),
     });
-    applySecurityHeaders(headers, request.url);
+    applyStaticSecurityHeaders(headers, request.url);
 
     if (ifNoneMatch(request.headers.get("If-None-Match"), etag)) {
       await handle.close();
@@ -331,34 +339,12 @@ function escapeHtml(value: string): string {
   })[character]!);
 }
 
-function applySecurityHeaders(headers: Headers, requestUrl: string): void {
-  const url = new URL(requestUrl);
-  const socketSource = `${url.protocol === "https:" ? "wss:" : "ws:"}//${url.host}`;
-  headers.set("X-Content-Type-Options", "nosniff");
-  headers.set("X-Frame-Options", "DENY");
-  headers.set("Referrer-Policy", "strict-origin-when-cross-origin");
-  headers.set("Permissions-Policy", "camera=(), microphone=(), geolocation=()");
-  headers.set("Content-Security-Policy", [
-    "default-src 'self'",
-    "script-src 'self'",
-    "style-src 'self' 'unsafe-inline'",
-    "img-src 'self' data: blob: https:",
-    "media-src 'self' blob:",
-    `connect-src 'self' ${socketSource}`,
-    "font-src 'self' data:",
-    "worker-src 'self' blob:",
-    "object-src 'none'",
-    "frame-src https://www.youtube-nocookie.com https://player.bilibili.com https://player.vimeo.com https://www.tiktok.com",
-    "frame-ancestors 'none'",
-  ].join("; "));
-}
-
 function staticError(request: Request, status: number, message: string): Response {
   const headers = new Headers({
     "Cache-Control": "no-cache",
     "Content-Type": "text/plain; charset=UTF-8",
   });
-  applySecurityHeaders(headers, request.url);
+  applyStaticSecurityHeaders(headers, request.url);
   return new Response(request.method === "HEAD" ? null : message, { status, headers });
 }
 

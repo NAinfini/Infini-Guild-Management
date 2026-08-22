@@ -3,13 +3,12 @@ import { createAuthorizationContext, createRequestContext } from "@guild/kernel"
 import {
   PERMISSIONS,
   PERMISSION_ID,
-  SITE_OWNER_LEVEL,
-  SITE_OWNER_ROLE_ID,
   type Permission,
 } from "@guild/shared/constants/roles";
-import type { AccountProvisioningStore, AuthStore, ManagedUserTarget, RoleRecord } from "./auth-types";
+import type { AccountProvisioningStore, AuthStore, InviteRecord, ManagedUserTarget, RoleRecord } from "./auth-types";
 import { IdentityAdminService } from "./identity-admin-service";
-import { createInviteTokenCodec } from "./crypto";
+import { createInviteTokenCodec, digestToken } from "./crypto";
+import type { AuditEventWrite } from "../audit/public.js";
 
 const NOW = "2026-08-09T12:00:00.000Z";
 const target: ManagedUserTarget = {
@@ -22,19 +21,39 @@ const destination: RoleRecord = {
   permissions: new Set(), assignedUserCount: 0, revisionToken: "officer-v1",
   createdAt: NOW, updatedAt: NOW,
 };
-const ownerRole: RoleRecord = {
-  id: SITE_OWNER_ROLE_ID, name: "Site Owner", level: SITE_OWNER_LEVEL, color: "#d4af37",
-  permissions: new Set(PERMISSIONS), assignedUserCount: 1, revisionToken: "owner-role-v1",
+const memberRole: RoleRecord = {
+  ...destination,
+  id: "member",
+  name: "Member",
+  level: 100,
+  revisionToken: "member-v1",
+};
+const adminRole: RoleRecord = {
+  id: "admin", name: "Admin", level: 1_000, color: "red",
+  permissions: new Set(PERMISSIONS), assignedUserCount: 1, revisionToken: "admin-role-v1",
   createdAt: NOW, updatedAt: NOW,
 };
-const ownerTarget: ManagedUserTarget = {
+const managerTarget: ManagedUserTarget = {
   ...target,
-  id: "owner-2",
-  username: "Owner Two",
-  roleId: SITE_OWNER_ROLE_ID,
-  roleLevel: SITE_OWNER_LEVEL,
-  rolePermissions: new Set(PERMISSIONS),
-  roleRevisionToken: ownerRole.revisionToken,
+  id: "manager-2",
+  username: "Manager Two",
+  roleId: "manager",
+  roleLevel: 500,
+  rolePermissions: new Set([PERMISSION_ID.ADMIN_ROLES_MANAGE]),
+  roleRevisionToken: "manager-role-v1",
+};
+const invite: InviteRecord = {
+  id: "invite-123",
+  createdBy: "admin",
+  roleId: destination.id,
+  roleName: destination.name,
+  roleColor: destination.color,
+  roleLevel: destination.level,
+  maxUses: 3,
+  usedCount: 0,
+  expiresAt: null,
+  createdAt: NOW,
+  revokedAt: null,
 };
 
 function context(input: Readonly<{
@@ -49,14 +68,10 @@ function context(input: Readonly<{
       userId: input.userId ?? "admin",
       sessionId: "session",
       roleId: input.roleId ?? "admin",
-      roleLevel: input.roleLevel ?? 900,
+      roleLevel: input.roleLevel ?? 1_000,
       permissions: input.permissions ?? [PERMISSION_ID.ADMIN_USERS_ROLE, PERMISSION_ID.ADMIN_USERS_ACTIVATE],
     }),
   });
-}
-
-function ownerContext(userId = "owner-1") {
-  return context({ userId, roleId: SITE_OWNER_ROLE_ID, roleLevel: SITE_OWNER_LEVEL, permissions: PERMISSIONS });
 }
 
 function service(
@@ -87,7 +102,44 @@ describe("account provisioning boundary", () => {
 });
 
 describe("invite search", () => {
-  it("decodes a full invite code into an exact id lookup", async () => {
+  it("creates and relists one stable ten-character public code", async () => {
+    let storedInvite = invite;
+    const createInvite = vi.fn(async (input: { id: string }, _audit: AuditEventWrite) => {
+      storedInvite = { ...invite, id: input.id };
+      return storedInvite;
+    });
+    const listInvites = vi.fn(async () => ({ data: [storedInvite], nextCursor: null, total: 1 }));
+    const value = service({
+      findRole: vi.fn(async () => destination),
+      createInvite,
+      listInvites,
+    });
+    const request = context({ permissions: [PERMISSION_ID.ADMIN_INVITE_MANAGE, PERMISSION_ID.ADMIN_INVITE_VIEW] });
+
+    const created = await value.createInvite(request, {
+      roleId: destination.id,
+      maxUses: 3,
+      expiresAt: null,
+    });
+    const listed = await value.listInvites(request, { visibility: "active", limit: 50 });
+
+    expect(created.code).toMatch(/^[A-Za-z0-9]{10}$/);
+    expect(listed.data[0]?.code).toBe(created.code);
+    expect(createInvite).toHaveBeenCalledWith(
+      expect.objectContaining({ tokenDigest: await digestToken(created.code) }),
+      expect.anything(),
+    );
+    expect(createInvite.mock.calls[0]![1].payload.context).toEqual([
+      { field: "role_id", value: { type: "reference", value: { id: destination.id, label: destination.name } } },
+      { field: "role_name", value: { type: "text", value: destination.name } },
+      { field: "max_uses", value: { type: "number", value: 3 } },
+      { field: "used_count", value: { type: "number", value: 0 } },
+      { field: "expires_at", value: { type: "null", value: null } },
+      { field: "status", value: { type: "code", value: "active" } },
+    ]);
+  });
+
+  it("uses a full invite code digest for an exact indexed lookup", async () => {
     const listInvites = vi.fn().mockResolvedValue({ data: [], nextCursor: null, total: 0 });
     const inviteTokens = createInviteTokenCodec("0123456789abcdef0123456789abcdef");
     const code = await inviteTokens.encode("invite-123");
@@ -103,7 +155,7 @@ describe("invite search", () => {
       limit: 50,
       cursor: null,
       search: "",
-      exactId: "invite-123",
+      exactTokenDigest: await digestToken(code),
       now: NOW,
     });
   });
@@ -123,6 +175,35 @@ describe("invite search", () => {
     })).rejects.toMatchObject({ code: "VALIDATION_ERROR", status: 400 });
     expect(listInvites).toHaveBeenCalledTimes(1);
   });
+
+  it("audits invite lifecycle state without exposing the public code", async () => {
+    const revokeInvite = vi.fn().mockResolvedValue(true);
+    const deleteInvite = vi.fn().mockResolvedValue(true);
+    const value = service({
+      findInvite: vi.fn().mockResolvedValue(invite),
+      revokeInvite,
+      deleteInvite,
+    });
+    const request = context({ permissions: [PERMISSION_ID.ADMIN_INVITE_MANAGE] });
+
+    await value.revokeInvite(request, invite.id);
+    await value.deleteInvite(request, invite.id);
+
+    const revokeAudit = revokeInvite.mock.calls[0]![2];
+    expect(revokeAudit.payload.changes).toEqual([{
+      field: "status",
+      before: { type: "code", value: "active" },
+      after: { type: "code", value: "revoked" },
+    }]);
+    expect(revokeAudit.payload.context.map(({ field }: { field: string }) => field))
+      .toEqual(["role_id", "role_name", "max_uses", "used_count", "expires_at"]);
+    const publicCode = await createInviteTokenCodec("0123456789abcdef0123456789abcdef").encode(invite.id);
+    expect(JSON.stringify(revokeAudit.payload)).not.toContain(publicCode);
+    expect(deleteInvite.mock.calls[0]![1].payload.context.at(-1)).toEqual({
+      field: "status",
+      value: { type: "code", value: "active" },
+    });
+  });
 });
 
 describe("IdentityAdminService guarded writes", () => {
@@ -130,8 +211,8 @@ describe("IdentityAdminService guarded writes", () => {
     const value = service({
       findManagedUsers: async () => [target],
       findRole: async () => destination,
-      countActiveOwners: async () => 1,
-      countActiveOwnersAmong: async () => 0,
+      countActiveRoleManagers: async () => 1,
+      countActiveRoleManagersAmong: async () => 0,
       setUsersRole: async () => "conflict",
     });
     await expect(value.updateUserRole(context(), target.id, destination.id))
@@ -143,76 +224,95 @@ describe("IdentityAdminService guarded writes", () => {
     await expect(value.batchReactivate(context(), [target.id]))
       .rejects.toMatchObject({ code: "NOT_FOUND", status: 404 });
   });
-});
 
-describe("site-owner hierarchy", () => {
-  it("does not let an admin promote itself to site owner", async () => {
-    const adminTarget = { ...target, id: "admin", roleId: "admin", roleLevel: 900 };
-    const value = service({ findManagedUsers: async () => [adminTarget], findRole: async () => ownerRole });
-    await expect(value.updateUserRole(context(), "admin", SITE_OWNER_ROLE_ID))
-      .rejects.toMatchObject({ code: "CONFLICT", status: 409 });
+  it("stores both role names in a single-user role change", async () => {
+    const setUsersRole = vi.fn().mockResolvedValue("updated");
+    const value = service({
+      findManagedUsers: vi.fn().mockResolvedValue([target]),
+      findRole: vi.fn(async (id: string) => id === memberRole.id ? memberRole : destination),
+      countActiveRoleManagers: vi.fn().mockResolvedValue(1),
+      countActiveRoleManagersAmong: vi.fn().mockResolvedValue(0),
+      setUsersRole,
+    });
+
+    await value.updateUserRole(context(), target.id, destination.id);
+    expect(setUsersRole.mock.calls[0]![1].payload.changes).toEqual([{
+      field: "role_id",
+      before: { type: "reference", value: { id: memberRole.id, label: memberRole.name } },
+      after: { type: "reference", value: { id: destination.id, label: destination.name } },
+    }]);
   });
 
-  it("lets a site owner appoint a lower-level user as another owner", async () => {
+  it("keeps the safe role snapshot when deleting a role", async () => {
+    const deleteRole = vi.fn().mockResolvedValue("deleted");
+    const role = {
+      ...destination,
+      color: "#336699",
+      permissions: new Set<Permission>([PERMISSION_ID.ADMIN_INVITE_VIEW]),
+    };
+    const value = service({ findRole: vi.fn().mockResolvedValue(role), deleteRole });
+
+    await value.deleteRole(
+      context({ permissions: [PERMISSION_ID.ADMIN_ROLES_MANAGE] }),
+      role.id,
+    );
+
+    expect(deleteRole.mock.calls[0]![1].payload.context).toEqual([
+      { field: "level", value: { type: "number", value: role.level } },
+      { field: "color", value: { type: "text", value: role.color } },
+      { field: "permissions", value: { type: "list", value: [
+        { type: "code", value: PERMISSION_ID.ADMIN_INVITE_VIEW },
+      ] } },
+      { field: "assigned_user_count", value: { type: "number", value: role.assignedUserCount } },
+    ]);
+  });
+});
+
+describe("dynamic role hierarchy", () => {
+  it("allows assigning the actor's exact role to a lower-level user", async () => {
     const setUsersRole = vi.fn(async () => "updated" as const);
     const value = service({
       findManagedUsers: async () => [target],
-      findRole: async () => ownerRole,
+      findRole: async () => adminRole,
       setUsersRole,
     });
-    await expect(value.updateUserRole(ownerContext(), target.id, SITE_OWNER_ROLE_ID)).resolves.toEqual({ ok: true });
+    await expect(value.updateUserRole(context({ permissions: PERMISSIONS }), target.id, adminRole.id))
+      .resolves.toEqual({ ok: true });
     expect(setUsersRole).toHaveBeenCalledWith(
-      expect.objectContaining({ targets: [target], destinationRole: ownerRole }),
+      expect.objectContaining({ targets: [target], destinationRole: adminRole }),
       expect.anything(),
     );
   });
 
-  it("lets an owner inspect an admin lock and reset another owner's lock", async () => {
-    const adminTarget = { ...target, id: "admin-2", roleId: "admin", roleLevel: 900 };
-    const resetUserLoginLock = vi.fn(async () => ({
-      outcome: "updated" as const,
-      previous: { failCount: 5, lockedUntil: "2026-08-09T12:01:00.000Z" },
-    }));
+  it("rejects a different role at the actor's level and every same-level user target", async () => {
+    const peerRole = { ...adminRole, id: "peer-admin", name: "Peer Admin" };
     const value = service({
-      findManagedUsers: async ([id]) => [id === ownerTarget.id ? ownerTarget : adminTarget],
-      readLoginFailure: async () => ({ failCount: 4, lockedUntil: "2026-08-09T12:00:30.000Z" }),
-      resetUserLoginLock,
+      findManagedUsers: async () => [{ ...target, id: "peer", roleId: "peer-admin", roleLevel: 1_000 }],
+      findRole: async () => peerRole,
     });
-    await expect(value.getLoginLock(ownerContext(), adminTarget.id)).resolves.toEqual({
-      failCount: 4,
-      lockedUntil: "2026-08-09T12:00:30.000Z",
-      isLocked: true,
-      retryAfterSeconds: 30,
-    });
-    await expect(value.resetLoginLock(ownerContext(), ownerTarget.id)).resolves.toEqual({
-      ok: true,
-      failCount: 5,
-      lockedUntil: "2026-08-09T12:01:00.000Z",
-      isLocked: true,
-      retryAfterSeconds: 60,
-    });
-    expect(resetUserLoginLock).toHaveBeenCalledOnce();
+    await expect(value.updateUserRole(context(), "peer", peerRole.id))
+      .rejects.toMatchObject({ code: "FORBIDDEN", status: 403 });
   });
 
-  it("protects the last active owner but allows peer-owner deactivation when another remains", async () => {
+  it("protects the last active role manager but allows removal when another remains", async () => {
     const setUsersActive = vi.fn(async () => "updated" as const);
     const last = service({
-      findManagedUsers: async () => [{ ...ownerTarget, id: "owner-1" }],
-      countActiveOwners: async () => 1,
-      countActiveOwnersAmong: async () => 1,
+      findManagedUsers: async () => [managerTarget],
+      countActiveRoleManagers: async () => 1,
+      countActiveRoleManagersAmong: async () => 1,
       setUsersActive,
     });
-    await expect(last.setUserActive(ownerContext(), "owner-1", false))
-      .rejects.toMatchObject({ code: "CONFLICT", status: 409, message: "At least one active site owner is required" });
+    await expect(last.setUserActive(context(), managerTarget.id, false))
+      .rejects.toMatchObject({ code: "CONFLICT", status: 409, message: "At least one active role manager is required" });
     expect(setUsersActive).not.toHaveBeenCalled();
 
     const multiple = service({
-      findManagedUsers: async () => [ownerTarget],
-      countActiveOwners: async () => 2,
-      countActiveOwnersAmong: async () => 1,
+      findManagedUsers: async () => [managerTarget],
+      countActiveRoleManagers: async () => 2,
+      countActiveRoleManagersAmong: async () => 1,
       setUsersActive,
     });
-    await expect(multiple.setUserActive(ownerContext(), ownerTarget.id, false)).resolves.toEqual({ ok: true });
+    await expect(multiple.setUserActive(context(), managerTarget.id, false)).resolves.toEqual({ ok: true });
     expect(setUsersActive).toHaveBeenCalledOnce();
   });
 });

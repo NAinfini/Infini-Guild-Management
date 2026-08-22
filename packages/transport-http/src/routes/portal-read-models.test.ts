@@ -100,6 +100,17 @@ describe("Portal read-model HTTP routes", () => {
     });
   });
 
+  it("rejects oversized public search results before reading storage", async () => {
+    const search = vi.fn();
+    const value = app([], false);
+    value.route("/api/search", createSearchRoutes({ service: new PortalReadModelService(store({ search })) }));
+
+    const response = await value.request("/api/search?q=member&limit=31");
+
+    expect(response.status).toBe(400);
+    expect(search).not.toHaveBeenCalled();
+  });
+
   it("keeps /api/admin/status permissioned and maps platform-neutral health names", async () => {
     const health = { read: vi.fn().mockResolvedValue({
       database: "ok",

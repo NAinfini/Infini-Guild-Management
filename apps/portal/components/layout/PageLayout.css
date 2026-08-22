@@ -1,5 +1,14 @@
+/*
+ * --page-rhythm：页面里两个同级块之间的唯一间距。
+ *
+ * 在这之前每个页面自己填一个数：wiki 24、公告 16、活动/花名册/仓库 12，
+ * 于是同一条「筛选栏到工作区」的缝在各页宽窄不一。间距不是页面的自由度，
+ * 是版面的常量——外壳内边距、双栏之间、卡片网格都已经是 12px，页面块间
+ * 没有理由是另一个数。改这里就改了全站，别在调用处再写数字。
+ */
 .page-layout {
   --page-layout-max-width: 100%;
+  --page-rhythm: var(--space-md);
   width: 100%;
   max-width: var(--page-layout-max-width);
   margin-inline: auto;

@@ -1,3 +1,4 @@
+// @vitest-environment node
 import { notifications } from "@mantine/notifications";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { z } from "zod";

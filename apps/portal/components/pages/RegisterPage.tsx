@@ -18,6 +18,7 @@ import {
 } from "../../services/AuthService";
 import { useSiteConfigStore } from "../../stores/site-config";
 import { transitionSession } from "../../session-transition";
+import { AuthLightfall } from "./AuthLightfall";
 import "./AuthPages.css";
 
 type RegisterFormValues = z.infer<typeof registerSchema>;
@@ -177,6 +178,7 @@ export function RegisterPage() {
 
   return (
     <div className="login-page">
+      <AuthLightfall />
       <div className="login-page__content">
         <header className="login-page__heading">
           <div className="login-page__brand">

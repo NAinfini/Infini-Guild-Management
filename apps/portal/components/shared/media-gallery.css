@@ -144,8 +144,7 @@
   background: rgb(0 0 0);
 }
 
-.infini-media-gallery-thumb-video img,
-.infini-media-gallery-thumb-vid {
+.infini-media-gallery-thumb-video img {
   width: 100%;
   height: 100%;
   object-fit: cover;

@@ -101,6 +101,8 @@ export const LIMITS = {
     guildWar: 20,
     storage: 24,
     users: 500,
+    publicUsers: 50,
+    search: 30,
     wiki: 50,
   },
   rateLimit: {
@@ -110,6 +112,7 @@ export const LIMITS = {
     uploads: { maxRequests: 20, windowMs: 60_000 },
     credentials: { maxRequests: 5, windowMs: 60_000 },
     reads: { maxRequests: 120, windowMs: 60_000 },
+    expensiveReads: { maxRequests: 30, windowMs: 60_000 },
   },
   websocket: {
     maxConnections: 1500,
@@ -118,6 +121,7 @@ export const LIMITS = {
   },
   cache: {
     mediaMaxAgeSeconds: 3600,
+    publicMediaEdgeMaxAgeSeconds: 60,
   },
   analytics: {
     referenceDurationMinutes: { max: 7 * 24 * 60 },

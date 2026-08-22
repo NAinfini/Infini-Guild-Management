@@ -63,6 +63,24 @@ describe("HTTP transport foundation", () => {
     expect(forbidden.headers.get("Referrer-Policy")).toBe("no-referrer");
   });
 
+  it("mirrors a rate-limit delay into the Retry-After header", async () => {
+    const app = errorApp();
+    app.get("/limited", () => {
+      throw new AppError({
+        code: "RATE_LIMITED",
+        status: 429,
+        message: "Slow down",
+        details: { retry_after_seconds: 7 },
+      });
+    });
+
+    const response = await app.request("/limited");
+
+    expect(response.status).toBe(429);
+    expect(response.headers.get("Retry-After")).toBe("7");
+    expect(await response.json()).toMatchObject({ details: { retry_after_seconds: 7 } });
+  });
+
   it("requires an explicit allowed Origin and XMLHttpRequest marker for mutations", async () => {
     const app = errorApp();
     app.use("*", createMutationSecurityMiddleware({

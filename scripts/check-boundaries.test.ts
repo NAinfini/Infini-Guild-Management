@@ -31,6 +31,55 @@ describe("package boundary guard", () => {
       ]);
   });
 
+  it("enforces the one-way package dependency matrix on alias imports", () => {
+    const sources = new Map([
+      ["apps/portal/api/bad-kernel.ts", ["import { AppError } from", '"@guild/kernel";'].join(" ")],
+      ["packages/kernel/src/good-shared.ts", ["import { ERROR_STATUS } from", '"@guild/shared/constants/errors";'].join(" ")],
+      ["packages/kernel/src/bad-server.ts", ["import { x } from", '"@guild/server";'].join(" ")],
+      ["packages/server/src/bad-transport.ts", ["import { y } from", '"@guild/transport-http";'].join(" ")],
+      ["apps/shared/utils/bad-unregistered.ts", ["import { z } from", '"@guild/worker";'].join(" ")],
+      ["apps/vps/src/good-application.ts", ["import { createPortalApiApp } from", '"@guild/application";'].join(" ")],
+      ["apps/portal/components/good-self.ts", ["import { api } from", '"@portal/api/client";'].join(" ")],
+    ]);
+
+    expect(findBoundaryViolations([...sources.keys()], (file) => sources.get(file) ?? "", () => true))
+      .toEqual([
+        "apps/portal/api/bad-kernel.ts: imports @guild/kernel outside the allowed package dependency matrix",
+        "packages/kernel/src/bad-server.ts: imports @guild/server outside the allowed package dependency matrix",
+        "packages/server/src/bad-transport.ts: imports @guild/transport-http outside the allowed package dependency matrix",
+        "apps/shared/utils/bad-unregistered.ts: imports unregistered package alias @guild/worker",
+      ]);
+  });
+
+  it("limits runtime-parity vps imports to cloudflare test files", () => {
+    const sources = new Map([
+      ["apps/cloudflare/src/runtime/parity.test.ts", ["import { Hub } from", '"@guild/vps/testing/notification-runtime";'].join(" ")],
+      ["apps/cloudflare/src/runtime/bad-runtime.ts", ["import { Hub } from", '"@guild/vps/testing/notification-runtime";'].join(" ")],
+    ]);
+
+    expect(findBoundaryViolations([...sources.keys()], (file) => sources.get(file) ?? "", () => true))
+      .toEqual([
+        "apps/cloudflare/src/runtime/bad-runtime.ts: imports @guild/vps/testing/notification-runtime outside the allowed package dependency matrix",
+      ]);
+  });
+
+  it("flags relative crossings into src-less packages and scopes the tooling exceptions", () => {
+    const sources = new Map([
+      ["apps/portal/utils/bad-relative-shared.ts", ["import { toEmbedVideoUrl } from", '"../../shared/utils/video";'].join(" ")],
+      ["apps/portal/vite.config.ts", ["import { DEFAULT_SITE_DESCRIPTION } from", '"../shared/config/site-branding.js";'].join(" ")],
+      ["apps/portal/components/fixture-strings.test.ts", ["import", '"../../api/client";'].join(" ")],
+      ["packages/persistence-sqlite/src/stores/good-test-tooling.test.ts", ["import", '"../../../../scripts/testing/application-migrations.js";'].join(" ")],
+      ["apps/cloudflare/scripts/good-dev-tooling.ts", ["import", '"../../../scripts/dev/media-fixtures.mjs";'].join(" ")],
+      ["packages/server/src/bad-prod-tooling.ts", ["import", '"../../../scripts/testing/application-migrations.js";'].join(" ")],
+    ]);
+
+    expect(findBoundaryViolations([...sources.keys()], (file) => sources.get(file) ?? "", () => true))
+      .toEqual([
+        "apps/portal/utils/bad-relative-shared.ts: crosses into apps/shared/utils/video",
+        "packages/server/src/bad-prod-tooling.ts: crosses into scripts/testing/application-migrations.js",
+      ]);
+  });
+
   it("requires cross-domain server imports to use a public entry point", () => {
     const sources = new Map([
       ["packages/server/src/modules/auth/bad-relative.ts", 'import "../audit/audit.js";'],

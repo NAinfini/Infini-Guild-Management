@@ -60,12 +60,11 @@ export function RosterPage() {
 
   return (
     <PageLayout className="roster-page">
-      <Stack gap="md" className="roster-page__body">
+      <Stack gap="var(--page-rhythm)" className="roster-page__body">
       <RosterFilterCard
         search={controller.search}
         onSearchChange={controller.setSearch}
         classFilter={classFilter}
-        loadedClassIds={controller.loadedClassIds}
         onClassFilterChange={controller.setClassFilter}
         sortMode={sortMode}
         onSortModeChange={controller.setSortMode}

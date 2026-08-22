@@ -1,9 +1,24 @@
 .app-shell-root {
   --shell-page-padding: 12px;
   --shell-content-gap: 12px;
+
+  /*
+   * 站点地面。配方在 semantic.css（--ambient-field），这里是它的主消费点。
+   *
+   * 之前把它画在工作区上，于是工作区有光、侧栏和页头没有，两块本来同色的面
+   * 沿着交界被照出一条硬缝；为了消缝又只能把光收到中间、离每条边都远——缝是
+   * 没了，背景也没了。那条路走不通：只要「谁有光」和「谁没有」不一致，就得在
+   * 「有缝」和「没背景」之间二选一。
+   *
+   * 现在画在外壳这一整块上，侧栏与工作区不画背景、直接透出这一张，天然无缝。
+   * fixed 定位留着是为了页头——它必须不透明，只能自己再画一遍同一张图，两张
+   * 图要对齐到同一个视口坐标系才不露缝，见下面 .app-header。
+   */
   height: 100vh;
   height: 100dvh;
-  background: var(--surface-base);
+  background-color: var(--surface-base);
+  background-image: var(--ambient-field);
+  background-attachment: fixed;
 }
 
 .app-skip-link {
@@ -37,7 +52,16 @@
   display: flex;
   flex-direction: column;
   border-right: 1px solid var(--border-subtle);
-  background: var(--surface-base);
+  /*
+   * 侧栏不参与环境光，退到表面阶梯低一档的 sunken。
+   *
+   * 让它透出根部那张图试过，问题是环境光的色相跟着路由变，导航条会随着当前页
+   * 一起换底色——一条常驻的导航不该有这种变化。退到 sunken 之后它成了一块下沉的
+   * 固定框：sunken（导航）< base + 光（工作区）< raised（卡片），三档从暗到亮，
+   * 「哪里是框、哪里是台面、哪里是内容」一眼分得开，而不再是「两块同色的面为什么
+   * 不一样」。
+   */
+  background: var(--surface-sunken);
 }
 
 .app-brand {
@@ -223,20 +247,69 @@
   align-items: center;
   gap: var(--space-md);
   border-bottom: 1px solid var(--border-subtle);
-  background: var(--surface-base);
+  /* 页头必须不透明——内容从它底下滚过去。所以它不能像侧栏那样留白，只能自己
+     再画一遍同一张图；fixed 让两张图对齐到同一个视口坐标系，接缝两边取值相等。 */
+  background-color: var(--surface-base);
+  background-image: var(--ambient-field);
+  background-attachment: fixed;
+}
+
+/*
+ * 页头色规：压在下边框上的一条区域实色线，只在标题一侧起头、向右淡出。
+ * 它是全站唯一始终可见的区域标记——换路由时先变的是这条线，比整页底色的
+ * 变化更早被察觉，等于给「我现在在哪个分区」一个不占版面的常驻答案。
+ */
+.app-header::after {
+  content: "";
+  position: absolute;
+  inset-block-end: -1px;
+  inset-inline-start: 0;
+  block-size: 2px;
+  inline-size: min(320px, 42%);
+  /* 实色而非渐变：架构守卫只放行 160deg 的材质渐变，而 160deg 落在 2px 高的
+     条上会在两像素内跑完，等于没有渐变。既然渐变在这个尺寸上表达不出来，
+     就不要为了「看起来讲究」硬塞一个失效的写法。 */
+  background: var(--domain-edge);
+  pointer-events: none;
 }
 
 .app-header__page-title {
   min-width: 0;
   max-width: 100%;
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
   overflow: hidden;
   margin: 0;
   color: var(--text-primary);
   font-size: var(--text-h2);
   font-weight: var(--fw-strong);
   line-height: var(--lh-tight);
-  text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+/* 图标底色跟着区域走：换分区时标题旁的方块会换色相，而不是永远一块灰。 */
+.app-header__page-glyph {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  inline-size: 26px;
+  block-size: 26px;
+  border-radius: var(--radius-control);
+  background: var(--domain-tint);
+  color: var(--domain-ink);
+  font-size: 15px;
+}
+
+/* 省略号要 overflow:hidden，于是行盒必须装得下字形。标题行高来自 --lh-tight(1.2)，
+   而英文档下用的 Saira Semi Condensed 字形盒比 1.2 倍字号高，上下会被切掉。
+   这里只放宽这一个单行元素的行盒，标题的字号与字重不动。 */
+.app-header__page-text {
+  min-width: 0;
+  overflow: hidden;
+  line-height: 1.4;
+  text-overflow: ellipsis;
 }
 
 [data-locale="en"] .app-header__page-title,
@@ -261,12 +334,12 @@
 
 .app-header-icon-btn:hover {
   background: var(--brand-tint);
-  color: var(--brand-text);
+  color: var(--brand-on-tint);
 }
 
 .app-menu-item--active {
   background: var(--brand-tint);
-  color: var(--brand-text);
+  color: var(--brand-on-tint);
   font-weight: var(--fw-medium);
 }
 
@@ -387,9 +460,13 @@
   height: 100vh;
   height: 100dvh;
   min-height: 0;
+  min-width: 0;
+  overflow-x: clip;
   overflow-y: auto;
   box-sizing: border-box;
-  background: var(--surface-base);
+  /* 不画背景，透出 .app-shell-root 那一张。工作区是滚动容器，让它保持透明也
+     顺带省掉「固定背景配滚动容器」在滚动时的重绘。 */
+  background: transparent;
   scrollbar-width: thin;
   scrollbar-color: var(--border-strong) transparent;
 }
@@ -403,11 +480,11 @@
   background-image: url("/textures/forged-grain.png");
   background-repeat: repeat;
   background-size: 128px 128px;
-  opacity: 0.03;
+  opacity: 0.05;
 }
 
 [data-theme="light"] .app-content::before {
-  opacity: 0.02;
+  opacity: 0.035;
 }
 
 .app-content::-webkit-scrollbar {
@@ -570,6 +647,12 @@
 
   .app-header__page-title {
     font-size: var(--text-h3);
+  }
+
+  .app-header__page-glyph {
+    inline-size: 22px;
+    block-size: 22px;
+    font-size: 13px;
   }
 
   .app-header__right {

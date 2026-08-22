@@ -116,7 +116,7 @@ export function AnnouncementsPage() {
 
   return (
     <PageLayout className="announcements-page">
-      <Stack gap={16} className="announcements-page__stack">
+      <Stack gap="var(--page-rhythm)" className="announcements-page__stack">
       {!isMobile || !showMobileDetail ? (
         <AnnouncementFiltersCard
           pinnedFilter={controller.pinnedFilter}

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { createAuthorizationContext } from "@guild/kernel";
-import { PERMISSIONS, PERMISSION_ID, SITE_OWNER_LEVEL, SITE_OWNER_ROLE_ID } from "@guild/shared/constants/roles";
+import { PERMISSION_ID } from "@guild/shared/constants/roles";
 import { assertRoleAssignable, assertTargetBelowActor, requireAnyPermission } from "./authorization";
 
 const authorization = createAuthorizationContext({
@@ -37,22 +37,16 @@ describe("auth authorization policies", () => {
     })).toThrowError(/do not hold/);
   });
 
-  it("keeps site-owner peer management and assignment as the sole same-level exception", () => {
-    const owner = createAuthorizationContext({
-      userId: "owner-1", sessionId: "session", roleId: SITE_OWNER_ROLE_ID,
-      roleLevel: SITE_OWNER_LEVEL, permissions: PERMISSIONS,
-    }).actor!;
-    expect(() => assertTargetBelowActor(owner, {
-      userId: "owner-2", roleId: SITE_OWNER_ROLE_ID, roleLevel: SITE_OWNER_LEVEL,
-    }, { allowSelf: false, allowOwnerPeer: true })).not.toThrow();
-    expect(() => assertTargetBelowActor(owner, {
-      userId: "owner-1", roleId: SITE_OWNER_ROLE_ID, roleLevel: SITE_OWNER_LEVEL,
-    }, { allowSelf: false, allowOwnerPeer: true })).not.toThrow();
-    expect(() => assertRoleAssignable(owner, {
-      id: SITE_OWNER_ROLE_ID, level: SITE_OWNER_LEVEL, permissions: new Set(PERMISSIONS),
+  it("allows the actor's exact role but rejects a different role at the same level", () => {
+    expect(() => assertRoleAssignable(authorization.actor!, {
+      id: "officer",
+      level: 500,
+      permissions: new Set([PERMISSION_ID.ADMIN_USERS_EDIT]),
     })).not.toThrow();
-    expect(() => assertRoleAssignable(owner, {
-      id: "custom-owner", level: 900, permissions: new Set([PERMISSION_ID.ADMIN_OWNERS_MANAGE]),
-    })).toThrowError(/reserved/);
+    expect(() => assertRoleAssignable(authorization.actor!, {
+      id: "peer-officer",
+      level: 500,
+      permissions: new Set([PERMISSION_ID.ADMIN_USERS_EDIT]),
+    })).toThrowError(/different role at your own level/);
   });
 });

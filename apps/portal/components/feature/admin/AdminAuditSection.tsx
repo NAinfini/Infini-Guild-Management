@@ -1,4 +1,4 @@
-import type { AuditLogEntry } from "@guild/shared";
+import { AUDIT_ENTITY_TYPES, type AdminRole, type AuditEvent, type AuditEntityType } from "@guild/shared";
 import { Button, Group, Menu, SegmentedControl, Stack, Text, TextInput } from "@mantine/core";
 import { ArrowDownIcon, SearchIcon, XIcon } from "@portal/components/icons";
 import { ContentFilterToolbar } from "@portal/components/shared/ContentFilterToolbar";
@@ -6,13 +6,8 @@ import { NativeDateTimeInput } from "@portal/components/shared/NativeDateTimeInp
 import { matchAuditDatePreset, type AuditDatePreset } from "@portal/hooks/useAdminAuditFilter";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
-import { useAuthStore } from "../../../stores/auth";
-import { formatDateTime, maskIdentifier } from "../../../utils/admin";
-import { canManageRoles, canViewStatus } from "../../../utils/permissions";
 import { AuditLogViewer } from "./AuditLogViewer";
 import { AuditArchiveExplorer } from "./AuditArchiveExplorer";
-
-type AuditRow = AuditLogEntry;
 
 type AdminAuditSectionProps = {
   auditSearch: string;
@@ -27,16 +22,21 @@ type AdminAuditSectionProps = {
   exportAuditLogPending: boolean;
   auditLoading: boolean;
   auditError: boolean;
-  auditRows: AuditRow[];
-  auditPageCurrent: number;
-  auditPageSize: number;
-  auditTotal: number;
-  onAuditPageChange: (nextPage: number) => void;
-  rolesData: import("@guild/shared").AdminRole[];
+  onRetryAudit: () => void;
+  auditRows: AuditEvent[];
+  auditHasMore: boolean;
+  auditLoadingMore: boolean;
+  onAuditLoadMore: () => void;
+  auditEntityType: string;
+  auditEntityId: string;
+  onSelectAuditEntity: (entityType: string, entityId: string) => void;
+  onClearAuditEntity: () => void;
+  rolesData: AdminRole[];
   userMap?: Map<string, string>;
   archiveMonths: string[];
   archiveMonthsLoading: boolean;
   archiveMonthsError: boolean;
+  onRetryArchiveMonths: () => void;
 };
 
 export function AdminAuditSection({
@@ -52,31 +52,24 @@ export function AdminAuditSection({
   exportAuditLogPending,
   auditLoading,
   auditError,
+  onRetryAudit,
   auditRows,
-  auditPageCurrent,
-  auditPageSize,
-  auditTotal,
-  onAuditPageChange,
+  auditHasMore,
+  auditLoadingMore,
+  onAuditLoadMore,
+  auditEntityType,
+  auditEntityId,
+  onSelectAuditEntity,
+  onClearAuditEntity,
   rolesData,
   userMap,
   archiveMonths,
   archiveMonthsLoading,
   archiveMonthsError,
+  onRetryArchiveMonths,
 }: AdminAuditSectionProps) {
   const { t } = useTranslation("admin");
-  const { t: tc } = useTranslation("common");
-  const user = useAuthStore((state) => state.user);
-  const isAdmin = Boolean(
-    user &&
-      (canManageRoles(rolesData, user.role) ||
-        canViewStatus(rolesData, user.role)),
-  );
-  const loadErrorMessage = tc("loadError");
-  /*
-   * 高亮哪一格由手上这对日期反推，不另存一份 range：两份状态各说各话时，
-   * 工具条会指着「自定义」而实际过滤的是最近一天（进页面时的默认区间就是它）。
-   * customRange 记的是另一件事——用户要不要那两个手填框，认不出预设时也自动摊开。
-   */
+  // The dates remain the source of truth so the preset and manual inputs cannot drift apart.
   const [customRange, setCustomRange] = useState(false);
   const range = customRange
     ? "custom"
@@ -91,13 +84,27 @@ export function AdminAuditSection({
     onSetDatePreset(value as AuditDatePreset);
   };
 
-  const hasFilters = Boolean(auditSearch || auditDateFrom || auditDateTo);
+  const hasEntityTimeline = Boolean(auditEntityType && auditEntityId);
+  const hasSearch = auditSearch.trim().length > 0;
+  const hasDismissibleFilters = hasSearch || hasEntityTimeline;
   const activeFilterCount = [
-    auditSearch.trim().length > 0,
-    Boolean(auditDateFrom || auditDateTo),
+    hasSearch,
+    hasEntityTimeline,
   ].filter(Boolean).length;
+  const isKnownEntityType = (value: string): value is AuditEntityType => (
+    AUDIT_ENTITY_TYPES.includes(value as AuditEntityType)
+  );
+  const timelineEntityType = isKnownEntityType(auditEntityType)
+    ? t(`audit.entityType.${auditEntityType}`)
+    : t("audit.filter.unknownEntity");
+  const timelineEvent = hasEntityTimeline
+    ? auditRows.find((row) => row.subject.type === auditEntityType && row.subject.id === auditEntityId)
+    : undefined;
+  const timelineLabel = timelineEvent?.subject.label && timelineEvent.subject.label !== auditEntityId
+    ? timelineEvent.subject.label
+    : timelineEntityType;
   return (
-    <Stack gap={12}>
+    <Stack gap={12} className="admin-fill audit-log-fill">
       <ContentFilterToolbar
         className="admin-audit-toolbar"
         search={(
@@ -164,10 +171,10 @@ export function AdminAuditSection({
         collapseBelow={1120}
       />
 
-      {hasFilters ? (
+      {hasDismissibleFilters ? (
         <div className="admin-filter-summary">
           <Text size="xs" c="dimmed">{t("audit.filter.active")}</Text>
-          {auditSearch ? (
+          {hasSearch ? (
             <button
               type="button"
               className="admin-filter-chip"
@@ -177,38 +184,26 @@ export function AdminAuditSection({
               <XIcon size={12} />
             </button>
           ) : null}
-          {auditDateFrom || auditDateTo ? (
-            <button
-              type="button"
-              className="admin-filter-chip"
-              onClick={() => {
-                onAuditDateFromChange("");
-                onAuditDateToChange("");
-              }}
-            >
-              {t("audit.filter.dateRange", {
-                from: auditDateFrom || "…",
-                to: auditDateTo || "…",
-              })}
+          {hasEntityTimeline ? (
+            <button type="button" className="admin-filter-chip" onClick={onClearAuditEntity}>
+              <span>{t("audit.filter.entityTimeline", { entity: timelineLabel })}</span>
               <XIcon size={12} />
             </button>
           ) : null}
-          <Text size="xs" c="dimmed">{t("audit.filter.total", { total: auditTotal })}</Text>
+          <Text size="xs" c="dimmed">{t("audit.filter.loaded", { count: auditRows.length })}</Text>
         </div>
       ) : null}
 
       <AuditLogViewer
         auditLoading={auditLoading}
         auditError={auditError}
-        loadErrorMessage={loadErrorMessage}
+        onRetryAudit={onRetryAudit}
         auditRows={auditRows}
-        auditPageCurrent={auditPageCurrent}
-        auditPageSize={auditPageSize}
-        auditTotal={auditTotal}
-        onAuditPageChange={onAuditPageChange}
-        isAdmin={isAdmin}
-        maskIdentifier={maskIdentifier}
-        formatDateTime={formatDateTime}
+        auditHasMore={auditHasMore}
+        auditLoadingMore={auditLoadingMore}
+        onAuditLoadMore={onAuditLoadMore}
+        onSelectEntityTimeline={onSelectAuditEntity}
+        rolesData={rolesData}
         userMap={userMap}
       />
 
@@ -216,6 +211,7 @@ export function AdminAuditSection({
         months={archiveMonths}
         monthsLoading={archiveMonthsLoading}
         monthsError={archiveMonthsError}
+        onRetryMonths={onRetryArchiveMonths}
       />
     </Stack>
   );

@@ -40,7 +40,9 @@ export {
   fetchAdminAuditLog,
   fetchAdminInviteLinks,
   fetchAdminInviteStats,
+  fetchAdminOperations,
   fetchAdminStatus,
+  fetchBlobReconciliationPage,
   fetchAdminUserLoginLock,
   requestAdminAuditArchiveDownload,
 } from "../api/queries/admin";
@@ -50,6 +52,7 @@ export type {
   AdminAuditArchiveDownloadResponse,
   AdminAuditExportParams,
   AdminInviteLinksResponse,
+  AdminOperationsResponse,
   AdminStatus,
   AdminLoginLockState,
   InviteVisibility,

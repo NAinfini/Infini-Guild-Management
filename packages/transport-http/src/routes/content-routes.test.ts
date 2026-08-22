@@ -6,7 +6,6 @@ import { createHttpErrorHandler } from "../core/error-handler.js";
 import type { HttpEnv } from "../core/http-env.js";
 import { createRequestContextMiddleware } from "../core/request-context-middleware.js";
 import { createAnnouncementRoutes, type AnnouncementRouteDependencies } from "./announcements/announcements-routes.js";
-import { createAuditRoutes } from "./audit/audit-routes.js";
 import { createGalleryRoutes, type GalleryRouteDependencies } from "./gallery/gallery-routes.js";
 import { createWikiRoutes, type WikiRouteDependencies } from "./wiki/wiki-routes.js";
 
@@ -28,30 +27,6 @@ const announcement: Announcement = {
 };
 
 describe("content HTTP routes", () => {
-  it("maps audit filters and streams CSV without buffering the iterable", async () => {
-    const list = vi.fn().mockResolvedValue({ data: [auditRow], total: 1, page: 2, limit: 10, total_pages: 1 });
-    const exportRows = vi.fn(() => (async function* () { yield auditRow; })());
-    const recordExport = vi.fn().mockResolvedValue(undefined);
-    const app = appWithContext();
-    app.route("/api/admin", createAuditRoutes({ service: { list, export: exportRows, recordExport } }));
-
-    const response = await app.request("/api/admin/audit-log?page=2&limit=10&actor_id=user-1");
-    expect(response.status).toBe(200);
-    expect(list).toHaveBeenCalledWith(request, expect.objectContaining({
-      page: 2,
-      limit: 10,
-      actorUserId: "user-1",
-    }));
-
-    const exported = await app.request(`/api/admin/audit-log/export?format=csv&start_at=${NOW}&end_at=${NOW}`);
-    expect(exported.headers.get("Content-Disposition")).toContain("guild-audit-2026-08-09-to-2026-08-09.csv");
-    const csv = await exported.text();
-    expect(csv).toContain("id,entity_type,action,actor_id");
-    expect(csv).toContain(`"'  =SUM(1,2)"`);
-    expect(recordExport).toHaveBeenCalledOnce();
-    expect(exportRows).toHaveBeenCalledOnce();
-  });
-
   it("uses the announcement detail ETag unchanged for If-Match updates", async () => {
     const get = vi.fn().mockResolvedValue(announcement);
     const update = vi.fn().mockResolvedValue(announcement);
@@ -165,7 +140,7 @@ const request: RequestContext = createRequestContext({
     sessionId: "session-1",
     roleId: "admin",
     roleLevel: 1,
-    permissions: ["admin.audit.view", "admin.audit.export"],
+    permissions: [],
   }),
   now: NOW,
 });
@@ -176,18 +151,6 @@ function appWithContext(): Hono<HttpEnv> {
   app.onError(createHttpErrorHandler());
   return app;
 }
-
-const auditRow = {
-  id: "audit-1",
-  entity_type: "announcement" as const,
-  action: "update" as const,
-  actor_id: "user-1",
-  actor_username: "admin",
-  entity_id: "announcement-1",
-  diff_title: "  =SUM(1,2)",
-  detail: { changed: true },
-  created_at: NOW,
-};
 
 const galleryItem = {
   id: "gallery-1",

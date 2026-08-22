@@ -148,9 +148,9 @@ function memberCard(scope: Locator | Page, username: string): Locator {
   return scope.getByRole("button", { name: `Open member details for ${username}`, exact: true });
 }
 
-/** 右侧 Readiness 面板上的一项计数。它是这块板子唯一的汇总视图，必须跟着数据一起动。 */
-function readiness(page: Page, label: string): Locator {
-  return page.locator(".guild-war-readiness__entry").filter({ hasText: label }).locator("dd");
+/** 一列表头上的人数。分配结果只在这里报数，必须跟着数据一起动。 */
+function headcount(column: Locator): Locator {
+  return column.locator(".guild-war-column-count");
 }
 
 /**
@@ -211,7 +211,7 @@ test("加人进池：选完人确认后池子和服务端一起加一", async ({
   await openBoard(page);
 
   expect((await readBoard(api)).pool, "刚建的战里应该一个人都没有").toEqual([]);
-  await expect(readiness(page, "In pool")).toHaveText("0");
+  await expect(headcount(poolColumn(page))).toHaveText("0");
 
   await poolColumn(page).getByRole("button", { name: "Add to pool", exact: true }).click();
   const modal = page.getByRole("dialog");
@@ -231,7 +231,7 @@ test("加人进池：选完人确认后池子和服务端一起加一", async ({
 
   const board = await readBoard(api);
   expect(board.pool.map((entry) => entry.userId), "服务端的池子里必须真的多出这个人").toEqual([member.id]);
-  await expect(readiness(page, "In pool")).toHaveText("1");
+  await expect(headcount(poolColumn(page))).toHaveText("1");
   await expect(memberCard(poolColumn(page), member.username)).toBeVisible();
 });
 
@@ -248,7 +248,6 @@ test("建队、改名、上锁、删队：每一步都被自动保存写回服�
   expect(teams[0]!.team_name).toBe("Team 1");
   const teamId = teams[0]!.id;
   await expect(teamColumns(page)).toHaveCount(1);
-  await expect(readiness(page, "Teams")).toHaveText("1");
 
   // 改名：点标题进入编辑态，回车提交。名字只存在草稿里，靠 350ms 自动保存落库。
   const renamed = `Vanguard ${stamp}`;
@@ -295,7 +294,6 @@ test("建队、改名、上锁、删队：每一步都被自动保存写回服�
 
   expect((await readBoard(api)).teams, "确认后服务端必须真的删掉").toEqual([]);
   await expect(teamColumns(page)).toHaveCount(0);
-  await expect(readiness(page, "Teams")).toHaveText("0");
 });
 
 test("拖拽调人：从池子拖进队伍，再拖到回收区移出这场战", async ({ page, flow, api }) => {
@@ -316,8 +314,8 @@ test("拖拽调人：从池子拖进队伍，再拖到回收区移出这场战",
   expect(board.teams[0]!.members.map((entry) => entry.user_id), "拖进队伍就该在队伍里").toEqual([member.id]);
   expect(board.pool, "同一个人不能既在队里又在池里").toEqual([]);
   await expect(memberCard(teamColumns(page), member.username)).toBeVisible();
-  await expect(readiness(page, "Assigned")).toHaveText("1");
-  await expect(readiness(page, "In pool")).toHaveText("0");
+  await expect(headcount(teamColumns(page))).toHaveText("1");
+  await expect(headcount(poolColumn(page))).toHaveText("0");
 
   // 拖到回收区是「退出这场战」，比换队重，所以要过确认框；取消不该动数据。
   await dragCardTo(page, memberCard(teamColumns(page), member.username), page.locator(".guild-war-trash-zone"));

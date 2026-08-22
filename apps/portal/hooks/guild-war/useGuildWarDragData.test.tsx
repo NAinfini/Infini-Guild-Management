@@ -1,5 +1,5 @@
-// @vitest-environment jsdom
 import type { GuildWarActiveResponse } from "@guild/shared";
+import type { UsersListResponse } from "../../services/UserService";
 import { act, renderHook } from "@testing-library/react";
 import { useState } from "react";
 import { describe, expect, it } from "vitest";
@@ -32,14 +32,17 @@ const initialData = {
   etag: '"initial"',
 } as unknown as GuildWarActiveResponse;
 
-function useDragDataHarness(activeData: GuildWarActiveResponse) {
+function useDragDataHarness(
+  activeData: GuildWarActiveResponse,
+  usersData?: UsersListResponse["data"],
+) {
   const [teamDraftNames, setTeamDraftNames] = useState<Record<string, string>>({});
   const [, setTeamDraftNotes] = useState<Record<string, string>>({});
   const [teamDraftLocks, setTeamDraftLocks] = useState<Record<string, boolean>>({});
   const [teamOrder, setTeamOrder] = useState<string[]>([]);
   const dragData = useGuildWarDragData({
     activeData,
-    usersData: undefined,
+    usersData,
     poolLabel: "Pool",
     draft: {
       teamDraftNames,
@@ -74,5 +77,67 @@ describe("useGuildWarDragData", () => {
 
     expect(result.current.teamOrder).toEqual([]);
     expect(result.current.orderedTeams.map((team) => team.id)).toEqual(["team-2", "team-1"]);
+  });
+
+  it("builds member details from the protected profile projection, not war assignment data", () => {
+    const activeData = {
+      ...initialData,
+      teams: [{
+        ...initialData.teams[0]!,
+        members: [{
+          id: "war-member-1",
+          user_id: "user-1",
+          role_tag: "Leader",
+          sort_order: 0,
+          stats: { kills: 99 },
+          note: "legacy war note",
+        }],
+      }],
+    } as unknown as GuildWarActiveResponse;
+    const availability = {
+      timezone: "America/New_York",
+      days: {
+        sunday: [],
+        monday: [{ start_utc: "23:00", end_utc: "24:00" }],
+        tuesday: [],
+        wednesday: [],
+        thursday: [],
+        friday: [],
+        saturday: [],
+      },
+    } as const;
+    const usersData = [{
+      user: {
+        id: "user-1",
+        username: "Alice",
+      },
+      profile: {
+        power: 8200,
+        classes: ["Mage"],
+        title_html: "<strong>Coordinator</strong>",
+        availability,
+        vacation_start: "2026-08-20",
+        vacation_end: "2026-08-24",
+        notes: "Prefers late-night wars",
+      },
+      badges: [],
+    }] as unknown as UsersListResponse["data"];
+
+    const { result } = renderHook(() => useDragDataHarness(activeData, usersData));
+    const detail = result.current.activeMemberDetailByUserId.get("user-1");
+
+    expect(detail).toEqual({
+      username: "Alice",
+      power: 8200,
+      classes: ["Mage"],
+      titleHtml: "<strong>Coordinator</strong>",
+      availability,
+      vacationStart: "2026-08-20",
+      vacationEnd: "2026-08-24",
+      notes: "Prefers late-night wars",
+    });
+    expect(detail).not.toHaveProperty("teamName");
+    expect(detail).not.toHaveProperty("roleTag");
+    expect(detail).not.toHaveProperty("stats");
   });
 });

@@ -1,10 +1,10 @@
 import { DatabaseSync, type SQLInputValue } from "node:sqlite";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { createAuthorizationContext, createRequestContext } from "@guild/kernel";
-import { createAuditMutation } from "@guild/server/modules/audit";
+import { createAuditEvent } from "@guild/server/modules/audit";
 import { LIMITS } from "@guild/shared/config/limits";
 import { createAppDatabase } from "../database.js";
-import { assertSqlStatement, type SqlExecutor, type SqlResult, type SqlRow, type SqlStatement } from "@guild/kernel";
+import { SqliteTestExecutor } from "../testing/sqlite-test-executor.js";
 import { SqliteMembersStore } from "./members-store.js";
 
 const NOW = "2026-08-09T12:00:00.000Z";
@@ -18,7 +18,8 @@ const BASE_SCHEMA = `
   CREATE TABLE users (
     id TEXT PRIMARY KEY, username TEXT NOT NULL UNIQUE, role_id TEXT NOT NULL REFERENCES roles(id),
     is_active INTEGER NOT NULL CHECK(is_active IN (0, 1)), deleted_at TEXT,
-    revision_token TEXT NOT NULL DEFAULT '', created_at TEXT NOT NULL, updated_at TEXT NOT NULL
+    revision_token TEXT NOT NULL DEFAULT '', created_at TEXT NOT NULL, updated_at TEXT NOT NULL,
+    last_login_at TEXT
   );
   CREATE INDEX idx_users_roster ON users(deleted_at, is_active, created_at, id);
   CREATE INDEX idx_users_roster_all ON users(deleted_at, created_at, id);
@@ -80,9 +81,9 @@ const BASE_SCHEMA = `
     UNIQUE(entity_type, entity_id, slot, sort_order)
   );
   CREATE TABLE audit_log (
-    id TEXT PRIMARY KEY, request_id TEXT NOT NULL, actor_user_id TEXT NOT NULL, actor_username TEXT,
-    entity_type TEXT NOT NULL, entity_id TEXT NOT NULL, action TEXT NOT NULL,
-    summary TEXT, detail_json TEXT, occurred_at TEXT NOT NULL
+    id TEXT PRIMARY KEY, request_id TEXT NOT NULL, actor_kind TEXT NOT NULL, actor_id TEXT NOT NULL,
+    actor_label TEXT, subject_type TEXT NOT NULL, subject_id TEXT NOT NULL, subject_label TEXT,
+    action TEXT NOT NULL, payload_json TEXT NOT NULL, occurred_at TEXT NOT NULL
   );
   CREATE TABLE system_test_runs (id TEXT PRIMARY KEY);
   CREATE TABLE system_test_requests (
@@ -103,50 +104,6 @@ const BASE_SCHEMA = `
   );
 `;
 
-class TestExecutor implements SqlExecutor {
-  readonly statements: SqlStatement[] = [];
-  readonly batches: SqlStatement[][] = [];
-  beforeNextBatch: (() => void) | undefined;
-
-  constructor(readonly database: DatabaseSync) {}
-
-  async execute(statement: SqlStatement): Promise<SqlResult> {
-    assertSqlStatement(statement);
-    this.statements.push(statement);
-    return this.run(statement);
-  }
-
-  async batch(statements: readonly SqlStatement[]): Promise<readonly SqlResult[]> {
-    const before = this.beforeNextBatch;
-    this.beforeNextBatch = undefined;
-    before?.();
-    statements.forEach(assertSqlStatement);
-    this.statements.push(...statements);
-    this.batches.push([...statements]);
-    this.database.exec("BEGIN IMMEDIATE");
-    try {
-      const results = statements.map((statement) => this.run(statement));
-      this.database.exec("COMMIT");
-      return results;
-    } catch (error) {
-      this.database.exec("ROLLBACK");
-      throw error;
-    }
-  }
-
-  private run(statement: SqlStatement): SqlResult {
-    const prepared = this.database.prepare(statement.sql);
-    const params = [...(statement.params ?? [])] as SQLInputValue[];
-    if (statement.method === "run") {
-      const result = prepared.run(...params);
-      return { rows: [], lastInsertRowId: result.lastInsertRowid };
-    }
-    prepared.setReturnArrays(true);
-    if (statement.method === "get") return { rows: prepared.get(...params) as unknown as SqlRow | undefined };
-    return { rows: prepared.all(...params) as unknown as readonly SqlRow[] };
-  }
-}
-
 const databases: DatabaseSync[] = [];
 afterEach(() => { for (const database of databases.splice(0)) database.close(); });
 
@@ -162,7 +119,7 @@ function harness() {
   insertUser(database, "deleted-1", "Deleted", "member", false, NOW);
   database.prepare("INSERT INTO media_links (media_id, entity_type, entity_id, slot, audience, sort_order) VALUES (?, 'member_profile', 'target-1', 'image', 'public', ?)").run("media-a", 0);
   database.prepare("INSERT INTO media_links (media_id, entity_type, entity_id, slot, audience, sort_order) VALUES (?, 'member_profile', 'target-1', 'image', 'public', ?)").run("media-b", 1);
-  const executor = new TestExecutor(database);
+  const executor = new SqliteTestExecutor(database);
   return { database, executor, store: new SqliteMembersStore(createAppDatabase(executor), executor) };
 }
 
@@ -187,10 +144,16 @@ function context(requestId: string = crypto.randomUUID()) {
 function audit(
   entityType: "member_profile" | "member_absence" | "member_badge" | "class_catalog" | "class_tag",
   entityId: string,
-  action: "update" | "create" | "unassign",
+  action: "update" | "create" | "assign" | "unassign",
   requestId?: string,
 ) {
-  return createAuditMutation(context(requestId), { entityType, entityId, action });
+  return createAuditEvent(context(requestId), {
+    subjectType: entityType,
+    subjectId: entityId,
+    subjectLabel: null,
+    action,
+    context: [],
+  });
 }
 
 function scalar(database: DatabaseSync, sql: string): number {
@@ -202,6 +165,61 @@ function text(database: DatabaseSync, sql: string): string | null {
   const row = database.prepare(sql).get() as Record<string, string | null>;
   return Object.values(row)[0] ?? null;
 }
+
+function auditUserIds(database: DatabaseSync, requestId: string): readonly string[] {
+  return auditUserReferences(database, requestId).map(({ id }) => id);
+}
+
+function auditUserReferences(database: DatabaseSync, requestId: string): readonly Readonly<{ id: string; label: string }>[] {
+  const payload = JSON.parse(text(database, `SELECT payload_json FROM audit_log WHERE request_id = '${requestId}'`)!) as {
+    context: readonly [{ value: { value: readonly { value: { id: string; label: string } }[] } }];
+  };
+  return payload.context[0].value.value.map((entry) => entry.value);
+}
+
+describe("SqliteMembersStore catalog singleton reads", () => {
+  it("uses one bounded id query per class, catalog tag, and badge without calling list methods", async () => {
+    const value = harness();
+    const insertClass = value.database.prepare(`INSERT INTO class_catalog (
+      id, label, color, icon_type, vector_icon, sort_order, created_at, updated_at
+    ) VALUES (?, ?, '#fff', ?, ?, ?, ?, ?)`);
+    insertClass.run("class-other", "Other", "vector", "sword", 0, NOW, NOW);
+    insertClass.run("class-target", "Target Class", "image", null, 10, NOW, NOW);
+    value.database.prepare(`INSERT INTO class_tags (
+      id, label, sort_order, owner_kind, owner_id, created_at, updated_at
+    ) VALUES ('tag-target', 'Target Tag', 0, NULL, NULL, ?, ?)`).run(NOW, NOW);
+    value.database.prepare("INSERT INTO class_tag_members (tag_id, class_id) VALUES ('tag-target', 'class-target')").run();
+    value.database.prepare("INSERT INTO class_tag_members (tag_id, class_id) VALUES ('tag-target', 'class-other')").run();
+    value.database.prepare(`INSERT INTO member_badges (
+      id, name, label_html, color, description, sort_order, created_at, updated_at
+    ) VALUES ('badge-target', 'Target Badge', '<b>Target</b>', '#fff', 'Direct read', 0, ?, ?)`).run(NOW, NOW);
+    const listClasses = vi.spyOn(value.store, "listClasses").mockRejectedValue(new Error("must not list classes"));
+    const listClassTags = vi.spyOn(value.store, "listClassTags").mockRejectedValue(new Error("must not list tags"));
+    const listBadges = vi.spyOn(value.store, "listBadges").mockRejectedValue(new Error("must not list badges"));
+    const before = value.executor.statements.length;
+
+    await expect(value.store.findClass("class-target")).resolves.toMatchObject({
+      id: "class-target",
+      icon_type: "image",
+      vector_icon: null,
+    });
+    await expect(value.store.findClassTag("tag-target")).resolves.toMatchObject({
+      id: "tag-target",
+      class_ids: ["class-other", "class-target"],
+    });
+    await expect(value.store.findBadge("badge-target")).resolves.toMatchObject({
+      id: "badge-target",
+      description: "Direct read",
+    });
+
+    expect(listClasses).not.toHaveBeenCalled();
+    expect(listClassTags).not.toHaveBeenCalled();
+    expect(listBadges).not.toHaveBeenCalled();
+    const reads = value.executor.statements.slice(before);
+    expect(reads).toHaveLength(3);
+    expect(reads.every(({ sql }) => /\blimit \?/i.test(sql))).toBe(true);
+  });
+});
 
 describe("SqliteMembersStore atomic profile writes", () => {
   it("commits profile children, media order, and audit in one batch", async () => {
@@ -300,10 +318,12 @@ describe("SqliteMembersStore system-test reorder snapshots", () => {
     insertClass.run("class-b", "Class B", 200, NOW, NOW);
     const mutation = audit("class_catalog", "catalog", "update", requestId);
     value.database.prepare(`INSERT INTO audit_log (
-      id, request_id, actor_user_id, entity_type, entity_id, action, summary, detail_json, occurred_at
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`)
-      .run(mutation.id, mutation.requestId, mutation.actorUserId, mutation.entityType, mutation.entityId,
-        mutation.action, mutation.summary, null, mutation.occurredAt);
+      id, request_id, actor_kind, actor_id, actor_label, subject_type, subject_id,
+      subject_label, action, payload_json, occurred_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+      .run(mutation.eventId, mutation.requestId, mutation.actorKind, mutation.actorId, mutation.actorLabel,
+        mutation.subjectType, mutation.subjectId, mutation.subjectLabel, mutation.action,
+        JSON.stringify(mutation.payload), mutation.occurredAt);
 
     await expect(value.store.reorderClasses(["class-b", "class-a"], REORDERED_AT, mutation)).rejects.toThrow(/UNIQUE/);
     expect(value.database.prepare("SELECT id, sort_order, updated_at FROM class_catalog ORDER BY id").all()).toEqual([
@@ -311,6 +331,77 @@ describe("SqliteMembersStore system-test reorder snapshots", () => {
       { id: "class-b", sort_order: 200, updated_at: NOW },
     ]);
     expect(value.database.prepare("SELECT count(*) AS count FROM system_test_before_images").get()).toMatchObject({ count: 0 });
+  });
+});
+
+describe("SqliteMembersStore no-op catalog mutations", () => {
+  it("keeps class-tag and badge timestamps stable and audits only real field changes", async () => {
+    const value = harness();
+    value.database.prepare(`INSERT INTO class_catalog (
+      id, label, color, icon_type, vector_icon, sort_order, created_at, updated_at
+    ) VALUES (?, ?, '#fff', 'vector', 'sword', ?, ?, ?)`).run("class-a", "Class A", 0, NOW, NOW);
+    value.database.prepare(`INSERT INTO class_catalog (
+      id, label, color, icon_type, vector_icon, sort_order, created_at, updated_at
+    ) VALUES (?, ?, '#fff', 'vector', 'sword', ?, ?, ?)`).run("class-b", "Class B", 10, NOW, NOW);
+    value.database.prepare(`INSERT INTO class_tags (
+      id, label, sort_order, owner_kind, owner_id, created_at, updated_at
+    ) VALUES ('tag-1', 'Support', 0, NULL, NULL, ?, ?)`).run(NOW, NOW);
+    value.database.prepare("INSERT INTO class_tag_members (tag_id, class_id) VALUES ('tag-1', ?)").run("class-a");
+    value.database.prepare("INSERT INTO class_tag_members (tag_id, class_id) VALUES ('tag-1', ?)").run("class-b");
+    value.database.prepare(`INSERT INTO member_badges (
+      id, name, label_html, color, description, sort_order, created_at, updated_at
+    ) VALUES ('badge-1', 'Veteran', '<b>Veteran</b>', '#fff', NULL, 0, ?, ?)`).run(NOW, NOW);
+
+    await value.store.updateClassTag("tag-1", {
+      label: "Support", classIds: ["class-b", "class-a"], sortOrder: 0, now: REORDERED_AT,
+    }, audit("class_tag", "tag-1", "update", "tag-no-op"));
+    await value.store.updateBadge("badge-1", {
+      name: "Veteran", labelHtml: "<b>Veteran</b>", color: "#fff", description: null,
+      sortOrder: 0, now: REORDERED_AT,
+    }, audit("member_badge", "badge-1", "update", "badge-no-op"));
+
+    expect(text(value.database, "SELECT updated_at FROM class_tags WHERE id = 'tag-1'")).toBe(NOW);
+    expect(text(value.database, "SELECT updated_at FROM member_badges WHERE id = 'badge-1'")).toBe(NOW);
+    expect(scalar(value.database, "SELECT count(*) FROM audit_log")).toBe(0);
+
+    await value.store.updateClassTag("tag-1", {
+      label: "Frontline", now: REORDERED_AT,
+    }, audit("class_tag", "tag-1", "update", "tag-change"));
+    await value.store.updateBadge("badge-1", {
+      color: "#000", now: REORDERED_AT,
+    }, audit("member_badge", "badge-1", "update", "badge-change"));
+
+    expect(text(value.database, "SELECT updated_at FROM class_tags WHERE id = 'tag-1'")).toBe(REORDERED_AT);
+    expect(text(value.database, "SELECT updated_at FROM member_badges WHERE id = 'badge-1'")).toBe(REORDERED_AT);
+    expect(scalar(value.database, "SELECT count(*) FROM audit_log")).toBe(2);
+  });
+
+  it("updates timestamps only for catalog rows whose positions changed", async () => {
+    const value = harness();
+    const insertTag = value.database.prepare(`INSERT INTO class_tags (
+      id, label, sort_order, owner_kind, owner_id, created_at, updated_at
+    ) VALUES (?, ?, ?, NULL, NULL, ?, ?)`);
+    const insertBadge = value.database.prepare(`INSERT INTO member_badges (
+      id, name, label_html, color, description, sort_order, created_at, updated_at
+    ) VALUES (?, ?, 'label', '#fff', NULL, ?, ?, ?)`);
+    for (const [index, id] of ["a", "b", "c"].entries()) {
+      insertTag.run(`tag-${id}`, `Tag ${id}`, index * 10, NOW, NOW);
+      insertBadge.run(`badge-${id}`, `Badge ${id}`, index * 10, NOW, NOW);
+    }
+
+    await value.store.reorderClassTags(["tag-a", "tag-b", "tag-c"], REORDERED_AT, audit("class_tag", "catalog", "update", "tag-order-no-op"));
+    await value.store.reorderBadges(["badge-a", "badge-b", "badge-c"], REORDERED_AT, audit("member_badge", "catalog", "update", "badge-order-no-op"));
+    expect(scalar(value.database, "SELECT count(*) FROM audit_log")).toBe(0);
+    expect(scalar(value.database, `SELECT count(*) FROM class_tags WHERE updated_at = '${NOW}'`)).toBe(3);
+    expect(scalar(value.database, `SELECT count(*) FROM member_badges WHERE updated_at = '${NOW}'`)).toBe(3);
+
+    await value.store.reorderClassTags(["tag-b", "tag-a", "tag-c"], REORDERED_AT, audit("class_tag", "catalog", "update", "tag-order-change"));
+    await value.store.reorderBadges(["badge-b", "badge-a", "badge-c"], REORDERED_AT, audit("member_badge", "catalog", "update", "badge-order-change"));
+    expect(scalar(value.database, "SELECT count(*) FROM audit_log")).toBe(2);
+    expect(text(value.database, "SELECT updated_at FROM class_tags WHERE id = 'tag-c'")).toBe(NOW);
+    expect(text(value.database, "SELECT updated_at FROM member_badges WHERE id = 'badge-c'")).toBe(NOW);
+    expect(scalar(value.database, `SELECT count(*) FROM class_tags WHERE updated_at = '${REORDERED_AT}'`)).toBe(2);
+    expect(scalar(value.database, `SELECT count(*) FROM member_badges WHERE updated_at = '${REORDERED_AT}'`)).toBe(2);
   });
 });
 
@@ -371,7 +462,7 @@ describe("SqliteMembersStore visibility and hard limits", () => {
     expect(text(value.database, "SELECT icon_type FROM class_catalog WHERE id = 'class-1'")).toBe("vector");
     expect(text(value.database, "SELECT vector_icon FROM class_catalog WHERE id = 'class-1'")).toBe("sword");
     expect(scalar(value.database, "SELECT count(*) FROM media_links WHERE entity_id = 'class-1'")).toBe(0);
-    expect(scalar(value.database, "SELECT count(*) FROM audit_log WHERE entity_id = 'class-1'")).toBe(1);
+    expect(scalar(value.database, "SELECT count(*) FROM audit_log WHERE subject_id = 'class-1'")).toBe(1);
     expect(value.executor.batches).toHaveLength(1);
   });
 
@@ -389,6 +480,69 @@ describe("SqliteMembersStore visibility and hard limits", () => {
     expect(scalar(value.database, "SELECT count(*) FROM member_badge_assignments")).toBe(0);
     expect(value.executor.batches).toHaveLength(1);
     expect(Math.max(...value.executor.batches[0]!.map(({ params }) => params?.length ?? 0))).toBeLessThanOrEqual(100);
+  });
+
+  it("does not audit duplicate badge assignments or repeated removals", async () => {
+    const value = harness();
+    value.database.prepare(`INSERT INTO member_badges (
+      id, name, label_html, color, description, sort_order, created_at, updated_at
+    ) VALUES ('badge-no-op', 'No-op Badge', '<b>No-op</b>', '#fff', NULL, 0, ?, ?)`).run(NOW, NOW);
+
+    await expect(value.store.assignBadge(
+      "badge-no-op",
+      ["target-1"],
+      "admin-1",
+      NOW,
+      audit("member_badge", "badge-no-op", "assign", "assign-first"),
+    )).resolves.toBe(1);
+    await expect(value.store.assignBadge(
+      "badge-no-op",
+      ["target-1"],
+      "admin-1",
+      NOW,
+      audit("member_badge", "badge-no-op", "assign", "assign-duplicate"),
+    )).resolves.toBe(0);
+    expect(scalar(value.database, "SELECT count(*) FROM audit_log WHERE action = 'assign'")).toBe(1);
+
+    await expect(value.store.unassignBadge(
+      "badge-no-op",
+      ["target-1"],
+      audit("member_badge", "badge-no-op", "unassign", "unassign-first"),
+    )).resolves.toBe(1);
+    await expect(value.store.unassignBadge(
+      "badge-no-op",
+      ["target-1"],
+      audit("member_badge", "badge-no-op", "unassign", "unassign-repeat"),
+    )).resolves.toBe(0);
+    expect(scalar(value.database, "SELECT count(*) FROM audit_log WHERE action = 'unassign'")).toBe(1);
+  });
+
+  it("audits only the user ids actually changed by mixed badge requests", async () => {
+    const value = harness();
+    value.database.prepare(`INSERT INTO member_badges (
+      id, name, label_html, color, description, sort_order, created_at, updated_at
+    ) VALUES ('badge-mixed', 'Mixed Badge', '<b>Mixed</b>', '#fff', NULL, 0, ?, ?)`).run(NOW, NOW);
+    value.database.prepare(`INSERT INTO member_badge_assignments (
+      badge_id, user_id, assigned_by, assigned_at
+    ) VALUES ('badge-mixed', 'target-1', 'admin-1', ?)`).run(NOW);
+
+    await expect(value.store.assignBadge(
+      "badge-mixed", ["target-1", "inactive-1"], "admin-1", NOW,
+      audit("member_badge", "badge-mixed", "assign", "assign-mixed"),
+    )).resolves.toBe(1);
+    expect(auditUserIds(value.database, "assign-mixed")).toEqual(["inactive-1"]);
+    expect(auditUserReferences(value.database, "assign-mixed")).toEqual([
+      { id: "inactive-1", label: "Inactive" },
+    ]);
+
+    await expect(value.store.unassignBadge(
+      "badge-mixed", ["target-1", "deleted-1"],
+      audit("member_badge", "badge-mixed", "unassign", "unassign-mixed"),
+    )).resolves.toBe(1);
+    expect(auditUserIds(value.database, "unassign-mixed")).toEqual(["target-1"]);
+    expect(auditUserReferences(value.database, "unassign-mixed")).toEqual([
+      { id: "target-1", label: "Target" },
+    ]);
   });
 
   it("pages badge assignments by a stable username and user-id cursor", async () => {

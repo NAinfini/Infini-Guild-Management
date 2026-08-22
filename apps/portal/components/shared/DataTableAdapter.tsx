@@ -105,13 +105,8 @@ export function DataTableAdapter<T>({
         striped={striped}
         highlightOnHover={highlightOnHover}
       >
-        <Table.Thead
-          style={
-            virtualize
-              ? { position: "sticky", top: 0, zIndex: 1, background: "inherit" }
-              : undefined
-          }
-        >
+        {/* 虚拟化时表头要粘住，但底色只有样式表知道该取哪块台面，这里只标记状态。 */}
+        <Table.Thead data-sticky-header={virtualize ? "" : undefined}>
           {table.getHeaderGroups().map((headerGroup) => (
             <Table.Tr key={headerGroup.id}>
               {headerGroup.headers.map((header) => {

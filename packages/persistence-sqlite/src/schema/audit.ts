@@ -9,29 +9,38 @@ export const auditLog = sqliteTable(
   {
     id: text("id").primaryKey(),
     requestId: text("request_id").notNull(),
-    actorUserId: text("actor_user_id").notNull(),
-    actorUsername: text("actor_username"),
-    entityType: text("entity_type", { enum: AUDIT_ENTITY_TYPES }).notNull(),
-    entityId: text("entity_id").notNull(),
+    actorKind: text("actor_kind", { enum: ["user", "system"] }).notNull(),
+    actorId: text("actor_id").notNull(),
+    actorLabel: text("actor_label"),
+    subjectType: text("subject_type", { enum: AUDIT_ENTITY_TYPES }).notNull(),
+    subjectId: text("subject_id").notNull(),
+    subjectLabel: text("subject_label"),
     action: text("action", { enum: AUDIT_ACTIONS }).notNull(),
-    summary: text("summary"),
-    detailJson: text("detail_json"),
+    payloadJson: text("payload_json").notNull(),
     occurredAt: text("occurred_at").notNull(),
   },
   (table) => [
     index("idx_audit_log_occurred").on(table.occurredAt, table.id),
-    index("idx_audit_log_actor_occurred").on(table.actorUserId, table.occurredAt, table.id),
-    index("idx_audit_log_entity_occurred").on(table.entityType, table.occurredAt, table.id),
-    index("idx_audit_log_target_occurred").on(table.entityType, table.entityId, table.occurredAt, table.id),
+    index("idx_audit_log_actor_occurred").on(table.actorId, table.occurredAt, table.id),
+    index("idx_audit_log_subject_occurred").on(table.subjectType, table.occurredAt, table.id),
+    index("idx_audit_log_target_occurred").on(table.subjectType, table.subjectId, table.occurredAt, table.id),
     index("idx_audit_log_request").on(table.requestId),
-    check("audit_log_entity_type_valid", sql`${table.entityType} IN (${enumValues(AUDIT_ENTITY_TYPES)})`),
+    check("audit_log_actor_kind_valid", sql`${table.actorKind} IN ('user', 'system')`),
+    check("audit_log_subject_type_valid", sql`${table.subjectType} IN (${enumValues(AUDIT_ENTITY_TYPES)})`),
     check("audit_log_action_valid", sql`${table.action} IN (${enumValues(AUDIT_ACTIONS)})`),
-    check("audit_log_entity_id_present", sql`length(trim(${table.entityId})) > 0`),
+    check("audit_log_actor_id_present", sql`length(trim(${table.actorId})) > 0`),
+    check("audit_log_actor_label_bounded", sql`${table.actorLabel} IS NULL OR length(trim(${table.actorLabel})) BETWEEN 1 AND 200`),
+    check("audit_log_subject_id_present", sql`length(trim(${table.subjectId})) > 0`),
     check("audit_log_request_id_present", sql`length(trim(${table.requestId})) > 0`),
-    check("audit_log_summary_bounded", sql`${table.summary} IS NULL OR length(${table.summary}) BETWEEN 1 AND 200`),
+    check("audit_log_subject_label_bounded", sql`${table.subjectLabel} IS NULL OR length(trim(${table.subjectLabel})) BETWEEN 1 AND 200`),
     check(
-      "audit_log_detail_object",
-      sql`${table.detailJson} IS NULL OR (json_valid(${table.detailJson}) AND json_type(${table.detailJson}) = 'object' AND length(${table.detailJson}) <= 16384)`,
+      "audit_log_payload_v2",
+      sql`json_valid(${table.payloadJson})
+        AND json_type(${table.payloadJson}) = 'object'
+        AND json_extract(${table.payloadJson}, '$.schema_version') = 2
+        AND json_type(${table.payloadJson}, '$.changes') = 'array'
+        AND json_type(${table.payloadJson}, '$.context') = 'array'
+        AND length(${table.payloadJson}) <= 32768`,
     ),
   ],
 );

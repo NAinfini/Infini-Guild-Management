@@ -89,7 +89,10 @@
   border: 1px solid transparent;
   padding-inline: 10px;
   padding-block: 8px;
-  transition: background-color var(--transition-normal), border-color var(--transition-normal);
+  transition:
+    background-color var(--transition-normal),
+    border-color var(--transition-normal),
+    transform var(--motion-state);
 }
 
 .announcement-item:hover {
@@ -97,8 +100,16 @@
   background: color-mix(in srgb, var(--brand-fill) 6%, transparent);
 }
 
+/* 整行是一块可按的表面，按下用缩放，与活动卡同一套手感（见 scale.css
+   --motion-press / --motion-sink 的分工）。 */
+.announcement-item:active {
+  transform: scale(var(--motion-press));
+}
+
+/* 选中底走 --brand-tint 而不是自己再调一次 16%：那一档已经是「品牌色压在
+   raised 上」的唯一配方，两处各写一个比例只会让色渍面的对比度各算各的。 */
 .announcement-item--active {
-  background: color-mix(in srgb, var(--brand-fill) 16%, transparent);
+  background: var(--brand-tint);
   border-color: color-mix(in srgb, var(--brand-fill) 48%, transparent);
   box-shadow: inset 3px 0 var(--brand-fill);
 }
@@ -144,9 +155,17 @@
   color: var(--mantine-color-red-filled);
 }
 
+/* 时间戳的颜色只由这里决定：原先组件上还挂着 Mantine 的 c="dimmed"，那条赢了
+   优先级，这条规则从来没生效过——一个颜色两个出处，改哪边都不动。
+   选中行是色渍面（--brand-tint），比 raised 亮/暗一档，muted 压上去连 4.5 都
+   不到；跟着面走升一档到 secondary，这是环境光预算那节写的同一条规则。 */
 .announcement-item-time {
-  font-size: 12px;
-  color: color-mix(in srgb, var(--text-primary) 65%, transparent);
+  font-size: var(--text-meta);
+  color: var(--text-muted);
+}
+
+.announcement-item--active .announcement-item-time {
+  color: var(--text-secondary);
 }
 
 .announcement-reader-title {

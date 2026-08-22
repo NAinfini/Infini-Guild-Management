@@ -233,6 +233,23 @@ describe("notification runtime parity", () => {
     expect(acceptWebSocket).not.toHaveBeenCalled();
   });
 
+  it("observes the exact Durable Object WebSocket count", async () => {
+    const sockets = [new FakeSocket(), new FakeSocket()];
+    const state = {
+      getWebSockets: () => sockets as unknown as WebSocket[],
+    } as unknown as DurableObjectState;
+    const policy = new NotificationConnectionPolicy({ resolve: async () => snapshot() });
+    const object = new CloudflareNotificationDurableObject(state, { DB: {} as D1Database }, policy);
+
+    const response = await object.fetch(new Request("https://notifications.internal/status"));
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toMatchObject({
+      observed_at: expect.any(String),
+      connection_count: 2,
+    });
+  });
+
   it("reserves VPS quota before HTTP 101 with one-use expiring claims", async () => {
     let now = 1;
     const policy = new NotificationConnectionPolicy({ resolve: async () => snapshot() }, { now: () => now });

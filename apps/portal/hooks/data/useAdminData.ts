@@ -1,10 +1,11 @@
-import { keepPreviousData, useInfiniteQuery, useQuery } from "@tanstack/react-query";
+import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
 import { LIMITS } from "@guild/shared/config/limits";
 import {
   fetchAdminAuditArchiveMonths,
   fetchAdminAuditLog,
   fetchAdminInviteLinks,
   fetchAdminInviteStats,
+  fetchAdminOperations,
   fetchAdminStatus,
   fetchRoles,
 } from "../../services/AdminService";
@@ -21,11 +22,11 @@ type UseAdminDataOptions = {
   activeTab: string;
   effectivePermissions?: AdminCapabilities;
   canReadRoleMetadata?: boolean;
-  auditPage: number;
   auditSearch: string;
   auditDateFrom: string;
   auditDateTo: string;
   auditEntityType: string;
+  auditEntityId: string;
   auditActorId: string;
   inviteVisibility: InviteVisibility;
   inviteSearch: string;
@@ -38,11 +39,11 @@ export function useAdminData(options: UseAdminDataOptions) {
     activeTab,
     effectivePermissions,
     canReadRoleMetadata,
-    auditPage,
     auditSearch,
     auditDateFrom,
     auditDateTo,
     auditEntityType,
+    auditEntityId,
     auditActorId,
     inviteVisibility,
     inviteSearch,
@@ -58,9 +59,9 @@ export function useAdminData(options: UseAdminDataOptions) {
   const roles = rolesQuery.data ?? [];
   const rolePermissions = getAdminCapabilities(roles, userRole);
   const permissions = effectivePermissions ?? rolePermissions;
-  const needsUsers =
-    activeTab === "member" || activeTab === "audit" || activeTab === "badges";
+  const needsUsers = activeTab === "member" || activeTab === "badges";
   const normalizedAuditSearch = auditSearch.trim();
+  const hasAuditDateRange = Boolean(auditDateFrom && auditDateTo);
 
   const usersQuery = useQuery({
     queryKey: queryKeys.users.all,
@@ -91,20 +92,22 @@ export function useAdminData(options: UseAdminDataOptions) {
     staleTime: 5 * 60_000,
   });
 
-  const auditLogQuery = useQuery({
-    queryKey: queryKeys.admin.auditLog(auditPage, normalizedAuditSearch, auditDateFrom, auditDateTo, auditEntityType || undefined, auditActorId || undefined),
-    queryFn: () =>
+  const auditLogQuery = useInfiniteQuery({
+    queryKey: queryKeys.admin.auditLog(normalizedAuditSearch, auditDateFrom, auditDateTo, auditEntityType || undefined, auditEntityId || undefined, auditActorId || undefined),
+    queryFn: ({ pageParam }) =>
       fetchAdminAuditLog({
-        page: auditPage,
+        cursor: pageParam,
         limit: 50,
         search: normalizedAuditSearch || undefined,
-        start_at: auditDateFrom ? `${auditDateFrom}T00:00:00.000Z` : undefined,
-        end_at: auditDateTo ? `${auditDateTo}T23:59:59.999Z` : undefined,
+        start_at: hasAuditDateRange ? `${auditDateFrom}T00:00:00.000Z` : undefined,
+        end_at: hasAuditDateRange ? `${auditDateTo}T23:59:59.999Z` : undefined,
         entity_type: auditEntityType || undefined,
+        entity_id: auditEntityId || undefined,
         actor_id: auditActorId || undefined,
       }),
+    getNextPageParam: (lastPage) => lastPage.next_cursor ?? undefined,
+    initialPageParam: undefined as string | undefined,
     enabled: permissions.canViewAudit && activeTab === "audit",
-    placeholderData: keepPreviousData,
     staleTime: 5 * 60_000,
   });
 
@@ -118,8 +121,16 @@ export function useAdminData(options: UseAdminDataOptions) {
   const statusQuery = useQuery({
     queryKey: queryKeys.admin.status(),
     queryFn: fetchAdminStatus,
-    enabled: permissions.canViewStatus && activeTab === "status",
+    enabled: permissions.canViewStatus && activeTab === "operations",
     staleTime: 5 * 60_000,
+  });
+
+  const operationsQuery = useQuery({
+    queryKey: queryKeys.admin.operations(),
+    queryFn: fetchAdminOperations,
+    enabled: permissions.canViewStatus && activeTab === "operations",
+    staleTime: 30_000,
+    refetchInterval: activeTab === "operations" ? 30_000 : false,
   });
 
   const siteConfigQuery = useQuery({
@@ -133,6 +144,7 @@ export function useAdminData(options: UseAdminDataOptions) {
     usersQuery,
     inviteLinksQuery,
     inviteStatsQuery,
+    operationsQuery,
     auditLogQuery,
     auditMonthsQuery,
     rolesQuery,

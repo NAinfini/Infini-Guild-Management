@@ -14,7 +14,6 @@ import {
   useSortable,
   verticalListSortingStrategy,
 } from "@dnd-kit/sortable";
-import { CSS } from "@dnd-kit/utilities";
 import { CLASS_ICON_FILE_ACCEPT, CLASS_VECTOR_ICON_IDS, type ClassCatalogItem } from "@guild/shared";
 import {
   ActionIcon,
@@ -37,6 +36,7 @@ import { useConfirmDialog } from "@portal/hooks/useConfirmDialog";
 import { useAdminClassesController } from "@portal/hooks/useAdminClassesController";
 import { PhotoIcon, PlusIcon, SaveIcon, TrashIcon, UploadIcon } from "@portal/components/icons";
 import { IconGripVertical } from "@tabler/icons-react";
+import { verticalDragTransform } from "@portal/utils/sortable-transform";
 import type { CSSProperties } from "react";
 import { useEffect, useMemo } from "react";
 import { useTranslation } from "react-i18next";
@@ -90,13 +90,17 @@ function SortableClassRow({
     isDragging,
   } = useSortable({ id: item.id, disabled });
   const style: CSSProperties = {
-    transform: CSS.Transform.toString(transform),
+    transform: verticalDragTransform(transform),
     transition,
     opacity: isDragging ? 0.6 : 1,
   };
 
   return (
-    <div ref={setNodeRef} style={style} className="admin-md__row">
+    <div
+      ref={setNodeRef}
+      style={style}
+      className={`admin-md__row ${active ? "admin-md__row--active" : ""}`}
+    >
       <UnstyledButton
         className={`admin-md__item ${active ? "admin-md__item--active" : ""}`}
         onClick={onOpen}
@@ -168,7 +172,7 @@ export function AdminClassesSection() {
   };
 
   return (
-    <div className="admin-md">
+    <div className="admin-panel admin-md">
       {/* ── 左栏：职业清单 ── */}
       <div className="admin-md__master">
         <div className="admin-md__master-head">

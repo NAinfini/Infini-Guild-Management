@@ -1,6 +1,7 @@
 import {
   analyticsSettingsSchema,
   siteConfigSchema,
+  type AuditChange,
   type AdminSiteConfigResponse,
   type PublicSiteConfig,
   type SiteAnalyticsSettings,
@@ -10,7 +11,7 @@ import {
 import { PERMISSION_ID } from "@guild/shared/constants/roles";
 import type { DeferredTasks, NotificationPublisher, RequestContext } from "@guild/kernel";
 import { AppError } from "@guild/kernel";
-import { createAuditMutation, type AuditMutation } from "../audit/public.js";
+import { createAuditEvent, type AuditEventWrite } from "../audit/public.js";
 import type { ImageUpload, MediaService } from "../media/public.js";
 
 export type SiteConfigRecord = SiteConfig & Readonly<{ revisionToken: string }>;
@@ -20,14 +21,14 @@ export interface SiteConfigStore {
   update(input: Readonly<{
     record: SiteConfigRecord;
     expectedRevisionToken: string;
-    audit: AuditMutation;
+    audit: AuditEventWrite;
   }>): Promise<boolean>;
   setLogo(input: Readonly<{
     record: SiteConfigRecord;
     expectedRevisionToken: string;
     mediaId: string;
     ownerUserId: string;
-    audit: AuditMutation;
+    audit: AuditEventWrite;
   }>): Promise<boolean>;
 }
 
@@ -84,11 +85,12 @@ export class SiteConfigService {
       updated_at: monotonicTimestamp(context.now, existing.updated_at),
       revisionToken: crypto.randomUUID(),
     };
-    const audit = createAuditMutation(context, {
-      entityType: "analytics_settings",
-      entityId: "site",
+    const audit = createAuditEvent(context, {
+      subjectType: "analytics_settings",
+      subjectId: "site",
+      subjectLabel: existing.site_name,
       action: "update",
-      details: { before: existing.analytics_settings, after: merged },
+      changes: analyticsChanges(existing.analytics_settings, merged),
     });
     if (!await this.store.update({ record, expectedRevisionToken: existing.revisionToken, audit })) {
       throw conflict();
@@ -118,12 +120,20 @@ export class SiteConfigService {
     });
     const record: SiteConfigRecord = { ...merged, revisionToken: crypto.randomUUID() };
     if (sameConfig(existing, record)) return adminProjection(existing);
-    const audit = createAuditMutation(context, {
-      entityType: "site_config",
-      entityId: "site",
+    const sections = changedSections(existing, record).filter((section) => section !== "branding");
+    const audit = createAuditEvent(context, {
+      subjectType: "site_config",
+      subjectId: "site",
+      subjectLabel: record.site_name,
       action: "update",
-      summary: record.site_name,
-      details: { changed_sections: changedSections(existing, record) },
+      changes: brandingChanges(existing, record),
+      context: sections.length === 0 ? [] : [{
+        field: "changed_sections",
+        value: {
+          type: "list",
+          value: sections.map((value) => ({ type: "code" as const, value })),
+        },
+      }],
     });
     if (!await this.store.update({ record, expectedRevisionToken: existing.revisionToken, audit })) {
       throw conflict();
@@ -151,12 +161,15 @@ export class SiteConfigService {
       updated_at: monotonicTimestamp(context.now, existing.updated_at),
       revisionToken: crypto.randomUUID(),
     };
-    const audit = createAuditMutation(context, {
-      entityType: "site_config",
-      entityId: "site",
+    const audit = createAuditEvent(context, {
+      subjectType: "site_config",
+      subjectId: "site",
+      subjectLabel: record.site_name,
       action: "upload",
-      summary: record.site_name,
-      details: { media_id: mediaId },
+      context: [{
+        field: "media_count",
+        value: { type: "number", value: 1 },
+      }],
     });
     if (!await this.store.setLogo({
       record,
@@ -183,6 +196,7 @@ export class SiteConfigService {
 function publicProjection(record: SiteConfigRecord): PublicSiteConfig {
   return {
     site_name: record.site_name,
+    site_description: record.site_description,
     site_logo_media_id: record.site_logo_media_id,
     default_site_logo_url: record.default_site_logo_url,
     features: record.features,
@@ -204,11 +218,52 @@ function sameConfig(before: SiteConfigRecord, after: SiteConfigRecord): boolean 
 
 function changedSections(before: SiteConfigRecord, after: SiteConfigRecord): string[] {
   const sections: string[] = [];
-  if (before.site_name !== after.site_name) sections.push("branding");
+  if (before.site_name !== after.site_name || before.site_description !== after.site_description) sections.push("branding");
   for (const key of ["features", "media_policy", "storage_policy", "absence_policy"] as const) {
     if (JSON.stringify(before[key]) !== JSON.stringify(after[key])) sections.push(key);
   }
   return sections;
+}
+
+function brandingChanges(before: SiteConfigRecord, after: SiteConfigRecord): AuditChange[] {
+  const changes: AuditChange[] = [];
+  if (before.site_name !== after.site_name) changes.push({
+    field: "name",
+    before: { type: "text", value: before.site_name },
+    after: { type: "text", value: after.site_name },
+  });
+  if (before.site_description !== after.site_description) changes.push({
+    field: "description",
+    before: { type: "text", value: before.site_description },
+    after: { type: "text", value: after.site_description },
+  });
+  return changes;
+}
+
+const ANALYTICS_WEIGHT_FIELDS = {
+  kills: "kills_weight",
+  towers: "towers_weight",
+  base_hp: "base_hp_weight",
+  credits: "credits_weight",
+  distance: "distance_weight",
+} as const;
+
+function analyticsChanges(before: SiteAnalyticsSettings, after: SiteAnalyticsSettings): AuditChange[] {
+  const changes: AuditChange[] = [];
+  if (before.reference_duration_minutes !== after.reference_duration_minutes) changes.push({
+    field: "reference_duration_minutes",
+    before: { type: "number", value: before.reference_duration_minutes },
+    after: { type: "number", value: after.reference_duration_minutes },
+  });
+  for (const key of Object.keys(ANALYTICS_WEIGHT_FIELDS) as (keyof typeof ANALYTICS_WEIGHT_FIELDS)[]) {
+    if (before.modifier_weights[key] === after.modifier_weights[key]) continue;
+    changes.push({
+      field: ANALYTICS_WEIGHT_FIELDS[key],
+      before: { type: "number", value: before.modifier_weights[key] },
+      after: { type: "number", value: after.modifier_weights[key] },
+    });
+  }
+  return changes;
 }
 
 function monotonicTimestamp(now: string, previous: string): string {

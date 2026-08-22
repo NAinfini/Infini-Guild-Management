@@ -1,7 +1,7 @@
 {
   "version": "6",
   "dialect": "sqlite",
-  "id": "a122df19-c601-4325-8d31-73367693f417",
+  "id": "50c68eee-864a-4387-853d-2c943e2f7706",
   "prevId": "00000000-0000-0000-0000-000000000000",
   "tables": {
     "announcements": {
@@ -101,6 +101,14 @@
           "notNull": true,
           "autoincrement": false,
           "default": "(strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))"
+        },
+        "search_text": {
+          "name": "search_text",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "''"
         }
       },
       "indexes": {
@@ -464,32 +472,46 @@
           "notNull": true,
           "autoincrement": false
         },
-        "actor_user_id": {
-          "name": "actor_user_id",
+        "actor_kind": {
+          "name": "actor_kind",
           "type": "text",
           "primaryKey": false,
           "notNull": true,
           "autoincrement": false
         },
-        "actor_username": {
-          "name": "actor_username",
+        "actor_id": {
+          "name": "actor_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "actor_label": {
+          "name": "actor_label",
           "type": "text",
           "primaryKey": false,
           "notNull": false,
           "autoincrement": false
         },
-        "entity_type": {
-          "name": "entity_type",
+        "subject_type": {
+          "name": "subject_type",
           "type": "text",
           "primaryKey": false,
           "notNull": true,
           "autoincrement": false
         },
-        "entity_id": {
-          "name": "entity_id",
+        "subject_id": {
+          "name": "subject_id",
           "type": "text",
           "primaryKey": false,
           "notNull": true,
+          "autoincrement": false
+        },
+        "subject_label": {
+          "name": "subject_label",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
           "autoincrement": false
         },
         "action": {
@@ -499,18 +521,11 @@
           "notNull": true,
           "autoincrement": false
         },
-        "summary": {
-          "name": "summary",
+        "payload_json": {
+          "name": "payload_json",
           "type": "text",
           "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "detail_json": {
-          "name": "detail_json",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false,
+          "notNull": true,
           "autoincrement": false
         },
         "occurred_at": {
@@ -533,16 +548,16 @@
         "idx_audit_log_actor_occurred": {
           "name": "idx_audit_log_actor_occurred",
           "columns": [
-            "actor_user_id",
+            "actor_id",
             "occurred_at",
             "id"
           ],
           "isUnique": false
         },
-        "idx_audit_log_entity_occurred": {
-          "name": "idx_audit_log_entity_occurred",
+        "idx_audit_log_subject_occurred": {
+          "name": "idx_audit_log_subject_occurred",
           "columns": [
-            "entity_type",
+            "subject_type",
             "occurred_at",
             "id"
           ],
@@ -551,8 +566,8 @@
         "idx_audit_log_target_occurred": {
           "name": "idx_audit_log_target_occurred",
           "columns": [
-            "entity_type",
-            "entity_id",
+            "subject_type",
+            "subject_id",
             "occurred_at",
             "id"
           ],
@@ -570,29 +585,41 @@
       "compositePrimaryKeys": {},
       "uniqueConstraints": {},
       "checkConstraints": {
-        "audit_log_entity_type_valid": {
-          "name": "audit_log_entity_type_valid",
-          "value": "\"audit_log\".\"entity_type\" IN ('analytics_settings', 'announcement', 'audit_archive_export', 'audit_log_export', 'badge', 'class_catalog', 'class_tag', 'event', 'event_participant', 'event_poll_vote', 'gallery', 'gallery_item', 'guild_war', 'guild_war_history', 'guild_war_member_stats', 'invite_link', 'media_cleanup', 'media_asset', 'member_absence', 'member_badge', 'member_profile', 'recurring_template', 'role', 'seed', 'site_config', 'system_test', 'storage', 'storage_category', 'storage_item', 'storage_transaction', 'user', 'user_auth', 'wiki', 'wiki_article', 'wiki_category')"
+        "audit_log_actor_kind_valid": {
+          "name": "audit_log_actor_kind_valid",
+          "value": "\"audit_log\".\"actor_kind\" IN ('user', 'system')"
+        },
+        "audit_log_subject_type_valid": {
+          "name": "audit_log_subject_type_valid",
+          "value": "\"audit_log\".\"subject_type\" IN ('analytics_settings', 'announcement', 'audit_archive_export', 'audit_log_export', 'badge', 'class_catalog', 'class_tag', 'event', 'event_participant', 'event_poll_vote', 'gallery', 'gallery_item', 'guild_war', 'guild_war_history', 'guild_war_member_stats', 'invite_link', 'media_cleanup', 'media_asset', 'member_absence', 'member_badge', 'member_profile', 'recurring_template', 'role', 'seed', 'site_config', 'system_test', 'storage', 'storage_category', 'storage_item', 'storage_transaction', 'user', 'user_auth', 'wiki', 'wiki_article', 'wiki_category')"
         },
         "audit_log_action_valid": {
           "name": "audit_log_action_valid",
-          "value": "\"audit_log\".\"action\" IN ('admin_create_member', 'archive', 'adjust', 'acknowledge', 'assign', 'batch_add_by_moderator', 'batch_deactivate', 'batch_delete', 'batch_reactivate', 'batch_remove_by_moderator', 'batch_role_update', 'batch_update', 'change_password', 'change_username', 'complete', 'conclude', 'create', 'create_video', 'deactivate', 'delete', 'delete_audio', 'delete_avatar', 'delete_images', 'distribute', 'download_raw_ndjson_gz', 'export_filtered_csv', 'export_filtered_json', 'init', 'intake', 'join', 'leave', 'login_failed', 'move_member', 'pause', 'publish', 'raffle_draw', 'reactivate', 'register', 'reset_login_lock', 'reset_password', 'rollback', 'run', 'resume', 'revoke', 'save_teams', 'set_role_tag', 'share_video', 'unassign', 'update', 'update_role', 'upload', 'upload_audio', 'upload_avatar', 'upload_icon', 'upload_images', 'vote')"
+          "value": "\"audit_log\".\"action\" IN ('admin_create_member', 'archive', 'adjust', 'assign', 'batch_add_by_moderator', 'batch_deactivate', 'batch_delete', 'batch_reactivate', 'batch_remove_by_moderator', 'batch_role_update', 'batch_update', 'change_password', 'change_username', 'conclude', 'create', 'create_video', 'deactivate', 'delete', 'delete_audio', 'delete_avatar', 'delete_images', 'distribute', 'export_filtered_csv', 'export_filtered_json', 'init', 'intake', 'join', 'leave', 'login_failed', 'move_member', 'pause', 'publish', 'raffle_draw', 'reactivate', 'register', 'reorder', 'reset_login_lock', 'reset_password', 'rollback', 'run', 'resume', 'revoke', 'save_teams', 'set_role_tag', 'unassign', 'update', 'update_role', 'upload', 'upload_audio', 'upload_avatar', 'upload_icon', 'upload_images', 'vote')"
         },
-        "audit_log_entity_id_present": {
-          "name": "audit_log_entity_id_present",
-          "value": "length(trim(\"audit_log\".\"entity_id\")) > 0"
+        "audit_log_actor_id_present": {
+          "name": "audit_log_actor_id_present",
+          "value": "length(trim(\"audit_log\".\"actor_id\")) > 0"
+        },
+        "audit_log_actor_label_bounded": {
+          "name": "audit_log_actor_label_bounded",
+          "value": "\"audit_log\".\"actor_label\" IS NULL OR length(trim(\"audit_log\".\"actor_label\")) BETWEEN 1 AND 200"
+        },
+        "audit_log_subject_id_present": {
+          "name": "audit_log_subject_id_present",
+          "value": "length(trim(\"audit_log\".\"subject_id\")) > 0"
         },
         "audit_log_request_id_present": {
           "name": "audit_log_request_id_present",
           "value": "length(trim(\"audit_log\".\"request_id\")) > 0"
         },
-        "audit_log_summary_bounded": {
-          "name": "audit_log_summary_bounded",
-          "value": "\"audit_log\".\"summary\" IS NULL OR length(\"audit_log\".\"summary\") BETWEEN 1 AND 200"
+        "audit_log_subject_label_bounded": {
+          "name": "audit_log_subject_label_bounded",
+          "value": "\"audit_log\".\"subject_label\" IS NULL OR length(trim(\"audit_log\".\"subject_label\")) BETWEEN 1 AND 200"
         },
-        "audit_log_detail_object": {
-          "name": "audit_log_detail_object",
-          "value": "\"audit_log\".\"detail_json\" IS NULL OR (json_valid(\"audit_log\".\"detail_json\") AND json_type(\"audit_log\".\"detail_json\") = 'object' AND length(\"audit_log\".\"detail_json\") <= 16384)"
+        "audit_log_payload_v2": {
+          "name": "audit_log_payload_v2",
+          "value": "json_valid(\"audit_log\".\"payload_json\")\n        AND json_type(\"audit_log\".\"payload_json\") = 'object'\n        AND json_extract(\"audit_log\".\"payload_json\", '$.schema_version') = 2\n        AND json_type(\"audit_log\".\"payload_json\", '$.changes') = 'array'\n        AND json_type(\"audit_log\".\"payload_json\", '$.context') = 'array'\n        AND length(\"audit_log\".\"payload_json\") <= 32768"
         }
       }
     },
@@ -849,7 +876,7 @@
       "checkConstraints": {
         "role_permissions_permission_valid": {
           "name": "role_permissions_permission_valid",
-          "value": "\"role_permissions\".\"permission\" IN ('admin.users.view', 'admin.users.edit', 'admin.users.role', 'admin.users.activate', 'admin.users.delete', 'admin.users.password', 'admin.owners.manage', 'admin.invite.view', 'admin.invite.manage', 'admin.audit.view', 'admin.audit.export', 'admin.status.view', 'admin.analytics.view', 'admin.analytics.manage', 'admin.roles.view', 'admin.roles.manage', 'admin.siteConfig.manage', 'admin.classes.manage', 'guildwar.teams.edit', 'guildwar.history.edit', 'events.create', 'events.edit', 'events.archive', 'events.delete', 'events.templates', 'announcements.create', 'announcements.edit', 'announcements.archive', 'announcements.delete', 'gallery.upload', 'gallery.manage', 'gallery.delete', 'wiki.articles.create', 'wiki.articles.edit', 'wiki.articles.archive', 'wiki.articles.delete', 'wiki.categories.manage', 'admin.badges.manage', 'admin.storage.structure', 'admin.storage.items', 'admin.storage.stock')"
+          "value": "\"role_permissions\".\"permission\" IN ('admin.users.view', 'admin.users.edit', 'admin.users.role', 'admin.users.activate', 'admin.users.delete', 'admin.users.password', 'admin.invite.view', 'admin.invite.manage', 'admin.audit.view', 'admin.audit.export', 'admin.status.view', 'admin.analytics.view', 'admin.analytics.manage', 'admin.roles.view', 'admin.roles.manage', 'admin.siteConfig.manage', 'admin.classes.manage', 'guildwar.teams.edit', 'guildwar.history.edit', 'events.create', 'events.edit', 'events.archive', 'events.delete', 'events.templates', 'announcements.create', 'announcements.edit', 'announcements.archive', 'announcements.delete', 'gallery.upload', 'gallery.manage', 'gallery.delete', 'wiki.articles.create', 'wiki.articles.edit', 'wiki.articles.archive', 'wiki.articles.delete', 'wiki.categories.manage', 'admin.badges.manage', 'admin.storage.structure', 'admin.storage.items', 'admin.storage.stock')"
         }
       }
     },
@@ -931,7 +958,7 @@
       "checkConstraints": {
         "roles_level_valid": {
           "name": "roles_level_valid",
-          "value": "(\n        (\"roles\".\"id\" = 'site_owner' AND \"roles\".\"level\" = 1000)\n        OR (\"roles\".\"id\" <> 'site_owner' AND \"roles\".\"level\" BETWEEN 1 AND 999)\n      )"
+          "value": "\"roles\".\"level\" BETWEEN 1 AND 1000"
         },
         "roles_revision_present": {
           "name": "roles_revision_present",
@@ -1098,6 +1125,13 @@
         },
         "deleted_at": {
           "name": "deleted_at",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "last_login_at": {
+          "name": "last_login_at",
           "type": "text",
           "primaryKey": false,
           "notNull": false,
@@ -4640,6 +4674,147 @@
         }
       }
     },
+    "scheduled_job_statuses": {
+      "name": "scheduled_job_statuses",
+      "columns": {
+        "job_name": {
+          "name": "job_name",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "status": {
+          "name": "status",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "started_at": {
+          "name": "started_at",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "finished_at": {
+          "name": "finished_at",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "duration_ms": {
+          "name": "duration_ms",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "processed": {
+          "name": "processed",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "batches": {
+          "name": "batches",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "has_more": {
+          "name": "has_more",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "backlog_count_precision": {
+          "name": "backlog_count_precision",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "backlog_pending_count": {
+          "name": "backlog_pending_count",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "backlog_oldest_pending_at": {
+          "name": "backlog_oldest_pending_at",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "backlog_reason": {
+          "name": "backlog_reason",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "backlog_detail": {
+          "name": "backlog_detail",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "error_summary": {
+          "name": "error_summary",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {
+        "scheduled_job_statuses_job_name_valid": {
+          "name": "scheduled_job_statuses_job_name_valid",
+          "value": "\"scheduled_job_statuses\".\"job_name\" IN ('recurrence-materialization', 'announcement-publish', 'raffle-auto-draw', 'event-auto-archive', 'media-gc', 'audit-archive', 'session-cleanup', 'system-test-cleanup')"
+        },
+        "scheduled_job_statuses_status_valid": {
+          "name": "scheduled_job_statuses_status_valid",
+          "value": "\"scheduled_job_statuses\".\"status\" IN ('running', 'completed', 'lease-held', 'failed')"
+        },
+        "scheduled_job_statuses_duration_valid": {
+          "name": "scheduled_job_statuses_duration_valid",
+          "value": "\"scheduled_job_statuses\".\"duration_ms\" IS NULL OR \"scheduled_job_statuses\".\"duration_ms\" >= 0"
+        },
+        "scheduled_job_statuses_processed_valid": {
+          "name": "scheduled_job_statuses_processed_valid",
+          "value": "\"scheduled_job_statuses\".\"processed\" IS NULL OR \"scheduled_job_statuses\".\"processed\" >= 0"
+        },
+        "scheduled_job_statuses_batches_valid": {
+          "name": "scheduled_job_statuses_batches_valid",
+          "value": "\"scheduled_job_statuses\".\"batches\" IS NULL OR \"scheduled_job_statuses\".\"batches\" >= 0"
+        },
+        "scheduled_job_statuses_backlog_count_valid": {
+          "name": "scheduled_job_statuses_backlog_count_valid",
+          "value": "\"scheduled_job_statuses\".\"backlog_pending_count\" IS NULL OR \"scheduled_job_statuses\".\"backlog_pending_count\" >= 0"
+        },
+        "scheduled_job_statuses_backlog_valid": {
+          "name": "scheduled_job_statuses_backlog_valid",
+          "value": "(\n        \"scheduled_job_statuses\".\"backlog_count_precision\" IS NULL\n        AND \"scheduled_job_statuses\".\"backlog_pending_count\" IS NULL\n        AND \"scheduled_job_statuses\".\"backlog_oldest_pending_at\" IS NULL\n        AND \"scheduled_job_statuses\".\"backlog_reason\" IS NULL\n        AND \"scheduled_job_statuses\".\"backlog_detail\" IS NULL\n      ) OR (\n        \"scheduled_job_statuses\".\"backlog_count_precision\" = 'unknown'\n        AND \"scheduled_job_statuses\".\"backlog_pending_count\" IS NULL\n        AND \"scheduled_job_statuses\".\"backlog_oldest_pending_at\" IS NULL\n        AND \"scheduled_job_statuses\".\"backlog_reason\" IS NOT NULL\n        AND (\"scheduled_job_statuses\".\"backlog_detail\" IS NULL OR length(\"scheduled_job_statuses\".\"backlog_detail\") BETWEEN 1 AND 500)\n      ) OR (\n        \"scheduled_job_statuses\".\"backlog_count_precision\" IN ('exact', 'at-least')\n        AND \"scheduled_job_statuses\".\"backlog_pending_count\" IS NOT NULL\n        AND ((\"scheduled_job_statuses\".\"backlog_pending_count\" = 0 AND \"scheduled_job_statuses\".\"backlog_oldest_pending_at\" IS NULL)\n          OR (\"scheduled_job_statuses\".\"backlog_pending_count\" > 0 AND \"scheduled_job_statuses\".\"backlog_oldest_pending_at\" IS NOT NULL))\n        AND \"scheduled_job_statuses\".\"backlog_reason\" IS NULL\n        AND \"scheduled_job_statuses\".\"backlog_detail\" IS NULL\n      )"
+        },
+        "scheduled_job_statuses_state_valid": {
+          "name": "scheduled_job_statuses_state_valid",
+          "value": "(\n        \"scheduled_job_statuses\".\"status\" = 'running'\n        AND \"scheduled_job_statuses\".\"finished_at\" IS NULL\n        AND \"scheduled_job_statuses\".\"duration_ms\" IS NULL\n        AND \"scheduled_job_statuses\".\"processed\" IS NULL\n        AND \"scheduled_job_statuses\".\"batches\" IS NULL\n        AND \"scheduled_job_statuses\".\"has_more\" IS NULL\n        AND \"scheduled_job_statuses\".\"backlog_count_precision\" IS NULL\n        AND \"scheduled_job_statuses\".\"error_summary\" IS NULL\n      ) OR (\n        \"scheduled_job_statuses\".\"status\" = 'completed'\n        AND \"scheduled_job_statuses\".\"finished_at\" IS NOT NULL\n        AND \"scheduled_job_statuses\".\"duration_ms\" IS NOT NULL\n        AND \"scheduled_job_statuses\".\"processed\" IS NOT NULL\n        AND \"scheduled_job_statuses\".\"batches\" IS NOT NULL\n        AND \"scheduled_job_statuses\".\"has_more\" IS NOT NULL\n        AND \"scheduled_job_statuses\".\"backlog_count_precision\" IS NOT NULL\n        AND \"scheduled_job_statuses\".\"error_summary\" IS NULL\n      ) OR (\n        \"scheduled_job_statuses\".\"status\" = 'lease-held'\n        AND \"scheduled_job_statuses\".\"finished_at\" IS NOT NULL\n        AND \"scheduled_job_statuses\".\"duration_ms\" IS NOT NULL\n        AND \"scheduled_job_statuses\".\"processed\" = 0\n        AND \"scheduled_job_statuses\".\"batches\" = 0\n        AND \"scheduled_job_statuses\".\"has_more\" = 1\n        AND \"scheduled_job_statuses\".\"backlog_count_precision\" = 'unknown'\n        AND \"scheduled_job_statuses\".\"backlog_reason\" = 'lease-held'\n        AND \"scheduled_job_statuses\".\"error_summary\" IS NULL\n      ) OR (\n        \"scheduled_job_statuses\".\"status\" = 'failed'\n        AND \"scheduled_job_statuses\".\"finished_at\" IS NOT NULL\n        AND \"scheduled_job_statuses\".\"duration_ms\" IS NOT NULL\n        AND \"scheduled_job_statuses\".\"processed\" IS NULL\n        AND \"scheduled_job_statuses\".\"batches\" IS NULL\n        AND \"scheduled_job_statuses\".\"has_more\" IS NULL\n        AND \"scheduled_job_statuses\".\"backlog_count_precision\" = 'unknown'\n        AND \"scheduled_job_statuses\".\"backlog_reason\" = 'job-failed'\n        AND length(\"scheduled_job_statuses\".\"error_summary\") BETWEEN 1 AND 500\n      )"
+        }
+      }
+    },
     "app_migrations": {
       "name": "app_migrations",
       "columns": {
@@ -4956,6 +5131,14 @@
           "notNull": true,
           "autoincrement": false,
           "default": "(strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))"
+        },
+        "site_description": {
+          "name": "site_description",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "'Guild Management Portal — roster, events, wiki, and tools for your guild.'"
         }
       },
       "indexes": {},
@@ -4970,6 +5153,10 @@
         "site_config_name_bounded": {
           "name": "site_config_name_bounded",
           "value": "length(trim(\"site_config\".\"site_name\")) BETWEEN 1 AND 100"
+        },
+        "site_config_description_bounded": {
+          "name": "site_config_description_bounded",
+          "value": "length(trim(\"site_config\".\"site_description\")) BETWEEN 1 AND 300"
         },
         "site_config_logo_url_present": {
           "name": "site_config_logo_url_present",
@@ -6255,6 +6442,14 @@
           "notNull": true,
           "autoincrement": false,
           "default": "(strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))"
+        },
+        "search_text": {
+          "name": "search_text",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "''"
         }
       },
       "indexes": {

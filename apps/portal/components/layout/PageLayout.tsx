@@ -54,7 +54,7 @@ function PageLayoutRoot({
       className={`page-layout ${className ?? ""}`.trim()}
       data-page-layout="content"
     >
-      <Stack gap="xl" className="page-layout__content">
+      <Stack gap="var(--page-rhythm)" className="page-layout__content">
       {hasHeader ? (
         <Group
           className="page-layout__action-row"

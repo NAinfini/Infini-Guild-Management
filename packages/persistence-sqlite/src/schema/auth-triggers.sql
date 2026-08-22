@@ -1,5 +1,5 @@
--- The built-in site_owner role is the trust root. There may be multiple owners,
--- but the system must always retain at least one active, non-deleted owner.
+-- Role management is dynamic. The system must retain at least one active,
+-- non-deleted user whose current role grants admin.roles.manage.
 
 CREATE TRIGGER auth_role_permission_identity_immutable
 BEFORE UPDATE OF role_id, permission ON role_permissions
@@ -8,71 +8,77 @@ BEGIN
   SELECT RAISE(ABORT, 'role permission identity is immutable');
 END;
 
-CREATE TRIGGER auth_site_owner_role_identity_immutable
-BEFORE UPDATE OF id ON roles
-WHEN OLD.id = 'site_owner' OR NEW.id = 'site_owner'
-BEGIN
-  SELECT RAISE(ABORT, 'site owner role identity is immutable');
-END;
-
-CREATE TRIGGER auth_site_owner_role_required
-BEFORE DELETE ON roles
-WHEN OLD.id = 'site_owner'
-BEGIN
-  SELECT RAISE(ABORT, 'last site owner required');
-END;
-
-CREATE TRIGGER auth_owner_permission_site_owner_only_insert
-BEFORE INSERT ON role_permissions
-WHEN NEW.permission = 'admin.owners.manage' AND NEW.role_id <> 'site_owner'
-BEGIN
-  SELECT RAISE(ABORT, 'owner permission is reserved for site owner');
-END;
-
-CREATE TRIGGER auth_owner_permission_site_owner_only_delete
+CREATE TRIGGER auth_keep_last_role_manager_on_permission_delete
 BEFORE DELETE ON role_permissions
-WHEN OLD.permission = 'admin.owners.manage' AND OLD.role_id = 'site_owner'
+WHEN OLD.permission = 'admin.roles.manage'
+ AND EXISTS (
+   SELECT 1
+   FROM users u
+   WHERE u.role_id = OLD.role_id
+     AND u.is_active = 1
+     AND u.deleted_at IS NULL
+ )
+ AND NOT EXISTS (
+   SELECT 1
+   FROM users u
+   JOIN role_permissions rp ON rp.role_id = u.role_id
+   WHERE u.role_id <> OLD.role_id
+     AND u.is_active = 1
+     AND u.deleted_at IS NULL
+     AND rp.permission = 'admin.roles.manage'
+ )
 BEGIN
-  SELECT RAISE(ABORT, 'last site owner required');
+  SELECT RAISE(ABORT, 'last role manager required');
 END;
 
-CREATE TRIGGER auth_keep_last_site_owner_on_user_update
+CREATE TRIGGER auth_keep_last_role_manager_on_user_update
 BEFORE UPDATE OF role_id, is_active, deleted_at ON users
 WHEN OLD.is_active = 1
  AND OLD.deleted_at IS NULL
- AND OLD.role_id = 'site_owner'
+ AND EXISTS (
+   SELECT 1 FROM role_permissions rp
+   WHERE rp.role_id = OLD.role_id AND rp.permission = 'admin.roles.manage'
+ )
  AND (
    NEW.is_active = 0
    OR NEW.deleted_at IS NOT NULL
-   OR NEW.role_id <> 'site_owner'
+   OR NOT EXISTS (
+     SELECT 1 FROM role_permissions rp
+     WHERE rp.role_id = NEW.role_id AND rp.permission = 'admin.roles.manage'
+   )
  )
  AND NOT EXISTS (
    SELECT 1
    FROM users u
+   JOIN role_permissions rp ON rp.role_id = u.role_id
    WHERE u.id <> OLD.id
      AND u.is_active = 1
      AND u.deleted_at IS NULL
-     AND u.role_id = 'site_owner'
+     AND rp.permission = 'admin.roles.manage'
  )
 BEGIN
-  SELECT RAISE(ABORT, 'last site owner required');
+  SELECT RAISE(ABORT, 'last role manager required');
 END;
 
-CREATE TRIGGER auth_keep_last_site_owner_on_user_delete
+CREATE TRIGGER auth_keep_last_role_manager_on_user_delete
 BEFORE DELETE ON users
 WHEN OLD.is_active = 1
  AND OLD.deleted_at IS NULL
- AND OLD.role_id = 'site_owner'
+ AND EXISTS (
+   SELECT 1 FROM role_permissions rp
+   WHERE rp.role_id = OLD.role_id AND rp.permission = 'admin.roles.manage'
+ )
  AND NOT EXISTS (
    SELECT 1
    FROM users u
+   JOIN role_permissions rp ON rp.role_id = u.role_id
    WHERE u.id <> OLD.id
      AND u.is_active = 1
      AND u.deleted_at IS NULL
-     AND u.role_id = 'site_owner'
+     AND rp.permission = 'admin.roles.manage'
  )
 BEGIN
-  SELECT RAISE(ABORT, 'last site owner required');
+  SELECT RAISE(ABORT, 'last role manager required');
 END;
 
 -- login_failures also records unknown usernames, so it cannot reference users.

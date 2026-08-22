@@ -1,7 +1,6 @@
 import type { AdminRole } from "@guild/shared";
 import {
   ActionIcon,
-  Alert,
   Badge,
   Button,
   Group,
@@ -12,6 +11,7 @@ import {
   Stack,
   Text,
   TextInput,
+  Tooltip,
   UnstyledButton,
 } from "@mantine/core";
 import { CopyIcon, EyeIcon, KeyIcon, LockOpenIcon, PlayIcon, PlayerPauseIcon, SearchIcon, TrashIcon, UserPlusIcon } from "@portal/components/icons";
@@ -35,12 +35,15 @@ import type {
 import { useTranslation } from "react-i18next";
 import { DataTablePagination } from "../../shared/DataTablePagination";
 import type { UsersListResponse } from "../../../services/UserService";
-import { resolveClassCatalogItem, useClassCatalogStore } from "../../../stores/class-catalog";
+import { useClassCatalog } from "../../../hooks/data/useClassData";
+import { formatDateTime } from "../../../utils/datetime";
+import { resolveClassCatalogItem } from "../../../utils/class-catalog";
 import type { AdminUserPendingAction } from "../../../hooks/useAdminMutations";
 import { useAuthStore } from "../../../stores/auth";
 import { canManageUserByRoleLevel, userCanAccessAdmin } from "../../../utils/permissions";
 import type { AdminLoginLockState } from "../../../services/AdminService";
 import { useAdminUserLoginLock } from "../../../hooks/useAdminUserLoginLock";
+import { AdminLoadError } from "./AdminLoadError";
 
 export type AdminUserRow = UsersListResponse["data"][number];
 
@@ -54,6 +57,7 @@ type ActionMenuContext = {
 type AdminUsersSectionProps = {
   usersLoading: boolean;
   usersError: boolean;
+  onRetryUsers: () => void;
   canEditUsers: boolean;
   canAssignUserRoles: boolean;
   canActivateUsers: boolean;
@@ -87,6 +91,7 @@ type AdminUsersSectionProps = {
 export function AdminUsersSection({
   usersLoading,
   usersError,
+  onRetryUsers,
   canEditUsers,
   canAssignUserRoles,
   canActivateUsers,
@@ -117,11 +122,9 @@ export function AdminUsersSection({
   onMemberSearchChange,
 }: AdminUsersSectionProps) {
   const { t } = useTranslation("admin");
-  const { t: tc } = useTranslation("common");
-  const classCatalog = useClassCatalogStore((state) => state.items);
+  const classCatalog = useClassCatalog();
   const clipboard = useClipboard();
   const currentUser = useAuthStore((state) => state.user);
-  const loadErrorMessage = tc("loadError");
   const [sorting, setSorting] = useState<SortingState>([]);
   const [pagination, setPagination] = useState<PaginationState>({ pageIndex: 0, pageSize: 20 });
   const [selectionAnchorId, setSelectionAnchorId] = useState<string | null>(null);
@@ -473,13 +476,16 @@ export function AdminUsersSection({
                 {t("member.resetPassword")}
               </Menu.Item>
               {canResetUserPasswords && !contextHasProtectedTarget ? (
-                <Menu.Label
-                  aria-live="polite"
-                  role="status"
-                  title={loginLockQuery.data?.locked_until ?? undefined}
+                <Tooltip
+                  label={t("member.loginLock.until", {
+                    at: formatDateTime(loginLockQuery.data?.locked_until ?? null),
+                  })}
+                  disabled={!loginLockQuery.data?.locked_until}
                 >
-                  {loginLockStatus}
-                </Menu.Label>
+                  <Menu.Label aria-live="polite" role="status">
+                    {loginLockStatus}
+                  </Menu.Label>
+                </Tooltip>
               ) : null}
               <Menu.Item
                 leftSection={<LockOpenIcon size={14} />}
@@ -518,7 +524,7 @@ export function AdminUsersSection({
       </Menu>
 
       {usersLoading ? <Stack gap={8}>{Array.from({ length: 5 }).map((_, i) => <Skeleton key={i} height={18} />)}</Stack> : null}
-      {usersError ? <Alert color="red" title={loadErrorMessage} /> : null}
+      {usersError ? <AdminLoadError onRetry={onRetryUsers} /> : null}
       {!usersLoading && !usersError ? (
         <>
           <div className="admin-toolbar">
@@ -551,7 +557,7 @@ export function AdminUsersSection({
 
           <Text c="dimmed" size="xs">{t("member.accountStatusDescription")}</Text>
 
-          <div className="admin-stats">
+          <div className="admin-panel admin-stats">
                 <div className="admin-stat">
                   <div className="admin-stat__value">{memberStats.total}</div>
                   <div className="admin-stat__label">{t("member.stat.total")}</div>

@@ -19,13 +19,10 @@ import path from "node:path";
 import process from "node:process";
 import { pathToFileURL } from "node:url";
 
-export const LOCAL_D1_DATABASE_ID = "00000000-0000-0000-0000-000000000000";
-export const LOCAL_R2_BUCKET_NAME = "replace-with-r2-bucket-name";
-
 export type CloudflareLocalMediaSeedOptions = Readonly<{
   persistTo: string;
-  databaseId?: string;
-  bucketName?: string;
+  databaseId: string;
+  bucketName: string;
 }>;
 
 export type CloudflareLocalMediaSeedResult = Readonly<{
@@ -38,13 +35,11 @@ export async function seedCloudflareLocalMedia(
   options: CloudflareLocalMediaSeedOptions,
 ): Promise<CloudflareLocalMediaSeedResult> {
   const persistTo = path.resolve(options.persistTo);
-  const databaseId = options.databaseId ?? LOCAL_D1_DATABASE_ID;
-  const bucketName = options.bucketName ?? LOCAL_R2_BUCKET_NAME;
   const miniflare = new Miniflare({
     compatibilityDate: "2026-07-28",
-    d1Databases: { DB: databaseId },
-    r2Buckets: { BLOBS: bucketName },
-    resourcePersistencePath: persistTo,
+    d1Databases: { DB: options.databaseId },
+    r2Buckets: { BLOBS: options.bucketName },
+    resourcePersistencePath: path.join(persistTo, "v3"),
     modules: true,
     script: "export default {}",
   });
@@ -135,10 +130,21 @@ async function readExactBytes(body: ReadableStream<Uint8Array>, expectedSize: nu
 }
 
 export function parseCloudflareLocalMediaSeedArguments(args: readonly string[]): CloudflareLocalMediaSeedOptions {
-  if (args.length !== 2 || args[0] !== "--persist-to" || !args[1]?.trim()) {
-    throw new TypeError("Usage: seed-local-media --persist-to <local-state-directory>");
+  if (
+    args.length !== 6
+    || args[0] !== "--persist-to" || !args[1]?.trim()
+    || args[2] !== "--database-id" || !args[3]?.trim()
+    || args[4] !== "--bucket-name" || !args[5]?.trim()
+  ) {
+    throw new TypeError(
+      "Usage: seed-local-media --persist-to <local-state-directory> --database-id <database-id> --bucket-name <bucket-name>",
+    );
   }
-  return Object.freeze({ persistTo: args[1] });
+  return Object.freeze({
+    persistTo: args[1],
+    databaseId: args[3],
+    bucketName: args[5],
+  });
 }
 
 const isMainModule = process.argv[1]

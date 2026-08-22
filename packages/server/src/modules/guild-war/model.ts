@@ -3,7 +3,7 @@ import type {
   EventAggregate,
   EventViewerListResult,
 } from "@guild/server/modules/events";
-import type { AuditMutation } from "@guild/server/modules/audit";
+import type { AuditEventWrite as AuditMutation } from "@guild/server/modules/audit";
 import type { PaginatedResponse, SiteAnalyticsSettings } from "@guild/shared";
 import type {
   WarMemberStatKey,
@@ -39,6 +39,7 @@ export type WarMemberRecord = Readonly<{
   teamId: string | null;
   userId: string;
   username: string;
+  avatarMediaId: string | null;
   roleTag: string | null;
   sortOrder: number;
   stats: MemberStats | null;
@@ -104,6 +105,8 @@ export type AnalyticsRead = Readonly<{
 
 export interface GuildWarStore {
   getByEvent(eventId: string): Promise<GuildWarAggregate | null>;
+  /** 从给定用户中挑出还能站上进行中名册的那些；停用与已软删除的不返回。 */
+  listRosterEligible(userIds: readonly string[]): Promise<readonly string[]>;
   getById(warId: string): Promise<GuildWarAggregate | null>;
   getMany(warIds: readonly string[]): Promise<readonly GuildWarAggregate[]>;
   getHistoryMany(warIds: readonly string[]): Promise<readonly GuildWarAggregate[]>;

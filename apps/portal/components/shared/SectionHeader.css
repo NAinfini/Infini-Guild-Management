@@ -15,15 +15,25 @@
   margin-bottom: 0;
 }
 
+/*
+ * 大写和字距是拉丁字母的排版手段。中文没有大小写，text-transform 无效，而
+ * letter-spacing 会把「权限矩阵」拆成「权 限 矩 阵」——在中文优先的站点里，
+ * 这条规则原样套用等于把每个小节标题都拆一遍。
+ * 规范里写的是「仅拉丁字母大写」，这里把那半句落成可执行的选择器。
+ */
 .section-header__title {
   flex: 0 0 auto;
   margin: 0;
   font-size: var(--text-meta);
-  font-weight: var(--fw-strong);
+  font-weight: var(--fw-medium);
   line-height: var(--lh-tight);
+  color: var(--text-muted);
+}
+
+.section-header__title:lang(en) {
+  font-weight: var(--fw-strong);
   letter-spacing: 0.06em;
   text-transform: uppercase;
-  color: var(--text-muted);
 }
 
 /* flex:1 的发丝线，把标题和右侧计数撑开。没有 trailing 时它一直延伸到卡片右缘。 */

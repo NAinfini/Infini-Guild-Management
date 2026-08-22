@@ -1,10 +1,10 @@
 import { AppError, type RequestContext } from "@guild/kernel";
-import type { SiteAnalyticsSettings } from "@guild/shared";
+import type { AuditChange, SiteAnalyticsSettings } from "@guild/shared";
 import type { PushHint } from "@guild/shared/constants/push-hints";
 import type { WarResult } from "@guild/shared/constants/guild-war";
 import { PERMISSION_ID } from "@guild/shared/constants/roles";
 import { nanoid } from "nanoid";
-import { createAuditMutation } from "@guild/server/modules/audit";
+import { createAuditEvent } from "@guild/server/modules/audit";
 import {
   eventViewer,
   projectEventForViewer,
@@ -87,7 +87,10 @@ type HistoryInput = Readonly<{
   notes?: string;
 }>;
 
-type HistoryUpdateInput = Partial<HistoryInput>;
+type HistoryUpdateInput = Readonly<Partial<Omit<HistoryInput, "event_id" | "duration_minutes">> & {
+  event_id?: string | null;
+  duration_minutes?: number | null;
+}>;
 
 type MemberStatsUpdate = Readonly<{ stats?: MemberStats; note?: string | null }>;
 
@@ -104,13 +107,21 @@ export class GuildWarService {
     if (!event || event.event.type !== "guild_war") throw notFound("Guild war event not found");
     const viewerEvent = projectEventForViewer(event, eventViewer(context));
     const aggregate = await this.dependencies.store.getByEvent(eventId);
-    const participants = event.participants.map(({ user_id }) => ({ user_id }));
+    /* 报名记录会留着，但停用的账号登不进来也打不了仗。名册和候补池只呈现还能上场的人，
+       否则指挥会把位置排给一个根本来不了的人。报名本身不删：账号一旦恢复就照常归队。 */
+    const eligible = new Set(
+      await this.dependencies.store.listRosterEligible(event.participants.map(({ user_id }) => user_id)),
+    );
+    const eligibleIds = event.participants
+      .map(({ user_id }) => user_id)
+      .filter((userId) => eligible.has(userId));
+    const participants = eligibleIds.map((user_id) => ({ user_id }));
     if (!aggregate || aggregate.war.status !== "active") {
       return {
         war: null,
         event: viewerEvent,
         teams: [],
-        pool: virtualPool(eventId, event.participants.map(({ user_id }) => user_id)),
+        pool: virtualPool(eventId, eligibleIds),
         participants,
         etag: null,
       };
@@ -119,10 +130,7 @@ export class GuildWarService {
       ...aggregate.pool.map(({ userId }) => userId),
       ...aggregate.teams.flatMap((team) => team.members.map(({ userId }) => userId)),
     ]);
-    const additions = virtualPool(
-      eventId,
-      event.participants.map(({ user_id }) => user_id).filter((userId) => !placed.has(userId)),
-    );
+    const additions = virtualPool(eventId, eligibleIds.filter((userId) => !placed.has(userId)));
     return {
       war: aggregate.war,
       event: viewerEvent,
@@ -176,12 +184,21 @@ export class GuildWarService {
       userId: member.user_id,
       sortOrder,
     }));
-    const audit = createAuditMutation(context, {
-      entityType: "guild_war",
-      entityId: input.event_id,
+    const audit = createAuditEvent(context, {
+      subjectType: "guild_war",
+      subjectId: input.event_id,
+      subjectLabel: event.event.title,
       action: "save_teams",
-      summary: event.event.title,
-      details: { team_count: teams.length, member_count: teams.reduce((sum, team) => sum + team.members.length, 0) },
+      context: [
+        { field: "team_count", value: { type: "number", value: teams.length } },
+        {
+          field: "member_count",
+          value: {
+            type: "number",
+            value: pool.length + teams.reduce((sum, team) => sum + team.members.length, 0),
+          },
+        },
+      ],
     });
     const changed = await this.dependencies.store.replaceRoster({
       warId: aggregate.war.id,
@@ -205,26 +222,36 @@ export class GuildWarService {
     ifMatch?: string,
   ): Promise<Readonly<{ ok: true }>> {
     const actor = context.authorization.require(PERMISSION_ID.GUILD_WAR_TEAMS_EDIT);
-    const removesParticipants = moves.some(({ to }) => to === "remove");
+    const normalizedMoves = [...new Map(moves.map((move) => [move.user_id, move])).values()];
+    const removesParticipants = normalizedMoves.some(({ to }) => to === "remove");
     if (removesParticipants) context.authorization.require(PERMISSION_ID.EVENTS_EDIT);
     const event = await this.dependencies.events.getGuildWarTarget(context, eventId);
     const participantIds = new Set(event.participants.map(({ user_id }) => user_id));
-    const nonParticipant = moves.find(({ user_id, to }) => to !== "pool" && !participantIds.has(user_id));
+    const nonParticipant = normalizedMoves.find(({ user_id, to }) => to !== "pool" && !participantIds.has(user_id));
     if (nonParticipant) throw validation("Guild war roster members must be event participants", { user_id: nonParticipant.user_id });
     const participantAdditions = new Set(
-      moves.filter(({ user_id, to }) => to === "pool" && !participantIds.has(user_id)).map(({ user_id }) => user_id),
+      normalizedMoves.filter(({ user_id, to }) => to === "pool" && !participantIds.has(user_id)).map(({ user_id }) => user_id),
     );
     const aggregate = await this.ensureActive(context, eventId, event.event.title, actor.userId);
     assertEtag(ifMatch, aggregate.war);
     const teamIds = new Set(aggregate.teams.map(({ id }) => id));
-    const invalid = moves.find(({ to }) => to !== "pool" && to !== "remove" && !teamIds.has(to));
+    const invalid = normalizedMoves.find(({ to }) => to !== "pool" && to !== "remove" && !teamIds.has(to));
     if (invalid) throw notFound("Target team not found");
-    const audit = createAuditMutation(context, {
-      entityType: "guild_war",
-      entityId: eventId,
+    const teamNamesById = new Map(aggregate.teams.map(({ id, teamName }) => [id, teamName]));
+    const audit = createAuditEvent(context, {
+      subjectType: "guild_war",
+      subjectId: eventId,
+      subjectLabel: event.event.title,
       action: "move_member",
-      summary: event.event.title,
-      details: { moves: moves.map((move) => ({ user_id: move.user_id, to: move.to })) },
+      context: [{
+        field: "destinations",
+        value: {
+          type: "list",
+          value: normalizedMoves.map(({ to }) => to === "pool" || to === "remove"
+            ? ({ type: "code" as const, value: to })
+            : ({ type: "reference" as const, value: { id: to, label: teamNamesById.get(to)! } })),
+        },
+      }],
     });
     const changed = await this.dependencies.eventRoster.moveMembers({
       warId: aggregate.war.id,
@@ -232,7 +259,7 @@ export class GuildWarService {
       expectedVersion: aggregate.war.rosterVersion,
       actorUserId: actor.userId,
       now: context.now,
-      moves: moves.map((move) => ({
+      moves: normalizedMoves.map((move) => ({
         id: this.createId(),
         userId: move.user_id,
         to: move.to,
@@ -259,16 +286,42 @@ export class GuildWarService {
     const actor = context.authorization.require(PERMISSION_ID.GUILD_WAR_TEAMS_EDIT);
     const event = await this.dependencies.events.getGuildWarTarget(context, eventId);
     const aggregate = await this.ensureActive(context, eventId, event.event.title, actor.userId);
-    const teamMemberIds = new Set(aggregate.teams.flatMap((team) => team.members.map(({ userId }) => userId)));
+    const teamMembers = aggregate.teams.flatMap((team) => team.members);
+    const teamMemberIds = new Set(teamMembers.map(({ userId }) => userId));
+    const usernamesById = new Map(teamMembers.map(({ userId, username }) => [userId, username]));
     const missing = updates.find(({ user_id }) => !teamMemberIds.has(user_id));
     if (missing) throw notFound("Member not found in active teams", { user_id: missing.user_id });
-    const normalized = updates.map((update) => ({ userId: update.user_id, roleTag: update.role_tag?.trim() || null }));
-    const audit = createAuditMutation(context, {
-      entityType: "guild_war",
-      entityId: eventId,
+    const normalized = [...new Map(updates.map((update) => [update.user_id, {
+      userId: update.user_id,
+      roleTag: update.role_tag?.trim() || null,
+    }])).values()];
+    const audit = createAuditEvent(context, {
+      subjectType: "guild_war",
+      subjectId: eventId,
+      subjectLabel: event.event.title,
       action: "set_role_tag",
-      summary: event.event.title,
-      details: { count: normalized.length },
+      context: [
+        { field: "member_count", value: { type: "number", value: normalized.length } },
+        {
+          field: "user_ids",
+          value: {
+            type: "list",
+            value: normalized.map(({ userId }) => ({
+              type: "reference" as const,
+              value: { id: userId, label: usernamesById.get(userId)! },
+            })),
+          },
+        },
+        {
+          field: "role_tags",
+          value: {
+            type: "list",
+            value: normalized.map(({ roleTag }) => roleTag === null
+              ? ({ type: "null" as const, value: null })
+              : ({ type: "code" as const, value: roleTag })),
+          },
+        },
+      ],
     });
     const changed = await this.dependencies.store.setRoleTags({
       warId: aggregate.war.id,
@@ -280,7 +333,7 @@ export class GuildWarService {
     });
     if (!changed) throw conflict();
     this.publish(eventId, "role_tags_updated", context.now);
-    return { ok: true, updated: updates.length };
+    return { ok: true, updated: normalized.length };
   }
 
   async conclude(
@@ -297,12 +350,19 @@ export class GuildWarService {
     const teamMemberIds = new Set(aggregate.teams.flatMap((team) => team.members.map(({ userId }) => userId)));
     const missing = memberStats.find(({ user_id }) => !teamMemberIds.has(user_id));
     if (missing) throw notFound("Team member not found in selected guild war", { user_id: missing.user_id });
-    const audit = createAuditMutation(context, {
-      entityType: "guild_war_history",
-      entityId: aggregate.war.id,
+    const audit = createAuditEvent(context, {
+      subjectType: "guild_war_history",
+      subjectId: aggregate.war.id,
+      subjectLabel: event.event.title,
       action: "conclude",
-      summary: event.event.title,
-      details: { event_id: eventId, result: warInfo.result, member_count: teamMemberIds.size },
+      context: [
+        {
+          field: "event_id",
+          value: { type: "reference", value: { id: eventId, label: event.event.title } },
+        },
+        { field: "result", value: { type: "code", value: warInfo.result } },
+        { field: "member_count", value: { type: "number", value: teamMemberIds.size } },
+      ],
     });
     const changed = await this.dependencies.store.conclude({
       warId: aggregate.war.id,
@@ -346,8 +406,9 @@ export class GuildWarService {
 
   async createHistory(context: RequestContext, input: HistoryInput): Promise<GuildWarRecord> {
     const actor = context.authorization.require(PERMISSION_ID.GUILD_WAR_HISTORY_EDIT);
+    let eventLabel: string | null = null;
     if (input.event_id) {
-      await this.dependencies.events.getGuildWarHistoryTarget(context, input.event_id);
+      eventLabel = (await this.dependencies.events.getGuildWarHistoryTarget(context, input.event_id)).event.title;
       const conflictRow = await this.dependencies.store.getByEvent(input.event_id);
       if (conflictRow) throw eventHistoryConflict(conflictRow.war.id);
     }
@@ -370,11 +431,23 @@ export class GuildWarService {
       createdAt: context.now,
       updatedAt: context.now,
     };
-    const audit = createAuditMutation(context, {
-      entityType: "guild_war_history",
-      entityId: id,
+    const audit = createAuditEvent(context, {
+      subjectType: "guild_war_history",
+      subjectId: id,
+      subjectLabel: record.warName,
       action: "create",
-      summary: record.warName,
+      context: [
+        {
+          field: "result",
+          value: record.result === null
+            ? { type: "null", value: null }
+            : { type: "code", value: record.result },
+        },
+        ...(record.eventId === null ? [] : [{
+          field: "event_id" as const,
+          value: { type: "reference" as const, value: { id: record.eventId, label: eventLabel } },
+        }]),
+      ],
     });
     const created = await this.dependencies.store.createHistory({ record, audit });
     if (!created) {
@@ -389,10 +462,19 @@ export class GuildWarService {
   async updateHistory(context: RequestContext, warId: string, input: HistoryUpdateInput): Promise<GuildWarRecord> {
     const actor = context.authorization.require(PERMISSION_ID.GUILD_WAR_HISTORY_EDIT);
     const existing = await this.requireHistory(warId);
+    let nextEventLabel: string | null = null;
+    let previousEventLabel: string | null = null;
     if (input.event_id !== undefined) {
-      await this.dependencies.events.getGuildWarHistoryTarget(context, input.event_id);
-      const conflicting = await this.dependencies.store.getByEvent(input.event_id);
-      if (conflicting && conflicting.war.id !== warId) throw eventHistoryConflict(conflicting.war.id);
+      if (input.event_id !== null) {
+        nextEventLabel = (await this.dependencies.events.getGuildWarHistoryTarget(context, input.event_id)).event.title;
+        const conflicting = await this.dependencies.store.getByEvent(input.event_id);
+        if (conflicting && conflicting.war.id !== warId) throw eventHistoryConflict(conflicting.war.id);
+      }
+      if (existing.war.eventId !== null && existing.war.eventId !== input.event_id) {
+        previousEventLabel = (
+          await this.dependencies.events.getGuildWarHistoryTarget(context, existing.war.eventId)
+        ).event.title;
+      }
     }
     const patch: HistoryPatch = {
       ...(input.event_id === undefined ? {} : { eventId: input.event_id }),
@@ -404,11 +486,45 @@ export class GuildWarService {
       ...(input.duration_minutes === undefined ? {} : { durationMinutes: input.duration_minutes }),
       ...(input.notes === undefined ? {} : { notes: input.notes.trim() || null }),
     };
-    const audit = createAuditMutation(context, {
-      entityType: "guild_war_history",
-      entityId: warId,
+    const changes: AuditChange[] = [];
+    if (patch.warName !== undefined && patch.warName !== existing.war.warName) changes.push({
+      field: "title",
+      before: { type: "text", value: existing.war.warName },
+      after: { type: "text", value: patch.warName },
+    });
+    if (patch.result !== undefined && patch.result !== existing.war.result) changes.push({
+      field: "result",
+      before: existing.war.result === null
+        ? { type: "null", value: null }
+        : { type: "code", value: existing.war.result },
+      after: { type: "code", value: patch.result },
+    });
+    if (patch.eventId !== undefined && patch.eventId !== existing.war.eventId) changes.push({
+      field: "event_id",
+      before: existing.war.eventId === null
+        ? { type: "null", value: null }
+        : { type: "reference", value: { id: existing.war.eventId, label: previousEventLabel } },
+      after: patch.eventId === null
+        ? { type: "null", value: null }
+        : { type: "reference", value: { id: patch.eventId, label: nextEventLabel } },
+    });
+    const sectionKeys = [
+      input.enemy_name !== undefined && (input.enemy_name.trim() || null) !== existing.war.enemyName ? "enemy_name" : null,
+      input.own_stats !== undefined && JSON.stringify(input.own_stats) !== JSON.stringify(existing.war.ownStats) ? "own_stats" : null,
+      input.enemy_stats !== undefined && JSON.stringify(input.enemy_stats) !== JSON.stringify(existing.war.enemyStats) ? "enemy_stats" : null,
+      input.duration_minutes !== undefined && input.duration_minutes !== existing.war.durationMinutes ? "duration_minutes" : null,
+      input.notes !== undefined && (input.notes.trim() || null) !== existing.war.notes ? "notes" : null,
+    ].filter((value): value is string => value !== null);
+    const audit = createAuditEvent(context, {
+      subjectType: "guild_war_history",
+      subjectId: warId,
+      subjectLabel: patch.warName ?? existing.war.warName,
       action: "update",
-      summary: input.war_name ?? existing.war.warName,
+      changes,
+      context: sectionKeys.length === 0 ? [] : [{
+        field: "changed_sections",
+        value: { type: "list", value: sectionKeys.map((value) => ({ type: "code", value })) },
+      }],
     });
     const changed = await this.dependencies.store.updateHistory({
       warId,
@@ -426,11 +542,18 @@ export class GuildWarService {
   async deleteHistory(context: RequestContext, warId: string): Promise<Readonly<{ ok: true }>> {
     context.authorization.require(PERMISSION_ID.GUILD_WAR_HISTORY_EDIT);
     const existing = await this.requireHistory(warId);
-    const audit = createAuditMutation(context, {
-      entityType: "guild_war_history",
-      entityId: warId,
+    const audit = createAuditEvent(context, {
+      subjectType: "guild_war_history",
+      subjectId: warId,
+      subjectLabel: existing.war.warName,
       action: "delete",
-      summary: existing.war.warName,
+      // A deleted record leaves no other trace, so the log keeps the outcome it carried.
+      context: [{
+        field: "result",
+        value: existing.war.result === null
+          ? { type: "null", value: null }
+          : { type: "code", value: existing.war.result },
+      }],
     });
     const changed = await this.dependencies.store.deleteHistory({
       warId,
@@ -452,11 +575,18 @@ export class GuildWarService {
       .map(({ war }) => ({
         warId: war.id,
         expectedVersion: war.rosterVersion,
-        audit: createAuditMutation(context, {
-          entityType: "guild_war_history",
-          entityId: war.id,
+        audit: createAuditEvent(context, {
+          subjectType: "guild_war_history",
+          subjectId: war.id,
+          subjectLabel: war.warName,
           action: "delete",
-          summary: war.warName,
+          // A deleted record leaves no other trace, so the log keeps the outcome it carried.
+          context: [{
+            field: "result" as const,
+            value: war.result === null
+              ? { type: "null" as const, value: null }
+              : { type: "code" as const, value: war.result },
+          }],
         }),
       }));
     const deletedIds = await this.dependencies.store.deleteHistories({ rows: mutations });
@@ -473,26 +603,40 @@ export class GuildWarService {
     const existing = await this.requireHistory(warId);
     const members = existing.teams.flatMap((team) => team.members);
     const memberIds = new Set(members.map(({ userId }) => userId));
-    const missing = updates.find(({ user_id }) => !memberIds.has(user_id));
+    const normalized = [...new Map(updates.map((update) => [update.user_id, update])).values()];
+    const missing = normalized.find(({ user_id }) => !memberIds.has(user_id));
     if (missing) throw notFound("Team member not found in selected war history", { user_id: missing.user_id });
-    const audit = createAuditMutation(context, {
-      entityType: "guild_war_member_stats",
-      entityId: updates.length === 1 ? `${warId}:${updates[0]!.user_id}` : warId,
-      action: updates.length === 1 ? "update" : "batch_update",
-      summary: existing.war.warName,
-      details: { user_ids: updates.map(({ user_id }) => user_id) },
+    const usernamesById = new Map(members.map(({ userId, username }) => [userId, username]));
+    const audit = createAuditEvent(context, {
+      subjectType: "guild_war_member_stats",
+      subjectId: normalized.length === 1 ? `${warId}:${normalized[0]!.user_id}` : warId,
+      subjectLabel: existing.war.warName,
+      action: normalized.length === 1 ? "update" : "batch_update",
+      context: [
+        { field: "member_count", value: { type: "number", value: normalized.length } },
+        {
+          field: "user_ids",
+          value: {
+            type: "list",
+            value: normalized.map(({ user_id: id }) => ({
+              type: "reference" as const,
+              value: { id, label: usernamesById.get(id)! },
+            })),
+          },
+        },
+      ],
     });
     const changed = await this.dependencies.store.updateMemberStats({
       warId,
       expectedVersion: existing.war.rosterVersion,
       actorUserId: actor.userId,
       now: context.now,
-      updates: updates.map((update) => ({ userId: update.user_id, ...update.data })),
+      updates: normalized.map((update) => ({ userId: update.user_id, ...update.data })),
       audit,
     });
     if (!changed) throw conflict();
     const refreshed = await this.requireHistory(warId);
-    const requested = new Set(updates.map(({ user_id }) => user_id));
+    const requested = new Set(normalized.map(({ user_id }) => user_id));
     return refreshed.teams.flatMap((team) => team.members).filter(({ userId }) => requested.has(userId));
   }
 
@@ -555,11 +699,12 @@ export class GuildWarService {
       return existing;
     }
     const id = this.createId();
-    const audit = createAuditMutation(context, {
-      entityType: "guild_war",
-      entityId: eventId,
+    const audit = createAuditEvent(context, {
+      subjectType: "guild_war",
+      subjectId: eventId,
+      subjectLabel: warName,
       action: "init",
-      summary: warName,
+      context: [],
     });
     await this.dependencies.store.createActive({ id, eventId, warName, actorUserId, now: context.now, audit });
     const created = await this.dependencies.store.getByEvent(eventId);
@@ -601,6 +746,7 @@ function virtualPool(eventId: string, userIds: readonly string[]): WarMemberReco
     teamId: null,
     userId,
     username: userId,
+    avatarMediaId: null,
     roleTag: null,
     sortOrder,
     stats: null,

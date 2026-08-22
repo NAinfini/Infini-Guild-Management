@@ -1,4 +1,3 @@
-// @vitest-environment jsdom
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { MantineProvider } from "@mantine/core";

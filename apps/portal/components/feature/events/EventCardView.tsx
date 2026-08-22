@@ -20,15 +20,15 @@ import { summariseEventClassQuotas } from "./class-quota-view";
 import { eventHasBehavior, getEventTypeLabel } from "@portal/utils/game-rules";
 import { EventTypeIcon } from "@portal/components/shared/EventTypeIcon";
 import { eventTypeColor } from "@portal/utils/event-colors";
+import { formatLocaleParts } from "@portal/utils/datetime";
 
 // The card's meta row is one line wide. "2026年7月25日周六" plus "下午5:15 - 下午7:15"
 // overflowed it on every card, so the year is only spelled out when the event is
 // not in the current year, and the clock format is left to the locale (zh-CN
 // resolves to 24h, en-US keeps AM/PM) instead of being forced to 12h.
 function formatLocalDate(startAt: string, locale: string, now: Date): string {
-  const date = new Date(startAt);
-  const sameYear = date.getFullYear() === now.getFullYear();
-  return date.toLocaleDateString(locale, {
+  const sameYear = new Date(startAt).getFullYear() === now.getFullYear();
+  return formatLocaleParts(startAt, locale, {
     weekday: "short",
     ...(sameYear ? null : { year: "numeric" }),
     month: "short",
@@ -37,13 +37,10 @@ function formatLocalDate(startAt: string, locale: string, now: Date): string {
 }
 
 function formatLocalTime(startAt: string, endAt: string | null, locale: string): string {
-  const start = new Date(startAt);
   const timeOpts: Intl.DateTimeFormatOptions = { hour: "numeric", minute: "2-digit" };
-  const startTime = start.toLocaleTimeString(locale, timeOpts);
+  const startTime = formatLocaleParts(startAt, locale, timeOpts);
   if (!endAt) return startTime;
-  const end = new Date(endAt);
-  const endTime = end.toLocaleTimeString(locale, timeOpts);
-  return `${startTime}–${endTime}`;
+  return `${startTime}–${formatLocaleParts(endAt, locale, timeOpts)}`;
 }
 
 type MemberEntry = { user: User; profile: MemberProfile };
@@ -208,7 +205,17 @@ export function EventCardView({
         ...(onOpenDetail ? { cursor: "pointer" } : {}),
       } as React.CSSProperties}
     >
-      {/* ── 色带：身份与管理 ── */}
+      {/*
+       * 类型图标放大成水印，压在整张卡的右下角。活动卡以前只有一条 28px 的色带，
+       * 一屏十几张卡除了徽章里那几个字全长一个样；给它一个 64px 的图形，卡片在
+       * 扫视距离上就有了形状差异——不必读字也知道这是公会战还是抽奖。
+       * 纯图标、无外部素材，所以不增加任何请求或包体。
+       */}
+      <span className="event-card__watermark" aria-hidden>
+        <EventTypeIcon eventType={event.type} size={64} />
+      </span>
+
+      {/* ── 管理行：身份与操作 ── */}
       <div className="event-card__header">
         <div className="event-card__header-left">
           <Badge

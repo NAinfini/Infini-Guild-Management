@@ -1,32 +1,33 @@
+import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { DatabaseSync, type SQLInputValue } from "node:sqlite";
 import { fileURLToPath } from "node:url";
 import { afterEach, describe, expect, it } from "vitest";
-import { BUILT_IN_ROLES } from "@guild/shared/constants/roles";
+import { SEEDED_ROLES } from "@guild/shared/constants/roles";
 import { LIMITS } from "@guild/shared/config/limits";
 import {
   DEFAULT_SITE_ABSENCE_POLICY,
   DEFAULT_SITE_ANALYTICS_SETTINGS,
+  DEFAULT_SITE_DESCRIPTION,
   DEFAULT_SITE_MEDIA_POLICY,
   DEFAULT_SITE_STORAGE_POLICY,
 } from "@guild/shared/schemas/site-config";
 import { SqliteTestExecutor } from "../testing/sqlite-test-executor.js";
+import { canonicalMigrationPayload } from "./migration-manifest.js";
 import type { SqlBatchStatement, SqlExecutor, SqlResult, SqlStatement } from "@guild/kernel";
 import { SqliteGalleryStore } from "../stores/gallery-store.js";
 import { SqliteSiteConfigStore } from "../stores/site-config-store.js";
 import { SqliteWikiStore } from "../stores/wiki-store.js";
 
-const migration = readFileSync(fileURLToPath(new URL("./generated/0000_core.sql", import.meta.url)), "utf8")
-  .replaceAll("--> statement-breakpoint", "");
-const [coreManifestEntry] = JSON.parse(readFileSync(
+const manifest = JSON.parse(readFileSync(
   fileURLToPath(new URL("./generated/manifest.json", import.meta.url)),
   "utf8",
 )) as Array<{ id: string; ordinal: number; file: string; checksum: string }>;
-const coreManifest = {
-  id: coreManifestEntry!.id,
-  ordinal: coreManifestEntry!.ordinal,
-  checksum: coreManifestEntry!.checksum,
-};
+const migrations = manifest.map(({ file }) => readFileSync(
+  fileURLToPath(new URL(`./generated/${file}`, import.meta.url)),
+  "utf8",
+).replaceAll("--> statement-breakpoint", ""));
+const migration = migrations.join("\n");
 const invariantNames = [
   "app-migrations.invariants.sql",
   "audit-invariants.sql",
@@ -49,11 +50,11 @@ describe("core modular backend migration", () => {
   it("applies once with every domain table, invariant trigger, and no foreign-key violations", () => {
     const database = migratedDatabase();
     const tables = values(database, "SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%' ORDER BY name");
-    expect(tables).toHaveLength(58);
+    expect(tables).toHaveLength(59);
     expect(tables).toEqual(expect.arrayContaining([
       "roles", "users", "events", "guild_wars", "storage_ledger_entries", "announcements",
       "wiki_articles", "gallery_items", "media_assets", "site_config", "audit_archives",
-      "scheduled_job_leases", "app_migrations", "error_log", "system_test_runs",
+      "scheduled_job_leases", "scheduled_job_statuses", "app_migrations", "error_log", "system_test_runs",
       "system_test_requests", "system_test_artifacts", "system_test_before_images",
       "wiki_revision_media",
     ]));
@@ -68,25 +69,63 @@ describe("core modular backend migration", () => {
     expect(database.prepare("PRAGMA foreign_key_check").all()).toEqual([]);
   });
 
+  it("registers system-test artifacts from the migrated audit event columns", () => {
+    const database = migratedDatabase();
+    database.prepare("INSERT INTO users (id, username, role_id, revision_token) VALUES (?, ?, 'member', ?)")
+      .run("audit-trigger-user", "AuditTriggerUser", "audit-trigger-user-revision-0001");
+    database.prepare(`INSERT INTO system_test_runs
+      (id, actor_user_id, expires_at, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?)`).run(
+      "audit-trigger-run",
+      "audit-trigger-user",
+      "2026-08-15T00:00:00.000Z",
+      "2026-08-14T00:00:00.000Z",
+      "2026-08-14T00:00:00.000Z",
+    );
+    database.prepare("INSERT INTO system_test_requests (request_id, run_id, actor_user_id) VALUES (?, ?, ?)")
+      .run("audit-trigger-request", "audit-trigger-run", "audit-trigger-user");
+    database.prepare(`INSERT INTO audit_log (
+      id, request_id, actor_kind, actor_id, actor_label, subject_type, subject_id,
+      subject_label, action, payload_json, occurred_at
+    ) VALUES (?, ?, 'user', ?, ?, 'event', ?, ?, 'create', ?, ?)`).run(
+      "audit-trigger-event",
+      "audit-trigger-request",
+      "audit-trigger-user",
+      "AuditTriggerUser",
+      "audit-trigger-subject",
+      "Audit trigger subject",
+      JSON.stringify({ schema_version: 2, changes: [], context: [] }),
+      "2026-08-14T00:01:00.000Z",
+    );
+
+    expect(database.prepare(`SELECT artifact_type, artifact_key FROM system_test_artifacts
+      WHERE run_id = ? ORDER BY artifact_type`).all("audit-trigger-run")).toEqual([
+      { artifact_type: "audit_log", artifact_key: "audit-trigger-event" },
+      { artifact_type: "event", artifact_key: "audit-trigger-subject" },
+    ]);
+  });
+
   it("seeds the append-only application migration ledger", () => {
     const database = migratedDatabase();
     expect(database.prepare(
-      "SELECT id, ordinal, checksum FROM app_migrations",
-    ).all()).toEqual([coreManifest]);
+      "SELECT id, ordinal, checksum FROM app_migrations ORDER BY ordinal",
+    ).all()).toEqual(manifest.map(({ id, ordinal, checksum }) => ({ id, ordinal, checksum })));
     expect(() => database.prepare(
-      "INSERT INTO app_migrations (id, ordinal, checksum) VALUES ('0001_duplicate', 0, ?)",
+      "INSERT INTO app_migrations (id, ordinal, checksum) VALUES ('9999_duplicate', 0, ?)",
     ).run("0".repeat(64))).toThrow(/constraint/i);
     expect(() => database.prepare(
-      "INSERT INTO app_migrations (id, ordinal, checksum) VALUES ('0001_invalid', 1, 'not-a-checksum')",
-    ).run()).toThrow(/constraint/i);
+      "INSERT INTO app_migrations (id, ordinal, checksum) VALUES ('9999_invalid', ?, 'not-a-checksum')",
+    ).run(manifest.length)).toThrow(/constraint/i);
+    const fixtureOrdinal = manifest.length;
+    const fixtureId = `${String(fixtureOrdinal).padStart(4, "0")}_fixture`;
     database.prepare(
-      "INSERT INTO app_migrations (id, ordinal, checksum) VALUES ('0001_fixture', 1, ?)",
-    ).run("0".repeat(64));
+      "INSERT INTO app_migrations (id, ordinal, checksum) VALUES (?, ?, ?)",
+    ).run(fixtureId, fixtureOrdinal, "0".repeat(64));
     expect(database.prepare("SELECT id FROM app_migrations ORDER BY ordinal").all())
-      .toEqual([{ id: "0000_core" }, { id: "0001_fixture" }]);
-    expect(() => database.prepare("UPDATE app_migrations SET checksum = ? WHERE ordinal = 1")
-      .run("1".repeat(64))).toThrow(/append-only/i);
-    expect(() => database.prepare("DELETE FROM app_migrations WHERE ordinal = 1").run())
+      .toEqual([...manifest.map(({ id }) => ({ id })), { id: fixtureId }]);
+    expect(() => database.prepare("UPDATE app_migrations SET checksum = ? WHERE ordinal = ?")
+      .run("1".repeat(64), fixtureOrdinal)).toThrow(/append-only/i);
+    expect(() => database.prepare("DELETE FROM app_migrations WHERE ordinal = ?").run(fixtureOrdinal))
       .toThrow(/append-only/i);
   });
 
@@ -129,8 +168,8 @@ describe("core modular backend migration", () => {
   it("seeds roles and permissions from the shared canonical constants", () => {
     const database = migratedDatabase();
     const roles = database.prepare("SELECT id, name, level, color FROM roles ORDER BY level DESC").all();
-    expect(roles).toEqual(BUILT_IN_ROLES.map(({ id, name, level, color }) => ({ id, name, level, color })));
-    for (const role of BUILT_IN_ROLES) {
+    expect(roles).toEqual(SEEDED_ROLES.map(({ id, name, level, color }) => ({ id, name, level, color })));
+    for (const role of SEEDED_ROLES) {
       expect(values(database, "SELECT permission FROM role_permissions WHERE role_id = ? ORDER BY permission", role.id))
         .toEqual([...role.permissions].sort());
     }
@@ -141,6 +180,7 @@ describe("core modular backend migration", () => {
     const site = await new SqliteSiteConfigStore(new SqliteTestExecutor(database)).get();
     expect(site).toMatchObject({
       site_name: "Infini Guild",
+      site_description: DEFAULT_SITE_DESCRIPTION,
       default_site_logo_url: "/guild-logo.svg",
       media_policy: DEFAULT_SITE_MEDIA_POLICY,
       storage_policy: DEFAULT_SITE_STORAGE_POLICY,
@@ -150,6 +190,45 @@ describe("core modular backend migration", () => {
     expect(() => database.prepare("UPDATE site_config SET quota_gallery = 101 WHERE singleton = 1").run())
       .toThrow(/constraint/i);
     expect(() => database.prepare("UPDATE site_config SET analytics_weight_kills = 1000001 WHERE singleton = 1").run())
+      .toThrow(/constraint/i);
+  });
+
+  it("keeps the core baseline frozen and every migration checksummed and contiguous", () => {
+    // 0000_core 的校验和是冻结基线的字节级契约：任何改动都会在此失败。
+    expect(manifest[0]).toEqual({
+      id: "0000_core",
+      ordinal: 0,
+      file: "0000_core.sql",
+      checksum: "41628b837f51067411bc253a896abded22bcfb89ec0b46612733790ce4de3f52",
+    });
+    expect(migrations).toHaveLength(manifest.length);
+    for (const [ordinal, entry] of manifest.entries()) {
+      expect(entry.ordinal).toBe(ordinal);
+      expect(entry.file).toBe(`${entry.id}.sql`);
+      const raw = readFileSync(
+        fileURLToPath(new URL(`./generated/${entry.file}`, import.meta.url)),
+        "utf8",
+      );
+      expect(createHash("sha256").update(canonicalMigrationPayload(raw)).digest("hex"))
+        .toBe(entry.checksum);
+    }
+    expect(migration).not.toMatch(/\baudit_log_v1\b/i);
+    expect(migration).not.toMatch(/ALTER TABLE\s+[`\"]?audit_log[`\"]?\s+RENAME/i);
+    expect(migration).not.toMatch(/INSERT INTO\s+[`\"]?audit_log[`\"]?\s+SELECT/i);
+
+    const database = migratedDatabase();
+    const auditColumns = database.prepare("PRAGMA table_info(audit_log)").all()
+      .map((row) => String((row as { name: string }).name));
+    expect(auditColumns).toEqual([
+      "id", "request_id", "actor_kind", "actor_id", "actor_label", "subject_type",
+      "subject_id", "subject_label", "action", "payload_json", "occurred_at",
+    ]);
+    expect(values(database, "SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'audit_log_v1'"))
+      .toEqual([]);
+    expect(() => database.prepare(`INSERT INTO audit_log (
+      id, request_id, actor_kind, actor_id, subject_type, subject_id, action, payload_json, occurred_at
+    ) VALUES ('audit-v1', 'request-v1', 'system', 'system', 'system_test', 'audit-v1', 'create',
+      '{"schema_version":1,"changes":[],"context":[]}', '2026-08-14T00:00:00.000Z')`).run())
       .toThrow(/constraint/i);
   });
 
@@ -247,30 +326,31 @@ describe("core modular backend migration", () => {
       "ux_wiki_revisions_article_revision");
   });
 
-  it("installs revision and site-owner trust-root defenses in the real schema", () => {
+  it("installs revision and dynamic role-manager defenses in the real schema", () => {
     const database = migratedDatabase();
     expect(() => database.prepare("INSERT INTO users (id, username, role_id, revision_token) VALUES (?, ?, ?, ?)")
       .run("bad-user", "Bad", "member", "short"))
       .toThrow(/constraint/i);
 
     database.prepare("INSERT INTO users (id, username, role_id, revision_token) VALUES (?, ?, ?, ?)")
-      .run("owner-1", "Owner", "site_owner", "owner-user-revision-0001");
+      .run("admin-1", "Admin One", "admin", "admin-user-revision-0001");
     expect(() => database.prepare("UPDATE role_permissions SET role_id = 'member' WHERE role_id = ? AND permission = ?")
       .run("admin", "admin.roles.manage"))
       .toThrow(/role permission identity is immutable/i);
-    expect(() => database.prepare("INSERT INTO role_permissions (role_id, permission) VALUES (?, ?)")
-      .run("admin", "admin.owners.manage"))
-      .toThrow(/reserved for site owner/i);
     expect(() => database.prepare("DELETE FROM role_permissions WHERE role_id = ? AND permission = ?")
-      .run("site_owner", "admin.owners.manage"))
-      .toThrow(/last site owner required/i);
-    expect(() => database.prepare("UPDATE users SET is_active = 0 WHERE id = ?").run("owner-1"))
-      .toThrow(/last site owner required/i);
-    expect(() => database.prepare("UPDATE roles SET level = 999 WHERE id = 'site_owner'").run())
-      .toThrow(/constraint/i);
-    expect(() => database.prepare(`INSERT INTO roles
-      (id, name, level, revision_token) VALUES ('peer-root', 'Peer Root', 1000, 'peer-root-revision-0001')`).run())
-      .toThrow(/constraint/i);
+      .run("admin", "admin.roles.manage"))
+      .toThrow(/last role manager required/i);
+    expect(() => database.prepare("UPDATE users SET is_active = 0 WHERE id = ?").run("admin-1"))
+      .toThrow(/last role manager required/i);
+
+    database.prepare(`INSERT INTO roles
+      (id, name, level, revision_token) VALUES ('peer-manager', 'Peer Manager', 1000, 'peer-manager-revision-0001')`).run();
+    database.prepare("INSERT INTO role_permissions (role_id, permission) VALUES ('peer-manager', 'admin.roles.manage')").run();
+    database.prepare("INSERT INTO users (id, username, role_id, revision_token) VALUES (?, ?, ?, ?)")
+      .run("manager-2", "Manager Two", "peer-manager", "manager-user-revision-0001");
+    database.prepare("DELETE FROM role_permissions WHERE role_id = 'admin' AND permission = 'admin.roles.manage'").run();
+    expect(values(database, "SELECT permission FROM role_permissions WHERE role_id = 'admin' AND permission = 'admin.roles.manage'"))
+      .toEqual([]);
 
     database.prepare("INSERT INTO users (id, username, role_id, revision_token) VALUES (?, ?, ?, ?)")
       .run("temporary-member", "TemporaryMember", "member", "temporary-user-revision-0001");

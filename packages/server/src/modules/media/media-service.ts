@@ -2,7 +2,7 @@ import { MEDIA_CONTRACT, type MediaEntityType, type MediaPurpose, type MediaVari
 import { PERMISSION_ID } from "@guild/shared/constants/roles";
 import { AppError, type BlobMetadata, type BlobRange, type BlobStore, type RequestContext, type ScheduledJobBacklog } from "@guild/kernel";
 import { nanoid } from "nanoid";
-import { createAuditMutation, type AuditMutation } from "../audit/public.js";
+import type { AuditEventWrite } from "../audit/public.js";
 import { validateImagePair, validateOggOpus } from "./media-validation";
 
 const STAGED_TTL_MS = 24 * 60 * 60 * 1_000;
@@ -39,6 +39,16 @@ export type MediaReadFacts = Readonly<{
   audience: "public" | "authenticated" | "private";
 }>;
 
+export type MediaReadResult = Readonly<{
+  object: NonNullable<Awaited<ReturnType<BlobStore["get"]>>>;
+  audience: MediaReadFacts["audience"];
+}>;
+
+export type MediaHeadResult = Readonly<{
+  metadata: BlobMetadata;
+  audience: MediaReadFacts["audience"];
+}>;
+
 export type MediaRangeRequest =
   | Readonly<{ kind: "closed"; offset: number; length: number }>
   | Readonly<{ kind: "open"; offset: number }>
@@ -57,16 +67,16 @@ export type ClaimedMediaDeletion = Readonly<{
   objectKeys: readonly string[];
 }>;
 
-export type MediaGarbageCollectionAuditFactory = (mediaId: string) => AuditMutation;
+export type MediaGarbageCollectionAuditFactory = (mediaId: string) => AuditEventWrite;
 
 export interface MediaStore {
-  reserveUploads(inputs: readonly MediaReservation[], audits: readonly AuditMutation[]): Promise<void>;
+  reserveUploads(inputs: readonly MediaReservation[]): Promise<void>;
   markStaged(mediaIds: readonly string[], stagedAt: string): Promise<void>;
   markDeleting(mediaIds: readonly string[], at: string): Promise<void>;
   describeRead(mediaId: string, variant: MediaVariant, now: string): Promise<MediaReadFacts | null>;
   claimGarbage(before: string, limit: number): Promise<readonly ClaimedMediaDeletion[]>;
   inspectGarbageBacklog(before: string): Promise<ScheduledJobBacklog>;
-  finalizeDeletion(mediaId: string, claimToken: string, audit: AuditMutation): Promise<void>;
+  finalizeDeletion(mediaId: string, claimToken: string, audit: AuditEventWrite): Promise<void>;
 }
 
 export type ImageUpload = Readonly<{ full: Uint8Array; view: Uint8Array }>;
@@ -169,7 +179,7 @@ export class MediaService {
     mediaId: string,
     variant: MediaVariant,
     requestedRange?: MediaRangeRequest,
-  ): Promise<Awaited<ReturnType<BlobStore["get"]>>> {
+  ): Promise<MediaReadResult> {
     const facts = await this.store.describeRead(mediaId, variant, context.now);
     if (!facts) throw new AppError({ code: "NOT_FOUND", status: 404, message: "Media not found" });
     assertCanRead(context, facts);
@@ -180,31 +190,31 @@ export class MediaService {
       await object.body.cancel().catch(() => undefined);
       throw integrityError();
     }
-    return object;
+    return { object, audience: facts.audience };
   }
 
   async head(
     context: RequestContext,
     mediaId: string,
     variant: MediaVariant,
-  ): Promise<BlobMetadata> {
+  ): Promise<MediaHeadResult> {
     const facts = await this.store.describeRead(mediaId, variant, context.now);
     if (!facts) throw new AppError({ code: "NOT_FOUND", status: 404, message: "Media not found" });
     assertCanRead(context, facts);
     const metadata = await this.blobs.head(facts.objectKey);
     if (!metadata) throw new AppError({ code: "NOT_FOUND", status: 404, message: "Media object not found" });
     if (!matchesManifest(metadata, facts)) throw integrityError();
-    return metadata;
+    return { metadata, audience: facts.audience };
   }
 
   async collectGarbage(
     _context: RequestContext,
     before: string,
     createAudit: MediaGarbageCollectionAuditFactory,
-  ): Promise<Readonly<{ deleted: number; failed: number }>> {
+  ): Promise<Readonly<{ deleted: number }>> {
     const claims = await this.store.claimGarbage(before, MAX_GC_BATCH);
     let deleted = 0;
-    let failed = 0;
+    const failures: Array<Readonly<{ mediaId: string; error: unknown }>> = [];
     for (const claim of claims) {
       try {
         await this.blobs.delete([...claim.objectKeys]);
@@ -214,11 +224,17 @@ export class MediaService {
           createAudit(claim.mediaId),
         );
         deleted += 1;
-      } catch {
-        failed += 1;
+      } catch (error) {
+        failures.push({ mediaId: claim.mediaId, error });
       }
     }
-    return { deleted, failed };
+    if (failures.length > 0) {
+      throw new AggregateError(
+        failures.map(({ mediaId, error }) => new Error(`Media ${mediaId} deletion failed`, { cause: error })),
+        `Media garbage collection deleted ${deleted} item(s) and failed ${failures.length}: ${failures.map(({ mediaId }) => mediaId).join(", ")}`,
+      );
+    }
+    return { deleted };
   }
 
   inspectGarbageBacklog(before: string): Promise<ScheduledJobBacklog> {
@@ -230,17 +246,7 @@ export class MediaService {
     pending: readonly PendingUpload[],
   ): Promise<void> {
     const reservations = pending.map(({ reservation }) => reservation);
-    await this.store.reserveUploads(reservations, reservations.map((reservation) => createAuditMutation(context, {
-      entityType: "media_asset",
-      entityId: reservation.id,
-      action: "upload",
-      summary: reservation.originalName ?? reservation.purpose,
-      details: {
-        purpose: reservation.purpose,
-        media_type: reservation.mediaType,
-        variants: reservation.variants.map(({ variant, byteSize }) => ({ variant, byte_size: byteSize })),
-      },
-    })));
+    await this.store.reserveUploads(reservations);
     try {
       for (const { reservation, data } of pending) {
         for (const variant of reservation.variants) {
@@ -256,12 +262,20 @@ export class MediaService {
       }
       await this.store.markStaged(reservations.map(({ id }) => id), context.now);
     } catch (cause) {
-      await this.store.markDeleting(reservations.map(({ id }) => id), context.now).catch(() => undefined);
+      let uploadFailure = cause;
+      try {
+        await this.store.markDeleting(reservations.map(({ id }) => id), context.now);
+      } catch (cleanupError) {
+        uploadFailure = new AggregateError(
+          [cause, cleanupError],
+          "Media upload failed and reservations could not be marked for deletion",
+        );
+      }
       throw new AppError({
         code: "UPSTREAM_ERROR",
         status: 503,
         message: "Media upload could not be completed",
-        cause,
+        cause: uploadFailure,
       });
     }
   }

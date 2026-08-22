@@ -60,6 +60,7 @@ export function createSystemTestRequestMiddleware(
   service: Pick<SystemTestService, "beginRequest" | "endRequest">,
 ): MiddlewareHandler<HttpEnv> {
   return async (context, next) => {
+    if (context.req.path === "/api/health") return next();
     const marker = context.req.header(SYSTEM_TEST_HEADER);
     if (marker === undefined || isManagementPath(context.req.path)) return next();
     if (marker !== SYSTEM_TEST_HEADER_VALUE) throw forbidden();
@@ -76,8 +77,7 @@ export function createSystemTestRequestMiddleware(
 }
 
 export function isAnonymousSystemTestPath(method: string, path: string): boolean {
-  return (method === "GET" && path === "/api/health")
-    || (method === "POST" && (path === "/api/auth/login" || /^\/api\/auth\/register\/[^/]+$/.test(path)));
+  return method === "POST" && (path === "/api/auth/login" || /^\/api\/auth\/register\/[^/]+$/.test(path));
 }
 
 function isManagementPath(path: string): boolean {

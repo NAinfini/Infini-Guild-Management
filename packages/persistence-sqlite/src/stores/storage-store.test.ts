@@ -1,26 +1,18 @@
-import { readFileSync } from "node:fs";
 import { DatabaseSync, type SQLInputValue } from "node:sqlite";
-import { fileURLToPath } from "node:url";
 import { afterEach, describe, expect, it } from "vitest";
 import { createAppDatabase } from "../database.js";
-import {
-  assertSqlBatchStatement,
-  assertSqlResultColumns,
-  assertSqlStatement,
-  type SqlBatchStatement,
-  type SqlExecutor,
-  type SqlResult,
-  type SqlRow,
-  type SqlStatement,
-} from "@guild/kernel";
+import type { SqlStatement } from "@guild/kernel";
+import { SqliteTestExecutor } from "../testing/sqlite-test-executor.js";
 import {
   StorageService,
   type StorageMediaPort,
   type StockCommit,
 } from "@guild/server/modules/storage";
-import { createAuditMutation } from "@guild/server/modules/audit";
+import { createAuditEvent } from "@guild/server/modules/audit";
 import { createAuthorizationContext, createRequestContext, type RequestContext } from "@guild/kernel";
 import { LIMITS } from "@guild/shared/config/limits";
+import { auditPayloadV2Schema } from "@guild/shared";
+import { applyAppMigrations } from "../testing/app-migrations.js";
 import { SqliteStorageMediaPort, SqliteStorageStore } from "./storage-store.js";
 
 const NOW = "2026-08-09T12:00:00.000Z";
@@ -28,56 +20,6 @@ const MEMBER_ID = "member-1";
 const OTHER_ID = "member-2";
 const ADMIN_ID = "admin-1";
 
-const FRESH_MIGRATION = readFileSync(
-  fileURLToPath(new URL("../migrations/generated/0000_core.sql", import.meta.url)),
-  "utf8",
-).replaceAll("--> statement-breakpoint", "");
-
-class TestSqlExecutor implements SqlExecutor {
-  readonly executions: SqlStatement[] = [];
-  readonly batches: SqlBatchStatement[][] = [];
-  beforeNextBatch: (() => void | Promise<void>) | undefined;
-
-  constructor(readonly database: DatabaseSync) {}
-
-  async execute(statement: SqlStatement): Promise<SqlResult> {
-    assertSqlStatement(statement);
-    this.executions.push(statement);
-    return this.run(statement);
-  }
-
-  async batch(statements: readonly SqlBatchStatement[]): Promise<readonly SqlResult[]> {
-    statements.forEach(assertSqlBatchStatement);
-    const beforeBatch = this.beforeNextBatch;
-    this.beforeNextBatch = undefined;
-    await beforeBatch?.();
-    this.batches.push([...statements]);
-    this.database.exec("BEGIN IMMEDIATE");
-    try {
-      const results = statements.map((statement) => this.run(statement));
-      this.database.exec("COMMIT");
-      return results;
-    } catch (error) {
-      this.database.exec("ROLLBACK");
-      throw error;
-    }
-  }
-
-  private run(statement: SqlStatement): SqlResult {
-    const prepared = this.database.prepare(statement.sql);
-    const params = [...(statement.params ?? [])] as SQLInputValue[];
-    if (statement.method === "run") {
-      const result = prepared.run(...params);
-      return { rows: [], ...(result.lastInsertRowid === 0 ? {} : { lastInsertRowId: result.lastInsertRowid }) };
-    }
-    prepared.setReturnArrays(true);
-    assertSqlResultColumns(statement, prepared.columns().map(({ name }) => name));
-    if (statement.method === "get") {
-      return { rows: prepared.get(...params) as unknown as SqlRow | undefined };
-    }
-    return { rows: prepared.all(...params) as unknown as readonly SqlRow[] };
-  }
-}
 
 class FakeMedia implements StorageMediaPort {
   readonly byItem = new Map<string, string[]>();
@@ -113,8 +55,8 @@ function createHarness() {
   const database = new DatabaseSync(":memory:");
   databases.push(database);
   database.exec("PRAGMA foreign_keys = ON");
-  database.exec(FRESH_MIGRATION);
-  const executor = new TestSqlExecutor(database);
+  applyAppMigrations(database);
+  const executor = new SqliteTestExecutor(database);
   const store = new SqliteStorageStore(createAppDatabase(executor), executor);
   const media = new FakeMedia();
   const published: unknown[] = [];
@@ -187,7 +129,7 @@ describe("storage structure bounds", () => {
       .rejects.toMatchObject({ code: "VALIDATION_ERROR", status: 400 });
     expect(scalar(harness.database, "SELECT count(*) FROM storages"))
       .toBe(LIMITS.content.storageStructure.storages.max);
-    expect(scalar(harness.database, "SELECT count(*) FROM audit_log WHERE entity_type = 'storage'"))
+    expect(scalar(harness.database, "SELECT count(*) FROM audit_log WHERE subject_type = 'storage'"))
       .toBe(1);
   });
 
@@ -205,7 +147,7 @@ describe("storage structure bounds", () => {
       .rejects.toMatchObject({ code: "VALIDATION_ERROR", status: 400 });
     expect(scalar(harness.database, "SELECT count(*) FROM storage_categories"))
       .toBe(LIMITS.content.storageStructure.categories.max);
-    expect(scalar(harness.database, "SELECT count(*) FROM audit_log WHERE entity_type = 'storage_category'"))
+    expect(scalar(harness.database, "SELECT count(*) FROM audit_log WHERE subject_type = 'storage_category'"))
       .toBe(1);
   });
 
@@ -226,7 +168,7 @@ describe("storage structure bounds", () => {
     )).rejects.toMatchObject({ code: "VALIDATION_ERROR", status: 400 });
     expect(scalar(harness.database, "SELECT count(*) FROM storages"))
       .toBe(LIMITS.content.storageStructure.storages.max);
-    expect(scalar(harness.database, "SELECT count(*) FROM audit_log WHERE entity_type = 'storage'"))
+    expect(scalar(harness.database, "SELECT count(*) FROM audit_log WHERE subject_type = 'storage'"))
       .toBe(0);
   });
 
@@ -238,8 +180,8 @@ describe("storage structure bounds", () => {
       storage: {
         id: "storage-rejected", name: "Rejected", description: null, created_at: NOW, categories: [],
       },
-      audit: createAuditMutation(admin, {
-        entityType: "storage", entityId: "storage-rejected", action: "create",
+      audit: createAuditEvent(admin, {
+        subjectType: "storage", subjectId: "storage-rejected", action: "create",
       }),
     })).rejects.toThrow(/audit rejected/);
     expect(scalar(harness.database, "SELECT count(*) FROM storages WHERE id = 'storage-rejected'"))
@@ -296,6 +238,27 @@ describe("storage ledger and balances", () => {
     expect(await quantity(harness, "item-open")).toBe(1.75);
     expect(scalar(harness.database, "SELECT count(*) FROM storage_ledger_entries")).toBe(2);
     expect(scalar(harness.database, "SELECT count(*) FROM audit_log")).toBe(2);
+    const auditRow = harness.database.prepare(`SELECT payload_json
+      FROM audit_log WHERE action = 'distribute'`).get() as { payload_json: string };
+    expect(auditPayloadV2Schema.parse(JSON.parse(auditRow.payload_json)).context).toEqual([
+      { field: "transaction_count", value: { type: "number", value: 1 } },
+      { field: "type", value: { type: "code", value: "distribute" } },
+      {
+        field: "item_ids",
+        value: {
+          type: "list",
+          value: [{ type: "reference", value: { id: "item-open", label: "Open potion" } }],
+        },
+      },
+      { field: "quantity", value: { type: "list", value: [{ type: "number", value: -0.75 }] } },
+      {
+        field: "user_ids",
+        value: {
+          type: "list",
+          value: [{ type: "reference", value: { id: MEMBER_ID, label: "member" } }],
+        },
+      },
+    ]);
   });
 
   it("rolls back the whole SQL batch, including audit and prior item deltas, when one withdrawal goes negative", async () => {
@@ -309,9 +272,9 @@ describe("storage ledger and balances", () => {
         { item_id: "item-admin", quantity: 1 },
       ],
     });
-    const audit = createAuditMutation(admin, {
-      entityType: "storage_transaction",
-      entityId: "failing-batch",
+    const audit = createAuditEvent(admin, {
+      subjectType: "storage_transaction",
+      subjectId: "failing-batch",
       action: "distribute",
     });
     const commit: StockCommit = {
@@ -431,9 +394,9 @@ describe("storage ledger and balances", () => {
     harness.database.prepare("UPDATE storage_balances SET quantity = ? WHERE item_id = ?")
       .run(1e20, "item-admin");
     const admin = context(ADMIN_ID, ["admin.storage.stock"]);
-    const audit = createAuditMutation(admin, {
-      entityType: "storage_transaction",
-      entityId: "precision-batch",
+    const audit = createAuditEvent(admin, {
+      subjectType: "storage_transaction",
+      subjectId: "precision-batch",
       action: "intake",
     });
     const commit: StockCommit = {
@@ -457,7 +420,7 @@ describe("storage ledger and balances", () => {
     expect(await quantity(harness, "item-admin")).toBe(1e20);
     expect(scalar(harness.database, "SELECT count(*) FROM storage_batches WHERE id = 'precision-batch'")).toBe(0);
     expect(scalar(harness.database, "SELECT count(*) FROM storage_ledger_entries WHERE id = 'precision-tx'")).toBe(0);
-    expect(scalar(harness.database, "SELECT count(*) FROM audit_log WHERE entity_id = 'precision-batch'")).toBe(0);
+    expect(scalar(harness.database, "SELECT count(*) FROM audit_log WHERE subject_id = 'precision-batch'")).toBe(0);
   });
 
   it("keeps the ledger immutable at the database boundary", async () => {
@@ -475,6 +438,49 @@ describe("storage ledger and balances", () => {
 });
 
 describe("storage authorization and row visibility", () => {
+  it("normalizes structure no-ops before persistence or notification", async () => {
+    const harness = createHarness();
+    const admin = context(ADMIN_ID, ["admin.storage.structure"]);
+
+    await expect(harness.service.updateStorage(admin, "storage-1", {
+      name: "  Guild Vault  ", description: null,
+    })).resolves.toMatchObject({ name: "Guild Vault", description: null });
+    await expect(harness.service.updateCategory(admin, "storage-1", "category-1", {
+      name: "  Supplies  ",
+    })).resolves.toEqual({ id: "category-1", name: "Supplies" });
+
+    expect(harness.executor.batches).toHaveLength(0);
+    expect(harness.published).toHaveLength(0);
+    expect(scalar(harness.database, "SELECT count(*) FROM audit_log")).toBe(0);
+  });
+
+  it("guards storage and category audit rows with null-safe database differences", async () => {
+    const harness = createHarness();
+    const admin = context(ADMIN_ID, ["admin.storage.structure"]);
+
+    await harness.store.updateStorage({
+      id: "storage-1", patch: { name: "Guild Vault", description: null }, updatedAt: NOW,
+      audit: createAuditEvent(admin, {
+        subjectType: "storage", subjectId: "storage-1", subjectLabel: "Guild Vault", action: "update", context: [],
+      }),
+    });
+    await harness.store.updateCategory({
+      storageId: "storage-1", categoryId: "category-1", name: "Supplies",
+      audit: createAuditEvent(admin, {
+        subjectType: "storage_category", subjectId: "category-1", subjectLabel: "Supplies", action: "update", context: [],
+      }),
+    });
+    expect(scalar(harness.database, "SELECT count(*) FROM audit_log")).toBe(0);
+
+    await expect(harness.service.updateStorage(admin, "storage-1", { description: "Shared supplies" }))
+      .resolves.toMatchObject({ description: "Shared supplies" });
+    await expect(harness.service.updateCategory(admin, "storage-1", "category-1", { name: "Consumables" }))
+      .resolves.toEqual({ id: "category-1", name: "Consumables" });
+    expect(scalar(harness.database, "SELECT count(*) FROM audit_log")).toBe(2);
+    expect(harness.database.prepare("SELECT json_array_length(payload_json, '$.changes') AS count FROM audit_log ORDER BY occurred_at, id").all())
+      .toEqual([{ count: 1 }, { count: 1 }]);
+  });
+
   it("does not report a category update after a competing delete", async () => {
     const harness = createHarness();
     harness.database.prepare("INSERT INTO storage_categories (id, storage_id, name, created_at) VALUES (?, ?, ?, ?)")
@@ -624,7 +630,7 @@ describe("storage performance contracts", () => {
       stock: "all",
       limit: 24,
     });
-    const itemStatement = harness.executor.executions.find((statement) => statement.sql.includes("FROM storage_items AS item"));
+    const itemStatement = harness.executor.statements.find((statement) => statement.sql.includes("FROM storage_items AS item"));
     expect(itemStatement).toBeDefined();
     const itemPlan = explain(harness.database, itemStatement!);
     expect(itemPlan).toContain("idx_storage_items_storage_name_id");
@@ -645,7 +651,7 @@ describe("storage performance contracts", () => {
     ) VALUES (?, 'storage-1', 'category-1', ?, NULL, 0, 0, ?, ?)`);
     for (let index = 0; index < 20; index += 1) insert.run(`bulk-${index}`, `Bulk ${index}`, NOW, NOW);
     const admin = context(ADMIN_ID, ["admin.storage.stock"]);
-    const beforeExecutions = harness.executor.executions.length;
+    const beforeStatements = harness.executor.statements.length;
     const beforeBatches = harness.executor.batches.length;
 
     await harness.service.createBatchTransaction(admin, {
@@ -654,18 +660,18 @@ describe("storage performance contracts", () => {
       entries: Array.from({ length: 20 }, (_, index) => ({ item_id: `bulk-${index}`, quantity: 0.5 })),
     });
 
-    const newExecutions = harness.executor.executions.slice(beforeExecutions);
+    const newStatements = harness.executor.statements.slice(beforeStatements);
     const newBatches = harness.executor.batches.slice(beforeBatches);
-    expect(newExecutions.filter((statement) => statement.sql.includes("WITH requested"))).toHaveLength(1);
+    expect(newStatements.filter((statement) => statement.sql.includes("WITH requested"))).toHaveLength(1);
     expect(newBatches).toHaveLength(1);
     expect(newBatches[0]).toHaveLength(22);
-    const callsBeforeRejected = harness.executor.executions.length + harness.executor.batches.length;
+    const callsBeforeRejected = harness.executor.statements.length + harness.executor.batches.length;
     await expect(harness.service.createBatchTransaction(admin, {
       idempotency_key: "twenty-one-items",
       type: "intake",
       entries: Array.from({ length: 21 }, (_, index) => ({ item_id: `bulk-${index}`, quantity: 1 })),
     })).rejects.toMatchObject({ code: "VALIDATION_ERROR", status: 400 });
-    expect(harness.executor.executions.length + harness.executor.batches.length).toBe(callsBeforeRejected);
+    expect(harness.executor.statements.length + harness.executor.batches.length).toBe(callsBeforeRejected);
   });
 });
 

@@ -3,10 +3,15 @@ import { resolve } from "node:path";
 import { Miniflare } from "miniflare";
 import { describe, expect, it } from "vitest";
 
-const migrationStatements = statements(readFileSync(resolve(
+const migrationManifest = JSON.parse(readFileSync(resolve(
   process.cwd(),
-  "packages/persistence-sqlite/src/migrations/generated/0000_core.sql",
-), "utf8"));
+  "packages/persistence-sqlite/src/migrations/generated/manifest.json",
+), "utf8")) as Array<{ file: string }>;
+const migrationStatements = migrationManifest.flatMap(({ file }) => statements(readFileSync(resolve(
+  process.cwd(),
+  "packages/persistence-sqlite/src/migrations/generated",
+  file,
+), "utf8")));
 const seedStatements = statements(readFileSync(resolve(process.cwd(), "scripts/dev/seed.sql"), "utf8"));
 
 describe("Cloudflare local development seed", () => {
@@ -40,10 +45,10 @@ describe("Cloudflare local development seed", () => {
 
       expect(await snapshot(database)).toEqual(first);
       expect(first).toMatchObject({
-        events: 10,
-        participants: 46,
-        guildWars: 4,
-        concludedWars: 3,
+        events: 18,
+        participants: 280,
+        guildWars: 12,
+        concludedWars: 10,
         activeWarEndsInFuture: 1,
       });
     } finally {

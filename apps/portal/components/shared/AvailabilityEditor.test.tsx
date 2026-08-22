@@ -1,14 +1,14 @@
-// @vitest-environment jsdom
 import { MantineProvider } from "@mantine/core";
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 import {
-  AvailabilityEditor,
   convertAvailabilityToLocalDays,
   convertLocalDaysToAvailability,
   type DayBlocks,
-} from "./AvailabilityEditor";
+} from "../../utils/availability";
+import { viewerUtcOffsetMinutes } from "../../utils/datetime";
+import { AvailabilityEditor } from "./AvailabilityEditor";
 
 /* 断言里直接用 key。翻译文案本身由 i18n 的中英对照测试守着，这里守的是行为。 */
 vi.mock("react-i18next", () => ({
@@ -46,7 +46,7 @@ function emptyDays(): DayBlocks {
 
 function lastLocalDays(onChange: ReturnType<typeof vi.fn>): DayBlocks {
   const availability = onChange.mock.calls.at(-1)?.[0].availability ?? null;
-  return convertAvailabilityToLocalDays(availability, new Date().getTimezoneOffset());
+  return convertAvailabilityToLocalDays(availability, viewerUtcOffsetMinutes());
 }
 
 describe("AvailabilityEditor", () => {
@@ -149,18 +149,19 @@ describe("AvailabilityEditor", () => {
   });
 
   it("moves both weekday and minute when local time crosses a UTC day boundary", () => {
+    /* 偏移东为正：纽约 UTC−5 是 −300，上海 UTC+8 是 +480。 */
     const west = emptyDays();
     west.monday = [{ start: "20:00", end: "24:00" }];
-    const westPayload = convertLocalDaysToAvailability(west, "America/New_York", 300);
+    const westPayload = convertLocalDaysToAvailability(west, "America/New_York", -300);
     expect(westPayload?.days.tuesday).toEqual([{ start_utc: "01:00", end_utc: "05:00" }]);
 
     const east = emptyDays();
     east.monday = [{ start: "00:00", end: "03:00" }];
-    const eastPayload = convertLocalDaysToAvailability(east, "Asia/Shanghai", -480);
+    const eastPayload = convertLocalDaysToAvailability(east, "Asia/Shanghai", 480);
     expect(eastPayload?.days.sunday).toEqual([{ start_utc: "16:00", end_utc: "19:00" }]);
 
-    expect(convertAvailabilityToLocalDays(westPayload, 300).monday).toEqual(west.monday);
-    expect(convertAvailabilityToLocalDays(eastPayload, -480).monday).toEqual(east.monday);
+    expect(convertAvailabilityToLocalDays(westPayload, -300).monday).toEqual(west.monday);
+    expect(convertAvailabilityToLocalDays(eastPayload, 480).monday).toEqual(east.monday);
   });
 
   it("splits an API range that crosses midnight into local day rows", () => {

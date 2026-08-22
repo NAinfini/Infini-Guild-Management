@@ -1,10 +1,12 @@
-// @vitest-environment jsdom
 import type { RecurringTemplate } from "@guild/shared";
 import { MantineProvider } from "@mantine/core";
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, screen, waitFor } from "@testing-library/react";
+import { renderWithQueryClient as render } from "@portal/tests/query-harness";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { RecurringTemplatesTab } from "./RecurringTemplatesTab";
+
+const confirmMock = vi.hoisted(() => vi.fn());
 
 vi.mock("react-i18next", () => ({
   useTranslation: () => ({
@@ -12,6 +14,10 @@ vi.mock("react-i18next", () => ({
       key === "recurring.editAria" ? `Edit ${options?.title}` : key,
     i18n: { language: "en" },
   }),
+}));
+
+vi.mock("@portal/hooks/useConfirmDialog", () => ({
+  useConfirmDialog: () => confirmMock,
 }));
 
 class WideResizeObserver {
@@ -57,6 +63,7 @@ function buildTemplate(overrides: Partial<RecurringTemplate>): RecurringTemplate
 describe("RecurringTemplatesTab", () => {
   beforeEach(() => {
     window.ResizeObserver = WideResizeObserver as unknown as typeof ResizeObserver;
+    confirmMock.mockResolvedValue(true);
   });
 
   /*
@@ -224,5 +231,37 @@ describe("RecurringTemplatesTab", () => {
     });
     await user.click(statusControl);
     expect(screen.queryByRole("dialog", { name: /recurring\.edit/ })).not.toBeInTheDocument();
+  });
+
+  it("closes the edit form only after a confirmed deletion succeeds", async () => {
+    const user = userEvent.setup();
+    let resolveDeletion: (() => void) | undefined;
+    const onDeleteTemplate = vi.fn(() => new Promise<void>((resolve) => { resolveDeletion = resolve; }));
+
+    render(
+      <MantineProvider>
+        <RecurringTemplatesTab
+          canManage
+          onViewModeChange={vi.fn()}
+          templates={[buildTemplate({})]}
+          loading={false}
+          formSaving={false}
+          onCreateTemplate={vi.fn().mockResolvedValue(undefined)}
+          onUpdateTemplate={vi.fn().mockResolvedValue(undefined)}
+          onPauseTemplate={vi.fn().mockResolvedValue(undefined)}
+          onResumeTemplate={vi.fn().mockResolvedValue(undefined)}
+          onDeleteTemplate={onDeleteTemplate}
+        />
+      </MantineProvider>,
+    );
+
+    await user.click(screen.getByRole("button", { name: "Edit Weekly Mission" }));
+    expect(await screen.findByRole("dialog", { name: /recurring\.edit/ })).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "recurring.delete" }));
+
+    await waitFor(() => expect(onDeleteTemplate).toHaveBeenCalledWith("template-1"));
+    expect(screen.getByRole("dialog", { name: /recurring\.edit/ })).toBeInTheDocument();
+    resolveDeletion?.();
+    await waitFor(() => expect(screen.queryByRole("dialog", { name: /recurring\.edit/ })).not.toBeInTheDocument());
   });
 });

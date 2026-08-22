@@ -24,6 +24,7 @@ import {
   transitionSession,
 } from "../../session-transition";
 import { isExternalViewSearch } from "../../utils/external-view";
+import { notifyWarning } from "../../utils/notifications";
 import { AppErrorOverlay } from "../shared/AppErrorOverlay";
 import { OverlayRegistrar } from "../shared/OverlayRegistrar";
 import { BottomNav } from "./BottomNav";
@@ -70,9 +71,9 @@ function normalizeViewingAs(role: string | null, isExternalView: boolean): strin
 function syncViewSearch(nextRole: string) {
   const url = new URL(window.location.href);
   if (nextRole === "external") {
-    url.searchParams.set("view", "external");
+    url.searchParams.set("preview", "external");
   } else {
-    url.searchParams.delete("view");
+    url.searchParams.delete("preview");
   }
   window.history.replaceState({}, "", url);
   window.dispatchEvent(new PopStateEvent("popstate"));
@@ -186,14 +187,14 @@ export function AppShell() {
   const revalidateSession = useCallback(() => {
     if (!useAuthStore.getState().user || sessionRevalidationRef.current) return;
     const request = revalidateSessionSnapshot(queryClient)
-      .catch((error: unknown) => {
-        if (import.meta.env.DEV) console.error("[auth] Session revalidation failed", error);
+      .catch(() => {
+        notifyWarning(t("admin:message.sessionRefreshFailed"));
       })
       .finally(() => {
         sessionRevalidationRef.current = null;
       });
     sessionRevalidationRef.current = request;
-  }, [queryClient]);
+  }, [queryClient, t]);
 
   useEffect(() => {
     revalidateSession();
@@ -381,6 +382,24 @@ export function AppShell() {
   const selectedNavKey = activeRoute.to;
   const activePageTitle = t(activeRoute.labelKey);
 
+  /*
+   * 区域色下发到 <html>，与 data-theme / data-accent 同一个元素。
+   * 必须是同一个元素：semantic.css 里 --domain-tint 这类派生 token 用 color-mix
+   * 读 --domain，而自定义属性的派生值在「定义它的那个元素」上就算完了——挂在
+   * 外壳容器上，:root 那份派生只会读到默认值，子树再怎么覆盖 --domain 都不重算。
+   *
+   * 无区域的路由（仪表盘、我的资料、设置、登录、404）删掉属性而不是写空串：
+   * 空串会命中 [data-domain] 存在性选择器，属性不存在才回落到 :root 的品牌色。
+   */
+  useEffect(() => {
+    const root = document.documentElement;
+    if (activeRoute.domain) {
+      root.dataset.domain = activeRoute.domain;
+    } else {
+      delete root.dataset.domain;
+    }
+  }, [activeRoute.domain]);
+
   if (hideNavigation) {
     return (
       <ViewingAsProvider value={viewingAs}>
@@ -434,6 +453,7 @@ export function AppShell() {
           isMobile={isMobile}
           isHeaderCompact={isHeaderCompact}
           activePageTitle={activePageTitle}
+          activePageIcon={activeRoute.icon}
           user={user}
           pushHasUnread={pushHasUnread}
           notificationAnnouncementsHasNew={notificationFeatures.announcements.hasNew}

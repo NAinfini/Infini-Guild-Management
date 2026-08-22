@@ -13,7 +13,7 @@ import {
   unassignBadge,
   updateBadge,
 } from "../services/AdminService";
-import type { CreateBadgePayload } from "../services/AdminService";
+import type { CreateBadgePayload, UpdateBadgePayload } from "../services/AdminService";
 import { queryKeys } from "../api/query-keys";
 import { notifyError, notifySuccess } from "../utils/notifications";
 import { useAppError } from "./useAppError";
@@ -42,6 +42,15 @@ function toCreateBadgePayload(form: BadgeForm): CreateBadgePayload {
     label_html: form.label_html,
     color: form.color,
     description: form.description || undefined,
+  };
+}
+
+function toUpdateBadgePayload(form: BadgeForm): UpdateBadgePayload {
+  return {
+    name: form.name,
+    label_html: form.label_html,
+    color: form.color,
+    description: form.description || null,
   };
 }
 
@@ -126,7 +135,7 @@ export function useAdminBadgesController(enabled: boolean) {
   });
 
   const updateMutation = useMutation({
-    mutationFn: (vars: { id: string; payload: BadgeForm }) => updateBadge(vars.id, toCreateBadgePayload(vars.payload)),
+    mutationFn: (vars: { id: string; payload: BadgeForm }) => updateBadge(vars.id, toUpdateBadgePayload(vars.payload)),
     onSuccess: async () => {
       notifySuccess(t("badges.message.updated"));
       setEditingBadgeId(null);

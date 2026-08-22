@@ -8,7 +8,8 @@ import { useEffectivePermissions } from "./useEffectivePermissions";
 import { queryKeys } from "../api/query-keys";
 import { fetchAllUsersListWithOptions } from "../services/UserService";
 import { useAuthStore } from "../stores/auth";
-import { resolveClassCatalogItem, useClassCatalogStore } from "../stores/class-catalog";
+import { useClassCatalog } from "./data/useClassData";
+import { resolveClassCatalogItem } from "../utils/class-catalog";
 import { resolveMediaUrl } from "../utils/media";
 import { playAudio, stopAudio, setAudioVolume, setAudioMuted, isAudioPlaying, getAudioSrc } from "../utils/audio-player";
 
@@ -54,7 +55,7 @@ function readStoredSortMode(): RosterSortMode {
 export function useRosterPageController() {
   const isExternalView = useExternalView();
   const sessionUser = useAuthStore((state) => state.user);
-  const classCatalog = useClassCatalogStore((state) => state.items);
+  const classCatalog = useClassCatalog();
   const { canManage: canManagePermission } = useEffectivePermissions();
   const { search, setSearch, debouncedSearch: debouncedSearchRaw } = useDebouncedSearch();
   const debouncedSearch = debouncedSearchRaw.trim().toLowerCase();
@@ -127,15 +128,6 @@ export function useRosterPageController() {
   const selected = selectedUserId
     ? displayRows.find((entry) => entry.user.id === selectedUserId) ?? null
     : null;
-  const loadedClassIds = useMemo(
-    () => [...new Set(
-      rows.flatMap((entry) => entry.profile.classes)
-        .map((id) => id.trim())
-        .filter(Boolean),
-    )],
-    [rows],
-  );
-
   const sortedRows = useMemo(() => {
     const filteredRows = displayRows
       .filter((entry) => {
@@ -238,7 +230,6 @@ export function useRosterPageController() {
     setAudioVolumeState,
     selected,
     usersQuery,
-    loadedClassIds,
     sortedRows,
     playHoverAudio,
     stopHoverAudio,
