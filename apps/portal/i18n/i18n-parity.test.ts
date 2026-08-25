@@ -22,6 +22,7 @@ const NAMESPACE_FILES = [
   "settings.json",
   "storage.json",
   "tools.json",
+  "visualPresets.json",
   "wiki.json",
 ] as const;
 const AUDIT_VALUE_KEYS = [

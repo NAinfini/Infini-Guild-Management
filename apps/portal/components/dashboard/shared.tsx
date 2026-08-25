@@ -1,7 +1,6 @@
 import type { Event } from "@guild/shared";
 import type { EventQuotaBarSummary } from "../feature/events/EventQuotaBar";
 import { eventTypeColor } from "@portal/utils/event-colors";
-import { Group, Title } from "@mantine/core";
 import type { CSSProperties, ReactNode } from "react";
 
 export function eventTypeTagColor(value: string): string {
@@ -10,12 +9,12 @@ export function eventTypeTagColor(value: string): string {
 
 export function cardHeading(text: string, icon?: ReactNode) {
   return (
-    <Group gap={8} align="center" wrap="nowrap" className="dashboard-card-title">
+    <div className="dashboard-card-title">
       {icon ? <span className="dashboard-card-title-icon">{icon}</span> : null}
-      <Title order={2} className="dashboard-card-title__text">
+      <h2 className="dashboard-card-title__text">
         {text}
-      </Title>
-    </Group>
+      </h2>
+    </div>
   );
 }
 
@@ -55,7 +54,7 @@ export function orderDashboardUpcomingRows<
 export type DashboardMember = {
   user: {
     id: string;
-    username: string;
+    display_name: string;
   };
   profile: {
     classes: string[];

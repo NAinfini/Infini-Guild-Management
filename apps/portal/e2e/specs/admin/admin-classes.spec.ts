@@ -45,9 +45,9 @@ function classItem(page: Page, label: string): Locator {
 function iconOption(scope: Locator, name: string): Locator {
   return scope.getByRole("button", { name: `Select ${name} icon`, exact: true });
 }
-/* SegmentedControl 真正的 radio 是藏起来的，可点的是包着它的 label。 */
+/* 图标来源是带 aria-pressed 状态的互斥按钮。 */
 function sourceOption(scope: Locator, label: string): Locator {
-  return scope.locator(".mantine-SegmentedControl-label").filter({ hasText: new RegExp(`^${label}$`) });
+  return scope.getByRole("button", { name: label, exact: true });
 }
 function saveButton(scope: Locator): Locator {
   return scope.getByRole("button", { name: "Save class", exact: true });
@@ -100,7 +100,7 @@ async function shownCount(page: Page): Promise<number> {
 
 async function expectNotified(page: Page, text: string): Promise<void> {
   await expect(
-    page.locator(".mantine-Notification-description").filter({ hasText: text }),
+    page.locator('[data-slot="toast-description"]').filter({ hasText: text }),
     `没有弹出通知「${text}」`,
   ).toBeVisible();
 }

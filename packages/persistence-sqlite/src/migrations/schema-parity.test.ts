@@ -9,7 +9,23 @@ import { appSchema } from "../schema/app-schema.js";
 const manifest = JSON.parse(readFileSync(
   fileURLToPath(new URL("./generated/manifest.json", import.meta.url)),
   "utf8",
-)) as Array<{ file: string }>;
+)) as Array<{ id: string; ordinal: number; file: string }>;
+const drizzleJournal = JSON.parse(readFileSync(
+  fileURLToPath(new URL("./generated/meta/_journal.json", import.meta.url)),
+  "utf8",
+)) as { entries: Array<{ idx: number; tag: string }> };
+const baselineSnapshot = JSON.parse(readFileSync(
+  fileURLToPath(new URL("./generated/meta/0000_snapshot.json", import.meta.url)),
+  "utf8",
+)) as DrizzleSnapshot;
+const latestMigration = manifest.at(-1)!;
+const latestSnapshot = JSON.parse(readFileSync(
+  fileURLToPath(new URL(
+    `./generated/meta/${String(latestMigration.ordinal).padStart(4, "0")}_snapshot.json`,
+    import.meta.url,
+  )),
+  "utf8",
+)) as DrizzleSnapshot;
 const migration = manifest.map(({ file }) => readFileSync(
   fileURLToPath(new URL(`./generated/${file}`, import.meta.url)),
   "utf8",
@@ -17,6 +33,29 @@ const migration = manifest.map(({ file }) => readFileSync(
 const dialect = new SQLiteSyncDialect();
 
 describe("Drizzle schema and core migration parity", () => {
+  it("keeps the generation journal and latest snapshot aligned with the migration manifest", () => {
+    expect(drizzleJournal.entries.map(({ idx, tag }) => ({ idx, tag }))).toEqual(
+      manifest.map(({ id, ordinal }) => ({ idx: ordinal, tag: id })),
+    );
+    expect(latestSnapshot.prevId).toBe(baselineSnapshot.id);
+
+    const configs = Object.values(appSchema).map((table) => getTableConfig(table));
+    expect(Object.keys(latestSnapshot.tables).sort()).toEqual(configs.map(({ name }) => name).sort());
+    for (const config of configs) {
+      const snapshot = latestSnapshot.tables[config.name];
+      expect(snapshot, `${config.name} snapshot`).toBeDefined();
+      expect(Object.keys(snapshot!.columns).sort(), `${config.name} snapshot fields`)
+        .toEqual(config.columns.map(({ name }) => name).sort());
+      expect(Object.keys(snapshot!.indexes).sort(), `${config.name} snapshot indexes`)
+        .toEqual([
+          ...config.indexes.map(({ config: index }) => index.name),
+          ...config.columns.flatMap((column) => column.isUnique && column.uniqueName ? [column.uniqueName] : []),
+        ].sort());
+      expect(Object.keys(snapshot!.checkConstraints).sort(), `${config.name} snapshot checks`)
+        .toEqual(config.checks.map(({ name }) => name).sort());
+    }
+  });
+
   it("matches every table field, foreign key, check, and index", () => {
     const database = new DatabaseSync(":memory:");
     try {
@@ -28,8 +67,8 @@ describe("Drizzle schema and core migration parity", () => {
         database,
         "SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%' ORDER BY name",
       );
-      expect(configs).toHaveLength(59);
-      expect(new Set(expectedTableNames).size).toBe(59);
+      expect(configs).toHaveLength(66);
+      expect(new Set(expectedTableNames).size).toBe(66);
       expect(actualTableNames).toEqual(expectedTableNames);
 
       for (const config of configs) {
@@ -70,8 +109,10 @@ describe("Drizzle schema and core migration parity", () => {
           "SELECT sql FROM sqlite_master WHERE type = 'table' AND name = ?",
         ).get(config.name) as { sql: string }).sql);
         if (config.name === "scheduled_job_leases") expect(tableSql).toMatch(/WITHOUT ROWID$/i);
-        const actualCheckNames = [...tableSql.matchAll(/CONSTRAINT\s+["`]([^"`]+)["`]\s+CHECK/gi)]
-          .map((match) => match[1]!)
+        const actualCheckNames = [
+          ...tableSql.matchAll(/CONSTRAINT\s+(?:["`]([^"`]+)["`]|([A-Za-z_][A-Za-z0-9_]*))\s+CHECK/gi),
+        ]
+          .map((match) => (match[1] ?? match[2])!)
           .sort();
         expect(actualCheckNames, `${config.name} checks`).toEqual(config.checks.map(({ name }) => name).sort());
         const normalizedTableSql = normalizeSql(tableSql);
@@ -232,4 +273,14 @@ interface IndexListRow {
 interface IndexInfoRow {
   readonly seqno: number;
   readonly name: string;
+}
+
+interface DrizzleSnapshot {
+  readonly id: string;
+  readonly prevId: string;
+  readonly tables: Readonly<Record<string, Readonly<{
+    columns: Readonly<Record<string, unknown>>;
+    indexes: Readonly<Record<string, unknown>>;
+    checkConstraints: Readonly<Record<string, unknown>>;
+  }>>>;
 }

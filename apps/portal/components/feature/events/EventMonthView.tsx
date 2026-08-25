@@ -1,229 +1,108 @@
 import type { Event as GuildEvent } from "@guild/shared";
+import { Badge } from "@portal/components/ui/badge";
+import { Button } from "@portal/components/ui/button";
+import { Card } from "@portal/components/ui/card";
+import { Popover, PopoverContent, PopoverTrigger } from "@portal/components/ui/popover";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@portal/components/ui/tooltip";
 import { eventTypeColor } from "@portal/utils/event-colors";
-import { Badge, Button, Group, HoverCard, Paper, Popover, Stack, Text, ThemeIcon, UnstyledButton } from "@mantine/core";
-import { addDays, getDate, getDay, getMonth, isSameDay, startOfMonth, startOfWeek } from "date-fns";
-import { formatClock, localDateKey } from "@portal/utils/datetime";
-import type { CSSProperties, ReactNode } from "react";
+import { addDays, addMonths, getDate, getDay, getMonth, isSameDay, isValid, parseISO, startOfMonth, startOfWeek, subMonths } from "date-fns";
+import { formatEventTime, formatLocaleParts, localDateKey } from "@portal/utils/datetime";
+import { useEffect, useMemo, useState, type CSSProperties, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { getEventTypeLabel } from "@portal/utils/game-rules";
-import { CalendarEventIcon } from "@portal/components/icons";
+import { CalendarEventIcon, ChevronLeftIcon, ChevronRightIcon } from "@portal/components/icons";
 import "./EventMonthView.css";
 
 const WEEKDAY_KEYS = ["weekday.sun", "weekday.mon", "weekday.tue", "weekday.wed", "weekday.thu", "weekday.fri", "weekday.sat"] as const;
 
-function buildAvailabilityOverlayStyle(intensity: number, maxCount: number): CSSProperties | undefined {
-  if (!maxCount || intensity <= 0) {
-    return undefined;
-  }
-  const ratio = Math.min(1, intensity / maxCount);
-  const strength = Math.round(10 + ratio * 72);
-  return {
-    background: `color-mix(in srgb, var(--status-success) ${strength}%, transparent)`,
-  };
-}
-
-function startOfMonthGrid(base: Date): Date {
-  return startOfWeek(startOfMonth(base));
-}
-
-function isMutedMonthEvent(event: GuildEvent): boolean {
-  return Boolean(event.archived_at || (event.end_at && new Date(event.end_at) < new Date()));
-}
+function startOfMonthGrid(base: Date): Date { return startOfWeek(startOfMonth(base)); }
+function isMutedMonthEvent(event: GuildEvent): boolean { return Boolean(event.archived_at || (event.end_at && new Date(event.end_at) < new Date())); }
 
 type MonthCalendarProps = {
   onSelect: (value: Date) => void;
   cellRender: (value: Date) => ReactNode;
-  value?: Date;
+  hasEvents: (value: Date) => boolean;
+  value: Date;
+  selectedDateKey?: string;
 };
 
-function MonthCalendar({ onSelect, cellRender, value }: MonthCalendarProps) {
-  const { t } = useTranslation("events");
-  const active = value ?? new Date();
+function MonthCalendar({ onSelect, cellRender, hasEvents, value, selectedDateKey }: MonthCalendarProps) {
+  const { t, i18n } = useTranslation("events");
   const today = new Date();
-  const start = startOfMonthGrid(active);
-  const days = Array.from({ length: 42 }).map((_, index) => addDays(start, index));
-
-  return (
-    <div className="month-calendar">
-      <div className="month-calendar__header">
-        {WEEKDAY_KEYS.map((key) => (
-          <div key={key} className="month-calendar__weekday">
-            {t(key)}
-          </div>
-        ))}
-      </div>
-      <div className="month-calendar__grid">
+  const days = useMemo(() => Array.from({ length: 42 }, (_, index) => addDays(startOfMonthGrid(value), index)), [value]);
+  const scheduledDays = days.filter((day) => {
+    if (getMonth(day) !== getMonth(value)) return false;
+    return hasEvents(day) || localDateKey(day) === selectedDateKey;
+  });
+  return <>
+    <div className="month-calendar month-calendar--grid">
+      <div className="month-calendar__header" role="row">{WEEKDAY_KEYS.map((key) => <div key={key} className="month-calendar__weekday" role="columnheader">{t(key)}</div>)}</div>
+      <div className="month-calendar__grid" role="grid" aria-label={t("month.gridAria", { month: formatLocaleParts(value, i18n.language, { month: "long", year: "numeric" }) })}>
         {days.map((day) => {
-          const isAdjacentMonth = getMonth(day) !== getMonth(active);
+          const isAdjacentMonth = getMonth(day) !== getMonth(value);
           const isToday = isSameDay(day, today);
-
-          let cellClass = "month-calendar__cell";
-          if (isAdjacentMonth) cellClass += " month-calendar__cell--adjacent";
-          if (isToday) cellClass += " month-calendar__cell--today";
-
-          return (
-            <div
-              key={day.toISOString()}
-              className={cellClass}
-            >
-              <UnstyledButton
-                type="button"
-                className="month-calendar__date-button"
-                onClick={() => onSelect(day)}
-                aria-label={t("month.selectAria", { date: localDateKey(day) })}
-              >
-                <span className="month-calendar__date">{getDate(day)}</span>
-              </UnstyledButton>
-              <div className="month-calendar__cell-body">{cellRender(day)}</div>
-            </div>
-          );
+          const isWeekend = getDay(day) === 0 || getDay(day) === 6;
+          const dateKey = localDateKey(day);
+          const isSelected = dateKey === selectedDateKey;
+          const className = `month-calendar__cell${isAdjacentMonth ? " month-calendar__cell--adjacent" : ""}${isToday ? " month-calendar__cell--today" : ""}${isWeekend ? " month-calendar__cell--weekend" : ""}${isSelected ? " month-calendar__cell--selected" : ""}`;
+          return <div key={dateKey} className={className} role="gridcell"><button type="button" className="month-calendar__date-button" onClick={() => onSelect(day)} aria-label={t("month.selectAria", { date: dateKey })} aria-pressed={isSelected}><span className="month-calendar__date">{getDate(day)}</span></button><div className="month-calendar__cell-body">{cellRender(day)}</div></div>;
         })}
       </div>
     </div>
-  );
+    <div className="month-calendar month-calendar--compact">
+      {scheduledDays.length === 0 ? <p className="month-calendar__compact-empty">{t("month.empty")}</p> : <div className="month-calendar__compact-list">{scheduledDays.map((day) => { const dateKey = localDateKey(day); const isSelected = dateKey === selectedDateKey; return <article key={dateKey} className="month-calendar__compact-day"><button type="button" className="month-calendar__compact-date" onClick={() => onSelect(day)} aria-label={t("month.selectAria", { date: dateKey })} aria-pressed={isSelected}><span className="month-calendar__compact-weekday">{t(WEEKDAY_KEYS[getDay(day)] ?? "weekday.sun")}</span><span className="month-calendar__compact-date-number">{getDate(day)}</span><span className="month-calendar__compact-date-label">{formatLocaleParts(day, i18n.language, { month: "short" })}</span></button><div className="month-calendar__compact-events">{cellRender(day)}</div></article>; })}</div>}
+    </div>
+  </>;
 }
 
 type EventMonthViewProps = {
-  canManage: boolean;
+  canCreate: boolean;
   eventsByDay: Map<string, GuildEvent[]>;
   availabilityDayPeakByDay: Map<number, number>;
   availabilityMaxCount: number;
+  selectedDateKey?: string;
   onSelectDate: (dateKey: string) => void;
   onCreateEvent: (dateKey: string) => void;
-  onEditEvent: (event: GuildEvent) => void;
-  onViewEvent?: (event: GuildEvent) => void;
+  onViewEvent: (event: GuildEvent) => void;
 };
 
-export function EventMonthView({
-  canManage,
-  eventsByDay,
-  availabilityDayPeakByDay,
-  availabilityMaxCount,
-  onSelectDate,
-  onCreateEvent,
-  onEditEvent,
-  onViewEvent,
-}: EventMonthViewProps) {
+export function EventMonthView({ canCreate, eventsByDay, availabilityDayPeakByDay: _availabilityDayPeakByDay, availabilityMaxCount: _availabilityMaxCount, selectedDateKey, onSelectDate, onCreateEvent, onViewEvent }: EventMonthViewProps) {
+  const { t, i18n } = useTranslation("events");
+  const [activeMonth, setActiveMonth] = useState(() => {
+    const selected = selectedDateKey ? parseISO(selectedDateKey) : null;
+    return startOfMonth(selected && isValid(selected) ? selected : new Date());
+  });
+  useEffect(() => {
+    const selected = selectedDateKey ? parseISO(selectedDateKey) : null;
+    if (selected && isValid(selected)) {
+      setActiveMonth(startOfMonth(selected));
+    }
+  }, [selectedDateKey]);
+  const selectDate = (value: Date) => {
+    setActiveMonth(startOfMonth(value));
+    onSelectDate(localDateKey(value));
+  };
+  const monthLabel = formatLocaleParts(activeMonth, i18n.language, { month: "long", year: "numeric" });
+  const renderDay = (value: Date) => {
+    const key = localDateKey(value);
+    const dayEvents = eventsByDay.get(key) ?? [];
+    if (dayEvents.length === 0) return canCreate ? <button type="button" className="month-calendar__create-btn" onClick={() => onCreateEvent(key)} aria-label={t("month.createAria", { date: key })}><span aria-hidden="true">+</span>{t("month.create")}</button> : null;
+    return <div className="month-calendar__event-stack">{dayEvents.slice(0, 3).map((event) => <MonthEvent key={event.id} event={event} onViewEvent={onViewEvent} />)}{dayEvents.length > 3 ? <MoreEvents events={dayEvents.slice(3)} onViewEvent={onViewEvent} /> : null}</div>;
+  };
+  return <Card className="event-month-view p-0">
+    <header className="event-month-view__heading"><div><span className="event-month-view__eyebrow">{t("view.calendar")}</span><h2 className="event-month-view__title">{monthLabel}</h2></div><div className="event-month-view__controls"><Button type="button" variant="outline" size="icon-sm" onClick={() => setActiveMonth((month) => subMonths(month, 1))} aria-label={t("month.previous")}><ChevronLeftIcon size={16} /></Button><Button type="button" variant="ghost" size="sm" onClick={() => setActiveMonth(startOfMonth(new Date()))}>{t("month.today")}</Button><Button type="button" variant="outline" size="icon-sm" onClick={() => setActiveMonth((month) => addMonths(month, 1))} aria-label={t("month.next")}><ChevronRightIcon size={16} /></Button></div></header>
+    <MonthCalendar value={activeMonth} selectedDateKey={selectedDateKey} hasEvents={(value) => (eventsByDay.get(localDateKey(value))?.length ?? 0) > 0} onSelect={selectDate} cellRender={renderDay} />
+  </Card>;
+}
+
+function MonthEvent({ event, onViewEvent }: { event: GuildEvent; onViewEvent: (event: GuildEvent) => void }) {
+  const { t, i18n } = useTranslation("events");
+  const muted = isMutedMonthEvent(event);
+  const eventColor = muted ? "var(--text-muted)" : eventTypeColor(event.type);
+  return <Tooltip><TooltipTrigger render={<button type="button" className="month-calendar__event-button" aria-label={t("month.openEventAria", { title: event.title })} onClick={() => onViewEvent(event)} />}><Badge variant="outline" className={muted ? "month-calendar__event-badge--muted" : undefined} style={{ "--month-event-color": eventColor } as CSSProperties}>{event.title}</Badge><span className="month-calendar__event-time">{formatEventTime(event.start_at, i18n.language, { hour12: false })}</span></TooltipTrigger><TooltipContent className="month-calendar__event-tooltip" style={{ "--month-event-color": eventColor } as CSSProperties}><span className="month-calendar__event-tooltip-icon"><CalendarEventIcon size={18} /></span><span><strong>{event.title}</strong><span>{getEventTypeLabel(event.type)}</span><span>{formatEventTime(event.start_at, i18n.language, { hour12: false })}</span>{event.description ? <span>{event.description}</span> : null}</span></TooltipContent></Tooltip>;
+}
+
+function MoreEvents({ events, onViewEvent }: { events: GuildEvent[]; onViewEvent: (event: GuildEvent) => void }) {
   const { t } = useTranslation("events");
-
-  return (
-    <Paper withBorder radius="md">
-      <div>
-        <MonthCalendar
-        onSelect={(value) => onSelectDate(localDateKey(value))}
-        cellRender={(value: Date) => {
-          const key = localDateKey(value);
-          const dayEvents = eventsByDay.get(key) ?? [];
-          const dayIndex = getDay(value);
-          const overlayIntensity = availabilityDayPeakByDay.get(dayIndex) ?? 0;
-          const overlayStyle = buildAvailabilityOverlayStyle(overlayIntensity, availabilityMaxCount);
-
-          if (dayEvents.length === 0) {
-            const emptyCell = (
-              <div
-                className="month-calendar__overlay"
-                style={{
-                  minHeight: 24,
-                  ...overlayStyle,
-                }}
-              />
-            );
-            if (!canManage) {
-              return emptyCell;
-            }
-            return (
-              <UnstyledButton
-                type="button"
-                className="month-calendar__create-btn"
-                onClick={() => onCreateEvent(key)}
-                aria-label={t("month.createAria", { date: key })}
-              >
-                + {t("month.create")}
-                {emptyCell}
-              </UnstyledButton>
-            );
-          }
-          return (
-            <div
-              className="month-calendar__overlay"
-              style={overlayStyle}
-            >
-              <Stack gap={2} style={{ width: "100%" }}>
-                {dayEvents.slice(0, 3).map((event) => {
-                  const isMuted = isMutedMonthEvent(event);
-                  const eventColor = isMuted ? "gray" : eventTypeColor(event.type);
-                  return (
-                    <HoverCard key={event.id} width={260} shadow="lg" withArrow arrowSize={10} openDelay={350} closeDelay={80} position="top">
-                      <HoverCard.Target>
-                        <UnstyledButton
-                          type="button"
-                          className="month-calendar__event-button"
-                          aria-label={t("month.openEventAria", { title: event.title })}
-                          onClick={() => (onViewEvent ?? onEditEvent)(event)}
-                        >
-                          <Badge
-                            variant="light"
-                            color={eventColor}
-                            size="xs"
-                            className={isMuted ? "month-calendar__event-badge--muted" : undefined}
-                            data-animate-icon-trigger
-                          >
-                            {event.title}
-                          </Badge>
-                        </UnstyledButton>
-                      </HoverCard.Target>
-                      <HoverCard.Dropdown p="sm" style={{ borderRadius: 10 }}>
-                        <Group gap={10} wrap="nowrap" align="flex-start">
-                          <ThemeIcon variant="light" color={eventColor} size="lg" radius="md" style={{ flexShrink: 0, marginTop: 2 }}>
-                            <CalendarEventIcon size={18} />
-                          </ThemeIcon>
-                          <div style={{ minWidth: 0 }}>
-                            <Text size="sm" fw={700} lh={1.3}>{event.title}</Text>
-                            <Group gap={4} mt={4}>
-                              <Text size="xs">{getEventTypeLabel(event.type)}</Text>
-                              <Text size="xs" c="dimmed">{formatClock(event.start_at)}</Text>
-                            </Group>
-                            {event.description ? (
-                              <Text size="xs" c="dimmed" lh={1.5} mt={4} lineClamp={2}>{event.description}</Text>
-                            ) : null}
-                          </div>
-                        </Group>
-                      </HoverCard.Dropdown>
-                    </HoverCard>
-                  );
-                })}
-                {dayEvents.length > 3 ? (
-                  <Popover withinPortal>
-                    <Popover.Target>
-                      <UnstyledButton type="button" className="month-calendar__event-button">
-                        <Badge color="gray" variant="light" size="xs">
-                          +{dayEvents.length - 3} {t("month.more")}
-                        </Badge>
-                      </UnstyledButton>
-                    </Popover.Target>
-                    <Popover.Dropdown>
-                      <Stack gap={4}>
-                        {dayEvents.slice(3).map((event) => (
-                          <Button
-                            key={event.id}
-                            size="xs"
-                            variant="subtle"
-                            style={{ justifyContent: "flex-start" }}
-                            onClick={() => (onViewEvent ?? onEditEvent)(event)}
-                          >
-                            {event.title}
-                          </Button>
-                        ))}
-                      </Stack>
-                    </Popover.Dropdown>
-                  </Popover>
-                ) : null}
-              </Stack>
-            </div>
-          );
-        }}
-        />
-      </div>
-    </Paper>
-  );
+  return <Popover><PopoverTrigger render={<Button type="button" className="month-calendar__more-button" variant="ghost" size="xs" />}>+{events.length} {t("month.more")}</PopoverTrigger><PopoverContent className="month-calendar__more-popover" side="bottom" align="start">{events.map((event) => <Button key={event.id} size="sm" variant="ghost" className="month-calendar__more-event" onClick={() => onViewEvent(event)}>{event.title}</Button>)}</PopoverContent></Popover>;
 }

@@ -83,16 +83,16 @@ implements EventGuildWarLifecycleStore, GuildWarEventRosterStore {
     const moves = JSON.stringify(input.moves);
     const labelRows = returnedRows(await this.sql.execute({
       method: "all",
-      columns: ["id", "username"],
-      sql: `SELECT id, username FROM users
+      columns: ["id", "display_name"],
+      sql: `SELECT id, display_name FROM users
         WHERE id IN (SELECT CAST(json_extract(value, '$.userId') AS TEXT) FROM json_each(?))`,
       params: [moves],
     }));
-    const labels = new Map(labelRows.flatMap(([id, username]) => (
-      typeof id === "string" && typeof username === "string" ? [[id, username] as const] : []
+    const labels = new Map(labelRows.flatMap(([id, display_name]) => (
+      typeof id === "string" && typeof display_name === "string" ? [[id, display_name] as const] : []
     )));
     if (labels.size !== new Set(input.moves.map(({ userId }) => userId)).size) {
-      throw new TypeError("Guild-war roster audit could not resolve every member username");
+      throw new TypeError("Guild-war roster audit could not resolve every member display_name");
     }
     const audit = auditWithUserLabels(input.audit, input.moves.map(({ userId }) => userId), labels);
     const expectedVersionGuard = `SELECT 1 FROM guild_wars

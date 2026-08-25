@@ -1,6 +1,7 @@
-import { Badge, Group, HoverCard, Text, ThemeIcon } from "@mantine/core";
 import { DEFAULT_GAME_RULES, GUILD_WAR_KDA_KEY, evaluateKda } from "@guild/shared";
 import { CircleCheckIcon, AlertTriangleIcon } from "@portal/components/icons";
+import { Button } from "@portal/components/ui/button";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@portal/components/ui/tooltip";
 import { MetricGridInput } from "@portal/components/shared/MetricGridInput";
 import { useConfirmDialog } from "@portal/hooks/useConfirmDialog";
 import {
@@ -312,7 +313,7 @@ export function useWarHistoryTabController({
       header: t("history.table.user"),
       id: "user_id",
       accessorKey: "user_id",
-      cell: ({ row }) => row.original.username ?? row.original.user_id,
+      cell: ({ row }) => row.original.display_name ?? row.original.user_id,
     },
     {
       header: t("history.table.role"),
@@ -336,7 +337,7 @@ export function useWarHistoryTabController({
         return (
           <MetricGridInput
             aria-label={t("history.aria.memberMetric", {
-              member: row.original.username ?? row.original.user_id,
+              member: row.original.display_name ?? row.original.user_id,
               metric: getGuildWarMemberStatLabel(metricKey),
             })}
             gridId="guild-war-history-metrics"
@@ -344,13 +345,9 @@ export function useWarHistoryTabController({
             columnIndex={columnIndex}
             rowCount={visibleRows.length}
             columnCount={editableMetricKeys.length}
-            hideControls
             min={0}
-            size="xs"
-            variant="unstyled"
             value={row.original.stats?.[metricKey] ?? 0}
-            onChange={(value) => updateDraftMetric(row.original.user_id, metricKey, value)}
-            styles={{ input: { minWidth: 64, padding: "2px 4px", textAlign: "center" } }}
+            onValueChange={(value) => updateDraftMetric(row.original.user_id, metricKey, value ?? "")}
           />
         );
       },
@@ -373,56 +370,30 @@ export function useWarHistoryTabController({
         const hasAnyData = stats !== null
           && stats !== undefined
           && Object.values(stats).some((value) => value !== null && value !== 0);
-        return hasAnyData ? (
-          <HoverCard width={280} shadow="lg" withArrow arrowSize={10} openDelay={350} closeDelay={80} position="top">
-            <HoverCard.Target>
-              <Badge
-                component="button"
-                type="button"
-                data-animate-icon-trigger
-                color="green"
-                style={{ cursor: "default" }}
-              >
-                {t("history.table.complete")}
-              </Badge>
-            </HoverCard.Target>
-            <HoverCard.Dropdown p="sm" style={{ borderRadius: 10 }}>
-              <Group gap={10} wrap="nowrap" align="flex-start">
-                <ThemeIcon variant="light" color="green" size="lg" radius="md" style={{ flexShrink: 0, marginTop: 2 }}>
-                  <CircleCheckIcon size={16} />
-                </ThemeIcon>
-                <div style={{ minWidth: 0 }}>
-                  <Text size="sm" fw={700} lh={1.3} mb={4}>{t("hovercard.statusComplete.title")}</Text>
-                  <Text size="xs" c="dimmed" lh={1.5}>{t("hovercard.statusComplete.desc")}</Text>
-                </div>
-              </Group>
-            </HoverCard.Dropdown>
-          </HoverCard>
-        ) : (
-          <HoverCard width={280} shadow="lg" withArrow arrowSize={10} openDelay={350} closeDelay={80} position="top">
-            <HoverCard.Target>
-              <Badge
-                component="button"
-                type="button"
-                data-animate-icon-trigger
-                color="yellow"
-                style={{ cursor: "default" }}
-              >
-                {t("history.table.missing")}
-              </Badge>
-            </HoverCard.Target>
-            <HoverCard.Dropdown p="sm" style={{ borderRadius: 10 }}>
-              <Group gap={10} wrap="nowrap" align="flex-start">
-                <ThemeIcon variant="light" color="yellow" size="lg" radius="md" style={{ flexShrink: 0, marginTop: 2 }}>
-                  <AlertTriangleIcon size={16} />
-                </ThemeIcon>
-                <div style={{ minWidth: 0 }}>
-                  <Text size="sm" fw={700} lh={1.3} mb={4}>{t("hovercard.statusMissing.title")}</Text>
-                  <Text size="xs" c="dimmed" lh={1.5}>{t("hovercard.statusMissing.desc")}</Text>
-                </div>
-              </Group>
-            </HoverCard.Dropdown>
-          </HoverCard>
+        const Icon = hasAnyData ? CircleCheckIcon : AlertTriangleIcon;
+        const statusClass = hasAnyData ? "war-history-status--complete" : "war-history-status--missing";
+        const label = hasAnyData ? t("history.table.complete") : t("history.table.missing");
+        const title = hasAnyData ? t("hovercard.statusComplete.title") : t("hovercard.statusMissing.title");
+        const description = hasAnyData ? t("hovercard.statusComplete.desc") : t("hovercard.statusMissing.desc");
+        return (
+          <Tooltip>
+            <TooltipTrigger render={<Button
+              type="button"
+              size="xs"
+              variant="outline"
+              className={`war-history-status ${statusClass}`}
+              data-animate-icon-trigger
+            />}>
+              {label}
+            </TooltipTrigger>
+            <TooltipContent className="war-history-status__tooltip">
+              <Icon size={16} aria-hidden="true" />
+              <span>
+                <strong>{title}</strong>
+                <span>{description}</span>
+              </span>
+            </TooltipContent>
+          </Tooltip>
         );
       },
     },

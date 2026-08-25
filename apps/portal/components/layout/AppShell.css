@@ -1,24 +1,38 @@
 .app-shell-root {
-  --shell-page-padding: 12px;
+  --shell-page-padding: 16px;
   --shell-content-gap: 12px;
 
-  /*
-   * 站点地面。配方在 semantic.css（--ambient-field），这里是它的主消费点。
-   *
-   * 之前把它画在工作区上，于是工作区有光、侧栏和页头没有，两块本来同色的面
-   * 沿着交界被照出一条硬缝；为了消缝又只能把光收到中间、离每条边都远——缝是
-   * 没了，背景也没了。那条路走不通：只要「谁有光」和「谁没有」不一致，就得在
-   * 「有缝」和「没背景」之间二选一。
-   *
-   * 现在画在外壳这一整块上，侧栏与工作区不画背景、直接透出这一张，天然无缝。
-   * fixed 定位留着是为了页头——它必须不透明，只能自己再画一遍同一张图，两张
-   * 图要对齐到同一个视口坐标系才不露缝，见下面 .app-header。
-   */
   height: 100vh;
   height: 100dvh;
-  background-color: var(--surface-base);
-  background-image: var(--ambient-field);
-  background-attachment: fixed;
+  position: relative;
+  display: grid;
+  grid-template-columns: var(--app-sidebar-width) minmax(0, 1fr);
+  grid-template-rows: var(--app-header-height) minmax(0, 1fr);
+  isolation: isolate;
+  overflow: hidden;
+  background: var(--surface-base);
+}
+
+.app-shell-root[data-compact-navigation] {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.app-shell__scene {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+}
+
+.app-shell__scene::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: color-mix(in srgb, var(--surface-base) 18%, transparent);
+}
+
+[data-theme="light"] .app-shell__scene::after {
+  background: color-mix(in srgb, var(--surface-base) 28%, transparent);
 }
 
 .app-skip-link {
@@ -47,7 +61,24 @@
   min-height: 100dvh;
 }
 
+.app-public-layout {
+  position: relative;
+  isolation: isolate;
+  height: 100vh;
+  height: 100dvh;
+  overflow-x: clip;
+  overflow-y: auto;
+  background: var(--surface-base);
+}
+
 .app-sider {
+  grid-column: 1;
+  grid-row: 1 / -1;
+  width: var(--app-sidebar-width);
+  height: 100dvh;
+  min-height: 0;
+  position: relative;
+  isolation: isolate;
   overflow: hidden;
   display: flex;
   flex-direction: column;
@@ -64,15 +95,54 @@
   background: var(--surface-sunken);
 }
 
+.app-sider__scene {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: center bottom;
+  pointer-events: none;
+  user-select: none;
+}
+
+.app-sider::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  background: color-mix(in srgb, var(--surface-sunken) 74%, transparent);
+  pointer-events: none;
+}
+
+.app-sider > .app-brand,
+.app-sider > .app-sider-menu,
+.app-sider > .app-viewing-as {
+  position: relative;
+  z-index: 2;
+}
+
+.app-sider--collapsed .app-sider__scene {
+  display: none;
+}
+
 .app-brand {
-  min-height: 64px;
+  min-height: var(--app-header-height);
   padding: var(--space-md);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-sm);
   border-bottom: 1px solid var(--border-subtle);
 }
 
 .app-brand-main {
   min-width: 0;
   flex: 1;
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
 }
 
 .app-brand-mark {
@@ -91,7 +161,32 @@
 }
 
 .app-brand-mark--button {
+  position: relative;
   padding: 0;
+  cursor: pointer;
+}
+
+.app-brand-mark__identity,
+.app-brand-mark__expand-icon {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  transition: opacity var(--transition-fast);
+}
+
+.app-brand-mark__expand-icon {
+  opacity: 0;
+}
+
+.app-brand-mark--button:hover .app-brand-mark__identity,
+.app-brand-mark--button:focus-visible .app-brand-mark__identity {
+  opacity: 0;
+}
+
+.app-brand-mark--button:hover .app-brand-mark__expand-icon,
+.app-brand-mark--button:focus-visible .app-brand-mark__expand-icon {
+  opacity: 1;
 }
 
 .app-brand-logo {
@@ -112,8 +207,21 @@
 }
 
 .app-sider-control-btn {
+  width: var(--control-hit-area);
+  height: var(--control-hit-area);
+  display: grid;
+  place-items: center;
+  border: 0;
+  border-radius: var(--radius-control);
+  background: transparent;
   flex: 0 0 auto;
   color: var(--text-secondary);
+  cursor: pointer;
+}
+
+.app-sider-control-btn:hover {
+  background: var(--surface-raised);
+  color: var(--text-primary);
 }
 
 .app-sider-menu {
@@ -121,8 +229,15 @@
   flex: 1;
 }
 
+.app-sider-menu > [data-slot="scroll-area-viewport"] {
+  height: 100%;
+}
+
 .app-nav-groups {
   padding: var(--space-md);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-xl);
 }
 
 .app-nav-group {
@@ -131,6 +246,7 @@
 
 .app-nav-section-label {
   display: block;
+  margin: 0;
   padding: 0 var(--space-sm) var(--space-sm);
   color: var(--text-muted);
   font-size: var(--text-micro);
@@ -139,7 +255,15 @@
 }
 
 .app-nav-group-divider {
+  height: 1px;
+  background: var(--border-subtle);
   margin-bottom: var(--space-lg);
+}
+
+.app-nav-items {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-xs);
 }
 
 .app-nav-item {
@@ -147,9 +271,37 @@
   width: 100%;
   min-height: var(--control-height-regular);
   border-radius: var(--radius-surface);
+  border: 0;
+  background: transparent;
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+  padding: 0 var(--space-sm);
   color: var(--text-secondary);
   font-size: var(--text-body);
   text-align: left;
+  cursor: pointer;
+}
+
+.app-context-return {
+  width: 100%;
+  min-height: var(--control-height-regular);
+  border-radius: var(--radius-surface);
+  border: 0;
+  background: transparent;
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+  padding: 0 var(--space-sm);
+  color: var(--text-secondary);
+  font-size: var(--text-body);
+  text-align: left;
+  cursor: pointer;
+}
+
+.app-context-return:hover {
+  background: color-mix(in srgb, var(--surface-raised) 70%, transparent);
+  color: var(--text-primary);
 }
 
 .app-nav-item:hover {
@@ -174,11 +326,78 @@
   background: var(--accent-fill);
 }
 
+.app-nav-item__meta {
+  flex: 0 0 auto;
+  margin-inline-start: auto;
+}
+
+.app-nav-item__label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.app-nav-count {
+  color: var(--text-muted);
+  font-family: var(--font-display);
+  font-size: var(--text-meta);
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum" 1;
+  font-weight: var(--fw-strong);
+  text-align: end;
+}
+
+.app-nav-count--warn {
+  color: var(--status-warning);
+}
+
+.app-nav-status {
+  flex: 0 0 auto;
+  inline-size: 7px;
+  block-size: 7px;
+  border-radius: var(--shape-pill);
+  background: currentcolor;
+}
+
+.app-nav-status--ok {
+  color: var(--status-success);
+}
+
+.app-nav-status--configured {
+  color: var(--status-warning);
+}
+
+.app-nav-status--degraded {
+  color: var(--status-danger);
+}
+
+.app-nav-status--checking {
+  color: var(--text-muted);
+}
+
 .app-nav-icon {
-  width: 20px;
-  height: 20px;
+  width: 18px;
+  height: 18px;
   display: inline-grid;
   place-items: center;
+}
+
+.app-nav-icon-wrap {
+  position: relative;
+  flex: 0 0 auto;
+  display: inline-grid;
+  place-items: center;
+}
+
+.app-nav-new-dot {
+  position: absolute;
+  inset: -2px -3px auto auto;
+  width: 7px;
+  height: 7px;
+  border: 1px solid var(--surface-sunken);
+  border-radius: var(--shape-pill);
+  background: var(--accent-fill);
 }
 
 .app-sider--collapsed .app-brand {
@@ -204,14 +423,16 @@
   padding-inline: 0;
 }
 
-/* label 传了 undefined，但 Mantine 仍会渲染一个空的 body 并让它 flex 撑满，
-   把图标顶到左边。这才是图标没对齐中轴的根因，不是 justify-content 没生效。 */
-.app-sider--collapsed .app-nav-item .mantine-NavLink-body {
-  display: none;
+.app-sider--collapsed .app-context-return {
+  width: var(--control-height-regular);
+  margin-inline: auto;
+  padding-inline: 0;
+  display: flex;
+  justify-content: center;
 }
 
-.app-sider--collapsed .app-nav-item .mantine-NavLink-section {
-  margin-inline: 0;
+.app-sider--collapsed .app-nav-item__meta {
+  display: none;
 }
 
 .app-sider--collapsed .app-nav-item[data-active]::before {
@@ -240,18 +461,41 @@
 }
 
 .app-header {
-  height: var(--header-height);
+  position: relative;
+  grid-column: 2;
+  grid-row: 1;
+  height: var(--app-header-height);
   padding-inline: var(--shell-page-padding);
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
   align-items: center;
   gap: var(--space-md);
+  isolation: isolate;
   border-bottom: 1px solid var(--border-subtle);
-  /* 页头必须不透明——内容从它底下滚过去。所以它不能像侧栏那样留白，只能自己
-     再画一遍同一张图；fixed 让两张图对齐到同一个视口坐标系，接缝两边取值相等。 */
-  background-color: var(--surface-base);
-  background-image: var(--ambient-field);
-  background-attachment: fixed;
+  background: var(--surface-overlay);
+}
+
+.app-shell-root[data-compact-navigation] .app-header {
+  grid-column: 1;
+}
+
+.app-header--with-scene {
+  border-bottom-color: transparent;
+  background: transparent;
+}
+
+.app-header--with-scene::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  background: var(--surface-overlay);
+  opacity: 0.22;
+}
+
+[data-theme="light"] .app-header--with-scene::before {
+  opacity: 0.18;
 }
 
 /*
@@ -270,10 +514,13 @@
      条上会在两像素内跑完，等于没有渐变。既然渐变在这个尺寸上表达不出来，
      就不要为了「看起来讲究」硬塞一个失效的写法。 */
   background: var(--domain-edge);
+  z-index: 3;
   pointer-events: none;
 }
 
 .app-header__page-title {
+  position: relative;
+  z-index: 2;
   min-width: 0;
   max-width: 100%;
   display: flex;
@@ -319,6 +566,8 @@
 }
 
 .app-header__right {
+  position: relative;
+  z-index: 2;
   min-width: 0;
   justify-content: flex-end;
 }
@@ -390,11 +639,11 @@
   gap: var(--space-sm);
 }
 
-.app-header-notification-row .mantine-Stack-root {
+.app-header-notification-row > :first-child {
   min-width: 0;
 }
 
-.app-header-notification-row .mantine-Text-root {
+.app-header-notification-row p {
   word-break: break-word;
 }
 
@@ -423,7 +672,7 @@
   font-weight: var(--fw-strong);
 }
 
-.app-profile-avatar .mantine-Avatar-placeholder {
+.app-profile-avatar [data-slot="avatar-fallback"] {
   background: transparent;
   color: var(--accent-on-fill);
 }
@@ -456,19 +705,30 @@
 
 .app-content.app-content {
   position: relative;
+  grid-column: 2;
+  grid-row: 2;
   isolation: isolate;
-  height: 100vh;
-  height: 100dvh;
+  width: 100%;
+  height: 100%;
   min-height: 0;
   min-width: 0;
   overflow-x: clip;
-  overflow-y: auto;
+  overflow-y: hidden;
   box-sizing: border-box;
-  /* 不画背景，透出 .app-shell-root 那一张。工作区是滚动容器，让它保持透明也
-     顺带省掉「固定背景配滚动容器」在滚动时的重绘。 */
+  background: var(--surface-base);
+}
+
+.app-shell-root[data-compact-navigation] .app-content {
+  grid-column: 1;
+}
+
+.app-content.app-content.app-content--with-scene {
   background: transparent;
-  scrollbar-width: thin;
-  scrollbar-color: var(--border-strong) transparent;
+}
+
+.app-content,
+.app-public-layout {
+  --app-grain-image: url("/textures/forged-grain.png");
 }
 
 .app-content::before {
@@ -477,7 +737,7 @@
   inset: 0;
   z-index: 0;
   pointer-events: none;
-  background-image: url("/textures/forged-grain.png");
+  background-image: var(--app-grain-image);
   background-repeat: repeat;
   background-size: 128px 128px;
   opacity: 0.05;
@@ -487,19 +747,20 @@
   opacity: 0.035;
 }
 
-.app-content::-webkit-scrollbar {
-  width: var(--scrollbar-size);
+.app-public-layout::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  background-image: var(--app-grain-image);
+  background-repeat: repeat;
+  background-size: 128px 128px;
+  opacity: 0.05;
 }
 
-.app-content::-webkit-scrollbar-track {
-  background: transparent;
-}
-
-.app-content::-webkit-scrollbar-thumb {
-  border: 2px solid transparent;
-  border-radius: var(--radius-control);
-  background: var(--border-strong);
-  background-clip: padding-box;
+[data-theme="light"] .app-public-layout::before {
+  opacity: 0.035;
 }
 
 .app-main {
@@ -507,7 +768,9 @@
   z-index: 1;
   width: 100%;
   min-width: 0;
-  min-height: 100%;
+  height: 100%;
+  min-height: 0;
+  overflow: hidden;
   padding-top: var(--shell-content-gap);
   display: flex;
   flex-direction: column;
@@ -515,28 +778,37 @@
   box-sizing: border-box;
 }
 
-/*
- * 定高页把这一层的高度从「至少一屏」改成「正好一屏」。
- *
- * min-height 给不出上界：高度仍由内容决定，内容一长这层就跟着长，
- * 下面 flex:1 的子级只会被撑大、永远不会被压回去，
- * 于是 min-block-size:0 那条填充链名存实亡，滚动条落到了 .app-content 上。
- * height 才让 flex 有确定的主轴尺寸可分配，列表内部的滚动区才收得住。
- *
- * 只有路由自己声明 fillsViewport 才加：按内容自然增高的页面锁死高度，
- * 卡片会被压扁到 min-content。
- */
-.app-main--fill {
-  height: 100%;
-}
-
 .app-banner {
   margin-inline: var(--shell-page-padding);
+  border-color: var(--border-subtle);
+  background: var(--surface-raised);
+  color: var(--text-primary);
 }
 
-[data-theme="dark"] .app-banner[data-variant="light"] {
-  border-color: var(--border-subtle);
-  background: color-mix(in srgb, var(--surface-raised) 85%, var(--alert-color));
+.app-banner[data-status="warning"] {
+  border-color: color-mix(in srgb, var(--status-warning) 45%, var(--border-subtle));
+  background: color-mix(in srgb, var(--status-warning) 8%, var(--surface-raised));
+}
+
+.app-banner[data-status="danger"] {
+  border-color: color-mix(in srgb, var(--status-danger) 45%, var(--border-subtle));
+  background: color-mix(in srgb, var(--status-danger) 8%, var(--surface-raised));
+}
+
+.app-banner__close {
+  width: var(--control-hit-area);
+  height: var(--control-hit-area);
+  display: grid;
+  place-items: center;
+  border: 0;
+  border-radius: var(--radius-control);
+  background: transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+
+.app-banner__close:hover {
+  background: var(--surface-sunken);
   color: var(--text-primary);
 }
 
@@ -548,6 +820,19 @@
   display: flex;
   flex-direction: column;
   min-block-size: 0;
+  animation: app-route-arrive var(--motion-panel) both;
+}
+
+@keyframes app-route-arrive {
+  from {
+    opacity: 0.88;
+    transform: translateY(4px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 .app-content-mobile {
@@ -568,7 +853,8 @@
 
 .bottom-nav-grid {
   display: grid;
-  grid-template-columns: repeat(5, minmax(0, 1fr));
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(0, 1fr);
   gap: var(--space-xs);
 }
 
@@ -627,6 +913,158 @@
   background: var(--brand-fill);
 }
 
+.bottom-nav-drawer__overlay {
+  bottom: calc(var(--bottom-nav-height) + env(safe-area-inset-bottom));
+}
+
+.bottom-nav-drawer__content {
+  bottom: calc(var(--bottom-nav-height) + env(safe-area-inset-bottom));
+  max-height: calc(100dvh - var(--bottom-nav-height) - env(safe-area-inset-bottom) - var(--space-xl));
+  border: 1px solid var(--border-subtle);
+  border-bottom: 0;
+  border-radius: var(--radius-surface) var(--radius-surface) 0 0;
+  background: var(--surface-overlay);
+  box-shadow: var(--shadow-overlay);
+}
+
+.bottom-nav-drawer__header {
+  min-height: 56px;
+  padding: var(--space-md) var(--space-lg);
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: var(--space-md);
+  border-bottom: 1px solid var(--border-subtle);
+  background: transparent;
+}
+
+.bottom-nav-drawer__title {
+  font-family: var(--font-display);
+  font-size: var(--text-section);
+  font-weight: var(--fw-strong);
+}
+
+.bottom-nav-drawer__close {
+  width: var(--control-hit-area);
+  height: var(--control-hit-area);
+  display: grid;
+  place-items: center;
+  border: 0;
+  border-radius: var(--radius-control);
+  background: transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+
+.bottom-nav-drawer__close:hover {
+  background: var(--surface-raised);
+  color: var(--text-primary);
+}
+
+.bottom-nav-drawer__body {
+  min-height: 0;
+  max-height: calc(100dvh - var(--bottom-nav-height) - 7rem);
+  padding: 0 var(--space-lg) var(--space-lg);
+}
+
+.bottom-nav-drawer__groups {
+  display: grid;
+  gap: var(--space-lg);
+  padding-block-start: var(--space-md);
+}
+
+.bottom-nav-drawer__group-title {
+  margin: 0 0 var(--space-xs);
+  color: var(--text-muted);
+  font-size: var(--text-micro);
+  font-weight: var(--fw-strong);
+}
+
+:lang(en) .bottom-nav-drawer__group-title {
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.bottom-nav-drawer__links {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-xs);
+}
+
+.bottom-nav-drawer__link {
+  min-width: 0;
+  min-height: 56px;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: var(--space-sm);
+  padding: var(--space-sm) var(--space-md);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-control);
+  background: var(--surface-raised);
+  color: var(--text-secondary);
+  text-decoration: none;
+}
+
+.bottom-nav-more-button {
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+}
+
+.bottom-nav-icon-wrap,
+.bottom-nav-drawer__link-icon-wrap {
+  position: relative;
+  display: inline-grid;
+  place-items: center;
+}
+
+.bottom-nav-new-dot {
+  position: absolute;
+  inset: -2px -4px auto auto;
+  width: 7px;
+  height: 7px;
+  border: 1px solid var(--surface-overlay);
+  border-radius: var(--shape-pill);
+  background: var(--accent-fill);
+}
+
+.bottom-nav-drawer__link:hover,
+.bottom-nav-drawer__link:focus-visible,
+.bottom-nav-drawer__link--active {
+  border-color: var(--brand-border);
+  color: var(--text-primary);
+}
+
+.bottom-nav-drawer__link--active {
+  background: var(--brand-tint);
+}
+
+.bottom-nav-drawer__link-icon {
+  display: inline-grid;
+  place-items: center;
+  color: var(--brand-text);
+}
+
+.bottom-nav-drawer__link-label {
+  min-width: 0;
+  overflow: hidden;
+  font-weight: var(--fw-medium);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.bottom-nav-drawer__link-status {
+  width: 6px;
+  height: 6px;
+  border-radius: var(--shape-pill);
+  background: transparent;
+}
+
+.bottom-nav-drawer__link--active .bottom-nav-drawer__link-status {
+  background: var(--brand-fill);
+}
+
 @media (min-width: 768px) {
   .app-shell-root {
     --shell-page-padding: 16px;
@@ -634,17 +1072,13 @@
   }
 }
 
-@media (min-width: 1200px) {
+@media (min-width: 1024px) {
   .app-shell-root {
-    --shell-page-padding: 24px;
+    --shell-page-padding: 32px;
   }
 }
 
 @media (max-width: 767px) {
-  .app-header {
-    height: var(--header-height-mobile);
-  }
-
   .app-header__page-title {
     font-size: var(--text-h3);
   }
@@ -675,7 +1109,17 @@
   }
 }
 
+@media (max-width: 479px) {
+  .bottom-nav-drawer__links {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
+  .app-route-container {
+    animation: none;
+  }
+
   .app-shell-root *,
   .app-shell-root *::before,
   .app-shell-root *::after {

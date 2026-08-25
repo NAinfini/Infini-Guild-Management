@@ -1,13 +1,19 @@
-import { NumberInput } from "@mantine/core";
-import type { NumberInputProps } from "@mantine/core";
-import type { KeyboardEvent } from "react";
+import { Input } from "@portal/components/ui/input";
+import type { ComponentProps, KeyboardEvent } from "react";
+import "./MetricGridInput.css";
 
-export type MetricGridInputProps = Omit<NumberInputProps, "withKeyboardEvents"> & {
+export type MetricGridInputProps = Omit<
+  ComponentProps<"input">,
+  "type" | "size" | "value" | "defaultValue" | "onChange"
+> & {
   gridId: string;
   rowIndex: number;
   columnIndex: number;
   rowCount: number;
   columnCount: number;
+  value?: number | string;
+  defaultValue?: number | string;
+  onValueChange?: (value: number | null) => void;
 };
 
 function focusMetricCell(
@@ -36,6 +42,8 @@ export function MetricGridInput({
   rowCount,
   columnCount,
   onKeyDown,
+  onValueChange,
+  className,
   ...props
 }: MetricGridInputProps) {
   const handleKeyDown = (event: KeyboardEvent<HTMLInputElement>) => {
@@ -64,14 +72,19 @@ export function MetricGridInput({
   };
 
   return (
-    <NumberInput
+    <Input
       {...props}
+      type="number"
+      className={["metric-grid-input", className].filter(Boolean).join(" ")}
       data-metric-grid={gridId}
       data-grid-row={rowIndex}
       data-grid-column={columnIndex}
       aria-keyshortcuts="Enter ArrowUp ArrowDown"
-      withKeyboardEvents={false}
       onKeyDown={handleKeyDown}
+      onChange={(event) => {
+        const rawValue = event.currentTarget.value;
+        onValueChange?.(rawValue === "" ? null : Number(rawValue));
+      }}
     />
   );
 }

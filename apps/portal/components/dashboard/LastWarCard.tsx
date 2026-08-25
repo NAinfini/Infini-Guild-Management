@@ -1,7 +1,9 @@
 import { DEFAULT_GAME_RULES, type ExternalDashboardWar } from "@guild/shared";
 import { SectionHeader } from "../shared/SectionHeader";
-import { ActionIcon, Avatar, Button, Paper, Stack, Text } from "@mantine/core";
-import { memo, useState } from "react";
+import { Avatar, AvatarFallback } from "@portal/components/ui/avatar";
+import { Button } from "@portal/components/ui/button";
+import { Card } from "@portal/components/ui/card";
+import { memo, useState, type CSSProperties, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import {
   CrownOutlined,
@@ -16,7 +18,7 @@ import {
 import { FlameIcon, HeartIcon, HammerIcon, ShieldIcon } from "@portal/components/icons";
 import { CompareBar } from "../shared/CompareBar";
 import { EmptyState } from "../shared/EmptyState";
-import { formatDateTime } from "@portal/utils/datetime";
+import { formatDateTimeWithTimeZone } from "@portal/utils/datetime";
 import { cardHeading, type DashboardLastWarMvp, type DashboardLastWarMvpEntry } from "./shared";
 import { findGuildWarResultDefinition } from "@guild/shared";
 import { getGuildWarResultLabel, getGuildWarTeamStatLabel } from "@portal/utils/game-rules";
@@ -36,26 +38,26 @@ type LastWarCardProps = {
   onViewHistory: () => void;
 };
 
-function MvpChip({ entry, icon }: { entry: DashboardLastWarMvpEntry; icon: React.ReactNode }) {
+function MvpChip({ entry, icon }: { entry: DashboardLastWarMvpEntry; icon: ReactNode }) {
   return (
     <div className="war-mvp-chip">
-      <Avatar size={28} radius="xl" className="war-mvp-avatar">
-        {entry.initials}
+      <Avatar className="war-mvp-avatar">
+        <AvatarFallback>{entry.initials}</AvatarFallback>
       </Avatar>
       <div className="war-mvp-chip-info">
-        <Text size="xs" fw={600} truncate className="war-mvp-chip-name">
+        <span className="war-mvp-chip-name">
           {entry.name}
-        </Text>
+        </span>
         <div className="war-mvp-chip-category">
           {icon}
-          <Text size="xs" c="dimmed" className="war-mvp-chip-label">
+          <span className="war-mvp-chip-label">
             {entry.label}
-          </Text>
+          </span>
         </div>
       </div>
-      <Text size="sm" fw={700} className="war-mvp-chip-value">
+      <strong className="war-mvp-chip-value">
         {entry.value}
-      </Text>
+      </strong>
     </div>
   );
 }
@@ -88,31 +90,37 @@ export const LastWarCard = memo(function LastWarCard({
     : gameRules.guild_war.team_stats.filter((definition) => definition.dashboard !== "hidden");
 
   return (
-    <Paper withBorder radius="md" className="dashboard-card">
+    <Card className="dashboard-card gap-0 py-0">
       <div>
         <div className="war-card-header">
         {cardHeading(t("card.lastWar.title"), <SwordsOutlined size={18} />)}
         {total > 1 ? (
           <div className="war-nav">
-            <ActionIcon
+            <Button
+              type="button"
+              variant="outline"
+              size="icon"
               disabled={!hasPrev}
               onClick={() => setIndex((i) => i - 1)}
               className="war-nav-btn"
               aria-label={t("card.lastWar.aria.prevWar")}
             >
               <LeftOutlined size={16} stroke={2.6} />
-            </ActionIcon>
-            <Text size="xs" c="dimmed" className="war-nav-counter">
+            </Button>
+            <span className="war-nav-counter">
               {index + 1}/{total}
-            </Text>
-            <ActionIcon
+            </span>
+            <Button
+              type="button"
+              variant="outline"
+              size="icon"
               disabled={!hasNext}
               onClick={() => setIndex((i) => i + 1)}
               className="war-nav-btn"
               aria-label={t("card.lastWar.aria.nextWar")}
             >
               <RightOutlined size={16} stroke={2.6} />
-            </ActionIcon>
+            </Button>
           </div>
         ) : null}
         </div>
@@ -123,20 +131,23 @@ export const LastWarCard = memo(function LastWarCard({
           <div className="war-info-row">
             <div className="war-info-left">
               <div className="war-name-line">
-                <Text fw={700} size="lg" truncate>{war.war_name}</Text>
-                <ActionIcon
+                <strong className="war-name">{war.war_name}</strong>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="icon"
                   onClick={() => onOpenHistory(war.war_name)}
                   className="war-share-btn"
                   aria-label={t("card.lastWar.aria.openHistory")}
                 >
                   <GoToOutlined size={15} stroke={2.4} />
-                </ActionIcon>
+                </Button>
               </div>
-              <Text c="dimmed" size="xs">{formatDateTime(war.created_at)}</Text>
+              <time className="war-created-at" dateTime={war.created_at}>{formatDateTimeWithTimeZone(war.created_at)}</time>
             </div>
             <div
               className="war-result-badge"
-              style={{ "--war-result-color": resultColor } as React.CSSProperties}
+              style={{ "--war-result-color": resultColor } as CSSProperties}
             >
               <TrophyOutlined size={14} />
               <span>{war.result
@@ -153,7 +164,7 @@ export const LastWarCard = memo(function LastWarCard({
           </div>
 
           {/* Comparison bars */}
-          <Stack gap={8}>
+          <div className="war-compare-section">
             {teamStats.map((definition, statIndex) => definition ? (
               <CompareBar
                 key={definition.key}
@@ -164,31 +175,31 @@ export const LastWarCard = memo(function LastWarCard({
                 enemy={war.enemy_stats?.[definition.key] ?? 0}
               />
             ) : null)}
-          </Stack>
+          </div>
 
           {/* MVPs */}
           {!isExternalView && mvp ? (
-            <Stack gap={6} className="war-mvp-section">
+            <div className="war-mvp-section">
               <SectionHeader title={t("card.lastWar.mvps")} className="section-header--flush" />
-              <Stack gap={6}>
+              <div className="war-mvp-chips">
                 {mvp.map((entry) => (
                   <MvpChip key={entry.category} entry={entry} icon={MVP_ICON_MAP[entry.category] ?? <FlameIcon size={12} />} />
                 ))}
-              </Stack>
-            </Stack>
+              </div>
+            </div>
           ) : null}
         </div>
         ) : (
           <EmptyState
             title={t("card.lastWar.empty")}
             actions={(
-              <Button variant="default" onClick={onViewHistory}>
+              <Button onClick={onViewHistory}>
                 {t("card.lastWar.viewHistory")}
               </Button>
             )}
           />
         )}
       </div>
-    </Paper>
+    </Card>
   );
 });

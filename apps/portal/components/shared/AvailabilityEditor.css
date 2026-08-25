@@ -1,0 +1,191 @@
+.availability-editor {
+  display: grid;
+  width: 100%;
+  gap: var(--space-md);
+}
+
+.availability-editor__header,
+.availability-editor__timezone,
+.availability-editor__picker-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+}
+
+.availability-editor__header {
+  flex-wrap: wrap;
+  justify-content: space-between;
+}
+
+.availability-editor__timezone {
+  color: var(--text-muted);
+  font-size: var(--text-sm);
+}
+
+.availability-presets {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-sm);
+}
+
+/* 预设是“往里加”的动作，不是当前状态，所以是中性描边而不是选中态填色。 */
+.availability-preset {
+  padding: var(--space-xs) var(--space-sm);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--shape-pill);
+  background: var(--surface-sunken);
+  color: var(--text-secondary);
+  font-size: var(--text-micro);
+  cursor: pointer;
+  transition: border-color var(--transition-smooth), color var(--transition-smooth);
+}
+
+.availability-preset:hover {
+  border-color: var(--border-strong);
+  color: var(--text-primary);
+}
+
+.availability-days {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-control);
+}
+
+.availability-day {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+  padding: var(--space-sm) var(--space-md);
+  border-block-end: 1px solid var(--border-subtle);
+}
+
+.availability-day:last-child {
+  border-block-end: none;
+}
+
+.availability-day__name {
+  flex: 0 0 auto;
+  inline-size: 3rem;
+  color: var(--text-secondary);
+  font-size: var(--text-sm);
+  font-weight: var(--fw-medium);
+}
+
+.availability-day__blocks {
+  display: flex;
+  flex: 1 1 auto;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-xs);
+  min-inline-size: 0;
+}
+
+.availability-day__empty {
+  color: var(--text-muted);
+  font-size: var(--text-micro);
+}
+
+.availability-block {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-xs);
+  padding-block: 2px;
+  padding-inline-start: var(--space-sm);
+  border-radius: var(--shape-pill);
+  background: color-mix(in srgb, var(--brand-fill) 16%, transparent);
+  color: var(--brand-text);
+  font-size: var(--text-micro);
+  font-variant-numeric: tabular-nums;
+}
+
+.availability-day__add {
+  display: grid;
+  place-items: center;
+  inline-size: 1.5rem;
+  block-size: 1.5rem;
+  padding: 0;
+  border: 1px dashed var(--border-subtle);
+  border-radius: 50%;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: border-color var(--transition-smooth), color var(--transition-smooth);
+}
+
+.availability-day__add > * {
+  display: flex;
+}
+
+.availability-day__add:hover {
+  border-color: var(--border-strong);
+  color: var(--text-primary);
+}
+
+.availability-day__copy {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: var(--space-xs);
+  padding-block: 3px;
+  padding-inline: var(--space-sm);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-control);
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: var(--text-meta);
+  white-space: nowrap;
+  cursor: pointer;
+  transition: border-color var(--transition-smooth), color var(--transition-smooth);
+}
+
+.availability-day__copy:hover:not(:disabled) {
+  border-color: var(--border-strong);
+  color: var(--text-primary);
+}
+
+.availability-day__copy:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.availability-editor__picker {
+  width: auto;
+  max-width: calc(100vw - 2rem);
+}
+
+.availability-editor__picker-row {
+  align-items: end;
+}
+
+.availability-editor__select-field {
+  display: grid;
+  gap: var(--space-xs);
+  width: 6.5rem;
+}
+
+.availability-editor__select-field [data-slot="select-trigger"] {
+  width: 100%;
+}
+
+.availability-editor__validation {
+  margin: 0;
+  color: var(--status-danger);
+  font-size: var(--text-meta);
+}
+
+@media (max-width: 35.9375rem) {
+  .availability-day {
+    flex-wrap: wrap;
+  }
+
+  .availability-day__copy {
+    justify-content: center;
+    inline-size: 100%;
+  }
+
+  .availability-editor__picker-row {
+    flex-wrap: wrap;
+  }
+}

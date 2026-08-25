@@ -15,10 +15,12 @@ import { buildClassOptions } from "../utils/class-catalog";
 
 type UseProfileFormStateParams = {
   profile: MemberProfile | null | undefined;
+  displayName?: string | null;
 };
 
 /** 一次提交里会送出去的那几项草稿；acceptServerProfile 拿它判断哪些字段还没被改过。 */
 export type ProfileDraftSnapshot = {
+  displayName: string;
   bio: string;
   titleHtml: string;
   power: number;
@@ -30,9 +32,10 @@ export type ProfileDraftSnapshot = {
 
 type ProfileDraftBaseline = ProfileDraftSnapshot & { identity: string };
 
-function buildProfileDraftBaseline(profile: MemberProfile): ProfileDraftBaseline {
+function buildProfileDraftBaseline(profile: MemberProfile, displayName: string | null | undefined): ProfileDraftBaseline {
   return {
     identity: profile.user_id,
+    displayName: displayName ?? "",
     bio: profile.bio ?? "",
     titleHtml: profile.title_html ?? "",
     power: profile.power,
@@ -86,14 +89,15 @@ function reconcileProfileImages(
 
 export type ProfileFormStateController = ReturnType<typeof useProfileFormState>;
 
-export function useProfileFormState({ profile }: UseProfileFormStateParams) {
+export function useProfileFormState({ profile, displayName }: UseProfileFormStateParams) {
   const { t } = useTranslation("profile");
   const { showError } = useAppError();
   const classCatalog = useClassCatalog();
 
-  const initialBaseline = useRef(profile ? buildProfileDraftBaseline(profile) : null).current;
+  const initialBaseline = useRef(profile ? buildProfileDraftBaseline(profile, displayName) : null).current;
   const [baseline, setBaseline] = useState<ProfileDraftBaseline | null>(initialBaseline);
   const baselineRef = useRef<ProfileDraftBaseline | null>(initialBaseline);
+  const [draftDisplayName, setDisplayName] = useState(initialBaseline?.displayName ?? "");
   const [bio, setBio] = useState(initialBaseline?.bio ?? "");
   const [titleHtml, setTitleHtml] = useState(initialBaseline?.titleHtml ?? "");
   const [power, setPower] = useState(initialBaseline?.power ?? 0);
@@ -107,21 +111,16 @@ export function useProfileFormState({ profile }: UseProfileFormStateParams) {
   const [availabilityData, setAvailabilityData] = useState<MemberAvailability | null>(
     initialBaseline?.availabilityData ?? null,
   );
-  const [currentPassword, setCurrentPassword] = useState("");
-  const [newPassword, setNewPassword] = useState("");
-  const [confirmNewPassword, setConfirmNewPassword] = useState("");
-  const [currentPasswordForUsername, setCurrentPasswordForUsername] = useState("");
-  const [newUsername, setNewUsername] = useState("");
-
   useEffect(() => {
     if (!profile) {
       return;
     }
 
-    const nextBaseline = buildProfileDraftBaseline(profile);
+    const nextBaseline = buildProfileDraftBaseline(profile, displayName);
     const previousBaseline = baselineRef.current;
 
     if (!previousBaseline || previousBaseline.identity !== nextBaseline.identity) {
+      setDisplayName(nextBaseline.displayName);
       setBio(nextBaseline.bio);
       setTitleHtml(nextBaseline.titleHtml);
       setPower(nextBaseline.power);
@@ -130,6 +129,9 @@ export function useProfileFormState({ profile }: UseProfileFormStateParams) {
       setImageList(nextBaseline.imageList);
       setAvailabilityData(nextBaseline.availabilityData);
     } else {
+      setDisplayName((current) => (
+        current === previousBaseline.displayName ? nextBaseline.displayName : current
+      ));
       setImageList((current) =>
         reconcileProfileImages(
           current,
@@ -141,7 +143,7 @@ export function useProfileFormState({ profile }: UseProfileFormStateParams) {
 
     baselineRef.current = nextBaseline;
     setBaseline(nextBaseline);
-  }, [profile]);
+  }, [displayName, profile]);
 
   /**
    * 保存成功后校准基线；`submitted` 是这次提交出去的那份草稿快照。
@@ -159,13 +161,17 @@ export function useProfileFormState({ profile }: UseProfileFormStateParams) {
    */
   const acceptServerProfile = useCallback((
     serverProfile: MemberProfile,
+    serverDisplayName: string,
     submitted?: ProfileDraftSnapshot,
   ) => {
-    const nextBaseline = buildProfileDraftBaseline(serverProfile);
+    const nextBaseline = buildProfileDraftBaseline(serverProfile, serverDisplayName);
     baselineRef.current = nextBaseline;
     setBaseline(nextBaseline);
     if (!submitted) return;
 
+    setDisplayName((current) => (
+      current === submitted.displayName ? nextBaseline.displayName : current
+    ));
     setBio((current) => (current === submitted.bio ? nextBaseline.bio : current));
     setTitleHtml((current) => (current === submitted.titleHtml ? nextBaseline.titleHtml : current));
     setPower((current) => (current === submitted.power ? nextBaseline.power : current));
@@ -295,6 +301,7 @@ export function useProfileFormState({ profile }: UseProfileFormStateParams) {
     if (!baseline) return { home: false, availability: false };
     return {
       home:
+        draftDisplayName !== baseline.displayName ||
         bio !== baseline.bio ||
         titleHtml !== baseline.titleHtml ||
         power !== baseline.power ||
@@ -309,6 +316,7 @@ export function useProfileFormState({ profile }: UseProfileFormStateParams) {
     baseline,
     bio,
     classList,
+    draftDisplayName,
     imageList,
     power,
     titleHtml,
@@ -318,6 +326,8 @@ export function useProfileFormState({ profile }: UseProfileFormStateParams) {
   const isDirty = dirtySections.home || dirtySections.availability;
 
   return {
+    displayName: draftDisplayName,
+    setDisplayName,
     bio,
     setBio,
     titleHtml,
@@ -336,16 +346,6 @@ export function useProfileFormState({ profile }: UseProfileFormStateParams) {
     setImageList,
     availabilityData,
     setAvailabilityData,
-    currentPassword,
-    setCurrentPassword,
-    newPassword,
-    setNewPassword,
-    confirmNewPassword,
-    setConfirmNewPassword,
-    currentPasswordForUsername,
-    setCurrentPasswordForUsername,
-    newUsername,
-    setNewUsername,
     classOptions,
     activeNowEstimate,
     dirtySections,

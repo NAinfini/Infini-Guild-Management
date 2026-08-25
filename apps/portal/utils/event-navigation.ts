@@ -1,10 +1,10 @@
 import { DEFAULT_GAME_RULES, findEventTypeDefinition } from "@guild/shared";
 import { z } from "zod";
 
-const EVENT_WORKBENCH_VIEW_MODES = ["cards", "month", "recurring"] as const;
+const EVENT_LIST_VIEW_MODES = ["cards", "month"] as const;
 const EVENT_STATUS_FILTERS = ["active", "archived", "all"] as const;
 
-export type EventWorkbenchViewMode = (typeof EVENT_WORKBENCH_VIEW_MODES)[number];
+export type EventListViewMode = (typeof EVENT_LIST_VIEW_MODES)[number];
 export type EventTypeFilter = string;
 export type EventStatusFilter = (typeof EVENT_STATUS_FILTERS)[number];
 
@@ -14,9 +14,11 @@ export type EventsRouteSearch = {
   status?: EventStatusFilter;
   pinned?: boolean;
   locked?: boolean;
-  view?: EventWorkbenchViewMode;
-  eventId?: string;
+  view?: EventListViewMode;
+  date?: string;
 };
+
+const EVENT_DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
 
 function parseBooleanSearchValue(value: unknown): boolean | undefined {
   if (value === true || value === "true") {
@@ -60,37 +62,30 @@ export const EVENTS_ROUTE_SEARCH_SCHEMA = z.object({
   pinned: z.preprocess(parseBooleanSearchValue, z.boolean().optional()),
   locked: z.preprocess(parseBooleanSearchValue, z.boolean().optional()),
   view: z.preprocess(
-    (val) => (typeof val === "string" && (EVENT_WORKBENCH_VIEW_MODES as readonly string[]).includes(val) ? val : undefined),
-    z.enum(EVENT_WORKBENCH_VIEW_MODES).optional(),
+    (val) => (typeof val === "string" && (EVENT_LIST_VIEW_MODES as readonly string[]).includes(val) ? val : undefined),
+    z.enum(EVENT_LIST_VIEW_MODES).optional(),
   ),
-  eventId: z.preprocess(parseTextSearchValue, z.string().optional()),
+  date: z.preprocess(
+    (val) => (typeof val === "string" && EVENT_DATE_PATTERN.test(val) ? val : undefined),
+    z.string().optional(),
+  ),
 });
 
 export function sanitizeEventsRouteSearch(search: EventsRouteSearch): EventsRouteSearch {
   const sanitized: EventsRouteSearch = {};
   const normalizedSearch = normalizeOptionalString(search.search);
-  const normalizedEventId = normalizeOptionalString(search.eventId);
 
   if (normalizedSearch) sanitized.search = normalizedSearch;
   if (search.type?.trim()) sanitized.type = search.type;
   if (search.status && search.status !== "active") sanitized.status = search.status;
   if (search.pinned) sanitized.pinned = true;
   if (search.locked) sanitized.locked = true;
-  if (search.view) sanitized.view = search.view;
-  if (normalizedEventId) sanitized.eventId = normalizedEventId;
+  if (
+    search.view
+    && (EVENT_LIST_VIEW_MODES as readonly string[]).includes(search.view)
+  ) {
+    sanitized.view = search.view;
+  }
+  if (search.date && EVENT_DATE_PATTERN.test(search.date)) sanitized.date = search.date;
   return sanitized;
-}
-
-export function buildEventWorkbenchSearch(event: { id: string; title?: string | null }): EventsRouteSearch {
-  return sanitizeEventsRouteSearch({
-    eventId: event.id,
-    view: "cards",
-  });
-}
-
-export function clearEventWorkbenchFocus(search: EventsRouteSearch): EventsRouteSearch {
-  return sanitizeEventsRouteSearch({
-    ...search,
-    eventId: undefined,
-  });
 }

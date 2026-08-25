@@ -19,6 +19,7 @@ import { LIMITS } from "@guild/shared/config/limits";
 import type {
   AuthStore,
   AuthUserRecord,
+  CredentialRecord,
   InvitePage,
   InviteRecord,
   InviteStats,
@@ -55,7 +56,7 @@ function toPermissionSet(rows: readonly Readonly<{ permission: string | null }>[
 
 type UserPermissionRow = Readonly<{
   id: string;
-  username: string;
+  displayName: string;
   roleId: string;
   roleName: string;
   roleColor: string | null;
@@ -74,7 +75,7 @@ function userFromRows(rows: readonly UserPermissionRow[]): AuthUserRecord | null
   if (!first) return null;
   return {
     id: first.id,
-    username: first.username,
+    displayName: first.displayName,
     roleId: first.roleId,
     roleName: first.roleName,
     roleColor: first.roleColor,
@@ -91,7 +92,7 @@ function userFromRows(rows: readonly UserPermissionRow[]): AuthUserRecord | null
 
 const userColumns = {
   id: users.id,
-  username: users.username,
+  displayName: users.display_name,
   roleId: users.roleId,
   roleName: roles.name,
   roleColor: roles.color,
@@ -209,10 +210,10 @@ function loginLockResetAuditStatement(
 ): SqlBatchStatement {
   return auditInsertSelectStatement(
     `${snapshot.sql}, failure_snapshot AS (
-       SELECT fail_count, locked_until FROM login_failures WHERE username = ?
+       SELECT fail_count, locked_until FROM login_failures WHERE login_name = ?
      )
      SELECT ?, ?, ?, ?,
-       CASE WHEN ? = 'user' THEN (SELECT username FROM users WHERE id = ?) ELSE ? END,
+       CASE WHEN ? = 'user' THEN (SELECT display_name FROM users WHERE id = ?) ELSE ? END,
        ?, ?, ?, ?,
        json_object(
          'schema_version', 2,
@@ -237,7 +238,7 @@ function loginLockResetAuditStatement(
      WHERE ${TARGET_SNAPSHOT_MATCH}`,
     [
       ...snapshot.params,
-      target.username.toLowerCase(),
+      target.loginName.toLowerCase(),
       audit.eventId,
       audit.requestId,
       audit.actorKind,
@@ -271,27 +272,44 @@ export class SqliteAuthStore implements AuthStore {
     private readonly executor: SqlExecutor,
   ) {}
 
-  async findLoginAccount(normalizedUsername: string): Promise<LoginAccountRecord | null> {
-    const rows = await this.db.select({ ...userColumns, passwordHash: userCredentials.passwordHash })
+  async findLoginAccount(normalizedLoginName: string): Promise<LoginAccountRecord | null> {
+    const rows = await this.db.select({
+      ...userColumns,
+      loginName: userCredentials.loginName,
+      passwordHash: userCredentials.passwordHash,
+      authRevision: userCredentials.authRevision,
+      temporaryPasswordExpiresAt: userCredentials.temporaryPasswordExpiresAt,
+      temporaryPasswordUsedAt: userCredentials.temporaryPasswordUsedAt,
+    })
       .from(users)
       .innerJoin(roles, eq(users.roleId, roles.id))
       .innerJoin(userCredentials, eq(users.id, userCredentials.userId))
       .leftJoin(rolePermissions, eq(users.roleId, rolePermissions.roleId))
-      .where(drizzleSql`${users.username} COLLATE NOCASE = ${normalizedUsername}`);
+      .where(drizzleSql`${userCredentials.loginName} COLLATE NOCASE = ${normalizedLoginName}`);
     const user = userFromRows(rows);
-    return user ? { ...user, passwordHash: rows[0]!.passwordHash } : null;
+    return user ? {
+      ...user,
+      loginName: rows[0]!.loginName,
+      passwordHash: rows[0]!.passwordHash,
+      authRevision: rows[0]!.authRevision,
+      temporaryPasswordExpiresAt: rows[0]!.temporaryPasswordExpiresAt,
+      temporaryPasswordUsedAt: rows[0]!.temporaryPasswordUsedAt,
+    } : null;
   }
 
-  async findCredential(userId: string): Promise<string | null> {
-    const row = await this.db.select({ passwordHash: userCredentials.passwordHash })
+  async findCredentialRecord(userId: string): Promise<CredentialRecord | null> {
+    const row = await this.db.select({
+      loginName: userCredentials.loginName,
+      passwordHash: userCredentials.passwordHash,
+      authRevision: userCredentials.authRevision,
+    }).from(userCredentials).where(eq(userCredentials.userId, userId)).limit(1);
+    return row[0] ?? null;
+  }
+
+  async findLoginName(userId: string): Promise<string | null> {
+    const row = await this.db.select({ loginName: userCredentials.loginName })
       .from(userCredentials).where(eq(userCredentials.userId, userId)).limit(1);
-    return row[0]?.passwordHash ?? null;
-  }
-
-  async usernameExists(normalizedUsername: string): Promise<boolean> {
-    const row = await this.db.select({ id: users.id }).from(users)
-      .where(drizzleSql`${users.username} COLLATE NOCASE = ${normalizedUsername}`).limit(1);
-    return row.length > 0;
+    return row[0]?.loginName ?? null;
   }
 
   async findUser(userId: string): Promise<AuthUserRecord | null> {
@@ -308,11 +326,13 @@ export class SqliteAuthStore implements AuthStore {
       tokenDigest: sessions.tokenDigest,
       expiresAt: sessions.expiresAt,
       sessionCreatedAt: sessions.createdAt,
+      sessionScope: sessions.scope,
     }).from(sessions)
       .innerJoin(users, eq(sessions.userId, users.id))
+      .innerJoin(userCredentials, eq(users.id, userCredentials.userId))
       .innerJoin(roles, eq(users.roleId, roles.id))
       .leftJoin(rolePermissions, eq(users.roleId, rolePermissions.roleId))
-      .where(eq(sessions.tokenDigest, tokenDigest));
+      .where(and(eq(sessions.tokenDigest, tokenDigest), eq(sessions.authRevision, userCredentials.authRevision)));
     const user = userFromRows(rows);
     const first = rows[0];
     return user && first ? {
@@ -320,17 +340,18 @@ export class SqliteAuthStore implements AuthStore {
       tokenDigest: first.tokenDigest,
       expiresAt: first.expiresAt,
       sessionCreatedAt: first.sessionCreatedAt,
+      sessionScope: first.sessionScope,
     } : null;
   }
 
-  async readLoginFailure(normalizedUsername: string): Promise<LoginFailureRecord | null> {
+  async readLoginFailure(normalizedLoginName: string): Promise<LoginFailureRecord | null> {
     const rows = await this.db.select({ failCount: loginFailures.failCount, lockedUntil: loginFailures.lockedUntil })
-      .from(loginFailures).where(eq(loginFailures.username, normalizedUsername)).limit(1);
+      .from(loginFailures).where(eq(loginFailures.loginName, normalizedLoginName)).limit(1);
     return rows[0] ?? null;
   }
 
   async recordLoginFailure(input: Readonly<{
-    normalizedUsername: string;
+    normalizedLoginName: string;
     now: string;
     freeAttempts: number;
     lockSeconds: readonly number[];
@@ -344,9 +365,9 @@ export class SqliteAuthStore implements AuthStore {
       ELSE ${deadlines.at(-1) ?? input.now}
     END`;
     const rows = await this.db.insert(loginFailures)
-      .values({ username: input.normalizedUsername, failCount: 1, lockedUntil: null, lastFailedAt: input.now })
+      .values({ loginName: input.normalizedLoginName, failCount: 1, lockedUntil: null, lastFailedAt: input.now })
       .onConflictDoUpdate({
-        target: loginFailures.username,
+        target: loginFailures.loginName,
         set: {
           failCount: nextCount,
           lockedUntil: drizzleSql`CASE
@@ -361,24 +382,29 @@ export class SqliteAuthStore implements AuthStore {
     return rows[0] ?? { failCount: 1, lockedUntil: null };
   }
 
-  async clearLoginFailures(normalizedUsername: string): Promise<void> {
-    await this.db.delete(loginFailures).where(eq(loginFailures.username, normalizedUsername));
+  async clearLoginFailures(normalizedLoginName: string): Promise<void> {
+    await this.db.delete(loginFailures).where(eq(loginFailures.loginName, normalizedLoginName));
   }
 
   async pruneLoginFailures(before: string, now: string, limit: number): Promise<void> {
     if (!Number.isInteger(limit) || limit < 1 || limit > 1_000) throw new RangeError("Login-failure prune limit must be between 1 and 1000");
     await this.executor.execute(run(
-      `DELETE FROM login_failures WHERE username IN (
-        SELECT username FROM login_failures
+      `DELETE FROM login_failures WHERE login_name IN (
+        SELECT login_name FROM login_failures
         WHERE last_failed_at < ? AND (locked_until IS NULL OR locked_until < ?)
-        ORDER BY last_failed_at, username LIMIT ?
+        ORDER BY last_failed_at, login_name LIMIT ?
       )`,
       [before, now, limit],
     ));
   }
 
-  async rehashPassword(userId: string, passwordHash: string, now: string): Promise<void> {
-    await this.db.update(userCredentials).set({ passwordHash, updatedAt: now }).where(eq(userCredentials.userId, userId));
+  async rehashPassword(input: Parameters<AuthStore["rehashPassword"]>[0]): Promise<boolean> {
+    const result = await this.executor.execute(returning(
+      `UPDATE user_credentials SET password_hash = ?, updated_at = ?
+       WHERE user_id = ? AND password_hash = ? AND auth_revision = ?`,
+      [input.passwordHash, input.now, input.userId, input.expectedPasswordHash, input.expectedAuthRevision],
+    ));
+    return returnedRowCount(result) === 1;
   }
 
   async openUserSession(input: Readonly<{
@@ -387,24 +413,49 @@ export class SqliteAuthStore implements AuthStore {
     expiresAt: string;
     createdAt: string;
     maximumSessions: number;
-  }>): Promise<void> {
-    await this.executor.batch([
-      run("DELETE FROM sessions WHERE user_id = ? AND expires_at <= ?", [input.userId, input.createdAt]),
+    scope?: "normal" | "password_change";
+    expectedAuthRevision: number;
+  }>): Promise<boolean> {
+    const openedSession = {
+      sql: "SELECT 1 FROM sessions WHERE token_digest = ? AND user_id = ? AND auth_revision = ?",
+      params: [input.tokenDigest, input.userId, input.expectedAuthRevision] as const,
+    };
+    const results = await this.executor.batch([
+      returning(
+        `INSERT INTO sessions (token_digest, user_id, expires_at, created_at, scope, auth_revision)
+         SELECT ?, ?, ?, ?, ?, auth_revision FROM user_credentials
+         WHERE user_id = ? AND auth_revision = ?`,
+        [
+          input.tokenDigest,
+          input.userId,
+          input.expiresAt,
+          input.createdAt,
+          input.scope ?? "normal",
+          input.userId,
+          input.expectedAuthRevision,
+        ],
+      ),
+      run(`DELETE FROM sessions WHERE user_id = ? AND expires_at <= ? AND EXISTS (${openedSession.sql})`, [
+        input.userId,
+        input.createdAt,
+        ...openedSession.params,
+      ]),
       run(
         `DELETE FROM sessions WHERE token_digest IN (
           SELECT token_digest FROM sessions WHERE user_id = ?
           ORDER BY created_at DESC, token_digest DESC LIMIT -1 OFFSET ?
-        )`,
-        [input.userId, input.maximumSessions - 1],
-      ),
-      run(
-        "INSERT INTO sessions (token_digest, user_id, expires_at, created_at) VALUES (?, ?, ?, ?)",
-        [input.tokenDigest, input.userId, input.expiresAt, input.createdAt],
+        ) AND EXISTS (${openedSession.sql})`,
+        [input.userId, input.maximumSessions - 1, ...openedSession.params],
       ),
       /* 「发出会话」就是「这个人登录了」，两件事写在同一个批里，不会出现有会话却没
          登录时刻的中间态。 */
-      touchLastLogin(input.userId, input.createdAt),
+      run(`UPDATE users SET last_login_at = ? WHERE id = ? AND EXISTS (${openedSession.sql})`, [
+        input.createdAt,
+        input.userId,
+        ...openedSession.params,
+      ]),
     ]);
+    return returnedRowCount(results[0]) === 1;
   }
 
   async recordLastLogin(userId: string, at: string): Promise<void> {
@@ -445,24 +496,214 @@ export class SqliteAuthStore implements AuthStore {
     return rows[0] ?? null;
   }
 
-  async changeOwnPassword(userId: string, passwordHash: string, now: string, audit: AuditEventWrite): Promise<void> {
-    await this.executor.batch([
-      run("UPDATE user_credentials SET password_hash = ?, updated_at = ? WHERE user_id = ?", [passwordHash, now, userId]),
-      run("DELETE FROM sessions WHERE user_id = ?", [userId]),
-      auditInsertStatement(audit),
+  async changeOwnPassword(input: Parameters<AuthStore["changeOwnPassword"]>[0]): Promise<boolean> {
+    const completedAudit = {
+      sql: "SELECT 1 FROM audit_log WHERE id = ?",
+      params: [input.audit.eventId] as const,
+    };
+    const results = await this.executor.batch([
+      returning(
+        `UPDATE user_credentials SET password_hash = ?, auth_revision = auth_revision + 1, updated_at = ?
+         WHERE user_id = ? AND auth_revision = ?`,
+        [input.passwordHash, input.now, input.userId, input.expectedAuthRevision],
+      ),
+      auditInsertStatement(input.audit, { sql: "SELECT 1 WHERE changes() = 1" }),
+      run(`DELETE FROM sessions WHERE user_id = ? AND EXISTS (${completedAudit.sql})`, [
+        input.userId,
+        ...completedAudit.params,
+      ]),
     ]);
+    return returnedRowCount(results[0]) === 1;
   }
 
-  async changeOwnUsername(userId: string, username: string, now: string, audit: AuditEventWrite): Promise<"updated" | "username_taken"> {
+  async changeOwnLoginName(
+    input: Parameters<AuthStore["changeOwnLoginName"]>[0],
+  ): Promise<"updated" | "login_name_taken" | "invalid"> {
     try {
-      await this.executor.batch([
-        run("UPDATE users SET username = ?, revision_token = ?, updated_at = ? WHERE id = ?", [username, audit.eventId, now, userId]),
-        run("DELETE FROM sessions WHERE user_id = ?", [userId]),
-        auditInsertStatement(audit),
+      const completedAudit = {
+        sql: "SELECT 1 FROM audit_log WHERE id = ?",
+        params: [input.audit.eventId] as const,
+      };
+      const results = await this.executor.batch([
+        returning(
+          `UPDATE user_credentials SET login_name = ?, auth_revision = auth_revision + 1, updated_at = ?
+           WHERE user_id = ? AND auth_revision = ?`,
+          [input.loginName, input.now, input.userId, input.expectedAuthRevision],
+        ),
+        auditInsertStatement(input.audit, { sql: "SELECT 1 WHERE changes() = 1" }),
+        run(`DELETE FROM login_failures WHERE login_name IN (lower(?), lower(?))
+          AND EXISTS (${completedAudit.sql})`, [
+          input.previousLoginName,
+          input.loginName,
+          ...completedAudit.params,
+        ]),
+        run(`DELETE FROM sessions WHERE user_id = ? AND EXISTS (${completedAudit.sql})`, [
+          input.userId,
+          ...completedAudit.params,
+        ]),
       ]);
-      return "updated";
+      return returnedRowCount(results[0]) === 1 ? "updated" : "invalid";
     } catch (error) {
-      if (isUniqueViolation(error)) return "username_taken";
+      if (isUniqueViolation(error)) return "login_name_taken";
+      throw error;
+    }
+  }
+
+  async setTemporaryPassword(
+    input: Parameters<AuthStore["setTemporaryPassword"]>[0],
+  ): Promise<"updated" | "login_name_taken" | "conflict"> {
+    try {
+      const snapshot = targetSnapshotCte([input.target]);
+      const completedAudit = {
+        sql: "SELECT 1 FROM audit_log WHERE id = ?",
+        params: [input.audit.eventId] as const,
+      };
+      const results = await this.executor.batch([
+        returning(
+          `${snapshot.sql}
+           UPDATE user_credentials SET login_name = ?, password_hash = ?, temporary_password_expires_at = ?,
+              temporary_password_used_at = NULL, auth_revision = auth_revision + 1, updated_at = ?
+              WHERE user_id = ? AND login_name = ? AND auth_revision = ? AND ${TARGET_SNAPSHOT_MATCH}
+                AND EXISTS (
+                  SELECT 1 FROM user_credentials WHERE user_id = ? AND auth_revision = ?
+                )`,
+          [
+            ...snapshot.params,
+            input.temporaryLoginName, input.passwordHash, input.expiresAt, input.now,
+            input.target.id, input.target.loginName, input.target.authRevision, managedTargetSnapshot([input.target]),
+            input.actorUserId, input.expectedActorAuthRevision,
+          ],
+        ),
+        auditInsertStatement(input.audit, { sql: "SELECT 1 WHERE changes() = 1" }),
+        run(`DELETE FROM sessions WHERE user_id = ? AND EXISTS (${completedAudit.sql})`, [
+          input.target.id,
+          ...completedAudit.params,
+        ]),
+        run(`DELETE FROM external_identities WHERE user_id = ? AND EXISTS (${completedAudit.sql})`, [
+          input.target.id,
+          ...completedAudit.params,
+        ]),
+        run(`DELETE FROM oauth_challenges WHERE user_id = ? AND purpose = 'link'
+          AND EXISTS (${completedAudit.sql})`, [
+          input.target.id,
+          ...completedAudit.params,
+        ]),
+        run(
+          `DELETE FROM login_failures WHERE login_name IN (lower(?), lower(?))
+           AND EXISTS (${completedAudit.sql})`,
+          [input.target.loginName, input.temporaryLoginName, ...completedAudit.params],
+        ),
+      ]);
+      return returnedRowCount(results[0]) === 1 ? "updated" : "conflict";
+    } catch (error) {
+      if (isUniqueViolation(error)) return "login_name_taken";
+      throw error;
+    }
+  }
+
+  async consumeTemporaryPasswordAndOpenSession(
+    input: Parameters<AuthStore["consumeTemporaryPasswordAndOpenSession"]>[0],
+  ): Promise<boolean> {
+    const openedSession = {
+      sql: "SELECT 1 FROM sessions WHERE token_digest = ? AND user_id = ? AND scope = 'password_change' AND auth_revision = ?",
+      params: [input.tokenDigest, input.userId, input.authRevision] as const,
+    };
+    const results = await this.executor.batch([
+      returning(
+         `UPDATE user_credentials SET temporary_password_used_at = ?
+          WHERE user_id = ? AND password_hash = ? AND temporary_password_used_at IS NULL
+            AND temporary_password_expires_at > ? AND auth_revision = ?`,
+         [input.now, input.userId, input.passwordHash, input.now, input.authRevision],
+      ),
+      run(
+         `INSERT INTO sessions (token_digest, user_id, expires_at, created_at, scope, auth_revision)
+          SELECT ?, ?, ?, ?, 'password_change', auth_revision FROM user_credentials
+          WHERE user_id = ? AND auth_revision = ? AND changes() = 1`,
+         [input.tokenDigest, input.userId, input.expiresAt, input.now, input.userId, input.authRevision],
+      ),
+      run(`DELETE FROM sessions
+        WHERE user_id = ? AND token_digest <> ? AND expires_at <= ? AND EXISTS (${openedSession.sql})`, [
+        input.userId,
+        input.tokenDigest,
+        input.now,
+        ...openedSession.params,
+      ]),
+      run(
+        `DELETE FROM sessions WHERE token_digest IN (
+          SELECT token_digest FROM sessions
+          WHERE user_id = ? AND token_digest <> ?
+          ORDER BY created_at DESC, token_digest DESC LIMIT -1 OFFSET ?
+        ) AND EXISTS (${openedSession.sql})`,
+        [input.userId, input.tokenDigest, input.maximumSessions - 1, ...openedSession.params],
+      ),
+      run(`UPDATE users SET last_login_at = ? WHERE id = ? AND EXISTS (${openedSession.sql})`, [
+        input.now,
+        input.userId,
+        ...openedSession.params,
+      ]),
+    ]);
+    return returnedRowCount(results[0]) === 1;
+  }
+
+  async completeTemporaryPasswordAndOpenSession(
+    input: Parameters<AuthStore["completeTemporaryPasswordAndOpenSession"]>[0],
+  ): Promise<"completed" | "invalid" | "login_name_taken"> {
+    try {
+      const openedSession = {
+        sql: "SELECT 1 FROM sessions WHERE token_digest = ? AND user_id = ? AND scope = 'normal' AND auth_revision = ?",
+        params: [input.tokenDigest, input.userId, input.authRevision + 1] as const,
+      };
+      const results = await this.executor.batch([
+        returning(
+          `UPDATE user_credentials SET login_name = ?, password_hash = ?, temporary_password_expires_at = NULL,
+              temporary_password_used_at = NULL, auth_revision = auth_revision + 1, updated_at = ?
+            WHERE user_id = ? AND temporary_password_used_at IS NOT NULL
+              AND temporary_password_expires_at > ?
+              AND auth_revision = ?
+              AND EXISTS (
+                SELECT 1 FROM sessions
+                WHERE token_digest = ? AND user_id = ? AND scope = 'password_change' AND auth_revision = ? AND expires_at > ?
+              )`,
+          [
+            input.loginName,
+            input.passwordHash,
+            input.now,
+            input.userId,
+            input.now,
+            input.authRevision,
+            input.restrictedSessionTokenDigest,
+            input.userId,
+            input.authRevision,
+            input.now,
+          ],
+        ),
+        run(
+          `INSERT INTO sessions (token_digest, user_id, expires_at, created_at, scope, auth_revision)
+           SELECT ?, ?, ?, ?, 'normal', auth_revision FROM user_credentials
+           WHERE user_id = ? AND auth_revision = ? AND changes() = 1`,
+          [input.tokenDigest, input.userId, input.expiresAt, input.now, input.userId, input.authRevision + 1],
+        ),
+        run(`DELETE FROM sessions
+          WHERE user_id = ? AND token_digest <> ? AND EXISTS (${openedSession.sql})`, [
+          input.userId,
+          input.tokenDigest,
+          ...openedSession.params,
+        ]),
+        run(`UPDATE users SET last_login_at = ? WHERE id = ? AND EXISTS (${openedSession.sql})`, [
+          input.now,
+          input.userId,
+          ...openedSession.params,
+        ]),
+        auditInsertStatement(input.audit, openedSession),
+        run(
+          `DELETE FROM login_failures WHERE login_name IN (lower(?), lower(?))
+           AND EXISTS (${openedSession.sql})`,
+          [input.previousLoginName, input.loginName, ...openedSession.params],
+        ),
+      ]);
+      return returnedRowCount(results[0]) === 1 ? "completed" : "invalid";
+    } catch (error) {
+      if (isUniqueViolation(error)) return "login_name_taken";
       throw error;
     }
   }
@@ -566,7 +807,9 @@ export class SqliteAuthStore implements AuthStore {
     if (userIds.length === 0) return [];
     const rows = await this.db.select({
       id: users.id,
-      username: users.username,
+      displayName: users.display_name,
+      loginName: userCredentials.loginName,
+      authRevision: userCredentials.authRevision,
       roleId: users.roleId,
       roleLevel: roles.level,
       permission: rolePermissions.permission,
@@ -575,6 +818,7 @@ export class SqliteAuthStore implements AuthStore {
       revisionToken: users.revisionToken,
       roleRevisionToken: roles.revisionToken,
     }).from(users).innerJoin(roles, eq(users.roleId, roles.id))
+      .innerJoin(userCredentials, eq(users.id, userCredentials.userId))
       .leftJoin(rolePermissions, eq(users.roleId, rolePermissions.roleId))
       .where(inArray(users.id, [...userIds]));
     const grouped = new Map<string, typeof rows>();
@@ -583,7 +827,9 @@ export class SqliteAuthStore implements AuthStore {
       const first = group[0]!;
       return {
         id: first.id,
-        username: first.username,
+        displayName: first.displayName,
+        loginName: first.loginName,
+        authRevision: first.authRevision,
         roleId: first.roleId,
         roleLevel: first.roleLevel,
         rolePermissions: toPermissionSet(group),
@@ -671,21 +917,6 @@ export class SqliteAuthStore implements AuthStore {
     }
   }
 
-  async resetUserPassword(target: ManagedUserTarget, passwordHash: string, now: string, audit: AuditEventWrite) {
-    const snapshot = targetSnapshotCte([target]);
-    const results = await this.executor.batch([
-      returning(
-        `${snapshot.sql}
-         UPDATE user_credentials SET password_hash = ?, updated_at = ?
-         WHERE user_id = ? AND ${TARGET_SNAPSHOT_MATCH}`,
-        [...snapshot.params, passwordHash, now, target.id, managedTargetSnapshot([target])],
-      ),
-      auditInsertStatement(audit, { sql: "SELECT 1 WHERE changes() = 1" }),
-      run("DELETE FROM sessions WHERE user_id = ? AND EXISTS (SELECT 1 FROM users WHERE id = ? AND revision_token = ?)", [target.id, target.id, target.revisionToken]),
-    ]);
-    return returnedRowCount(results[0]) === 1 ? "updated" as const : "conflict" as const;
-  }
-
   async resetUserLoginLock(target: ManagedUserTarget, audit: AuditEventWrite) {
     const snapshot = targetSnapshotCte([target]);
     const results = await this.executor.batch([
@@ -695,16 +926,16 @@ export class SqliteAuthStore implements AuthStore {
         sql: `${snapshot.sql}
           SELECT failure.fail_count, failure.locked_until
           FROM target_snapshot AS target
-          LEFT JOIN login_failures AS failure ON failure.username = ?
+          LEFT JOIN login_failures AS failure ON failure.login_name = ?
           WHERE ${TARGET_SNAPSHOT_MATCH}
           LIMIT 1`,
-        params: [...snapshot.params, target.username.toLowerCase(), managedTargetSnapshot([target])],
+        params: [...snapshot.params, target.loginName.toLowerCase(), managedTargetSnapshot([target])],
       },
       loginLockResetAuditStatement(audit, target, snapshot),
       run(
         `${snapshot.sql}
-         DELETE FROM login_failures WHERE username = ? AND ${TARGET_SNAPSHOT_MATCH}`,
-        [...snapshot.params, target.username.toLowerCase(), managedTargetSnapshot([target])],
+         DELETE FROM login_failures WHERE login_name = ? AND ${TARGET_SNAPSHOT_MATCH}`,
+        [...snapshot.params, target.loginName.toLowerCase(), managedTargetSnapshot([target])],
       ),
     ]);
     if (results[0]?.rows === undefined) return { outcome: "conflict" as const };

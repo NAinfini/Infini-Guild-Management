@@ -3,7 +3,7 @@ import { apiRequest } from "../client";
 
 export type DashboardParticipant = {
   user_id: string;
-  username: string;
+  display_name: string;
   role: string;
   classes: string[];
   power: number;

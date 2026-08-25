@@ -1,10 +1,23 @@
-import { Button, Group, Modal, Slider, Stack, Text } from "@mantine/core";
-import { Carousel } from "@mantine/carousel";
-import { useMediaQuery } from "@mantine/hooks";
 import { forwardRef, useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
+import { useTranslation } from "react-i18next";
 import clsx from "clsx";
 import { isDirectPlayableVideoUrl, isEmbeddableVideoUrl, toEmbedVideoUrl, getVideoThumbnailUrl } from "@guild/shared/utils/video";
-import { ChevronUpIcon, ChevronDownIcon, PlayIcon } from "@portal/components/icons";
+import {
+  ChevronDownIcon,
+  ChevronLeftIcon,
+  ChevronRightIcon,
+  ChevronUpIcon,
+  PlayIcon,
+  XIcon,
+} from "@portal/components/icons";
+import { Button, buttonVariants } from "@portal/components/ui/button";
+import {
+  Dialog,
+  DialogClose,
+  DialogContent,
+  DialogTitle,
+} from "@portal/components/ui/dialog";
+import { useMediaQuery } from "@portal/hooks/useMediaQuery";
 import { resolveMediaUrl as resolvePortalMediaUrl } from "../../utils/media";
 import "./media-gallery.css";
 
@@ -27,37 +40,13 @@ export type MediaGalleryLabels = {
   close: string;
   seekVideo: string;
   playVideoAria: string;
+  previousItemAria: string;
+  nextItemAria: string;
   enlargeImageAria: (index: number) => string;
   openItemAria: (index: number) => string;
   imageAlt: (index: number) => string;
   imageThumbnailAlt: (index: number) => string;
   videoThumbnailAlt: (index: number) => string;
-};
-
-const DEFAULT_LABELS: MediaGalleryLabels = {
-  noMedia: "No media",
-  imageLoadFailed: "Image failed to load",
-  pause: "Pause",
-  resume: "Play",
-  restart: "Restart",
-  fullscreen: "Fullscreen",
-  stopVideo: "Stop video",
-  playVideo: "Play video",
-  externalLink: "Open link",
-  openInDouyin: "This video can only be viewed on Douyin",
-  open: "Open",
-  hideThumbnails: "Hide thumbnails",
-  showThumbnails: "Show thumbnails",
-  thumbnailVideo: "Video",
-  thumbnailImage: "Image",
-  close: "Close",
-  seekVideo: "Seek video",
-  playVideoAria: "Play video",
-  enlargeImageAria: (index) => `Enlarge image ${index}`,
-  openItemAria: (index) => `Open item ${index}`,
-  imageAlt: (index) => `Media image ${index}`,
-  imageThumbnailAlt: (index) => `Media thumbnail ${index}`,
-  videoThumbnailAlt: (index) => `Video thumbnail ${index}`,
 };
 
 export function buildMediaGalleryLabels(
@@ -82,6 +71,8 @@ export function buildMediaGalleryLabels(
     close: t("action.close"),
     seekVideo: t("media.aria.seekVideo"),
     playVideoAria: t("media.aria.playVideo"),
+    previousItemAria: t("media.aria.previousItem"),
+    nextItemAria: t("media.aria.nextItem"),
     enlargeImageAria: (index) => t("media.aria.enlargeImage", { index }),
     openItemAria: (index) => t("media.aria.openItem", { index }),
     imageAlt: (index) => t("media.aria.imageAlt", { index }),
@@ -135,15 +126,19 @@ export const MediaGallery = forwardRef<HTMLDivElement, MediaGalleryProps>(
     style,
     ...rest
   }, ref) {
-  const labels = { ...DEFAULT_LABELS, ...labelsProp };
-  const isMobile = useMediaQuery("(max-width: 767px)") ?? false;
+  const { t } = useTranslation("common");
+  const translatedLabels = useMemo(() => buildMediaGalleryLabels(t), [t]);
+  const labels = useMemo(
+    () => ({ ...translatedLabels, ...labelsProp }),
+    [translatedLabels, labelsProp],
+  );
+  const isMobile = useMediaQuery("(max-width: 767px)");
   const [activeIndex, setActiveIndex] = useState(0);
   const [directVideoPlaying, setDirectVideoPlaying] = useState<Record<number, boolean>>({});
   const [directVideoProgress, setDirectVideoProgress] = useState<Record<number, VideoProgressState>>({});
   const [thumbnailExpanded, setThumbnailExpanded] = useState(true);
   const [enlargedIndex, setEnlargedIndex] = useState<number | null>(null);
 
-  const [embla, setEmbla] = useState<any>(null);
   const directVideoRefs = useRef<Record<number, HTMLVideoElement | null>>({});
 
   const items = useMemo(
@@ -239,23 +234,26 @@ export const MediaGallery = forwardRef<HTMLDivElement, MediaGalleryProps>(
   };
 
   if (items.length === 0) {
-    return <>{emptyContent ?? <Text c="dimmed">{labels.noMedia}</Text>}</>;
+    return <>{emptyContent ?? <span className="infini-media-gallery-muted">{labels.noMedia}</span>}</>;
   }
+
+  const previousIndex = (activeIndex - 1 + items.length) % items.length;
+  const nextIndex = (activeIndex + 1) % items.length;
 
   return (
     <div ref={ref} className={clsx(className)} style={style} {...rest}>
-      <Stack gap={12} w="100%">
-      {items.length > 0 ? (
+      <div className="infini-media-gallery-stack">
         <div className="infini-media-gallery-grid">
-          <Carousel
-            withIndicators
-            withControls
-            emblaOptions={{ duration: 18 }}
-            getEmblaApi={setEmbla}
-            onSlideChange={selectSlide}
-          >
-            {items.map((item, index) => (
-              <Carousel.Slide key={item.key}>
+          <div className="infini-media-gallery-carousel" aria-label={`${activeIndex + 1} / ${items.length}`}>
+            <div className="infini-media-gallery-slides">
+              {items.map((item, index) => (
+                <div
+                  key={item.key}
+                  className="infini-media-gallery-frame"
+                  data-active={index === activeIndex || undefined}
+                  aria-hidden={index === activeIndex ? undefined : true}
+                  inert={index === activeIndex ? undefined : true}
+                >
                 {item.type === "image" ? (
                   isRenderableUrl(item.source) && !brokenImages.has(index) ? (
                     <button
@@ -275,7 +273,7 @@ export const MediaGallery = forwardRef<HTMLDivElement, MediaGalleryProps>(
                     </button>
                   ) : (
                     <div className="infini-media-gallery-slide">
-                      <Text c="dimmed" ta="center">{brokenImages.has(index) ? labels.imageLoadFailed : item.label}</Text>
+                      <span className="infini-media-gallery-muted">{brokenImages.has(index) ? labels.imageLoadFailed : item.label}</span>
                     </div>
                   )
                 ) : (
@@ -300,25 +298,27 @@ export const MediaGallery = forwardRef<HTMLDivElement, MediaGalleryProps>(
                           onPlay={() => setDirectVideoPlaying((prev) => ({ ...prev, [index]: true }))}
                           onPause={() => setDirectVideoPlaying((prev) => ({ ...prev, [index]: false }))}
                         />
-                        <Group className="infini-media-gallery-video-controls" justify="space-between" gap={8}>
-                          <Group gap={6} wrap="wrap">
-                            <Button size="xs" variant="default" onClick={() => toggleDirectVideoPlayback(index)}>
+                        <div className="infini-media-gallery-video-controls">
+                          <div className="infini-media-gallery-video-actions">
+                            <Button size="xs" variant="outline" onClick={() => toggleDirectVideoPlayback(index)}>
                               {directVideoPlaying[index] ? labels.pause : labels.resume}
                             </Button>
-                            <Button size="xs" variant="default" onClick={() => restartDirectVideo(index)}>{labels.restart}</Button>
-                            <Button size="xs" variant="default" onClick={() => openDirectVideoFullscreen(index)}>{labels.fullscreen}</Button>
-                          </Group>
-                          <Text size="xs" c="dimmed">
+                            <Button size="xs" variant="outline" onClick={() => restartDirectVideo(index)}>{labels.restart}</Button>
+                            <Button size="xs" variant="outline" onClick={() => openDirectVideoFullscreen(index)}>{labels.fullscreen}</Button>
+                          </div>
+                          <span className="infini-media-gallery-muted">
                             {formatMediaTime(directVideoProgress[index]?.current ?? 0)} / {formatMediaTime(directVideoProgress[index]?.duration ?? 0)}
-                          </Text>
-                        </Group>
-                        <Slider
+                          </span>
+                        </div>
+                        <input
+                          type="range"
                           className="infini-media-gallery-video-progress"
                           min={0}
                           max={Math.max(directVideoProgress[index]?.duration ?? 0, 1)}
                           value={Math.min(directVideoProgress[index]?.current ?? 0, Math.max(directVideoProgress[index]?.duration ?? 0, 1))}
                           disabled={(directVideoProgress[index]?.duration ?? 0) <= 0}
-                          onChange={(nextValue) => {
+                          onChange={(event) => {
+                            const nextValue = event.currentTarget.valueAsNumber;
                             const video = directVideoRefs.current[index];
                             if (!video || !Number.isFinite(nextValue)) return;
                             video.currentTime = nextValue;
@@ -328,10 +328,17 @@ export const MediaGallery = forwardRef<HTMLDivElement, MediaGalleryProps>(
                         />
                       </>
                     ) : !isEmbeddableVideoUrl(item.source) ? (
-                      <Stack gap={8}>
-                        <Text>{labels.openInDouyin}</Text>
-                        <Button component="a" href={item.source} target="_blank" rel="noreferrer">{labels.open}</Button>
-                      </Stack>
+                      <div className="infini-media-gallery-external">
+                        <span>{labels.openInDouyin}</span>
+                        <a
+                          href={item.source}
+                          target="_blank"
+                          rel="noreferrer"
+                          className={buttonVariants()}
+                        >
+                          {labels.open}
+                        </a>
+                      </div>
                     ) : (
                       <>
                         <iframe
@@ -341,21 +348,51 @@ export const MediaGallery = forwardRef<HTMLDivElement, MediaGalleryProps>(
                           allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
                           allowFullScreen
                         />
-                        <Group justify="center" gap={8}>
-                          <Button size="xs" variant="default" component="a" href={item.source} target="_blank" rel="noreferrer">
+                        <div className="infini-media-gallery-embed-actions">
+                          <a
+                            href={item.source}
+                            target="_blank"
+                            rel="noreferrer"
+                            className={buttonVariants({ size: "xs", variant: "outline" })}
+                          >
                             {labels.externalLink}
-                          </Button>
-                        </Group>
+                          </a>
+                        </div>
                       </>
                     )}
                   </div>
                 )}
-              </Carousel.Slide>
-            ))}
-          </Carousel>
+                </div>
+              ))}
+            </div>
+            {items.length > 1 ? (
+              <>
+                <Button
+                  type="button"
+                  size="icon"
+                  variant="secondary"
+                  className="infini-media-gallery-control infini-media-gallery-control--previous"
+                  aria-label={labels.previousItemAria}
+                  onClick={() => selectSlide(previousIndex)}
+                >
+                  <ChevronLeftIcon aria-hidden />
+                </Button>
+                <Button
+                  type="button"
+                  size="icon"
+                  variant="secondary"
+                  className="infini-media-gallery-control infini-media-gallery-control--next"
+                  aria-label={labels.nextItemAria}
+                  onClick={() => selectSlide(nextIndex)}
+                >
+                  <ChevronRightIcon aria-hidden />
+                </Button>
+              </>
+            ) : null}
+          </div>
 
           <div className="infini-media-gallery-thumbnails-header">
-            <Text c="dimmed">{Math.min(activeIndex + 1, items.length)} / {items.length}</Text>
+            <span className="infini-media-gallery-muted">{Math.min(activeIndex + 1, items.length)} / {items.length}</span>
             <button
               type="button"
               className="infini-media-gallery-toggle-thumb"
@@ -373,7 +410,7 @@ export const MediaGallery = forwardRef<HTMLDivElement, MediaGalleryProps>(
                   key={item.key}
                   type="button"
                   className={`infini-media-gallery-thumb${index === activeIndex ? " infini-media-gallery-thumb-active" : ""}`}
-                  onClick={() => { selectSlide(index); (embla as { scrollTo?: (index: number) => void })?.scrollTo?.(index); }}
+                  onClick={() => selectSlide(index)}
                   aria-label={labels.openItemAria(index + 1)}
                   aria-pressed={index === activeIndex}
                 >
@@ -398,30 +435,44 @@ export const MediaGallery = forwardRef<HTMLDivElement, MediaGalleryProps>(
             </div>
           ) : null}
         </div>
-      ) : null}
 
-      <Modal
-        opened={enlargedIndex !== null}
-        onClose={() => setEnlargedIndex(null)}
-        fullScreen
-        padding="md"
-        closeButtonProps={{ "aria-label": labels.close }}
-        classNames={{
-          content: "infini-media-gallery-zoom-content",
-          body: "infini-media-gallery-zoom-body",
+      <Dialog
+        open={enlargedIndex !== null}
+        onOpenChange={(open) => {
+          if (!open) setEnlargedIndex(null);
         }}
       >
-        {enlargedIndex !== null && items[enlargedIndex] ? (
-          <img
-            className="infini-media-gallery-zoom-img"
-            src={items[enlargedIndex].type === "image" ? items[enlargedIndex].fullSource : items[enlargedIndex].source}
-            alt={labels.imageAlt(enlargedIndex + 1)}
-            decoding="async"
-            onClick={() => setEnlargedIndex(null)}
-          />
-        ) : null}
-      </Modal>
-    </Stack>
+        <DialogContent showCloseButton={false} className="infini-media-gallery-zoom-content">
+          <DialogTitle className="sr-only">
+            {enlargedIndex === null ? labels.close : labels.enlargeImageAria(enlargedIndex + 1)}
+          </DialogTitle>
+          <DialogClose
+            render={(
+              <Button
+                type="button"
+                size="icon"
+                variant="secondary"
+                className="infini-media-gallery-zoom-close"
+                aria-label={labels.close}
+              />
+            )}
+          >
+            <XIcon aria-hidden />
+          </DialogClose>
+          <div className="infini-media-gallery-zoom-body">
+            {enlargedIndex !== null && items[enlargedIndex] ? (
+              <img
+                className="infini-media-gallery-zoom-img"
+                src={items[enlargedIndex].type === "image" ? items[enlargedIndex].fullSource : items[enlargedIndex].source}
+                alt={labels.imageAlt(enlargedIndex + 1)}
+                decoding="async"
+                onClick={() => setEnlargedIndex(null)}
+              />
+            ) : null}
+          </div>
+        </DialogContent>
+      </Dialog>
+      </div>
     </div>
   );
   }

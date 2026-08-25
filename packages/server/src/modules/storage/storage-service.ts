@@ -713,7 +713,7 @@ export class StorageService {
     if (!snapshot.actorExists) throw new AppError({ code: "UNAUTHORIZED", status: 401, message: "Authentication required" });
     if (recipientUserId !== null && !snapshot.recipientExists) throw notFound("Recipient not found");
     if (recipientUserId !== null && snapshot.recipientUsername === null) {
-      throw new AppError({ code: "SERVER_ERROR", status: 500, message: "Recipient username is unavailable" });
+      throw new AppError({ code: "SERVER_ERROR", status: 500, message: "Recipient display name is unavailable" });
     }
     const missing = snapshot.entries.find((entry) => entry.item === null);
     if (missing) throw notFound("Item not found", { item_id: missing.requestedItemId });
@@ -753,10 +753,10 @@ export class StorageService {
         type: input.type,
         quantity_delta: delta,
         recipient_user_id: recipientUserId,
-        recipient_username: snapshot.recipientUsername,
+        recipient_display_name: snapshot.recipientUsername,
         note: input.note,
         actor_id: actor.userId,
-        actor_username: snapshot.actorUsername,
+        actor_display_name: snapshot.actorUsername,
         created_at: createdAt,
       } satisfies StorageTransaction;
     });

@@ -1,5 +1,4 @@
-import { MantineProvider } from "@mantine/core";
-import { render, screen } from "@testing-library/react";
+import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type { ComponentProps } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -25,18 +24,6 @@ vi.mock("./AuditLogViewer", () => ({
   },
 }));
 vi.mock("./AuditArchiveExplorer", () => ({ AuditArchiveExplorer: () => <div>archives</div> }));
-
-class WideResizeObserver {
-  constructor(private readonly callback: ResizeObserverCallback) {}
-  disconnect() {}
-  unobserve() {}
-  observe() {
-    this.callback(
-      [{ contentRect: { width: 1200 } } as ResizeObserverEntry],
-      this as unknown as ResizeObserver,
-    );
-  }
-}
 
 type SectionProps = ComponentProps<typeof AdminAuditSection>;
 
@@ -70,11 +57,7 @@ function renderSection(overrides: Partial<SectionProps> = {}) {
     archiveMonthsError: false,
     ...overrides,
   };
-  render(
-    <MantineProvider>
-      <AdminAuditSection {...props} />
-    </MantineProvider>,
-  );
+  render(<AdminAuditSection {...props} />);
   return props;
 }
 
@@ -90,23 +73,28 @@ function isoDate(offsetDays: number): string {
 describe("AdminAuditSection filters", () => {
   beforeEach(() => {
     auditViewerSpy.mockClear();
-    window.ResizeObserver = WideResizeObserver as unknown as typeof ResizeObserver;
   });
 
   /* 进页面时区间就是最近七天，工具条得指着「7 天」，不能指着「自定义」还摊开两个空手填框。 */
-  it("highlights the default seven-day preset", () => {
+  it("highlights the default seven-day preset", async () => {
+    const user = userEvent.setup();
     renderSection({ auditDateFrom: isoDate(7), auditDateTo: isoDate(0) });
 
-    expect(screen.getByRole("radio", { name: "audit.last7Days" })).toBeChecked();
-    expect(screen.queryByLabelText("audit.aria.dateFrom")).not.toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: /^common:filter\.toggle/ }));
+    const filters = within(await screen.findByRole("dialog"));
+    expect(filters.getByRole("radio", { name: "audit.last7Days" })).toBeChecked();
+    expect(filters.queryByLabelText("audit.aria.dateFrom")).not.toBeInTheDocument();
   });
 
   /* 认不出来的区间（手填的、翻过页的旧区间）才落到自定义，并把手填框摊开。 */
-  it("falls back to custom and opens the manual inputs for a hand-picked range", () => {
+  it("falls back to custom and opens the manual inputs for a hand-picked range", async () => {
+    const user = userEvent.setup();
     renderSection({ auditDateFrom: "2026-01-01", auditDateTo: "2026-03-05" });
 
-    expect(screen.getByRole("radio", { name: "audit.range.custom" })).toBeChecked();
-    expect(screen.getByLabelText("audit.aria.dateFrom")).toHaveValue("2026-01-01");
+    await user.click(screen.getByRole("button", { name: /^common:filter\.toggle/ }));
+    const filters = within(await screen.findByRole("dialog"));
+    expect(filters.getByRole("radio", { name: "audit.range.custom" })).toBeChecked();
+    expect(filters.getByLabelText("audit.aria.dateFrom")).toHaveValue("2026-01-01");
   });
 
   it("asks the hook for a range instead of computing dates itself", async () => {
@@ -114,12 +102,15 @@ describe("AdminAuditSection filters", () => {
     const onSetDatePreset = vi.fn();
     renderSection({ auditDateFrom: isoDate(1), auditDateTo: isoDate(0), onSetDatePreset });
 
-    await user.click(screen.getByRole("radio", { name: "audit.last7Days" }));
+    await user.click(screen.getByRole("button", { name: /^common:filter\.toggle/ }));
+    await user.click(within(await screen.findByRole("dialog")).getByRole("radio", {
+      name: "audit.last7Days",
+    }));
 
     expect(onSetDatePreset).toHaveBeenCalledWith("7d");
   });
 
-  it("keeps export visible and does not repeat the selected date range as an active filter", async () => {
+  it("keeps export visible while the selected date range stays in the filter menu", async () => {
     const user = userEvent.setup();
     const { onAuditSearchChange, onAuditDateFromChange, onAuditDateToChange } = renderSection({
       auditSearch: "member",
@@ -131,15 +122,18 @@ describe("AdminAuditSection filters", () => {
     expect(screen.getByRole("textbox", { name: "audit.aria.search" })).toHaveValue("member");
 
     expect(screen.queryByRole("button", { name: "common:filter.clearAll" })).not.toBeInTheDocument();
-    await user.click(screen.getByRole("button", { name: "audit.filter.searchChip" }));
-    expect(screen.queryByRole("button", { name: "audit.filter.dateRange" })).not.toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: /^common:filter\.toggle/ }));
+    const filters = within(await screen.findByRole("dialog"));
+    expect(filters.getByRole("radio", { name: "audit.range.custom" })).toBeChecked();
+    expect(filters.getByLabelText("audit.aria.dateFrom")).toBeInTheDocument();
+    expect(filters.getByLabelText("audit.aria.dateTo")).toBeInTheDocument();
 
-    expect(onAuditSearchChange).toHaveBeenCalledWith("");
+    expect(onAuditSearchChange).not.toHaveBeenCalled();
     expect(onAuditDateFromChange).not.toHaveBeenCalled();
     expect(onAuditDateToChange).not.toHaveBeenCalled();
   });
 
-  it("shows an exact entity timeline as a removable filter", async () => {
+  it("shows an exact entity timeline as a removable toolbar summary", async () => {
     const user = userEvent.setup();
     const onClearAuditEntity = vi.fn();
     const entityId = "fcd3254e-6e59-46b9-bf99-6d9fb4e10660";

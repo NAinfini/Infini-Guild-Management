@@ -1,4 +1,3 @@
-import { MantineProvider } from "@mantine/core";
 import type { Editor } from "@tiptap/react";
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
@@ -37,17 +36,15 @@ function renderMenu() {
   const onInsertVideo = vi.fn();
 
   render(
-    <MantineProvider>
-      <TipTapEditorContextMenu
-        editor={editorMock.editor}
-        labels={buildTipTapEditorLabels((key) => key)}
-        position={{ x: 120, y: 80 }}
-        onClose={onClose}
-        onInsertLink={onInsertLink}
-        onInsertImage={onInsertImage}
-        onInsertVideo={onInsertVideo}
-      />
-    </MantineProvider>,
+    <TipTapEditorContextMenu
+      editor={editorMock.editor}
+      labels={buildTipTapEditorLabels((key) => key)}
+      position={{ x: 120, y: 80 }}
+      onClose={onClose}
+      onInsertLink={onInsertLink}
+      onInsertImage={onInsertImage}
+      onInsertVideo={onInsertVideo}
+    />,
   );
 
   return {
@@ -123,7 +120,7 @@ describe("TipTapEditorContextMenu", () => {
     expect(rootMenu).not.toBeNull();
     expect(colorMenu).not.toBeNull();
     expect(rootMenu).not.toContainElement(colorMenu);
-    expect(colorMenu).toHaveStyle({ zIndex: "1101" });
+    expect(colorMenu).toHaveClass("infini-tiptap-context-submenu");
   });
 
   it("keeps dialog commands wired while the menu owns closing", async () => {
@@ -136,7 +133,7 @@ describe("TipTapEditorContextMenu", () => {
     expect(onClose).toHaveBeenCalledOnce();
   });
 
-  it("portals every submenu outside the scrollable context menu", () => {
+  it("uses Base UI submenus, which portal outside the scrollable context menu", () => {
     const source = readFileSync(
       resolve(process.cwd(), "apps/portal/components/shared/TipTapEditorContextMenu.tsx"),
       "utf8",
@@ -146,9 +143,10 @@ describe("TipTapEditorContextMenu", () => {
       "utf8",
     );
 
-    expect(source).toContain("<Menu.Sub>");
-    expect(source.match(/<Portal>/g)).toHaveLength(3);
-    expect(css).not.toContain("infini-tiptap-context-submenu-wrapper");
-    expect(css).not.toMatch(/context-submenu[^}]*display:\s*none/);
+    expect(source).toContain('from "@portal/components/ui/dropdown-menu"');
+    expect(source.match(/<DropdownMenuSub>/g)).toHaveLength(2);
+    expect(source.match(/<DropdownMenuSubContent/g)).toHaveLength(2);
+    expect(css).toContain(".infini-tiptap-context-menu");
+    expect(css).toContain("overflow-y: auto");
   });
 });

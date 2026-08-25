@@ -6,6 +6,7 @@ import {
   batchRoleChangeSchema,
   createAdminMemberSchema,
   createInviteLinkSchema,
+  resetAdminPasswordResponseSchema,
   resetLoginLockResponseSchema,
 } from "@guild/shared";
 import type { z } from "zod";
@@ -17,6 +18,7 @@ export type BatchRoleChangePayload = z.input<typeof batchRoleChangeSchema>;
 export type BatchDeactivatePayload = z.input<typeof batchDeactivateSchema>;
 export type AdminUpdateProfilePayload = z.input<typeof adminUpdateProfileSchema>;
 export type ResetAdminUserLoginLockResponse = z.infer<typeof resetLoginLockResponseSchema>;
+export type ResetAdminUserPasswordResponse = z.infer<typeof resetAdminPasswordResponseSchema>;
 
 export function adminUpdateProfile(userId: string, payload: AdminUpdateProfilePayload): Promise<MemberProfile> {
   const bodyJson = adminUpdateProfileSchema.parse(payload);
@@ -66,13 +68,13 @@ export function reactivateAdminUser(userId: string, reason?: string): Promise<{ 
 
 export function resetAdminUserPassword(
   userId: string,
-  temporary_password?: string,
-): Promise<{ ok: true; temporary_password: string }> {
-  return apiRequest<{ ok: true; temporary_password: string }>(
+  currentPassword: string,
+): Promise<ResetAdminUserPasswordResponse> {
+  return apiRequest<ResetAdminUserPasswordResponse>(
     `/api/admin/users/${userId}/reset-password`,
     {
       method: "POST",
-      bodyJson: temporary_password !== undefined ? { temporary_password } : {},
+      bodyJson: { current_password: currentPassword },
     },
   );
 }
@@ -86,9 +88,21 @@ export function resetAdminUserLoginLock(userId: string): Promise<ResetAdminUserL
 
 export function createAdminMember(
   payload: CreateAdminMemberPayload,
-): Promise<{ ok: true; user_id: string; username: string; temporary_password: string }> {
+): Promise<{
+  ok: true;
+  user_id: string;
+  display_name: string;
+  temporary_login_name: string;
+  temporary_password: string;
+}> {
   const bodyJson = createAdminMemberSchema.parse(payload);
-  return apiRequest<{ ok: true; user_id: string; username: string; temporary_password: string }>(
+  return apiRequest<{
+    ok: true;
+    user_id: string;
+    display_name: string;
+    temporary_login_name: string;
+    temporary_password: string;
+  }>(
     "/api/admin/users",
     {
       method: "POST",

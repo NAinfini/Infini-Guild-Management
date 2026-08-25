@@ -11,8 +11,6 @@ import { useTheme } from "../../providers/ThemeProvider";
 import { useSearch } from "@tanstack/react-router";
 import { useNavigate } from "@tanstack/react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Tabs } from "@mantine/core";
-import { useDebouncedValue } from "@mantine/hooks";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useShallow } from "zustand/react/shallow";
@@ -23,12 +21,14 @@ import { useGuildWarDragController } from "../../hooks/guild-war/useGuildWarDrag
 import { useGuildWarHistory } from "../../hooks/guild-war/useGuildWarHistory";
 import { useGuildWarMutations } from "../../hooks/guild-war/useGuildWarMutations";
 import { useLoadWarningToast } from "../../hooks/useLoadWarningToast";
+import { useDebouncedValue } from "../../hooks/useDebouncedValue";
 import { GuildWarService } from "../../services/GuildWarService";
 import { fetchAllUsersListWithOptions } from "../../services/UserService";
 import { queryKeys } from "../../api/query-keys";
 import { useEffectivePermissions } from "../../hooks/useEffectivePermissions";
 import { useGuildWarStore } from "../../stores/guildWar";
 import { PageLayout } from "../layout/PageLayout";
+import { PageSubnav } from "../shared/PageSubnav";
 import { useGuildWarActiveController } from "../feature/guild-war/useGuildWarActiveController";
 import { GuildWarActiveTab } from "./guild-war/GuildWarActiveTab";
 import { GuildWarHistoryTabWrapper } from "./guild-war/GuildWarHistoryTabWrapper";
@@ -170,7 +170,7 @@ export function GuildWarPage() {
     })),
   );
   const [historySearch, setHistorySearchValue] = useState(guildWarSearch.warName ?? "");
-  const [debouncedHistorySearch] = useDebouncedValue(historySearch.trim(), 250);
+  const debouncedHistorySearch = useDebouncedValue(historySearch.trim(), 250);
   const setHistorySearch = useCallback((value: string) => {
     setHistorySearchValue(value);
     setHistoryPage(1);
@@ -337,24 +337,26 @@ export function GuildWarPage() {
   );
 
   return (
-    <PageLayout className="guild-war-page">
-      <Tabs
-        value={activeTab}
-        keepMounted={false}
-        className="guild-war-page__tabs"
-        onChange={(nextTab) => {
-          if (!nextTab) return;
-          setGuildWarTab(nextTab as GuildWarTab);
-        }}
-      >
-        <Tabs.List>
-          {!isExternalView ? <Tabs.Tab value="active">{t("tab.active")}</Tabs.Tab> : null}
-          <Tabs.Tab value="history">{t("tab.history")}</Tabs.Tab>
-          <Tabs.Tab value="analytics">{t("tab.analytics")}</Tabs.Tab>
-        </Tabs.List>
-        {!isExternalView ? (
+    <PageLayout
+      className="guild-war-page"
+      workspaceMode="contained"
+      toolbar={(
+        <PageSubnav
+          value={activeTab}
+          label={t("navigation.section")}
+          items={[
+            ...(!isExternalView ? [{ value: "active" as const, label: t("tab.active") }] : []),
+            { value: "history", label: t("tab.history") },
+            { value: "analytics", label: t("tab.analytics") },
+          ]}
+          onChange={setGuildWarTab}
+        />
+      )}
+    >
+      <div className="guild-war-page__workspace">
+        {!isExternalView && activeTab === "active" ? (
           /* --fill：作战板要顶到内容区底边，池子固定、队伍区自己滚，高度从外层 flex 链上要。 */
-          <Tabs.Panel value="active" pt="md" className="guild-war-page__panel--fill">
+          <div className="guild-war-page__panel guild-war-page__panel--fill">
             <GuildWarActiveTab
               selectedEventId={activeSelectedEventId}
               setSelectedEventId={setSelectedEventId}
@@ -362,7 +364,6 @@ export function GuildWarPage() {
               canViewMemberNotes={canViewMemberNotes}
               activeController={activeController}
               guildWarDrag={guildWarDrag}
-              guildWarHistory={guildWarHistory}
               eligibleWarEvents={eligibleWarEvents}
               activeEligibilityReady={activeEligibilityReady}
               canCreateWarEvent={canCreateWarEvent}
@@ -373,11 +374,12 @@ export function GuildWarPage() {
               concludeWarDisabled={concludeWarDisabled}
               concludeWarDisabledReason={concludeWarDisabledReason}
             />
-          </Tabs.Panel>
+          </div>
         ) : null}
 
         {/* --fill：这一个页签是主从工作台，两栏各自内滚，高度从外层 flex 链上要。 */}
-        <Tabs.Panel value="history" pt="md" className="guild-war-page__panel--fill">
+        {activeTab === "history" ? (
+        <div className="guild-war-page__panel guild-war-page__panel--fill">
           <GuildWarHistoryTabWrapper
             canManageActive={canManageActive}
             historyViewMode={historyViewMode}
@@ -404,9 +406,11 @@ export function GuildWarPage() {
             chartPalette={chartPalette}
             initialSearch={guildWarSearch.warName}
           />
-        </Tabs.Panel>
+        </div>
+        ) : null}
 
-        <Tabs.Panel value="analytics" pt="md">
+        {activeTab === "analytics" ? (
+        <div className="guild-war-page__panel">
           <GuildWarAnalyticsTabWrapper
             historyQuery={historyQuery}
             chartPalette={chartPalette}
@@ -415,8 +419,9 @@ export function GuildWarPage() {
             chartThemeConfig={chartThemeConfig}
             canManageWeights={isModerator}
           />
-        </Tabs.Panel>
-      </Tabs>
+        </div>
+        ) : null}
+      </div>
     </PageLayout>
   );
 }

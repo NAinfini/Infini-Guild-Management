@@ -1,4 +1,3 @@
-import { MantineProvider } from "@mantine/core";
 import { screen } from "@testing-library/react";
 import { renderWithQueryClient as render } from "@portal/tests/query-harness";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -16,7 +15,7 @@ vi.mock("react-i18next", () => ({
 }));
 
 const detail: ActiveGuildWarMemberDetail = {
-  username: "Alice",
+  display_name: "Alice",
   power: 8200,
   classes: [],
   titleHtml: null,
@@ -39,15 +38,13 @@ const detail: ActiveGuildWarMemberDetail = {
 
 function renderModal(canViewNotes: boolean, activeDetail = detail) {
   return render(
-    <MantineProvider>
-      <WarMemberDetailModal
-        open
-        activeDetailUserId="user-1"
-        activeDetail={activeDetail}
-        canViewNotes={canViewNotes}
-        onClose={vi.fn()}
-      />
-    </MantineProvider>,
+    <WarMemberDetailModal
+      open
+      activeDetailUserId="user-1"
+      activeDetail={activeDetail}
+      canViewNotes={canViewNotes}
+      onClose={vi.fn()}
+    />,
   );
 }
 
@@ -68,12 +65,12 @@ describe("WarMemberDetailModal", () => {
     expect(screen.getByText("memberDetail.availability")).toBeInTheDocument();
     // UTC 周一 23:00–24:00 在 UTC+8 落到周二早上：星期必须跟着时刻一起挪。
     expect(screen.getByText("memberDetail.day.tuesday")).toBeInTheDocument();
-    expect(screen.getByText("07:00–08:00")).toBeInTheDocument();
+    expect(screen.getByText(/^07:00–08:00 \S+$/)).toBeInTheDocument();
     expect(screen.getByText("memberDetail.day.wednesday")).toBeInTheDocument();
-    expect(screen.getByText("08:30–10:00")).toBeInTheDocument();
+    expect(screen.getByText(/^08:30–10:00 \S+$/)).toBeInTheDocument();
     expect(screen.queryByText("memberDetail.day.monday")).not.toBeInTheDocument();
-    expect(screen.getByText(/^memberDetail\.viewerTimezone: /)).toBeInTheDocument();
-    expect(screen.getByText("memberDetail.profileTimezone: America/New_York")).toBeInTheDocument();
+    expect(screen.queryByText(/^memberDetail\.viewerTimezone: /)).not.toBeInTheDocument();
+    expect(screen.queryByText(/^memberDetail\.profileTimezone: /)).not.toBeInTheDocument();
     expect(screen.getByText("memberDetail.vacation")).toBeInTheDocument();
     /* 请假起止是日历日期：不论阅读者在哪个时区，都必须显示写下的那两天。 */
     expect(screen.getByText("Aug 20, 2026 – Aug 24, 2026")).toBeInTheDocument();

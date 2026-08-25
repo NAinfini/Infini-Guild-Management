@@ -28,7 +28,7 @@ function harness() {
   database.exec("PRAGMA foreign_keys = ON");
   applyAppMigrations(database);
   database.exec(`
-    INSERT INTO users (id, username, role_id, revision_token) VALUES
+    INSERT INTO users (id, display_name, role_id, revision_token) VALUES
       ('admin-1', 'AdminOne', 'admin', 'admin-one-revision-0001'),
       ('member-1', 'MemberOne', 'member', 'member-one-revision-0001'),
       ('member-2', 'MemberTwo', 'member', 'member-two-revision-0001');

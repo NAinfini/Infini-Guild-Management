@@ -1,7 +1,16 @@
-import { Box, TextInput, type TextInputProps } from "@mantine/core";
 import { formatCalendarParts } from "@portal/utils/datetime";
 import { usePreferencesStore } from "@portal/stores/preferences";
-import { useCallback, useMemo, type MouseEvent } from "react";
+import { Input } from "@portal/components/ui/input";
+import { Label } from "@portal/components/ui/label";
+import {
+  useCallback,
+  useId,
+  useMemo,
+  type ComponentProps,
+  type CSSProperties,
+  type MouseEvent,
+  type ReactNode,
+} from "react";
 import "./NativeDateTimeInput.css";
 
 type NativePickerType = "date" | "time" | "datetime-local";
@@ -9,7 +18,7 @@ type SupportedLocale = "en" | "zh";
 
 /* 控件里的值是 <input type="date"> 的 YYYY-MM-DD：一个日历日期，不是瞬时点，
    所以走 formatCalendarParts 而不是任何按时区换算的格式化。 */
-function formatLocalizedDate(value: TextInputProps["value"], locale: SupportedLocale): string {
+function formatLocalizedDate(value: ComponentProps<"input">["value"], locale: SupportedLocale): string {
   const rawValue = typeof value === "string"
     ? value
     : value == null
@@ -34,9 +43,22 @@ export function NativeDateTimeInput({
   style,
   w,
   size,
+  label,
+  description,
+  error,
+  id: providedId,
   ...props
-}: Omit<TextInputProps, "type"> & { type?: NativePickerType }) {
+}: Omit<ComponentProps<"input">, "type" | "size"> & {
+  type?: NativePickerType;
+  size?: "xs" | "sm" | "md" | "lg" | "xl";
+  w?: CSSProperties["width"];
+  label?: ReactNode;
+  description?: ReactNode;
+  error?: ReactNode;
+}) {
   const locale = usePreferencesStore((state) => state.locale);
+  const generatedId = useId();
+  const id = providedId ?? generatedId;
   const localizedDate = useMemo(
     () => type === "date" ? formatLocalizedDate(props.value, locale) : "",
     [locale, props.value, type],
@@ -55,43 +77,48 @@ export function NativeDateTimeInput({
     }
   }, [onClick]);
 
-  if (type !== "date") {
-    return (
-      <TextInput
-        {...props}
-        className={className}
-        style={style}
-        w={w}
-        size={size}
-        type={type}
-        onClick={handleClick}
-      />
-    );
-  }
-
-  const rootClassName = className
-    ? `native-date-input ${className}`
-    : "native-date-input";
   const displayValue = localizedDate || props.placeholder || "";
-
-  return (
-    <Box
-      className={rootClassName}
-      style={style}
-      w={w}
+  const wrapperClassName = className
+    ? `native-date-time-field ${className}`
+    : "native-date-time-field";
+  const input = type === "date" ? (
+    <div
+      className="native-date-input"
       data-size={size ?? "sm"}
       data-empty={!localizedDate || undefined}
     >
-      <TextInput
+      <Input
         {...props}
+        id={id}
         className="native-date-input__field"
-        size={size}
         type="date"
+        aria-invalid={Boolean(error) || props["aria-invalid"] || undefined}
         onClick={handleClick}
       />
       <span className="native-date-input__display" aria-hidden="true">
         {displayValue}
       </span>
-    </Box>
+    </div>
+  ) : (
+    <Input
+      {...props}
+      id={id}
+      type={type}
+      aria-invalid={Boolean(error) || props["aria-invalid"] || undefined}
+      onClick={handleClick}
+    />
+  );
+
+  return (
+    <div
+      className={wrapperClassName}
+      style={{ ...style, width: w ?? style?.width }}
+      data-size={size ?? "sm"}
+    >
+      {label ? <Label htmlFor={id}>{label}</Label> : null}
+      {description ? <p className="native-date-time-field__description">{description}</p> : null}
+      {input}
+      {error ? <p className="native-date-time-field__error" role="alert">{error}</p> : null}
+    </div>
   );
 }

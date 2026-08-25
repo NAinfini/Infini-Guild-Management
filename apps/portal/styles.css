@@ -1,16 +1,29 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+
 /* ── token 层：L1 色板 → L2 语义 → L3 标度 ──
  *
  * 本文件只负责引入 token 层、全局 reset、keyframes 与少量全局装饰规则。
- * Mantine 的主题桥接位于 ThemeProvider；十六进制唯一的住处是
+ * 组件层通过共享的 Base UI primitives 消费这些语义变量；十六进制唯一的住处是
  * styles/tokens.css。 */
 @import "./styles/tokens.css";
 @import "./styles/semantic.css";
 @import "./styles/scale.css";
+@import "./styles/shadcn.css";
 
 /* ── Base resets ── */
 html, body {
   height: 100%;
   overflow: hidden;
+}
+
+body {
+  position: relative;
+}
+
+#root {
+  height: 100%;
+  isolation: isolate;
 }
 
 /*
@@ -26,11 +39,7 @@ svg {
   display: block;
 }
 
-/*
- * Mantine's base stylesheet is loaded by the async bootstrap chunk after this
- * entry stylesheet. This descendant selector intentionally outranks its `body`
- * reset so the document never settles on Mantine's unrelated gray.
- */
+/* Keep the document field explicit so bootstrap and routed screens share one surface. */
 html body {
   background: var(--surface-sunken);
   color: var(--text-primary);
@@ -157,10 +166,34 @@ html:not([data-input-modality="pointer"]) :focus-visible {
   --unsaved-affix-bottom: var(--space-lg);
   /* Size to content while constraining unusually long localized actions. */
   max-width: min(520px, calc(100vw - var(--sidebar-width) - var(--space-3xl)));
+  position: fixed;
+  z-index: var(--z-sticky);
+  right: var(--unsaved-affix-inline);
+  bottom: var(--unsaved-affix-bottom);
 }
 
 .unsaved-changes-affix__surface {
+  padding: var(--space-sm);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-lg);
+  background: var(--surface-overlay);
+  box-shadow: var(--shadow-overlay);
   transition: border-color var(--motion-state);
+}
+
+.unsaved-changes-affix__content {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-sm);
+}
+
+.unsaved-changes-affix__badge--saving {
+  color: var(--status-info);
+}
+
+.unsaved-changes-affix__badge--dirty {
+  color: var(--status-warning);
 }
 
 .unsaved-changes-affix__surface[data-dirty] {
@@ -184,98 +217,9 @@ html:not([data-input-modality="pointer"]) :focus-visible {
   gap: var(--control-icon-size-compact);
 }
 
-/* ── Mantine 桥接 · dimmed 文字 ──
- *
- * Mantine 在两个模式下各定义一次 --mantine-color-dimmed，选择器是
- * `:root[data-mantine-color-scheme=…]`，特异性 (0,2,0)，且注入 <head> 在本文件
- * 之后；打平会输，故这里用 :root 加属性自我重复抬到 (0,3,0)。
- * --text-muted 自己随 [data-theme] 切换，一条规则覆盖两个模式。 */
-:root[data-theme][data-theme] {
-  --mantine-color-dimmed: var(--text-muted);
-
-  /* ── Mantine 桥接 · 链接色 ──
-   *
-   * Anchor（.m_849cf0da）和 TypographyStylesProvider 里的 <a> 都读
-   * --mantine-color-anchor，Mantine 默认给的是主色 shade 6（#23907D）。
-   * 那一档是填充档，压在浅色纸底上只有 3.92:1，16px 正文过不了 AA；
-   * 站内的文字档是 --brand-text（浅 700 / 深 500），两个模式都已在
-   * theme-tokens.test.ts 里验过。选择器同上，用属性自我重复抬到 (0,3,0)
-   * 压过 Mantine 那条 :root[data-mantine-color-scheme=…]。 */
-  --mantine-color-anchor: var(--brand-text);
-}
-
-/* ── Mantine 桥接 · light variant 的文字对比度（浅色模式） ──
- *
- * light variant 在 12% alpha 填充上放 shade-6 文字，在暖色纸底上只有约 2.9:1。
- * 下面把每个色阶的文字档钉到「仍能在自己的 light 填充上过 4.5:1 的最深一档」：
- * gray / pink / grape / violet / indigo / blue / cyan 七个色阶库里恰好有对应
- * 档位，直接引用库变量；红 / 青 / 绿 / 黄绿 / 黄 / 橙 六个比库里最深的 shade 9
- * 还深，库里没有对应档位，值落在 L1 的 --palette-mantine-*-text。
- *
- * Portal actions use the fixed portal-brand ramp; personal accent colours do
- * not enter Mantine's foundational controls.
- *
- * 特异性：Mantine 自己那条 `:root[data-mantine-color-scheme="light"]` 是 (0,2,0)
- * 且注入在本文件之后，打平会赢，所以这里使用 (0,3,0) 的属性自我重复。 */
-:root[data-theme="light"][data-theme="light"] {
-  --mantine-color-gray-light-color: var(--mantine-color-gray-7);
-  --mantine-color-red-light-color: var(--palette-mantine-red-text);
-  --mantine-color-pink-light-color: var(--mantine-color-pink-8);
-  --mantine-color-grape-light-color: var(--mantine-color-grape-8);
-  --mantine-color-violet-light-color: var(--mantine-color-violet-7);
-  --mantine-color-indigo-light-color: var(--mantine-color-indigo-8);
-  --mantine-color-blue-light-color: var(--mantine-color-blue-9);
-  --mantine-color-cyan-light-color: var(--mantine-color-cyan-9);
-  --mantine-color-teal-light-color: var(--palette-mantine-teal-text);
-  --mantine-color-green-light-color: var(--palette-mantine-green-text);
-  --mantine-color-lime-light-color: var(--palette-mantine-lime-text);
-  --mantine-color-yellow-light-color: var(--palette-mantine-yellow-text);
-  --mantine-color-orange-light-color: var(--palette-mantine-orange-text);
-
-  /* Mantine paints filled controls with shade 6 in light mode, where the label
-   * lands at 3.3–3.6:1 (white on gray, white on blue). Dark mode's default
-   * primaryShade is already 8, so it never needed this override.
-   *
-   * Pinning the 13 library ramps below to shade 8/9 does not clear AA for all
-   * of them: gray 11.51 / red 4.51 / pink 5.66 / grape 5.82 / violet 6.30 /
-   * indigo 5.67 / blue 5.02 pass; cyan 4.35 / teal 3.95 / green 3.45 /
-   * lime 2.93 / yellow 2.48 / orange 3.58 do not — shade 9 is as deep as the
-   * library goes for those six, so this is a known, pre-existing gap (not
-   * introduced here) pending a design decision on whether to add darker
-   * steps. Pinned values live in theme-tokens.test.ts's "Mantine filled 对比度"
-   * group; any drift in either direction fails the test. */
-  --mantine-color-gray-filled: var(--mantine-color-gray-8);
-  --mantine-color-gray-filled-hover: var(--mantine-color-gray-9);
-  --mantine-color-red-filled: var(--mantine-color-red-8);
-  --mantine-color-red-filled-hover: var(--mantine-color-red-9);
-  --mantine-color-pink-filled: var(--mantine-color-pink-8);
-  --mantine-color-pink-filled-hover: var(--mantine-color-pink-9);
-  --mantine-color-grape-filled: var(--mantine-color-grape-8);
-  --mantine-color-grape-filled-hover: var(--mantine-color-grape-9);
-  --mantine-color-violet-filled: var(--mantine-color-violet-8);
-  --mantine-color-violet-filled-hover: var(--mantine-color-violet-9);
-  --mantine-color-indigo-filled: var(--mantine-color-indigo-8);
-  --mantine-color-indigo-filled-hover: var(--mantine-color-indigo-9);
-  --mantine-color-blue-filled: var(--mantine-color-blue-8);
-  --mantine-color-blue-filled-hover: var(--mantine-color-blue-9);
-  --mantine-color-cyan-filled: var(--mantine-color-cyan-8);
-  --mantine-color-cyan-filled-hover: var(--mantine-color-cyan-9);
-  --mantine-color-teal-filled: var(--mantine-color-teal-8);
-  --mantine-color-teal-filled-hover: var(--mantine-color-teal-9);
-  --mantine-color-green-filled: var(--mantine-color-green-8);
-  --mantine-color-green-filled-hover: var(--mantine-color-green-9);
-  --mantine-color-lime-filled: var(--mantine-color-lime-8);
-  --mantine-color-lime-filled-hover: var(--mantine-color-lime-9);
-  --mantine-color-yellow-filled: var(--mantine-color-yellow-8);
-  --mantine-color-yellow-filled-hover: var(--mantine-color-yellow-9);
-  --mantine-color-orange-filled: var(--mantine-color-orange-8);
-  --mantine-color-orange-filled-hover: var(--mantine-color-orange-9);
-}
-
 /* ── Native date inputs ──
  *
- * Date filters are Mantine TextInputs with type="date", so the frame is themed
- * but the picker button is drawn by the browser: a black glyph that disappears
+ * The picker button is drawn by the browser: a black glyph that disappears
  * on the dark surface and ignores the palette on the light one. This tints it to
  * the theme and gives the whole control the same affordance as the buttons next
  * to it. Applies to every date filter (gallery, audit log, war history, absence).
@@ -301,12 +245,4 @@ input[type="date"]::-webkit-calendar-picker-indicator:hover {
  * 只把信号换成 [data-theme]。 */
 [data-theme="dark"] input[type="date"]::-webkit-calendar-picker-indicator {
   filter: invert(1);
-}
-
-:root[data-theme][data-theme] {
-  /* Fixed action semantics. User-selected --accent-* is intentionally absent. */
-  --mantine-color-portal-brand-light-color: var(--brand-text);
-  --mantine-color-portal-brand-text: var(--brand-text);
-  --mantine-color-portal-brand-filled: var(--brand-fill);
-  --mantine-color-portal-brand-filled-hover: var(--brand-fill-hover);
 }

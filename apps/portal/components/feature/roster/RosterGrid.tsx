@@ -1,17 +1,10 @@
 import type { MemberProfile, User, UserBadge } from "@guild/shared";
-import { StaggerList } from "@portal/components/effects";
 import { useVirtualizer } from "@tanstack/react-virtual";
-import { motion } from "motion/react";
-import { useMemo, useRef, type FocusEvent, type PointerEvent } from "react";
+import { useEffect, useMemo, useRef, useState, type FocusEvent, type PointerEvent } from "react";
 import { MemberCard } from "../../shared/MemberCard";
 import { resolveMediaUrl } from "../../../utils/media";
 
 type RosterEntry = { user: User; profile: MemberProfile; badges?: UserBadge[] };
-
-const rosterCardVariants = {
-  hidden: { opacity: 0, y: 8 },
-  visible: { opacity: 1, y: 0 },
-} as const;
 
 function chunkEntries(entries: RosterEntry[], columns: number): RosterEntry[][] {
   if (columns <= 1) return entries.map((entry) => [entry]);
@@ -22,11 +15,21 @@ function chunkEntries(entries: RosterEntry[], columns: number): RosterEntry[][] 
   return rows;
 }
 
+function resolveVirtualColumnCount(containerWidth: number): number {
+  if (typeof window === "undefined" || window.innerWidth <= 575) return 1;
+
+  const compactCards = window.innerWidth <= 767;
+  const cardMinimum = compactCards ? 150 : 200;
+  const horizontalPadding = compactCards ? 24 : 32;
+  const gap = 8;
+  const availableWidth = Math.max(containerWidth - horizontalPadding, cardMinimum);
+
+  return Math.max(1, Math.floor((availableWidth + gap) / (cardMinimum + gap)));
+}
+
 type Props = {
   rows: RosterEntry[];
   shouldVirtualize: boolean;
-  columnCount: number;
-  staggerKey: string;
   ariaLabel: string;
   onCardClick: (entry: RosterEntry) => void;
   onCardMouseEnter: (entry: RosterEntry) => void;
@@ -38,8 +41,6 @@ type Props = {
 export function RosterGrid({
   rows,
   shouldVirtualize,
-  columnCount,
-  staggerKey,
   ariaLabel,
   onCardClick,
   onCardMouseEnter,
@@ -48,7 +49,30 @@ export function RosterGrid({
   onCardBlur,
 }: Props) {
   const virtualScrollRef = useRef<HTMLDivElement | null>(null);
+  const [virtualContainerWidth, setVirtualContainerWidth] = useState(() =>
+    typeof window === "undefined" ? 0 : window.innerWidth,
+  );
+  const columnCount = resolveVirtualColumnCount(virtualContainerWidth);
   const rowChunks = useMemo(() => chunkEntries(rows, columnCount), [rows, columnCount]);
+
+  useEffect(() => {
+    if (!shouldVirtualize) return;
+
+    const scrollElement = virtualScrollRef.current;
+    if (!scrollElement) return;
+
+    const measureWidth = () => {
+      const nextWidth = Math.round(scrollElement.getBoundingClientRect().width);
+      if (nextWidth > 0) setVirtualContainerWidth(nextWidth);
+    };
+
+    measureWidth();
+    if (typeof ResizeObserver === "undefined") return;
+
+    const observer = new ResizeObserver(measureWidth);
+    observer.observe(scrollElement);
+    return () => observer.disconnect();
+  }, [shouldVirtualize]);
   const handlePointerEnter = (event: PointerEvent<HTMLDivElement>, entry: RosterEntry) => {
     if (event.pointerType === "mouse") onCardMouseEnter(entry);
   };
@@ -117,9 +141,9 @@ export function RosterGrid({
 
   return (
     <div className="roster-grid-region" role="list" aria-label={ariaLabel}>
-      <StaggerList className="roster-card-grid" staggerMs={30} key={staggerKey}>
+      <div className="roster-card-grid">
         {rows.map((entry) => (
-          <motion.div key={entry.user.id} role="listitem" variants={rosterCardVariants} className="roster-card-cell">
+          <div key={entry.user.id} role="listitem" className="roster-card-cell">
             <div
               className="roster-card-interaction"
               onPointerEnter={(event) => handlePointerEnter(event, entry)}
@@ -135,9 +159,9 @@ export function RosterGrid({
                 onClick={() => onCardClick(entry)}
               />
             </div>
-          </motion.div>
+          </div>
         ))}
-      </StaggerList>
+      </div>
     </div>
   );
 }

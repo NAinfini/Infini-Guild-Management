@@ -15,30 +15,21 @@ import {
   verticalListSortingStrategy,
 } from "@dnd-kit/sortable";
 import { CLASS_ICON_FILE_ACCEPT, CLASS_VECTOR_ICON_IDS, type ClassCatalogItem } from "@guild/shared";
-import {
-  ActionIcon,
-  Badge,
-  Button,
-  ColorInput,
-  FileButton,
-  Group,
-  Progress,
-  ScrollArea,
-  SegmentedControl,
-  Skeleton,
-  Stack,
-  Text,
-  TextInput,
-  Tooltip,
-  UnstyledButton,
-} from "@mantine/core";
+import { Badge } from "@portal/components/ui/badge";
+import { Button } from "@portal/components/ui/button";
+import { Input } from "@portal/components/ui/input";
+import { Label } from "@portal/components/ui/label";
+import { Progress } from "@portal/components/ui/progress";
+import { ScrollArea } from "@portal/components/ui/scroll-area";
+import { Skeleton } from "@portal/components/ui/skeleton";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@portal/components/ui/tooltip";
+import { PhotoIcon, PlusIcon, SaveIcon, TrashIcon, UploadIcon } from "@portal/components/icons";
 import { useConfirmDialog } from "@portal/hooks/useConfirmDialog";
 import { useAdminClassesController } from "@portal/hooks/useAdminClassesController";
-import { PhotoIcon, PlusIcon, SaveIcon, TrashIcon, UploadIcon } from "@portal/components/icons";
-import { IconGripVertical } from "@tabler/icons-react";
 import { verticalDragTransform } from "@portal/utils/sortable-transform";
-import type { CSSProperties } from "react";
-import { useEffect, useMemo } from "react";
+import { IconGripVertical } from "@tabler/icons-react";
+import type { CSSProperties, ReactNode } from "react";
+import { useEffect, useMemo, useRef } from "react";
 import { useTranslation } from "react-i18next";
 import { ClassIcon, CLASS_VECTOR_ICON_COMPONENTS } from "../../shared/ClassIcon";
 import { EmptyState } from "../../shared/EmptyState";
@@ -55,10 +46,20 @@ const COLOR_SWATCHES = [
   "#8594A8",
 ];
 
-function LocalImagePreview({ file, label }: { file: File; label: string }) {
+const isHexColor = (value: string) => /^#[0-9A-Fa-f]{6}$/.test(value);
+
+function LocalImagePreview({
+  file,
+  label,
+  className = "admin-classes__local-preview",
+}: {
+  file: File;
+  label: string;
+  className?: string;
+}) {
   const url = useMemo(() => URL.createObjectURL(file), [file]);
   useEffect(() => () => URL.revokeObjectURL(url), [url]);
-  return <img src={url} alt={label} className="admin-classes__local-preview" />;
+  return <img src={url} alt={label} className={className} />;
 }
 
 /*
@@ -66,7 +67,7 @@ function LocalImagePreview({ file, label }: { file: File; label: string }) {
  *
  * 手柄单独拆出来，而不是把整行做成可拖：整行可拖的话，点一下想编辑、指针却动了
  * 两像素，就会被判成一次拖拽，编辑器打不开。手柄本身是 <button>，所以不能塞进
- * 那个 UnstyledButton 里（按钮不能嵌套按钮），行外层因此多了一层 div。
+ * 那个编辑按钮里（按钮不能嵌套按钮），行外层因此多了一层 div。
  */
 function SortableClassRow({
   item,
@@ -101,20 +102,21 @@ function SortableClassRow({
       style={style}
       className={`admin-md__row ${active ? "admin-md__row--active" : ""}`}
     >
-      <UnstyledButton
+      <button
+        type="button"
         className={`admin-md__item ${active ? "admin-md__item--active" : ""}`}
         onClick={onOpen}
       >
         <span className="admin-md__item-main">
           <ClassIcon item={item} size={22} label={item.label} />
-          <Text size="sm" fw={500} truncate>{item.label}</Text>
+          <span className="admin-md__item-label">{item.label}</span>
         </span>
         <span className="admin-md__item-meta">
-          <Badge size="xs" variant="light" color={item.icon_type === "image" ? "violet" : "gray"}>
+          <Badge variant={item.icon_type === "image" ? "secondary" : "outline"}>
             {item.icon_type === "image" ? t("classes.source.image") : t("classes.source.vector")}
           </Badge>
         </span>
-      </UnstyledButton>
+      </button>
       <button
         type="button"
         ref={setActivatorNodeRef}
@@ -130,11 +132,12 @@ function SortableClassRow({
   );
 }
 
-export function AdminClassesSection() {
+export function AdminClassesSection({ masterNavigation }: { masterNavigation?: ReactNode }) {
   const { t } = useTranslation("admin");
   const { t: tc } = useTranslation("common");
   const confirm = useConfirmDialog();
   const controller = useAdminClassesController();
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const { draft } = controller;
   const items = controller.query.data;
   const existing = draft.id
@@ -142,12 +145,13 @@ export function AdminClassesSection() {
     : null;
   const canSave =
     draft.label.trim().length > 0
-    && /^#[0-9A-Fa-f]{6}$/.test(draft.color)
+    && isHexColor(draft.color)
     && (
       draft.iconMode === "vector"
       || Boolean(draft.imageFile)
       || existing?.icon_type === "image"
-    );
+    )
+    && controller.isDirty;
 
   /* 键盘也要能排：只有指针传感器的话，手柄能聚焦却按不动，那是个假的可访问控件。 */
   const sensors = useSensors(
@@ -171,38 +175,42 @@ export function AdminClassesSection() {
     if (accepted) await controller.remove(item.id);
   };
 
+  const setColor = (color: string) => {
+    controller.setDraft((current) => ({ ...current, color }));
+  };
+
   return (
     <div className="admin-panel admin-md">
-      {/* ── 左栏：职业清单 ── */}
       <div className="admin-md__master">
         <div className="admin-md__master-head">
-          <Group gap={8} justify="space-between" wrap="nowrap">
-            <div style={{ minWidth: 0 }}>
-              <Text fw={700} size="sm">{t("classes.title")}</Text>
-              <Text size="xs" c="dimmed">{t("classes.count", { count: items?.length ?? 0 })}</Text>
+          <div className="admin-md__master-head-row">
+            <div className="admin-md__master-copy">
+              {masterNavigation ?? <span className="admin-md__master-title">{t("classes.title")}</span>}
+              <span className="admin-md__count">{t("classes.count", { count: items?.length ?? 0 })}</span>
             </div>
-            <ActionIcon
-              size="sm"
-              variant="filled"
-              color="portal-brand"
-              onClick={controller.openCreate}
+            <Button
+              type="button"
+              size="icon-sm"
               aria-label={t("classes.action.create")}
+              onClick={controller.openCreate}
             >
               <PlusIcon size={14} />
-            </ActionIcon>
-          </Group>
+            </Button>
+          </div>
         </div>
 
-        <ScrollArea className="admin-md__list" type="auto" scrollbarSize={6}>
-          <Stack gap={2} p={6}>
+        <ScrollArea className="admin-md__list">
+          <div className="admin-md__list-stack">
             {controller.query.isLoading ? (
-              Array.from({ length: 6 }).map((_, index) => <Skeleton key={index} height={40} radius="md" />)
+              Array.from({ length: 6 }).map((_, index) => (
+                <Skeleton key={index} className="admin-md__skeleton" />
+              ))
             ) : controller.query.isError ? (
               <EmptyState
                 status="error"
                 title={tc("loadError")}
                 actions={(
-                  <Button variant="default" size="sm" onClick={() => void controller.query.refetch()}>
+                  <Button variant="outline" size="sm" onClick={() => void controller.query.refetch()}>
                     {tc("action.retry")}
                   </Button>
                 )}
@@ -244,7 +252,7 @@ export function AdminClassesSection() {
                 </SortableContext>
               </DndContext>
             )}
-          </Stack>
+          </div>
         </ScrollArea>
       </div>
 
@@ -252,32 +260,42 @@ export function AdminClassesSection() {
         {controller.opened ? (
           <>
             <div className="admin-md__detail-head">
-              <Group justify="space-between" align="center" wrap="nowrap">
-                <Text fw={700} size="sm">
-                  {draft.id ? t("classes.modal.editTitle") : t("classes.modal.createTitle")}
-                </Text>
+              <div className="admin-md__detail-head-row">
+                <div className="admin-md__detail-heading">
+                  <span className="admin-md__detail-title">
+                    {draft.id ? t("classes.modal.editTitle") : t("classes.modal.createTitle")}
+                  </span>
+                  {controller.isDirty ? <Badge variant="outline" className="admin-md__dirty">{t("classes.dirty")}</Badge> : null}
+                </div>
                 {existing ? (
-                  <Tooltip label={t("classes.action.delete")} withArrow>
-                    <ActionIcon
-                      size={44}
-                      variant="subtle"
-                      color="red"
-                      onClick={() => void handleDelete(existing)}
-                      loading={controller.deletePending}
-                      aria-label={t("classes.action.delete")}
+                  <Tooltip>
+                    <TooltipTrigger
+                      render={(
+                        <Button
+                          type="button"
+                          variant="destructive"
+                          size="icon-lg"
+                          className="admin-md__delete-action"
+                          aria-label={t("classes.action.delete")}
+                          onClick={() => void handleDelete(existing)}
+                          loading={controller.deletePending}
+                          disabled={controller.deletePending}
+                        />
+                      )}
                     >
                       <TrashIcon size={16} />
-                    </ActionIcon>
+                    </TooltipTrigger>
+                    <TooltipContent>{t("classes.action.delete")}</TooltipContent>
                   </Tooltip>
                 ) : null}
-              </Group>
+              </div>
             </div>
 
-            <ScrollArea className="admin-md__detail-body" type="auto" scrollbarSize={6}>
+            <ScrollArea className="admin-md__detail-body">
               <div className="admin-md__detail-pad">
                 <div className="admin-classes__editor">
                   <aside className="admin-classes__preview-panel">
-                    <Text size="xs" tt="uppercase" fw={800} c="dimmed">{t("classes.preview")}</Text>
+                    <span className="admin-classes__preview-label">{t("classes.preview")}</span>
                     <div className="admin-classes__preview-icon">
                       {draft.iconMode === "image" && draft.imageFile ? (
                         <LocalImagePreview file={draft.imageFile} label={draft.label || t("classes.preview")} />
@@ -295,73 +313,117 @@ export function AdminClassesSection() {
                         />
                       )}
                     </div>
-                    <Text fw={800} ta="center">{draft.label.trim() || t("classes.untitled")}</Text>
-                    <Text size="xs" c="dimmed" ta="center">{draft.color.toUpperCase()}</Text>
+                    <span className="admin-classes__preview-name">
+                      {draft.label.trim() || t("classes.untitled")}
+                    </span>
+                    <span className="admin-classes__preview-color">{draft.color.toUpperCase()}</span>
                   </aside>
 
-                  <Stack gap={16} className="admin-classes__form">
-                    <TextInput
-                      label={t("classes.field.label")}
-                      description={t("classes.field.labelDescription")}
-                      value={draft.label}
-                      maxLength={80}
-                      onChange={(event) => {
-                        /* 先当场取值：setDraft 的 updater 是 React 之后才调用的，
-                           那时 event.currentTarget 已经是 null，在里面读 .value 会整页崩掉。 */
-                        const { value } = event.currentTarget;
-                        controller.setDraft((current) => ({ ...current, label: value }));
-                      }}
-                      required
-                    />
-                    {/* 排序只由左栏拖拽更新，编辑表单不写 sort_order。 */}
-                    <ColorInput
-                      className="admin-classes__color-field"
-                      label={t("classes.field.color")}
-                      value={draft.color}
-                      swatches={COLOR_SWATCHES}
-                      format="hex"
-                      withPicker
-                      eyeDropperButtonProps={{ "aria-label": t("classes.aria.pickScreenColor") }}
-                      onChange={(color) => controller.setDraft((current) => ({ ...current, color }))}
-                    />
-
-
-                    <div>
-                      <Text size="sm" fw={600} mb={6}>{t("classes.field.source")}</Text>
-                      {/* 图标来源选项按内容宽度呈现为一组互斥控件。 */}
-                      <SegmentedControl
-                        value={draft.iconMode}
-                        data={[
-                          { value: "vector", label: t("classes.source.vector") },
-                          { value: "image", label: t("classes.source.image") },
-                        ]}
-                        onChange={(value) => controller.setDraft((current) => ({
-                          ...current,
-                          iconMode: value as "vector" | "image",
-                        }))}
+                  <div className="admin-classes__form">
+                    <div className="admin-md__field">
+                      <Label htmlFor="class-label">{t("classes.field.label")}</Label>
+                      <Input
+                        id="class-label"
+                        value={draft.label}
+                        maxLength={80}
+                        onChange={(event) => {
+                          /* 先当场取值：setDraft 的 updater 是 React 之后才调用的，
+                             那时 event.currentTarget 已经是 null，在里面读 .value 会整页崩掉。 */
+                          const { value } = event.currentTarget;
+                          controller.setDraft((current) => ({ ...current, label: value }));
+                        }}
+                        required
                       />
+                      <p className="admin-md__field-description">{t("classes.field.labelDescription")}</p>
+                    </div>
+
+                    {/* 排序只由左栏拖拽更新，编辑表单不写 sort_order。 */}
+                    <div className="admin-md__field admin-classes__color-field">
+                      <Label htmlFor="class-color-picker">{t("classes.field.color")}</Label>
+                      <div className="admin-classes__color-controls">
+                        <Input
+                          id="class-color-picker"
+                          type="color"
+                          className="admin-classes__color-picker"
+                          aria-label={t("classes.aria.pickScreenColor")}
+                          value={isHexColor(draft.color) ? draft.color : COLOR_SWATCHES[0]}
+                          onChange={(event) => setColor(event.currentTarget.value.toUpperCase())}
+                        />
+                        <Input
+                          type="text"
+                          inputMode="text"
+                          className="admin-classes__color-value"
+                          value={draft.color}
+                          maxLength={7}
+                          pattern="#[0-9A-Fa-f]{6}"
+                          aria-label={t("classes.field.color")}
+                          onChange={(event) => setColor(event.currentTarget.value)}
+                        />
+                      </div>
+                      <div className="admin-classes__color-swatches" role="group" aria-label={t("classes.field.color")}>
+                        {COLOR_SWATCHES.map((swatch) => (
+                          <button
+                            key={swatch}
+                            type="button"
+                            className="admin-classes__color-swatch"
+                            style={{ "--class-swatch": swatch } as CSSProperties}
+                            aria-label={swatch}
+                            aria-pressed={draft.color.toUpperCase() === swatch}
+                            onClick={() => setColor(swatch)}
+                          />
+                        ))}
+                      </div>
+                    </div>
+
+                    <div className="admin-md__field">
+                      <span className="admin-md__field-label">{t("classes.field.source")}</span>
+                      <div className="admin-classes__source-options" role="group" aria-label={t("classes.field.source")}>
+                        <Button
+                          type="button"
+                          variant={draft.iconMode === "vector" ? "secondary" : "outline"}
+                          size="sm"
+                          aria-pressed={draft.iconMode === "vector"}
+                          onClick={() => controller.setDraft((current) => ({ ...current, iconMode: "vector" }))}
+                        >
+                          {t("classes.source.vector")}
+                        </Button>
+                        <Button
+                          type="button"
+                          variant={draft.iconMode === "image" ? "secondary" : "outline"}
+                          size="sm"
+                          aria-pressed={draft.iconMode === "image"}
+                          onClick={() => controller.setDraft((current) => ({ ...current, iconMode: "image" }))}
+                        >
+                          {t("classes.source.image")}
+                        </Button>
+                      </div>
                     </div>
 
                     {draft.iconMode === "vector" ? (
-                      <div>
-                        <Text size="sm" fw={600}>{t("classes.field.fallbackIcon")}</Text>
-                        <Text size="xs" c="dimmed" mb={8}>{t("classes.field.fallbackDescription")}</Text>
+                      <div className="admin-classes__icon-library">
+                        <span className="admin-md__field-label">{t("classes.field.fallbackIcon")}</span>
+                        <p className="admin-md__field-description">{t("classes.field.fallbackDescription")}</p>
                         <div className="admin-classes__icon-grid" role="group" aria-label={t("classes.iconLibrary")}>
                           {CLASS_VECTOR_ICON_IDS.map((iconId) => {
                             const Icon = CLASS_VECTOR_ICON_COMPONENTS[iconId];
                             const selected = draft.vectorIcon === iconId;
                             const iconLabel = t(`classes.icon.${iconId}`, { defaultValue: iconId });
                             return (
-                              <Tooltip key={iconId} label={iconLabel} withArrow>
-                                <button
-                                  type="button"
-                                  className={`admin-classes__icon-option${selected ? " admin-classes__icon-option--selected" : ""}`}
-                                  aria-pressed={selected}
-                                  aria-label={t("classes.aria.selectIcon", { icon: iconLabel })}
-                                  onClick={() => controller.setDraft((current) => ({ ...current, vectorIcon: iconId }))}
+                              <Tooltip key={iconId}>
+                                <TooltipTrigger
+                                  render={(
+                                    <button
+                                      type="button"
+                                      className={`admin-classes__icon-option${selected ? " admin-classes__icon-option--selected" : ""}`}
+                                      aria-pressed={selected}
+                                      aria-label={t("classes.aria.selectIcon", { icon: iconLabel })}
+                                      onClick={() => controller.setDraft((current) => ({ ...current, vectorIcon: iconId }))}
+                                    />
+                                  )}
                                 >
                                   <Icon size={20} />
-                                </button>
+                                </TooltipTrigger>
+                                <TooltipContent>{iconLabel}</TooltipContent>
                               </Tooltip>
                             );
                           })}
@@ -371,35 +433,60 @@ export function AdminClassesSection() {
 
                     {draft.iconMode === "image" ? (
                       <div className="admin-classes__upload-box">
-                        <Group justify="space-between" align="center" gap={12}>
-                          <div>
-                            <Text size="sm" fw={700}>{t("classes.upload.title")}</Text>
-                            <Text size="xs" c="dimmed">{t("classes.upload.description")}</Text>
+                        <div className="admin-classes__upload-head">
+                          <div className="admin-classes__upload-copy">
+                            <span className="admin-classes__upload-title">{t("classes.upload.title")}</span>
+                            <span className="admin-md__muted">{t("classes.upload.description")}</span>
                           </div>
-                          <FileButton
+                          <input
+                            ref={fileInputRef}
+                            type="file"
                             accept={CLASS_ICON_FILE_ACCEPT}
-                            onChange={(file) => controller.setDraft((current) => ({ ...current, imageFile: file }))}
+                            className="admin-classes__file-input"
+                            onChange={(event) => {
+                              const file = event.currentTarget.files?.[0] ?? null;
+                              controller.setDraft((current) => ({ ...current, imageFile: file }));
+                            }}
+                          />
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            onClick={() => fileInputRef.current?.click()}
                           >
-                            {(props) => (
-                              <Button {...props} variant="default" leftSection={<UploadIcon size={16} />}>
-                                {draft.imageFile ? t("classes.upload.replace") : t("classes.upload.choose")}
-                              </Button>
-                            )}
-                          </FileButton>
-                        </Group>
+                            <UploadIcon size={16} />
+                            {draft.imageFile ? t("classes.upload.replace") : t("classes.upload.choose")}
+                          </Button>
+                        </div>
                         {draft.imageFile ? (
-                          <Group gap={8} mt={10}>
-                            <PhotoIcon size={15} />
-                            <Text size="xs" truncate>{draft.imageFile.name}</Text>
-                            <Text size="xs" c="dimmed">{Math.ceil(draft.imageFile.size / 1024)} KiB</Text>
-                          </Group>
+                          <div className="admin-classes__asset-summary">
+                            <LocalImagePreview
+                              file={draft.imageFile}
+                              label={draft.label || t("classes.preview")}
+                              className="admin-classes__asset-thumb"
+                            />
+                            <div className="admin-classes__asset-copy">
+                              <span className="admin-classes__asset-name">{draft.imageFile.name}</span>
+                              <span className="admin-classes__asset-meta">
+                                <PhotoIcon size={13} />
+                                {Math.ceil(draft.imageFile.size / 1024)} KiB · {draft.imageFile.type || "image"}
+                              </span>
+                            </div>
+                          </div>
                         ) : existing?.icon_type === "image" ? (
-                          <Text size="xs" c="dimmed" mt={10}>{t("classes.upload.keepExisting")}</Text>
+                          <div className="admin-classes__asset-summary">
+                            <ClassIcon item={existing} size={40} label={existing.label} />
+                            <div className="admin-classes__asset-copy">
+                              <span className="admin-classes__asset-name">{t("classes.upload.currentImage")}</span>
+                              <span className="admin-classes__asset-meta">
+                                {t("classes.upload.assetId", { id: existing.icon_media_id })}
+                              </span>
+                            </div>
+                          </div>
                         ) : null}
                       </div>
                     ) : null}
-
-                  </Stack>
+                  </div>
                 </div>
               </div>
             </ScrollArea>
@@ -409,20 +496,19 @@ export function AdminClassesSection() {
                 <Progress
                   className="admin-classes__save-progress"
                   value={controller.uploadProgress}
-                  animated
                   aria-label={t("classes.upload.progress")}
                 />
               ) : null}
-              <Group justify="flex-end" gap={8} ml="auto">
+              <div className="admin-md__detail-actions">
                 <Button
-                  leftSection={<SaveIcon size={16} />}
                   onClick={controller.save}
                   loading={controller.savePending}
                   disabled={!canSave}
                 >
+                  <SaveIcon size={16} />
                   {t("classes.action.save")}
                 </Button>
-              </Group>
+              </div>
             </div>
           </>
         ) : (

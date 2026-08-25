@@ -4,6 +4,13 @@
   opacity: 0.72;
 }
 
+.sandbox__dialog {
+  width: min(70rem, calc(100vw - 2rem));
+  max-width: none;
+  max-height: calc(100dvh - 2rem);
+  overflow-y: auto;
+}
+
 .sandbox {
   display: flex;
   flex-direction: column;
@@ -54,10 +61,13 @@
 }
 
 .sandbox__section-label {
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
   display: flex;
   align-items: center;
+  color: var(--text-muted);
+  font-size: var(--text-meta);
+  font-weight: var(--fw-strong);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
 }
 
 .sandbox__title-section {
@@ -79,6 +89,57 @@
   min-width: 36px;
   text-align: right;
   font-variant-numeric: tabular-nums;
+}
+
+.sandbox__field-label,
+.sandbox__slider-label,
+.sandbox__preview-meta-text {
+  color: var(--text-muted);
+  font-size: var(--text-meta);
+}
+
+.sandbox__opacity-value,
+.sandbox__slider-value {
+  font-size: var(--text-meta);
+  font-weight: var(--fw-medium);
+}
+
+.sandbox__color-picker {
+  display: grid;
+  gap: var(--space-sm);
+}
+
+.sandbox__color-input {
+  width: 100%;
+  height: 3rem;
+  padding: 0.25rem;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-control);
+  background: var(--surface-sunken);
+  cursor: pointer;
+}
+
+.sandbox__swatches {
+  display: grid;
+  grid-template-columns: repeat(8, minmax(1.75rem, 1fr));
+  gap: var(--space-xs);
+}
+
+.sandbox__swatch {
+  aspect-ratio: 1;
+  min-width: 1.75rem;
+  padding: 0;
+  border: 2px solid transparent;
+  border-radius: var(--radius-control);
+  background: var(--swatch-color);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--text-primary) 18%, transparent);
+  cursor: pointer;
+}
+
+.sandbox__swatch[data-active] {
+  border-color: var(--text-primary);
+  outline: 2px solid var(--brand-fill);
+  outline-offset: 2px;
 }
 
 .sandbox__recent {
@@ -252,7 +313,7 @@
   color: color-mix(in srgb, var(--text-primary) 80%, transparent);
 }
 
-.sandbox__override-textarea textarea {
+.sandbox__override-textarea {
   font-family: "SF Mono", "Fira Code", "JetBrains Mono", monospace;
   font-size: 12px;
   min-height: 108px;

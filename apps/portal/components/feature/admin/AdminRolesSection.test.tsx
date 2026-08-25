@@ -1,5 +1,4 @@
 import { PERMISSIONS, type AdminRole, type Permission, type User } from "@guild/shared";
-import { MantineProvider } from "@mantine/core";
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { AdminRolesSection } from "./AdminRolesSection";
@@ -21,7 +20,7 @@ vi.mock("../../../stores/auth", () => ({
     selector({
       user: {
         id: "admin-1",
-        username: "admin",
+        display_name: "admin",
         role: "admin",
         role_name: "Guild Admin",
         role_color: "#ef4444",
@@ -39,6 +38,7 @@ vi.mock("../../../stores/auth", () => ({
 const permissions = {
   "admin.roles.manage": true,
   "admin.siteConfig.manage": true,
+  "admin.importantNotices.manage": true,
   "admin.storage.structure": true,
   "admin.storage.items": true,
   "admin.storage.stock": true,
@@ -89,11 +89,7 @@ function renderRolesSection(
     ...overrides,
   };
 
-  render(
-    <MantineProvider>
-      <AdminRolesSection {...props} />
-    </MantineProvider>,
-  );
+  render(<AdminRolesSection {...props} />);
 
   return props;
 }
@@ -111,7 +107,7 @@ describe("AdminRolesSection storage permissions", () => {
     renderRolesSection();
 
     expect(screen.getByRole("textbox", { name: "roles.field.name" })).toBeEnabled();
-    expect(screen.getByRole("textbox", { name: "roles.field.level" })).toBeEnabled();
+    expect(screen.getByRole("spinbutton", { name: "roles.field.level" })).toBeEnabled();
     const deleteButtons = screen.getAllByRole("button", { name: "roles.delete" });
     expect(deleteButtons).toHaveLength(2);
     expect(deleteButtons.every((button) => button.hasAttribute("disabled"))).toBe(true);
@@ -127,7 +123,7 @@ describe("AdminRolesSection storage permissions", () => {
     });
 
     await waitFor(() => expect(screen.getByRole("textbox", { name: "roles.field.name" })).toBeDisabled());
-    expect(screen.getByRole("textbox", { name: "roles.field.level" })).toBeDisabled();
+    expect(screen.getByRole("spinbutton", { name: "roles.field.level" })).toBeDisabled();
     expect(screen.getAllByRole("button", { name: "roles.delete" }).every((button) => button.hasAttribute("disabled"))).toBe(true);
   });
 
@@ -140,11 +136,12 @@ describe("AdminRolesSection storage permissions", () => {
     expect(screen.getByText("admin.storage.stock")).toBeInTheDocument();
   });
 
-  it("renders site config permission control in the system permission group", () => {
+  it("renders site config and important-notice controls in the system permission group", () => {
     renderRolesSection();
 
     expect(screen.getByText("roles.category.adminSystem")).toBeInTheDocument();
     expect(screen.getByText("admin.siteConfig.manage")).toBeInTheDocument();
+    expect(screen.getByText("admin.importantNotices.manage")).toBeInTheDocument();
     expect(screen.getByText("admin.badges.manage")).toBeInTheDocument();
   });
 

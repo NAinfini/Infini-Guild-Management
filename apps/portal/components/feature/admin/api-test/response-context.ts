@@ -69,7 +69,7 @@ export function captureContextFromResponse(
     }
     if (endpoint.path === "/api/admin/users/batch/delete") {
       next.adminCreatedUserId = null;
-      next.adminCreatedUsername = null;
+      next.adminCreatedLoginName = null;
       next.adminCreatedUserPassword = null;
     }
     if (endpoint.path === "/api/users/:id/media/images") {
@@ -126,7 +126,7 @@ export function captureContextFromResponse(
     const user = isRecord(payload.user) ? payload.user : null;
     const profile = isRecord(payload.profile) ? payload.profile : null;
     next.meId = readString(user?.id) ?? next.meId;
-    next.meUsername = readString(user?.username) ?? next.meUsername;
+    next.meDisplayName = readString(user?.display_name) ?? next.meDisplayName;
     next.meRoleLevel = typeof user?.role_level === "number" ? user.role_level : next.meRoleLevel;
     if (isRecord(user?.permissions)) {
       next.mePermissions = Object.fromEntries(
@@ -167,7 +167,6 @@ export function captureContextFromResponse(
   if (endpoint.path === "/api/auth/register/:inviteCode") {
     const userId = readString(payload.user_id) ?? readString((isRecord(payload.user) ? payload.user : null)?.id);
     next.registeredUserId = userId ?? next.registeredUserId;
-    next.registeredUsername = readString((isRecord(payload.user) ? payload.user : null)?.username) ?? next.registeredUsername;
     return next;
   }
 
@@ -414,7 +413,7 @@ export function captureContextFromResponse(
 
   if (endpoint.path === "/api/admin/users") {
     next.adminCreatedUserId = readString(payload.user_id) ?? next.adminCreatedUserId;
-    next.adminCreatedUsername = readString(payload.username) ?? next.adminCreatedUsername;
+    next.adminCreatedLoginName = readString(payload.temporary_login_name) ?? next.adminCreatedLoginName;
     next.adminCreatedUserPassword = readString(payload.temporary_password) ?? next.adminCreatedUserPassword;
     return next;
   }

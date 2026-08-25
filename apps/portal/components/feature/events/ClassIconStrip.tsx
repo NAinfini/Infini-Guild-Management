@@ -1,5 +1,5 @@
 import type { ClassCatalogItem } from "@guild/shared";
-import { Tooltip } from "@mantine/core";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@portal/components/ui/tooltip";
 import { ClassIcon } from "@portal/components/shared/ClassIcon";
 import { resolveClassCatalogItem } from "@portal/utils/class-catalog";
 
@@ -26,13 +26,14 @@ export function ClassIconStrip({ classIds, catalog, emptyLabel }: ClassIconStrip
   const hiddenCount = Math.max(0, items.length - MAX_VISIBLE);
   const fullList = items.map((item) => item.label).join(", ");
   return (
-    <Tooltip label={fullList} multiline w={260}>
-      <span className="quota-editor__strip" aria-label={fullList} tabIndex={0}>
+    <Tooltip>
+      <TooltipTrigger render={<span className="quota-editor__strip" aria-label={fullList} tabIndex={0} />}>
         {items.slice(0, MAX_VISIBLE).map((item) => (
           <ClassIcon key={item.id} item={item} size={18} />
         ))}
         {hiddenCount > 0 ? <span className="quota-editor__strip-more">+{hiddenCount}</span> : null}
-      </span>
+      </TooltipTrigger>
+      <TooltipContent className="quota-editor__strip-tooltip">{fullList}</TooltipContent>
     </Tooltip>
   );
 }

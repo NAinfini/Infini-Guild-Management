@@ -532,7 +532,7 @@ export class MemberCatalogService {
     return {
       data: page.records,
       next_cursor: page.hasMore && last
-        ? encodeBadgeAssignmentCursor({ username: last.username, userId: last.userId })
+        ? encodeBadgeAssignmentCursor({ display_name: last.display_name, userId: last.userId })
         : null,
     };
   }
@@ -658,9 +658,9 @@ function decodeBadgeAssignmentCursor(value: string): BadgeAssignmentCursor {
     const parsed = JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(
       Uint8Array.from(binary, (character) => character.charCodeAt(0)),
     )) as Partial<BadgeAssignmentCursor>;
-    if (typeof parsed.username !== "string" || !parsed.username || parsed.username.length > 50
+    if (typeof parsed.display_name !== "string" || !parsed.display_name || parsed.display_name.length > 50
       || typeof parsed.userId !== "string" || !parsed.userId || parsed.userId.length > 128) throw new Error();
-    return { username: parsed.username, userId: parsed.userId };
+    return { display_name: parsed.display_name, userId: parsed.userId };
   } catch {
     throw new AppError({ code: "VALIDATION_ERROR", status: 400, message: "Invalid badge assignment cursor" });
   }

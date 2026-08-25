@@ -1,7 +1,7 @@
 import type { APIRequestContext, Locator, Page } from "@playwright/test";
 import { SYSTEM_TEST_CONTENT_MARKER } from "@guild/shared/config/system-test";
 import { expect, readJson, test } from "../../support/test";
-import { confirmDialog, dialogTitled, expectNoDialog } from "../../support/ui";
+import { confirmDialog, expectNoDialog, field } from "../../support/ui";
 
 /*
  * 活动卡片上的操作：管理菜单（编辑/复制/置顶/锁定/归档/删除）、复制点名、报名与退出。
@@ -39,14 +39,14 @@ type ServerEvent = {
 let stamp: number;
 let title: string;
 let eventId: string;
-let viewer: { id: string; username: string };
+let viewer: { id: string; display_name: string };
 
 test.beforeEach(async ({ page, api }) => {
   stamp = Date.now();
   title = `${SYSTEM_TEST_CONTENT_MARKER} Card ${stamp}`;
 
   const session = await readJson(await api.get("/api/auth/me"), "回读当前会话") as {
-    user: { id: string; username: string };
+    user: { id: string; display_name: string };
   };
   viewer = session.user;
 
@@ -109,14 +109,15 @@ function statusIcon(page: Page, label: string): Locator {
   return card(page).getByRole("img", { name: label, exact: true });
 }
 
-test("管理菜单：编辑打开编辑弹窗并预填当前标题，这一步不该产生请求", async ({ page, flow }) => {
+test("管理菜单：编辑进入真实路由并预填当前标题", async ({ page }) => {
   await openMenu(page);
-  await flow.clickWithoutApi(menuItem(page, "Edit"));
+  await menuItem(page, "Edit").click();
 
-  const modal = dialogTitled(page, "Edit Event");
-  await expect(modal).toBeVisible();
+  await expect(page).toHaveURL(new RegExp(`/events/${eventId}/edit$`));
+  const editor = page.locator(".event-editor-page");
+  await expect(editor).toBeVisible();
   await expect(
-    modal.getByLabel(/^Event title\s*\*?$/),
+    field(editor, "Event title"),
     "编辑态必须带出这条活动的现值，否则保存会把别的字段覆盖成空",
   ).toHaveValue(title);
 });
@@ -170,7 +171,7 @@ test("复制活动：新建一条「(Copy)」并顺延一周，原活动分毫�
   expect(duplicated.title, "副本要能一眼认出来").toBe(`${title} (Copy)`);
   expect(
     Date.parse(duplicated.start_at) - Date.parse(original.start_at),
-    "副本默认顺延一周（useEventsMutations.duplicateEvent）",
+    "副本默认顺延一周",
   ).toBe(7 * 24 * 60 * 60_000);
 
   const after = await readEvent(api, eventId);
@@ -255,7 +256,7 @@ test("复制点名：没人报名时按不动，报名后剪贴板里拿到真�
    * 那句提示在 clipboard.copy 之后无条件执行，内容拼错了它照样弹。
    */
   const clipboardText = await page.evaluate(() => navigator.clipboard.readText());
-  expect(clipboardText, "点名文本要带上活动名和参与者").toBe(`${title}: @${viewer.username}`);
+  expect(clipboardText, "点名文本要带上活动名和参与者").toBe(`${title}: @${viewer.display_name}`);
 
   const detail = await readEvent(api, eventId);
   expect(detail.participants.map((entry) => entry.user_id)).toEqual([viewer.id]);

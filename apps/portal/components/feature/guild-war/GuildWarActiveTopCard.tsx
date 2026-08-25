@@ -1,4 +1,15 @@
-import { ActionIcon, Button, Group, Paper, Select, Text, TextInput, Tooltip } from "@mantine/core";
+import { Button } from "@portal/components/ui/button";
+import { Card } from "@portal/components/ui/card";
+import { Input } from "@portal/components/ui/input";
+import { Label } from "@portal/components/ui/label";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@portal/components/ui/select";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@portal/components/ui/tooltip";
 import { ChevronLeftIcon, ChevronRightIcon, FlagIcon, PlusIcon } from "@portal/components/icons";
 import { useTranslation } from "react-i18next";
 
@@ -45,25 +56,31 @@ export function GuildWarActiveTopCard({
 }: GuildWarActiveTopCardProps) {
   const { t } = useTranslation("guild-war");
   return (
-    <Paper withBorder radius="md" p="var(--card-padding)" className="guild-war-active-top-card">
+    <Card className="guild-war-active-top-card">
       <div className="guild-war-active-top-card__filters">
         <div className="guild-war-active-top-card__event-slot">
-          <Text component="label" size="xs" fw={600} c="dimmed">
+          <Label className="text-xs text-muted-foreground">
             {t("active.event")}
-          </Text>
+          </Label>
           <Select
-            className="guild-war-active-top-card__event"
             value={selectedEventId ?? null}
-            placeholder={eventPlaceholder}
-            aria-label={t("active.aria.selectEvent")}
-            onChange={(value) => onSelectedEventIdChange(value ?? "")}
-            data={eventOptions}
+            items={eventOptions}
+            onValueChange={(value) => onSelectedEventIdChange(value ?? "")}
             disabled={saveTeamsPending}
-          />
+          >
+            <SelectTrigger className="guild-war-active-top-card__event" aria-label={t("active.aria.selectEvent")}>
+              <SelectValue placeholder={eventPlaceholder} />
+            </SelectTrigger>
+            <SelectContent align="start">
+              {eventOptions.map((option) => (
+                <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
         </div>
 
         <div className="guild-war-active-top-card__search-slot">
-          <TextInput
+          <Input
             className="guild-war-active-top-card__search"
             value={activeSearch}
             onChange={(event) => onActiveSearchChange(event.currentTarget.value)}
@@ -71,55 +88,53 @@ export function GuildWarActiveTopCard({
             aria-label={t("active.aria.searchMembers")}
           />
           {activeSearch && hasMatches ? (
-            <Group gap={4} wrap="nowrap" className="guild-war-active-top-card__matches">
-              <ActionIcon variant="subtle" size="sm" onClick={onPrevMatch} disabled={!onPrevMatch} aria-label={t("active.aria.prevMatch")}>
+            <div className="guild-war-active-top-card__matches">
+              <Button type="button" variant="ghost" size="icon-sm" onClick={onPrevMatch} disabled={!onPrevMatch} aria-label={t("active.aria.prevMatch")}>
                 <ChevronLeftIcon size={14} />
-              </ActionIcon>
-              <Text size="sm" c="dimmed" className="guild-war-active-top-card__match-label">{matchLabel}</Text>
-              <ActionIcon variant="subtle" size="sm" onClick={onNextMatch} disabled={!onNextMatch} aria-label={t("active.aria.nextMatch")}>
+              </Button>
+              <span className="guild-war-active-top-card__match-label">{matchLabel}</span>
+              <Button type="button" variant="ghost" size="icon-sm" onClick={onNextMatch} disabled={!onNextMatch} aria-label={t("active.aria.nextMatch")}>
                 <ChevronRightIcon size={14} />
-              </ActionIcon>
-            </Group>
+              </Button>
+            </div>
           ) : null}
         </div>
 
         {canManage ? (
-          <Group gap={8} wrap="nowrap" align="center" className="guild-war-active-top-card__actions">
+          <div className="guild-war-active-top-card__actions">
             {onAddTeam ? (
               <Button
                 size="sm"
-                variant="default"
-                leftSection={<PlusIcon size={16} />}
+                variant="outline"
                 onClick={onAddTeam}
               >
+                <PlusIcon size={16} data-icon="inline-start" />
                 {t("active.addTeam")}
               </Button>
             ) : null}
             {onConcludeWar ? (
               <div className="guild-war-active-top-card__danger">
-                <Tooltip
-                  label={concludeWarDisabledReason}
-                  disabled={!concludeWarDisabled || !concludeWarDisabledReason}
-                  withArrow
-                >
-                  <span>
+                <Tooltip>
+                  <TooltipTrigger render={<span />}>
                     <Button
                       size="sm"
-                      color="red"
-                      variant="light"
-                      leftSection={<FlagIcon size={16} />}
+                      variant="destructive"
                       onClick={onConcludeWar}
                       disabled={concludeWarDisabled}
                     >
+                      <FlagIcon size={16} data-icon="inline-start" />
                       {concludeWarLabel ?? t("active.concludeWar")}
                     </Button>
-                  </span>
+                  </TooltipTrigger>
+                  {concludeWarDisabled && concludeWarDisabledReason ? (
+                    <TooltipContent>{concludeWarDisabledReason}</TooltipContent>
+                  ) : null}
                 </Tooltip>
               </div>
             ) : null}
-          </Group>
+          </div>
         ) : null}
       </div>
-    </Paper>
+    </Card>
   );
 }

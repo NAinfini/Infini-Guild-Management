@@ -1,4 +1,3 @@
-import { MantineProvider } from "@mantine/core";
 import type { QueryClient } from "@tanstack/react-query";
 import { screen, waitFor } from "@testing-library/react";
 import { renderWithQueryClient as render } from "@portal/tests/query-harness";
@@ -6,7 +5,7 @@ import userEvent from "@testing-library/user-event";
 import type { ReactNode } from "react";
 import { createElement, forwardRef, useState } from "react";
 import { describe, expect, it, vi } from "vitest";
-import { EventFormModal } from "../../components/feature/events/EventFormModal";
+import { EventFormContent } from "../../components/feature/events/EventFormContent";
 import { AttachmentService } from "../../services/AttachmentService";
 import { EventService } from "../../services/EventService";
 
@@ -43,8 +42,8 @@ vi.mock("react-i18next", () => ({
   useTranslation: () => ({
     t: (key: string, params?: Record<string, unknown>) => {
       const labels: Record<string, string> = {
-        "modal.createTitle": "Create Event",
-        "modal.editTitle": "Edit Event",
+        "editor.createTitle": "Create Event",
+        "editor.editTitle": "Edit Event",
         "field.title": "Title",
         "filter.type": "Type",
         "field.start": "Start",
@@ -112,9 +111,7 @@ function EventEditHarness({
   ]);
 
   return (
-    <MantineProvider>
-      <EventFormModal
-        open
+      <EventFormContent
         mode="edit"
         canManage
         title="Guild Review"
@@ -168,7 +165,6 @@ function EventEditHarness({
           });
         }}
       />
-    </MantineProvider>
   );
 }
 

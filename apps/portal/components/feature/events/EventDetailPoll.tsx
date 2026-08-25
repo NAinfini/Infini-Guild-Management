@@ -1,5 +1,6 @@
 import type { Event, MemberProfile, User } from "@guild/shared";
-import { Button, Group, Progress, Stack, Text } from "@mantine/core";
+import { Button } from "@portal/components/ui/button";
+import { Progress } from "@portal/components/ui/progress";
 import { ChartBarIcon, CheckIcon } from "@portal/components/icons";
 import { MemberRoleAvatar } from "@portal/components/shared/MemberRoleAvatar";
 import { useEffect, useState, type KeyboardEvent } from "react";
@@ -66,9 +67,9 @@ export function EventDetailPoll({
   const renderVoters = (voterIds: string[]) => {
     if (voterIds.length === 0) {
       return (
-        <Text size="xs" c="dimmed" className="event-detail-modal__poll-empty-voters">
+        <span className="event-detail-content__poll-empty-voters">
           {t("poll.detail.noVotes")}
-        </Text>
+        </span>
       );
     }
     const voterEntries = resolveVoterEntries(voterIds, allUsers);
@@ -76,7 +77,7 @@ export function EventDetailPoll({
     const visibleVoters = voterEntries.slice(0, 10);
     const hiddenVoterCount = Math.max(0, voterEntries.length - visibleVoters.length);
     return (
-      <div className="event-detail-modal__poll-voters">
+      <div className="event-detail-content__poll-voters">
         {/* Avatar hover cards expose voter names and classes without expanding each option row. */}
         {visibleVoters.map((entry) => (
           <MemberRoleAvatar
@@ -88,32 +89,32 @@ export function EventDetailPoll({
           />
         ))}
         {hiddenVoterCount > 0 ? (
-          <Text size="xs" fw={700} c="dimmed" className="event-detail-modal__poll-voter-overflow">
+          <strong className="event-detail-content__poll-voter-overflow">
             +{hiddenVoterCount}
-          </Text>
+          </strong>
         ) : null}
         {missingVoterIds.map((userId) => (
-          <Text key={userId} size="xs" c="dimmed" className="event-detail-modal__poll-voter-missing">
+          <span key={userId} className="event-detail-content__poll-voter-missing">
             {userId}
-          </Text>
+          </span>
         ))}
       </div>
     );
   };
 
   return (
-    <section className="event-detail-modal__section event-detail-modal__section--poll">
-      <Group justify="space-between" gap={12} mb={12} wrap="nowrap" className="event-detail-modal__poll-header">
-        <Group gap={8}>
+    <section className="event-detail-content__section event-detail-content__section--poll">
+      <div className="event-detail-content__poll-header event-detail-content__poll-heading">
+        <div className="event-detail-content__poll-heading-main">
           <ChartBarIcon size={20} />
-          <Text size="md" fw={800}>{t("poll.detail.title")}</Text>
-        </Group>
-        <Text size="xs" fw={700} className="event-detail-modal__poll-total">
+          <h2>{t("poll.detail.title")}</h2>
+        </div>
+        <strong className="event-detail-content__poll-total">
           {t("poll.detail.votes", { count: totalVotes })}
-        </Text>
-      </Group>
-      <Stack gap={12}>
-        <div className="event-detail-modal__poll-result-board">
+        </strong>
+      </div>
+      <div className="event-detail-content__poll-stack">
+        <div className="event-detail-content__poll-result-board">
           {poll.options.map((option) => {
             const percent = totalVotes > 0 ? Math.round((option.vote_count / totalVotes) * 100) : 0;
             const isSelectedOption = selectedOptionIds.includes(option.id);
@@ -125,40 +126,39 @@ export function EventDetailPoll({
                 aria-checked={isSelectedOption}
                 aria-disabled={optionDisabled}
                 tabIndex={optionDisabled ? -1 : 0}
-                className={`event-detail-modal__poll-result-row${isSelectedOption ? " event-detail-modal__poll-result-row--selected" : ""}${optionDisabled ? " event-detail-modal__poll-result-row--disabled" : ""}`}
+                className={`event-detail-content__poll-result-row${isSelectedOption ? " event-detail-content__poll-result-row--selected" : ""}${optionDisabled ? " event-detail-content__poll-result-row--disabled" : ""}`}
                 onClick={() => toggleOption(option.id, optionDisabled)}
                 onKeyDown={(keyEvent) => handleOptionKeyDown(option.id, optionDisabled, keyEvent)}
               >
-                <div className="event-detail-modal__poll-result-main">
-                  <div className="event-detail-modal__poll-result-top">
-                    <Group gap={9} wrap="nowrap" className="event-detail-modal__poll-choice">
-                      <span className="event-detail-modal__poll-choice-indicator" aria-hidden="true">
+                <div className="event-detail-content__poll-result-main">
+                  <div className="event-detail-content__poll-result-top">
+                    <div className="event-detail-content__poll-choice">
+                      <span className="event-detail-content__poll-choice-indicator" aria-hidden="true">
                         {isSelectedOption ? <CheckIcon size={14} /> : null}
                       </span>
-                      <Text size="sm" fw={800}>{option.label}</Text>
-                    </Group>
-                    <Group gap={8} wrap="nowrap" className="event-detail-modal__poll-result-stats">
-                      <Text size="xs" fw={700} className="event-detail-modal__poll-option-votes">
+                      <strong className="event-detail-content__poll-choice-label">{option.label}</strong>
+                    </div>
+                    <div className="event-detail-content__poll-result-stats">
+                      <span className="event-detail-content__poll-option-votes">
                         {t("poll.detail.votes", { count: option.vote_count })}
-                      </Text>
-                      <Text size="xs" fw={900} className="event-detail-modal__poll-percent">{percent}%</Text>
-                    </Group>
+                      </span>
+                      <strong className="event-detail-content__poll-percent">{percent}%</strong>
+                    </div>
                   </div>
-                  <Progress value={percent} size="md" className="event-detail-modal__poll-progress" />
+                  <Progress value={percent} className="event-detail-content__poll-progress" />
                   {renderVoters(option.voter_ids)}
                 </div>
               </div>
             );
           })}
         </div>
-        <div className="event-detail-modal__poll-actions">
+        <div className="event-detail-content__poll-actions">
           {readOnly ? (
-            <Text size="xs" c="dimmed">{hasEnded ? t("poll.status.closed") : t("poll.status.readOnly")}</Text>
+            <span className="event-detail-content__poll-readonly">{hasEnded ? t("poll.status.closed") : t("poll.status.readOnly")}</span>
           ) : null}
           {/* Voting is an authenticated interaction. Guests can read poll results but get no vote action. */}
           {onVotePoll ? (
             <Button
-              color="portal-brand"
               size="sm"
               loading={votePending}
               disabled={readOnly || selectedOptionIds.length === 0}
@@ -171,7 +171,7 @@ export function EventDetailPoll({
             </Button>
           ) : null}
         </div>
-      </Stack>
+      </div>
     </section>
   );
 }

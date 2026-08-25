@@ -1,11 +1,11 @@
-import { Button, Group, Loader, Stack } from "@mantine/core";
-import { useMediaQuery } from "@mantine/hooks";
-import { ArrowLeftIcon } from "@portal/components/icons";
+import { ArrowLeftIcon, SpeakerphoneIcon } from "@portal/components/icons";
+import { Button } from "@portal/components/ui/button";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { usePageHeaderActions } from "../../context/PageHeaderContext";
 import { useAnnouncementsController } from "../../hooks/useAnnouncementsController";
 import { useLoadWarningToast } from "../../hooks/useLoadWarningToast";
+import { useMediaQuery } from "../../hooks/useMediaQuery";
 import { AnnouncementDetailCard } from "../feature/announcements/AnnouncementDetailCard";
 import { AnnouncementFiltersCard } from "../feature/announcements/AnnouncementFiltersCard";
 import { AnnouncementListCard } from "../feature/announcements/AnnouncementListCard";
@@ -16,8 +16,8 @@ import "./AnnouncementsPage.css";
 export function AnnouncementsPage() {
   const { t } = useTranslation("announcements");
   const controller = useAnnouncementsController();
-  const isMobile = useMediaQuery("(max-width: 47.99em)");
-  const [showMobileDetail, setShowMobileDetail] = useState(false);
+  const isCompact = useMediaQuery("(max-width: 61.99em)");
+  const [showCompactDetail, setShowCompactDetail] = useState(false);
 
   usePageHeaderActions(null);
   useLoadWarningToast(controller.listQuery.isError || controller.detailQuery.isError, t("common:loadErrorRetry"));
@@ -28,6 +28,8 @@ export function AnnouncementsPage() {
   const emptyText = (
     <EmptyState
       title={hasActiveFilters ? t("empty.filtered") : t("empty")}
+      description={hasActiveFilters ? t("empty.filteredDescription") : t("empty.description")}
+      icon={<SpeakerphoneIcon size={28} aria-hidden="true" />}
       actions={hasActiveFilters ? (
         <Button onClick={controller.resetFilters}>{t("action.resetFilters")}</Button>
       ) : controller.canCreate ? (
@@ -37,17 +39,17 @@ export function AnnouncementsPage() {
   );
   const openAnnouncement = async (id: string | null) => {
     if (id !== null && id === controller.selectedId && !controller.isCreating) {
-      setShowMobileDetail(true);
+      setShowCompactDetail(true);
       return;
     }
     const selected = await controller.setSelectedId(id);
     if (selected !== false) {
-      setShowMobileDetail(true);
+      setShowCompactDetail(true);
     }
   };
   const openCreate = () => {
     controller.handleCreateByStatus();
-    setShowMobileDetail(true);
+    setShowCompactDetail(true);
   };
   const returnToMobileList = async () => {
     const canLeave = await controller.setSelectedId(controller.selectedId);
@@ -55,7 +57,7 @@ export function AnnouncementsPage() {
       return;
     }
     controller.handleCloseEditor();
-    setShowMobileDetail(false);
+    setShowCompactDetail(false);
   };
 
   const listCard = (
@@ -108,57 +110,70 @@ export function AnnouncementsPage() {
       archived={controller.archived}
       onArchivedChange={controller.setArchived}
       onImageUpload={controller.handleUploadAnnouncementImages}
+      attachments={controller.attachments}
+      attachmentUploading={controller.attachmentUploading}
+      attachmentMaxBytes={controller.attachmentMaxBytes}
+      attachmentQuota={controller.attachmentQuota}
+      onAttachmentUpload={controller.handleUploadAnnouncementAttachment}
+      onAttachmentRemove={controller.handleRemoveAnnouncementAttachment}
       isDirty={controller.isDirty}
       isPublishReady={controller.isPublishReady}
       emptyTitle={t("common:message.noData")}
     />
   );
+  const filters = !isCompact || !showCompactDetail ? (
+    <AnnouncementFiltersCard
+      pinnedFilter={controller.pinnedFilter}
+      statusFilter={controller.statusFilter}
+      sortOrder={controller.sortOrder}
+      search={controller.search}
+      canEdit={controller.canEdit}
+      onPinnedFilterChange={controller.setPinnedFilter}
+      onStatusFilterChange={controller.setStatusFilter}
+      onSortOrderChange={controller.setSortOrder}
+      onSearchChange={controller.setSearch}
+    />
+  ) : null;
 
   return (
-    <PageLayout className="announcements-page">
-      <Stack gap="var(--page-rhythm)" className="announcements-page__stack">
-      {!isMobile || !showMobileDetail ? (
-        <AnnouncementFiltersCard
-          pinnedFilter={controller.pinnedFilter}
-          statusFilter={controller.statusFilter}
-          sortOrder={controller.sortOrder}
-          search={controller.search}
-          canEdit={controller.canEdit}
-          onPinnedFilterChange={controller.setPinnedFilter}
-          onStatusFilterChange={controller.setStatusFilter}
-          onSortOrderChange={controller.setSortOrder}
-          onSearchChange={controller.setSearch}
-        />
-      ) : null}
-
-      {isMobile ? (
-        <Stack gap="sm" className="announcements-mobile-flow">
-          {showMobileDetail ? (
-            <>
-              <Group>
+    <PageLayout
+      className="announcements-page"
+      toolbar={filters}
+      workspaceMode={isCompact ? "scroll" : "contained"}
+    >
+      <div className="announcements-page__workspace">
+        {isCompact ? (
+          <div className="announcements-mobile-flow">
+            {showCompactDetail ? (
+              <>
                 <Button
-                  variant="subtle"
-                  leftSection={<ArrowLeftIcon size={16} />}
+                  type="button"
+                  variant="outline"
+                  className="announcements-back-button"
                   onClick={() => {
                     void returnToMobileList();
                   }}
                 >
+                  <ArrowLeftIcon size={16} aria-hidden="true" />
                   {t("action.backToList")}
                 </Button>
-              </Group>
-              {detailCard}
-            </>
-          ) : listCard}
-        </Stack>
-      ) : (
-        <div className="announcements-page-grid">
-          <div className="announcements-page-column">{listCard}</div>
-          <div className="announcements-page-column announcements-page-column--detail">{detailCard}</div>
-        </div>
-      )}
+                {detailCard}
+              </>
+            ) : listCard}
+          </div>
+        ) : (
+          <div className="announcements-page-grid">
+            <div className="announcements-page-column">{listCard}</div>
+            <div className="announcements-page-column announcements-page-column--detail">{detailCard}</div>
+          </div>
+        )}
 
-      {controller.isBusy ? <Loader size="sm" /> : null}
-      </Stack>
+        {controller.isBusy ? (
+          <div className="announcements-page__loading" role="status" aria-label={t("common:message.loading")}>
+            <span aria-hidden="true" />
+          </div>
+        ) : null}
+      </div>
     </PageLayout>
   );
 }

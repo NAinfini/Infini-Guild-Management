@@ -1,6 +1,5 @@
 import type { Editor } from "@tiptap/react";
-import { ActionIcon, Menu, Tooltip } from "@mantine/core";
-import type { Ref } from "react";
+import type { CSSProperties, ReactNode, Ref } from "react";
 import {
   AlignCenterIcon,
   AlignLeftIcon,
@@ -36,11 +35,25 @@ import {
   LayoutListIcon,
   SearchIcon,
 } from "@portal/components/icons";
+import { Button } from "@portal/components/ui/button";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@portal/components/ui/dropdown-menu";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@portal/components/ui/tooltip";
 import type { TipTapEditorLabels } from "./tiptap-meta";
 
 const TEXT_COLORS = ["#1f6feb", "#16a34a", "#f59e0b", "#dc2626", "#7c3aed", "#ec4899", "#0891b2", "#334155"];
 const HIGHLIGHT_COLORS = ["#fef08a", "#bbf7d0", "#bfdbfe", "#fecdd3", "#e9d5ff", "#fed7aa"];
-const TOOLTIP_PROPS = { withArrow: true, withinPortal: true, zIndex: 1000 };
+const ICON_SIZE = 16;
 
 type TipTapEditorToolbarProps = {
   editor: Editor;
@@ -52,6 +65,112 @@ type TipTapEditorToolbarProps = {
   linkTriggerRef?: Ref<HTMLButtonElement>;
   videoTriggerRef?: Ref<HTMLButtonElement>;
 };
+
+type ToolbarActionProps = {
+  label: string;
+  children: ReactNode;
+  onClick: () => void;
+  actionRef?: Ref<HTMLButtonElement>;
+};
+
+function ToolbarAction({ label, children, onClick, actionRef }: ToolbarActionProps) {
+  return (
+    <Tooltip>
+      <TooltipTrigger
+        render={(
+          <Button
+            ref={actionRef}
+            type="button"
+            variant="outline"
+            size="icon-sm"
+            className="infini-tiptap-toolbar__button"
+            aria-label={label}
+            onClick={onClick}
+          />
+        )}
+      >
+        {children}
+      </TooltipTrigger>
+      <TooltipContent>{label}</TooltipContent>
+    </Tooltip>
+  );
+}
+
+type ToolbarMenuTriggerProps = {
+  label: string;
+  children: ReactNode;
+};
+
+function ToolbarMenuTrigger({ label, children }: ToolbarMenuTriggerProps) {
+  return (
+    <Tooltip>
+      <DropdownMenuTrigger
+        render={(
+          <TooltipTrigger
+            render={(
+              <Button
+                type="button"
+                variant="outline"
+                size="icon-sm"
+                className="infini-tiptap-toolbar__button"
+                aria-label={label}
+              />
+            )}
+          />
+        )}
+      >
+        {children}
+      </DropdownMenuTrigger>
+      <TooltipContent>{label}</TooltipContent>
+    </Tooltip>
+  );
+}
+
+type ColorMenuProps = {
+  label: string;
+  customLabel: string;
+  clearLabel: string;
+  colors: string[];
+  icon: ReactNode;
+  onSelect: (color: string) => void;
+  onClear: () => void;
+};
+
+function ColorMenu({ label, customLabel, clearLabel, colors, icon, onSelect, onClear }: ColorMenuProps) {
+  return (
+    <DropdownMenu>
+      <ToolbarMenuTrigger label={label}>{icon}</ToolbarMenuTrigger>
+      <DropdownMenuContent className="infini-tiptap-toolbar-menu !w-[180px]">
+        <div className="infini-tiptap-color-grid">
+          {colors.map((color) => (
+            <button
+              key={color}
+              type="button"
+              className="infini-tiptap-color-swatch"
+              style={{ "--swatch-color": color } as CSSProperties}
+              aria-label={`${label} ${color}`}
+              onClick={() => onSelect(color)}
+            />
+          ))}
+        </div>
+        <DropdownMenuSeparator />
+        <label className="infini-tiptap-color-custom">
+          <span>{customLabel}</span>
+          <input
+            type="color"
+            aria-label={customLabel}
+            defaultValue={colors[0]}
+            onPointerDown={(event) => event.stopPropagation()}
+            onClick={(event) => event.stopPropagation()}
+            onChange={(event) => onSelect(event.currentTarget.value)}
+          />
+        </label>
+        <DropdownMenuSeparator />
+        <DropdownMenuItem onClick={onClear}>{clearLabel}</DropdownMenuItem>
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+}
 
 export function TipTapEditorToolbar({
   editor,
@@ -72,116 +191,146 @@ export function TipTapEditorToolbar({
       }}
     >
       <div className="infini-tiptap-toolbar__group">
-        <Tooltip label={labels.undo} {...TOOLTIP_PROPS}><ActionIcon aria-label={labels.undo} size="sm" variant="default" onClick={() => editor.chain().focus().undo().run()}><ArrowBackUpIcon size={16} /></ActionIcon></Tooltip>
-        <Tooltip label={labels.redo} {...TOOLTIP_PROPS}><ActionIcon aria-label={labels.redo} size="sm" variant="default" onClick={() => editor.chain().focus().redo().run()}><ArrowForwardUpIcon size={16} /></ActionIcon></Tooltip>
+        <ToolbarAction label={labels.undo} onClick={() => editor.chain().focus().undo().run()}>
+          <ArrowBackUpIcon size={ICON_SIZE} />
+        </ToolbarAction>
+        <ToolbarAction label={labels.redo} onClick={() => editor.chain().focus().redo().run()}>
+          <ArrowForwardUpIcon size={ICON_SIZE} />
+        </ToolbarAction>
       </div>
       <div className="infini-tiptap-toolbar__group">
-        <Tooltip label={labels.bold} {...TOOLTIP_PROPS}><ActionIcon aria-label={labels.bold} size="sm" variant="default" onClick={() => editor.chain().focus().toggleBold().run()}><BoldIcon size={16} /></ActionIcon></Tooltip>
-        <Tooltip label={labels.italic} {...TOOLTIP_PROPS}><ActionIcon aria-label={labels.italic} size="sm" variant="default" onClick={() => editor.chain().focus().toggleItalic().run()}><ItalicIcon size={16} /></ActionIcon></Tooltip>
-        <Tooltip label={labels.underline} {...TOOLTIP_PROPS}><ActionIcon aria-label={labels.underline} size="sm" variant="default" onClick={() => editor.chain().focus().toggleUnderline().run()}><UnderlineIcon size={16} /></ActionIcon></Tooltip>
-        <Tooltip label={labels.strike} {...TOOLTIP_PROPS}><ActionIcon aria-label={labels.strike} size="sm" variant="default" onClick={() => editor.chain().focus().toggleStrike().run()}><StrikethroughIcon size={16} /></ActionIcon></Tooltip>
-        <Tooltip label={labels.clearFormatting} {...TOOLTIP_PROPS}><ActionIcon aria-label={labels.clearFormatting} size="sm" variant="default" onClick={() => editor.chain().focus().unsetAllMarks().clearNodes().run()}><EraserIcon size={16} /></ActionIcon></Tooltip>
+        <ToolbarAction label={labels.bold} onClick={() => editor.chain().focus().toggleBold().run()}>
+          <BoldIcon size={ICON_SIZE} />
+        </ToolbarAction>
+        <ToolbarAction label={labels.italic} onClick={() => editor.chain().focus().toggleItalic().run()}>
+          <ItalicIcon size={ICON_SIZE} />
+        </ToolbarAction>
+        <ToolbarAction label={labels.underline} onClick={() => editor.chain().focus().toggleUnderline().run()}>
+          <UnderlineIcon size={ICON_SIZE} />
+        </ToolbarAction>
+        <ToolbarAction label={labels.strike} onClick={() => editor.chain().focus().toggleStrike().run()}>
+          <StrikethroughIcon size={ICON_SIZE} />
+        </ToolbarAction>
+        <ToolbarAction label={labels.clearFormatting} onClick={() => editor.chain().focus().unsetAllMarks().clearNodes().run()}>
+          <EraserIcon size={ICON_SIZE} />
+        </ToolbarAction>
       </div>
       <div className="infini-tiptap-toolbar__group">
-        <Menu withinPortal position="bottom-start">
-          <Tooltip label={labels.textColor} {...TOOLTIP_PROPS}>
-            <Menu.Target>
-              <ActionIcon aria-label={labels.textColor} size="sm" variant="default"><PaletteIcon size={16} /></ActionIcon>
-            </Menu.Target>
-          </Tooltip>
-          <Menu.Dropdown>
-            <div className="infini-tiptap-color-grid">
-              {TEXT_COLORS.map((nextColor) => (
-                <button key={nextColor} type="button" className="infini-tiptap-color-swatch" style={{ "--swatch-color": nextColor } as React.CSSProperties} aria-label={`${labels.textColor} ${nextColor}`} onClick={() => editor.chain().focus().setColor(nextColor).run()} />
-              ))}
-            </div>
-            <Menu.Divider />
-            <label className="infini-tiptap-color-custom">
-              <span>{labels.customTextColor}</span>
-              <input
-                type="color"
-                aria-label={labels.customTextColor}
-                defaultValue={TEXT_COLORS[0]}
-                onClick={(event) => event.stopPropagation()}
-                onChange={(event) => editor.chain().focus().setColor(event.currentTarget.value).run()}
-              />
-            </label>
-            <Menu.Divider />
-            <Menu.Item onClick={() => editor.chain().focus().unsetColor().run()}>{labels.clearFormatting}</Menu.Item>
-          </Menu.Dropdown>
-        </Menu>
-        <Menu withinPortal position="bottom-start">
-          <Tooltip label={labels.highlight} {...TOOLTIP_PROPS}>
-            <Menu.Target>
-              <ActionIcon aria-label={labels.highlight} size="sm" variant="default"><HighlightIcon size={16} /></ActionIcon>
-            </Menu.Target>
-          </Tooltip>
-          <Menu.Dropdown>
-            <div className="infini-tiptap-color-grid">
-              {HIGHLIGHT_COLORS.map((nextColor) => (
-                <button key={nextColor} type="button" className="infini-tiptap-color-swatch" style={{ "--swatch-color": nextColor } as React.CSSProperties} aria-label={`${labels.highlight} ${nextColor}`} onClick={() => editor.chain().focus().setHighlight({ color: nextColor }).run()} />
-              ))}
-            </div>
-            <Menu.Divider />
-            <label className="infini-tiptap-color-custom">
-              <span>{labels.customHighlightColor}</span>
-              <input
-                type="color"
-                aria-label={labels.customHighlightColor}
-                defaultValue={HIGHLIGHT_COLORS[0]}
-                onClick={(event) => event.stopPropagation()}
-                onChange={(event) => editor.chain().focus().setHighlight({ color: event.currentTarget.value }).run()}
-              />
-            </label>
-            <Menu.Divider />
-            <Menu.Item onClick={() => editor.chain().focus().unsetHighlight().run()}>{labels.clearFormatting}</Menu.Item>
-          </Menu.Dropdown>
-        </Menu>
+        <ColorMenu
+          label={labels.textColor}
+          customLabel={labels.customTextColor}
+          clearLabel={labels.clearFormatting}
+          colors={TEXT_COLORS}
+          icon={<PaletteIcon size={ICON_SIZE} />}
+          onSelect={(color) => editor.chain().focus().setColor(color).run()}
+          onClear={() => editor.chain().focus().unsetColor().run()}
+        />
+        <ColorMenu
+          label={labels.highlight}
+          customLabel={labels.customHighlightColor}
+          clearLabel={labels.clearFormatting}
+          colors={HIGHLIGHT_COLORS}
+          icon={<HighlightIcon size={ICON_SIZE} />}
+          onSelect={(color) => editor.chain().focus().setHighlight({ color }).run()}
+          onClear={() => editor.chain().focus().unsetHighlight().run()}
+        />
       </div>
       <div className="infini-tiptap-toolbar__group">
-        <Tooltip label={labels.alignLeft} {...TOOLTIP_PROPS}><ActionIcon aria-label={labels.alignLeft} size="sm" variant="default" onClick={() => editor.chain().focus().setTextAlign("left").run()}><AlignLeftIcon size={16} /></ActionIcon></Tooltip>
-        <Tooltip label={labels.alignCenter} {...TOOLTIP_PROPS}><ActionIcon aria-label={labels.alignCenter} size="sm" variant="default" onClick={() => editor.chain().focus().setTextAlign("center").run()}><AlignCenterIcon size={16} /></ActionIcon></Tooltip>
-        <Tooltip label={labels.alignRight} {...TOOLTIP_PROPS}><ActionIcon aria-label={labels.alignRight} size="sm" variant="default" onClick={() => editor.chain().focus().setTextAlign("right").run()}><AlignRightIcon size={16} /></ActionIcon></Tooltip>
+        <ToolbarAction label={labels.alignLeft} onClick={() => editor.chain().focus().setTextAlign("left").run()}>
+          <AlignLeftIcon size={ICON_SIZE} />
+        </ToolbarAction>
+        <ToolbarAction label={labels.alignCenter} onClick={() => editor.chain().focus().setTextAlign("center").run()}>
+          <AlignCenterIcon size={ICON_SIZE} />
+        </ToolbarAction>
+        <ToolbarAction label={labels.alignRight} onClick={() => editor.chain().focus().setTextAlign("right").run()}>
+          <AlignRightIcon size={ICON_SIZE} />
+        </ToolbarAction>
       </div>
       <div className="infini-tiptap-toolbar__group">
-        <Tooltip label={labels.link} {...TOOLTIP_PROPS}><ActionIcon ref={linkTriggerRef} aria-label={labels.link} size="sm" variant="default" onClick={onInsertLink}><LinkIcon size={16} /></ActionIcon></Tooltip>
-        <Tooltip label={labels.unlink} {...TOOLTIP_PROPS}><ActionIcon aria-label={labels.unlink} size="sm" variant="default" onClick={() => editor.chain().focus().unsetLink().run()}><LinkOffIcon size={16} /></ActionIcon></Tooltip>
-        <Tooltip label={labels.h1} {...TOOLTIP_PROPS}><ActionIcon aria-label={labels.h1} size="sm" variant="default" onClick={() => editor.chain().focus().toggleHeading({ level: 1 }).run()}><H1Icon size={16} /></ActionIcon></Tooltip>
-        <Tooltip label={labels.h2} {...TOOLTIP_PROPS}><ActionIcon aria-label={labels.h2} size="sm" variant="default" onClick={() => editor.chain().focus().toggleHeading({ level: 2 }).run()}><H2Icon size={16} /></ActionIcon></Tooltip>
-        <Tooltip label={labels.h3} {...TOOLTIP_PROPS}><ActionIcon aria-label={labels.h3} size="sm" variant="default" onClick={() => editor.chain().focus().toggleHeading({ level: 3 }).run()}><H3Icon size={16} /></ActionIcon></Tooltip>
+        <ToolbarAction label={labels.link} actionRef={linkTriggerRef} onClick={onInsertLink}>
+          <LinkIcon size={ICON_SIZE} />
+        </ToolbarAction>
+        <ToolbarAction label={labels.unlink} onClick={() => editor.chain().focus().unsetLink().run()}>
+          <LinkOffIcon size={ICON_SIZE} />
+        </ToolbarAction>
+        <ToolbarAction label={labels.h1} onClick={() => editor.chain().focus().toggleHeading({ level: 1 }).run()}>
+          <H1Icon size={ICON_SIZE} />
+        </ToolbarAction>
+        <ToolbarAction label={labels.h2} onClick={() => editor.chain().focus().toggleHeading({ level: 2 }).run()}>
+          <H2Icon size={ICON_SIZE} />
+        </ToolbarAction>
+        <ToolbarAction label={labels.h3} onClick={() => editor.chain().focus().toggleHeading({ level: 3 }).run()}>
+          <H3Icon size={ICON_SIZE} />
+        </ToolbarAction>
       </div>
       <div className="infini-tiptap-toolbar__group">
-        <Tooltip label={labels.bullet} {...TOOLTIP_PROPS}><ActionIcon aria-label={labels.bullet} size="sm" variant="default" onClick={() => editor.chain().focus().toggleBulletList().run()}><ListIcon size={16} /></ActionIcon></Tooltip>
-        <Tooltip label={labels.number} {...TOOLTIP_PROPS}><ActionIcon aria-label={labels.number} size="sm" variant="default" onClick={() => editor.chain().focus().toggleOrderedList().run()}><ListNumbersIcon size={16} /></ActionIcon></Tooltip>
-        <Tooltip label={labels.taskList} {...TOOLTIP_PROPS}><ActionIcon aria-label={labels.taskList} size="sm" variant="default" onClick={() => editor.chain().focus().toggleTaskList().run()}><CheckboxIcon size={16} /></ActionIcon></Tooltip>
-        <Tooltip label={labels.quote} {...TOOLTIP_PROPS}><ActionIcon aria-label={labels.quote} size="sm" variant="default" onClick={() => editor.chain().focus().toggleBlockquote().run()}><BlockquoteIcon size={16} /></ActionIcon></Tooltip>
-        <Tooltip label={labels.code} {...TOOLTIP_PROPS}><ActionIcon aria-label={labels.code} size="sm" variant="default" onClick={() => editor.chain().focus().toggleCodeBlock().run()}><CodeIcon size={16} /></ActionIcon></Tooltip>
+        <ToolbarAction label={labels.bullet} onClick={() => editor.chain().focus().toggleBulletList().run()}>
+          <ListIcon size={ICON_SIZE} />
+        </ToolbarAction>
+        <ToolbarAction label={labels.number} onClick={() => editor.chain().focus().toggleOrderedList().run()}>
+          <ListNumbersIcon size={ICON_SIZE} />
+        </ToolbarAction>
+        <ToolbarAction label={labels.taskList} onClick={() => editor.chain().focus().toggleTaskList().run()}>
+          <CheckboxIcon size={ICON_SIZE} />
+        </ToolbarAction>
+        <ToolbarAction label={labels.quote} onClick={() => editor.chain().focus().toggleBlockquote().run()}>
+          <BlockquoteIcon size={ICON_SIZE} />
+        </ToolbarAction>
+        <ToolbarAction label={labels.code} onClick={() => editor.chain().focus().toggleCodeBlock().run()}>
+          <CodeIcon size={ICON_SIZE} />
+        </ToolbarAction>
       </div>
       <div className="infini-tiptap-toolbar__group">
-        <Tooltip label={labels.divider} {...TOOLTIP_PROPS}><ActionIcon aria-label={labels.divider} size="sm" variant="default" onClick={() => editor.chain().focus().setHorizontalRule().run()}><SeparatorHorizontalIcon size={16} /></ActionIcon></Tooltip>
-        <Tooltip label={labels.image} {...TOOLTIP_PROPS}><ActionIcon aria-label={labels.image} size="sm" variant="default" onClick={onInsertImage}><PhotoIcon size={16} /></ActionIcon></Tooltip>
-        <Tooltip label={labels.embedVideo} {...TOOLTIP_PROPS}><ActionIcon ref={videoTriggerRef} aria-label={labels.embedVideo} size="sm" variant="default" onClick={onInsertVideo}><PlayerPlayIcon size={16} /></ActionIcon></Tooltip>
-        <Tooltip label={labels.details} {...TOOLTIP_PROPS}><ActionIcon aria-label={labels.details} size="sm" variant="default" onClick={() => (editor.commands as unknown as { setDetails: () => void }).setDetails()}><LayoutListIcon size={16} /></ActionIcon></Tooltip>
-        <Menu withinPortal position="bottom-end">
-          <Tooltip label={labels.table} {...TOOLTIP_PROPS}>
-            <Menu.Target>
-              <ActionIcon aria-label={labels.table} size="sm" variant="default"><TableIcon size={16} /></ActionIcon>
-            </Menu.Target>
-          </Tooltip>
-          <Menu.Dropdown>
-            <Menu.Label>{labels.table}</Menu.Label>
-            <Menu.Item leftSection={<TableIcon size={14} />} onClick={() => editor.chain().focus().insertTable({ rows: 3, cols: 3 }).run()}>{labels.table}</Menu.Item>
-            <Menu.Item leftSection={<ColumnInsertRightIcon size={14} />} onClick={() => editor.chain().focus().addColumnAfter().run()}>{labels.addCol}</Menu.Item>
-            <Menu.Item leftSection={<RowInsertBottomIcon size={14} />} onClick={() => editor.chain().focus().addRowAfter().run()}>{labels.addRow}</Menu.Item>
-            <Menu.Divider />
-            <Menu.Item leftSection={<ColumnRemoveIcon size={14} />} onClick={() => editor.chain().focus().deleteColumn().run()}>{labels.delCol}</Menu.Item>
-            <Menu.Item leftSection={<RowRemoveIcon size={14} />} onClick={() => editor.chain().focus().deleteRow().run()}>{labels.delRow}</Menu.Item>
-            <Menu.Item leftSection={<TableOffIcon size={14} />} onClick={() => editor.chain().focus().deleteTable().run()}>{labels.delTable}</Menu.Item>
-          </Menu.Dropdown>
-        </Menu>
+        <ToolbarAction label={labels.divider} onClick={() => editor.chain().focus().setHorizontalRule().run()}>
+          <SeparatorHorizontalIcon size={ICON_SIZE} />
+        </ToolbarAction>
+        <ToolbarAction label={labels.image} onClick={onInsertImage}>
+          <PhotoIcon size={ICON_SIZE} />
+        </ToolbarAction>
+        <ToolbarAction label={labels.embedVideo} actionRef={videoTriggerRef} onClick={onInsertVideo}>
+          <PlayerPlayIcon size={ICON_SIZE} />
+        </ToolbarAction>
+        <ToolbarAction label={labels.details} onClick={() => (editor.commands as unknown as { setDetails: () => void }).setDetails()}>
+          <LayoutListIcon size={ICON_SIZE} />
+        </ToolbarAction>
+        <DropdownMenu>
+          <ToolbarMenuTrigger label={labels.table}>
+            <TableIcon size={ICON_SIZE} />
+          </ToolbarMenuTrigger>
+          <DropdownMenuContent align="end" className="infini-tiptap-toolbar-menu !w-[200px]">
+            <DropdownMenuLabel>{labels.table}</DropdownMenuLabel>
+            <DropdownMenuItem onClick={() => editor.chain().focus().insertTable({ rows: 3, cols: 3 }).run()}>
+              <TableIcon size={14} />
+              {labels.table}
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={() => editor.chain().focus().addColumnAfter().run()}>
+              <ColumnInsertRightIcon size={14} />
+              {labels.addCol}
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={() => editor.chain().focus().addRowAfter().run()}>
+              <RowInsertBottomIcon size={14} />
+              {labels.addRow}
+            </DropdownMenuItem>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem onClick={() => editor.chain().focus().deleteColumn().run()}>
+              <ColumnRemoveIcon size={14} />
+              {labels.delCol}
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={() => editor.chain().focus().deleteRow().run()}>
+              <RowRemoveIcon size={14} />
+              {labels.delRow}
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={() => editor.chain().focus().deleteTable().run()}>
+              <TableOffIcon size={14} />
+              {labels.delTable}
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
       </div>
       <div className="infini-tiptap-toolbar__group">
-        <Tooltip label={labels.findReplace} {...TOOLTIP_PROPS}><ActionIcon aria-label={labels.findReplace} size="sm" variant="default" onClick={onToggleFindReplace}><SearchIcon size={16} /></ActionIcon></Tooltip>
+        <ToolbarAction label={labels.findReplace} onClick={onToggleFindReplace}>
+          <SearchIcon size={ICON_SIZE} />
+        </ToolbarAction>
       </div>
     </div>
   );

@@ -8,10 +8,12 @@ export type AuthenticatedActor = Readonly<{
   roleId: string;
   roleLevel: number;
   permissions: ReadonlySet<PermissionId>;
+  sessionScope: "normal" | "password_change";
 }>;
 
-export type AuthenticatedActorInput = Omit<AuthenticatedActor, "permissions"> & {
+export type AuthenticatedActorInput = Omit<AuthenticatedActor, "permissions" | "sessionScope"> & {
   permissions: Iterable<PermissionId>;
+  sessionScope?: "normal" | "password_change";
 };
 
 class ImmutablePermissionSet implements ReadonlySet<PermissionId> {
@@ -78,6 +80,7 @@ function normalizeActor(input: AuthenticatedActorInput): AuthenticatedActor {
     roleId: requiredIdentifier(input.roleId, "roleId"),
     roleLevel: input.roleLevel,
     permissions: new ImmutablePermissionSet(permissions),
+    sessionScope: input.sessionScope ?? "normal",
   });
 }
 

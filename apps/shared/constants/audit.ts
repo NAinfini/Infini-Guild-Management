@@ -15,6 +15,7 @@ export const AUDIT_ENTITY_TYPES = [
   "guild_war_history",
   "guild_war_member_stats",
   "invite_link",
+  "important_notice",
   "media_cleanup",
   "media_asset",
   "member_absence",
@@ -91,6 +92,7 @@ export const AUDIT_ACTIONS = [
   "upload_avatar",
   "upload_icon",
   "upload_images",
+  "withdraw",
   "vote",
 ] as const;
 
@@ -153,6 +155,7 @@ export const AUDIT_FIELDS = [
   "pinned",
   "poll_options",
   "power",
+  "publication_revision",
   "publish_at",
   "quantity",
   "reason",
@@ -187,6 +190,8 @@ export const AUDIT_FIELDS = [
   "used_count",
   "user_count",
   "user_ids",
+  "display_name",
+  "provider",
   "username",
   "video_host",
   "winner_count",
@@ -207,11 +212,13 @@ export const AUDIT_SECTION_KEYS = [
   "body_json",
   "classes",
   "duration_minutes",
+  "email",
   "enemy_name",
   "enemy_stats",
   "features",
   "images",
   "is_locked",
+  "login_name",
   "media_policy",
   "own_stats",
   "poll",
@@ -276,6 +283,7 @@ export const AUDIT_CODE_VALUES = [
   "win",
   "vector",
   "withdraw",
+  "withdrawn",
 ] as const;
 
 export type AuditCodeValue = (typeof AUDIT_CODE_VALUES)[number];

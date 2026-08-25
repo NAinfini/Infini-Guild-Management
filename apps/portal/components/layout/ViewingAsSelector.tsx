@@ -1,10 +1,16 @@
 import type { AdminRole } from "@guild/shared";
-import { Select, Text } from "@mantine/core";
 import { useMemo } from "react";
 import { useTranslation } from "react-i18next";
 import { useAuthStore } from "../../stores/auth";
 import { canPreviewRole } from "../../utils/permissions";
 import { EyeOutlined } from "../../utils/icons";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "../ui/select";
 
 export type ViewingAsRole = string;
 
@@ -36,31 +42,36 @@ export function ViewingAsSelector({ value, compact = false, roles, onChange }: V
   if (compact) {
     return (
       <div className="app-viewing-as app-viewing-as--compact">
-        <EyeOutlined size={16} />
+        <EyeOutlined size={16} aria-hidden />
       </div>
     );
   }
 
   return (
     <div className="app-viewing-as">
-      <Text c="dimmed" className="app-viewing-as-label">
+      <span className="app-viewing-as-label">
         {t("viewingAs.label")}
-      </Text>
+      </span>
       <Select
-        data={options}
         value={value}
-        aria-label={t("viewingAs.label")}
-        onChange={(val) => {
-          if (val) {
-            onChange(val);
+        items={options}
+        onValueChange={(nextRole) => {
+          if (nextRole) {
+            onChange(nextRole);
           }
         }}
-        size="xs"
-        allowDeselect={false}
-        styles={{
-          input: { fontSize: 12 },
-        }}
-      />
+      >
+        <SelectTrigger size="sm" className="w-full text-xs" aria-label={t("viewingAs.label")}>
+          <SelectValue />
+        </SelectTrigger>
+        <SelectContent>
+          {options.map((option) => (
+            <SelectItem key={option.value} value={option.value}>
+              {option.label}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
     </div>
   );
 }

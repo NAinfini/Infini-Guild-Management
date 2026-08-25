@@ -1,5 +1,11 @@
-import { Badge, Group, Modal, Stack, Text } from "@mantine/core";
-import { useMemo } from "react";
+import { Badge } from "@portal/components/ui/badge";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "@portal/components/ui/dialog";
+import { useMemo, type CSSProperties } from "react";
 import { useTranslation } from "react-i18next";
 import type { AvailabilityDayKey } from "@guild/shared";
 import { BoltIcon } from "@portal/components/icons";
@@ -7,7 +13,12 @@ import { ClassIcon } from "@portal/components/shared/ClassIcon";
 import { useClassCatalog } from "@portal/hooks/data/useClassData";
 import { resolveClassCatalogItem } from "@portal/utils/class-catalog";
 import { convertAvailabilityToLocalDays } from "../../../utils/availability";
-import { formatCalendarDate, viewerTimeZone, viewerUtcOffsetMinutes } from "../../../utils/datetime";
+import {
+  formatCalendarDate,
+  formatTimeZoneAbbreviation,
+  viewerTimeZone,
+  viewerUtcOffsetMinutes,
+} from "../../../utils/datetime";
 import { sanitizeTitleHtml } from "../../../utils/sanitize";
 import type { ActiveGuildWarMemberDetail } from "../../../hooks/guild-war/useGuildWarDragData";
 
@@ -50,6 +61,10 @@ export function WarMemberDetailModal({
     [activeDetail?.titleHtml],
   );
   const viewerTimezone = useMemo(() => viewerTimeZone(), []);
+  const viewerTimezoneAbbreviation = useMemo(
+    () => formatTimeZoneAbbreviation(new Date(), viewerTimezone),
+    [viewerTimezone],
+  );
   const offsetMinutes = useMemo(() => viewerUtcOffsetMinutes(), []);
   /*
    * 时段按阅读者的时区显示。存的是 UTC，读的人却要拿它对自己的表——UTC 周五 23:00
@@ -63,125 +78,110 @@ export function WarMemberDetailModal({
       if (blocks.length === 0) return [];
       return [{
         day,
-        ranges: blocks.map((block) => `${block.start}–${block.end}`).join(", "),
+        ranges: `${blocks.map((block) => `${block.start}–${block.end}`).join(", ")} ${viewerTimezoneAbbreviation}`,
       }];
     });
-  }, [activeDetail?.availability, offsetMinutes]);
+  }, [activeDetail?.availability, offsetMinutes, viewerTimezoneAbbreviation]);
   const vacationRange = activeDetail
     ? formatVacationRange(activeDetail.vacationStart, activeDetail.vacationEnd, i18n.language)
     : null;
 
   return (
-    <Modal
-      opened={open}
-      title={activeDetail?.username ?? activeDetailUserId ?? ""}
-      onClose={onClose}
-      withCloseButton
-      centered
-      size="lg"
-      classNames={{
-        content: "guild-war-member-detail",
-        body: "guild-war-member-detail__body",
+    <Dialog
+      open={open}
+      onOpenChange={(nextOpen) => {
+        if (!nextOpen) onClose();
       }}
     >
-      {activeDetail ? (
-        <Stack gap={16}>
+      <DialogContent
+        className="guild-war-member-detail sm:max-w-2xl"
+        closeLabel={t("common:action.close")}
+      >
+        <DialogHeader>
+          <DialogTitle>{activeDetail?.display_name ?? activeDetailUserId ?? ""}</DialogTitle>
+        </DialogHeader>
+        {activeDetail ? (
+        <div className="guild-war-member-detail__body grid gap-4">
           <div className="guild-war-member-detail__identity">
             <div>
               {safeTitleHtml ? (
-                <Text size="sm" c="dimmed" dangerouslySetInnerHTML={{ __html: safeTitleHtml }} />
+                <div className="text-sm text-muted-foreground" dangerouslySetInnerHTML={{ __html: safeTitleHtml }} />
               ) : (
-                <Text size="sm" c="dimmed">{t("memberDetail.titleFallback")}</Text>
+                <p className="text-sm text-muted-foreground">{t("memberDetail.titleFallback")}</p>
               )}
-              <Group gap={8} wrap="wrap" mt={8}>
+              <div className="mt-2 flex flex-wrap gap-2">
                 {activeDetail.classes.map((classId) => {
                   const item = resolveClassCatalogItem(classId, classCatalog);
                   return (
                     <Badge
                       key={classId}
-                      variant="light"
-                      size="sm"
-                      color={item.color}
-                      leftSection={<ClassIcon item={item} size={16} framed={false} />}
+                      variant="outline"
+                      className="guild-war-member-detail__class"
+                      style={{ "--badge-color": item.color } as CSSProperties}
                     >
+                      <ClassIcon item={item} size={16} framed={false} />
                       {item.label}
                     </Badge>
                   );
                 })}
-              </Group>
+              </div>
             </div>
             <div className="guild-war-member-detail__power">
               <BoltIcon size={16} aria-hidden="true" />
-              <Text component="strong" className="tabular-nums">
+              <strong className="tabular-nums">
                 {activeDetail.power.toLocaleString()}
-              </Text>
+              </strong>
             </div>
           </div>
 
           <div className="guild-war-member-detail__schedule">
             <section className="guild-war-member-detail__panel">
-              <Text component="h3" size="sm" fw={700}>
+              <h3 className="text-sm font-bold">
                 {t("memberDetail.availability")}
-              </Text>
+              </h3>
               {availabilityRows.length > 0 ? (
                 <dl className="guild-war-member-detail__availability-list">
                   {availabilityRows.map((row) => (
                     <div key={row.day} className="guild-war-member-detail__availability-row">
-                      <Text component="dt" size="xs" c="dimmed">
+                      <dt className="text-xs text-muted-foreground">
                         {t(`memberDetail.day.${row.day}`)}
-                      </Text>
-                      <Text component="dd" size="sm" className="tabular-nums">
+                      </dt>
+                      <dd className="tabular-nums text-sm">
                         {row.ranges}
-                      </Text>
+                      </dd>
                     </div>
                   ))}
                 </dl>
               ) : (
-                <Text size="sm" c="dimmed" mt="xs">{t("memberDetail.notAvailable")}</Text>
+                <p className="mt-1 text-sm text-muted-foreground">{t("memberDetail.notAvailable")}</p>
               )}
-              {activeDetail.availability ? (
-                <Stack gap={2} mt="sm">
-                  {/* 两行都要有：上面一行说明这些时刻按谁的表读，下面一行是成员自己报的
-                      时区。只留成员时区，看的人会以为时刻也是那个时区的。 */}
-                  <Text size="xs" c="dimmed">
-                    {t("memberDetail.viewerTimezone", { timezone: viewerTimezone })}
-                  </Text>
-                  <Text size="xs" c="dimmed">
-                    {t("memberDetail.profileTimezone", {
-                      timezone: activeDetail.availability.timezone,
-                    })}
-                  </Text>
-                </Stack>
-              ) : null}
             </section>
 
             <section className="guild-war-member-detail__panel">
-              <Text component="h3" size="sm" fw={700}>
+              <h3 className="text-sm font-bold">
                 {t("memberDetail.vacation")}
-              </Text>
-              <Text size="sm" c={vacationRange ? undefined : "dimmed"} mt="xs">
+              </h3>
+              <p className={vacationRange ? "mt-1 text-sm" : "mt-1 text-sm text-muted-foreground"}>
                 {vacationRange ?? t("memberDetail.notAvailable")}
-              </Text>
+              </p>
             </section>
           </div>
 
           {canViewNotes ? (
             <section className="guild-war-member-detail__panel">
-              <Text component="h3" size="sm" fw={700}>
+              <h3 className="text-sm font-bold">
                 {t("memberDetail.note")}
-              </Text>
-              <Text
-                size="sm"
-                c={activeDetail.notes?.trim() ? undefined : "dimmed"}
-                mt="xs"
-                className="guild-war-member-detail__note"
+              </h3>
+              <p
+                className={`guild-war-member-detail__note mt-1 text-sm${activeDetail.notes?.trim() ? "" : " text-muted-foreground"}`}
               >
                 {activeDetail.notes?.trim() || t("memberDetail.notAvailable")}
-              </Text>
+              </p>
             </section>
           ) : null}
-        </Stack>
-      ) : null}
-    </Modal>
+        </div>
+        ) : null}
+      </DialogContent>
+    </Dialog>
   );
 }

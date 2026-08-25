@@ -1,9 +1,21 @@
 import type { WikiArticle, WikiRevisionListItem } from "@guild/shared";
-import { Badge, Button, Group, Loader, Modal, ScrollArea, SegmentedControl, Stack, Text, UnstyledButton } from "@mantine/core";
-import { formatDateTime } from "@portal/utils/datetime";
+import { useConfirmDialog } from "@portal/hooks/useConfirmDialog";
+import { formatDateTimeWithTimeZone } from "@portal/utils/datetime";
+import { IconLoader2 } from "@tabler/icons-react";
 import { useTranslation } from "react-i18next";
 import { useWikiHistory, type WikiHistoryDiffBlock } from "../../../hooks/useWikiHistory";
-import { useConfirmDialog } from "@portal/hooks/useConfirmDialog";
+import { Badge } from "../../ui/badge";
+import { Button } from "../../ui/button";
+import {
+  Dialog,
+  DialogClose,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "../../ui/dialog";
+import { ScrollArea } from "../../ui/scroll-area";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "../../ui/tabs";
+import { XIcon } from "../../icons";
 import { EmptyState } from "../../shared/EmptyState";
 
 const CONTEXT_PREVIEW_LINES = 2;
@@ -14,39 +26,41 @@ function collapseContext(text: string, ellipsis: string): string {
   return [...lines.slice(0, CONTEXT_PREVIEW_LINES), ellipsis, ...lines.slice(-CONTEXT_PREVIEW_LINES)].join("\n");
 }
 
-const DIFF_TEXT_STYLE: React.CSSProperties = { whiteSpace: "pre-wrap", wordBreak: "break-word" };
-const ADDED_STYLE: React.CSSProperties = { backgroundColor: "var(--mantine-color-green-light)" };
-const REMOVED_STYLE: React.CSSProperties = { backgroundColor: "var(--mantine-color-red-light)", textDecoration: "line-through" };
-
 function DiffView({ blocks, ellipsis }: { blocks: WikiHistoryDiffBlock[]; ellipsis: string }) {
   return (
-    <Stack gap={2}>
+    <div className="wiki-history-diff-lines">
       {blocks.map((block, index) => {
         if (block.kind === "modified") {
           return (
-            <Text key={index} size="sm" style={DIFF_TEXT_STYLE}>
+            <p key={index} className="wiki-history-diff-line">
               {block.parts.map((part, partIndex) => (
-                <span key={partIndex} style={part.added ? ADDED_STYLE : part.removed ? REMOVED_STYLE : undefined}>
+                <span
+                  key={partIndex}
+                  className={part.added ? "wiki-history-diff-added" : part.removed ? "wiki-history-diff-removed" : undefined}
+                >
                   {part.value}
                 </span>
               ))}
-            </Text>
+            </p>
           );
         }
         if (block.kind === "context") {
           return (
-            <Text key={index} size="sm" c="dimmed" style={DIFF_TEXT_STYLE}>
+            <p key={index} className="wiki-history-diff-line wiki-history-diff-context">
               {collapseContext(block.text, ellipsis)}
-            </Text>
+            </p>
           );
         }
         return (
-          <Text key={index} size="sm" style={{ ...DIFF_TEXT_STYLE, ...(block.kind === "added" ? ADDED_STYLE : REMOVED_STYLE) }}>
+          <p
+            key={index}
+            className={`wiki-history-diff-line ${block.kind === "added" ? "wiki-history-diff-added" : "wiki-history-diff-removed"}`}
+          >
             {block.text}
-          </Text>
+          </p>
         );
       })}
-    </Stack>
+    </div>
   );
 }
 
@@ -64,7 +78,11 @@ export function WikiHistoryModal({ opened, onClose, article }: WikiHistoryModalP
   const handleRestore = async (revision: number) => {
     const accepted = await confirm({
       title: t("history.confirmRestore.title"),
-      description: <Text size="sm">{t("history.confirmRestore.description", { revision })}</Text>,
+      description: (
+        <p className="wiki-confirmation-copy">
+          {t("history.confirmRestore.description", { revision })}
+        </p>
+      ),
       cancelLabel: t("common:action.cancel"),
       confirmLabel: t("history.restore"),
       intent: "danger",
@@ -73,102 +91,127 @@ export function WikiHistoryModal({ opened, onClose, article }: WikiHistoryModalP
   };
 
   const renderRevisionRow = (revision: WikiRevisionListItem) => (
-    <UnstyledButton
+    <button
       key={revision.id}
+      type="button"
       onClick={() => history.setSelectedRevision(revision.revision)}
+      aria-current={revision.revision === history.selectedRevision ? "true" : undefined}
       className={`wiki-history-revision-row${revision.revision === history.selectedRevision ? " wiki-history-revision-row--selected" : ""}`}
     >
-      <Group gap={8} wrap="nowrap" justify="space-between">
-        <Stack gap={2} style={{ minWidth: 0 }}>
-          <Group gap={6} wrap="nowrap">
-            <Text size="sm" fw={600}>
-              {t("history.revisionLabel", { revision: revision.revision })}
-            </Text>
-            {revision.revision === history.latestRevisionNumber ? (
-              <Badge size="xs" variant="light">
-                {t("history.latest")}
-              </Badge>
-            ) : null}
-            {revision.restored_from !== null ? (
-              <Badge size="xs" variant="light" color="orange">
-                {t("history.restoredFrom", { revision: revision.restored_from })}
-              </Badge>
-            ) : null}
-          </Group>
-          <Text size="xs" c="dimmed" truncate>
-            {t("history.editedBy", { user: revision.edited_by_username ?? revision.edited_by.slice(0, 8), date: formatDateTime(revision.created_at) })}
-          </Text>
-        </Stack>
-      </Group>
-    </UnstyledButton>
+      <span className="wiki-history-revision-row__content">
+        <span className="wiki-history-revision-row__heading">
+          <span>{t("history.revisionLabel", { revision: revision.revision })}</span>
+          {revision.revision === history.latestRevisionNumber ? (
+            <Badge variant="secondary">{t("history.latest")}</Badge>
+          ) : null}
+          {revision.restored_from !== null ? (
+            <Badge variant="outline" className="wiki-history-revision-row__restored">
+              {t("history.restoredFrom", { revision: revision.restored_from })}
+            </Badge>
+          ) : null}
+        </span>
+        <span className="wiki-muted-copy wiki-history-revision-row__meta">
+          {t("history.editedBy", {
+            user: revision.edited_by_display_name ?? revision.edited_by.slice(0, 8),
+            date: formatDateTimeWithTimeZone(revision.created_at),
+          })}
+        </span>
+      </span>
+    </button>
   );
 
+  const renderLoading = () => (
+    <div className="wiki-history-loading" role="status">
+      <IconLoader2 className="wiki-history-loading__icon" aria-hidden="true" />
+      <span className="sr-only">{t("common:message.loading")}</span>
+    </div>
+  );
+
+  const renderDiff = () => {
+    if (history.isDiffLoading) return renderLoading();
+    if (history.compareMode === "previous" && history.previousRevisionNumber === null) {
+      return <p className="wiki-muted-copy">{t("history.noPrevious")}</p>;
+    }
+    if (!history.diff) return null;
+    return (
+      <ScrollArea className="wiki-history-diff-scroll">
+        <div className="wiki-history-diff">
+          {history.diff.titleChanged ? (
+            <p className="wiki-history-diff-line">
+              <span className="wiki-history-diff-removed">{history.diff.oldTitle}</span>{" "}
+              <span className="wiki-history-diff-added">{history.diff.newTitle}</span>
+            </p>
+          ) : null}
+          {history.hasChanges ? (
+            <DiffView blocks={history.diff.blocks} ellipsis={t("history.contextEllipsis")} />
+          ) : (
+            <p className="wiki-muted-copy">{t("history.noChanges")}</p>
+          )}
+        </div>
+      </ScrollArea>
+    );
+  };
+
   return (
-    <Modal opened={opened} onClose={onClose} title={t("history.title")} size="xl" centered>
-      <Stack gap={12}>
+    <Dialog
+      open={opened}
+      onOpenChange={(open) => {
+        if (!open) onClose();
+      }}
+    >
+      <DialogContent className="wiki-history-dialog" showCloseButton={false}>
+        <DialogHeader className="wiki-history-dialog__header">
+          <DialogTitle>{t("history.title")}</DialogTitle>
+          <DialogClose
+            aria-label={t("common:action.close")}
+            render={<Button type="button" variant="ghost" size="icon-lg" className="wiki-history-dialog__close" />}
+          >
+            <XIcon size={18} aria-hidden="true" />
+          </DialogClose>
+        </DialogHeader>
+
         {history.isListLoading ? (
-          <Group justify="center" p="md">
-            <Loader size="sm" />
-          </Group>
+          renderLoading()
         ) : history.revisions.length === 0 ? (
           <EmptyState title={t("history.empty.title")} description={t("history.empty.description")} />
         ) : (
-          <>
-            <ScrollArea.Autosize mah={220} type="auto">
-              <Stack gap={2}>{history.revisions.map(renderRevisionRow)}</Stack>
-            </ScrollArea.Autosize>
+          <div className="wiki-history-dialog__body">
+            <ScrollArea className="wiki-history-revisions-scroll">
+              <div className="wiki-history-revisions-list">{history.revisions.map(renderRevisionRow)}</div>
+            </ScrollArea>
 
-            <Group justify="space-between" wrap="wrap" gap={8}>
-              <SegmentedControl
-                value={history.compareMode}
-                onChange={(value) => history.setCompareMode(value as "current" | "previous")}
-                data={[
-                  { value: "current", label: t("history.compareCurrent") },
-                  { value: "previous", label: t("history.comparePrevious"), disabled: history.previousRevisionNumber === null },
-                ]}
-                size="xs"
-              />
-              {history.selectedRevision !== null ? (
-                <Button
-                  variant="default"
-                  size="sm"
-                  disabled={history.isIdenticalToCurrent || history.isRestoring}
-                  onClick={() => handleRestore(history.selectedRevision!)}
-                >
-                  {history.isRestoring ? t("history.restoring") : t("history.restore")}
-                </Button>
-              ) : null}
-            </Group>
-
-            {history.isDiffLoading ? (
-              <Group justify="center" p="md">
-                <Loader size="sm" />
-              </Group>
-            ) : history.compareMode === "previous" && history.previousRevisionNumber === null ? (
-              <Text size="sm" c="dimmed">
-                {t("history.noPrevious")}
-              </Text>
-            ) : history.diff ? (
-              <ScrollArea.Autosize mah={360} type="auto">
-                <Stack gap={8}>
-                  {history.diff.titleChanged ? (
-                    <Text size="sm" style={DIFF_TEXT_STYLE}>
-                      <span style={REMOVED_STYLE}>{history.diff.oldTitle}</span> <span style={ADDED_STYLE}>{history.diff.newTitle}</span>
-                    </Text>
-                  ) : null}
-                  {history.hasChanges ? (
-                    <DiffView blocks={history.diff.blocks} ellipsis={t("history.contextEllipsis")} />
-                  ) : (
-                    <Text size="sm" c="dimmed">
-                      {t("history.noChanges")}
-                    </Text>
-                  )}
-                </Stack>
-              </ScrollArea.Autosize>
-            ) : null}
-          </>
+            <Tabs
+              value={history.compareMode}
+              onValueChange={(value) => history.setCompareMode(value as "current" | "previous")}
+              className="wiki-history-compare"
+            >
+              <div className="wiki-history-compare__actions">
+                <TabsList aria-label={t("history.title")}>
+                  <TabsTrigger value="current">{t("history.compareCurrent")}</TabsTrigger>
+                  <TabsTrigger value="previous" disabled={history.previousRevisionNumber === null}>
+                    {t("history.comparePrevious")}
+                  </TabsTrigger>
+                </TabsList>
+                {history.selectedRevision !== null ? (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    loading={history.isRestoring}
+                    disabled={history.isIdenticalToCurrent || history.isRestoring}
+                    onClick={() => handleRestore(history.selectedRevision!)}
+                  >
+                    {history.isRestoring ? t("history.restoring") : t("history.restore")}
+                  </Button>
+                ) : null}
+              </div>
+              <TabsContent value={history.compareMode} className="wiki-history-compare__content">
+                {renderDiff()}
+              </TabsContent>
+            </Tabs>
+          </div>
         )}
-      </Stack>
-    </Modal>
+      </DialogContent>
+    </Dialog>
   );
 }

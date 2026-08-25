@@ -3,25 +3,30 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate, useSearch } from "@tanstack/react-router";
 import {
-  Anchor,
-  Button,
-  Checkbox,
-  Paper,
-  Stack,
-  Text,
-  TextInput,
-  Title,
-} from "@mantine/core";
-import { AlertTriangleIcon, ArrowLeftIcon, EyeIcon, EyeOffIcon, InfoCircleIcon, KeyboardIcon } from "@portal/components/icons";
+  AlertTriangleIcon,
+  ArrowLeftIcon,
+  EyeIcon,
+  EyeOffIcon,
+  InfoCircleIcon,
+  KeyboardIcon,
+} from "@portal/components/icons";
+import { Button } from "@portal/components/ui/button";
+import { Checkbox } from "@portal/components/ui/checkbox";
+import { Input } from "@portal/components/ui/input";
 import { useState, type ReactNode } from "react";
-import { useDisclosure } from "@mantine/hooks";
 import { useForm } from "react-hook-form";
 import { useTranslation } from "react-i18next";
 import { z } from "zod";
-import { isApiRequestError, login as requestLogin } from "../../services/AuthService";
+import {
+  isApiRequestError,
+  login as requestLogin,
+  startOAuth,
+  type OAuthProvider,
+} from "../../services/AuthService";
 import { useSiteConfigStore } from "../../stores/site-config";
 import { transitionSession } from "../../session-transition";
-import { AuthLightfall } from "./AuthLightfall";
+import { isSafeReturnTo } from "../../utils/auth-navigation";
+import { AuthPageFrame } from "./AuthPageFrame";
 import "./AuthPages.css";
 
 const LOGIN_FORM_SCHEMA = loginSchema.extend({
@@ -29,12 +34,7 @@ const LOGIN_FORM_SCHEMA = loginSchema.extend({
 });
 
 type LoginFormValues = z.infer<typeof LOGIN_FORM_SCHEMA>;
-
 type FieldErrorMap = Record<string, string>;
-
-function isSafeReturnTo(value: string | undefined): value is string {
-  return typeof value === "string" && value.startsWith("/") && !value.startsWith("//") && !value.startsWith("/\\");
-}
 
 function firstString(value: unknown): string | null {
   if (typeof value === "string" && value.trim().length > 0) {
@@ -78,7 +78,11 @@ type LoginNoticeTone = "info" | "warning" | "error";
 function LoginNotice({ tone, children }: { tone: LoginNoticeTone; children: ReactNode }) {
   const Icon = tone === "info" ? InfoCircleIcon : AlertTriangleIcon;
   return (
-    <div className={`login-page__notice login-page__notice--${tone}`} role="status">
+    <div
+      className={`login-page__notice login-page__notice--${tone}`}
+      role={tone === "error" ? "alert" : "status"}
+      aria-live={tone === "error" ? "assertive" : "polite"}
+    >
       <Icon size={16} className="login-page__notice-icon" />
       <span>{children}</span>
     </div>
@@ -90,11 +94,7 @@ export function LoginPage() {
   const navigate = useNavigate();
   const search = useSearch({ from: "/login" });
   const queryClient = useQueryClient();
-  const siteName = useSiteConfigStore((s) => s.siteName);
-  const siteLogoUrl = useSiteConfigStore((s) => s.siteLogoUrl);
-
   const {
-    register,
     handleSubmit,
     watch,
     setValue,
@@ -102,7 +102,7 @@ export function LoginPage() {
   } = useForm<z.input<typeof LOGIN_FORM_SCHEMA>, any, LoginFormValues>({
     resolver: zodResolver(LOGIN_FORM_SCHEMA),
     defaultValues: {
-      username: "",
+      login_name: "",
       password: "",
       stay_logged_in: false,
     },
@@ -111,10 +111,14 @@ export function LoginPage() {
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [apiFieldErrors, setApiFieldErrors] = useState<Partial<Record<keyof LoginFormValues, string>>>({});
   const [isCapsLockOn, setIsCapsLockOn] = useState(false);
-  const [showPassword, showPasswordHandlers] = useDisclosure(false);
-
-  const usernameValue = watch("username");
+  const [showPassword, setShowPassword] = useState(false);
+  const loginNameValue = watch("login_name");
   const passwordValue = watch("password");
+  const stayLoggedIn = watch("stay_logged_in");
+  const oauth = useSiteConfigStore((state) => state.oauth);
+  const availableOAuthProviders = (Object.entries(oauth) as Array<[OAuthProvider, boolean]>)
+    .filter(([, enabled]) => enabled)
+    .map(([provider]) => provider);
 
   const loginMutation = useMutation({
     mutationFn: requestLogin,
@@ -128,10 +132,10 @@ export function LoginPage() {
       if (isApiRequestError(error) && error.status === 400) {
         const mapped = parseValidationFieldErrors(error.details);
         setApiFieldErrors({
-          username: mapped.username ?? undefined,
+          login_name: mapped.login_name ?? undefined,
           password: mapped.password ?? undefined,
         });
-        if (!mapped.username && !mapped.password) {
+        if (!mapped.login_name && !mapped.password) {
           setSubmitError(error.message);
         }
         return;
@@ -144,125 +148,134 @@ export function LoginPage() {
     },
   });
 
+  const oauthMutation = useMutation({
+    mutationFn: (provider: OAuthProvider) => startOAuth(provider),
+    onSuccess: ({ authorization_url }) => window.location.assign(authorization_url),
+    onError: (error) => setSubmitError(error instanceof Error ? error.message : t("invalidCredentials")),
+  });
+
   const onSubmit = (values: LoginFormValues) => {
     setSubmitError(null);
     setApiFieldErrors({});
     loginMutation.mutate(values);
   };
 
-  const usernameError = errors.username ? t("validation.usernameRequired") : apiFieldErrors.username;
+  const loginNameError = errors.login_name ? t("validation.loginNameRequired") : apiFieldErrors.login_name;
   const passwordError = errors.password ? t("validation.passwordRequired") : apiFieldErrors.password;
 
   return (
-    <div className="login-page">
-      <AuthLightfall />
-      <div className="login-page__content">
-        <header className="login-page__heading">
-          <div className="login-page__brand">
-            {siteLogoUrl ? (
-              <img src={siteLogoUrl} alt="" aria-hidden className="login-page__brand-logo" />
-            ) : null}
-            <Title order={1} className="login-page__brand-text">{siteName}</Title>
+    <AuthPageFrame mode="login">
+      {search.reason === "expired" ? (
+        <LoginNotice tone="warning">{t("sessionExpired")}</LoginNotice>
+      ) : null}
+      {search.reason === "required" ? (
+        <LoginNotice tone="info">{t("loginRequired")}</LoginNotice>
+      ) : null}
+      {search.oauth === "failed" ? (
+        <LoginNotice tone="error">{t("oauth.failed")}</LoginNotice>
+      ) : null}
+      {submitError ? <LoginNotice tone="error">{submitError}</LoginNotice> : null}
+
+      <form onSubmit={handleSubmit(onSubmit)} className="login-page__form">
+        <div className="login-page__form-stack">
+          <div className={`login-floating-field${loginNameValue.length > 0 ? " login-floating-field--filled" : ""}`}>
+            <div className="login-floating-root">
+              <Input
+                id="login-name"
+                value={loginNameValue}
+                onChange={(event) => setValue("login_name", event.currentTarget.value)}
+                className="login-floating-input"
+                aria-invalid={Boolean(loginNameError)}
+                aria-describedby={loginNameError ? "login-name-error" : undefined}
+                autoComplete="username"
+              />
+              <label className="login-floating-label" htmlFor="login-name">{t("field.loginName")}</label>
+            </div>
+            {loginNameError ? <p id="login-name-error" className="login-page__field-error">{loginNameError}</p> : null}
           </div>
-          <Text c="dimmed" size="sm" ta="center" className="login-page__subtitle">
-            {t("login.subtitle")}
-          </Text>
-        </header>
 
-        <Paper withBorder shadow="sm" radius="md" className="login-page__card">
-          {search.reason === "expired" ? (
-            <LoginNotice tone="warning">{t("sessionExpired")}</LoginNotice>
-          ) : null}
-          {search.reason === "required" ? (
-            <LoginNotice tone="info">{t("loginRequired")}</LoginNotice>
-          ) : null}
-          {submitError ? <LoginNotice tone="error">{submitError}</LoginNotice> : null}
-
-          <form onSubmit={handleSubmit(onSubmit)}>
-            <Stack gap={20}>
-              <div className={`login-floating-field${usernameValue.length > 0 ? " login-floating-field--filled" : ""}`}>
-                <TextInput
-                  value={usernameValue}
-                  onChange={(event) => setValue("username", event.currentTarget.value)}
-                  error={usernameError}
-                  classNames={{ root: "login-floating-root", input: "login-floating-input", label: "login-floating-label" }}
-                  label={t("field.username")}
-                  autoComplete="username"
-                />
-              </div>
-
-              <div
-                className={`login-floating-field${passwordValue.length > 0 ? " login-floating-field--filled" : ""}`}
-                onClickCapture={(event) => setIsCapsLockOn(event.getModifierState("CapsLock"))}
-                onKeyUpCapture={(event) => setIsCapsLockOn(event.getModifierState("CapsLock"))}
-                onKeyDownCapture={(event) => setIsCapsLockOn(event.getModifierState("CapsLock"))}
-              >
-                <div className="login-page__password-control">
-                  <TextInput
-                    label={t("field.password")}
-                    type={showPassword ? "text" : "password"}
-                    value={passwordValue}
-                    onChange={(event) => {
-                      setValue("password", event.currentTarget.value);
-                    }}
-                    error={passwordError}
-                    classNames={{ root: "login-floating-root", input: "login-floating-input login-page__password-input", label: "login-floating-label" }}
-                    autoComplete="current-password"
-                  />
-                  <div className="login-page__password-actions">
-                    <button
-                      type="button"
-                      className="login-page__eye-btn"
-                      onClick={showPasswordHandlers.toggle}
-                      aria-label={showPassword ? t("aria.hidePassword") : t("aria.showPassword")}
-                      aria-pressed={showPassword}
-                    >
-                      {showPassword ? <EyeOffIcon size={18} /> : <EyeIcon size={18} />}
-                    </button>
-                  </div>
-                </div>
-                {isCapsLockOn ? (
-                  <div className="login-page__caps-warning" role="status" aria-live="polite">
-                    <KeyboardIcon
-                      size={18}
-                      className="login-page__caps-icon"
-                      aria-hidden="true"
-                    />
-                    <span>{t("capsLockWarning")}</span>
-                  </div>
-                ) : null}
-              </div>
-
-              <Checkbox {...register("stay_logged_in")} label={t("field.stayLoggedIn")} />
-
-              <Button type="submit" loading={loginMutation.isPending}>
-                {t("button.login")}
-              </Button>
-
-              <div className="login-page__back-link">
-                <Anchor
-                  component={Link}
-                  to="/"
-                  underline="hover"
-                  className="login-page__back-anchor"
+          <div
+            className={`login-floating-field${passwordValue.length > 0 ? " login-floating-field--filled" : ""}`}
+            onClickCapture={(event) => setIsCapsLockOn(event.getModifierState("CapsLock"))}
+            onKeyUpCapture={(event) => setIsCapsLockOn(event.getModifierState("CapsLock"))}
+            onKeyDownCapture={(event) => setIsCapsLockOn(event.getModifierState("CapsLock"))}
+          >
+            <div className="login-floating-root login-page__password-control">
+              <Input
+                id="login-password"
+                type={showPassword ? "text" : "password"}
+                value={passwordValue}
+                onChange={(event) => setValue("password", event.currentTarget.value)}
+                className="login-floating-input login-page__password-input"
+                aria-invalid={Boolean(passwordError)}
+                aria-describedby={passwordError ? "login-password-error" : undefined}
+                autoComplete="current-password"
+              />
+              <label className="login-floating-label" htmlFor="login-password">{t("field.password")}</label>
+              <div className="login-page__password-actions">
+                <button
+                  type="button"
+                  className="login-page__eye-btn"
+                  onClick={() => setShowPassword((visible) => !visible)}
+                  aria-label={showPassword ? t("aria.hidePassword") : t("aria.showPassword")}
+                  aria-pressed={showPassword}
                 >
-                  <ArrowLeftIcon size={14} />
-                  {t("button.backToPortal")}
-                </Anchor>
+                  {showPassword ? <EyeOffIcon size={18} aria-hidden="true" /> : <EyeIcon size={18} aria-hidden="true" />}
+                </button>
               </div>
+            </div>
+            {passwordError ? <p id="login-password-error" className="login-page__field-error">{passwordError}</p> : null}
+            {isCapsLockOn ? (
+              <div className="login-page__caps-warning" role="status" aria-live="polite">
+                <KeyboardIcon size={18} className="login-page__caps-icon" aria-hidden="true" />
+                <span>{t("capsLockWarning")}</span>
+              </div>
+            ) : null}
+          </div>
 
-              <div style={{ textAlign: "center" }}>
-                <Text size="sm" c="dimmed">
-                  {t("button.haveInviteCode")}{" "}
-                  <Anchor component={Link} to="/register" underline="hover">
-                    {t("button.registerHere")}
-                  </Anchor>
-                </Text>
-              </div>
-            </Stack>
-          </form>
-        </Paper>
-      </div>
-    </div>
+          <label className="login-page__checkbox-field" htmlFor="stay-logged-in">
+            <Checkbox
+              id="stay-logged-in"
+              checked={stayLoggedIn}
+              onCheckedChange={(checked) => setValue("stay_logged_in", checked, { shouldDirty: true })}
+            />
+            <span>{t("field.stayLoggedIn")}</span>
+          </label>
+
+          <Button className="login-page__submit" type="submit" loading={loginMutation.isPending}>
+            {t("button.login")}
+          </Button>
+
+          {availableOAuthProviders.length > 0 ? (
+            <div className="login-page__oauth">
+              <p>{t("oauth.continueWith")}</p>
+              {availableOAuthProviders.map((provider) => (
+                <Button
+                  key={provider}
+                  className="login-page__submit"
+                  variant="outline"
+                  loading={oauthMutation.isPending && oauthMutation.variables === provider}
+                  onClick={() => oauthMutation.mutate(provider)}
+                >
+                  {t(`oauth.provider.${provider}`)}
+                </Button>
+              ))}
+            </div>
+          ) : null}
+
+          <div className="login-page__back-link">
+            <Link to="/" className="login-page__back-anchor">
+              <ArrowLeftIcon size={14} aria-hidden="true" />
+              {t("button.backToPortal")}
+            </Link>
+          </div>
+
+          <p className="login-page__register-link">
+            {t("button.haveInviteCode")} {" "}
+            <Link to="/register">{t("button.registerHere")}</Link>
+          </p>
+        </div>
+      </form>
+    </AuthPageFrame>
   );
 }

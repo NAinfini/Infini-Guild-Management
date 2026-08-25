@@ -15,6 +15,7 @@ export type VpsRuntimeConfig = Readonly<{
   staticPath: string;
   trustedProxyAddresses: ReadonlySet<string>;
   maintenanceMode: boolean;
+  cloudflareEmail: Readonly<{ accountId: string; apiToken: string }> | null;
 }>;
 
 export function readVpsRuntimeConfig(
@@ -31,6 +32,7 @@ export function readVpsRuntimeConfig(
   const trustedProxyAddresses = new Set(
     commaSeparated(environment.IG_TRUSTED_PROXY_IPS).map((value) => normalizeIp(value, "IG_TRUSTED_PROXY_IPS")),
   );
+  const cloudflareEmail = cloudflareEmailConfig(environment, application.emailFrom);
   return Object.freeze({
     application,
     host,
@@ -40,7 +42,20 @@ export function readVpsRuntimeConfig(
     staticPath: resolvePath(environment.IG_STATIC_PATH, workingDirectory, "dist"),
     trustedProxyAddresses,
     maintenanceMode: isMaintenanceModeEnabled(environment.IG_MAINTENANCE_MODE),
+    cloudflareEmail,
   });
+}
+
+function cloudflareEmailConfig(
+  environment: Readonly<Record<string, string | undefined>>,
+  from: string | null,
+): Readonly<{ accountId: string; apiToken: string }> | null {
+  const accountId = environment.IG_CLOUDFLARE_EMAIL_ACCOUNT_ID?.trim() || undefined;
+  const apiToken = environment.IG_CLOUDFLARE_EMAIL_API_TOKEN?.trim() || undefined;
+  if (Boolean(from) !== Boolean(accountId) || Boolean(from) !== Boolean(apiToken)) {
+    throw new TypeError("IG_EMAIL_FROM, IG_CLOUDFLARE_EMAIL_ACCOUNT_ID, and IG_CLOUDFLARE_EMAIL_API_TOKEN must be configured together");
+  }
+  return from && accountId && apiToken ? Object.freeze({ accountId, apiToken }) : null;
 }
 
 function integer(

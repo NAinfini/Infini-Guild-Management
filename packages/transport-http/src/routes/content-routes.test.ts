@@ -24,10 +24,12 @@ const announcement: Announcement = {
   updated_by: null,
   created_at: NOW,
   updated_at: NOW,
+  author: { id: "user-1", display_name: "Admin", avatar_media_id: null },
+  attachments: [],
 };
 
 describe("content HTTP routes", () => {
-  it("uses the announcement detail ETag unchanged for If-Match updates", async () => {
+  it("uses a content ETag for detail caching while updates retain the revision ETag", async () => {
     const get = vi.fn().mockResolvedValue(announcement);
     const update = vi.fn().mockResolvedValue(announcement);
     const service = {
@@ -38,16 +40,17 @@ describe("content HTTP routes", () => {
     app.route("/api/announcements", createAnnouncementRoutes({
       service,
       publicOrigin: "https://guild.example",
-      getImagePolicy: () => ({ maxBytes: 1024, quota: 10 }),
+      getMediaPolicy: () => ({ imageMaxBytes: 1024, imageQuota: 10, attachmentMaxBytes: 1024, attachmentQuota: 5 }),
     }));
 
     const detail = await app.request("/api/announcements/announcement-1");
-    const etag = detail.headers.get("ETag");
-    expect(etag).toBe(`"announcement-announcement-1-${NOW}"`);
+    const contentEtag = detail.headers.get("ETag");
+    const revisionEtag = `"announcement-announcement-1-${NOW}"`;
+    expect(contentEtag).not.toBe(revisionEtag);
 
     const response = await app.request("/api/announcements/announcement-1", {
       method: "PATCH",
-      headers: { "Content-Type": "application/json", "If-Match": etag! },
+      headers: { "Content-Type": "application/json", "If-Match": revisionEtag },
       body: JSON.stringify({ title: "Updated" }),
     });
 
@@ -58,7 +61,39 @@ describe("content HTTP routes", () => {
       { title: "Updated" },
       "https://guild.example",
       10,
-      etag,
+      5,
+      revisionEtag,
+    );
+  });
+
+  it("accepts exactly one staged announcement attachment", async () => {
+    const uploadPendingAttachment = vi.fn().mockResolvedValue({
+      expires_at: "2026-08-10T12:00:00.000Z",
+      attachment: {
+        media_id: "123456789012345678901",
+        name: "guide.pdf",
+        content_type: "application/pdf",
+        byte_size: 8,
+      },
+    });
+    const service = { uploadPendingAttachment } as unknown as AnnouncementRouteDependencies["service"];
+    const app = appWithContext();
+    app.route("/api/announcements", createAnnouncementRoutes({
+      service,
+      publicOrigin: "https://guild.example",
+      getMediaPolicy: () => ({ imageMaxBytes: 1024, imageQuota: 10, attachmentMaxBytes: 1024, attachmentQuota: 5 }),
+    }));
+    const form = new FormData();
+    form.append("file", new File(["%PDF-1.7"], "guide.pdf", { type: "application/pdf" }));
+
+    const response = await app.request("/api/announcements/attachments", { method: "POST", body: form });
+
+    expect(response.status).toBe(201);
+    expect(uploadPendingAttachment).toHaveBeenCalledWith(
+      request,
+      expect.objectContaining({ originalName: "guide.pdf", contentType: "application/pdf" }),
+      1024,
+      5,
     );
   });
 
@@ -174,7 +209,7 @@ const wikiArticle = {
   archived_at: null,
   created_by: "user-1",
   updated_by: null,
-  updated_by_username: null,
+  updated_by_display_name: null,
   created_at: NOW,
   updated_at: NOW,
 };
@@ -185,7 +220,7 @@ const wikiRevision = {
   revision: 1,
   title: "Guide",
   edited_by: "user-1",
-  edited_by_username: "admin",
+  edited_by_display_name: "admin",
   restored_from: null,
   created_at: NOW,
 };

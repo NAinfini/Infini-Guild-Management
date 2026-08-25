@@ -1,7 +1,19 @@
 export const queryKeys = {
+  notifications: {
+    all: ["notifications"] as const,
+    user: (userId: string) => ["notifications", "inbox", userId] as const,
+    inbox: (userId: string | null | undefined) =>
+      [...queryKeys.notifications.user(userId ?? "anonymous"), "recent"] as const,
+  },
+  importantNotices: {
+    all: ["important-notices"] as const,
+    active: () => ["important-notices", "active"] as const,
+    acknowledgements: (userId: string | null | undefined) => ["important-notices", "acknowledgements", userId ?? "anonymous"] as const,
+    admin: () => ["important-notices", "admin"] as const,
+  },
   auth: {
     all: ["auth"] as const,
-    usernameAvailability: (username: string) => [...queryKeys.auth.all, "username-availability", username] as const,
+    security: () => [...queryKeys.auth.all, "security"] as const,
     verifyInvite: (code: string) => [...queryKeys.auth.all, "verify-invite", code] as const,
   },
   users: {

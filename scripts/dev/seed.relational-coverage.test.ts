@@ -35,7 +35,7 @@ describe("development relational seed coverage", () => {
           WHERE id = 'dev-invite-active'`),
         database.prepare(`UPDATE login_failures
           SET locked_until = '2020-01-01T00:00:00.000Z'
-          WHERE username = 'member_08'`),
+          WHERE login_name = 'member_08'`),
         database.prepare(`UPDATE announcements
           SET status = 'published', publish_at = '2020-01-01T00:00:00.000Z',
               expires_at = '2020-01-02T00:00:00.000Z'
@@ -50,7 +50,7 @@ describe("development relational seed coverage", () => {
         SELECT
           (SELECT count(*) FROM user_credentials WHERE user_id LIKE 'dev-%') AS credentials,
           (SELECT count(*) FROM login_failures
-            WHERE username = 'member_08' AND fail_count = 6
+            WHERE login_name = 'member_08' AND fail_count = 6
               AND locked_until > strftime('%Y-%m-%dT%H:%M:%fZ', 'now')) AS activeLoginLocks,
           (SELECT count(*) FROM invite_links
             WHERE id LIKE 'dev-invite-%' AND revoked_at IS NULL
@@ -96,7 +96,7 @@ describe("development relational seed coverage", () => {
           (SELECT count(*) FROM scheduled_job_leases) AS scheduledLeases,
           (SELECT count(*) FROM system_test_runs) AS systemTestRuns,
           (SELECT count(*) FROM invite_links WHERE id LIKE 'dev-invite-%') AS inviteRows,
-          (SELECT count(*) FROM login_failures WHERE username = 'member_08') AS loginFailureRows,
+          (SELECT count(*) FROM login_failures WHERE login_name = 'member_08') AS loginFailureRows,
           (SELECT count(*) FROM announcements WHERE id LIKE 'dev-announcement-%') AS announcementRows,
           (SELECT count(*) FROM member_absences WHERE id = 'dev-absence-member-08') AS absenceRows
       `).first<Record<string, number>>();

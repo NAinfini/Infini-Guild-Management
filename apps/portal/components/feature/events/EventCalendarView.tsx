@@ -2,35 +2,35 @@ import type { Event } from "@guild/shared";
 import { EventMonthView } from "./EventMonthView";
 
 type EventCalendarViewProps = {
-  canManage: boolean;
+  canCreate: boolean;
   eventsByDay: Map<string, Event[]>;
   availabilityDayPeakByDay: Map<number, number>;
   availabilityMaxCount: number;
+  selectedDateKey?: string;
   onSelectDate: (dateKey: string) => void;
   onCreateEvent: (dateKey: string) => void;
-  onEditEvent: (event: Event) => void;
-  onViewEvent?: (event: Event) => void;
+  onViewEvent: (event: Event) => void;
 };
 
 export function EventCalendarView({
-  canManage,
+  canCreate,
   eventsByDay,
   availabilityDayPeakByDay,
   availabilityMaxCount,
+  selectedDateKey,
   onSelectDate,
   onCreateEvent,
-  onEditEvent,
   onViewEvent,
 }: EventCalendarViewProps) {
   return (
     <EventMonthView
       onSelectDate={onSelectDate}
-      canManage={canManage}
+      selectedDateKey={selectedDateKey}
+      canCreate={canCreate}
       eventsByDay={eventsByDay}
       availabilityDayPeakByDay={availabilityDayPeakByDay}
       availabilityMaxCount={availabilityMaxCount}
       onCreateEvent={onCreateEvent}
-      onEditEvent={onEditEvent}
       onViewEvent={onViewEvent}
     />
   );

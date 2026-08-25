@@ -3,15 +3,14 @@ import { SYSTEM_TEST_CONTENT_MARKER } from "@guild/shared/config/system-test";
 import { expect, readJson, test, type Flow } from "../../support/test";
 import { imageVariantsUpload } from "../../support/files";
 import {
-  clearButton,
   ensureFiltersOpen,
   field,
   selectFilterOption,
-  selectSegmentedControlOption,
+  selectRadioOption,
 } from "../../support/ui";
 
 /*
- * 画廊页顶部的筛选条：搜索、类型下拉、新旧分段器、起止日期、清除日期、重置。
+ * 画廊页顶部的筛选条：搜索、类型单选、新旧单选、起止日期、清除日期、重置。
  *
  * 这一排全是服务端筛选（改 state → 换 query key → 重新 GET /api/gallery），
  * 所以每条用例都要求两件事同时成立：参数带对了发出去，结果集也真的变了。
@@ -164,7 +163,7 @@ test("搜索框：条件按归一化后的形态送到服务端，只留下命�
   await expect(page.getByText("No media matches your filters.")).toBeVisible();
 });
 
-test("类型下拉：只留下该类型，清除按钮把条件撤回", async ({ page, flow }) => {
+test("类型筛选：只留下该类型，选回 All 把条件撤回", async ({ page, flow }) => {
   await searchThisRun(page, flow);
 
   const request = nextGalleryRequest(page);
@@ -178,9 +177,8 @@ test("类型下拉：只留下该类型，清除按钮把条件撤回", async ({
   await expect(itemByCaption(page, gamma.caption), "图片必须被滤掉").toHaveCount(0);
 
   // 撤回到刚取过的「只有搜索词」组合，命中缓存，所以这里只验结果集。
-  await ensureFiltersOpen(filterToolbar(page));
-  await clearButton(page, "Filter gallery by type").click();
-  await expect(field(page, "Filter gallery by type"), "清除按钮要把下拉一起清空").toHaveValue("");
+  await selectFilterOption(page, filterToolbar(page), "Filter gallery by type", "All");
+  await expect(page.getByRole("radio", { name: "All", exact: true }), "选回 All 要撤销类型条件").toBeChecked();
   await expect(items(page)).toHaveCount(3);
 });
 
@@ -191,7 +189,7 @@ test("新旧分段器：order 送到服务端，卡片顺序跟着整个翻过�
 
   await ensureFiltersOpen(filterToolbar(page));
   const request = nextGalleryRequest(page);
-  await flow.act(() => selectSegmentedControlOption(page, "Oldest"), GALLERY);
+  await flow.act(() => selectRadioOption(page, "Oldest"), GALLERY);
 
   expect(new URL((await request).url()).searchParams.get("order")).toBe("asc");
   await expect(captions(page), "顺序必须由服务端给出，前端不该自己倒一遍")
@@ -241,7 +239,7 @@ test("重置筛选：一次清掉搜索、类型和两个日期，列表回到�
 
   await expect(searchBox(page)).toHaveValue("");
   await ensureFiltersOpen(filterToolbar(page));
-  await expect(field(page, "Filter gallery by type")).toHaveValue("");
+  await expect(page.getByRole("radio", { name: "All", exact: true })).toBeChecked();
   await expect(dateFrom(page)).toHaveValue("");
   await expect(dateTo(page)).toHaveValue("");
   await expect(itemByCaption(page, outside.caption), "重置之后对照素材必须回来，说明搜索真的撤了")
@@ -258,7 +256,7 @@ test("换筛选条件：已勾选的条目必须跟着清掉", async ({ page, fl
   await expect(bulkDelete, "选中一条之后批量删除才该可用").toBeEnabled();
 
   await ensureFiltersOpen(filterToolbar(page));
-  await flow.act(() => selectSegmentedControlOption(page, "Oldest"), GALLERY);
+  await flow.act(() => selectRadioOption(page, "Oldest"), GALLERY);
 
   await expect(selectCheckbox(page, alpha.id), "换了结果集，旧的勾选不能留着").not.toBeChecked();
   await expect(

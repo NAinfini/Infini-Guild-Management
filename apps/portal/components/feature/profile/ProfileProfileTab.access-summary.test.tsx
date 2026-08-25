@@ -1,5 +1,4 @@
 import type { UserBadge } from "@guild/shared";
-import { MantineProvider } from "@mantine/core";
 import { render, screen, within } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { ProfileProfileTab } from "./ProfileProfileTab";
@@ -33,11 +32,11 @@ function renderTab(
   badges: UserBadge[],
 ) {
   render(
-    <MantineProvider>
-      <ProfileProfileTab
+    <ProfileProfileTab
         roleName={roleName}
         roleColor={roleColor}
         badges={badges}
+        displayName="Member"
         power={9800}
         classDraft=""
         classOptions={[]}
@@ -45,18 +44,24 @@ function renderTab(
         titleHtml=""
         bio=""
         onTitleHtmlChange={vi.fn()}
+        onDisplayNameChange={vi.fn()}
         onPowerChange={vi.fn()}
         onClassDraftChange={vi.fn()}
         onAddClass={vi.fn()}
         onClassDragEnd={vi.fn()}
         onRemoveClass={vi.fn()}
         onBioChange={vi.fn()}
-      />
-    </MantineProvider>,
+    />,
   );
 }
 
 describe("ProfileProfileTab access summary", () => {
+  it("edits the public display name with the rest of the profile fields", () => {
+    renderTab("Member", null, []);
+
+    expect(screen.getByLabelText("field.displayName")).toHaveValue("Member");
+  });
+
   it("shows the assigned role and badges without edit controls", () => {
     renderTab("Site Owner", "#ef4444", [badge]);
 

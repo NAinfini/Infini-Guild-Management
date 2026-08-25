@@ -117,9 +117,9 @@ export class SqlitePortalReadModelStore implements PortalReadModelStore {
       },
       {
         method: "all",
-        columns: ["event_id", "id", "username", "role_id", "power", "class_ids_json", "avatar_media_id"],
+        columns: ["event_id", "id", "display_name", "role_id", "power", "class_ids_json", "avatar_media_id"],
         sql: `${selected}, ranked_participants AS (
-          SELECT ep.event_id, u.id, u.username, u.role_id, coalesce(mp.power, 0) AS power,
+          SELECT ep.event_id, u.id, u.display_name, u.role_id, coalesce(mp.power, 0) AS power,
             ep.joined_at, ep.id AS participant_id,
             row_number() OVER (PARTITION BY ep.event_id ORDER BY ep.joined_at, ep.id) AS preview_rank
           FROM selected_events se
@@ -127,7 +127,7 @@ export class SqlitePortalReadModelStore implements PortalReadModelStore {
           JOIN users u ON u.id = ep.user_id AND u.deleted_at IS NULL AND u.is_active = 1
           LEFT JOIN member_profiles mp ON mp.user_id = u.id
           )
-          SELECT rp.event_id, rp.id, rp.username, rp.role_id, rp.power,
+          SELECT rp.event_id, rp.id, rp.display_name, rp.role_id, rp.power,
             coalesce((
               SELECT json_group_array(class_id)
               FROM (
@@ -241,7 +241,7 @@ export class SqlitePortalReadModelStore implements PortalReadModelStore {
       const list = participantPreviewByEvent.get(eventId) ?? [];
       list.push({
         userId,
-        username: text(row[2], "participant username"),
+        display_name: text(row[2], "participant display_name"),
         roleId: text(row[3], "participant role"),
         power: nonnegativeNumber(row[4], "participant power"),
         classes,
@@ -307,15 +307,15 @@ export class SqlitePortalReadModelStore implements PortalReadModelStore {
       },
       {
         method: "all",
-        columns: ["id", "user_id", "username", "damage", "healing", "damage_taken", "building_damage"],
+        columns: ["id", "user_id", "display_name", "damage", "healing", "damage_taken", "building_damage"],
         sql: `${recent}
-          SELECT rw.id, wm.user_id, u.username,
+          SELECT rw.id, wm.user_id, u.display_name,
             wm.damage, wm.healing, wm.damage_taken, wm.building_damage
           FROM recent_wars rw
           JOIN war_members wm INDEXED BY idx_war_members_war_pool_sort
             ON wm.war_id = rw.id AND wm.team_id IS NOT NULL
           JOIN users u ON u.id = wm.user_id
-          ORDER BY rw.created_at DESC, rw.id DESC, u.username, u.id
+          ORDER BY rw.created_at DESC, rw.id DESC, u.display_name, u.id
           LIMIT ${RECENT_WAR_MEMBER_LIMIT + 1}`,
       },
     ]);
@@ -329,7 +329,7 @@ export class SqlitePortalReadModelStore implements PortalReadModelStore {
       const warId = text(row[0], "MVP war id");
       const list = membersByWar.get(warId) ?? [];
       list.push({
-        name: text(row[2], "MVP username"),
+        name: text(row[2], "MVP display_name"),
         stats: {
           damage: nullableNumber(row[3], "damage"),
           healing: nullableNumber(row[4], "healing"),
@@ -362,14 +362,14 @@ export class SqlitePortalReadModelStore implements PortalReadModelStore {
     const statements: SqlBatchStatement[] = [
       {
         method: "all",
-        columns: ["id", "username", "role_id", "name", "color", "level", "power"],
-        sql: `SELECT u.id, u.username, u.role_id, r.name, r.color, r.level, coalesce(mp.power, 0) AS power
-          FROM users u INDEXED BY ux_users_username_nocase
+        columns: ["id", "display_name", "role_id", "name", "color", "level", "power"],
+        sql: `SELECT u.id, u.display_name, u.role_id, r.name, r.color, r.level, coalesce(mp.power, 0) AS power
+          FROM users u INDEXED BY ux_users_display_name_nocase
           JOIN roles r ON r.id = u.role_id
           LEFT JOIN member_profiles mp ON mp.user_id = u.id
           WHERE u.deleted_at IS NULL AND u.is_active = 1
-            AND lower(u.username) LIKE ? ESCAPE '\\'
-          ORDER BY u.username COLLATE NOCASE, u.id
+            AND lower(u.display_name) LIKE ? ESCAPE '\\'
+          ORDER BY u.display_name COLLATE NOCASE, u.id
           LIMIT ?`,
         params: [pattern, input.perTypeLimit],
       },
@@ -438,7 +438,7 @@ export class SqlitePortalReadModelStore implements PortalReadModelStore {
       const roleName = text(row[3], "search role name");
       return {
         id: text(row[0], "search member id"),
-        title: text(row[1], "search username"),
+        title: text(row[1], "search display_name"),
         subtitle: power > 0 ? `${roleName} · ${Math.round(power).toLocaleString("en-US")} power` : roleName,
         type: "user",
         to: "/roster",

@@ -1,5 +1,13 @@
 import type { Event, MemberProfile, User } from "@guild/shared";
-import { ActionIcon, Button, Menu, Tooltip } from "@mantine/core";
+import { Button } from "@portal/components/ui/button";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@portal/components/ui/dropdown-menu";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@portal/components/ui/tooltip";
 import { useConfirmDialog } from "@portal/hooks/useConfirmDialog";
 import {
   ArchiveIcon,
@@ -25,10 +33,12 @@ type MemberEntry = { user: User; profile: MemberProfile };
 type EventCardProps = {
   event: Event;
   now: Date;
-  canManage: boolean;
+  canCreate: boolean;
+  canEdit: boolean;
+  canArchive: boolean;
+  canDelete: boolean;
   canInteract: boolean;
   currentUserId: string | null;
-  focusedEventId: string | null;
   eventFlags: Map<string, "NEW" | "UPDATED">;
   eventMembersMap: Map<string, MemberEntry[]>;
   allUsers: MemberEntry[];
@@ -55,10 +65,12 @@ type EventCardProps = {
 export function EventCard({
   event,
   now,
-  canManage,
+  canCreate,
+  canEdit,
+  canArchive,
+  canDelete,
   canInteract,
   currentUserId,
-  focusedEventId,
   eventFlags,
   eventMembersMap,
   allUsers,
@@ -123,91 +135,105 @@ export function EventCard({
 
   const headerActions = canInteract && !isPoll ? (
     <div className="event-card__header-actions" onClick={(clickEvent) => clickEvent.stopPropagation()}>
-      <Tooltip label={t("card.copyMentions")}>
-        <span data-disabled-tooltip-target>
-          <ActionIcon
+      <Tooltip>
+        <TooltipTrigger render={<span data-disabled-tooltip-target />}>
+          <Button
             onClick={() => onCopyMentions(event)}
-            variant="default"
-            size="sm"
+            variant="outline"
+            size="icon-sm"
             disabled={members.length === 0}
             aria-label={t("card.copyMentions")}
           >
             <CopyIcon size={14} />
-          </ActionIcon>
-        </span>
+          </Button>
+        </TooltipTrigger>
+        <TooltipContent>{t("card.copyMentions")}</TooltipContent>
       </Tooltip>
     </div>
   ) : null;
 
-  const menu = canManage ? (
-    <Menu position="bottom-end">
-      <Menu.Target>
-        <ActionIcon variant="subtle" className="event-card__menu-btn" aria-label={t("menu.actions")} onClick={(clickEvent) => clickEvent.stopPropagation()}>
+  const canChangeArchiveState = event.archived_at ? canEdit : canArchive;
+  const hasPrimaryActions = canEdit || canCreate;
+  const hasLifecycleActions = canChangeArchiveState || canDelete;
+  const menu = hasPrimaryActions || hasLifecycleActions ? (
+    <DropdownMenu>
+      <DropdownMenuTrigger render={(
+        <Button variant="ghost" size="icon-sm" className="event-card__menu-btn" aria-label={t("menu.actions")} onClick={(clickEvent) => clickEvent.stopPropagation()} />
+      )}>
           <DotsIcon size={16} />
-        </ActionIcon>
-      </Menu.Target>
-      <Menu.Dropdown onClick={(clickEvent) => clickEvent.stopPropagation()}>
-        <Menu.Item leftSection={<PencilIcon size={14} />} onClick={() => onEditEvent(event)}>
-          {t("menu.edit")}
-        </Menu.Item>
-        <Menu.Item leftSection={<CopyIcon size={14} />} onClick={() => onDuplicateEvent(event)}>
-          {t("menu.duplicate")}
-        </Menu.Item>
-        <Menu.Item
-          leftSection={event.pinned ? <PinnedOffIcon size={14} /> : <PinIcon size={14} />}
-          onClick={() => onTogglePinEvent(event)}
-        >
-          {event.pinned ? t("menu.unpin") : t("menu.pin")}
-        </Menu.Item>
-        <Menu.Item
-          leftSection={event.signup_locked ? <LockOpenIcon size={14} /> : <LockIcon size={14} />}
-          onClick={() => onToggleLockEvent(event)}
-        >
-          {event.signup_locked ? t("menu.unlockSignup") : t("menu.lockSignup")}
-        </Menu.Item>
-        <Menu.Divider />
-        <Menu.Item
-          leftSection={event.archived_at ? <ArchiveOffIcon size={14} /> : <ArchiveIcon size={14} />}
-          onClick={() => {
-            if (event.archived_at) {
-              onUnarchiveEvent(event.id);
-              return;
-            }
-            void requestArchiveEvent();
-          }}
-        >
-          {event.archived_at ? t("menu.unarchive") : t("menu.archive")}
-        </Menu.Item>
-        <Menu.Item
-          color="red"
-          leftSection={<TrashIcon size={14} />}
-          onClick={() => onDeleteEvent(event)}
-        >
-          {t("menu.delete")}
-        </Menu.Item>
-      </Menu.Dropdown>
-    </Menu>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end" onClick={(clickEvent) => clickEvent.stopPropagation()}>
+        {canEdit ? (
+          <DropdownMenuItem onClick={() => onEditEvent(event)}>
+            <PencilIcon size={14} />
+            {t("menu.edit")}
+          </DropdownMenuItem>
+        ) : null}
+        {canCreate ? (
+          <DropdownMenuItem onClick={() => onDuplicateEvent(event)}>
+            <CopyIcon size={14} />
+            {t("menu.duplicate")}
+          </DropdownMenuItem>
+        ) : null}
+        {canEdit ? (
+          <>
+            <DropdownMenuItem onClick={() => onTogglePinEvent(event)}>
+              {event.pinned ? <PinnedOffIcon size={14} /> : <PinIcon size={14} />}
+              {event.pinned ? t("menu.unpin") : t("menu.pin")}
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={() => onToggleLockEvent(event)}>
+              {event.signup_locked ? <LockOpenIcon size={14} /> : <LockIcon size={14} />}
+              {event.signup_locked ? t("menu.unlockSignup") : t("menu.lockSignup")}
+            </DropdownMenuItem>
+          </>
+        ) : null}
+        {hasPrimaryActions && hasLifecycleActions ? <DropdownMenuSeparator /> : null}
+        {canChangeArchiveState ? (
+          <DropdownMenuItem
+            onClick={() => {
+              if (event.archived_at) {
+                onUnarchiveEvent(event.id);
+                return;
+              }
+              void requestArchiveEvent();
+            }}
+          >
+            {event.archived_at ? <ArchiveOffIcon size={14} /> : <ArchiveIcon size={14} />}
+            {event.archived_at ? t("menu.unarchive") : t("menu.archive")}
+          </DropdownMenuItem>
+        ) : null}
+        {canDelete ? (
+          <DropdownMenuItem
+            variant="destructive"
+            onClick={() => onDeleteEvent(event)}
+          >
+            <TrashIcon size={14} />
+            {t("menu.delete")}
+          </DropdownMenuItem>
+        ) : null}
+      </DropdownMenuContent>
+    </DropdownMenu>
   ) : null;
 
   const participantAction = canInteract ? (
     <div onClick={(clickEvent) => clickEvent.stopPropagation()}>
       {isPoll ? (
-        <Tooltip label={t(pollActionDisabledReasonKey ?? (isJoined ? "poll.update" : "poll.vote"))}>
-          <span data-disabled-tooltip-target>
+        <Tooltip>
+          <TooltipTrigger render={<span data-disabled-tooltip-target />}>
             <Button
               onClick={() => onOpenDetail(event)}
-              color="portal-brand"
-              variant={isJoined ? "light" : "filled"}
+              variant={isJoined ? "secondary" : "default"}
               size="sm"
               disabled={pollActionDisabledReasonKey !== null}
             >
               {isJoined ? t("poll.update") : t("poll.vote")}
             </Button>
-          </span>
+          </TooltipTrigger>
+          <TooltipContent>{t(pollActionDisabledReasonKey ?? (isJoined ? "poll.update" : "poll.vote"))}</TooltipContent>
         </Tooltip>
       ) : (
-      <Tooltip label={t(participantActionDisabledReasonKey ?? (isJoined ? "button.leave" : "button.join"))}>
-        <span data-disabled-tooltip-target>
+      <Tooltip>
+        <TooltipTrigger render={<span data-disabled-tooltip-target />}>
           <Button
             aria-pressed={isJoined}
             onClick={() => {
@@ -217,15 +243,15 @@ export function EventCard({
                 onLeaveEvent(event.id);
               }
             }}
-            color={isJoined ? "red" : "portal-brand"}
-            variant={isJoined ? "light" : "filled"}
+            variant={isJoined ? "destructive" : "default"}
             size="sm"
             disabled={participantActionDisabled}
-            leftSection={isJoined ? <UserMinusIcon size={14} /> : <UserPlusIcon size={14} />}
           >
+            {isJoined ? <UserMinusIcon size={14} /> : <UserPlusIcon size={14} />}
             {isJoined ? t("button.leave") : t("button.join")}
           </Button>
-        </span>
+        </TooltipTrigger>
+        <TooltipContent>{t(participantActionDisabledReasonKey ?? (isJoined ? "button.leave" : "button.join"))}</TooltipContent>
       </Tooltip>
       )}
     </div>
@@ -237,7 +263,6 @@ export function EventCard({
       now={now}
       members={members}
       flag={eventFlags.get(event.id)}
-      isFocused={focusedEventId === event.id}
       onOpenDetail={() => onOpenDetail(event)}
       headerActions={headerActions}
       menu={menu}

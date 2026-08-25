@@ -147,7 +147,7 @@ function fixture(): { database: DatabaseSync; executor: SqliteTestExecutor; stor
   databases.push(database);
   database.exec("PRAGMA foreign_keys = ON");
   applyAppMigrations(database);
-  database.prepare(`INSERT INTO users (id, username, role_id, revision_token)
+  database.prepare(`INSERT INTO users (id, display_name, role_id, revision_token)
     VALUES (?, 'Owner', 'member', 'owner-revision-0001')`).run(OWNER);
   const executor = new SqliteTestExecutor(database);
   return { database, executor, store: new SqliteGalleryStore(executor) };

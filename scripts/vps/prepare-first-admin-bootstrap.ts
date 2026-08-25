@@ -18,7 +18,8 @@ const bundle = buildFirstAdminBootstrapBundle(options.mode === "create"
   ? {
       mode: "create",
       userId: options.userId,
-      username: options.username!,
+      loginName: options.loginName!,
+      displayName: options.displayName!,
       passwordHash: await createPasswordHash(password!, iterations),
     }
   : { mode: "promote", userId: options.userId });
@@ -32,7 +33,8 @@ console.log(`Prepared private ${bundle.mode} bootstrap migration for ${bundle.us
 type Options = Readonly<{
   mode: "create" | "promote";
   userId: string;
-  username?: string;
+  loginName?: string;
+  displayName?: string;
   output: string;
 }>;
 
@@ -45,15 +47,20 @@ function parseArguments(args: readonly string[]): Options {
     if (values.has(key)) throw new Error(`Duplicate argument: ${key}`);
     values.set(key, value);
   }
-  const allowed = new Set(["--mode", "--user-id", "--username", "--output"]);
+  const allowed = new Set(["--mode", "--user-id", "--login-name", "--display-name", "--output"]);
   for (const key of values.keys()) if (!allowed.has(key)) throw new Error(`Unknown argument: ${key}`);
   const mode = values.get("--mode");
   if (mode !== "create" && mode !== "promote") throw new Error("--mode must be create or promote");
   const userId = values.get("--user-id");
   const output = values.get("--output");
-  const username = values.get("--username");
+  const loginName = values.get("--login-name");
+  const displayName = values.get("--display-name");
   if (!userId || !output) throw new Error("--user-id and --output are required");
-  if (mode === "create" && !username) throw new Error("--username is required in create mode");
-  if (mode === "promote" && username) throw new Error("--username is not accepted in promote mode");
-  return { mode, userId, username, output };
+  if (mode === "create" && (!loginName || !displayName)) {
+    throw new Error("--login-name and --display-name are required in create mode");
+  }
+  if (mode === "promote" && (loginName || displayName)) {
+    throw new Error("--login-name and --display-name are not accepted in promote mode");
+  }
+  return { mode, userId, loginName, displayName, output };
 }

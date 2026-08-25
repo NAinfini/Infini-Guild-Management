@@ -1,5 +1,4 @@
 import type { GalleryItem } from "@guild/shared";
-import { MantineProvider } from "@mantine/core";
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { readFileSync } from "node:fs";
@@ -34,7 +33,7 @@ function Harness() {
   const [opened, setOpened] = useState(false);
 
   return (
-    <MantineProvider>
+    <>
       <button type="button" onClick={() => setOpened(true)}>
         Open gallery
       </button>
@@ -53,12 +52,12 @@ function Harness() {
         formatDateTime={() => "July 29"}
         isExternalView={false}
       />
-    </MantineProvider>
+    </>
   );
 }
 
 describe("GalleryLightboxModal", () => {
-  it("leaves overlay geometry and stacking to Mantine", () => {
+  it("leaves overlay geometry and stacking to the dialog primitive", () => {
     const styles = readFileSync(
       resolve(process.cwd(), "apps/portal/components/pages/GalleryPage.css"),
       "utf8",
@@ -81,8 +80,8 @@ describe("GalleryLightboxModal", () => {
       resolve(process.cwd(), "apps/portal/components/pages/GalleryPage.css"),
       "utf8",
     ).replace(/\/\*[\s\S]*?\*\//g, "");
-    const closeRule = styles.match(/\.gallery-lb__close\s*\{([^}]*)\}/)?.[1] ?? "";
-    const navRule = styles.match(/\.gallery-lb__nav\s*\{([^}]*)\}/)?.[1] ?? "";
+    const closeRule = styles.match(/^\.gallery-lb__close\s*\{([^}]*)\}/m)?.[1] ?? "";
+    const navRule = [...styles.matchAll(/^\.gallery-lb__nav\s*\{([^}]*)\}/gm)].at(-1)?.[1] ?? "";
     const closeFocusRule = styles.match(
       /\.gallery-lb__close:focus-visible\s*\{([^}]*)\}/,
     )?.[1] ?? "";
@@ -148,9 +147,9 @@ describe("GalleryLightboxModal", () => {
     );
 
     for (const className of ["uploader", "date", "count"]) {
-      const rule = styles.match(
-        new RegExp(`\\.gallery-lb__${className}\\s*\\{([^}]*)\\}`),
-      )?.[1] ?? "";
+      const rule = Array.from(styles.matchAll(
+        new RegExp(`\\.gallery-lb__${className}\\s*\\{([^}]*)\\}`, "g"),
+      )).map((match) => match[1] ?? "").find((declarations) => declarations.includes("color:")) ?? "";
       const alpha = Number(rule.match(/rgba\(255,\s*255,\s*255,\s*([\d.]+)\)/)?.[1]);
 
       expect(alpha).toBeGreaterThanOrEqual(0.5);

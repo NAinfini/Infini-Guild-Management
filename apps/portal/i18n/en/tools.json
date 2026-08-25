@@ -59,5 +59,6 @@
   "dice.total": "Total",
   "dice.history": "History",
   "dice.clearHistory": "Clear",
-  "dice.noHistory": "No rolls yet. Select Roll to begin."
+  "dice.noHistory": "No rolls yet. Select Roll to begin.",
+  "dice.resultAnnouncement": "{{notation}} rolled {{results}}. Total {{total}}."
 }

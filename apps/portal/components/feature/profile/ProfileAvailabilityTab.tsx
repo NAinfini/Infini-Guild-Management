@@ -1,4 +1,4 @@
-import { Paper, Stack } from "@mantine/core";
+import { Card } from "@portal/components/ui/card";
 import { useTranslation } from "react-i18next";
 import { AvailabilityEditor } from "@portal/components/shared/AvailabilityEditor";
 import { AbsenceManagerCard } from "@portal/components/shared/AbsenceManagerCard";
@@ -18,8 +18,8 @@ export function ProfileAvailabilityTab({
 }: ProfileAvailabilityTabProps) {
   const { t } = useTranslation("profile");
   return (
-    <Stack gap="var(--space-md)">
-      <Paper withBorder radius="md" p="var(--card-padding)">
+    <div className="profile-availability-stack">
+      <Card className="profile-availability-card gap-0 py-0">
         <SectionHeader title={t("availability.section.week")} />
         <AvailabilityEditor
           value={availabilityData}
@@ -27,8 +27,8 @@ export function ProfileAvailabilityTab({
             onAvailabilityChange(availability);
           }}
         />
-      </Paper>
+      </Card>
       <AbsenceManagerCard userId={userId} />
-    </Stack>
+    </div>
   );
 }

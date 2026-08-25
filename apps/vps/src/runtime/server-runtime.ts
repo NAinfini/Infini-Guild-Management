@@ -24,6 +24,7 @@ import {
 import { resolveVpsClientAddress } from "./client-address.js";
 import { VpsAdminOperationsRuntime } from "./admin-operations-realtime.js";
 import type { VpsRuntimeConfig } from "./config.js";
+import { CloudflareRestEmailSender } from "../adapters/cloudflare-email-sender.js";
 import {
   prepareAuthenticatedVpsNotificationConnection,
   VpsNotificationWebSocketHub,
@@ -338,6 +339,10 @@ class DefaultVpsServerRuntime implements VpsServerRuntime {
           this.dependencies.nowIso,
         ),
         authRateLimiter: rateLimiter(LIMITS.rateLimit.auth.maxRequests, LIMITS.rateLimit.auth.windowMs, 25_000),
+        authIpRateLimiter: rateLimiter(LIMITS.rateLimit.authIp.maxRequests, LIMITS.rateLimit.authIp.windowMs, 25_000),
+        emailSender: this.config.cloudflareEmail
+          ? new CloudflareRestEmailSender(this.config.cloudflareEmail.accountId, this.config.cloudflareEmail.apiToken)
+          : null,
         readRateLimiter: rateLimiter(LIMITS.rateLimit.reads.maxRequests, LIMITS.rateLimit.reads.windowMs, 50_000),
         expensiveReadRateLimiter: rateLimiter(
           LIMITS.rateLimit.expensiveReads.maxRequests,

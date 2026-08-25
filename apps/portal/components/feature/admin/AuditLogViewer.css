@@ -1,3 +1,24 @@
+.audit-log-viewer {
+  gap: var(--space-md);
+}
+
+.audit-log-skeletons {
+  display: grid;
+  gap: var(--space-sm);
+}
+
+.audit-log-skeleton {
+  min-block-size: 4rem;
+}
+
+.audit-log-empty {
+  margin: 0;
+  padding-block: var(--space-2xl);
+  color: var(--text-muted);
+  font-size: var(--text-sm);
+  text-align: center;
+}
+
 .audit-log-list {
   flex: 1 1 auto;
   min-block-size: 0;
@@ -34,8 +55,53 @@
 }
 
 .audit-log-row__icon {
+  --audit-action-color: var(--brand-text);
+
+  display: grid;
+  inline-size: 28px;
+  block-size: 28px;
+  place-items: center;
   align-self: start;
   margin-block-start: 2px;
+  border-radius: var(--radius-control);
+  background: color-mix(in srgb, var(--audit-action-color) 12%, transparent);
+  color: var(--audit-action-color);
+}
+
+.audit-log-row__icon[data-family="create"] {
+  --audit-action-color: var(--status-success);
+}
+
+.audit-log-row__icon[data-family="change"] {
+  --audit-action-color: var(--status-info);
+}
+
+.audit-log-row__icon[data-family="remove"] {
+  --audit-action-color: var(--status-danger);
+}
+
+.audit-log-row__icon[data-family="state"] {
+  --audit-action-color: var(--status-warning);
+}
+
+.audit-log-row__icon[data-family="membership"] {
+  --audit-action-color: var(--domain-roster);
+}
+
+.audit-log-row__icon[data-family="media"] {
+  --audit-action-color: var(--domain-gallery);
+}
+
+.audit-log-row__icon[data-family="export"] {
+  --audit-action-color: var(--text-muted);
+}
+
+.audit-log-row__icon[data-family="security"] {
+  --audit-action-color: var(--domain-announce);
+}
+
+.audit-log-row__icon[data-family="system"] {
+  --audit-action-color: var(--brand-text);
 }
 
 .audit-log-row__content {
@@ -90,7 +156,7 @@
   color: var(--text-primary);
 }
 
-.audit-log-row__chevron--open {
+.audit-log-row__chevron[data-expanded="true"] {
   transform: rotate(180deg);
 }
 
@@ -309,9 +375,14 @@
   padding-block-start: var(--space-sm);
 }
 
+.audit-log-load-more {
+  display: flex;
+  justify-content: center;
+}
+
 @media (max-width: 47.99em) {
   /* On phones the page owns scrolling; desktop keeps the list as the single fill-region owner. */
-  .audit-log-fill.admin-fill,
+  .audit-log-viewer.admin-fill,
   .audit-log-list {
     flex: 0 1 auto;
     min-block-size: auto;
@@ -380,7 +451,7 @@
     justify-content: stretch;
   }
 
-  .audit-detail-actions .mantine-Button-root {
+  .audit-detail-actions [data-slot="button"] {
     inline-size: 100%;
     min-block-size: var(--control-hit-area);
   }

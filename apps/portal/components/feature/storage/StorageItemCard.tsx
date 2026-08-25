@@ -1,17 +1,7 @@
 import type { StorageCategory, StorageItem } from "@guild/shared";
-import {
-  ActionIcon,
-  Badge,
-  Button,
-  Group,
-  Image,
-  Text,
-  UnstyledButton,
-} from "@mantine/core";
-import {
-  PencilIcon,
-  PhotoOffIcon,
-} from "@portal/components/icons";
+import { PencilIcon, PhotoOffIcon } from "@portal/components/icons";
+import { Badge } from "@portal/components/ui/badge";
+import { Button } from "@portal/components/ui/button";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 
@@ -64,18 +54,17 @@ export function StorageItemCard({
 
   return (
     <article className="storage-item-card">
-      <UnstyledButton
+      <button
         type="button"
         className="storage-item-card__main"
         aria-label={item.name}
         onClick={() => onOpen(item)}
       >
-        <span className="storage-item-card__preview" aria-hidden>
+        <span className="storage-item-card__preview" aria-hidden="true">
           {imageUrl && !imageFailed ? (
-            <Image
+            <img
               src={imageUrl}
               alt=""
-              fit="cover"
               className="storage-item-card__image"
               onError={() => setImageFailed(true)}
             />
@@ -89,100 +78,90 @@ export function StorageItemCard({
         </span>
 
         <span className="storage-item-card__identity">
-          <Text component="span" fw={700} lineClamp={1}>{item.name}</Text>
-          <Group component="span" gap={6} wrap="wrap" className="storage-item-card__badges">
-            <Text component="span" size="xs" c="dimmed">
+          <span className="storage-item-card__name" title={item.name}>{item.name}</span>
+          <span className="storage-item-card__badges">
+            <span className="storage-item-card__category">
               {category?.name ?? t("category.uncategorized")}
-            </Text>
+            </span>
             {item.allow_member_deposit ? (
-              <Badge component="span" variant="light" size="xs">{t("badge.depositEnabled")}</Badge>
+              <Badge variant="secondary">{t("badge.depositEnabled")}</Badge>
             ) : null}
             {item.allow_member_withdraw ? (
-              <Badge component="span" variant="light" size="xs">{t("badge.withdrawEnabled")}</Badge>
+              <Badge variant="secondary">{t("badge.withdrawEnabled")}</Badge>
             ) : null}
             {!item.allow_member_deposit && !item.allow_member_withdraw ? (
-              <Badge component="span" variant="light" color="gray" size="xs">{t("badge.closed")}</Badge>
+              <Badge variant="outline">{t("badge.closed")}</Badge>
             ) : null}
-          </Group>
+          </span>
         </span>
 
         <span
           className={`storage-item-card__stock ${item.quantity > 0 ? "storage-item-card__stock--available" : ""}`}
         >
-          <Text component="span" size="xs" c="dimmed">{t("field.stock")}</Text>
-          <Text component="span" className="storage-item-card__stock-value">{item.quantity}</Text>
+          <span className="storage-item-card__stock-label">{t("field.stock")}</span>
+          <span className="storage-item-card__stock-value">{item.quantity}</span>
         </span>
-      </UnstyledButton>
+      </button>
 
-      <Group gap={6} wrap="nowrap" className="storage-item-card__actions">
+      <div className="storage-item-card__actions">
         {batch ? (
           batchAllowed ? (
-            <Group gap={4} wrap="nowrap" className="storage-item-card__batch">
-              <ActionIcon
-                size={40}
-                variant="default"
+            <div className="storage-item-card__batch">
+              <Button
+                size="icon-lg"
+                variant="outline"
                 aria-label={t("action.decreaseBatchItem", { item: item.name })}
                 onClick={() => setBatchQuantity(Math.max(0, batchQuantity - 1))}
                 disabled={batchQuantity <= 0}
               >
                 <span aria-hidden="true">−</span>
-              </ActionIcon>
-              <Text
-                component="span"
-                fw={800}
+              </Button>
+              <span
                 className="storage-item-card__batch-quantity"
                 aria-label={t("batch.quantityFor", { item: item.name })}
               >
                 {batchQuantity}
-              </Text>
-              <ActionIcon
-                size={40}
-                variant="default"
+              </span>
+              <Button
+                size="icon-lg"
+                variant="outline"
                 aria-label={t("action.increaseBatchItem", { item: item.name })}
                 onClick={() => setBatchQuantity(Math.min(batchMax, batchQuantity + 1))}
                 disabled={!canIncreaseBatch}
               >
                 <span aria-hidden="true">+</span>
-              </ActionIcon>
-            </Group>
+              </Button>
+            </div>
           ) : (
-            <Text size="xs" c="dimmed">{t("batch.unavailable")}</Text>
+            <span className="storage-item-card__unavailable">{t("batch.unavailable")}</span>
           )
         ) : (
           <>
             {canDeposit ? (
-              <Button
-                size="compact-sm"
-                variant="default"
-                leftSection={<span className="storage-direction-glyph" aria-hidden>↓</span>}
-                onClick={() => onDeposit(item)}
-              >
+              <Button size="sm" variant="outline" onClick={() => onDeposit(item)}>
+                <span className="storage-direction-glyph" aria-hidden="true">↓</span>
                 {t("action.deposit")}
               </Button>
             ) : null}
             {canWithdraw ? (
-              <Button
-                size="compact-sm"
-                leftSection={<span className="storage-direction-glyph" aria-hidden>↑</span>}
-                onClick={() => onWithdraw(item)}
-                disabled={item.quantity <= 0}
-              >
+              <Button size="sm" onClick={() => onWithdraw(item)} disabled={item.quantity <= 0}>
+                <span className="storage-direction-glyph" aria-hidden="true">↑</span>
                 {t("action.withdraw")}
               </Button>
             ) : null}
             {canEditItems ? (
-              <ActionIcon
-                size={40}
-                variant="subtle"
+              <Button
+                size="icon-lg"
+                variant="ghost"
                 onClick={() => onEdit(item)}
                 aria-label={t("action.edit")}
               >
                 <PencilIcon size={16} />
-              </ActionIcon>
+              </Button>
             ) : null}
           </>
         )}
-      </Group>
+      </div>
     </article>
   );
 }

@@ -22,7 +22,7 @@ const BASE_SCHEMA = `
   PRAGMA foreign_keys = ON;
   CREATE TABLE users (
     id TEXT PRIMARY KEY,
-    username TEXT NOT NULL,
+    display_name TEXT NOT NULL,
     is_active INTEGER NOT NULL DEFAULT 1,
     deleted_at TEXT
   );
@@ -111,8 +111,8 @@ function harness() {
     "utf8",
   ));
   const seedUsers: Array<[string, string]> = [["admin-1", "Admin"], ["user-1", "One"], ["user-2", "Two"]];
-  for (const [id, username] of seedUsers) {
-    database.prepare("INSERT INTO users (id, username) VALUES (?, ?)").run(id, username);
+  for (const [id, displayName] of seedUsers) {
+    database.prepare("INSERT INTO users (id, display_name) VALUES (?, ?)").run(id, displayName);
   }
   database.prepare("INSERT INTO events (id) VALUES ('event-1')").run();
   const executor = new SqliteTestExecutor(database);
@@ -154,7 +154,7 @@ function audit(
 }
 
 function seedParticipants(database: DatabaseSync, count: number): string[] {
-  const userInsert = database.prepare("INSERT INTO users (id, username) VALUES (?, ?)");
+  const userInsert = database.prepare("INSERT INTO users (id, display_name) VALUES (?, ?)");
   const participantInsert = database.prepare(`INSERT INTO event_participants (id, event_id, user_id, joined_at)
     VALUES (?, 'event-1', ?, ?)`);
   return Array.from({ length: count }, (_, index) => {

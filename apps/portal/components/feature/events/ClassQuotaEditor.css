@@ -7,6 +7,8 @@
  * 按视口判断的话桌面上永远是宽版四列，而它实际只有四百来像素，图标会被切掉。
  */
 .quota-editor {
+  display: grid;
+  gap: var(--space-sm);
   container-type: inline-size;
   /* 表单那一列的 Stack 只给 8px，标题跟上一格的输入框贴在一起，看着像同一组。 */
   margin-top: var(--space-sm);
@@ -15,6 +17,22 @@
 /* 标题跟第一行之间要比行与行之间宽，否则「职业配额」读起来像第一行的一部分。 */
 .quota-editor__label {
   margin-bottom: var(--space-xs);
+  margin-top: 0;
+  color: var(--text-primary);
+  font-size: var(--text-body);
+  font-weight: 600;
+}
+
+.quota-editor__actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-sm);
+}
+
+.quota-editor__hint {
+  color: var(--text-muted);
+  font-size: var(--text-meta);
 }
 
 .quota-editor__row {
@@ -27,6 +45,21 @@
 .quota-editor__name,
 .quota-editor__count {
   min-width: 0;
+}
+
+select.quota-editor__name {
+  width: 100%;
+  height: var(--control-height-regular);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-control);
+  padding-inline: var(--space-sm);
+  color: var(--text-primary);
+  background: var(--surface-base);
+}
+
+select.quota-editor__name:focus-visible {
+  outline: 2px solid var(--brand-fill);
+  outline-offset: 1px;
 }
 
 /*

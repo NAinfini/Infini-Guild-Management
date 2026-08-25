@@ -77,7 +77,7 @@ describe("SqliteAuditStore", () => {
       throw new Error("expected an audit insert statement");
     }
     expect(statement.sql).toContain("actor_label");
-    expect(statement.sql).toContain("SELECT username FROM users WHERE id = ?");
+    expect(statement.sql).toContain("SELECT display_name FROM users WHERE id = ?");
     expect(statement.params?.filter((value: unknown) => value === "admin-1")).toHaveLength(2);
   });
 });

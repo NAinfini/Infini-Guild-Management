@@ -55,16 +55,6 @@ function maintenanceHeaders(request: Request, contentType: string): Headers {
   return headers;
 }
 
-const STREAKS = [
-  [7, -8, 8], [16, -3, 11], [24, -12, 9], [32, -6, 13], [41, -1, 10],
-  [50, -10, 12], [58, -4, 8], [66, -14, 11], [75, -7, 9], [84, -2, 13],
-  [92, -11, 10], [12, -15, 12], [37, -9, 8], [62, -5, 13], [88, -13, 9],
-] as const;
-
-const STREAK_MARKUP = STREAKS.map(([left, delay, duration]) =>
-  `<i style="--x:${left}%;--delay:${delay}s;--duration:${duration}s"></i>`
-).join("");
-
 const MAINTENANCE_HTML = `<!doctype html>
 <html lang="zh-Hans">
 <head>
@@ -76,15 +66,12 @@ const MAINTENANCE_HTML = `<!doctype html>
   <style>
     :root { color-scheme: dark; font-family: "Noto Sans SC", "Microsoft YaHei", "Segoe UI", system-ui, sans-serif; }
     * { box-sizing: border-box; }
-    body { margin: 0; min-width: 18rem; min-height: 100dvh; overflow: hidden; background: #0a0a0f; color: #f0ede8; }
-    .lightfall { position: fixed; inset: 0; overflow: hidden; background: #0a0a0f; pointer-events: none; }
-    .lightfall::after { position: absolute; inset: 0; background: rgba(10, 10, 15, .28); content: ""; }
-    .lightfall i { position: absolute; top: -24vh; left: var(--x); width: 2px; height: clamp(5rem, 12vh, 9rem); border-radius: 2px; background: currentColor; color: #2fb49c; opacity: .46; box-shadow: 0 10px 20px currentColor; animation: starfall var(--duration) linear var(--delay) infinite; }
-    .lightfall i:nth-child(3n + 2) { color: #6e93f7; opacity: .36; }
-    .lightfall i:nth-child(3n) { color: #9c8cf5; opacity: .3; }
+    body { margin: 0; min-width: 18rem; min-height: 100dvh; overflow: hidden; background: #0b0e10; color: #f0ede8; }
+    .maintenance-scene { position: fixed; inset: 0; overflow: hidden; background: #0b0e10; pointer-events: none; }
+    .maintenance-scene svg { display: block; width: 100%; height: 100%; }
     main { position: relative; z-index: 1; display: grid; min-height: 100dvh; place-items: center; padding: clamp(1rem, 5vw, 3rem); }
-    article { width: min(100%, 34rem); padding: clamp(1.5rem, 5vw, 2.5rem); border-radius: 14px; background: rgba(20, 20, 24, .94); box-shadow: 0 24px 80px rgba(0, 0, 0, .48); }
-    .eyebrow { display: inline-flex; align-items: center; gap: .625rem; margin-bottom: 1.25rem; padding: .5rem .75rem; border: 1px solid rgba(47, 180, 156, .24); border-radius: 999px; background: rgba(47, 180, 156, .1); color: #6fcfbb; font-size: .75rem; font-weight: 750; letter-spacing: .035em; }
+    article { width: min(100%, 34rem); padding: clamp(1.5rem, 5vw, 2.5rem); border: 1px solid #383b38; border-radius: 14px; background: #151819; }
+    .eyebrow { display: inline-flex; align-items: center; gap: .625rem; margin-bottom: 1.25rem; color: #6fcfbb; font-size: .75rem; font-weight: 750; letter-spacing: .035em; }
     .eyebrow svg { width: 1.125rem; height: 1.125rem; flex: 0 0 auto; }
     h1 { margin: 0; font-size: clamp(2rem, 7vw, 3.25rem); line-height: 1.12; letter-spacing: -.02em; text-wrap: balance; }
     h2 { margin: .5rem 0 0; color: #a39d94; font-size: clamp(1rem, 3vw, 1.25rem); font-weight: 600; line-height: 1.4; }
@@ -94,27 +81,26 @@ const MAINTENANCE_HTML = `<!doctype html>
     .state { display: inline-flex; align-items: center; gap: .5rem; color: #6fcfbb; font-weight: 700; }
     .state::before { width: .5rem; height: .5rem; border-radius: 50%; background: #2fb49c; content: ""; }
     ::selection { background: #2fb49c; color: #04342c; }
-    @keyframes starfall {
-      from { transform: translate3d(18vw, -24vh, 0) rotate(18deg); }
-      to { transform: translate3d(-24vw, 148vh, 0) rotate(18deg); }
-    }
     @media (max-width: 32rem) {
       article { padding: 1.5rem; }
       .status { align-items: flex-start; flex-direction: column; }
     }
-    @media (prefers-reduced-motion: reduce) {
-      .lightfall i { top: var(--x); animation: none; transform: rotate(18deg); }
-    }
   </style>
 </head>
 <body>
-  <!-- THESIS: A calm operational pause carried by the portal's three-color Lightfall, never a generic outage screen.
-  OWN-WORLD: Near-black forged surface, warm text, teal status, and sparse teal/indigo/violet falling light.
-  STORY: The guild sees that maintenance is intentional, understands no action is needed, and returns later.
-  FIRST VIEWPORT: One compact status plate centered inside a full-viewport starfall field.
-  FORM: Established authentication visual language, reduced to a dependency-free maintenance state.
-  FINISH: unreviewed and undocumented is unfinished; this build ends with the finish review, the verdict, and DESIGN.md. -->
-  <div class="lightfall" aria-hidden="true">${STREAK_MARKUP}</div>
+  <div class="maintenance-scene" aria-hidden="true">
+    <svg viewBox="0 0 1600 900" preserveAspectRatio="xMidYMid slice" focusable="false">
+      <rect width="1600" height="900" fill="#0b0e10"/>
+      <circle cx="1220" cy="190" r="96" fill="#252827"/>
+      <path d="M0 390 170 278 296 365 430 218 600 406 756 306 898 392 1060 214 1220 384 1400 238 1600 402V900H0Z" fill="#161a1a"/>
+      <path d="M0 522 154 414 326 520 496 356 654 540 824 408 974 510 1140 344 1328 530 1484 398 1600 482V900H0Z" fill="#1d211f"/>
+      <path d="M0 626 214 510 410 644 572 492 748 652 930 522 1096 640 1260 468 1450 620 1600 544V900H0Z" fill="#111817"/>
+      <path d="M1024 560h186l-22-54-22 28-24-56-25 56-25-28Z" fill="#2a2b25"/>
+      <path d="M1082 560h72v150h-72Z" fill="#23251f"/>
+      <path d="M1058 710h122l-18-32h-86Z" fill="#2a2b25"/>
+      <path d="M0 724 210 660 364 742 560 634 760 746 952 656 1156 752 1364 644 1600 732V900H0Z" fill="#0d1212"/>
+    </svg>
+  </div>
   <main>
     <article aria-labelledby="maintenance-title">
       <div class="eyebrow">

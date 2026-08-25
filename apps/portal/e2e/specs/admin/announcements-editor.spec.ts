@@ -104,15 +104,9 @@ function publishButton(page: Page): Locator {
   return page.getByRole("button", { name: "Publish", exact: true });
 }
 
-/*
- * 发布按钮右边那颗下拉箭头没有无障碍名（只塞了个图标），取不到 role+name。
- * 退而求其次认 Mantine 给 Menu.Target 挂的 aria-haspopup —— 但这一页上带这个属性的
- * 按钮有六个（语言、头像菜单、TipTap 工具栏的三个），只有它一个没有 aria-label，
- * 正好拿「没有名字」当判据。这条选择器本身就是那个可访问性缺口的证据，已记进问题清单；
- * 这里先按现状取，不在测试里替产品编一个标签出来。
- */
+/** 发布操作菜单给两个分支提供了明确的组合无障碍名。 */
 function finishMenuTrigger(page: Page): Locator {
-  return page.locator('.announcements-detail-card button[aria-haspopup="menu"]:not([aria-label])');
+  return page.getByRole("button", { name: "Save as Draft / Schedule post", exact: true });
 }
 
 async function chooseFinish(page: Page, item: string): Promise<Locator> {

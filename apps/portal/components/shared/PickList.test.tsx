@@ -1,10 +1,13 @@
-import { MantineProvider } from "@mantine/core";
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, expect, it, vi } from "vitest";
 import { PickList } from "./PickList";
+
+vi.mock("react-i18next", () => ({
+  useTranslation: () => ({ t: (key: string) => key }),
+}));
 
 const OPTIONS = [
   { id: "a", label: "Alice" },
@@ -15,15 +18,13 @@ const OPTIONS = [
 function renderList(props: Partial<Parameters<typeof PickList>[0]> = {}) {
   const onToggle = vi.fn();
   render(
-    <MantineProvider>
-      <PickList
-        options={OPTIONS}
-        selected={new Set<string>()}
-        onToggle={onToggle}
-        emptyLabel="nothing here"
-        {...props}
-      />
-    </MantineProvider>,
+    <PickList
+      options={OPTIONS}
+      selected={new Set<string>()}
+      onToggle={onToggle}
+      emptyLabel="nothing here"
+      {...props}
+    />,
   );
   return { onToggle };
 }
@@ -43,8 +44,8 @@ describe("PickList", () => {
   it("locks the unpicked rows once the cap is reached and leaves the picked ones toggleable", () => {
     renderList({ selected: new Set(["a", "b"]), max: 2 });
 
-    expect(screen.getByRole("checkbox", { name: "Carol" })).toBeDisabled();
-    expect(screen.getByRole("checkbox", { name: "Alice" })).toBeEnabled();
+    expect(screen.getByRole("checkbox", { name: "Carol" })).toHaveAttribute("aria-disabled", "true");
+    expect(screen.getByRole("checkbox", { name: "Alice" })).not.toHaveAttribute("aria-disabled", "true");
   });
 
   it("keeps a caller-disabled row disabled even below the cap", () => {
@@ -53,7 +54,7 @@ describe("PickList", () => {
       max: 5,
     });
 
-    expect(screen.getByRole("checkbox", { name: "Alice" })).toBeDisabled();
+    expect(screen.getByRole("checkbox", { name: "Alice" })).toHaveAttribute("aria-disabled", "true");
   });
 
   it("shows the empty line instead of an empty box", () => {
@@ -73,23 +74,30 @@ describe("PickList", () => {
     expect(screen.getAllByRole("checkbox")).toHaveLength(3);
   });
 
+  it("clears the caller-owned search value from the input group affordance", async () => {
+    const onChange = vi.fn();
+    renderList({ search: { value: "Alice", onChange, placeholder: "search" } });
+
+    await userEvent.click(screen.getByRole("button", { name: "action.clear" }));
+
+    expect(onChange).toHaveBeenCalledWith("");
+  });
+
   it("keeps grouped options individually selectable", () => {
     render(
-      <MantineProvider>
-        <PickList
-          sections={[
-            {
-              key: "healer",
-              label: "Healer",
-              options: [{ id: "a", label: "Alice" }],
-            },
-            { key: "rest", label: "Ungrouped", options: [{ id: "b", label: "Bob" }] },
-          ]}
-          selected={new Set<string>()}
-          onToggle={vi.fn()}
-          emptyLabel="nothing here"
-        />
-      </MantineProvider>,
+      <PickList
+        sections={[
+          {
+            key: "healer",
+            label: "Healer",
+            options: [{ id: "a", label: "Alice" }],
+          },
+          { key: "rest", label: "Ungrouped", options: [{ id: "b", label: "Bob" }] },
+        ]}
+        selected={new Set<string>()}
+        onToggle={vi.fn()}
+        emptyLabel="nothing here"
+      />,
     );
 
     expect(screen.getAllByRole("checkbox")).toHaveLength(2);

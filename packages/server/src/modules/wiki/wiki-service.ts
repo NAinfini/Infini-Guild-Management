@@ -326,7 +326,7 @@ export class WikiService {
       deletedAt: null,
       created_by: actor.userId,
       updated_by: null,
-      updated_by_username: null,
+      updated_by_display_name: null,
       created_at: context.now,
       updated_at: context.now,
       revisionToken: crypto.randomUUID(),
@@ -390,7 +390,7 @@ export class WikiService {
       archived_at: input.archived_at === undefined ? existing.archived_at : input.archived_at,
       deletedAt: existing.deletedAt,
       updated_by: actor.userId,
-      updated_by_username: null,
+      updated_by_display_name: null,
       updated_at: monotonicTimestamp(context.now, existing.updated_at),
       revisionToken: crypto.randomUUID(),
       currentRevision: existing.currentRevision + 1,
@@ -435,7 +435,7 @@ export class WikiService {
       archived_at: context.now,
       deletedAt: existing.deletedAt,
       updated_by: actor.userId,
-      updated_by_username: null,
+      updated_by_display_name: null,
       updated_at: monotonicTimestamp(context.now, existing.updated_at),
       revisionToken: crypto.randomUUID(),
       currentRevision: existing.currentRevision + 1,
@@ -495,7 +495,7 @@ export class WikiService {
       deletedAt: context.now,
       archived_at: existing.archived_at ?? context.now,
       updated_by: actor.userId,
-      updated_by_username: null,
+      updated_by_display_name: null,
       updated_at: monotonicTimestamp(context.now, existing.updated_at),
       revisionToken: crypto.randomUUID(),
       currentRevision: existing.currentRevision + 1,
@@ -556,7 +556,7 @@ export class WikiService {
       deletedAt: snapshot.deleted_at,
       mediaIds: snapshot.media_ids,
       updated_by: actor.userId,
-      updated_by_username: null,
+      updated_by_display_name: null,
       updated_at: monotonicTimestamp(context.now, existing.updated_at),
       revisionToken: crypto.randomUUID(),
       currentRevision: existing.currentRevision + 1,
@@ -630,13 +630,18 @@ export class WikiService {
   }
 
   private publish(id: string, hint: string, updatedAt: string): void {
-    this.deferred.defer(() => this.notifications.publish({
-      type: "entity_changed",
-      entity_type: "wiki",
-      entity_id: id,
-      updated_at: updatedAt,
-      hint,
-    }));
+    this.deferred.defer(async () => {
+      await this.notifications.publish({
+        type: "entity_changed",
+        entity_type: "wiki",
+        entity_id: id,
+        updated_at: updatedAt,
+        hint,
+      });
+      if (hint === "article_created") {
+        await this.notifications.publish({ type: "inbox_changed" });
+      }
+    });
   }
 }
 
@@ -688,7 +693,7 @@ function revisionOf(record: WikiArticleRecord, actorUserId: string, restoredFrom
     deleted_at: record.deletedAt,
     media_ids: [...record.mediaIds],
     edited_by: actorUserId,
-    edited_by_username: null,
+    edited_by_display_name: null,
     restored_from: restoredFrom,
     created_at: record.updated_at,
   };

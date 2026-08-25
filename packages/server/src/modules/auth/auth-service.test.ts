@@ -4,6 +4,7 @@ import { createAuthorizationContext, createRequestContext } from "@guild/kernel"
 import type { AccountProvisioningStore, AuthStore, InviteRecord, LoginAccountRecord } from "./auth-types";
 import { AuthService } from "./auth-service";
 import { createInviteTokenCodec, createPasswordHash, digestToken, PASSWORD_HASH_ITERATIONS } from "./crypto";
+import { assertPasswordPolicy } from "./password-policy";
 
 const NOW = "2026-08-09T12:00:00.000Z";
 const provisioning = {} as AccountProvisioningStore;
@@ -13,6 +14,49 @@ const PROFILE: MemberProfile = {
   video_urls: [], availability: null, vacation_start: null, vacation_end: null,
   notes: null, created_at: NOW, updated_at: NOW,
 };
+
+describe("new password policy", () => {
+  it("accepts any 8-to-128-character password without weak-password matching", () => {
+    expect(() => assertPasswordPolicy("password")).not.toThrow();
+    expect(() => assertPasswordPolicy("12345678")).not.toThrow();
+    expect(() => assertPasswordPolicy("1234567")).toThrow(/between 8 and 128/);
+  });
+});
+
+describe("AuthService password-reset identity guard", () => {
+  it("rejects a reserved replacement login name before reading or changing credentials", async () => {
+    const findUser = vi.fn();
+    const findCredentialRecord = vi.fn();
+    const completeTemporaryPasswordAndOpenSession = vi.fn();
+    const service = new AuthService({
+      store: { findUser, findCredentialRecord, completeTemporaryPasswordAndOpenSession } as unknown as AuthStore,
+      provisioning,
+      profiles: { readOwnProfile: async () => PROFILE },
+      inviteTokens: createInviteTokenCodec("0123456789abcdef0123456789abcdef"),
+    });
+    const passwordChangeContext = createRequestContext({
+      requestId: "request-password-reset",
+      now: NOW,
+      authorization: createAuthorizationContext({
+        userId: "user-1",
+        sessionId: "password-change-session",
+        roleId: "member",
+        roleLevel: 100,
+        permissions: [],
+        sessionScope: "password_change",
+      }),
+    });
+
+    await expect(service.completePasswordReset(passwordChangeContext, {
+      loginName: " systemtest_reset ",
+      newPassword: "password",
+    })).rejects.toMatchObject({ code: "VALIDATION_ERROR", status: 400, message: "Login name is reserved" });
+    expect(findUser).not.toHaveBeenCalled();
+    expect(findCredentialRecord).not.toHaveBeenCalled();
+    expect(completeTemporaryPasswordAndOpenSession).not.toHaveBeenCalled();
+  });
+});
+
 const INVITE: InviteRecord = {
   id: "internal-invite-id",
   createdBy: "admin-1",
@@ -29,14 +73,16 @@ const INVITE: InviteRecord = {
 
 function account(passwordHash: string): LoginAccountRecord {
   return {
-    id: "user-1", username: "member", roleId: "member", roleName: "Member", roleColor: null,
+    id: "user-1", displayName: "member", loginName: "member", roleId: "member", roleName: "Member", roleColor: null,
     roleLevel: 100, permissions: new Set(), isActive: true, deletedAt: null, revisionToken: "user-v1",
     createdAt: NOW, updatedAt: NOW, lastLoginAt: null, passwordHash,
+    authRevision: 1,
+    temporaryPasswordExpiresAt: null, temporaryPasswordUsedAt: null,
   };
 }
 
 function serviceFor(record: LoginAccountRecord, configuredIterations: number) {
-  const rehashPassword = vi.fn(async () => undefined);
+  const rehashPassword = vi.fn(async () => true);
   const store = {
     findLoginAccount: vi.fn(async () => record),
     readLoginFailure: vi.fn(async () => null),
@@ -44,7 +90,7 @@ function serviceFor(record: LoginAccountRecord, configuredIterations: number) {
     pruneLoginFailures: vi.fn(async () => undefined),
     clearLoginFailures: vi.fn(async () => undefined),
     rehashPassword,
-    openUserSession: vi.fn(async () => undefined),
+    openUserSession: vi.fn(async () => true),
   } as unknown as AuthStore;
   return {
     rehashPassword,
@@ -71,12 +117,12 @@ describe("AuthService password cost policy", () => {
   it("upgrades only canonical hashes below the configured cost and never downgrades", async () => {
     const older = await createPasswordHash("password-123", PASSWORD_HASH_ITERATIONS);
     const upgrade = serviceFor(account(older), PASSWORD_HASH_ITERATIONS + 1);
-    await upgrade.service.login({ username: "member", password: "password-123", stayLoggedIn: false, now: NOW });
+    await upgrade.service.login({ loginName: "member", password: "password-123", stayLoggedIn: false, now: NOW });
     expect(upgrade.rehashPassword).toHaveBeenCalledOnce();
 
     const stronger = await createPasswordHash("password-123", PASSWORD_HASH_ITERATIONS + 1);
     const preserve = serviceFor(account(stronger), PASSWORD_HASH_ITERATIONS);
-    await preserve.service.login({ username: "member", password: "password-123", stayLoggedIn: false, now: NOW });
+    await preserve.service.login({ loginName: "member", password: "password-123", stayLoggedIn: false, now: NOW });
     expect(preserve.rehashPassword).not.toHaveBeenCalled();
   });
 
@@ -84,7 +130,7 @@ describe("AuthService password cost policy", () => {
     const weakHash = "pbkdf2-sha256$1000$ABEiM0RVZneImaq7zN3u_w$37Izw7UGVXXvQEMoyIGgy6cbcYD3Ipii7cXqXzpMAvk";
     const migrated = serviceFor(account(weakHash), PASSWORD_HASH_ITERATIONS);
     await expect(migrated.service.login({
-      username: "member", password: "correct horse battery staple", stayLoggedIn: false, now: NOW,
+      loginName: "member", password: "correct horse battery staple", stayLoggedIn: false, now: NOW,
     })).rejects.toMatchObject({ code: "UNAUTHORIZED", status: 401 });
     expect(migrated.rehashPassword).not.toHaveBeenCalled();
   });
@@ -111,7 +157,7 @@ describe("AuthService persistent login locks", () => {
       inviteTokens: createInviteTokenCodec("0123456789abcdef0123456789abcdef"),
     });
 
-    await expect(service.login({ username: "Member", password: "wrong", stayLoggedIn: false, now: NOW }))
+    await expect(service.login({ loginName: "Member", password: "wrong", stayLoggedIn: false, now: NOW }))
       .rejects.toMatchObject({
         code: "RATE_LIMITED",
         status: 429,
@@ -126,13 +172,13 @@ describe("AuthService persistent login locks", () => {
     );
   });
 
-  it("lets correct credentials clear an attacker-created lock", async () => {
+  it("rejects an active lock before account lookup or password verification", async () => {
     const passwordHash = await createPasswordHash("password-123");
     const findLoginAccount = vi.fn(async () => account(passwordHash));
     const recordLoginFailure = vi.fn();
     const clearLoginFailures = vi.fn(async () => undefined);
-    const openUserSession = vi.fn(async () => undefined);
-    const consume = vi.fn(async () => ({ allowed: true }));
+    const consumeIp = vi.fn(async () => ({ allowed: true }));
+    const consumeLoginName = vi.fn(async () => ({ allowed: true }));
     const readLoginFailure = vi.fn(async () => ({
       failCount: 4,
       lockedUntil: "2026-08-09T12:00:30.000Z",
@@ -142,29 +188,31 @@ describe("AuthService persistent login locks", () => {
       findLoginAccount,
       recordLoginFailure,
       clearLoginFailures,
-      openUserSession,
     } as unknown as AuthStore;
     const service = new AuthService({
       store,
       provisioning,
       profiles: { readOwnProfile: async () => PROFILE },
       inviteTokens: createInviteTokenCodec("0123456789abcdef0123456789abcdef"),
-      loginRateLimiter: { consume },
+      loginIpRateLimiter: { consume: consumeIp },
+      loginNameRateLimiter: { consume: consumeLoginName },
     });
     await expect(service.login({
-      username: "Member", password: "password-123", stayLoggedIn: false, now: NOW,
+      loginName: "Member", password: "password-123", stayLoggedIn: false, now: NOW,
       clientIdentifier: "127.0.0.1",
-    })).resolves.toMatchObject({ user: { id: "user-1" } });
-    expect(consume.mock.invocationCallOrder[0]).toBeLessThan(readLoginFailure.mock.invocationCallOrder[0]!);
-    expect(findLoginAccount).toHaveBeenCalledOnce();
+    })).rejects.toMatchObject({ code: "RATE_LIMITED", status: 429 });
+    expect(consumeIp.mock.invocationCallOrder[0]).toBeLessThan(consumeLoginName.mock.invocationCallOrder[0]!);
+    expect(consumeLoginName.mock.invocationCallOrder[0]).toBeLessThan(readLoginFailure.mock.invocationCallOrder[0]!);
+    expect(findLoginAccount).not.toHaveBeenCalled();
     expect(recordLoginFailure).not.toHaveBeenCalled();
-    expect(clearLoginFailures).toHaveBeenCalledWith("member");
+    expect(clearLoginFailures).not.toHaveBeenCalled();
   });
 
   it("rate-limits every login before failure-state or account lookup", async () => {
     const findLoginAccount = vi.fn();
     const readLoginFailure = vi.fn();
-    const consume = vi.fn(async () => ({ allowed: false, retryAfterSeconds: 9 }));
+    const consumeIp = vi.fn(async () => ({ allowed: false, retryAfterSeconds: 9 }));
+    const consumeLoginName = vi.fn(async () => ({ allowed: true }));
     const service = new AuthService({
       store: {
         readLoginFailure,
@@ -173,15 +221,41 @@ describe("AuthService persistent login locks", () => {
       provisioning,
       profiles: { readOwnProfile: async () => PROFILE },
       inviteTokens: createInviteTokenCodec("0123456789abcdef0123456789abcdef"),
-      loginRateLimiter: { consume },
+      loginIpRateLimiter: { consume: consumeIp },
+      loginNameRateLimiter: { consume: consumeLoginName },
     });
     await expect(service.login({
-      username: "Member", password: "wrong", stayLoggedIn: false, now: NOW, clientIdentifier: "127.0.0.1",
+      loginName: "Member", password: "wrong", stayLoggedIn: false, now: NOW, clientIdentifier: "127.0.0.1",
     })).rejects.toMatchObject({
       code: "RATE_LIMITED",
       details: { retry_after_seconds: 9 },
     });
-    expect(consume).toHaveBeenCalledWith("auth:login:127.0.0.1:member");
+    expect(consumeIp).toHaveBeenCalledWith("auth:login:ip:127.0.0.1");
+    expect(consumeLoginName).not.toHaveBeenCalled();
+    expect(readLoginFailure).not.toHaveBeenCalled();
+    expect(findLoginAccount).not.toHaveBeenCalled();
+  });
+
+  it("consumes the IP limiter before the IP-plus-login-name limiter", async () => {
+    const readLoginFailure = vi.fn();
+    const findLoginAccount = vi.fn();
+    const consumeIp = vi.fn(async () => ({ allowed: true }));
+    const consumeLoginName = vi.fn(async () => ({ allowed: false, retryAfterSeconds: 9 }));
+    const service = new AuthService({
+      store: { readLoginFailure, findLoginAccount } as unknown as AuthStore,
+      provisioning,
+      profiles: { readOwnProfile: async () => PROFILE },
+      inviteTokens: createInviteTokenCodec("0123456789abcdef0123456789abcdef"),
+      loginIpRateLimiter: { consume: consumeIp },
+      loginNameRateLimiter: { consume: consumeLoginName },
+    });
+
+    await expect(service.login({
+      loginName: "Member", password: "wrong", stayLoggedIn: false, now: NOW, clientIdentifier: "127.0.0.1",
+    })).rejects.toMatchObject({ code: "RATE_LIMITED", details: { retry_after_seconds: 9 } });
+    expect(consumeIp).toHaveBeenCalledWith("auth:login:ip:127.0.0.1");
+    expect(consumeLoginName).toHaveBeenCalledWith("auth:login:name:127.0.0.1:member");
+    expect(consumeIp.mock.invocationCallOrder[0]).toBeLessThan(consumeLoginName.mock.invocationCallOrder[0]!);
     expect(readLoginFailure).not.toHaveBeenCalled();
     expect(findLoginAccount).not.toHaveBeenCalled();
   });
@@ -201,12 +275,12 @@ describe("AuthService persistent login locks", () => {
       inviteTokens: createInviteTokenCodec("0123456789abcdef0123456789abcdef"),
     });
 
-    await expect(service.login({ username: "Member", password: "wrong", stayLoggedIn: false, now: NOW }))
+    await expect(service.login({ loginName: "Member", password: "wrong", stayLoggedIn: false, now: NOW }))
       .rejects.toMatchObject({ code: "RATE_LIMITED", status: 429 });
     expect(recordLoginFailure).not.toHaveBeenCalled();
   });
 
-  it("uses the same verifier and response for unknown and real usernames", async () => {
+  it("uses the same verifier and response for unknown and real login names", async () => {
     const passwordHash = await createPasswordHash("password-123");
     const make = (loginAccount: LoginAccountRecord | null) => new AuthService({
       store: {
@@ -221,7 +295,7 @@ describe("AuthService persistent login locks", () => {
     });
     const capture = async (service: AuthService) => {
       try {
-        await service.login({ username: "candidate", password: "wrong", stayLoggedIn: false, now: NOW });
+        await service.login({ loginName: "candidate", password: "wrong", stayLoggedIn: false, now: NOW });
       } catch (error) {
         return error;
       }
@@ -265,7 +339,12 @@ describe("AuthService short invite codes", () => {
     const store = {
       findActiveInvite: vi.fn(async () => INVITE),
       findUser: vi.fn(async () => createdUser),
-      openUserSession: vi.fn(async () => undefined),
+      findCredentialRecord: vi.fn(async () => ({
+        loginName: createdUser.loginName,
+        passwordHash: createdUser.passwordHash,
+        authRevision: createdUser.authRevision,
+      })),
+      openUserSession: vi.fn(async () => true),
     } as unknown as AuthStore;
     const service = new AuthService({
       store,
@@ -283,8 +362,9 @@ describe("AuthService short invite codes", () => {
 
     await expect(service.register(request, {
       inviteToken: code,
-      username: "member",
-      password: "password-123",
+      loginName: "member-login",
+      displayName: "member",
+      password: "password-123456",
     })).resolves.toMatchObject({ user: { id: createdUser.id } });
     expect(redeemInviteAndCreateMember).toHaveBeenCalledOnce();
     const [registration, audit] = redeemInviteAndCreateMember.mock.calls[0]!;
@@ -292,7 +372,7 @@ describe("AuthService short invite codes", () => {
       inviteId: INVITE.id,
       tokenDigest,
       userId: createdUser.id,
-      username: "member",
+      loginName: "member-login",
     });
     expect(audit).toMatchObject({
       actorKind: "user",
@@ -323,14 +403,18 @@ describe("AuthService short invite codes", () => {
 describe("AuthService cookie session last login", () => {
   const SESSION_START = "2026-08-09T00:00:00.000Z";
 
-  function sessionService(lastLoginAt: string | null) {
+  function sessionService(
+    lastLoginAt: string | null,
+    scope: "normal" | "password_change" = "normal",
+    expiresAt = "2026-09-08T00:00:00.000Z",
+  ) {
     const recordLastLogin = vi.fn(async () => undefined);
     const store = {
       findSessionAuthorization: vi.fn(async (tokenDigest: string) => ({
-        id: "user-1", username: "member", roleId: "member", roleName: "Member", roleColor: null,
+        id: "user-1", displayName: "member", roleId: "member", roleName: "Member", roleColor: null,
         roleLevel: 100, permissions: new Set<string>(), isActive: true, deletedAt: null,
         revisionToken: "user-v1", createdAt: SESSION_START, updatedAt: SESSION_START, lastLoginAt,
-        tokenDigest, expiresAt: "2026-09-08T00:00:00.000Z", sessionCreatedAt: SESSION_START,
+        tokenDigest, expiresAt, sessionCreatedAt: SESSION_START, sessionScope: scope,
       })),
       renewSession: vi.fn(async () => undefined),
       deleteSession: vi.fn(async () => undefined),
@@ -363,5 +447,15 @@ describe("AuthService cookie session last login", () => {
     const resolved = await fresh.service.resolveAuthorization("raw-session-token", NOW);
     expect(fresh.recordLastLogin).not.toHaveBeenCalled();
     expect(resolved.session?.record.lastLoginAt).toBe("2026-08-09T11:30:00.000Z");
+  });
+
+  it("never renews a restricted password-change session", async () => {
+    const restricted = sessionService(
+      "2026-08-09T11:30:00.000Z",
+      "password_change",
+      "2026-08-09T12:01:00.000Z",
+    );
+    const resolved = await restricted.service.resolveAuthorization("raw-session-token", NOW);
+    expect(resolved.session?.renewedExpiresAt).toBeNull();
   });
 });

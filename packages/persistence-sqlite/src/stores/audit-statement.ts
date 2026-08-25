@@ -19,7 +19,7 @@ export function auditInsertStatement(
 ): SqlBatchStatement {
   return auditInsertSelectStatement(
     `SELECT ?, ?, ?, ?,
-      CASE WHEN ? = 'user' THEN (SELECT username FROM users WHERE id = ?) ELSE ? END,
+      CASE WHEN ? = 'user' THEN (SELECT display_name FROM users WHERE id = ?) ELSE ? END,
       ?, ?, ?, ?, ?, ?${guard ? ` WHERE EXISTS (${guard.sql})` : ""}`,
     [
       audit.eventId,

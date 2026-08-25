@@ -30,7 +30,7 @@ export function createMediaRoutes(dependencies: MediaRouteDependencies): Hono<Ht
           variant,
         );
         const range = resolveRange(parseRange(rangeHeader), headResult.metadata.size);
-        return presentMedia(request, metadataOnly(headResult.metadata, range), headResult.audience);
+        return presentMedia(request, metadataOnly(headResult.metadata, range), headResult.audience, headResult.downloadName);
       }
       const result = await dependencies.service.read(
         requestContext(context),
@@ -38,7 +38,7 @@ export function createMediaRoutes(dependencies: MediaRouteDependencies): Hono<Ht
         variant,
         parseRange(rangeHeader) ?? undefined,
       );
-      return presentMedia(request, result.object, result.audience);
+      return presentMedia(request, result.object, result.audience, result.downloadName);
     } catch (error) {
       if (error instanceof MediaRangeError) {
         throw new HttpRangeError(error.message, error.total);

@@ -1,0 +1,40 @@
+{
+  "adventure-exploration.name": "冒险探索",
+  "adventure-exploration.landing.eyebrow": "前路已开启",
+  "adventure-exploration.landing.motto": "从这里集结，向未知出发。",
+  "adventure-exploration.tools.title": "把准备做在出发之前",
+  "adventure-exploration.tools.description": "为公平裁定、快速决定与每次远征之间的片刻，准备可靠的小工具。",
+
+  "wuxia.name": "江湖武侠",
+  "wuxia.landing.eyebrow": "山河正待同行",
+  "wuxia.landing.motto": "同袍并肩，此去山河皆是江湖。",
+  "wuxia.tools.title": "未入江湖，先备行囊",
+  "wuxia.tools.description": "公平裁定、快速集结，让每一次同行都有章法可循。",
+
+  "tactical-fps.name": "战术 FPS",
+  "tactical-fps.landing.eyebrow": "任务频道就绪",
+  "tactical-fps.landing.motto": "确认目标，协同推进。",
+  "tactical-fps.tools.title": "部署之前，先检查装备",
+  "tactical-fps.tools.description": "用于公平裁定、小队决策与任务准备的快捷工具。",
+
+  "battlefield.name": "大型战场",
+  "battlefield.landing.eyebrow": "阵线正在集结",
+  "battlefield.landing.motto": "同一条战线，同一个方向。",
+  "battlefield.tools.title": "推进之前，先校准全局",
+  "battlefield.tools.description": "用于资源分配、公平裁决与快速指挥决策的实用工具。",
+
+  "deep-space-fleet.name": "深空舰队",
+  "deep-space-fleet.landing.eyebrow": "下一座信标已点亮",
+  "deep-space-fleet.landing.motto": "越过最后的信标，舰队仍并肩远航。",
+  "deep-space-fleet.tools.title": "离港之前，完成最后检查",
+  "deep-space-fleet.tools.description": "用于任务裁定、成员决策与可靠飞行准备的紧凑工具。",
+
+  "survival-extraction.name": "生存撤离",
+  "survival-extraction.landing.eyebrow": "安全屋仍在运作",
+  "survival-extraction.landing.motto": "熬过长夜，把每个人带回家。",
+  "survival-extraction.tools.title": "出发之前，检查行囊",
+  "survival-extraction.tools.description": "为稀缺资源、公平裁定与压力下的决定准备可靠工具。",
+
+  "settings.title": "让界面顺着你的习惯工作",
+  "settings.description": "选择适合你的明暗、颜色与语言，让公会始终清晰易读。"
+}

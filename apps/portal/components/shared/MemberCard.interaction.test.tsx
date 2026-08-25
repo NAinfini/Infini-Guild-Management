@@ -105,7 +105,7 @@ const noPermissions = Object.fromEntries(
 
 const user: User = {
   id: "user-1",
-  username: "Aster",
+  display_name: "Aster",
   role: "member",
   role_name: "Guild Member",
   role_color: null,
@@ -234,6 +234,19 @@ describe("MemberCard protected runtime interaction", () => {
     expect(styles).toMatch(/\.member-card__class-label\s*\{[^}]*white-space:\s*normal/);
     expect(styles).toMatch(/\.member-card__badge\s*\{[^}]*white-space:\s*normal/);
     expect(styles).not.toMatch(/\.member-card__(?:class|badge)-row\s*\{/);
+  });
+
+  it("clips only the decorative specular layer, not the tilted card or avatar boundary", () => {
+    const { container } = render(<MemberCard user={user} profile={profile} />);
+    const styles = readFileSync(
+      resolve(process.cwd(), "apps/portal/components/shared/MemberCard.css"),
+      "utf8",
+    ).replace(/\/\*[\s\S]*?\*\//g, "");
+
+    expect(container.querySelector(".member-card__effects .member-card__spec")).not.toBeNull();
+    expect(styles).toMatch(/\.member-card--full\s*\{[^}]*overflow:\s*visible/);
+    expect(styles).toMatch(/\.member-card__effects\s*\{[^}]*overflow:\s*hidden/);
+    expect(styles).toMatch(/\.member-card__avatar-wrap\s*\{[^}]*overflow:\s*hidden/);
   });
 
   it("shows visible short labels beside photo and video counts", () => {

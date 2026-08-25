@@ -1,19 +1,14 @@
 import type { AdminRole, InviteLink } from "@guild/shared";
-import { MantineProvider } from "@mantine/core";
 import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { AdminInviteSection } from "./AdminInviteSection";
 
 const responsive = vi.hoisted(() => ({ compact: false }));
 
-vi.mock("@mantine/hooks", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("@mantine/hooks")>();
-  return {
-    ...actual,
-    useMediaQuery: () => responsive.compact,
-  };
-});
+vi.mock("@portal/hooks/useMediaQuery", () => ({
+  useMediaQuery: () => responsive.compact,
+}));
 
 vi.mock("react-i18next", () => ({
   useTranslation: () => ({
@@ -90,11 +85,7 @@ function renderSection(
     ...overrides,
   };
 
-  render(
-    <MantineProvider>
-      <AdminInviteSection {...props} />
-    </MantineProvider>,
-  );
+  render(<AdminInviteSection {...props} />);
 
   return props;
 }
@@ -108,6 +99,13 @@ function getToolbarCreateButton() {
 describe("AdminInviteSection", () => {
   beforeEach(() => {
     responsive.compact = false;
+    vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockReturnValue(
+      new DOMRect(0, 0, 1200, 48),
+    );
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
   });
 
   it("shows invite status to administrators", () => {
@@ -115,6 +113,19 @@ describe("AdminInviteSection", () => {
 
     expect(screen.getByText("invite.table.status")).toBeInTheDocument();
     expect(screen.getByText("invite.status.revoked")).toBeInTheDocument();
+  });
+
+  it("keeps search and creation visible while status uses the shared filter menu", async () => {
+    const user = userEvent.setup();
+    renderSection();
+
+    expect(screen.getByRole("textbox", { name: "invite.search" })).toBeVisible();
+    expect(getToolbarCreateButton()).toBeVisible();
+    await user.click(screen.getByRole("button", { name: "common:filter.toggle (1)" }));
+    const filterDialog = await screen.findByRole("dialog", { name: /common:filter\.toggle/ });
+    expect(within(filterDialog).getByRole("radio", { name: "invite.segActive" })).toBeInTheDocument();
+    expect(within(filterDialog).getByRole("radio", { name: "invite.segExpired" })).toBeInTheDocument();
+    expect(within(filterDialog).getByRole("radio", { name: "invite.segRevoked" })).toBeInTheDocument();
   });
 
   it("uses the inactive status reason for disabled actions", async () => {
@@ -134,9 +145,9 @@ describe("AdminInviteSection", () => {
     /* hidden: true 的理由同 AvailabilityEditor.test.tsx：jsdom 没有布局，
        floating-ui 的 hide 中间件会异步给已打开的浮层盖上 display: none。 */
     const dropdown = await screen.findByRole("menu", { hidden: true });
-    const revokeItem = within(dropdown).getByText("invite.revoke").closest("button")!;
+    const revokeItem = within(dropdown).getByText("invite.revoke").closest('[role="menuitem"]')!;
 
-    expect(revokeItem).toBeDisabled();
+    expect(revokeItem).toHaveAttribute("aria-disabled", "true");
     expect(revokeItem.parentElement).toHaveAttribute("data-disabled-tooltip-target");
   });
 
@@ -155,18 +166,17 @@ describe("AdminInviteSection", () => {
     fireEvent.change(expiresAt, { target: { value: "2026-08-01T12:30" } });
 
     await user.keyboard("{Escape}");
+    await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
     await user.click(getToolbarCreateButton());
     const reopenedDialog = screen.getByRole("dialog");
 
-    expect(within(reopenedDialog).getByLabelText("invite.aria.maxUses")).toHaveValue("10");
+    expect(within(reopenedDialog).getByLabelText("invite.aria.maxUses")).toHaveValue(10);
     expect(within(reopenedDialog).getByLabelText("invite.aria.expiresAt")).toHaveValue("");
     expect(within(reopenedDialog).getByLabelText("invite.aria.role")).toHaveValue("");
 
     await user.click(within(reopenedDialog).getByLabelText("invite.aria.role"));
     await user.click(await screen.findByRole("option", { name: "Raid Lead", hidden: true }));
-    const closeButton = reopenedDialog.querySelector<HTMLButtonElement>(".mantine-Modal-close");
-    expect(closeButton).not.toBeNull();
-    await user.click(closeButton!);
+    await user.click(within(reopenedDialog).getByRole("button", { name: "common:action.close" }));
     await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
 
     await user.click(getToolbarCreateButton());
@@ -284,10 +294,10 @@ describe("AdminInviteSection", () => {
       const actionButtons = screen.getAllByRole("button", { name: "invite.table.actions" });
       await user.click(actionButtons[0]!);
       let dropdown = await screen.findByRole("menu", { hidden: true });
-      const targetRevoke = within(dropdown).getByText("invite.revoke").closest("button")!;
-      const targetDelete = within(dropdown).getByText("invite.delete").closest("button")!;
-      expect(targetRevoke).toBeDisabled();
-      expect(targetDelete).toBeDisabled();
+      const targetRevoke = within(dropdown).getByText("invite.revoke").closest('[role="menuitem"]')!;
+      const targetDelete = within(dropdown).getByText("invite.delete").closest('[role="menuitem"]')!;
+      expect(targetRevoke).toHaveAttribute("aria-disabled", "true");
+      expect(targetDelete).toHaveAttribute("aria-disabled", "true");
 
       await user.click(targetRevoke);
       await user.click(targetDelete);
@@ -297,8 +307,8 @@ describe("AdminInviteSection", () => {
       });
       await user.click(actionButtons[1]!);
       dropdown = await screen.findByRole("menu", { hidden: true });
-      expect(within(dropdown).getByText("invite.revoke").closest("button")).toBeEnabled();
-      expect(within(dropdown).getByText("invite.delete").closest("button")).toBeEnabled();
+      expect(within(dropdown).getByText("invite.revoke").closest('[role="menuitem"]')).not.toHaveAttribute("aria-disabled", "true");
+      expect(within(dropdown).getByText("invite.delete").closest('[role="menuitem"]')).not.toHaveAttribute("aria-disabled", "true");
     }
 
     expect(onRevokeInvite).not.toHaveBeenCalled();

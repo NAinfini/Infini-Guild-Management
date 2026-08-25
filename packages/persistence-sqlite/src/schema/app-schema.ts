@@ -1,12 +1,16 @@
 import { announcements } from "./announcements.js";
 import { auditArchiveItems, auditArchives, auditLog } from "./audit.js";
 import {
+  emailVerificationChallenges,
+  externalIdentities,
   inviteLinks,
   loginFailures,
+  oauthChallenges,
   rolePermissions,
   roles,
   sessions,
   userCredentials,
+  userEmails,
   users,
 } from "./auth.js";
 import {
@@ -26,6 +30,7 @@ import { errorLog } from "./error-log.js";
 import { galleryItems } from "./gallery.js";
 import { guildWars, warMembers, warTeams } from "./guild-war.js";
 import { mediaAssets, mediaLinks, mediaVariants } from "./media.js";
+import { importantNoticeAcknowledgements, importantNotices, notificationInbox } from "./notifications.js";
 import {
   classCatalog,
   classTagMembers,
@@ -80,7 +85,9 @@ export const appSchema = {
   eventRaffleDraws,
   eventRaffleWinners,
   errorLog,
+  emailVerificationChallenges,
   events,
+  externalIdentities,
   galleryItems,
   guildWars,
   inviteLinks,
@@ -88,6 +95,10 @@ export const appSchema = {
   mediaAssets,
   mediaLinks,
   mediaVariants,
+  importantNoticeAcknowledgements,
+  importantNotices,
+  notificationInbox,
+  oauthChallenges,
   memberAbsences,
   memberAvailabilityWindows,
   memberBadgeAssignments,
@@ -115,6 +126,7 @@ export const appSchema = {
   systemTestRequests,
   systemTestRuns,
   userCredentials,
+  userEmails,
   users,
   warMembers,
   warTeams,

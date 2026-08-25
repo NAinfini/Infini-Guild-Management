@@ -3,16 +3,17 @@ import {
   downloadAdminAuditArchiveFile,
 } from "../../../services/AdminService";
 import { downloadFileBlob } from "../../../utils/admin";
+import { Button } from "@portal/components/ui/button";
+import { Card } from "@portal/components/ui/card";
+import { Label } from "@portal/components/ui/label";
 import {
-  Button,
-  Collapse,
-  Group,
-  Paper,
   Select,
-  Skeleton,
-  Stack,
-  Text,
-} from "@mantine/core";
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@portal/components/ui/select";
+import { Skeleton } from "@portal/components/ui/skeleton";
 import { useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { ArchiveIcon } from "@portal/components/icons";
@@ -59,21 +60,25 @@ export function AuditArchiveExplorer({
   };
 
   return (
-    <Paper withBorder radius="md" p="md">
-      <Stack gap={12}>
-        <Group justify="space-between" align="center">
-          <Group gap={8}>
-            <ArchiveIcon size={18} />
-            <Text fw={600}>{t("auditArchive.title")}</Text>
-          </Group>
-          <Button variant={opened ? "default" : "light"} size="sm" onClick={() => setOpened((v) => !v)}>
+    <Card className="gap-3 p-4">
+        <div className="flex items-center justify-between gap-3">
+          <div className="flex items-center gap-2">
+            <ArchiveIcon size={18} aria-hidden="true" />
+            <strong>{t("auditArchive.title")}</strong>
+          </div>
+          <Button
+            variant={opened ? "secondary" : "ghost"}
+            size="sm"
+            aria-expanded={opened}
+            onClick={() => setOpened((value) => !value)}
+          >
             {opened ? t("auditArchive.toggleHide") : t("auditArchive.toggleShow")}
           </Button>
-        </Group>
+        </div>
 
-        <Collapse expanded={opened}>
-          <Stack gap={12} pt="xs">
-            {monthsLoading ? <Skeleton height={36} /> : null}
+        {opened ? (
+          <div className="grid gap-3 border-t border-border pt-3">
+            {monthsLoading ? <Skeleton className="h-9 w-full" /> : null}
             {monthsError ? <AdminLoadError onRetry={onRetryMonths} /> : null}
 
             {!monthsLoading && !monthsError && months.length === 0 ? (
@@ -81,17 +86,25 @@ export function AuditArchiveExplorer({
             ) : null}
 
             {!monthsLoading && !monthsError && months.length > 0 ? (
-              <Group wrap="wrap" align="flex-end" gap={8}>
-                <Select
-                  label={t("auditArchive.monthLabel")}
-                  placeholder={t("auditArchive.monthPlaceholder")}
-                  data={monthOptions}
-                  value={selectedMonth}
-                  onChange={(value) => { if (value) setSelectedMonth(value); }}
-                  style={{ width: 220 }}
-                />
+              <div className="flex flex-wrap items-end gap-2">
+                <div className="grid w-[220px] gap-1.5">
+                  <Label>{t("auditArchive.monthLabel")}</Label>
+                  <Select
+                    value={selectedMonth}
+                    items={monthOptions}
+                    onValueChange={(value) => setSelectedMonth(value)}
+                  >
+                    <SelectTrigger aria-label={t("auditArchive.monthLabel")}>
+                      <SelectValue placeholder={t("auditArchive.monthPlaceholder")} />
+                    </SelectTrigger>
+                    <SelectContent align="start">
+                      {monthOptions.map((option) => (
+                        <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
                 <Button
-                  variant="default"
                   size="sm"
                   onClick={() => void handleDownload()}
                   loading={downloading}
@@ -99,11 +112,10 @@ export function AuditArchiveExplorer({
                 >
                   {t("auditArchive.downloadRaw")}
                 </Button>
-              </Group>
+              </div>
             ) : null}
-          </Stack>
-        </Collapse>
-      </Stack>
-    </Paper>
+          </div>
+        ) : null}
+    </Card>
   );
 }

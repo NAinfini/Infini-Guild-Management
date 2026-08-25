@@ -6,6 +6,10 @@ import {
   formatCalendarParts,
   formatClock,
   formatDateTime,
+  formatDateTimeWithTimeZone,
+  formatEventTime,
+  formatEventTimeRange,
+  formatTimeZoneAbbreviation,
   fromDateTimeLocalValue,
   isIsoDate,
   localClockToUtc,
@@ -131,6 +135,31 @@ describe("display formatting", () => {
     const at = new Date(2026, 7, 13, 19, 12, 45);
     expect(formatClock(at)).toBe("19:12");
     expect(formatClock(at, { seconds: true })).toBe("19:12:45");
+  });
+
+  it("keeps a timezone abbreviation immediately after absolute date-times", () => {
+    const at = new Date(2026, 7, 13, 19, 12, 45);
+    const timeZone = formatEventTime(at, "en-US").split(" ").at(-1);
+
+    expect(formatDateTimeWithTimeZone(at)).toBe(`${formatDateTime(at)} ${timeZone}`);
+    expect(formatDateTimeWithTimeZone("not-a-date")).toBe(EMPTY_TIME_TEXT);
+  });
+
+  it("appends the actual timezone abbreviation to every displayed event time", () => {
+    const options = { timeZone: "UTC", hour12: false };
+
+    expect(formatEventTime("2026-08-13T16:00:00.000Z", "en-US", options)).toBe("16:00 UTC");
+    expect(formatEventTimeRange(
+      "2026-08-13T16:00:00.000Z",
+      "2026-08-13T18:00:00.000Z",
+      "en-US",
+      options,
+    )).toBe("16:00 UTC–18:00 UTC");
+  });
+
+  it("centralizes timezone abbreviations and preserves an explicit fallback", () => {
+    expect(formatTimeZoneAbbreviation("2026-08-13T16:00:00.000Z", "UTC")).toBe("UTC");
+    expect(formatTimeZoneAbbreviation("not-a-date", "America/New_York")).toBe("America/New_York");
   });
 });
 

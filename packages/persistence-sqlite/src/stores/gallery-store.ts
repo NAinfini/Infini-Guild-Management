@@ -144,7 +144,7 @@ function galleryWhere(query: GalleryListQuery): Readonly<{ where: string; params
   if (query.dateFrom) { clauses.push("items.created_at >= ?"); params.push(query.dateFrom); }
   if (query.dateTo) { clauses.push("items.created_at <= ?"); params.push(query.dateTo); }
   if (query.search) {
-    clauses.push("(lower(COALESCE(items.caption, '')) LIKE ? ESCAPE '\\' OR lower(COALESCE(users.username, '')) LIKE ? ESCAPE '\\')");
+    clauses.push("(lower(COALESCE(items.caption, '')) LIKE ? ESCAPE '\\' OR lower(COALESCE(users.display_name, '')) LIKE ? ESCAPE '\\')");
     const pattern = `%${escapeLike(query.search.toLowerCase())}%`;
     params.push(pattern, pattern);
   }
@@ -158,7 +158,7 @@ function galleryWhere(query: GalleryListQuery): Readonly<{ where: string; params
 
 function selectGallery(): string {
   return `SELECT
-    items.id, items.type, items.url, items.caption, items.uploaded_by, users.username,
+    items.id, items.type, items.url, items.caption, items.uploaded_by, users.display_name,
     items.created_at, items.revision_token, links.media_id
     FROM gallery_items AS items
     LEFT JOIN users ON users.id = items.uploaded_by
@@ -198,7 +198,7 @@ function galleryBatchDeleteAuditStatement(
        SELECT id, type, caption FROM gallery_items WHERE revision_token = ?
      )
      SELECT ?, ?, ?, ?,
-       CASE WHEN ? = 'user' THEN (SELECT username FROM users WHERE id = ?) ELSE ? END,
+       CASE WHEN ? = 'user' THEN (SELECT display_name FROM users WHERE id = ?) ELSE ? END,
        ?, ?, ?, ?,
        json_set(json_set(
          json(?), '$.context[#]',

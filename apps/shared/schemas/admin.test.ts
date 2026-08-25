@@ -21,10 +21,10 @@ const roleTarget = {
 describe("admin role-target schemas", () => {
   it("requires a D1 role id when creating an invite or member", () => {
     expect(createInviteLinkSchema.safeParse({ max_uses: 1 }).success).toBe(false);
-    expect(createAdminMemberSchema.safeParse({ username: "new_member" }).success).toBe(false);
+    expect(createAdminMemberSchema.safeParse({ login_name: "new_member", display_name: "NewMember" }).success).toBe(false);
 
     expect(createInviteLinkSchema.safeParse({ role_id: "raider", max_uses: 1 }).success).toBe(true);
-    expect(createAdminMemberSchema.safeParse({ username: "new_member", role_id: "raider" }).success).toBe(true);
+    expect(createAdminMemberSchema.safeParse({ login_name: "new_member", display_name: "NewMember", role_id: "raider" }).success).toBe(true);
   });
 
   it("returns the assigned role metadata with invite links", () => {

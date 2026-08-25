@@ -24,11 +24,14 @@ import {
   SqliteEventAutoArchiveStore,
   SqliteEventsStore,
   SqliteErrorLogStore,
+  SqliteEmailVerificationStore,
   SqliteGalleryStore,
   SqliteGuildWarStore,
   SqliteMediaStore,
   SqliteMemberMediaPort,
   SqliteMembersStore,
+  SqliteNotificationInboxStore,
+  SqliteImportantNoticeStore,
   SqlitePortalReadModelStore,
   SqliteRaffleAutoDrawStore,
   SqliteScheduledJobLeaseStore,
@@ -53,10 +56,12 @@ import {
   GalleryService,
   GuildWarService,
   IdentityAdminService,
+  ImportantNoticeService,
   MediaService,
   MemberCatalogService,
   MemberService,
   NotificationService,
+  NotificationInboxService,
   PortalReadModelService,
   ScheduledAuditArchiveJob,
   ScheduledAnnouncementPublishJob,
@@ -69,11 +74,15 @@ import {
   SiteConfigService,
   StorageService,
   SystemTestService,
+  EmailVerificationService,
   WikiService,
+  OAuthService,
   createInviteTokenCodec,
   type RuntimeHealthPort,
   type AdminOperationsRuntimePort,
 } from "@guild/server";
+import { SqliteOAuthStore } from "@guild/persistence-sqlite";
+import { createOAuthProviderClients, oauthProviderAvailability, type OAuthRuntimeConfig } from "./oauth-providers.js";
 
 export type ApplicationServicePorts = Readonly<{
   sql: SqlExecutor;
@@ -84,11 +93,16 @@ export type ApplicationServicePorts = Readonly<{
   health: RuntimeHealthPort;
   adminOperationsRuntime: AdminOperationsRuntimePort;
   authRateLimiter: RateLimiter;
+  authIpRateLimiter: RateLimiter;
+  emailSender?: import("@guild/server").TransactionalEmailSender | null;
 }>;
 
 export type ApplicationServiceConfig = Readonly<{
   inviteTokenSecret: string;
   passwordIterations: number;
+  publicUrl: string;
+  oauth: OAuthRuntimeConfig;
+  emailFrom: string | null;
 }>;
 
 export function createApplicationServices(
@@ -97,6 +111,12 @@ export function createApplicationServices(
 ) {
   const db = createAppDatabase(ports.sql, { schema: appSchema });
   const notifications = new NotificationService(ports.notifications);
+  const notificationInbox = new NotificationInboxService(
+    new SqliteNotificationInboxStore(ports.sql),
+    notifications,
+    ports.deferred,
+  );
+  const importantNotices = new ImportantNoticeService(new SqliteImportantNoticeStore(ports.sql));
 
   const mediaStore = new SqliteMediaStore(ports.sql);
   const media = new MediaService(mediaStore, ports.blobs);
@@ -131,14 +151,19 @@ export function createApplicationServices(
     provisioning: accountProvisioning,
     profiles: members,
     inviteTokens,
-    loginRateLimiter: ports.authRateLimiter,
+    loginIpRateLimiter: ports.authIpRateLimiter,
+    loginNameRateLimiter: ports.authRateLimiter,
     passwordIterations: config.passwordIterations,
+    notifications,
+    deferred: ports.deferred,
   });
   const identityAdmin = new IdentityAdminService({
     store: authStore,
     provisioning: accountProvisioning,
     inviteTokens,
     passwordIterations: config.passwordIterations,
+    notifications,
+    deferred: ports.deferred,
   });
 
   const eventsStore = new SqliteEventsStore(db, ports.sql);
@@ -186,7 +211,28 @@ export function createApplicationServices(
   const wiki = new WikiService(
     new SqliteWikiStore(ports.sql), media, notifications, ports.deferred,
   );
-  const siteConfig = new SiteConfigService(siteConfigStore, media, notifications, ports.deferred);
+  const oauthClients = createOAuthProviderClients(config.oauth);
+  const siteConfig = new SiteConfigService(
+    siteConfigStore,
+    media,
+    notifications,
+    ports.deferred,
+    oauthProviderAvailability(config.oauth),
+  );
+  const oauth = new OAuthService({
+    store: new SqliteOAuthStore(ports.sql),
+    authStore,
+    siteConfig,
+    clients: oauthClients,
+    publicUrl: config.publicUrl,
+  });
+  const emailVerification = new EmailVerificationService({
+    store: new SqliteEmailVerificationStore(ports.sql),
+    authStore,
+    sender: ports.emailSender ?? null,
+    from: config.emailFrom,
+    publicUrl: config.publicUrl,
+  });
   const audit = new AuditService(new SqliteAuditStore(ports.sql));
   const errorLog = new ErrorLogService(new SqliteErrorLogStore(ports.sql));
   const auditArchive = new AuditArchiveService(new SqliteAuditArchiveStore(ports.sql), ports.blobs);
@@ -236,13 +282,17 @@ export function createApplicationServices(
     auth,
     events,
     errorLog,
+    emailVerification,
     gallery,
     guildWar,
     health,
     identityAdmin,
+    importantNotices,
     media,
     memberCatalog,
     members,
+    notificationInbox,
+    oauth,
     portalReadModels,
     scheduledJobs,
     siteConfig,

@@ -1,5 +1,6 @@
 import type { Event, MemberProfile, User } from "@guild/shared";
-import { Button, Group, Stack, Text, Tooltip } from "@mantine/core";
+import { Button } from "@portal/components/ui/button";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@portal/components/ui/tooltip";
 import { UserMinusIcon } from "@portal/components/icons";
 import { ClassIcon } from "@portal/components/shared/ClassIcon";
 import { useClassCatalog } from "@portal/hooks/data/useClassData";
@@ -15,7 +16,7 @@ type EventDetailMemberRosterProps = {
   event: Pick<Event, "class_quotas">;
   members: MemberEntry[];
   canManage: boolean;
-  onRemoveMember: (userId: string, username: string) => void;
+  onRemoveMember: (userId: string, display_name: string) => void;
 };
 
 // Quota grouping and its counters share the allocation algorithm in
@@ -40,80 +41,81 @@ export function EventDetailMemberRoster({
   );
 
   const renderRow = (entry: MemberEntry) => (
-    <Group key={entry.user.id} gap={10} className="event-detail-modal__member-row" wrap="nowrap">
+    <div key={entry.user.id} className="event-detail-content__member-row">
       <EventMemberIdentity entry={entry} />
       {canManage ? (
         <Button
-          color="red"
-          variant="light"
+          variant="destructive"
           size="sm"
-          leftSection={<UserMinusIcon size={14} />}
-          onClick={() => onRemoveMember(entry.user.id, entry.user.username)}
+          onClick={() => onRemoveMember(entry.user.id, entry.user.display_name)}
         >
+          <UserMinusIcon size={14} />
           {t("detail.removeMember")}
         </Button>
       ) : null}
-    </Group>
+    </div>
   );
 
+  if (members.length === 0) {
+    return <p className="event-detail-content__empty-members">{t("detail.noMembers")}</p>;
+  }
+
   return (
-    <>
-      {members.length === 0 ? (
-        <Text c="dimmed" size="sm">{t("detail.noMembers")}</Text>
-      ) : quotaGroups ? (
-        <div className="event-detail-modal__member-list">
-          <Stack gap={16}>
-            {quotaGroups.map((group) => {
-              return (
-                <div key={group.kind === "quota" ? group.slot.key : group.kind}>
-                  <Group gap={6} mb={8} wrap="nowrap">
-                    {group.kind === "quota" ? (
-                      <>
-                        {/* 组头上只有一排图标，认不出哪个是哪个职业就等于没写；
-                            悬停给名字，同时 label 让读屏也念得出来。 */}
-                        {group.slot.class_ids.map((classId) => {
-                          const item = resolveClassCatalogItem(classId, classCatalog);
-                          return (
-                            <Tooltip key={classId} label={item.label} withArrow>
-                              <span className="event-detail-modal__group-class">
-                                <ClassIcon item={item} size={18} framed={false} label={item.label} />
-                              </span>
-                            </Tooltip>
-                          );
-                        })}
-                        <Text size="xs" fw={800}>
-                          {labelByTagId.get(group.slot.key) ?? t("quota.editor.unknownTag")}
-                        </Text>
-                        <Text
-                          size="xs"
-                          fw={800}
-                          className="quota-status-text"
-                          data-quota-status={group.slot.status}
-                        >
-                          {group.slot.matched}/{group.slot.required}
-                        </Text>
-                      </>
-                    ) : (
-                      <Text size="xs" fw={800} c="dimmed">
-                        {t("quota.group.other", { count: group.members.length })}
-                      </Text>
-                    )}
-                  </Group>
-                  {group.members.length === 0 ? (
-                    <Text size="xs" c="dimmed">{t("quota.group.empty")}</Text>
+    <div
+      className="event-detail-content__member-list"
+      role="region"
+      tabIndex={0}
+      aria-label={t("detail.memberListAria", { count: members.length })}
+    >
+      {quotaGroups ? (
+        <div className="event-detail-content__quota-groups">
+          {quotaGroups.map((group) => {
+            return (
+              <div key={group.kind === "quota" ? group.slot.key : group.kind}>
+                <div className="event-detail-content__quota-group-heading">
+                  {group.kind === "quota" ? (
+                    <>
+                      {/* 组头上只有一排图标，认不出哪个是哪个职业就等于没写；
+                          悬停给名字，同时 label 让读屏也念得出来。 */}
+                      {group.slot.class_ids.map((classId) => {
+                        const item = resolveClassCatalogItem(classId, classCatalog);
+                        return (
+                          <Tooltip key={classId}>
+                            <TooltipTrigger render={<span className="event-detail-content__group-class" />}>
+                              <ClassIcon item={item} size={18} framed={false} label={item.label} />
+                            </TooltipTrigger>
+                            <TooltipContent>{item.label}</TooltipContent>
+                          </Tooltip>
+                        );
+                      })}
+                      <strong className="event-detail-content__quota-label">
+                        {labelByTagId.get(group.slot.key) ?? t("quota.editor.unknownTag")}
+                      </strong>
+                      <strong
+                        className="quota-status-text"
+                        data-quota-status={group.slot.status}
+                      >
+                        {group.slot.matched}/{group.slot.required}
+                      </strong>
+                    </>
                   ) : (
-                    <Stack gap={8}>{group.members.map(renderRow)}</Stack>
+                    <strong className="event-detail-content__quota-label event-detail-content__quota-label--muted">
+                      {t("quota.group.other", { count: group.members.length })}
+                    </strong>
                   )}
                 </div>
-              );
-            })}
-          </Stack>
+                {group.members.length === 0 ? (
+                  <p className="event-detail-content__quota-empty">{t("quota.group.empty")}</p>
+                ) : (
+                  <div>{group.members.map(renderRow)}</div>
+                )}
+              </div>
+            );
+          })}
         </div>
       ) : (
-        <div className="event-detail-modal__member-list">
-          <Stack gap={8}>{members.map(renderRow)}</Stack>
-        </div>
+        <div>{members.map(renderRow)}</div>
       )}
-    </>
+    </div>
   );
 }

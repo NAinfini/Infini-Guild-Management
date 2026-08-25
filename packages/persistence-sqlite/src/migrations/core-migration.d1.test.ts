@@ -22,6 +22,99 @@ const migrations = manifest.map((entry) => ({
 }));
 
 describe("core migration on Miniflare workerd D1", () => {
+  it("preserves an existing account exactly across the identity split", async () => {
+    const miniflare = new Miniflare({
+      compatibilityDate: "2026-07-28",
+      d1Databases: { DB: "identity-upgrade-smoke" },
+      modules: true,
+      port: 0,
+      script: "export default {}",
+    });
+    try {
+      const database = await miniflare.getD1Database("DB");
+      for (const { sql } of migrations.slice(0, 3)) await applyD1Migration(database, sql);
+      await database.prepare(`INSERT INTO users (id, username, role_id, revision_token, created_at, updated_at)
+        VALUES ('legacy-user', ?, 'member', 'legacy-user-revision-0001', ?, ?)`)
+        .bind("Legacy.User", "2026-08-01T00:00:00.000Z", "2026-08-01T00:00:00.000Z").run();
+      await database.prepare(`INSERT INTO user_credentials (
+        user_id, password_hash, temporary_password_expires_at, temporary_password_used_at, updated_at
+      ) VALUES ('legacy-user', ?, ?, ?, ?)`)
+        .bind("legacy-password-hash", "2026-08-22T12:15:00.000Z", null, "2026-08-01T00:00:00.000Z").run();
+      await database.prepare(`INSERT INTO login_failures (username, fail_count, locked_until, last_failed_at)
+        VALUES ('legacy.user', 4, '2026-08-22T12:05:00.000Z', '2026-08-22T12:00:00.000Z')`).run();
+
+      for (const { sql } of migrations.slice(3)) await applyD1Migration(database, sql);
+
+      expect(await database.prepare("SELECT display_name FROM users WHERE id = 'legacy-user'").first())
+        .toEqual({ display_name: "Legacy.User" });
+      expect(await database.prepare(`SELECT login_name, password_hash, temporary_password_expires_at,
+        temporary_password_used_at FROM user_credentials WHERE user_id = 'legacy-user'`).first()).toEqual({
+        login_name: "Legacy.User",
+        password_hash: "legacy-password-hash",
+        temporary_password_expires_at: "2026-08-22T12:15:00.000Z",
+        temporary_password_used_at: null,
+      });
+      expect(await database.prepare(
+        "SELECT fail_count, locked_until FROM login_failures WHERE login_name = 'legacy.user'",
+      ).first()).toEqual({ fail_count: 4, locked_until: "2026-08-22T12:05:00.000Z" });
+      expect((await database.prepare("PRAGMA table_info(users)").all()).results.map((row) => row.name))
+        .not.toContain("username");
+      expect(await database.prepare("SELECT count(*) AS count FROM external_identities").first<number>("count")).toBe(0);
+      expect(await database.prepare("SELECT count(*) AS count FROM user_emails").first<number>("count")).toBe(0);
+    } finally {
+      await miniflare.dispose();
+    }
+  }, 45_000);
+
+  it("upgrades an attached media graph through the real D1 binding", async () => {
+    const miniflare = new Miniflare({
+      compatibilityDate: "2026-07-28",
+      d1Databases: { DB: "media-upgrade-smoke" },
+      modules: true,
+      port: 0,
+      script: "export default {}",
+    });
+    try {
+      const database = await miniflare.getD1Database("DB");
+      for (const { sql } of migrations.slice(0, 7)) await applyD1Migration(database, sql);
+      const now = "2026-08-09T12:00:00.000Z";
+      const owner = "media-upgrade-owner";
+      const announcement = "media-upgrade-announcement";
+      const mediaId = "mmmmmmmmmmmmmmmmmmmmm";
+      await database.prepare("INSERT INTO users (id, display_name, role_id, revision_token) VALUES (?, ?, 'member', ?)")
+        .bind(owner, "Media owner", "media-upgrade-owner-revision").run();
+      await database.prepare(`INSERT INTO announcements (
+        id, title, body_json, pinned, status, publish_at, created_by, revision_token, created_at, updated_at
+      ) VALUES (?, 'Notice', '{"type":"doc","content":[]}', 0, 'published', ?, ?, ?, ?, ?)`)
+        .bind(announcement, now, owner, "media-upgrade-announcement-revision", now, now).run();
+      await database.prepare(`INSERT INTO media_assets (
+        id, owner_user_id, purpose, media_type, state, expires_at, created_at, updated_at
+      ) VALUES (?, ?, 'announcement_image', 'image', 'staged', ?, ?, ?)`)
+        .bind(mediaId, owner, "2026-08-10T12:00:00.000Z", now, now).run();
+      await database.prepare(`INSERT INTO media_variants (
+        media_id, variant, object_key, content_type, byte_size, sha256, width, height
+      ) VALUES (?, 'full', 'media/upgrade/full.webp', 'image/webp', 10, ?, 1, 1)`)
+        .bind(mediaId, "a".repeat(64)).run();
+      await database.prepare(`INSERT INTO media_links (media_id, entity_type, entity_id, slot, audience, sort_order)
+        VALUES (?, 'announcement', ?, 'body', 'public', 0)`).bind(mediaId, announcement).run();
+
+      await applyD1Migration(database, migrations[7]!.sql);
+
+      expect(await database.prepare("SELECT state FROM media_assets WHERE id = ?").bind(mediaId).first())
+        .toEqual({ state: "attached" });
+      expect(await database.prepare("SELECT count(*) AS count FROM media_links WHERE media_id = ?").bind(mediaId).first())
+        .toEqual({ count: 1 });
+      expect(await database.prepare(`SELECT max_announcement_attachment_bytes, quota_announcement_attachments
+        FROM site_config WHERE singleton = 1`).first()).toEqual({
+        max_announcement_attachment_bytes: 10 * 1024 * 1024,
+        quota_announcement_attachments: 5,
+      });
+      expect((await database.prepare("PRAGMA foreign_key_check").all()).results).toEqual([]);
+    } finally {
+      await miniflare.dispose();
+    }
+  }, 45_000);
+
   it("applies the complete migration through the real D1 binding", async () => {
     const miniflare = new Miniflare({
       compatibilityDate: "2026-07-28",
@@ -40,7 +133,7 @@ describe("core migration on Miniflare workerd D1", () => {
 
       expect(await database.prepare(
         "SELECT count(*) AS count FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%' AND substr(name, 1, 4) <> '_cf_'",
-      ).first<number>("count")).toBe(59);
+      ).first<number>("count")).toBe(66);
       expect(await database.prepare(
         "SELECT count(*) AS count FROM sqlite_master WHERE type = 'trigger'",
       ).first<number>("count")).toBeGreaterThan(51);

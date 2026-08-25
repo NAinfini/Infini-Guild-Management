@@ -47,7 +47,7 @@ describe("SqlitePortalReadModelStore", () => {
       participantCount: 1,
       participantPreview: [{
         userId: "member-1",
-        username: "DragonUser",
+        display_name: "DragonUser",
         roleId: "member",
         classes: ["class-warrior"],
         avatarMediaId: "aaaaaaaaaaaaaaaaaaaaa",
@@ -83,7 +83,7 @@ describe("SqlitePortalReadModelStore", () => {
   it("keeps exact counts and viewer signup while returning only a five-member preview", async () => {
     const value = harness();
     const insertUser = value.database.prepare(`INSERT INTO users (
-      id, username, role_id, is_active, revision_token, created_at, updated_at
+      id, display_name, role_id, is_active, revision_token, created_at, updated_at
     ) VALUES (?, ?, 'member', 1, ?, ?, ?)`);
     const insertParticipant = value.database.prepare(
       "INSERT INTO event_participants (id, event_id, user_id, joined_at) VALUES (?, 'event-public', ?, ?)",
@@ -182,7 +182,7 @@ describe("SqlitePortalReadModelStore", () => {
     expect(value.executor.batches[0]!.every((statement) => statement.sql.includes("LIMIT ?"))).toBe(true);
     const searchStatements = value.executor.batches[0]!;
     const indexedOrders = [
-      ["ux_users_username_nocase", /ORDER BY u\.username COLLATE NOCASE, u\.id\s+LIMIT \?/],
+      ["ux_users_display_name_nocase", /ORDER BY u\.display_name COLLATE NOCASE, u\.id\s+LIMIT \?/],
       ["idx_events_list_start", /ORDER BY e\.start_at, e\.id\s+LIMIT \?/],
       ["idx_announcements_public", /ORDER BY a\.pinned DESC, a\.updated_at DESC, a\.id DESC\s+LIMIT \?/],
       ["idx_wiki_articles_visibility_updated", /ORDER BY w\.updated_at DESC, w\.id DESC\s+LIMIT \?/],
@@ -211,7 +211,7 @@ describe("SqlitePortalReadModelStore", () => {
 
 function seed(database: DatabaseSync): void {
   const insertUser = database.prepare(`INSERT INTO users (
-    id, username, role_id, is_active, revision_token, created_at, updated_at
+    id, display_name, role_id, is_active, revision_token, created_at, updated_at
   ) VALUES (?, ?, ?, 1, ?, ?, ?)`);
   insertUser.run("admin-1", "Admin", "admin", "admin-revision-token-0001", NOW, NOW);
   insertUser.run("member-1", "DragonUser", "member", "member-revision-token-001", NOW, NOW);

@@ -11,7 +11,7 @@ import type { AuthUserRecord } from "@guild/server/modules/auth";
 export function presentAuthUser(user: AuthUserRecord): User {
   return userSchema.parse({
     id: user.id,
-    username: user.username,
+    display_name: user.displayName,
     role: user.roleId,
     role_name: user.roleName,
     role_color: user.roleColor,
@@ -25,10 +25,16 @@ export function presentAuthUser(user: AuthUserRecord): User {
   });
 }
 
-export function presentAuthSession(input: Readonly<{ user: AuthUserRecord; profile: MemberProfile }>) {
+export function presentAuthSession(input: Readonly<{
+  user: AuthUserRecord;
+  profile: MemberProfile;
+  session?: Readonly<{ scope: "normal" | "password_change" }>;
+  sessionScope?: "normal" | "password_change";
+}>) {
   return authSessionResponseSchema.parse({
     user: presentAuthUser(input.user),
     profile: input.profile,
+    session_scope: input.session?.scope ?? input.sessionScope ?? "normal",
   });
 }
 

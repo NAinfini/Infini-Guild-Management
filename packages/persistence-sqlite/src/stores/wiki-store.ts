@@ -364,7 +364,7 @@ function selectArticle(withBody: boolean): string {
   return `SELECT articles.id, articles.title, articles.slug, articles.category_id,
     ${withBody ? "articles.body_json" : "'' AS body_json"}, articles.sort_order, articles.pinned,
     articles.archived_at, articles.deleted_at, articles.created_by, articles.updated_by,
-    editor.username AS editor_username,
+    editor.display_name AS editor_username,
     articles.created_at, articles.updated_at, articles.revision_token, articles.current_revision,
     COALESCE((
       SELECT json_group_array(media_id) FROM (
@@ -380,7 +380,7 @@ function selectArticle(withBody: boolean): string {
 function selectRevision(withBody: boolean): string {
   return `SELECT revisions.id, revisions.article_id, revisions.revision, revisions.title,
     ${withBody ? "revisions.slug, revisions.category_id, revisions.body_json, revisions.sort_order, revisions.pinned, revisions.archived_at, revisions.deleted_at," : ""}
-    revisions.edited_by, editor.username, revisions.restored_from, revisions.created_at
+    revisions.edited_by, editor.display_name, revisions.restored_from, revisions.created_at
     ${withBody ? `, COALESCE((
       SELECT json_group_array(media_id) FROM (
         SELECT media_id FROM wiki_revision_media
@@ -522,7 +522,7 @@ function mapArticle(row: readonly SqlValue[]): WikiArticleRecord {
     || typeof currentRevision !== "number" || typeof mediaIdsJson !== "string") throw corrupt("Invalid wiki article row");
   return {
     id, title, slug, category_id: categoryId, body_json: bodyJson, sort_order: sortOrder, pinned: pinned === 1,
-    archived_at: archivedAt, created_by: createdBy, updated_by: updatedBy, updated_by_username: updatedByUsername,
+    archived_at: archivedAt, created_by: createdBy, updated_by: updatedBy, updated_by_display_name: updatedByUsername,
     created_at: createdAt, updated_at: updatedAt, revisionToken, currentRevision,
     deletedAt, mediaIds: parseStringArray(mediaIdsJson, "wiki article media"),
   };
@@ -549,7 +549,7 @@ function mapRevisionList(row: readonly SqlValue[]): WikiRevisionListItem {
   }
   return {
     id, article_id: articleId, revision, title, edited_by: editedBy,
-    edited_by_username: editedByUsername, restored_from: restoredFrom, created_at: createdAt,
+    edited_by_display_name: editedByUsername, restored_from: restoredFrom, created_at: createdAt,
   };
 }
 

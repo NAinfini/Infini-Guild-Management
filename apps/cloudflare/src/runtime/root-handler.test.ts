@@ -3,6 +3,7 @@ import { createAuthorizationContext } from "@guild/kernel";
 import { INTERNAL_NOTIFICATION_SESSION_HEADER } from "@guild/server";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
+  createCloudflareComposition,
   createCloudflareHandler,
   type CloudflareComposition,
   type CloudflareCompositionFactory,
@@ -118,6 +119,7 @@ function fixture(options: Readonly<{
     ASSETS: { fetch: assetFetch } as unknown as Fetcher,
     NOTIFICATIONS: {} as DurableObjectNamespace,
     AUTH_RATE_LIMITER: {} as RateLimit,
+    AUTH_IP_RATE_LIMITER: {} as RateLimit,
     READ_RATE_LIMITER: {} as RateLimit,
     MUTATION_RATE_LIMITER: {} as RateLimit,
     UPLOAD_RATE_LIMITER: {} as RateLimit,
@@ -149,7 +151,7 @@ function websocketRequest(origin: string): Request {
   return new Request("https://guild.test/ws", {
     headers: {
       "CF-Connecting-IP": "203.0.113.10",
-      Cookie: "ig_session=session-token",
+      Cookie: "__Host-ig_session=session-token",
       Origin: origin,
       Upgrade: "websocket",
     },
@@ -167,6 +169,18 @@ describe("Cloudflare root handler", () => {
     expect(runtime.compose).not.toHaveBeenCalled();
     expect(runtime.execute).not.toHaveBeenCalled();
     expect(runtime.assetFetch).not.toHaveBeenCalled();
+  });
+
+  it("requires IG_EMAIL_FROM and the Email Sending binding together", () => {
+    const runtime = fixture();
+    expect(() => createCloudflareComposition({
+      ...runtime.environment,
+      IG_EMAIL_FROM: "no-reply@example.com",
+    }, () => executionContext().context)).toThrow(/must be configured together/);
+    expect(() => createCloudflareComposition({
+      ...runtime.environment,
+      EMAIL: { send: async () => ({ messageId: "message-1" }) },
+    }, () => executionContext().context)).toThrow(/must be configured together/);
   });
 
   it("redirects external HTTP before composition and sends HSTS over HTTPS", async () => {
@@ -207,7 +221,7 @@ describe("Cloudflare root handler", () => {
 
     expect(responses.map(({ status }) => status)).toEqual([503, 503, 200, 503, 503]);
     expect(responses[0]?.headers.get("Strict-Transport-Security")).toBe("max-age=31536000; includeSubDomains");
-    expect(await responses[0]?.text()).toContain("class=\"lightfall\"");
+    expect(await responses[0]?.text()).toContain("class=\"maintenance-scene\"");
     await expect(responses[1]?.json()).resolves.toEqual(expect.objectContaining({
       error_code: "UPSTREAM_ERROR",
       message: "Maintenance in progress / 系统维护中",

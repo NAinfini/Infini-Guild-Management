@@ -18,6 +18,7 @@ export type AdminCapabilities = {
   canViewStatus: boolean;
   canManageBadges: boolean;
   canManageSiteConfig: boolean;
+  canManageImportantNotices: boolean;
   canManageClasses: boolean;
 };
 
@@ -71,6 +72,10 @@ export function canManageSiteConfig(roles: AdminRole[], roleId: string): boolean
   return hasAnyPermission(roles, roleId, ["admin.siteConfig.manage"]);
 }
 
+export function canManageImportantNotices(roles: AdminRole[], roleId: string): boolean {
+  return hasAnyPermission(roles, roleId, ["admin.importantNotices.manage"]);
+}
+
 export function canManageClasses(roles: AdminRole[], roleId: string): boolean {
   return hasAnyPermission(roles, roleId, ["admin.classes.manage"]);
 }
@@ -87,6 +92,7 @@ export function getAdminCapabilities(roles: AdminRole[], roleId: string): AdminC
     canViewStatus: canViewStatus(roles, roleId),
     canManageBadges: canManageBadges(roles, roleId),
     canManageSiteConfig: canManageSiteConfig(roles, roleId),
+    canManageImportantNotices: canManageImportantNotices(roles, roleId),
     canManageClasses: canManageClasses(roles, roleId),
   };
 }

@@ -1,7 +1,7 @@
 import type { ClassTag } from "@guild/shared";
 import { arrayMove } from "@dnd-kit/sortable";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import {
   createClassTag,
@@ -35,13 +35,23 @@ function tagToDraft(tag: ClassTag): ClassTagDraft {
   };
 }
 
+function sameTagDraft(left: ClassTagDraft, right: ClassTagDraft) {
+  if (left.id !== right.id || left.label !== right.label || left.classIds.length !== right.classIds.length) {
+    return false;
+  }
+
+  const leftIds = [...left.classIds].sort();
+  const rightIds = [...right.classIds].sort();
+  return leftIds.every((id, index) => id === rightIds[index]);
+}
+
 export function useAdminClassTagsController() {
   const { t } = useTranslation("admin");
   const queryClient = useQueryClient();
   const [opened, setOpened] = useState(false);
-  // Selection opens a read-only detail; editing requires a separate action.
-  const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState<ClassTagDraft>(EMPTY_CLASS_TAG_DRAFT);
+  const [baseline, setBaseline] = useState<ClassTagDraft>(EMPTY_CLASS_TAG_DRAFT);
+  const isDirty = useMemo(() => !sameTagDraft(draft, baseline), [baseline, draft]);
 
   /* 管理列表直接用服务端顺序（sort_order,id），不套 useClassTags 的排序 select：
      拖拽重排读写的就是这份顺序本身。全站的筹码和配额编辑器读的是同一个
@@ -65,8 +75,8 @@ export function useAdminClassTagsController() {
       /* 保存后停在刚存的那个标签上，而不是把右栏收掉：加成员是一次改几个的活，
          每存一次就退回空白页的话，得重新找一遍自己刚才在改哪个。 */
       setDraft(tagToDraft(tag));
+      setBaseline(tagToDraft(tag));
       setOpened(true);
-      setEditing(false);
       notifySuccess(t("classTags.message.saved"));
     },
     onError: (error) => notifyError(
@@ -79,8 +89,8 @@ export function useAdminClassTagsController() {
     onSuccess: async () => {
       await refresh();
       setOpened(false);
-      setEditing(false);
       setDraft(EMPTY_CLASS_TAG_DRAFT);
+      setBaseline(EMPTY_CLASS_TAG_DRAFT);
       notifySuccess(t("classTags.message.deleted"));
     },
     onError: (error) => notifyError(
@@ -128,24 +138,20 @@ export function useAdminClassTagsController() {
   };
 
   const selectTag = (tag: ClassTag) => {
-    setDraft(tagToDraft(tag));
+    const nextDraft = tagToDraft(tag);
+    setDraft(nextDraft);
+    setBaseline(nextDraft);
     setOpened(true);
-    setEditing(false);
   };
 
-  const startEdit = () => setEditing(true);
-
-  /* 取消：改了一半的草稿丢掉，回到服务端那份。新建时没有「服务端那份」可回，
-     直接把右栏收起来。 */
-  const cancelEdit = () => {
-    const current = draft.id ? query.data?.find((tag) => tag.id === draft.id) : undefined;
-    setEditing(false);
-    if (current) {
-      setDraft(tagToDraft(current));
+  const discardChanges = () => {
+    if (!baseline.id) {
+      setOpened(false);
+      setDraft(EMPTY_CLASS_TAG_DRAFT);
+      setBaseline(EMPTY_CLASS_TAG_DRAFT);
       return;
     }
-    setOpened(false);
-    setDraft(EMPTY_CLASS_TAG_DRAFT);
+    setDraft(baseline);
   };
 
   // Auto-select only once per mount so deleting the active tag can leave the
@@ -162,8 +168,8 @@ export function useAdminClassTagsController() {
   const openCreate = () => {
     /* sort_order 不传：服务端按当前最大值 + 10 排到末尾，正好是拖拽序里「新的在最后」。 */
     setDraft(EMPTY_CLASS_TAG_DRAFT);
+    setBaseline(EMPTY_CLASS_TAG_DRAFT);
     setOpened(true);
-    setEditing(true);
   };
 
   const toggleClass = (classId: string) => setDraft((current) => ({
@@ -176,14 +182,13 @@ export function useAdminClassTagsController() {
   return {
     query,
     opened,
-    editing,
     draft,
     setDraft,
+    isDirty,
     toggleClass,
     openCreate,
     selectTag,
-    startEdit,
-    cancelEdit,
+    discardChanges,
     reorder,
     save: () => saveMutation.mutate(draft),
     remove: (id: string) => deleteMutation.mutateAsync(id),

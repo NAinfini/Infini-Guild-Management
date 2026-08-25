@@ -1,4 +1,5 @@
 import react from "@vitejs/plugin-react";
+import tailwindcss from "@tailwindcss/vite";
 import { Buffer } from "node:buffer";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -130,6 +131,7 @@ export default defineConfig(({ mode }) => {
         },
       },
       echartsBundleBudgetPlugin(),
+      tailwindcss(),
       react(),
     ],
     build: {
@@ -153,12 +155,6 @@ export default defineConfig(({ mode }) => {
             }
             if (normalizedId.includes("/node_modules/react/") || normalizedId.includes("/node_modules/react-dom/")) {
               return "react-core";
-            }
-            if (normalizedId.includes("/node_modules/@mantine/core") || normalizedId.includes("/node_modules/@mantine/hooks") || normalizedId.includes("/node_modules/@mantine/notifications")) {
-              return "mantine-core";
-            }
-            if (normalizedId.includes("/node_modules/@mantine/")) {
-              return "mantine-optional";
             }
             if (normalizedId.includes("/node_modules/@tanstack/")) {
               return "tanstack";
@@ -199,13 +195,11 @@ export default defineConfig(({ mode }) => {
       },
     },
     resolve: {
-      dedupe: ["react", "react-dom", "@mantine/core", "@mantine/hooks"],
+      dedupe: ["react", "react-dom"],
       alias: [
         // Peer dep deduplication
         { find: "react", replacement: resolve(repoRoot, "node_modules/react") },
         { find: "react-dom", replacement: resolve(repoRoot, "node_modules/react-dom") },
-        { find: /^@mantine\/core$/, replacement: resolve(repoRoot, "node_modules/@mantine/core") },
-        { find: /^@mantine\/hooks$/, replacement: resolve(repoRoot, "node_modules/@mantine/hooks") },
         { find: "motion", replacement: resolve(repoRoot, "node_modules/motion") },
         { find: /^@tanstack\/react-table$/, replacement: resolve(repoRoot, "node_modules/@tanstack/react-table") },
         { find: /^@tiptap\/(.*)$/, replacement: resolve(repoRoot, "node_modules/@tiptap/$1") },
@@ -232,12 +226,7 @@ export default defineConfig(({ mode }) => {
       ],
     },
     optimizeDeps: {
-      include: [
-        "react",
-        "react-dom",
-        "@mantine/core",
-        "@mantine/hooks",
-      ],
+      include: ["react", "react-dom"],
     },
     server: {
       // The worker's CORS allowlist and PORTAL_ORIGIN pin this exact origin.

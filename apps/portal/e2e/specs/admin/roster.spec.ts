@@ -1,10 +1,10 @@
 import type { APIRequestContext, Locator, Page, Response } from "@playwright/test";
 import { createThrowawayMember, uniqueTag } from "../../support/members";
 import { expect, readJson, test } from "../../support/test";
-import { field, topDialog } from "../../support/ui";
+import { ensureFiltersOpen, expectNoDialog, topDialog } from "../../support/ui";
 
 /*
- * 名册页的全部控件：搜索、职业多选、排序下拉、加载更多、空态重置、
+ * 名册页的全部控件：搜索、职业多选、排序单选、加载更多、空态重置、
  * 音频偏好（静音 + 音量）、成员卡片与资料弹窗。
  *
  * 和画廊页相反，这一页的筛选、排序、分页统统在前端完成
@@ -26,7 +26,7 @@ const USERS_LIST = "/api/users";
 const ROSTER_FILTERS_KEY = "roster.filters";
 
 type RosterRow = {
-  user: { id: string; username: string };
+  user: { id: string; display_name: string };
   profile: { power: number; classes: string[] };
 };
 
@@ -62,7 +62,7 @@ async function fetchRoster(api: APIRequestContext): Promise<RosterRow[]> {
   return body.data;
 }
 
-async function createRosterMember(api: APIRequestContext, tag: string): Promise<{ id: string; username: string }> {
+async function createRosterMember(api: APIRequestContext, tag: string): Promise<{ id: string; display_name: string }> {
   const member = await createThrowawayMember(api, tag);
   createdUserIds.push(member.id);
   return member;
@@ -96,7 +96,23 @@ function cardNames(page: Page): Locator {
 }
 
 function searchBox(page: Page): Locator {
-  return field(page, "Search by username");
+  return page.getByRole("textbox", { name: "Search by display name", exact: true });
+}
+
+function filterToolbar(page: Page): Locator {
+  return page.locator(".roster-filter-card");
+}
+
+function classFilterOption(page: Page, label: string): Locator {
+  return page
+    .getByRole("group", { name: "Filter roster by class", exact: true })
+    .getByRole("checkbox", { name: label, exact: true });
+}
+
+function sortOption(page: Page, label: string): Locator {
+  return page
+    .getByRole("radiogroup", { name: "Sort roster", exact: true })
+    .getByRole("radio", { name: label, exact: true });
 }
 
 /** 读「Showing 可见/总数」。读不成数字就直接失败——静默当 0 会让断言变成摆设。 */
@@ -167,8 +183,8 @@ test("搜索框：按用户名过滤，条件先 trim 再忽略大小写，全�
   await openRoster(page);
   const roster = await fetchRoster(api);
   const expectedMatches = roster
-    .map((row) => row.user.username)
-    .filter((username) => username.toLowerCase().includes(tag.toLowerCase()))
+    .map((row) => row.user.display_name)
+    .filter((display_name) => display_name.toLowerCase().includes(tag.toLowerCase()))
     .sort();
   expect(expectedMatches.length, "本用例创建的两个成员必须可检索").toBe(2);
 
@@ -209,7 +225,7 @@ test("职业多选：结果集与服务端数据一致，条件写进 localStora
   const byClass = new Map<string, string[]>();
   for (const row of roster) {
     for (const classId of new Set(row.profile.classes)) {
-      byClass.set(classId, [...(byClass.get(classId) ?? []), row.user.username]);
+      byClass.set(classId, [...(byClass.get(classId) ?? []), row.user.display_name]);
     }
   }
   const ranked = [...byClass.entries()].sort((left, right) => right[1].length - left[1].length || left[0].localeCompare(right[0]));
@@ -221,9 +237,8 @@ test("职业多选：结果集与服务端数据一致，条件写进 localStora
   const label = catalog.find((item) => item.id === classId)?.label ?? classId;
 
   await expectClientSideOnly(page, async () => {
-    await field(page, "Filter roster by class").click();
-    await page.getByRole("option", { name: label, exact: true }).click();
-    await page.keyboard.press("Escape");
+    await ensureFiltersOpen(filterToolbar(page));
+    await classFilterOption(page, label).click();
     await expect(cards(page)).toHaveCount(expectedNames.length);
   });
   expect(
@@ -231,21 +246,19 @@ test("职业多选：结果集与服务端数据一致，条件写进 localStora
     "留下的必须正好是服务端记着挂了这个职业的人",
   ).toEqual([...expectedNames].sort());
   await expect(
-    cardNames(page).filter({ hasText: outsider!.user.username }),
+    cardNames(page).filter({ hasText: outsider!.user.display_name }),
     "不属于该职业的成员必须被滤掉",
   ).toHaveCount(0);
 
   expect((await readStoredFilters(page)).classFilter, "职业条件要落盘，否则刷新就白选了").toEqual([classId]);
 
   await openRoster(page);
-  await expect(
-    page.locator(".roster-class-select .mantine-Pill-root"),
-    "刷新后控件上要还挂着这个职业",
-  ).toHaveText(label);
+  await ensureFiltersOpen(filterToolbar(page));
+  await expect(classFilterOption(page, label), "刷新后控件上要还勾着这个职业").toBeChecked();
   await expect(cards(page), "刷新后结果集也要跟着恢复").toHaveCount(expectedNames.length);
 });
 
-test("排序下拉：换一套排序依据真的重排卡片，选择被持久化", async ({ page, api }) => {
+test("排序选项：换一套排序依据真的重排卡片，选择被持久化", async ({ page, api }) => {
   const tag = uniqueTag("sort");
   const low = await createRosterMember(api, `${tag}_a`);
   const high = await createRosterMember(api, `${tag}_b`);
@@ -253,8 +266,8 @@ test("排序下拉：换一套排序依据真的重排卡片，选择被持久�
   await updateRosterProfile(api, high.id, { power: 20 });
   await openRoster(page);
   const roster = await fetchRoster(api);
-  const powerOf = new Map(roster.map((row) => [row.user.username, row.profile.power]));
-  const primaryClassOf = new Map(roster.map((row) => [row.user.username, row.profile.classes[0] ?? ""]));
+  const powerOf = new Map(roster.map((row) => [row.user.display_name, row.profile.power]));
+  const primaryClassOf = new Map(roster.map((row) => [row.user.display_name, row.profile.classes[0] ?? ""]));
 
   await revealAll(page);
   const defaultOrder = (await cardNames(page).allInnerTexts()).map((name) => name.trim());
@@ -266,14 +279,14 @@ test("排序下拉：换一套排序依据真的重排卡片，选择被持久�
   ).toBe(true);
 
   /*
-   * 等的是下拉自己的值，不是「首张卡换人了」。
+   * 等的是排序选项自己的 checked 状态，不是「首张卡换人了」。
    * 战力最高的正好也是字典序最前的那个账号，按首张卡等会一直等不到变化；
-   * 而下拉值和网格读的是同一个 sortMode，同一次提交里落地，等它就够了。
+   * 而排序状态和网格读的是同一个 sortMode，同一次提交里落地，等它就够了。
    */
   await expectClientSideOnly(page, async () => {
-    await field(page, "Sort roster").click();
-    await page.getByRole("option", { name: "Username (A-Z)", exact: true }).click();
-    await expect(field(page, "Sort roster")).toHaveValue("Username (A-Z)");
+    await ensureFiltersOpen(filterToolbar(page));
+    await sortOption(page, "Display name (A-Z)").click();
+    await expect(sortOption(page, "Display name (A-Z)")).toBeChecked();
   });
   await revealAll(page);
   const byUsername = (await cardNames(page).allInnerTexts()).map((name) => name.trim());
@@ -285,9 +298,9 @@ test("排序下拉：换一套排序依据真的重排卡片，选择被持久�
   expect(new Set(byUsername), "换排序不该把人换掉，只该换顺序").toEqual(new Set(defaultOrder));
 
   await expectClientSideOnly(page, async () => {
-    await field(page, "Sort roster").click();
-    await page.getByRole("option", { name: "Class", exact: true }).click();
-    await expect(field(page, "Sort roster")).toHaveValue("Class");
+    await ensureFiltersOpen(filterToolbar(page));
+    await sortOption(page, "Class").click();
+    await expect(sortOption(page, "Class")).toBeChecked();
   });
   /*
    * 按职业排序只断言「同职业的人连成一段」，不断言段与段之间谁在前。
@@ -307,7 +320,8 @@ test("排序下拉：换一套排序依据真的重排卡片，选择被持久�
 
   expect((await readStoredFilters(page)).sortMode, "排序选择要落盘").toBe("class");
   await openRoster(page);
-  await expect(field(page, "Sort roster"), "刷新后下拉要还停在上次的选择").toHaveValue("Class");
+  await ensureFiltersOpen(filterToolbar(page));
+  await expect(sortOption(page, "Class"), "刷新后排序要还停在上次的选择").toBeChecked();
 });
 
 test("加载更多：首屏只渲染 20 张，点下去把剩下的补齐", async ({ page, api }) => {
@@ -342,9 +356,9 @@ test("空态的重置筛选：一次清掉搜索与职业，列表回到全量",
   await openRoster(page);
   const roster = await fetchRoster(api);
 
-  await field(page, "Filter roster by class").click();
-  await page.getByRole("option").first().click();
-  await page.keyboard.press("Escape");
+  await ensureFiltersOpen(filterToolbar(page));
+  await page.getByRole("group", { name: "Filter roster by class", exact: true })
+    .getByRole("checkbox").first().click();
   await searchBox(page).fill("nobody-should-match-this");
   await expect(cards(page)).toHaveCount(0);
 
@@ -356,8 +370,10 @@ test("空态的重置筛选：一次清掉搜索与职业，列表回到全量",
   });
 
   await expect(searchBox(page)).toHaveValue("");
+  await ensureFiltersOpen(filterToolbar(page));
   await expect(
-    page.locator(".roster-class-select .mantine-Pill-root"),
+    page.getByRole("group", { name: "Filter roster by class", exact: true })
+      .getByRole("checkbox", { checked: true }),
     "只清搜索不清职业的话，用户会以为筛选已经撤干净了",
   ).toHaveCount(0);
   expect(await readCount(page)).toEqual({ visible: Math.min(20, roster.length), total: roster.length });
@@ -404,48 +420,47 @@ test("音频偏好：静音开关与音量滑块都落盘", async ({ page }) => 
 test("成员卡片：打开资料弹窗，内容与服务端一致，关闭按钮收起", async ({ page, api }) => {
   await openRoster(page);
   const roster = await fetchRoster(api);
-  const target = roster.find((row) => row.user.username === "member_01");
+  const target = roster.find((row) => row.user.display_name === "member_01");
   expect(target, "fresh fixture 必须提供共享成员 member_01").toBeTruthy();
-  const { username } = target!.user;
+  const { display_name } = target!.user;
 
-  await searchBox(page).fill(username);
+  await searchBox(page).fill(display_name);
   await expect(cards(page)).toHaveCount(1);
 
   await expectClientSideOnly(page, async () => {
-    await page.getByRole("button", { name: `Open profile for ${username}`, exact: true }).click();
+    await page.getByRole("button", { name: `Open profile for ${display_name}`, exact: true }).click();
     await expect(topDialog(page)).toBeVisible();
   });
 
   const dialog = topDialog(page);
-  await expect(dialog.getByText(`Profile: ${username}`, { exact: true })).toBeVisible();
+  await expect(dialog.getByText(`Profile: ${display_name}`, { exact: true })).toBeVisible();
   await expect(
     dialog.getByText(String(target!.profile.power), { exact: true }),
     "弹窗里的战力必须是服务端那一份，对不上就是拿错了人的资料",
   ).toBeVisible();
 
   await dialog.getByRole("button", { name: "Close", exact: true }).click();
-  await expect(page.getByRole("dialog")).toHaveCount(0);
-  await expect(page.locator(".mantine-Overlay-root")).toHaveCount(0);
+  await expectNoDialog(page);
 });
 
 test("资料弹窗的编辑入口：别人的资料跳去后台，自己的跳去个人页", async ({ page, api }) => {
   await openRoster(page);
   const roster = await fetchRoster(api);
-  const target = roster.find((row) => row.user.username === "member_01");
+  const target = roster.find((row) => row.user.display_name === "member_01");
   expect(target, "fresh fixture 必须提供共享成员 member_01").toBeTruthy();
-  const { username } = target!.user;
+  const { display_name } = target!.user;
 
   /*
    * 必须先等搜索的防抖落地再开弹窗：debouncedSearch 一变
    * useRosterPageController.ts:99 的 effect 就会把已打开的弹窗关掉，
    * 抢在防抖之前点开的话，弹窗会在半路被这条 effect 拆掉。
    */
-  await searchBox(page).fill(username);
+  await searchBox(page).fill(display_name);
   await expect(cards(page)).toHaveCount(1);
-  await page.getByRole("button", { name: `Open profile for ${username}`, exact: true }).click();
+  await page.getByRole("button", { name: `Open profile for ${display_name}`, exact: true }).click();
   const dialog = topDialog(page);
   await dialog.getByRole("button", { name: "Edit in Admin", exact: true }).click();
-  await page.waitForURL((url) => url.pathname === "/admin" && url.searchParams.get("member") === username);
+  await page.waitForURL((url) => url.pathname === "/admin" && url.searchParams.get("member") === display_name);
 
   await openRoster(page);
   await searchBox(page).fill("admin");

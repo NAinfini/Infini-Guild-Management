@@ -16,7 +16,7 @@ export type MemberProjection = "public" | "member" | "admin";
 
 export type MemberUserRecord = Readonly<{
   id: string;
-  username: string;
+  display_name: string;
   roleId: string;
   roleName: string;
   roleColor: string | null;
@@ -71,7 +71,7 @@ export type MemberView = Readonly<{
 
 export type MemberTarget = Readonly<{
   userId: string;
-  username: string;
+  display_name: string;
   roleId: string;
   roleLevel: number;
   isActive: boolean;
@@ -101,6 +101,7 @@ export type RosterPage = Readonly<{
 }>;
 
 export type MemberProfilePatch = Readonly<{
+  displayName?: string;
   power?: number;
   classes?: readonly string[];
   titleHtml?: string | null;
@@ -130,13 +131,13 @@ export type ClassTagStoreRecord = Omit<ClassTag, "usage_count">;
 export type BadgeAssignmentRecord = Readonly<{
   badgeId: string;
   userId: string;
-  username: string;
+  display_name: string;
   assignedBy: string;
   assignedByUsername: string | null;
   assignedAt: string;
 }>;
 
-export type BadgeAssignmentCursor = Readonly<{ username: string; userId: string }>;
+export type BadgeAssignmentCursor = Readonly<{ display_name: string; userId: string }>;
 
 export interface AbsencePolicyReader {
   readAbsencePolicy(): Promise<AbsencePolicy>;
@@ -176,7 +177,7 @@ export interface MembersStore {
     expectedTarget: MemberTarget,
     expectedImageIds: readonly string[],
     audit: AuditMutation,
-  ): Promise<MemberProfileRecord | null>;
+  ): Promise<MemberProfileRecord | "display_name_taken" | null>;
 
   listAbsences(input: Readonly<{
     userId?: string;

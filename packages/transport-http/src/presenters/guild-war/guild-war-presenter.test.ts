@@ -39,13 +39,13 @@ function aggregate(status: "active" | "concluded"): GuildWarAggregate {
     teams: [{
       id: "team-1", warId: "war-1", teamName: "Alpha", sortOrder: 0, notes: null, isLocked: false,
       members: [{
-        id: "member-1", warId: "war-1", teamId: "team-1", userId: "user-1", username: "One",
+        id: "member-1", warId: "war-1", teamId: "team-1", userId: "user-1", display_name: "One",
         avatarMediaId: AVATAR_MEDIA_ID, roleTag: "Captain", sortOrder: 0,
         stats: { kills: 2, deaths: 1, assists: 3 }, note: null,
       }],
     }],
     pool: [{
-      id: "pool-1", warId: "war-1", teamId: null, userId: "user-2", username: "Two",
+      id: "pool-1", warId: "war-1", teamId: null, userId: "user-2", display_name: "Two",
       avatarMediaId: null, roleTag: null, sortOrder: 0, stats: null, note: null,
     }],
   };
@@ -71,10 +71,10 @@ describe("guild-war Portal presenters", () => {
     const detail = guildWarHistoryDetailResponseSchema.parse(presentHistoryDetail(history));
     expect(detail.teams[0]?.members[0]).toMatchObject({
       user_id: "user-1",
-      username: "One",
+      display_name: "One",
       avatar_media_id: AVATAR_MEDIA_ID,
     });
-    expect(detail.pool[0]).toMatchObject({ warHistoryId: "war-1", userId: "user-2", username: "Two" });
+    expect(detail.pool[0]).toMatchObject({ warHistoryId: "war-1", userId: "user-2", display_name: "Two" });
     const analytics = guildWarAnalyticsResponseSchema.parse(presentAnalytics({
       wars: [{ ...history.war, teamSize: 1, modifier: 2, modifierBreakdown: [{ factor: "kills", ratio: 2, weight: 1, contribution: 2 }] }],
       memberStats: [{ userId: "user-1", stats: { kills: 2, deaths: 1, assists: 3 } }],

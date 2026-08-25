@@ -1,4 +1,6 @@
-import { Alert, Button, Skeleton, Stack } from "@mantine/core";
+import { Alert, AlertDescription, AlertTitle } from "@portal/components/ui/alert";
+import { Button } from "@portal/components/ui/button";
+import { Skeleton } from "@portal/components/ui/skeleton";
 import { Link, useNavigate, useSearch } from "@tanstack/react-router";
 import { ArrowLeftIcon } from "@portal/components/icons";
 import { useConfirmDialog } from "@portal/hooks/useConfirmDialog";
@@ -56,19 +58,18 @@ export function StorageManagePage() {
       className="storage-page storage-manage-page"
       actions={(
         <Button
-          component={Link}
-          to="/storage"
-          search={(selectedStorage ? { storageId: selectedStorage.id } : {}) as never}
-          variant="default"
-          leftSection={<ArrowLeftIcon size={16} />}
+          render={<Link to="/storage" search={(selectedStorage ? { storageId: selectedStorage.id } : {}) as never} />}
+          nativeButton={false}
+          variant="outline"
         >
+          <ArrowLeftIcon size={16} />
           {t("action.backToStorage")}
         </Button>
       )}
     >
-      <Stack gap="lg">
+      <div className="storage-manage-page__workspace">
         {treeQuery.isLoading ? (
-          <Skeleton height={420} radius="md" className="storage-loading" />
+          <Skeleton className="storage-loading storage-loading--manage" />
         ) : treeBlockingError ? (
           <EmptyState
             status="error"
@@ -86,18 +87,19 @@ export function StorageManagePage() {
         ) : (
           <>
             {treeRefreshError ? (
-              <Alert color="red" title={t("common:loadError")}>
-                <Stack gap="xs" align="flex-start">
+              <Alert variant="destructive" className="storage-inline-alert">
+                <AlertTitle>{t("common:loadError")}</AlertTitle>
+                <AlertDescription>
                   <span>{t("common:errors.connectionIssue")}</span>
                   <Button
-                    variant="default"
-                    size="compact-sm"
+                    variant="outline"
+                    size="sm"
                     loading={treeQuery.isFetching}
                     onClick={() => void treeQuery.refetch()}
                   >
                     {t("common:action.retry")}
                   </Button>
-                </Stack>
+                </AlertDescription>
               </Alert>
             ) : null}
             <StorageStructureManager
@@ -163,7 +165,7 @@ export function StorageManagePage() {
             />
           </>
         )}
-      </Stack>
+      </div>
     </PageLayout>
   );
 }

@@ -1,4 +1,3 @@
-import { Menu, Portal } from "@mantine/core";
 import type { Editor } from "@tiptap/react";
 import { useRef, type CSSProperties } from "react";
 import {
@@ -35,12 +34,21 @@ import {
   TableOffIcon,
   UnderlineIcon,
 } from "@portal/components/icons";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuSub,
+  DropdownMenuSubContent,
+  DropdownMenuSubTrigger,
+  DropdownMenuTrigger,
+} from "@portal/components/ui/dropdown-menu";
 import type { TipTapEditorLabels } from "./tiptap-meta";
 
 const TEXT_COLORS = ["#1f6feb", "#16a34a", "#f59e0b", "#dc2626", "#7c3aed", "#ec4899", "#0891b2", "#334155"];
 const HIGHLIGHT_COLORS = ["#fef08a", "#bbf7d0", "#bfdbfe", "#fecdd3", "#e9d5ff", "#fed7aa"];
 const ICON_SIZE = 14;
-const CONTEXT_MENU_Z_INDEX = 1100;
 
 type TipTapEditorContextMenuProps = {
   editor: Editor;
@@ -51,6 +59,62 @@ type TipTapEditorContextMenuProps = {
   onInsertImage: () => void;
   onInsertVideo: () => void;
 };
+
+type ColorSubmenuProps = {
+  label: string;
+  customLabel: string;
+  colors: string[];
+  icon: React.ReactNode;
+  clearLabel: string;
+  onSelect: (color: string) => void;
+  onClear: () => void;
+};
+
+function ColorSubmenu({
+  label,
+  customLabel,
+  colors,
+  icon,
+  clearLabel,
+  onSelect,
+  onClear,
+}: ColorSubmenuProps) {
+  return (
+    <DropdownMenuSub>
+      <DropdownMenuSubTrigger>
+        {icon}
+        {label}
+      </DropdownMenuSubTrigger>
+      <DropdownMenuSubContent className="infini-tiptap-context-submenu !z-[1101] !w-[180px]">
+        <div className="infini-tiptap-color-grid">
+          {colors.map((color) => (
+            <DropdownMenuItem
+              key={color}
+              className="infini-tiptap-color-swatch"
+              style={{ "--swatch-color": color } as CSSProperties}
+              aria-label={`${label} ${color}`}
+              onClick={() => onSelect(color)}
+            />
+          ))}
+        </div>
+        <DropdownMenuSeparator />
+        <label className="infini-tiptap-color-custom">
+          <span>{customLabel}</span>
+          <input
+            type="color"
+            aria-label={customLabel}
+            defaultValue={colors[0]}
+            onPointerDown={(event) => event.stopPropagation()}
+            onClick={(event) => event.stopPropagation()}
+            onChange={(event) => onSelect(event.currentTarget.value)}
+          />
+        </label>
+        <DropdownMenuSeparator />
+        <DropdownMenuItem onClick={onClear}>{clearLabel}</DropdownMenuItem>
+      </DropdownMenuSubContent>
+    </DropdownMenuSub>
+  );
+}
 
 export function TipTapEditorContextMenu({
   editor,
@@ -78,251 +142,203 @@ export function TipTapEditorContextMenu({
   };
 
   return (
-    <Menu
-      opened
-      onClose={handleClose}
-      position="bottom-start"
-      withinPortal
-      shadow="md"
-      width={220}
-      zIndex={CONTEXT_MENU_Z_INDEX}
-      returnFocus={false}
+    <DropdownMenu
+      open
+      modal={false}
+      onOpenChange={(open) => {
+        if (!open) handleClose();
+      }}
     >
-      <Menu.Target>
-        <span
-          aria-hidden="true"
-          style={{
-            position: "fixed",
-            left: position.x,
-            top: position.y,
-            width: 1,
-            height: 1,
-            pointerEvents: "none",
-          }}
-        />
-      </Menu.Target>
-
-      <Menu.Dropdown
-        className="infini-tiptap-context-menu"
+      <DropdownMenuTrigger
+        render={(
+          <span
+            aria-hidden="true"
+            style={{
+              position: "fixed",
+              left: position.x,
+              top: position.y,
+              width: 1,
+              height: 1,
+              pointerEvents: "none",
+            }}
+          />
+        )}
+      />
+      <DropdownMenuContent
+        className="infini-tiptap-context-menu !z-[1100] !w-[220px]"
         aria-label={labels.moreFormatting}
         onContextMenu={(event) => {
           event.preventDefault();
           event.stopPropagation();
         }}
       >
-        <Menu.Item
-          leftSection={<ArrowBackUpIcon size={ICON_SIZE} />}
-          onClick={() => editor.chain().focus().undo().run()}
-        >
+        <DropdownMenuItem onClick={() => editor.chain().focus().undo().run()}>
+          <ArrowBackUpIcon size={ICON_SIZE} />
           {labels.undo}
-        </Menu.Item>
-        <Menu.Item
-          leftSection={<ArrowForwardUpIcon size={ICON_SIZE} />}
-          onClick={() => editor.chain().focus().redo().run()}
-        >
+        </DropdownMenuItem>
+        <DropdownMenuItem onClick={() => editor.chain().focus().redo().run()}>
+          <ArrowForwardUpIcon size={ICON_SIZE} />
           {labels.redo}
-        </Menu.Item>
+        </DropdownMenuItem>
 
-        <Menu.Divider />
+        <DropdownMenuSeparator />
 
-        <Menu.Item leftSection={<BoldIcon size={ICON_SIZE} />} onClick={() => editor.chain().focus().toggleBold().run()}>
+        <DropdownMenuItem onClick={() => editor.chain().focus().toggleBold().run()}>
+          <BoldIcon size={ICON_SIZE} />
           {labels.bold}
-        </Menu.Item>
-        <Menu.Item leftSection={<ItalicIcon size={ICON_SIZE} />} onClick={() => editor.chain().focus().toggleItalic().run()}>
+        </DropdownMenuItem>
+        <DropdownMenuItem onClick={() => editor.chain().focus().toggleItalic().run()}>
+          <ItalicIcon size={ICON_SIZE} />
           {labels.italic}
-        </Menu.Item>
-        <Menu.Item leftSection={<UnderlineIcon size={ICON_SIZE} />} onClick={() => editor.chain().focus().toggleUnderline().run()}>
+        </DropdownMenuItem>
+        <DropdownMenuItem onClick={() => editor.chain().focus().toggleUnderline().run()}>
+          <UnderlineIcon size={ICON_SIZE} />
           {labels.underline}
-        </Menu.Item>
-        <Menu.Item leftSection={<StrikethroughIcon size={ICON_SIZE} />} onClick={() => editor.chain().focus().toggleStrike().run()}>
+        </DropdownMenuItem>
+        <DropdownMenuItem onClick={() => editor.chain().focus().toggleStrike().run()}>
+          <StrikethroughIcon size={ICON_SIZE} />
           {labels.strike}
-        </Menu.Item>
-        <Menu.Item leftSection={<EraserIcon size={ICON_SIZE} />} onClick={() => editor.chain().focus().unsetAllMarks().clearNodes().run()}>
+        </DropdownMenuItem>
+        <DropdownMenuItem onClick={() => editor.chain().focus().unsetAllMarks().clearNodes().run()}>
+          <EraserIcon size={ICON_SIZE} />
           {labels.clearFormatting}
-        </Menu.Item>
+        </DropdownMenuItem>
 
-        <Menu.Divider />
+        <DropdownMenuSeparator />
 
-        <Menu.Sub>
-          <Menu.Sub.Target>
-            <Menu.Sub.Item leftSection={<PaletteIcon size={ICON_SIZE} />}>
-              {labels.textColor}
-            </Menu.Sub.Item>
-          </Menu.Sub.Target>
-          <Portal>
-            <Menu.Sub.Dropdown w={180} style={{ zIndex: CONTEXT_MENU_Z_INDEX + 1 }}>
-              <div className="infini-tiptap-color-grid">
-                {TEXT_COLORS.map((color) => (
-                  <Menu.Item
-                    key={color}
-                    className="infini-tiptap-color-swatch"
-                    style={{ "--swatch-color": color } as CSSProperties}
-                    aria-label={`${labels.textColor} ${color}`}
-                    onClick={() => editor.chain().focus().setColor(color).run()}
-                  />
-                ))}
-              </div>
-              <Menu.Divider />
-              <label className="infini-tiptap-color-custom">
-                <span>{labels.customTextColor}</span>
-                <input
-                  type="color"
-                  defaultValue={TEXT_COLORS[0]}
-                  onClick={(event) => event.stopPropagation()}
-                  onChange={(event) => editor.chain().focus().setColor(event.currentTarget.value).run()}
-                />
-              </label>
-              <Menu.Divider />
-              <Menu.Item onClick={() => editor.chain().focus().unsetColor().run()}>
-                {labels.clearFormatting}
-              </Menu.Item>
-            </Menu.Sub.Dropdown>
-          </Portal>
-        </Menu.Sub>
+        <ColorSubmenu
+          label={labels.textColor}
+          customLabel={labels.customTextColor}
+          colors={TEXT_COLORS}
+          icon={<PaletteIcon size={ICON_SIZE} />}
+          clearLabel={labels.clearFormatting}
+          onSelect={(color) => editor.chain().focus().setColor(color).run()}
+          onClear={() => editor.chain().focus().unsetColor().run()}
+        />
+        <ColorSubmenu
+          label={labels.highlight}
+          customLabel={labels.customHighlightColor}
+          colors={HIGHLIGHT_COLORS}
+          icon={<HighlightIcon size={ICON_SIZE} />}
+          clearLabel={labels.clearFormatting}
+          onSelect={(color) => editor.chain().focus().setHighlight({ color }).run()}
+          onClear={() => editor.chain().focus().unsetHighlight().run()}
+        />
 
-        <Menu.Sub>
-          <Menu.Sub.Target>
-            <Menu.Sub.Item leftSection={<HighlightIcon size={ICON_SIZE} />}>
-              {labels.highlight}
-            </Menu.Sub.Item>
-          </Menu.Sub.Target>
-          <Portal>
-            <Menu.Sub.Dropdown w={180} style={{ zIndex: CONTEXT_MENU_Z_INDEX + 1 }}>
-              <div className="infini-tiptap-color-grid">
-                {HIGHLIGHT_COLORS.map((color) => (
-                  <Menu.Item
-                    key={color}
-                    className="infini-tiptap-color-swatch"
-                    style={{ "--swatch-color": color } as CSSProperties}
-                    aria-label={`${labels.highlight} ${color}`}
-                    onClick={() => editor.chain().focus().setHighlight({ color }).run()}
-                  />
-                ))}
-              </div>
-              <Menu.Divider />
-              <label className="infini-tiptap-color-custom">
-                <span>{labels.customHighlightColor}</span>
-                <input
-                  type="color"
-                  defaultValue={HIGHLIGHT_COLORS[0]}
-                  onClick={(event) => event.stopPropagation()}
-                  onChange={(event) => editor.chain().focus().setHighlight({ color: event.currentTarget.value }).run()}
-                />
-              </label>
-              <Menu.Divider />
-              <Menu.Item onClick={() => editor.chain().focus().unsetHighlight().run()}>
-                {labels.clearFormatting}
-              </Menu.Item>
-            </Menu.Sub.Dropdown>
-          </Portal>
-        </Menu.Sub>
+        <DropdownMenuSeparator />
 
-        <Menu.Divider />
-
-        <Menu.Item leftSection={<AlignLeftIcon size={ICON_SIZE} />} onClick={() => editor.chain().focus().setTextAlign("left").run()}>
+        <DropdownMenuItem onClick={() => editor.chain().focus().setTextAlign("left").run()}>
+          <AlignLeftIcon size={ICON_SIZE} />
           {labels.alignLeft}
-        </Menu.Item>
-        <Menu.Item leftSection={<AlignCenterIcon size={ICON_SIZE} />} onClick={() => editor.chain().focus().setTextAlign("center").run()}>
+        </DropdownMenuItem>
+        <DropdownMenuItem onClick={() => editor.chain().focus().setTextAlign("center").run()}>
+          <AlignCenterIcon size={ICON_SIZE} />
           {labels.alignCenter}
-        </Menu.Item>
-        <Menu.Item leftSection={<AlignRightIcon size={ICON_SIZE} />} onClick={() => editor.chain().focus().setTextAlign("right").run()}>
+        </DropdownMenuItem>
+        <DropdownMenuItem onClick={() => editor.chain().focus().setTextAlign("right").run()}>
+          <AlignRightIcon size={ICON_SIZE} />
           {labels.alignRight}
-        </Menu.Item>
+        </DropdownMenuItem>
 
-        <Menu.Divider />
+        <DropdownMenuSeparator />
 
-        <Menu.Item
-          leftSection={<LinkIcon size={ICON_SIZE} />}
-          onClick={() => runDialogAction(onInsertLink)}
-        >
+        <DropdownMenuItem onClick={() => runDialogAction(onInsertLink)}>
+          <LinkIcon size={ICON_SIZE} />
           {labels.link}
-        </Menu.Item>
-        <Menu.Item leftSection={<LinkOffIcon size={ICON_SIZE} />} onClick={() => editor.chain().focus().unsetLink().run()}>
+        </DropdownMenuItem>
+        <DropdownMenuItem onClick={() => editor.chain().focus().unsetLink().run()}>
+          <LinkOffIcon size={ICON_SIZE} />
           {labels.unlink}
-        </Menu.Item>
-        <Menu.Item leftSection={<H1Icon size={ICON_SIZE} />} onClick={() => editor.chain().focus().toggleHeading({ level: 1 }).run()}>
+        </DropdownMenuItem>
+        <DropdownMenuItem onClick={() => editor.chain().focus().toggleHeading({ level: 1 }).run()}>
+          <H1Icon size={ICON_SIZE} />
           {labels.h1}
-        </Menu.Item>
-        <Menu.Item leftSection={<H2Icon size={ICON_SIZE} />} onClick={() => editor.chain().focus().toggleHeading({ level: 2 }).run()}>
+        </DropdownMenuItem>
+        <DropdownMenuItem onClick={() => editor.chain().focus().toggleHeading({ level: 2 }).run()}>
+          <H2Icon size={ICON_SIZE} />
           {labels.h2}
-        </Menu.Item>
-        <Menu.Item leftSection={<H3Icon size={ICON_SIZE} />} onClick={() => editor.chain().focus().toggleHeading({ level: 3 }).run()}>
+        </DropdownMenuItem>
+        <DropdownMenuItem onClick={() => editor.chain().focus().toggleHeading({ level: 3 }).run()}>
+          <H3Icon size={ICON_SIZE} />
           {labels.h3}
-        </Menu.Item>
+        </DropdownMenuItem>
 
-        <Menu.Divider />
+        <DropdownMenuSeparator />
 
-        <Menu.Item leftSection={<ListIcon size={ICON_SIZE} />} onClick={() => editor.chain().focus().toggleBulletList().run()}>
+        <DropdownMenuItem onClick={() => editor.chain().focus().toggleBulletList().run()}>
+          <ListIcon size={ICON_SIZE} />
           {labels.bullet}
-        </Menu.Item>
-        <Menu.Item leftSection={<ListNumbersIcon size={ICON_SIZE} />} onClick={() => editor.chain().focus().toggleOrderedList().run()}>
+        </DropdownMenuItem>
+        <DropdownMenuItem onClick={() => editor.chain().focus().toggleOrderedList().run()}>
+          <ListNumbersIcon size={ICON_SIZE} />
           {labels.number}
-        </Menu.Item>
-        <Menu.Item leftSection={<CheckboxIcon size={ICON_SIZE} />} onClick={() => editor.chain().focus().toggleTaskList().run()}>
+        </DropdownMenuItem>
+        <DropdownMenuItem onClick={() => editor.chain().focus().toggleTaskList().run()}>
+          <CheckboxIcon size={ICON_SIZE} />
           {labels.taskList}
-        </Menu.Item>
-        <Menu.Item leftSection={<BlockquoteIcon size={ICON_SIZE} />} onClick={() => editor.chain().focus().toggleBlockquote().run()}>
+        </DropdownMenuItem>
+        <DropdownMenuItem onClick={() => editor.chain().focus().toggleBlockquote().run()}>
+          <BlockquoteIcon size={ICON_SIZE} />
           {labels.quote}
-        </Menu.Item>
-        <Menu.Item leftSection={<CodeIcon size={ICON_SIZE} />} onClick={() => editor.chain().focus().toggleCodeBlock().run()}>
+        </DropdownMenuItem>
+        <DropdownMenuItem onClick={() => editor.chain().focus().toggleCodeBlock().run()}>
+          <CodeIcon size={ICON_SIZE} />
           {labels.code}
-        </Menu.Item>
+        </DropdownMenuItem>
 
-        <Menu.Divider />
+        <DropdownMenuSeparator />
 
-        <Menu.Item leftSection={<SeparatorHorizontalIcon size={ICON_SIZE} />} onClick={() => editor.chain().focus().setHorizontalRule().run()}>
+        <DropdownMenuItem onClick={() => editor.chain().focus().setHorizontalRule().run()}>
+          <SeparatorHorizontalIcon size={ICON_SIZE} />
           {labels.divider}
-        </Menu.Item>
-        <Menu.Item
-          leftSection={<PhotoIcon size={ICON_SIZE} />}
-          onClick={() => runDialogAction(onInsertImage)}
-        >
+        </DropdownMenuItem>
+        <DropdownMenuItem onClick={() => runDialogAction(onInsertImage)}>
+          <PhotoIcon size={ICON_SIZE} />
           {labels.image}
-        </Menu.Item>
-        <Menu.Item
-          leftSection={<PlayerPlayIcon size={ICON_SIZE} />}
-          onClick={() => runDialogAction(onInsertVideo)}
-        >
+        </DropdownMenuItem>
+        <DropdownMenuItem onClick={() => runDialogAction(onInsertVideo)}>
+          <PlayerPlayIcon size={ICON_SIZE} />
           {labels.embedVideo}
-        </Menu.Item>
-        <Menu.Item
-          leftSection={<LayoutListIcon size={ICON_SIZE} />}
-          onClick={() => (editor.commands as unknown as { setDetails: () => void }).setDetails()}
-        >
+        </DropdownMenuItem>
+        <DropdownMenuItem onClick={() => (editor.commands as unknown as { setDetails: () => void }).setDetails()}>
+          <LayoutListIcon size={ICON_SIZE} />
           {labels.details}
-        </Menu.Item>
+        </DropdownMenuItem>
 
-        <Menu.Sub>
-          <Menu.Sub.Target>
-            <Menu.Sub.Item leftSection={<TableIcon size={ICON_SIZE} />}>
+        <DropdownMenuSub>
+          <DropdownMenuSubTrigger>
+            <TableIcon size={ICON_SIZE} />
+            {labels.table}
+          </DropdownMenuSubTrigger>
+          <DropdownMenuSubContent className="infini-tiptap-context-submenu !z-[1101] !w-[200px]">
+            <DropdownMenuItem onClick={() => editor.chain().focus().insertTable({ rows: 3, cols: 3 }).run()}>
+              <TableIcon size={ICON_SIZE} />
               {labels.table}
-            </Menu.Sub.Item>
-          </Menu.Sub.Target>
-          <Portal>
-            <Menu.Sub.Dropdown w={200} style={{ zIndex: CONTEXT_MENU_Z_INDEX + 1 }}>
-              <Menu.Item leftSection={<TableIcon size={ICON_SIZE} />} onClick={() => editor.chain().focus().insertTable({ rows: 3, cols: 3 }).run()}>
-                {labels.table}
-              </Menu.Item>
-              <Menu.Item leftSection={<ColumnInsertRightIcon size={ICON_SIZE} />} onClick={() => editor.chain().focus().addColumnAfter().run()}>
-                {labels.addCol}
-              </Menu.Item>
-              <Menu.Item leftSection={<RowInsertBottomIcon size={ICON_SIZE} />} onClick={() => editor.chain().focus().addRowAfter().run()}>
-                {labels.addRow}
-              </Menu.Item>
-              <Menu.Divider />
-              <Menu.Item leftSection={<ColumnRemoveIcon size={ICON_SIZE} />} onClick={() => editor.chain().focus().deleteColumn().run()}>
-                {labels.delCol}
-              </Menu.Item>
-              <Menu.Item leftSection={<RowRemoveIcon size={ICON_SIZE} />} onClick={() => editor.chain().focus().deleteRow().run()}>
-                {labels.delRow}
-              </Menu.Item>
-              <Menu.Item leftSection={<TableOffIcon size={ICON_SIZE} />} onClick={() => editor.chain().focus().deleteTable().run()}>
-                {labels.delTable}
-              </Menu.Item>
-            </Menu.Sub.Dropdown>
-          </Portal>
-        </Menu.Sub>
-      </Menu.Dropdown>
-    </Menu>
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={() => editor.chain().focus().addColumnAfter().run()}>
+              <ColumnInsertRightIcon size={ICON_SIZE} />
+              {labels.addCol}
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={() => editor.chain().focus().addRowAfter().run()}>
+              <RowInsertBottomIcon size={ICON_SIZE} />
+              {labels.addRow}
+            </DropdownMenuItem>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem onClick={() => editor.chain().focus().deleteColumn().run()}>
+              <ColumnRemoveIcon size={ICON_SIZE} />
+              {labels.delCol}
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={() => editor.chain().focus().deleteRow().run()}>
+              <RowRemoveIcon size={ICON_SIZE} />
+              {labels.delRow}
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={() => editor.chain().focus().deleteTable().run()}>
+              <TableOffIcon size={ICON_SIZE} />
+              {labels.delTable}
+            </DropdownMenuItem>
+          </DropdownMenuSubContent>
+        </DropdownMenuSub>
+      </DropdownMenuContent>
+    </DropdownMenu>
   );
 }

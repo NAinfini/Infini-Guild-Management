@@ -1,6 +1,12 @@
-import { AppError, type AuthenticatedActor, type RequestContext } from "@guild/kernel";
+import {
+  AppError,
+  type AuthenticatedActor,
+  type DeferredTasks,
+  type NotificationPublisher,
+  type RequestContext,
+} from "@guild/kernel";
 import { PERMISSIONS, PERMISSION_ID, type Permission } from "@guild/shared/constants/roles";
-import { isReservedSystemTestUsername } from "@guild/shared/config/system-test";
+import { isReservedSystemTestIdentityName } from "@guild/shared/config/system-test";
 import { createAuditEvent } from "../audit/public.js";
 import { assertRoleAssignable, assertTargetBelowActor, requirePermission } from "./authorization";
 import {
@@ -9,6 +15,7 @@ import {
   digestToken,
   PASSWORD_HASH_ITERATIONS,
   requireSafePasswordIterations,
+  verifyPassword,
   type InviteTokenCodec,
 } from "./crypto";
 import type {
@@ -27,6 +34,7 @@ import { assertPortableLikeSearch } from "../../portable-search.js";
 import { projectLoginLock } from "./login-lock";
 
 const MAX_MANAGED_USER_BATCH = 50;
+const TEMPORARY_PASSWORD_TTL_MS = 15 * 60 * 1_000;
 
 type InviteWithCode = InviteRecord & Readonly<{ code: string }>;
 
@@ -103,17 +111,23 @@ export type IdentityAdminServiceOptions = Readonly<{
   passwordIterations?: number;
   generateId?: () => string;
   generateTemporaryPassword?: () => string;
+  generateTemporaryLoginName?: () => string;
+  notifications?: NotificationPublisher;
+  deferred?: DeferredTasks;
 }>;
 
 export class IdentityAdminService {
   private readonly generateId: () => string;
   private readonly generateTemporaryPassword: () => string;
+  private readonly generateTemporaryLoginName: () => string;
   private readonly passwordIterations: number;
 
   constructor(private readonly options: IdentityAdminServiceOptions) {
     this.passwordIterations = requireSafePasswordIterations(options.passwordIterations ?? PASSWORD_HASH_ITERATIONS);
     this.generateId = options.generateId ?? (() => crypto.randomUUID());
     this.generateTemporaryPassword = options.generateTemporaryPassword ?? (() => createOpaqueToken(18));
+    this.generateTemporaryLoginName = options.generateTemporaryLoginName
+      ?? (() => `recovery_${createOpaqueToken(12).replaceAll("-", "_")}`);
   }
 
   async listInvites(context: RequestContext, input: Readonly<{
@@ -223,37 +237,53 @@ export class IdentityAdminService {
   }
 
   async createMember(context: RequestContext, input: Readonly<{
-    username: string;
+    loginName: string;
+    displayName: string;
     roleId: string;
-  }>): Promise<Readonly<{ ok: true; userId: string; username: string; temporaryPassword: string }>> {
+  }>): Promise<Readonly<{
+    ok: true;
+    userId: string;
+    displayName: string;
+    temporaryLoginName: string;
+    temporaryPassword: string;
+  }>> {
     const actor = requirePermission(context.authorization, PERMISSION_ID.ADMIN_USERS_EDIT);
-    if (isReservedSystemTestUsername(input.username)) {
-      throw new AppError({ code: "VALIDATION_ERROR", status: 400, message: "Username is reserved" });
+    if (isReservedSystemTestIdentityName(input.loginName) || isReservedSystemTestIdentityName(input.displayName)) {
+      throw new AppError({ code: "VALIDATION_ERROR", status: 400, message: "Name is reserved" });
     }
     const destinationRole = await this.requireAssignableRole(actor, input.roleId);
     const id = this.generateId();
     const temporaryPassword = this.generateTemporaryPassword();
     const outcome = await this.options.provisioning.createManagedUser({
       id,
-      username: input.username.trim(),
+      loginName: input.loginName.trim(),
+      displayName: input.displayName.trim(),
       roleId: input.roleId,
       passwordHash: await createPasswordHash(temporaryPassword, this.passwordIterations),
+      temporaryPasswordExpiresAt: new Date(Date.parse(context.now) + TEMPORARY_PASSWORD_TTL_MS).toISOString(),
       destinationRole,
       now: context.now,
     }, createAuditEvent(context, {
       subjectType: "user",
       subjectId: id,
-      subjectLabel: input.username.trim(),
+      subjectLabel: input.displayName.trim(),
       action: "admin_create_member",
       context: [{ field: "role_id", value: {
         type: "reference", value: { id: destinationRole.id, label: destinationRole.name },
       } }],
     }));
-    if (outcome === "username_taken") {
-      throw new AppError({ code: "CONFLICT", status: 409, message: "Username already taken" });
+    if (outcome === "login_name_taken" || outcome === "display_name_taken") {
+      throw new AppError({ code: "CONFLICT", status: 409, message: "Name already taken" });
     }
     if (outcome === "conflict") this.throwConcurrentAuthorizationChange();
-    return { ok: true, userId: id, username: input.username.trim(), temporaryPassword };
+    this.signalInboxChanged();
+    return {
+      ok: true,
+      userId: id,
+      displayName: input.displayName.trim(),
+      temporaryLoginName: input.loginName.trim(),
+      temporaryPassword,
+    };
   }
 
   async updateUserRole(context: RequestContext, targetUserId: string, roleId: string): Promise<{ ok: true }> {
@@ -267,7 +297,7 @@ export class IdentityAdminService {
     this.handleGuardedMutation(await this.options.store.setUsersRole({ targets: [target], destinationRole: role, now: context.now }, createAuditEvent(context, {
       subjectType: "user",
       subjectId: target.id,
-      subjectLabel: target.username,
+      subjectLabel: target.displayName,
       action: "update_role",
       changes: [{
         field: "role_id",
@@ -293,7 +323,7 @@ export class IdentityAdminService {
     this.handleGuardedMutation(await this.options.store.setUsersActive({ targets: [target], active, now: context.now }, createAuditEvent(context, {
       subjectType: "user",
       subjectId: target.id,
-      subjectLabel: target.username,
+      subjectLabel: target.displayName,
       action: active ? "reactivate" : "deactivate",
       changes: [{
         field: "active",
@@ -308,30 +338,44 @@ export class IdentityAdminService {
   async resetPassword(
     context: RequestContext,
     targetUserId: string,
-    suppliedPassword?: string,
-  ): Promise<Readonly<{ ok: true; temporaryPassword: string }>> {
+    currentPassword: string,
+  ): Promise<Readonly<{ ok: true; temporaryLoginName: string; temporaryPassword: string }>> {
     const actor = requirePermission(context.authorization, PERMISSION_ID.ADMIN_USERS_PASSWORD);
+    const actorCredential = await this.options.store.findCredentialRecord(actor.userId);
+    if (!actorCredential || !(await verifyPassword(currentPassword, actorCredential.passwordHash))) {
+      throw new AppError({ code: "UNAUTHORIZED", status: 401, message: "Current password is incorrect" });
+    }
     const target = await this.requireTarget(actor, targetUserId, false);
-    const temporaryPassword = suppliedPassword ?? this.generateTemporaryPassword();
-    const outcome = await this.options.store.resetUserPassword(
-      target,
-      await createPasswordHash(temporaryPassword, this.passwordIterations),
-      context.now,
-      createAuditEvent(context, {
-        subjectType: "user_auth",
-        subjectId: target.id,
-        subjectLabel: target.username,
-        action: "reset_password",
-      }),
-    );
-    if (outcome === "conflict") this.throwConcurrentAuthorizationChange();
-    return { ok: true, temporaryPassword };
+    const temporaryPassword = this.generateTemporaryPassword();
+    const passwordHash = await createPasswordHash(temporaryPassword, this.passwordIterations);
+    const expiresAt = new Date(Date.parse(context.now) + TEMPORARY_PASSWORD_TTL_MS).toISOString();
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+      const temporaryLoginName = this.generateTemporaryLoginName();
+      const outcome = await this.options.store.setTemporaryPassword({
+        target,
+        actorUserId: actor.userId,
+        expectedActorAuthRevision: actorCredential.authRevision,
+        temporaryLoginName,
+        passwordHash,
+        expiresAt,
+        now: context.now,
+        audit: createAuditEvent(context, {
+          subjectType: "user_auth",
+          subjectId: target.id,
+          subjectLabel: target.displayName,
+          action: "reset_password",
+        }),
+      });
+      if (outcome === "updated") return { ok: true, temporaryLoginName, temporaryPassword };
+      if (outcome === "conflict") this.throwConcurrentAuthorizationChange();
+    }
+    throw new AppError({ code: "CONFLICT", status: 409, message: "Could not issue temporary login credentials" });
   }
 
   async getLoginLock(context: RequestContext, targetUserId: string): Promise<LoginLockState> {
     const actor = requirePermission(context.authorization, PERMISSION_ID.ADMIN_USERS_PASSWORD);
     const target = await this.requireTarget(actor, targetUserId, false);
-    return projectLoginLock(await this.options.store.readLoginFailure(target.username.toLowerCase()), context.now);
+    return projectLoginLock(await this.options.store.readLoginFailure(target.loginName.toLowerCase()), context.now);
   }
 
   async resetLoginLock(context: RequestContext, targetUserId: string): Promise<LoginLockState & { ok: true }> {
@@ -340,7 +384,7 @@ export class IdentityAdminService {
     const outcome = await this.options.store.resetUserLoginLock(target, createAuditEvent(context, {
       subjectType: "user_auth",
       subjectId: target.id,
-      subjectLabel: target.username,
+      subjectLabel: target.displayName,
       action: "reset_login_lock",
     }));
     if (outcome.outcome === "conflict") this.throwConcurrentAuthorizationChange();
@@ -547,7 +591,7 @@ export class IdentityAdminService {
       action: "batch_role_update",
       context: [
         { field: "user_ids", value: { type: "list", value: targets.map((target) => ({
-          type: "reference" as const, value: { id: target.id, label: target.username },
+          type: "reference" as const, value: { id: target.id, label: target.displayName },
         })) } },
         { field: "role_id", value: { type: "reference", value: { id: role.id, label: role.name } } },
         { field: "count", value: { type: "number", value: targets.length } },
@@ -590,7 +634,7 @@ export class IdentityAdminService {
       action: auditAction,
       context: [
         { field: "user_ids", value: { type: "list", value: targets.map((target) => ({
-          type: "reference" as const, value: { id: target.id, label: target.username },
+          type: "reference" as const, value: { id: target.id, label: target.displayName },
         })) } },
         { field: "count", value: { type: "number", value: targets.length } },
       ],
@@ -670,5 +714,11 @@ export class IdentityAdminService {
       status: 409,
       message: "Authorization data changed while the request was being processed",
     });
+  }
+
+  private signalInboxChanged(): void {
+    const { deferred, notifications } = this.options;
+    if (!deferred || !notifications) return;
+    deferred.defer(() => notifications.publish({ type: "inbox_changed" }));
   }
 }

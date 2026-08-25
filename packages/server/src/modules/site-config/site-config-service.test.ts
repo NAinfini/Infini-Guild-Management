@@ -5,10 +5,16 @@ import {
   DEFAULT_SITE_ANALYTICS_SETTINGS,
   DEFAULT_SITE_DESCRIPTION,
   DEFAULT_SITE_MEDIA_POLICY,
+  DEFAULT_SITE_OAUTH_SETTINGS,
   DEFAULT_SITE_STORAGE_POLICY,
 } from "@guild/shared";
 import { createAuthorizationContext, createRequestContext } from "@guild/kernel";
-import { SiteConfigService, type SiteConfigRecord, type SiteConfigStore } from "./site-config-service";
+import {
+  SiteConfigService,
+  type OAuthProviderAvailability,
+  type SiteConfigRecord,
+  type SiteConfigStore,
+} from "./site-config-service";
 import type { MediaService } from "../media/public.js";
 
 const record: SiteConfigRecord = {
@@ -17,6 +23,7 @@ const record: SiteConfigRecord = {
   site_logo_media_id: null,
   default_site_logo_url: "/logo.svg",
   features: DEFAULT_FEATURE_FLAGS,
+  oauth: DEFAULT_SITE_OAUTH_SETTINGS,
   media_policy: DEFAULT_SITE_MEDIA_POLICY,
   storage_policy: DEFAULT_SITE_STORAGE_POLICY,
   absence_policy: DEFAULT_SITE_ABSENCE_POLICY,
@@ -49,8 +56,18 @@ function store(overrides: Partial<SiteConfigStore> = {}): SiteConfigStore {
   };
 }
 
-function service(value: SiteConfigStore, media: Partial<MediaService> = {}) {
-  return new SiteConfigService(value, media as MediaService, { publish: vi.fn() }, { defer: vi.fn() });
+function service(
+  value: SiteConfigStore,
+  media: Partial<MediaService> = {},
+  oauthAvailability?: OAuthProviderAvailability,
+) {
+  return new SiteConfigService(
+    value,
+    media as MediaService,
+    { publish: vi.fn() },
+    { defer: vi.fn() },
+    oauthAvailability,
+  );
 }
 
 describe("SiteConfigService", () => {
@@ -58,6 +75,51 @@ describe("SiteConfigService", () => {
     const value = service(store());
     expect(await value.getPublic()).not.toHaveProperty("analytics_settings");
     expect((await value.getAdmin(context(["admin.siteConfig.manage"]))).site).not.toHaveProperty("analytics_settings");
+  });
+
+  it("exposes only non-secret OAuth runtime statuses to administrators", async () => {
+    const availability: OAuthProviderAvailability = {
+      google: true,
+      discord: false,
+      kook: true,
+      wechat: false,
+    };
+    const value = service(store({
+      get: vi.fn().mockResolvedValue({
+        ...record,
+        oauth: { google: true, discord: true, kook: false, wechat: true },
+      }),
+    }), {}, availability);
+
+    const admin = await value.getAdmin(context(["admin.siteConfig.manage"]));
+    const publicConfig = await value.getPublic();
+
+    expect(admin.oauth_provider_status).toEqual({
+      google: "available",
+      discord: "missing_credentials",
+      kook: "available",
+      wechat: "unsupported",
+    });
+    expect(admin).not.toHaveProperty("client_secret");
+    expect(admin).not.toHaveProperty("client_id");
+    expect(publicConfig).not.toHaveProperty("oauth_provider_status");
+    expect(publicConfig.oauth).toEqual({ google: true, discord: false, kook: false, wechat: false });
+  });
+
+  it("rejects enabling a provider without runtime credentials before writing configuration", async () => {
+    const update = vi.fn();
+    const value = service(store({ update }), {}, {
+      google: false,
+      discord: false,
+      kook: false,
+      wechat: false,
+    });
+
+    await expect(value.update(context(["admin.siteConfig.manage"]), {
+      oauth: { google: true },
+    })).rejects.toMatchObject({ code: "VALIDATION_ERROR", status: 400 });
+
+    expect(update).not.toHaveBeenCalled();
   });
 
   it("reads and atomically updates analytics through its dedicated permissions", async () => {

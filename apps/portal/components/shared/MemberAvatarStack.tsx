@@ -1,4 +1,3 @@
-import { Text } from "@mantine/core";
 import { MemberRoleAvatar } from "@portal/components/shared/MemberRoleAvatar";
 import { UsersIcon } from "@portal/components/icons";
 import React from "react";
@@ -6,11 +5,11 @@ import "./MemberAvatarStack.css";
 
 /*
  * 只要 MemberRoleAvatar 画得出来的最小形状，外加一个 id 当 key。刻意不写成
- * User / MemberProfile：仪表盘接口只返回 { id, username } 和三个 profile 字段，
+ * User / MemberProfile：仪表盘接口只返回 { id, display_name } 和三个 profile 字段，
  * 要求完整实体会把这一摞头像锁死在活动页，仪表盘就用不了。
  */
 type MemberEntry = {
-  user: { id: string; username: string };
+  user: { id: string; display_name: string };
   profile: { classes: readonly string[]; power: number; avatar_media_id: string | null };
 };
 
@@ -54,7 +53,7 @@ export function MemberAvatarStack({ members, totalCount = members.length }: Memb
         </span>
       ))}
       {overflowCount > 0 ? (
-        <Text size="xs" c="dimmed" fw={700} className="member-avatar-stack__overflow">+{overflowCount}</Text>
+        <span className="member-avatar-stack__overflow">+{overflowCount}</span>
       ) : null}
     </div>
   );

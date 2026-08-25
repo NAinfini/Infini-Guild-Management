@@ -1,7 +1,8 @@
 import type { MemberAvailability, MemberProfile, User, UserBadge } from "@guild/shared";
 import { IMAGE_FILE_ACCEPT } from "@guild/shared";
-import { ActionIcon, FileButton, Text, Tooltip } from "@mantine/core";
 import { BoltIcon, PhotoIcon, ClockIcon, SwordsIcon, TrashIcon, UploadIcon, VideoIcon } from "@portal/components/icons";
+import { Button } from "@portal/components/ui/button";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@portal/components/ui/tooltip";
 import { getMemberStatus, MemberBadgeChip } from "@portal/components/shared/MemberCard";
 import { useConfirmDialog } from "@portal/hooks/useConfirmDialog";
 import { useClassCatalog } from "@portal/hooks/data/useClassData";
@@ -9,7 +10,7 @@ import { resolveClassCatalogItem } from "@portal/utils/class-catalog";
 import { sanitizeTitleHtml } from "@portal/utils/sanitize";
 import { weeklyAvailableMinutes } from "@portal/utils/availability";
 import { formatLocaleDate } from "@portal/utils/datetime";
-import { useMemo, type CSSProperties, type ReactNode } from "react";
+import { useMemo, useRef, type CSSProperties, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { ClassIcon } from "./ClassIcon";
 import { resolveMediaUrl } from "../../utils/media";
@@ -59,6 +60,7 @@ export function ProfileOverviewCard({
   const { t, i18n } = useTranslation("profile");
   const classCatalog = useClassCatalog();
   const confirm = useConfirmDialog();
+  const avatarInputRef = useRef<HTMLInputElement>(null);
 
   const safeTitleHtml = useMemo(
     () => (titleHtml ? sanitizeTitleHtml(titleHtml) : ""),
@@ -105,9 +107,9 @@ export function ProfileOverviewCard({
       <div className="profile-overview__identity">
         <span className="profile-overview__avatar">
           {avatarSrc ? (
-            <img src={avatarSrc} alt={t("common:a11y.avatar", { name: user.username })} />
+            <img src={avatarSrc} alt={t("common:a11y.avatar", { name: user.display_name })} />
           ) : (
-            <span aria-hidden="true">{user.username.slice(0, 1).toUpperCase()}</span>
+            <span aria-hidden="true">{user.display_name.slice(0, 1).toUpperCase()}</span>
           )}
           <span
             className={`profile-overview__dot profile-overview__dot--${status}`}
@@ -121,37 +123,57 @@ export function ProfileOverviewCard({
           {onUploadAvatar || onRemoveAvatar ? (
             <span className="profile-overview__avatar-actions">
               {onUploadAvatar ? (
-                <FileButton onChange={(file) => { if (file) onUploadAvatar(file); }} accept={IMAGE_FILE_ACCEPT}>
-                  {(props) => (
-                    <Tooltip label={t("media.uploadAvatar")} withArrow>
-                      <ActionIcon
-                        size={44}
-                        radius="xl"
-                        variant="subtle"
-                        color="gray"
-                        aria-label={t("media.uploadAvatar")}
-                        loading={avatarUploading}
-                        className="profile-overview__avatar-upload"
-                        {...props}
-                      >
+                <>
+                  <input
+                    ref={avatarInputRef}
+                    type="file"
+                    accept={IMAGE_FILE_ACCEPT}
+                    className="sr-only"
+                    tabIndex={-1}
+                    aria-hidden="true"
+                    onChange={(event) => {
+                      const file = event.currentTarget.files?.[0];
+                      if (file) onUploadAvatar(file);
+                      event.currentTarget.value = "";
+                    }}
+                  />
+                  <Tooltip>
+                    <TooltipTrigger
+                      render={(
+                        <Button
+                          type="button"
+                          size="icon-lg"
+                          variant="ghost"
+                          aria-label={t("media.uploadAvatar")}
+                          aria-busy={avatarUploading || undefined}
+                          disabled={avatarUploading}
+                          className="profile-overview__avatar-upload"
+                          onClick={() => avatarInputRef.current?.click()}
+                        />
+                      )}
+                    >
                         <UploadIcon size={18} />
-                      </ActionIcon>
-                    </Tooltip>
-                  )}
-                </FileButton>
+                    </TooltipTrigger>
+                    <TooltipContent>{t("media.uploadAvatar")}</TooltipContent>
+                  </Tooltip>
+                </>
               ) : null}
               {avatarSrc && onRemoveAvatar ? (
-                <Tooltip label={t("media.removeAvatar")} withArrow>
-                  <ActionIcon
-                    size={44}
-                    radius="xl"
-                    variant="subtle"
-                    color="red"
-                    aria-label={t("media.removeAvatar")}
-                    onClick={() => void handleRemoveAvatar()}
+                <Tooltip>
+                  <TooltipTrigger
+                    render={(
+                      <Button
+                        type="button"
+                        size="icon-lg"
+                        variant="destructive"
+                        aria-label={t("media.removeAvatar")}
+                        onClick={() => void handleRemoveAvatar()}
+                      />
+                    )}
                   >
                     <TrashIcon size={18} />
-                  </ActionIcon>
+                  </TooltipTrigger>
+                  <TooltipContent>{t("media.removeAvatar")}</TooltipContent>
                 </Tooltip>
               ) : null}
             </span>
@@ -160,7 +182,7 @@ export function ProfileOverviewCard({
 
         <div className="profile-overview__who">
           <div className="profile-overview__name-row">
-            <h2 className="profile-overview__name">{user.username}</h2>
+            <h2 className="profile-overview__name">{user.display_name}</h2>
             <span className={`profile-overview__status profile-overview__status--${status}`}>
               {t(`overview.status.${status}`)}
             </span>
@@ -169,7 +191,7 @@ export function ProfileOverviewCard({
           {safeTitleHtml ? (
             <div className="profile-overview__title" dangerouslySetInnerHTML={{ __html: safeTitleHtml }} />
           ) : (
-            <Text size="sm" c="dimmed">{t("field.titleEmpty")}</Text>
+            <span className="profile-overview__empty-title">{t("field.titleEmpty")}</span>
           )}
 
           {/* 职业和徽章同一行：两者都是「挂在名字上的标签」，分两行会读成两类东西。 */}

@@ -5,7 +5,7 @@ import { warHistorySchema } from "./guild-war";
 
 export const dashboardParticipantSchema = z.object({
   user_id: z.string(),
-  username: z.string(),
+  display_name: z.string(),
   role: z.string(),
   classes: z.array(z.string()),
   power: z.number().nonnegative(),

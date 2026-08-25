@@ -2,14 +2,13 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
 import { useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
+import type { MemberProfile, User, UserBadge } from "@guild/shared";
 import { useAppError } from "./useAppError";
 import type { UseMediaUploadState } from "./useMediaUpload";
 import type { ProfileDraftSnapshot, ProfileFormStateController } from "./useProfileFormState";
 import { queryKeys } from "../api/query-keys";
 import { logout as requestLogout } from "../services/AuthService";
 import {
-  changeMyPassword,
-  changeMyUsername,
   deleteProfileAudio,
   deleteProfileImage,
   updateMyProfile,
@@ -28,6 +27,8 @@ export function useProfileMutations({ form, imageUploader, audioUploader }: UseP
   const { t } = useTranslation("profile");
   const navigate = useNavigate();
   const user = useAuthStore((state) => state.user);
+  const sessionScope = useAuthStore((state) => state.sessionScope);
+  const setSession = useAuthStore((state) => state.setSession);
   const setProfile = useAuthStore((state) => state.setProfile);
   const queryClient = useQueryClient();
   const { showError } = useAppError();
@@ -41,6 +42,7 @@ export function useProfileMutations({ form, imageUploader, audioUploader }: UseP
          白名单清洗），acceptServerProfile 靠它区分「该校准」和「用户刚改过、
          不能覆盖」的字段。 */
       const submitted: ProfileDraftSnapshot = {
+        displayName: form.displayName,
         bio: form.bio,
         titleHtml: form.titleHtml,
         power: form.power,
@@ -50,6 +52,7 @@ export function useProfileMutations({ form, imageUploader, audioUploader }: UseP
         availabilityData: form.availabilityData,
       };
       const profile = await updateMyProfile(user.id, {
+        display_name: submitted.displayName,
         bio: submitted.bio || null,
         title_html: submitted.titleHtml || null,
         power: submitted.power,
@@ -61,8 +64,25 @@ export function useProfileMutations({ form, imageUploader, audioUploader }: UseP
       return { profile, submitted };
     },
     onSuccess: ({ profile: updatedProfile, submitted }) => {
-      form.acceptServerProfile(updatedProfile, submitted);
-      setProfile(updatedProfile);
+      form.acceptServerProfile(updatedProfile, submitted.displayName, submitted);
+      if (user && sessionScope) {
+        setSession({ ...user, display_name: submitted.displayName }, updatedProfile, sessionScope);
+      } else {
+        setProfile(updatedProfile);
+      }
+      queryClient.setQueryData<{
+        user: User;
+        profile: MemberProfile;
+        badges: UserBadge[];
+      }>(queryKeys.myProfile.detail(user?.id), (current) => (
+        current
+          ? {
+              ...current,
+              user: { ...current.user, display_name: submitted.displayName },
+              profile: updatedProfile,
+            }
+          : current
+      ));
       /* PATCH 已经返回了权威资料；后续 refetch 只负责同步缓存，不能继续占用
          saving 状态。CI 上一次慢 GET 因此让保存条多留了 10 秒。 */
       void queryClient.invalidateQueries({ queryKey: queryKeys.myProfile.detail(user?.id) });
@@ -107,53 +127,14 @@ export function useProfileMutations({ form, imageUploader, audioUploader }: UseP
     },
   });
 
-  const changePasswordMutation = useMutation({
-    mutationFn: () => {
-      if (!user) throw new Error("Missing user session");
-      return changeMyPassword(user.id, {
-        currentPassword: form.currentPassword,
-        newPassword: form.newPassword,
-        confirmNewPassword: form.confirmNewPassword,
-      });
-    },
-    onSuccess: () => {
-      form.setCurrentPassword("");
-      form.setNewPassword("");
-      form.setConfirmNewPassword("");
-      notifySuccess(t("message.passwordChanged"));
-      transitionSession(queryClient, null);
-      void navigate({ to: "/login", search: { reason: "expired" } });
-    },
-    onError: (error) => {
-      showError(error, t("message.passwordChangeFailed"));
-    },
-  });
-
-  const changeUsernameMutation = useMutation({
-    mutationFn: () => {
-      if (!user) throw new Error("Missing user session");
-      return changeMyUsername(user.id, {
-        currentPassword: form.currentPasswordForUsername,
-        newUsername: form.newUsername,
-      });
-    },
-    onSuccess: () => {
-      notifySuccess(t("message.usernameChanged"));
-      form.setCurrentPasswordForUsername("");
-      form.setNewUsername("");
-      transitionSession(queryClient, null);
-      void navigate({ to: "/login" });
-    },
-    onError: (error) => {
-      showError(error, t("message.usernameChangeFailed"));
-    },
-  });
-
   const logoutMutation = useMutation({
-    mutationFn: requestLogout,
-    onSettled: () => {
+    mutationFn: (_reason?: "expired") => requestLogout(),
+    onSettled: (_data, _error, reason) => {
       transitionSession(queryClient, null);
-      void navigate({ to: "/login" });
+      void navigate({
+        to: "/login",
+        search: reason === "expired" ? { reason } : {},
+      });
     },
   });
 
@@ -198,32 +179,18 @@ export function useProfileMutations({ form, imageUploader, audioUploader }: UseP
     removeAudioMutation.mutate();
   };
 
-  const changePassword = () => {
-    if (!user) return;
-    changePasswordMutation.mutate();
-  };
-
-  const changeUsername = () => {
-    if (!user) return;
-    changeUsernameMutation.mutate();
-  };
-
-  const logout = () => {
-    logoutMutation.mutate();
+  const logout = (reason?: "expired") => {
+    logoutMutation.mutate(reason);
   };
 
   return {
     saveProfileMutation,
-    changePasswordMutation,
-    changeUsernameMutation,
     saveProfile,
     uploadImages,
     uploadAudio,
     removeImage,
     removingImageIds,
     removeAudio,
-    changePassword,
-    changeUsername,
     logout,
   };
 }

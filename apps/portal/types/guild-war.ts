@@ -30,7 +30,7 @@ export type HistorySummaryRow = {
 
 export type HistoryMemberStat = Pick<
   GuildWarMemberResponse,
-  "id" | "user_id" | "username" | "role_tag" | "stats"
+  "id" | "user_id" | "display_name" | "role_tag" | "stats"
 >;
 
 export type HistoryDetailTeam = {
@@ -39,7 +39,7 @@ export type HistoryDetailTeam = {
   notes: string | null;
   members: Array<Pick<
     GuildWarMemberResponse,
-    "user_id" | "username" | "avatar_media_id" | "role_tag"
+    "user_id" | "display_name" | "avatar_media_id" | "role_tag"
   >>;
 };
 

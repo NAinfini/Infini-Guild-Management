@@ -1,10 +1,10 @@
 import type { APIRequestContext, Locator, Page } from "@playwright/test";
 import { SYSTEM_TEST_CONTENT_MARKER } from "@guild/shared/config/system-test";
 import { expect, readJson, test } from "../../support/test";
-import { confirmDialog, expectNoDialog, field, selectOption, toggleInput } from "../../support/ui";
+import { confirmDialog, field, selectOption, setToggle } from "../../support/ui";
 
 /*
- * 活动页「Recurring」标签：模板的建、改、暂停、恢复、删，以及三个筛选控件。
+ * 周期模板任务页：模板的建、改、暂停、恢复、删，以及三个筛选控件。
  *
  * 模板本身不产生活动——生成由共享的定时任务负责，
  * 所以这里能断言的「真效果」就是模板那一行：每条用例都回读 /api/events/templates/list，
@@ -86,13 +86,13 @@ async function createTemplate(api: APIRequestContext, extra: Record<string, unkn
 }
 
 async function openRecurringView(page: Page): Promise<void> {
-  await page.goto("/events?view=recurring");
-  await expect(page.getByRole("radio", { name: "Recurring", exact: true })).toBeChecked();
+  await page.goto("/events/recurring");
+  await expect(page.getByRole("button", { name: "Recurring", exact: true })).toHaveAttribute("aria-current", "page");
 }
 
 /** 模板卡片。整张卡片被一个覆盖层按钮盖住，点它就是编辑。 */
 function templateCard(page: Page, cardTitle = title): Locator {
-  return page.locator(".mantine-Paper-root").filter({ hasText: cardTitle });
+  return page.locator(".recurring-template-row").filter({ hasText: cardTitle });
 }
 
 function editOverlay(page: Page, cardTitle = title): Locator {
@@ -100,59 +100,58 @@ function editOverlay(page: Page, cardTitle = title): Locator {
 }
 
 /**
- * 模板表单弹窗。
- * 标题在编辑态是「Edit Template」再跟一个状态徽章，无障碍名会把徽章拼进去，
- * 所以按前缀匹配，不能用精确名。
+ * 模板编辑页承载字段和可见的保存操作；危险确认仍由全局确认框处理。
  */
-function formDialog(page: Page, heading: RegExp): Locator {
-  return page.getByRole("dialog").filter({ has: page.getByRole("heading", { name: heading }) });
+function templateEditor(page: Page): Locator {
+  return page.locator(".recurring-template-editor-page");
 }
 
 test("新建模板：必填项不齐就存不了，填齐之后每个字段都按填的样子落库", async ({ page, flow, api }) => {
   await openRecurringView(page);
   await page.getByRole("button", { name: "Create Template", exact: true }).click();
 
-  const modal = formDialog(page, /^Create Template/);
-  await expect(modal).toBeVisible();
+  await expect(page).toHaveURL(/\/events\/recurring\/new$/);
+  const editor = templateEditor(page);
+  await expect(editor).toBeVisible();
 
-  const submit = modal.getByRole("button", { name: "Create Template", exact: true });
+  const submit = editor.getByRole("button", { name: "Create Template", exact: true });
   await expect(submit, "标题和类型都还空着，这时能提交就是把校验形同虚设").toBeDisabled();
 
-  await field(modal, "Event title").fill(title);
+  await field(editor, "Event title").fill(title);
   await expect(submit, "只填标题还差类型").toBeDisabled();
-  await selectOption(modal, "Event type", "Social");
+  await selectOption(editor, "Event type", "Social");
   await expect(submit).toBeEnabled();
 
-  await field(modal, "Description").fill(`desc ${stamp}`);
-  await field(modal, "Start time").fill("18:30");
-  await selectOption(modal, "Duration unit", "Minutes");
-  await field(modal, "Duration").fill("90");
-  await field(modal, "Capacity").fill("24");
+  await field(editor, "Description").fill(`desc ${stamp}`);
+  await field(editor, "Start time").fill("18:30");
+  await selectOption(editor, "Duration unit", "Minutes");
+  await field(editor, "Duration").fill("90");
+  await field(editor, "Capacity").fill("24");
 
   // 重复规则：每 2 周，只在周二。默认勾的是周一/周三/周五，得先摘干净。
-  await field(modal, "Repeat every").fill("2");
+  await field(editor, "Repeat every").fill("2");
   for (const day of ["Mon", "Wed", "Fri"]) {
-    await modal.getByRole("button", { name: day, exact: true }).click();
+    await editor.getByRole("button", { name: day, exact: true }).click();
   }
-  await modal.getByRole("button", { name: "Tue", exact: true }).click();
+  await editor.getByRole("button", { name: "Tue", exact: true }).click();
   await expect(
-    modal.locator("button[aria-pressed='true']"),
+    editor.locator("button[aria-pressed='true']"),
     "只该剩周二一个被选中",
   ).toHaveText(["Tue"]);
 
   // 结束条件：重复 5 次后停。先选结束方式，次数框才会出现。
-  await selectOption(modal, "Ends", "After a number of times");
-  await field(modal, "End after occurrences").fill("5");
+  await selectOption(editor, "Ends", "After a number of times");
+  await field(editor, "End after occurrences").fill("5");
 
   // 提前创建：开始前 1 天 2 小时 30 分。
-  await field(modal, "Create event before start (Days)").fill("1");
-  await field(modal, "Create event before start (Hours)").fill("2");
-  await field(modal, "Create event before start (Minutes)").fill("30");
+  await field(editor, "Create event before start (Days)").fill("1");
+  await field(editor, "Create event before start (Hours)").fill("2");
+  await field(editor, "Create event before start (Minutes)").fill("30");
 
-  await toggleInput(modal, "Auto archive").check();
+  await setToggle(editor, "Auto archive", true);
 
   await flow.click(submit, CREATE_TEMPLATE);
-  await expectNoDialog(page);
+  await expect(page).toHaveURL(/\/events\/recurring$/);
 
   const saved = await readTemplate(api);
   expect(saved.type).toBe("social");
@@ -185,22 +184,23 @@ test("编辑模板：改动落到服务端，没碰的字段一个也不能丢",
   await openRecurringView(page);
   await editOverlay(page).click();
 
-  const modal = formDialog(page, /^Edit Template/);
-  await expect(modal).toBeVisible();
+  await expect(page).toHaveURL(/\/events\/recurring\/[^/]+\/edit$/);
+  const editor = templateEditor(page);
+  await expect(editor).toBeVisible();
   await expect(
-    field(modal, "Event title"),
+    field(editor, "Event title"),
     "编辑态必须带出现值，否则保存会把别的字段覆盖掉",
   ).toHaveValue(title);
-  await expect(field(modal, "Start time")).toHaveValue("09:00");
-  await expect(field(modal, "Capacity")).toHaveValue("10");
+  await expect(field(editor, "Start time")).toHaveValue("09:00");
+  await expect(field(editor, "Capacity")).toHaveValue("10");
 
   const renamed = `${title} renamed`;
-  await field(modal, "Event title").fill(renamed);
-  await field(modal, "Capacity").fill("30");
-  await selectOption(modal, "Repeat frequency", "Day");
+  await field(editor, "Event title").fill(renamed);
+  await field(editor, "Capacity").fill("30");
+  await selectOption(editor, "Repeat frequency", "Day");
 
-  await flow.click(modal.getByRole("button", { name: "Save", exact: true }), UPDATE_TEMPLATE);
-  await expectNoDialog(page);
+  await flow.click(editor.getByRole("button", { name: "Save", exact: true }), UPDATE_TEMPLATE);
+  await expect(page).toHaveURL(/\/events\/recurring$/);
 
   const saved = await readTemplate(api, renamed);
   expect(saved.id, "编辑不该另起一条").toBe(created.id);
@@ -219,20 +219,20 @@ test("暂停与恢复：徽章和服务端的 paused 一起翻转", async ({ pag
 
   await editOverlay(page).click();
   await flow.click(
-    formDialog(page, /^Edit Template/).getByRole("button", { name: "Pause", exact: true }),
+    templateEditor(page).getByRole("button", { name: "Pause", exact: true }),
     PAUSE_TEMPLATE,
   );
-  await expectNoDialog(page);
+  await expect(page).toHaveURL(/\/events\/recurring$/);
 
   expect((await readTemplate(api)).paused, "服务端必须真的暂停").toBe(true);
   await expect(templateCard(page).getByText("Paused", { exact: true })).toBeVisible();
 
   // 暂停之后按钮要变成反向操作，否则用户会以为再点一次还是暂停。
   await editOverlay(page).click();
-  const modal = formDialog(page, /^Edit Template/);
-  await expect(modal.getByRole("button", { name: "Pause", exact: true })).toHaveCount(0);
-  await flow.click(modal.getByRole("button", { name: "Resume", exact: true }), RESUME_TEMPLATE);
-  await expectNoDialog(page);
+  const editor = templateEditor(page);
+  await expect(editor.getByRole("button", { name: "Pause", exact: true })).toHaveCount(0);
+  await flow.click(editor.getByRole("button", { name: "Resume", exact: true }), RESUME_TEMPLATE);
+  await expect(page).toHaveURL(/\/events\/recurring$/);
 
   expect((await readTemplate(api)).paused).toBe(false);
   await expect(templateCard(page).getByText("Active", { exact: true })).toBeVisible();
@@ -243,8 +243,8 @@ test("删除模板：取消什么都不做，确认后服务端和列表里都�
   await openRecurringView(page);
 
   await editOverlay(page).click();
-  const modal = formDialog(page, /^Edit Template/);
-  await modal.getByRole("button", { name: "Delete Template", exact: true }).click();
+  const editor = templateEditor(page);
+  await editor.getByRole("button", { name: "Delete Template", exact: true }).click();
   await (await confirmDialog(page, "Delete template?"))
     .getByRole("button", { name: "Cancel", exact: true }).click();
   expect(
@@ -252,7 +252,7 @@ test("删除模板：取消什么都不做，确认后服务端和列表里都�
     "取消确认后模板必须还在",
   ).toBe(true);
 
-  await modal.getByRole("button", { name: "Delete Template", exact: true }).click();
+  await editor.getByRole("button", { name: "Delete Template", exact: true }).click();
   await flow.act(
     async () => {
       await (await confirmDialog(page, "Delete template?"))

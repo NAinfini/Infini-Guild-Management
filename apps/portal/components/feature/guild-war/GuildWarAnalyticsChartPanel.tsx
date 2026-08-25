@@ -1,4 +1,5 @@
-import { ActionIcon, Button, Text, Tooltip } from "@mantine/core";
+import { Button } from "@portal/components/ui/button";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@portal/components/ui/tooltip";
 import { ArrowBackUpIcon, ArrowForwardUpIcon } from "@portal/components/icons";
 import { EmptyState } from "@portal/components/shared/EmptyState";
 
@@ -56,27 +57,29 @@ export function GuildWarAnalyticsChartPanel({
       <section className="gwa-chart">
         <div className="gwa-chart__header">
           <div className="gwa-chart__heading">
-            <Text size="xs" c="dimmed" fw={600}>{heading.kicker}</Text>
-            <Text fw={700}>{heading.title}</Text>
+            <span className="text-xs font-semibold text-muted-foreground">{heading.kicker}</span>
+            <strong>{heading.title}</strong>
             {heading.note ? (
-              <Text size="xs" fw={600} c="var(--status-warning)" className="gwa-chart__note">
+              <span className="gwa-chart__note text-xs font-semibold">
                 {heading.note}
-              </Text>
+              </span>
             ) : null}
           </div>
           {!emptyState ? (
-            <Tooltip
-              label={expanded ? t("hovercard.collapseChart.title") : t("hovercard.expandChart.title")}
-            >
-              <ActionIcon
+            <Tooltip>
+              <TooltipTrigger render={<Button
+                type="button"
                 onClick={onToggleExpanded}
                 className="gwa-chart__expand"
-                variant="subtle"
-                size="lg"
+                variant="ghost"
+                size="icon-lg"
                 aria-label={expanded ? t("analytics.aria.collapseChart") : t("analytics.aria.expandChart")}
-              >
+              />}>
                 {expanded ? <ArrowBackUpIcon size={16} /> : <ArrowForwardUpIcon size={16} />}
-              </ActionIcon>
+              </TooltipTrigger>
+              <TooltipContent>
+                {expanded ? t("hovercard.collapseChart.title") : t("hovercard.expandChart.title")}
+              </TooltipContent>
             </Tooltip>
           ) : null}
         </div>
@@ -87,7 +90,7 @@ export function GuildWarAnalyticsChartPanel({
               description={emptyState.description}
               actions={
                 emptyState.actionLabel && emptyState.onAction ? (
-                  <Button variant="light" onClick={emptyState.onAction}>
+                  <Button variant="secondary" onClick={emptyState.onAction}>
                     {emptyState.actionLabel}
                   </Button>
                 ) : undefined

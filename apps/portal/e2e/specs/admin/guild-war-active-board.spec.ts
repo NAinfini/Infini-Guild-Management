@@ -43,23 +43,23 @@ type ActiveBoard = {
 let stamp: number;
 let title: string;
 let eventId: string;
-let viewer: { id: string; username: string };
-let member: { id: string; username: string };
+let viewer: { id: string; display_name: string };
+let member: { id: string; display_name: string };
 
 test.beforeEach(async ({ api }) => {
   stamp = Date.now();
   title = `${SYSTEM_TEST_CONTENT_MARKER} War ${stamp}`;
 
   const session = await readJson(await api.get("/api/auth/me"), "回读当前会话") as {
-    user: { id: string; username: string };
+    user: { id: string; display_name: string };
   };
   viewer = session.user;
 
   const users = await readJson(
     await api.get("/api/users?page=1&limit=500&include_total=false"),
     "回读成员名单",
-  ) as { data: Array<{ user: { id: string; username: string } }> };
-  const found = users.data.find((entry) => entry.user.username === "member_01");
+  ) as { data: Array<{ user: { id: string; display_name: string } }> };
+  const found = users.data.find((entry) => entry.user.display_name === "member_01");
   expect(found, "种子数据里必须有 member_01，否则这条用例验的不是真人").toBeTruthy();
   member = found!.user;
 
@@ -144,8 +144,8 @@ function teamColumns(page: Page): Locator {
 }
 
 /** 作战板上的一张成员卡。板子上能点开详情时它的无障碍名是「Open member details for …」。 */
-function memberCard(scope: Locator | Page, username: string): Locator {
-  return scope.getByRole("button", { name: `Open member details for ${username}`, exact: true });
+function memberCard(scope: Locator | Page, display_name: string): Locator {
+  return scope.getByRole("button", { name: `Open member details for ${display_name}`, exact: true });
 }
 
 /** 一列表头上的人数。分配结果只在这里报数，必须跟着数据一起动。 */
@@ -220,8 +220,8 @@ test("加人进池：选完人确认后池子和服务端一起加一", async ({
   const confirm = modal.getByRole("button", { name: /^Add \d+ members? to pool$/ });
   await expect(confirm, "一个人都没选就能提交，等于放行一次空操作").toBeDisabled();
 
-  await field(modal, "Available members").fill(member.username);
-  await page.getByRole("option", { name: member.username, exact: true }).click();
+  await field(modal, "Available members").fill(member.display_name);
+  await page.getByRole("option", { name: member.display_name, exact: true }).click();
   await expect(modal.getByText("1 selected", { exact: true })).toBeVisible();
   // MultiSelect 选完不会自己收起下拉（还要继续选人），而下拉正好盖住确认按钮。
   await page.keyboard.press("Escape");
@@ -232,7 +232,7 @@ test("加人进池：选完人确认后池子和服务端一起加一", async ({
   const board = await readBoard(api);
   expect(board.pool.map((entry) => entry.userId), "服务端的池子里必须真的多出这个人").toEqual([member.id]);
   await expect(headcount(poolColumn(page))).toHaveText("1");
-  await expect(memberCard(poolColumn(page), member.username)).toBeVisible();
+  await expect(memberCard(poolColumn(page), member.display_name)).toBeVisible();
 });
 
 test("建队、改名、上锁、删队：每一步都被自动保存写回服务端", async ({ page, flow, api }) => {
@@ -300,25 +300,25 @@ test("拖拽调人：从池子拖进队伍，再拖到回收区移出这场战",
   /* 这里的池子成员来自活动报名（virtualPool）：报了名还没被分配的人会直接出现在池子里。 */
   await joinEvent(api, member.id);
   await openBoard(page);
-  await expect(memberCard(poolColumn(page), member.username)).toBeVisible();
+  await expect(memberCard(poolColumn(page), member.display_name)).toBeVisible();
 
   await flow.click(page.getByRole("button", { name: "Add Team", exact: true }), SAVE_TEAMS);
   await expect(teamColumns(page)).toHaveCount(1);
 
   await flow.act(
-    () => dragCardTo(page, memberCard(poolColumn(page), member.username), teamColumns(page)),
+    () => dragCardTo(page, memberCard(poolColumn(page), member.display_name), teamColumns(page)),
     MOVE_MEMBER,
   );
 
   let board = await readBoard(api);
   expect(board.teams[0]!.members.map((entry) => entry.user_id), "拖进队伍就该在队伍里").toEqual([member.id]);
   expect(board.pool, "同一个人不能既在队里又在池里").toEqual([]);
-  await expect(memberCard(teamColumns(page), member.username)).toBeVisible();
+  await expect(memberCard(teamColumns(page), member.display_name)).toBeVisible();
   await expect(headcount(teamColumns(page))).toHaveText("1");
   await expect(headcount(poolColumn(page))).toHaveText("0");
 
   // 拖到回收区是「退出这场战」，比换队重，所以要过确认框；取消不该动数据。
-  await dragCardTo(page, memberCard(teamColumns(page), member.username), page.locator(".guild-war-trash-zone"));
+  await dragCardTo(page, memberCard(teamColumns(page), member.display_name), page.locator(".guild-war-trash-zone"));
   await (await confirmDialog(page, "Remove from War"))
     .getByRole("button", { name: "Cancel", exact: true }).click();
   expect((await readBoard(api)).teams[0]!.members, "取消后人必须还在队里").toHaveLength(1);
@@ -327,7 +327,7 @@ test("拖拽调人：从池子拖进队伍，再拖到回收区移出这场战",
   await expectNoDialog(page);
 
   await flow.act(async () => {
-    await dragCardTo(page, memberCard(teamColumns(page), member.username), page.locator(".guild-war-trash-zone"));
+    await dragCardTo(page, memberCard(teamColumns(page), member.display_name), page.locator(".guild-war-trash-zone"));
     await (await confirmDialog(page, "Remove from War"))
       .getByRole("button", { name: "Remove", exact: true }).click();
   }, MOVE_MEMBER);
@@ -339,7 +339,7 @@ test("拖拽调人：从池子拖进队伍，再拖到回收区移出这场战",
     board.participants.map((entry) => entry.user_id),
     "移出战争同时要退掉这场活动的报名，否则他会又变成虚拟池成员回来",
   ).toEqual([]);
-  await expect(memberCard(page, member.username)).toHaveCount(0);
+  await expect(memberCard(page, member.display_name)).toHaveCount(0);
 });
 
 test("搜索定位：只在前端高亮匹配的成员卡，不碰服务端", async ({ page, flow, api }) => {
@@ -350,7 +350,7 @@ test("搜索定位：只在前端高亮匹配的成员卡，不碰服务端", as
 
   const search = field(page, "Search active guild war members");
   await flow.clickWithoutApi(search);
-  await search.fill(member.username);
+  await search.fill(member.display_name);
 
   await expect(
     poolColumn(page).locator(".guild-war-member-card--matched"),
@@ -372,20 +372,22 @@ test("搜索定位：只在前端高亮匹配的成员卡，不碰服务端", as
   await expect(page.locator(".guild-war-active-top-card__matches")).toHaveCount(0);
 });
 
-test("成员详情：点开卡片能看到他在这场战里的归属和统计", async ({ page, api }) => {
+test("成员详情：点开卡片显示成员资料和排期信息", async ({ page, api }) => {
   await joinEvent(api, member.id);
   await openBoard(page);
 
-  await memberCard(poolColumn(page), member.username).click();
+  const detail = await readJson(await api.get(`/api/users/${member.id}`), "读取成员资料") as {
+    profile: { power: number };
+  };
+
+  await memberCard(poolColumn(page), member.display_name).click();
   const modal = page.getByRole("dialog");
-  await expect(modal.getByRole("heading", { name: member.username, exact: true })).toBeVisible();
-  await expect(
-    modal.locator(".guild-war-member-detail__assignment"),
-    "还没分队的人，归属就该显示池子",
-  ).toContainText("Pool");
-  const stats = modal.locator(".guild-war-member-detail__stat");
-  await expect(stats.filter({ hasText: /^Kills\s*0$/ })).toHaveCount(1);
-  await expect(stats.filter({ hasText: /^Deaths\s*0$/ })).toHaveCount(1);
-  await expect(stats.filter({ hasText: /^Assists\s*0$/ })).toHaveCount(1);
-  await expect(stats.filter({ hasText: /^KDA\s*0\.00$/ })).toHaveCount(1);
+  await expect(modal.getByRole("heading", { name: member.display_name, exact: true })).toBeVisible();
+  const displayedPower = await modal.locator(".guild-war-member-detail__power strong").innerText();
+  expect(Number(displayedPower.replace(/[^\d]/g, "")), "详情里的战力必须来自成员资料").toBe(detail.profile.power);
+  await expect(modal.getByRole("heading", { name: "Weekly availability", exact: true })).toBeVisible();
+  await expect(modal.getByRole("heading", { name: "Vacation / absence", exact: true })).toBeVisible();
+
+  await modal.getByRole("button", { name: "Close", exact: true }).click();
+  await expectNoDialog(page);
 });

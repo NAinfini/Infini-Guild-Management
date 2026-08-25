@@ -1,160 +1,241 @@
-import { Badge, Button, Drawer, Paper, Popover, Text, type PaperProps } from "@mantine/core";
-import { useMediaQuery } from "@mantine/hooks";
-import { IconAdjustmentsHorizontal } from "@tabler/icons-react";
-import { type ReactNode, useEffect, useId, useRef, useState } from "react";
+import { IconAdjustmentsHorizontal, IconX } from "@tabler/icons-react";
+import {
+  type ReactNode,
+  useEffect,
+  useId,
+  useState,
+} from "react";
+import { useTranslation } from "react-i18next";
+import { Badge } from "@portal/components/ui/badge";
+import { Button } from "@portal/components/ui/button";
+import {
+  Drawer,
+  DrawerClose,
+  DrawerContent,
+  DrawerHeader,
+  DrawerTitle,
+  DrawerTrigger,
+} from "@portal/components/ui/drawer";
+import {
+  Popover,
+  PopoverContent,
+  PopoverHeader,
+  PopoverTitle,
+  PopoverTrigger,
+} from "@portal/components/ui/popover";
+import { ScrollArea } from "@portal/components/ui/scroll-area";
+import { useMediaQuery } from "@portal/hooks/useMediaQuery";
+import { cn } from "@portal/lib/utils";
 import "./ContentFilterToolbar.css";
 
 type ContentFilterToolbarProps = {
   search: ReactNode;
-  controls: ReactNode;
-  toggleLabel: string;
-  primary?: ReactNode;
-  activeSummary?: ReactNode;
+  filterControls: ReactNode;
+  filterLabel: string;
+  filterActions?: ReactNode;
+  resetLabel?: string;
+  onReset?: () => void;
+  view?: ReactNode;
+  actions?: ReactNode;
+  summary?: ReactNode;
   activeFilterCount?: number;
-  collapseBelow?: number;
-  withBorder?: boolean;
-  padding?: PaperProps["p"];
+  surface?: "raised" | "bare";
   className?: string;
 };
 
-const DEFAULT_COLLAPSE_BELOW = 1088;
+type ContentFilterGroupProps = {
+  label: ReactNode;
+  children: ReactNode;
+  description?: ReactNode;
+  className?: string;
+};
+
+/**
+ * A visible, named group inside the one shared filter surface. The control
+ * inside owns its own input semantics; this wrapper supplies the common
+ * heading, boundary, and spacing used by every collection route.
+ */
+export function ContentFilterGroup({
+  label,
+  children,
+  description,
+  className,
+}: ContentFilterGroupProps) {
+  const labelId = useId();
+
+  return (
+    <section
+      className={cn("content-filter-toolbar__filter-group", className)}
+      aria-labelledby={labelId}
+    >
+      <div className="content-filter-toolbar__filter-group-heading">
+        <span id={labelId} className="content-filter-toolbar__filter-group-title">
+          {label}
+        </span>
+        {description ? (
+          <span className="content-filter-toolbar__filter-group-description">
+            {description}
+          </span>
+        ) : null}
+      </div>
+      <div className="content-filter-toolbar__filter-group-content">{children}</div>
+    </section>
+  );
+}
 
 export function ContentFilterToolbar({
   search,
-  controls,
-  toggleLabel,
-  primary,
-  activeSummary,
+  filterControls,
+  filterLabel,
+  filterActions,
+  resetLabel,
+  onReset,
+  view,
+  actions,
+  summary,
   activeFilterCount = 0,
-  collapseBelow = DEFAULT_COLLAPSE_BELOW,
-  withBorder = true,
-  padding = "sm",
+  surface = "raised",
   className,
 }: ContentFilterToolbarProps) {
-  const controlsId = useId();
-  const toolbarRef = useRef<HTMLDivElement | null>(null);
+  const { t } = useTranslation("common");
+  const filtersId = useId();
   const isMobile = useMediaQuery("(max-width: 47.99em)");
   const [opened, setOpened] = useState(false);
-  const [isCompact, setIsCompact] = useState(true);
+  const hasActiveFilters = activeFilterCount > 0;
+  const toggleAccessibleLabel = hasActiveFilters
+    ? `${filterLabel} (${activeFilterCount})`
+    : filterLabel;
 
   useEffect(() => {
-    const toolbar = toolbarRef.current;
-    if (!toolbar) return;
+    setOpened(false);
+  }, [isMobile]);
 
-    const updateWidth = (width: number) => {
-      setIsCompact(width < collapseBelow);
-    };
-
-    updateWidth(toolbar.getBoundingClientRect().width);
-    if (typeof ResizeObserver === "undefined") return;
-
-    const observer = new ResizeObserver((entries) => {
-      const entry = entries[0];
-      if (entry) updateWidth(entry.contentRect.width);
-    });
-    observer.observe(toolbar);
-    return () => observer.disconnect();
-  }, [collapseBelow]);
-
-  useEffect(() => {
-    if (!isCompact) setOpened(false);
-  }, [isCompact]);
-
-  const controlsContent = (
-    <div className="content-filter-toolbar__panel-controls">{controls}</div>
-  );
-
-  const toggleAccessibleLabel = activeFilterCount > 0
-    ? `${toggleLabel} (${activeFilterCount})`
-    : toggleLabel;
-  const renderToggleButton = (ariaControls?: string) => (
-    <Button
-      className="content-filter-toolbar__toggle"
-      variant={opened ? "light" : "default"}
-      leftSection={<IconAdjustmentsHorizontal size={17} />}
-      onClick={() => setOpened((value) => !value)}
-      aria-label={toggleAccessibleLabel}
-      aria-expanded={opened}
-      aria-controls={ariaControls}
-    >
-      <span>{toggleLabel}</span>
-      {activeFilterCount > 0 ? (
-        <Badge className="content-filter-toolbar__count" size="sm" variant="filled" aria-hidden="true">
+  const toggleContents = (
+    <>
+      <IconAdjustmentsHorizontal aria-hidden="true" size={17} />
+      <span className="content-filter-toolbar__toggle-label">{filterLabel}</span>
+      {hasActiveFilters ? (
+        <Badge className="content-filter-toolbar__count" aria-hidden="true">
           {activeFilterCount}
         </Badge>
       ) : null}
-    </Button>
+    </>
+  );
+
+  const panelHeading = (title: ReactNode) => (
+    <div className="content-filter-toolbar__panel-heading">
+      {title}
+      <div className="content-filter-toolbar__panel-heading-actions">
+        {hasActiveFilters ? (
+          <Badge
+            className="content-filter-toolbar__panel-count"
+            variant="secondary"
+            aria-hidden="true"
+          >
+            {activeFilterCount}
+          </Badge>
+        ) : null}
+        {hasActiveFilters && onReset && resetLabel ? (
+          <Button
+            variant="ghost"
+            size="sm"
+            className="content-filter-toolbar__reset"
+            onClick={onReset}
+          >
+            {resetLabel}
+          </Button>
+        ) : null}
+      </div>
+    </div>
+  );
+
+  const panelBody = (
+    <ScrollArea className="content-filter-toolbar__panel-scroll-area">
+      <div className="content-filter-toolbar__panel">
+        <div className="content-filter-toolbar__panel-controls">{filterControls}</div>
+        {filterActions ? (
+          <div className="content-filter-toolbar__panel-action-rail">{filterActions}</div>
+        ) : null}
+      </div>
+    </ScrollArea>
+  );
+
+  const toggleButton = (
+    <Button
+      variant="outline"
+      className="content-filter-toolbar__toggle"
+      aria-label={toggleAccessibleLabel}
+    />
   );
 
   return (
-    <Paper
-      ref={toolbarRef}
-      withBorder={withBorder}
-      radius="md"
-      p={padding}
-      className={["content-filter-toolbar", className].filter(Boolean).join(" ")}
+    <section
+      className={cn(
+        "content-filter-toolbar",
+        `content-filter-toolbar--${surface}`,
+        className,
+      )}
+      aria-label={filterLabel}
     >
-      <div className="content-filter-toolbar__layout" data-compact={isCompact}>
+      <div className="content-filter-toolbar__layout">
         <div className="content-filter-toolbar__search">{search}</div>
 
-        {!isCompact ? (
-          <div id={controlsId} className="content-filter-toolbar__controls">
-            {controls}
-          </div>
-        ) : isMobile ? (
-          <div className="content-filter-toolbar__toggle-slot">
-            {renderToggleButton(controlsId)}
-            <Drawer
-              opened={opened}
-              onClose={() => setOpened(false)}
-              position="bottom"
-              size="auto"
-              title={toggleLabel}
-              closeOnEscape
-              returnFocus
-              trapFocus
-              classNames={{
-                content: "content-filter-toolbar__drawer-content",
-                body: "content-filter-toolbar__drawer-body",
-              }}
-            >
-              <div id={controlsId}>{controlsContent}</div>
-            </Drawer>
-          </div>
+        {isMobile ? (
+          <Drawer
+            open={opened}
+            onOpenChange={(nextOpen) => setOpened(nextOpen)}
+            swipeDirection="down"
+            triggerId={filtersId}
+          >
+            <DrawerTrigger id={filtersId} render={toggleButton}>
+              {toggleContents}
+            </DrawerTrigger>
+            <DrawerContent id={`${filtersId}-drawer`} className="content-filter-toolbar__drawer-content">
+              <DrawerHeader className="content-filter-toolbar__drawer-header">
+                <div className="content-filter-toolbar__drawer-heading-row">
+                  {panelHeading(
+                    <DrawerTitle className="content-filter-toolbar__drawer-title">
+                      {filterLabel}
+                    </DrawerTitle>,
+                  )}
+                  <DrawerClose
+                    aria-label={t("action.close")}
+                    render={<Button variant="ghost" size="icon-sm" className="content-filter-toolbar__drawer-close" />}
+                  >
+                    <IconX aria-hidden="true" size={18} />
+                  </DrawerClose>
+                </div>
+              </DrawerHeader>
+              <div className="content-filter-toolbar__drawer-body">{panelBody}</div>
+            </DrawerContent>
+          </Drawer>
         ) : (
-          <div className="content-filter-toolbar__toggle-slot">
-            <Popover
-              opened={opened}
-              onChange={setOpened}
-              position="bottom-end"
-              width={380}
-              shadow="lg"
-              withArrow
-              withinPortal
-              closeOnEscape
-              returnFocus
-              trapFocus
+          <Popover open={opened} onOpenChange={(nextOpen) => setOpened(nextOpen)} triggerId={filtersId}>
+            <PopoverTrigger id={filtersId} render={toggleButton}>
+              {toggleContents}
+            </PopoverTrigger>
+            <PopoverContent
+              className="content-filter-toolbar__popover"
+              align="end"
+              side="bottom"
+              sideOffset={8}
             >
-              <Popover.Target>{renderToggleButton()}</Popover.Target>
-              <Popover.Dropdown
-                role="dialog"
-                aria-label={toggleLabel}
-                className="content-filter-toolbar__popover"
-              >
-                {controlsContent}
-              </Popover.Dropdown>
-            </Popover>
-          </div>
+              <PopoverHeader className="content-filter-toolbar__popover-heading">
+                {panelHeading(
+                  <PopoverTitle className="content-filter-toolbar__panel-title">
+                    {filterLabel}
+                  </PopoverTitle>,
+                )}
+              </PopoverHeader>
+              {panelBody}
+            </PopoverContent>
+          </Popover>
         )}
 
-        {primary ? <div className="content-filter-toolbar__primary">{primary}</div> : null}
-
-        {isCompact && !opened && activeSummary ? (
-          <Text className="content-filter-toolbar__summary" size="xs" c="dimmed">
-            {activeSummary}
-          </Text>
-        ) : null}
+        {view ? <div className="content-filter-toolbar__view">{view}</div> : null}
+        {summary ? <div className="content-filter-toolbar__summary">{summary}</div> : null}
+        {actions ? <div className="content-filter-toolbar__actions">{actions}</div> : null}
       </div>
-    </Paper>
+    </section>
   );
 }

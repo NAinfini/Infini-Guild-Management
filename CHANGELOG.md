@@ -4,6 +4,28 @@ This file records the project's notable changes.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Release versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- Durable per-user notification inboxes for member joins, published announcements, created events, and created wiki articles, including unread state and 90-day retention.
+- Administrator-managed important notices with independent publication, withdrawal, and expiry, plus revision-bound acknowledgements stored per account when signed in and in the browser for guests.
+- Announcement author identity, important badges, and ordered PDF/XLSX attachments with Site Config size/count limits, staged media lifecycle, and authorized forced downloads.
+
+### Security
+
+- Split public display names from private login names, with an in-place backfill of existing usernames and no legacy authentication fallback.
+- Added temporary administrator recovery credentials with a short, non-renewing password-change session and atomic permanent login-name/password completion.
+- Added optional linked Google, Discord, and KOOK sign-in, optional verified email delivery through the deployment owner's Cloudflare Email Sending configuration, and independently gated OAuth settings. WeChat remains explicitly unavailable until its official callback and token rules are verified.
+- Bound sessions and OAuth link challenges to an account authentication revision. Password/login-name changes, OAuth unlink, and administrator recovery now invalidate stale sessions with compare-and-swap protection; administrator recovery also removes linked OAuth identities.
+- Hardened HTTPS cookies with the `__Host-` contract, rate-limited every current-password check by account and trusted source, bounded outbound OAuth/email requests, and kept business-operation `401` responses from incorrectly signing the Portal out.
+- Kept email verification tokens in URL fragments and short-lived session storage rather than login return URLs or browser history.
+
+### Changed
+
+- Kept the simple materialized per-user notification inbox appropriate for small guilds (about 200 members), while targeting personal read-state pushes, moving retention writes to bounded scheduled maintenance, and cleaning system-test notifications by exact entity identity.
+- Replaced the former Portal component runtime wholesale with source-owned shadcn/ui compositions backed by Base UI and Tailwind CSS; removed the old providers, imports, styles, package dependencies, test selectors, and compatibility paths.
+
 ## [0.1.0] - 2026-08-16
 
 First public release. The entries below describe the shipped product.

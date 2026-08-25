@@ -23,6 +23,16 @@
   flex: 1;
 }
 
+.system-health-ledger__overall {
+  font-size: var(--text-sm);
+  font-weight: 700;
+}
+
+.system-health-ledger__latency-label {
+  color: var(--text-muted);
+  font-size: var(--text-micro);
+}
+
 /* 延迟是这一行里唯一的读数，用显示字体让它盖过左边的服务名。 */
 .system-health-ledger__latency {
   color: var(--text-primary);

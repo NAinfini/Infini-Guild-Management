@@ -1,5 +1,4 @@
 import type { MemberProfile, User } from "@guild/shared";
-import { MantineProvider } from "@mantine/core";
 import { render, screen } from "@testing-library/react";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
@@ -27,7 +26,7 @@ vi.mock("@portal/hooks/data/useClassData", () => ({
 
 const user = {
   id: "user-1",
-  username: "admin",
+  display_name: "admin",
   role_name: "Admin",
   role_color: "#ef4444",
   created_at: "2026-01-01T00:00:00.000Z",
@@ -41,22 +40,20 @@ function readOverviewCss() {
 
 function renderCard(avatarMediaId: string | null, avatarActions = true) {
   return render(
-    <MantineProvider>
-      <ProfileOverviewCard
-        user={user}
-        profile={{ avatar_media_id: avatarMediaId, updated_at: "2026-01-02T00:00:00.000Z" } as unknown as MemberProfile}
-        badges={[]}
-        power={1000}
-        titleHtml=""
-        classList={[]}
-        imageList={[]}
-        videoList={[]}
-        availabilityData={null}
-        {...(avatarActions
-          ? { avatarUploading: false, onUploadAvatar: vi.fn(), onRemoveAvatar: vi.fn() }
-          : {})}
-      />
-    </MantineProvider>,
+    <ProfileOverviewCard
+      user={user}
+      profile={{ avatar_media_id: avatarMediaId, updated_at: "2026-01-02T00:00:00.000Z" } as unknown as MemberProfile}
+      badges={[]}
+      power={1000}
+      titleHtml=""
+      classList={[]}
+      imageList={[]}
+      videoList={[]}
+      availabilityData={null}
+      {...(avatarActions
+        ? { avatarUploading: false, onUploadAvatar: vi.fn(), onRemoveAvatar: vi.fn() }
+        : {})}
+    />,
   );
 }
 
@@ -113,7 +110,7 @@ describe("ProfileOverviewCard", () => {
     );
   });
 
-  it("does not repeat the role name next to the username", () => {
+  it("does not repeat the role name next to the display_name", () => {
     renderCard(null);
 
     // 角色归后台管，本人在自己的资料页改不了它；挂在名字边上只是又一处要维护的重复。

@@ -1,4 +1,3 @@
-import { MantineProvider } from "@mantine/core";
 import {
   ADMIN_OPERATION_JOB_NAMES,
   type AdminOperationsResponse,
@@ -82,29 +81,27 @@ function renderOperations(options: {
   operationsError?: boolean;
 } = {}) {
   render(
-    <MantineProvider>
-      <AdminOperationsTab
-        statusLatencyMs={12}
-        statusLoading={false}
-        statusError={false}
-        onRetryStatus={vi.fn()}
-        onRetryOperations={vi.fn()}
-        statusData={{ db: "ok", r2: "ok", ws: "ok", crons: "configured" }}
-        statusHealthLogs={[
-          {
-            at: "2026-08-12T15:30:00.000Z",
-            db: "ok",
-            r2: "ok",
-            ws: "ok",
-            crons: "configured",
-            latencyMs: 12,
-          },
-        ]}
-        operationsData={"operationsData" in options ? options.operationsData ?? null : operationsFixture()}
-        operationsLoading={options.operationsLoading ?? false}
-        operationsError={options.operationsError ?? false}
-      />
-    </MantineProvider>,
+    <AdminOperationsTab
+      statusLatencyMs={12}
+      statusLoading={false}
+      statusError={false}
+      onRetryStatus={vi.fn()}
+      onRetryOperations={vi.fn()}
+      statusData={{ db: "ok", r2: "ok", ws: "ok", crons: "configured" }}
+      statusHealthLogs={[
+        {
+          at: "2026-08-12T15:30:00.000Z",
+          db: "ok",
+          r2: "ok",
+          ws: "ok",
+          crons: "configured",
+          latencyMs: 12,
+        },
+      ]}
+      operationsData={"operationsData" in options ? options.operationsData ?? null : operationsFixture()}
+      operationsLoading={options.operationsLoading ?? false}
+      operationsError={options.operationsError ?? false}
+    />,
   );
 }
 
@@ -148,6 +145,20 @@ describe("AdminOperationsTab", () => {
     );
 
     expect(componentSource).not.toMatch(/backup|restore/i);
+  });
+
+  it("uses the shared page workspace as the tablet scroll owner", () => {
+    const css = readFileSync(
+      resolve(process.cwd(), "apps/portal/components/feature/admin/AdminOperationsTab.css"),
+      "utf8",
+    );
+
+    expect(css).toMatch(
+      /@media \(min-width: 768px\) and \(max-width: 79\.99em\)[\s\S]*?\.page-layout\.admin-page\[data-workspace-mode="contained"\] \.page-layout__workspace\s*\{[\s\S]*?display:\s*block[\s\S]*?overflow-y:\s*auto/,
+    );
+    expect(css).toMatch(
+      /@media \(min-width: 768px\) and \(max-width: 79\.99em\)[\s\S]*?\.admin-operations \.admin-panel__body--scroll\s*\{[\s\S]*?overflow-y:\s*visible/,
+    );
   });
 
   it("requires status-view access", () => {

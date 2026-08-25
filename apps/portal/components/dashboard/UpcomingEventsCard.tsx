@@ -1,13 +1,15 @@
 import type { Event } from "@guild/shared";
-import { Badge, Button, Group, Paper, Stack, Text } from "@mantine/core";
 import { MemberAvatarStack } from "../shared/MemberAvatarStack";
 import { ArrowRightIcon, ClockIcon } from "@portal/components/icons";
-import { memo, useMemo } from "react";
+import { Badge } from "@portal/components/ui/badge";
+import { Button } from "@portal/components/ui/button";
+import { Card } from "@portal/components/ui/card";
+import { memo, useMemo, type CSSProperties } from "react";
 import { useTranslation } from "react-i18next";
 import { CalendarEventOutlined } from "../../utils/icons";
 import { EventQuotaBar } from "../feature/events/EventQuotaBar";
 import { EventTypeIcon } from "../shared/EventTypeIcon";
-import { formatClock, formatLocaleParts } from "@portal/utils/datetime";
+import { formatEventTime, formatLocaleParts } from "@portal/utils/datetime";
 import { getEventTypeLabel } from "@portal/utils/game-rules";
 import { EmptyState } from "../shared/EmptyState";
 import {
@@ -41,20 +43,20 @@ export const UpcomingEventsCard = memo(function UpcomingEventsCard({
   );
 
   return (
-    <Paper withBorder radius="md" className="dashboard-card">
+    <Card className="dashboard-card gap-0 py-0">
       <div>
-      <Group gap={8} align="center" wrap="nowrap" justify="space-between">
+      <div className="dashboard-card-heading-row">
         {cardHeading(t("card.upcomingEvents.title"), <CalendarEventOutlined size={18} />)}
         {safeUpcomingCount > 0 ? (
-          <Button size="xs" variant="subtle" onClick={onViewAll}>
+          <Button size="xs" variant="ghost" onClick={onViewAll}>
             {t("card.upcomingEvents.viewAll", { count: safeUpcomingCount })}
           </Button>
         ) : null}
-      </Group>
+      </div>
         {!hasAnyRows ? (
           <EmptyState title={t("card.upcomingEvents.empty")} />
         ) : (
-          <Stack gap={8} mt={12}>
+          <div className="upcoming-event-list">
             {orderedRows.map((item) => {
               const signedUpCount = item.participantCount;
               const capacity = item.item.capacity ?? 0;
@@ -74,30 +76,30 @@ export const UpcomingEventsCard = memo(function UpcomingEventsCard({
                       <span className="upcoming-event-row__day">{day}</span>
                     </div>
                     <div className="upcoming-event-row__main">
-                      <Text
-                        fw={600}
-                        size="sm"
-                        lineClamp={2}
-                        className="upcoming-event-row__title"
-                      >
+                      <strong className="upcoming-event-row__title">
                         {item.item.title}
-                      </Text>
+                      </strong>
                       {item.item.description ? (
-                        <Text size="xs" c="dimmed" lineClamp={1}>
+                        <p className="upcoming-event-row__description">
                           {item.item.description}
-                        </Text>
+                        </p>
                       ) : null}
-                      <Group gap={6}>
-                        <Badge size="xs" color={eventTypeTagColor(item.item.type)} variant="light" leftSection={<EventTypeIcon eventType={item.item.type} />}>
+                      <div className="upcoming-event-row__meta">
+                        <Badge
+                          variant="outline"
+                          className="upcoming-event-row__type dashboard-event-type-badge"
+                          style={{ "--badge-color": eventTypeTagColor(item.item.type) } as CSSProperties}
+                        >
+                          <EventTypeIcon eventType={item.item.type} />
                           {getEventTypeLabel(item.item.type, i18n.language)}
                         </Badge>
-                        <Group gap={4}>
+                        <span className="upcoming-event-row__time">
                           <ClockIcon size={12} style={{ opacity: 0.6 }} />
-                          <Text size="xs" c="dimmed">
-                            {formatClock(startDate)}
-                          </Text>
-                        </Group>
-                      </Group>
+                          <span>
+                            {formatEventTime(startDate, i18n.language)}
+                          </span>
+                        </span>
+                      </div>
                     </div>
                     {item.quotaSummary ? (
                       <div className="upcoming-event-row__quota">
@@ -112,7 +114,7 @@ export const UpcomingEventsCard = memo(function UpcomingEventsCard({
                       <div className="upcoming-event-row__avatars">
                         <MemberAvatarStack members={item.members} totalCount={item.participantCount} />
                       </div>
-                      <Text
+                      <span
                         className="upcoming-event-row__capacity"
                         aria-label={t("card.upcomingEvents.capacity", {
                           current: signedUpCount,
@@ -120,11 +122,11 @@ export const UpcomingEventsCard = memo(function UpcomingEventsCard({
                         })}
                       >
                         {capacity > 0 ? `${signedUpCount}/${capacity}` : "∞"}
-                      </Text>
+                      </span>
                     </div>
                     <Button
                       size="xs"
-                      variant="subtle"
+                      variant="ghost"
                       onClick={() => onOpenEvent(item.item)}
                       className="upcoming-event-row__go"
                       aria-label={t("card.upcomingEvents.viewEvent")}
@@ -135,9 +137,9 @@ export const UpcomingEventsCard = memo(function UpcomingEventsCard({
                 </div>
               );
             })}
-          </Stack>
+          </div>
         )}
       </div>
-    </Paper>
+    </Card>
   );
 });

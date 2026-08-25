@@ -1,17 +1,24 @@
 import { LIMITS, type CreateStorageTransactionPayload, type StorageItem, type User } from "@guild/shared";
+import { ArrowRightIcon, XIcon } from "@portal/components/icons";
+import { Badge } from "@portal/components/ui/badge";
+import { Button } from "@portal/components/ui/button";
 import {
-  Badge,
-  Button,
-  Group,
-  Modal,
-  NumberInput,
-  SegmentedControl,
+  Dialog,
+  DialogClose,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "@portal/components/ui/dialog";
+import { Input } from "@portal/components/ui/input";
+import { Label } from "@portal/components/ui/label";
+import {
   Select,
-  Stack,
-  Text,
-  Textarea,
-} from "@mantine/core";
-import { ArrowRightIcon } from "@portal/components/icons";
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@portal/components/ui/select";
+import { Textarea } from "@portal/components/ui/textarea";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 
@@ -77,7 +84,7 @@ export function StorageTransactionModal({
     [items],
   );
   const userOptions = useMemo(
-    () => users.map(({ user }) => ({ value: user.id, label: user.username })),
+    () => users.map(({ user }) => ({ value: user.id, label: user.display_name })),
     [users],
   );
   const numericQuantity = toNumber(quantity);
@@ -115,7 +122,6 @@ export function StorageTransactionModal({
   const toneClass = isPositiveChange
     ? "storage-transaction-modal__summary--deposit"
     : "storage-transaction-modal__summary--withdraw";
-  const toneColor = type === "adjust" ? "orange" : isPositiveChange ? "green" : "blue";
   const actionTitle = type === "intake"
     ? t("action.deposit")
     : type === "distribute"
@@ -152,8 +158,7 @@ export function StorageTransactionModal({
     setNote("");
   }, [canManageStock, initialItem, initialMode, sessionKey]);
 
-  const handleTypeChange = (value: string) => {
-    const nextType = value as TransactionMode;
+  const handleTypeChange = (nextType: TransactionMode) => {
     setType(nextType);
     setQuantity(nextType === "adjust" ? currentStock : 1);
   };
@@ -178,199 +183,191 @@ export function StorageTransactionModal({
   };
 
   return (
-    <Modal
-      opened={opened}
-      onClose={onClose}
-      title={
-        canManageStock && !initialItem
-          ? t("adminEntry.title")
-          : selectedItem
-            ? `${actionTitle}: ${selectedItem.name}`
-            : actionTitle
-      }
-      size={canManageStock ? 520 : 420}
-      centered
-      styles={{
-        inner: { paddingInline: "var(--space-sm)" },
-        content: { maxWidth: "calc(100vw - 16px)" },
-        body: { minWidth: 0 },
-      }}
-      classNames={{
-        content: `storage-modal-content ${canManageStock ? "storage-admin-transaction-shell" : "storage-transaction-shell"}`,
-        header: "storage-modal-header",
-        body: "storage-modal-body",
-      }}
-    >
-      <Stack
-        gap="md"
-        style={{ minWidth: 0, maxWidth: "100%" }}
-        className={`storage-transaction-modal ${canManageStock ? "storage-transaction-modal--admin" : "storage-transaction-modal--simple"} ${type === "adjust" ? "storage-transaction-modal--adjust" : ""}`}
+    <Dialog open={opened} onOpenChange={(nextOpen) => !nextOpen && onClose()}>
+      <DialogContent
+        className={`storage-modal-content ${canManageStock ? "storage-admin-transaction-shell" : "storage-transaction-shell"}`}
+        showCloseButton={false}
       >
-        {canManageStock ? (
-          <div className="storage-admin-transaction-type">
-            <Text size="sm" fw={700}>{t("field.type")}</Text>
-            <SegmentedControl
-              fullWidth
-              /*
-               * SegmentedControl 没有像 Button/Input 那样的高度变量可以在
-               * ThemeProvider 里桥接，所以这一处仍要显式给高度——但取值走令牌，
-               * 别再写死 44：细指针下 --control-height-regular 是 36px，粗指针下
-               * 才回到 44px。写死 44 的结果是桌面上这排分段控件比同一个弹窗里
-               * 的输入框和按钮高出 8px。
-               */
-              styles={{
-                label: {
-                  minHeight: "var(--control-height-regular)",
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                },
-              }}
-              data={[
-                { value: "intake", label: t("tx.intake") },
-                { value: "distribute", label: t("tx.distribute") },
-                { value: "adjust", label: t("tx.adjust") },
-              ]}
-              value={type}
-              onChange={handleTypeChange}
-            />
+        <DialogHeader className="storage-modal-header">
+          <div className="storage-overlay-heading">
+            <DialogTitle>
+              {canManageStock && !initialItem
+                ? t("adminEntry.title")
+                : selectedItem
+                  ? `${actionTitle}: ${selectedItem.name}`
+                  : actionTitle}
+            </DialogTitle>
+            <DialogClose aria-label={t("common:action.close")} render={<Button size="icon-sm" variant="ghost" />}>
+              <XIcon size={16} />
+            </DialogClose>
           </div>
-        ) : null}
-
-        {selectedItem ? (
-          <div
-            className={`storage-transaction-modal__summary ${toneClass} ${type === "adjust" ? "storage-transaction-modal__summary--adjust" : ""}`}
-            style={{ minWidth: 0 }}
-          >
-            <div className="storage-transaction-modal__item-line">
-              <Text fw={900} lineClamp={1}>{selectedItem.name}</Text>
-              <Badge variant="light" color={toneColor}>
-                {stockDelta > 0 ? "+" : ""}{stockDelta}
-              </Badge>
-            </div>
-            <div className="storage-transaction-flow">
-              <div>
-                <Text size="xs" c="dimmed">{t("field.currentStock")}</Text>
-                <Text fw={900} className="storage-transaction-flow__value">{currentStock}</Text>
-              </div>
-              <span className={`storage-transaction-flow__arrow ${isPositiveChange ? "storage-transaction-flow__arrow--deposit" : "storage-transaction-flow__arrow--withdraw"}`}>
-                <ArrowRightIcon size={18} />
-              </span>
-              <div>
-                <Text size="xs" c="dimmed">{t("field.stockAfter")}</Text>
-                <Text fw={900} className="storage-transaction-flow__value">{projectedStock}</Text>
-              </div>
-            </div>
-          </div>
-        ) : (
-          <Text size="sm" c="dimmed">{t("adminEntry.chooseItemHint")}</Text>
-        )}
-
-        <div
-          className={`storage-admin-transaction-grid ${type === "adjust" ? "storage-admin-transaction-grid--adjust" : ""}`}
-          style={{ minWidth: 0 }}
-        >
+        </DialogHeader>
+        <div className={`storage-modal-body storage-transaction-modal ${canManageStock ? "storage-transaction-modal--admin" : "storage-transaction-modal--simple"} ${type === "adjust" ? "storage-transaction-modal--adjust" : ""}`}>
           {canManageStock ? (
-            <Stack gap={6}>
-              <Select
-                label={t("field.item")}
-                data={itemOptions}
-                value={itemId}
-                onChange={(value) => {
-                  setItemId(value);
-                  setSelectedItemSnapshot(
-                    items.find((item) => item.id === value) ?? null,
-                  );
-                  if (type === "adjust") {
-                    setQuantity(items.find((item) => item.id === value)?.quantity ?? 0);
-                  }
-                }}
-                searchable
-                searchValue={itemSearch}
-                onSearchChange={onItemSearchChange}
-                nothingFoundMessage={t("empty.noItems")}
-              />
-              {itemsHasMore ? (
-                <Button
-                  size="compact-sm"
-                  variant="subtle"
-                  loading={itemsLoadingMore}
-                  onClick={onLoadMoreItems}
+            <div className="storage-admin-transaction-type" role="group" aria-label={t("field.type")}>
+              <span className="storage-field__label">{t("field.type")}</span>
+              <div className="storage-admin-transaction-type__options">
+                {(["intake", "distribute", "adjust"] as const).map((nextType) => (
+                  <Button
+                    key={nextType}
+                    size="sm"
+                    variant={type === nextType ? "default" : "outline"}
+                    aria-pressed={type === nextType}
+                    onClick={() => handleTypeChange(nextType)}
+                  >
+                    {t(`tx.${nextType}`)}
+                  </Button>
+                ))}
+              </div>
+            </div>
+          ) : null}
+
+          {selectedItem ? (
+            <section className={`storage-transaction-modal__summary ${toneClass} ${type === "adjust" ? "storage-transaction-modal__summary--adjust" : ""}`}>
+              <div className="storage-transaction-modal__item-line">
+                <strong>{selectedItem.name}</strong>
+                <Badge variant="secondary" className="storage-transaction-modal__delta-badge">
+                  {stockDelta > 0 ? "+" : ""}{stockDelta}
+                </Badge>
+              </div>
+              <div className="storage-transaction-flow">
+                <div>
+                  <span className="storage-meta-label">{t("field.currentStock")}</span>
+                  <strong className="storage-transaction-flow__value">{currentStock}</strong>
+                </div>
+                <span className={`storage-transaction-flow__arrow ${isPositiveChange ? "storage-transaction-flow__arrow--deposit" : "storage-transaction-flow__arrow--withdraw"}`}>
+                  <ArrowRightIcon size={18} />
+                </span>
+                <div>
+                  <span className="storage-meta-label">{t("field.stockAfter")}</span>
+                  <strong className="storage-transaction-flow__value">{projectedStock}</strong>
+                </div>
+              </div>
+            </section>
+          ) : (
+            <p className="storage-muted-copy">{t("adminEntry.chooseItemHint")}</p>
+          )}
+
+          <div className={`storage-admin-transaction-grid ${type === "adjust" ? "storage-admin-transaction-grid--adjust" : ""}`}>
+            {canManageStock ? (
+              <>
+                {!initialItem && onItemSearchChange ? (
+                  <div className="storage-field">
+                    <Label htmlFor="storage-transaction-search">{t("filter.search")}</Label>
+                    <Input
+                      id="storage-transaction-search"
+                      type="search"
+                      value={itemSearch ?? ""}
+                      onChange={(event) => onItemSearchChange(event.currentTarget.value)}
+                    />
+                  </div>
+                ) : null}
+                <div className="storage-field">
+                  <Label>{t("field.item")}</Label>
+                  <Select
+                    value={itemId ?? undefined}
+                    items={itemOptions}
+                    onValueChange={(value) => {
+                      if (!value) return;
+                      const nextItem = items.find((item) => item.id === value);
+                      setItemId(value);
+                      if (nextItem) {
+                        setSelectedItemSnapshot(nextItem);
+                        if (type === "adjust") setQuantity(nextItem.quantity);
+                      }
+                    }}
+                  >
+                    <SelectTrigger aria-label={t("field.item")} className="storage-field__control">
+                      <SelectValue placeholder={t("empty.noItems")} />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {itemOptions.map((option) => (
+                        <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  {itemsHasMore ? (
+                    <Button size="sm" variant="ghost" loading={itemsLoadingMore} onClick={onLoadMoreItems}>
+                      {t("action.loadMore")}
+                    </Button>
+                  ) : null}
+                </div>
+              </>
+            ) : null}
+            {canManageStock && showsRecipient ? (
+              <div className="storage-field">
+                <Label>{type === "intake" ? t("field.memberOptional") : t("field.member")}</Label>
+                <Select
+                  value={recipientUserId ?? undefined}
+                  items={userOptions}
+                  onValueChange={(value) => setRecipientUserId(value ?? null)}
                 >
-                  {t("action.loadMore")}
-                </Button>
-              ) : null}
-            </Stack>
+                  <SelectTrigger
+                    aria-label={type === "intake" ? t("field.memberOptional") : t("field.member")}
+                    className="storage-field__control"
+                  >
+                    <SelectValue placeholder={t("empty.noUsers")} />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {userOptions.map((option) => (
+                      <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            ) : null}
+            <div className="storage-field">
+              <Label htmlFor="storage-transaction-quantity">
+                {type === "adjust" ? t("field.targetStock") : t("field.quantity")}
+              </Label>
+              <Input
+                id="storage-transaction-quantity"
+                inputMode="numeric"
+                value={String(quantity)}
+                onChange={(event) => setQuantity(event.currentTarget.value)}
+                aria-invalid={Boolean(quantityError)}
+              />
+              {quantityError ? <span className="storage-field__error" role="alert">{quantityError}</span> : null}
+            </div>
+          </div>
+
+          {canManageStock && selectedItem && type === "adjust" ? (
+            <p className="storage-admin-transaction-summary">
+              {t("adminEntry.adjustSummary", { quantity: projectedStock, item: selectedItem.name })}
+            </p>
           ) : null}
-          {canManageStock && showsRecipient ? (
-            <Select
-              label={type === "intake" ? t("field.memberOptional") : t("field.member")}
-              data={userOptions}
-              value={recipientUserId}
-              onChange={setRecipientUserId}
-              searchable
-              nothingFoundMessage={t("empty.noUsers")}
+          {canManageStock && selectedItem && selectedUser && type !== "adjust" ? (
+            <p className="storage-admin-transaction-summary">
+              {t("adminEntry.summary", {
+                member: selectedUser.display_name,
+                action: type === "intake" ? t("tx.intake") : t("tx.distribute"),
+                quantity: safeQuantity,
+                item: selectedItem.name,
+              })}
+            </p>
+          ) : null}
+
+          <div className="storage-field">
+            <Label htmlFor="storage-transaction-note">{t("field.note")}</Label>
+            <Textarea
+              id="storage-transaction-note"
+              rows={canManageStock ? 3 : 2}
+              value={note}
+              onChange={(event) => setNote(event.currentTarget.value)}
             />
-          ) : null}
-          <NumberInput
-            label={type === "adjust" ? t("field.targetStock") : t("field.quantity")}
-            min={type === "adjust" ? 0 : 1}
-            max={
-              type === "distribute" && selectedItem
-                ? Math.min(
-                    selectedItem.quantity,
-                    LIMITS.content.storageTransactionQuantity.max,
-                  )
-                : LIMITS.content.storageTransactionQuantity.max
-            }
-            value={quantity}
-            onChange={setQuantity}
-            error={quantityError}
-          />
+          </div>
+          <div className="storage-transaction-modal__actions">
+            <Button variant="outline" onClick={onClose}>{t("common:action.cancel")}</Button>
+            <Button onClick={handleSubmit} loading={isSaving} disabled={!canSubmit}>
+              {canManageStock
+                ? t("action.submit")
+                : type === "intake"
+                  ? t("action.submitDeposit")
+                  : t("action.submitWithdraw")}
+            </Button>
+          </div>
         </div>
-
-        {canManageStock && selectedItem && type === "adjust" ? (
-          <Text size="sm" className="storage-admin-transaction-summary">
-            {t("adminEntry.adjustSummary", { quantity: projectedStock, item: selectedItem.name })}
-          </Text>
-        ) : null}
-        {canManageStock && selectedItem && selectedUser && type !== "adjust" ? (
-          <Text size="sm" className="storage-admin-transaction-summary">
-            {t("adminEntry.summary", {
-              member: selectedUser.username,
-              action: type === "intake" ? t("tx.intake") : t("tx.distribute"),
-              quantity: safeQuantity,
-              item: selectedItem.name,
-            })}
-          </Text>
-        ) : null}
-
-        <Textarea
-          autosize={!canManageStock}
-          label={t("field.note")}
-          minRows={canManageStock ? 3 : 2}
-          maxRows={4}
-          value={note}
-          onChange={(event) => setNote(event.currentTarget.value)}
-        />
-        <Group justify="flex-end" className="storage-transaction-modal__actions">
-          <Button variant="default" onClick={onClose}>
-            {t("common:action.cancel")}
-          </Button>
-          <Button
-            color={toneColor}
-            onClick={handleSubmit}
-            loading={isSaving}
-            disabled={!canSubmit}
-          >
-            {canManageStock
-              ? t("action.submit")
-              : type === "intake"
-                ? t("action.submitDeposit")
-                : t("action.submitWithdraw")}
-          </Button>
-        </Group>
-      </Stack>
-    </Modal>
+      </DialogContent>
+    </Dialog>
   );
 }

@@ -1,0 +1,92 @@
+.system-status-page {
+  position: relative;
+  isolation: isolate;
+  flex: 1;
+  min-block-size: 100vh;
+  min-block-size: 100dvh;
+  display: grid;
+  place-items: center end;
+  overflow: hidden;
+  box-sizing: border-box;
+  padding: clamp(var(--space-xl), 5vh, 4rem) clamp(3rem, 14vw, 14rem);
+}
+
+.app-content .system-status-page {
+  min-block-size: calc(100vh - var(--app-header-height) - var(--shell-content-gap));
+  min-block-size: calc(100dvh - var(--app-header-height) - var(--shell-content-gap));
+}
+
+.system-status-page__scene {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+}
+
+.system-status-page__scene::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: color-mix(in srgb, var(--surface-base) 18%, transparent);
+}
+
+.system-status-page__panel {
+  position: relative;
+  z-index: 1;
+  width: min(100%, 34rem);
+  padding: var(--space-2xl);
+  border-color: color-mix(in srgb, var(--domain-edge) 42%, var(--border-strong));
+  background: color-mix(in srgb, var(--surface-raised) 92%, transparent);
+  box-shadow:
+    0 1.5rem 5rem color-mix(in srgb, var(--surface-sunken) 56%, transparent),
+    inset 0 0 0 1px color-mix(in srgb, var(--domain-edge) 24%, transparent);
+  text-align: center;
+}
+
+.system-status-page__emblem {
+  display: block;
+  inline-size: 72px;
+  block-size: 72px;
+  margin: 0 auto var(--space-lg);
+  object-fit: contain;
+}
+
+.system-status-page__code {
+  margin: 0;
+  color: var(--brand-text);
+  font-family: var(--font-display);
+  font-size: clamp(var(--text-display), 14vw, calc(var(--text-display) * 2));
+  font-variant-numeric: tabular-nums;
+  font-weight: var(--fw-strong);
+  letter-spacing: -0.04em;
+  line-height: 0.82;
+}
+
+.system-status-page__title {
+  margin: var(--space-lg) 0 0;
+  font-size: var(--text-page);
+  line-height: var(--lh-tight);
+  text-wrap: balance;
+}
+
+.system-status-page__description {
+  max-width: 42ch;
+  margin: var(--space-md) auto 0;
+  color: var(--text-secondary);
+  line-height: var(--lh-normal);
+}
+
+.system-status-page__action {
+  margin-top: var(--space-xl);
+}
+
+@media (max-width: 47.99em) {
+  .system-status-page {
+    place-items: start center;
+    padding: var(--space-md);
+  }
+
+  .system-status-page__panel {
+    padding: var(--space-xl);
+  }
+}

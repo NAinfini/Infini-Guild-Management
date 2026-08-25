@@ -1,6 +1,7 @@
-import { Button, Grid, Skeleton, Stack, Tabs, Text } from "@mantine/core";
+import { Button } from "@portal/components/ui/button";
+import { Skeleton } from "@portal/components/ui/skeleton";
 import { useNavigate, useSearch } from "@tanstack/react-router";
-import { useState } from "react";
+import { useEffect } from "react";
 import { useTranslation } from "react-i18next";
 import { uploadProfileAudio, uploadProfileImages } from "../../services/UserService";
 import { useBeforeUnloadPrompt } from "../../hooks/useBeforeUnloadPrompt";
@@ -22,7 +23,9 @@ import { ProfileProfileTab } from "../feature/profile/ProfileProfileTab";
 import { ProfileWeekSummary } from "../feature/profile/ProfileWeekSummary";
 import { EmptyState } from "../shared/EmptyState";
 import { UnsavedChangesAffix } from "../shared/UnsavedChangesAffix";
+import { PageSubnav } from "../shared/PageSubnav";
 import { PageLayout } from "../layout/PageLayout";
+import { notifySuccess } from "../../utils/notifications";
 import "./MyProfilePage.css";
 
 type ProfileTab = "home" | "availability" | "account";
@@ -50,11 +53,22 @@ function moveListItem<T>(list: T[], index: number, delta: number): T[] {
 export function MyProfilePage() {
   const { t } = useTranslation("profile");
   const navigate = useNavigate();
-  const search = useSearch({ strict: false }) as { tab?: string };
-  const [activeTab, setActiveTab] = useState<ProfileTab>(normalizeTab(search.tab));
+  const search = useSearch({ strict: false }) as { tab?: string; oauth?: string };
+  const activeTab = normalizeTab(search.tab);
   const user = useAuthStore((state) => state.user);
   const mediaPolicy = useSiteConfigStore(requireSiteMediaPolicy);
   const profileImageQuota = mediaPolicy.quotas.profile;
+
+  useEffect(() => {
+    if (search.oauth !== "linked") return;
+    notifySuccess(t("account.message.oauthLinked"));
+    void navigate({
+      to: "/profile",
+      search: { tab: "account" },
+      replace: true,
+      viewTransition: false,
+    });
+  }, [navigate, search.oauth, t]);
 
   const { profileQuery } = useProfileData({
     userId: user?.id,
@@ -64,7 +78,10 @@ export function MyProfilePage() {
     t("common:loadErrorRetry"),
   );
 
-  const form = useProfileFormState({ profile: profileQuery.data?.profile });
+  const form = useProfileFormState({
+    profile: profileQuery.data?.profile,
+    displayName: profileQuery.data?.user.display_name,
+  });
   useBeforeUnloadPrompt(form.isDirty, { allowSamePathNavigation: true });
 
   const imageUploader = useMediaUpload(
@@ -115,31 +132,60 @@ export function MyProfilePage() {
   const profileUser = profileQuery.data?.user ?? null;
   const badges = profileQuery.data?.badges ?? [];
 
-  /* A dot on the tab, so unsaved work stays findable after switching away. */
-  const renderTabLabel = (label: string, dirty: boolean) => (
-    <span className="my-profile-tab-label">
-      {label}
-      {dirty ? <span className="my-profile-tab-label__dot" aria-label={t("status.unsavedChanges")} /> : null}
-    </span>
-  );
-
   return (
-    <PageLayout className="my-profile-page">
+    <PageLayout
+      className="my-profile-page"
+      workspaceMode="contained"
+      toolbar={(
+        <div className="my-profile-tabbar">
+          <PageSubnav
+            value={activeTab}
+            label={t("navigation.section")}
+            items={[
+              {
+                value: "home",
+                label: t("tab.home"),
+                indicator: form.dirtySections.home ? (
+                  <span className="my-profile-tab-label__dot" aria-label={t("status.unsavedChanges")} />
+                ) : undefined,
+              },
+              {
+                value: "availability",
+                label: t("tab.availability"),
+                indicator: form.dirtySections.availability ? (
+                  <span className="my-profile-tab-label__dot" aria-label={t("status.unsavedChanges")} />
+                ) : undefined,
+              },
+              { value: "account", label: t("tab.account") },
+            ]}
+            onChange={(tab) => {
+              void navigate({
+                to: "/profile",
+                search: { tab: tab === "home" ? undefined : tab },
+                replace: true,
+                viewTransition: false,
+              });
+            }}
+          />
+          {form.isDirty ? (
+            <span className="my-profile-tabbar__hint">
+              {t("tab.dotHint")}
+            </span>
+          ) : null}
+        </div>
+      )}
+    >
       {profileQuery.isLoading ? (
-        <Grid gap="md">
-          <Grid.Col span={{ base: 12, lg: 8 }}>
-            <Stack gap={12}>
-              <Skeleton height={36} width="50%" radius={8} />
-              <Skeleton height={48} radius={8} />
-              <Skeleton height={48} radius={8} />
-              <Skeleton height={48} radius={8} />
-              <Skeleton height={48} radius={8} />
-            </Stack>
-          </Grid.Col>
-          <Grid.Col span={{ base: 12, lg: 4 }}>
-            <Skeleton height={280} radius={8} />
-          </Grid.Col>
-        </Grid>
+        <div className="my-profile-loading">
+          <div className="my-profile-loading__fields">
+            <Skeleton className="my-profile-loading__heading" />
+            <Skeleton className="my-profile-loading__row" />
+            <Skeleton className="my-profile-loading__row" />
+            <Skeleton className="my-profile-loading__row" />
+            <Skeleton className="my-profile-loading__row" />
+          </div>
+          <Skeleton className="my-profile-loading__rail" />
+        </div>
       ) : profileQuery.isError && !profileQuery.data ? (
         <EmptyState
           status="error"
@@ -157,41 +203,8 @@ export function MyProfilePage() {
           )}
         />
       ) : (
-        <Tabs
-          value={activeTab}
-          keepMounted={false}
-          className="my-profile-page__tabs"
-          onChange={(nextTab) => {
-            const tab = normalizeTab(nextTab ?? undefined);
-            setActiveTab(tab);
-            void navigate({
-              to: "/profile",
-              search: { tab: tab === "home" ? undefined : tab },
-              replace: true,
-              viewTransition: false,
-            });
-          }}
-        >
-          {/* 小黄点没有图例就只是一个装饰点。说明放在这一行的另一头，不占编辑区。 */}
-          <div className="my-profile-tabbar">
-            <Tabs.List>
-              <Tabs.Tab value="home">{renderTabLabel(t("tab.home"), form.dirtySections.home)}</Tabs.Tab>
-              <Tabs.Tab value="availability">
-                {renderTabLabel(t("tab.availability"), form.dirtySections.availability)}
-              </Tabs.Tab>
-              <Tabs.Tab value="account">{t("tab.account")}</Tabs.Tab>
-            </Tabs.List>
-            {form.isDirty ? (
-              <Text size="xs" c="dimmed" className="my-profile-tabbar__hint">
-                {t("tab.dotHint")}
-              </Text>
-            ) : null}
-          </div>
-
-          {/* 三屏共用一个外壳（.my-profile-shell）：同宽、同起点，切屏时卡片的
-              左边缘不会跳。只有时间屏带侧栏预览（本周热力图），因为「填了哪些
-              时段」光看编辑器数不出来；另外两屏各自的表单已经把自己讲清楚了。 */}
-          <Tabs.Panel value="home" pt="md">
+        <div className="my-profile-page__workspace">
+          {activeTab === "home" ? (
             <div className="my-profile-shell">
               {/* 概览条横跨整宽：它讲的是「这个号现在是什么样」，和下面的表单不是
                   同一层，塞进表单里会被读成表单的一部分。空值点名紧跟其后，因为
@@ -227,12 +240,14 @@ export function MyProfilePage() {
                   roleName={user?.role_name ?? null}
                   roleColor={user?.role_color ?? null}
                   badges={badges}
+                  displayName={form.displayName}
                   power={form.power}
                   classDraft={form.classDraft}
                   classOptions={form.classOptions}
                   classList={form.classList}
                   titleHtml={form.titleHtml}
                   onTitleHtmlChange={form.setTitleHtml}
+                  onDisplayNameChange={form.setDisplayName}
                   bio={form.bio}
                   onPowerChange={form.setPower}
                   onClassDraftChange={form.setClassDraft}
@@ -271,9 +286,9 @@ export function MyProfilePage() {
                 />
               </div>
             </div>
-          </Tabs.Panel>
+          ) : null}
 
-          <Tabs.Panel value="availability" pt="md">
+          {activeTab === "availability" ? (
             <div className="my-profile-shell">
               <div className="my-profile-split">
                 <div className="my-profile-split__editor">
@@ -288,40 +303,22 @@ export function MyProfilePage() {
                 </aside>
               </div>
             </div>
-          </Tabs.Panel>
+          ) : null}
 
-          <Tabs.Panel value="account" pt="md">
+          {activeTab === "account" ? (
             <div className="my-profile-shell">
               <ProfileAccountTab
-                username={profileUser?.username ?? null}
-                role={profileUser?.role ?? null}
-                joinedAt={profileUser?.created_at ?? null}
-                profileUpdatedAt={profile?.updated_at ?? null}
-                currentPassword={form.currentPassword}
-                newPassword={form.newPassword}
-                confirmNewPassword={form.confirmNewPassword}
-                currentPasswordForUsername={form.currentPasswordForUsername}
-                newUsername={form.newUsername}
-                onCurrentPasswordChange={form.setCurrentPassword}
-                onNewPasswordChange={form.setNewPassword}
-                onConfirmNewPasswordChange={form.setConfirmNewPassword}
-                onCurrentPasswordForUsernameChange={form.setCurrentPasswordForUsername}
-                onNewUsernameChange={form.setNewUsername}
-                onChangePassword={mutations.changePassword}
-                onChangeUsername={mutations.changeUsername}
                 onLogout={mutations.logout}
-                changePasswordPending={mutations.changePasswordMutation.isPending}
-                changeUsernamePending={mutations.changeUsernameMutation.isPending}
               />
             </div>
-          </Tabs.Panel>
+          ) : null}
 
           <UnsavedChangesAffix
             isDirty={form.isDirty}
             saving={mutations.saveProfileMutation.isPending}
             onSave={mutations.saveProfile}
           />
-        </Tabs>
+        </div>
       )}
     </PageLayout>
   );

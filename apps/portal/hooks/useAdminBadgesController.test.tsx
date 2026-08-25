@@ -112,8 +112,8 @@ describe("useAdminBadgesController", () => {
     expect(result.current.selectedBadgeId).toBeNull();
     expect(result.current.selectedBadge).toBeNull();
 
-    act(() => result.current.cancelEdit());
-    expect(result.current.selectedBadgeId).toBe(badge.id);
+    act(() => result.current.discardChanges());
+    await waitFor(() => expect(result.current.selectedBadgeId).toBe(badge.id));
   });
 
   /* 排序换的是顺序，不是「我在看哪一枚」。兜底只在落地那一次生效。 */
@@ -169,15 +169,39 @@ describe("useAdminBadgesController", () => {
     });
 
     await waitFor(() => expect(result.current.selectedBadge).not.toBeNull());
-    act(() => {
-      result.current.startEdit({ ...badge, description: "Original description" });
-      result.current.setForm((current) => ({ ...current, description: "" }));
-      result.current.updateBadge(badge.id);
-    });
+    act(() => result.current.setForm((current) => ({ ...current, description: "" })));
+    act(() => result.current.updateBadge(badge.id));
 
     await waitFor(() => expect(serviceMocks.updateBadge).toHaveBeenCalledWith(
       badge.id,
       expect.objectContaining({ description: null }),
     ));
+  });
+
+  it("uses one selected-badge baseline for fields and membership, clearing dirty after an exact reversion", async () => {
+    serviceMocks.fetchBadges.mockResolvedValue([badge]);
+    serviceMocks.fetchBadgeAssignments.mockResolvedValue([{ user_id: "user-1" }]);
+    const { result } = renderHook(() => useAdminBadgesController(true), {
+      wrapper: createWrapper(new QueryClient({ defaultOptions: { queries: { retry: false } } })),
+    });
+
+    await waitFor(() => expect(result.current.selectedBadgeId).toBe(badge.id));
+    await waitFor(() => expect(result.current.draftMemberIds.has("user-1")).toBe(true));
+    expect(result.current.isDirty).toBe(false);
+
+    act(() => result.current.setForm((current) => ({ ...current, name: "Veteran Prime" })));
+    expect(result.current.formDirty).toBe(true);
+    expect(result.current.isDirty).toBe(true);
+
+    act(() => result.current.setForm((current) => ({ ...current, name: badge.name })));
+    expect(result.current.isDirty).toBe(false);
+
+    act(() => result.current.toggleDraftMember("user-2"));
+    expect(result.current.membershipDirty).toBe(true);
+    expect(result.current.isDirty).toBe(true);
+
+    act(() => result.current.toggleDraftMember("user-2"));
+    expect(result.current.membershipDirty).toBe(false);
+    expect(result.current.isDirty).toBe(false);
   });
 });

@@ -2,7 +2,10 @@ import type {
   BlobReconciliationCheckpointWire,
   BlobReconciliationResponse,
 } from "@guild/shared/schemas/blob-reconciliation";
-import { Alert, Badge, Button, Group, Stack, Table, Text, Tooltip } from "@mantine/core";
+import { Alert, AlertTitle } from "@portal/components/ui/alert";
+import { Badge } from "@portal/components/ui/badge";
+import { Button } from "@portal/components/ui/button";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@portal/components/ui/tooltip";
 import { useMutation } from "@tanstack/react-query";
 import { InfoCircleIcon, PlayIcon } from "@portal/components/icons";
 import { useState } from "react";
@@ -56,47 +59,57 @@ export function AdminDataIntegrityTool() {
     <section className="admin-panel admin-integrity" aria-labelledby="admin-integrity-title">
       <div className="admin-panel__head">
         <div className="admin-panel__title">
-          <Text id="admin-integrity-title">{t("diagnostics.integrity.title")}</Text>
+          <span id="admin-integrity-title">{t("diagnostics.integrity.title")}</span>
           {/* 「为什么要一页一页扫」是这个工具最常被问的事，答案挂在标题旁边，
               省得管理员以为扫描卡住了或者自己漏点了什么。 */}
-          <Tooltip label={t("diagnostics.integrity.whyPaged")} multiline w={340}>
-            <span className="admin-integrity__hint" tabIndex={0} role="note"
-              aria-label={t("diagnostics.integrity.whyPaged")}>
+          <Tooltip>
+            <TooltipTrigger render={<span className="admin-integrity__hint" tabIndex={0} role="note"
+              aria-label={t("diagnostics.integrity.whyPaged")} />}>
               <InfoCircleIcon size={15} />
-            </span>
+            </TooltipTrigger>
+            <TooltipContent className="admin-integrity__tooltip">
+              {t("diagnostics.integrity.whyPaged")}
+            </TooltipContent>
           </Tooltip>
           {started ? (
-            <Badge color={complete ? (summary.findings > 0 ? "red" : "green") : "yellow"} variant="light">
+            <Badge
+              variant={complete && summary.findings > 0 ? "destructive" : complete ? "secondary" : "outline"}
+              data-state={complete ? (summary.findings > 0 ? "drift" : "clean") : "incomplete"}
+            >
               {complete
                 ? t(summary.findings > 0 ? "diagnostics.integrity.drift" : "diagnostics.integrity.clean")
                 : t("diagnostics.integrity.incomplete")}
             </Badge>
           ) : null}
         </div>
-        <Group gap={8}>
+        <div className="admin-integrity__actions">
           {nextCheckpoint ? (
             <Button variant="default" loading={scan.isPending} onClick={continueScan}>
               {t("diagnostics.integrity.continue")}
             </Button>
           ) : null}
           <Button
-            leftSection={<PlayIcon size={14} />}
             loading={scan.isPending}
             disabled={scan.isPending}
             onClick={begin}
           >
+            <PlayIcon size={14} data-icon="inline-start" />
             {started ? t("diagnostics.integrity.restart") : t("diagnostics.integrity.start")}
           </Button>
-        </Group>
+        </div>
       </div>
 
       <div className="admin-panel__body admin-integrity__body">
-        <Text c="dimmed" size="sm">{t("diagnostics.integrity.description")}</Text>
+        <p className="admin-integrity__description">{t("diagnostics.integrity.description")}</p>
 
-        {scan.isError ? <Alert color="red" title={t("diagnostics.integrity.error")} /> : null}
+        {scan.isError ? (
+          <Alert variant="destructive">
+            <AlertTitle>{t("diagnostics.integrity.error")}</AlertTitle>
+          </Alert>
+        ) : null}
 
         {started ? (
-        <Stack gap={10}>
+        <div className="admin-integrity__results">
           <div className="admin-stats admin-stats--inset">
             <IntegrityStat label={t("diagnostics.integrity.scanned")} value={summary.scanned} />
             <IntegrityStat label={t("diagnostics.integrity.missing")} value={summary.missing} danger={summary.missing > 0} />
@@ -106,29 +119,29 @@ export function AdminDataIntegrityTool() {
 
           {summary.samples.length > 0 ? (
             <div className="admin-integrity__table-wrap">
-              <Table className="admin-integrity__table" striped={false} highlightOnHover>
-                <Table.Thead>
-                  <Table.Tr>
-                    <Table.Th>{t("diagnostics.integrity.finding")}</Table.Th>
-                    <Table.Th>{t("diagnostics.integrity.objectKey")}</Table.Th>
-                  </Table.Tr>
-                </Table.Thead>
-                <Table.Tbody>
+              <table className="admin-integrity__table">
+                <thead>
+                  <tr>
+                    <th>{t("diagnostics.integrity.finding")}</th>
+                    <th>{t("diagnostics.integrity.objectKey")}</th>
+                  </tr>
+                </thead>
+                <tbody>
                   {summary.samples.map((finding, index) => (
-                    <Table.Tr key={`${finding.kind}-${objectKey(finding)}-${index}`}>
-                      <Table.Td>{t(`diagnostics.integrity.kind.${finding.kind}`)}</Table.Td>
-                      <Table.Td className="admin-integrity__object-key">{objectKey(finding)}</Table.Td>
-                    </Table.Tr>
+                    <tr key={`${finding.kind}-${objectKey(finding)}-${index}`}>
+                      <td>{t(`diagnostics.integrity.kind.${finding.kind}`)}</td>
+                      <td className="admin-integrity__object-key">{objectKey(finding)}</td>
+                    </tr>
                   ))}
-                </Table.Tbody>
-              </Table>
+                </tbody>
+              </table>
             </div>
           ) : (
-            <Text c="dimmed" size="sm">
+            <p className="admin-integrity__description">
               {complete ? t("diagnostics.integrity.noFindings") : t("diagnostics.integrity.noFindingsYet")}
-            </Text>
+            </p>
           )}
-        </Stack>
+        </div>
         ) : null}
       </div>
     </section>

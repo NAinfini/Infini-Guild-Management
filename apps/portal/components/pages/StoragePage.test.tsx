@@ -1,6 +1,7 @@
 import type { Storage, StorageItem } from "@guild/shared";
-import { MantineProvider } from "@mantine/core";
-import { act, render, screen, waitFor } from "@testing-library/react";
+import { act, render, screen, waitFor, within } from "@testing-library/react";
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import userEvent from "@testing-library/user-event";
 import type { ReactNode } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -26,6 +27,10 @@ const storageHooks = vi.hoisted(() => ({
   useStorageItems: vi.fn(),
 }));
 
+const routerMocks = vi.hoisted(() => ({
+  navigate: vi.fn(),
+}));
+
 const mutationMocks = vi.hoisted(() => ({
   createBatchTransaction: vi.fn(),
   createItem: vi.fn(),
@@ -43,7 +48,7 @@ vi.mock("@tanstack/react-query", () => ({
 
 vi.mock("@tanstack/react-router", () => ({
   Link: ({ to, children }: { to: string; children: ReactNode }) => <a href={to}>{children}</a>,
-  useNavigate: () => vi.fn(),
+  useNavigate: () => routerMocks.navigate,
   useSearch: () => storageState.search,
 }));
 
@@ -103,8 +108,8 @@ vi.mock("../../hooks/useStorageMutations", () => ({
 }));
 
 vi.mock("../../stores/auth", () => ({
-  useAuthStore: (selector: (state: { user: { id: string; username: string } }) => unknown) =>
-    selector({ user: { id: "user-1", username: "Member" } }),
+  useAuthStore: (selector: (state: { user: { id: string; display_name: string } }) => unknown) =>
+    selector({ user: { id: "user-1", display_name: "Member" } }),
 }));
 
 vi.mock("../feature/storage/StorageItemCard", () => ({
@@ -146,7 +151,7 @@ vi.mock("../feature/storage/StorageItemEditorModal", () => ({
       description: null;
       allow_member_deposit: boolean;
       allow_member_withdraw: boolean;
-    }) => void;
+    }, onSuccess: (item: StorageItem) => void) => void;
     onUploadImages: (itemId: string, files: File[]) => void;
   }) => opened
     ? (
@@ -162,7 +167,7 @@ vi.mock("../feature/storage/StorageItemEditorModal", () => ({
                 description: null,
                 allow_member_deposit: false,
                 allow_member_withdraw: false,
-              })}
+              }, () => {})}
             >
               editor-create
             </button>
@@ -219,7 +224,7 @@ const storages: Storage[] = [
     name: "Main vault",
     description: null,
     created_at: "2026-07-28T00:00:00.000Z",
-    categories: [],
+    categories: [{ id: "category-1", name: "Materials" }],
   },
   {
     id: "storage-2",
@@ -245,11 +250,7 @@ const item: StorageItem = {
 };
 
 function renderPage() {
-  render(
-    <MantineProvider>
-      <StoragePage />
-    </MantineProvider>,
-  );
+  render(<StoragePage />);
 }
 
 describe("StoragePage recovery and filter isolation", () => {
@@ -268,6 +269,7 @@ describe("StoragePage recovery and filter isolation", () => {
     storageState.treeRefetch.mockReset();
     storageHooks.fetchNextPage.mockReset();
     storageHooks.useStorageItems.mockReset();
+    routerMocks.navigate.mockReset();
     mutationMocks.createBatchTransaction.mockReset();
     mutationMocks.createItem.mockReset();
     mutationMocks.uploadImages.mockReset();
@@ -290,6 +292,26 @@ describe("StoragePage recovery and filter isolation", () => {
       "href",
       "/storage/manage",
     );
+  });
+
+  it("uses the shared contained workbench instead of a page-height formula", () => {
+    const source = readFileSync(
+      resolve(process.cwd(), "apps/portal/components/pages/StoragePage.tsx"),
+      "utf8",
+    );
+    const css = readFileSync(
+      resolve(process.cwd(), "apps/portal/components/pages/StoragePage.css"),
+      "utf8",
+    ).replace(/\/\*[\s\S]*?\*\//g, "");
+
+    expect(source).toContain('<PageLayout className="storage-page" workspaceMode="contained">');
+    expect(css).toMatch(
+      /\.storage-page__stack\s*\{[^}]*flex:\s*1[^}]*min-block-size:\s*0/,
+    );
+    expect(css).toMatch(
+      /\.storage-semantic-workspace\s*\{[^}]*min-block-size:\s*0[^}]*overflow:\s*clip/,
+    );
+    expect(css).not.toMatch(/\.storage-page\s*\{[^}]*100(?:d)?vh/);
   });
 
   it("shows a retryable connection error without an empty or create state on initial failure", async () => {
@@ -333,6 +355,46 @@ describe("StoragePage recovery and filter isolation", () => {
     expect(storageHooks.useStorageItems).toHaveBeenCalledWith(expect.objectContaining({
       storageId: "storage-2",
     }));
+  });
+
+  it("uses the category selected by the route search", () => {
+    storageState.storages = storages;
+    storageState.search = { storageId: "storage-1", categoryId: "category-1" };
+    renderPage();
+
+    expect(storageHooks.useStorageItems).toHaveBeenCalledWith(expect.objectContaining({
+      storageId: "storage-1",
+      categoryId: "category-1",
+    }));
+  });
+
+  it("uses the unified entity navigator instead of storage tabs and keeps selections in the URL", async () => {
+    const user = userEvent.setup();
+    storageState.storages = storages;
+
+    renderPage();
+
+    expect(screen.queryByRole("tablist")).not.toBeInTheDocument();
+    const navigator = screen.getByRole("region", { name: "field.storage" });
+    expect(within(navigator).queryByRole("combobox", { name: "field.storage" })).not.toBeInTheDocument();
+    await user.click(within(navigator).getByRole("button", { name: "Raid vault" }));
+
+    expect(routerMocks.navigate).toHaveBeenCalledWith({
+      to: "/storage",
+      search: { storageId: "storage-2" },
+      replace: true,
+      viewTransition: false,
+    });
+
+    routerMocks.navigate.mockReset();
+    await user.click(within(navigator).getByRole("button", { name: "Materials" }));
+
+    expect(routerMocks.navigate).toHaveBeenCalledWith({
+      to: "/storage",
+      search: { storageId: "storage-1", categoryId: "category-1" },
+      replace: true,
+      viewTransition: false,
+    });
   });
 
   it("keeps manual entry independent from inventory filters", async () => {

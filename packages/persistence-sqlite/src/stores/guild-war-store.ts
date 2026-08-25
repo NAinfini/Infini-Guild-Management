@@ -77,7 +77,7 @@ const MEMBER_FIELDS = {
   warId: warMembers.warId,
   teamId: warMembers.teamId,
   userId: warMembers.userId,
-  username: users.username,
+  display_name: users.display_name,
   avatarMediaId: mediaLinks.mediaId,
   roleTag: warMembers.roleTag,
   sortOrder: warMembers.sortOrder,
@@ -98,7 +98,7 @@ type MemberJoinedRow = {
   warId: string;
   teamId: string | null;
   userId: string;
-  username: string;
+  display_name: string;
   avatarMediaId: string | null;
   roleTag: string | null;
   sortOrder: number;
@@ -495,7 +495,7 @@ export class SqliteGuildWarStore implements GuildWarStore {
         CAST(json_extract(requested.value, '$.audit.actorKind') AS TEXT),
         CAST(json_extract(requested.value, '$.audit.actorId') AS TEXT),
         CASE WHEN json_extract(requested.value, '$.audit.actorKind') = 'user'
-          THEN (SELECT username FROM users
+          THEN (SELECT display_name FROM users
             WHERE id = CAST(json_extract(requested.value, '$.audit.actorId') AS TEXT))
           ELSE json_extract(requested.value, '$.audit.actorLabel') END,
         CAST(json_extract(requested.value, '$.audit.subjectType') AS TEXT),
@@ -830,7 +830,7 @@ function toMemberRecord(row: MemberJoinedRow): WarMemberRecord {
     warId: row.warId,
     teamId: row.teamId,
     userId: row.userId,
-    username: row.username,
+    display_name: row.display_name,
     avatarMediaId: row.avatarMediaId,
     roleTag: row.roleTag,
     sortOrder: row.sortOrder,

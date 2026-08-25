@@ -1,11 +1,19 @@
 import type { User } from "@guild/shared";
-import { Avatar, Button, Group, Menu, Text, UnstyledButton } from "@mantine/core";
 import { UserIcon } from "@portal/components/icons";
 import { useNavigate } from "@tanstack/react-router";
 import { useTranslation } from "react-i18next";
-import { DownOutlined, LogoutOutlined, SettingOutlined, UserOutlined } from "../../utils/icons";
 import { useAuthStore } from "../../stores/auth";
+import { DownOutlined, LogoutOutlined, SettingOutlined, UserOutlined } from "../../utils/icons";
 import { resolveMediaUrl } from "../../utils/media";
+import { Avatar, AvatarFallback, AvatarImage } from "../ui/avatar";
+import { Button } from "../ui/button";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "../ui/dropdown-menu";
 
 type UserProfileDropdownProps = {
   user: User | null;
@@ -20,56 +28,57 @@ export function UserProfileDropdown({ user, onLogout, compact = false }: UserPro
 
   if (!user) {
     return (
-      <Button size="sm" onClick={() => void navigate({ to: "/login" })}>
+      <Button size="default" onClick={() => void navigate({ to: "/login" })}>
         {t("action.login")}
       </Button>
     );
   }
 
   return (
-    <Menu width={220} position="bottom-end">
-      <Menu.Target>
-        <UnstyledButton
-          type="button"
-          className={`app-profile-trigger ${compact ? "app-profile-trigger--compact" : ""}`}
-          aria-label={`${user.username}: ${t("profile.menu.aria.open")}`}
-        >
-          <Group gap={8} wrap="nowrap" align="center">
-            <Avatar size={32} radius="xl" className="app-profile-avatar" src={profile?.avatar_media_id ? resolveMediaUrl(profile.avatar_media_id) : undefined}>
-              <UserIcon size={18} />
-            </Avatar>
-            <div className="app-profile-meta">
-              <Text fw={600} className="app-profile-name">
-                {user.username}
-              </Text>
-              {!compact ? (
-                <Text
-                  c={user.role_color ?? "dimmed"}
-                  size="xs"
-                  className="app-profile-role"
-                >
-                  {user.role_name}
-                </Text>
-              ) : null}
-            </div>
-            <DownOutlined className="app-profile-chevron" />
-          </Group>
-        </UnstyledButton>
-      </Menu.Target>
+    <DropdownMenu>
+      <DropdownMenuTrigger
+        type="button"
+        className={`app-profile-trigger inline-flex items-center gap-2 ${compact ? "app-profile-trigger--compact" : ""}`}
+        aria-label={`${user.display_name}: ${t("profile.menu.aria.open")}`}
+      >
+        <Avatar className="app-profile-avatar" aria-hidden>
+          {profile?.avatar_media_id ? (
+            <AvatarImage src={resolveMediaUrl(profile.avatar_media_id)} alt="" />
+          ) : null}
+          <AvatarFallback className="bg-transparent text-[var(--accent-on-fill)]">
+            <UserIcon size={18} />
+          </AvatarFallback>
+        </Avatar>
+        <span className="app-profile-meta">
+          <span className="app-profile-name font-semibold">{user.display_name}</span>
+          {!compact ? (
+            <span
+              className="app-profile-role text-[var(--text-muted)]"
+              style={user.role_color ? { color: user.role_color } : undefined}
+            >
+              {user.role_name}
+            </span>
+          ) : null}
+        </span>
+        <DownOutlined className="app-profile-chevron" aria-hidden />
+      </DropdownMenuTrigger>
 
-      <Menu.Dropdown>
-        <Menu.Item leftSection={<UserOutlined />} onClick={() => void navigate({ to: "/profile" })}>
+      <DropdownMenuContent align="end" className="w-[220px]">
+        <DropdownMenuItem onClick={() => void navigate({ to: "/profile" })}>
+          <UserOutlined />
           {t("profile.menu.profile")}
-        </Menu.Item>
-        <Menu.Item leftSection={<SettingOutlined />} onClick={() => void navigate({ to: "/settings" })}>
+        </DropdownMenuItem>
+        <DropdownMenuItem onClick={() => void navigate({ to: "/settings" })}>
+          <SettingOutlined />
           {t("profile.menu.settings")}
-        </Menu.Item>
-        <Menu.Divider />
-        <Menu.Item color="red" leftSection={<LogoutOutlined />} onClick={() => void onLogout()}>
+        </DropdownMenuItem>
+        <DropdownMenuSeparator />
+        <DropdownMenuItem variant="destructive" onClick={() => void onLogout()}>
+          <LogoutOutlined />
           {t("action.logout")}
-        </Menu.Item>
-      </Menu.Dropdown>
-    </Menu>
+        </DropdownMenuItem>
+      </DropdownMenuContent>
+    </DropdownMenu>
   );
 }
 

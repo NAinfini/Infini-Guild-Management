@@ -6,6 +6,7 @@ import type {
   PushMessage,
   User,
 } from "@guild/shared";
+import { pushMessageSchema } from "@guild/shared";
 import { nanoid } from "nanoid";
 import { useCallback, useEffect, useRef } from "react";
 import { apiRequest } from "../api/client";
@@ -46,7 +47,6 @@ function getLatestIso(values: Array<string | null | undefined>): string | null {
 
 export function useNotificationSync(options: UseNotificationSyncOptions = {}) {
   const enabled = options.enabled ?? true;
-  const appendPushMessage = useNotificationStore((state) => state.appendPushMessage);
   const setFeatureLatest = useNotificationStore((state) => state.setFeatureLatest);
   const setFeatureLatestBatch = useNotificationStore((state) => state.setFeatureLatestBatch);
   const setSyncing = useNotificationStore((state) => state.setSyncing);
@@ -199,7 +199,9 @@ export function useNotificationSync(options: UseNotificationSyncOptions = {}) {
 
       socket.onmessage = (event) => {
         try {
-          const message = JSON.parse(event.data) as PushMessage;
+          const parsed = pushMessageSchema.safeParse(JSON.parse(event.data));
+          if (!parsed.success) return;
+          const message = parsed.data;
 
           if (message.type === "heartbeat_ack") {
             return;
@@ -208,8 +210,6 @@ export function useNotificationSync(options: UseNotificationSyncOptions = {}) {
           if (useNotificationStore.getState().suppressed) {
             return;
           }
-
-          appendPushMessage(message);
 
           if (message.type === "announcement_published") {
             setFeatureLatest("announcements", toIsoOrNow(message.published_at));
@@ -278,7 +278,7 @@ export function useNotificationSync(options: UseNotificationSyncOptions = {}) {
       socket?.close();
       socket = null;
     };
-  }, [appendPushMessage, enabled, setFeatureLatest, setWsConnected, syncFeatureNotifications]);
+  }, [enabled, setFeatureLatest, setWsConnected, syncFeatureNotifications]);
 
   return {
     sync: syncFeatureNotifications,

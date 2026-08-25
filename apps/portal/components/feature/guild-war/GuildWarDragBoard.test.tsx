@@ -1,4 +1,3 @@
-import { MantineProvider } from "@mantine/core";
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
@@ -78,11 +77,7 @@ describe("GuildWarDragBoard", () => {
   });
 
   it("renders one direct-drag board and no totals of its own", () => {
-    render(
-      <MantineProvider>
-        <GuildWarDragBoard {...baseProps} />
-      </MantineProvider>,
-    );
+    render(<GuildWarDragBoard {...baseProps} />);
 
     expect(screen.getAllByText("board-layout")).toHaveLength(1);
 
@@ -96,15 +91,7 @@ describe("GuildWarDragBoard", () => {
 
   it("offers a next action when a selected war has no board yet", async () => {
     const onAddToPool = vi.fn();
-    render(
-      <MantineProvider>
-        <GuildWarDragBoard
-          {...baseProps}
-          dragColumns={[]}
-          onAddToPool={onAddToPool}
-        />
-      </MantineProvider>,
-    );
+    render(<GuildWarDragBoard {...baseProps} dragColumns={[]} onAddToPool={onAddToPool} />);
 
     await userEvent.click(screen.getByRole("button", { name: "active.addToPool" }));
     expect(onAddToPool).toHaveBeenCalledOnce();

@@ -25,6 +25,7 @@ BEGIN
       OR (assets.purpose = 'gallery_image' AND NEW.entity_type = 'gallery_item' AND NEW.slot = 'image')
       OR (assets.purpose = 'event_image' AND NEW.entity_type IN ('event', 'recurring_template') AND NEW.slot = 'attachment')
       OR (assets.purpose = 'announcement_image' AND NEW.entity_type = 'announcement' AND NEW.slot = 'body')
+      OR (assets.purpose = 'announcement_attachment' AND NEW.entity_type = 'announcement' AND NEW.slot = 'attachment')
       OR (assets.purpose = 'wiki_image' AND NEW.entity_type = 'wiki_article' AND NEW.slot = 'body')
       OR (assets.purpose = 'storage_image' AND NEW.entity_type = 'storage_item' AND NEW.slot = 'image')
       OR (assets.purpose = 'class_icon' AND NEW.entity_type = 'class_catalog' AND NEW.slot = 'icon')

@@ -1,5 +1,5 @@
 type MentionInput = {
-  username: string;
+  display_name: string;
 };
 
 export async function copyPlainText(value: string): Promise<void> {
@@ -23,12 +23,12 @@ export async function copyPlainText(value: string): Promise<void> {
   }
 }
 
-function mentionText(username: string): string {
-  return `@${username}`;
+function mentionText(display_name: string): string {
+  return `@${display_name}`;
 }
 
 export function buildMentionList(items: MentionInput[], teamName?: string): string {
-  const mentions = items.map((item) => mentionText(item.username));
+  const mentions = items.map((item) => mentionText(item.display_name));
   if (teamName && teamName.trim()) {
     return `${teamName.trim()}: ${mentions.join(", ")}`;
   }

@@ -1,7 +1,6 @@
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import type { GalleryItem } from "@guild/shared";
-import { MantineProvider } from "@mantine/core";
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
@@ -34,8 +33,7 @@ function renderEmptyGrid({
   onResetFilters?: () => void;
 }) {
   render(
-    <MantineProvider>
-      <GalleryGrid
+    <GalleryGrid
         rows={[]}
         isLoading={false}
         isError={false}
@@ -60,8 +58,7 @@ function renderEmptyGrid({
         resolveImageUrl={(key) => key}
         formatDateTime={(iso) => iso}
         actionDeleteLabel="action.delete"
-      />
-    </MantineProvider>,
+    />,
   );
 }
 
@@ -147,8 +144,7 @@ function renderPopulatedGrid(rows: GalleryItem[] = mixedGalleryRows) {
   const onOpenLightbox = vi.fn();
 
   render(
-    <MantineProvider>
-      <GalleryGrid
+    <GalleryGrid
         rows={rows}
         isLoading={false}
         isError={false}
@@ -173,8 +169,7 @@ function renderPopulatedGrid(rows: GalleryItem[] = mixedGalleryRows) {
         resolveImageUrl={(key) => key}
         formatDateTime={(iso) => iso}
         actionDeleteLabel="action.delete"
-      />
-    </MantineProvider>,
+    />,
   );
 
   return { onOpenLightbox };
@@ -287,8 +282,7 @@ describe("GalleryGrid item deletion", () => {
     }));
 
     render(
-      <MantineProvider>
-        <GalleryGrid
+      <GalleryGrid
           rows={galleryRows}
           isLoading={false}
           isError={false}
@@ -313,8 +307,7 @@ describe("GalleryGrid item deletion", () => {
           resolveImageUrl={(key) => key}
           formatDateTime={(iso) => iso}
           actionDeleteLabel="action.delete"
-        />
-      </MantineProvider>,
+      />,
     );
 
     const cards = screen.getAllByRole("listitem");

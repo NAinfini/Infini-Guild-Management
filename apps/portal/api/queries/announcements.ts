@@ -1,4 +1,4 @@
-import type { Announcement, PaginatedResponse } from "@guild/shared";
+import type { Announcement, AnnouncementSummary, PaginatedResponse } from "@guild/shared";
 import { LIMITS } from "@guild/shared/config/limits";
 import { apiRequest } from "../client";
 export type AnnouncementSort = "updated_desc" | "updated_asc";
@@ -11,7 +11,7 @@ export function fetchAnnouncements(params: {
   archived?: boolean;
   search?: string;
   sort?: AnnouncementSort;
-}): Promise<PaginatedResponse<Announcement>> {
+}): Promise<PaginatedResponse<AnnouncementSummary>> {
   const query = new URLSearchParams();
   query.set("page", String(params.page ?? 1));
   query.set("limit", String(params.limit ?? LIMITS.pagination.announcements));

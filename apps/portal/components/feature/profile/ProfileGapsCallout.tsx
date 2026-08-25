@@ -1,4 +1,3 @@
-import { Text } from "@mantine/core";
 import { AlertTriangleIcon } from "@portal/components/icons";
 import { useTranslation } from "react-i18next";
 import { availabilityToWindows, type MemberAvailability } from "@guild/shared";
@@ -48,11 +47,11 @@ export function ProfileGapsCallout({
   return (
     <section className="profile-gaps">
       <AlertTriangleIcon size={15} className="profile-gaps__icon" />
-      <Text size="sm">
+      <span className="profile-gaps__text">
         {t("gaps.title", {
           fields: gaps.map((gap) => t(`gaps.field.${gap}`)).join(t("gaps.separator")),
         })}
-      </Text>
+      </span>
     </section>
   );
 }

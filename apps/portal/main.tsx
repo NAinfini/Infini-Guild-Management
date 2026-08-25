@@ -1,6 +1,6 @@
 import { createRoot } from "react-dom/client";
 import { config as configureZod } from "zod";
-import { dismissSplash } from "./splash";
+import { applySplashVisualTheme, dismissSplash } from "./splash";
 import "./styles.css";
 
 configureZod({ jitless: true });
@@ -12,8 +12,15 @@ if (!rootElement) {
 
 const root = createRoot(rootElement);
 
-void import("./bootstrap")
-  .then(({ mountApp }) => mountApp(root))
+void Promise.all([
+  import("./visual/themes").then(({ ACTIVE_VISUAL_THEME }) => {
+    applySplashVisualTheme(ACTIVE_VISUAL_THEME);
+  }),
+  import("./bootstrap"),
+])
+  .then(([, { mountApp }]) => {
+    return mountApp(root);
+  })
   .catch((error) => {
     console.error("Failed to bootstrap portal app", error);
     document.documentElement.dataset.theme ||= "dark";

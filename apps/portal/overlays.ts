@@ -1,28 +1,29 @@
+import { toast } from "@portal/components/ui/toast";
+
 /** Toast status levels supported by the overlay service. */
 type ToastStatus = "info" | "success" | "warning" | "error";
 
 /** Payload accepted by the overlay toast API. */
 export interface ToastPayload {
+  id?: string;
   title: string;
   message?: string;
   status?: ToastStatus;
   autoClose?: number | boolean;
 }
 
-/** Overlay service contract. */
-export interface OverlayService {
-  toast(payload: ToastPayload): { delivered: boolean };
-}
-
-let portalOverlayService: OverlayService | null = null;
-
-export function setPortalOverlayService(service: OverlayService | null) {
-  portalOverlayService = service;
-}
-
 export function portalToast(payload: ToastPayload): boolean {
-  if (!portalOverlayService) {
-    return false;
-  }
-  return portalOverlayService.toast(payload).delivered;
+  toast.add({
+    id: payload.id,
+    title: payload.title,
+    description: payload.message,
+    type: payload.status ?? "info",
+    timeout: payload.autoClose === false
+      ? 0
+      : typeof payload.autoClose === "number"
+        ? payload.autoClose
+        : undefined,
+    priority: payload.status === "error" ? "high" : "low",
+  });
+  return true;
 }

@@ -1,5 +1,10 @@
-import { DEFAULT_FEATURE_FLAGS, DEFAULT_SITE_MEDIA_POLICY, DEFAULT_SITE_STORAGE_POLICY, type AdminSiteConfigResponse } from "@guild/shared";
-import { MantineProvider } from "@mantine/core";
+import {
+  DEFAULT_FEATURE_FLAGS,
+  DEFAULT_SITE_MEDIA_POLICY,
+  DEFAULT_SITE_OAUTH_SETTINGS,
+  DEFAULT_SITE_STORAGE_POLICY,
+  type AdminSiteConfigResponse,
+} from "@guild/shared";
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type { ComponentProps } from "react";
@@ -22,6 +27,7 @@ const siteConfig: AdminSiteConfigResponse = {
     site_logo_media_id: "logo1234567890abcdefg",
     default_site_logo_url: "/assets/default-site-logo.webp",
     features: DEFAULT_FEATURE_FLAGS,
+    oauth: DEFAULT_SITE_OAUTH_SETTINGS,
     media_policy: DEFAULT_SITE_MEDIA_POLICY,
     storage_policy: DEFAULT_SITE_STORAGE_POLICY,
     absence_policy: {
@@ -30,6 +36,12 @@ const siteConfig: AdminSiteConfigResponse = {
     },
     created_at: "2026-06-12T00:00:00.000Z",
     updated_at: "2026-06-12T00:00:00.000Z",
+  },
+  oauth_provider_status: {
+    google: "missing_credentials",
+    discord: "available",
+    kook: "available",
+    wechat: "unsupported",
   },
 };
 
@@ -46,9 +58,7 @@ function renderSiteConfig(overrides: Partial<AdminSiteConfigSectionProps> = {}) 
     ...overrides,
   };
   const renderSection = (nextProps: AdminSiteConfigSectionProps) => (
-    <MantineProvider>
-      <AdminSiteConfigSection {...nextProps} />
-    </MantineProvider>
+    <AdminSiteConfigSection {...nextProps} />
   );
   const result = render(renderSection(props));
 
@@ -68,21 +78,31 @@ function querySaveButton() {
 }
 
 describe("AdminSiteConfigSection layout", () => {
-  it("stacks the config cards in one column without a second-level nav", () => {
+  it("renders the four configuration regions without a second-level nav", () => {
     const { container } = renderSiteConfig();
 
     expect(container.querySelector(".site-config")).toBeInTheDocument();
-    expect(container.querySelectorAll(".site-config > .site-config-card")).toHaveLength(3);
+    expect(container.querySelectorAll(".site-config > .site-config-card")).toHaveLength(4);
     expect(container.querySelector(".site-config-rail")).not.toBeInTheDocument();
     expect(container.querySelectorAll('a[href^="#site-config-"]')).toHaveLength(0);
+    expect(container.querySelector("#site-config-branding")).toHaveClass("site-config-card");
+    expect(container.querySelector("#site-config-features")).toHaveClass("site-config-card");
+    expect(container.querySelector("#site-config-oauth")).toHaveClass("site-config-card");
+    expect(container.querySelector("#site-config-limits")).toHaveClass("site-config-card");
   });
 
-  it("lists every feature toggle on its own row", () => {
+  it("lists feature switches and OAuth provider cards separately", () => {
     const { container } = renderSiteConfig();
 
     const featureCount = Object.keys(DEFAULT_FEATURE_FLAGS).length;
-    expect(container.querySelectorAll(".site-config-feature-row")).toHaveLength(featureCount);
-    expect(container.querySelectorAll('.site-config-feature-row [role="switch"]')).toHaveLength(featureCount);
+    expect(container.querySelectorAll("#site-config-features .site-config-feature-row")).toHaveLength(featureCount);
+    expect(container.querySelectorAll('#site-config-features .site-config-feature-row [role="switch"]')).toHaveLength(featureCount);
+    expect(container.querySelectorAll("#site-config-oauth .site-config-provider-card")).toHaveLength(
+      Object.keys(DEFAULT_SITE_OAUTH_SETTINGS).length,
+    );
+    expect(container.querySelectorAll('#site-config-oauth .site-config-provider-card [role="switch"]')).toHaveLength(
+      Object.keys(DEFAULT_SITE_OAUTH_SETTINGS).length,
+    );
     expect(container.querySelector(".site-config-feature-grid")).not.toBeInTheDocument();
   });
 
@@ -92,6 +112,22 @@ describe("AdminSiteConfigSection layout", () => {
     expect(screen.queryByText("siteConfig.policy.featuresDescription")).not.toBeInTheDocument();
     expect(screen.queryByText("siteConfig.field.siteDescriptionDescription")).not.toBeInTheDocument();
     expect(container.querySelectorAll(".site-config-info-trigger").length).toBeGreaterThan(0);
+  });
+
+  it("keeps OAuth availability and configuration errors on each provider card", () => {
+    const { container } = renderSiteConfig();
+
+    const google = screen.getByRole("switch", { name: "siteConfig.oauth.provider.google" });
+    const discord = screen.getByRole("switch", { name: "siteConfig.oauth.provider.discord" });
+    const wechat = screen.getByRole("switch", { name: "siteConfig.oauth.provider.wechat" });
+
+    expect(google).toHaveAttribute("aria-disabled", "true");
+    expect(discord).not.toHaveAttribute("aria-disabled", "true");
+    expect(wechat).toHaveAttribute("aria-disabled", "true");
+    expect(container.querySelectorAll(".site-config-provider-card")).toHaveLength(4);
+    expect(container.querySelectorAll(".site-config-provider-error")).toHaveLength(2);
+    expect(screen.getByText("siteConfig.oauth.error.missing_credentials")).toBeInTheDocument();
+    expect(screen.getByText("siteConfig.oauth.error.unsupported")).toBeInTheDocument();
   });
 
   it("groups the logo preview and upload as one branding field", () => {
@@ -132,6 +168,7 @@ describe("AdminSiteConfigSection layout", () => {
 
     rerenderSiteConfig({
       data: {
+        ...siteConfig,
         site: {
           ...siteConfig.site,
           site_name: "Infini Guild Prime",
@@ -195,5 +232,25 @@ describe("AdminSiteConfigSection layout", () => {
       screen.getByRole("switch", { name: "siteConfig.feature.announcements" }),
     );
     expect(querySaveButton()).toBeEnabled();
+  });
+
+  it("renders dedicated announcement attachment size and count limits", () => {
+    renderSiteConfig();
+
+    expect(screen.getByLabelText("siteConfig.fileSize.announcement_attachment")).toBeInTheDocument();
+    expect(screen.getByLabelText("siteConfig.quota.announcement_attachments")).toBeInTheDocument();
+  });
+
+  it("only changes OAuth settings for providers whose runtime credentials are available", async () => {
+    const user = userEvent.setup();
+    const onSaveSite = vi.fn();
+    renderSiteConfig({ onSaveSite });
+
+    await user.click(screen.getByRole("switch", { name: "siteConfig.oauth.provider.discord" }));
+    await user.click(querySaveButton()!);
+
+    expect(onSaveSite).toHaveBeenCalledWith(expect.objectContaining({
+      oauth: expect.objectContaining({ discord: true, google: false, wechat: false }),
+    }));
   });
 });

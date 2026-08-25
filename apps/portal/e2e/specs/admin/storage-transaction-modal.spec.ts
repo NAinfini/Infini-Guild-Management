@@ -68,9 +68,9 @@ function stockValue(page: Page): Locator {
   return itemCard(page).locator(".storage-item-card__stock-value");
 }
 
-/* Mantine 的分段器把 radio 藏了起来，用户点的是 label——这里也点 label。 */
-function segment(dialog: Locator, name: string): Locator {
-  return dialog.locator("label").filter({ hasText: new RegExp(`^${name}$`) });
+/** 出入库类型是带 pressed 状态的语义按钮。 */
+function transactionTypeButton(dialog: Locator, name: string): Locator {
+  return dialog.getByRole("button", { name, exact: true });
 }
 
 async function expectPreview(dialog: Locator, before: number, after: number, delta: string) {
@@ -91,7 +91,7 @@ async function openDeposit(page: Page): Promise<Locator> {
 test("存入弹窗打开时：类型为 Intake，领取人可选，预览是 10 → 11", async ({ page }) => {
   const dialog = await openDeposit(page);
 
-  await expect(dialog.getByRole("radio", { name: "Intake", exact: true })).toBeChecked();
+  await expect(transactionTypeButton(dialog, "Intake")).toHaveAttribute("aria-pressed", "true");
   await expect(dialog.getByLabel("Quantity", { exact: true })).toHaveValue("1");
   await expect(dialog.getByLabel("Member (optional)", { exact: true })).toBeVisible();
   await expectPreview(dialog, START_STOCK, START_STOCK + 1, "+1");
@@ -101,9 +101,9 @@ test("存入弹窗打开时：类型为 Intake，领取人可选，预览是 10 
 
 test("切到 Distribute：领取人变必填，预览转为减库存，选人后才能提交", async ({ page }) => {
   const dialog = await openDeposit(page);
-  await segment(dialog, "Distribute").click();
+  await transactionTypeButton(dialog, "Distribute").click();
 
-  await expect(dialog.getByRole("radio", { name: "Distribute", exact: true })).toBeChecked();
+  await expect(transactionTypeButton(dialog, "Distribute")).toHaveAttribute("aria-pressed", "true");
   await expect(dialog.getByLabel("Member", { exact: true })).toBeVisible();
   await expect(dialog.getByLabel("Quantity", { exact: true })).toHaveValue("1");
   await expectPreview(dialog, START_STOCK, START_STOCK - 1, "-1");
@@ -117,7 +117,7 @@ test("切到 Distribute：领取人变必填，预览转为减库存，选人后
 
 test("切到 Adjust：领取人消失，数量预填当前库存，没变化时禁止提交", async ({ page }) => {
   const dialog = await openDeposit(page);
-  await segment(dialog, "Adjust").click();
+  await transactionTypeButton(dialog, "Adjust").click();
 
   await expect(dialog.getByLabel("Member (optional)", { exact: true })).toHaveCount(0);
   await expect(dialog.getByLabel("Member", { exact: true })).toHaveCount(0);
@@ -137,7 +137,7 @@ test("切到 Adjust：领取人消失，数量预填当前库存，没变化时�
 
 test("校验：出库数量超过库存会报错并禁用提交", async ({ page }) => {
   const dialog = await openDeposit(page);
-  await segment(dialog, "Distribute").click();
+  await transactionTypeButton(dialog, "Distribute").click();
   await selectOption(dialog, "Member", "member_01");
 
   await dialog.getByLabel("Quantity", { exact: true }).fill(String(START_STOCK + 1));
@@ -171,7 +171,7 @@ test("取消：填了数量也不产生任何请求，服务端库存原封不�
 
 test("Adjust 完整链路：目标库存 4 落到服务端，并留下一条 -6 的盘点流水", async ({ page, flow, api }) => {
   const dialog = await openDeposit(page);
-  await segment(dialog, "Adjust").click();
+  await transactionTypeButton(dialog, "Adjust").click();
   await dialog.getByLabel("Target stock", { exact: true }).fill("4");
 
   await flow.click(

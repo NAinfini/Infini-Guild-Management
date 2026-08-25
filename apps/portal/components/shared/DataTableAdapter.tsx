@@ -1,4 +1,3 @@
-import { Group, ScrollArea, Table, UnstyledButton } from "@mantine/core";
 import { IconChevronDown, IconChevronUp, IconSelector } from "@tabler/icons-react";
 import {
   type Row,
@@ -13,13 +12,13 @@ import {
   type MouseEvent as ReactMouseEvent,
   type ReactNode,
 } from "react";
+import "./DataTableAdapter.css";
 
 type DataTableAdapterProps<T> = {
   table: ReturnType<typeof useReactTable<T>>;
+  appearance?: "grid" | "rows";
   striped?: boolean;
-  highlightOnHover?: boolean;
-  withTableBorder?: boolean;
-  withColumnBorders?: boolean;
+  rowHover?: boolean;
   onRowClick?: (row: Row<T>, event: ReactMouseEvent<HTMLTableRowElement>) => void;
   onRowDoubleClick?: (row: Row<T>, event: ReactMouseEvent<HTMLTableRowElement>) => void;
   onRowContextMenu?: (row: Row<T>, event: ReactMouseEvent<HTMLTableRowElement>) => void;
@@ -46,10 +45,9 @@ function SortIndicator({ sorted }: { sorted: false | "asc" | "desc" }) {
 
 export function DataTableAdapter<T>({
   table,
+  appearance = "grid",
   striped = true,
-  highlightOnHover = false,
-  withTableBorder = true,
-  withColumnBorders = true,
+  rowHover = false,
   onRowClick,
   onRowDoubleClick,
   onRowContextMenu,
@@ -63,7 +61,6 @@ export function DataTableAdapter<T>({
   style,
   virtualize = false,
   maxHeight = "70vh",
-  ...rest
 }: DataTableAdapterProps<T>) {
   const rows = table.getRowModel().rows;
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -91,24 +88,22 @@ export function DataTableAdapter<T>({
       : 0;
 
   return (
-    <ScrollArea
-      viewportRef={scrollRef}
+    <div
+      ref={scrollRef}
       className={className}
-      style={style}
-      mah={virtualize ? maxHeight : undefined}
-      type="auto"
-      {...rest}
+      style={{ ...style, maxHeight: virtualize ? maxHeight : style?.maxHeight }}
+      data-slot="data-table-scroll"
     >
-      <Table
-        withTableBorder={withTableBorder}
-        withColumnBorders={withColumnBorders}
-        striped={striped}
-        highlightOnHover={highlightOnHover}
+      <table
+        className="data-table-adapter"
+        data-appearance={appearance}
+        data-striped={striped || undefined}
+        data-row-hover={rowHover || undefined}
       >
         {/* 虚拟化时表头要粘住，但底色只有样式表知道该取哪块台面，这里只标记状态。 */}
-        <Table.Thead data-sticky-header={virtualize ? "" : undefined}>
+        <thead data-sticky-header={virtualize ? "" : undefined}>
           {table.getHeaderGroups().map((headerGroup) => (
-            <Table.Tr key={headerGroup.id}>
+            <tr key={headerGroup.id}>
               {headerGroup.headers.map((header) => {
                 const canSort = header.column.getCanSort();
                 const sorted = header.column.getIsSorted();
@@ -117,7 +112,7 @@ export function DataTableAdapter<T>({
                   : flexRender(header.column.columnDef.header, header.getContext());
 
                 return (
-                  <Table.Th
+                  <th
                     key={header.id}
                     colSpan={header.colSpan}
                     /* 让样式表能按列定位（例如把数值列右对齐），不必依赖 nth-child。 */
@@ -134,25 +129,26 @@ export function DataTableAdapter<T>({
                     style={header.column.columnDef.size ? { width: header.column.columnDef.size } : undefined}
                   >
                     {canSort ? (
-                      <UnstyledButton
+                      <button
+                        type="button"
+                        className="data-table-adapter__sort"
                         onClick={header.column.getToggleSortingHandler()}
-                        fw={600}
                       >
-                        <Group component="span" gap={4} wrap="nowrap">
+                        <span className="data-table-adapter__sort-content">
                           {content}
                           <SortIndicator sorted={sorted} />
-                        </Group>
-                      </UnstyledButton>
+                        </span>
+                      </button>
                     ) : (
                       content
                     )}
-                  </Table.Th>
+                  </th>
                 );
               })}
-            </Table.Tr>
+            </tr>
           ))}
-        </Table.Thead>
-        <Table.Tbody>
+        </thead>
+        <tbody>
           {virtualize ? (
             <>
               {paddingTop > 0 && (
@@ -163,7 +159,7 @@ export function DataTableAdapter<T>({
               {virtualItems.map((virtualRow) => {
                 const row = rows[virtualRow.index]!;
                 return (
-                  <Table.Tr
+                  <tr
                     key={row.id}
                     data-index={virtualRow.index}
                     ref={virtualizer.measureElement}
@@ -181,11 +177,11 @@ export function DataTableAdapter<T>({
                     className={rowClassName?.(row)}
                   >
                     {row.getVisibleCells().map((cell) => (
-                      <Table.Td key={cell.id} data-column-id={cell.column.id}>
+                      <td key={cell.id} data-column-id={cell.column.id}>
                         {flexRender(cell.column.columnDef.cell, cell.getContext())}
-                      </Table.Td>
+                      </td>
                     ))}
-                  </Table.Tr>
+                  </tr>
                 );
               })}
               {paddingBottom > 0 && (
@@ -196,7 +192,7 @@ export function DataTableAdapter<T>({
             </>
           ) : (
             rows.map((row) => (
-              <Table.Tr
+              <tr
                 key={row.id}
                 onClick={onRowClick ? (event) => onRowClick(row, event) : undefined}
                 onDoubleClick={onRowDoubleClick ? (event) => onRowDoubleClick(row, event) : undefined}
@@ -212,15 +208,15 @@ export function DataTableAdapter<T>({
                 className={rowClassName?.(row)}
               >
                 {row.getVisibleCells().map((cell) => (
-                  <Table.Td key={cell.id} data-column-id={cell.column.id}>
+                  <td key={cell.id} data-column-id={cell.column.id}>
                     {flexRender(cell.column.columnDef.cell, cell.getContext())}
-                  </Table.Td>
+                  </td>
                 ))}
-              </Table.Tr>
+              </tr>
             ))
           )}
-        </Table.Tbody>
-      </Table>
-    </ScrollArea>
+        </tbody>
+      </table>
+    </div>
   );
 }

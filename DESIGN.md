@@ -1,6 +1,6 @@
 ---
 name: "Infini Guild Management Portal"
-description: "A bilingual, dual-theme guild operations interface using a restrained Forged Material language, Mantine foundations, and one protected high-character Roster interaction."
+description: "A bilingual, dual-theme guild operations interface using a restrained Forged Material language, shadcn/ui compositions backed by Base UI, and one protected high-character Roster interaction."
 colors:
   primary: "{colors.brand-fill}"
   surface-sunken-light: "#F1EEE7"
@@ -421,7 +421,9 @@ components:
 
 This document is the portal's visual contract. The frontmatter is a compact index; the implemented values live in `apps/portal/styles/tokens.css`, `semantic.css`, `scale.css`, and `apps/portal/providers/ThemeProvider.tsx`. If this document disagrees with those sources, the source wins and this file must be corrected in the same change.
 
-`AppShell`, `route-metadata.ts`, `SectionHeader`, and `ContentFilterToolbar` define the maintained shell, heading, and responsive-filter compositions. Any intentional foundational change updates the source, focused tests, and this document together.
+`AppShell`, `route-metadata.ts`, `admin-context-nav.ts`, `AdminContextNavigation`, `SectionHeader`, `PageSubnav`, `EntityNavigator`, and `ContentFilterToolbar` define the maintained shell, navigation, heading, entity-selection, and responsive-filter compositions. Any intentional foundational change updates the source, focused tests, and this document together.
+
+**Unified navigation contract (2026-08-22):** the semantic migration is complete. Admin uses the shell's single context-switching sidebar, stable page tasks use `PageSubnav`, dynamic records use `EntityNavigator`, and page-level collections use `ContentFilterToolbar`. Vertical Admin Tabs and page-owned query bars are obsolete and must not return as compatibility paths or supported alternatives.
 
 Normative words:
 
@@ -435,7 +437,7 @@ Normative words:
 - The portal is Chinese-first and bilingual. Long Chinese and English strings are first-class test inputs.
 - Light and dark modes ship together.
 - Public and protected routes use the same visual system. Visual affordances must not weaken permission or session enforcement.
-- Mantine is the sole foundational component library. Co-located or scoped CSS may style domain content, but may not recreate foundational component behavior.
+- Base UI is the sole headless behavior foundation. Source-owned shadcn/ui compositions under `components/ui/` provide the styled control boundary; domain CSS may style content but may not recreate keyboard, focus, overlay, selection, or form behavior.
 - Roster's existing member card, pointer response, hover treatment, and audio signature are protected product character.
 
 ### Direction: Forged Material
@@ -590,7 +592,7 @@ Domains never appear side by side — `data-domain` is singular on `<html>` — 
 - Text uses `--text-primary`, `--text-secondary`, or `--text-muted`; opacity is not a substitute for a text token.
 - Selected does not mean success. Primary does not mean personalised accent.
 - Colour literals remain confined to `styles/tokens.css`.
-- Links use `--brand-text`. Mantine's `--mantine-color-anchor` defaults to the primary ramp's *fill* step, which measures 3.92:1 on light paper and fails AA for body text. `styles.css` therefore maps it to the calibrated text step. The mapping is mode-independent because `--brand-text` already changes with `[data-theme]`, and it reaches both `Anchor` and anchors inside `TypographyStylesProvider` content.
+- Links use `--brand-text`, never the stronger interaction fill. The shared anchor rule maps directly to this calibrated text step in both themes, including rich-text content.
 
 ## Typography
 
@@ -678,8 +680,8 @@ Every page composition starts with one of four levels. A composition may skip a 
 |---|---|---|---|
 | L0 Field | `--surface-sunken` | navigation sidebar | permanent chrome |
 | L1 Workspace | `--surface-base` + ambient field | shell root, header, `PageLayout` | page content canvas |
-| L2 Plate | `--plate-fill` (the raised surface, opaque) | Mantine `Paper` or `Card` | one semantic group |
-| L3 Overlay | `--surface-overlay` | Mantine overlay primitives | temporary content above the page |
+| L2 Plate | `--plate-fill` (the raised surface, opaque) | shadcn/ui `Card` or a semantic section | one semantic group |
+| L3 Overlay | `--surface-overlay` | Base UI-backed overlay compositions | temporary content above the page |
 
 **Only L1 is lit.** The ambient field belongs to the ground; L0, L2, and L3 are opaque and do not carry it. Letting a plate inherit the field would make its material depend on its page position. Keep sunken chrome, a lit workspace, and opaque plates as distinct levels of depth; only the most distant level moves.
 
@@ -691,7 +693,7 @@ List rows are not a surface level. A row inside a Plate stays transparent, separ
 
 ### Responsive shell contract
 
-`AppShell` uses Mantine `AppShell` and owns every global offset:
+The source-owned `AppShell` uses semantic HTML, CSS Grid/Flex, and one route metadata source to own every global offset:
 
 | Metric | Target |
 |---|---:|
@@ -709,9 +711,11 @@ The shell contract:
 - No empty row or differently coloured strip may appear above the header.
 - The content area must not repeat the route title or description.
 - Page actions and filters begin in the first content action row, not the global header.
-- Secondary global actions collapse into Mantine `Menu` or `Drawer` on small screens.
+- Secondary global actions collapse into the Base UI-backed `DropdownMenu` or `Drawer` compositions on small screens.
 - Route content must not add a compensating top margin.
 - The shell owns scroll offset, safe-area padding, and mobile-navigation clearance.
+
+The shell owns exactly one navigation surface. Portal routes render `PortalNav`; Admin routes replace those destinations with `ContextNav` and expose one “return to portal” action. The two sets never render as adjacent desktop rails. Desktop rail, compact navigation, and mobile Drawer are three responsive compositions of the same route metadata and permission result, not separately maintained menus.
 
 At viewport widths up to 1023px, compact navigation replaces the desktop sidebar. The phone-specific header breakpoint remains 767px. The same route metadata drives both navigation forms.
 
@@ -749,15 +753,15 @@ Reading, Standard, and Wide are horizontally centred. Workbench keeps page paddi
 
 Templates are composition contracts, not new UI primitives:
 
-| Template | Mantine foundation | Routes |
+| Template | Composition foundation | Routes |
 |---|---|---|
-| Dashboard | `Container`, `Grid`, `Stack`, `Paper`, `Card` | Dashboard |
-| Browse | `Container`, `Stack`, responsive filters, `SimpleGrid` or list | Events, Roster, Gallery, Tools |
-| Master-detail | `Grid`, `ScrollArea`, `Drawer`, `Stack`, `Paper` | Announcements, Wiki |
-| Workbench | `AppShell.Section`, `Grid`, `ScrollArea`, `Drawer`, peer-view `Tabs` | Guild War, Storage, Admin |
-| Form workspace | `Container`, `Grid`, `Fieldset`, `Stack`, `Affix` | Profile, Settings, Storage Management |
+| Dashboard | responsive CSS Grid, semantic sections, `Card` | Dashboard |
+| Browse | responsive filters, CSS Grid or list, `ScrollArea` where bounded | Events, Roster, Gallery, Tools |
+| Master-detail | CSS Grid, bounded `ScrollArea`, responsive `Drawer` | Announcements, Wiki |
+| Workbench | shell fill chain, CSS Grid, `ScrollArea`, `Drawer`, semantic navigation below | Guild War, Storage, Admin |
+| Form workspace | centred layout, semantic `fieldset`, sticky action region | Profile, Settings, Storage Management |
 
-Login and Register use a simplified auth composition built from Mantine `Paper`, form controls, `Alert`, and `Button`.
+Login and Register use the simplified source-owned auth frame with shadcn/ui form controls, `Alert`, and `Button`.
 
 ### Filled work surfaces
 
@@ -795,7 +799,8 @@ Pages that wrap their children in a further `Stack` (to pass remaining height do
 
 - Text controls use 32px compact, 36px regular with a fine pointer, 44px regular with a coarse pointer, or 52px large. The shared hit-area token remains 44px.
 - On compact layouts, dense data transforms into labelled rows, stacked records, or focused detail overlays rather than hiding primary actions behind horizontal scrolling.
-- `ContentFilterToolbar` measures its own container: controls stay inline when space permits, move into a desktop Popover when compact, and use a bottom Drawer on phones. Search and primary information remain visible.
+- `ContentFilterToolbar` keeps search, an explicit `筛选 N` entry, an optional same-data `ViewSwitcher`, and visible actions in one stable order. Query conditions always live in one desktop Popover or mobile bottom Drawer; they do not expand into a second inline filter row on wide screens. The filter count describes hidden query conditions only, never the visible search term.
+- Settings option grids reflow from their own inline capacity with `auto-fit`; while capacity permits, option copy owns at least `12rem` before the preview and radio columns are allocated. Theme and accent choices show miniature surfaces made from the real semantic surface, border, ink, and action tokens rather than decorative colour dots.
 - Desktop and mobile may use different compositions, but must expose the same task outcome and state.
 
 ## Elevation & Depth
@@ -868,7 +873,7 @@ Add one pre-baked 128×128 monochrome noise tile at opacity 0.05 in dark mode an
 
 #### M2 — Plate
 
-The default Mantine `Paper`, `Card`, and panel treatment:
+The default shadcn/ui `Card` and domain panel treatment:
 
 ```css
 background: var(--plate-fill);
@@ -909,7 +914,7 @@ border: 1px solid var(--border-strong);
 
 #### M5 — Overlay
 
-Mantine `Modal`, `Drawer`, `Menu`, and `Popover`:
+Base UI-backed `Dialog`, `Sheet`, `Drawer`, `AlertDialog`, `DropdownMenu`, and `Popover` compositions:
 
 ```css
 background: var(--surface-overlay);
@@ -918,6 +923,8 @@ box-shadow: var(--shadow-overlay);
 ```
 
 Foundational overlays remain solid. Backdrop blur is reserved for the protected `MemberCard` treatment and the full-screen Gallery lightbox overlay.
+
+Modal compositions share two source-owned class recipes in `components/ui/overlay-material.ts`: `OVERLAY_BACKDROP_CLASS_NAME` is the flat smoked `bg-black/60` scrim with no backdrop filter, and `OVERLAY_SURFACE_CLASS_NAME` maps the popup to the opaque M5 background, border, ink, and overlay shadow. `Dialog`, `Sheet`, `Drawer`, and `AlertDialog` consume both recipes without redefining either material. The Gallery lightbox's backdrop exception enters through its explicit overlay class; its protected `12px` backdrop blur is not a generic overlay option.
 
 ### Material rules
 
@@ -962,6 +969,7 @@ Every component phase implements and reviews light and dark together.
 | `--motion-state` | 120ms | hover, focus, checked, colour |
 | `--motion-overlay` | 180ms | Modal, Popover, Menu |
 | `--motion-panel` | 240ms | Drawer, Collapse, Accordion |
+| `--motion-guild-pulse` | 32s linear | the single Dashboard guild-pulse loop; it must expose pause and stop under reduced motion |
 
 Enter easing is `cubic-bezier(.2,.8,.2,1)`; exit easing is `cubic-bezier(.4,0,1,1)`.
 
@@ -1012,7 +1020,7 @@ Column heads of a dense list are the one control exempt from the 44px floor. The
 
 ### Icons
 
-Use the existing Tabler icon set through Mantine component sections:
+Use the existing Tabler icon set through the source-owned icon and UI compositions:
 
 | Context | Size | Stroke |
 |---|---:|---:|
@@ -1032,33 +1040,54 @@ Icons do not receive decorative rounded-square containers by default. A containe
 
 ## Components
 
-### Mantine-only foundation
+### Navigation and workspace semantics
 
-Pages use Mantine directly for foundational UI:
+Choose controls by the state they own, not by how many labels fit in a row:
 
-- layout: `AppShell`, `Container`, `Stack`, `Group`, `Flex`, `Grid`, `SimpleGrid`, `Box`, `Center`, `ScrollArea`;
-- typography: `Title`, `Text`, `Anchor`, `Divider`, `Code`;
-- actions: `Button`, `ActionIcon`, `CloseButton`, `UnstyledButton`;
-- forms: `TextInput`, `Textarea`, `PasswordInput`, `NumberInput`, `Select`, `MultiSelect`, `Checkbox`, `Radio`, `Switch`, `SegmentedControl`, `Slider`, `ColorInput`, `Fieldset`;
-- navigation: `NavLink`, `Tabs`, `Breadcrumbs`, `Pagination`, `Stepper`;
-- overlays: `Modal`, `Drawer`, `Menu`, `Popover`, `Tooltip`, `HoverCard`;
-- surfaces: `Paper`, `Card`, `Accordion`, `Collapse`, `Spoiler`;
-- data and state: `Table`, `Badge`, `Avatar`, `Indicator`, `Progress`, `RingProgress`, `Timeline`, `Alert`, `Notification`, `Skeleton`, `Loader`, `LoadingOverlay`.
+| Intent | Contract | State owner | Examples |
+|---|---|---|---|
+| move between product areas | `PortalNav` | route path | Dashboard, Roster, Events, Gallery |
+| move within a complex product context | `ContextNav` | route path | Admin people, configuration, operations, governance |
+| move between two to five stable page tasks | `PageSubnav` | child route or explicit URL state | Profile sections; Guild War active, history, analytics; Events and recurring templates |
+| change presentation of one result set | `ViewSwitcher` backed by the shared Toggle Group composition | query or local display state | cards/calendar, table/chart, analytics modes |
+| select a dynamic record or hierarchy | `EntityNavigator` | entity ID in the route or query | storage/category, class/tag, notice, article |
+| scan and edit a selected record | `MasterDetailWorkspace` | selected record ID | classes, badges, important notices, Wiki |
+| switch one temporary panel inside a bounded flow | Base UI-backed `Tabs` | component state | Gallery add-media image/video input |
 
-Mantine Styles API, component `.extend()`, theme CSS variables, co-located CSS, and CSS Modules are the supported styling paths. CSS may style content inside a domain component; it may not reimplement keyboard, focus, overlay, menu, selection, or form behavior.
+`PageSubnav` is navigation: it is deep-linkable, preserves browser history, and uses underline/default presentation. `ViewSwitcher` is not navigation and never contains creation, deletion, export, permission, or entity-selection actions. `EntityNavigator` may become a Select or Drawer on narrow screens, but its desktop and mobile forms read from one entity source.
 
-Foundational controls use Mantine directly. Parallel button, menu, and style-only surface wrappers are not permitted. A local component is justified only when it owns domain behavior, accessibility semantics, or a proven shared composition such as `SectionHeader` or `ContentFilterToolbar`.
+`ContentFilterToolbar` is the only page-level collection query bar. Its final slots are `search`, `filters`, optional `view`, optional `actions`, and optional read-only `summary`. The component owns arrangement, Popover/Drawer behavior, focus return, and filtering count. Pages continue to own query values, URL synchronization, permissions, results, and mutations. Selection-only operations use a contextual selection action region after selection; they do not enter `filters`.
+
+Do not preserve old and new navigation or toolbar structures in parallel. A migration removes the replaced Tabs, SegmentedControl, page toolbar CSS, and responsive branch in the same batch.
+
+### Base UI and shadcn/ui foundation
+
+Pages consume source-owned compositions from `components/ui/`; those compositions use Base UI primitives wherever an interaction needs headless behavior:
+
+- layout: semantic HTML plus CSS Grid/Flex, with the shared `ScrollArea` for bounded scrolling;
+- typography: native headings, text, anchors, dividers, and code styled by semantic tokens;
+- actions: `Button` and icon-sized `Button` variants;
+- forms: `Input`, `Textarea`, `PasswordInput`, `NumberField`, `Select`, `Combobox`, `Checkbox`, `RadioGroup`, `Switch`, `ToggleGroup`, `Slider`, and semantic `fieldset`;
+- navigation: route links, Base UI-backed `Tabs`, `Breadcrumb`, and `Pagination`;
+- overlays: `Dialog`, `Drawer`, `DropdownMenu`, `Popover`, `Tooltip`, and `HoverCard`;
+- surfaces and state: `Card`, `Accordion`, `Collapsible`, `Table`, `Badge`, `Avatar`, `Progress`, `Alert`, `Toast`, and `Skeleton`.
+
+Tailwind utilities define shared primitive composition; semantic custom properties and co-located domain CSS define product material and page layout. Domain CSS may not reimplement keyboard, focus, overlay, menu, selection, or form behavior.
+
+Foundational controls use the existing `components/ui/` composition directly. Parallel button, menu, dialog, or style-only surface implementations are not permitted. A domain component is justified only when it owns domain behavior, accessibility semantics, or a proven shared composition such as `SectionHeader` or `ContentFilterToolbar`.
 
 ### Component choice rules
 
 | Need | Use | Do not use |
 |---|---|---|
 | routine text action | `Button` | custom depth button |
-| icon-only action | `ActionIcon` with accessible name | bare clickable icon |
+| icon-only action | icon-sized `Button` with accessible name | bare clickable icon |
 | low-frequency action list | `Menu` | permanent row of secondary buttons |
 | binary preference | `Switch` | two-option Tabs |
-| one choice from two to four compact values | `SegmentedControl` | pill Tabs |
-| two to five peer workspaces | `Tabs` with underline | navigation chips |
+| same-data view from two to four compact values | `ViewSwitcher` with `SegmentedControl` | page navigation or filter Tabs |
+| two to five stable page tasks | `PageSubnav` with route state and underline presentation | local component state or navigation chips |
+| one temporary bounded panel | `Tabs` with underline | route navigation or a page-wide mode system |
+| dynamic entity or hierarchy | `EntityNavigator` using list, `NavLink`, `Select`, or `Drawer` | generated Tabs or horizontal scrolling chips |
 | larger route group | `NavLink`, sidebar, Drawer, or Select | horizontally scrolling Tabs |
 | temporary supporting detail | `Popover` or `HoverCard` | modal |
 | task requiring focus or confirmation | `Modal` or `Drawer` | Popover |
@@ -1080,11 +1109,11 @@ Every foundational component implements every applicable state. Hover may never 
 | Select, MultiSelect, Combobox | same field treatment as inputs | option row uses neutral hover; selected row uses brand tint and check | input and option focus both visible | disabled reason; empty and load errors appear inside dropdown |
 | Checkbox, Radio, Switch | neutral track or border | stronger neutral edge | two-ring focus around the control | selected uses brand; disabled label remains legible |
 | `SegmentedControl` | neutral M4 track | hover changes neutral surface | one visible group focus plus item keyboard state | selected item uses raised surface and brand text |
-| `Tabs` | Mantine default/underline variant | text and underline strengthen | focus on each tab | active uses 2px brand underline; disabled stays readable; no pill background |
+| `Tabs` / `PageSubnav` | Base UI-backed underline presentation | text and underline strengthen | focus on each item; arrow keys for true Tabs | active uses 2px brand underline; disabled stays readable; no pill background |
 | `NavLink` | flat neutral row | neutral tint | two-ring focus | active has 3px indicator plus restrained tint; collapsed mode supplies Tooltip |
-| Vertical nav rail (`Tabs` in `orientation="vertical"`) | flat transparent row | neutral surface tint | two-ring focus | selected raises to `--surface-raised` with `inset 3px 0 0 var(--brand-fill)` and `--edge-top`; brand appears only as that rule and the icon tint, never as a filled row background |
+| `PortalNav` / `ContextNav` rail | flat transparent `NavLink` row | neutral surface tint | two-ring focus | selected uses a 3px brand indicator and restrained tint; the rail never becomes a second adjacent sidebar |
 | `Paper` / `Card` | M2 Plate | no hover unless interactive | interactive card gets focus ring | interactive hover changes border/surface only; no generic lift, glow, or scale |
-| `Menu`, `Popover`, `Tooltip` | M5 Overlay | item uses flat neutral tint | Mantine roving focus remains visible | destructive item uses danger icon and label; unavailable item includes reason |
+| `DropdownMenu`, `Popover`, `Tooltip` | M5 Overlay | item uses flat neutral tint | Base UI roving focus remains visible | destructive item uses danger icon and label; unavailable item includes reason |
 | `Modal` / `Drawer` | M5 Overlay, labelled title, trapped focus | not applicable | initial and return focus are explicit | async submit locks duplicate action but keeps cancel rules clear |
 | `Table` | workspace or Plate, value-axis hierarchy | optional neutral row tint | row action focus visible | selected row uses brand tint plus indicator; failure never becomes an empty table |
 | `Badge` | semantic text plus low-alpha tint | no hover unless interactive | interactive Badge follows control focus | status always includes text or icon |
@@ -1102,13 +1131,13 @@ It must remain visible on Plate, Recess, and Overlay surfaces in both themes.
 
 ### Page-state contract
 
-- **Loading:** structural Mantine `Skeleton` blocks match the final layout. Do not use a full-page centred spinner. Skeletons use the recess treatment without shimmer.
+- **Loading:** structural `Skeleton` blocks match the final layout. Do not use a full-page centred spinner. Skeletons use the recess treatment without shimmer.
 - **Empty:** one restrained icon, one-line reason, and exactly one next action. Never ship a dead end that only says “no data”.
 - **Error:** preserve page structure. A failed request must never render as a real zero or empty collection. Two shapes, chosen by what the failure costs the user:
   - *The content cannot render at all.* Use the empty-state block in its error status — icon, reason, and exactly one action, which is retry. It occupies the space the content would have, so it must offer the way out; telling the user to reload the page is not one, because a reload discards their filters, selection, and scroll position. The retry action is a required prop, not an optional one, so a call site cannot silently omit it.
   - *The content still renders and the message only qualifies it.* Use an `Alert`. It carries no retry when the recovery control is already on screen, and none is possible when the failure is a permission denial rather than a transport failure.
 - **Disabled:** explain why through Tooltip or adjacent text.
-- **Destructive confirmation:** use Mantine `Modal`; cancel takes initial focus; the danger action is visually separated from routine save actions.
+- **Destructive confirmation:** use the Base UI-backed `Dialog`; cancel takes initial focus; the danger action is visually separated from routine save actions.
 - **Success:** use a bounded notification or inline confirmation. Do not replace content with a celebratory state.
 
 ### Roster protected signature
@@ -1132,7 +1161,7 @@ It has to be its own layer rather than an animated `box-shadow`, and for the sam
 
 Light mode keeps its "soft coloured drop shadow, no halo" rule without a second implementation. The same rotating layer is re-inset so its top edge sits *inside* the card by 10px: the card covers the upper arc, and only the lower fringe shows. What reads as a ring on a dark ground reads as a coloured shadow on paper, and the hue of that fringe still travels as the layer turns.
 
-The audio is enhancement only and never the sole carrier of state. A global user preference must be able to mute it. Refactoring may change data plumbing or Mantine primitives around the card, but must not flatten, restyle, or silently remove this signature interaction. Before-and-after visual, pointer, keyboard, touch, audio, and reduced-motion checks are required.
+The audio is enhancement only and never the sole carrier of state. A global user preference must be able to mute it. Refactoring may change data plumbing or shared primitives around the card, but must not flatten, restyle, or silently remove this signature interaction. Before-and-after visual, pointer, keyboard, touch, audio, and reduced-motion checks are required.
 
 ### Data visualisation
 
@@ -1170,7 +1199,7 @@ Unreadable input renders as `EMPTY_TIME_TEXT`, never `Invalid Date` and never a 
 - Start with the route task, then choose a page template and width mode.
 - Use one route title in the shell header and begin content with the first actionable or informative element.
 - Choose the lowest surface level that communicates the grouping.
-- Use Mantine behavior first, then apply shared tokens through the theme or Styles API.
+- Use Base UI behavior through the existing shadcn/ui composition first, then apply shared semantic tokens.
 - Keep action, personalisation, domain, and status colour semantics separate.
 - Design populated, loading, empty, error, disabled, and permission states together.
 - Review desktop and mobile, Chinese and English, light and dark in the same phase.
@@ -1181,7 +1210,7 @@ Unreadable input renders as `EMPTY_TIME_TEXT`, never `Invalid Date` and never a 
 
 1. Do not use glow, blur, dispersion, 3D tilt, or specular layers outside `MemberCard.css`; only the full-screen Gallery lightbox may additionally use its guarded backdrop blur, and only `styles/semantic.css` and `styles.css` may hold a radial gradient.
 2. Do not put gradients on buttons, inputs, selects, switches, tabs, or menu items.
-3. Do not use gradient text or gradient borders. Looping background motion exists in exactly three places — the app field's two drifting glows (M1), the Roster card's rotating dispersion halo (*Roster protected signature*), and the authentication-only Lightfall field. Lightfall is capped at 1.25 device pixels per CSS pixel and three streak layers; its canvas opacity is capped at 0.34 in light mode and 0.64 in dark mode, it sits behind an opaque form card and semantic veil, pauses while the document is hidden, and renders only a static frame under `prefers-reduced-motion`. Adding another looping field requires the same stated contrast/performance bound, guard test, and reduced-motion stop.
+3. Do not use gradient text or gradient borders. Looping background motion exists in exactly two places — the app field's two drifting glows (M1) and the Roster card's rotating dispersion halo (*Roster protected signature*). Adding another looping field requires a stated contrast/performance bound, guard test, and reduced-motion stop.
 4. Do not define generic shadows outside `--edge-top` and `--shadow-overlay`.
 5. Do not define a general radius outside the three shape tokens.
 6. Do not use spacing outside the seven-step scale, and do not type a page-level block gap as a number instead of `--page-rhythm`.
@@ -1196,7 +1225,7 @@ Unreadable input renders as `EMPTY_TIME_TEXT`, never `Invalid Date` and never a 
 15. Do not nest surfaces purely to create another background.
 16. Do not repeat title or description between shell and page content.
 17. Do not use horizontally scrolling pill-tab strips.
-18. Do not create a foundational control wrapper when Mantine already owns the behavior.
+18. Do not create a parallel foundational control when Base UI or an existing `components/ui/` composition already owns the behavior.
 19. Do not hide a failed request behind a zero, empty collection, or logged-out state.
 20. Do not remove or dilute Roster's protected interaction during architecture cleanup.
 
@@ -1205,7 +1234,7 @@ Unreadable input renders as `EMPTY_TIME_TEXT`, never `Invalid Date` and never a 
 For every page or component batch:
 
 1. Identify the user task, route template, width mode, and responsive transformation.
-2. Select a direct Mantine primitive. If none fits, prove that the need is domain behavior rather than styling preference.
+2. Select an existing shadcn/ui composition backed by Base UI. If none fits, prove that the need is domain behavior rather than styling preference.
 3. Select one surface level and tokens from this document.
 4. Specify default, hover, active, focus, disabled, loading, empty, and error behavior before styling.
 5. Implement dark and light together.
@@ -1222,7 +1251,6 @@ For every page or component batch:
 | A2 | exactly two generic elevation tokens and three general radius tokens | token test |
 | A3 | effects stay inside `MemberCard.css`, with only the guarded Gallery lightbox backdrop blur exception | architecture guard |
 | A3b | `radial-gradient` appears in exactly the two named owner files (`styles/semantic.css`, `styles.css`), and each of them still contains one | architecture guard |
-| A3c | auth Lightfall remains auth-only, decorative, non-interactive, capped at DPR 1.25 / three streak layers / opacity 0.34 light and 0.64 dark, pauses while hidden, and stops looping under reduced motion | auth source and token guard |
 | A4 | no gradient in a foundational control selector | grep guard |
 | A5 | `var(--accent-` appears only in allowlisted files; quantity surfaces reach the accent through `--meter-*` / `--series-accent` | token guard |
 | A6 | every surface gradient uses 160deg | grep guard |
@@ -1232,8 +1260,10 @@ For every page or component batch:
 | A10 | focus ring is visible on every interactive primitive in both themes | a11y and visual test |
 | A11 | text and controls pass WCAG 2.2 AA across theme × accent | contrast test |
 | A12 | LCP at most 2.5s and CLS at most 0.1 after font load | production measurement |
-| A13 | foundational behavior imports from Mantine rather than a parallel UI library | dependency and import audit |
+| A13 | foundational interactive behavior comes from Base UI through the shared shadcn/ui boundary, with no legacy UI dependency or parallel primitive | dependency and import audit |
 | A14 | Tabs use underline/default presentation and never global pills | theme and component test |
+| A14b | `PageSubnav`, `ViewSwitcher`, entity selection, filters, and actions are not substituted for one another; every route uses the semantic matrix above | route and component source tests |
+| A14c | `ContentFilterToolbar` exposes only its final semantic slots; hidden filters use one desktop Popover or mobile Drawer and page-owned query bars do not reappear | focused component and boundary tests |
 | A15 | shell owns one header-to-content gap; pages add none | layout test |
 | A15b | every page-level block gap resolves through `--page-rhythm`; no page passes a literal `Stack gap` at that level | architecture guard |
 | A21 | the root grain sits at 0.05 dark / 0.035 light | architecture guard |
@@ -1242,7 +1272,7 @@ For every page or component batch:
 | A24 | the light and dark blocks of `semantic.css` declare exactly the same token names | token test |
 | A25 | the four fixed series slots are mutually distinct in both modes, and every series hue is drawn from the accent set at that mode's step | token test |
 | A26 | `--meter-fill` clears 3:1 against `--meter-track` for all four accents in both modes | contrast test |
-| A27 | `--mantine-color-anchor` is bridged to `--brand-text` from a selector that outranks Mantine's own | token test |
+| A27 | shared anchors and rich-text links resolve to `--brand-text`, never the stronger interaction fill | token test |
 | A28 | on a 21×21 sample of the lit `--surface-base`, `--text-muted` clears 4.5:1 at every point, for all nine domains with their companions and all four accents, in both modes | contrast test |
 | A29 | tinted surfaces (`--brand-tint`, `--domain-tint`) carry `--text-secondary`, which clears 4.5:1; `--text-muted` is left with under 0.5 of margin there, which is why it is banned | contrast test |
 | A30 | `--brand-on-tint` clears 4.5:1 on both `--brand-tint` and `--surface-raised`, in both modes | contrast test |
@@ -1259,6 +1289,7 @@ For every page or component batch:
 | A36 | the ambient stays on the ground: only `semantic.css` composes the `--ambient-layer-*` gradients, only it and `AppShell.css` name `--ambient-field`, `--plate-fill` resolves to the bare raised surface, and no `--plate-glow` comes back | boundary test |
 | A38 | every route `domain` has a `[data-domain]` block and a companion, and the field leaves no dead flat corner — every one of the 441 sample points differs from the clean ground | token test, route metadata test |
 | A37 | no portal module outside `utils/datetime.ts` reaches for `getTimezoneOffset`, `toISOString().slice(`, `toLocaleDateString`, `toLocaleTimeString`, or `Intl.DateTimeFormat`; a calendar date renders the day it was written on in every timezone | boundary test, unit test |
+| A39 | Portal and Admin contexts render one navigation surface from one permission-filtered route source; no desktop composition contains adjacent global and Admin rails | shell accessibility and route tests |
 
 A18 and A19 are scoped to where the convergence has actually landed. Widening either to the whole portal is a migration, not a re-reading of the check — see Known risks.
 
@@ -1278,7 +1309,7 @@ pnpm test -- apps/portal/styles/theme-tokens.test.ts \
 
 Add `pnpm typecheck` and `pnpm build` when implementation code changes. Use `pnpm release:check` only for a release candidate. Review representative phone, tablet, desktop, and zoomed layouts in both themes and languages; include keyboard, coarse pointer, and reduced-motion behavior when affected.
 
-**Checking a theme in a live browser means loading the page in that theme.** Setting `data-theme` and `data-mantine-color-scheme` from the console does move the token layer, but Mantine's component rules sit behind `:where([data-mantine-color-scheme='…'])` and can keep their already-computed values for a subtree — a `SegmentedControl` measured this way reported a black active label on a dark indicator that the same page never shows on a real load. Switch the theme through the app, then reload, and audit that one theme per pass. The token layer itself is safe to sweep in place, because `[data-theme]` custom properties do re-resolve; that is how the accent × theme numbers in this document were measured.
+**Checking a theme in a live browser means loading the page in that theme.** Switch the theme through the app, reload, and audit one theme per pass so component state, system colour scheme, charts, and media all initialize from the same mode. The token layer itself is safe to sweep in place because `[data-theme]` custom properties re-resolve; that is how the accent × theme numbers in this document were measured.
 
 ### Known risks
 
@@ -1287,5 +1318,5 @@ Add `pnpm typecheck` and `pnpm build` when implementation code changes. Use `pnp
 3. The display family has no CJK benefit; without the wider size hierarchy, typography work helps English only.
 4. Fixed action teal and user-selectable personal accents have distinct semantics; validation must ensure routine action states never inherit the personal accent.
 5. Root grain may cost paint time on large screens. If measurement shows a regression, remove grain before weakening the structural surface ladder.
-6. Style-only wrappers can bypass Mantine keyboard, focus, and overlay behavior; foundational interactions must stay on Mantine primitives.
-7. The single-panel-material rule (A18) and the `:lang(en)` typography guard (A19) hold in the admin console and `SectionHeader`, not yet across the whole portal. Sixteen unguarded `text-transform: uppercase` declarations remain outside that scope — including `DashboardPage.css`, `GuildWarPage.css`, `StoragePage.css`, `ToolsPage.css`, `MyProfilePage.css`, `ProfileModal.module.css`, `AdminMemberDetailModal.module.css`, `LabelStyleModal.css`, `EventMonthView.css`, `tiptap-editor.css`, and `ThemeProvider.module.css` — and each one currently letter-spaces Chinese labels apart. Until those are migrated the two checks must be read with their stated scope, never as portal-wide guarantees.
+6. Style-only wrappers can bypass Base UI keyboard, focus, and overlay behavior; foundational interactions must stay on Base UI-backed shared compositions.
+7. English-only uppercase treatments must remain guarded by `:lang(en)` so Chinese labels never inherit Latin letter spacing.

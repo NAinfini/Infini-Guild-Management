@@ -257,18 +257,18 @@ function participantAuditStatement(
         SELECT count(*) AS user_count,
           json_group_array(json_object(
             'type', 'reference',
-            'value', json_object('id', user_id, 'label', username)
+            'value', json_object('id', user_id, 'label', display_name)
           )) AS value
         FROM (
           SELECT requested.ordinal, requested.user_id,
-            (SELECT username FROM users WHERE users.id = requested.user_id) AS username
+            (SELECT display_name FROM users WHERE users.id = requested.user_id) AS display_name
           FROM requested
           JOIN event_participants AS participant ON ${actualJoin}
           ORDER BY requested.ordinal
         )
       )
       SELECT ?, ?, ?, ?,
-        CASE WHEN ? = 'user' THEN (SELECT username FROM users WHERE id = ?) ELSE ? END,
+        CASE WHEN ? = 'user' THEN (SELECT display_name FROM users WHERE id = ?) ELSE ? END,
         ?, ?, ?, ?,
         json_set(json_set(
           json(?), '$.context[#]',
@@ -319,10 +319,10 @@ function raffleAuditStatement(
         SELECT count(*) AS winner_count,
           json_group_array(json_object(
             'type', 'reference',
-            'value', json_object('id', user_id, 'label', username)
+            'value', json_object('id', user_id, 'label', display_name)
           )) AS value
         FROM (
-          SELECT requested.ordinal, requested.user_id, users.username
+          SELECT requested.ordinal, requested.user_id, users.display_name
           FROM requested
           JOIN event_raffle_winners AS winner
             ON winner.event_id = ? AND winner.user_id = requested.user_id
@@ -331,7 +331,7 @@ function raffleAuditStatement(
         )
       )
       SELECT ?, ?, ?, ?,
-        CASE WHEN ? = 'user' THEN (SELECT username FROM users WHERE id = ?) ELSE ? END,
+        CASE WHEN ? = 'user' THEN (SELECT display_name FROM users WHERE id = ?) ELSE ? END,
         ?, ?, ?, ?,
         json_set(json_set(
           json(?), '$.context[#]',
@@ -1341,7 +1341,7 @@ export class SqliteEventsStore implements EventsStore {
             CAST(json_extract(item, '$.audit.actorKind') AS TEXT),
             CAST(json_extract(item, '$.audit.actorId') AS TEXT),
             CASE WHEN json_extract(item, '$.audit.actorKind') = 'user'
-              THEN (SELECT username FROM users WHERE id = CAST(json_extract(item, '$.audit.actorId') AS TEXT))
+              THEN (SELECT display_name FROM users WHERE id = CAST(json_extract(item, '$.audit.actorId') AS TEXT))
               ELSE json_extract(item, '$.audit.actorLabel') END,
             CAST(json_extract(item, '$.audit.subjectType') AS TEXT),
             CAST(json_extract(item, '$.audit.subjectId') AS TEXT),

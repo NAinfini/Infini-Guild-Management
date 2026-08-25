@@ -1,0 +1,121 @@
+import { DEFAULT_SITE_OAUTH_SETTINGS } from "@guild/shared";
+import { render, screen } from "@testing-library/react";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import { CompletePasswordResetPage } from "./CompletePasswordResetPage";
+import { VerifyEmailPage } from "./VerifyEmailPage";
+
+const mocks = vi.hoisted(() => ({
+  navigate: vi.fn(),
+  invalidateQueries: vi.fn(),
+  mutate: vi.fn(),
+  verificationToken: "",
+}));
+
+vi.mock("@tanstack/react-query", () => ({
+  useMutation: () => ({ mutate: mocks.mutate, isPending: false }),
+  useQueryClient: () => ({ invalidateQueries: mocks.invalidateQueries }),
+}));
+
+vi.mock("@tanstack/react-router", () => ({
+  Link: ({ to, children, ...props }: {
+    to: string;
+    children: React.ReactNode;
+    [key: string]: unknown;
+  }) => <a href={to} {...props}>{children}</a>,
+  useNavigate: () => mocks.navigate,
+}));
+
+vi.mock("react-i18next", () => ({
+  useTranslation: () => ({ t: (key: string) => key }),
+}));
+
+vi.mock("../../stores/site-config", () => ({
+  useSiteConfigStore: (selector: (state: {
+    siteName: string;
+    siteDescription: string;
+    siteLogoUrl: null;
+    oauth: typeof DEFAULT_SITE_OAUTH_SETTINGS;
+  }) => unknown) => selector({
+    siteName: "Infini",
+    siteDescription: "A guild home.",
+    siteLogoUrl: null,
+    oauth: DEFAULT_SITE_OAUTH_SETTINGS,
+  }),
+}));
+
+vi.mock("../../services/AuthService", () => ({
+  completePasswordReset: vi.fn(),
+  verifyEmail: vi.fn(),
+}));
+
+vi.mock("../../session-transition", () => ({
+  transitionSession: vi.fn(),
+}));
+
+vi.mock("../../utils/auth-navigation", () => ({
+  clearEmailVerificationToken: vi.fn(),
+  readEmailVerificationToken: () => mocks.verificationToken,
+}));
+
+vi.mock("../layout/PublicSiteHeader", () => ({
+  PublicSiteHeader: ({
+    actions,
+    showNavigation,
+  }: {
+    actions?: React.ReactNode;
+    showNavigation?: boolean;
+  }) => (
+    <header data-testid="public-site-header" data-show-navigation={String(showNavigation)}>
+      {actions}
+    </header>
+  ),
+}));
+
+vi.mock("../shared/VisualThemeArtwork", () => ({
+  VisualThemeScene: ({ className }: { className?: string }) => (
+    <div data-testid="visual-theme-scene" className={className} aria-hidden="true" />
+  ),
+}));
+
+function renderPage(page: React.ReactNode) {
+  render(page);
+}
+
+describe("auth lifecycle page frames", () => {
+  beforeEach(() => {
+    mocks.navigate.mockReset();
+    mocks.invalidateQueries.mockReset();
+    mocks.mutate.mockReset();
+    mocks.verificationToken = "";
+  });
+
+  it("places password reset inside the branded auth frame without a visitor CTA", () => {
+    renderPage(<CompletePasswordResetPage />);
+
+    expect(screen.getByRole("heading", { name: "reset.title" })).toBeInTheDocument();
+    expect(screen.getByLabelText("field.loginName")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "reset.submit" })).toBeEnabled();
+    expect(screen.queryByRole("link", { name: "button.visitorAccess" })).not.toBeInTheDocument();
+    expect(screen.getByTestId("visual-theme-scene")).toHaveClass("login-page__scene");
+    expect(screen.getByTestId("public-site-header")).toHaveAttribute("data-show-navigation", "false");
+  });
+
+  it("explains a missing verification token and prevents an invalid submission", () => {
+    renderPage(<VerifyEmailPage />);
+
+    expect(screen.getByRole("heading", { name: "verify.title" })).toBeInTheDocument();
+    expect(screen.getByRole("alert")).toHaveTextContent("account.verifyEmail.missingToken");
+    expect(screen.getByRole("button", { name: "account.verifyEmail.confirm" })).toBeDisabled();
+    expect(screen.queryByRole("link", { name: "button.visitorAccess" })).not.toBeInTheDocument();
+    expect(screen.getByTestId("visual-theme-scene")).toHaveClass("login-page__scene");
+    expect(screen.getByTestId("public-site-header")).toHaveAttribute("data-show-navigation", "false");
+  });
+
+  it("enables email verification when the navigation token exists", () => {
+    mocks.verificationToken = "verification-token";
+    renderPage(<VerifyEmailPage />);
+
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "account.verifyEmail.confirm" })).toBeEnabled();
+  });
+});

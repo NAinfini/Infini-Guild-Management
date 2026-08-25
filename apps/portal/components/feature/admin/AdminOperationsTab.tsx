@@ -1,5 +1,7 @@
-import { Alert, Skeleton, Text, Tooltip } from "@mantine/core";
 import type { AdminOperationsResponse } from "@guild/shared/schemas/admin-operations";
+import { Alert, AlertTitle } from "@portal/components/ui/alert";
+import { Skeleton } from "@portal/components/ui/skeleton";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@portal/components/ui/tooltip";
 import { useTranslation } from "react-i18next";
 import { EmptyState } from "../../shared/EmptyState";
 import { useAuthStore } from "../../../stores/auth";
@@ -79,18 +81,27 @@ export function AdminOperationsTab({
   const user = useAuthStore((state) => state.user);
 
   if (!userCanViewStatus(user)) {
-    return <Alert color="red" title={t("adminOnly")} />;
+    return (
+      <Alert variant="destructive">
+        <AlertTitle>{t("adminOnly")}</AlertTitle>
+      </Alert>
+    );
   }
 
   const renderHealthLogStatus = (value: string, labelKey: string) => {
     const service = serviceState(value);
     const state = service === "configured" ? "warn" : service;
     return (
-      <Tooltip label={value.toUpperCase()}>
-        <span className="operations-health-log__service" aria-label={`${t(labelKey)}: ${value}`} tabIndex={0}>
+      <Tooltip>
+        <TooltipTrigger render={<span
+          className="operations-health-log__service"
+          aria-label={`${t(labelKey)}: ${value}`}
+          tabIndex={0}
+        />}>
           <span className={`operations-health-log__dot operations-health-log__dot--${state}`} />
           {t(labelKey)}
-        </span>
+        </TooltipTrigger>
+        <TooltipContent>{value.toUpperCase()}</TooltipContent>
       </Tooltip>
     );
   };
@@ -102,7 +113,7 @@ export function AdminOperationsTab({
     <div className="admin-operations">
       <section className="admin-panel operations-health">
         <div className="admin-panel__head">
-          <div className="admin-panel__title"><Text>{t("operations.health.title")}</Text></div>
+          <div className="admin-panel__title"><span>{t("operations.health.title")}</span></div>
         </div>
         <AdminSystemSection
           statusLoading={statusLoading}
@@ -117,23 +128,23 @@ export function AdminOperationsTab({
         <section className="admin-panel operations-panel operations-panel--jobs">
           <div className="admin-panel__head">
             <div className="admin-panel__title">
-              <Text>{t("operations.jobs.title")}</Text>
+              <span>{t("operations.jobs.title")}</span>
               <span className="admin-count">{jobs.length}</span>
             </div>
             {operationsData ? (
-              <Text className="operations-panel__observed" c="dimmed" size="xs">
+              <span className="operations-panel__observed">
                 {t("operations.observedAt", { value: formatDateTime(operationsData.observed_at) })}
-              </Text>
+              </span>
             ) : null}
           </div>
           <div className="admin-panel__body admin-panel__body--flush admin-panel__body--scroll">
             {operationsError ? <AdminLoadError onRetry={onRetryOperations} /> : null}
             {operationsLoading && !operationsData ? (
               <div className="operations-skeleton" aria-label={t("operations.jobs.title")}>
-                <Skeleton height={36} radius={0} />
-                <Skeleton height={44} radius={0} />
-                <Skeleton height={44} radius={0} />
-                <Skeleton height={44} radius={0} />
+                <Skeleton className="operations-skeleton__head" />
+                <Skeleton className="operations-skeleton__row" />
+                <Skeleton className="operations-skeleton__row" />
+                <Skeleton className="operations-skeleton__row" />
               </div>
             ) : operationsData ? (
               <table className="operations-jobs-table" aria-label={t("operations.jobs.title")}>
@@ -160,14 +171,15 @@ export function AdminOperationsTab({
                       <tr key={job.name} className={`operations-jobs-table__row--${job.status}`}>
                         <td data-label={t("operations.jobs.column.name")}>
                           <div className="operations-job-name">
-                            <Text fw={600} size="xs">{t(`operations.jobs.name.${job.name}`)}</Text>
+                            <strong className="operations-job-name__label">{t(`operations.jobs.name.${job.name}`)}</strong>
                             {job.error_summary ? (
                               /* 摘要在格子里被省略号截断，完整文本只能靠提示给；错误可以很长，
                                  所以这一条允许换行。 */
-                              <Tooltip label={job.error_summary} multiline w={320}>
-                                <Text className="operations-job-name__error" c="red" size="xs" tabIndex={0}>
+                              <Tooltip>
+                                <TooltipTrigger render={<span className="operations-job-name__error" tabIndex={0} />}>
                                   {job.error_summary}
-                                </Text>
+                                </TooltipTrigger>
+                                <TooltipContent className="operations-tooltip">{job.error_summary}</TooltipContent>
                               </Tooltip>
                             ) : null}
                           </div>
@@ -192,19 +204,30 @@ export function AdminOperationsTab({
                           </div>
                         </td>
                         <td data-label={t("operations.jobs.column.work")}>
-                          <Tooltip label={job.backlog?.detail} disabled={!job.backlog?.detail} multiline w={320}>
+                          {job.backlog?.detail ? (
+                            <Tooltip>
+                              <TooltipTrigger render={<div className="operations-job-work" tabIndex={0} />}>
+                                <span>{t("operations.jobs.processed", { count: number(job.processed) ?? t("operations.value.unavailable") })}</span>
+                                <span>{t("operations.jobs.backlog", { count: backlogValue })}</span>
+                              </TooltipTrigger>
+                              <TooltipContent className="operations-tooltip">{job.backlog.detail}</TooltipContent>
+                            </Tooltip>
+                          ) : (
                             <div className="operations-job-work" tabIndex={job.backlog?.detail ? 0 : undefined}>
                               <span>{t("operations.jobs.processed", { count: number(job.processed) ?? t("operations.value.unavailable") })}</span>
                               <span>{t("operations.jobs.backlog", { count: backlogValue })}</span>
                             </div>
-                          </Tooltip>
+                          )}
                         </td>
                         <td data-label={t("operations.jobs.column.lease")}>
                           {job.lease.state === "held" ? (
-                            <Tooltip label={t("operations.lease.expiresAt", { at: formatDateTime(job.lease.expires_at) })}>
-                              <span className="operations-lease operations-lease--held" tabIndex={0}>
+                            <Tooltip>
+                              <TooltipTrigger render={<span className="operations-lease operations-lease--held" tabIndex={0} />}>
                                 {t("operations.lease.held")}
-                              </span>
+                              </TooltipTrigger>
+                              <TooltipContent>
+                                {t("operations.lease.expiresAt", { at: formatDateTime(job.lease.expires_at) })}
+                              </TooltipContent>
                             </Tooltip>
                           ) : (
                             <span className="operations-lease">{t("operations.lease.none")}</span>
@@ -223,11 +246,15 @@ export function AdminOperationsTab({
 
         <section className="admin-panel operations-panel operations-panel--realtime">
           <div className="admin-panel__head">
-            <div className="admin-panel__title"><Text>{t("operations.realtime.title")}</Text></div>
+            <div className="admin-panel__title"><span>{t("operations.realtime.title")}</span></div>
           </div>
           <div className="admin-panel__body admin-panel__body--scroll">
             {operationsLoading && !operationsData ? (
-              <div className="operations-skeleton"><Skeleton height={20} /><Skeleton height={20} /><Skeleton height={20} /></div>
+              <div className="operations-skeleton">
+                <Skeleton className="operations-skeleton__line" />
+                <Skeleton className="operations-skeleton__line" />
+                <Skeleton className="operations-skeleton__line" />
+              </div>
             ) : operationsData ? (
               <dl className="operations-facts">
                 <div>
@@ -263,13 +290,16 @@ export function AdminOperationsTab({
         <section className="admin-panel operations-panel operations-panel--usage">
           <div className="admin-panel__head">
             <div>
-              <div className="admin-panel__title"><Text>{t("operations.usage.title")}</Text></div>
-              <Text c="dimmed" size="xs">{t("operations.usage.managedDisclosure")}</Text>
+              <div className="admin-panel__title"><span>{t("operations.usage.title")}</span></div>
+              <p className="operations-panel__disclosure">{t("operations.usage.managedDisclosure")}</p>
             </div>
           </div>
           <div className="admin-panel__body admin-panel__body--scroll">
             {operationsLoading && !operationsData ? (
-              <div className="operations-skeleton"><Skeleton height={64} /><Skeleton height={84} /></div>
+              <div className="operations-skeleton">
+                <Skeleton className="operations-skeleton__stats" />
+                <Skeleton className="operations-skeleton__table" />
+              </div>
             ) : operationsData ? (
               <>
                 <div className="admin-stats admin-stats--3 admin-stats--inset">
@@ -330,7 +360,7 @@ export function AdminOperationsTab({
         <section className="admin-panel operations-panel operations-panel--health-log">
           <div className="admin-panel__head">
             <div className="admin-panel__title">
-              <Text>{t("status.healthLogs.title")}</Text>
+              <span>{t("status.healthLogs.title")}</span>
               <span className="admin-count">{healthLogs.length}</span>
             </div>
           </div>

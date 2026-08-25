@@ -7,7 +7,7 @@ import { MemberService } from "./member-service";
 
 const NOW = "2026-08-09T12:00:00.000Z";
 const target: MemberTarget = {
-  userId: "target", username: "Target", roleId: "member", roleLevel: 100, isActive: true,
+  userId: "target", display_name: "Target", roleId: "member", roleLevel: 100, isActive: true,
   deletedAt: null, revisionToken: "user-v1", roleRevisionToken: "role-v1", profileRevisionToken: "profile-v1",
 };
 
@@ -64,6 +64,72 @@ describe("MemberService guarded profile edits", () => {
       .rejects.toMatchObject({ code: "CONFLICT", status: 409 });
   });
 
+  it("writes a changed public display name through the profile transaction and audit", async () => {
+    const updateProfile = vi.fn().mockResolvedValue({
+      userId: target.userId,
+      power: 0,
+      classes: [],
+      titleHtml: null,
+      bio: null,
+      videoUrls: [],
+      availability: null,
+      vacationStart: null,
+      vacationEnd: null,
+      notes: null,
+      createdAt: NOW,
+      updatedAt: NOW,
+    });
+    const service = new MemberService({
+      store: {
+        getMemberTarget: vi.fn().mockResolvedValue(target),
+        updateProfile,
+      } as unknown as MembersStore,
+      media: {
+        listForMembers: vi.fn().mockResolvedValue(new Map([[target.userId, {
+          avatarMediaId: null, images: [], audioMediaId: null, audioName: null,
+        }]])),
+      } as unknown as MemberMediaPort,
+      absencePolicy: { readAbsencePolicy: async () => ({ maxSpanDays: 30, maxEntriesPerUser: 5 }) },
+    });
+
+    await service.updateProfile(context(), target.userId, { display_name: "Renamed" });
+
+    expect(updateProfile).toHaveBeenCalledWith(
+      target.userId,
+      expect.objectContaining({ displayName: "Renamed" }),
+      target,
+      [],
+      expect.objectContaining({
+        subjectLabel: "Renamed",
+        payload: expect.objectContaining({
+          changes: [{
+            field: "display_name",
+            before: { type: "text", value: "Target" },
+            after: { type: "text", value: "Renamed" },
+          }],
+        }),
+      }),
+    );
+  });
+
+  it("maps a duplicate public display name to a conflict", async () => {
+    const service = new MemberService({
+      store: {
+        getMemberTarget: vi.fn().mockResolvedValue(target),
+        updateProfile: vi.fn().mockResolvedValue("display_name_taken"),
+      } as unknown as MembersStore,
+      media: {
+        listForMembers: vi.fn().mockResolvedValue(new Map([[target.userId, {
+          avatarMediaId: null, images: [], audioMediaId: null, audioName: null,
+        }]])),
+      } as unknown as MemberMediaPort,
+      absencePolicy: { readAbsencePolicy: async () => ({ maxSpanDays: 30, maxEntriesPerUser: 5 }) },
+    });
+
+    await expect(service.updateProfile(context(), target.userId, { display_name: "Taken" }))
+      .rejects.toMatchObject({ code: "CONFLICT", status: 409 });
+  });
+
   it("rejects an absence query wider than the shared maximum before reading storage", async () => {
     const listAbsences = vi.fn();
     const service = new MemberService({
@@ -80,7 +146,7 @@ describe("MemberService guarded profile edits", () => {
   it("preserves absence dates in the deletion audit without storing its note", async () => {
     const deleteAbsence = vi.fn().mockResolvedValue(true);
     const absence = {
-      id: "absence-1", user_id: target.userId, username: target.username, role_id: "member",
+      id: "absence-1", user_id: target.userId, display_name: target.display_name, role_id: "member",
       role_name: "Member", role_color: null, role_level: 100,
       start_date: "2026-08-10", end_date: "2026-08-12", note: "private", created_at: NOW,
     };
@@ -97,7 +163,7 @@ describe("MemberService guarded profile edits", () => {
     await service.deleteAbsence(context(), target.userId, absence.id);
     const audit = deleteAbsence.mock.calls[0]![2];
     expect(audit.payload.context).toEqual([
-      { field: "subject_id", value: { type: "reference", value: { id: target.userId, label: target.username } } },
+      { field: "subject_id", value: { type: "reference", value: { id: target.userId, label: target.display_name } } },
       { field: "start_at", value: { type: "date", value: absence.start_date } },
       { field: "end_at", value: { type: "date", value: absence.end_date } },
     ]);

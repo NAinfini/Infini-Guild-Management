@@ -1,12 +1,7 @@
-import "@mantine/core/styles.css";
-import "@mantine/notifications/styles.css";
-import "@mantine/carousel/styles.css";
-import "@mantine/dropzone/styles.css";
-import "@mantine/nprogress/styles.css";
 import React, { StrictMode } from "react";
 import type { Root } from "react-dom/client";
 import { publicSiteConfigSchema } from "@guild/shared";
-import { i18nReady } from "./i18n";
+import i18n, { i18nReady } from "./i18n";
 import { ErrorBoundary } from "./components/effects/ErrorBoundary";
 import { PortalThemeProvider } from "./providers/ThemeProvider";
 import { dismissSplash } from "./splash";
@@ -27,15 +22,17 @@ async function loadSiteConfig(): Promise<void> {
     : data.default_site_logo_url;
   useSiteConfigStore.getState().setSiteConfig({
     siteName: data.site_name,
+    siteDescription: data.site_description,
     siteLogoUrl,
     mediaPolicy: data.media_policy,
+    oauth: data.oauth,
   });
   useSiteConfigStore.getState().setFeatures(data.features);
   document.title = data.site_name;
   const splashTitle = document.getElementById("splash-title");
   if (splashTitle) splashTitle.textContent = data.site_name;
-  const splashSub = document.querySelector(".splash-subtitle");
-  if (splashSub) splashSub.textContent = data.site_name;
+  const splashStatus = document.getElementById("splash-status");
+  if (splashStatus) splashStatus.textContent = i18n.t("message.loading");
   const link = document.querySelector<HTMLLinkElement>("link[rel='icon']");
   if (link) {
     link.href = siteLogoUrl;

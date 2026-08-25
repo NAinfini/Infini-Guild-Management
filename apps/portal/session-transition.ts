@@ -8,6 +8,7 @@ import { synchronizeNotificationStorage, useNotificationStore } from "./stores/n
 export type PortalSession = {
   user: User;
   profile: MemberProfile;
+  session_scope: "normal" | "password_change";
 };
 
 type SessionSignal = {
@@ -52,7 +53,7 @@ export function transitionSession(
   useGuildWarStore.getState().resetSessionState();
   useNotificationStore.getState().setIdentity(session?.user.id ?? null);
   if (session) {
-    useAuthStore.getState().setSession(session.user, session.profile);
+    useAuthStore.getState().setSession(session.user, session.profile, session.session_scope);
   } else {
     useAuthStore.getState().clearSession();
   }
@@ -115,7 +116,7 @@ export async function revalidateSessionSnapshot(
     const session = await requestSession();
     const currentUserId = useAuthStore.getState().user?.id;
     if (currentUserId === session.user.id) {
-      useAuthStore.getState().setSession(session.user, session.profile);
+      useAuthStore.getState().setSession(session.user, session.profile, session.session_scope);
     } else {
       transitionSession(queryClient, session);
     }

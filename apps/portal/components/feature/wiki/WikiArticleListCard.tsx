@@ -1,7 +1,15 @@
 import type { WikiArticle } from "@guild/shared";
-import { ActionIcon, Alert, Button, Group, HoverCard, Paper, Skeleton, Stack, Text, ThemeIcon, Tooltip } from "@mantine/core";
 import { ArchiveIcon, PencilIcon, PinIcon, PlusIcon } from "@portal/components/icons";
-import { formatDateTime } from "@portal/utils/datetime";
+import { Alert, AlertDescription } from "@portal/components/ui/alert";
+import { Button } from "@portal/components/ui/button";
+import { Card } from "@portal/components/ui/card";
+import { Skeleton } from "@portal/components/ui/skeleton";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@portal/components/ui/tooltip";
+import { formatDateTimeWithTimeZone } from "@portal/utils/datetime";
 import type { ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { EmptyState } from "../../shared/EmptyState";
@@ -29,6 +37,34 @@ type WikiArticleListCardProps = {
   onLoadMore?: () => void;
 };
 
+function ArticleStatusHint({
+  label,
+  title,
+  description,
+  children,
+  tone,
+}: {
+  label: string;
+  title: ReactNode;
+  description: ReactNode;
+  children: ReactNode;
+  tone: "brand" | "muted";
+}) {
+  return (
+    <Tooltip>
+      <TooltipTrigger
+        render={<span className={`wiki-article-status-icon wiki-article-status-icon--${tone}`} aria-label={label} />}
+      >
+        {children}
+      </TooltipTrigger>
+      <TooltipContent className="wiki-article-status-tooltip" side="top">
+        <span className="wiki-article-status-tooltip__title">{title}</span>
+        <span className="wiki-article-status-tooltip__description">{description}</span>
+      </TooltipContent>
+    </Tooltip>
+  );
+}
+
 export function WikiArticleListCard({
   title,
   canCreateArticle,
@@ -54,54 +90,78 @@ export function WikiArticleListCard({
   const { t } = useTranslation("wiki");
 
   return (
-    <Paper withBorder radius="md" p="var(--card-padding)" className="wiki-article-list-card">
-      {/* 卡头钉住、清单内滚：新建文章和编辑分类是随时要够得着的，跟着列表滚走等于没有。 */}
+    <Card className="wiki-article-list-card">
       <div className="wiki-card-body">
-        <Group justify="space-between">
-          <Text fw={600}>{title}</Text>
+        <header className="wiki-card-header">
+          <h2 className="wiki-card-title">{title}</h2>
           {canCreateArticle || canManageCategories ? (
-            <Group gap={6}>
+            <div className="wiki-card-header-actions">
               {canCreateArticle ? (
-                <Tooltip label={createLabel} withArrow>
-                  <ActionIcon size={44} onClick={onCreateArticle} aria-label={t("articleEditor.create")}>
-                    <PlusIcon size={16} />
-                  </ActionIcon>
+                <Tooltip>
+                  <TooltipTrigger
+                    render={(
+                      <Button
+                        type="button"
+                        size="icon-lg"
+                        className="wiki-header-action"
+                        onClick={onCreateArticle}
+                        aria-label={t("articleEditor.create")}
+                      />
+                    )}
+                  >
+                    <PlusIcon size={16} aria-hidden="true" />
+                  </TooltipTrigger>
+                  <TooltipContent>{createLabel}</TooltipContent>
                 </Tooltip>
               ) : null}
               {canManageCategories ? (
-                <Tooltip label={t("editor.editCategories")} withArrow>
-                  <ActionIcon size={44} variant="default" onClick={onOpenCategoryEditor} aria-label={t("editor.editCategories")}>
-                    <PencilIcon size={16} />
-                  </ActionIcon>
+                <Tooltip>
+                  <TooltipTrigger
+                    render={(
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="icon-lg"
+                        className="wiki-header-action"
+                        onClick={onOpenCategoryEditor}
+                        aria-label={t("editor.editCategories")}
+                      />
+                    )}
+                  >
+                    <PencilIcon size={16} aria-hidden="true" />
+                  </TooltipTrigger>
+                  <TooltipContent>{t("editor.editCategories")}</TooltipContent>
                 </Tooltip>
               ) : null}
-            </Group>
+            </div>
           ) : null}
-        </Group>
-        <Stack gap={10} className="wiki-card-scroll">
+        </header>
+        <div className="wiki-card-scroll wiki-article-list-scroll">
           {isLoading ? (
-            <Stack gap={8}>
+            <div className="wiki-list-skeletons" aria-busy="true">
               {Array.from({ length: 6 }).map((_, index) => (
-                <Skeleton key={index} height={12} />
+                <Skeleton key={index} className="wiki-list-skeleton" />
               ))}
-            </Stack>
+            </div>
           ) : null}
-          {isError ? <Alert color="red" title={warningMessage} /> : null}
+          {isError ? (
+            <Alert variant="destructive">
+              <AlertDescription>{warningMessage}</AlertDescription>
+            </Alert>
+          ) : null}
           {!isLoading && !isError ? (
-            <Stack gap={6}>
+            <div className="wiki-article-list">
               {articles.length === 0 ? (
                 <EmptyState
                   title={emptyTitle}
                   actions={hasActiveFilters ? (
-                    <Button onClick={onResetFilters}>{resetFiltersLabel}</Button>
+                    <Button type="button" onClick={onResetFilters}>{resetFiltersLabel}</Button>
                   ) : categoryOptions.length === 0 && canManageCategories ? (
-                    <Button onClick={onOpenCategoryEditor}>
+                    <Button type="button" onClick={onOpenCategoryEditor}>
                       {t("editor.editCategories")}
                     </Button>
                   ) : canCreateArticle && categoryOptions.length > 0 ? (
-                    <Button
-                      onClick={onCreateArticle}
-                    >
+                    <Button type="button" onClick={onCreateArticle}>
                       {createLabel}
                     </Button>
                   ) : undefined}
@@ -116,72 +176,51 @@ export function WikiArticleListCard({
                   aria-label={t("aria.openArticle", { title: item.title })}
                   aria-pressed={item.slug === selectedSlug}
                 >
-                  <Stack gap={0}>
-                    <Group gap={6}>
-                      <Text fw={600}>{item.title}</Text>
-                      {item.pinned ? (
-                        <HoverCard width={280} shadow="lg" withArrow arrowSize={10} openDelay={350} closeDelay={80} position="top">
-                          <HoverCard.Target>
-                            <ThemeIcon variant="transparent" color="portal-brand" size="sm" style={{ cursor: "default" }} data-animate-icon-trigger>
-                              <PinIcon size={14} aria-hidden />
-                            </ThemeIcon>
-                          </HoverCard.Target>
-                          <HoverCard.Dropdown p="sm" style={{ borderRadius: 10 }}>
-                            <Group gap={10} wrap="nowrap" align="flex-start">
-                              <ThemeIcon variant="light" color="portal-brand" size="lg" radius="md" style={{ flexShrink: 0, marginTop: 2 }}>
-                                <PinIcon size={16} />
-                              </ThemeIcon>
-                              <div style={{ minWidth: 0 }}>
-                                <Text size="sm" fw={700} lh={1.3} mb={4}>{t("hovercard.pinned.title")}</Text>
-                                <Text size="xs" c="dimmed" lh={1.5}>{t("hovercard.pinned.desc")}</Text>
-                              </div>
-                            </Group>
-                          </HoverCard.Dropdown>
-                        </HoverCard>
-                      ) : null}
-                      {item.archived_at ? (
-                        <HoverCard width={280} shadow="lg" withArrow arrowSize={10} openDelay={350} closeDelay={80} position="top">
-                          <HoverCard.Target>
-                            <ThemeIcon variant="transparent" color="gray" size="sm" style={{ cursor: "default" }} data-animate-icon-trigger>
-                              <ArchiveIcon size={14} aria-hidden />
-                            </ThemeIcon>
-                          </HoverCard.Target>
-                          <HoverCard.Dropdown p="sm" style={{ borderRadius: 10 }}>
-                            <Group gap={10} wrap="nowrap" align="flex-start">
-                              <ThemeIcon variant="light" color="gray" size="lg" radius="md" style={{ flexShrink: 0, marginTop: 2 }}>
-                                <ArchiveIcon size={16} />
-                              </ThemeIcon>
-                              <div style={{ minWidth: 0 }}>
-                                <Text size="sm" fw={700} lh={1.3} mb={4}>{t("hovercard.archived.title")}</Text>
-                                <Text size="xs" c="dimmed" lh={1.5}>{t("hovercard.archived.desc")}</Text>
-                              </div>
-                            </Group>
-                          </HoverCard.Dropdown>
-                        </HoverCard>
-                      ) : null}
-                    </Group>
-                    <Text c="dimmed" size="xs">
-                      {formatDateTime(item.updated_at)}
-                      {item.updated_by_username ? ` · ${item.updated_by_username}` : null}
-                    </Text>
-                  </Stack>
+                  <span className="wiki-article-item__title-row">
+                    <span className="wiki-article-item__title">{item.title}</span>
+                    {item.pinned ? (
+                      <ArticleStatusHint
+                        label={t("hovercard.pinned.title")}
+                        title={t("hovercard.pinned.title")}
+                        description={t("hovercard.pinned.desc")}
+                        tone="brand"
+                      >
+                        <PinIcon size={14} aria-hidden="true" />
+                      </ArticleStatusHint>
+                    ) : null}
+                    {item.archived_at ? (
+                      <ArticleStatusHint
+                        label={t("hovercard.archived.title")}
+                        title={t("hovercard.archived.title")}
+                        description={t("hovercard.archived.desc")}
+                        tone="muted"
+                      >
+                        <ArchiveIcon size={14} aria-hidden="true" />
+                      </ArticleStatusHint>
+                    ) : null}
+                  </span>
+                  <span className="wiki-article-item__meta">
+                    {formatDateTimeWithTimeZone(item.updated_at)}
+                    {item.updated_by_display_name ? ` · ${item.updated_by_display_name}` : null}
+                  </span>
                 </button>
               ))}
               {hasMore && onLoadMore ? (
                 <Button
-                  variant="subtle"
-                  size="xs"
+                  type="button"
+                  variant="ghost"
+                  size="sm"
                   loading={isLoadingMore}
                   onClick={onLoadMore}
-                  style={{ alignSelf: "center" }}
+                  className="wiki-load-more"
                 >
                   {t("action.loadMore")}
                 </Button>
               ) : null}
-            </Stack>
+            </div>
           ) : null}
-        </Stack>
+        </div>
       </div>
-    </Paper>
+    </Card>
   );
 }

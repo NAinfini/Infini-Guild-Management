@@ -73,7 +73,7 @@ function createHarness() {
 }
 
 function seed(database: DatabaseSync): void {
-  const insertUser = database.prepare(`INSERT INTO users (id, username, role_id, revision_token)
+  const insertUser = database.prepare(`INSERT INTO users (id, display_name, role_id, revision_token)
     VALUES (?, ?, ?, ?)`);
   insertUser.run(ADMIN_ID, "admin", "admin", "admin-revision-0001");
   insertUser.run(MEMBER_ID, "member", "member", "member-revision-0001");
@@ -690,10 +690,10 @@ function transaction(
     type: quantityDelta > 0 ? "intake" as const : "distribute" as const,
     quantity_delta: quantityDelta,
     recipient_user_id: recipientUserId,
-    recipient_username: "member",
+    recipient_display_name: "member",
     note: null,
     actor_id: actorId,
-    actor_username: "admin",
+    actor_display_name: "admin",
     created_at: NOW,
   };
 }

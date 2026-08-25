@@ -1,9 +1,9 @@
 import type { Storage, StorageItem } from "@guild/shared";
-import { MantineProvider } from "@mantine/core";
-import { fireEvent, render, screen } from "@testing-library/react";
+import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
+import type { ReactNode } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { StorageInventoryPanel } from "./StorageInventoryPanel";
 
@@ -12,18 +12,6 @@ const hookMocks = vi.hoisted(() => ({
   refetch: vi.fn(),
   useStorageItems: vi.fn(),
 }));
-
-class WideResizeObserver {
-  constructor(private readonly callback: ResizeObserverCallback) {}
-  disconnect() {}
-  unobserve() {}
-  observe() {
-    this.callback(
-      [{ contentRect: { width: 1200 } } as ResizeObserverEntry],
-      this as unknown as ResizeObserver,
-    );
-  }
-}
 
 vi.mock("react-i18next", () => ({
   useTranslation: () => ({ t: (key: string) => key }),
@@ -35,6 +23,10 @@ vi.mock("../../../hooks/useStorage", () => ({
 
 vi.mock("./StorageItemCard", () => ({
   StorageItemCard: ({ item }: { item: StorageItem }) => <div>{item.name}</div>,
+}));
+
+vi.mock("@portal/components/ui/scroll-area", () => ({
+  ScrollArea: ({ children }: { children: ReactNode }) => <div>{children}</div>,
 }));
 
 const storage: Storage = {
@@ -62,27 +54,26 @@ const item: StorageItem = {
 function renderPanel(
   overrides: Partial<React.ComponentProps<typeof StorageInventoryPanel>> = {},
 ) {
+  const { categoryId = null, ...rest } = overrides;
   render(
-    <MantineProvider>
-      <StorageInventoryPanel
-        storage={storage}
-        canManageItems={false}
-        canManageStock={false}
-        hasAnyItems
-        onStartBatch={vi.fn()}
-        onBatchQuantityChange={vi.fn()}
-        onOpenItem={vi.fn()}
-        onEditItem={vi.fn()}
-        onOpenTransaction={vi.fn()}
-        {...overrides}
-      />
-    </MantineProvider>,
+    <StorageInventoryPanel
+      storage={storage}
+      categoryId={categoryId}
+      canManageItems={false}
+      canManageStock={false}
+      hasAnyItems
+      onStartBatch={vi.fn()}
+      onBatchQuantityChange={vi.fn()}
+      onOpenItem={vi.fn()}
+      onEditItem={vi.fn()}
+      onOpenTransaction={vi.fn()}
+      {...rest}
+    />,
   );
 }
 
 describe("StorageInventoryPanel pagination", () => {
   beforeEach(() => {
-    window.ResizeObserver = WideResizeObserver as unknown as typeof ResizeObserver;
     hookMocks.fetchNextPage.mockReset();
     hookMocks.refetch.mockReset();
     hookMocks.useStorageItems.mockReset();
@@ -112,25 +103,36 @@ describe("StorageInventoryPanel pagination", () => {
     }));
   });
 
+  it("clears the inventory search from the input group affordance", async () => {
+    const user = userEvent.setup();
+    renderPanel();
+
+    const search = screen.getByRole("searchbox", { name: "filter.search" });
+    await user.type(search, "crystal");
+    await user.click(screen.getByRole("button", { name: "common:action.clear" }));
+
+    expect(search).toHaveValue("");
+  });
+
   it("sends the stock filter to the server query", async () => {
     const user = userEvent.setup();
     renderPanel();
 
-    await user.click(screen.getByRole("combobox", { name: "field.stock" }));
-    fireEvent.click(screen.getByText("filter.empty"));
+    await user.click(screen.getByRole("button", { name: "common:filter.toggle" }));
+    const filters = within(await screen.findByRole("dialog"));
+    await user.click(filters.getByRole("radio", { name: "filter.empty" }));
 
     expect(hookMocks.useStorageItems).toHaveBeenLastCalledWith(expect.objectContaining({
       stock: "empty",
     }));
   });
 
-  it("uses the category rail as inventory navigation", async () => {
-    const user = userEvent.setup();
-    renderPanel();
+  it("takes the category selected by the page-level entity navigator", () => {
+    renderPanel({ categoryId: "category-1" });
 
-    await user.click(screen.getByRole("button", { name: "Materials" }));
-
-    expect(hookMocks.useStorageItems).toHaveBeenLastCalledWith(expect.objectContaining({
+    expect(screen.queryByRole("button", { name: "Materials" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("combobox", { name: "filter.category" })).not.toBeInTheDocument();
+    expect(hookMocks.useStorageItems).toHaveBeenCalledWith(expect.objectContaining({
       categoryId: "category-1",
     }));
   });
@@ -177,19 +179,23 @@ describe("StorageInventoryPanel pagination", () => {
     expect(hookMocks.refetch).toHaveBeenCalledOnce();
   });
 
-  it("groups wide-screen inventory filters on the left and actions on the right", () => {
-    const css = readFileSync(
+  it("uses the shared toolbar layout without page-specific compact overrides", () => {
+    const storageCss = readFileSync(
       resolve(process.cwd(), "apps/portal/components/pages/StoragePage.css"),
       "utf8",
     );
+    const toolbarCss = readFileSync(
+      resolve(process.cwd(), "apps/portal/components/shared/ContentFilterToolbar.css"),
+      "utf8",
+    );
 
-    expect(css).toMatch(
-      /\.storage-command \.content-filter-toolbar__layout\[data-compact="false"\][\s\S]*?grid-template-columns:\s*minmax\(16rem,\s*26rem\)\s+auto\s+minmax\(0,\s*1fr\)/,
+    expect(toolbarCss).toMatch(/grid-template-areas:\s*"search filter view summary actions"/);
+    expect(storageCss).not.toMatch(/data-compact|content-filter-toolbar__controls/);
+    expect(storageCss).not.toMatch(/storage-category-rail|storage-command__category-mobile/);
+    expect(storageCss).toMatch(
+      /\.storage-semantic-workspace\s*\{[\s\S]*?grid-template-columns:\s*minmax\(180px,\s*220px\)\s+minmax\(0,\s*1fr\)/,
     );
-    expect(css).toMatch(
-      /\.storage-command \.content-filter-toolbar__layout\[data-compact="false"\] \.content-filter-toolbar__controls[\s\S]*?justify-content:\s*flex-start/,
-    );
-    expect(css).toMatch(
+    expect(storageCss).toMatch(
       /\.storage-command\s*\{[^}]*background:\s*var\(--storage-plate\)/,
     );
   });

@@ -10,9 +10,9 @@ import {
 const assignment = {
   badge_id: "badge-1",
   user_id: "user-1",
-  username: "Member",
+  display_name: "Member",
   assigned_by: "admin-1",
-  assigned_by_username: "Admin",
+  assigned_by_display_name: "Admin",
   assigned_at: "2026-08-09T12:00:00.000Z",
 };
 

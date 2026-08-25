@@ -6,6 +6,7 @@ import {
   DEFAULT_SITE_ANALYTICS_SETTINGS,
   DEFAULT_SITE_DESCRIPTION,
   DEFAULT_SITE_MEDIA_POLICY,
+  DEFAULT_SITE_OAUTH_SETTINGS,
   DEFAULT_SITE_STORAGE_POLICY,
   siteAbsencePolicySchema,
   siteAnalyticsSettingsSchema,
@@ -98,6 +99,9 @@ describe("site media policy", () => {
     expect(updateSiteConfigSchema.safeParse({ analytics_settings: { reference_duration_minutes: 30 } }).success).toBe(false);
     expect(updateSiteConfigSchema.safeParse({ pagination_policy: { events: 10 } }).success).toBe(false);
     expect(updateSiteConfigSchema.safeParse({ site_logo_media_id: "media1234567890abcdef" }).success).toBe(false);
+    expect(updateSiteConfigSchema.safeParse({
+      oauth: { google: true, client_secret: "must-not-cross-the-api" },
+    }).success).toBe(false);
   });
 
   it("rejects game rules in the general Site Config update contract", () => {
@@ -118,6 +122,7 @@ describe("site media policy", () => {
       site_logo_media_id: null,
       default_site_logo_url: "/logo.svg",
       features: DEFAULT_FEATURE_FLAGS,
+      oauth: DEFAULT_SITE_OAUTH_SETTINGS,
       media_policy: DEFAULT_SITE_MEDIA_POLICY,
       storage_policy: DEFAULT_SITE_STORAGE_POLICY,
       absence_policy: DEFAULT_SITE_ABSENCE_POLICY,

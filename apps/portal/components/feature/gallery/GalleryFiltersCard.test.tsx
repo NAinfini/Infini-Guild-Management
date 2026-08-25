@@ -1,5 +1,4 @@
-import { MantineProvider } from "@mantine/core";
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { GalleryFiltersCard } from "./GalleryFiltersCard";
@@ -7,25 +6,9 @@ import { GalleryFiltersCard } from "./GalleryFiltersCard";
 const responsive = vi.hoisted(() => ({ mobile: true }));
 const confirm = vi.hoisted(() => vi.fn());
 
-class MobileResizeObserver {
-  constructor(private readonly callback: ResizeObserverCallback) {}
-  disconnect() {}
-  unobserve() {}
-  observe() {
-    this.callback(
-      [{ contentRect: { width: 390 } } as ResizeObserverEntry],
-      this as unknown as ResizeObserver,
-    );
-  }
-}
-
-vi.mock("@mantine/hooks", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("@mantine/hooks")>();
-  return {
-    ...actual,
-    useMediaQuery: () => responsive.mobile,
-  };
-});
+vi.mock("@portal/hooks/useMediaQuery", () => ({
+  useMediaQuery: () => responsive.mobile,
+}));
 
 vi.mock("@portal/hooks/useConfirmDialog", () => ({
   useConfirmDialog: () => confirm,
@@ -36,6 +19,11 @@ vi.mock("react-i18next", () => ({
     t: (key: string) => key,
   }),
 }));
+
+Object.defineProperty(HTMLElement.prototype, "getAnimations", {
+  configurable: true,
+  value: () => [],
+});
 
 function renderFilters(
   overrides: Partial<React.ComponentProps<typeof GalleryFiltersCard>> = {},
@@ -64,11 +52,7 @@ function renderFilters(
     ...overrides,
   };
 
-  const result = render(
-    <MantineProvider>
-      <GalleryFiltersCard {...props} />
-    </MantineProvider>,
-  );
+  const result = render(<GalleryFiltersCard {...props} />);
 
   return { ...result, props };
 }
@@ -76,7 +60,6 @@ function renderFilters(
 describe("GalleryFiltersCard responsive filters", () => {
   beforeEach(() => {
     responsive.mobile = true;
-    window.ResizeObserver = MobileResizeObserver as unknown as typeof ResizeObserver;
     confirm.mockReset();
     confirm.mockResolvedValue(true);
   });
@@ -89,26 +72,17 @@ describe("GalleryFiltersCard responsive filters", () => {
     expect(screen.getByRole("button", { name: "Delete selected" })).toBeVisible();
     expect(screen.getByRole("button", { name: "Add media" })).toBeVisible();
     await user.click(screen.getByRole("button", { name: /common:filter\.toggle/ }));
-    const typeSelect = await screen.findByRole("combobox", {
-      name: "aria.filterByType",
-      hidden: true,
-    });
+    const filterDialog = await screen.findByRole("dialog", { name: /common:filter\.toggle/ });
+    expect(within(filterDialog).getByRole("radiogroup", { name: "aria.filterByType" })).toBeInTheDocument();
+    expect(within(filterDialog).getByRole("radio", { name: "sort.newest" })).toBeChecked();
+    expect(within(filterDialog).getByLabelText("aria.dateFrom")).toBeInTheDocument();
+    expect(within(filterDialog).getByLabelText("aria.dateTo")).toBeInTheDocument();
 
-    const choiceRow = document.querySelector(".gallery-filters__choice-row");
-    const dateRow = document.querySelector(".gallery-filters__date-row");
-    expect(choiceRow).not.toBeNull();
-    expect(dateRow).not.toBeNull();
-
-    expect(choiceRow).toContainElement(typeSelect);
-    expect(choiceRow).toContainElement(screen.getByRole("radio", { name: "sort.newest", hidden: true }));
-    expect(dateRow).toContainElement(screen.getByLabelText("aria.dateFrom"));
-    expect(dateRow).toContainElement(screen.getByLabelText("aria.dateTo"));
-
-    expect(screen.getByLabelText("aria.dateFrom")).toHaveAttribute(
+    expect(within(filterDialog).getByLabelText("aria.dateFrom")).toHaveAttribute(
       "placeholder",
       "filter.dateFromPlaceholder",
     );
-    expect(screen.getByLabelText("aria.dateTo")).toHaveAttribute(
+    expect(within(filterDialog).getByLabelText("aria.dateTo")).toHaveAttribute(
       "placeholder",
       "filter.dateToPlaceholder",
     );
@@ -122,11 +96,14 @@ describe("GalleryFiltersCard responsive filters", () => {
       target: { value: "raid" },
     });
     await user.click(screen.getByRole("button", { name: /common:filter\.toggle/ }));
-    fireEvent.change(await screen.findByLabelText("aria.dateFrom"), {
+    const filterDialog = await screen.findByRole("dialog", { name: /common:filter\.toggle/ });
+    fireEvent.change(within(filterDialog).getByLabelText("aria.dateFrom"), {
       target: { value: "2026-08-02" },
     });
-    fireEvent.click(await screen.findByRole("radio", { name: "sort.oldest", hidden: true }));
-    fireEvent.click(await screen.findByRole("button", { name: "aria.clearDates", hidden: true }));
+    fireEvent.click(within(filterDialog).getByRole("radio", { name: "sort.oldest" }));
+    fireEvent.click(within(filterDialog).getByRole("button", { name: "filter.clearDates" }));
+    await user.click(within(filterDialog).getByRole("button", { name: "action.close" }));
+    await waitFor(() => expect(screen.queryByRole("dialog", { name: /common:filter\.toggle/ })).not.toBeInTheDocument());
     fireEvent.click(screen.getByRole("button", { name: "Add media" }));
     fireEvent.click(screen.getByRole("button", { name: "Delete selected" }));
 
@@ -138,7 +115,7 @@ describe("GalleryFiltersCard responsive filters", () => {
     await waitFor(() => expect(props.onBulkDelete).toHaveBeenCalledOnce());
   });
 
-  it("does not expose a shared clear action in the compact filter panel", async () => {
+  it("uses a reset action instead of a legacy clear-all control", async () => {
     const user = userEvent.setup();
     renderFilters({
       search: "raid",
@@ -151,5 +128,7 @@ describe("GalleryFiltersCard responsive filters", () => {
       name: "common:filter.clearAll",
       hidden: true,
     })).not.toBeInTheDocument();
+    const filterDialog = await screen.findByRole("dialog", { name: /common:filter\.toggle/ });
+    expect(within(filterDialog).getByRole("button", { name: "common:filter.reset" })).toBeInTheDocument();
   });
 });

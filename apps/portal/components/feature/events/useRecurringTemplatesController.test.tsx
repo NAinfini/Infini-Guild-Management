@@ -5,9 +5,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { queryKeys } from "../../../services/EventService";
 import { useRecurringTemplatesController } from "./useRecurringTemplatesController";
 
-const notificationMocks = vi.hoisted(() => ({
-  show: vi.fn(),
-}));
+const notificationMocks = vi.hoisted(() => ({ success: vi.fn() }));
 
 const serviceMocks = vi.hoisted(() => ({
   fetchTemplatesList: vi.fn(),
@@ -24,9 +22,7 @@ vi.mock("react-i18next", () => ({
   }),
 }));
 
-vi.mock("@mantine/notifications", () => ({
-  notifications: notificationMocks,
-}));
+vi.mock("../../../utils/notifications", () => ({ notifySuccess: notificationMocks.success }));
 
 vi.mock("../../../services/EventService", async (importOriginal) => {
   const actual = await importOriginal<typeof import("../../../services/EventService")>();
@@ -78,6 +74,23 @@ describe("useRecurringTemplatesController", () => {
       expect.objectContaining({ id: "tpl-1", title: "Weekly Raid" }),
     ]);
     expect(showError).not.toHaveBeenCalled();
+  });
+
+  it("exposes collection load failures and a retry action", async () => {
+    serviceMocks.fetchTemplatesList
+      .mockRejectedValueOnce(new Error("offline"))
+      .mockResolvedValueOnce({ data: [] });
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+    });
+    const { result } = renderHook(
+      () => useRecurringTemplatesController({ showError: vi.fn() }),
+      { wrapper: createWrapper(queryClient) },
+    );
+
+    await waitFor(() => expect(result.current.error).toBe(true));
+    await act(async () => { await result.current.refetchTemplates(); });
+    await waitFor(() => expect(result.current.error).toBe(false));
   });
 
   it("runs create and lifecycle actions outside the UI component", async () => {
@@ -132,7 +145,7 @@ describe("useRecurringTemplatesController", () => {
     expect(serviceMocks.resumeTemplate).toHaveBeenCalledWith("tpl-2", expect.any(Object));
     expect(serviceMocks.deleteTemplate).toHaveBeenCalledWith("tpl-2", expect.any(Object));
     expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: queryKeys.events.templates() });
-    expect(notificationMocks.show).toHaveBeenCalled();
+    expect(notificationMocks.success).toHaveBeenCalled();
     expect(showError).not.toHaveBeenCalled();
   });
 });

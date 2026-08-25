@@ -5,7 +5,6 @@ import {
   useSensors,
   type DragEndEvent,
 } from "@dnd-kit/core";
-import { MantineProvider } from "@mantine/core";
 import { screen, waitFor } from "@testing-library/react";
 import { renderWithQueryClient as render } from "@portal/tests/query-harness";
 import userEvent from "@testing-library/user-event";
@@ -20,8 +19,8 @@ import {
 
 vi.mock("react-i18next", () => ({
   useTranslation: () => ({
-    t: (key: string, options?: { username?: string }) =>
-      options?.username ? `${key} ${options.username}` : key,
+    t: (key: string, options?: { display_name?: string }) =>
+      options?.display_name ? `${key} ${options.display_name}` : key,
   }),
 }));
 
@@ -50,8 +49,8 @@ function KeyboardDragHarness({ onDragEnd }: { onDragEnd: (event: DragEndEvent) =
     >
       <div style={{ display: "flex" }} data-active-id={activeId ?? ""}>
         {[
-          { containerId: "pool", itemId: "member:user-1", userId: "user-1", username: "Alice" },
-          { containerId: "team-1", itemId: "member:user-2", userId: "user-2", username: "Bob" },
+          { containerId: "pool", itemId: "member:user-1", userId: "user-1", display_name: "Alice" },
+          { containerId: "team-1", itemId: "member:user-2", userId: "user-2", display_name: "Bob" },
         ].map((entry) => (
           <DroppableMemberColumn
             key={entry.containerId}
@@ -62,7 +61,7 @@ function KeyboardDragHarness({ onDragEnd }: { onDragEnd: (event: DragEndEvent) =
               members: [{
                 itemId: entry.itemId,
                 userId: entry.userId,
-                username: entry.username,
+                display_name: entry.display_name,
                 power: 100,
                 class: "",
                 subtitle: "",
@@ -98,11 +97,7 @@ describe("guild war keyboard dragging", () => {
     try {
       const onDragEnd = vi.fn();
       const user = userEvent.setup();
-      render(
-        <MantineProvider>
-          <KeyboardDragHarness onDragEnd={onDragEnd} />
-        </MantineProvider>,
-      );
+      render(<KeyboardDragHarness onDragEnd={onDragEnd} />);
 
       const alice = screen.getByRole("button", {
         name: "active.aria.dragMember Alice",

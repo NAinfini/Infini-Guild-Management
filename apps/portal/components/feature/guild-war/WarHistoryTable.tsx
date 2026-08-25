@@ -1,10 +1,22 @@
-import { ActionIcon, Alert, Badge, Group, HoverCard, NumberInput, Paper, Select, Skeleton, Stack, Text, TextInput, ThemeIcon, UnstyledButton } from "@mantine/core";
 import { DEFAULT_GAME_RULES } from "@guild/shared";
 import { CalendarOffIcon } from "@portal/components/icons";
+import { Alert } from "@portal/components/ui/alert";
+import { Badge } from "@portal/components/ui/badge";
+import { Button } from "@portal/components/ui/button";
+import { Card } from "@portal/components/ui/card";
+import { Input } from "@portal/components/ui/input";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@portal/components/ui/select";
+import { Skeleton } from "@portal/components/ui/skeleton";
+import { ContentFilterGroup, ContentFilterToolbar } from "@portal/components/shared/ContentFilterToolbar";
 import { NativeDateTimeInput } from "@portal/components/shared/NativeDateTimeInput";
 import { formatDateTime } from "@portal/utils/datetime";
 import { useTranslation } from "react-i18next";
-import { resolveResultTagColor } from "@portal/utils/guild-war";
 import type { HistorySummaryRow } from "@portal/types/guild-war";
 import { EmptyState } from "../../shared/EmptyState";
 import { getGuildWarResultLabel } from "@portal/utils/game-rules";
@@ -63,60 +75,61 @@ export function WarHistoryTable({
 
   return (
     <>
-      <div className="war-history-filters">
-        <div className="war-history-filters__group">
-          <TextInput
-            className="war-history-filter war-history-filter--search"
+      <ContentFilterToolbar
+        className="war-history-toolbar"
+        search={(
+          <Input
             value={historySearch}
             onChange={(event) => onHistorySearchChange(String(event.currentTarget.value ?? ""))}
             placeholder={t("history.search.placeholder")}
             aria-label={t("history.aria.search")}
           />
-          <NativeDateTimeInput
-            className="war-history-filter war-history-filter--date"
-            value={historyDateFrom}
-            onChange={(event) => onHistoryDateFromChange(event.currentTarget.value)}
-            placeholder={t("history.dateFromPlaceholder")}
-            aria-label={t("history.aria.dateFrom")}
-          />
-          <NativeDateTimeInput
-            className="war-history-filter war-history-filter--date"
-            value={historyDateTo}
-            onChange={(event) => onHistoryDateToChange(event.currentTarget.value)}
-            placeholder={t("history.dateToPlaceholder")}
-            aria-label={t("history.aria.dateTo")}
-          />
-          <HoverCard width={280} shadow="lg" withArrow arrowSize={10} openDelay={350} closeDelay={80} position="top">
-            <HoverCard.Target>
-              <ActionIcon className="war-history-filter__clear" variant="subtle" onClick={onClearDates} disabled={!historyDateFrom && !historyDateTo} aria-label={t("history.aria.clearDates")}>
-                <CalendarOffIcon size={18} />
-              </ActionIcon>
-            </HoverCard.Target>
-            <HoverCard.Dropdown p="sm" style={{ borderRadius: 10 }}>
-              <Group gap={10} wrap="nowrap" align="flex-start">
-                <ThemeIcon variant="light" color="gray" size="lg" radius="md" style={{ flexShrink: 0, marginTop: 2 }}>
-                  <CalendarOffIcon size={16} />
-                </ThemeIcon>
-                <div style={{ minWidth: 0 }}>
-                  <Text size="sm" fw={700} lh={1.3}>{t("hovercard.clearDates.title")}</Text>
-                  <Text size="xs" c="dimmed" lh={1.5}>{t("hovercard.clearDates.desc")}</Text>
-                </div>
-              </Group>
-            </HoverCard.Dropdown>
-          </HoverCard>
-        </div>
-      </div>
+        )}
+        filterControls={(
+          <ContentFilterGroup label={t("history.clearDates")}>
+            <div className="grid gap-2">
+              <NativeDateTimeInput
+                value={historyDateFrom}
+                onChange={(event) => onHistoryDateFromChange(event.currentTarget.value)}
+                placeholder={t("history.dateFromPlaceholder")}
+                aria-label={t("history.aria.dateFrom")}
+              />
+              <NativeDateTimeInput
+                value={historyDateTo}
+                onChange={(event) => onHistoryDateToChange(event.currentTarget.value)}
+                placeholder={t("history.dateToPlaceholder")}
+                aria-label={t("history.aria.dateTo")}
+              />
+            </div>
+          </ContentFilterGroup>
+        )}
+        filterActions={(
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={onClearDates}
+            disabled={!historyDateFrom && !historyDateTo}
+          >
+            <CalendarOffIcon size={15} data-icon="inline-start" />
+            {t("history.clearDates")}
+          </Button>
+        )}
+        filterLabel={t("common:filter.toggle")}
+        activeFilterCount={historyDateFrom || historyDateTo ? 1 : 0}
+        resetLabel={t("common:filter.reset")}
+        onReset={onClearDates}
+      />
 
-      {historyLoading ? <Stack gap={8}>{Array.from({ length: 5 }).map((_, i) => <Skeleton key={i} height={56} radius="md" />)}</Stack> : null}
-      {historyError ? <Alert color="red">{loadErrorMessage}</Alert> : null}
+      {historyLoading ? <div className="grid gap-2">{Array.from({ length: 5 }).map((_, i) => <Skeleton key={i} className="h-14 w-full" />)}</div> : null}
+      {historyError ? <Alert variant="destructive">{loadErrorMessage}</Alert> : null}
 
       {!historyLoading && !historyError ? (
-        <Paper withBorder radius="md" p="var(--card-padding)" className="war-history-list-card">
-          <Stack gap={8} className="war-history-list-card__body">
-            <Group justify="space-between" className="war-history-list-card__header">
-              <Text fw={600}>{t("history.warList")}</Text>
-              <Badge color="gray">{historyRows.length} / {historyTotal}</Badge>
-            </Group>
+        <Card className="war-history-list-card">
+          <div className="war-history-list-card__body">
+            <div className="war-history-list-card__header">
+              <h3>{t("history.warList")}</h3>
+              <Badge variant="secondary">{historyRows.length} / {historyTotal}</Badge>
+            </div>
 
             {filteredHistoryRows.length > 0 ? (
               <ul
@@ -136,7 +149,8 @@ export function WarHistoryTable({
                       key={item.id}
                       className={itemClasses}
                     >
-                      <UnstyledButton
+                      <button
+                        type="button"
                         className="war-history-rail-item__open"
                         onClick={() => onRowClick(item.id)}
                         aria-current={isActive ? "true" : undefined}
@@ -154,11 +168,7 @@ export function WarHistoryTable({
                         </span>
                         <span className="war-history-rail-item__aside">
                           <span className="war-history-rail-item__result">
-                            <Badge
-                              size="sm"
-                              color={resolveResultTagColor(item.result)}
-                              variant="light"
-                            >
+                            <Badge className="war-history-result-badge" data-result={item.result ?? "unknown"} variant="outline">
                               {item.result
                                 ? getGuildWarResultLabel(item.result)
                                 : t("history.unknownResult")}
@@ -176,7 +186,7 @@ export function WarHistoryTable({
                             {formatDateTime(item.created_at)}
                           </time>
                         </span>
-                      </UnstyledButton>
+                      </button>
                     </li>
                   );
                 })}
@@ -188,40 +198,47 @@ export function WarHistoryTable({
             )}
 
             {historyTotalPages > 1 ? (
-              <Group justify="space-between" align="center" className="war-history-pagination">
-                <Group gap={8} align="center">
-                  <Text size="sm">{t("history.perPage")}</Text>
+              <div className="war-history-pagination">
+                <div className="war-history-pagination__per-page">
+                  <span>{t("history.perPage")}</span>
                   <Select
-                    size="xs"
-                    data={[
+                    items={[
                       { value: "10", label: "10" },
                       { value: "20", label: "20" },
                     ]}
                     value={String(historyPerPage)}
-                    onChange={(val) => { if (val) onHistoryPerPageChange(Number(val)); }}
-                    style={{ width: 72 }}
-                    allowDeselect={false}
-                  />
-                </Group>
-                <Group gap={4} align="center" className="war-history-pagination__pages">
-                  <ActionIcon
-                    size="sm"
-                    variant="default"
+                    onValueChange={(value) => { if (value) onHistoryPerPageChange(Number(value)); }}
+                  >
+                    <SelectTrigger size="sm" className="war-history-pagination__select" aria-label={t("history.perPage")}>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="10">10</SelectItem>
+                      <SelectItem value="20">20</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="war-history-pagination__pages">
+                  <Button
+                    type="button"
+                    size="icon-sm"
+                    variant="outline"
                     disabled={historyPage <= 1}
                     onClick={() => onHistoryPageChange(1)}
                     aria-label={t("history.aria.firstPage")}
                   >
                     «
-                  </ActionIcon>
-                  <ActionIcon
-                    size="sm"
-                    variant="default"
+                  </Button>
+                  <Button
+                    type="button"
+                    size="icon-sm"
+                    variant="outline"
                     disabled={historyPage <= 1}
                     onClick={() => onHistoryPageChange(historyPage - 1)}
                     aria-label={t("history.aria.previousPage")}
                   >
                     ‹
-                  </ActionIcon>
+                  </Button>
                   {(() => {
                     const pages: (number | "ellipsis-left" | "ellipsis-right")[] = [];
                     const start = Math.max(2, historyPage - 1);
@@ -233,60 +250,63 @@ export function WarHistoryTable({
                     if (historyTotalPages > 1) pages.push(historyTotalPages);
                     return pages.map((item) => {
                       if (item === "ellipsis-left" || item === "ellipsis-right") {
-                        return <Text key={item} size="sm" c="dimmed" px={2}>…</Text>;
+                        return <span key={item} className="war-history-pagination__ellipsis">…</span>;
                       }
                       return (
-                        <ActionIcon
+                        <Button
+                          type="button"
                           key={item}
-                          size="sm"
-                          variant={item === historyPage ? "filled" : "default"}
+                          size="icon-sm"
+                          variant={item === historyPage ? "default" : "outline"}
                           onClick={() => onHistoryPageChange(item)}
                           aria-label={t("history.aria.page", { page: item })}
                           aria-current={item === historyPage ? "page" : undefined}
                         >
                           {item}
-                        </ActionIcon>
+                        </Button>
                       );
                     });
                   })()}
-                  <ActionIcon
-                    size="sm"
-                    variant="default"
+                  <Button
+                    type="button"
+                    size="icon-sm"
+                    variant="outline"
                     disabled={historyPage >= historyTotalPages}
                     onClick={() => onHistoryPageChange(historyPage + 1)}
                     aria-label={t("history.aria.nextPage")}
                   >
                     ›
-                  </ActionIcon>
-                  <ActionIcon
-                    size="sm"
-                    variant="default"
+                  </Button>
+                  <Button
+                    type="button"
+                    size="icon-sm"
+                    variant="outline"
                     disabled={historyPage >= historyTotalPages}
                     onClick={() => onHistoryPageChange(historyTotalPages)}
                     aria-label={t("history.aria.lastPage")}
                   >
                     »
-                  </ActionIcon>
-                  <NumberInput
-                    size="xs"
+                  </Button>
+                  <Input
+                    type="number"
+                    className="war-history-pagination__input"
+                    aria-label={t("history.aria.page", { page: historyPage })}
                     min={1}
                     max={historyTotalPages}
                     value={historyPage}
-                    onChange={(val) => {
-                      if (typeof val === "number" && val >= 1 && val <= historyTotalPages) {
-                        onHistoryPageChange(val);
+                    onChange={(event) => {
+                      const value = Number(event.currentTarget.value);
+                      if (value >= 1 && value <= historyTotalPages) {
+                        onHistoryPageChange(value);
                       }
                     }}
-                    hideControls
-                    style={{ width: 56 }}
-                    styles={{ input: { textAlign: "center" } }}
                   />
-                  <Text size="sm" c="dimmed">/ {historyTotalPages}</Text>
-                </Group>
-              </Group>
+                  <span className="war-history-pagination__total">/ {historyTotalPages}</span>
+                </div>
+              </div>
             ) : null}
-          </Stack>
-        </Paper>
+          </div>
+        </Card>
       ) : null}
     </>
   );

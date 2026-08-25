@@ -75,7 +75,7 @@ pnpm vps dev
 
 ```text
 packages/persistence-sqlite/src/migrations/generated/0000_core.sql
-packages/persistence-sqlite/src/migrations/generated/manifest.json  # 只含一个 0000 条目
+packages/persistence-sqlite/src/migrations/generated/manifest.json  # 冻结的 0000 基线及后续连续条目
 ```
 
 Cloudflare D1 与 VPS SQLite 使用同一组有序迁移文件，并从已冻结的 `0000_core.sql` 开始。`app_migrations` 是应用拥有的序号/校验和账本，也是启动校验的权威来源。Cloudflare 还维护 `d1_migrations`，供 Wrangler 记录已应用文件。两张账本归属不同，必须同时存在；空、未知或不匹配的 schema 会被拒绝，绝不会被静默修补。
@@ -90,7 +90,7 @@ Cloudflare D1 与 VPS SQLite 使用同一组有序迁移文件，并从已冻结
 pnpm db:migrate:vps --database /srv/infini/data/infini-guild.sqlite
 ```
 
-该命令只会向空数据库应用基线。对于未知的非空数据库，它会停止而不是猜测。之后它会校验精确的 `app_migrations` 账本、全部权威 schema 对象、SQLite 完整性与所有外键。
+该命令会向空数据库应用有序迁移链。对于未知的非空数据库，它会停止而不是猜测。之后它会校验精确的 `app_migrations` 账本、全部权威 schema 对象、SQLite 完整性与所有外键。
 
 下面的只读命令可校验已停止的 VPS 部署、恢复快照或准备好的转移数据，不会修改任一数据存储：
 
@@ -110,12 +110,14 @@ pnpm exec wrangler d1 migrations apply DB --remote --config apps/cloudflare/wran
 
 ## 配置与密钥
 
-两端的 `IG_PBKDF2_ITERATIONS` 默认均为 `10000`，可接受不超过 `10000000` 的整数。存储的 hash 自带成本；如果调高配置，旧的有效 hash 会在用户下一次成功登录后升级。生产前应在实际运行时上对所选值做基准测试，且绝不能低于 10000。
+两端的 `IG_PBKDF2_ITERATIONS` 默认均为 `10000`，可接受不超过 `10000000` 的整数。存储的 hash 自带成本；如果调高配置，旧的有效 hash 会在用户下一次成功登录后升级。生产前应在实际运行时上对所选值做基准测试，且绝不能低于 10000。默认值是为 Cloudflare CPU 预算保留的兼容值，其离线抗猜测能力弱于现代高成本配置；Workers Paid 与 VPS 安装应在实测真实请求预算后再提高。
+
+HTTPS 部署固定使用 `__Host-ig_session`，OAuth 浏览器事务另用 `__Host-ig_session_oauth_transaction`；两者均为 `Secure`、仅当前主机、且 `Path=/`。从旧版无前缀 HTTPS Cookie 升级时，现有用户会按设计一次性退出；不得增加旧 Cookie fallback。纯 HTTP 本地开发仍使用 `ig_session`。
 
 ### Cloudflare 生产
 
 1. 将 `apps/cloudflare/wrangler.example.jsonc` 复制为被忽略的 `apps/cloudflare/wrangler.jsonc`。
-2. 填写 `DB`、`BLOBS`、`ASSETS`、`NOTIFICATIONS`，以及六个限流绑定：`AUTH_RATE_LIMITER`、`READ_RATE_LIMITER`、`EXPENSIVE_READ_RATE_LIMITER`、`MUTATION_RATE_LIMITER`、`UPLOAD_RATE_LIMITER`、`WEBSOCKET_RATE_LIMITER`。
+2. 填写 `DB`、`BLOBS`、`ASSETS`、`NOTIFICATIONS`，以及七个限流绑定：`AUTH_RATE_LIMITER`、`AUTH_IP_RATE_LIMITER`、`READ_RATE_LIMITER`、`EXPENSIVE_READ_RATE_LIMITER`、`MUTATION_RATE_LIMITER`、`UPLOAD_RATE_LIMITER`、`WEBSOCKET_RATE_LIMITER`。`AUTH_RATE_LIMITER` 还会按内部用户 ID 与可信客户端来源保护当前密码校验，不需要额外 binding。
 3. 在 `compatibility_flags` 中保留 `nodejs_als`。Worker 通过 AsyncLocalStorage 解析每个请求的 ExecutionContext，缺少该标志时产物无法加载。在该标志引入前创建的部署配置，必须在下次部署前加入它。`pnpm config:check` 会拒绝缺少该标志的配置。
 4. 设置公开 HTTPS 源、允许源、routes 与 cron 配置。
 5. 将两个密钥保存到 Cloudflare Secret，绝不能放进 `vars`：
@@ -130,6 +132,29 @@ pnpm exec wrangler secret put IG_AUDIT_DOWNLOAD_SECRET --config apps/cloudflare/
 ```bash
 pnpm config:check --runtime cloudflare --config apps/cloudflare/wrangler.jsonc
 ```
+
+#### Cloudflare 上的可选 OAuth 与已验证邮箱
+
+本地“私密登录名 + 密码”不需要任何外部账号；以下选项全部不配置时仍完整可用。启用 Google、Discord 或 KOOK 前，先在对应供应商控制台创建应用，并登记 `config:check` 输出的精确回调地址：
+
+```text
+https://你的_IG_PUBLIC_URL/api/auth/oauth/google/callback
+https://你的_IG_PUBLIC_URL/api/auth/oauth/discord/callback
+https://你的_IG_PUBLIC_URL/api/auth/oauth/kook/callback
+```
+
+每个供应商的 ID 与 secret 都通过 Wrangler 保存；仓库约定两者均不进入已提交的 `vars`：
+
+```bash
+pnpm exec wrangler secret put IG_OAUTH_GOOGLE_CLIENT_ID --config apps/cloudflare/wrangler.jsonc
+pnpm exec wrangler secret put IG_OAUTH_GOOGLE_CLIENT_SECRET --config apps/cloudflare/wrangler.jsonc
+# Discord 使用 IG_OAUTH_DISCORD_CLIENT_ID / IG_OAUTH_DISCORD_CLIENT_SECRET；
+# KOOK 使用 IG_OAUTH_KOOK_CLIENT_ID / IG_OAUTH_KOOK_CLIENT_SECRET。
+```
+
+两项都存在后，再到“管理后台 → 站点配置”只开启对应供应商。运行时拒绝不完整的凭据对。如果数据库开关仍开启但凭据后来被移除，仅该供应商会变为不可用且按钮消失；本地登录与站点其他功能继续工作。即使提供预留变量，本版本也不会启用微信，因为尚未提供经官方规则核验的 adapter。
+
+如需可选的个人资料邮箱验证，请在站主自己的 Cloudflare Email Sending 账号中接入发件域，取消 `EMAIL` `send_email` binding 的注释，将其限制到指定发件人，并把 `vars.IG_EMAIL_FROM` 设为相同地址。binding 与发件人必须同时存在；Worker 应用代码不需要 API token。向任意收件人发送目前要求 Workers Paid，启用前请核对最新的 [Cloudflare 定价](https://developers.cloudflare.com/email-service/platform/pricing/)。邮箱始终可选，不是登录名，也不是唯一恢复方式。
 
 真实账号 ID、数据库 ID、桶名、域名与密钥只能放在被忽略的部署配置或 Cloudflare Secret 中，绝不能提交。
 
@@ -157,6 +182,10 @@ pnpm config:check --runtime vps --config apps/vps/.env
 
 将 `IG_PUBLIC_URL` 设为外部 HTTPS 源；将 `IG_DATABASE_PATH`、`IG_BLOB_PATH`、`IG_STATIC_PATH` 设为持久化绝对路径；两个密钥分别使用至少 32 字节的独立随机值。让 `IG_HOST` 只监听 TLS 反向代理后的私网或回环地址。`IG_TRUSTED_PROXY_IPS` 只能填写由你运营的精确代理 IP。
 
+如需可选 Google、Discord 或 KOOK OAuth，请创建供应商应用，在 VPS 的 `IG_PUBLIC_URL` 下登记上文相同的精确回调路径，并在受保护的 `.env` 中填写对应 ID/secret 对（Google 为 `IG_OAUTH_GOOGLE_CLIENT_ID` 与 `IG_OAUTH_GOOGLE_CLIENT_SECRET`，Discord、KOOK 同理）。只填一项会使配置无效；之后再到“管理后台 → 站点配置”开启对应供应商。删除凭据只会关闭该供应商，本地登录继续可用。本版本微信仍不可用。
+
+如需 VPS 上的可选个人资料邮箱验证，必须同时配置 `IG_EMAIL_FROM`、`IG_CLOUDFLARE_EMAIL_ACCOUNT_ID` 和最小权限的 `IG_CLOUDFLARE_EMAIL_API_TOKEN`。VPS 通过站主自己的 Cloudflare Email Sending REST API 以 HTTPS 发送；它不自建 SMTP，本项目也不运营或付费维护共享邮件网关。三项全部留空时，只关闭邮箱管理。当前未实现手机/SMS。
+
 使用专属操作系统账号保护 `.env`、SQLite 文件、Blob 根目录、备份和 `private-migrations/`。不要运行多个 VPS 应用进程、replica、Node cluster worker 或网络共享 SQLite writer。首版 VPS 只支持一台主机上的一个进程。
 
 ## 建立首位管理员
@@ -168,7 +197,7 @@ pnpm config:check --runtime vps --config apps/vps/.env
 创建新管理员时，在当前 shell 中设置 `IG_BOOTSTRAP_PASSWORD`，但不要让该值进入命令历史。也可设置 `IG_PBKDF2_ITERATIONS`，然后生成私有 SQL：
 
 ```bash
-pnpm prepare:first-admin --mode create --user-id admin-1 --username Admin_1 --output private-migrations/0001_first_admin.sql
+pnpm prepare:first-admin --mode create --user-id admin-1 --login-name admin_login --display-name Admin_1 --output private-migrations/0001_first_admin.sql
 ```
 
 如果要提升一个现有有效用户，请保持 `IG_BOOTSTRAP_PASSWORD` 未设置：

@@ -1,25 +1,31 @@
 import { AppError } from "@guild/kernel";
 import type {
+  AnnouncementDetailRecord,
   AnnouncementListQuery,
   AnnouncementRecord,
   AnnouncementStore,
 } from "@guild/server/modules/announcements";
-import type { Announcement, PaginatedResponse } from "@guild/shared";
+import type { Announcement, AnnouncementAttachment, AnnouncementSummary, PaginatedResponse } from "@guild/shared";
 import { extractTipTapText } from "@guild/shared/utils/tiptap-text";
 import type { SqlBatchStatement, SqlExecutor, SqlResult, SqlValue } from "@guild/kernel";
 import { auditInsertStatement } from "./audit-statement.js";
 import { assertMediaAttachments, replaceMediaLinksStatements } from "./media-link-statements.js";
 import { returnedRowCount } from "./sql-result.js";
 
-const ANNOUNCEMENT_COLUMNS = [
+const AUTHOR_COLUMNS = ["author_id", "author_display_name", "author_avatar_media_id"] as const;
+const ANNOUNCEMENT_SUMMARY_COLUMNS = [
+  "id", "title", "pinned", "status", "publish_at", "expires_at", "archived_at",
+  "created_by", "updated_by", "created_at", "updated_at", ...AUTHOR_COLUMNS,
+] as const;
+const ANNOUNCEMENT_DETAIL_COLUMNS = [
   "id", "title", "body_json", "pinned", "status", "publish_at", "expires_at", "archived_at",
-  "created_by", "updated_by", "created_at", "updated_at",
+  "created_by", "updated_by", "created_at", "updated_at", ...AUTHOR_COLUMNS, "revision_token",
 ] as const;
 
 export class SqliteAnnouncementStore implements AnnouncementStore {
   constructor(private readonly sql: SqlExecutor) {}
 
-  async list(query: AnnouncementListQuery): Promise<PaginatedResponse<Announcement>> {
+  async list(query: AnnouncementListQuery): Promise<PaginatedResponse<AnnouncementSummary>> {
     const { where, params } = announcementWhere(query);
     const direction = query.sort === "updated_asc" ? "ASC" : "DESC";
     const listIndex = query.canReadAll ? "idx_announcements_manage" : "idx_announcements_public";
@@ -27,15 +33,15 @@ export class SqliteAnnouncementStore implements AnnouncementStore {
       { method: "get", columns: ["total"], sql: `SELECT COUNT(*) AS total FROM announcements ${where}`, params },
       {
         method: "all",
-        columns: ANNOUNCEMENT_COLUMNS,
-        sql: `${selectAnnouncement(false, false, listIndex)} ${where}
-          ORDER BY pinned DESC, updated_at ${direction}, id ${direction}
+        columns: ANNOUNCEMENT_SUMMARY_COLUMNS,
+        sql: `${selectAnnouncement("summary", listIndex)} ${where}
+          ORDER BY announcements.pinned DESC, announcements.updated_at ${direction}, announcements.id ${direction}
           LIMIT ? OFFSET ?`,
         params: [...params, query.limit, (query.page - 1) * query.limit],
       },
     ]);
     const total = numberCell(results[0], "Announcement count");
-    const data = allRows(results[1]).map((row) => withoutRevision(mapAnnouncement(row)));
+    const data = allRows(results[1]).map(mapSummary);
     return {
       data,
       total,
@@ -45,15 +51,33 @@ export class SqliteAnnouncementStore implements AnnouncementStore {
     };
   }
 
-  async get(id: string, canReadAll: boolean, now: string): Promise<AnnouncementRecord | null> {
-    const publicSql = canReadAll ? "" : `AND status = 'published' AND publish_at <= ? AND (expires_at IS NULL OR expires_at > ?)`;
-    const result = await this.sql.execute({
-      method: "get",
-      sql: `${selectAnnouncement(true)} WHERE id = ? ${publicSql} LIMIT 1`,
-      params: canReadAll ? [id] : [id, now, now],
-    });
-    const row = oneRow(result);
-    return row ? mapAnnouncement(row) : null;
+  async get(id: string, canReadAll: boolean, now: string): Promise<AnnouncementDetailRecord | null> {
+    const publicSql = canReadAll ? "" : `AND announcements.status = 'published' AND announcements.publish_at <= ? AND (announcements.expires_at IS NULL OR announcements.expires_at > ?)`;
+    const attachmentAudienceSql = canReadAll ? "" : " AND links.audience = 'public'";
+    const results = await this.sql.batch([
+      {
+        method: "get",
+        columns: ANNOUNCEMENT_DETAIL_COLUMNS,
+        sql: `${selectAnnouncement("detail")} WHERE announcements.id = ? ${publicSql} LIMIT 1`,
+        params: canReadAll ? [id] : [id, now, now],
+      },
+      {
+        method: "all",
+        columns: ["media_id", "original_name", "content_type", "byte_size", "media_type"],
+        sql: `SELECT links.media_id, assets.original_name, variants.content_type, variants.byte_size, assets.media_type
+          FROM media_links AS links
+          JOIN media_assets AS assets ON assets.id = links.media_id
+          JOIN media_variants AS variants ON variants.media_id = links.media_id AND variants.variant = 'full'
+          WHERE links.entity_type = 'announcement' AND links.entity_id = ? AND links.slot = 'attachment'${attachmentAudienceSql}
+          ORDER BY links.sort_order, links.media_id`,
+        params: [id],
+      },
+    ]);
+    const [detailResult, attachmentResult] = results;
+    if (!detailResult || !attachmentResult) throw corrupt("Missing announcement detail query result");
+    const row = oneRow(detailResult);
+    const attachmentRows = allRows(attachmentResult).map(mapAttachment);
+    return row ? { ...mapDetail(row), attachments: attachmentRows } : null;
   }
 
   async create(input: Parameters<AnnouncementStore["create"]>[0]): Promise<void> {
@@ -67,9 +91,20 @@ export class SqliteAnnouncementStore implements AnnouncementStore {
       mediaIds: input.mediaIds,
       maxItems: input.maxItems,
     });
+    await assertMediaAttachments(this.sql, {
+      actorUserId: input.audit.actorId,
+      entityType: "announcement",
+      entityId: input.record.id,
+      slot: "attachment",
+      purpose: "announcement_attachment",
+      audience: audience(input.record),
+      mediaIds: input.attachmentMediaIds,
+      maxItems: input.maxAttachmentItems,
+    });
     await this.sql.batch([
       insertAnnouncement(input.record),
-      insertAnnouncementMediaLinks(input.record, input.mediaIds),
+      insertAnnouncementMediaLinks(input.record, input.mediaIds, "body"),
+      insertAnnouncementMediaLinks(input.record, input.attachmentMediaIds, "attachment"),
       auditInsertStatement(input.audit),
     ]);
   }
@@ -87,6 +122,18 @@ export class SqliteAnnouncementStore implements AnnouncementStore {
         maxItems: input.maxItems,
       });
     }
+    if (input.attachmentMediaIds) {
+      await assertMediaAttachments(this.sql, {
+        actorUserId: input.audit.actorId,
+        entityType: "announcement",
+        entityId: input.record.id,
+        slot: "attachment",
+        purpose: "announcement_attachment",
+        audience: audience(input.record),
+        mediaIds: input.attachmentMediaIds,
+        maxItems: input.maxAttachmentItems,
+      });
+    }
     const guard = revisionGuard(input.record.id, input.record.revisionToken);
     const statements: SqlBatchStatement[] = [updateAnnouncement(input.record, input.expectedRevisionToken)];
     if (input.mediaIds) {
@@ -98,11 +145,20 @@ export class SqliteAnnouncementStore implements AnnouncementStore {
         mediaIds: input.mediaIds,
       }, guard));
     }
+    if (input.attachmentMediaIds) {
+      statements.push(...replaceMediaLinksStatements({
+        entityType: "announcement",
+        entityId: input.record.id,
+        slot: "attachment",
+        audience: audience(input.record),
+        mediaIds: input.attachmentMediaIds,
+      }, guard));
+    }
     statements.push(
       {
         method: "run",
         sql: `UPDATE media_links SET audience = ?
-          WHERE entity_type = 'announcement' AND entity_id = ? AND slot = 'body'
+          WHERE entity_type = 'announcement' AND entity_id = ? AND slot IN ('body', 'attachment')
             AND EXISTS (${guard.sql})`,
         params: [audience(input.record), input.record.id, ...guard.params],
       },
@@ -127,7 +183,7 @@ export class SqliteAnnouncementStore implements AnnouncementStore {
       {
         method: "run",
         sql: `UPDATE media_links SET audience = 'private'
-          WHERE entity_type = 'announcement' AND entity_id = ? AND slot = 'body'
+          WHERE entity_type = 'announcement' AND entity_id = ? AND slot IN ('body', 'attachment')
             AND EXISTS (${guard.sql})`,
         params: [input.id, ...guard.params],
       },
@@ -232,15 +288,15 @@ function announcementWhere(query: AnnouncementListQuery): Readonly<{ where: stri
   const clauses: string[] = [];
   const params: SqlValue[] = [];
   if (!query.canReadAll) {
-    clauses.push("status = 'published'", "publish_at <= ?", "(expires_at IS NULL OR expires_at > ?)");
+    clauses.push("announcements.status = 'published'", "announcements.publish_at <= ?", "(announcements.expires_at IS NULL OR announcements.expires_at > ?)");
     params.push(query.now, query.now);
   } else {
-    if (query.status) { clauses.push("status = ?"); params.push(query.status); }
-    if (query.pinned !== undefined) { clauses.push("pinned = ?"); params.push(query.pinned ? 1 : 0); }
-    if (query.archived !== undefined) clauses.push(query.archived ? "archived_at IS NOT NULL" : "archived_at IS NULL");
+    if (query.status) { clauses.push("announcements.status = ?"); params.push(query.status); }
+    if (query.pinned !== undefined) { clauses.push("announcements.pinned = ?"); params.push(query.pinned ? 1 : 0); }
+    if (query.archived !== undefined) clauses.push(query.archived ? "announcements.archived_at IS NOT NULL" : "announcements.archived_at IS NULL");
   }
   if (query.search) {
-    clauses.push("title LIKE ? ESCAPE '\\'");
+    clauses.push("announcements.title LIKE ? ESCAPE '\\'");
     params.push(`%${escapeLike(query.search)}%`);
   }
   return { where: clauses.length ? `WHERE ${clauses.join(" AND ")}` : "", params };
@@ -266,14 +322,15 @@ function insertAnnouncement(record: AnnouncementRecord): SqlBatchStatement {
 function insertAnnouncementMediaLinks(
   record: AnnouncementRecord,
   mediaIds: readonly string[],
+  slot: "body" | "attachment",
 ): SqlBatchStatement {
   return {
     method: "run",
     sql: `INSERT INTO media_links (media_id, entity_type, entity_id, slot, audience, sort_order)
-      SELECT media.value, 'announcement', ?, 'body', ?, CAST(media.key AS INTEGER)
+      SELECT media.value, 'announcement', ?, ?, ?, CAST(media.key AS INTEGER)
       FROM json_each(?) AS media
       ORDER BY CAST(media.key AS INTEGER)`,
-    params: [record.id, audience(record), JSON.stringify(mediaIds)],
+    params: [record.id, slot, audience(record), JSON.stringify(mediaIds)],
   };
 }
 
@@ -298,23 +355,99 @@ function revisionGuard(id: string, revisionToken: string): Readonly<{ sql: strin
   return { sql: "SELECT 1 FROM announcements WHERE id = ? AND revision_token = ?", params: [id, revisionToken] };
 }
 
-function audience(record: Announcement): "public" | "private" {
+function audience(record: Pick<Announcement, "status">): "public" | "private" {
   return record.status === "published" ? "public" : "private";
 }
 
-function selectAnnouncement(includeRevision: boolean, includeBody = true, index?: string): string {
-  return `SELECT id, title, ${includeBody ? "body_json" : "'' AS body_json"}, pinned, status, publish_at, expires_at, archived_at,
-    created_by, updated_by, created_at, updated_at${includeRevision ? ", revision_token" : ""}
-    FROM announcements${index ? ` INDEXED BY ${index}` : ""}`;
+function selectAnnouncement(kind: "summary" | "detail", index?: string): string {
+  const detail = kind === "detail";
+  return `SELECT announcements.id, announcements.title${detail ? ", announcements.body_json" : ""},
+    announcements.pinned, announcements.status, announcements.publish_at, announcements.expires_at, announcements.archived_at,
+    announcements.created_by, announcements.updated_by, announcements.created_at, announcements.updated_at,
+    authors.id AS author_id, authors.display_name AS author_display_name,
+    (
+      SELECT avatars.media_id FROM media_links AS avatars
+      WHERE avatars.entity_type = 'member_profile' AND avatars.entity_id = announcements.created_by
+        AND avatars.slot = 'avatar' AND avatars.audience = 'public'
+      ORDER BY avatars.sort_order, avatars.media_id
+      LIMIT 1
+    ) AS author_avatar_media_id${detail ? ", announcements.revision_token" : ""}
+    FROM announcements${index ? ` INDEXED BY ${index}` : ""}
+    JOIN users AS authors ON authors.id = announcements.created_by`;
 }
 
-function mapAnnouncement(row: readonly SqlValue[]): AnnouncementRecord {
-  if (row.length !== 12 && row.length !== 13) throw corrupt("Invalid announcement projection");
-  const [id, title, bodyJson, pinned, status, publishAt, expiresAt, archivedAt, createdBy, updatedBy, createdAt, updatedAt, revisionToken] = row;
+function mapSummary(row: readonly SqlValue[]): AnnouncementSummary {
+  if (row.length !== 14) throw corrupt("Invalid announcement summary projection");
+  const [
+    id,
+    title,
+    pinned,
+    status,
+    publishAt,
+    expiresAt,
+    archivedAt,
+    createdBy,
+    updatedBy,
+    createdAt,
+    updatedAt,
+    authorId,
+    authorDisplayName,
+    authorAvatarMediaId,
+  ] = row;
+  if (
+    typeof id !== "string" || typeof title !== "string"
+    || (pinned !== 0 && pinned !== 1) || typeof status !== "string"
+    || typeof createdBy !== "string" || typeof createdAt !== "string" || typeof updatedAt !== "string"
+    || typeof authorId !== "string" || typeof authorDisplayName !== "string"
+    || (authorAvatarMediaId !== null && typeof authorAvatarMediaId !== "string")
+  ) throw corrupt("Invalid announcement row");
+  return {
+    id,
+    title,
+    pinned: pinned === 1,
+    status: status as Announcement["status"],
+    publish_at: nullableString(publishAt),
+    expires_at: nullableString(expiresAt),
+    archived_at: nullableString(archivedAt),
+    created_by: createdBy,
+    updated_by: nullableString(updatedBy),
+    created_at: createdAt,
+    updated_at: updatedAt,
+    author: {
+      id: authorId,
+      display_name: authorDisplayName,
+      avatar_media_id: authorAvatarMediaId,
+    },
+  };
+}
+
+function mapDetail(row: readonly SqlValue[]): Omit<Announcement, "attachments"> & Readonly<{ revisionToken: string }> {
+  if (row.length !== 16) throw corrupt("Invalid announcement detail projection");
+  const [
+    id,
+    title,
+    bodyJson,
+    pinned,
+    status,
+    publishAt,
+    expiresAt,
+    archivedAt,
+    createdBy,
+    updatedBy,
+    createdAt,
+    updatedAt,
+    authorId,
+    authorDisplayName,
+    authorAvatarMediaId,
+    revisionToken,
+  ] = row;
   if (
     typeof id !== "string" || typeof title !== "string" || typeof bodyJson !== "string"
     || (pinned !== 0 && pinned !== 1) || typeof status !== "string"
     || typeof createdBy !== "string" || typeof createdAt !== "string" || typeof updatedAt !== "string"
+    || typeof authorId !== "string" || typeof authorDisplayName !== "string"
+    || (authorAvatarMediaId !== null && typeof authorAvatarMediaId !== "string")
+    || typeof revisionToken !== "string"
   ) throw corrupt("Invalid announcement row");
   return {
     id,
@@ -329,13 +462,30 @@ function mapAnnouncement(row: readonly SqlValue[]): AnnouncementRecord {
     updated_by: nullableString(updatedBy),
     created_at: createdAt,
     updated_at: updatedAt,
-    revisionToken: typeof revisionToken === "string" ? revisionToken : "",
+    author: {
+      id: authorId,
+      display_name: authorDisplayName,
+      avatar_media_id: authorAvatarMediaId,
+    },
+    revisionToken,
   };
 }
 
-function withoutRevision(record: AnnouncementRecord): Announcement {
-  const { revisionToken: _revisionToken, ...announcement } = record;
-  return announcement;
+function mapAttachment(row: readonly SqlValue[]): AnnouncementAttachment {
+  const [mediaId, originalName, contentType, byteSize, mediaType] = row;
+  if (
+    typeof mediaId !== "string"
+    || typeof originalName !== "string"
+    || typeof byteSize !== "number"
+    || !Number.isSafeInteger(byteSize)
+    || byteSize < 1
+    || mediaType !== "file"
+    || (
+      contentType !== "application/pdf"
+      && contentType !== "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    )
+  ) throw corrupt("Invalid announcement attachment projection");
+  return { media_id: mediaId, name: originalName, content_type: contentType, byte_size: byteSize };
 }
 
 function oneRow(result: SqlResult): readonly SqlValue[] | null {

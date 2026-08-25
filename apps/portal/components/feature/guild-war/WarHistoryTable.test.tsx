@@ -1,4 +1,3 @@
-import { MantineProvider } from "@mantine/core";
 import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { readFileSync } from "node:fs";
@@ -67,29 +66,20 @@ function HistoryTableHarness({
 
 describe("WarHistoryTable rail", () => {
   it("colours only the result badge", () => {
-    render(
-      <MantineProvider>
-        <HistoryTableHarness onRowClick={vi.fn()} />
-      </MantineProvider>,
-    );
+    render(<HistoryTableHarness onRowClick={vi.fn()} />);
 
     const item = screen.getByRole("listitem");
     expect(item).toHaveClass("war-history-rail-item");
     expect(item).not.toHaveAttribute("data-result");
     expect(item.querySelector(".war-history-rail-item__stripe")).toBeNull();
-    expect(
-      within(item).getByText("Win").closest('[data-variant="light"]'),
-    ).not.toBeNull();
+    const resultBadge = within(item).getByText("Win").closest('[data-slot="badge"]');
+    expect(resultBadge).toHaveAttribute("data-result", "win");
   });
 
   it("renders one rail row per record that opens the full detail", async () => {
     const onRowClick = vi.fn();
 
-    render(
-      <MantineProvider>
-        <HistoryTableHarness onRowClick={onRowClick} />
-      </MantineProvider>,
-    );
+    render(<HistoryTableHarness onRowClick={onRowClick} />);
 
     const list = screen.getByRole("list", { name: "history.warList" });
     expect(list.tagName).toBe("UL");
@@ -103,11 +93,7 @@ describe("WarHistoryTable rail", () => {
   });
 
   it("marks the open record with aria-current so selection is not colour-only", () => {
-    render(
-      <MantineProvider>
-        <HistoryTableHarness onRowClick={vi.fn()} activeHistoryId="history-1" />
-      </MantineProvider>,
-    );
+    render(<HistoryTableHarness onRowClick={vi.fn()} activeHistoryId="history-1" />);
 
     expect(
       screen.getByRole("button", { name: "history.aria.openRecord: War Session E" }),
@@ -115,11 +101,7 @@ describe("WarHistoryTable rail", () => {
   });
 
   it("offers no record selection — deletion is one record at a time from the detail pane", () => {
-    render(
-      <MantineProvider>
-        <HistoryTableHarness onRowClick={vi.fn()} />
-      </MantineProvider>,
-    );
+    render(<HistoryTableHarness onRowClick={vi.fn()} />);
 
     expect(screen.queryAllByRole("checkbox")).toHaveLength(0);
   });
@@ -134,37 +116,37 @@ describe("WarHistoryTable rail", () => {
     });
 
     try {
-      render(
-        <MantineProvider>
-          <HistoryTableHarness onRowClick={vi.fn()} />
-        </MantineProvider>,
-      );
+      render(<HistoryTableHarness onRowClick={vi.fn()} />);
 
-      await userEvent.click(screen.getByLabelText("history.aria.dateFrom"));
+      await userEvent.click(screen.getByRole("button", { name: "common:filter.toggle" }));
+      await userEvent.click(
+        within(await screen.findByRole("dialog")).getByLabelText("history.aria.dateFrom"),
+      );
       expect(showPicker).toHaveBeenCalledOnce();
     } finally {
       Reflect.deleteProperty(HTMLInputElement.prototype, "showPicker");
     }
   });
 
-  it("uses distinct localized placeholders for the date range", () => {
-    render(
-      <MantineProvider>
-        <HistoryTableHarness onRowClick={vi.fn()} />
-      </MantineProvider>,
-    );
+  it("keeps search visible and exposes localized date filters from the shared menu", async () => {
+    const user = userEvent.setup();
+    render(<HistoryTableHarness onRowClick={vi.fn()} />);
 
-    expect(screen.getByLabelText("history.aria.dateFrom")).toHaveAttribute(
+    expect(screen.getByRole("textbox", { name: "history.aria.search" })).toBeVisible();
+    expect(screen.queryByLabelText("history.aria.dateFrom")).not.toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "common:filter.toggle" }));
+    const filters = within(await screen.findByRole("dialog"));
+    expect(filters.getByLabelText("history.aria.dateFrom")).toHaveAttribute(
       "placeholder",
       "history.dateFromPlaceholder",
     );
-    expect(screen.getByLabelText("history.aria.dateTo")).toHaveAttribute(
+    expect(filters.getByLabelText("history.aria.dateTo")).toHaveAttribute(
       "placeholder",
       "history.dateToPlaceholder",
     );
   });
 
-  it("keeps the 390px search row above one compact date row", () => {
+  it("uses the shared toolbar without a second local filter grid", () => {
     const componentSource = readFileSync(
       resolve(process.cwd(), "apps/portal/components/feature/guild-war/WarHistoryTable.tsx"),
       "utf8",
@@ -174,27 +156,19 @@ describe("WarHistoryTable rail", () => {
       "utf8",
     );
 
-    expect(componentSource).toContain(
-      'import { DEFAULT_GAME_RULES } from "@guild/shared";',
-    );
-    expect(componentSource).toContain("const gameRules = DEFAULT_GAME_RULES;");
-    expect(css).toMatch(
-      /@media \(max-width: 767px\)[\s\S]*?\.war-history-filters__group\s*\{[\s\S]*?grid-template-columns:\s*minmax\(0,\s*1fr\)\s+minmax\(0,\s*1fr\)\s+var\(--control-height-regular\)/,
-    );
-    expect(css).toMatch(
-      /@media \(max-width: 767px\)[\s\S]*?\.war-history-filter--search\s*\{[\s\S]*?grid-column:\s*1\s*\/\s*-1/,
-    );
+    expect(componentSource).toContain('ContentFilterToolbar } from "@portal/components/shared/ContentFilterToolbar";');
+    expect(componentSource).toContain("<ContentFilterToolbar");
+    expect(componentSource).toContain("filterControls={(");
+    expect(css).not.toMatch(/war-history-filters|war-history-filter--|war-history-filter__/);
   });
 
   it("labels every icon-only pagination control", () => {
     render(
-      <MantineProvider>
-        <HistoryTableHarness
-          onRowClick={vi.fn()}
-          historyPage={2}
-          historyTotalPages={3}
-        />
-      </MantineProvider>,
+      <HistoryTableHarness
+        onRowClick={vi.fn()}
+        historyPage={2}
+        historyTotalPages={3}
+      />,
     );
 
     [

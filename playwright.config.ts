@@ -102,7 +102,7 @@ export default defineConfig<E2eOptions>({
         ` --inspector-ip 127.0.0.1 --inspector-port ${E2E_INSPECTOR_PORT_BASE + slot}`,
         " --local-protocol https --show-interactive-dev-session=false",
         ` --var IG_PUBLIC_URL:${origin} --var IG_ALLOWED_ORIGINS:${origin}`,
-        " --var IG_SESSION_COOKIE_NAME:ig_e2e_session --var IG_PBKDF2_ITERATIONS:10000",
+        " --var IG_PBKDF2_ITERATIONS:10000",
         " --var IG_INVITE_TOKEN_SECRET:test-invite-token-secret-000000000000",
         " --var IG_AUDIT_DOWNLOAD_SECRET:test-audit-download-secret-000000000",
       ].join(""),

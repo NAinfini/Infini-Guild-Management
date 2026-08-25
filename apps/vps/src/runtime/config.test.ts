@@ -39,4 +39,21 @@ describe("readVpsRuntimeConfig", () => {
       expect(readVpsRuntimeConfig({ ...BASE, IG_MAINTENANCE_MODE: value }).maintenanceMode).toBe(true);
     }
   });
+
+  it("requires all Cloudflare Email Sending REST values together", () => {
+    expect(() => readVpsRuntimeConfig({ ...BASE, IG_EMAIL_FROM: "no-reply@example.com" }))
+      .toThrow(/must be configured together/);
+    expect(() => readVpsRuntimeConfig({
+      ...BASE,
+      IG_CLOUDFLARE_EMAIL_ACCOUNT_ID: "account",
+      IG_CLOUDFLARE_EMAIL_API_TOKEN: "token",
+    })).toThrow(/must be configured together/);
+
+    expect(readVpsRuntimeConfig({
+      ...BASE,
+      IG_EMAIL_FROM: "no-reply@example.com",
+      IG_CLOUDFLARE_EMAIL_ACCOUNT_ID: "account",
+      IG_CLOUDFLARE_EMAIL_API_TOKEN: "token",
+    }).cloudflareEmail).toEqual({ accountId: "account", apiToken: "token" });
+  });
 });

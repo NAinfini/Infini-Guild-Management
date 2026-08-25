@@ -1,0 +1,86 @@
+import type {
+  InboxNotification,
+  InboxNotificationListResponse,
+} from "@guild/shared";
+import { AppError, type DeferredTasks, type NotificationPublisher, type RequestContext } from "@guild/kernel";
+
+export type NotificationInboxCursor = Readonly<{ occurredAt: string; id: string }>;
+
+export interface NotificationInboxStore {
+  list(input: Readonly<{
+    userId: string;
+    limit: number;
+    cursor: NotificationInboxCursor | null;
+    now: string;
+  }>): Promise<Readonly<{
+    data: readonly InboxNotification[];
+    nextCursor: NotificationInboxCursor | null;
+    unreadCount: number;
+  }>>;
+  markRead(input: Readonly<{
+    userId: string;
+    ids: readonly string[] | null;
+    now: string;
+  }>): Promise<number>;
+}
+
+export class NotificationInboxService {
+  constructor(
+    private readonly store: NotificationInboxStore,
+    private readonly notifications: NotificationPublisher,
+    private readonly deferred: DeferredTasks,
+  ) {}
+
+  async list(
+    context: RequestContext,
+    input: Readonly<{ limit: number; cursor: NotificationInboxCursor | null }>,
+  ): Promise<InboxNotificationListResponse> {
+    const actor = context.authorization.requireAuthenticated();
+    if (!Number.isSafeInteger(input.limit) || input.limit < 1 || input.limit > 50) {
+      throw new RangeError("Notification inbox limit must be between 1 and 50");
+    }
+    const page = await this.store.list({ ...input, userId: actor.userId, now: context.now });
+    return {
+      data: [...page.data],
+      next_cursor: page.nextCursor === null ? null : encodeCursor(page.nextCursor),
+      unread_count: page.unreadCount,
+    };
+  }
+
+  async markRead(
+    context: RequestContext,
+    input: Readonly<{ ids: readonly string[] | null }>,
+  ): Promise<Readonly<{ ok: true; unread_count: number }>> {
+    const actor = context.authorization.requireAuthenticated();
+    const unreadCount = await this.store.markRead({ userId: actor.userId, ids: input.ids, now: context.now });
+    this.signalChanged(actor.userId);
+    return { ok: true, unread_count: unreadCount };
+  }
+
+  private signalChanged(userId: string): void {
+    this.deferred.defer(() => this.notifications.publish({ type: "inbox_changed", user_id: userId }));
+  }
+}
+
+export function decodeNotificationInboxCursor(value: string | undefined): NotificationInboxCursor | null {
+  if (value === undefined) return null;
+  try {
+    const parsed = JSON.parse(decodeURIComponent(value)) as Record<string, unknown>;
+    if (
+      typeof parsed.occurred_at !== "string"
+      || !Number.isFinite(Date.parse(parsed.occurred_at))
+      || typeof parsed.id !== "string"
+      || parsed.id.length < 1
+      || parsed.id.length > 200
+    ) {
+      throw new Error();
+    }
+    return { occurredAt: parsed.occurred_at, id: parsed.id };
+  } catch {
+    throw new AppError({ code: "VALIDATION_ERROR", status: 400, message: "Invalid notification cursor" });
+  }
+}
+
+function encodeCursor(cursor: NotificationInboxCursor): string {
+  return encodeURIComponent(JSON.stringify({ occurred_at: cursor.occurredAt, id: cursor.id }));
+}

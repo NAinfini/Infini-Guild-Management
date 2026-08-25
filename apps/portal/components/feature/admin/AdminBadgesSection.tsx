@@ -15,22 +15,17 @@ import {
   verticalListSortingStrategy,
 } from "@dnd-kit/sortable";
 import type { MemberBadge } from "@guild/shared";
-import { verticalDragTransform } from "@portal/utils/sortable-transform";
+import { Badge } from "@portal/components/ui/badge";
+import { Button } from "@portal/components/ui/button";
+import { Input } from "@portal/components/ui/input";
+import { Label } from "@portal/components/ui/label";
+import { ScrollArea } from "@portal/components/ui/scroll-area";
+import { Skeleton } from "@portal/components/ui/skeleton";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@portal/components/ui/tooltip";
+import { PaletteIcon, PlusIcon, TrashIcon } from "@portal/components/icons";
 import { useConfirmDialog } from "@portal/hooks/useConfirmDialog";
 import type { AdminBadgesController, BadgeForm } from "@portal/hooks/useAdminBadgesController";
-import {
-  ActionIcon,
-  Button,
-  Group,
-  ScrollArea,
-  Skeleton,
-  Stack,
-  Text,
-  TextInput,
-  Tooltip,
-  UnstyledButton,
-} from "@mantine/core";
-import { PaletteIcon, PencilIcon, PlusIcon, TrashIcon, UserCheckIcon } from "@portal/components/icons";
+import { verticalDragTransform } from "@portal/utils/sortable-transform";
 import { IconGripVertical } from "@tabler/icons-react";
 import type { CSSProperties } from "react";
 import { useMemo, useState } from "react";
@@ -40,11 +35,10 @@ import { LabelStyleModal } from "../../shared/LabelStyleModal";
 import { MemberBadgeChip } from "../../shared/MemberCard";
 import { MemberRoleAvatar } from "../../shared/MemberRoleAvatar";
 import { PickList } from "../../shared/PickList";
-import { AdminBadgeMemberList } from "./AdminBadgeMemberList";
 import "./AdminBadgesSection.css";
 
 export type AdminBadgeMemberRow = {
-  user: { id: string; username: string };
+  user: { id: string; display_name: string };
   profile: { classes: readonly string[]; power: number; avatar_media_id: string | null };
 };
 type UserRow = AdminBadgeMemberRow;
@@ -91,14 +85,15 @@ function SortableBadgeRow({
       style={style}
       className={`admin-md__row ${active ? "admin-md__row--active" : ""}`}
     >
-      <UnstyledButton
+      <button
+        type="button"
         className={`admin-md__item ${active ? "admin-md__item--active" : ""}`}
         onClick={onOpen}
       >
         <span className="admin-md__item-main">
-          <Text size="sm" fw={500} truncate>{badge.name}</Text>
+          <span className="admin-md__item-label">{badge.name}</span>
         </span>
-      </UnstyledButton>
+      </button>
       <button
         type="button"
         ref={setActivatorNodeRef}
@@ -134,48 +129,68 @@ function BadgeFormFields({
   const [labelEditorOpen, setLabelEditorOpen] = useState(false);
 
   return (
-    <>
-      <TextInput
-        label={t("badges.field.name")}
-        placeholder={t("badges.placeholder.name")}
-        value={form.name}
-        onChange={(e) => { const v = e.currentTarget.value; setForm((f) => ({ ...f, name: v })); }}
-      />
+    <div className="admin-badges__fields">
+      <div className="admin-md__field">
+        <Label htmlFor="badge-name">{t("badges.field.name")}</Label>
+        <Input
+          id="badge-name"
+          placeholder={t("badges.placeholder.name")}
+          value={form.name}
+          onChange={(event) => {
+            const value = event.currentTarget.value;
+            setForm((current) => ({ ...current, name: value }));
+          }}
+        />
+      </div>
 
       <div className="admin-badge-label">
-        <Text component="span" size="sm" fw={500}>{t("badges.field.label")}</Text>
-        <Group gap={8}>
+        <span className="admin-md__field-label">{t("badges.field.label")}</span>
+        <div className="admin-badge-label__controls">
           {form.label_html.trim() ? (
             <span className="admin-badge-label__preview">
               <MemberBadgeChip
-                badge={{ id: "badge-form-preview", name: form.name, label_html: form.label_html, color: form.color }}
+                badge={{
+                  id: "badge-form-preview",
+                  name: form.name,
+                  label_html: form.label_html,
+                  color: form.color,
+                }}
               />
             </span>
           ) : null}
-          {/* 只留图标，名字挂在 aria-label 和 tooltip 上；预览是这一行的主角，按钮让位。 */}
-          <Tooltip label={t("badges.action.openLabelEditor")}>
-            <ActionIcon
-              variant="default"
-              size="lg"
-              aria-label={t("badges.action.openLabelEditor")}
-              onClick={() => setLabelEditorOpen(true)}
+          <Tooltip>
+            <TooltipTrigger
+              render={(
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="icon"
+                  aria-label={t("badges.action.openLabelEditor")}
+                  onClick={() => setLabelEditorOpen(true)}
+                />
+              )}
             >
               <PaletteIcon size={16} />
-            </ActionIcon>
+            </TooltipTrigger>
+            <TooltipContent>{t("badges.action.openLabelEditor")}</TooltipContent>
           </Tooltip>
-        </Group>
+        </div>
       </div>
 
-      <TextInput
-        label={t("badges.field.description")}
-        placeholder={t("badges.placeholder.description")}
-        value={form.description}
-        onChange={(e) => { const v = e.currentTarget.value; setForm((f) => ({ ...f, description: v })); }}
-      />
-      {/* 排序只由左栏拖拽更新，编辑表单不写 sort_order。 */}
+      <div className="admin-md__field">
+        <Label htmlFor="badge-description">{t("badges.field.description")}</Label>
+        <Input
+          id="badge-description"
+          placeholder={t("badges.placeholder.description")}
+          value={form.description}
+          onChange={(event) => {
+            const value = event.currentTarget.value;
+            setForm((current) => ({ ...current, description: value }));
+          }}
+        />
+      </div>
 
-      {/* 只在打开时挂载：编辑器把 initialHtml / initialColor 当初值收下，
-          常驻一份会一直停在它打开时的那一枚徽章上。 */}
+      {/* 排序只由左栏拖拽更新，编辑表单不写 sort_order。 */}
       {labelEditorOpen ? (
         <LabelStyleModal
           opened
@@ -185,10 +200,10 @@ function BadgeFormFields({
           initialColor={form.color}
           defaultText={t("badges.placeholder.label")}
           applyLabel={t("badges.action.applyLabel")}
-          onApply={({ html, color }) => setForm((f) => ({ ...f, label_html: html, color }))}
+          onApply={({ html, color }) => setForm((current) => ({ ...current, label_html: html, color }))}
         />
       ) : null}
-    </>
+    </div>
   );
 }
 
@@ -198,18 +213,14 @@ export function AdminBadgesSection({ userRows, controller }: AdminBadgesSectionP
   const confirm = useConfirmDialog();
   const {
     selectedBadgeId,
-    editingBadgeId,
     isCreating,
     form,
     setForm,
-    membershipOpen,
     memberSearch,
     setMemberSearch,
     draftMemberIds,
-    draftAdded,
     draftRemoved,
     badges,
-    assignments,
     selectedBadge,
     badgesLoading,
     assignmentsLoading,
@@ -221,20 +232,18 @@ export function AdminBadgesSection({ userRows, controller }: AdminBadgesSectionP
     updatePending,
     membershipPending,
     isBadgeDeletePending,
-    isBadgeUnassignPending,
     startCreate,
-    startEdit,
     selectBadge,
-    cancelEdit,
-    openMembership,
-    closeMembership,
+    discardChanges,
     toggleDraftMember,
     formValid,
+    formDirty,
+    membershipDirty,
+    isDirty,
     createBadge,
     updateBadge,
     deleteBadge,
     saveMembership,
-    unassignBadge,
     reorderBadges,
     reorderPending,
   } = controller;
@@ -251,12 +260,15 @@ export function AdminBadgesSection({ userRows, controller }: AdminBadgesSectionP
   };
 
   const handleDelete = async (badge: MemberBadge) => {
-    if (isBadgeDeletePending(badge.id)) {
-      return;
-    }
+    if (isBadgeDeletePending(badge.id)) return;
+
     const accepted = await confirm({
       title: t("badges.confirmDelete.title"),
-      description: <Text size="sm">{t("badges.confirmDelete.description", { name: badge.name })}</Text>,
+      description: (
+        <p className="admin-md__confirmation-copy">
+          {t("badges.confirmDelete.description", { name: badge.name })}
+        </p>
+      ),
       confirmLabel: t("badges.action.delete"),
       cancelLabel: t("badges.action.cancel"),
       intent: "danger",
@@ -269,20 +281,16 @@ export function AdminBadgesSection({ userRows, controller }: AdminBadgesSectionP
    * 加人和删人是同一份名单上的同一个动作。
    */
   const filteredUsers = useMemo(() => {
-    const q = memberSearch.trim().toLowerCase();
-    if (!q) return userRows;
-    return userRows.filter((r) => r.user.username.toLowerCase().includes(q));
+    const query = memberSearch.trim().toLowerCase();
+    if (!query) return userRows;
+    return userRows.filter((row) => row.user.display_name.toLowerCase().includes(query));
   }, [userRows, memberSearch]);
-
-  const memberById = useMemo(
-    () => new Map(userRows.map((row) => [row.user.id, row])),
-    [userRows],
-  );
 
   const memberOptions = useMemo(
     () => filteredUsers.map((row) => ({
       id: row.user.id,
-      label: row.user.username,
+      label: row.user.display_name,
+      disabled: assignmentsLoading || assignmentsError,
       /* 徽章页认的是人，不是职业配置：头像上再挂三个职业圈，一列名字看起来全是花的。 */
       icon: (
         <MemberRoleAvatar
@@ -294,25 +302,20 @@ export function AdminBadgesSection({ userRows, controller }: AdminBadgesSectionP
         />
       ),
     })),
-    [filteredUsers],
+    [assignmentsError, assignmentsLoading, filteredUsers],
   );
 
   const confirmUnassign = (count: number) => confirm({
     title: t("badges.unassignTitle"),
     description: (
-      <Text size="sm">
+      <p className="admin-md__confirmation-copy">
         {t("badges.unassignDescription", { count, badge: selectedBadge?.name ?? "" })}
-      </Text>
+      </p>
     ),
     confirmLabel: t("badges.action.unassign"),
     cancelLabel: t("badges.action.cancel"),
     intent: "danger",
   });
-
-  const handleUnassign = async (badgeId: string, userId: string) => {
-    if (isBadgeUnassignPending(badgeId, userId)) return;
-    if (await confirmUnassign(1)) unassignBadge(badgeId, [userId]);
-  };
 
   /* 差异里含移除时才拦一道：纯新增没有可后悔的东西，弹窗只会变成肌肉记忆。 */
   const handleSaveMembership = async () => {
@@ -321,37 +324,35 @@ export function AdminBadgesSection({ userRows, controller }: AdminBadgesSectionP
     saveMembership(selectedBadgeId);
   };
 
-  const isEditing = Boolean(editingBadgeId) && Boolean(selectedBadge);
-  const membershipDirty = draftAdded.length > 0 || draftRemoved.length > 0;
-
   return (
     <div className="admin-panel admin-md">
       <div className="admin-md__master">
         <div className="admin-md__master-head">
-          <Group gap={8} justify="space-between" wrap="nowrap">
-            <Text fw={700} size="sm">{t("badges.title")}</Text>
-            <ActionIcon
-              size="sm"
-              variant="filled"
-              color="portal-brand"
-              onClick={startCreate}
+          <div className="admin-md__master-head-row">
+            <span className="admin-md__master-title">{t("badges.title")}</span>
+            <Button
+              type="button"
+              size="icon-sm"
               aria-label={t("badges.action.create")}
+              onClick={startCreate}
             >
               <PlusIcon size={14} />
-            </ActionIcon>
-          </Group>
+            </Button>
+          </div>
         </div>
 
-        <ScrollArea className="admin-md__list" type="auto" scrollbarSize={6}>
-          <Stack gap={2} p={6}>
+        <ScrollArea className="admin-md__list">
+          <div className="admin-md__list-stack">
             {badgesLoading ? (
-              Array.from({ length: 3 }).map((_, i) => <Skeleton key={i} height={40} radius="md" />)
+              Array.from({ length: 3 }).map((_, index) => (
+                <Skeleton key={index} className="admin-md__skeleton" />
+              ))
             ) : badgesError ? (
               <EmptyState
                 status="error"
                 title={tc("loadError")}
                 actions={(
-                  <Button variant="default" size="sm" onClick={retryBadges}>
+                  <Button variant="outline" size="sm" onClick={retryBadges}>
                     {tc("action.retry")}
                   </Button>
                 )}
@@ -391,149 +392,112 @@ export function AdminBadgesSection({ userRows, controller }: AdminBadgesSectionP
                 </SortableContext>
               </DndContext>
             )}
-          </Stack>
+          </div>
         </ScrollArea>
       </div>
 
       <div className="admin-md__detail">
-        {isCreating || isEditing ? (
+        {isCreating || selectedBadge ? (
           <>
             <div className="admin-md__detail-head">
-              <Text fw={700} size="sm">{isCreating ? t("badges.createTitle") : t("badges.editTitle")}</Text>
+              <div className="admin-md__detail-head-row">
+                <div className="admin-md__detail-heading">
+                  <span className="admin-md__detail-title">
+                    {isCreating ? t("badges.createTitle") : t("badges.editTitle")}
+                  </span>
+                  {isDirty ? <Badge variant="outline" className="admin-md__dirty">{t("badges.dirty")}</Badge> : null}
+                </div>
+                {selectedBadge ? (
+                  <Tooltip>
+                    <TooltipTrigger
+                      render={(
+                        <Button
+                          type="button"
+                          variant="destructive"
+                          size="icon-lg"
+                          className="admin-md__delete-action"
+                          aria-label={t("badges.action.delete")}
+                          onClick={() => void handleDelete(selectedBadge)}
+                          loading={isBadgeDeletePending(selectedBadge.id)}
+                          disabled={isBadgeDeletePending(selectedBadge.id)}
+                        />
+                      )}
+                    >
+                      <TrashIcon size={16} />
+                    </TooltipTrigger>
+                    <TooltipContent>{t("badges.action.delete")}</TooltipContent>
+                  </Tooltip>
+                ) : null}
+              </div>
             </div>
-            <ScrollArea className="admin-md__detail-body" type="auto" scrollbarSize={6}>
-              <Stack gap={12} className="admin-md__detail-pad">
+            <ScrollArea className="admin-md__detail-body">
+              <div className="admin-md__detail-pad admin-md__detail-stack">
                 <BadgeFormFields form={form} setForm={setForm} />
-                <Group gap={8}>
-                  {isCreating ? (
-                    <Button onClick={createBadge} disabled={!formValid} loading={createPending}>
-                      {t("badges.action.create")}
-                    </Button>
-                  ) : (
+                {selectedBadge ? (
+                  <div className="admin-badges__membership">
+                    <div className="admin-badges__membership-head">
+                      <span className="admin-badges__membership-title">
+                        {t("badges.assignedCount", { count: draftMemberIds.size })}
+                      </span>
+                      {assignmentsLoading ? (
+                        <span className="admin-md__muted">{t("badges.membership.loading")}</span>
+                      ) : null}
+                      {assignmentsError ? (
+                        <Button variant="outline" size="xs" onClick={retryAssignments}>
+                          {tc("action.retry")}
+                        </Button>
+                      ) : null}
+                    </div>
+                    <PickList
+                      aria-label={t("badges.field.members")}
+                      options={memberOptions}
+                      selected={draftMemberIds}
+                      onToggle={toggleDraftMember}
+                      emptyLabel={t("badges.membership.noMatch")}
+                      search={{
+                        value: memberSearch,
+                        onChange: setMemberSearch,
+                        placeholder: t("badges.searchMembers"),
+                      }}
+                    />
+                  </div>
+                ) : (
+                  <span className="admin-md__muted">{t("badges.membership.createFirst")}</span>
+                )}
+              </div>
+            </ScrollArea>
+            <div className="admin-md__detail-foot">
+              <div className="admin-md__detail-actions">
+                <Button variant="outline" onClick={discardChanges} disabled={!isDirty}>
+                  {t("badges.action.cancel")}
+                </Button>
+                {isCreating ? (
+                  <Button onClick={createBadge} disabled={!formValid || !isDirty} loading={createPending}>
+                    {t("badges.action.create")}
+                  </Button>
+                ) : (
+                  <>
                     <Button
-                      onClick={() => { if (editingBadgeId) updateBadge(editingBadgeId); }}
-                      disabled={!formValid}
+                      onClick={() => { if (selectedBadgeId) updateBadge(selectedBadgeId); }}
+                      disabled={!formValid || !formDirty || !selectedBadgeId}
                       loading={updatePending}
                     >
                       {t("badges.action.save")}
                     </Button>
-                  )}
-                  <Button variant="default" onClick={cancelEdit}>{t("badges.action.cancel")}</Button>
-                </Group>
-              </Stack>
-            </ScrollArea>
-          </>
-        ) : selectedBadge ? (
-          <>
-            <div className="admin-md__detail-head">
-              <Group justify="space-between" align="flex-start" wrap="nowrap">
-                <div style={{ minWidth: 0 }}>
-                  <Text fw={600} truncate>{selectedBadge.name}</Text>
-                  {selectedBadge.description ? <Text size="xs" c="dimmed">{selectedBadge.description}</Text> : null}
-                </div>
-                <Group gap={6} wrap="nowrap">
-                  <Tooltip label={t("badges.editTitle")}>
-                    <ActionIcon
-                      size={44}
-                      variant="subtle"
-                      aria-label={t("badges.editTitle")}
-                      onClick={() => startEdit(selectedBadge)}
-                    >
-                      <PencilIcon size={16} />
-                    </ActionIcon>
-                  </Tooltip>
-                  <Tooltip label={t("badges.action.delete")}>
-                    <ActionIcon
-                      size={44}
-                      variant="subtle"
-                      color="red"
-                      aria-label={t("badges.action.delete")}
-                      onClick={() => handleDelete(selectedBadge)}
-                      loading={isBadgeDeletePending(selectedBadge.id)}
-                      disabled={isBadgeDeletePending(selectedBadge.id)}
-                    >
-                      <TrashIcon size={16} />
-                    </ActionIcon>
-                  </Tooltip>
-                </Group>
-              </Group>
-            </div>
-
-            <ScrollArea className="admin-md__detail-body" type="auto" scrollbarSize={6}>
-              <Stack gap={12} className="admin-md__detail-pad">
-                {/* Membership editing waits for the assignment baseline to load. */}
-                {membershipOpen ? null : (
-                  <Group justify="space-between" wrap="wrap" gap={8}>
-                    <Text size="sm" fw={600}>{t("badges.assignedCount", { count: assignments.length })}</Text>
                     <Button
-                      variant="default"
-                      size="sm"
-                      disabled={assignmentsLoading || assignmentsError}
-                      leftSection={<UserCheckIcon size={16} />}
-                      onClick={openMembership}
+                      variant="secondary"
+                      disabled={!membershipDirty || !selectedBadgeId || assignmentsLoading || assignmentsError}
+                      loading={membershipPending}
+                      onClick={() => { void handleSaveMembership(); }}
                     >
-                      {t("badges.action.manageMembership")}
+                      {t("badges.action.saveMembership")}
                     </Button>
-                  </Group>
+                  </>
                 )}
-
-                {membershipOpen ? (
-                  <PickList
-                    aria-label={t("badges.action.manageMembership")}
-                    options={memberOptions}
-                    selected={draftMemberIds}
-                    onToggle={toggleDraftMember}
-                    emptyLabel={t("badges.membership.noMatch")}
-                    search={{
-                      value: memberSearch,
-                      onChange: setMemberSearch,
-                      placeholder: t("badges.searchMembers"),
-                    }}
-                    actions={(
-                      <>
-                        <Button variant="default" size="sm" onClick={closeMembership}>
-                          {t("badges.action.cancel")}
-                        </Button>
-                        <Button
-                          size="sm"
-                          disabled={!membershipDirty || !selectedBadgeId}
-                          loading={membershipPending}
-                          onClick={() => { void handleSaveMembership(); }}
-                        >
-                          {t("badges.action.saveMembership")}
-                        </Button>
-                      </>
-                    )}
-                  />
-                ) : assignmentsLoading ? (
-                  <Stack gap={4}>
-                    {Array.from({ length: 5 }).map((_, i) => <Skeleton key={i} height={44} radius="sm" />)}
-                  </Stack>
-                ) : assignmentsError ? (
-                  <EmptyState
-                    status="error"
-                    title={tc("loadError")}
-                    actions={(
-                      <Button variant="default" size="sm" onClick={retryAssignments}>
-                        {tc("action.retry")}
-                      </Button>
-                    )}
-                  />
-                ) : assignments.length === 0 ? (
-                  <Text size="sm" c="dimmed">{t("badges.noMembers")}</Text>
-                ) : (
-                  <AdminBadgeMemberList
-                    assignments={assignments}
-                    memberById={memberById}
-                    isUnassignPending={(userId) => isBadgeUnassignPending(selectedBadge.id, userId)}
-                    onUnassign={(userId) => { void handleUnassign(selectedBadge.id, userId); }}
-                  />
-                )}
-              </Stack>
-            </ScrollArea>
+              </div>
+            </div>
           </>
-        ) : null /* 选中项现在有兜底，走到这里只剩「一枚徽章都没有」，
-                    而左栏那块空状态已经把这件事和「去新建」说完了。 */}
+        ) : null}
       </div>
     </div>
   );

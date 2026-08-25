@@ -1,4 +1,15 @@
-import { Button, Group, Modal, Stack, TextInput, Textarea } from "@mantine/core";
+import { Button } from "@portal/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@portal/components/ui/dialog";
+import { Input } from "@portal/components/ui/input";
+import { Label } from "@portal/components/ui/label";
+import { Textarea } from "@portal/components/ui/textarea";
+import { useId } from "react";
 import { useTranslation } from "react-i18next";
 
 export type GuildWarTeamEditTarget = {
@@ -28,38 +39,55 @@ export function GuildWarTeamEditModal({
   onClose,
 }: GuildWarTeamEditModalProps) {
   const { t } = useTranslation("guild-war");
+  const nameId = useId();
+  const notesId = useId();
+  const notesDescriptionId = useId();
 
   return (
-    <Modal
-      opened={Boolean(target)}
-      onClose={onClose}
-      title={t("active.teamSetup.edit")}
-      centered
+    <Dialog
+      open={Boolean(target)}
+      onOpenChange={(open) => {
+        if (!open) onClose();
+      }}
     >
-      {target ? (
-        <Stack gap="md">
-          <TextInput
-            label={t("active.teamSetup.namePlaceholder")}
-            value={target.name}
-            onChange={(event) => onNameChange(target.containerId, event.currentTarget.value)}
-            data-autofocus
-          />
-          {/* 锁住的队伍连备注也不给改，跟锁住之后拖不动是同一条规矩。 */}
-          <Textarea
-            label={t("active.teamSetup.notesPlaceholder")}
-            description={target.locked ? t("active.teamSetup.locked") : undefined}
-            value={target.notes}
-            onChange={(event) => onNotesChange(target.containerId, event.currentTarget.value)}
-            disabled={target.locked}
-            autosize
-            minRows={3}
-            maxRows={8}
-          />
-          <Group justify="flex-end">
-            <Button onClick={onClose}>{t("common:action.close")}</Button>
-          </Group>
-        </Stack>
-      ) : null}
-    </Modal>
+      <DialogContent className="sm:max-w-md" showCloseButton={false}>
+        <DialogHeader>
+          <DialogTitle>{t("active.teamSetup.edit")}</DialogTitle>
+        </DialogHeader>
+        {target ? (
+          <div className="grid gap-4">
+            <div className="grid gap-2">
+              <Label htmlFor={nameId}>{t("active.teamSetup.namePlaceholder")}</Label>
+              <Input
+                id={nameId}
+                value={target.name}
+                onChange={(event) => onNameChange(target.containerId, event.currentTarget.value)}
+                autoFocus
+              />
+            </div>
+            <div className="grid gap-2">
+              <Label htmlFor={notesId}>{t("active.teamSetup.notesPlaceholder")}</Label>
+              {/* 锁住的队伍连备注也不给改，跟锁住之后拖不动是同一条规矩。 */}
+              <Textarea
+                id={notesId}
+                aria-describedby={target.locked ? notesDescriptionId : undefined}
+                value={target.notes}
+                onChange={(event) => onNotesChange(target.containerId, event.currentTarget.value)}
+                disabled={target.locked}
+                rows={4}
+              />
+              {target.locked ? (
+                <p id={notesDescriptionId} className="text-xs text-muted-foreground">
+                  {t("active.teamSetup.locked")}
+                </p>
+              ) : null}
+            </div>
+          </div>
+        ) : null}
+        <DialogFooter>
+          <Button onClick={onClose}>{t("common:action.close")}</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }

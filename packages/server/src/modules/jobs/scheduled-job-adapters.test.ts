@@ -53,10 +53,14 @@ describe("scheduled job domain adapters", () => {
       maxOccurrencesPerTemplate: 10,
       audit: createSchedulerAuditFactory("recurrence", NOW),
     })).resolves.toEqual({ processed: 1, hasMore: false, nextTemplateCursor: null });
-    expect(publish).toHaveBeenCalledWith(expect.objectContaining({
-      entity_id: "event-1",
-      hint: "event_created",
-    }));
+    expect(publish.mock.calls.map(([message]) => message)).toEqual([
+      expect.objectContaining({
+        type: "entity_changed",
+        entity_id: "event-1",
+        hint: "event_created",
+      }),
+      { type: "inbox_changed" },
+    ]);
     await expect(job.inspectBacklog({ now: NOW })).resolves.toMatchObject({
       status: "unknown",
       reason: "unsupported",
@@ -77,6 +81,7 @@ describe("scheduled job domain adapters", () => {
       entity_id: "event-1",
       hint: "event_archived",
     }));
+    expect(publish).toHaveBeenCalledTimes(1);
     await expect(job.inspectBacklog({ now: NOW })).resolves.toEqual(backlog);
   });
 
@@ -101,12 +106,16 @@ describe("scheduled job domain adapters", () => {
       limit: 50,
       audit: createSchedulerAuditFactory("announcement", NOW),
     })).resolves.toEqual({ processed: 1, hasMore: false });
-    expect(publish).toHaveBeenCalledWith({
-      type: "announcement_published",
-      announcement_id: "announcement-1",
-      title: "Notice",
-      published_at: NOW,
-    });
+    expect(publish.mock.calls.map(([message]) => message)).toEqual([
+      {
+        type: "entity_changed",
+        entity_type: "announcement",
+        entity_id: "announcement-1",
+        updated_at: NOW,
+        hint: "announcement_published",
+      },
+      { type: "inbox_changed" },
+    ]);
     await expect(job.inspectBacklog({ now: NOW })).resolves.toEqual(backlog);
   });
 

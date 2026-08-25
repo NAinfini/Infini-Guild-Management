@@ -31,13 +31,33 @@ function applyAtomically(database: DatabaseSync, sql: string): void {
 }
 
 describe("first admin bootstrap", () => {
+  it("rejects reserved system-test identity names", async () => {
+    const hash = await createPasswordHash("correct horse battery staple", 10_000);
+
+    expect(() => buildFirstAdminBootstrapBundle({
+      mode: "create",
+      userId: "admin-reserved",
+      loginName: "SystemTest_owner",
+      displayName: "Owner",
+      passwordHash: hash,
+    })).toThrow(/reserved/i);
+    expect(() => buildFirstAdminBootstrapBundle({
+      mode: "create",
+      userId: "admin-reserved",
+      loginName: "owner",
+      displayName: "systemtest_Owner",
+      passwordHash: hash,
+    })).toThrow(/reserved/i);
+  });
+
   it("creates the first role manager with a verifiable password and complete profile", async () => {
     const database = freshDatabase();
     const hash = await createPasswordHash("correct horse battery staple", 10_000);
     const bundle = buildFirstAdminBootstrapBundle({
       mode: "create",
       userId: "admin-1",
-      username: "Admin_1",
+      loginName: "admin_login",
+      displayName: "Admin_1",
       passwordHash: hash,
       nonce: "create-admin-0001",
     });
@@ -68,12 +88,12 @@ describe("first admin bootstrap", () => {
 
   it("promotes one explicit active user without changing their credential", () => {
     const database = freshDatabase();
-    database.prepare(`INSERT INTO users (id, username, role_id, is_active, deleted_at, revision_token)
+    database.prepare(`INSERT INTO users (id, display_name, role_id, is_active, deleted_at, revision_token)
       VALUES (?, ?, 'member', 1, NULL, ?)`).run("member-1", "Member_1", "member-revision-0001");
     database.prepare("INSERT INTO member_profiles (user_id, revision_token) VALUES (?, ?)")
       .run("member-1", "profile-revision-0001");
-    database.prepare("INSERT INTO user_credentials (user_id, password_hash) VALUES (?, ?)")
-      .run("member-1", "pbkdf2-sha256$10000$AAAAAAAAAAAAAAAAAAAAAA$AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA");
+    database.prepare("INSERT INTO user_credentials (user_id, login_name, password_hash) VALUES (?, ?, ?)")
+      .run("member-1", "member-login", "pbkdf2-sha256$10000$AAAAAAAAAAAAAAAAAAAAAA$AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA");
 
     applyAtomically(database, buildFirstAdminBootstrapBundle({
       mode: "promote",
@@ -91,7 +111,8 @@ describe("first admin bootstrap", () => {
     applyAtomically(database, buildFirstAdminBootstrapBundle({
       mode: "create",
       userId: "admin-1",
-      username: "Admin_1",
+      loginName: "admin_login",
+      displayName: "Admin_1",
       passwordHash: hash,
       nonce: "admin-one-0001",
     }).sql);
@@ -99,7 +120,8 @@ describe("first admin bootstrap", () => {
     expect(() => applyAtomically(database, buildFirstAdminBootstrapBundle({
       mode: "create",
       userId: "admin-2",
-      username: "Admin_2",
+      loginName: "admin_two_login",
+      displayName: "Admin_2",
       passwordHash: hash,
       nonce: "admin-two-0001",
     }).sql)).toThrow();

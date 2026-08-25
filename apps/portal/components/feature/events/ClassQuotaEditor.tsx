@@ -1,6 +1,7 @@
 import type { ClassCatalogItem, ClassTag, EventClassQuotaInput } from "@guild/shared";
 import { LIMITS } from "@guild/shared/config/limits";
-import { ActionIcon, Button, Group, NumberInput, Select, Stack, Text, TextInput } from "@mantine/core";
+import { Button } from "@portal/components/ui/button";
+import { Input } from "@portal/components/ui/input";
 import { PlusIcon, TrashIcon } from "@portal/components/icons";
 import { useClassCatalog, useClassTags } from "@portal/hooks/data/useClassData";
 import { useTranslation } from "react-i18next";
@@ -52,8 +53,8 @@ export function ClassQuotaEditor({ value, onChange, disabled = false }: ClassQuo
   const atMax = value.length >= MAX_QUOTAS;
 
   return (
-    <Stack gap={8} className="quota-editor">
-      <Text size="sm" fw={500} className="quota-editor__label">{t("quota.editor.label")}</Text>
+    <div className="quota-editor">
+      <p className="quota-editor__label">{t("quota.editor.label")}</p>
 
       {value.map((quota, index) => (
         <QuotaRow
@@ -70,11 +71,10 @@ export function ClassQuotaEditor({ value, onChange, disabled = false }: ClassQuo
         />
       ))}
 
-      <Group gap={8}>
+      <div className="quota-editor__actions">
         <Button
-          variant="light"
+          variant="secondary"
           size="xs"
-          leftSection={<PlusIcon size={14} />}
           disabled={disabled || atMax || unusedTags.length === 0}
           onClick={() => {
             const next = unusedTags[0];
@@ -83,24 +83,25 @@ export function ClassQuotaEditor({ value, onChange, disabled = false }: ClassQuo
             }
           }}
         >
+          <PlusIcon size={14} />
           {t("quota.editor.add")}
         </Button>
         <Button
-          variant="subtle"
+          variant="ghost"
           size="xs"
-          leftSection={<PlusIcon size={14} />}
           disabled={disabled || atMax}
           onClick={() => onChange([...value, { tag: { label: "", class_ids: [] }, required: 1 }])}
         >
+          <PlusIcon size={14} />
           {t("quota.editor.addOneTime")}
         </Button>
         {atMax ? (
-          <Text size="xs" c="dimmed">{t("quota.editor.maxReached", { max: MAX_QUOTAS })}</Text>
+          <span className="quota-editor__hint">{t("quota.editor.maxReached", { max: MAX_QUOTAS })}</span>
         ) : tags.length === 0 ? (
-          <Text size="xs" c="dimmed">{t("quota.editor.noTags")}</Text>
+          <span className="quota-editor__hint">{t("quota.editor.noTags")}</span>
         ) : null}
-      </Group>
-    </Stack>
+      </div>
+    </div>
   );
 }
 
@@ -138,7 +139,7 @@ function QuotaRow({
           onChange={onChange}
         />
       ) : (
-        <TextInput
+        <Input
           className="quota-editor__name"
           aria-label={t("quota.editor.oneTimeLabel")}
           placeholder={t("quota.editor.oneTimePlaceholder")}
@@ -170,33 +171,32 @@ function QuotaRow({
           onChange={(classIds) => onChange({ ...quota, tag: { ...quota.tag, class_ids: classIds } })}
         />
       )}
-      <NumberInput
+      <Input
         className="quota-editor__count"
         aria-label={t("quota.editor.requiredLabel")}
+        type="number"
         min={1}
         max={999}
-        clampBehavior="strict"
         /* 上下箭头去掉：一行就这么宽，两个 12px 的箭头点不准，直接输数字反而快。
            min/max/clampBehavior 还在，键盘上下键也还能用，能改的范围没变。 */
-        hideControls
         disabled={disabled}
-        value={quota.required}
-        onChange={(next) => {
-          const parsed = typeof next === "number" ? next : Number.parseInt(next, 10);
+        value={String(quota.required)}
+        onChange={(event) => {
+          const parsed = Number.parseInt(event.currentTarget.value, 10);
           if (Number.isFinite(parsed) && parsed >= 1) {
             onChange({ ...quota, required: Math.floor(parsed) });
           }
         }}
       />
-      <ActionIcon
-        variant="subtle"
-        color="red"
+      <Button
+        variant="destructive"
+        size="icon-sm"
         disabled={disabled}
         aria-label={t("quota.editor.remove", { label })}
         onClick={onRemove}
       >
         <TrashIcon size={16} />
-      </ActionIcon>
+      </Button>
     </div>
   );
 }
@@ -216,22 +216,20 @@ function CatalogTagSelect({
 }) {
   const { t } = useTranslation("events");
   return (
-    <Select
+    <select
       className="quota-editor__name"
       aria-label={t("quota.editor.tagLabel")}
       value={quota.tag_id}
       /* 当前行自己的标签要留在选项里，否则这一行的 Select 会显示成空的。 */
-      data={[
-        { value: quota.tag_id, label },
-        ...unusedTags.map((entry) => ({ value: entry.id, label: entry.label })),
-      ]}
       disabled={disabled}
-      allowDeselect={false}
-      onChange={(next) => {
-        if (next) {
-          onChange({ ...quota, tag_id: next });
+      onChange={(event) => {
+        if (event.currentTarget.value) {
+          onChange({ ...quota, tag_id: event.currentTarget.value });
         }
       }}
-    />
+    >
+      <option value={quota.tag_id}>{label}</option>
+      {unusedTags.map((entry) => <option key={entry.id} value={entry.id}>{entry.label}</option>)}
+    </select>
   );
 }

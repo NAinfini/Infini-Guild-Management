@@ -68,7 +68,7 @@ export function presentHistoryDetail(aggregate: GuildWarAggregate) {
       id: member.id,
       warHistoryId: aggregate.war.id,
       userId: member.userId,
-      username: member.username,
+      display_name: member.display_name,
     })),
     member_stats: members.map((member) => presentMember(member, true)),
   });
@@ -148,6 +148,6 @@ export function presentMember(member: WarMemberRecord, includeUsername = false) 
     sort_order: member.sortOrder,
     stats: member.stats,
     note: member.note,
-    ...(includeUsername ? { username: member.username } : {}),
+    ...(includeUsername ? { display_name: member.display_name } : {}),
   });
 }

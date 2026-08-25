@@ -1,10 +1,16 @@
-import { MantineProvider } from "@mantine/core";
-import { cleanup, render, screen } from "@testing-library/react";
+import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { EventsFiltersCard } from "./EventsFiltersCard";
 
 const responsive = vi.hoisted(() => ({ mobile: false, width: 1200 }));
+
+if (typeof Element !== "undefined" && !Element.prototype.getAnimations) {
+  Object.defineProperty(Element.prototype, "getAnimations", {
+    configurable: true,
+    value: () => [],
+  });
+}
 
 class ResponsiveResizeObserver {
   constructor(private readonly callback: ResizeObserverCallback) {}
@@ -17,14 +23,6 @@ class ResponsiveResizeObserver {
     );
   }
 }
-
-vi.mock("@mantine/hooks", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("@mantine/hooks")>();
-  return {
-    ...actual,
-    useMediaQuery: () => responsive.mobile,
-  };
-});
 
 vi.mock("react-i18next", () => ({
   useTranslation: () => ({
@@ -40,7 +38,7 @@ function renderFilters(overrides: Partial<React.ComponentProps<typeof EventsFilt
     pinnedOnly: false,
     lockedOnly: false,
     viewMode: "cards",
-    canManage: true,
+    canCreate: true,
     onSearchChange: vi.fn(),
     onEventTypeChange: vi.fn(),
     onEventStatusChange: vi.fn(),
@@ -52,9 +50,9 @@ function renderFilters(overrides: Partial<React.ComponentProps<typeof EventsFilt
   };
 
   render(
-    <MantineProvider>
+    <>
       <EventsFiltersCard {...props} />
-    </MantineProvider>,
+    </>,
   );
 
   return props;
@@ -80,6 +78,7 @@ describe("EventsFiltersCard", () => {
     await user.keyboard("{Enter}");
 
     expect(props.onCreateEvent).toHaveBeenCalledOnce();
+    expect(props.onCreateEvent).toHaveBeenCalledWith();
   });
 
   it("keeps the existing desktop create action visible", () => {
@@ -88,8 +87,9 @@ describe("EventsFiltersCard", () => {
     expect(screen.getByRole("button", { name: "button.create" })).toBeVisible();
   });
 
-  it("does not expose a shared clear action for active filters", () => {
-    renderFilters({
+  it("resets grouped filter controls without clearing the search query", async () => {
+    const user = userEvent.setup();
+    const props = renderFilters({
       searchQuery: "raid",
       eventType: "guild_war",
       eventStatus: "archived",
@@ -97,17 +97,36 @@ describe("EventsFiltersCard", () => {
       lockedOnly: true,
     });
 
-    expect(screen.queryByRole("button", { name: "common:filter.clearAll" })).not.toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "common:filter.toggle (4)" }));
+    const filterDialog = await screen.findByRole("dialog", { name: /common:filter\.toggle/ });
+    expect(within(filterDialog).getByRole("switch", { name: "filter.pinned" })).toBeChecked();
+    expect(within(filterDialog).getByRole("switch", { name: "filter.locked" })).toBeChecked();
+
+    await user.click(within(filterDialog).getByRole("button", { name: "common:filter.reset" }));
+    expect(props.onEventTypeChange).toHaveBeenCalledWith(undefined);
+    expect(props.onEventStatusChange).toHaveBeenCalledWith("active");
+    expect(props.onPinnedOnlyChange).toHaveBeenCalledWith(false);
+    expect(props.onLockedOnlyChange).toHaveBeenCalledWith(false);
+    expect(props.onSearchChange).not.toHaveBeenCalled();
   });
 
-  /* 周期模板视图只向管理员开放，并仅通过此切换器进入或退出。 */
-  it("offers the recurring view only to managers", () => {
-    renderFilters();
-    expect(screen.getByRole("radio", { name: "view.recurring" })).toBeInTheDocument();
+  it("clears the search query from the input group affordance", async () => {
+    const user = userEvent.setup();
+    const props = renderFilters({ searchQuery: "raid" });
 
-    cleanup();
-    renderFilters({ canManage: false });
-    // 无权限的人点进去只会看到空面板，所以档位本身就不该出现。
+    await user.click(screen.getByRole("button", { name: "common:action.clear" }));
+
+    expect(props.onSearchChange).toHaveBeenCalledWith("");
+  });
+
+  it("keeps the URL-backed cards and calendar switcher without a second workspace switch", () => {
+    renderFilters();
+    const controls = document.querySelector(".events-filter-view-controls");
+
+    expect(controls).not.toBeNull();
+    expect(screen.getByRole("tab", { name: "view.cards" })).toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: "view.calendar" })).toBeInTheDocument();
     expect(screen.queryByRole("radio", { name: "view.recurring" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("radio", { name: "view.events" })).not.toBeInTheDocument();
   });
 });

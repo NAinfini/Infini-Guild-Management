@@ -1,15 +1,4 @@
 import {
-  Button,
-  ColorPicker,
-  Group,
-  Modal,
-  Slider,
-  Text,
-  TextInput,
-  Textarea,
-} from "@mantine/core";
-import { useLocalStorage } from "@mantine/hooks";
-import {
   BoldIcon,
   CopyIcon,
   ItalicIcon,
@@ -19,7 +8,13 @@ import {
   TextSizeIcon,
   UnderlineIcon,
 } from "@portal/components/icons";
+import { Button } from "@portal/components/ui/button";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@portal/components/ui/dialog";
+import { Input } from "@portal/components/ui/input";
+import { Slider } from "@portal/components/ui/slider";
+import { Textarea } from "@portal/components/ui/textarea";
 import { useExternalView } from "@portal/hooks/useExternalView";
+import { useLocalStorageState } from "@portal/hooks/useLocalStorageState";
 import { copyPlainText } from "@portal/utils/copy";
 import { notifySuccess } from "@portal/utils/notifications";
 import { sanitizeTitleHtml } from "@portal/utils/sanitize";
@@ -207,7 +202,7 @@ export function LabelStyleModal({
   onApply,
   applyLabel,
 }: LabelStyleModalProps) {
-  const { t } = useTranslation("tools");
+  const { t } = useTranslation(["tools", "common"]);
   const isExternalView = useExternalView();
   /* 只读一次：所有控件的初值都从这一份来，之后归控件自己管。 */
   const [seed] = useState(() => readLabelSeed(initialHtml));
@@ -223,7 +218,7 @@ export function LabelStyleModal({
     () => seed.color ?? (initialColor ? normalizeHex(initialColor) : null) ?? (PRESET_COLORS[0] as string),
   );
   const [opacity, setOpacity] = useState(seed.opacity ?? 100);
-  const [recentColors, setRecentColors] = useLocalStorage<string[]>({ key: "tools.recentColors", defaultValue: [] });
+  const [recentColors, setRecentColors] = useLocalStorageState<string[]>("tools.recentColors", []);
   const [bold, setBold] = useState(seed.bold ?? true);
   const [italic, setItalic] = useState(seed.italic ?? false);
   const [underline, setUnderline] = useState(seed.underline ?? false);
@@ -301,13 +296,17 @@ export function LabelStyleModal({
   }, [bold, fontSize, color, italic, opacity, strikethrough, t, underline]);
 
   return (
-    <Modal title={heading ?? t("sandbox.title")} opened={opened} onClose={onClose} size={1120}>
+    <Dialog open={opened} onOpenChange={(open) => { if (!open) onClose(); }}>
+      <DialogContent className="sandbox__dialog" closeLabel={t("common:action.close")}>
+        <DialogHeader>
+          <DialogTitle>{heading ?? t("sandbox.title")}</DialogTitle>
+        </DialogHeader>
       <div className={isExternalView ? "sandbox--readonly" : undefined}>
         <div className="sandbox">
           <div className="sandbox__topbar">
             <div className="sandbox__section sandbox__title-section">
-              <Text size="xs" fw={600} c="dimmed" className="sandbox__section-label">{t("sandbox.section.labelText")}</Text>
-              <TextInput
+              <span className="sandbox__section-label">{t("sandbox.section.labelText")}</span>
+              <Input
                 value={labelText}
                 onChange={(event) => {
                   setLabelText(event.currentTarget.value);
@@ -326,27 +325,44 @@ export function LabelStyleModal({
               <div className="sandbox__section">
                 {/* span, not the default <p>: PaletteIcon renders a <div>, and a
                     block element inside <p> is invalid HTML that React flags. */}
-                <Text component="span" size="xs" fw={600} c="dimmed" className="sandbox__section-label">
+                <span className="sandbox__section-label">
                   <PaletteIcon size={14} className="sandbox__section-icon" />
                   {t("sandbox.section.color")}
-                </Text>
+                </span>
 
-                <ColorPicker
-                  value={color}
-                  onChange={applyColor}
-                  onChangeEnd={commitColor}
-                  format="hex"
-                  swatches={PRESET_COLORS}
-                  style={{ width: "100%", pointerEvents: isExternalView ? "none" : "auto", opacity: isExternalView ? 0.5 : 1 }}
-                />
+                <div className="sandbox__color-picker" aria-label={t("sandbox.section.color")}>
+                  <input
+                    type="color"
+                    className="sandbox__color-input"
+                    value={color}
+                    onChange={(event) => applyColor(event.currentTarget.value)}
+                    onBlur={(event) => commitColor(event.currentTarget.value)}
+                    aria-label={t("sandbox.section.color")}
+                    disabled={isExternalView}
+                  />
+                  <div className="sandbox__swatches">
+                    {PRESET_COLORS.map((presetColor) => (
+                      <button
+                        key={presetColor}
+                        type="button"
+                        className="sandbox__swatch"
+                        data-active={presetColor.toLowerCase() === color.toLowerCase() || undefined}
+                        style={{ "--swatch-color": presetColor } as React.CSSProperties}
+                        onClick={() => commitColor(presetColor)}
+                        aria-label={t("sandbox.aria.useRecentColor", { color: presetColor })}
+                        disabled={isExternalView}
+                      />
+                    ))}
+                  </div>
+                </div>
 
                 <div className="sandbox__opacity-wrap">
-                  <Text size="xs" c="dimmed">{t("sandbox.label.opacity")}</Text>
+                  <span className="sandbox__field-label">{t("sandbox.label.opacity")}</span>
                   <Slider
                     min={0}
                     max={100}
                     value={opacity}
-                    onChange={(value) => {
+                    onValueChange={(value) => {
                       setOpacity(value);
                       useGeneratedHtml();
                     }}
@@ -354,12 +370,12 @@ export function LabelStyleModal({
                     disabled={isExternalView}
                     className="sandbox__opacity-slider"
                   />
-                  <Text size="xs" fw={500} className="sandbox__opacity-value">{opacity}%</Text>
+                  <span className="sandbox__opacity-value">{opacity}%</span>
                 </div>
 
                 {recentColors.length > 0 ? (
                   <div className="sandbox__recent">
-                    <Text size="xs" c="dimmed">{t("sandbox.label.recent")}</Text>
+                    <span className="sandbox__field-label">{t("sandbox.label.recent")}</span>
                     <div className="sandbox__recent-list">
                       {recentColors.map((recentColor) => (
                         <button
@@ -380,7 +396,7 @@ export function LabelStyleModal({
               </div>
 
               <div className="sandbox__section">
-                <Text size="xs" fw={600} c="dimmed" className="sandbox__section-label">{t("sandbox.section.typography")}</Text>
+                <span className="sandbox__section-label">{t("sandbox.section.typography")}</span>
                 <div className="sandbox__typo-toggles">
                   <button
                     type="button"
@@ -438,58 +454,60 @@ export function LabelStyleModal({
 
                 <div className="sandbox__slider-row">
                   <TextSizeIcon size={15} className="sandbox__slider-icon" />
-                  <Text size="xs" c="dimmed" className="sandbox__slider-label">{t("sandbox.label.size")}</Text>
+                  <span className="sandbox__slider-label">{t("sandbox.label.size")}</span>
                   <Slider
                     min={10}
                     max={48}
                     value={fontSize}
-                    onChange={(value) => {
+                    onValueChange={(value) => {
                       setFontSize(value);
                       useGeneratedHtml();
                     }}
+                    aria-label={t("sandbox.label.size")}
                     disabled={isExternalView}
                     className="sandbox__slider"
                   />
-                  <Text size="xs" fw={500} className="sandbox__slider-value">{fontSize}px</Text>
+                  <span className="sandbox__slider-value">{fontSize}px</span>
                 </div>
 
                 <div className="sandbox__slider-row">
                   <LetterSpacingIcon size={15} className="sandbox__slider-icon" />
-                  <Text size="xs" c="dimmed" className="sandbox__slider-label">{t("sandbox.label.spacing")}</Text>
+                  <span className="sandbox__slider-label">{t("sandbox.label.spacing")}</span>
                   <Slider
                     min={-5}
                     max={20}
                     value={letterSpacing}
-                    onChange={(value) => {
+                    onValueChange={(value) => {
                       setLetterSpacing(value);
                       useGeneratedHtml();
                     }}
+                    aria-label={t("sandbox.label.spacing")}
                     disabled={isExternalView}
                     className="sandbox__slider"
                   />
-                  <Text size="xs" fw={500} className="sandbox__slider-value">{(letterSpacing / 100).toFixed(2)}em</Text>
+                  <span className="sandbox__slider-value">{(letterSpacing / 100).toFixed(2)}em</span>
                 </div>
               </div>
             </div>
 
             <div className="sandbox__panel sandbox__panel--output">
               <div className="sandbox__section">
-                <Text size="xs" fw={600} c="dimmed" className="sandbox__section-label">{t("sandbox.section.livePreview")}</Text>
+                <span className="sandbox__section-label">{t("sandbox.section.livePreview")}</span>
                 <div className="sandbox__preview-card">
                   <div className="sandbox__preview-bg">
                     <div className="sandbox__preview-rendered" dangerouslySetInnerHTML={{ __html: safeHtml }} />
                   </div>
                   <div className="sandbox__preview-meta">
-                    <Text size="xs" c="dimmed">
+                    <span className="sandbox__preview-meta-text">
                       {previewMetaText}
-                    </Text>
+                    </span>
                   </div>
                 </div>
               </div>
 
               <div className="sandbox__section">
-                <Group gap={6} align="center" className="sandbox__section-label">
-                  <Text size="xs" fw={600} c="dimmed">{t("sandbox.section.htmlSource")}</Text>
+                <div className="sandbox__section-label">
+                  <span>{t("sandbox.section.htmlSource")}</span>
                   <button
                     type="button"
                     className="sandbox__copy-icon-btn"
@@ -501,10 +519,10 @@ export function LabelStyleModal({
                   >
                     <CopyIcon size={14} />
                   </button>
-                </Group>
+                </div>
                 <Textarea
                   value={sourceHtml}
-                  minRows={3}
+                  rows={3}
                   onChange={(event) => {
                     setManualHtml(event.currentTarget.value);
                     setHtmlSource("manual");
@@ -533,6 +551,7 @@ export function LabelStyleModal({
           </div>
         </div>
       </div>
-    </Modal>
+      </DialogContent>
+    </Dialog>
   );
 }

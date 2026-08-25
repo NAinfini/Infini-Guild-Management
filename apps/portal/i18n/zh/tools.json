@@ -59,5 +59,6 @@
   "dice.total": "总计",
   "dice.history": "历史记录",
   "dice.clearHistory": "清空",
-  "dice.noHistory": "暂无投掷记录。选择「投掷」开始。"
+  "dice.noHistory": "暂无投掷记录。选择「投掷」开始。",
+  "dice.resultAnnouncement": "{{notation}} 投掷结果：{{results}}。总计 {{total}}。"
 }

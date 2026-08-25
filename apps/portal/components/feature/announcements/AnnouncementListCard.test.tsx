@@ -1,13 +1,17 @@
-import type { Announcement } from "@guild/shared";
-import { PortalThemeProvider } from "@portal/providers/ThemeProvider";
+import type { AnnouncementSummary } from "@guild/shared";
 import { render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { AnnouncementListCard } from "./AnnouncementListCard";
 
+vi.mock("react-i18next", () => ({
+  useTranslation: () => ({
+    t: (key: string) => key === "status.important" ? "Important" : key,
+  }),
+}));
+
 const announcement = {
   id: "announcement-1",
   title: "Welcome to Infini Guild",
-  body_json: "{}",
   pinned: false,
   status: "published",
   publish_at: null,
@@ -17,13 +21,17 @@ const announcement = {
   updated_by: null,
   created_at: "2026-07-28T17:17:00.000Z",
   updated_at: "2026-07-28T17:17:00.000Z",
-} satisfies Announcement;
+  author: {
+    id: "admin",
+    display_name: "Guild Keeper",
+    avatar_media_id: null,
+  },
+} satisfies AnnouncementSummary;
 
 describe("AnnouncementListCard", () => {
   it("uses visible row content as its accessible name without invalid expanded state", () => {
     render(
-      <PortalThemeProvider>
-        <AnnouncementListCard
+      <AnnouncementListCard
           title="Announcement List"
           rows={[announcement]}
           selectedId={announcement.id}
@@ -35,8 +43,7 @@ describe("AnnouncementListCard", () => {
           warningMessage=""
           emptyText=""
           onSelect={vi.fn()}
-        />
-      </PortalThemeProvider>,
+      />,
     );
 
     const row = screen.getByRole("button", { name: /Welcome to Infini Guild/ });
@@ -44,10 +51,9 @@ describe("AnnouncementListCard", () => {
     expect(row.querySelector("[aria-expanded]")).toBeNull();
   });
 
-  it("keeps the title flexible and pin/status metadata in a stable trailing region", () => {
+  it("shows the important badge, author, and publication time without crowding status metadata", () => {
     render(
-      <PortalThemeProvider>
-        <AnnouncementListCard
+      <AnnouncementListCard
           title="Announcement List"
           rows={[{ ...announcement, pinned: true }]}
           selectedId={announcement.id}
@@ -59,8 +65,7 @@ describe("AnnouncementListCard", () => {
           warningMessage=""
           emptyText=""
           onSelect={vi.fn()}
-        />
-      </PortalThemeProvider>,
+      />,
     );
 
     const row = screen.getByRole("button", { name: /Welcome to Infini Guild/ });
@@ -69,6 +74,9 @@ describe("AnnouncementListCard", () => {
     );
     const meta = row.querySelector(".announcement-item-meta");
     expect(meta).not.toBeNull();
-    expect(meta?.querySelectorAll("svg").length).toBeGreaterThanOrEqual(2);
+    expect(meta?.querySelectorAll("svg").length).toBe(1);
+    expect(screen.getByText("Important")).toBeInTheDocument();
+    expect(screen.getByText("Guild Keeper")).toBeInTheDocument();
+    expect(row.querySelector(".announcement-item-time")).toBeInTheDocument();
   });
 });

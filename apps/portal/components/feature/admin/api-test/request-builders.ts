@@ -397,20 +397,6 @@ export function resolveEndpointPath(endpoint: EndpointDef, context: TestRunConte
 }
 
 export function prepareEndpointRequest(endpoint: EndpointDef, context: TestRunContext): PreparedEndpointRequest {
-  if (endpoint.method === "POST" && endpoint.path === "/api/users/:id/change-password") {
-    return skipEndpoint(
-      endpoint.path,
-      "Skipping password change: the endpoint is self-only, so it would change the running admin's own password",
-      true,
-    );
-  }
-  if (endpoint.method === "POST" && endpoint.path === "/api/users/:id/change-username") {
-    return skipEndpoint(
-      endpoint.path,
-      "Skipping username change: the endpoint is self-only and rejects the reserved systemtest prefix",
-      true,
-    );
-  }
   const gameRules = DEFAULT_GAME_RULES;
   const eventTypeForBehavior = (behavior: "standard" | "guild_war" | "poll" | "raffle") =>
     gameRules.events.types.find((definition) => definition.behavior === behavior && definition.enabled)?.id;
@@ -553,12 +539,13 @@ export function prepareEndpointRequest(endpoint: EndpointDef, context: TestRunCo
 
     case "POST /api/auth/register/:inviteCode":
       {
-        const username = `apitest_${nowId.slice(0, 32)}`;
-        context.registeredUsername = username;
+        const login_name = `apitest_${nowId.slice(0, 32)}`;
+        context.registeredLoginName = login_name;
         context.registeredUserPassword = "Passw0rd!";
         return {
           ...buildJsonRequest(path, {
-            username,
+            login_name,
+            display_name: login_name,
             password: context.registeredUserPassword,
             confirmPassword: context.registeredUserPassword,
           }),
@@ -849,10 +836,14 @@ export function prepareEndpointRequest(endpoint: EndpointDef, context: TestRunCo
       if (!context.adminRoleId) {
         return skipEndpoint(path, "Missing assignable admin role id");
       }
-      return buildJsonRequest(path, {
-        username: `apitestadmin_${nowId.slice(0, 32)}`,
-        role_id: context.adminRoleId,
-      });
+      {
+        const login_name = `apitestadmin_${nowId.slice(0, 32)}`;
+        return buildJsonRequest(path, {
+          login_name,
+          display_name: login_name,
+          role_id: context.adminRoleId,
+        });
+      }
 
     case "PATCH /api/admin/users/batch/role":
       if (!context.adminCreatedUserId) {
@@ -909,9 +900,7 @@ export function prepareEndpointRequest(endpoint: EndpointDef, context: TestRunCo
       });
 
     case "POST /api/admin/users/:id/reset-password":
-      return buildJsonRequest(path, {
-        temporary_password: "TempPass123!",
-      });
+      return skipEndpoint(path, "Requires current administrator password", true);
 
     case "POST /api/admin/users/:id/reset-login-lock":
       return buildJsonRequest(path, {});
@@ -932,18 +921,18 @@ export function prepareEndpointRequest(endpoint: EndpointDef, context: TestRunCo
     case "POST /api/auth/login":
       {
         const adminCredentials = context.adminCreatedUserId
-          && context.adminCreatedUsername
+          && context.adminCreatedLoginName
           && context.adminCreatedUserPassword
           ? {
-              username: context.adminCreatedUsername,
+              login_name: context.adminCreatedLoginName,
               password: context.adminCreatedUserPassword,
             }
           : null;
         const registeredCredentials = context.registeredUserId
-          && context.registeredUsername
+          && context.registeredLoginName
           && context.registeredUserPassword
           ? {
-              username: context.registeredUsername,
+              login_name: context.registeredLoginName,
               password: context.registeredUserPassword,
             }
           : null;

@@ -1,37 +1,54 @@
-import type { Announcement } from "@guild/shared";
-import { useConfirmDialog } from "@portal/hooks/useConfirmDialog";
 import {
-  ActionIcon,
-  Alert,
-  Badge,
-  Button,
-  Card,
-  Divider,
-  Group,
-  Menu,
-  Paper,
-  Skeleton,
-  Stack,
-  Text,
-  TextInput,
+  ANNOUNCEMENT_ATTACHMENT_FILE_ACCEPT,
+  type Announcement,
+  type AnnouncementAttachment,
+} from "@guild/shared";
+import {
+  ArchiveIcon,
+  CalendarTimeIcon,
+  ChevronDownIcon,
+  FileTextIcon,
+  NoteIcon,
+  PencilIcon,
+  PinIcon,
+  SendIcon,
+  TrashIcon,
+  UploadIcon,
+  XIcon,
+} from "@portal/components/icons";
+import { Alert, AlertTitle } from "@portal/components/ui/alert";
+import { Avatar, AvatarFallback, AvatarImage } from "@portal/components/ui/avatar";
+import { Badge } from "@portal/components/ui/badge";
+import { Button } from "@portal/components/ui/button";
+import { Card } from "@portal/components/ui/card";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@portal/components/ui/dropdown-menu";
+import { Input } from "@portal/components/ui/input";
+import { Separator } from "@portal/components/ui/separator";
+import { Skeleton } from "@portal/components/ui/skeleton";
+import {
   Tooltip,
-  Title,
-} from "@mantine/core";
-import { useDisclosure } from "@mantine/hooks";
-import { formatDateTime } from "@portal/utils/datetime";
-import { type ReactNode, lazy, Suspense, useEffect, useMemo } from "react";
+  TooltipContent,
+  TooltipTrigger,
+} from "@portal/components/ui/tooltip";
+import { useConfirmDialog } from "@portal/hooks/useConfirmDialog";
+import { formatDateTimeWithTimeZone } from "@portal/utils/datetime";
+import { resolveMediaUrl } from "@portal/utils/media";
+import { lazy, Suspense, type ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { ArchiveIcon, CalendarTimeIcon, ChevronDownIcon, NoteIcon, PinIcon, SendIcon, TrashIcon, XIcon } from "@portal/components/icons";
 import { notifyError } from "../../../utils/notifications";
-import { PencilOutlined } from "@portal/utils/icons";
+import { buildTipTapEditorLabels } from "../../shared/tiptap-meta";
 import { EmptyState } from "../../shared/EmptyState";
 import { NativeDateTimeInput } from "../../shared/NativeDateTimeInput";
-import { buildTipTapEditorLabels } from "@portal/components/shared/tiptap-meta";
+import { AnnouncementAttachmentItem } from "./AnnouncementAttachmentItem";
 
 const LazyTipTapEditor = lazy(() =>
-  import("@portal/components/shared/TipTapEditor").then((m) => ({ default: m.TipTapEditor })),
+  import("@portal/components/shared/TipTapEditor").then((module) => ({ default: module.TipTapEditor })),
 );
-
 
 type StatusMode = "none" | "draft" | "archived" | "scheduled";
 
@@ -63,10 +80,27 @@ type AnnouncementDetailCardProps = {
   archived: boolean;
   onArchivedChange: (value: boolean) => void;
   onImageUpload: (file: File) => Promise<string>;
+  attachments: AnnouncementAttachment[];
+  attachmentUploading: boolean;
+  attachmentMaxBytes: number;
+  attachmentQuota: number;
+  onAttachmentUpload: (file: File) => Promise<void>;
+  onAttachmentRemove: (mediaId: string) => void;
   isDirty: boolean;
   isPublishReady: boolean;
   emptyTitle: ReactNode;
 };
+
+function EditorSkeleton() {
+  return (
+    <div className="announcement-editor-skeleton" aria-busy="true">
+      <Skeleton className="announcement-editor-skeleton__line announcement-editor-skeleton__line--heading" />
+      <Skeleton className="announcement-editor-skeleton__line" />
+      <Skeleton className="announcement-editor-skeleton__line" />
+      <Skeleton className="announcement-editor-skeleton__line announcement-editor-skeleton__line--short" />
+    </div>
+  );
+}
 
 export function AnnouncementDetailCard({
   title,
@@ -94,42 +128,44 @@ export function AnnouncementDetailCard({
   archived,
   onArchivedChange,
   onImageUpload,
+  attachments,
+  attachmentUploading,
+  attachmentMaxBytes,
+  attachmentQuota,
+  onAttachmentUpload,
+  onAttachmentRemove,
   isDirty,
   isPublishReady,
   emptyTitle,
 }: AnnouncementDetailCardProps) {
   const { t } = useTranslation("announcements");
-  const { t: te } = useTranslation("editor");
+  const { t: translateEditor } = useTranslation("editor");
   const confirm = useConfirmDialog();
-  const editorLabels = useMemo(() => buildTipTapEditorLabels(te), [te]);
+  const editorLabels = useMemo(() => buildTipTapEditorLabels(translateEditor), [translateEditor]);
   const isCreateMode = selectedId === "new" && !selected;
-  const [editing, editingHandlers] = useDisclosure(isCreateMode);
+  const [editing, setEditing] = useState(isCreateMode);
+  const attachmentInputRef = useRef<HTMLInputElement>(null);
 
-  // Auto-open editor when entering create mode, close when leaving
   useEffect(() => {
-    if (isCreateMode) {
-      editingHandlers.open();
-    } else {
-      editingHandlers.close();
-    }
+    setEditing(isCreateMode);
   }, [isCreateMode]);
 
   const validateAndFinish = (mode: StatusMode) => {
     if (!isPublishReady) return;
 
     if (mode === "scheduled" && publishAt) {
-      /* publishAt 是 datetime-local 控件的值：不带时区的本地挂钟，按用户自己的表解析。 */
       const scheduledDate = new Date(publishAt);
       if (!Number.isNaN(scheduledDate.getTime()) && scheduledDate <= new Date()) {
         notifyError(t("validation.schedulePast"));
         return;
       }
     }
+
     onDraftEnabledChange(mode === "draft");
     onScheduleEnabledChange(mode === "scheduled");
     onArchivedChange(mode === "archived");
     onFinish(mode);
-    editingHandlers.close();
+    setEditing(false);
   };
 
   const handleDeleteConfirm = async () => {
@@ -142,249 +178,351 @@ export function AnnouncementDetailCard({
     });
     if (confirmed) {
       onDelete();
-      editingHandlers.close();
+      setEditing(false);
     }
   };
 
   const handleCloseEditor = () => {
-    editingHandlers.close();
+    setEditing(false);
     onCloseEditor();
   };
 
+  const handleAttachmentChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const input = event.currentTarget;
+    const file = input.files?.[0];
+    if (!file) return;
+    void onAttachmentUpload(file).finally(() => {
+      input.value = "";
+    });
+  };
+
+  const isReader = !editing && selected !== null;
+  const canShowEditorActions = canEdit && (selected !== null || isCreateMode);
+
   return (
-    <Paper withBorder className="announcements-detail-card">
-      {/* 正文卡整块内滚：标题、徽标和正文是一篇东西，一起滚才对
-          （和 wiki-article-reader-card 同一处理）。 */}
-      <div className="announcements-card-body" style={{ padding: "var(--card-padding)" }}>
-        <Stack gap={12} className="announcements-card-scroll">
-          {/* ── Header ── */}
-          <Group
-            component="header"
-            justify="space-between"
-            align="center"
-            className={!editing && selected ? "announcement-reader-header" : undefined}
-          >
-            {!editing && selected ? (
-              <Title order={2} className="announcement-reader-title">
-                {selected.title}
-              </Title>
-            ) : (
-              <Text fw={600}>{title}</Text>
-            )}
-            {canEdit && (selectedId && selected || isCreateMode) ? (
-              editing ? (
-                <Group gap={8}>
-                  {!isPublishReady ? (
-                    <Badge color="gray">{t("status.notReady")}</Badge>
-                  ) : isDirty ? (
-                    <Badge color="orange">{t("status.unsaved")}</Badge>
-                  ) : (
-                    <Badge color="green">{t("status.saved")}</Badge>
-                  )}
-                  <Button.Group>
-                    <Button
-                      size="sm"
-                      color="portal-brand"
-                      onClick={() => validateAndFinish("none")}
-                      disabled={savePending || !isPublishReady}
-                      leftSection={<SendIcon size={14} />}
-                    >
-                      {t("action.publish")}
-                    </Button>
-                    <Menu position="bottom-end" withinPortal>
-                      <Menu.Target>
-                        <Button
-                          size="sm"
-                          color="portal-brand"
-                          disabled={savePending || !isPublishReady}
-                          px={8}
-                        >
-                          <ChevronDownIcon size={14} />
-                        </Button>
-                      </Menu.Target>
-                      <Menu.Dropdown>
-                        <Menu.Item
-                          leftSection={<NoteIcon size={16} />}
-                          onClick={() => validateAndFinish("draft")}
-                        >
-                          {t("action.saveAsDraft")}
-                        </Menu.Item>
-                        <Menu.Item
-                          leftSection={<CalendarTimeIcon size={16} />}
-                          onClick={() => validateAndFinish("scheduled")}
-                        >
-                          {t("action.postScheduled")}
-                        </Menu.Item>
-                      </Menu.Dropdown>
-                    </Menu>
-                  </Button.Group>
-                  <Button
-                    onClick={handleCloseEditor}
-                    variant="default"
-                    size="sm"
-                    leftSection={<XIcon size={14} />}
-                  >
-                    {t("action.cancel")}
-                  </Button>
-                </Group>
-              ) : (
-                <Button
-                  onClick={editingHandlers.open}
-                  variant="default"
-                  size="sm"
-                  leftSection={<PencilOutlined size={14} />}
-                >
-                  {t("action.edit")}
-                </Button>
-              )
-            ) : null}
-          </Group>
-
-          {isLoading ? (
-            <Stack gap={10}>
-              <Skeleton height={22} width="50%" />
-              <Skeleton height={14} width="30%" />
-              <Skeleton height={14} />
-              <Skeleton height={14} />
-              <Skeleton height={14} width="70%" />
-            </Stack>
-          ) : null}
-          {isError ? <Alert color="red" title={warningMessage} /> : null}
-
-          {/* ── Reader View (default for everyone) ── */}
-          {!isLoading && !isError && selected && !editing ? (
-            <Stack gap={12}>
-              {/* Meta badges */}
-              <Group gap={8} wrap="wrap">
-                {canEdit && selected.status === "scheduled" && selected.publish_at ? (
-                  <Badge color="blue">{t("meta.scheduled", { datetime: formatDateTime(selected.publish_at) })}</Badge>
+    <Card className="announcements-detail-card">
+      <div className="announcements-detail-card__content announcements-card-scroll">
+        <header
+          className={`announcements-detail-card__header ${isReader ? "announcement-reader-header" : ""}`.trim()}
+        >
+          {isReader ? (
+            <div className="announcement-reader-heading">
+              <div className="announcement-reader-title-row">
+                {selected.pinned ? (
+                  <Badge variant="outline" className="announcement-important-badge">
+                    {t("status.important")}
+                  </Badge>
                 ) : null}
-              </Group>
+                <h2 className="announcement-reader-title">{selected.title}</h2>
+              </div>
+              <div className="announcement-reader-author-row">
+                <Avatar size="lg">
+                  {selected.author.avatar_media_id ? (
+                    <AvatarImage src={resolveMediaUrl(selected.author.avatar_media_id)} alt="" />
+                  ) : null}
+                  <AvatarFallback>{selected.author.display_name.trim().charAt(0).toUpperCase()}</AvatarFallback>
+                </Avatar>
+                <div className="announcement-reader-author-copy">
+                  <strong>{selected.author.display_name}</strong>
+                  <div className="announcement-reader-meta-row">
+                    <span className="announcement-reader-publish-time">
+                      {t(selected.status === "scheduled"
+                        ? "meta.scheduled"
+                        : selected.status === "draft"
+                          ? "meta.created"
+                          : "meta.published", {
+                        datetime: formatDateTimeWithTimeZone(selected.publish_at ?? selected.created_at),
+                      })}
+                    </span>
+                    {canEdit && selected.status === "scheduled" && selected.publish_at ? (
+                      <Badge variant="outline" className="announcement-status-badge announcement-status-badge--scheduled">
+                        {t("status.scheduled")}
+                      </Badge>
+                    ) : null}
+                  </div>
+                </div>
+              </div>
+            </div>
+          ) : (
+            <h2 className="announcements-detail-card__title">{title}</h2>
+          )}
 
-              {/* Rendered body (read-only TipTap) */}
-              <Suspense fallback={<Card><Stack gap={8} p="md"><Skeleton height={200} radius={8} /></Stack></Card>}>
+          {canShowEditorActions ? (
+            editing ? (
+              <div className="announcement-editor-header-actions">
+                {!isPublishReady ? (
+                  <Badge variant="outline" className="announcement-save-state announcement-save-state--idle">
+                    {t("status.notReady")}
+                  </Badge>
+                ) : isDirty ? (
+                  <Badge variant="outline" className="announcement-save-state announcement-save-state--dirty">
+                    {t("status.unsaved")}
+                  </Badge>
+                ) : (
+                  <Badge variant="outline" className="announcement-save-state announcement-save-state--saved">
+                    {t("status.saved")}
+                  </Badge>
+                )}
+                <div className="announcement-publish-actions">
+                  <Button
+                    type="button"
+                    size="sm"
+                    disabled={savePending || !isPublishReady}
+                    aria-busy={savePending || undefined}
+                    onClick={() => validateAndFinish("none")}
+                  >
+                    <SendIcon size={14} aria-hidden="true" />
+                    {t("action.publish")}
+                  </Button>
+                  <DropdownMenu>
+                    <DropdownMenuTrigger
+                      render={(
+                        <Button
+                          type="button"
+                          size="icon-sm"
+                          disabled={savePending || !isPublishReady}
+                          aria-label={`${t("action.saveAsDraft")} / ${t("action.postScheduled")}`}
+                        />
+                      )}
+                    >
+                      <ChevronDownIcon size={14} aria-hidden="true" />
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end" className="announcement-publish-menu">
+                      <DropdownMenuItem onClick={() => validateAndFinish("draft")}>
+                        <NoteIcon size={16} aria-hidden="true" />
+                        {t("action.saveAsDraft")}
+                      </DropdownMenuItem>
+                      <DropdownMenuItem onClick={() => validateAndFinish("scheduled")}>
+                        <CalendarTimeIcon size={16} aria-hidden="true" />
+                        {t("action.postScheduled")}
+                      </DropdownMenuItem>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                </div>
+                <Button type="button" variant="outline" size="sm" onClick={handleCloseEditor}>
+                  <XIcon size={14} aria-hidden="true" />
+                  {t("action.cancel")}
+                </Button>
+              </div>
+            ) : (
+              <Button type="button" variant="outline" size="sm" onClick={() => setEditing(true)}>
+                <PencilIcon size={14} aria-hidden="true" />
+                {t("action.edit")}
+              </Button>
+            )
+          ) : null}
+        </header>
+
+        {isLoading ? <EditorSkeleton /> : null}
+        {isError ? (
+          <Alert variant="destructive">
+            <AlertTitle>{warningMessage}</AlertTitle>
+          </Alert>
+        ) : null}
+
+        {!isLoading && !isError && selected && !editing ? (
+          <div className="announcement-reader-content">
+            <Separator />
+            <Suspense fallback={<EditorSkeleton />}>
+              <LazyTipTapEditor
+                value={bodyJson}
+                onChange={() => {}}
+                placeholder=""
+                editable={false}
+                onImageUpload={onImageUpload}
+                labels={editorLabels}
+              />
+            </Suspense>
+
+            {selected.attachments.length > 0 ? (
+              <section className="announcement-attachments-section" aria-labelledby="announcement-attachments-title">
+                <Separator />
+                <div className="announcement-attachments-heading">
+                  <FileTextIcon size={18} aria-hidden="true" />
+                  <h3 id="announcement-attachments-title" className="announcement-attachments-title">
+                    {t("section.attachments")}
+                  </h3>
+                  <Badge variant="secondary">{selected.attachments.length}</Badge>
+                </div>
+                <div className="announcement-attachments-grid">
+                  {selected.attachments.map((attachment) => (
+                    <AnnouncementAttachmentItem
+                      key={attachment.media_id}
+                      attachment={attachment}
+                      downloadLabel={t("action.downloadAttachment", { name: attachment.name })}
+                      removeLabel=""
+                    />
+                  ))}
+                </div>
+              </section>
+            ) : null}
+
+            <p className="announcement-reader-updated">
+              {t("meta.updated", { datetime: formatDateTimeWithTimeZone(selected.updated_at) })}
+            </p>
+          </div>
+        ) : null}
+
+        {!isLoading && !isError && (selected || isCreateMode) && editing ? (
+          <div className="announcement-editor-layout">
+            <div className="announcement-editor-main">
+              <Input
+                value={titleValue}
+                onChange={(event) => onTitleChange(event.currentTarget.value)}
+                placeholder={t("field.title")}
+                aria-label={t("aria.title")}
+                className="announcement-editor-title-input"
+              />
+              <Suspense fallback={<EditorSkeleton />}>
                 <LazyTipTapEditor
                   value={bodyJson}
-                  onChange={() => {}}
-                  placeholder=""
-                  editable={false}
+                  onChange={onBodyJsonChange}
+                  placeholder={t("field.body")}
+                  ariaLabel={t("field.body")}
+                  editable
                   onImageUpload={onImageUpload}
                   labels={editorLabels}
                 />
               </Suspense>
 
-              {/* Footer metadata */}
-              <Text c="dimmed" size="sm">
-                {t("meta.updated", { datetime: formatDateTime(selected.updated_at) })}
-              </Text>
-            </Stack>
-          ) : null}
-
-          {/* ── Editor View (moderators only, after clicking Edit or in create mode) ── */}
-          {!isLoading && !isError && (selected || isCreateMode) && editing ? (
-            <div className="announcement-editor-layout">
-              {/* Left: Title + Editor */}
-              <div className="announcement-editor-main">
-                <Stack gap={12}>
-                  <TextInput
-                    value={titleValue}
-                    onChange={(event) => onTitleChange(event.currentTarget.value)}
-                    placeholder={t("field.title")}
-                    aria-label={t("aria.title")}
-                  />
-                  <Suspense fallback={<Card><Stack gap={8} p="md"><Skeleton height={200} radius={8} /></Stack></Card>}>
-                    <LazyTipTapEditor
-                      value={bodyJson}
-                      onChange={onBodyJsonChange}
-                      placeholder={t("field.body")}
-                      /* 正文是 contenteditable 的 role="textbox"，不给名字读屏只会念「文本框」。 */
-                      ariaLabel={t("field.body")}
-                      editable={true}
-                      onImageUpload={onImageUpload}
-                      labels={editorLabels}
-                    />
-                  </Suspense>
-                </Stack>
-              </div>
-
-              {/* Right: Settings Sidebar */}
-              <div className="announcement-editor-sidebar">
-                <Stack gap={16}>
-                  {/* Pin | Archive | Delete */}
-                  <Group gap={8} wrap="nowrap">
-                    <Tooltip label={pinned ? t("action.unpin") : t("action.pin")} withArrow>
-                      <ActionIcon
-                        aria-pressed={pinned}
-                        onClick={() => onPinnedChange(!pinned)}
-                        color="portal-brand"
-                        variant={pinned ? "light" : "default"}
-                        size="sm"
-                        aria-label={pinned ? t("action.unpin") : t("action.pin")}
-                      >
-                        <PinIcon size={16} />
-                      </ActionIcon>
-                    </Tooltip>
-                    {!isCreateMode ? (
-                      <Tooltip label={t("action.archive")} withArrow>
-                        <ActionIcon
-                          aria-pressed={archived}
-                          onClick={() => onArchivedChange(!archived)}
-                          color="portal-brand"
-                          variant={archived ? "light" : "default"}
-                          size="sm"
-                          aria-label={t("action.archive")}
-                        >
-                          <ArchiveIcon size={16} />
-                        </ActionIcon>
-                      </Tooltip>
-                    ) : null}
-                    {!isCreateMode ? (
-                        <ActionIcon
-                          color="red"
-                          variant="filled"
-                          size="sm"
-                          onClick={() => void handleDeleteConfirm()}
-                          loading={deletePending}
-                          aria-label={t("action.delete")}
-                        >
-                          <TrashIcon size={16} />
-                        </ActionIcon>
-                    ) : null}
-                  </Group>
-
-                  <Divider />
-
-                  {/* Schedule */}
-                  <Stack gap={8}>
-                    <div>
-                      <Text size="xs" c="dimmed">{t("field.publishAt")}</Text>
-                      <NativeDateTimeInput
-                        type="datetime-local"
-                        value={publishAt || undefined}
-                        onChange={(event) => onPublishAtChange(event.currentTarget.value)}
-                        aria-label={t("aria.publishTime")}
-                        size="sm"
-                      />
+              <section
+                className="announcement-editor-attachments"
+                aria-labelledby="announcement-editor-attachments-title"
+              >
+                <div className="announcement-editor-attachments__header">
+                  <div>
+                    <div className="announcement-attachments-heading">
+                      <h3 id="announcement-editor-attachments-title" className="announcement-attachments-title">
+                        {t("section.attachments")}
+                      </h3>
+                      {attachments.length > 0 ? <Badge variant="secondary">{attachments.length}</Badge> : null}
                     </div>
-                  </Stack>
-
-                  <Divider />
-
-                  {/* Meta */}
-                  {selected ? (
-                    <Text c="dimmed" size="xs">
-                      {t("meta.updated", { datetime: formatDateTime(selected.updated_at) })}
-                    </Text>
-                  ) : null}
-                </Stack>
-              </div>
+                    <p className="announcement-attachment-help">
+                      {t("attachment.help", {
+                        count: attachmentQuota,
+                        size: Math.floor(attachmentMaxBytes / 1024 / 1024),
+                      })}
+                    </p>
+                  </div>
+                  <input
+                    ref={attachmentInputRef}
+                    type="file"
+                    accept={ANNOUNCEMENT_ATTACHMENT_FILE_ACCEPT}
+                    className="sr-only"
+                    tabIndex={-1}
+                    aria-hidden="true"
+                    onChange={handleAttachmentChange}
+                  />
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    disabled={attachmentUploading}
+                    aria-busy={attachmentUploading || undefined}
+                    onClick={() => attachmentInputRef.current?.click()}
+                  >
+                    <UploadIcon size={16} aria-hidden="true" />
+                    {t("action.addAttachment")}
+                  </Button>
+                </div>
+                {attachments.length > 0 ? (
+                  <div className="announcement-attachments-grid announcement-attachments-grid--editor">
+                    {attachments.map((attachment) => (
+                      <AnnouncementAttachmentItem
+                        key={attachment.media_id}
+                        attachment={attachment}
+                        removeLabel={t("action.removeAttachment", { name: attachment.name })}
+                        downloadLabel=""
+                        onRemove={onAttachmentRemove}
+                      />
+                    ))}
+                  </div>
+                ) : (
+                  <p className="announcement-attachments-empty">{t("attachment.empty")}</p>
+                )}
+              </section>
             </div>
-          ) : null}
 
-          {!isLoading && !isError && !selected && selectedId !== "new" ? <EmptyState title={emptyTitle} /> : null}
-        </Stack>
+            <aside className="announcement-editor-sidebar" aria-label={t("detail.title")}>
+              <div className="announcement-editor-icon-actions">
+                <Tooltip>
+                  <TooltipTrigger
+                    render={(
+                      <Button
+                        type="button"
+                        variant={pinned ? "secondary" : "outline"}
+                        size="icon"
+                        aria-pressed={pinned}
+                        aria-label={pinned ? t("action.unpin") : t("action.pin")}
+                        onClick={() => onPinnedChange(!pinned)}
+                      />
+                    )}
+                  >
+                    <PinIcon size={16} aria-hidden="true" />
+                  </TooltipTrigger>
+                  <TooltipContent>{pinned ? t("action.unpin") : t("action.pin")}</TooltipContent>
+                </Tooltip>
+                {!isCreateMode ? (
+                  <Tooltip>
+                    <TooltipTrigger
+                      render={(
+                        <Button
+                          type="button"
+                          variant={archived ? "secondary" : "outline"}
+                          size="icon"
+                          aria-pressed={archived}
+                          aria-label={t("action.archive")}
+                          onClick={() => onArchivedChange(!archived)}
+                        />
+                      )}
+                    >
+                      <ArchiveIcon size={16} aria-hidden="true" />
+                    </TooltipTrigger>
+                    <TooltipContent>{t("action.archive")}</TooltipContent>
+                  </Tooltip>
+                ) : null}
+                {!isCreateMode ? (
+                  <Button
+                    type="button"
+                    variant="destructive"
+                    size="icon"
+                    aria-label={t("action.delete")}
+                    disabled={deletePending}
+                    aria-busy={deletePending || undefined}
+                    onClick={() => void handleDeleteConfirm()}
+                  >
+                    <TrashIcon size={16} aria-hidden="true" />
+                  </Button>
+                ) : null}
+              </div>
+
+              <Separator />
+
+              <div className="announcement-editor-schedule">
+                <span className="announcement-editor-field-label">{t("field.publishAt")}</span>
+                <NativeDateTimeInput
+                  type="datetime-local"
+                  value={publishAt || undefined}
+                  onChange={(event) => onPublishAtChange(event.currentTarget.value)}
+                  aria-label={t("aria.publishTime")}
+                  size="sm"
+                />
+              </div>
+
+              {selected ? (
+                <>
+                  <Separator />
+                  <p className="announcement-editor-updated">
+                    {t("meta.updated", { datetime: formatDateTimeWithTimeZone(selected.updated_at) })}
+                  </p>
+                </>
+              ) : null}
+            </aside>
+          </div>
+        ) : null}
+
+        {!isLoading && !isError && !selected && selectedId !== "new" ? <EmptyState title={emptyTitle} /> : null}
       </div>
-
-    </Paper>
+    </Card>
   );
 }

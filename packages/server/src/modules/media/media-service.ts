@@ -1,9 +1,16 @@
-import { MEDIA_CONTRACT, type MediaEntityType, type MediaPurpose, type MediaVariant } from "@guild/shared";
+import {
+  MEDIA_CONTRACT,
+  type AnnouncementAttachment,
+  type MediaEntityType,
+  type MediaPurpose,
+  type MediaType,
+  type MediaVariant,
+} from "@guild/shared";
 import { PERMISSION_ID } from "@guild/shared/constants/roles";
 import { AppError, type BlobMetadata, type BlobRange, type BlobStore, type RequestContext, type ScheduledJobBacklog } from "@guild/kernel";
 import { nanoid } from "nanoid";
 import type { AuditEventWrite } from "../audit/public.js";
-import { validateImagePair, validateOggOpus } from "./media-validation";
+import { validateAnnouncementAttachment, validateImagePair, validateOggOpus } from "./media-validation";
 
 const STAGED_TTL_MS = 24 * 60 * 60 * 1_000;
 const MAX_GC_BATCH = 50;
@@ -11,7 +18,7 @@ const MAX_GC_BATCH = 50;
 export type MediaVariantReservation = Readonly<{
   variant: MediaVariant;
   objectKey: string;
-  contentType: "image/webp" | "audio/ogg";
+  contentType: "image/webp" | "audio/ogg" | "application/pdf" | "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
   byteSize: number;
   sha256: string;
   width: number | null;
@@ -22,7 +29,7 @@ export type MediaReservation = Readonly<{
   id: string;
   ownerUserId: string;
   purpose: MediaPurpose;
-  mediaType: "image" | "audio";
+  mediaType: MediaType;
   originalName: string | null;
   expiresAt: string;
   createdAt: string;
@@ -32,9 +39,11 @@ export type MediaReservation = Readonly<{
 export type MediaReadFacts = Readonly<{
   objectKey: string;
   byteSize: number;
-  contentType: "image/webp" | "audio/ogg";
+  contentType: MediaVariantReservation["contentType"];
   sha256: string;
   ownerUserId: string | null;
+  mediaType: MediaType;
+  originalName: string | null;
   entityTypes: readonly MediaEntityType[];
   audience: "public" | "authenticated" | "private";
 }>;
@@ -42,11 +51,13 @@ export type MediaReadFacts = Readonly<{
 export type MediaReadResult = Readonly<{
   object: NonNullable<Awaited<ReturnType<BlobStore["get"]>>>;
   audience: MediaReadFacts["audience"];
+  downloadName?: string;
 }>;
 
 export type MediaHeadResult = Readonly<{
   metadata: BlobMetadata;
   audience: MediaReadFacts["audience"];
+  downloadName?: string;
 }>;
 
 export type MediaRangeRequest =
@@ -81,6 +92,7 @@ export interface MediaStore {
 
 export type ImageUpload = Readonly<{ full: Uint8Array; view: Uint8Array }>;
 export type AudioUpload = Readonly<{ full: Uint8Array; originalName: string }>;
+export type FileUpload = Readonly<{ bytes: Uint8Array; originalName: string; contentType: string }>;
 
 type PendingUpload = Readonly<{
   reservation: MediaReservation;
@@ -95,7 +107,7 @@ export class MediaService {
 
   async uploadImages(
     context: RequestContext,
-    purpose: Exclude<MediaPurpose, "member_audio">,
+    purpose: Exclude<MediaPurpose, "member_audio" | "announcement_attachment">,
     uploads: readonly ImageUpload[],
     maxBytes: number,
   ): Promise<readonly string[]> {
@@ -174,6 +186,43 @@ export class MediaService {
     return mediaId;
   }
 
+  async uploadAnnouncementAttachment(
+    context: RequestContext,
+    upload: FileUpload,
+    maxBytes: number,
+  ): Promise<AnnouncementAttachment> {
+    const actor = context.authorization.requireAuthenticated();
+    const attachment = validateAnnouncementAttachment(upload, maxBytes);
+    const mediaId = nanoid();
+    await this.persistUploads(context, [{
+      reservation: {
+        id: mediaId,
+        ownerUserId: actor.userId,
+        purpose: "announcement_attachment",
+        mediaType: "file",
+        originalName: attachment.originalName,
+        expiresAt: new Date(Date.parse(context.now) + STAGED_TTL_MS).toISOString(),
+        createdAt: context.now,
+        variants: [{
+          variant: "full",
+          objectKey: `media/${mediaId}/full.${attachment.extension}`,
+          contentType: attachment.contentType,
+          byteSize: upload.bytes.byteLength,
+          sha256: await sha256(upload.bytes),
+          width: null,
+          height: null,
+        }],
+      },
+      data: new Map<MediaVariant, Uint8Array>([["full", upload.bytes]]),
+    }]);
+    return {
+      media_id: mediaId,
+      name: attachment.originalName,
+      content_type: attachment.contentType,
+      byte_size: upload.bytes.byteLength,
+    };
+  }
+
   async read(
     context: RequestContext,
     mediaId: string,
@@ -190,7 +239,11 @@ export class MediaService {
       await object.body.cancel().catch(() => undefined);
       throw integrityError();
     }
-    return { object, audience: facts.audience };
+    return {
+      object,
+      audience: facts.audience,
+      ...(facts.mediaType === "file" && facts.originalName ? { downloadName: facts.originalName } : {}),
+    };
   }
 
   async head(
@@ -204,7 +257,11 @@ export class MediaService {
     const metadata = await this.blobs.head(facts.objectKey);
     if (!metadata) throw new AppError({ code: "NOT_FOUND", status: 404, message: "Media object not found" });
     if (!matchesManifest(metadata, facts)) throw integrityError();
-    return { metadata, audience: facts.audience };
+    return {
+      metadata,
+      audience: facts.audience,
+      ...(facts.mediaType === "file" && facts.originalName ? { downloadName: facts.originalName } : {}),
+    };
   }
 
   async collectGarbage(

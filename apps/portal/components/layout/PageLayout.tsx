@@ -1,4 +1,3 @@
-import { Container, Group, Stack, Title } from "@mantine/core";
 import type { CSSProperties, ReactElement, ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import "./PageLayout.css";
@@ -8,6 +7,8 @@ type PageLayoutProps = {
   breadcrumbs?: ReactNode;
   children: ReactNode;
   className?: string;
+  toolbar?: ReactNode;
+  workspaceMode?: "scroll" | "contained";
 };
 
 type PageLayoutSectionProps = {
@@ -43,37 +44,34 @@ function PageLayoutRoot({
   breadcrumbs,
   children,
   className,
+  toolbar,
+  workspaceMode = "scroll",
 }: PageLayoutProps) {
   const { t } = useTranslation("common");
   const hasHeader = Boolean(actions || breadcrumbs);
 
   return (
-    <Container
-      fluid
-      px="var(--shell-page-padding)"
+    <div
       className={`page-layout ${className ?? ""}`.trim()}
       data-page-layout="content"
+      data-workspace-mode={workspaceMode}
     >
-      <Stack gap="var(--page-rhythm)" className="page-layout__content">
-      {hasHeader ? (
-        <Group
-          className="page-layout__action-row"
-          justify="space-between"
-          align="center"
-          wrap="wrap"
-        >
-          {breadcrumbs ? (
-            <nav className="page-layout__breadcrumbs" aria-label={t("nav.breadcrumbs")}>
-              {breadcrumbs}
-            </nav>
-          ) : null}
+      <div className="page-layout__content">
+        {hasHeader ? (
+          <div className="page-layout__action-row">
+            {breadcrumbs ? (
+              <nav className="page-layout__breadcrumbs" aria-label={t("nav.breadcrumbs")}>
+                {breadcrumbs}
+              </nav>
+            ) : null}
 
-          {actions ? <div className="page-layout__primary-action">{actions}</div> : null}
-        </Group>
-      ) : null}
-      {children}
-      </Stack>
-    </Container>
+            {actions ? <div className="page-layout__primary-action">{actions}</div> : null}
+          </div>
+        ) : null}
+        {toolbar ? <div className="page-layout__toolbar">{toolbar}</div> : null}
+        <div className="page-layout__workspace">{children}</div>
+      </div>
+    </div>
   );
 }
 
@@ -81,9 +79,9 @@ function PageLayoutSection({ title, children, className }: PageLayoutSectionProp
   return (
     <section className={`page-layout__section ${className ?? ""}`.trim()}>
       {title ? (
-        <Title order={2} className="page-layout__section-title">
+        <h2 className="page-layout__section-title">
           {title}
-        </Title>
+        </h2>
       ) : null}
       {children}
     </section>

@@ -13,16 +13,19 @@ const TOKENIZED_CSS_FILES: string[] = [
   "apps/portal/styles/semantic.css",
   "apps/portal/styles/scale.css",
   "apps/portal/styles.css",
-  "apps/portal/providers/ThemeProvider.module.css",
+  "apps/portal/styles/shadcn.css",
   "apps/portal/components/layout/AppShell.css",
   "apps/portal/components/layout/CmdKSearch.module.css",
+  "apps/portal/components/layout/ImportantNoticeGate.module.css",
   "apps/portal/components/layout/NotificationPopover.module.css",
   "apps/portal/components/layout/PageLayout.css",
+  "apps/portal/components/layout/PublicSiteHeader.css",
   "apps/portal/components/pages/GuildWarPage.css",
   "apps/portal/components/pages/StoragePage.css",
   "apps/portal/components/pages/AuthPages.css",
   "apps/portal/components/pages/AdminPage.css",
   "apps/portal/components/pages/DashboardPage.css",
+  "apps/portal/components/pages/LandingPage.css",
   "apps/portal/components/pages/ToolsPage.css",
   "apps/portal/components/pages/AnnouncementsPage.css",
   "apps/portal/components/pages/EventsPage.css",
@@ -30,26 +33,32 @@ const TOKENIZED_CSS_FILES: string[] = [
   "apps/portal/components/pages/MyProfilePage.css",
   "apps/portal/components/pages/RosterPage.css",
   "apps/portal/components/pages/SettingsPage.css",
+  "apps/portal/components/pages/SystemStatusPage.css",
   "apps/portal/components/pages/WikiPage.css",
   "apps/portal/components/feature/admin/AdminApiTest.css",
   "apps/portal/components/shared/tiptap-editor.css",
-  "apps/portal/components/feature/events/RecurringTemplateFormModal.css",
+  "apps/portal/components/feature/events/RecurringTemplateFormContent.css",
   "apps/portal/components/feature/events/EventCardsView.css",
   "apps/portal/components/feature/admin/AuditLogViewer.css",
-  "apps/portal/components/feature/events/EventDetailModal.css",
+  "apps/portal/components/feature/events/EventDetailContent.css",
   "apps/portal/components/feature/admin/AdminSystemSection.css",
   "apps/portal/components/shared/MemberCard.css",
+  "apps/portal/components/shared/ExperienceControls.css",
   "apps/portal/components/feature/admin/AdminBadgesSection.css",
   "apps/portal/components/feature/admin/AdminClassesSection.css",
+  "apps/portal/components/feature/admin/AdminImportantNoticesSection.css",
   "apps/portal/components/shared/media-gallery.css",
   "apps/portal/components/feature/events/EventMonthView.css",
   "apps/portal/components/shared/ProfileModal.module.css",
-  "apps/portal/components/feature/admin/AdminMemberDetailModal.module.css",
+  "apps/portal/components/feature/admin/AdminMemberDetailInspector.module.css",
   /* Shared controls consume only L2/L3 variables. */
   "apps/portal/components/shared/SectionHeader.css",
   "apps/portal/components/shared/TitleField.css",
   "apps/portal/components/shared/NativeDateTimeInput.css",
   "apps/portal/components/shared/ContentFilterToolbar.css",
+  "apps/portal/components/shared/VisualThemeArtwork.css",
+  "apps/portal/components/shared/PageSubnav.css",
+  "apps/portal/components/shared/EntityNavigator.css",
   "apps/portal/components/shared/ClassIcon.css",
   "apps/portal/components/shared/ImageGridEditor.css",
   /* 行内样式片段编辑器（称号与徽章标签共用）。样式当初随组件从 ToolsPage.css
@@ -62,7 +71,7 @@ const TOKENIZED_CSS_FILES: string[] = [
      全部使用语义 token。 */
   "apps/portal/components/feature/events/EventQuotaBar.css",
   "apps/portal/components/feature/events/ClassQuotaEditor.css",
-  "apps/portal/components/feature/events/EventFormModal.css",
+  "apps/portal/components/feature/events/EventFormContent.css",
   /* 叠放头像组，活动卡和仪表盘活动条共用。走 --surface-raised / --text-primary。 */
   "apps/portal/components/shared/MemberAvatarStack.css",
   /* 后台职业标签页的编辑器内部。选中态与 AdminClassesSection.css 的图标格同一套
@@ -75,6 +84,15 @@ const TOKENIZED_CSS_FILES: string[] = [
   /* 成员概览条，资料页与后台成员详情共用。样式从 MyProfilePage.css 原样搬来，
      用的还是那里的 --surface-* / --status-* / --overview-accent。 */
   "apps/portal/components/shared/ProfileOverviewCard.css",
+  "apps/portal/components/feature/admin/AdminMemberMediaTab.css",
+  "apps/portal/components/feature/admin/AdminUsersSection.css",
+  "apps/portal/components/feature/admin/CreateMemberModal.css",
+  "apps/portal/components/shared/AbsenceManagerCard.css",
+  "apps/portal/components/shared/AvailabilityEditor.css",
+  "apps/portal/components/shared/DataTableAdapter.css",
+  "apps/portal/components/shared/DataTablePagination.css",
+  "apps/portal/components/shared/MetricGridInput.css",
+  "apps/portal/components/ui/route-progress.css",
 ];
 
 /** 唯一允许出现 hex 的文件。 */
@@ -84,9 +102,8 @@ const SEMANTIC_FILE = "apps/portal/styles/semantic.css";
 /** L3 标度层：尺寸标度，不表达颜色语义，但同样是「token 文件」本身，
  * 不是组件层，豁免 rule 6。 */
 const SCALE_FILE = "apps/portal/styles/scale.css";
-/** 全局样式入口；Mantine 主题桥接位于 ThemeProvider。 */
+/** 全局样式入口。 */
 const ENTRY_FILE = "apps/portal/styles.css";
-const THEME_PROVIDER_FILE = "apps/portal/providers/ThemeProvider.tsx";
 const PORTAL_HTML_FILE = "apps/portal/index.html";
 const ACCENT_CONSUMER_ALLOWLIST = new Set([
   SEMANTIC_FILE,
@@ -104,13 +121,6 @@ const DISPLAY_FONT_FILES = [
  * 它们的值是运行期由某处 JS/库写进 style 的。没有出处的名字不许进这张表。
  */
 const RUNTIME_INJECTED_VARS: string[] = [
-  /* Mantine AppShell 组件在运行期写入（@mantine/core 的
-   * esm/components/AppShell/AppShellMediaStyles/assign-header-variables/
-   * assign-header-variables.mjs:33-37，assignHeaderVariables()）。 */
-  "--app-shell-header-offset",
-  /* Mantine Alert 组件在运行期写入（@mantine/core 的
-   * esm/components/Alert/Alert.mjs:35）。 */
-  "--alert-color",
   /* PageLayout.tsx:82-87，PageLayout 组件在根元素 style 上内联注入。 */
   "--page-layout-cols-xs",
   "--page-layout-cols-sm",
@@ -118,12 +128,12 @@ const RUNTIME_INJECTED_VARS: string[] = [
   "--page-layout-cols-lg",
   "--page-layout-cols-xl",
   "--page-layout-grid-gap",
+  /* AppShell.tsx writes the live sidebar width onto the shell root. */
+  "--app-sidebar-width",
   /* GalleryGrid.tsx:114，每张卡片的 style 上内联注入，用来错开入场动画延迟。 */
   "--stagger-index",
   /* LastWarCard.tsx:138，结果徽章的 style 上内联注入。 */
   "--war-result-color",
-  /* MantineProvider injects this outside the --mantine-color-* namespace. */
-  "--mantine-font-family-monospace",
   /* MemberAvatarStack injects its constant size on the stack root. */
   "--member-avatar-stack-size",
   /* --badge-color：管理员自选的任意色号，运行期由 MemberCard.tsx:24 的
@@ -140,17 +150,18 @@ const RUNTIME_INJECTED_VARS: string[] = [
    * recentColors（localStorage 持久化的用户历史取色，等同 class-1 数据），
    * 运行期由这些色板/色点按钮无条件内联写入。 */
   "--swatch-color",
-  /* --signup-dot-color：MySignupsCard.tsx 按事件类型拼出的 Mantine 色号字符串
-   * （`var(--mantine-color-X-5, var(--accent-fill))`，X 来自 eventTypeTagColor()），
-   * 随事件类型变化，运行期由该文件的色点 span 无条件内联写入。 */
+  /* --signup-dot-color：MySignupsCard.tsx 从 source-owned event type palette
+   * 取得颜色，随事件类型变化，由色点 span 在运行期内联写入。 */
   "--signup-dot-color",
+  /* Dynamic catalog and event colours are validated application data projected inline. */
+  "--role-color",
+  "--class-swatch",
+  "--event-card-badge-color",
+  "--month-event-color",
   /* --kpi-ratio：仪表盘比例计的 0..1 比值，运行期由 dashboard/shared.tsx 的
    * KpiMeter 在填充段的内联 style 上无条件写入（值在组件里已钳到 0..1）。 */
   "--kpi-ratio",
 ];
-/** --mantine-color-* 系列由 Mantine 的 CSS 变量解析器批量写入运行期
- * （@mantine/core 的 MantineCssVariables），逐个列名不现实，按前缀豁免。 */
-const MANTINE_COLOR_PREFIX = "--mantine-color-";
 
 /* CSS and TSX literal-color scans share one detector implementation. */
 
@@ -169,7 +180,7 @@ type LiteralColourExemption = {
  * 选择器出处与理由，按值计次消耗，不是整文件豁免。
  *
  * 为什么豁免表在这里、而不是「找源码里挨着的说明注释」：rule 2 沿用现有的
- * 「先剥注释再扫」（这是为了不让 EventDetailModal.css 那种在注释里纯讲解历史
+ * 「先剥注释再扫」（这是为了不让 EventDetailContent.css 那种在注释里纯讲解历史
  * rgb() 数值的说明文字被误当成命中——剥注释前会先加进命中列表）。但先剥注释
  * 就意味着扫描函数看不到注释里写的豁免理由，没法用「附近有没有说明注释」当
  * 判据；所以豁免机制使用这张按文件+值索引的表，并要求每条都记录来源与理由。
@@ -178,14 +189,14 @@ const LITERAL_COLOUR_EXEMPTIONS: Record<string, LiteralColourExemption[]> = {
   "apps/portal/components/feature/events/EventCardsView.css": [
     {
       source: ".event-card__raffle-winners-badge",
-      reason: "徽章底色/文字已固定吃 --mantine-color-pink-5 / --mantine-color-white，不随 [data-theme] 变化，投影延续同一条设计决定保持固定，避免固定配色配一圈会变化的阴影。",
+      reason: "徽章底色与文字是固定的结果状态配色，不随 [data-theme] 变化；投影延续同一条决定，避免固定配色搭配会变化的阴影。",
       values: ["rgba(0, 0, 0, 0.2)"],
     },
   ],
   "apps/portal/components/pages/GalleryPage.css": [
     {
       source: ".gallery-video-thumb 与其 :hover 变体（已有注释）",
-      reason: "占位背景固定吃 Mantine 的 --mantine-color-dark-6，不随 [data-theme] 变化，图标色跟着保持固定白色透明度。",
+      reason: "占位背景使用固定深色，不随 [data-theme] 变化，图标色跟着保持固定白色透明度。",
       values: ["rgba(255, 255, 255, 0.55)", "rgba(255, 255, 255, 0.85)"],
     },
     {
@@ -201,12 +212,12 @@ const LITERAL_COLOUR_EXEMPTIONS: Record<string, LiteralColourExemption[]> = {
     {
       source: ".gallery-lb__close 与其 :hover（已有注释）",
       reason: "关闭按钮坐在上面固定近黑的遮罩上，不是主题表面，玻璃底色与图标色都保持固定白色透明度。",
-      values: ["rgba(255, 255, 255, 0.1)", "rgba(255, 255, 255, 0.8)", "rgba(255, 255, 255, 0.2)", "rgb(255 255 255)"],
+      values: ["rgba(255, 255, 255, 0.1)", "rgba(255, 255, 255, 0.8)", "rgba(255, 255, 255, 0.2)", "rgba(255, 255, 255, 0.28)", "rgb(255 255 255)", "rgb(255 255 255)"],
     },
     {
       source: ".gallery-lb__nav 与其 :hover（已有注释）",
       reason: "理由同 .gallery-lb__close：固定近黑遮罩上的固定白色玻璃控件。",
-      values: ["rgba(255, 255, 255, 0.08)", "rgba(255, 255, 255, 0.7)", "rgba(255, 255, 255, 0.18)", "rgb(255 255 255)"],
+      values: ["rgba(255, 255, 255, 0.08)", "rgba(255, 255, 255, 0.7)", "rgba(255, 255, 255, 0.18)", "rgba(255, 255, 255, 0.26)", "rgb(255 255 255)"],
     },
     {
       source: ".gallery-lb__caption / __uploader / __date / __count",
@@ -229,7 +240,7 @@ const LITERAL_COLOUR_EXEMPTIONS: Record<string, LiteralColourExemption[]> = {
     },
     {
       source: ".infini-media-gallery-thumb-play 的图标描边投影（已有注释）",
-      reason: "播放图标固定用 Mantine 白，投影同理固定：给白色图标描一圈暗晕，保证压在任意亮度的缩略图上都看得清。",
+      reason: "播放图标固定用白色，投影同理固定：给白色图标描一圈暗晕，保证压在任意亮度的缩略图上都看得清。",
       values: ["rgba(0,0,0,0.5)"],
     },
   ],
@@ -397,7 +408,6 @@ describe("theme token hard rules", () => {
     for (const { path, source } of readTokenizedCss()) {
       const withoutComments = source.replace(/\/\*[\s\S]*?\*\//g, "");
       if (/(^|[\s,>+~(])\.dark\b/.test(withoutComments)) offenders.push(`${path}: .dark selector`);
-      if (withoutComments.includes("data-mantine-color-scheme")) offenders.push(`${path}: data-mantine-color-scheme selector`);
     }
     expect(offenders).toEqual([]);
   });
@@ -419,7 +429,7 @@ describe("theme token hard rules", () => {
       const withoutComments = source.replace(/\/\*[\s\S]*?\*\//g, "");
       const used = new Set([...withoutComments.matchAll(/var\((--[a-zA-Z0-9-]+)/g)].map((match) => match[1]!));
       const missing = [...used].filter(
-        (name) => !defined.has(name) && !RUNTIME_INJECTED_VARS.includes(name) && !name.startsWith(MANTINE_COLOR_PREFIX),
+        (name) => !defined.has(name) && !RUNTIME_INJECTED_VARS.includes(name),
       );
       if (missing.length > 0) offenders.push(`${path}: ${missing.join(", ")}`);
     }
@@ -460,8 +470,8 @@ describe("theme token hard rules", () => {
 
 describe("control sizing scale", () => {
   const scale = readFileSync(resolve(repoRoot, SCALE_FILE), "utf8");
-  const themeStyles = readFileSync(
-    resolve(repoRoot, "apps/portal/providers/ThemeProvider.module.css"),
+  const sharedStyles = readFileSync(
+    resolve(repoRoot, "apps/portal/styles/shadcn.css"),
     "utf8",
   );
   const tipTap = readFileSync(
@@ -507,22 +517,10 @@ describe("control sizing scale", () => {
       .toMatch(/--control-height-regular:\s*36px\b/);
   });
 
-  it("bridges Mantine Button, Input, ActionIcon, and Tabs onto the scale", () => {
-    expect(themeStyles).toContain("--button-height-xs: var(--control-height-compact)");
-    expect(themeStyles).toContain("--button-height-sm: var(--control-height-regular)");
-    expect(themeStyles).toContain("--input-height-sm: var(--control-height-regular)");
-    expect(themeStyles).toContain("--input-height-xs: var(--control-height-compact)");
-    expect(themeStyles).toContain("--ai-size-input-xs: var(--control-height-compact)");
-    expect(themeStyles).toContain("--ai-size-sm: var(--control-icon-size-compact)");
-    expect(themeStyles).toContain("--ai-size-md: var(--control-icon-size-regular)");
-    expect(themeStyles).toMatch(/\.tabsTab[\s\S]*?min-height:\s*var\(--control-height-regular\)/);
-    expect(themeStyles).toMatch(/\.tabsTab[\s\S]*?padding-inline:\s*var\(--space-lg\)/);
-  });
-
   it("uses a transparent pseudo-element for controls smaller than the hit-area token", () => {
-    expect(themeStyles).toMatch(/\.actionIconRoot::before\s*\{[\s\S]*?width:\s*max\(var\(--control-hit-area\)/);
-    expect(themeStyles).toMatch(/\.actionIconRoot::before\s*\{[\s\S]*?height:\s*max\(var\(--control-hit-area\)/);
-    expect(themeStyles).toMatch(/\.actionIconRoot::before\s*\{[\s\S]*?background:\s*transparent/);
+    expect(sharedStyles).toMatch(/\[data-slot="button"\]::before\s*\{[\s\S]*?inline-size:\s*max\(100%,\s*var\(--control-hit-area\)\)/);
+    expect(sharedStyles).toMatch(/\[data-slot="button"\]::before\s*\{[\s\S]*?block-size:\s*max\(100%,\s*var\(--control-hit-area\)\)/);
+    expect(sharedStyles).toMatch(/\[data-slot="button"\]::before\s*\{[\s\S]*?background:\s*transparent/);
   });
 
   it("keeps the protected Roster audio control spacing", () => {
@@ -558,7 +556,6 @@ describe("control sizing scale", () => {
 describe("Forged Material shape and elevation scale", () => {
   const scale = readFileSync(resolve(repoRoot, SCALE_FILE), "utf8");
   const semantic = readFileSync(resolve(repoRoot, SEMANTIC_FILE), "utf8");
-  const provider = readFileSync(resolve(repoRoot, THEME_PROVIDER_FILE), "utf8");
 
   it("defines exactly three general radius tokens", () => {
     const definitions = [...scale.matchAll(/^\s*(--radius-[a-z0-9-]+):/gm)]
@@ -584,13 +581,6 @@ describe("Forged Material shape and elevation scale", () => {
     ]);
   });
 
-  it("maps Mantine radii and shadows onto the shared scale", () => {
-    expect(provider).toContain('xs: "var(--radius-control)"');
-    expect(provider).toContain('lg: "var(--radius-surface)"');
-    expect(provider).toContain('xl: "var(--radius-overlay)"');
-    expect(provider).toContain('xs: "var(--edge-top)"');
-    expect(provider).toContain('xl: "var(--shadow-overlay)"');
-  });
 });
 
 /* ── 对比度 ───────────────────────────────────────────────── */
@@ -644,7 +634,7 @@ const ACCENTS = ["teal", "indigo", "violet", "orange"] as const;
  * 全部覆盖：sunken = neutral-50（三者中最暗）是最不利的文字底，
  * base = neutral-25、raised = neutral-0 依次更亮、更宽松。
  * 深色模式最不利 = 最亮的表面 --surface-raised。
- * 在模块作用域，因为下面的 Mantine 桥接那组断言用的是同一批表面 —— 抄第二份
+ * 放在模块作用域，因为下方多组对比度断言消费同一批表面，避免抄第二份
  * 就会出现「改了一处、另一处还在测旧表面」。 */
 const LIGHT_GROUND = "--palette-neutral-25";
 const SUNKEN_GROUND = "--palette-neutral-50";
@@ -823,223 +813,6 @@ describe("dual-theme parity", () => {
       expect(contrastRatio(token(p, `--palette-${accent}-700`), token(p, SUNKEN_GROUND))).toBeGreaterThanOrEqual(AA_NON_TEXT);
       expect(contrastRatio(token(p, `--palette-${accent}-500`), token(p, "--palette-neutral-950"))).toBeGreaterThanOrEqual(AA_NON_TEXT);
     }
-  });
-});
-
-/* ── Mantine light-variant text contrast ─────────── */
-
-/**
- * Portal actions use one fixed brand ramp. These assertions resolve the values
- * from the actual Mantine bridge so the test cannot drift into a second token
- * source of truth.
- */
-
-/**
- * Mantine 浅色模式的 primaryShade。light variant 的填充与文字都取这一档：
- * @mantine/core 的 get-css-color-variables.mjs 里
- *   --mantine-color-X-light:       alpha(colors[X][primaryShade], 0.1)
- *   --mantine-color-X-light-color: var(--mantine-color-X-{primaryShade})
- *   --mantine-color-X-text:        var(--mantine-color-X-filled) → 同一档
- */
-const MANTINE_LIGHT_PRIMARY_SHADE = 6;
-/** 同上，light variant 填充的不透明度。 */
-const MANTINE_LIGHT_FILL_ALPHA = 0.1;
-
-/** 在选择器含 needle 的块里找 `property: var(--x)` 的目标，找不到返回 undefined。
- * 属性名前加 `(?:^|[\s;{])` 左边界锚定：不加的话 `--accent-700:` 这样的 needle
- * 会误命中 `--foo-accent-700:`（H-2c）。 */
-function scopedForward(source: string, needle: string, property: string): string | undefined {
-  for (const [, selector, body] of source.matchAll(/([^{}]+)\{([^{}]*)\}/g)) {
-    if (!selector?.includes(needle)) continue;
-    const hit = body?.match(new RegExp(`(?:^|[\\s;{])${property}:\\s*var\\((--[a-z0-9-]+)\\)`));
-    if (hit?.[1]) return hit[1];
-  }
-  return undefined;
-}
-
-/** Resolve a token forward within one exact selector so specificity is part of the contract. */
-function forwardTarget(source: string, selector: string, property: string, where: string): string {
-  const hit = scopedForward(source, selector, property);
-  if (hit === undefined) {
-    throw new Error(`${where}: 找不到 ${property} 的 var() 转发目标 —— 这条桥接缺失，或者没走 var() 转发。`);
-  }
-  return hit;
-}
-
-/**
- * H-2a 补充断言：Mantine 后注入的 `:root[data-mantine-color-scheme="light"]`
- * 覆盖是 (0,2,0)。要稳赢就必须比它多一段选择器组件，凑到 (0,3,0) ——
- * `:root[data-theme="light"][data-theme="light"]` 靠属性选择器重复自身达到
- * 三段。这条断言钉住「选择器字面量必须是三段」这件事本身，不经过
- * forwardTarget/scopedForward 的解析，避免和上面两个断言共用同一个可能失灵的
- * 检测路径。 */
-const PORTAL_BRAND_SELECTOR = ":root[data-theme][data-theme]";
-
-/** 把一个语义名一路解析到 L1 色板名：先查浅色模式块，再查该主色块。 */
-function resolveToPalette(semantic: string, accent: string, start: string): string {
-  let name = start;
-  for (let hop = 0; hop < 4; hop += 1) {
-    if (name.startsWith("--palette-")) return name;
-    const next = scopedForward(semantic, '[data-theme="light"]', name)
-      ?? scopedForward(semantic, `[data-accent="${accent}"]`, name)
-      /* 与模式无关的 accent 派生（--accent-fill 等）住在 semantic.css 的 :root 里。 */
-      ?? scopedForward(semantic, ":root", name);
-    if (next === undefined) throw new Error(`${SEMANTIC_FILE}: ${name} 在主色 ${accent} 下解不到 L1 色板。`);
-    name = next;
-  }
-  throw new Error(`${SEMANTIC_FILE}: ${start} 的转发链超过 4 跳，疑似成环。`);
-}
-
-/** ThemeProvider 里 portal-brand 色阶的第 index 档。不在测试里抄一份，有人重排要跟着变。 */
-function brandRampStep(index: number): string {
-  const source = readFileSync(resolve(repoRoot, THEME_PROVIDER_FILE), "utf8");
-  const marker = '"portal-brand": [';
-  const open = source.indexOf(marker);
-  if (open === -1) throw new Error(`${THEME_PROVIDER_FILE}: 找不到 portal-brand 色阶 —— 被改名或挪走了，请同步改这个测试。`);
-  const steps = [...source.slice(open + marker.length, source.indexOf("]", open)).matchAll(/var\((--brand-[a-z0-9-]+)\)/g)]
-    .map((match) => match[1]!);
-  if (steps.length !== 10) throw new Error(`${THEME_PROVIDER_FILE}: Mantine 色阶必须正好 10 档，实际 ${steps.length} 档。`);
-  const step = steps[index];
-  if (step === undefined) throw new Error(`${THEME_PROVIDER_FILE}: portal-brand 取不到第 ${index} 档。`);
-  return step;
-}
-
-/** 把 fg 以 ratio 的不透明度压在 bg 上，得到实际渲染出来的底色。 */
-function over(fg: string, bg: string, ratio: number): string {
-  const a = fg.replace("#", "");
-  const b = bg.replace("#", "");
-  let out = "#";
-  for (let i = 0; i < 6; i += 2) {
-    const blended = Number.parseInt(a.slice(i, i + 2), 16) * ratio + Number.parseInt(b.slice(i, i + 2), 16) * (1 - ratio);
-    out += Math.round(blended).toString(16).padStart(2, "0");
-  }
-  return out;
-}
-
-describe("Mantine light variant 的文字色在浅色模式下过 AA", () => {
-  const p = palette();
-  const entry = readFileSync(resolve(repoRoot, ENTRY_FILE), "utf8");
-  const semantic = readFileSync(resolve(repoRoot, SEMANTIC_FILE), "utf8");
-
-  /* 浅色三层表面全覆盖，sunken 最暗、是最不利的底。 */
-  const LIGHT_SURFACES = ["--palette-neutral-0", LIGHT_GROUND, SUNKEN_GROUND];
-
-  for (const accent of ACCENTS) {
-    it(`${accent}: light variant 的文字在三种浅色表面的淡色填充上都过 AA`, () => {
-      const text = token(p, resolveToPalette(semantic, accent, forwardTarget(entry, PORTAL_BRAND_SELECTOR, "--mantine-color-portal-brand-light-color", ENTRY_FILE)));
-      const fill = token(p, resolveToPalette(semantic, accent, brandRampStep(MANTINE_LIGHT_PRIMARY_SHADE)));
-      const failures = LIGHT_SURFACES
-        .map((surface) => ({ surface, ratio: contrastRatio(text, over(fill, token(p, surface), MANTINE_LIGHT_FILL_ALPHA)) }))
-        .filter(({ ratio }) => ratio < AA_TEXT)
-        .map(({ surface, ratio }) => `${surface}: ${ratio.toFixed(2)}`);
-      expect(
-        failures,
-        `--mantine-color-portal-brand-light-color 指向的档位在这些表面上不过 ${AA_TEXT}:1：\n${failures.join("\n")}`,
-      ).toEqual([]);
-    });
-
-    it(`${accent}: subtle / transparent 与 <Text c> 的文字在三种浅色表面上都过 AA`, () => {
-      /* --mantine-color-X-text 是 variant="subtle" / "transparent" 与 <Text c="…">
-       * 取的那一档，直接画在表面上、没有淡色填充垫底。 */
-      const text = token(p, resolveToPalette(semantic, accent, forwardTarget(entry, PORTAL_BRAND_SELECTOR, "--mantine-color-portal-brand-text", ENTRY_FILE)));
-      const failures = LIGHT_SURFACES
-        .map((surface) => ({ surface, ratio: contrastRatio(text, token(p, surface)) }))
-        .filter(({ ratio }) => ratio < AA_TEXT)
-        .map(({ surface, ratio }) => `${surface}: ${ratio.toFixed(2)}`);
-      expect(
-        failures,
-        `--mantine-color-portal-brand-text 指向的档位在这些表面上不过 ${AA_TEXT}:1：\n${failures.join("\n")}`,
-      ).toEqual([]);
-    });
-  }
-
-  it("styles.css keeps the three-part brand bridge selector above Mantine specificity", () => {
-    /* 必须是三段：Mantine 自己那条 `:root[data-mantine-color-scheme="light"]`
-     * 覆盖是 (0,2,0) 且注入在本文件之后，打平会赢。属性选择器自我重复
-     * （[data-theme="light"][data-theme="light"]）把这条覆盖抬到 (0,3,0)，
-     * 稳赢而不必依赖感叹号优先级。削回单段 [data-theme="light"]（0,1,0）会让
-     * 这场特异性之争静默输掉——上面两个断言靠 forwardTarget 的选择器定位能
-     * 拦住这个坑，这一条独立钉住选择器字面量本身，防止两者共用的解析路径
-     * 同时失灵。 */
-    expect(entry.includes(PORTAL_BRAND_SELECTOR)).toBe(true);
-  });
-
-  /**
-   * Anchor 与 TypographyStylesProvider 里的 <a> 都读 --mantine-color-anchor。
-   * Mantine 默认把它指到主色 shade 6，那是填充档：压在浅色纸底上实测 3.92:1，
-   * 16px 正文过不了 AA。站内的文字档是 --brand-text（浅 700 / 深 500），
-   * 它自己随 [data-theme] 切，所以一条与模式无关的桥接覆盖两个模式。
-   * 选择器同样要两段属性自我重复，否则打不过 Mantine 的 (0,2,0)。
-   */
-  it("bridges the Mantine anchor colour onto the calibrated brand text step", () => {
-    const bridge = entry.match(/:root\[data-theme\]\[data-theme\]\s*\{([^}]*)\}/s);
-    expect(bridge, "缺少与模式无关的 :root[data-theme][data-theme] 桥接块").not.toBeNull();
-    expect(bridge![1]!.replace(/\/\*[\s\S]*?\*\//g, "")).toMatch(/--mantine-color-anchor:\s*var\(--brand-text\)/);
-  });
-});
-
-/* ── primaryShade 护栏（H-2b） ────────────────────────────── */
-
-/**
- * MANTINE_LIGHT_PRIMARY_SHADE = 6 是 @mantine/core 库常量（浅色模式默认
- * primaryShade）的第二份拷贝，本文件没有办法从库里读出这个值来核对。
- * 只要有人在 createTheme 里加一行 `primaryShade: { light: 5, dark: 8 }`，
- * Mantine 就会改取第 5 档，而上面两条 AA 断言仍按第 6 档算——静默测错档位。
- * 这条断言不核对数值是否同步（做不到），只保证「没有人动过这个开关」：
- * createTheme 的实参里不出现 primaryShade。 */
-/** Extract a balanced call expression after the requested source marker. */
-function extractBalancedCall(source: string, marker: string, description: string): string {
-  const open = source.indexOf(marker);
-  if (open === -1) {
-    throw new Error(`${THEME_PROVIDER_FILE}: 找不到 ${marker} —— ${description}被挪走或改名了，请同步改这个测试。`);
-  }
-  let depth = 0;
-  for (let i = open + marker.length - 1; i < source.length; i += 1) {
-    const ch = source[i];
-    if (ch === "(") depth += 1;
-    else if (ch === ")") {
-      depth -= 1;
-      if (depth === 0) return source.slice(open, i + 1);
-    }
-  }
-  throw new Error(`${THEME_PROVIDER_FILE}: ${marker} 的括号没有配平，无法切出配置对象。`);
-}
-
-/** 取 `createTheme(` 之后到括号配平为止的那段源码。 */
-function createThemeArgument(source: string): string {
-  return extractBalancedCall(source, "createTheme(", "Mantine 主题配置");
-}
-
-describe("primaryShade 未被覆盖（H-2b）", () => {
-  it("createTheme 的实参里不出现 primaryShade", () => {
-    const argument = createThemeArgument(readFileSync(resolve(repoRoot, THEME_PROVIDER_FILE), "utf8"));
-    const hasPrimaryShade = /(^|[\s{,])primaryShade\s*:/.test(argument);
-    expect(
-      hasPrimaryShade,
-      `${THEME_PROVIDER_FILE} 的 createTheme 里出现了 primaryShade —— 这会让 Mantine 改取另一档，` +
-        `而 theme-tokens.test.ts 里的 MANTINE_LIGHT_PRIMARY_SHADE 常量不会跟着变，AA 断言将静默测错档位。` +
-        `请同步更新该常量后再移除这条守卫，或撤回 primaryShade 覆盖。`,
-    ).toBe(false);
-  });
-});
-
-/* ── Menu single-source guard ────────────────────────── */
-
-/** JS-side Mantine configuration is outside the CSS token rules and needs its own guard. */
-/** 取 `Menu.extend(` 之后到括号配平为止的那段源码。 */
-function menuExtendArgument(source: string): string {
-  return extractBalancedCall(source, "Menu.extend(", "菜单的 Mantine 配置");
-}
-
-describe("menu single source of truth", () => {
-  it("Menu.extend 里没有 styles —— 菜单外观不得在 JS 侧重新长出第二个真相", () => {
-    const argument = menuExtendArgument(readFileSync(resolve(repoRoot, THEME_PROVIDER_FILE), "utf8"));
-    const hasStyles = /(^|[\s{,])styles\s*:/.test(argument);
-    expect(
-      hasStyles,
-      `${THEME_PROVIDER_FILE} 的 Menu.extend 里出现了 styles —— Mantine 的 styles prop 生成内联样式，` +
-        `会无条件压过 ${ENTRY_FILE} 的菜单区块。菜单外观请写在那个区块里。实际内容：\n${argument}`,
-    ).toBe(false);
   });
 });
 
@@ -1429,7 +1202,7 @@ describe("display font delivery", () => {
     expect(numberTicker).not.toContain("fontVariantNumeric");
   });
 
-  it("keeps the document body on the app field when Mantine base styles load later", () => {
+  it("keeps the document body on the app field throughout bootstrap", () => {
     const entry = readFileSync(resolve(repoRoot, ENTRY_FILE), "utf8");
 
     expect(entry).toMatch(

@@ -78,15 +78,14 @@ async function readCategory(api: APIRequestContext, id: string): Promise<Categor
   return found!;
 }
 
-/* 分类编辑器的标题是 <Text fw={700}>，渲染出来是段落而不是标题，取不到 heading 角色。 */
+/** 分类编辑器标题是语义二级标题。 */
 function categoryEditorTitle(page: Page): Locator {
-  return page.getByText("Category Editor", { exact: true });
+  return page.getByRole("heading", { name: "Category Editor", exact: true });
 }
 
 /*
  * 关闭按钮只在主内容区里找。
- * Mantine 的通知条自带一个 aria-label="Close" 的关闭按钮，渲染在主内容区之外的
- * portal 里。页面上只要还挂着一条没自动消失的提示，页面级的
+ * Toast 门户也可能保留一个 Close 按钮，页面级的
  * getByRole("button", { name: "Close" }) 就同时命中两个，直接 strict mode violation——
  * 报出来像是「点不到关闭按钮」，成因却是「上一步弹的提示还没散」。
  */

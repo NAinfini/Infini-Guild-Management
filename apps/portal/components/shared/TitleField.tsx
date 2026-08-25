@@ -1,5 +1,8 @@
-import { ActionIcon, Text, TextInput, Tooltip } from "@mantine/core";
 import { PaletteIcon, TrashIcon } from "@portal/components/icons";
+import { Button } from "@portal/components/ui/button";
+import { Input } from "@portal/components/ui/input";
+import { Label } from "@portal/components/ui/label";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@portal/components/ui/tooltip";
 import { sanitizeTitleHtml } from "@portal/utils/sanitize";
 import { useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
@@ -38,9 +41,9 @@ export function TitleField({ value, onChange, disabled = false }: TitleFieldProp
 
   return (
     <div className="profile-title">
-      <Text component="span" size="sm" fw={600} className="profile-title__label">
+      <Label className="profile-title__label">
         {t("field.title")}
-      </Text>
+      </Label>
       <div className="profile-title__row">
         {isStyled ? (
           /*
@@ -52,7 +55,7 @@ export function TitleField({ value, onChange, disabled = false }: TitleFieldProp
             <div dangerouslySetInnerHTML={{ __html: safeTitleHtml }} />
           </div>
         ) : (
-          <TextInput
+          <Input
             className="profile-title__input"
             value={value}
             placeholder={t("field.titleEmpty")}
@@ -61,29 +64,40 @@ export function TitleField({ value, onChange, disabled = false }: TitleFieldProp
             onChange={(event) => onChange(event.currentTarget.value)}
           />
         )}
-        <Tooltip label={value ? t("action.editTitle") : t("action.createTitle")} withArrow>
-          <ActionIcon
-            variant="default"
-            size={36}
-            aria-label={value ? t("action.editTitle") : t("action.createTitle")}
-            disabled={disabled}
-            onClick={() => setEditorOpen(true)}
+        <Tooltip>
+          <TooltipTrigger
+            render={(
+              <Button
+                type="button"
+                variant="outline"
+                size="icon-lg"
+                aria-label={value ? t("action.editTitle") : t("action.createTitle")}
+                disabled={disabled}
+                onClick={() => setEditorOpen(true)}
+              />
+            )}
           >
             <PaletteIcon size={16} />
-          </ActionIcon>
+          </TooltipTrigger>
+          <TooltipContent>{value ? t("action.editTitle") : t("action.createTitle")}</TooltipContent>
         </Tooltip>
         {isStyled ? (
-          <Tooltip label={t("action.clearTitle")} withArrow>
-            <ActionIcon
-              variant="subtle"
-              color="red"
-              size={36}
-              aria-label={t("action.clearTitle")}
-              disabled={disabled}
-              onClick={() => onChange("")}
+          <Tooltip>
+            <TooltipTrigger
+              render={(
+                <Button
+                  type="button"
+                  variant="destructive"
+                  size="icon-lg"
+                  aria-label={t("action.clearTitle")}
+                  disabled={disabled}
+                  onClick={() => onChange("")}
+                />
+              )}
             >
               <TrashIcon size={16} />
-            </ActionIcon>
+            </TooltipTrigger>
+            <TooltipContent>{t("action.clearTitle")}</TooltipContent>
           </Tooltip>
         ) : null}
       </div>

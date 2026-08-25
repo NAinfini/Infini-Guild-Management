@@ -1,8 +1,19 @@
 import type { CreateStorageCategoryPayload, CreateStoragePayload, Storage } from "@guild/shared";
-import { ActionIcon, Badge, Button, Drawer, Group, Stack, Text, TextInput, Textarea } from "@mantine/core";
-import { useMediaQuery } from "@mantine/hooks";
-import { PlusIcon, TrashIcon } from "@portal/components/icons";
+import { PlusIcon, TrashIcon, XIcon } from "@portal/components/icons";
+import { Badge } from "@portal/components/ui/badge";
+import { Button } from "@portal/components/ui/button";
+import {
+  Drawer,
+  DrawerClose,
+  DrawerContent,
+  DrawerHeader,
+  DrawerTitle,
+} from "@portal/components/ui/drawer";
+import { Input } from "@portal/components/ui/input";
+import { Label } from "@portal/components/ui/label";
+import { Textarea } from "@portal/components/ui/textarea";
 import { useKeyedPending } from "@portal/hooks/useKeyedPending";
+import { useMediaQuery } from "@portal/hooks/useMediaQuery";
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 
@@ -98,8 +109,8 @@ export function StorageStructureManager({
   const selectedContextDetail = isCreatingCategory
     ? labels.noCategories
     : selectedCategory
-    ? selectedStorage?.name
-    : selectedStorage?.description || labels.emptyDescription;
+      ? selectedStorage?.name
+      : selectedStorage?.description || labels.emptyDescription;
 
   useEffect(() => {
     setEditName(selectedStorage?.name ?? "");
@@ -177,34 +188,35 @@ export function StorageStructureManager({
   };
 
   const treePanel = (
-    <Stack gap="xs" className="storage-management-modal__tree">
-      <Group justify="space-between" gap="xs" wrap="nowrap" className="storage-management-modal__tree-header">
-        <Text fw={700}>{labels.storageList}</Text>
-        <Button size="compact-xs" variant="light" leftSection={<PlusIcon size={13} />} onClick={handleBeginCreateStorage}>
+    <nav className="storage-management-modal__tree" aria-label={labels.storageList}>
+      <div className="storage-management-modal__tree-header">
+        <strong>{labels.storageList}</strong>
+        <Button size="xs" variant="secondary" onClick={handleBeginCreateStorage}>
+          <PlusIcon size={13} />
           {labels.create}
         </Button>
-      </Group>
+      </div>
 
-      {storages.length === 0 ? <Text size="sm" c="dimmed">{labels.noStorages}</Text> : null}
+      {storages.length === 0 ? <p className="storage-muted-copy">{labels.noStorages}</p> : null}
 
       {storages.map((storage) => (
         <div key={storage.id} className="storage-management-modal__tree-group">
           <div className={`storage-management-modal__tree-row storage-management-modal__tree-row--storage ${selectedNodeType === "storage" && selectedStorage?.id === storage.id ? "storage-management-modal__tree-row--active" : ""}`}>
             <button type="button" className="storage-management-modal__tree-node" onClick={() => handleSelectStorage(storage.id)}>
               <span>
-                <Text fw={800} lineClamp={1}>{storage.name}</Text>
-                <Text size="xs" c="dimmed" lineClamp={1}>{storage.description || labels.emptyDescription}</Text>
+                <strong>{storage.name}</strong>
+                <span>{storage.description || labels.emptyDescription}</span>
               </span>
-              <Badge size="xs" variant="light">{storage.categories.length}</Badge>
+              <Badge variant="secondary">{storage.categories.length}</Badge>
             </button>
-            <Group gap={2} wrap="nowrap" className="storage-management-modal__node-actions">
-              <ActionIcon size="sm" variant="subtle" aria-label={labels.createCategory} onClick={() => handleBeginCreateCategory(storage.id)}>
+            <div className="storage-management-modal__node-actions">
+              <Button size="icon-sm" variant="ghost" aria-label={labels.createCategory} onClick={() => handleBeginCreateCategory(storage.id)}>
                 <PlusIcon size={13} />
-              </ActionIcon>
-              <ActionIcon
-                size="sm"
-                color="red"
-                variant="subtle"
+              </Button>
+              <Button
+                size="icon-sm"
+                variant="ghost"
+                className="storage-button--danger"
                 aria-label={labels.delete}
                 loading={pendingKeys.has(pendingKey("delete", "storage", storage.id))}
                 onClick={() => {
@@ -215,24 +227,24 @@ export function StorageStructureManager({
                 }}
               >
                 <TrashIcon size={13} />
-              </ActionIcon>
-            </Group>
+              </Button>
+            </div>
           </div>
 
           <div className="storage-management-modal__tree-children">
-            {storage.categories.length === 0 ? <Text size="xs" c="dimmed" className="storage-management-modal__tree-empty">{labels.noCategories}</Text> : null}
+            {storage.categories.length === 0 ? <p className="storage-management-modal__tree-empty">{labels.noCategories}</p> : null}
             {storage.categories.map((category) => (
               <div
                 key={category.id}
                 className={`storage-management-modal__tree-row storage-management-modal__tree-row--category ${selectedNodeType === "category" && selectedCategory?.id === category.id ? "storage-management-modal__tree-row--active" : ""}`}
               >
                 <button type="button" className="storage-management-modal__tree-node" onClick={() => handleSelectCategory(storage.id, category.id)}>
-                  <Text size="sm" fw={700} lineClamp={1}>{category.name}</Text>
+                  <strong>{category.name}</strong>
                 </button>
-                <ActionIcon
-                  size="sm"
-                  color="red"
-                  variant="subtle"
+                <Button
+                  size="icon-sm"
+                  variant="ghost"
+                  className="storage-button--danger"
                   aria-label={labels.deleteCategory}
                   loading={pendingKeys.has(pendingKey("delete", "category", `${storage.id}/${category.id}`))}
                   onClick={() => {
@@ -243,116 +255,147 @@ export function StorageStructureManager({
                   }}
                 >
                   <TrashIcon size={13} />
-                </ActionIcon>
+                </Button>
               </div>
             ))}
           </div>
         </div>
       ))}
-    </Stack>
+    </nav>
   );
+
+  const isCategoryEditor = selectedNodeType === "category" || selectedNodeType === "new-category";
 
   return (
     <div className="storage-management-modal">
-        {isMobile ? (
-          <>
-            <Stack gap="sm" className="storage-management-mobile-flow">
-              <Text size="sm" c="dimmed">{labels.mobileHint}</Text>
-              <div className="storage-management-mobile-flow__selection">
+      {isMobile ? (
+        <>
+          <section className="storage-management-mobile-flow">
+            <p>{labels.mobileHint}</p>
+            <div className="storage-management-mobile-flow__selection">
+              <span>
+                <span className="storage-meta-label">{labels.selectStructure}</span>
+                <strong>{selectedContextName}</strong>
+              </span>
+              <Button variant="outline" onClick={() => setTreeOpened(true)}>{labels.changeSelection}</Button>
+            </div>
+          </section>
+          <Drawer open={treeOpened} onOpenChange={setTreeOpened} swipeDirection="left" showSwipeHandle>
+            <DrawerContent className="storage-management-modal__mobile-drawer">
+              <DrawerHeader className="storage-modal-header">
+                <div className="storage-overlay-heading">
+                  <DrawerTitle>{labels.selectStructure}</DrawerTitle>
+                  <DrawerClose aria-label={t("common:action.close")} render={<Button size="icon-sm" variant="ghost" />}>
+                    <XIcon size={16} />
+                  </DrawerClose>
+                </div>
+              </DrawerHeader>
+              <div className="storage-modal-body">{treePanel}</div>
+            </DrawerContent>
+          </Drawer>
+        </>
+      ) : treePanel}
+
+      <div className="storage-management-modal__workspace">
+        {isCategoryEditor ? (
+          <section className="storage-modal-panel storage-management-modal__edit-panel">
+            <div className="storage-management-modal__context">
+              <div className="storage-management-modal__context-heading">
                 <span>
-                  <Text size="xs" c="dimmed">{labels.selectStructure}</Text>
-                  <Text fw={700} lineClamp={1}>{selectedContextName}</Text>
+                  <span className="storage-meta-label">{isCreatingCategory ? labels.createCategoryTitle : labels.editCategoryTitle}</span>
+                  <strong>{selectedContextName}</strong>
                 </span>
-                <Button variant="default" onClick={() => setTreeOpened(true)}>
-                  {labels.changeSelection}
+                <Badge variant="secondary">{labels.categoryName}</Badge>
+              </div>
+              <p>{selectedContextDetail}</p>
+            </div>
+            <div className="storage-field">
+              <Label htmlFor="storage-category-name">{labels.categoryName}</Label>
+              <Input
+                id="storage-category-name"
+                value={editCategoryName}
+                onChange={(event) => setEditCategoryName(event.currentTarget.value)}
+                disabled={!isCreatingCategory && !selectedCategory}
+              />
+            </div>
+            <div className="storage-modal-actions">
+              <span />
+              <div>
+                <Button variant="outline" onClick={handleCancel}>{labels.cancel}</Button>
+                <Button
+                  onClick={handleSaveCategory}
+                  disabled={
+                    !editCategoryName.trim()
+                    || (!isCreatingCategory && (
+                      !selectedStorage
+                      || !selectedCategory
+                      || editCategoryName.trim() === selectedCategory.name
+                    ))
+                  }
+                  loading={pendingKeys.has(pendingKey(
+                    isCreatingCategory ? "create" : "update",
+                    "category",
+                    isCreatingCategory
+                      ? creationDraft.storageId
+                      : `${selectedStorage?.id}/${selectedCategory?.id}`,
+                  ))}
+                >
+                  {isCreatingCategory ? labels.createCategory : labels.saveCategory}
                 </Button>
               </div>
-            </Stack>
-            <Drawer
-              opened={treeOpened}
-              onClose={() => setTreeOpened(false)}
-              title={labels.selectStructure}
-              position="left"
-              size={340}
-            >
-              {treePanel}
-            </Drawer>
-          </>
-        ) : treePanel}
-
-        <div className="storage-management-modal__workspace">
-          {selectedNodeType === "category" || selectedNodeType === "new-category" ? (
-            <Stack gap="sm" className="storage-modal-panel storage-management-modal__edit-panel">
-              <div className="storage-management-modal__context">
-                <Group justify="space-between" gap="xs" wrap="nowrap">
-                  <span>
-                    <Text size="xs" c="dimmed">{isCreatingCategory ? labels.createCategoryTitle : labels.editCategoryTitle}</Text>
-                    <Text fw={900} lineClamp={1}>{selectedContextName}</Text>
-                  </span>
-                  <Badge variant="light">{labels.categoryName}</Badge>
-                </Group>
-                <Text size="xs" c="dimmed" lineClamp={2}>{selectedContextDetail}</Text>
+            </div>
+          </section>
+        ) : (
+          <section className="storage-modal-panel storage-management-modal__edit-panel">
+            <div className="storage-management-modal__context">
+              <div className="storage-management-modal__context-heading">
+                <span>
+                  <span className="storage-meta-label">{isCreatingStorage ? labels.createTitle : labels.editTitle}</span>
+                  <strong>{selectedContextName}</strong>
+                </span>
+                <Badge variant="secondary">{isCreatingStorage ? 0 : selectedStorage?.categories.length ?? 0}</Badge>
               </div>
-              <TextInput label={labels.categoryName} value={editCategoryName} onChange={(event) => setEditCategoryName(event.currentTarget.value)} disabled={!isCreatingCategory && !selectedCategory} />
-              <Group justify="flex-end" className="storage-modal-actions">
-                <Group>
-                  <Button variant="default" onClick={handleCancel}>{labels.cancel}</Button>
-                  <Button
-                    onClick={handleSaveCategory}
-                    disabled={
-                      !editCategoryName.trim()
-                      || (!isCreatingCategory && (
-                        !selectedStorage
-                        || !selectedCategory
-                        || editCategoryName.trim() === selectedCategory.name
-                      ))
-                    }
-                    loading={pendingKeys.has(pendingKey(
-                      isCreatingCategory ? "create" : "update",
-                      "category",
-                      isCreatingCategory
-                        ? creationDraft.storageId
-                        : `${selectedStorage?.id}/${selectedCategory?.id}`,
-                    ))}
-                  >
-                    {isCreatingCategory ? labels.createCategory : labels.saveCategory}
-                  </Button>
-                </Group>
-              </Group>
-            </Stack>
-          ) : (
-            <Stack gap="sm" className="storage-modal-panel storage-management-modal__edit-panel">
-              <div className="storage-management-modal__context">
-                <Group justify="space-between" gap="xs" wrap="nowrap">
-                  <span>
-                    <Text size="xs" c="dimmed">{isCreatingStorage ? labels.createTitle : labels.editTitle}</Text>
-                    <Text fw={900} lineClamp={1}>{selectedContextName}</Text>
-                  </span>
-                  <Badge variant="light">{isCreatingStorage ? 0 : selectedStorage?.categories.length ?? 0}</Badge>
-                </Group>
-                <Text size="xs" c="dimmed" lineClamp={2}>{selectedContextDetail}</Text>
+              <p>{selectedContextDetail}</p>
+            </div>
+            <div className="storage-field">
+              <Label htmlFor="storage-name">{labels.name}</Label>
+              <Input
+                id="storage-name"
+                value={editName}
+                onChange={(event) => setEditName(event.currentTarget.value)}
+                disabled={!isCreatingStorage && !selectedStorage}
+              />
+            </div>
+            <div className="storage-field">
+              <Label htmlFor="storage-description">{labels.description}</Label>
+              <Textarea
+                id="storage-description"
+                rows={3}
+                value={editDescription}
+                onChange={(event) => setEditDescription(event.currentTarget.value)}
+                disabled={!isCreatingStorage && !selectedStorage}
+              />
+            </div>
+            <div className="storage-modal-actions">
+              <span />
+              <div>
+                <Button variant="outline" onClick={handleCancel}>{labels.cancel}</Button>
+                <Button
+                  onClick={handleSaveStorage}
+                  disabled={!editName.trim() || (!isCreatingStorage && !selectedStorage)}
+                  loading={pendingKeys.has(pendingKey(
+                    isCreatingStorage ? "create" : "update",
+                    "storage",
+                    isCreatingStorage ? "new" : selectedStorage?.id ?? "",
+                  ))}
+                >
+                  {isCreatingStorage ? labels.create : labels.save}
+                </Button>
               </div>
-              <TextInput label={labels.name} value={editName} onChange={(event) => setEditName(event.currentTarget.value)} disabled={!isCreatingStorage && !selectedStorage} />
-              <Textarea label={labels.description} minRows={3} value={editDescription} onChange={(event) => setEditDescription(event.currentTarget.value)} disabled={!isCreatingStorage && !selectedStorage} />
-              <Group justify="flex-end" className="storage-modal-actions">
-                <Group>
-                  <Button variant="default" onClick={handleCancel}>{labels.cancel}</Button>
-                  <Button
-                    onClick={handleSaveStorage}
-                    disabled={!editName.trim() || (!isCreatingStorage && !selectedStorage)}
-                    loading={pendingKeys.has(pendingKey(
-                      isCreatingStorage ? "create" : "update",
-                      "storage",
-                      isCreatingStorage ? "new" : selectedStorage?.id ?? "",
-                    ))}
-                  >
-                    {isCreatingStorage ? labels.create : labels.save}
-                  </Button>
-                </Group>
-              </Group>
-            </Stack>
-          )}
-        </div>
+            </div>
+          </section>
+        )}
+      </div>
     </div>
   );
 }

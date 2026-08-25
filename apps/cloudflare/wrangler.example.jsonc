@@ -64,6 +64,11 @@
       "simple": { "limit": 5, "period": 60 }
     },
     {
+      "name": "AUTH_IP_RATE_LIMITER",
+      "namespace_id": "1007",
+      "simple": { "limit": 30, "period": 60 }
+    },
+    {
       "name": "READ_RATE_LIMITER",
       "namespace_id": "1002",
       "simple": { "limit": 120, "period": 60 }
@@ -94,10 +99,16 @@
     "crons": ["*/15 * * * *", "0 0 * * *"]
   },
 
+  // Optional Email Sending binding. Uncomment only after onboarding the sender
+  // domain, then set IG_EMAIL_FROM and retain the matching sender restriction.
+  // "send_email": [{ "name": "EMAIL", "allowed_sender_addresses": ["no-reply@example.com"] }],
+
   "vars": {
     "IG_PUBLIC_URL": "https://replace-with-public-origin.example",
     "IG_ALLOWED_ORIGINS": "https://replace-with-allowed-origin.example",
     "IG_SESSION_COOKIE_NAME": "ig_session",
     "IG_PBKDF2_ITERATIONS": "10000"
+    // Optional OAuth client IDs and secrets both use Wrangler secret storage.
+    // Set IG_EMAIL_FROM here only when the EMAIL binding above is enabled.
   }
 }

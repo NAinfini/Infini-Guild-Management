@@ -27,8 +27,8 @@ describe("progress state colour parity (AdminApiTestCategory.tsx <-> AdminApiTes
       /\.api-cat__actions\s+\.api-cat__run-button\s*\{([^}]+)\}/,
     )?.[1];
 
-    // 可见尺寸走 Mantine 的 size 档（regular = 28px），44×44 是靶面，由
-    // ThemeProvider 的 .actionIconRoot::before 统一撑开。把靶面令牌当可见尺寸写在
+    // 可见尺寸走共享控件的 regular 档，44×44 是靶面，由
+    // 共享 Button 的 ::before 统一撑开。把靶面令牌当可见尺寸写在
     // 这里，等于每行右边立一个 44px 方块，还把靶面的事实来源复制了一份。
     expect(runButtonRule).not.toMatch(/inline-size|block-size|--control-hit-area/);
 
@@ -36,12 +36,13 @@ describe("progress state colour parity (AdminApiTestCategory.tsx <-> AdminApiTes
       resolve(repoRoot, "apps/portal/components/feature/admin/AdminApiTestCategory.tsx"),
       "utf8",
     );
-    expect(tsx).toMatch(/className="api-cat__run-button"[\s\S]*?size="md"/);
+    expect(tsx).toMatch(/className="api-cat__run-button"[\s\S]*?size="icon-sm"/);
 
-    const themeCss = readFileSync(
-      resolve(repoRoot, "apps/portal/providers/ThemeProvider.module.css"),
+    const sharedCss = readFileSync(
+      resolve(repoRoot, "apps/portal/styles/shadcn.css"),
       "utf8",
     );
-    expect(themeCss).toMatch(/--ai-size-md:\s*var\(--control-icon-size-regular\)/);
+    expect(sharedCss).toMatch(/\[data-slot="button"\]::before\s*\{[\s\S]*?inline-size:\s*max\(100%,\s*var\(--control-hit-area\)\)/);
+    expect(sharedCss).toMatch(/\[data-slot="button"\]::before\s*\{[\s\S]*?block-size:\s*max\(100%,\s*var\(--control-hit-area\)\)/);
   });
 });

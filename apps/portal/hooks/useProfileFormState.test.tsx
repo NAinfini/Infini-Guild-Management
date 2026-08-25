@@ -61,8 +61,8 @@ describe("useProfileFormState", () => {
   it("preserves unsaved fields when a same-profile media refresh arrives", async () => {
     const initialProfile = createProfile();
     const { result, rerender } = renderHook(
-      ({ profile }) => useProfileFormState({ profile }),
-      { initialProps: { profile: initialProfile }, wrapper: QueryHarness },
+      ({ profile, displayName }) => useProfileFormState({ profile, displayName }),
+      { initialProps: { profile: initialProfile, displayName: "Member" }, wrapper: QueryHarness },
     );
 
     act(() => {
@@ -78,6 +78,7 @@ describe("useProfileFormState", () => {
         images: ["image1234567890abcdef", "second1234567890abcde"],
         updated_at: "2026-07-02T00:00:00.000Z",
       }),
+      displayName: "Member",
     });
 
     await waitFor(() => {
@@ -106,7 +107,7 @@ describe("useProfileFormState", () => {
     /* 必须在 renderHook 外面建好：profile 的 identity 变了就会重跑基线同步，
        每次渲染新建一个对象会把 hook 送进死循环。 */
     const profile = createProfile();
-    const { result } = renderHook(() => useProfileFormState({ profile }), { wrapper: QueryHarness });
+    const { result } = renderHook(() => useProfileFormState({ profile, displayName: "Member" }), { wrapper: QueryHarness });
 
     act(() => {
       result.current.setAvailabilityData(availability({
@@ -136,7 +137,7 @@ describe("useProfileFormState", () => {
         monday: [{ start_utc: "12:00", end_utc: "16:00" }],
       }),
     });
-    const { result } = renderHook(() => useProfileFormState({ profile }), { wrapper: QueryHarness });
+    const { result } = renderHook(() => useProfileFormState({ profile, displayName: "Member" }), { wrapper: QueryHarness });
 
     act(() => {
       result.current.setAvailabilityData({
@@ -153,13 +154,13 @@ describe("useProfileFormState", () => {
 
   it("accepts a successful save as the new baseline without overwriting newer edits", () => {
     const initialProfile = createProfile();
-    const { result } = renderHook(() => useProfileFormState({ profile: initialProfile }), { wrapper: QueryHarness });
+    const { result } = renderHook(() => useProfileFormState({ profile: initialProfile, displayName: "Member" }), { wrapper: QueryHarness });
 
     act(() => {
       result.current.setBio("Saved bio");
     });
     act(() => {
-      result.current.acceptServerProfile(createProfile({ bio: "Saved bio" }));
+      result.current.acceptServerProfile(createProfile({ bio: "Saved bio" }), "Member");
     });
 
     expect(result.current.bio).toBe("Saved bio");
@@ -167,7 +168,7 @@ describe("useProfileFormState", () => {
 
     act(() => {
       result.current.setBio("Newer local edit");
-      result.current.acceptServerProfile(createProfile({ bio: "Saved bio" }));
+      result.current.acceptServerProfile(createProfile({ bio: "Saved bio" }), "Member");
     });
 
     expect(result.current.bio).toBe("Newer local edit");
@@ -180,7 +181,7 @@ describe("useProfileFormState", () => {
     /* profile 必须在 renderHook 外面建好：每次渲染都传一个新对象的话，
        同步基线的 effect 会每渲染一次就 setState 一次，直接转成死循环。 */
     const initialProfile = createProfile();
-    const { result } = renderHook(() => useProfileFormState({ profile: initialProfile }), { wrapper: QueryHarness });
+    const { result } = renderHook(() => useProfileFormState({ profile: initialProfile, displayName: "Member" }), { wrapper: QueryHarness });
 
     act(() => {
       result.current.setTitleHtml("<p>Guild Leader</p>");
@@ -188,6 +189,7 @@ describe("useProfileFormState", () => {
     });
 
     const submitted = {
+      displayName: result.current.displayName,
       bio: "Bio the user kept editing",
       titleHtml: "<p>Guild Leader</p>",
       power: result.current.power,
@@ -202,6 +204,7 @@ describe("useProfileFormState", () => {
       result.current.setBio("Newer local edit");
       result.current.acceptServerProfile(
         createProfile({ title_html: "Guild Leader", bio: "Bio the user kept editing" }),
+        "Member",
         submitted,
       );
     });
@@ -214,5 +217,35 @@ describe("useProfileFormState", () => {
       result.current.setBio("Bio the user kept editing");
     });
     expect(result.current.isDirty, "把那一笔改回去之后，未保存提示就该消失").toBe(false);
+  });
+
+  it("keeps a newer public display-name edit while accepting a save response", () => {
+    const initialProfile = createProfile();
+    const { result } = renderHook(
+      () => useProfileFormState({ profile: initialProfile, displayName: "Member" }),
+      { wrapper: QueryHarness },
+    );
+
+    act(() => {
+      result.current.setDisplayName("Saved Member");
+    });
+    const submitted = {
+      displayName: "Saved Member",
+      bio: result.current.bio,
+      titleHtml: result.current.titleHtml,
+      power: result.current.power,
+      classList: result.current.classList,
+      videoList: result.current.videoList,
+      imageList: result.current.imageList,
+      availabilityData: result.current.availabilityData,
+    };
+
+    act(() => {
+      result.current.setDisplayName("Newer Member");
+      result.current.acceptServerProfile(createProfile(), "Saved Member", submitted);
+    });
+
+    expect(result.current.displayName).toBe("Newer Member");
+    expect(result.current.dirtySections.home).toBe(true);
   });
 });

@@ -9,6 +9,13 @@
   gap: var(--space-xl);
 }
 
+.admin-classes__form,
+.admin-classes__icon-library {
+  display: grid;
+  gap: var(--space-lg);
+  min-inline-size: 0;
+}
+
 .admin-classes__preview-panel {
   display: flex;
   flex-direction: column;
@@ -31,6 +38,24 @@
   margin-block: var(--space-md) var(--space-sm);
 }
 
+.admin-classes__preview-label,
+.admin-classes__preview-color,
+.admin-classes__asset-meta {
+  color: var(--text-muted);
+  font-size: var(--text-meta);
+  line-height: var(--lh-tight);
+}
+
+.admin-classes__preview-label {
+  font-weight: var(--fw-strong);
+}
+
+.admin-classes__preview-name {
+  color: var(--text-primary);
+  font-weight: var(--fw-strong);
+  text-align: center;
+}
+
 .admin-classes__local-preview {
   width: 72px;
   height: 72px;
@@ -41,16 +66,102 @@
   object-fit: contain;
 }
 
+.admin-classes__asset-summary {
+  display: flex;
+  gap: var(--space-sm);
+  align-items: center;
+  min-inline-size: 0;
+  padding-block-start: var(--space-sm);
+  border-block-start: 1px solid var(--border-subtle);
+}
+
+.admin-classes__asset-copy {
+  display: grid;
+  gap: var(--space-xs);
+  min-inline-size: 0;
+}
+
+.admin-classes__asset-name {
+  overflow: hidden;
+  color: var(--text-secondary);
+  font-size: var(--text-meta);
+  font-weight: var(--fw-medium);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.admin-classes__asset-meta {
+  display: flex;
+  gap: var(--space-xs);
+  align-items: center;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.admin-classes__asset-thumb {
+  flex: 0 0 auto;
+  width: 40px;
+  height: 40px;
+  padding: 2px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-control);
+  background: var(--plate-fill);
+  object-fit: cover;
+}
+
 /* A short color value does not need the full form-column width. */
 .admin-classes__color-field {
   max-inline-size: 20rem;
+}
+
+.admin-classes__color-controls,
+.admin-classes__source-options {
+  display: flex;
+  gap: var(--space-sm);
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.admin-classes__color-picker {
+  flex: 0 0 44px;
+  inline-size: 44px;
+  padding: var(--space-xs);
+}
+
+.admin-classes__color-value {
+  max-inline-size: 10rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.admin-classes__color-swatches {
+  display: flex;
+  gap: var(--space-xs);
+  flex-wrap: wrap;
+}
+
+.admin-classes__color-swatch {
+  inline-size: 32px;
+  block-size: 32px;
+  padding: 0;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-control);
+  background: var(--class-swatch);
+  cursor: pointer;
+}
+
+.admin-classes__color-swatch[aria-pressed="true"],
+.admin-classes__color-swatch:focus-visible {
+  border-color: var(--text-primary);
+  outline: 2px solid var(--brand-fill);
+  outline-offset: 2px;
 }
 
 /* 图标格保持 44–56px 触控尺寸，列数随容器自动调整。 */
 .admin-classes__icon-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(44px, 56px));
-  gap: 6px;
+  gap: var(--space-xs);
 }
 
 .admin-classes__icon-option {
@@ -98,6 +209,35 @@
   background: var(--surface-sunken);
 }
 
+.admin-classes__upload-head {
+  display: flex;
+  gap: var(--space-md);
+  align-items: center;
+  justify-content: space-between;
+}
+
+.admin-classes__upload-copy {
+  display: grid;
+  gap: var(--space-xs);
+  min-inline-size: 0;
+}
+
+.admin-classes__upload-title {
+  color: var(--text-secondary);
+  font-size: var(--text-sm);
+  font-weight: var(--fw-strong);
+}
+
+.admin-classes__file-input {
+  position: absolute;
+  inline-size: 1px;
+  block-size: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  clip-path: inset(50%);
+}
+
 @media (max-width: 47.99em) {
   .admin-classes__editor {
     grid-template-columns: 1fr;
@@ -119,6 +259,16 @@
     width: 76px;
     height: 76px;
     margin: 0;
+  }
+
+  .admin-classes__preview-name,
+  .admin-classes__preview-color {
+    text-align: start;
+  }
+
+  .admin-classes__upload-head {
+    align-items: flex-start;
+    flex-direction: column;
   }
 
   /* 图标格这里不用再压列数：auto-fill 本来就按容器宽算得出来。 */

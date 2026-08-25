@@ -1,5 +1,4 @@
 import type { Storage } from "@guild/shared";
-import { MantineProvider } from "@mantine/core";
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type { ReactNode } from "react";
@@ -53,11 +52,7 @@ vi.mock("../feature/storage/StorageStructureManager", () => ({
 }));
 
 function renderPage() {
-  render(
-    <MantineProvider>
-      <StorageManagePage />
-    </MantineProvider>,
-  );
+  render(<StorageManagePage />);
 }
 
 describe("StorageManagePage query states", () => {

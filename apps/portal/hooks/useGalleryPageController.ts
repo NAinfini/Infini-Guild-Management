@@ -1,7 +1,6 @@
 import { useInfiniteQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { formatDateTime } from "../utils/datetime";
+import { formatDateTimeWithTimeZone } from "../utils/datetime";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useDisclosure } from "@mantine/hooks";
 import { useConfirmDialog } from "@portal/hooks/useConfirmDialog";
 import { useDebouncedSearch } from "./useDebouncedSearch";
 import { useTranslation } from "react-i18next";
@@ -103,7 +102,7 @@ export function useGalleryPageController() {
   const [uploadQueue, setUploadQueue] = useState<UploadTask[]>([]);
   const uploadQueueRef = useRef<UploadTask[]>(uploadQueue);
   const uploadAbortRef = useRef<AbortController | null>(null);
-  const [addMediaModalOpen, addMediaModalHandlers] = useDisclosure(false);
+  const [addMediaModalOpen, setAddMediaModalOpen] = useState(false);
   const [addMediaTab, setAddMediaTab] = useState<"image" | "video">("image");
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [lightboxId, setLightboxId] = useState<string | null>(null);
@@ -152,7 +151,7 @@ export function useGalleryPageController() {
       notifySuccess(t("message.videoCreated"));
       setVideoUrl("");
       setVideoCaption("");
-      addMediaModalHandlers.close();
+      setAddMediaModalOpen(false);
       await queryClient.invalidateQueries({ queryKey: queryKeys.gallery.all });
     },
     onError: (error) => {
@@ -228,7 +227,11 @@ export function useGalleryPageController() {
 
   const openAddMediaModal = (tab: "image" | "video") => {
     setAddMediaTab(tab);
-    addMediaModalHandlers.open();
+    setAddMediaModalOpen(true);
+  };
+
+  const closeAddMediaModal = () => {
+    setAddMediaModalOpen(false);
   };
 
   // runUploadQueue reads the current queue via ref so it remains referentially
@@ -469,7 +472,7 @@ export function useGalleryPageController() {
     canRetryUpload: canRetryGalleryUpload,
     // modal
     addMediaModalOpen,
-    addMediaModalHandlers,
+    closeAddMediaModal,
     addMediaTab,
     setAddMediaTab,
     openAddMediaModal,
@@ -499,7 +502,7 @@ export function useGalleryPageController() {
     handleAddVideo,
     // helpers
     resolveImageUrl: resolveMediaUrl,
-    formatDateTime,
+    formatDateTime: formatDateTimeWithTimeZone,
     toEmbedVideoUrl,
   };
 }

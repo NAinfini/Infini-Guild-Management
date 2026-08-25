@@ -8,6 +8,55 @@
       "when": 1786743733872,
       "tag": "0000_core",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "6",
+      "when": 1786743733873,
+      "tag": "0001_notifications",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1786743733874,
+      "tag": "0002_auth_hardening",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "6",
+      "when": 1786743733875,
+      "tag": "0003_identity_split",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "6",
+      "when": 1786743733876,
+      "tag": "0004_oauth",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "6",
+      "when": 1786743733877,
+      "tag": "0005_verified_email",
+      "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "6",
+      "when": 1787435745252,
+      "tag": "0006_auth_lifecycle_hardening",
+      "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "6",
+      "when": 1787522015991,
+      "tag": "0007_announcement_attachments",
+      "breakpoints": true
     }
   ]
 }

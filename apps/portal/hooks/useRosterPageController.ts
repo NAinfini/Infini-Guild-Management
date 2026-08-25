@@ -1,6 +1,5 @@
 import type { MemberProfile, User, UserBadge } from "@guild/shared";
 import { useQuery } from "@tanstack/react-query";
-import { useLocalStorage } from "@mantine/hooks";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useDebouncedSearch } from "./useDebouncedSearch";
 import { useExternalView } from "./useExternalView";
@@ -16,12 +15,15 @@ import { playAudio, stopAudio, setAudioVolume, setAudioMuted, isAudioPlaying, ge
 export type RosterEntry = { user: User; profile: MemberProfile; badges?: UserBadge[] };
 
 const ROSTER_FILTERS_KEY = "roster.filters";
+const ROSTER_AUDIO_MUTED_KEY = "roster.audio.muted";
+const ROSTER_AUDIO_VOLUME_KEY = "roster.audio.volume";
 
-const ROSTER_SORT_MODES = ["power", "username", "class"] as const;
+const ROSTER_SORT_MODES = ["power", "display_name", "class"] as const;
 
 export type RosterSortMode = (typeof ROSTER_SORT_MODES)[number];
 
 function readStoredClassFilter(): string[] {
+  if (typeof window === "undefined") return [];
   try {
     const raw = localStorage.getItem(ROSTER_FILTERS_KEY);
     if (!raw) return [];
@@ -39,6 +41,7 @@ function readStoredClassFilter(): string[] {
 }
 
 function readStoredSortMode(): RosterSortMode {
+  if (typeof window === "undefined") return "power";
   try {
     const raw = localStorage.getItem(ROSTER_FILTERS_KEY);
     if (!raw) return "power";
@@ -52,9 +55,36 @@ function readStoredSortMode(): RosterSortMode {
   }
 }
 
+function readStoredBoolean(key: string, defaultValue: boolean): boolean {
+  if (typeof window === "undefined") return defaultValue;
+  try {
+    const raw = localStorage.getItem(key);
+    if (raw === null) return defaultValue;
+    const value = JSON.parse(raw) as unknown;
+    return typeof value === "boolean" ? value : defaultValue;
+  } catch {
+    return defaultValue;
+  }
+}
+
+function readStoredVolume(key: string, defaultValue: number): number {
+  if (typeof window === "undefined") return defaultValue;
+  try {
+    const raw = localStorage.getItem(key);
+    if (raw === null) return defaultValue;
+    const value = JSON.parse(raw) as unknown;
+    return typeof value === "number" && Number.isFinite(value) && value >= 0 && value <= 100
+      ? value
+      : defaultValue;
+  } catch {
+    return defaultValue;
+  }
+}
+
 export function useRosterPageController() {
   const isExternalView = useExternalView();
   const sessionUser = useAuthStore((state) => state.user);
+  const usePublicRosterProjection = isExternalView || !sessionUser;
   const classCatalog = useClassCatalog();
   const { canManage: canManagePermission } = useEffectivePermissions();
   const { search, setSearch, debouncedSearch: debouncedSearchRaw } = useDebouncedSearch();
@@ -62,8 +92,8 @@ export function useRosterPageController() {
   const [classFilter, setClassFilter] = useState<string[]>(() => readStoredClassFilter());
   const [sortMode, setSortMode] = useState<RosterSortMode>(() => readStoredSortMode());
   const [visibleCount, setVisibleCount] = useState(20);
-  const [audioMuted, setAudioMutedState] = useLocalStorage<boolean>({ key: "roster.audio.muted", defaultValue: false });
-  const [audioVolume, setAudioVolumeState] = useLocalStorage<number>({ key: "roster.audio.volume", defaultValue: 20 });
+  const [audioMuted, setAudioMutedState] = useState(() => readStoredBoolean(ROSTER_AUDIO_MUTED_KEY, false));
+  const [audioVolume, setAudioVolumeState] = useState(() => readStoredVolume(ROSTER_AUDIO_VOLUME_KEY, 20));
   const hoverAudioDebounceRef = useRef<number | null>(null);
   const hoverAudioStopDebounceRef = useRef<number | null>(null);
   const [selectedUserId, setSelectedUserId] = useState<string | null>(null);
@@ -71,8 +101,8 @@ export function useRosterPageController() {
   selectedUserIdRef.current = selectedUserId;
 
   const usersQuery = useQuery({
-    queryKey: queryKeys.users.roster(isExternalView ? "external" : "default"),
-    queryFn: () => fetchAllUsersListWithOptions({ externalView: isExternalView }),
+    queryKey: queryKeys.users.roster(usePublicRosterProjection ? "external" : "default"),
+    queryFn: () => fetchAllUsersListWithOptions({ externalView: usePublicRosterProjection }),
     staleTime: 10 * 60_000,
   });
 
@@ -80,6 +110,22 @@ export function useRosterPageController() {
     setAudioVolume(audioVolume / 100);
     setAudioMuted(audioMuted);
   }, [audioMuted, audioVolume]);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(ROSTER_AUDIO_MUTED_KEY, JSON.stringify(audioMuted));
+    } catch {
+      // A blocked storage area must not prevent the roster or audio preference from working for this visit.
+    }
+  }, [audioMuted]);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(ROSTER_AUDIO_VOLUME_KEY, JSON.stringify(audioVolume));
+    } catch {
+      // A blocked storage area must not prevent the roster or audio preference from working for this visit.
+    }
+  }, [audioVolume]);
 
   useEffect(() => {
     return () => {
@@ -134,7 +180,7 @@ export function useRosterPageController() {
         if (!debouncedSearch) return true;
         /* 只按用户名，和输入框自己写的「搜索用户名」一致——名册上已经看不到身份，
            再拿身份去匹配就会搜出一批看不出为什么会命中的人。 */
-        return entry.user.username.toLowerCase().includes(debouncedSearch);
+        return entry.user.display_name.toLowerCase().includes(debouncedSearch);
       })
       .filter((entry) => {
         if (classFilter.length === 0) return true;
@@ -142,7 +188,7 @@ export function useRosterPageController() {
       });
 
     return [...filteredRows].sort((left, right) => {
-      if (sortMode === "username") return left.user.username.localeCompare(right.user.username);
+      if (sortMode === "display_name") return left.user.display_name.localeCompare(right.user.display_name);
       if (sortMode === "class") {
         return resolveClassCatalogItem(left.profile.classes[0], classCatalog).label.localeCompare(
           resolveClassCatalogItem(right.profile.classes[0], classCatalog).label,

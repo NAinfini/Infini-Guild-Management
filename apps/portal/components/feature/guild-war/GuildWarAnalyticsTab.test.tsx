@@ -1,5 +1,6 @@
-import { MantineProvider } from "@mantine/core";
 import { fireEvent, render, screen } from "@testing-library/react";
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { GuildWarAnalyticsController } from "@portal/hooks/guild-war/useGuildWarAnalytics";
 import { buildEChartsTheme } from "@portal/theme/echarts";
@@ -114,15 +115,13 @@ function createAnalytics(
 
 function renderAnalyticsTab(analytics: GuildWarAnalyticsController) {
   return render(
-    <MantineProvider>
-      <GuildWarAnalyticsTab
-        analytics={analytics}
-        chartThemeName="test-theme"
-        chartThemeConfig={buildEChartsTheme("light")}
-        loadErrorMessage="load error"
-        canManageWeights={false}
-      />
-    </MantineProvider>,
+    <GuildWarAnalyticsTab
+      analytics={analytics}
+      chartThemeName="test-theme"
+      chartThemeConfig={buildEChartsTheme("light")}
+      loadErrorMessage="load error"
+      canManageWeights={false}
+    />,
   );
 }
 
@@ -135,9 +134,8 @@ describe("GuildWarAnalyticsTab", () => {
     const applyAnalyticsSelection = vi.fn();
     renderAnalyticsTab(createAnalytics({ applyAnalyticsSelection }));
 
-    // Console fields start collapsed, and Mantine's Collapse marks closed
-    // content aria-hidden/inert, so the list box only enters the accessibility
-    // tree once its row is opened (one animation frame later).
+    // Console fields start collapsed; their one active selector mounts only
+    // after its row is opened.
     fireEvent.click(
       screen.getByRole("button", { name: /analytics\.console\.section\.members/ }),
     );
@@ -171,12 +169,19 @@ describe("GuildWarAnalyticsTab", () => {
     const { container } = renderAnalyticsTab(createAnalytics());
 
     expect(container.querySelectorAll(".gwa-console")).toHaveLength(1);
-    // All selection dimensions belong to the same console rail.
     const rail = container.querySelector(".gwa-console")!;
-    ["analytics.aria.selectWars", "analytics.aria.selectMembers", "analytics.aria.selectMetrics"]
-      .forEach((label) => {
-        expect(rail.querySelector(`[aria-label="${label}"]`)).not.toBeNull();
-      });
+    fireEvent.click(screen.getByRole("button", { name: /analytics\.toolbar\.warSet/ }));
+    expect(rail.querySelector('[aria-label="analytics.aria.selectWars"]')).not.toBeNull();
+
+    fireEvent.click(
+      screen.getByRole("button", { name: /analytics\.console\.section\.members/ }),
+    );
+    expect(rail.querySelector('[aria-label="analytics.aria.selectMembers"]')).not.toBeNull();
+
+    fireEvent.click(
+      screen.getByRole("button", { name: /analytics\.console\.section\.metric/ }),
+    );
+    expect(rail.querySelector('[aria-label="analytics.aria.selectMetrics"]')).not.toBeNull();
   });
 
   it("opens one console field at a time so the rail keeps a fixed height", () => {
@@ -200,5 +205,23 @@ describe("GuildWarAnalyticsTab", () => {
 
     fireEvent.click(memberField);
     expect(memberField).toHaveAttribute("aria-expanded", "false");
+  });
+
+  it("wraps narrow analytics choice controls instead of creating a horizontal scrollbar", () => {
+    const styles = readFileSync(
+      resolve(process.cwd(), "apps/portal/components/pages/GuildWarPage.css"),
+      "utf8",
+    );
+    const mobileStyles = styles.slice(styles.lastIndexOf("@media (max-width: 767px)"));
+
+    expect(mobileStyles).toMatch(
+      /\.gwa-toolbar__control-scroll\s*\{[^}]*overflow:\s*visible/,
+    );
+    expect(mobileStyles).toMatch(
+      /\.gwa-choice-group\s*\{[^}]*display:\s*grid[^}]*grid-template-columns:\s*repeat\(2,\s*minmax\(0,\s*1fr\)\)/,
+    );
+    expect(mobileStyles).toMatch(
+      /\.gwa-choice-group__option\s*\{[^}]*min-width:\s*0[^}]*white-space:\s*normal/,
+    );
   });
 });

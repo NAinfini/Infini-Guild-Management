@@ -1,20 +1,13 @@
 import type { APIRequestContext, Locator, Page, Request } from "@playwright/test";
 import { SYSTEM_TEST_CONTENT_MARKER } from "@guild/shared/config/system-test";
 import { expect, readJson, test } from "../../support/test";
-import {
-  clearButton,
-  dialogTitled,
-  ensureFiltersOpen,
-  selectFilterOption,
-  selectSegmentedControlOption,
-} from "../../support/ui";
 
 /*
  * 活动页的筛选条：搜索、类型、状态分段器、置顶/锁定开关、视图切换、新建按钮。
  *
  * 这一排控件全都是服务端筛选（改 URL → 改 query key → 重新拉 GET /api/events），
- * 所以每条用例都要求「请求真的发出去了」+「结果集真的变了」两件事同时成立。
- * 只断言列表变短是不够的：前端完全可以在本地过滤，那样翻页和总数就会是错的。
+ * 所以每条筛选用例都要求首次切换时「请求真的发出去了」+「结果集真的变了」。
+ * 返回已经缓存过的筛选条件可以直接复用 TanStack Query 缓存，但 URL 和结果仍必须恢复。
  *
  * 两个互补的一次性活动由用例自己建：Alpha 置顶且锁定，Beta 两者都不是，
  * 这样每个开关都能在「留下」和「滤掉」两个方向上被验证，不依赖种子数据。
@@ -70,8 +63,20 @@ function card(page: Page, title: string): Locator {
   return page.locator(".event-card").filter({ hasText: title });
 }
 
-function toggle(page: Page, label: string): Locator {
-  return page.getByRole("button", { name: label, exact: true });
+async function filtersPanel(page: Page): Promise<Locator> {
+  const toggle = page.getByRole("button", { name: /^Filters(?: \(\d+\))?$/ }).first();
+  if ((await toggle.getAttribute("aria-expanded")) !== "true") {
+    await toggle.click();
+  }
+  await expect(toggle).toHaveAttribute("aria-expanded", "true");
+
+  const panel = page.getByRole("dialog", { name: /^Filters(?: \(\d+\))?$/ });
+  await expect(panel).toBeVisible();
+  return panel;
+}
+
+function filterGroup(panel: Locator, label: string): Locator {
+  return panel.getByRole("region", { name: label, exact: true });
 }
 
 async function expectNoApiCalls(page: Page, action: () => Promise<void>): Promise<void> {
@@ -102,20 +107,20 @@ test("搜索框：命中项留下，其余滤掉，条件写进 URL", async ({ p
   await expect(page).toHaveURL(/search=/);
 });
 
-test("类型下拉：只留下该类型，清空后两个都回来", async ({ page, flow }) => {
+test("类型单选：只留下该类型，重置为 All 后两个都回来", async ({ page, flow }) => {
+  const typeFilters = filterGroup(await filtersPanel(page), "Event type");
   await flow.act(
-    () => selectFilterOption(page, page, "Filter events by type", "Other"),
+    () => typeFilters.getByText("Other", { exact: true }).click(),
     EVENTS_REQUEST,
   );
   await expect(card(page, beta.title)).toHaveCount(1);
   await expect(card(page, alpha.title), "Social 类型不该出现在 Other 筛选里").toHaveCount(0);
 
-  /*
-   * 清空是「退回一个刚取过的查询」：staleTime 是 5 分钟（apps/portal/router.tsx:251），
-   * 这条键几秒前刚填过，直接命中缓存不再发请求。所以只断言结果回到全量。
-   */
-  await ensureFiltersOpen(page);
-  await clearButton(page, "Filter events by type").click();
+  const allTypeFilters = filterGroup(await filtersPanel(page), "Event type");
+  const allTypes = allTypeFilters.getByRole("radio", { name: "All", exact: true });
+  await allTypes.click();
+  await expect(allTypes).toBeChecked();
+  await expect.poll(() => new URL(page.url()).searchParams.get("type")).toBeNull();
   await expect(card(page, alpha.title)).toHaveCount(1);
   await expect(card(page, beta.title)).toHaveCount(1);
 });
@@ -128,36 +133,41 @@ test("状态分段器：Active/Archived/All 三档各自成立", async ({ page, 
   await expect(card(page, alpha.title), "默认的 Active 档不该显示已归档活动").toHaveCount(0);
   await expect(card(page, beta.title)).toHaveCount(1);
 
-  await ensureFiltersOpen(page);
-  await flow.act(() => selectSegmentedControlOption(page, "Archived"), EVENTS_REQUEST);
+  const statusFilters = filterGroup(await filtersPanel(page), "Event status");
+  await flow.act(
+    () => statusFilters.getByText("Archived", { exact: true }).click(),
+    EVENTS_REQUEST,
+  );
   await expect(card(page, alpha.title)).toHaveCount(1);
   await expect(card(page, beta.title), "未归档的活动不该出现在 Archived 档").toHaveCount(0);
 
-  await ensureFiltersOpen(page);
-  await flow.act(() => selectSegmentedControlOption(page, "All"), EVENTS_REQUEST);
+  const allStatusFilters = filterGroup(await filtersPanel(page), "Event status");
+  await flow.act(
+    () => allStatusFilters.getByText("All", { exact: true }).click(),
+    EVENTS_REQUEST,
+  );
   await expect(card(page, alpha.title)).toHaveCount(1);
   await expect(card(page, beta.title)).toHaveCount(1);
 });
 
-test("置顶筛选：按下后只剩置顶活动，按钮状态同步翻转", async ({ page, flow }) => {
-  await ensureFiltersOpen(page);
-  const pinned = toggle(page, "Pinned only");
-  await expect(pinned).toHaveAttribute("aria-pressed", "false");
+test("置顶筛选：打开后只剩置顶活动，开关状态同步", async ({ page, flow }) => {
+  const options = filterGroup(await filtersPanel(page), "Options");
+  const pinned = options.getByRole("switch", { name: "Pinned only", exact: true });
+  await expect(pinned).not.toBeChecked();
 
   await flow.act(() => pinned.click(), EVENTS_REQUEST);
 
-  await expect(pinned, "筛选开着时按钮必须自报状态，否则用户不知道列表为何变短")
-    .toHaveAttribute("aria-pressed", "true");
+  await expect(pinned, "筛选开着时开关必须自报状态，否则用户不知道列表为何变短").toBeChecked();
   await expect(card(page, alpha.title)).toHaveCount(1);
   await expect(card(page, beta.title)).toHaveCount(0);
 });
 
-test("锁定筛选：按下后只剩锁定报名的活动", async ({ page, flow }) => {
-  await ensureFiltersOpen(page);
-  const locked = toggle(page, "Locked only");
+test("锁定筛选：打开后只剩锁定报名的活动", async ({ page, flow }) => {
+  const options = filterGroup(await filtersPanel(page), "Options");
+  const locked = options.getByRole("switch", { name: "Locked only", exact: true });
   await flow.act(() => locked.click(), EVENTS_REQUEST);
 
-  await expect(locked).toHaveAttribute("aria-pressed", "true");
+  await expect(locked).toBeChecked();
   await expect(card(page, alpha.title)).toHaveCount(1);
   await expect(card(page, beta.title)).toHaveCount(0);
 });
@@ -167,15 +177,18 @@ test("视图切换：卡片与月历互斥，选择写进 URL，且不重新拉�
    * 换视图只是换同一份数据的呈现方式，不该再打一次服务端。
    * 这里钉死这一点：哪天有人把它改成每次切换都重新拉全量，这条用例会立刻变红。
    */
-  await expectNoApiCalls(page, () => selectSegmentedControlOption(page, "Month"));
+  await expectNoApiCalls(page, () => page.getByText("Month", { exact: true }).click());
   await expect(page).toHaveURL(/view=month/);
   await expect(page.locator(".event-card"), "月历视图下不该还留着卡片列表").toHaveCount(0);
 
-  await expectNoApiCalls(page, () => selectSegmentedControlOption(page, "Cards"));
+  await expectNoApiCalls(page, () => page.getByText("Cards", { exact: true }).click());
   await expect(card(page, alpha.title)).toHaveCount(1);
 });
 
-test("新建按钮：打开创建弹窗，此时不该产生任何请求", async ({ page, flow }) => {
-  await flow.clickWithoutApi(page.getByRole("button", { name: "Create Event", exact: true }));
-  await expect(dialogTitled(page, "Create Event")).toBeVisible();
+test("新建按钮：进入 /events/new 并呈现路由编辑器", async ({ page }) => {
+  await page.getByRole("button", { name: "Create Event", exact: true }).click();
+  await expect(page).toHaveURL(/\/events\/new$/);
+  const editor = page.locator(".event-editor-page");
+  await expect(editor).toBeVisible();
+  await expect(editor.getByRole("button", { name: "Create Event", exact: true })).toBeDisabled();
 });

@@ -18,6 +18,7 @@ const PUBLIC_SITE_CONFIG = publicSiteConfigSchema.parse({
   site_logo_media_id: null,
   default_site_logo_url: "/guild-logo.svg",
   features: DEFAULT_FEATURE_FLAGS,
+  oauth: { google: false, discord: false, kook: false, wechat: false },
   media_policy: DEFAULT_SITE_MEDIA_POLICY,
   storage_policy: DEFAULT_SITE_STORAGE_POLICY,
   absence_policy: DEFAULT_SITE_ABSENCE_POLICY,
@@ -27,7 +28,7 @@ describe("Portal API composition", () => {
   it("resolves the session once and mounts the public site-config contract", async () => {
     const fixture = createFixture();
     const response = await fixture.app.request("/api/site-config", {
-      headers: { Cookie: "ig_session=session-token" },
+      headers: { Cookie: "__Host-ig_session=session-token" },
     });
 
     expect(response.status).toBe(200);
@@ -144,7 +145,7 @@ describe("Portal API composition", () => {
     fixture.readConsume.mockResolvedValueOnce({ allowed: false, retryAfterSeconds: 6 });
 
     const response = await fixture.app.request("/api/health", {
-      headers: { Cookie: "ig_session=session-token" },
+      headers: { Cookie: "__Host-ig_session=session-token" },
     });
 
     expect(response.status).toBe(429);
@@ -154,10 +155,50 @@ describe("Portal API composition", () => {
     expect(fixture.healthCheck).not.toHaveBeenCalled();
     expect(fixture.resolveAuthorization).not.toHaveBeenCalled();
   });
+
+  it("blocks every non-auth route during a password-change session", async () => {
+    const fixture = createFixture();
+    fixture.resolveAuthorization.mockResolvedValue({
+      authorization: createAuthorizationContext({
+        userId: "member-1",
+        sessionId: "password-change-session",
+        roleId: "member",
+        roleLevel: 10,
+        permissions: [],
+        sessionScope: "password_change",
+      }),
+      session: null,
+    });
+
+    const active = await fixture.app.request("/api/important-notices/active", {
+      headers: { Cookie: "__Host-ig_session=session-token" },
+    });
+    const acknowledgements = await fixture.app.request("/api/important-notices/acknowledgements", {
+      headers: { Cookie: "__Host-ig_session=session-token" },
+    });
+    const acknowledge = await fixture.app.request("/api/important-notices/notice-1/acknowledgement", {
+      method: "PUT",
+      headers: {
+        Cookie: "__Host-ig_session=session-token",
+        "Content-Type": "application/json",
+        Origin: PUBLIC_ORIGIN,
+        "X-Requested-With": "XMLHttpRequest",
+      },
+      body: JSON.stringify({ publication_revision: 3 }),
+    });
+
+    expect([active.status, acknowledgements.status, acknowledge.status]).toEqual([403, 403, 403]);
+    expect(fixture.importantNotices.acknowledge).not.toHaveBeenCalled();
+  });
 });
 
 function createFixture() {
   const healthCheck = vi.fn().mockResolvedValue(undefined);
+  const importantNotices = {
+    listActive: vi.fn(async () => []),
+    listAcknowledgements: vi.fn(async () => []),
+    acknowledge: vi.fn(async () => ({ ok: true as const })),
+  };
   const resolveAuthorization = vi.fn(async () => ({
     authorization: createAuthorizationContext(null),
     session: null,
@@ -174,6 +215,7 @@ function createFixture() {
     guildWar: {},
     health: { check: healthCheck },
     identityAdmin: {},
+    importantNotices,
     media: {},
     memberCatalog: {},
     members: {},
@@ -204,6 +246,7 @@ function createFixture() {
     clientIdentifier,
     expensiveReadConsume,
     healthCheck,
+    importantNotices,
     mutationConsume,
     readConsume,
     resolveAuthorization,

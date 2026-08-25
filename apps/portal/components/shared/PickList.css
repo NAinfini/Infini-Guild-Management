@@ -61,7 +61,7 @@
 }
 
 /*
- * 可勾选的行：Mantine Checkbox 的 root 直接当行用，于是静态行和勾选行共用同一套
+ * 可勾选的行：复选框根节点直接当行用，于是静态行和勾选行共用同一套
  * 行高与分隔线。整行都是点击靶面。
  *
  * 选中态不铺底色，走「左侧色条 + 明暗对比」：勾上的行左边一条品牌色，名字转成正文色
@@ -74,33 +74,22 @@
   color: var(--text-secondary);
 }
 
-.pick-list__row--pick:has(input:checked) {
+.pick-list__row--pick:has([data-slot="checkbox"][data-checked]) {
   color: var(--text-primary);
   border-inline-start-color: var(--brand-fill);
 }
 
-.pick-list__row--pick:has(input:checked) .pick-list__row-label {
+.pick-list__row--pick:has([data-slot="checkbox"][data-checked]) .pick-list__row-label {
   font-weight: 600;
 }
 
-.pick-list__row--pick .mantine-Checkbox-body {
-  align-items: center;
-  inline-size: 100%;
-  min-inline-size: 0;
-}
-
-.pick-list__row--pick .mantine-Checkbox-labelWrapper {
-  flex: 1 1 auto;
-  min-inline-size: 0;
-}
-
 /* 到上限之后没勾上的那些会一起变灰——理由由调用方写在计数行里，这里只负责看得出来。 */
-.pick-list__row--pick:has(input:disabled) {
+.pick-list__row--pick:has([data-slot="checkbox"][data-disabled]) {
   cursor: default;
   opacity: 0.45;
 }
 
-.pick-list__row--pick:has(input:disabled):hover {
+.pick-list__row--pick:has([data-slot="checkbox"][data-disabled]):hover {
   background: transparent;
 }
 
@@ -149,10 +138,22 @@
   background: var(--surface-sunken);
 }
 
+.pick-list__section-label {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--text-secondary);
+  font-size: var(--text-meta);
+  font-weight: 800;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .pick-list__section + .pick-list__section .pick-list__section-head {
   border-block-start: 1px solid var(--border-subtle);
 }
 
 .pick-list__empty {
   padding: var(--space-sm);
+  color: var(--text-muted);
+  font-size: var(--text-meta);
 }

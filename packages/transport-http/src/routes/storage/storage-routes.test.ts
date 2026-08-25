@@ -26,10 +26,10 @@ const transaction = {
   type: "intake" as const,
   quantity_delta: 0.5,
   recipient_user_id: "user-1",
-  recipient_username: "member",
+  recipient_display_name: "member",
   note: null,
   actor_id: "user-1",
-  actor_username: "member",
+  actor_display_name: "member",
   created_at: NOW,
 };
 const storage = {

@@ -109,6 +109,8 @@ export function useRecurringTemplatesController({
   return {
     templates: templatesQuery.data?.data ?? [],
     loading: templatesQuery.isLoading,
+    error: templatesQuery.isError,
+    refetchTemplates: templatesQuery.refetch,
     formSaving: createMutation.isPending || updateMutation.isPending,
     createRecurringTemplate,
     updateRecurringTemplate,

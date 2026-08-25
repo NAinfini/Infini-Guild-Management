@@ -17,7 +17,10 @@ describe("portal entrypoint", () => {
     const entrypoint = readFileSync(resolve(process.cwd(), "apps/portal/main.tsx"), "utf8");
     const bootstrap = readFileSync(resolve(process.cwd(), "apps/portal/bootstrap.tsx"), "utf8");
 
-    expect(entrypoint).toContain('.then(({ mountApp }) => mountApp(root))');
+    expect(entrypoint).toContain('import("./bootstrap")');
+    expect(entrypoint).toContain('.then(([, { mountApp }]) => {');
+    expect(entrypoint).toContain("return mountApp(root);");
+    expect(entrypoint).toContain(".catch((error) => {");
     expect(bootstrap).toContain("loadSiteConfig(),");
     /* fetchQuery 会抛出请求错误；prefetchQuery 会吞掉。这里锁住 fetchQuery，
        保证目录拉不下来时挂载中止、走可见的致命错误路径。 */

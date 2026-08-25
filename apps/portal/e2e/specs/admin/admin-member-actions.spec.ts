@@ -26,15 +26,15 @@ const CREATE_MEMBER = { method: "POST", path: /^\/api\/admin\/users$/ } as const
 const SAVE_PROFILE = { method: "PATCH", path: /^\/api\/users\/[^/]+\/profile$/ } as const;
 
 type ServerMember = {
-  user: { id: string; username: string; role: string; role_name: string; is_active: boolean };
+  user: { id: string; display_name: string; role: string; role_name: string; is_active: boolean };
   profile: { power: number; notes: string | null };
 };
 
 function searchBox(page: Page): Locator {
   return page.getByRole("textbox", { name: "Search members", exact: true });
 }
-function memberRow(page: Page, username: string): Locator {
-  return page.getByRole("row", { name: `${username} member row`, exact: true });
+function memberRow(page: Page, display_name: string): Locator {
+  return page.getByRole("row", { name: `${display_name} member row`, exact: true });
 }
 function actionMenu(page: Page): Locator {
   return page.locator("[data-admin-user-action-menu]");
@@ -44,12 +44,12 @@ function menuItem(page: Page, name: string): Locator {
 }
 /**
  * 断言弹出了这句通知。
- * notifications.show({ message }) 渲染进的是 Notification 的 description 槽，不是 title；
+ * 通知正文渲染在 Toast 的 description 槽中，而不是标题槽；
  * 一次操作可能同时弹好几条（例如业务提示 + 全局错误提示），所以按文案挑，不按顺序取。
  */
 async function expectNotified(page: Page, text: string): Promise<void> {
   await expect(
-    page.locator(".mantine-Notification-description").filter({ hasText: text }),
+    page.locator('[data-slot="toast-description"]').filter({ hasText: text }),
     `没有弹出通知「${text}」`,
   ).toBeVisible();
 }
@@ -80,8 +80,8 @@ async function openMembers(page: Page, tag: string): Promise<void> {
  * 「Actions」这个无障碍名在移动端卡片上还有一份（只是被 CSS 藏了，DOM 里一直在），
  * 所以必须限定在目标行里取，否则每次都撞 strict mode violation。
  */
-async function openRowMenu(page: Page, username: string): Promise<void> {
-  await memberRow(page, username).getByRole("button", { name: "Actions", exact: true }).click();
+async function openRowMenu(page: Page, display_name: string): Promise<void> {
+  await memberRow(page, display_name).getByRole("button", { name: "Actions", exact: true }).click();
   await expect(actionMenu(page)).toBeVisible();
 }
 
@@ -112,21 +112,21 @@ test("新建成员弹窗：用户名太短当场退回、一个请求都不发�
   await expectNotified(page, "Username must be 3-50 characters: letters, numbers, and underscores only.");
   await expect(dialog, "校验没过时弹窗必须留在原地").toBeVisible();
 
-  const username = `e2e_${tag}_ui`;
-  await field(dialog, "Username").fill(username);
+  const display_name = `e2e_${tag}_ui`;
+  await field(dialog, "Username").fill(display_name);
   await field(dialog, "Notes").fill("created by e2e");
   await flow.click(submit, CREATE_MEMBER);
 
   /* 临时密码是这个流程唯一的产出物，看不到就等于建了个没人能登的号。 */
-  await expect(dialog.getByText(`Member "${username}" created successfully.`)).toBeVisible();
+  await expect(dialog.getByText(`Member "${display_name}" created successfully.`)).toBeVisible();
   const temporaryPassword = await dialog.locator("input[readonly]").inputValue();
   expect(temporaryPassword.length, "临时密码不能是空的").toBeGreaterThan(0);
 
   await dialog.getByRole("button", { name: "Done", exact: true }).click();
   await expectNoDialog(page);
 
-  await expect(memberRow(page, username), "建完必须直接出现在表里，不用手动刷新").toBeVisible();
-  const created = (await serverMembers(api)).find((row) => row.user.username === username);
+  await expect(memberRow(page, display_name), "建完必须直接出现在表里，不用手动刷新").toBeVisible();
+  const created = (await serverMembers(api)).find((row) => row.user.display_name === display_name);
   expect(created, "服务端必须真的多出这个成员").toBeTruthy();
   expect(created?.profile.notes, "备注框填的内容也要跟着落库").toBe("created by e2e");
   expect(created?.user.role).toBe(role.id);
@@ -142,13 +142,13 @@ test("行菜单改角色：表格里的角色胶囊和服务端的角色一起�
   if (!initialRole || !targetRole) throw new Error("改角色 E2E 至少需要两个可授予的 D1 角色");
   const member = await createThrowawayMember(api, tag, initialRole);
   await openMembers(page, tag);
-  await expect(memberRow(page, member.username).locator(".admin-cell-role")).toHaveText(initialRole.name);
+  await expect(memberRow(page, member.display_name).locator(".admin-cell-role")).toHaveText(initialRole.name);
 
-  await openRowMenu(page, member.username);
+  await openRowMenu(page, member.display_name);
   await menuItem(page, "Change Role").click();
   await flow.click(menuItem(page, targetRole.name), ROLE_CHANGE);
 
-  await expect(memberRow(page, member.username).locator(".admin-cell-role")).toHaveText(targetRole.name);
+  await expect(memberRow(page, member.display_name).locator(".admin-cell-role")).toHaveText(targetRole.name);
   expect((await serverMember(api, member.id)).user.role, "服务端的角色必须真的改了").toBe(targetRole.id);
 });
 
@@ -157,17 +157,17 @@ test("行菜单停用再启用：状态列、菜单项和服务端三处始终�
   const member = await createThrowawayMember(api, tag);
   await openMembers(page, tag);
 
-  const status = memberRow(page, member.username).locator(".admin-cell-status");
+  const status = memberRow(page, member.display_name).locator(".admin-cell-status");
   await expect(status).toHaveClass(/admin-cell-status--active/);
 
-  await openRowMenu(page, member.username);
+  await openRowMenu(page, member.display_name);
   await expect(menuItem(page, "Reactivate"), "已启用的成员不该出现「启用」项").toHaveCount(0);
   await flow.click(menuItem(page, "Deactivate"), DEACTIVATE);
 
   await expect(status).toHaveClass(/admin-cell-status--inactive/);
   expect((await serverMember(api, member.id)).user.is_active).toBe(false);
 
-  await openRowMenu(page, member.username);
+  await openRowMenu(page, member.display_name);
   await expect(menuItem(page, "Deactivate"), "已停用的成员不该出现「停用」项").toHaveCount(0);
   await flow.click(menuItem(page, "Reactivate"), REACTIVATE);
 
@@ -180,7 +180,7 @@ test("行菜单复制这一行：剪贴板里拿到的是这一行的五个字�
   const member = await createThrowawayMember(api, tag);
   await openMembers(page, tag);
 
-  await openRowMenu(page, member.username);
+  await openRowMenu(page, member.display_name);
   await flow.clickWithoutApi(menuItem(page, "Copy Row"));
 
   /* Windows 的剪贴板会把 LF 换成 CRLF，这是平台行为不是应用行为，先归一化再比。 */
@@ -191,7 +191,7 @@ test("行菜单复制这一行：剪贴板里拿到的是这一行的五个字�
    * 角色和状态这两段复制的都是界面上看到的那个词——角色是 D1 里的展示名而不是内部 id，
    * 状态是账号启用状态的文案而不是 is_active 的字面值。
    */
-  expect(copied).toBe(`${member.username}, , 0, ${member.role.name}, Enabled\n`);
+  expect(copied).toBe(`${member.display_name}, , 0, ${member.role.name}, Enabled\n`);
 });
 
 test("成员详情弹窗：打开是只读屏，进编辑改战力保存后回到只读屏，且不重复提交未变化的角色和状态", async ({ page, api, flow }) => {
@@ -199,10 +199,10 @@ test("成员详情弹窗：打开是只读屏，进编辑改战力保存后回�
   const member = await createThrowawayMember(api, tag);
   await openMembers(page, tag);
 
-  await memberRow(page, member.username).dblclick();
+  await memberRow(page, member.display_name).dblclick();
   const dialog = topDialog(page);
   await expect(
-    dialog.getByRole("heading", { name: `Member Detail · ${member.username}`, exact: true }),
+    dialog.getByRole("heading", { name: `Member Detail · ${member.display_name}`, exact: true }),
   ).toBeVisible();
 
   /* 打开就是一屏可读的事实：编辑是次级动作，得先点「Edit」才会出现输入控件。 */
@@ -228,7 +228,7 @@ test("成员详情弹窗：打开是只读屏，进编辑改战力保存后回�
   await page.keyboard.press("Escape");
   await expectNoDialog(page);
   await expect(
-    memberRow(page, member.username).locator("td[data-column-id='power']"),
+    memberRow(page, member.display_name).locator("td[data-column-id='power']"),
     "列表要跟着刷新，不能还显示旧数字",
   ).toHaveText("12,345");
 });

@@ -20,6 +20,7 @@
   "filter.status.all": "全部",
   "filter.showPinned": "只看置顶",
   "filter.showAll": "显示全部",
+  "filter.options": "附加条件",
   "editor.show": "显示编辑器",
   "editor.hide": "隐藏编辑器",
   "editor.exit": "退出",

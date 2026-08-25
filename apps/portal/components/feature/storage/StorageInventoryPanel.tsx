@@ -1,25 +1,21 @@
 import type { Storage, StorageItem, StorageStockFilter } from "@guild/shared";
+import { ClipboardIcon, PlusIcon, SearchIcon, XIcon } from "@portal/components/icons";
+import { Alert, AlertDescription, AlertTitle } from "@portal/components/ui/alert";
+import { Button } from "@portal/components/ui/button";
 import {
-  Alert,
-  Button,
-  Group,
-  Select,
-  Skeleton,
-  Stack,
-  Text,
-  TextInput,
-} from "@mantine/core";
-import { ContentFilterToolbar } from "@portal/components/shared/ContentFilterToolbar";
-import {
-  ClipboardIcon,
-  PlusIcon,
-  SearchIcon,
-} from "@portal/components/icons";
+  InputGroup,
+  InputGroupAddon,
+  InputGroupButton,
+  InputGroupInput,
+} from "@portal/components/ui/input-group";
+import { RadioGroup, RadioGroupItem } from "@portal/components/ui/radio-group";
+import { Skeleton } from "@portal/components/ui/skeleton";
+import { ContentFilterGroup, ContentFilterToolbar } from "@portal/components/shared/ContentFilterToolbar";
+import { useDebouncedSearch } from "@portal/hooks/useDebouncedSearch";
+import { useStorageItems } from "@portal/hooks/useStorage";
+import { resolveMediaUrl } from "@portal/utils/media";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
-import { useDebouncedSearch } from "../../../hooks/useDebouncedSearch";
-import { useStorageItems } from "../../../hooks/useStorage";
-import { resolveMediaUrl } from "../../../utils/media";
 import { EmptyState } from "../../shared/EmptyState";
 import type { StorageBatchDraft } from "./StorageBatchPanel";
 import { StorageItemCard } from "./StorageItemCard";
@@ -28,6 +24,7 @@ type MemberTransactionMode = "intake" | "distribute";
 
 type StorageInventoryPanelProps = {
   storage: Storage;
+  categoryId: string | null;
   canManageItems: boolean;
   canManageStock: boolean;
   hasAnyItems: boolean;
@@ -41,6 +38,7 @@ type StorageInventoryPanelProps = {
 
 export function StorageInventoryPanel({
   storage,
+  categoryId,
   canManageItems,
   canManageStock,
   hasAnyItems,
@@ -52,7 +50,6 @@ export function StorageInventoryPanel({
   onOpenTransaction,
 }: StorageInventoryPanelProps) {
   const { t } = useTranslation("storage");
-  const [categoryId, setCategoryId] = useState<string | null>(null);
   const { search, setSearch, debouncedSearch } = useDebouncedSearch();
   const [stockFilter, setStockFilter] = useState<StorageStockFilter>("all");
   const itemsQuery = useStorageItems({
@@ -70,135 +67,104 @@ export function StorageInventoryPanel({
     { value: "empty", label: t("filter.empty") },
     { value: "deposit", label: t("filter.depositEnabled") },
     { value: "withdraw", label: t("filter.withdrawEnabled") },
-  ];
-  const categoryOptions = [
-    { value: "__all", label: t("filter.all") },
-    ...storage.categories.map((category) => ({
-      value: category.id,
-      label: category.name,
-    })),
-  ];
+  ] as const;
   const batchEntryCount = batchDraft
     ? Object.values(batchDraft.quantities).filter((quantity) => quantity > 0).length
     : 0;
   const batchLimitReached = batchEntryCount >= 20;
-  const activeFilterCount = [
-    search.trim().length > 0,
-    categoryId !== null,
-    stockFilter !== "all",
-  ].filter(Boolean).length;
+  const activeFilterCount = Number(stockFilter !== "all");
+
   return (
     <div className="storage-inventory-shell">
-      <aside className="storage-category-rail" aria-label={t("filter.category")}>
-        <div className="storage-category-rail__header">
-          <Text fw={800}>{t("inventory.categories")}</Text>
-          <Text size="xs" c="dimmed">{storage.categories.length}</Text>
-        </div>
-        <nav className="storage-category-rail__nav" aria-label={t("filter.category")}>
-          {categoryOptions.map((category) => {
-            const active = (category.value === "__all" && categoryId === null)
-              || category.value === categoryId;
-            return (
-              <button
-                key={category.value}
-                type="button"
-                className={`storage-category-rail__item ${active ? "storage-category-rail__item--active" : ""}`}
-                aria-current={active ? "page" : undefined}
-                onClick={() => setCategoryId(category.value === "__all" ? null : category.value)}
-              >
-                <span>{category.label}</span>
-              </button>
-            );
-          })}
-        </nav>
-      </aside>
-
       <section className="storage-inventory-main" aria-label={t("inventory.title")}>
         <ContentFilterToolbar
           className="storage-command"
-          withBorder={false}
-          padding={0}
+          surface="bare"
           search={(
-            <TextInput
-              className="storage-command__search"
-              leftSection={<SearchIcon size={16} />}
-              aria-label={t("filter.search")}
-              placeholder={t("filter.search")}
-              value={search}
-              onChange={(event) => setSearch(event.currentTarget.value)}
-            />
-          )}
-          controls={(
-            <>
-              <Select
-                aria-label={t("filter.category")}
-                className="storage-command__category-mobile"
-                data={categoryOptions}
-                value={categoryId ?? "__all"}
-                onChange={(value) => setCategoryId(value === "__all" ? null : value)}
+            <InputGroup className="storage-command__search">
+              <InputGroupAddon>
+                <SearchIcon size={16} aria-hidden="true" />
+              </InputGroupAddon>
+              <InputGroupInput
+                type="search"
+                aria-label={t("filter.search")}
+                placeholder={t("filter.search")}
+                value={search}
+                onChange={(event) => setSearch(event.currentTarget.value)}
               />
-              <Select
-                aria-label={t("field.stock")}
-                className="storage-command__stock"
-                data={stockFilterOptions}
+              {search ? (
+                <InputGroupAddon align="inline-end">
+                  <InputGroupButton
+                    aria-label={t("common:action.clear")}
+                    onClick={() => setSearch("")}
+                    size="icon-xs"
+                  >
+                    <XIcon size={14} aria-hidden="true" />
+                  </InputGroupButton>
+                </InputGroupAddon>
+              ) : null}
+            </InputGroup>
+          )}
+          filterControls={(
+            <ContentFilterGroup label={t("field.stock")}>
+              <RadioGroup
                 value={stockFilter}
-                onChange={(value) => setStockFilter((value as StorageStockFilter) ?? "all")}
-              />
-            </>
+                onValueChange={(value) => setStockFilter(value as StorageStockFilter)}
+                aria-label={t("field.stock")}
+                className="storage-stock-filter"
+              >
+                {stockFilterOptions.map((option) => (
+                  <label key={option.value} className="storage-radio-field">
+                    <RadioGroupItem value={option.value} />
+                    <span>{option.label}</span>
+                  </label>
+                ))}
+              </RadioGroup>
+            </ContentFilterGroup>
           )}
-          primary={(
-            <Group gap="xs" wrap="wrap" className="storage-command__actions">
+          actions={(
+            <div className="storage-command__actions">
               <Button
-                variant={batchDraft ? "light" : "default"}
-                leftSection={<ClipboardIcon size={16} />}
+                variant={batchDraft ? "secondary" : "outline"}
                 onClick={onStartBatch}
                 disabled={!hasAnyItems}
               >
-                {batchDraft
-                  ? t("batch.pendingItems", { count: batchEntryCount })
-                  : t("action.startBatch")}
+                <ClipboardIcon size={16} />
+                {batchDraft ? t("batch.pendingItems", { count: batchEntryCount }) : t("action.startBatch")}
               </Button>
-
               {canManageStock ? (
                 <Button
-                  variant="default"
-                  leftSection={<ClipboardIcon size={16} />}
+                  variant="outline"
                   onClick={() => onOpenTransaction(null, "intake")}
                   disabled={!hasAnyItems}
                 >
+                  <ClipboardIcon size={16} />
                   {t("action.manualEntry")}
                 </Button>
               ) : null}
               {canManageItems && !itemsBlockingError ? (
-                <Button
-                  variant="default"
-                  leftSection={<PlusIcon size={16} />}
-                  onClick={() => onEditItem(null)}
-                >
+                <Button variant="outline" onClick={() => onEditItem(null)}>
+                  <PlusIcon size={16} />
                   {t("action.createItem")}
                 </Button>
               ) : null}
-            </Group>
+            </div>
           )}
-          toggleLabel={t("common:filter.toggle")}
+          filterLabel={t("common:filter.toggle")}
           activeFilterCount={activeFilterCount}
-          collapseBelow={1200}
+          resetLabel={t("common:filter.reset")}
+          onReset={() => setStockFilter("all")}
         />
 
         {!itemsQuery.isLoading && !itemsBlockingError ? (
-          <Group justify="space-between" gap="md" className="storage-inventory-meta">
-            <Text size="sm" c="dimmed">
-              {t("inventory.showing", { count: items.length })}
-            </Text>
-            {batchDraft ? (
-              <Text size="sm" c="dimmed">{t("batch.selectHint")}</Text>
-            ) : null}
-          </Group>
+          <div className="storage-inventory-meta">
+            <span>{t("inventory.showing", { count: items.length })}</span>
+            {batchDraft ? <span>{t("batch.selectHint")}</span> : null}
+          </div>
         ) : null}
 
-        {/* 列名这一行是表头，钉在滚动区外面——跟着货品滚走的表头等于没有。 */}
         {items.length > 0 ? (
-          <div className="storage-item-list__header" aria-hidden>
+          <div className="storage-item-list__header" aria-hidden="true">
             <span>{t("field.item")}</span>
             <span>{t("field.stock")}</span>
             <span>{t("inventory.memberActions")}</span>
@@ -206,95 +172,83 @@ export function StorageInventoryPanel({
         ) : null}
 
         <div className="storage-inventory-main__body">
-        {itemsQuery.isLoading ? (
-          <Stack gap={6} className="storage-loading-list">
-            {Array.from({ length: 6 }, (_, index) => (
-              <Skeleton key={index} height={68} radius="sm" className="storage-loading" />
-            ))}
-          </Stack>
-        ) : null}
-
-        {!itemsQuery.isLoading && itemsBlockingError ? (
-          <EmptyState
-            status="error"
-            title={t("common:loadError")}
-            description={t("common:errors.connectionIssue")}
-            actions={(
-              <Button
-                loading={itemsQuery.isFetching}
-                onClick={() => void itemsQuery.refetch()}
-              >
-                {t("common:action.retry")}
-              </Button>
-            )}
-          />
-        ) : null}
-
-        {!itemsQuery.isLoading && !itemsQuery.isError && items.length === 0 ? (
-          <EmptyState
-            title={t("empty.noItems")}
-            actions={canManageItems ? (
-              <Button leftSection={<PlusIcon size={16} />} onClick={() => onEditItem(null)}>
-                {t("action.createItem")}
-              </Button>
-            ) : undefined}
-          />
-        ) : null}
-
-        {itemsRefreshError ? (
-          <Alert color="red" title={t("common:loadError")}>
-            <Stack gap="xs" align="flex-start">
-              <span>{t("common:errors.connectionIssue")}</span>
-              <Button
-                variant="default"
-                size="compact-sm"
-                loading={itemsQuery.isFetching}
-                onClick={() => void itemsQuery.refetch()}
-              >
-                {t("common:action.retry")}
-              </Button>
-            </Stack>
-          </Alert>
-        ) : null}
-
-        {items.length > 0 ? (
-          <>
-            <div className="storage-grid" aria-live="polite">
-              {items.map((item) => (
-                <StorageItemCard
-                  key={item.id}
-                  item={item}
-                  category={storage.categories.find((category) => category.id === item.category_id)}
-                  imageUrl={item.images[0] ? resolveMediaUrl(item.images[0].media_id) : undefined}
-                  canEditItems={canManageItems}
-                  canManageStock={canManageStock}
-                  batch={batchDraft ? {
-                    type: batchDraft.type,
-                    quantity: batchDraft.quantities[item.id] ?? 0,
-                    canManageStock,
-                    limitReached: batchLimitReached,
-                    onChange: (quantity) => onBatchQuantityChange(item, quantity),
-                  } : undefined}
-                  onOpen={onOpenItem}
-                  onDeposit={(next) => onOpenTransaction(next, "intake")}
-                  onWithdraw={(next) => onOpenTransaction(next, "distribute")}
-                  onEdit={onEditItem}
-                />
-              ))}
+          {itemsQuery.isLoading ? (
+            <div className="storage-loading-list">
+              {Array.from({ length: 6 }, (_, index) => <Skeleton key={index} className="storage-loading storage-loading--row" />)}
             </div>
-            {itemsQuery.hasNextPage ? (
-              <Group justify="center" mt="md">
-                <Button
-                  variant="default"
-                  onClick={() => void itemsQuery.fetchNextPage()}
-                  loading={itemsQuery.isFetchingNextPage}
-                >
-                  {t("action.loadMore")}
+          ) : null}
+
+          {!itemsQuery.isLoading && itemsBlockingError ? (
+            <EmptyState
+              status="error"
+              title={t("common:loadError")}
+              description={t("common:errors.connectionIssue")}
+              actions={(
+                <Button loading={itemsQuery.isFetching} onClick={() => void itemsQuery.refetch()}>
+                  {t("common:action.retry")}
                 </Button>
-              </Group>
-            ) : null}
-          </>
-        ) : null}
+              )}
+            />
+          ) : null}
+
+          {!itemsQuery.isLoading && !itemsQuery.isError && items.length === 0 ? (
+            <EmptyState
+              title={t("empty.noItems")}
+              actions={canManageItems ? (
+                <Button onClick={() => onEditItem(null)}>
+                  <PlusIcon size={16} />
+                  {t("action.createItem")}
+                </Button>
+              ) : undefined}
+            />
+          ) : null}
+
+          {itemsRefreshError ? (
+            <Alert variant="destructive" className="storage-inline-alert">
+              <AlertTitle>{t("common:loadError")}</AlertTitle>
+              <AlertDescription>
+                <span>{t("common:errors.connectionIssue")}</span>
+                <Button size="sm" variant="outline" loading={itemsQuery.isFetching} onClick={() => void itemsQuery.refetch()}>
+                  {t("common:action.retry")}
+                </Button>
+              </AlertDescription>
+            </Alert>
+          ) : null}
+
+          {items.length > 0 ? (
+            <>
+              <div className="storage-grid" aria-live="polite">
+                {items.map((item) => (
+                  <StorageItemCard
+                    key={item.id}
+                    item={item}
+                    category={storage.categories.find((category) => category.id === item.category_id)}
+                    imageUrl={item.images[0] ? resolveMediaUrl(item.images[0].media_id) : undefined}
+                    canEditItems={canManageItems}
+                    canManageStock={canManageStock}
+                    batch={batchDraft ? {
+                      type: batchDraft.type,
+                      quantity: batchDraft.quantities[item.id] ?? 0,
+                      canManageStock,
+                      limitReached: batchLimitReached,
+                      onChange: (quantity) => onBatchQuantityChange(item, quantity),
+                    } : undefined}
+                    onOpen={onOpenItem}
+                    onDeposit={(next) => onOpenTransaction(next, "intake")}
+                    onWithdraw={(next) => onOpenTransaction(next, "distribute")}
+                    onEdit={onEditItem}
+                  />
+                ))}
+              </div>
+              {itemsQuery.hasNextPage ? (
+                <div className="storage-load-more">
+                  <Button variant="outline" onClick={() => void itemsQuery.fetchNextPage()} loading={itemsQuery.isFetchingNextPage}>
+                    {t("action.loadMore")}
+                  </Button>
+                </div>
+              ) : null}
+            </>
+          ) : null}
         </div>
       </section>
     </div>

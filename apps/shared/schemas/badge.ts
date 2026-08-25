@@ -62,9 +62,9 @@ export const reorderMemberBadgesSchema = z.object({
 export const badgeAssignmentSchema = z.object({
   badge_id: z.string(),
   user_id: z.string(),
-  username: z.string().nullable().optional(),
+  display_name: z.string().nullable().optional(),
   assigned_by: z.string(),
-  assigned_by_username: z.string().nullable().optional(),
+  assigned_by_display_name: z.string().nullable().optional(),
   assigned_at: z.string(),
 });
 

@@ -1,9 +1,6 @@
-import type { AuthService } from "@guild/server/modules/auth";
 import type { MemberService } from "@guild/server/modules/members";
 import {
   absenceWindowQuerySchema,
-  changePasswordSchema,
-  changeUsernameSchema,
   createMemberAbsenceSchema,
   deleteProfileImagesSchema,
 } from "@guild/shared";
@@ -45,11 +42,8 @@ type MemberHttpService = Pick<MemberService,
   | "uploadImages" | "deleteImages" | "uploadAvatar" | "deleteAvatar"
   | "uploadAudio" | "deleteAudio"
 >;
-type CredentialHttpService = Pick<AuthService, "changePassword" | "changeUsername">;
-
 export type UsersRoutesDependencies = Readonly<{
   service: MemberHttpService;
-  authService: CredentialHttpService;
 }>;
 
 export function createUsersRoutes(dependencies: UsersRoutesDependencies): Hono<HttpEnv> {
@@ -167,24 +161,6 @@ export function createUsersRoutes(dependencies: UsersRoutesDependencies): Hono<H
   routes.delete("/:id/media/audio", async (context) => context.json(
     await dependencies.service.deleteAudio(requestContext(context), context.req.param("id")),
   ));
-
-  routes.post("/:id/change-password", async (context) => {
-    const input = await parseJsonBody(context.req.raw, changePasswordSchema, "Invalid password change payload");
-    return context.json(await dependencies.authService.changePassword(requestContext(context), {
-      targetUserId: context.req.param("id"),
-      currentPassword: input.currentPassword,
-      newPassword: input.newPassword,
-    }));
-  });
-
-  routes.post("/:id/change-username", async (context) => {
-    const input = await parseJsonBody(context.req.raw, changeUsernameSchema, "Invalid username change payload");
-    return context.json(await dependencies.authService.changeUsername(requestContext(context), {
-      targetUserId: context.req.param("id"),
-      currentPassword: input.currentPassword,
-      newUsername: input.newUsername,
-    }));
-  });
 
   return routes;
 }

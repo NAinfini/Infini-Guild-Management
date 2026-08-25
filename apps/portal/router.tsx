@@ -14,23 +14,27 @@ import {
   retainSearchParams,
 } from "@tanstack/react-router";
 import { userCanAccessAdmin } from "./utils/permissions";
-import { Button, Paper, Stack, Text, Title, VisuallyHidden } from "@mantine/core";
-import { NavigationProgress, nprogress } from "@mantine/nprogress";
 import { Suspense, lazy, useEffect, type ReactNode } from "react";
 import { z } from "zod";
 import { useTranslation } from "react-i18next";
 import { apiRequest } from "./api/client";
 import { queryClient } from "./api/query-client";
-import { fetchEventDetail } from "./api/queries/events";
 import { AppShell } from "./components/layout/AppShell";
+import { SystemStatusPage } from "./components/pages/SystemStatusPage";
 import { resolveRouteSession } from "./router-session";
 import { transitionSession } from "./session-transition";
 import { useAuthStore } from "./stores/auth";
 import { useSiteConfigStore } from "./stores/site-config";
-import { buildEventWorkbenchSearch, EVENTS_ROUTE_SEARCH_SCHEMA, sanitizeEventsRouteSearch } from "./utils/event-navigation";
+import { EVENTS_ROUTE_SEARCH_SCHEMA } from "./utils/event-navigation";
 import { isExternalViewSearch } from "./utils/external-view";
+import { stashEmailVerificationToken } from "./utils/auth-navigation";
+import {
+  RouteProgress,
+  completeRouteProgress,
+  startRouteProgress,
+} from "./components/ui/route-progress";
 
-type AuthSessionResponse = { user: User; profile: MemberProfile };
+type AuthSessionResponse = { user: User; profile: MemberProfile; session_scope: "normal" | "password_change" };
 
 const PORTAL_PREVIEW_SEARCH_SCHEMA = z.object({
   preview: z.literal("external").optional(),
@@ -39,6 +43,7 @@ const PORTAL_PREVIEW_SEARCH_SCHEMA = z.object({
 const LOGIN_SEARCH_SCHEMA = z.object({
   returnTo: z.string().optional(),
   reason: z.enum(["required", "expired"]).optional(),
+  oauth: z.literal("failed").optional(),
 });
 
 const GUILD_WAR_SEARCH_SCHEMA = z.object({
@@ -54,6 +59,7 @@ const GUILD_WAR_SEARCH_SCHEMA = z.object({
 
 const PROFILE_SEARCH_SCHEMA = z.object({
   tab: z.enum(["availability", "account"]).optional(),
+  oauth: z.literal("linked").optional(),
 });
 
 const ANNOUNCEMENTS_SEARCH_SCHEMA = z.object({
@@ -73,11 +79,14 @@ const WIKI_SEARCH_SCHEMA = z.object({
 
 const STORAGE_SEARCH_SCHEMA = z.object({
   storageId: z.string().trim().min(1).optional(),
-});
-
-const STORAGE_MANAGE_SEARCH_SCHEMA = STORAGE_SEARCH_SCHEMA.extend({
   categoryId: z.string().trim().min(1).optional(),
 });
+
+const STORAGE_MANAGE_SEARCH_SCHEMA = STORAGE_SEARCH_SCHEMA;
+
+const EVENT_EDITOR_SEARCH_SCHEMA = z.object({
+  date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+}).passthrough();
 
 export function isRouteFeatureEnabled(feature: keyof FeatureFlags): boolean {
   const features = useSiteConfigStore.getState().features;
@@ -90,6 +99,49 @@ function requireRouteFeature(feature: keyof FeatureFlags): void {
   }
 }
 
+type AuthenticatedRouteLocation = {
+  pathname: string;
+  searchStr?: string;
+  hash?: string;
+};
+
+async function requireAuthenticatedSession(
+  location: AuthenticatedRouteLocation,
+): Promise<AuthSessionResponse> {
+  const hadCachedSession = Boolean(useAuthStore.getState().user);
+  const session = await ensureSession();
+  if (!session) {
+    if (location.pathname === "/verify-email" && location.hash) {
+      stashEmailVerificationToken(location.hash);
+    }
+    throw redirect({
+      to: "/login",
+      search: {
+        returnTo: `${location.pathname}${location.searchStr ?? ""}`,
+        reason: hadCachedSession ? "expired" : "required",
+      },
+    });
+  }
+  if (session.session_scope === "password_change" && location.pathname !== "/complete-password-reset") {
+    throw redirect({ to: "/complete-password-reset" });
+  }
+  return session;
+}
+
+async function requireEventMutationPermission(
+  permission: keyof User["permissions"],
+  location: AuthenticatedRouteLocation,
+): Promise<void> {
+  requireRouteFeature("events");
+  const session = await requireAuthenticatedSession(location);
+  if (isExternalViewSearch(location.searchStr)) {
+    throw redirect({ to: "/403" });
+  }
+  if (!session.user.permissions[permission]) {
+    throw redirect({ to: "/403" });
+  }
+}
+
 const LazyAdminPage = lazy(() => import("./components/pages/AdminPage").then((mod) => ({ default: mod.AdminPage })));
 const LazyAnnouncementsPage = lazy(() =>
   import("./components/pages/AnnouncementsPage").then((mod) => ({ default: mod.AnnouncementsPage })),
@@ -97,7 +149,22 @@ const LazyAnnouncementsPage = lazy(() =>
 const LazyDashboardPage = lazy(() =>
   import("./components/pages/DashboardPage").then((mod) => ({ default: mod.DashboardPage })),
 );
+const LazyLandingPage = lazy(() =>
+  import("./components/pages/LandingPage").then((mod) => ({ default: mod.LandingPage })),
+);
 const LazyEventsPage = lazy(() => import("./components/pages/EventsPage").then((mod) => ({ default: mod.EventsPage })));
+const LazyEventDetailPage = lazy(() =>
+  import("./components/pages/EventDetailPage").then((mod) => ({ default: mod.EventDetailPage })),
+);
+const LazyEventEditorPage = lazy(() =>
+  import("./components/pages/EventEditorPage").then((mod) => ({ default: mod.EventEditorPage })),
+);
+const LazyRecurringTemplatesPage = lazy(() =>
+  import("./components/pages/RecurringTemplatesPage").then((mod) => ({ default: mod.RecurringTemplatesPage })),
+);
+const LazyRecurringTemplateEditorPage = lazy(() =>
+  import("./components/pages/RecurringTemplateEditorPage").then((mod) => ({ default: mod.RecurringTemplateEditorPage })),
+);
 const LazyGalleryPage = lazy(() => import("./components/pages/GalleryPage").then((mod) => ({ default: mod.GalleryPage })));
 const LazyStoragePage = lazy(() => import("./components/pages/StoragePage").then((mod) => ({ default: mod.StoragePage })));
 const LazyStorageManagePage = lazy(() =>
@@ -113,6 +180,12 @@ const LazyLoginPage = lazy(() => import("./components/pages/LoginPage").then((mo
 const LazyRegisterPage = lazy(() =>
   import("./components/pages/RegisterPage").then((mod) => ({ default: mod.RegisterPage })),
 );
+const LazyCompletePasswordResetPage = lazy(() =>
+  import("./components/pages/CompletePasswordResetPage").then((mod) => ({ default: mod.CompletePasswordResetPage })),
+);
+const LazyVerifyEmailPage = lazy(() =>
+  import("./components/pages/VerifyEmailPage").then((mod) => ({ default: mod.VerifyEmailPage })),
+);
 const LazySettingsPage = lazy(() =>
   import("./components/pages/SettingsPage").then((mod) => ({ default: mod.SettingsPage })),
 );
@@ -126,9 +199,17 @@ function RouteLoadingFallback(): ReactNode {
   const { t } = useTranslation("common");
 
   return (
-    <VisuallyHidden role="status" aria-live="polite">
+    <span className="sr-only" role="status" aria-live="polite">
       {t("message.loading")}
-    </VisuallyHidden>
+    </span>
+  );
+}
+
+function LandingRoutePage() {
+  return (
+    <Suspense fallback={<RouteLoadingFallback />}>
+      <LazyLandingPage />
+    </Suspense>
   );
 }
 
@@ -244,6 +325,70 @@ function RegisterRoutePage() {
   );
 }
 
+function EventDetailRoutePage() {
+  return (
+    <Suspense fallback={<RouteLoadingFallback />}>
+      <LazyEventDetailPage />
+    </Suspense>
+  );
+}
+
+function EventCreateRoutePage() {
+  return (
+    <Suspense fallback={<RouteLoadingFallback />}>
+      <LazyEventEditorPage mode="create" />
+    </Suspense>
+  );
+}
+
+function EventEditRoutePage() {
+  return (
+    <Suspense fallback={<RouteLoadingFallback />}>
+      <LazyEventEditorPage mode="edit" />
+    </Suspense>
+  );
+}
+
+function RecurringTemplatesRoutePage() {
+  return (
+    <Suspense fallback={<RouteLoadingFallback />}>
+      <LazyRecurringTemplatesPage />
+    </Suspense>
+  );
+}
+
+function RecurringTemplateCreateRoutePage() {
+  return (
+    <Suspense fallback={<RouteLoadingFallback />}>
+      <LazyRecurringTemplateEditorPage mode="create" />
+    </Suspense>
+  );
+}
+
+function RecurringTemplateEditRoutePage() {
+  return (
+    <Suspense fallback={<RouteLoadingFallback />}>
+      <LazyRecurringTemplateEditorPage mode="edit" />
+    </Suspense>
+  );
+}
+
+function CompletePasswordResetRoutePage() {
+  return (
+    <Suspense fallback={<RouteLoadingFallback />}>
+      <LazyCompletePasswordResetPage />
+    </Suspense>
+  );
+}
+
+function VerifyEmailRoutePage() {
+  return (
+    <Suspense fallback={<RouteLoadingFallback />}>
+      <LazyVerifyEmailPage />
+    </Suspense>
+  );
+}
+
 function SettingsRoutePage() {
   return (
     <Suspense fallback={<RouteLoadingFallback />}>
@@ -256,8 +401,8 @@ async function ensureSession(): Promise<AuthSessionResponse | null> {
   return resolveRouteSession({
     getCachedSession: () => {
       const store = useAuthStore.getState();
-      return store.user && store.profile
-        ? { user: store.user, profile: store.profile }
+      return store.user && store.profile && store.sessionScope
+        ? { user: store.user, profile: store.profile, session_scope: store.sessionScope }
         : null;
     },
     requestSession: () => apiRequest<AuthSessionResponse>("/api/auth/me"),
@@ -267,40 +412,77 @@ async function ensureSession(): Promise<AuthSessionResponse | null> {
 
 function NotFoundPage(): ReactNode {
   const { t } = useTranslation("common");
+  const title = t("notFound.title");
 
   useEffect(() => {
-    document.title = `404 - ${t("notFound.title")}`;
-  }, [t]);
+    document.title = `404 - ${title}`;
+  }, [title]);
 
   return (
-    <Stack mih="60vh" align="center" justify="center" p="lg">
-      <Paper withBorder radius="lg" p="xl" maw={480} w="100%">
-        <Stack align="center" gap="md">
-          <Text fz={48} fw={700} c="dimmed" lh={1}>404</Text>
-          <Title order={2} ta="center">{t("notFound.title")}</Title>
-          <Button component="a" href="/" variant="default">
-            {t("notFound.backHome")}
-          </Button>
-        </Stack>
-      </Paper>
-    </Stack>
+    <SystemStatusPage
+      kind="not-found"
+      code="404"
+      title={title}
+      description={t("notFound.description")}
+      action={{ label: t("nav.returnToPortal"), href: "/" }}
+    />
   );
 }
 
 function RouteErrorFallback(): ReactNode {
   const { t } = useTranslation("common");
+  const title = t("errors.pageUnavailable.title");
+
+  useEffect(() => {
+    document.title = `500 - ${title}`;
+  }, [title]);
+
   return (
-    <Stack mih="60vh" align="center" justify="center" p="lg">
-      <Paper withBorder radius="lg" p="xl" maw={480} w="100%">
-        <Stack align="center" gap="md">
-          <Title order={2} ta="center">{t("errors.somethingWentWrong")}</Title>
-          <Text c="dimmed" ta="center">{t("errors.generic")}</Text>
-          <Button onClick={() => window.location.reload()}>
-            {t("action.reloadPage")}
-          </Button>
-        </Stack>
-      </Paper>
-    </Stack>
+    <SystemStatusPage
+      kind="error"
+      code="500"
+      title={title}
+      description={t("errors.pageUnavailable.description")}
+      action={{ label: t("action.retry"), onClick: () => window.location.reload() }}
+    />
+  );
+}
+
+function ForbiddenPage(): ReactNode {
+  const { t } = useTranslation("common");
+  const title = t("forbidden.title");
+
+  useEffect(() => {
+    document.title = `403 - ${title}`;
+  }, [title]);
+
+  return (
+    <SystemStatusPage
+      kind="forbidden"
+      code="403"
+      title={title}
+      description={t("forbidden.description")}
+      action={{ label: t("nav.returnToPortal"), href: "/" }}
+    />
+  );
+}
+
+function MaintenancePage(): ReactNode {
+  const { t } = useTranslation("common");
+  const title = t("maintenance.title");
+
+  useEffect(() => {
+    document.title = `503 - ${title}`;
+  }, [title]);
+
+  return (
+    <SystemStatusPage
+      kind="maintenance"
+      code="503"
+      title={title}
+      description={t("maintenance.description")}
+      action={{ label: t("action.retry"), onClick: () => window.location.reload() }}
+    />
   );
 }
 
@@ -359,32 +541,40 @@ const registerEntryRoute = createRoute({
   component: RegisterRoutePage,
 });
 
+const forbiddenRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/403",
+  component: ForbiddenPage,
+});
+
+const maintenanceRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/maintenance",
+  component: MaintenancePage,
+});
+
 const authenticatedOnlyRoute = createRoute({
   getParentRoute: () => rootRoute,
   id: "authenticated",
-  beforeLoad: async ({ location }) => {
-    const hadCachedSession = Boolean(useAuthStore.getState().user);
-    const session = await ensureSession();
-    if (!session) {
-      const nextLocation = location as { pathname: string; searchStr?: string; hash?: string };
-      throw redirect({
-        to: "/login",
-        search: {
-          returnTo: `${nextLocation.pathname}${nextLocation.searchStr ?? ""}${nextLocation.hash ?? ""}`,
-          reason: hadCachedSession ? "expired" : "required",
-        },
-      });
-    }
-  },
+  beforeLoad: ({ location }) => requireAuthenticatedSession(location),
   component: Outlet,
 });
 
 // Guest users may browse public site content. Put read-only feature routes
 // on rootRoute; keep user, moderator, and admin-only pages under
 // authenticatedOnlyRoute.
-const dashboardRoute = createRoute({
+const homeRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/",
+  beforeLoad: () => {
+    if (useAuthStore.getState().user) throw redirect({ to: "/dashboard" });
+  },
+  component: LandingRoutePage,
+});
+
+const dashboardRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/dashboard",
   component: DashboardRoutePage,
 });
 
@@ -399,26 +589,46 @@ const eventsRoute = createRoute({
 const eventDetailRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/events/$id",
-  beforeLoad: async ({ params }) => {
+  beforeLoad: () => {
     requireRouteFeature("events");
-    let detailTitle: string | undefined;
-    try {
-      const detail = await fetchEventDetail(params.id);
-      detailTitle = detail.title;
-    } catch {
-      detailTitle = undefined;
-    }
-
-    throw redirect({
-      to: "/events",
-      search: sanitizeEventsRouteSearch(
-        detailTitle
-          ? buildEventWorkbenchSearch({ id: params.id, title: detailTitle })
-          : { eventId: params.id, view: "cards" },
-      ),
-    });
   },
-  component: Outlet,
+  component: EventDetailRoutePage,
+});
+
+const eventCreateRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/events/new",
+  validateSearch: (search) => EVENT_EDITOR_SEARCH_SCHEMA.parse(search),
+  beforeLoad: ({ location }) => requireEventMutationPermission("events.create", location),
+  component: EventCreateRoutePage,
+});
+
+const eventEditRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/events/$id/edit",
+  beforeLoad: ({ location }) => requireEventMutationPermission("events.edit", location),
+  component: EventEditRoutePage,
+});
+
+const recurringTemplatesRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/events/recurring",
+  beforeLoad: ({ location }) => requireEventMutationPermission("events.templates", location),
+  component: RecurringTemplatesRoutePage,
+});
+
+const recurringTemplateCreateRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/events/recurring/new",
+  beforeLoad: ({ location }) => requireEventMutationPermission("events.templates", location),
+  component: RecurringTemplateCreateRoutePage,
+});
+
+const recurringTemplateEditRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/events/recurring/$templateId/edit",
+  beforeLoad: ({ location }) => requireEventMutationPermission("events.templates", location),
+  component: RecurringTemplateEditRoutePage,
 });
 
 const rosterRoute = createRoute({
@@ -433,10 +643,30 @@ const profileRoute = createRoute({
   validateSearch: (search) => PROFILE_SEARCH_SCHEMA.parse(search),
   beforeLoad: ({ location }) => {
     if (isExternalViewSearch((location as { searchStr?: string }).searchStr)) {
-      throw redirect({ to: "/" });
+      throw redirect({ to: "/403" });
     }
   },
   component: MyProfileRoutePage,
+});
+
+const completePasswordResetRoute = createRoute({
+  getParentRoute: () => authenticatedOnlyRoute,
+  path: "/complete-password-reset",
+  beforeLoad: async () => {
+    const session = await ensureSession();
+    if (!session || session.session_scope !== "password_change") throw redirect({ to: "/" });
+  },
+  component: CompletePasswordResetRoutePage,
+});
+
+const verifyEmailRoute = createRoute({
+  getParentRoute: () => authenticatedOnlyRoute,
+  path: "/verify-email",
+  beforeLoad: async () => {
+    const session = await ensureSession();
+    if (!session || session.session_scope !== "normal") throw redirect({ to: "/" });
+  },
+  component: VerifyEmailRoutePage,
 });
 
 const announcementsRoute = createRoute({
@@ -506,6 +736,7 @@ const ADMIN_SEARCH_SCHEMA = z.object({
     "member",
     "invite",
     "roles",
+    "importantNotices",
     "classes",
     "badges",
     "siteConfig",
@@ -521,16 +752,16 @@ const adminRoute = createRoute({
   validateSearch: (search) => ADMIN_SEARCH_SCHEMA.parse(search),
   beforeLoad: async ({ location }) => {
     if (isExternalViewSearch((location as { searchStr?: string }).searchStr)) {
-      throw redirect({ to: "/" });
+      throw redirect({ to: "/403" });
     }
 
     const user = useAuthStore.getState().user;
     if (!user) {
-      throw redirect({ to: "/" });
+      throw redirect({ to: "/403" });
     }
 
     if (!userCanAccessAdmin(user)) {
-      throw redirect({ to: "/" });
+      throw redirect({ to: "/403" });
     }
   },
   component: AdminRoutePage,
@@ -539,9 +770,15 @@ const adminRoute = createRoute({
 // Public browsing routes are listed before the authenticated branch so guests
 // can view the website without being redirected to /login.
 const routeTree = rootRoute.addChildren([
+  homeRoute,
   dashboardRoute,
   eventsRoute,
   eventDetailRoute,
+  eventCreateRoute,
+  eventEditRoute,
+  recurringTemplatesRoute,
+  recurringTemplateCreateRoute,
+  recurringTemplateEditRoute,
   rosterRoute,
   announcementsRoute,
   guildWarRoute,
@@ -553,24 +790,28 @@ const routeTree = rootRoute.addChildren([
   loginRoute,
   registerRoute,
   registerEntryRoute,
+  forbiddenRoute,
+  maintenanceRoute,
   // User, moderator, and admin-only features stay locked behind session checks.
   authenticatedOnlyRoute.addChildren([
     storageRoute,
     storageManageRoute,
     profileRoute,
+    completePasswordResetRoute,
+    verifyEmailRoute,
     adminRoute,
   ]),
 ]);
 
 const router = createRouter({ routeTree, defaultViewTransition: false });
 
-router.subscribe("onBeforeLoad", () => nprogress.start());
-router.subscribe("onResolved", () => nprogress.complete());
+router.subscribe("onBeforeLoad", startRouteProgress);
+router.subscribe("onResolved", completeRouteProgress);
 
 export function AppRouter() {
   return (
     <QueryClientProvider client={queryClient}>
-      <NavigationProgress aria-hidden="true" />
+      <RouteProgress />
       <RouterProvider router={router} />
     </QueryClientProvider>
   );

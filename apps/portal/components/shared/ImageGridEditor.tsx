@@ -1,5 +1,5 @@
 import { IMAGE_FILE_ACCEPT } from "@guild/shared";
-import { ActionIcon, Button } from "@mantine/core";
+import { Button } from "@portal/components/ui/button";
 import { AnimatePresence, Reorder, useDragControls } from "motion/react";
 import {
   forwardRef,
@@ -14,23 +14,6 @@ import { useTranslation } from "react-i18next";
 import "./ImageGridEditor.css";
 
 export type { ImageGridEditorItem };
-
-/*
- * 添加位要和它左边那排缩略图是同一种方块，只是空着。Mantine 的 variant="default"
- * 给的是控件灰（--mantine-color-default），深色下比图片底色亮一档，结果这一格比
- * 七张真图还抢眼——加号是最不重要的那一格。
- *
- * 走内联变量而不是 CSS class：Mantine 把变体色解析成 --button-* 写在元素的
- * style 属性上，样式表里的同名声明永远盖不过它。同 ProfileAccountTab 的
- * LOGOUT_BUTTON_VARS 先例。
- */
-const ADD_TILE_VARS = {
-  "--button-bg": "var(--surface-sunken)",
-  "--button-bd": "1px dashed var(--border-subtle)",
-  "--button-color": "var(--text-muted)",
-  "--button-hover": "var(--surface-raised)",
-  "--button-hover-color": "var(--text-primary)",
-} as CSSProperties;
 
 export interface ImageGridEditorProps {
   items: ImageGridEditorItem[];
@@ -112,7 +95,7 @@ function DraggableImageCell({
     display: "flex",
     alignItems: "center",
     justifyContent: "center",
-    padding: 4,
+    padding: "var(--space-xs)",
     textAlign: "center",
     fontSize: Math.max(9, imageSize * 0.12),
     color: "var(--text-muted)",
@@ -161,16 +144,15 @@ function DraggableImageCell({
       )}
 
       {onDelete && !disabled ? (
-        <ActionIcon
+        <Button
           type="button"
           aria-label={deleteLabel}
-          color="red"
-          variant="transparent"
-          radius="xl"
-          size={44}
+          variant="ghost"
+          size="icon"
           loading={deletePending}
           disabled={deletePending}
-          style={{ position: "absolute", top: -6, right: -6, zIndex: 10 }}
+          className="image-grid-editor__delete"
+          style={{ position: "absolute", top: -6, right: -6, zIndex: 10, width: 44, height: 44 }}
           onClick={(e) => {
             e.stopPropagation();
             if (deletePending) return;
@@ -191,7 +173,7 @@ function DraggableImageCell({
           >
             ×
           </span>
-        </ActionIcon>
+        </Button>
       ) : null}
     </Reorder.Item>
   );
@@ -299,29 +281,16 @@ export const ImageGridEditor = forwardRef<HTMLDivElement, ImageGridEditorProps>(
           <>
             <Button
               type="button"
-              variant="default"
+              variant="outline"
               aria-label={typeof uploadLabel === "string" ? uploadLabel : t("media.aria.addImages")}
               onClick={() => fileInputRef.current?.click()}
-              w={imageSize}
-              h={imageSize}
-              p={4}
-              radius={borderRadius}
-              style={{ ...ADD_TILE_VARS, fontSize: Math.max(10, imageSize * 0.14) }}
-              styles={{
-                /*
-                 * 两个轴都显式居中。Button 的 label 在 column 方向下只保证交叉轴
-                 * （横向）居中，主轴留给默认值，加号和计数那一组就贴在方块上沿。
-                 */
-                inner: { height: "100%", width: "100%" },
-                label: {
-                  flexDirection: "column",
-                  justifyContent: "center",
-                  alignItems: "center",
-                  height: "100%",
-                  width: "100%",
-                  whiteSpace: "normal",
-                  lineHeight: 1.2,
-                },
+              className="image-grid-editor__add"
+              style={{
+                width: imageSize,
+                height: imageSize,
+                padding: "var(--space-xs)",
+                borderRadius,
+                fontSize: Math.max(10, imageSize * 0.14),
               }}
             >
               {uploadLabel ?? (

@@ -1,5 +1,4 @@
-import { MantineProvider } from "@mantine/core";
-import { act, render, renderHook, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, renderHook, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 import { WAR_MEMBER_STAT_KEYS } from "@guild/shared";
@@ -144,14 +143,14 @@ describe("history metric editing", () => {
         {
           id: "stat-1",
           user_id: "user-1",
-          username: "Alice",
+          display_name: "Alice",
           role_tag: null,
           stats: { kills: 3, damage: 1234.56 },
         },
         {
           id: "stat-2",
           user_id: "user-2",
-          username: "Bob",
+          display_name: "Bob",
           role_tag: null,
           stats: { kills: 8, damage: 900 },
         },
@@ -188,11 +187,7 @@ describe("history metric editing", () => {
     });
 
     /* 只读态下这些格子是纯文本；点过「编辑」才换成输入框。 */
-    const readOnlyRender = render(
-      <MantineProvider>
-        <DataTableAdapter table={result.current.detailTable} />
-      </MantineProvider>,
-    );
+    const readOnlyRender = render(<DataTableAdapter table={result.current.detailTable} />);
     expect(screen.queryAllByLabelText(/^(Alice|Bob) — /)).toHaveLength(0);
     readOnlyRender.unmount();
 
@@ -200,11 +195,7 @@ describe("history metric editing", () => {
       result.current.beginEditMemberStats();
     });
 
-    render(
-      <MantineProvider>
-        <DataTableAdapter table={result.current.detailTable} />
-      </MantineProvider>,
-    );
+    render(<DataTableAdapter table={result.current.detailTable} />);
 
     const metricInputs = screen.getAllByLabelText(/^(Alice|Bob) — /);
     const bobKills = screen.getByLabelText("Bob — Kills");
@@ -215,7 +206,7 @@ describe("history metric editing", () => {
     expect(bobKills).toHaveAttribute("data-metric-grid", "guild-war-history-metrics");
     expect(bobKills).toHaveAttribute("data-grid-row", "0");
     expect(aliceKills).toHaveAttribute("data-grid-row", "1");
-    expect(aliceDamage).toHaveValue("1234.56");
+    expect(aliceDamage).toHaveValue(1234.56);
 
     await user.click(bobKills);
     await user.keyboard("{ArrowDown}");
@@ -223,7 +214,6 @@ describe("history metric editing", () => {
   });
 
   it("sends every editable metric, not just the one that changed", async () => {
-    const user = userEvent.setup();
     const onSaveMemberStats = vi.fn().mockResolvedValue(undefined);
     const historyDetail: HistoryDetailData = {
       id: "war-1",
@@ -238,7 +228,7 @@ describe("history metric editing", () => {
         {
           id: "stat-1",
           user_id: "user-1",
-          username: "Alice",
+          display_name: "Alice",
           role_tag: null,
           stats: { kills: 3, deaths: 2, assists: 1 },
         },
@@ -268,15 +258,10 @@ describe("history metric editing", () => {
       result.current.beginEditMemberStats();
     });
 
-    render(
-      <MantineProvider>
-        <DataTableAdapter table={result.current.detailTable} />
-      </MantineProvider>,
-    );
+    render(<DataTableAdapter table={result.current.detailTable} />);
 
     const kills = screen.getByLabelText("Alice — Kills");
-    await user.clear(kills);
-    await user.type(kills, "9");
+    fireEvent.change(kills, { target: { value: "9" } });
 
     await act(async () => {
       await result.current.handleSaveMemberStats();

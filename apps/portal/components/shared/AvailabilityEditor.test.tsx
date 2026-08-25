@@ -1,4 +1,3 @@
-import { MantineProvider } from "@mantine/core";
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
@@ -19,11 +18,7 @@ vi.mock("react-i18next", () => ({
 }));
 
 function renderEditor(props: Parameters<typeof AvailabilityEditor>[0]) {
-  return render(
-    <MantineProvider>
-      <AvailabilityEditor {...props} />
-    </MantineProvider>,
-  );
+  return render(<AvailabilityEditor {...props} />);
 }
 
 function blockTexts(container: HTMLElement): string[] {
@@ -102,9 +97,7 @@ describe("AvailabilityEditor", () => {
     /* 读回落库的 UTC 值：结束时间跨过午夜会回到 00:00，不还原成 24:00 就会被当成
        空区间丢掉——旧的网格编辑器正是这样吃掉每段到午夜为止的时间。 */
     rerender(
-      <MantineProvider>
-        <AvailabilityEditor value={payload} onChange={onChange} />
-      </MantineProvider>,
+      <AvailabilityEditor value={payload} onChange={onChange} />,
     );
 
     expect(blockTexts(container).filter((text) => text === "20:00–24:00")).toHaveLength(5);

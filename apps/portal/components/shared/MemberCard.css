@@ -3,7 +3,7 @@
   width: 100%;
   border: 1px solid var(--border-subtle);
   border-radius: var(--member-card-radius);
-  /* 卡是板子（L2），走和 Mantine Paper 同一条台面配方。原先取的是 base——那正是
+  /* 卡是板子（L2），走统一台面配方。原先取的是 base——那正是
      工作区自己的色值，一张卡和它脚下的地面同色，全靠 1px 描边说明「这是一张卡」。
      配方本身不带环境光：光打在地面上，板压在光上面。 */
   background: var(--plate-fill);
@@ -46,11 +46,11 @@
 }
 
 /* Portrait card geometry is coupled to the roster virtualizer's row estimate. */
-/* Center 3D rotation in place and clip the oversized highlight to the card radius. */
+/* 3D 倾斜时卡片本体不能裁切；高光只在独立效果层里按圆角裁切。 */
 .member-card--full {
   padding: 10px;
   position: relative;
-  overflow: hidden;
+  overflow: visible;
   transform-origin: center center;
   /* box-shadow 不是可合成属性，把它列进 will-change 只会让浏览器为每张卡
    * 常驻一层「随时会重绘」的准备，17 张卡就是 17 层。transform 才是逐帧动的
@@ -68,6 +68,22 @@
    成长方形。它是这张卡里唯一有固定比例的东西，不参与分配剩余高度。 */
 .member-card--full > .member-card__avatar-wrap {
   flex: none;
+}
+
+.member-card__effects {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  overflow: hidden;
+  border-radius: inherit;
+  pointer-events: none;
+}
+
+.member-card--full > .member-card__avatar-wrap,
+.member-card--full > .member-card__content,
+.member-card--full > .member-card__meta-row {
+  position: relative;
+  z-index: 1;
 }
 
 /*
@@ -390,6 +406,15 @@
   vertical-align: top;
 }
 
+.member-role-avatar__trigger {
+  display: inline-flex;
+  padding: 0;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  cursor: pointer;
+}
+
 .member-role-avatar__roles {
   position: absolute;
   right: -4px;
@@ -426,7 +451,52 @@
 }
 
 .member-role-avatar__popover {
+  width: 14.75rem;
   padding: var(--space-sm);
+}
+
+.member-role-avatar__summary,
+.member-role-avatar__details,
+.member-role-avatar__class-detail {
+  display: flex;
+  align-items: center;
+}
+
+.member-role-avatar__summary {
+  align-items: flex-start;
+  gap: var(--space-sm);
+}
+
+.member-role-avatar__identity {
+  display: grid;
+  flex: 1;
+  min-width: 0;
+  gap: var(--space-xs);
+}
+
+.member-role-avatar__name,
+.member-role-avatar__classes {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.member-role-avatar__classes,
+.member-role-avatar__power {
+  color: var(--text-secondary);
+  font-size: var(--text-meta);
+}
+
+.member-role-avatar__details {
+  flex-wrap: wrap;
+  gap: var(--space-sm);
+  margin-top: var(--space-sm);
+}
+
+.member-role-avatar__class-detail {
+  gap: var(--space-xs);
+  font-size: var(--text-meta);
+  font-weight: var(--fw-medium);
 }
 
 .member-role-avatar__power-icon {

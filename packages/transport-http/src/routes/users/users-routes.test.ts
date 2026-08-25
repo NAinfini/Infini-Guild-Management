@@ -15,7 +15,7 @@ const view: MemberView = {
   projection: "admin",
   record: {
     user: {
-      id: "user-1", username: "Member", roleId: "member", roleName: "Member", roleColor: null,
+      id: "user-1", display_name: "Member", roleId: "member", roleName: "Member", roleColor: null,
       roleLevel: 100, isActive: true, deletedAt: null, createdAt: NOW, updatedAt: NOW,
       lastLoginAt: null,
     },
@@ -35,7 +35,7 @@ const profile = {
   created_at: NOW, updated_at: NOW,
 };
 const absence: MemberAbsence = {
-  id: "absence-1", user_id: "user-1", username: "Member", role_id: "member", role_name: "Member",
+  id: "absence-1", user_id: "user-1", display_name: "Member", role_id: "member", role_name: "Member",
   role_color: null, role_level: 100, start_date: "2026-08-10", end_date: "2026-08-11", note: "Away", created_at: NOW,
 };
 
@@ -56,10 +56,6 @@ function buildApp() {
     uploadAudio: vi.fn().mockResolvedValue({ media_id: "audio-2" }),
     deleteAudio: vi.fn().mockResolvedValue({ ok: true as const }),
   };
-  const authService = {
-    changePassword: vi.fn().mockResolvedValue({ ok: true as const }),
-    changeUsername: vi.fn().mockResolvedValue({ ok: true as const }),
-  };
   const app = new Hono<HttpEnv>();
   app.onError(createHttpErrorHandler());
   app.use("*", async (context, next) => {
@@ -73,8 +69,8 @@ function buildApp() {
     }));
     await next();
   });
-  app.route("/api/users", createUsersRoutes({ service, authService }));
-  return { app, service, authService };
+  app.route("/api/users", createUsersRoutes({ service }));
+  return { app, service };
 }
 
 describe("users Portal HTTP contract", () => {
@@ -104,7 +100,7 @@ describe("users Portal HTTP contract", () => {
     expect(await detail.json()).toMatchObject({ user: { role_level: 100 }, profile: { images: [IMAGE_ID] } });
   });
 
-  it("keeps every current profile, absence, media, and credential route", async () => {
+  it("keeps every current profile, absence, and media route", async () => {
     const { app, service } = buildApp();
     const requests: Array<readonly [string, string, BodyInit | undefined, number]> = [
       ["GET", "/api/users/stats", undefined, 200],
@@ -119,8 +115,6 @@ describe("users Portal HTTP contract", () => {
       ["DELETE", "/api/users/user-1/media/avatar", undefined, 200],
       ["POST", "/api/users/user-1/media/audio", audioForm(), 201],
       ["DELETE", "/api/users/user-1/media/audio", undefined, 200],
-      ["POST", "/api/users/user-1/change-password", json({ currentPassword: "old", newPassword: "new-pass-1", confirmNewPassword: "new-pass-1" }), 200],
-      ["POST", "/api/users/user-1/change-username", json({ currentPassword: "old", newUsername: "Member2" }), 200],
     ];
     for (const [method, path, body, status] of requests) {
       const response = await app.request(path, {
@@ -136,21 +130,14 @@ describe("users Portal HTTP contract", () => {
     });
   });
 
-  it("maps absence and credential DTOs before calling domain services", async () => {
-    const { app, service, authService } = buildApp();
+  it("maps absence DTOs before calling domain services", async () => {
+    const { app, service } = buildApp();
     await app.request("/api/users/user-1/absences", {
       method: "POST", headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ start_date: "2026-08-10", end_date: "2026-08-11", note: " Away " }),
     });
     expect(service.createAbsence).toHaveBeenCalledWith(expect.anything(), "user-1", {
       startDate: "2026-08-10", endDate: "2026-08-11", note: "Away",
-    });
-    await app.request("/api/users/user-1/change-password", {
-      method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ currentPassword: "old", newPassword: "new-pass-1", confirmNewPassword: "new-pass-1" }),
-    });
-    expect(authService.changePassword).toHaveBeenCalledWith(expect.anything(), {
-      targetUserId: "user-1", currentPassword: "old", newPassword: "new-pass-1",
     });
   });
 });

@@ -1,6 +1,4 @@
 export {
-  changeMyPassword,
-  changeMyUsername,
   createMemberAbsence,
   deleteAvatar,
   deleteMemberAbsence,
@@ -12,11 +10,7 @@ export {
   uploadProfileAudio,
   uploadProfileImages,
 } from "../api/mutations/users";
-export type {
-  ChangeMyPasswordPayload,
-  ChangeMyUsernamePayload,
-  UpdateMyProfilePayload,
-} from "../api/mutations/users";
+export type { UpdateMyProfilePayload } from "../api/mutations/users";
 export {
   fetchAbsencesWindow,
   fetchUserAbsences,

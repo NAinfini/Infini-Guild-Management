@@ -4,7 +4,7 @@ import { useGuildWarHistory } from "./useGuildWarHistory";
 
 type MemberStat = {
   user_id: string;
-  username?: string;
+  display_name?: string;
   stats: Record<string, number | null> | null;
 };
 
@@ -19,10 +19,10 @@ function detail(memberStats: MemberStat[]) {
 describe("useGuildWarHistory", () => {
   it("ignores missing, null, and non-finite values for lower-is-better MVPs", () => {
     const invalidStats: MemberStat[] = [
-      { user_id: "missing", username: "Missing", stats: {} },
-      { user_id: "null", username: "Null", stats: { damage_taken: null } },
-      { user_id: "nan", username: "NaN", stats: { damage_taken: Number.NaN } },
-      { user_id: "infinity", username: "Infinity", stats: { damage_taken: Number.POSITIVE_INFINITY } },
+      { user_id: "missing", display_name: "Missing", stats: {} },
+      { user_id: "null", display_name: "Null", stats: { damage_taken: null } },
+      { user_id: "nan", display_name: "NaN", stats: { damage_taken: Number.NaN } },
+      { user_id: "infinity", display_name: "Infinity", stats: { damage_taken: Number.POSITIVE_INFINITY } },
     ];
     const { result, rerender } = renderHook(
       ({ memberStats }: { memberStats: MemberStat[] }) => useGuildWarHistory({
@@ -32,8 +32,8 @@ describe("useGuildWarHistory", () => {
         initialProps: {
           memberStats: [
             ...invalidStats,
-            { user_id: "eligible-12", username: "Eligible 12", stats: { damage_taken: 12 } },
-            { user_id: "eligible-4", username: "Eligible 4", stats: { damage_taken: 4 } },
+            { user_id: "eligible-12", display_name: "Eligible 12", stats: { damage_taken: 12 } },
+            { user_id: "eligible-4", display_name: "Eligible 4", stats: { damage_taken: 4 } },
           ],
         },
       },

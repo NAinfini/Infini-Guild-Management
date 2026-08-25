@@ -150,16 +150,6 @@
   --palette-info-bright: #7DD3FC;
   --palette-info-deep: #0369A1;
 
-  /* Mantine light-variant text colors.
-   * Mantine places text on a 10% primary-shade fill. Values deeper than its
-   * built-in shade 9 live here; contrast coverage is enforced in theme-tokens.test.ts. */
-  --palette-mantine-red-text: #B02121;
-  --palette-mantine-teal-text: #0A6B4E;
-  --palette-mantine-green-text: #1F6B2E;
-  --palette-mantine-lime-text: #4C7B0B;
-  --palette-mantine-yellow-text: #AC5900;
-  --palette-mantine-orange-text: #C1400D;
-
   /* Decorative brand accent exposed to components as --brand-secondary. */
   --palette-bronze-warm: #8B7355;
 

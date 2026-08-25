@@ -1,13 +1,19 @@
 import { AUDIO_FILE_ACCEPT, IMAGE_FILE_ACCEPT } from "@guild/shared";
-import { ImageGridEditor } from "@portal/components/shared/ImageGridEditor";
-import type { ImageGridEditorItem } from "@portal/types/media";
-import { Avatar, Button, FileButton, Group, Paper, Progress, Stack, Text, TextInput } from "@mantine/core";
 import { PlusIcon, TrashIcon, UploadIcon, UserIcon } from "@portal/components/icons";
+import { ImageGridEditor } from "@portal/components/shared/ImageGridEditor";
+import { Avatar, AvatarFallback, AvatarImage } from "@portal/components/ui/avatar";
+import { Button } from "@portal/components/ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "@portal/components/ui/card";
+import { Input } from "@portal/components/ui/input";
+import { Progress } from "@portal/components/ui/progress";
 import { useConfirmDialog } from "@portal/hooks/useConfirmDialog";
+import type { ImageGridEditorItem } from "@portal/types/media";
+import { useRef } from "react";
 import { useTranslation } from "react-i18next";
 import type { UseMediaUploadState } from "../../../hooks/useMediaUpload";
 import type { UsersListResponse } from "../../../services/UserService";
 import { resolveMediaUrl } from "../../../utils/media";
+import "./AdminMemberMediaTab.css";
 
 type AdminUserRow = UsersListResponse["data"][number];
 
@@ -71,93 +77,93 @@ export function AdminMemberMediaTab(props: AdminMemberMediaTabProps) {
   } = props;
   const { t } = useTranslation(["admin", "common"]);
   const confirm = useConfirmDialog();
+  const avatarInputRef = useRef<HTMLInputElement>(null);
+  const audioInputRef = useRef<HTMLInputElement>(null);
 
   const handleDeleteAvatar = async () => {
     const confirmed = await confirm({
       title: t("confirm.deleteAvatar.title"),
-      description: (
-        <Text size="sm">
-          {t("confirm.deleteAvatar.description", { username: member.user.username })}
-        </Text>
-      ),
+      description: t("confirm.deleteAvatar.description", { display_name: member.user.display_name }),
       confirmLabel: t("media.removeAvatar"),
-      cancelLabel: t("common:cancel"),
+      cancelLabel: t("common:action.cancel"),
       intent: "danger",
     });
-    if (confirmed) {
-      onDeleteAvatar();
-    }
+    if (confirmed) onDeleteAvatar();
   };
 
   const handleDeleteAudio = async () => {
     const confirmed = await confirm({
       title: t("confirm.deleteAudio.title"),
-      description: (
-        <Text size="sm">
-          {t("confirm.deleteAudio.description", { username: member.user.username })}
-        </Text>
-      ),
+      description: t("confirm.deleteAudio.description", { display_name: member.user.display_name }),
       confirmLabel: t("media.removeAudio"),
-      cancelLabel: t("common:cancel"),
+      cancelLabel: t("common:action.cancel"),
       intent: "danger",
     });
-    if (confirmed) {
-      onDeleteAudio();
-    }
+    if (confirmed) onDeleteAudio();
   };
 
   return (
-    <Stack gap={16}>
-      <Paper withBorder radius="md">
-        <div style={{ padding: "var(--card-padding)" }}>
-          <Text fw={600} size="sm" mb={12}>{t("media.avatar")}</Text>
-          <Group gap={16} align="center">
-            <Avatar size={72} radius="xl" src={member.profile.avatar_media_id ? resolveMediaUrl(member.profile.avatar_media_id) : undefined}>
-              <UserIcon size={32} />
+    <div className="admin-member-media">
+      <Card size="sm" className="admin-member-media__card">
+        <CardHeader><CardTitle>{t("media.avatar")}</CardTitle></CardHeader>
+        <CardContent>
+          <div className="admin-member-media__avatar-row">
+            <Avatar className="admin-member-media__avatar">
+              {member.profile.avatar_media_id ? (
+                <AvatarImage src={resolveMediaUrl(member.profile.avatar_media_id)} alt="" />
+              ) : null}
+              <AvatarFallback><UserIcon size={32} /></AvatarFallback>
             </Avatar>
             {isModerator ? (
-              <Stack gap={6}>
-                <FileButton
-                  onChange={(file) => { if (file) onUploadAvatar(file); }}
+              <div className="admin-member-media__action-stack">
+                <input
+                  ref={avatarInputRef}
+                  className="sr-only"
+                  type="file"
                   accept={IMAGE_FILE_ACCEPT}
+                  tabIndex={-1}
+                  aria-hidden="true"
+                  onChange={(event) => {
+                    const file = event.currentTarget.files?.[0];
+                    if (file) onUploadAvatar(file);
+                    event.currentTarget.value = "";
+                  }}
+                />
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  loading={avatarUploadPending}
+                  onClick={() => avatarInputRef.current?.click()}
                 >
-                  {(props) => (
-                    <Button
-                      variant="default"
-                      size="sm"
-                      loading={avatarUploadPending}
-                      leftSection={<UploadIcon size={16} />}
-                      {...props}
-                    >
-                      {t("media.uploadAvatar")}
-                    </Button>
-                  )}
-                </FileButton>
+                  <UploadIcon size={16} data-icon="inline-start" />
+                  {t("media.uploadAvatar")}
+                </Button>
                 {member.profile.avatar_media_id && isAdmin ? (
                   <Button
-                    variant="subtle"
-                    color="red"
-                    size="compact-xs"
-                    leftSection={<TrashIcon size={14} />}
+                    type="button"
+                    variant="destructive"
+                    size="xs"
                     loading={avatarDeletePending}
                     onClick={() => void handleDeleteAvatar()}
                   >
+                    <TrashIcon size={14} data-icon="inline-start" />
                     {t("media.removeAvatar")}
                   </Button>
                 ) : null}
-              </Stack>
+              </div>
             ) : null}
-          </Group>
-        </div>
-      </Paper>
+          </div>
+        </CardContent>
+      </Card>
 
-      <Paper withBorder radius="md">
-        <div style={{ padding: "var(--card-padding)" }}>
-          <Text fw={600} size="sm" mb={12}>{t("media.images")}</Text>
+      <Card size="sm" className="admin-member-media__card">
+        <CardHeader><CardTitle>{t("media.images")}</CardTitle></CardHeader>
+        <CardContent>
           {imageItems.length === 0 && !isModerator ? (
-            <Text c="dimmed" size="sm">{t("media.noImages")}</Text>
+            <p className="admin-member-media__muted">{t("media.noImages")}</p>
           ) : (
-            <Stack gap={12}>
+            <div className="admin-member-media__section-stack">
               <ImageGridEditor
                 items={imageItems}
                 onReorder={onImageReorder}
@@ -168,166 +174,156 @@ export function AdminMemberMediaTab(props: AdminMemberMediaTabProps) {
                 disabled={imageDeletePending || imageReorderPending}
                 aria-label={t("media.aria.profileImagesGrid")}
               />
-
               {imageUploader.files.length > 0 ? (
-                <Stack gap={8}>
-                  {imageUploader.error ? <Text c="red" size="sm">{imageUploader.error}</Text> : null}
+                <div className="admin-member-media__upload-stack">
+                  {imageUploader.error ? <p className="admin-member-media__error">{imageUploader.error}</p> : null}
                   {imageUploader.isConverting || imageUploader.isUploading ? (
-                    <Stack style={{ width: "100%" }} gap={4}>
-                      <Progress value={imageUploader.conversionProgress} size="sm" animated />
-                      <Progress value={imageUploader.uploadProgress} size="sm" animated />
-                    </Stack>
+                    <div className="admin-member-media__progress-stack">
+                      <Progress value={imageUploader.conversionProgress} />
+                      <Progress value={imageUploader.uploadProgress} />
+                    </div>
                   ) : null}
                   <Button
-                    leftSection={<UploadIcon size={16} />}
-                    onClick={() => {
-                      void onUploadImages();
-                    }}
+                    type="button"
+                    size="sm"
+                    onClick={() => void onUploadImages()}
                     loading={imageUploader.isUploading}
                     disabled={imageUploader.files.length === 0}
-                    size="sm"
                   >
+                    <UploadIcon size={16} data-icon="inline-start" />
                     {t("media.uploadImages")}
                   </Button>
-                </Stack>
+                </div>
               ) : null}
-            </Stack>
+            </div>
           )}
-        </div>
-      </Paper>
+        </CardContent>
+      </Card>
 
-      <Paper withBorder radius="md">
-        <div style={{ padding: "var(--card-padding)" }}>
-          <Text fw={600} size="sm" mb={12}>{t("media.videos")}</Text>
-          <Stack gap={8}>
+      <Card size="sm" className="admin-member-media__card">
+        <CardHeader><CardTitle>{t("media.videos")}</CardTitle></CardHeader>
+        <CardContent>
+          <div className="admin-member-media__section-stack">
             {videoUrls.map((url, index) => (
-              <Group key={index} gap={8} wrap="nowrap" align="flex-end">
-                <TextInput
+              <div className="admin-member-media__video-row" key={index}>
+                <Input
                   placeholder={t("media.videoUrlPlaceholder")}
+                  aria-label={`${t("media.videoUrlPlaceholder")} ${index + 1}`}
                   value={url}
                   onChange={(event) => onVideoUrlChange(index, event.currentTarget.value)}
-                  style={{ flex: 1 }}
-                  size="sm"
                   disabled={!isModerator}
                 />
                 {isModerator ? (
                   <Button
-                    size="sm"
-                    color="red"
-                    variant="default"
-                    px={8}
-                    onClick={() => {
-                      onRemoveVideoUrl(index);
-                    }}
+                    type="button"
+                    size="icon"
+                    variant="destructive"
+                    onClick={() => onRemoveVideoUrl(index)}
                     loading={saveVideosPending}
                     aria-label={t("media.aria.removeVideoUrl")}
                   >
                     <TrashIcon size={16} />
                   </Button>
                 ) : null}
-              </Group>
+              </div>
             ))}
-
             {isModerator ? (
-              <Group gap={8}>
+              <div className="admin-member-media__actions">
                 <Button
+                  type="button"
                   size="sm"
-                  variant="default"
-                  leftSection={<PlusIcon size={16} />}
+                  variant="outline"
                   onClick={onAddVideoUrl}
                   disabled={videoUrls.length >= 10}
                 >
+                  <PlusIcon size={16} data-icon="inline-start" />
                   {t("media.addVideoUrl")}
                 </Button>
                 {hasVideoChanges ? (
-                  <Button
-                    size="sm"
-                    onClick={() => {
-                      void onSaveVideoUrls();
-                    }}
-                    loading={saveVideosPending}
-                  >
+                  <Button type="button" size="sm" onClick={() => void onSaveVideoUrls()} loading={saveVideosPending}>
                     {t("media.saveVideoUrls")}
                   </Button>
                 ) : null}
-              </Group>
+              </div>
             ) : null}
-
             {videoUrls.length === 0 && !isModerator ? (
-              <Text c="dimmed" size="sm">{t("media.noVideos")}</Text>
+              <p className="admin-member-media__muted">{t("media.noVideos")}</p>
             ) : null}
-          </Stack>
-        </div>
-      </Paper>
+          </div>
+        </CardContent>
+      </Card>
 
-      <Paper withBorder radius="md">
-        <div style={{ padding: "var(--card-padding)" }}>
-          <Text fw={600} size="sm" mb={12}>{t("media.audio")}</Text>
-          {member.profile.audio_media_id ? (
-            <Stack gap={6}>
-              <audio controls src={resolveMediaUrl(member.profile.audio_media_id, "full")} style={{ width: "100%" }} />
-              <Text c="dimmed" size="sm" style={{ wordBreak: "break-all" }}>
-                {member.profile.audio_name ?? member.profile.audio_media_id}
-              </Text>
-              {isAdmin ? (
-                <Button
-                  color="red"
-                  size="sm"
-                  w="fit-content"
-                  leftSection={<TrashIcon size={14} />}
-                  onClick={() => void handleDeleteAudio()}
-                  loading={deleteAudioPending}
-                  aria-label={t("media.aria.removeAudio")}
-                >
-                  {t("media.removeAudio")}
-                </Button>
-              ) : null}
-            </Stack>
-          ) : (
-            <Text c="dimmed" size="sm">{t("media.noAudio")}</Text>
-          )}
+      <Card size="sm" className="admin-member-media__card">
+        <CardHeader><CardTitle>{t("media.audio")}</CardTitle></CardHeader>
+        <CardContent>
+          <div className="admin-member-media__section-stack">
+            {member.profile.audio_media_id ? (
+              <div className="admin-member-media__audio-stack">
+                <audio controls preload="metadata" src={resolveMediaUrl(member.profile.audio_media_id, "full")} />
+                <span className="admin-member-media__filename">
+                  {member.profile.audio_name ?? member.profile.audio_media_id}
+                </span>
+                {isAdmin ? (
+                  <Button
+                    type="button"
+                    variant="destructive"
+                    size="sm"
+                    onClick={() => void handleDeleteAudio()}
+                    loading={deleteAudioPending}
+                    aria-label={t("media.aria.removeAudio")}
+                  >
+                    <TrashIcon size={14} data-icon="inline-start" />
+                    {t("media.removeAudio")}
+                  </Button>
+                ) : null}
+              </div>
+            ) : (
+              <p className="admin-member-media__muted">{t("media.noAudio")}</p>
+            )}
 
-          {isModerator ? (
-            <Stack gap={8} mt="md">
-              {audioUploader.error ? <Text c="red" size="sm">{audioUploader.error}</Text> : null}
-              {audioUploader.isConverting || audioUploader.isUploading ? (
-                <Stack style={{ width: "100%" }} gap={4}>
-                  <Progress value={audioUploader.conversionProgress} size="sm" animated />
-                  <Progress value={audioUploader.uploadProgress} size="sm" animated />
-                </Stack>
-              ) : null}
-              <Group gap={8}>
-                <FileButton
-                  onChange={(file) => { if (file) audioUploader.selectFiles([file]); }}
+            {isModerator ? (
+              <div className="admin-member-media__upload-stack">
+                {audioUploader.error ? <p className="admin-member-media__error">{audioUploader.error}</p> : null}
+                {audioUploader.isConverting || audioUploader.isUploading ? (
+                  <div className="admin-member-media__progress-stack">
+                    <Progress value={audioUploader.conversionProgress} />
+                    <Progress value={audioUploader.uploadProgress} />
+                  </div>
+                ) : null}
+                <input
+                  ref={audioInputRef}
+                  className="sr-only"
+                  type="file"
                   accept={AUDIO_FILE_ACCEPT}
-                >
-                  {(btnProps) => (
-                    <Button
-                      variant="default"
-                      size="sm"
-                      leftSection={<PlusIcon size={14} />}
-                      {...btnProps}
-                    >
-                      {t("media.selectAudio")}
-                    </Button>
-                  )}
-                </FileButton>
-                <Button
-                  leftSection={<UploadIcon size={14} />}
-                  onClick={() => {
-                    void onUploadAudio();
+                  tabIndex={-1}
+                  aria-hidden="true"
+                  onChange={(event) => {
+                    const file = event.currentTarget.files?.[0];
+                    if (file) audioUploader.selectFiles([file]);
+                    event.currentTarget.value = "";
                   }}
-                  loading={audioUploader.isUploading}
-                  disabled={audioUploader.files.length === 0}
-                  size="sm"
-                >
-                  {t("media.uploadAudio")}
-                </Button>
-              </Group>
-            </Stack>
-          ) : null}
-        </div>
-      </Paper>
-    </Stack>
+                />
+                <div className="admin-member-media__actions">
+                  <Button type="button" variant="outline" size="sm" onClick={() => audioInputRef.current?.click()}>
+                    <PlusIcon size={14} data-icon="inline-start" />
+                    {t("media.selectAudio")}
+                  </Button>
+                  <Button
+                    type="button"
+                    size="sm"
+                    onClick={() => void onUploadAudio()}
+                    loading={audioUploader.isUploading}
+                    disabled={audioUploader.files.length === 0}
+                  >
+                    <UploadIcon size={14} data-icon="inline-start" />
+                    {t("media.uploadAudio")}
+                  </Button>
+                </div>
+              </div>
+            ) : null}
+          </div>
+        </CardContent>
+      </Card>
+    </div>
   );
 }

@@ -120,7 +120,7 @@ describe("audit archive", () => {
     expect(scalar(second.database, "SELECT COUNT(*) FROM audit_archives WHERE status = 'ready'")).toBe(0);
     expect(second.blobs.objects.size).toBe(1);
     const originalBytes = new TextDecoder().decode([...second.blobs.objects.values()][0]!.bytes);
-    second.database.prepare("UPDATE users SET username = 'Renamed Admin' WHERE id = 'admin-1'").run();
+    second.database.prepare("UPDATE users SET display_name = 'Renamed Admin' WHERE id = 'admin-1'").run();
     second.database.exec("DROP TRIGGER injected_finalize_delete_failure");
     await expect(archive(second.service, CUTOFF, "2026-08-09T12:11:00.000Z"))
       .resolves.toMatchObject({ archived: 2 });
@@ -205,7 +205,7 @@ function setup(oldRows: number, addRecent: boolean) {
   databases.push(database);
   database.exec(`
     PRAGMA foreign_keys = ON;
-    CREATE TABLE users (id TEXT PRIMARY KEY, username TEXT NOT NULL);
+    CREATE TABLE users (id TEXT PRIMARY KEY, display_name TEXT NOT NULL);
     CREATE TABLE audit_log (
       id TEXT PRIMARY KEY,
       request_id TEXT NOT NULL,
@@ -253,7 +253,7 @@ function setup(oldRows: number, addRecent: boolean) {
     );
   `);
   database.exec(readFileSync(fileURLToPath(new URL("../schema/audit-invariants.sql", import.meta.url)), "utf8"));
-  database.prepare("INSERT INTO users (id, username) VALUES ('admin-1', 'Admin')").run();
+  database.prepare("INSERT INTO users (id, display_name) VALUES ('admin-1', 'Admin')").run();
   const insert = database.prepare(`INSERT INTO audit_log (
     id, request_id, actor_kind, actor_id, actor_label, subject_type, subject_id,
     subject_label, action, payload_json, occurred_at

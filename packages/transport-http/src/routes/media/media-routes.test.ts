@@ -97,6 +97,25 @@ describe("media HTTP route", () => {
     });
   });
 
+  it("sets a safe attachment disposition for file downloads on GET and HEAD", async () => {
+    const { app } = buildApp("public", 'Guild "Guide".pdf');
+    const get = await app.request("/api/media/media-1/full");
+    const head = await app.request("/api/media/media-1/full", { method: "HEAD" });
+    const expected = "attachment; filename=\"Guild _Guide_.pdf\"; filename*=UTF-8''Guild%20%22Guide%22.pdf";
+
+    expect(get.headers.get("Content-Disposition")).toBe(expected);
+    expect(head.headers.get("Content-Disposition")).toBe(expected);
+  });
+
+  it("percent-encodes RFC 5987 excluded filename characters", async () => {
+    const { app } = buildApp("public", "Guild's (final)*.xlsx");
+    const response = await app.request("/api/media/media-1/full");
+
+    expect(response.headers.get("Content-Disposition")).toBe(
+      "attachment; filename=\"Guild's (final)*.xlsx\"; filename*=UTF-8''Guild%27s%20%28final%29%2A.xlsx",
+    );
+  });
+
   it("returns total-aware 416 responses without requesting object bodies", async () => {
     const { app, head, read } = buildApp();
     for (const range of ["bytes=20-30", "bytes=invalid"]) {
@@ -109,7 +128,10 @@ describe("media HTTP route", () => {
   });
 });
 
-function buildApp(audience: "public" | "authenticated" | "private" = "public") {
+function buildApp(
+  audience: "public" | "authenticated" | "private" = "public",
+  downloadName?: string,
+) {
   const metadata: BlobMetadata = {
     key: "media/media-1/full.webp",
     size: bytes.byteLength,
@@ -118,7 +140,7 @@ function buildApp(audience: "public" | "authenticated" | "private" = "public") {
     etag: "media-etag",
     lastModified: "2026-08-09T12:00:00.000Z",
   };
-  const head = vi.fn(async () => ({ metadata, audience }));
+  const head = vi.fn(async () => ({ metadata, audience, ...(downloadName ? { downloadName } : {}) }));
   const read = vi.fn(async (
     _context: RequestContext,
     _mediaId: string,
@@ -140,6 +162,7 @@ function buildApp(audience: "public" | "authenticated" | "private" = "public") {
         ...(range ? { range: { offset, length, total: bytes.byteLength } } : {}),
       } satisfies BlobRead,
       audience,
+      ...(downloadName ? { downloadName } : {}),
     };
   });
   const app = new Hono<HttpEnv>();

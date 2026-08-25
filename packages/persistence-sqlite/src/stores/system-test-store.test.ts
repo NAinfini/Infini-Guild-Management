@@ -51,7 +51,7 @@ function harness() {
         AND runs.status = 'cleaning'
     )
     BEGIN SELECT RAISE(ABORT, 'audit immutable'); END;`);
-  database.prepare("INSERT INTO users (id, username) VALUES ('admin-1', 'admin'), ('admin-2', 'other')").run();
+  database.prepare("INSERT INTO users (id, display_name) VALUES ('admin-1', 'admin'), ('admin-2', 'other')").run();
   const executor = new SqliteTestExecutor(database);
   const store = new SqliteSystemTestStore(executor);
   const artifacts = new SqliteSystemTestArtifactCleaner(executor);
@@ -210,7 +210,12 @@ describe("SqliteSystemTestStore", () => {
     await service.beginRequest(owner, runId);
 
     database.exec(`
-      INSERT INTO users (id, username) VALUES ('user-created', 'created');
+      INSERT INTO users (id, display_name) VALUES ('user-created', 'created');
+      INSERT INTO user_credentials (user_id, login_name, password_hash)
+        VALUES ('user-created', 'created-login', 'password-hash');
+      INSERT INTO login_failures (login_name, fail_count, last_failed_at) VALUES
+        ('created-login', 2, '${NOW}'),
+        ('baseline-login', 1, '${NOW}');
       INSERT INTO roles (id) VALUES ('role-created');
       INSERT INTO events (id) VALUES ('event-created');
       INSERT INTO recurring_templates (id) VALUES ('template-created');
@@ -225,6 +230,12 @@ describe("SqliteSystemTestStore", () => {
       INSERT INTO wiki_revisions (id, article_id) VALUES ('revision-created', 'wiki-created');
       INSERT INTO wiki_revision_media (revision_id) VALUES ('revision-created');
       INSERT INTO announcements (id) VALUES ('announcement-created');
+      INSERT INTO notification_inbox (id, entity_type, entity_id, source_key) VALUES
+        ('notification-member-created', 'member', 'user-created', 'member_joined:user-created'),
+        ('notification-event-created', 'event', 'event-created', 'event_created:event-created'),
+        ('notification-wiki-created', 'wiki_article', 'wiki-created', 'wiki_article_created:wiki-created'),
+        ('notification-announcement-created', 'announcement', 'announcement-created', 'announcement_published:announcement-created'),
+        ('notification-baseline', 'event', 'event-baseline', 'event_created:event-baseline');
       INSERT INTO gallery_items (id) VALUES ('gallery-created');
       INSERT INTO guild_wars (id, event_id) VALUES ('war-created', 'event-created');
       INSERT INTO member_badges (id, sort_order, updated_at) VALUES ('badge-created', 0, '${NOW}');
@@ -293,6 +304,10 @@ describe("SqliteSystemTestStore", () => {
       { id: "admin-1" },
       { id: "admin-2" },
     ]);
+    expect(database.prepare("SELECT id FROM notification_inbox ORDER BY id").all())
+      .toEqual([{ id: "notification-baseline" }]);
+    expect(database.prepare("SELECT login_name FROM login_failures ORDER BY login_name").all())
+      .toEqual([{ login_name: "baseline-login" }]);
     for (const table of [
       "roles", "events", "recurring_templates", "storage_batches", "storage_items",
       "storage_categories", "storages", "storage_ledger_entries", "wiki_articles",
@@ -509,7 +524,17 @@ describe("SqliteSystemTestStore", () => {
 
 const SCHEMA = `
   PRAGMA foreign_keys = ON;
-  CREATE TABLE users (id TEXT PRIMARY KEY, username TEXT NOT NULL);
+  CREATE TABLE users (id TEXT PRIMARY KEY, display_name TEXT NOT NULL);
+  CREATE TABLE user_credentials (
+    user_id TEXT PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+    login_name TEXT NOT NULL,
+    password_hash TEXT NOT NULL
+  );
+  CREATE TABLE login_failures (
+    login_name TEXT PRIMARY KEY,
+    fail_count INTEGER NOT NULL DEFAULT 0,
+    last_failed_at TEXT NOT NULL
+  );
   ${AUDIT_LOG_SCHEMA}
   CREATE TABLE error_log (id TEXT PRIMARY KEY, request_id TEXT, created_at TEXT NOT NULL);
   CREATE TABLE wiki_categories (id TEXT PRIMARY KEY, name TEXT NOT NULL);
@@ -525,6 +550,10 @@ const SCHEMA = `
   CREATE TABLE wiki_revisions (id TEXT PRIMARY KEY, article_id TEXT NOT NULL);
   CREATE TABLE wiki_revision_media (revision_id TEXT NOT NULL);
   CREATE TABLE announcements (id TEXT PRIMARY KEY);
+  CREATE TABLE notification_inbox (
+    id TEXT PRIMARY KEY, entity_type TEXT NOT NULL,
+    entity_id TEXT NOT NULL, source_key TEXT NOT NULL
+  );
   CREATE TABLE gallery_items (id TEXT PRIMARY KEY);
   CREATE TABLE guild_wars (id TEXT PRIMARY KEY, event_id TEXT UNIQUE);
   CREATE TABLE invite_links (id TEXT PRIMARY KEY);

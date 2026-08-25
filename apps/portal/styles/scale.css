@@ -36,8 +36,9 @@
  * ═══════════════════════════════════════════════════════════════ */
 :root {
   /* 布局 */
-  --header-height: 48px;
-  --header-height-mobile: 48px;
+  --app-header-height: 72px;
+  --header-height: var(--app-header-height);
+  --header-height-mobile: var(--app-header-height);
   --sidebar-width: 236px;
   --sidebar-collapsed-width: 84px;
   --bottom-nav-height: 64px;
@@ -55,7 +56,7 @@
   --z-modal: 200;
   --z-toast: 300;
 
-  /* 三档通用形状。Mantine 的 xs…xl 映射到这三档，不再形成第二套圆角标度。 */
+  /* 三档通用形状；所有共享控件直接消费这套标度。 */
   --radius-control: 6px;
   --radius-surface: 10px;
   --radius-overlay: 14px;
@@ -96,7 +97,7 @@
    *
    * Visual control height is independent from the larger transparent touch target.
    *
-   * 现在按指针精度分档：细指针取 36px（回到 Mantine 原生 sm），粗指针整档
+   * 现在按指针精度分档：细指针取 36px，粗指针整档
    * 回到 44px。用 @media (pointer: coarse) 而不是站点自己的
    * data-input-modality——后者是「上一次输入用的是什么」，会在同一台设备上
    * 来回翻，拿它控尺寸会让控件在鼠标和触摸之间跳动；pointer 媒体特性问的是
@@ -121,6 +122,8 @@
   --motion-state: 120ms cubic-bezier(.2, .8, .2, 1);
   --motion-overlay: 180ms cubic-bezier(.2, .8, .2, 1);
   --motion-panel: 240ms cubic-bezier(.2, .8, .2, 1);
+  --motion-route-progress: 1.05s cubic-bezier(.2, .8, .2, 1);
+  --motion-guild-pulse: 32s linear;
   --transition-fast: var(--motion-state);
   --transition-normal: var(--motion-overlay);
   --transition-smooth: var(--motion-panel);
@@ -136,7 +139,7 @@
   --motion-press: 0.98;
   --motion-sink: 1px;
 
-  /* 字体。L3 使用站点语义名称，ThemeProvider 再桥接给 Mantine。 */
+  /* 字体。L3 使用站点语义名称，由共享控件直接消费。 */
   --font-body: "Inter", system-ui, sans-serif;
   --font-display: "Saira Semi Condensed", var(--font-body);
   --font-code: "JetBrains Mono", "Fira Code", monospace;

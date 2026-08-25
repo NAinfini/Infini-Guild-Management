@@ -1,4 +1,3 @@
-import { MantineProvider } from "@mantine/core";
 import { fireEvent, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -13,14 +12,12 @@ function renderInput(
     changedValues.push(event.currentTarget.value);
   });
   const result = render(
-    <MantineProvider>
-      <NativeDateTimeInput
-        aria-label="Date"
-        value="2026-08-04"
-        onChange={onChange}
-        {...props}
-      />
-    </MantineProvider>,
+    <NativeDateTimeInput
+      aria-label="Date"
+      value="2026-08-04"
+      onChange={onChange}
+      {...props}
+    />,
   );
 
   return {

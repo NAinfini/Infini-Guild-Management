@@ -58,13 +58,13 @@ describe("AdminApiTestEngine request preparation", () => {
       { label: "Register", method: "POST", path: "/api/auth/register/:inviteCode" },
       registerContext,
     ))).toMatchObject({
-      username: "apitest_488488b7b293414988ba5eef4f202dcb",
+      display_name: "apitest_488488b7b293414988ba5eef4f202dcb",
     });
     expect(parseJsonBody(prepareEndpointRequest(
       { label: "Create Member", method: "POST", path: "/api/admin/users" },
       adminContext,
     ))).toMatchObject({
-      username: "apitestadmin_488488b7b293414988ba5eef4f202dcb",
+      display_name: "apitestadmin_488488b7b293414988ba5eef4f202dcb",
       role_id: "raid-lead",
     });
   });
@@ -95,7 +95,7 @@ describe("AdminApiTestEngine request preparation", () => {
         parsedJson: {
           user: {
             id: "admin-1",
-            username: "admin",
+            display_name: "admin",
             role_level: 500,
             permissions: { "admin.users.role": true, "admin.audit.view": false },
           },
@@ -123,18 +123,18 @@ describe("AdminApiTestEngine request preparation", () => {
     expect(next.adminRoleId).toBe("assignable");
   });
 
-  it("uses the captured admin-created username for login smoke tests", () => {
+  it("uses the captured admin-created login name for login smoke tests", () => {
     const endpoint = { label: "Login", method: "POST" as const, path: "/api/auth/login" };
     const ctx = contextWith({
       adminCreatedUserId: "user-1",
-      adminCreatedUsername: "systemtest_admin_123",
+      adminCreatedLoginName: "systemtest_admin_123",
       adminCreatedUserPassword: "TempPass123!",
     });
 
     const prepared = prepareEndpointRequest(endpoint, ctx);
 
     expect(parseJsonBody(prepared)).toEqual({
-      username: "systemtest_admin_123",
+      login_name: "systemtest_admin_123",
       password: "TempPass123!",
     });
     expect(prepared.credentials).toBe("omit");
@@ -144,14 +144,14 @@ describe("AdminApiTestEngine request preparation", () => {
     const endpoint = { label: "Login", method: "POST" as const, path: "/api/auth/login" };
     const ctx = contextWith({
       registeredUserId: "user-2",
-      registeredUsername: "systemtest_123",
+      registeredLoginName: "systemtest_123",
       registeredUserPassword: "Passw0rd!",
     });
 
     const prepared = prepareEndpointRequest(endpoint, ctx);
 
     expect(parseJsonBody(prepared)).toEqual({
-      username: "systemtest_123",
+      login_name: "systemtest_123",
       password: "Passw0rd!",
     });
     expect(prepared.credentials).toBe("omit");
@@ -161,7 +161,7 @@ describe("AdminApiTestEngine request preparation", () => {
     const prepared = prepareEndpointRequest(
       { label: "Login", method: "POST", path: "/api/auth/login" },
       contextWith({
-        registeredUsername: "systemtest_failed",
+        registeredLoginName: "systemtest_failed",
         registeredUserPassword: "Passw0rd!",
       }),
     );
@@ -461,7 +461,7 @@ describe("AdminApiTestEngine request preparation", () => {
     ).path).toBe("/api/media/defghijklmnopqrstuvwx/view");
   });
 
-  it("captures admin-created username and uploaded media IDs from responses", () => {
+  it("captures admin-created temporary login names and uploaded media IDs from responses", () => {
     const adminCtx = captureContextFromResponse(
       createInitialTestRunContext(),
       { label: "Create User", method: "POST", path: "/api/admin/users" },
@@ -471,11 +471,16 @@ describe("AdminApiTestEngine request preparation", () => {
         body: "{}",
         error: null,
         ranAt: "2026-05-18T00:00:00.000Z",
-        parsedJson: { user_id: "user-1", username: "systemtest_admin_1", temporary_password: "TempPass123!" },
+        parsedJson: {
+          user_id: "user-1",
+          display_name: "systemtest_admin_1",
+          temporary_login_name: "systemtest_login_1",
+          temporary_password: "TempPass123!",
+        },
       },
     );
 
-    expect(adminCtx.adminCreatedUsername).toBe("systemtest_admin_1");
+    expect(adminCtx.adminCreatedLoginName).toBe("systemtest_login_1");
 
     const imageCtx = captureContextFromResponse(
       adminCtx,
@@ -552,7 +557,7 @@ describe("AdminApiTestEngine request preparation", () => {
         body: "{}",
         error: null,
         ranAt: "2026-05-18T00:00:00.000Z",
-        parsedJson: { user: { id: "registered-1", username: "systemtest_1" } },
+        parsedJson: { user: { id: "registered-1", display_name: "systemtest_1" } },
       },
     );
 
@@ -884,7 +889,6 @@ describe("AdminApiTestEngine request preparation", () => {
       "GET /api/health",
       "GET /api/site-config",
       "POST /api/auth/login",
-      "GET /api/auth/check-username?username=test",
       "GET /api/auth/verify-invite/:code",
       "POST /api/auth/register/:inviteCode",
       "GET /api/auth/me",
@@ -1078,7 +1082,6 @@ describe("AdminApiTestEngine request preparation", () => {
     expect(endpointKeys).toContain("GET /api/health");
     expect(endpointKeys).toContain("GET /api/site-config");
     expect(endpointKeys).toContain("GET /api/admin/status");
-    expect(endpointKeys).toContain("GET /api/auth/check-username?username=test");
     expect(endpointKeys).not.toContain("POST /api/admin/invite-links");
     expect(endpointKeys).not.toContain("GET /api/auth/verify-invite/:code");
     expect(endpointKeys).not.toContain("POST /api/auth/register/:inviteCode");
@@ -1517,11 +1520,10 @@ describe("AdminApiTestEngine request preparation", () => {
    */
   it("never sends the mutations that would change the running admin or the whole site", () => {
     const alwaysSkipped = [
-      { label: "Logout", method: "POST" as const, path: "/api/auth/logout" },
-      { label: "Update Site Config", method: "PATCH" as const, path: "/api/admin/site-config" },
-      { label: "Upload Site Logo", method: "POST" as const, path: "/api/admin/site-config/logo" },
-      { label: "Change Password", method: "POST" as const, path: "/api/users/:id/change-password" },
-      { label: "Change Username", method: "POST" as const, path: "/api/users/:id/change-username" },
+      { label: "Logout", method: "POST" as const, path: "/api/auth/logout", optionalSkip: true },
+      { label: "Update Site Config", method: "PATCH" as const, path: "/api/admin/site-config", optionalSkip: true },
+      { label: "Upload Site Logo", method: "POST" as const, path: "/api/admin/site-config/logo", optionalSkip: true },
+      { label: "Reset Password", method: "POST" as const, path: "/api/admin/users/:id/reset-password", optionalSkip: false },
     ];
     const endpointKeys = buildApiCategories((key) => key)
       .flatMap((category) => category.endpoints.map((endpoint) => `${endpoint.method} ${endpoint.path}`));
@@ -1530,7 +1532,7 @@ describe("AdminApiTestEngine request preparation", () => {
       expect(endpointKeys, key).toContain(key);
       const prepared = prepareEndpointRequest(endpoint, createInitialTestRunContext());
       expect(prepared.skipReason, key).toBeTruthy();
-      expect(prepared.optionalSkip, key).toBe(true);
+      expect(prepared.optionalSkip, key).toBe(endpoint.optionalSkip);
       expect(prepared.body, key).toBeUndefined();
     }
   });

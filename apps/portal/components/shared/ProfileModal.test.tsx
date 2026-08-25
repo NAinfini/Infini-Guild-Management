@@ -1,10 +1,8 @@
 import type { MemberProfile, User } from "@guild/shared";
-import { MantineProvider } from "@mantine/core";
 import { screen } from "@testing-library/react";
 import { renderWithQueryClient as render } from "@portal/tests/query-harness";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
-import type { ReactNode } from "react";
 import { describe, expect, it, vi } from "vitest";
 import enCommon from "../../i18n/en/common.json";
 import zhCommon from "../../i18n/zh/common.json";
@@ -17,21 +15,10 @@ vi.mock("react-i18next", () => ({
   }),
 }));
 
-vi.mock("@mantine/carousel", () => ({
-  Carousel: Object.assign(
-    ({ children }: { children: ReactNode }) => <div>{children}</div>,
-    { Slide: ({ children }: { children: ReactNode }) => <div>{children}</div> },
-  ),
-}));
-
-vi.mock("@mantine/hooks", () => ({
-  useMediaQuery: () => false,
-}));
-
 const now = "2026-08-05T12:00:00.000Z";
 const user: User = {
   id: "user-1",
-  username: "Aster",
+  display_name: "Aster",
   role: "member",
   role_name: "Guild Member",
   role_color: "#22c55e",
@@ -66,16 +53,14 @@ const profile: MemberProfile = {
 describe("ProfileModal", () => {
   it("labels users.updated_at accurately and loads the CSP-approved video embed", () => {
     render(
-      <MantineProvider>
-        <ProfileModal
-          open
-          user={user}
-          profile={profile}
-          onClose={vi.fn()}
-          onEdit={vi.fn()}
-          canEdit
-        />
-      </MantineProvider>,
+      <ProfileModal
+        open
+        user={user}
+        profile={profile}
+        onClose={vi.fn()}
+        onEdit={vi.fn()}
+        canEdit
+      />,
     );
 
     expect(screen.getByText("profile.field.accountUpdated")).toBeInTheDocument();

@@ -288,7 +288,7 @@ export class GuildWarService {
     const aggregate = await this.ensureActive(context, eventId, event.event.title, actor.userId);
     const teamMembers = aggregate.teams.flatMap((team) => team.members);
     const teamMemberIds = new Set(teamMembers.map(({ userId }) => userId));
-    const usernamesById = new Map(teamMembers.map(({ userId, username }) => [userId, username]));
+    const usernamesById = new Map(teamMembers.map(({ userId, display_name }) => [userId, display_name]));
     const missing = updates.find(({ user_id }) => !teamMemberIds.has(user_id));
     if (missing) throw notFound("Member not found in active teams", { user_id: missing.user_id });
     const normalized = [...new Map(updates.map((update) => [update.user_id, {
@@ -606,7 +606,7 @@ export class GuildWarService {
     const normalized = [...new Map(updates.map((update) => [update.user_id, update])).values()];
     const missing = normalized.find(({ user_id }) => !memberIds.has(user_id));
     if (missing) throw notFound("Team member not found in selected war history", { user_id: missing.user_id });
-    const usernamesById = new Map(members.map(({ userId, username }) => [userId, username]));
+    const usernamesById = new Map(members.map(({ userId, display_name }) => [userId, display_name]));
     const audit = createAuditEvent(context, {
       subjectType: "guild_war_member_stats",
       subjectId: normalized.length === 1 ? `${warId}:${normalized[0]!.user_id}` : warId,
@@ -745,7 +745,7 @@ function virtualPool(eventId: string, userIds: readonly string[]): WarMemberReco
     warId: `virtual:${eventId}`,
     teamId: null,
     userId,
-    username: userId,
+    display_name: userId,
     avatarMediaId: null,
     roleTag: null,
     sortOrder,

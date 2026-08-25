@@ -1,16 +1,15 @@
 import { type PushMessage } from "@guild/shared";
 import type { PushEntityType } from "@guild/shared/constants/push-hints";
-import { Alert, AppShell as MantineAppShell } from "@mantine/core";
-import { useMediaQuery } from "@mantine/hooks";
+import { IconX } from "@tabler/icons-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { Outlet, useNavigate, useRouterState } from "@tanstack/react-router";
 import { useTranslation } from "react-i18next";
 import { setI18nLocale } from "../../i18n";
 import { canAccessAdmin, userCanAccessAdmin } from "../../utils/permissions";
 import { ViewingAsProvider } from "../../context/ViewingAsContext";
-import { useNotificationPresentation } from "../../hooks/useNotificationPresentation";
 import { useNotificationSync } from "../../hooks/useNotificationSync";
+import { useMediaQuery } from "../../hooks/useMediaQuery";
 import { queryKeys } from "../../api/query-keys";
 import { logout as requestLogout } from "../../services/AuthService";
 import { fetchRoles } from "../../services/AdminService";
@@ -25,8 +24,10 @@ import {
 } from "../../session-transition";
 import { isExternalViewSearch } from "../../utils/external-view";
 import { notifyWarning } from "../../utils/notifications";
+import { currentReturnTo, isSafeReturnTo } from "../../utils/auth-navigation";
 import { AppErrorOverlay } from "../shared/AppErrorOverlay";
-import { OverlayRegistrar } from "../shared/OverlayRegistrar";
+import { Alert, AlertAction, AlertDescription } from "../ui/alert";
+import { VisualThemeScene } from "../shared/VisualThemeArtwork";
 import { BottomNav } from "./BottomNav";
 import {
   AppSidebar,
@@ -37,11 +38,17 @@ import {
   HEADER_COMPACT_BREAKPOINT_PX,
 } from "./AppSidebar";
 import { AppHeader } from "./AppHeader";
+import { ImportantNoticeGate } from "./ImportantNoticeGate";
 import {
   findPortalRoute,
+  groupPortalRoutes,
   PORTAL_ROUTES,
   type PortalRouteMetadata,
 } from "./route-metadata";
+import {
+  AdminContextNavigationProvider,
+  useAdminContextNavigationModel,
+} from "./AdminContextNavigation";
 import "./AppShell.css";
 
 const ENTITY_QUERY_KEYS = {
@@ -60,7 +67,6 @@ const ENTITY_QUERY_KEYS = {
 // Invalidating per message refetches the same queries once per burst entry,
 // so invalidations collect for this long and flush as a single round.
 const PUSH_INVALIDATION_WINDOW_MS = 300;
-
 function normalizeViewingAs(role: string | null, isExternalView: boolean): string {
   if (isExternalView) {
     return "external";
@@ -80,10 +86,44 @@ function syncViewSearch(nextRole: string) {
 }
 
 export function AppShell() {
+  return (
+    <AdminContextNavigationProvider>
+      <AppShellContent />
+    </AdminContextNavigationProvider>
+  );
+}
+
+function ShellBanner({
+  children,
+  status,
+  onClose,
+  closeLabel,
+}: {
+  children: ReactNode;
+  status: "neutral" | "warning" | "danger";
+  onClose?: () => void;
+  closeLabel?: string;
+}) {
+  return (
+    <Alert className="app-banner" data-status={status} role="status" aria-live="polite">
+      <AlertDescription>{children}</AlertDescription>
+      {onClose ? (
+        <AlertAction>
+          <button type="button" className="app-banner__close" aria-label={closeLabel} onClick={onClose}>
+            <IconX aria-hidden="true" />
+          </button>
+        </AlertAction>
+      ) : null}
+    </Alert>
+  );
+}
+
+function AppShellContent() {
   const { t } = useTranslation("common");
   const navigate = useNavigate();
 
   const pathname = useRouterState({ select: (state) => state.location.pathname });
+  const activeRoute = useMemo(() => findPortalRoute(pathname), [pathname]);
   const searchStr = useRouterState({ select: (state) => state.location.searchStr });
   const isExternalView = isExternalViewSearch(searchStr);
   const isMobile = useMediaQuery(`(max-width: ${MOBILE_BREAKPOINT_PX}px)`) ?? false;
@@ -92,22 +132,29 @@ export function AppShell() {
   const [isSidebarExpanded, setIsSidebarExpanded] = useState(true);
   const isSidebarCollapsed = !isSidebarExpanded;
   const sidebarWidth = isSidebarCollapsed ? SIDEBAR_COLLAPSED_WIDTH : SIDEBAR_WIDTH;
-  // `/register` (invite code entry) and `/register/<code>` are both full-screen
-  // auth pages; neither may render inside the portal chrome.
-  const hideNavigation = pathname === "/login" || pathname === "/register" || pathname.startsWith("/register/");
   const queryClient = useQueryClient();
-
   const user = useAuthStore((s) => s.user);
+  const siteName = useSiteConfigStore((state) => state.siteName);
+  const sessionScope = useAuthStore((s) => s.sessionScope);
+  const passwordChangeOnly = sessionScope === "password_change";
+  const isGuestLanding = pathname === "/" && !user && !passwordChangeOnly;
+  // Focused auth/status flows render their own public frame instead of portal chrome.
+  const hideNavigation = pathname === "/login"
+    || pathname === "/register"
+    || pathname.startsWith("/register/")
+    || pathname === "/verify-email"
+    || pathname === "/403"
+    || pathname === "/maintenance"
+    || activeRoute.to === "/__not-found__"
+    || passwordChangeOnly;
   const locale = usePreferencesStore((s) => s.locale);
   const notificationFeatures = useNotificationStore((state) => state.features);
-  const pushEntries = useNotificationStore((state) => state.pushHistory);
-  const { markFeatureAsRead, markPushAsRead, markAllPushAsRead, clearPushHistory } = useNotificationStore.getState();
+  const { markFeatureAsRead } = useNotificationStore.getState();
   const [isOnline, setIsOnline] = useState(typeof navigator === "undefined" ? true : navigator.onLine);
   const [permissionBanner, setPermissionBanner] = useState<string | null>(null);
   const [viewingAs, setViewingAs] = useState<string>(() =>
     normalizeViewingAs(user?.role ?? null, isExternalView),
   );
-  const scrollContainerRef = useRef<HTMLElement>(null);
 
   useEffect(() => {
     void setI18nLocale(locale);
@@ -116,17 +163,6 @@ export function AppShell() {
   useEffect(() => {
     setViewingAs(normalizeViewingAs(user?.role ?? null, isExternalView));
   }, [isExternalView, user?.role]);
-
-  useEffect(() => {
-    const frameId = window.requestAnimationFrame(() => {
-      if (scrollContainerRef.current) {
-        scrollContainerRef.current.scrollTo({ top: 0, left: 0, behavior: "auto" });
-      }
-    });
-    return () => {
-      window.cancelAnimationFrame(frameId);
-    };
-  }, [pathname]);
 
   useEffect(() => {
     const onOnline = () => setIsOnline(true);
@@ -145,10 +181,7 @@ export function AppShell() {
       if (!hadSession) return;
 
       const detail = (event as CustomEvent<{ returnTo?: string }>).detail;
-      const returnTo =
-        detail?.returnTo && detail.returnTo.startsWith("/")
-          ? detail.returnTo
-          : `${window.location.pathname}${window.location.search}${window.location.hash}`;
+      const returnTo = isSafeReturnTo(detail?.returnTo) ? detail.returnTo : currentReturnTo();
       if (window.location.pathname === "/login") {
         return;
       }
@@ -229,6 +262,9 @@ export function AppShell() {
       if (message.type === "announcement_published") {
         queueInvalidations([queryKeys.announcements.all]);
       }
+      if (message.type === "inbox_changed") {
+        queueInvalidations([queryKeys.notifications.all]);
+      }
     },
     [queueInvalidations],
   );
@@ -242,14 +278,10 @@ export function AppShell() {
   }, []);
 
   useNotificationSync({
-    enabled: Boolean(user),
+    enabled: Boolean(user) && sessionScope === "normal",
     onMessage: handlePushMessage,
     onConnected: handleNotificationConnected,
     onUnauthorized: handleNotificationUnauthorized,
-  });
-  useNotificationPresentation({
-    enabled: Boolean(user),
-    showToast: true,
   });
 
   const logoutMutation = useMutation({
@@ -270,13 +302,13 @@ export function AppShell() {
   const rolesQuery = useQuery({
     queryKey: queryKeys.admin.roles(),
     queryFn: fetchRoles,
-    enabled: canSwitchView,
+    enabled: canSwitchView && sessionScope === "normal",
     staleTime: Infinity,
   });
 
   const features = useSiteConfigStore((s) => s.features);
 
-  const visibleNavItems = useMemo(
+  const visiblePortalNavItems = useMemo(
     () =>
       PORTAL_ROUTES.filter((item) => {
         if (item.featureFlag && !features[item.featureFlag]) {
@@ -300,16 +332,24 @@ export function AppShell() {
     [isExternalView, user, viewingAs, rolesQuery.data, features],
   );
 
+  const adminNavigation = useAdminContextNavigationModel({
+    pathname,
+    searchStr,
+    viewingAs,
+    user,
+    roles: rolesQuery.data ?? [],
+  });
+
   const mobileMainItems = useMemo(
     () =>
-      visibleNavItems
+      visiblePortalNavItems
         .filter((item) => item.mobilePrimary)
         .sort((left, right) => (left.mobilePrimary ?? 0) - (right.mobilePrimary ?? 0)),
-    [visibleNavItems],
+    [visiblePortalNavItems],
   );
   const mobileMoreItems = useMemo(
-    () => visibleNavItems.filter((item) => !item.mobilePrimary),
-    [visibleNavItems],
+    () => visiblePortalNavItems.filter((item) => !item.mobilePrimary),
+    [visiblePortalNavItems],
   );
 
   const notificationState = useMemo(
@@ -342,45 +382,59 @@ export function AppShell() {
     [markFeatureAsRead],
   );
 
-  const displayPushEntries = pushEntries;
-
-  const pushHasUnread = useMemo(
-    () => displayPushEntries.some((entry) => entry.readAt === null),
-    [displayPushEntries],
+  const portalSidebarGroups = useMemo(
+    () => groupPortalRoutes(visiblePortalNavItems).map((group) => ({
+      ...group,
+      routes: group.routes.map((route) => ({
+        id: route.to,
+        labelKey: route.labelKey,
+        icon: route.icon,
+        isNew: navHasNew(route),
+      })),
+    })),
+    [navHasNew, visiblePortalNavItems],
   );
+  const sidebarNavGroups = adminNavigation.isAdminContext ? adminNavigation.sidebarGroups : portalSidebarGroups;
+  const selectedNavKey = adminNavigation.isAdminContext ? adminNavigation.activeTab : activeRoute.to;
+  const activeNavigationRoute = adminNavigation.isAdminContext ? adminNavigation.activeRoute : activeRoute;
+  const activePageTitle = t(activeNavigationRoute.labelKey);
+  const activePageIcon = activeNavigationRoute.icon;
+  const previousPathnameRef = useRef(pathname);
 
-  const handlePushNotificationClick = useCallback(
-    (entryId: string, type: string) => {
-      markPushAsRead(entryId);
+  useEffect(() => {
+    if (hideNavigation || isGuestLanding) return;
+    document.title = siteName ? `${activePageTitle} · ${siteName}` : activePageTitle;
+  }, [activePageTitle, hideNavigation, isGuestLanding, siteName]);
 
-      if (type === "announcement_published" || type === "announcement_created") {
-        markFeatureAsRead("announcements");
-        void navigate({ to: "/announcements" });
-        return;
-      }
+  useEffect(() => {
+    const routeChanged = previousPathnameRef.current !== pathname;
+    previousPathnameRef.current = pathname;
+    if (!routeChanged || hideNavigation || isGuestLanding) return;
 
-      if (type === "event_created") {
-        void navigate({ to: "/events" });
-        return;
-      }
-
-      if (type === "wiki_created") {
-        void navigate({ to: "/wiki" });
-        return;
-      }
-
-      if (type === "member_joined") {
-        markFeatureAsRead("members");
-        void navigate({ to: "/roster" });
-        return;
-      }
-    },
-    [markFeatureAsRead, markPushAsRead, navigate],
-  );
-
-  const activeRoute = useMemo(() => findPortalRoute(pathname), [pathname]);
-  const selectedNavKey = activeRoute.to;
-  const activePageTitle = t(activeRoute.labelKey);
+    const frame = requestAnimationFrame(() => {
+      document
+        .querySelector<HTMLElement>(".app-header__page-title")
+        ?.focus({ preventScroll: true });
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [hideNavigation, isGuestLanding, pathname]);
+  const compactMainItems = adminNavigation.isAdminContext
+    ? adminNavigation.bottomItems.slice(0, 4)
+    : mobileMainItems.map((item) => ({
+        to: item.to,
+        label: t(item.labelKey),
+        icon: item.icon,
+        isNew: navHasNew(item),
+      }));
+  const compactMoreItems = adminNavigation.isAdminContext
+    ? adminNavigation.bottomItems.slice(4)
+    : groupPortalRoutes(mobileMoreItems).flatMap((group) => group.routes.map((item) => ({
+      to: item.to,
+      label: t(item.labelKey),
+      icon: item.icon,
+      isNew: navHasNew(item),
+      groupLabel: t(group.labelKey),
+    })));
 
   /*
    * 区域色下发到 <html>，与 data-theme / data-accent 同一个元素。
@@ -400,9 +454,20 @@ export function AppShell() {
     }
   }, [activeRoute.domain]);
 
+  if (isGuestLanding) {
+    return (
+      <ViewingAsProvider value={viewingAs}>
+        <div className="app-public-layout">
+          <Outlet />
+        </div>
+      </ViewingAsProvider>
+    );
+  }
+
   if (hideNavigation) {
     return (
       <ViewingAsProvider value={viewingAs}>
+        {passwordChangeOnly ? null : <ImportantNoticeGate />}
         <div className="app-login-layout">
           <main className="app-login-content">
             <div className="app-login-panel">
@@ -416,29 +481,41 @@ export function AppShell() {
 
   return (
     <ViewingAsProvider value={viewingAs}>
+      <ImportantNoticeGate />
       <a href="#main-content" className="app-skip-link">{t("nav.skipToContent", "Skip to content")}</a>
-      <MantineAppShell
+      <div
         className="app-shell-root"
-        layout="alt"
-        header={{ height: 48 }}
-        navbar={!usesCompactNavigation ? { width: sidebarWidth, breakpoint: COMPACT_NAV_BREAKPOINT_PX } : undefined}
-        padding={0}
+        data-visual-scene={activeRoute.visualScene}
+        data-compact-navigation={usesCompactNavigation || undefined}
+        style={{ "--app-sidebar-width": `${sidebarWidth}px` } as CSSProperties}
       >
-        <OverlayRegistrar />
         <AppErrorOverlay />
+
+        {activeRoute.visualScene ? (
+          <VisualThemeScene
+            className="app-shell__scene"
+            variant={activeRoute.visualScene}
+            loading="eager"
+            fetchPriority="low"
+          />
+        ) : null}
 
         {!usesCompactNavigation ? (
           <AppSidebar
             isSidebarCollapsed={isSidebarCollapsed}
             onCollapse={() => setIsSidebarExpanded(false)}
             onExpand={() => setIsSidebarExpanded(true)}
-            visibleNavItems={visibleNavItems}
+            navGroups={sidebarNavGroups}
             selectedNavKey={selectedNavKey}
-            navHasNew={navHasNew}
-            onNavigate={(to) => {
-              markFeatureAsReadForPath(to);
-              void navigate({ to: to as never });
+            onNavigate={(item) => {
+              if (adminNavigation.isAdminContext) {
+                adminNavigation.navigateContextItem(item.id);
+                return;
+              }
+              markFeatureAsReadForPath(item.id);
+              void navigate({ to: item.id as never });
             }}
+            onReturnToPortal={adminNavigation.isAdminContext ? () => void navigate({ to: "/dashboard" }) : undefined}
             canSwitchView={canSwitchView}
             viewingAs={viewingAs}
             roles={rolesQuery.data ?? []}
@@ -453,68 +530,49 @@ export function AppShell() {
           isMobile={isMobile}
           isHeaderCompact={isHeaderCompact}
           activePageTitle={activePageTitle}
-          activePageIcon={activeRoute.icon}
+          activePageIcon={activePageIcon}
+          visualScene={activeRoute.visualScene}
           user={user}
-          pushHasUnread={pushHasUnread}
-          notificationAnnouncementsHasNew={notificationFeatures.announcements.hasNew}
-          displayPushEntries={displayPushEntries}
-          onNotificationClose={() => { markAllPushAsRead(); markFeatureAsRead("announcements"); }}
-          onClearPushHistory={() => clearPushHistory()}
-          onPushEntryClick={handlePushNotificationClick}
           onLogout={logout}
           onLoginClick={() => void navigate({ to: "/login" })}
         />
 
-        <MantineAppShell.Main id="main-content" ref={scrollContainerRef} className={`app-content ${usesCompactNavigation ? "app-content-mobile" : ""}`}>
-          <div className={`app-main${activeRoute.fillsViewport ? " app-main--fill" : ""}`}>
+        <main id="main-content" className={`app-content ${activeRoute.visualScene ? "app-content--with-scene" : ""} ${usesCompactNavigation ? "app-content-mobile" : ""}`}>
+          <div className="app-main">
             {isExternalView ? (
-              <Alert color="gray" variant="light" className="app-banner">
+              <ShellBanner status="neutral">
                 {t("nav.externalViewBanner")}
-              </Alert>
+              </ShellBanner>
             ) : null}
             {!isOnline ? (
-              <Alert color="orange" variant="light" className="app-banner" role="status" aria-live="polite">
+              <ShellBanner status="warning">
                 {t("nav.offlineBanner")}
-              </Alert>
+              </ShellBanner>
             ) : null}
             {permissionBanner ? (
-              <Alert
-                color="red"
-                variant="light"
-                className="app-banner"
-                role="status"
-                aria-live="polite"
-                withCloseButton
+              <ShellBanner
+                status="danger"
                 onClose={() => setPermissionBanner(null)}
+                closeLabel={t("action.close")}
               >
                 {permissionBanner}
-              </Alert>
+              </ShellBanner>
             ) : null}
-            <div className="app-route-container" data-content-width={activeRoute.contentWidth}>
+            <div key={pathname} className="app-route-container" data-content-width={activeRoute.contentWidth}>
               <Outlet />
             </div>
           </div>
-        </MantineAppShell.Main>
+        </main>
 
         {usesCompactNavigation ? (
           <BottomNav
             pathname={pathname}
-            mainItems={mobileMainItems.map((item) => ({
-              to: item.to,
-              label: t(item.labelKey),
-              icon: item.icon,
-              isNew: navHasNew(item),
-            }))}
-            moreItems={mobileMoreItems.map((item) => ({
-              to: item.to,
-              label: t(item.labelKey),
-              icon: item.icon,
-              isNew: navHasNew(item),
-            }))}
-            onNavigate={markFeatureAsReadForPath}
+            mainItems={compactMainItems}
+            moreItems={compactMoreItems}
+            onNavigate={adminNavigation.isAdminContext ? undefined : markFeatureAsReadForPath}
           />
         ) : null}
-      </MantineAppShell>
+      </div>
     </ViewingAsProvider>
   );
 }

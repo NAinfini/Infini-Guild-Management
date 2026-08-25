@@ -24,8 +24,10 @@ export function useSiteConfigMutations({ showError }: UseSiteConfigMutationsPara
       : data.site.default_site_logo_url;
     useSiteConfigStore.getState().setSiteConfig({
       siteName: data.site.site_name,
+      siteDescription: data.site.site_description,
       siteLogoUrl,
       mediaPolicy: data.site.media_policy,
+      oauth: data.site.oauth,
     });
     useSiteConfigStore.getState().setFeatures(data.site.features);
     document.title = data.site.site_name;

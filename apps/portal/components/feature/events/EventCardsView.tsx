@@ -1,11 +1,11 @@
 import type { Event, MemberProfile, User } from "@guild/shared";
-import { Button, Group, Paper, SimpleGrid } from "@mantine/core";
-import { useState } from "react";
+import { Button } from "@portal/components/ui/button";
+import { Card, CardContent } from "@portal/components/ui/card";
+import { CalendarTimeIcon } from "@portal/components/icons";
 import { useTranslation } from "react-i18next";
 import { type EventTypeFilter } from "../../../utils/event-navigation";
 import { EmptyState } from "../../shared/EmptyState";
 import { EventCard } from "./EventCard";
-import { EventDetailModal } from "./EventDetailModal";
 import "./EventCardsView.css";
 
 type MemberEntry = { user: User; profile: MemberProfile };
@@ -13,7 +13,10 @@ type MemberEntry = { user: User; profile: MemberProfile };
 type EventCardsViewProps = {
   events: Event[];
   cardsEmptyDescription: string;
-  canManage: boolean;
+  canCreate: boolean;
+  canEdit: boolean;
+  canArchive: boolean;
+  canDelete: boolean;
   canInteract: boolean;
   currentUserId: string | null;
   eventType: EventTypeFilter | undefined;
@@ -21,12 +24,10 @@ type EventCardsViewProps = {
   pinnedOnly: boolean;
   lockedOnly: boolean;
   hasAnyFilter?: boolean;
-  focusedEventId: string | null;
   eventFlags: Map<string, "NEW" | "UPDATED">;
   eventMembersMap: Map<string, MemberEntry[]>;
   allUsers: MemberEntry[];
   participantPendingEventIds: ReadonlySet<string>;
-  votePending?: boolean;
   hasMore?: boolean;
   isLoadingMore?: boolean;
   onLoadMore?: () => void;
@@ -42,17 +43,16 @@ type EventCardsViewProps = {
   onArchiveEvent: (eventId: string) => void;
   onUnarchiveEvent: (eventId: string) => void;
   onDeleteEvent: (event: Event) => void;
-  onAddParticipant: (eventId: string, userId: string) => void;
-  onRemoveParticipant: (eventId: string, userId: string) => void;
-  onVotePoll?: (eventId: string, optionIds: string[]) => void;
-  onDrawRaffle?: (eventId: string) => void;
-  drawRafflePending?: boolean;
+  onOpenEvent: (event: Event) => void;
 };
 
 export function EventCardsView({
   events,
   cardsEmptyDescription,
-  canManage,
+  canCreate,
+  canEdit,
+  canArchive,
+  canDelete,
   canInteract,
   currentUserId,
   eventType,
@@ -60,12 +60,10 @@ export function EventCardsView({
   pinnedOnly,
   lockedOnly,
   hasAnyFilter,
-  focusedEventId,
   eventFlags,
   eventMembersMap,
   allUsers,
   participantPendingEventIds,
-  votePending,
   onResetFilters,
   onCreateEvent,
   onJoinEvent,
@@ -78,104 +76,85 @@ export function EventCardsView({
   onArchiveEvent,
   onUnarchiveEvent,
   onDeleteEvent,
-  onAddParticipant,
-  onRemoveParticipant,
-  onVotePoll,
-  onDrawRaffle,
-  drawRafflePending,
+  onOpenEvent,
   hasMore = false,
   isLoadingMore = false,
   onLoadMore,
 }: EventCardsViewProps) {
   const { t } = useTranslation("events");
-  const [detailModalEvent, setDetailModalEvent] = useState<Event | null>(null);
-  const detailModalMembers = detailModalEvent ? (eventMembersMap.get(detailModalEvent.id) ?? []) : [];
   const now = new Date();
   const filtersApplied =
     hasAnyFilter ?? Boolean(eventType || archivedOnly || pinnedOnly || lockedOnly);
 
   if (events.length === 0) {
     return (
-      <Paper withBorder radius="md" p="md">
+      <Card className="event-cards-view__empty-card"><CardContent>
         <EmptyState
           title={cardsEmptyDescription}
+          description={filtersApplied ? t("empty.filteredDescription") : t("empty.description")}
+          icon={<CalendarTimeIcon size={28} aria-hidden="true" />}
           actions={
             filtersApplied ? (
               <Button onClick={onResetFilters}>
                 {t("card.resetFilters")}
               </Button>
-            ) : canManage ? (
+            ) : canCreate ? (
               <Button onClick={onCreateEvent}>{t("button.create")}</Button>
             ) : null
           }
         />
-      </Paper>
+      </CardContent></Card>
     );
   }
 
   return (
     <>
-      <SimpleGrid cols={{ base: 1, sm: 2, lg: 3, xl: 4 }} spacing={12}>
-        {events.map((event) => (
-          <EventCard
-            key={event.id}
-            event={event}
-            now={now}
-            canManage={canManage}
-            canInteract={canInteract}
-            currentUserId={currentUserId}
-            focusedEventId={focusedEventId}
-            eventFlags={eventFlags}
-            eventMembersMap={eventMembersMap}
-            allUsers={allUsers}
-            joinPending={participantPendingEventIds.has(event.id)}
-            leavePending={participantPendingEventIds.has(event.id)}
-            onOpenDetail={setDetailModalEvent}
-            onJoinEvent={onJoinEvent}
-            onLeaveEvent={onLeaveEvent}
-            onCopyMentions={onCopyMentions}
-            onEditEvent={onEditEvent}
-            onDuplicateEvent={onDuplicateEvent}
-            onTogglePinEvent={onTogglePinEvent}
-            onToggleLockEvent={onToggleLockEvent}
-            onArchiveEvent={onArchiveEvent}
-            onUnarchiveEvent={onUnarchiveEvent}
-            onDeleteEvent={onDeleteEvent}
-          />
-        ))}
-      </SimpleGrid>
+      <div className="event-cards-view">
+        <section className="event-cards-view__grid" aria-label={t("title")}>
+          {events.map((event) => (
+            <EventCard
+              key={event.id}
+              event={event}
+              now={now}
+              canCreate={canCreate}
+              canEdit={canEdit}
+              canArchive={canArchive}
+              canDelete={canDelete}
+              canInteract={canInteract}
+              currentUserId={currentUserId}
+              eventFlags={eventFlags}
+              eventMembersMap={eventMembersMap}
+              allUsers={allUsers}
+              joinPending={participantPendingEventIds.has(event.id)}
+              leavePending={participantPendingEventIds.has(event.id)}
+              onOpenDetail={onOpenEvent}
+              onJoinEvent={onJoinEvent}
+              onLeaveEvent={onLeaveEvent}
+              onCopyMentions={onCopyMentions}
+              onEditEvent={onEditEvent}
+              onDuplicateEvent={onDuplicateEvent}
+              onTogglePinEvent={onTogglePinEvent}
+              onToggleLockEvent={onToggleLockEvent}
+              onArchiveEvent={onArchiveEvent}
+              onUnarchiveEvent={onUnarchiveEvent}
+              onDeleteEvent={onDeleteEvent}
+            />
+          ))}
+        </section>
+      </div>
 
       {hasMore && onLoadMore ? (
-        <Group justify="center" mt={8}>
+        <div className="event-cards-view__load-more">
           <Button
-            variant="subtle"
+            variant="ghost"
             loading={isLoadingMore}
             onClick={onLoadMore}
           >
             {t("action.loadMore")}
           </Button>
-        </Group>
+        </div>
       ) : null}
 
-      {/* ── Event Detail Modal ── */}
-      <EventDetailModal
-        event={detailModalEvent}
-        members={detailModalMembers}
-        allUsers={allUsers}
-        canManage={canManage}
-        currentUserId={currentUserId ?? undefined}
-        joinPending={detailModalEvent ? participantPendingEventIds.has(detailModalEvent.id) : false}
-        leavePending={detailModalEvent ? participantPendingEventIds.has(detailModalEvent.id) : false}
-        onClose={() => setDetailModalEvent(null)}
-        onJoin={onJoinEvent}
-        onLeave={onLeaveEvent}
-        onAddParticipant={onAddParticipant}
-        onRemoveParticipant={onRemoveParticipant}
-        onVotePoll={onVotePoll}
-        votePending={votePending}
-        onDrawRaffle={onDrawRaffle}
-        drawRafflePending={drawRafflePending}
-      />
     </>
   );
 }

@@ -1,5 +1,4 @@
 import type { Storage } from "@guild/shared";
-import { MantineProvider } from "@mantine/core";
 import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -7,13 +6,9 @@ import { StorageStructureManager } from "./StorageStructureManager";
 
 const responsive = vi.hoisted(() => ({ mobile: false }));
 
-vi.mock("@mantine/hooks", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("@mantine/hooks")>();
-  return {
-    ...actual,
-    useMediaQuery: () => responsive.mobile,
-  };
-});
+vi.mock("@portal/hooks/useMediaQuery", () => ({
+  useMediaQuery: () => responsive.mobile,
+}));
 
 vi.mock("react-i18next", () => ({
   useTranslation: () => ({ t: (key: string) => key }),
@@ -72,14 +67,12 @@ const callbacks = {
 
 function renderModal(storages: Storage[] = [storage]) {
   render(
-    <MantineProvider>
-      <StorageStructureManager
-        storages={storages}
-        selectedStorage={storage}
-        selectedCategoryId={null}
-        {...callbacks}
-      />
-    </MantineProvider>,
+    <StorageStructureManager
+      storages={storages}
+      selectedStorage={storage}
+      selectedCategoryId={null}
+      {...callbacks}
+    />,
   );
 }
 

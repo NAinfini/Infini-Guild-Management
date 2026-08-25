@@ -6,7 +6,7 @@ This file defines the stable working contract for coding agents in this reposito
 
 - Infini Guild Management is a bilingual React portal with one modular backend and two deployment adapters.
 - Deployments choose either Cloudflare Workers (D1, R2, Durable Objects) or one VPS Node process (SQLite, filesystem blobs, in-process WebSockets). Business behavior must never branch by runtime.
-- The Portal uses React, TypeScript, Vite, Mantine, TanStack Router/Query, Zustand, and TipTap. There is no Tailwind layer.
+- The Portal uses React, TypeScript, Vite, shadcn/ui compositions backed by Base UI, Tailwind CSS utilities, TanStack Router/Query, Zustand, and TipTap.
 - Supported Node, pnpm, and dependency versions are declared in `package.json`.
 
 ## Authority map
@@ -74,7 +74,7 @@ Use the narrowest validation that covers a change. `release:check` is local-only
 - Components consume server data through established services/hooks, not the raw API client.
 - TanStack Query owns server state; Zustand is for established client/session/UI state.
 - `router.tsx` owns route access and feature guards. Do not create a second navigation registry.
-- Mantine primitives own keyboard, focus, dialog, menu, and form behavior. Consume semantic theme tokens and preserve dark/light themes, reduced motion, keyboard focus, and responsive task parity.
+- Base UI primitives own keyboard, focus, dialog, menu, selection, and form behavior; source-owned shadcn/ui compositions under `components/ui/` provide the styled boundary. Consume semantic theme tokens and preserve dark/light themes, reduced motion, keyboard focus, and responsive task parity.
 - Keep English and Chinese UI resources synchronized for every user-facing change.
 - Follow `DESIGN.md`; source CSS wins if exact values drift.
 

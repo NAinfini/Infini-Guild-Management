@@ -1,5 +1,4 @@
 import type { AdminRole, AuditEvent } from "@guild/shared";
-import { MantineProvider } from "@mantine/core";
 import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { readFileSync } from "node:fs";
@@ -155,7 +154,7 @@ function renderViewer(
     ]),
     ...overrides,
   };
-  render(<MantineProvider><AuditLogViewer {...props} /></MantineProvider>);
+  render(<AuditLogViewer {...props} />);
   return props;
 }
 

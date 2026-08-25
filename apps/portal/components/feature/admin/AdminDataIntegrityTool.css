@@ -5,6 +5,31 @@
   gap: var(--space-lg);
 }
 
+.admin-integrity__description {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: var(--text-sm);
+}
+
+.admin-integrity__actions,
+.admin-integrity__results {
+  display: flex;
+  gap: var(--space-sm);
+}
+
+.admin-integrity__actions {
+  align-items: center;
+}
+
+.admin-integrity__results {
+  flex-direction: column;
+}
+
+.admin-integrity__tooltip {
+  max-width: 340px;
+  white-space: normal;
+}
+
 .admin-integrity__table-wrap {
   max-block-size: 16rem;
   overflow: auto;
@@ -12,7 +37,22 @@
 }
 
 .admin-integrity__table {
+  width: 100%;
   min-inline-size: 30rem;
+  border-collapse: collapse;
+}
+
+.admin-integrity__table th,
+.admin-integrity__table td {
+  padding: var(--space-sm);
+  border-bottom: 1px solid var(--border-subtle);
+  text-align: start;
+}
+
+.admin-integrity__table th {
+  color: var(--text-muted);
+  font-size: var(--text-meta);
+  font-weight: 600;
 }
 
 /* 标题旁的说明图标：不抢标题的视觉重量，但键盘能聚焦到。 */
@@ -36,7 +76,7 @@
     flex-direction: column;
   }
 
-  .admin-integrity > .admin-panel__head > .mantine-Group-root > button {
+  .admin-integrity__actions [data-slot="button"] {
     flex: 1;
   }
 }

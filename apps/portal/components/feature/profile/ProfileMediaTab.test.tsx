@@ -1,4 +1,3 @@
-import { MantineProvider } from "@mantine/core";
 import { render, screen, within } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { ProfileMediaTab } from "./ProfileMediaTab";
@@ -34,8 +33,7 @@ function renderMediaTab(
   profileAudioName: string | null = null,
 ) {
   return render(
-      <MantineProvider>
-        <ProfileMediaTab
+      <ProfileMediaTab
           profileAudioMediaId={profileAudioMediaId}
           profileAudioName={profileAudioName}
           maxImages={8}
@@ -54,8 +52,7 @@ function renderMediaTab(
           onRemoveVideo={vi.fn()}
           onUploadAudio={onUploadAudio}
           onRemoveAudio={vi.fn()}
-        />
-    </MantineProvider>,
+      />,
   );
 }
 
@@ -66,9 +63,8 @@ describe("ProfileMediaTab", () => {
   it("keeps the music upload action on the 44px touch target", () => {
     renderMediaTab();
 
-    expect(
-      audioGroup().getByRole("button", { name: "media.selectAudio" }).getAttribute("style"),
-    ).toContain("--ai-size: calc(2.75rem * var(--mantine-scale))");
+    expect(audioGroup().getByRole("button", { name: "media.selectAudio" }))
+      .toHaveClass("profile-media__icon-button");
   });
 
   it("uploads the picked music file straight away, with no second button to press", () => {

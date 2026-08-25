@@ -65,7 +65,7 @@ type MembersSchema = {
 
 type BaseMemberRow = Readonly<{
   userId: string;
-  username: string;
+  display_name: string;
   roleId: string;
   roleName: string;
   roleColor: string | null;
@@ -88,7 +88,7 @@ type BaseMemberRow = Readonly<{
 
 const publicMemberColumns = {
   userId: users.id,
-  username: users.username,
+  display_name: users.display_name,
   roleId: users.roleId,
   roleName: roles.name,
   roleColor: roles.color,
@@ -219,7 +219,7 @@ function badgeAssignmentAuditStatement(
        )
      )
      SELECT ?, ?, ?, ?,
-       CASE WHEN ? = 'user' THEN (SELECT username FROM users WHERE id = ?) ELSE ? END,
+       CASE WHEN ? = 'user' THEN (SELECT display_name FROM users WHERE id = ?) ELSE ? END,
        ?, ?, ?, ?,
        json_set(
          json(?), '$.context[#]',
@@ -232,7 +232,7 @@ function badgeAssignmentAuditStatement(
                  'type', 'reference',
                  'value', json_object(
                    'id', user_id,
-                   'label', (SELECT username FROM users WHERE id = user_id)
+                   'label', (SELECT display_name FROM users WHERE id = user_id)
                  )
                ))
                FROM (SELECT user_id FROM changed ORDER BY position)
@@ -267,6 +267,10 @@ function placeholders(values: readonly unknown[]): string {
 
 function uniqueViolation(error: unknown): boolean {
   return error instanceof Error && /UNIQUE constraint failed/i.test(error.message);
+}
+
+function displayNameUniqueViolation(error: unknown): boolean {
+  return error instanceof Error && /UNIQUE constraint failed:\s*users\.display_name/i.test(error.message);
 }
 
 function foreignKeyViolation(error: unknown): boolean {
@@ -307,7 +311,7 @@ export class SqliteMembersStore implements MembersStore {
     const filters: SQL<unknown>[] = [isNull(users.deletedAt)];
     if (query.active !== undefined) filters.push(eq(users.isActive, query.active));
     if (query.search) filters.push(
-      drizzleSql`lower(${users.username}) LIKE ${`%${escapeLike(query.search)}%`} ESCAPE '\\'`,
+      drizzleSql`lower(${users.display_name}) LIKE ${`%${escapeLike(query.search)}%`} ESCAPE '\\'`,
     );
     if (query.roleId) filters.push(eq(users.roleId, query.roleId));
     if (query.classId) filters.push(drizzleSql`EXISTS (
@@ -350,7 +354,7 @@ export class SqliteMembersStore implements MembersStore {
   async getMemberTarget(userId: string): Promise<MemberTarget | null> {
     const rows = await this.db.select({
       userId: users.id,
-      username: users.username,
+      display_name: users.display_name,
       roleId: users.roleId,
       roleLevel: roles.level,
       isActive: users.isActive,
@@ -389,50 +393,91 @@ export class SqliteMembersStore implements MembersStore {
     expectedTarget: MemberTarget,
     expectedImageIds: readonly string[],
     audit: AuditMutation,
-  ): Promise<MemberProfileRecord | null> {
+  ): Promise<MemberProfileRecord | "display_name_taken" | null> {
     assertBoundedUnique(expectedImageIds, LIMITS.content.profileImages.max, "Profile images", true);
     if (patch.images !== undefined) assertBoundedUnique(patch.images, LIMITS.content.profileImages.max, "Profile images", true);
     const assignments = ["updated_at = ?", "revision_token = ?"];
-    const params: SqlValue[] = [patch.updatedAt, audit.eventId];
-    if (patch.power !== undefined) { assignments.push("power = ?"); params.push(patch.power); }
-    if (patch.titleHtml !== undefined) { assignments.push("title_html = ?"); params.push(patch.titleHtml); }
-    if (patch.bio !== undefined) { assignments.push("bio = ?"); params.push(patch.bio); }
+    const profileParams: SqlValue[] = [patch.updatedAt, audit.eventId];
+    if (patch.power !== undefined) { assignments.push("power = ?"); profileParams.push(patch.power); }
+    if (patch.titleHtml !== undefined) { assignments.push("title_html = ?"); profileParams.push(patch.titleHtml); }
+    if (patch.bio !== undefined) { assignments.push("bio = ?"); profileParams.push(patch.bio); }
     if (patch.availability !== undefined) {
       assignments.push("availability_timezone = ?");
-      params.push(patch.availability?.timezone ?? null);
+      profileParams.push(patch.availability?.timezone ?? null);
     }
-    if (patch.notes !== undefined) { assignments.push("notes = ?"); params.push(patch.notes); }
-    params.push(
-      userId,
-      expectedTarget.profileRevisionToken,
-      expectedTarget.userId,
-      expectedTarget.roleId,
-      expectedTarget.revisionToken,
-      expectedTarget.roleRevisionToken,
-      expectedTarget.roleLevel,
-      expectedTarget.isActive ? 1 : 0,
-      expectedTarget.deletedAt,
-      mediaSnapshot(expectedImageIds),
-    );
-    const statements: SqlBatchStatement[] = [
-      returning(`UPDATE member_profiles SET ${assignments.join(", ")}
-        WHERE user_id = ? AND revision_token = ?
-          AND EXISTS (
-            SELECT 1 FROM users AS target
-            JOIN roles AS target_role ON target_role.id = target.role_id
-            WHERE target.id = ? AND target.role_id = ? AND target.revision_token = ?
-              AND target_role.revision_token = ? AND target_role.level = ?
-              AND target.is_active = ? AND target.deleted_at IS ?
+    if (patch.notes !== undefined) { assignments.push("notes = ?"); profileParams.push(patch.notes); }
+    const expectedUserRevision = patch.displayName === undefined
+      ? expectedTarget.revisionToken
+      : audit.eventId;
+    const profileUpdate = returning(`UPDATE member_profiles SET ${assignments.join(", ")}
+      WHERE user_id = ? AND revision_token = ?
+        AND EXISTS (
+          SELECT 1 FROM users AS target
+          JOIN roles AS target_role ON target_role.id = target.role_id
+          WHERE target.id = ? AND target.role_id = ? AND target.revision_token = ?
+            AND target_role.revision_token = ? AND target_role.level = ?
+            AND target.is_active = ? AND target.deleted_at IS ?
+        )
+        AND COALESCE((
+          SELECT group_concat(media_id, char(30)) FROM (
+            SELECT media_id FROM media_links
+            WHERE entity_type = 'member_profile' AND entity_id = ? AND slot = 'image'
+            ORDER BY sort_order, media_id
           )
-          AND COALESCE((
-            SELECT group_concat(media_id, char(30)) FROM (
-              SELECT media_id FROM media_links
-              WHERE entity_type = 'member_profile' AND entity_id = ? AND slot = 'image'
-              ORDER BY sort_order, media_id
-            )
-          ), '') = ?`, [...params.slice(0, -1), userId, params.at(-1)!]),
-      auditInsertStatement(audit, { sql: "SELECT 1 WHERE changes() = 1" }),
-    ];
+        ), '') = ?`, [
+        ...profileParams,
+        userId,
+        expectedTarget.profileRevisionToken,
+        expectedTarget.userId,
+        expectedTarget.roleId,
+        expectedUserRevision,
+        expectedTarget.roleRevisionToken,
+        expectedTarget.roleLevel,
+        expectedTarget.isActive ? 1 : 0,
+        expectedTarget.deletedAt,
+        userId,
+        mediaSnapshot(expectedImageIds),
+      ]);
+    const statements: SqlBatchStatement[] = [];
+    if (patch.displayName !== undefined) {
+      statements.push(returning(
+        `UPDATE users SET display_name = ?, updated_at = ?, revision_token = ?
+         WHERE id = ? AND role_id = ? AND revision_token = ?
+           AND is_active = ? AND deleted_at IS ?
+           AND EXISTS (
+             SELECT 1 FROM roles AS target_role
+             WHERE target_role.id = users.role_id
+               AND target_role.revision_token = ? AND target_role.level = ?
+           )
+           AND EXISTS (
+             SELECT 1 FROM member_profiles AS target_profile
+             WHERE target_profile.user_id = users.id AND target_profile.revision_token = ?
+           )
+           AND COALESCE((
+             SELECT group_concat(media_id, char(30)) FROM (
+               SELECT media_id FROM media_links
+               WHERE entity_type = 'member_profile' AND entity_id = users.id AND slot = 'image'
+               ORDER BY sort_order, media_id
+             )
+           ), '') = ?`, [
+          patch.displayName,
+          patch.updatedAt,
+          audit.eventId,
+          expectedTarget.userId,
+          expectedTarget.roleId,
+          expectedTarget.revisionToken,
+          expectedTarget.isActive ? 1 : 0,
+          expectedTarget.deletedAt,
+          expectedTarget.roleRevisionToken,
+          expectedTarget.roleLevel,
+          expectedTarget.profileRevisionToken,
+          mediaSnapshot(expectedImageIds),
+        ],
+      ));
+    }
+    const profileUpdateIndex = statements.length;
+    statements.push(profileUpdate);
+    statements.push(auditInsertStatement(audit, { sql: "SELECT 1 WHERE changes() = 1" }));
     if (patch.classes !== undefined) {
       assertBoundedUnique(patch.classes, LIMITS.content.classesPerProfile.max, "Profile classes", true);
       statements.push(run("DELETE FROM member_profile_classes WHERE user_id = ? AND EXISTS (SELECT 1 FROM member_profiles WHERE user_id = ? AND revision_token = ?)", [userId, userId, audit.eventId]));
@@ -459,8 +504,7 @@ export class SqliteMembersStore implements MembersStore {
       statements.push(run(
         `INSERT INTO member_availability_windows (user_id, weekday, start_minute, end_minute)
          SELECT ?, CAST(json_extract(value, '$.weekday') AS INTEGER),
-           CAST(json_extract(value, '$.startMinute') AS INTEGER),
-           CAST(json_extract(value, '$.endMinute') AS INTEGER)
+           CAST(json_extract(value, '$.startMinute') AS INTEGER), CAST(json_extract(value, '$.endMinute') AS INTEGER)
          FROM json_each(?)
          WHERE EXISTS (SELECT 1 FROM member_profiles WHERE user_id = ? AND revision_token = ?)`,
         [userId, JSON.stringify(windows), userId, audit.eventId],
@@ -491,8 +535,13 @@ export class SqliteMembersStore implements MembersStore {
         [JSON.stringify(patch.images), userId, JSON.stringify(patch.images), userId, audit.eventId],
       ));
     }
-    const results = await this.executor.batch(statements);
-    if (returnedRowCount(results[0]) !== 1) return null;
+    try {
+      const results = await this.executor.batch(statements);
+      if (returnedRowCount(results[profileUpdateIndex]) !== 1) return null;
+    } catch (error) {
+      if (patch.displayName !== undefined && displayNameUniqueViolation(error)) return "display_name_taken";
+      throw error;
+    }
     const member = await this.getMember(userId, "admin");
     return member?.profile ?? null;
   }
@@ -509,7 +558,7 @@ export class SqliteMembersStore implements MembersStore {
     const rows = await this.db.select({
       id: memberAbsences.id,
       userId: memberAbsences.userId,
-      username: users.username,
+      display_name: users.display_name,
       roleId: users.roleId,
       roleName: roles.name,
       roleColor: roles.color,
@@ -533,7 +582,7 @@ export class SqliteMembersStore implements MembersStore {
     return rows.map((row) => ({
       id: row.id,
       user_id: row.userId,
-      username: row.username,
+      display_name: row.display_name,
       role_id: row.roleId,
       role_name: row.roleName,
       role_color: row.roleColor,
@@ -911,25 +960,25 @@ export class SqliteMembersStore implements MembersStore {
       throw new RangeError(`Badge assignment pages must contain 1 to ${LIMITS.pagination.badgeAssignments} rows`);
     }
     const afterCursor = query.cursor ? or(
-      gt(users.username, query.cursor.username),
-      and(eq(users.username, query.cursor.username), gt(memberBadgeAssignments.userId, query.cursor.userId)),
+      gt(users.display_name, query.cursor.display_name),
+      and(eq(users.display_name, query.cursor.display_name), gt(memberBadgeAssignments.userId, query.cursor.userId)),
     ) : undefined;
     const rows = await this.db.select({
       badgeId: memberBadgeAssignments.badgeId,
       userId: memberBadgeAssignments.userId,
-      username: users.username,
+      display_name: users.display_name,
       assignedBy: memberBadgeAssignments.assignedBy,
-      assignedByUsername: drizzleSql<string | null>`(SELECT username FROM users assigner WHERE assigner.id = ${memberBadgeAssignments.assignedBy})`,
+      assignedByUsername: drizzleSql<string | null>`(SELECT display_name FROM users assigner WHERE assigner.id = ${memberBadgeAssignments.assignedBy})`,
       assignedAt: memberBadgeAssignments.assignedAt,
     }).from(memberBadgeAssignments).leftJoin(users, eq(memberBadgeAssignments.userId, users.id))
       .where(and(eq(memberBadgeAssignments.badgeId, badgeId), afterCursor))
-      .orderBy(asc(users.username), asc(memberBadgeAssignments.userId))
+      .orderBy(asc(users.display_name), asc(memberBadgeAssignments.userId))
       .limit(query.limit + 1);
     const records = rows.slice(0, query.limit).map((row) => {
-      if (row.username === null) {
+      if (row.display_name === null) {
         throw new AppError({ code: "SERVER_ERROR", status: 500, message: "Badge assignment user is missing" });
       }
-      return { ...row, username: row.username };
+      return { ...row, display_name: row.display_name };
     });
     return { records, hasMore: rows.length > query.limit };
   }
@@ -1038,7 +1087,7 @@ export class SqliteMembersStore implements MembersStore {
     return baseRows.map((row) => ({
       user: {
         id: row.userId,
-        username: row.username,
+        display_name: row.display_name,
         roleId: row.roleId,
         roleName: row.roleName,
         roleColor: row.roleColor,

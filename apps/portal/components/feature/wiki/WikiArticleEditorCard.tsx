@@ -1,26 +1,31 @@
 import type { WikiArticle, WikiCategory } from "@guild/shared";
-import {
-  ActionIcon,
-  Alert,
-  Button,
-  Group,
-  Paper,
-  Select,
-  Skeleton,
-  Stack,
-  Text,
-  TextInput,
-  Tooltip,
-} from "@mantine/core";
-import { ArchiveIcon, PinIcon, PlusIcon, SaveIcon, TrashIcon, XIcon } from "@portal/components/icons";
-import { formatDateTime } from "@portal/utils/datetime";
-import type { ReactNode } from "react";
-import { useMemo } from "react";
-import { useTranslation } from "react-i18next";
-import { EmptyState } from "../../shared/EmptyState";
-import { notifyError } from "../../../utils/notifications";
-import { TipTapEditor } from "@portal/components/shared/TipTapEditor";
 import { buildTipTapEditorLabels } from "@portal/components/shared/tiptap-meta";
+import { TipTapEditor } from "@portal/components/shared/TipTapEditor";
+import { ArchiveIcon, PinIcon, PlusIcon, SaveIcon, TrashIcon, XIcon } from "@portal/components/icons";
+import { Alert, AlertDescription } from "@portal/components/ui/alert";
+import { Button } from "@portal/components/ui/button";
+import { Card } from "@portal/components/ui/card";
+import { Input } from "@portal/components/ui/input";
+import { Label } from "@portal/components/ui/label";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@portal/components/ui/select";
+import { Skeleton } from "@portal/components/ui/skeleton";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@portal/components/ui/tooltip";
+import { formatDateTimeWithTimeZone } from "@portal/utils/datetime";
+import type { ReactNode } from "react";
+import { useId, useMemo } from "react";
+import { useTranslation } from "react-i18next";
+import { notifyError } from "../../../utils/notifications";
+import { EmptyState } from "../../shared/EmptyState";
 
 type CategoryOption = {
   value: string;
@@ -91,6 +96,8 @@ export function WikiArticleEditorCard({
   const { t } = useTranslation("wiki");
   const { t: te } = useTranslation("editor");
   const editorLabels = useMemo(() => buildTipTapEditorLabels(te), [te]);
+  const titleId = useId();
+  const categoryId = useId();
   const pinLabel = selectedArticle?.pinned
     ? (pinnedIntent === "unpin" ? t("articleEditor.unpinQueued") : t("articleEditor.unpin"))
     : (pinnedIntent === "pin" ? t("articleEditor.pinQueued") : t("articleEditor.pin"));
@@ -100,182 +107,219 @@ export function WikiArticleEditorCard({
   const pinnedPressed = selectedArticle
     ? (selectedArticle.pinned ? pinnedIntent !== "unpin" : pinnedIntent === "pin")
     : false;
+  const archivePressed = selectedArticle
+    ? (selectedArticle.archived_at ? archiveIntent !== "unarchive" : archiveIntent === "archive")
+    : false;
   const editorBusy = isSaving || isDeleting;
+
   if (!selectedArticle && !(canEdit && isCreatingArticle)) {
     return (
-      <Paper withBorder className="wiki-article-editor-card">
-        <div className="wiki-card-body" style={{ padding: "var(--card-padding)" }}>
-          <Text component="h2" fw={600} className="wiki-article-editor-title">
-            {t("articleEditor.title")}
-          </Text>
+      <Card className="wiki-article-editor-card">
+        <div className="wiki-card-body">
+          <h2 className="wiki-article-editor-title">{t("articleEditor.title")}</h2>
           <EmptyState title={emptyTitle} />
         </div>
-      </Paper>
+      </Card>
     );
   }
 
   return (
-    <Paper withBorder className="wiki-article-editor-card">
-      {/* 标题行钉住：保存、退出、删除这几个按钮不能跟着正文滚出视口。 */}
-      <div className="wiki-card-body" style={{ padding: "var(--card-padding)" }}>
-          <Group justify="space-between" align="start">
-            <Text component="h2" fw={600} className="wiki-article-editor-title">
-              {t("articleEditor.title")}
-            </Text>
-            {canEdit ? (
-              <Group gap={8} wrap="wrap" className="wiki-article-editor-actions">
-                {selectedArticle ? (
-                  <>
-                    <Tooltip label={pinLabel} withArrow>
-                      <ActionIcon
-                        aria-pressed={pinnedPressed}
-                        onClick={onTogglePinnedIntent}
-                        color="portal-brand"
-                        variant={pinnedPressed ? "light" : "default"}
-                        size="lg"
-                        disabled={editorBusy}
-                        aria-label={pinLabel}
-                      >
-                        <PinIcon size={16} />
-                      </ActionIcon>
-                    </Tooltip>
-                    <Tooltip label={archiveLabel} withArrow>
-                      <ActionIcon
-                        aria-pressed={selectedArticle?.archived_at ? archiveIntent !== "unarchive" : archiveIntent === "archive"}
-                        onClick={() => onToggleArchiveIntent()}
-                        color="portal-brand"
-                        variant={(selectedArticle?.archived_at ? archiveIntent !== "unarchive" : archiveIntent === "archive") ? "light" : "default"}
-                        size="lg"
-                        disabled={editorBusy}
-                        aria-label={archiveLabel}
-                      >
-                        <ArchiveIcon size={16} />
-                      </ActionIcon>
-                    </Tooltip>
-                    <Button
-                      size="md"
-                      leftSection={<SaveIcon size={16} />}
-                      onClick={() => {
-                        if (!articleTitle.trim()) {
-                          notifyError(t("validation.titleRequired"));
-                          return;
-                        }
-                        onSaveArticle();
-                      }}
-                      disabled={editorBusy}
+    <Card className="wiki-article-editor-card">
+      <div className="wiki-card-body">
+        <header className="wiki-article-editor-header">
+          <h2 className="wiki-article-editor-title">{t("articleEditor.title")}</h2>
+          {canEdit ? (
+            <div className="wiki-article-editor-actions">
+              {selectedArticle ? (
+                <>
+                  <Tooltip>
+                    <TooltipTrigger
+                      render={(
+                        <Button
+                          type="button"
+                          variant={pinnedPressed ? "secondary" : "outline"}
+                          size="icon-lg"
+                          aria-pressed={pinnedPressed}
+                          onClick={onTogglePinnedIntent}
+                          disabled={editorBusy}
+                          aria-label={pinLabel}
+                        />
+                      )}
                     >
-                      {t("articleEditor.save")}
-                    </Button>
-                  </>
-                ) : null}
-                {canEdit && isCreatingArticle ? (
-                  <Button
-                    size="md"
-                    leftSection={<PlusIcon size={16} />}
-                    onClick={onCreateArticle}
-                    disabled={!canCreateArticle || isCreating}
-                  >
-                    {t("articleEditor.create")}
-                  </Button>
-                ) : null}
-                <Button
-                  variant="default"
-                  size="md"
-                  leftSection={<XIcon size={16} />}
-                  onClick={onExitEditor}
-                  disabled={editorBusy}
-                >
-                  {t("editor.exit")}
-                </Button>
-                {selectedArticle ? (
-                  <Tooltip label={t("common:action.delete")} withArrow>
-                    <ActionIcon
-                      color="red"
-                      variant="light"
-                      size="lg"
-                      className="wiki-article-editor-actions__danger"
-                      onClick={onDeleteArticle}
-                      loading={isDeleting}
-                      disabled={editorBusy}
-                      aria-label={t("common:action.delete")}
-                    >
-                      <TrashIcon size={16} />
-                    </ActionIcon>
+                      <PinIcon size={16} aria-hidden="true" />
+                    </TooltipTrigger>
+                    <TooltipContent>{pinLabel}</TooltipContent>
                   </Tooltip>
-                ) : null}
-              </Group>
-            ) : null}
-          </Group>
-
-          <Stack gap={12} className="wiki-card-scroll">
-          {isLoading ? (
-            <Stack gap={8}>
-              {Array.from({ length: 7 }).map((_, index) => (
-                <Skeleton key={index} height={12} />
-              ))}
-            </Stack>
+                  <Tooltip>
+                    <TooltipTrigger
+                      render={(
+                        <Button
+                          type="button"
+                          variant={archivePressed ? "secondary" : "outline"}
+                          size="icon-lg"
+                          aria-pressed={archivePressed}
+                          onClick={onToggleArchiveIntent}
+                          disabled={editorBusy}
+                          aria-label={archiveLabel}
+                        />
+                      )}
+                    >
+                      <ArchiveIcon size={16} aria-hidden="true" />
+                    </TooltipTrigger>
+                    <TooltipContent>{archiveLabel}</TooltipContent>
+                  </Tooltip>
+                  <Button
+                    type="button"
+                    size="lg"
+                    loading={isSaving}
+                    onClick={() => {
+                      if (!articleTitle.trim()) {
+                        notifyError(t("validation.titleRequired"));
+                        return;
+                      }
+                      onSaveArticle();
+                    }}
+                    disabled={editorBusy}
+                  >
+                    <SaveIcon size={16} aria-hidden="true" />
+                    {t("articleEditor.save")}
+                  </Button>
+                </>
+              ) : null}
+              {canEdit && isCreatingArticle ? (
+                <Button
+                  type="button"
+                  size="lg"
+                  loading={isCreating}
+                  onClick={onCreateArticle}
+                  disabled={!canCreateArticle || isCreating}
+                >
+                  <PlusIcon size={16} aria-hidden="true" />
+                  {t("articleEditor.create")}
+                </Button>
+              ) : null}
+              <Button
+                type="button"
+                variant="outline"
+                size="lg"
+                onClick={onExitEditor}
+                disabled={editorBusy}
+              >
+                <XIcon size={16} aria-hidden="true" />
+                {t("editor.exit")}
+              </Button>
+              {selectedArticle ? (
+                <Tooltip>
+                  <TooltipTrigger
+                    render={(
+                      <Button
+                        type="button"
+                        variant="destructive"
+                        size="icon-lg"
+                        className="wiki-article-editor-actions__danger"
+                        onClick={onDeleteArticle}
+                        loading={isDeleting}
+                        disabled={editorBusy}
+                        aria-label={t("common:action.delete")}
+                      />
+                    )}
+                  >
+                    <TrashIcon size={16} aria-hidden="true" />
+                  </TooltipTrigger>
+                  <TooltipContent>{t("common:action.delete")}</TooltipContent>
+                </Tooltip>
+              ) : null}
+            </div>
           ) : null}
-          {isError ? <Alert color="red" title={warningMessage} /> : null}
+        </header>
+
+        <div className="wiki-card-scroll wiki-article-editor-scroll">
+          {isLoading ? (
+            <div className="wiki-list-skeletons" aria-busy="true">
+              {Array.from({ length: 7 }).map((_, index) => (
+                <Skeleton key={index} className="wiki-list-skeleton" />
+              ))}
+            </div>
+          ) : null}
+          {isError ? (
+            <Alert variant="destructive">
+              <AlertDescription>{warningMessage}</AlertDescription>
+            </Alert>
+          ) : null}
 
           {!isLoading && !isError ? (
-            <Stack gap={12}>
-              <Group gap={12} wrap="wrap" align="flex-end" grow>
-                <TextInput
-                  label={t("articleEditor.titleField")}
-                  value={articleTitle}
-                  disabled={!canEdit || isDeleting}
-                  onChange={(event) => onArticleTitleChange(event.currentTarget.value)}
-                  placeholder={t("articleEditor.titleField")}
-                  aria-label={t("aria.articleTitle")}
-                  style={{ flex: "1 1 16rem", minWidth: 0 }}
+            <div className="wiki-editor-form">
+              <div className="wiki-editor-fields">
+                <div className="wiki-editor-field">
+                  <Label htmlFor={titleId}>{t("articleEditor.titleField")}</Label>
+                  <Input
+                    id={titleId}
+                    value={articleTitle}
+                    disabled={!canEdit || isDeleting}
+                    onChange={(event) => onArticleTitleChange(event.currentTarget.value)}
+                    placeholder={t("articleEditor.titleField")}
+                    aria-label={t("aria.articleTitle")}
+                  />
+                </div>
+                <div className="wiki-editor-field wiki-editor-field--category">
+                  <Label htmlFor={categoryId}>{t("articleEditor.category")}</Label>
+                  <Select
+                    items={categoryOptions}
+                    value={articleCategoryId || null}
+                    disabled={!canEdit || isDeleting}
+                    onValueChange={(value) => onArticleCategoryChange(value ?? "")}
+                  >
+                    <SelectTrigger id={categoryId} aria-label={t("aria.articleCategory")}>
+                      <SelectValue placeholder={t("articleEditor.category")} />
+                    </SelectTrigger>
+                    <SelectContent align="start">
+                      {categoryOptions.map((option) => (
+                        <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+              <div className="wiki-editor-field">
+                <span className="wiki-editor-field__label">{t("articleEditor.body")}</span>
+                <TipTapEditor
+                  value={articleBody}
+                  onChange={onArticleBodyChange}
+                  placeholder={t("articleEditor.body")}
+                  editable={canEdit && !isDeleting}
+                  ariaLabel={t("articleEditor.body")}
+                  onImageUpload={onImageUpload}
+                  labels={editorLabels}
                 />
-                <Select
-                  w={200}
-                  label={t("articleEditor.category")}
-                  value={articleCategoryId || null}
-                  disabled={!canEdit || isDeleting}
-                  data={categoryOptions}
-                  placeholder={t("articleEditor.category")}
-                  aria-label={t("aria.articleCategory")}
-                  onChange={(value) => onArticleCategoryChange(value ?? "")}
-                  style={{ flex: "0 1 12.5rem", minWidth: 0, maxWidth: "100%" }}
-                />
-              </Group>
-              <Text fw={600} size="sm">
-                {t("articleEditor.body")}
-              </Text>
-              <TipTapEditor
-                value={articleBody}
-                onChange={onArticleBodyChange}
-                placeholder={t("articleEditor.body")}
-                editable={canEdit && !isDeleting}
-                ariaLabel={t("articleEditor.body")}
-                onImageUpload={onImageUpload}
-                labels={editorLabels}
-              />
+              </div>
               {selectedArticle ? (
-                <Stack gap={2}>
-                  <Group gap={6}>
-                    <Text size="sm">{t("articleEditor.title")}</Text>
-                    <Text size="sm" c="dimmed">/</Text>
-                    <Text size="sm">{selectedCategory?.name ?? t("articleEditor.categoryFallback")}</Text>
-                    <Text size="sm" c="dimmed">/</Text>
-                    <Text size="sm">{selectedArticle.title}</Text>
-                  </Group>
-                  <Text c="dimmed" size="sm">
-                    {t("articleEditor.lastUpdatedBy", { user: selectedArticle.created_by.slice(0, 8), date: formatDateTime(selectedArticle.updated_at) })}
-                  </Text>
+                <div className="wiki-editor-metadata">
+                  <nav className="wiki-article-breadcrumb" aria-label={t("aria.breadcrumb")}>
+                    <span>{t("articleEditor.title")}</span>
+                    <span aria-hidden="true" className="wiki-muted-copy">/</span>
+                    <span>{selectedCategory?.name ?? t("articleEditor.categoryFallback")}</span>
+                    <span aria-hidden="true" className="wiki-muted-copy">/</span>
+                    <span>{selectedArticle.title}</span>
+                  </nav>
+                  <p className="wiki-muted-copy wiki-article-reader-meta">
+                    {t("articleEditor.lastUpdatedBy", {
+                      user: selectedArticle.created_by.slice(0, 8),
+                      date: formatDateTimeWithTimeZone(selectedArticle.updated_at),
+                    })}
+                  </p>
                   {selectedArticle.archived_at ? (
-                    <Text c="gray" size="sm">
-                      {t("articleEditor.archivedAt", { date: formatDateTime(selectedArticle.archived_at) })}
-                    </Text>
+                    <p className="wiki-muted-copy wiki-article-reader-meta">
+                      {t("articleEditor.archivedAt", {
+                        date: formatDateTimeWithTimeZone(selectedArticle.archived_at),
+                      })}
+                    </p>
                   ) : null}
-                </Stack>
+                </div>
               ) : null}
-            </Stack>
+            </div>
           ) : null}
-        </Stack>
+        </div>
       </div>
-    </Paper>
+    </Card>
   );
 }

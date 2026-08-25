@@ -2,7 +2,11 @@ import { ImageGridEditor } from "@portal/components/shared/ImageGridEditor";
 import type { ImageGridEditorItem } from "@portal/types/media";
 import { SectionHeader } from "../../shared/SectionHeader";
 import { useConfirmDialog } from "@portal/hooks/useConfirmDialog";
-import { ActionIcon, Button, Fieldset, FileButton, Group, Paper, Progress, Stack, Text, TextInput, Tooltip } from "@mantine/core";
+import { Button } from "@portal/components/ui/button";
+import { Card } from "@portal/components/ui/card";
+import { Input } from "@portal/components/ui/input";
+import { Progress } from "@portal/components/ui/progress";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@portal/components/ui/tooltip";
 import { ArrowDownIcon, ArrowUpIcon, PlusIcon, TrashIcon, UploadIcon, VideoIcon } from "@portal/components/icons";
 import { AUDIO_FILE_ACCEPT } from "@guild/shared";
 import { getVideoThumbnailUrl } from "@guild/shared/utils/video";
@@ -112,20 +116,23 @@ export function ProfileMediaTab({
   const audioBusy = audioUploader.isConverting || audioUploader.isUploading;
   const audioName = (audioBusy ? stagedAudio?.name : null) ?? profileAudioName;
 
+  const audioInputRef = useRef<HTMLInputElement>(null);
+
   const renderProgress = (uploader: UploaderState) =>
     uploader.isConverting || uploader.isUploading ? (
-      <Stack gap={4} mt={8}>
-        <Progress value={uploader.conversionProgress} size="xs" animated />
-        <Progress value={uploader.uploadProgress} size="xs" animated />
-      </Stack>
+      <div className="profile-media__progress">
+        <Progress value={uploader.conversionProgress} aria-label={t("media.conversionProgress")} />
+        <Progress value={uploader.uploadProgress} aria-label={t("media.uploadProgress")} />
+      </div>
     ) : null;
 
   return (
-    <Paper withBorder radius="md" p="var(--card-padding)">
+    <Card className="profile-media-card gap-0 py-0">
       <SectionHeader title={t("section.media")} />
 
-      <Stack gap="var(--space-md)" className="profile-media__groups">
-        <Fieldset className="profile-media__group" legend={t("media.group.images", { count: imageList.length })}>
+      <div className="profile-media__groups">
+        <fieldset className="profile-media__group">
+          <legend>{t("media.group.images", { count: imageList.length })}</legend>
           <ImageGridEditor
             items={imageItems}
             onReorder={(items) => onReorderImages(items.map((item) => item.id))}
@@ -139,44 +146,49 @@ export function ProfileMediaTab({
           />
 
           {imageUploader.files.length > 0 ? (
-            <Group gap={8} align="center" mt={12}>
-              <Text size="xs" c="dimmed">{t("media.filesSelected", { count: imageUploader.files.length })}</Text>
+            <div className="profile-media__selected-files">
+              <span>{t("media.filesSelected", { count: imageUploader.files.length })}</span>
               <Button
                 size="xs"
-                h={44}
+                className="profile-media__upload-button"
                 onClick={onUploadImages}
                 loading={imageUploader.isUploading}
-                leftSection={<UploadIcon size={14} />}
               >
+                <UploadIcon size={14} data-icon="inline-start" />
                 {t("action.upload")}
               </Button>
-            </Group>
+            </div>
           ) : null}
 
-          {imageUploader.error ? <Text c="red" size="sm" mt={8}>{imageUploader.error}</Text> : null}
+          {imageUploader.error ? <p className="profile-media__error" role="alert">{imageUploader.error}</p> : null}
           {renderProgress(imageUploader)}
-        </Fieldset>
+        </fieldset>
 
-        <Fieldset className="profile-media__group" legend={t("media.group.videos", { count: videoList.length })}>
-          <Group gap={8} wrap="nowrap" align="flex-start">
-            <TextInput
-              style={{ flex: 1 }}
+        <fieldset className="profile-media__group">
+          <legend>{t("media.group.videos", { count: videoList.length })}</legend>
+          <div className="profile-media__video-entry">
+            <Input
               value={videoDraft}
               onChange={(event) => onVideoDraftChange(event.currentTarget.value)}
               placeholder="https://youtube.com/..."
               aria-label={t("media.videos")}
-              onKeyDown={(event) => { if (event.key === "Enter") onAddVideoUrl(); }}
+              onKeyDown={(event) => {
+                if (event.key !== "Enter") return;
+                event.preventDefault();
+                onAddVideoUrl();
+              }}
             />
-            <Button size="sm" onClick={onAddVideoUrl} leftSection={<PlusIcon size={14} />}>
+            <Button size="default" onClick={onAddVideoUrl}>
+              <PlusIcon size={14} data-icon="inline-start" />
               {t("action.add")}
             </Button>
-          </Group>
-          <Text c="dimmed" size="xs" mt={6}>{t("media.videoHostHint")}</Text>
+          </div>
+          <p className="profile-media__hint">{t("media.videoHostHint")}</p>
 
           {videoList.length > 0 ? (
-            <Stack gap={6} mt={12}>
+            <div className="profile-media__video-list">
               {videoList.map((item, index) => (
-                <Group key={`${item}-${index}`} gap={8} wrap="nowrap" align="center" className="profile-video-row">
+                <div key={`${item}-${index}`} className="profile-video-row">
                   {/* 缩略图只对拿得到的站点显示（目前是 YouTube）。拿不到的站点
                       给一个视频图标占位，而不是塞一张别处的图冒充这条链接。 */}
                   <span className="profile-video-row__thumb" aria-hidden="true">
@@ -188,113 +200,124 @@ export function ProfileMediaTab({
                   </span>
                   <span className="profile-video-row__meta">
                     <span className="profile-video-row__host">{videoHostLabel(item)}</span>
-                    <Tooltip label={item} multiline w={320}>
-                      <a
+                    <Tooltip>
+                      <TooltipTrigger render={<a
                         className="profile-video-row__url"
                         href={item}
                         target="_blank"
                         rel="noreferrer noopener"
-                      >
+                      />}>
                         {item}
-                      </a>
+                      </TooltipTrigger>
+                      <TooltipContent>{item}</TooltipContent>
                     </Tooltip>
                   </span>
-                  <Group gap={4} wrap="nowrap">
-                    <Tooltip label={t("action.up")} withArrow>
-                      <span data-disabled-tooltip-target style={{ display: "inline-flex" }}>
-                        <ActionIcon
-                          size={44}
-                          variant="default"
+                  <div className="profile-media__row-actions">
+                    <Tooltip>
+                      <TooltipTrigger render={<Button
+                          type="button"
+                          size="icon-lg"
+                          variant="outline"
+                          className="profile-media__icon-button"
                           aria-label={t("action.up")}
                           disabled={index === 0}
                           onClick={() => onMoveVideo(index, -1)}
-                        >
+                        />}>
                           <ArrowUpIcon size={14} />
-                        </ActionIcon>
-                      </span>
+                      </TooltipTrigger>
+                      <TooltipContent>{t("action.up")}</TooltipContent>
                     </Tooltip>
-                    <Tooltip label={t("action.down")} withArrow>
-                      <span data-disabled-tooltip-target style={{ display: "inline-flex" }}>
-                        <ActionIcon
-                          size={44}
-                          variant="default"
+                    <Tooltip>
+                      <TooltipTrigger render={<Button
+                          type="button"
+                          size="icon-lg"
+                          variant="outline"
+                          className="profile-media__icon-button"
                           aria-label={t("action.down")}
                           disabled={index === videoList.length - 1}
                           onClick={() => onMoveVideo(index, 1)}
-                        >
+                        />}>
                           <ArrowDownIcon size={14} />
-                        </ActionIcon>
-                      </span>
+                      </TooltipTrigger>
+                      <TooltipContent>{t("action.down")}</TooltipContent>
                     </Tooltip>
-                    <Tooltip label={t("action.delete")} withArrow>
-                      <ActionIcon
-                        size={44}
-                        color="red"
-                        variant="filled"
+                    <Tooltip>
+                      <TooltipTrigger render={<Button
+                        type="button"
+                        size="icon-lg"
+                        variant="destructive"
+                        className="profile-media__icon-button"
                         aria-label={t("action.delete")}
                         onClick={() => onRemoveVideo(index)}
-                      >
+                      />}>
                         <TrashIcon size={14} />
-                      </ActionIcon>
+                      </TooltipTrigger>
+                      <TooltipContent>{t("action.delete")}</TooltipContent>
                     </Tooltip>
-                  </Group>
-                </Group>
+                  </div>
+                </div>
               ))}
-            </Stack>
+            </div>
           ) : null}
-        </Fieldset>
+        </fieldset>
 
-        <Fieldset className="profile-media__group" legend={t("media.group.audio")}>
+        <fieldset className="profile-media__group">
+          <legend>{t("media.group.audio")}</legend>
           {/* 一行说清「现在挂着哪首」，换和删就摆在名字旁边。名字始终占位，空着的
               时候由文案说明是空的，而不是让整行消失。 */}
-          <Group gap={8} align="center" wrap="nowrap" className="profile-media-chip-row">
-            <Text
-              size="sm"
-              c={audioName ? undefined : "dimmed"}
-              style={{ flex: 1, minWidth: 0, overflowWrap: "anywhere" }}
-            >
+          <div className="profile-media-chip-row">
+            <span className={audioName ? "profile-media__audio-name" : "profile-media__audio-name profile-media__audio-name--empty"}>
               {audioName ?? t("media.noAudioSelected")}
-            </Text>
-            <FileButton
-              onChange={(files) => audioUploader.selectFiles(files ? [files] : null)}
+            </span>
+            <input
+              ref={audioInputRef}
+              className="profile-media__file-input"
+              type="file"
               accept={AUDIO_FILE_ACCEPT}
-            >
-              {(props) => (
-                <Tooltip label={t("media.selectAudio")} withArrow>
-                  <ActionIcon
-                    size={44}
-                    variant="default"
+              tabIndex={-1}
+              aria-hidden="true"
+              onChange={(event) => {
+                const file = event.currentTarget.files?.[0] ?? null;
+                audioUploader.selectFiles(file ? [file] : null);
+                event.currentTarget.value = "";
+              }}
+            />
+            <Tooltip>
+              <TooltipTrigger render={<Button
+                    type="button"
+                    size="icon-lg"
+                    variant="outline"
+                    className="profile-media__icon-button"
                     aria-label={t("media.selectAudio")}
                     loading={audioBusy}
-                    {...props}
-                  >
+                    onClick={() => audioInputRef.current?.click()}
+                  />}>
                     <UploadIcon size={14} />
-                  </ActionIcon>
-                </Tooltip>
-              )}
-            </FileButton>
-            <Tooltip label={t("action.delete")} withArrow>
-              <span data-disabled-tooltip-target style={{ display: "inline-flex" }}>
-                <ActionIcon
-                  size={44}
-                  color="red"
-                  variant="filled"
+              </TooltipTrigger>
+              <TooltipContent>{t("media.selectAudio")}</TooltipContent>
+            </Tooltip>
+            <Tooltip>
+              <TooltipTrigger render={<Button
+                  type="button"
+                  size="icon-lg"
+                  variant="destructive"
+                  className="profile-media__icon-button"
                   aria-label={t("action.delete")}
                   disabled={!profileAudioMediaId}
                   onClick={() => void handleRemoveAudio()}
-                >
+                />}>
                   <TrashIcon size={14} />
-                </ActionIcon>
-              </span>
+              </TooltipTrigger>
+              <TooltipContent>{t("action.delete")}</TooltipContent>
             </Tooltip>
-          </Group>
+          </div>
 
-          <Text c="dimmed" size="xs" mt={6}>{t("media.audioHint")}</Text>
+          <p className="profile-media__hint">{t("media.audioHint")}</p>
 
-          {audioUploader.error ? <Text c="red" size="sm" mt={8}>{audioUploader.error}</Text> : null}
+          {audioUploader.error ? <p className="profile-media__error" role="alert">{audioUploader.error}</p> : null}
           {renderProgress(audioUploader)}
-        </Fieldset>
-      </Stack>
-    </Paper>
+        </fieldset>
+      </div>
+    </Card>
   );
 }

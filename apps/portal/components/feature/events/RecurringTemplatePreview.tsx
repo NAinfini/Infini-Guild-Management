@@ -3,7 +3,7 @@ import { useTranslation } from "react-i18next";
 import {
   formatLifecycleDate,
   type LifecyclePreview,
-} from "./RecurringTemplateFormModal.helpers";
+} from "./RecurringTemplateForm.helpers";
 
 /** Preview the generated instance lifecycle derived from recurrence rules. */
 type RecurringTemplateLifecycleProps = {

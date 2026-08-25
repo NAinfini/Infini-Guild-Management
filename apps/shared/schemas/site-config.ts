@@ -4,6 +4,7 @@ import { DEFAULT_SITE_DESCRIPTION, SITE_DESCRIPTION_MAX_LENGTH } from "../config
 import {
   LIMITS,
   MAX_CONFIGURABLE_AUDIO_BYTES,
+  MAX_CONFIGURABLE_ATTACHMENT_BYTES,
   MAX_CONFIGURABLE_IMAGE_VARIANT_BYTES,
 } from "../config/limits";
 import { mediaIdSchema } from "./media";
@@ -22,6 +23,7 @@ export const siteMediaPolicySchema = z.object({
     profile_image: z.number().int().positive().max(MAX_CONFIGURABLE_IMAGE_VARIANT_BYTES),
     profile_audio: z.number().int().positive().max(MAX_CONFIGURABLE_AUDIO_BYTES),
     announcement_image: z.number().int().positive().max(MAX_CONFIGURABLE_IMAGE_VARIANT_BYTES),
+    announcement_attachment: z.number().int().positive().max(MAX_CONFIGURABLE_ATTACHMENT_BYTES),
     wiki_image: z.number().int().positive().max(MAX_CONFIGURABLE_IMAGE_VARIANT_BYTES),
     event_image: z.number().int().positive().max(MAX_CONFIGURABLE_IMAGE_VARIANT_BYTES),
     gallery_image: z.number().int().positive().max(MAX_CONFIGURABLE_IMAGE_VARIANT_BYTES),
@@ -30,6 +32,7 @@ export const siteMediaPolicySchema = z.object({
   quotas: z.object({
     profile: z.number().int().positive().max(LIMITS.media.configurableQuotaMax),
     announcement: z.number().int().positive().max(LIMITS.media.configurableQuotaMax),
+    announcement_attachments: z.number().int().positive().max(LIMITS.media.configurableQuotaMax),
     gallery: z.number().int().positive().max(LIMITS.media.configurableQuotaMax),
     wiki: z.number().int().positive().max(LIMITS.media.configurableQuotaMax),
   }),
@@ -67,6 +70,7 @@ export const DEFAULT_SITE_MEDIA_POLICY = siteMediaPolicySchema.parse({
     profile_image: LIMITS.media.maxFileSize.profileImage,
     profile_audio: LIMITS.media.maxFileSize.profileAudio,
     announcement_image: LIMITS.media.maxFileSize.announcementImage,
+    announcement_attachment: LIMITS.media.maxFileSize.announcementAttachment,
     wiki_image: LIMITS.media.maxFileSize.wikiImage,
     event_image: LIMITS.media.maxFileSize.eventImage,
     gallery_image: LIMITS.media.maxFileSize.galleryImage,
@@ -75,9 +79,42 @@ export const DEFAULT_SITE_MEDIA_POLICY = siteMediaPolicySchema.parse({
   quotas: {
     profile: LIMITS.media.quotas.profile,
     announcement: LIMITS.media.quotas.announcement,
+    announcement_attachments: LIMITS.media.quotas.announcementAttachments,
     gallery: LIMITS.media.quotas.gallery,
     wiki: LIMITS.media.quotas.wiki,
   },
+});
+
+export const oauthProviderSettingsSchema = z.object({
+  google: z.boolean(),
+  discord: z.boolean(),
+  kook: z.boolean(),
+  wechat: z.boolean(),
+}).strict();
+
+/**
+ * Runtime-only visibility for Site Config. It intentionally answers only
+ * whether a provider can be enabled; client IDs and secrets stay in runtime
+ * configuration and never cross the API or persistence boundary.
+ */
+export const oauthProviderStatusSchema = z.enum([
+  "available",
+  "missing_credentials",
+  "unsupported",
+]);
+
+export const oauthProviderStatusesSchema = z.object({
+  google: oauthProviderStatusSchema,
+  discord: oauthProviderStatusSchema,
+  kook: oauthProviderStatusSchema,
+  wechat: oauthProviderStatusSchema,
+}).strict();
+
+export const DEFAULT_SITE_OAUTH_SETTINGS = oauthProviderSettingsSchema.parse({
+  google: false,
+  discord: false,
+  kook: false,
+  wechat: false,
 });
 
 export const DEFAULT_SITE_STORAGE_POLICY = siteStoragePolicySchema.parse({
@@ -106,6 +143,7 @@ export const siteConfigSchema = z.object({
   site_logo_media_id: mediaIdSchema.nullable(),
   default_site_logo_url: z.string().min(1),
   features: featureFlagsSchema,
+  oauth: oauthProviderSettingsSchema,
   media_policy: siteMediaPolicySchema,
   storage_policy: siteStoragePolicySchema,
   absence_policy: siteAbsencePolicySchema,
@@ -120,6 +158,7 @@ export const publicSiteConfigSchema = siteConfigSchema.pick({
   site_logo_media_id: true,
   default_site_logo_url: true,
   features: true,
+  oauth: true,
   media_policy: true,
   storage_policy: true,
   absence_policy: true,
@@ -134,6 +173,7 @@ export const updateSiteConfigSchema = z.object({
   site_name: z.string().trim().min(1).max(100).optional(),
   site_description: z.string().trim().min(1).max(SITE_DESCRIPTION_MAX_LENGTH).optional(),
   features: featureFlagsSchema.partial().optional(),
+  oauth: oauthProviderSettingsSchema.partial().optional(),
   media_policy: updateSiteMediaPolicySchema.optional(),
   storage_policy: siteStoragePolicySchema.partial().optional(),
   absence_policy: siteAbsencePolicySchema.partial().optional(),
@@ -143,11 +183,14 @@ export const updateSiteConfigSchema = z.object({
 
 export const adminSiteConfigResponseSchema = z.object({
   site: siteConfigSchema.omit({ analytics_settings: true }),
+  oauth_provider_status: oauthProviderStatusesSchema,
 });
 
 export type SiteConfig = z.infer<typeof siteConfigSchema>;
 export type PublicSiteConfig = z.infer<typeof publicSiteConfigSchema>;
 export type UpdateSiteConfigPayload = z.input<typeof updateSiteConfigSchema>;
+export type OAuthProviderStatus = z.infer<typeof oauthProviderStatusSchema>;
+export type OAuthProviderStatuses = z.infer<typeof oauthProviderStatusesSchema>;
 export type SiteMediaPolicy = z.infer<typeof siteMediaPolicySchema>;
 export type SiteStoragePolicy = z.infer<typeof siteStoragePolicySchema>;
 export type SiteAbsencePolicy = z.infer<typeof siteAbsencePolicySchema>;

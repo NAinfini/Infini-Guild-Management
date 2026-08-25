@@ -22,7 +22,7 @@ const databases: DatabaseSync[] = [];
 const BASE_SCHEMA = `
   PRAGMA foreign_keys = ON;
   CREATE TABLE users (
-    id TEXT PRIMARY KEY, username TEXT NOT NULL,
+    id TEXT PRIMARY KEY, display_name TEXT NOT NULL,
     is_active INTEGER NOT NULL DEFAULT 1, deleted_at TEXT
   );
   CREATE TABLE audit_log (
@@ -165,7 +165,7 @@ function harness(includeEventsInvariants = true) {
   databases.push(database);
   database.exec(BASE_SCHEMA);
   if (includeEventsInvariants) database.exec(RENDERED_EVENT_INVARIANTS);
-  database.prepare("INSERT INTO users (id, username) VALUES (?, ?), (?, ?), (?, ?)")
+  database.prepare("INSERT INTO users (id, display_name) VALUES (?, ?), (?, ?), (?, ?)")
     .run("admin-1", "Admin", "user-1", "One", "user-2", "Two");
   const executor = new SqliteTestExecutor(database);
   return { database, executor, store: new SqliteEventsStore(createAppDatabase(executor), executor) };

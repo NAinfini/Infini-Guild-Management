@@ -5,7 +5,7 @@ import type {
 } from "@guild/shared";
 import { arrayMove } from "@dnd-kit/sortable";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import {
   createClassCatalogItem,
@@ -51,12 +51,23 @@ function itemToDraft(item: ClassCatalogItem): ClassEditorDraft {
   };
 }
 
+function sameDraft(left: ClassEditorDraft, right: ClassEditorDraft) {
+  return left.id === right.id
+    && left.label === right.label
+    && left.color === right.color
+    && left.vectorIcon === right.vectorIcon
+    && left.iconMode === right.iconMode
+    && left.imageFile === right.imageFile;
+}
+
 export function useAdminClassesController() {
   const { t } = useTranslation("admin");
   const queryClient = useQueryClient();
   const [opened, setOpened] = useState(false);
   const [draft, setDraft] = useState<ClassEditorDraft>(EMPTY_CLASS_EDITOR_DRAFT);
+  const [baseline, setBaseline] = useState<ClassEditorDraft>(EMPTY_CLASS_EDITOR_DRAFT);
   const [uploadProgress, setUploadProgress] = useState(0);
+  const isDirty = useMemo(() => !sameDraft(draft, baseline), [baseline, draft]);
 
   /* 管理列表直接用服务端顺序（sort_order,id），不套 useClassCatalog 的排序
      select：拖拽重排读写的就是这份顺序本身。 */
@@ -106,6 +117,7 @@ export function useAdminClassesController() {
       await refresh();
       setOpened(false);
       setDraft(EMPTY_CLASS_EDITOR_DRAFT);
+      setBaseline(EMPTY_CLASS_EDITOR_DRAFT);
       setUploadProgress(0);
       notifySuccess(t("classes.message.saved"));
     },
@@ -127,6 +139,7 @@ export function useAdminClassesController() {
          已经不存在的 id，右栏会停在一张改了也存不回去的表上。 */
       setOpened(false);
       setDraft(EMPTY_CLASS_EDITOR_DRAFT);
+      setBaseline(EMPTY_CLASS_EDITOR_DRAFT);
       setUploadProgress(0);
       notifySuccess(t("classes.message.deleted"));
     },
@@ -179,12 +192,15 @@ export function useAdminClassesController() {
   const openCreate = () => {
     /* sort_order 不传：服务端按当前最大值 + 10 排到末尾，正好是拖拽序里「新的在最后」。 */
     setDraft(EMPTY_CLASS_EDITOR_DRAFT);
+    setBaseline(EMPTY_CLASS_EDITOR_DRAFT);
     setUploadProgress(0);
     setOpened(true);
   };
 
   const openEdit = (item: ClassCatalogItem) => {
-    setDraft(itemToDraft(item));
+    const nextDraft = itemToDraft(item);
+    setDraft(nextDraft);
+    setBaseline(nextDraft);
     setUploadProgress(0);
     setOpened(true);
   };
@@ -209,6 +225,7 @@ export function useAdminClassesController() {
     opened,
     draft,
     setDraft,
+    isDirty,
     openCreate,
     openEdit,
     save: () => saveMutation.mutate(draft),

@@ -114,11 +114,21 @@ function cleanupStatements(
     `DELETE FROM ${table} WHERE id = ? AND EXISTS (${guard})`,
     [artifact.key, ...guardParams],
   )];
+  const deleteInbox = (entityType: string, sourcePrefix: string): SqlBatchStatement => run(
+    `DELETE FROM notification_inbox
+      WHERE entity_type = ? AND entity_id = ? AND source_key = ?
+        AND EXISTS (${guard})`,
+    [entityType, artifact.key, `${sourcePrefix}:${artifact.key}`, ...guardParams],
+  );
   switch (artifact.type) {
     case "guild_war":
       return deleteById("guild_wars");
     case "event":
-      return [run(`DELETE FROM media_links WHERE entity_type = 'event' AND entity_id = ? AND EXISTS (${guard})`, [artifact.key, ...guardParams]), ...deleteById("events")];
+      return [
+        deleteInbox("event", "event_created"),
+        run(`DELETE FROM media_links WHERE entity_type = 'event' AND entity_id = ? AND EXISTS (${guard})`, [artifact.key, ...guardParams]),
+        ...deleteById("events"),
+      ];
     case "recurring_template":
       return [run(`DELETE FROM media_links WHERE entity_type = 'recurring_template' AND entity_id = ? AND EXISTS (${guard})`, [artifact.key, ...guardParams]), ...deleteById("recurring_templates")];
     case "storage_batch":
@@ -133,6 +143,7 @@ function cleanupStatements(
     case "storage": return deleteById("storages");
     case "wiki_article":
       return [
+        deleteInbox("wiki_article", "wiki_article_created"),
         run(`DELETE FROM media_links WHERE entity_type = 'wiki_article' AND entity_id = ? AND EXISTS (${guard})`, [artifact.key, ...guardParams]),
         run(`DELETE FROM wiki_revision_media WHERE revision_id IN (SELECT id FROM wiki_revisions WHERE article_id = ?) AND EXISTS (${guard})`, [artifact.key, ...guardParams]),
         run(`DELETE FROM wiki_revisions WHERE article_id = ? AND EXISTS (${guard})`, [artifact.key, ...guardParams]),
@@ -140,13 +151,23 @@ function cleanupStatements(
       ];
     case "wiki_category": return deleteById("wiki_categories");
     case "announcement":
-      return [run(`DELETE FROM media_links WHERE entity_type = 'announcement' AND entity_id = ? AND EXISTS (${guard})`, [artifact.key, ...guardParams]), ...deleteById("announcements")];
+      return [
+        deleteInbox("announcement", "announcement_published"),
+        run(`DELETE FROM media_links WHERE entity_type = 'announcement' AND entity_id = ? AND EXISTS (${guard})`, [artifact.key, ...guardParams]),
+        ...deleteById("announcements"),
+      ];
     case "gallery_item":
       return [run(`DELETE FROM media_links WHERE entity_type = 'gallery_item' AND entity_id = ? AND EXISTS (${guard})`, [artifact.key, ...guardParams]), ...deleteById("gallery_items")];
     case "badge": return deleteById("member_badges");
     case "invite_link": return deleteById("invite_links");
     case "member_absence": return deleteById("member_absences");
-    case "user": return deleteById("users");
+    case "user": return [
+      deleteInbox("member", "member_joined"),
+      run(`DELETE FROM login_failures
+        WHERE login_name = lower((SELECT login_name FROM user_credentials WHERE user_id = ?))
+          AND EXISTS (${guard})`, [artifact.key, ...guardParams]),
+      ...deleteById("users"),
+    ];
     case "role": return deleteById("roles");
     case "class_tag": return deleteById("class_tags");
     case "class_catalog": return deleteById("class_catalog");

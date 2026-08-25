@@ -3,6 +3,12 @@ import { AppError } from "@guild/kernel";
 
 export type ImageDimensions = Readonly<{ width: number; height: number }>;
 
+export type ValidatedAnnouncementAttachment = Readonly<{
+  originalName: string;
+  contentType: "application/pdf" | "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
+  extension: "pdf" | "xlsx";
+}>;
+
 function invalidMedia(message: string): never {
   throw new AppError({ code: "VALIDATION_ERROR", status: 400, message });
 }
@@ -91,8 +97,42 @@ export function validateOggOpus(bytes: Uint8Array, maxBytes: number): void {
   }
 }
 
+export function validateAnnouncementAttachment(
+  input: Readonly<{ bytes: Uint8Array; originalName: string; contentType: string }>,
+  maxBytes: number,
+): ValidatedAnnouncementAttachment {
+  assertByteLimit(input.bytes, maxBytes);
+  const originalName = input.originalName.normalize("NFC").trim();
+  if (
+    originalName.length < 1
+    || originalName.length > 255
+    || originalName === "."
+    || originalName === ".."
+    || /[\\/\u0000-\u001f\u007f]/.test(originalName)
+  ) {
+    return invalidMedia("Attachment name is invalid");
+  }
+  const extension = originalName.slice(originalName.lastIndexOf(".") + 1).toLowerCase();
+  const contentType = input.contentType.trim().toLowerCase();
+  if (extension === "pdf" && contentType === "application/pdf" && hasPrefix(input.bytes, [0x25, 0x50, 0x44, 0x46, 0x2d])) {
+    return { originalName, contentType, extension };
+  }
+  if (
+    extension === "xlsx"
+    && contentType === "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    && hasPrefix(input.bytes, [0x50, 0x4b, 0x03, 0x04])
+  ) {
+    return { originalName, contentType, extension };
+  }
+  return invalidMedia("Attachment type, name, and content do not match");
+}
+
 function assertByteLimit(bytes: Uint8Array, maxBytes: number): void {
   if (!Number.isInteger(maxBytes) || maxBytes < 1 || bytes.byteLength < 1 || bytes.byteLength > maxBytes) {
     invalidMedia(`Media variant must contain between 1 and ${maxBytes} bytes`);
   }
+}
+
+function hasPrefix(bytes: Uint8Array, prefix: readonly number[]): boolean {
+  return bytes.byteLength >= prefix.length && prefix.every((value, index) => bytes[index] === value);
 }

@@ -35,7 +35,15 @@
 }
 
 .admin-class-tags__members-intro {
+  display: grid;
+  gap: var(--space-xs);
   min-inline-size: 0;
+}
+
+.admin-class-tags__members-title {
+  color: var(--text-secondary);
+  font-size: var(--text-sm);
+  font-weight: var(--fw-medium);
 }
 
 /*

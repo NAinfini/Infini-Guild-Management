@@ -1,4 +1,3 @@
-import { MantineProvider } from "@mantine/core";
 import { fireEvent, render, screen } from "@testing-library/react";
 import {
   createColumnHelper,
@@ -36,11 +35,7 @@ function TableHarness({
 describe("DataTableAdapter accessibility", () => {
   it("makes interactive rows keyboard focusable and exposes selection", () => {
     const onRowKeyDown = vi.fn();
-    render(
-      <MantineProvider>
-        <TableHarness onRowKeyDown={onRowKeyDown} />
-      </MantineProvider>,
-    );
+    render(<TableHarness onRowKeyDown={onRowKeyDown} />);
 
     const row = screen.getByRole("row", { name: "Member Alice" });
     expect(row).toHaveAttribute("tabindex", "0");
@@ -66,16 +61,12 @@ describe("DataTableAdapter sticky header", () => {
 
   it("marks the header only when the body scrolls under it", () => {
     const { container, rerender } = render(
-      <MantineProvider>
-        <StickyHarness virtualize />
-      </MantineProvider>,
+      <StickyHarness virtualize />,
     );
     expect(container.querySelector("thead")).toHaveAttribute("data-sticky-header");
 
     rerender(
-      <MantineProvider>
-        <StickyHarness virtualize={false} />
-      </MantineProvider>,
+      <StickyHarness virtualize={false} />,
     );
     expect(container.querySelector("thead")).not.toHaveAttribute("data-sticky-header");
   });

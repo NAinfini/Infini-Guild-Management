@@ -1,19 +1,10 @@
-import { notifications } from "@mantine/notifications";
 import i18n from "i18next";
 import { useCallback } from "react";
 import { isApiRequestError } from "../api/client";
 import { portalToast } from "../overlays";
 
 function showErrorToast(text: string) {
-  const delivered = portalToast({ title: text, status: "error" });
-  if (!delivered) {
-    notifications.show({
-      color: "red",
-      message: text,
-      autoClose: 6000,
-      withCloseButton: true,
-    });
-  }
+  portalToast({ title: text, status: "error", autoClose: 6000 });
 }
 
 export function presentAppError(error: unknown, fallbackMessage = i18n.t("common:errors.generic", { defaultValue: "Something went wrong" })): void {

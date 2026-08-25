@@ -1,7 +1,8 @@
 import { PERMISSIONS, type CreateStorageTransactionPayload, type StorageItem, type User } from "@guild/shared";
-import { MantineProvider } from "@mantine/core";
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import { describe, expect, it, vi } from "vitest";
 import { StorageTransactionModal } from "./StorageTransactionModal";
 
@@ -25,7 +26,7 @@ const item: StorageItem = {
 
 const member: User = {
   id: "user-1",
-  username: "Member One",
+  display_name: "Member One",
   role: "member",
   role_name: "Member",
   role_color: null,
@@ -47,25 +48,23 @@ function renderModal(options: {
 }) {
   const onSubmit = vi.fn<(itemId: string, payload: CreateStorageTransactionPayload) => void>();
   render(
-    <MantineProvider>
-      <StorageTransactionModal
-        opened
-        items={[item]}
-        users={[{ user: member }]}
-        initialItem={options.initialItem === undefined ? item : options.initialItem}
-        initialMode={options.mode ?? "intake"}
-        canManageStock={options.canManageStock}
-        itemsHasMore={options.itemsHasMore ?? false}
-        itemsLoadingMore={false}
-        itemSearch=""
-        onItemSearchChange={vi.fn()}
-        onLoadMoreItems={options.onLoadMoreItems ?? vi.fn()}
-        defaultRecipientUserId={member.id}
-        isSaving={false}
-        onClose={vi.fn()}
-        onSubmit={onSubmit}
-      />
-    </MantineProvider>,
+    <StorageTransactionModal
+      opened
+      items={[item]}
+      users={[{ user: member }]}
+      initialItem={options.initialItem === undefined ? item : options.initialItem}
+      initialMode={options.mode ?? "intake"}
+      canManageStock={options.canManageStock}
+      itemsHasMore={options.itemsHasMore ?? false}
+      itemsLoadingMore={false}
+      itemSearch=""
+      onItemSearchChange={vi.fn()}
+      onLoadMoreItems={options.onLoadMoreItems ?? vi.fn()}
+      defaultRecipientUserId={member.id}
+      isSaving={false}
+      onClose={vi.fn()}
+      onSubmit={onSubmit}
+    />,
   );
   return onSubmit;
 }
@@ -213,9 +212,7 @@ describe("StorageTransactionModal", () => {
       onSubmit: vi.fn(),
     };
     const { rerender } = render(
-      <MantineProvider>
-        <StorageTransactionModal {...commonProps} items={[item]} />
-      </MantineProvider>,
+      <StorageTransactionModal {...commonProps} items={[item]} />,
     );
     await user.click(screen.getByRole("combobox", { name: "field.item" }));
     await user.keyboard("{ArrowDown}{Enter}");
@@ -226,55 +223,54 @@ describe("StorageTransactionModal", () => {
     await user.type(quantityInput, "5");
 
     rerender(
-      <MantineProvider>
-        <StorageTransactionModal
-          {...commonProps}
-          items={[item, { ...item, id: "item-2", name: "Ore" }]}
-        />
-      </MantineProvider>,
+      <StorageTransactionModal
+        {...commonProps}
+        items={[item, { ...item, id: "item-2", name: "Ore" }]}
+      />,
     );
 
     expect(screen.getByRole("textbox", { name: "field.quantity" })).toHaveValue("5");
 
     rerender(
-      <MantineProvider>
-        <StorageTransactionModal {...commonProps} items={[]} />
-      </MantineProvider>,
+      <StorageTransactionModal {...commonProps} items={[]} />,
     );
 
     expect(screen.getByText("Crystal")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "action.submit" })).toBeEnabled();
   });
 
-  /* jsdom has no reliable responsive viewport and resolves vw in computed styles.
-   * Assert authored bounds directly and leave responsive height to the global scale. */
+  /* jsdom does not resolve viewport units from authored styles. Assert the
+   * responsive contract directly and leave token resolution to the browser. */
   it("declares a viewport-bounded max width and leaves control height to the token", () => {
     const { container } = render(
-      <MantineProvider>
-        <StorageTransactionModal
-          opened
-          items={[item]}
-          users={[{ user: member }]}
-          initialItem={null}
-          initialMode="intake"
-          canManageStock
-          defaultRecipientUserId={member.id}
-          isSaving={false}
-          onClose={vi.fn()}
-          onSubmit={vi.fn()}
-        />
-      </MantineProvider>,
+      <StorageTransactionModal
+        opened
+        items={[item]}
+        users={[{ user: member }]}
+        initialItem={null}
+        initialMode="intake"
+        canManageStock
+        defaultRecipientUserId={member.id}
+        isSaving={false}
+        onClose={vi.fn()}
+        onSubmit={vi.fn()}
+      />,
     );
 
     const content = container.ownerDocument.querySelector<HTMLElement>(".storage-modal-content");
+    const storageCss = readFileSync(
+      resolve(process.cwd(), "apps/portal/components/pages/StoragePage.css"),
+      "utf8",
+    );
     expect(content).toBeInTheDocument();
-    expect(content?.style.maxWidth).toBe("calc(100vw - 16px)");
+    expect(content).toHaveClass("storage-admin-transaction-shell");
     expect(screen.getByRole("combobox", { name: "field.item" }).style.minHeight).toBe("");
     expect(screen.getByRole("button", { name: "action.submit" }).style.minHeight).toBe("");
-    // 分段控件没有可桥接的高度变量，仍要显式给——但必须是令牌，不是字面量 44。
-    expect(
-      container.ownerDocument.querySelector<HTMLElement>(".mantine-SegmentedControl-label")?.style
-        .minHeight,
-    ).toBe("var(--control-height-regular)");
+    expect(storageCss).toMatch(
+      /\.storage-transaction-shell,[\s\S]*?\.storage-admin-transaction-shell\s*\{[\s\S]*?max-width:\s*calc\(100vw - var\(--space-lg\)\)/,
+    );
+    expect(storageCss).toMatch(
+      /\.storage-admin-transaction-type__options \[data-slot="button"\]\s*\{[\s\S]*?min-height:\s*var\(--control-height-regular\)/,
+    );
   });
 });

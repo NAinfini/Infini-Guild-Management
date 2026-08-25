@@ -1,6 +1,6 @@
-import { Badge } from "@mantine/core";
+import { Badge } from "@portal/components/ui/badge";
 import { useNavigate, useSearch } from "@tanstack/react-router";
-import { createElement, type ComponentType, useCallback, useEffect, useMemo, useState } from "react";
+import { createElement, type CSSProperties, useCallback, useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import type { ColumnDef as TanStackColumnDef } from "@tanstack/react-table";
 import { usePageHeaderActions } from "../context/PageHeaderContext";
@@ -20,6 +20,12 @@ import { useSiteConfigMutations } from "./useSiteConfigMutations";
 import { useClassCatalog } from "./data/useClassData";
 import { resolveClassCatalogItem } from "../utils/class-catalog";
 import { formatDateTime } from "../utils/datetime";
+import {
+  ADMIN_CONTEXT_ROUTES,
+  isAdminContextTab,
+  resolveAdminContextTab,
+  type AdminContextTab,
+} from "../components/layout/admin-context-nav";
 
 export const BATCH_SELECTION_LIMIT = 50;
 const ROLE_METADATA_PERMISSIONS = [
@@ -30,30 +36,6 @@ const ROLE_METADATA_PERMISSIONS = [
   "admin.users.role",
 ] as const;
 
-const ADMIN_TABS = [
-  "member",
-  "invite",
-  "roles",
-  "classes",
-  "badges",
-  "siteConfig",
-  "operations",
-  "diagnostics",
-  "audit",
-] as const;
-export type AdminTab = (typeof ADMIN_TABS)[number];
-
-function isAdminTab(value: string): value is AdminTab {
-  return ADMIN_TABS.includes(value as AdminTab);
-}
-
-const BadgeCell = Badge as ComponentType<{
-  color: string;
-  variant?: string;
-  size?: string;
-  className?: string;
-}>;
-
 export function useAdminPageController() {
   const { t } = useTranslation("admin");
   const user = useAuthStore((state) => state.user);
@@ -62,11 +44,11 @@ export function useAdminPageController() {
   const { showError } = useAppError();
   const { member: memberSearchParam, tab: tabSearchParam } = useSearch({ strict: false }) as { member?: string; tab?: string };
   const navigate = useNavigate();
-  const activeTab: AdminTab = tabSearchParam && isAdminTab(tabSearchParam) ? tabSearchParam : "member";
+  const requestedTab = resolveAdminContextTab(tabSearchParam);
   const [memberSearch, setMemberSearch] = useState("");
 
   const handleTabChange = useCallback((value: string | null) => {
-    if (!value || !isAdminTab(value)) return;
+    if (!value || !isAdminContextTab(value)) return;
     const tab = value === "member" ? undefined : value;
     void navigate({ to: "/admin", search: (prev) => ({ ...prev, tab }), replace: true, viewTransition: false });
   }, [navigate]);
@@ -93,8 +75,21 @@ export function useAdminPageController() {
     canViewStatus: canManagePermission(["admin.status.view"]),
     canManageBadges: canManagePermission(["admin.badges.manage"]),
     canManageSiteConfig: canManagePermission(["admin.siteConfig.manage"]),
+    canManageImportantNotices: canManagePermission(["admin.importantNotices.manage"]),
     canManageClasses: canManagePermission(["admin.classes.manage"]),
   }), [canManagePermission, user]);
+  const tabAccess = useMemo<Record<AdminContextTab, boolean>>(() => {
+    return Object.fromEntries(
+      ADMIN_CONTEXT_ROUTES.map((route) => [
+        route.tab,
+        canManagePermission([...route.permissions]),
+      ]),
+    ) as Record<AdminContextTab, boolean>;
+  }, [canManagePermission]);
+  const firstAvailableTab = useMemo<AdminContextTab | null>(() => {
+    return ADMIN_CONTEXT_ROUTES.find((route) => tabAccess[route.tab])?.tab ?? null;
+  }, [tabAccess]);
+  const activeTab = tabAccess[requestedTab] ? requestedTab : firstAvailableTab ?? requestedTab;
   const canReadRoleMetadata = Boolean(
     user && ROLE_METADATA_PERMISSIONS.some((permission) => user.permissions[permission] === true),
   );
@@ -109,7 +104,6 @@ export function useAdminPageController() {
     rolesQuery,
     siteConfigQuery,
     statusQuery,
-    permissions,
   } = useAdminData({
     isModerator: userCanAccessAdmin(user),
     userRole: viewingAs,
@@ -141,7 +135,7 @@ export function useAdminPageController() {
   const userMap = useMemo(() => {
     const map = new Map<string, string>();
     for (const row of userRowsRaw) {
-      map.set(row.user.id, row.user.username);
+      map.set(row.user.id, row.user.display_name);
     }
     return map;
   }, [userRowsRaw]);
@@ -154,55 +148,23 @@ export function useAdminPageController() {
     resolveUsername,
   });
 
-  const rolesLoaded = rolesQuery.isSuccess;
-  const {
-    canViewUsers,
-    canViewInvites,
-    canViewAudit,
-    canViewRoles,
-    canViewStatus,
-    canManageBadges,
-    canManageSiteConfig,
-    canManageClasses,
-  } = permissions;
+  const canManageBadges = effectiveAdminPermissions.canManageBadges;
+  const canViewStatus = effectiveAdminPermissions.canViewStatus;
   const canEditUsers = canManagePermission(["admin.users.edit"]);
   const canAssignUserRoles = canManagePermission(["admin.users.role"]);
   const canActivateUsers = canManagePermission(["admin.users.activate"]);
   const canDeleteUsers = canManagePermission(["admin.users.delete"]);
   const canResetUserPasswords = canManagePermission(["admin.users.password"]);
-  const tabAccess = useMemo<Record<AdminTab, boolean>>(() => ({
-    member: canViewUsers,
-    invite: canViewInvites,
-    audit: canViewAudit,
-    roles: canViewRoles,
-    siteConfig: canManageSiteConfig,
-    classes: canManageClasses,
-    badges: canManageBadges,
-    operations: canViewStatus,
-    diagnostics: canViewStatus,
-  }), [
-    canManageBadges,
-    canManageClasses,
-    canManageSiteConfig,
-    canViewAudit,
-    canViewInvites,
-    canViewRoles,
-    canViewStatus,
-    canViewUsers,
-  ]);
-  const firstAvailableTab = useMemo<AdminTab | null>(() => {
-    return ADMIN_TABS.find((tab) => tabAccess[tab]) ?? null;
-  }, [tabAccess]);
   const badgesController = useAdminBadgesController(
     canManageBadges && activeTab === "badges",
   );
   const siteConfigMutations = useSiteConfigMutations({ showError });
 
   useEffect(() => {
-    if (rolesLoaded && !tabAccess[activeTab] && firstAvailableTab) {
+    if (!tabAccess[requestedTab] && firstAvailableTab) {
       handleTabChange(firstAvailableTab);
     }
-  }, [activeTab, firstAvailableTab, handleTabChange, rolesLoaded, tabAccess]);
+  }, [firstAvailableTab, handleTabChange, requestedTab, tabAccess]);
 
   const {
     setMemberDetailId,
@@ -232,7 +194,7 @@ export function useAdminPageController() {
     if (!q) return userRowsRaw;
     return userRowsRaw.filter((row) => {
       return (
-        row.user.username.toLowerCase().includes(q) ||
+        row.user.display_name.toLowerCase().includes(q) ||
         (row.profile.notes ?? "").toLowerCase().includes(q) ||
         row.user.role_name.toLowerCase().includes(q) ||
         row.profile.classes.some((cls) =>
@@ -257,9 +219,9 @@ export function useAdminPageController() {
 
   const userColumns = useMemo((): TanStackColumnDef<(typeof userRows)[number], unknown>[] => [
     {
-      header: t("member.table.username"),
-      id: "username",
-      accessorFn: (row) => row.user.username,
+      header: t("member.table.display_name"),
+      id: "display_name",
+      accessorFn: (row) => row.user.display_name,
     },
     {
       header: t("member.table.class"),
@@ -294,8 +256,12 @@ export function useAdminPageController() {
            颜色是管理员在角色页自己填的任意 hex（内置 moderator 就是 #756047 这种深棕），
            拿它当文字色一定会撞出读不清的组合，所以只让它管背景，文字锁在语义色上。 */
         return createElement(
-          BadgeCell,
-          { color, variant: "light", size: "sm", className: "admin-cell-role" },
+          Badge,
+          {
+            variant: "outline",
+            className: "admin-cell-role",
+            style: { "--role-color": color } as CSSProperties,
+          },
           role.role_name,
         );
       },
@@ -368,7 +334,12 @@ export function useAdminPageController() {
     selectedMemberDetail,
     user,
   ]);
-  const createMember = useCallback(async (data: { username: string; notes: string; roleId: string }) => {
+  const createMember = useCallback(async (data: {
+    login_name: string;
+    display_name: string;
+    notes: string;
+    roleId: string;
+  }) => {
     const result = await adminMutations.createMemberMutation.mutateAsync(data);
     return result;
   }, [adminMutations.createMemberMutation]);

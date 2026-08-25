@@ -1,4 +1,3 @@
-import { MantineProvider } from "@mantine/core";
 import { render, screen } from "@testing-library/react";
 import {
   getCoreRowModel,
@@ -37,9 +36,7 @@ function PaginationHarness() {
 describe("DataTablePagination accessibility", () => {
   it("localizes the page-size and pagination control names", () => {
     render(
-      <MantineProvider>
-        <PaginationHarness />
-      </MantineProvider>,
+      <PaginationHarness />,
     );
 
     expect(screen.getByRole("combobox", { name: "Per page" })).toBeInTheDocument();

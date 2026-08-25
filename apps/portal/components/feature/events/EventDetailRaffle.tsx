@@ -1,5 +1,5 @@
 import type { Event, MemberProfile, User } from "@guild/shared";
-import { Button, Group, Stack, Text } from "@mantine/core";
+import { Button } from "@portal/components/ui/button";
 import { GiftIcon } from "@portal/components/icons";
 import { useConfirmDialog } from "@portal/hooks/useConfirmDialog";
 import { useTranslation } from "react-i18next";
@@ -36,11 +36,7 @@ export function EventDetailRaffle({
     }
     const confirmed = await confirm({
       title: t("raffle.confirm.draw.title"),
-      description: (
-        <Text size="sm">
-          {t("raffle.confirm.draw.description", { count: event.winner_count ?? 0, pool: members.length })}
-        </Text>
-      ),
+      description: <p>{t("raffle.confirm.draw.description", { count: event.winner_count ?? 0, pool: members.length })}</p>,
       confirmLabel: t("raffle.detail.drawNow"),
       cancelLabel: t("button.cancel"),
       intent: "warning",
@@ -51,58 +47,55 @@ export function EventDetailRaffle({
   };
 
   return (
-    <section className="event-detail-modal__section event-detail-modal__section--raffle">
-      <Group justify="space-between" gap={12} mb={12} wrap="nowrap">
-        <Group gap={8}>
+    <section className="event-detail-content__section event-detail-content__section--raffle">
+      <div className="event-detail-content__raffle-header">
+        <div className="event-detail-content__raffle-heading">
           <GiftIcon size={20} />
-          <Text size="md" fw={800}>{t("raffle.detail.title")}</Text>
-        </Group>
+          <h2>{t("raffle.detail.title")}</h2>
+        </div>
         {hasDrawn ? (
-          <Text size="xs" fw={700} c="dimmed">{t("raffle.status.drawn")}</Text>
+          <strong className="event-detail-content__raffle-status">{t("raffle.status.drawn")}</strong>
         ) : canManage && onDrawRaffle && members.length > 0 ? (
           <Button
-            variant="light"
-            color="pink"
+            variant="secondary"
             size="xs"
             loading={drawRafflePending}
             disabled={Boolean(event.archived_at)}
-            leftSection={<GiftIcon size={14} />}
             onClick={() => void handleDraw()}
           >
+            <GiftIcon size={14} />
             {t("raffle.detail.drawNow")}
           </Button>
         ) : (
-          <Text size="xs" fw={700} c="dimmed">{t("raffle.status.pendingDraw")}</Text>
+          <strong className="event-detail-content__raffle-status">{t("raffle.status.pendingDraw")}</strong>
         )}
-      </Group>
+      </div>
       {hasDrawn ? (
-        <Stack gap={8}>
-          <Text size="sm" fw={600} c="dimmed">{t("raffle.detail.winnersLabel")}</Text>
+        <div className="event-detail-content__raffle-stack">
+          <p className="event-detail-content__raffle-copy">{t("raffle.detail.winnersLabel")}</p>
           {winners.map((winner) => {
             const entry = allUsers.find((candidate) => candidate.user.id === winner.user_id);
             return (
               /* 跟下面报名名单同一种行：同一个弹窗里同一批人不该有两种长相。 */
-              <Group
+              <div
                 key={winner.id}
-                gap={10}
-                className="event-detail-modal__member-row"
-                wrap="nowrap"
+                className="event-detail-content__member-row"
               >
                 {entry ? (
                   <EventMemberIdentity entry={entry} />
                 ) : (
-                  <Text size="sm" c="dimmed">{winner.user_id}</Text>
+                  <span className="event-detail-content__raffle-copy">{winner.user_id}</span>
                 )}
-              </Group>
+              </div>
             );
           })}
-        </Stack>
+        </div>
       ) : (
-        <Stack gap={4}>
-          <Text size="sm" c="dimmed">{t("raffle.detail.winnerCount", { count: event.winner_count ?? 0 })}</Text>
-          <Text size="sm" c="dimmed">{t("raffle.detail.pool", { count: members.length })}</Text>
-          {!canManage ? <Text size="xs" c="dimmed">{t("raffle.detail.pendingDraw")}</Text> : null}
-        </Stack>
+        <div className="event-detail-content__raffle-stack">
+          <p className="event-detail-content__raffle-copy">{t("raffle.detail.winnerCount", { count: event.winner_count ?? 0 })}</p>
+          <p className="event-detail-content__raffle-copy">{t("raffle.detail.pool", { count: members.length })}</p>
+          {!canManage ? <p className="event-detail-content__raffle-copy">{t("raffle.detail.pendingDraw")}</p> : null}
+        </div>
       )}
     </section>
   );

@@ -1,6 +1,6 @@
-import { notifications } from "@mantine/notifications";
 import i18n from "i18next";
 import { useEffect } from "react";
+import { portalToast } from "../../overlays";
 
 type ConflictDetail = {
   message?: string;
@@ -26,26 +26,24 @@ export function AppErrorOverlay() {
         .filter(Boolean)
         .join("\n");
 
-      notifications.show({
+      portalToast({
         title: i18n.t("common:errors.conflictTitle"),
         message: extra ? `${messageText}\n${extra}` : messageText,
-        color: "yellow",
+        status: "warning",
         autoClose: 5000,
-        withCloseButton: true,
       });
     };
 
     const onNetwork = (event: Event) => {
       const detail = (event as CustomEvent<NetworkDetail>).detail;
-      notifications.show({
+      portalToast({
         id: NETWORK_NOTIFICATION_ID,
         title: i18n.t("common:errors.connectionTitle", { defaultValue: "Connection Issue" }),
         message: detail?.message ?? i18n.t("common:errors.connectionIssue", {
           defaultValue: "Unable to reach server. Check your network and retry.",
         }),
-        color: "red",
+        status: "error",
         autoClose: 5000,
-        withCloseButton: true,
       });
     };
 

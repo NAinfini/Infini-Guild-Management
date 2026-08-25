@@ -6,6 +6,7 @@ export * from "./modules/auth/public.js";
 export * from "./modules/events/public.js";
 export * from "./modules/gallery/public.js";
 export * from "./modules/guild-war/public.js";
+export * from "./modules/important-notices/public.js";
 export * from "./modules/jobs/public.js";
 export * from "./modules/media/public.js";
 export * from "./modules/members/public.js";

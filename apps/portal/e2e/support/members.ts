@@ -15,7 +15,13 @@ import { readJson } from "./test";
  * 审计行和 login_failures 一起清掉，所以怎么折腾都不留痕。
  */
 
-export type ThrowawayMember = { id: string; username: string; password: string; role: AdminRole };
+export type ThrowawayMember = {
+  id: string;
+  login_name: string;
+  display_name: string;
+  password: string;
+  role: AdminRole;
+};
 
 let counter = 0;
 const authorityByApi = new WeakMap<APIRequestContext, Promise<{ user: User; roles: AdminRole[] }>>();
@@ -57,22 +63,29 @@ export function uniqueTag(prefix: string): string {
   return `${prefix}${Date.now().toString(36)}${counter}`;
 }
 
-/** 建一个挂在本次运行名下的一次性成员。用户名不能以 systemtest 开头（保留前缀）。 */
+/** 建一个挂在本次运行名下的一次性成员。登录名和显示名不能以 systemtest 开头（保留前缀）。 */
 export async function createThrowawayMember(
   api: APIRequestContext,
   tag: string,
   role?: AdminRole,
 ): Promise<ThrowawayMember> {
   counter += 1;
-  const username = `e2e_${tag}_${counter}`;
+  const display_name = `e2e_${tag}_${counter}`;
+  const login_name = `e2e_login_${Date.now().toString(36)}_${counter}`;
   const assignedRole = role ?? await readAssignableRole(api);
   const created = await readJson(
-    await api.post("/api/admin/users", { data: { username, role_id: assignedRole.id } }),
-    `创建一次性成员 ${username}`,
-  ) as { user_id: string; username: string; temporary_password: string };
+    await api.post("/api/admin/users", { data: { login_name, display_name, role_id: assignedRole.id } }),
+    `创建一次性成员 ${display_name}`,
+  ) as {
+    user_id: string;
+    display_name: string;
+    temporary_login_name: string;
+    temporary_password: string;
+  };
   return {
     id: created.user_id,
-    username: created.username,
+    login_name: created.temporary_login_name,
+    display_name: created.display_name,
     password: created.temporary_password,
     role: assignedRole,
   };

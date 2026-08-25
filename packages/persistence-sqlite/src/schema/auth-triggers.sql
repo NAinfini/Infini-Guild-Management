@@ -81,10 +81,11 @@ BEGIN
   SELECT RAISE(ABORT, 'last role manager required');
 END;
 
--- login_failures also records unknown usernames, so it cannot reference users.
--- Once a real account is deleted, its lock state must not survive username reuse.
+-- login_failures also records unknown login names, so it cannot reference
+-- users. Capture the credential before its cascade delete removes it.
 CREATE TRIGGER auth_login_failure_cleanup_after_user_delete
-AFTER DELETE ON users
+BEFORE DELETE ON users
 BEGIN
-  DELETE FROM login_failures WHERE username = lower(OLD.username);
+  DELETE FROM login_failures
+  WHERE login_name = lower((SELECT login_name FROM user_credentials WHERE user_id = OLD.id));
 END;

@@ -28,7 +28,7 @@ type ServerBadge = {
   description: string | null;
   sort_order: number;
 };
-type ServerAssignment = { user_id: string; username: string | null };
+type ServerAssignment = { user_id: string; display_name: string | null };
 
 function sidebar(page: Page): Locator {
   return page.locator(".admin-md__master");
@@ -56,20 +56,20 @@ function memberToolbar(page: Page): Locator {
 function memberList(page: Page): Locator {
   return detail(page).locator(".pick-list__body");
 }
-function memberRow(page: Page, username: string): Locator {
-  return detail(page).locator(".pick-list__row").filter({ hasText: username });
+function memberRow(page: Page, display_name: string): Locator {
+  return detail(page).locator(".pick-list__row").filter({ hasText: display_name });
 }
 /*
  * 标签和颜色只有样式编辑器这一个入口（成员称号用的是同一个弹窗）：文本、字号、
  * 粗细在里面调，挑中的色号既拼进 label_html，也当徽章药丸的底色存下来。
- * 色板按钮的无障碍名就是色值本身（Mantine ColorPicker 的 Swatches）。
+ * 预设色板使用完整的可访问名称，既说明动作也保留色值。
  */
 async function styleLabel(page: Page, text: string, hex: string): Promise<void> {
   await detail(page).getByRole("button", { name: "Open style editor", exact: true }).click();
   const editor = topDialog(page);
   await expect(editor.getByRole("heading", { name: "Badge Label Editor", exact: true })).toBeVisible();
   await field(editor, "Label text input").fill(text);
-  await editor.locator(`button[aria-label="${hex}"]`).click();
+  await editor.getByRole("button", { name: `Use recent color ${hex}`, exact: true }).click();
   await editor.getByRole("button", { name: "Apply to badge", exact: true }).click();
   await expect(page.getByRole("dialog"), "应用之后弹窗该自己关掉").toHaveCount(0);
 }
@@ -119,7 +119,7 @@ async function openBadges(page: Page): Promise<void> {
 
 async function expectNotified(page: Page, text: string): Promise<void> {
   await expect(
-    page.locator(".mantine-Notification-description").filter({ hasText: text }),
+    page.locator('[data-slot="toast-description"]').filter({ hasText: text }),
     `没有弹出通知「${text}」`,
   ).toBeVisible();
 }
@@ -253,9 +253,9 @@ test("成员名单：勾选即拥有，改动攒成差异一次保存；再打�
   await manage.click();
   await expect(toolbar).toBeVisible();
 
-  await toolbar.getByRole("textbox", { name: "Search members…", exact: true }).fill(member.username);
+  await toolbar.getByRole("textbox", { name: "Search members…", exact: true }).fill(member.display_name);
   await expect(memberList(page).getByRole("checkbox"), "搜索要把名单收敛到那一个人").toHaveCount(1);
-  const box = memberList(page).getByRole("checkbox", { name: member.username, exact: true });
+  const box = memberList(page).getByRole("checkbox", { name: member.display_name, exact: true });
   await expect(box, "还没给他徽章，所以是没勾的").not.toBeChecked();
   await box.check();
   await expect(save, "勾上一个人之后才有可保存的东西").toBeEnabled();
@@ -269,16 +269,16 @@ test("成员名单：勾选即拥有，改动攒成差异一次保存；再打�
     "服务端得真的挂上这条分配",
   ).toEqual([member.id]);
   await expect(detail(page).getByText("1 assigned", { exact: true })).toBeVisible();
-  await expect(memberRow(page, member.username), "已分配的人以卡片出现").toBeVisible();
+  await expect(memberRow(page, member.display_name), "已分配的人以卡片出现").toBeVisible();
   await expect(
-    memberRow(page, member.username).getByText(/^Granted /),
+    memberRow(page, member.display_name).getByText(/^Granted /),
     "授予时间后端一直在返回，名单上要看得到",
   ).toBeVisible();
 
   /* 已经有徽章的人仍在名单里，只是勾上了——取消勾选就是移除，不再是两份名单。 */
   await manage.click();
   await expect(toolbar).toBeVisible();
-  await toolbar.getByRole("textbox", { name: "Search members…", exact: true }).fill(member.username);
+  await toolbar.getByRole("textbox", { name: "Search members…", exact: true }).fill(member.display_name);
   await expect(box).toBeChecked();
   await box.uncheck();
   await expect(save, "取消勾选同样是一处改动，保存按钮要重新可用").toBeEnabled();
@@ -303,7 +303,7 @@ test("卡片上的移除：确认框取消什么都不做，确认之后两边�
 
   await openBadges(page);
   await badgeItem(page, badge.name).click();
-  const card = memberRow(page, member.username);
+  const card = memberRow(page, member.display_name);
   await expect(card).toBeVisible();
 
   await card.getByRole("button", { name: "Remove", exact: true }).click();

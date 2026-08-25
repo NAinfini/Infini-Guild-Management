@@ -1,0 +1,25 @@
+{
+  "$schema": "https://ui.shadcn.com/schema.json",
+  "style": "base-nova",
+  "rsc": false,
+  "tsx": true,
+  "tailwind": {
+    "config": "",
+    "css": "apps/portal/styles.css",
+    "baseColor": "neutral",
+    "cssVariables": true,
+    "prefix": ""
+  },
+  "iconLibrary": "tabler",
+  "aliases": {
+    "components": "@portal/components",
+    "ui": "@portal/components/ui",
+    "lib": "@portal/lib",
+    "hooks": "@portal/hooks",
+    "utils": "@portal/lib/utils"
+  },
+  "menuColor": "inverted",
+  "menuAccent": "subtle",
+  "rtl": false,
+  "registries": {}
+}

@@ -1,14 +1,16 @@
 import { LIMITS } from "@guild/shared/config/limits";
+import { isReservedSystemTestIdentityName } from "@guild/shared/config/system-test";
 import { z } from "zod";
 
 const identifierSchema = z.string()
   .min(1)
   .max(128)
   .refine((value) => value === value.trim(), "identifier must not contain outer whitespace");
-const usernameSchema = z.string()
-  .min(LIMITS.content.username.min)
-  .max(LIMITS.content.username.max)
-  .regex(/^[a-zA-Z0-9_一-鿿]+$/);
+const identityNameSchema = z.string()
+  .min(LIMITS.content.identityName.min)
+  .max(LIMITS.content.identityName.max)
+  .regex(/^[a-zA-Z0-9_一-鿿]+$/)
+  .refine((value) => !isReservedSystemTestIdentityName(value), "identity name is reserved");
 const passwordHashSchema = z.string()
   .regex(/^pbkdf2-sha256\$\d+\$[A-Za-z0-9_-]+\$[A-Za-z0-9_-]+$/)
   .max(512)
@@ -21,7 +23,8 @@ const bootstrapInputSchema = z.discriminatedUnion("mode", [
   z.object({
     mode: z.literal("create"),
     userId: identifierSchema,
-    username: usernameSchema,
+    loginName: identityNameSchema,
+    displayName: identityNameSchema,
     passwordHash: passwordHashSchema,
     nonce: identifierSchema.optional(),
   }).strict(),
@@ -55,10 +58,10 @@ export function buildFirstAdminBootstrapBundle(input: FirstAdminBootstrapInput):
   });
 
   const createUserSql = parsed.mode === "create"
-    ? `INSERT INTO users (id, username, role_id, is_active, deleted_at, revision_token)
-VALUES (${sqlString(parsed.userId)}, ${sqlString(parsed.username)}, 'admin', 1, NULL, ${sqlString(userRevision)});
-INSERT INTO user_credentials (user_id, password_hash)
-VALUES (${sqlString(parsed.userId)}, ${sqlString(parsed.passwordHash)});
+    ? `INSERT INTO users (id, display_name, role_id, is_active, deleted_at, revision_token)
+VALUES (${sqlString(parsed.userId)}, ${sqlString(parsed.displayName)}, 'admin', 1, NULL, ${sqlString(userRevision)});
+INSERT INTO user_credentials (user_id, login_name, password_hash)
+VALUES (${sqlString(parsed.userId)}, ${sqlString(parsed.loginName)}, ${sqlString(parsed.passwordHash)});
 INSERT INTO member_profiles (user_id, revision_token)
 VALUES (${sqlString(parsed.userId)}, ${sqlString(profileRevision)});`
     : `INSERT INTO _ig_role_manager_bootstrap_assertions (ok)
@@ -89,9 +92,9 @@ INSERT INTO audit_log (
   subject_label, action, payload_json, occurred_at
 ) VALUES (
   ${sqlString(auditEventId)}, ${sqlString(requestId)}, 'user', ${sqlString(parsed.userId)},
-  (SELECT username FROM users WHERE id = ${sqlString(parsed.userId)}),
+  (SELECT display_name FROM users WHERE id = ${sqlString(parsed.userId)}),
   'user', ${sqlString(parsed.userId)},
-  (SELECT username FROM users WHERE id = ${sqlString(parsed.userId)}),
+  (SELECT display_name FROM users WHERE id = ${sqlString(parsed.userId)}),
   'init', ${sqlString(auditPayload)},
   strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
 );

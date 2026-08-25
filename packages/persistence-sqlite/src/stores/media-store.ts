@@ -104,6 +104,8 @@ export class SqliteMediaStore implements MediaStore {
           variants.content_type,
           variants.sha256,
           assets.owner_user_id,
+          assets.media_type,
+          assets.original_name,
           COALESCE(group_concat(DISTINCT links.entity_type), ''),
           CASE
             WHEN MAX(CASE WHEN links.audience = 'public' THEN 1 ELSE 0 END) = 1 THEN 'public'
@@ -127,21 +129,29 @@ export class SqliteMediaStore implements MediaStore {
             assets.state = 'attached'
             OR (assets.state = 'staged' AND assets.expires_at > ?)
           )
-        GROUP BY variants.object_key, variants.byte_size, variants.content_type, variants.sha256, assets.owner_user_id`,
+        GROUP BY variants.object_key, variants.byte_size, variants.content_type, variants.sha256,
+          assets.owner_user_id, assets.media_type, assets.original_name`,
       params: [mediaId, mediaId, mediaId, variant, now],
     });
     const row = oneRow(result);
     if (!row) return null;
-    const [objectKey, byteSize, contentType, sha256, ownerUserId, rawEntityTypes, audience] = row;
+    const [objectKey, byteSize, contentType, sha256, ownerUserId, mediaType, originalName, rawEntityTypes, audience] = row;
     if (
       typeof objectKey !== "string"
       || typeof byteSize !== "number"
       || !Number.isSafeInteger(byteSize)
       || byteSize < 0
-      || (contentType !== "image/webp" && contentType !== "audio/ogg")
+      || (
+        contentType !== "image/webp"
+        && contentType !== "audio/ogg"
+        && contentType !== "application/pdf"
+        && contentType !== "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+      )
       || typeof sha256 !== "string"
       || !SHA256_HEX_PATTERN.test(sha256)
       || (ownerUserId !== null && typeof ownerUserId !== "string")
+      || (mediaType !== "image" && mediaType !== "audio" && mediaType !== "file")
+      || (originalName !== null && typeof originalName !== "string")
     ) {
       throw corrupt("Invalid media read projection");
     }
@@ -155,6 +165,8 @@ export class SqliteMediaStore implements MediaStore {
       contentType,
       sha256,
       ownerUserId,
+      mediaType,
+      originalName,
       entityTypes: rawEntityTypes ? rawEntityTypes.split(",") as MediaEntityType[] : [],
       audience,
     };

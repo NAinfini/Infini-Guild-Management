@@ -2,9 +2,9 @@ import { describe, expect, it, vi } from "vitest";
 import { createAuthorizationContext } from "@guild/kernel";
 import { NotificationService, canReceiveNotification } from "./notification-service";
 
-function authorization(permissions: readonly string[]) {
+function authorization(permissions: readonly string[], userId = "user-1") {
   return createAuthorizationContext({
-    userId: "user-1",
+    userId,
     sessionId: "session-1",
     roleId: "member",
     roleLevel: 100,
@@ -63,5 +63,12 @@ describe("NotificationService", () => {
     await service.publish(message);
     expect(publish).toHaveBeenCalledWith(message);
     expect(canReceiveNotification(authorization([]), message)).toBe(true);
+  });
+
+  it("delivers personal inbox changes only to the targeted user", () => {
+    const message = { type: "inbox_changed", user_id: "user-1" } as const;
+
+    expect(canReceiveNotification(authorization([], "user-1"), message)).toBe(true);
+    expect(canReceiveNotification(authorization([], "user-2"), message)).toBe(false);
   });
 });

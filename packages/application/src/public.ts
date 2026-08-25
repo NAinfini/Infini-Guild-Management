@@ -1,6 +1,7 @@
 export * from "./application.js";
 export * from "./config.js";
 export * from "./maintenance.js";
+export * from "./oauth-providers.js";
 export * from "./portal-api.js";
 export * from "./realtime.js";
 export * from "./runtime-health.js";

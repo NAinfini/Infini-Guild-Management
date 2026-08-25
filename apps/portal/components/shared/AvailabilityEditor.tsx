@@ -1,8 +1,15 @@
-import { ActionIcon, Badge, Button, Group, Menu, Popover, Select, Stack, Text } from "@mantine/core";
 import { PlusIcon, XIcon } from "@portal/components/icons";
-/* 静态图标。components/icons 里的 ChevronDownIcon 会给最近的可交互祖先挂
-   mouseenter/mouseleave 来驱动 motion 动画；放进 Menu.Target 里会把刚打开的
-   菜单又关掉（AvailabilityEditor.test.tsx 的复制用例可复现）。 */
+import { Badge } from "@portal/components/ui/badge";
+import { Button } from "@portal/components/ui/button";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@portal/components/ui/dropdown-menu";
+import { Label } from "@portal/components/ui/label";
+import { Popover, PopoverContent, PopoverTrigger } from "@portal/components/ui/popover";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@portal/components/ui/select";
 import { IconChevronDown } from "@tabler/icons-react";
 import { type AvailabilityDayKey, type MemberAvailability } from "@guild/shared";
 import { useEffect, useMemo, useState } from "react";
@@ -18,6 +25,7 @@ import {
   type TimeBlock,
 } from "@portal/utils/availability";
 import { viewerTimeZone, viewerUtcOffsetMinutes } from "@portal/utils/datetime";
+import "./AvailabilityEditor.css";
 
 export type DayKey = AvailabilityDayKey;
 
@@ -133,19 +141,20 @@ export function AvailabilityEditor({ value, onChange }: AvailabilityEditorProps)
 
   const draftValid = timeToMinutes(draftEnd) > timeToMinutes(draftStart);
 
+  const startItems = Object.fromEntries(startOptions.map((time) => [time, time]));
+  const endItems = Object.fromEntries(endOptions.map((time) => [time, time]));
+
   return (
-    <Stack gap="var(--space-md)" w="100%">
-      <Group gap="var(--space-sm)" justify="space-between" wrap="wrap">
-        <Group gap="var(--space-sm)">
-          <Text c="dimmed" size="sm">
-            {t("availability.editor.timezoneNote")}
-          </Text>
-          <Badge variant="default">{timezone}</Badge>
-        </Group>
-        <Button size="compact-xs" variant="default" onClick={() => commit(emptyDays())}>
+    <div className="availability-editor">
+      <div className="availability-editor__header">
+        <div className="availability-editor__timezone">
+          <span>{t("availability.editor.timezoneNote")}</span>
+          <Badge variant="secondary">{timezone}</Badge>
+        </div>
+        <Button size="xs" variant="outline" onClick={() => commit(emptyDays())}>
           {t("availability.editor.clearAll")}
         </Button>
-      </Group>
+      </div>
 
       <div className="availability-presets">
         {PRESETS.map((preset) => (
@@ -174,9 +183,10 @@ export function AvailabilityEditor({ value, onChange }: AvailabilityEditorProps)
                 days[day].map((block, index) => (
                   <span key={`${block.start}-${block.end}`} className="availability-block">
                     {block.start}–{block.end}
-                    <ActionIcon
-                      variant="subtle"
-                      size={20}
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon-xs"
                       aria-label={t("availability.editor.removeBlock", {
                         day: t(DAY_LABEL_KEYS[day]),
                         start: block.start,
@@ -184,100 +194,109 @@ export function AvailabilityEditor({ value, onChange }: AvailabilityEditorProps)
                       })}
                       onClick={() => removeBlock(day, index)}
                     >
-                      <XIcon size={12} />
-                    </ActionIcon>
+                      <XIcon aria-hidden="true" />
+                    </Button>
                   </span>
                 ))
               )}
 
               <Popover
-                opened={pickerDay === day}
-                onChange={(opened) => {
-                  if (!opened) setPickerDay(null);
+                open={pickerDay === day}
+                onOpenChange={(open) => {
+                  if (open) openPicker(day);
+                  else setPickerDay(null);
                 }}
-                position="bottom-start"
-                withArrow
-                trapFocus
               >
-                <Popover.Target>
-                  <button
-                    type="button"
-                    className="availability-day__add"
-                    aria-label={t("availability.editor.addBlock", {
-                      day: t(DAY_LABEL_KEYS[day]),
-                    })}
-                    onClick={() => (pickerDay === day ? setPickerDay(null) : openPicker(day))}
-                  >
-                    <PlusIcon size={14} />
-                  </button>
-                </Popover.Target>
-                <Popover.Dropdown>
-                  <Group gap="var(--space-sm)" align="flex-end" wrap="nowrap">
-                    {/*
-                      两个下拉都必须留在弹层内部（withinPortal: false）。
-                      Select 的下拉默认 portal 到 body，落在 Popover 的节点之外，
-                      于是选一个时间点会被 Popover 判成「点了外面」——选完约半秒后
-                      整个弹层自己消失，自定义时段根本加不进去，只有一动不动直接点
-                      「Add」用默认的 20:00–24:00 才成。
-                    */}
-                    <Select
-                      w={104}
-                      label={t("availability.editor.start")}
-                      data={startOptions}
-                      value={draftStart}
-                      allowDeselect={false}
-                      comboboxProps={{ withinPortal: false }}
-                      onChange={(next) => {
-                        if (next) setDraftStart(next);
-                      }}
+                <PopoverTrigger
+                  render={(
+                    <button
+                      type="button"
+                      className="availability-day__add"
+                      aria-label={t("availability.editor.addBlock", {
+                        day: t(DAY_LABEL_KEYS[day]),
+                      })}
                     />
-                    <Select
-                      w={104}
-                      label={t("availability.editor.end")}
-                      data={endOptions}
-                      value={draftEnd}
-                      allowDeselect={false}
-                      comboboxProps={{ withinPortal: false }}
-                      onChange={(next) => {
-                        if (next) setDraftEnd(next);
-                      }}
-                    />
+                  )}
+                >
+                  <PlusIcon aria-hidden="true" />
+                </PopoverTrigger>
+                <PopoverContent align="start" className="availability-editor__picker">
+                  <div className="availability-editor__picker-row">
+                    <div className="availability-editor__select-field">
+                      <Label>{t("availability.editor.start")}</Label>
+                      <Select
+                        items={startItems}
+                        value={draftStart}
+                        onValueChange={(next) => {
+                          if (next) setDraftStart(next);
+                        }}
+                      >
+                        <SelectTrigger aria-label={t("availability.editor.start")}>
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent align="start">
+                          {startOptions.map((time) => (
+                            <SelectItem key={time} value={time}>{time}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="availability-editor__select-field">
+                      <Label>{t("availability.editor.end")}</Label>
+                      <Select
+                        items={endItems}
+                        value={draftEnd}
+                        onValueChange={(next) => {
+                          if (next) setDraftEnd(next);
+                        }}
+                      >
+                        <SelectTrigger aria-label={t("availability.editor.end")}>
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent align="start">
+                          {endOptions.map((time) => (
+                            <SelectItem key={time} value={time}>{time}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
                     <Button size="sm" disabled={!draftValid} onClick={confirmAdd}>
                       {t("availability.editor.confirmAdd")}
                     </Button>
-                  </Group>
-                  {/* 结束早于开始时禁用按钮并说明原因，而不是替用户把两个值调个个儿。 */}
+                  </div>
                   {draftValid ? null : (
-                    <Text size="xs" c="dimmed" mt="var(--space-xs)">
+                    <p className="availability-editor__validation">
                       {t("availability.editor.endAfterStart")}
-                    </Text>
+                    </p>
                   )}
-                </Popover.Dropdown>
+                </PopoverContent>
               </Popover>
             </div>
 
-            <Menu position="bottom-end" withArrow>
-              <Menu.Target>
-                <button
-                  type="button"
-                  className="availability-day__copy"
-                  disabled={days[day].length === 0}
-                >
-                  {t("availability.editor.copyTo")}
-                  <IconChevronDown size={13} stroke={2} />
-                </button>
-              </Menu.Target>
-              <Menu.Dropdown>
+            <DropdownMenu>
+              <DropdownMenuTrigger
+                disabled={days[day].length === 0}
+                render={(
+                  <button
+                    type="button"
+                    className="availability-day__copy"
+                  />
+                )}
+              >
+                {t("availability.editor.copyTo")}
+                <IconChevronDown aria-hidden="true" />
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
                 {DAYS.filter((target) => target !== day).map((target) => (
-                  <Menu.Item key={target} onClick={() => copyDay(day, target)}>
+                  <DropdownMenuItem key={target} onClick={() => copyDay(day, target)}>
                     {t(DAY_LABEL_KEYS[target])}
-                  </Menu.Item>
+                  </DropdownMenuItem>
                 ))}
-              </Menu.Dropdown>
-            </Menu>
+              </DropdownMenuContent>
+            </DropdownMenu>
           </div>
         ))}
       </div>
-    </Stack>
+    </div>
   );
 }

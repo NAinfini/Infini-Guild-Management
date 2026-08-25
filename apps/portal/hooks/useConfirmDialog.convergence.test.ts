@@ -16,11 +16,10 @@ function listSourceFiles(root: string): string[] {
 }
 
 describe("confirm dialog convergence", () => {
-  it("routes every production confirmation through the Mantine behavior adapter", () => {
+  it("routes every production confirmation through the Base UI queue", () => {
     const sourceFiles = listSourceFiles(portalRoot);
     const imperativeOffenders = sourceFiles
       .filter((path) => readFileSync(path, "utf8").includes("modals.openConfirmModal"))
-      .filter((path) => !path.endsWith("hooks\\useConfirmDialog.ts") && !path.endsWith("hooks/useConfirmDialog.ts"))
       .map((path) => path.slice(portalRoot.length + 1).replaceAll("\\", "/"));
     const manualStateMarkers = [
       "archiveConfirmEvent",
@@ -39,14 +38,14 @@ describe("confirm dialog convergence", () => {
     expect(manualModalOffenders).toEqual([]);
   });
 
-  it("keeps the Mantine modals bridge mounted without a custom confirmation provider", () => {
-    const provider = readFileSync(
-      resolve(portalRoot, "providers/ThemeProvider.tsx"),
+  it("keeps the host on the shared Base UI primitive without a custom provider", () => {
+    const host = readFileSync(
+      resolve(portalRoot, "components/shared/ConfirmDialogHost.tsx"),
       "utf8",
     );
 
-    expect(provider).toContain("<ModalsProvider>");
-    expect(provider).toContain("</ModalsProvider>");
-    expect(provider).not.toContain("ConfirmDialogProvider");
+    expect(host).toContain('@portal/components/ui/alert-dialog');
+    expect(host).toContain("useSyncExternalStore");
+    expect(host).not.toContain("ConfirmDialogProvider");
   });
 });

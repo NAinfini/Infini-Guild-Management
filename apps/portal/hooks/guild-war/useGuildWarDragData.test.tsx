@@ -109,7 +109,7 @@ describe("useGuildWarDragData", () => {
     const usersData = [{
       user: {
         id: "user-1",
-        username: "Alice",
+        display_name: "Alice",
       },
       profile: {
         power: 8200,
@@ -127,7 +127,7 @@ describe("useGuildWarDragData", () => {
     const detail = result.current.activeMemberDetailByUserId.get("user-1");
 
     expect(detail).toEqual({
-      username: "Alice",
+      display_name: "Alice",
       power: 8200,
       classes: ["Mage"],
       titleHtml: "<strong>Coordinator</strong>",

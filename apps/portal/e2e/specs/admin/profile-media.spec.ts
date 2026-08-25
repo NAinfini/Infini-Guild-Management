@@ -41,9 +41,9 @@ let original: Profile;
 
 test.beforeEach(async ({ page, api }) => {
   const listed = await readJson(await api.get("/api/users?page=1&limit=500"), "读取名单") as {
-    data: Array<{ user: { id: string; username: string } }>;
+    data: Array<{ user: { id: string; display_name: string } }>;
   };
-  const admin = listed.data.find((entry) => entry.user.username === "admin");
+  const admin = listed.data.find((entry) => entry.user.display_name === "admin");
   expect(admin, "种子里必须有 admin，这一页编辑的就是当前会话本人").toBeTruthy();
   userId = admin!.user.id;
   original = await readProfile(api);

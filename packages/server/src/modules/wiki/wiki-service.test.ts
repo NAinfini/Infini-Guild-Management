@@ -1,5 +1,10 @@
 import { describe, expect, it, vi } from "vitest";
-import { createAuthorizationContext, createRequestContext } from "@guild/kernel";
+import {
+  createAuthorizationContext,
+  createRequestContext,
+  type DeferredTasks,
+  type NotificationPublisher,
+} from "@guild/kernel";
 import { WikiService, type WikiArticleRecord, type WikiCategoryRecord, type WikiStore } from "./wiki-service";
 import type { MediaService } from "../media/public.js";
 
@@ -35,12 +40,17 @@ function store(overrides: Partial<WikiStore> = {}): WikiStore {
   };
 }
 
-function service(value: WikiStore, media: Partial<MediaService> = {}) {
+function service(
+  value: WikiStore,
+  media: Partial<MediaService> = {},
+  notifications: NotificationPublisher = { publish: vi.fn() },
+  deferred: DeferredTasks = { defer: vi.fn() },
+) {
   return new WikiService(
     value,
     media as MediaService,
-    { publish: vi.fn() },
-    { defer: vi.fn() },
+    notifications,
+    deferred,
   );
 }
 
@@ -67,7 +77,7 @@ const article: WikiArticleRecord = {
   deletedAt: null,
   created_by: "user-1",
   updated_by: null,
-  updated_by_username: null,
+  updated_by_display_name: null,
   created_at: "2026-08-08T00:00:00.000Z",
   updated_at: "2026-08-08T00:00:00.000Z",
   revisionToken: "article-revision-123456",
@@ -121,8 +131,14 @@ describe("WikiService", () => {
 
   it("canonicalizes same-origin media and creates revision one in the atomic store mutation", async () => {
     const createArticle = vi.fn();
+    const publish = vi.fn().mockResolvedValue(undefined);
     const mediaId = "123456789012345678901";
-    const created = await service(store({ createArticle })).createArticle(
+    const created = await service(
+      store({ createArticle }),
+      {},
+      { publish },
+      { defer: (task) => { void task(); } },
+    ).createArticle(
       context(["wiki.articles.create"]),
       {
         title: " 指南 ",
@@ -143,6 +159,15 @@ describe("WikiService", () => {
     expect(mutation.mediaIds).toEqual([mediaId]);
     expect(mutation.initialRevision.revision).toBe(1);
     expect(mutation.audit.requestId).toBe("request-1");
+    expect(publish.mock.calls.map(([message]) => message)).toEqual([
+      expect.objectContaining({
+        type: "entity_changed",
+        entity_type: "wiki",
+        entity_id: created.id,
+        hint: "article_created",
+      }),
+      { type: "inbox_changed" },
+    ]);
   });
 
   it("uses revision-token CAS even when If-Match is absent", async () => {
@@ -233,7 +258,7 @@ describe("WikiService", () => {
       deleted_at: null,
       media_ids: ["123456789012345678901"],
       edited_by: "user-1",
-      edited_by_username: "owner",
+      edited_by_display_name: "owner",
       restored_from: null,
       created_at: article.created_at,
     } as const;

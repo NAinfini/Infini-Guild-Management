@@ -1,4 +1,3 @@
-import { MantineProvider } from "@mantine/core";
 import { fireEvent, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
@@ -19,14 +18,12 @@ const category: CategoryDef = {
 
 function renderCategory(onRunCategory = vi.fn().mockResolvedValue(undefined)) {
   render(
-    <MantineProvider>
-      <ApiTestCategory
-        category={category}
-        onRunCategory={onRunCategory}
-        runningSet={new Set()}
-        resultMap={new Map()}
-      />
-    </MantineProvider>,
+    <ApiTestCategory
+      category={category}
+      onRunCategory={onRunCategory}
+      runningSet={new Set()}
+      resultMap={new Map()}
+    />,
   );
   return onRunCategory;
 }
@@ -94,15 +91,13 @@ describe("ApiTestCategory", () => {
     ]);
 
     render(
-      <MantineProvider>
-        <ApiTestCategory
-          category={mixedCategory}
-          onRunCategory={vi.fn().mockResolvedValue(undefined)}
-          runningSet={new Set()}
-          resultMap={resultMap}
-          showOnlyErrors
-        />
-      </MantineProvider>,
+      <ApiTestCategory
+        category={mixedCategory}
+        onRunCategory={vi.fn().mockResolvedValue(undefined)}
+        runningSet={new Set()}
+        resultMap={resultMap}
+        showOnlyErrors
+      />,
     );
 
     await user.click(screen.getByRole("button", { name: "System: 3/3" }));

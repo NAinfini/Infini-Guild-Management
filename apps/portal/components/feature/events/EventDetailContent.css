@@ -1,0 +1,588 @@
+/* 左栏资料、右栏参与；长名单留在自己的有界区域内。 */
+.event-detail-content__layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1.12fr) minmax(0, 0.88fr);
+  gap: var(--space-md);
+  align-items: start;
+  min-width: 0;
+}
+
+.event-detail-content__layout[data-single] {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.event-detail-content__pane {
+  display: grid;
+  align-content: start;
+  gap: var(--space-lg);
+  min-width: 0;
+  min-height: 0;
+  padding: var(--space-lg);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-surface);
+  background: var(--plate-fill);
+  box-shadow: var(--edge-top);
+}
+
+.event-detail-content__member-action {
+  display: inline-flex;
+}
+
+.event-detail-content__meta-grid {
+  display: grid;
+  grid-template-columns: minmax(8rem, 0.8fr) repeat(2, minmax(0, 1.1fr));
+  gap: 0;
+  min-width: 0;
+  padding-bottom: var(--space-lg);
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.event-detail-content__meta-card {
+  display: grid;
+  align-content: start;
+  gap: var(--space-xs);
+  min-height: 88px;
+  padding: var(--space-xs) var(--space-md);
+}
+
+.event-detail-content__meta-card:first-child {
+  padding-inline-start: 0;
+}
+
+.event-detail-content__meta-card + .event-detail-content__meta-card {
+  border-inline-start: 1px solid var(--border-subtle);
+}
+
+.event-detail-content__meta-heading {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.event-detail-content__meta-heading svg {
+  flex-shrink: 0;
+}
+
+.event-detail-content__meta-value,
+.event-detail-content__time-value {
+  min-width: 0;
+}
+
+.event-detail-content__time-value {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: var(--space-xs);
+}
+
+.event-detail-content__meta-label {
+  color: var(--text-muted);
+  font-size: var(--text-meta);
+  font-weight: 700;
+}
+
+.event-detail-content__time-date,
+.event-detail-content__time-clock {
+  display: block;
+}
+
+.event-detail-content__time-date {
+  overflow-wrap: anywhere;
+}
+
+.event-detail-content__time-clock {
+  white-space: nowrap;
+  color: var(--brand-text);
+  font-variant-numeric: tabular-nums;
+}
+
+.event-detail-content__meta-card--type svg {
+  color: var(--brand-text);
+}
+
+.event-detail-content__meta-card--time svg {
+  color: var(--brand-text);
+}
+
+.event-detail-content__time-empty {
+  align-self: center;
+  color: var(--text-muted);
+  font-size: var(--text-body);
+}
+
+.event-detail-content__section {
+  min-width: 0;
+}
+
+.event-detail-content__pane--info > .event-detail-content__section {
+  padding-bottom: var(--space-lg);
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.event-detail-content__section--members {
+  min-height: 0;
+}
+
+.event-detail-content__section--poll,
+.event-detail-content__section--raffle {
+  padding: var(--space-md);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-surface);
+}
+
+.event-detail-content__section--poll {
+  border-color: color-mix(in srgb, var(--brand-fill) 18%, var(--border-subtle));
+  background: color-mix(in srgb, var(--brand-fill) 3%, var(--surface-raised));
+}
+
+.event-detail-content__section--poll .event-detail-content__poll-heading svg {
+  color: var(--brand-text);
+}
+
+.event-detail-content__poll-header {
+  min-width: 0;
+}
+
+.event-detail-content__poll-header,
+.event-detail-content__poll-heading-main,
+.event-detail-content__poll-result-stats,
+.event-detail-content__poll-choice,
+.event-detail-content__raffle-header,
+.event-detail-content__raffle-heading {
+  display: flex;
+  align-items: center;
+}
+
+.event-detail-content__poll-header,
+.event-detail-content__raffle-header {
+  justify-content: space-between;
+  gap: var(--space-md);
+  margin-bottom: var(--space-md);
+}
+
+.event-detail-content__poll-heading-main,
+.event-detail-content__raffle-heading {
+  gap: var(--space-sm);
+  min-width: 0;
+}
+
+.event-detail-content__poll-heading h2,
+.event-detail-content__raffle-heading h2 {
+  margin: 0;
+  font-size: var(--text-body);
+  line-height: var(--lh-tight);
+}
+
+.event-detail-content__poll-stack,
+.event-detail-content__raffle-stack,
+.event-detail-content__quota-groups {
+  display: grid;
+  gap: var(--space-md);
+}
+
+.event-detail-content__poll-total {
+  flex-shrink: 0;
+  padding: 4px 10px;
+  border: 1px solid color-mix(in srgb, var(--brand-fill) 24%, var(--border-subtle));
+  border-radius: var(--shape-pill);
+  color: var(--brand-text);
+  background: color-mix(in srgb, var(--brand-fill) 8%, var(--surface-raised));
+  font-variant-numeric: tabular-nums;
+}
+
+/* Scope the accent to heading icons; action icons inherit their button foreground. */
+.event-detail-content__members-heading svg {
+  color: var(--brand-text);
+}
+
+.event-detail-content__poll-result-board {
+  display: grid;
+  gap: 9px;
+}
+
+.event-detail-content__poll-result-row {
+  display: flex;
+  align-items: stretch;
+  min-width: 0;
+  padding: 10px;
+  border: 1px solid color-mix(in srgb, var(--text-primary) 8%, transparent);
+  border-radius: var(--radius-surface);
+  background: color-mix(in srgb, var(--surface-sunken) 72%, var(--surface-raised));
+  cursor: pointer;
+  outline: none;
+  transition: border-color 160ms ease, background 160ms ease, box-shadow 160ms ease;
+}
+
+.event-detail-content__poll-result-row:hover {
+  border-color: color-mix(in srgb, var(--brand-fill) 30%, var(--border-subtle));
+  background: color-mix(in srgb, var(--brand-fill) 4%, var(--surface-raised));
+}
+
+.event-detail-content__poll-result-row:focus-visible {
+  box-shadow:
+    0 0 0 2px var(--surface-base),
+    0 0 0 4px var(--brand-fill);
+}
+
+.event-detail-content__poll-result-row--selected {
+  border-color: color-mix(in srgb, var(--brand-fill) 48%, var(--border-subtle));
+  background: color-mix(in srgb, var(--brand-fill) 4%, var(--surface-raised));
+}
+
+.event-detail-content__poll-result-row--disabled {
+  cursor: default;
+}
+
+.event-detail-content__poll-result-row--disabled:hover {
+  border-color: var(--border-subtle);
+  background: color-mix(in srgb, var(--surface-sunken) 72%, var(--surface-raised));
+}
+
+.event-detail-content__poll-result-main {
+  display: grid;
+  gap: 8px;
+  width: 100%;
+  min-width: 0;
+  /* 勾选圈 22px ＋ 它跟标题之间的 9px：进度条和投票人都从标题这一列起排。 */
+  --poll-label-indent: 31px;
+}
+
+.event-detail-content__poll-result-top {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  min-width: 0;
+}
+
+.event-detail-content__poll-choice {
+  min-width: 0;
+  flex: 1;
+  gap: 9px;
+}
+
+.event-detail-content__poll-choice-label {
+  min-width: 0;
+}
+
+.event-detail-content__poll-choice-indicator {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  flex-shrink: 0;
+  border: 1px solid color-mix(in srgb, var(--text-primary) 18%, transparent);
+  border-radius: var(--shape-pill);
+  color: var(--brand-on-fill);
+  background: color-mix(in srgb, var(--surface-base) 74%, transparent);
+}
+
+.event-detail-content__poll-result-row--selected .event-detail-content__poll-choice-indicator {
+  border-color: var(--brand-fill);
+  background: var(--brand-fill);
+}
+
+.event-detail-content__poll-result-stats {
+  flex-shrink: 0;
+  gap: 8px;
+  color: color-mix(in srgb, var(--text-primary) 65%, transparent);
+  font-variant-numeric: tabular-nums;
+}
+
+.event-detail-content__poll-option-votes {
+  white-space: nowrap;
+}
+
+/* Align poll progress with the option label and voter content. */
+.event-detail-content__poll-progress {
+  width: auto;
+  margin-left: var(--poll-label-indent);
+  --progress-radius: 999px;
+}
+
+/* 轨道底色由主题里的 Progress 统一提供，这里只补投票条自己要的圆角裁切。 */
+.event-detail-content__poll-progress [data-slot="progress-track"] {
+  overflow: hidden;
+}
+
+.event-detail-content__poll-percent {
+  min-width: 34px;
+  text-align: right;
+  color: var(--brand-text);
+  font-variant-numeric: tabular-nums;
+}
+
+.event-detail-content__poll-voters {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  min-height: 32px;
+  padding-left: var(--poll-label-indent);
+}
+
+.event-detail-content__poll-voter-overflow,
+.event-detail-content__poll-voter-missing,
+.event-detail-content__poll-empty-voters {
+  display: inline-flex;
+  align-items: center;
+  min-height: 32px;
+  padding: 0 11px;
+  border-radius: var(--shape-pill);
+  background: color-mix(in srgb, var(--text-primary) 7%, transparent);
+}
+
+.event-detail-content__poll-empty-voters {
+  width: fit-content;
+  margin-left: var(--poll-label-indent);
+  min-height: 26px;
+  padding: 0 9px;
+}
+
+.event-detail-content__poll-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+  padding-top: 2px;
+}
+
+.event-detail-content__poll-actions [data-slot="button"] {
+  min-width: 112px;
+  min-height: 38px;
+}
+
+/* 筹码行放在名单上方：先看整体缺什么，再往下逐格看是谁。 */
+/* Tooltip 要挂在能收 ref 的元素上，ClassIcon 自己不转发。 */
+.event-detail-content__group-class {
+  display: inline-flex;
+}
+
+/*
+ * 右栏里只有名单这一块滚：标题、报名按钮、加人下拉钉在上面不动，翻名单的时候
+ * 一直看得见还剩几个名额、以及从哪儿加人。
+ *
+ * 44vh 让它跟随可见高度，14rem 保住短视口里的可操作面积，32rem 防止超宽屏把名单
+ * 再次拉成整页。用 max-height 而不是固定高度：只封顶、不占位，短名单不会留下空洞。
+ */
+.event-detail-content__member-list {
+  max-height: clamp(14rem, 44vh, 32rem);
+  overflow-x: clip;
+  overflow-y: auto;
+  padding-inline-end: 6px;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
+  scrollbar-width: thin;
+  scrollbar-color: var(--border-strong) transparent;
+}
+
+.event-detail-content__poll-readonly,
+.event-detail-content__raffle-status,
+.event-detail-content__raffle-copy,
+.event-detail-content__empty-members,
+.event-detail-content__quota-empty,
+.event-detail-content__quota-label--muted,
+.event-detail-content__member-meta {
+  color: var(--text-muted);
+  font-size: var(--text-meta);
+}
+
+.event-detail-content__raffle-copy,
+.event-detail-content__empty-members,
+.event-detail-content__quota-empty {
+  margin: 0;
+}
+
+.event-detail-content__member-list:focus-visible {
+  outline: 2px solid var(--brand-fill);
+  outline-offset: 2px;
+  border-radius: var(--radius-control);
+}
+
+.event-detail-content__member-list::-webkit-scrollbar {
+  width: var(--scrollbar-size);
+}
+
+.event-detail-content__member-list::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.event-detail-content__member-list::-webkit-scrollbar-thumb {
+  border: 2px solid transparent;
+  border-radius: var(--radius-control);
+  background: var(--border-strong);
+  background-clip: padding-box;
+}
+
+.event-detail-content__member-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 58px;
+  padding: 9px 8px;
+  border-bottom: 1px solid color-mix(in srgb, var(--text-primary) 8%, transparent);
+  background: transparent;
+}
+
+.event-detail-content__member-row:last-child {
+  border-bottom-color: transparent;
+}
+
+.event-detail-content__member-info {
+  min-width: 0;
+  flex: 1;
+}
+
+/* The detail page owns a compact media stage; fullscreen remains available on demand. */
+.event-detail-content__media .infini-media-gallery-slide {
+  max-height: 420px;
+}
+
+.event-detail-content__member-info > strong {
+  display: block;
+  font-size: var(--text-body);
+}
+
+.event-detail-content__member-meta,
+.event-detail-content__member-class,
+.event-detail-content__quota-group-heading {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.event-detail-content__member-class {
+  gap: 4px;
+  white-space: nowrap;
+}
+
+.event-detail-content__quota-group-heading {
+  margin-bottom: var(--space-sm);
+}
+
+.event-detail-content__quota-label,
+.quota-status-text {
+  font-size: var(--text-meta);
+}
+
+@media (min-width: 64em) {
+  .event-detail-content__media .infini-media-gallery-slide {
+    height: clamp(260px, 25vw, 420px);
+  }
+}
+
+/* 窄屏收成一栏；参与任务优先，名单仍保持内部滚动。 */
+@media (max-width: 63.99em) {
+  .event-detail-content__layout {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .event-detail-content__pane {
+    max-height: none;
+    overflow-y: visible;
+    padding: var(--space-md);
+  }
+
+  .event-detail-content__pane--participation {
+    order: -1;
+  }
+}
+
+@media (max-width: 47.99em) {
+  .event-detail-content__meta-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .event-detail-content__meta-card--type {
+    grid-column: 1 / -1;
+    padding-inline-end: 0;
+    padding-bottom: var(--space-md);
+    border-bottom: 1px solid var(--border-subtle);
+  }
+
+  .event-detail-content__meta-card[data-time="start"] {
+    padding-inline-start: 0;
+    border-inline-start: 0;
+  }
+}
+
+@media (max-width: 39.99em) {
+  .event-detail-content__meta-card--time {
+    padding-inline: 10px;
+  }
+
+  .event-detail-content__meta-card--time .event-detail-content__meta-heading {
+    gap: 6px;
+  }
+
+  .event-detail-content__meta-card--time .event-detail-content__time-date {
+    font-size: var(--text-meta);
+  }
+
+  .event-detail-content__member-row {
+    align-items: flex-start;
+  }
+
+  .event-detail-content__poll-result-top {
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .event-detail-content__poll-result-stats {
+    align-self: flex-end;
+  }
+
+  .event-detail-content__poll-actions {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .event-detail-content__poll-actions [data-slot="button"] {
+    width: 100%;
+  }
+}
+
+.event-detail-content__section-title,
+.event-detail-content__members-heading h2 {
+  margin: 0;
+  font-size: var(--text-body);
+  line-height: var(--lh-tight);
+}
+
+.event-detail-content__description {
+  margin: var(--space-xs) 0 0;
+  color: var(--text-muted);
+  font-size: var(--text-body);
+  line-height: 1.55;
+}
+
+.event-detail-content__members-header,
+.event-detail-content__members-heading,
+.event-detail-content__add-member {
+  display: flex;
+  align-items: center;
+}
+
+.event-detail-content__members-header {
+  justify-content: space-between;
+  gap: var(--space-md);
+  flex-wrap: wrap;
+  margin-bottom: var(--space-md);
+}
+
+.event-detail-content__members-heading {
+  gap: var(--space-sm);
+}
+
+.event-detail-content__add-member {
+  gap: var(--space-sm);
+  margin-bottom: var(--space-md);
+}
+
+.event-detail-content__add-member > svg {
+  flex: 0 0 auto;
+  color: var(--brand-text);
+}

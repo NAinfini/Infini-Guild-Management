@@ -1,4 +1,3 @@
-import { MantineProvider } from "@mantine/core";
 import { fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import enTools from "../../i18n/en/tools.json";
@@ -20,11 +19,7 @@ vi.mock("@portal/utils/notifications", () => ({
 }));
 
 function renderModal(initialHtml?: string) {
-  render(
-    <MantineProvider>
-      <LabelStyleModal opened onClose={() => {}} initialHtml={initialHtml} />
-    </MantineProvider>,
-  );
+  render(<LabelStyleModal opened onClose={() => {}} initialHtml={initialHtml} />);
 }
 
 describe("LabelStyleModal", () => {
@@ -80,14 +75,12 @@ describe("LabelStyleModal", () => {
   /* 徽章另存的色号只是药丸底色；标签自己写着的那一个才是预览里看得见的颜色。 */
   it("prefers the colour written into the label over the caller's stored colour", () => {
     render(
-      <MantineProvider>
-        <LabelStyleModal
-          opened
-          onClose={() => {}}
-          initialHtml='<span style="color: #ff0000">Veteran</span>'
-          initialColor="#00ff00"
-        />
-      </MantineProvider>,
+      <LabelStyleModal
+        opened
+        onClose={() => {}}
+        initialHtml='<span style="color: #ff0000">Veteran</span>'
+        initialColor="#00ff00"
+      />,
     );
 
     expect(document.querySelector(".sandbox__preview-meta")).toHaveTextContent("#FF0000");
@@ -137,16 +130,14 @@ describe("LabelStyleModal", () => {
   it("hands back the markup and the colour together, and takes a three-digit seed", () => {
     const onApply = vi.fn();
     render(
-      <MantineProvider>
-        <LabelStyleModal
-          opened
-          onClose={() => {}}
-          initialColor="#0f0"
-          defaultText="Star"
-          applyLabel="apply"
-          onApply={onApply}
-        />
-      </MantineProvider>,
+      <LabelStyleModal
+        opened
+        onClose={() => {}}
+        initialColor="#0f0"
+        defaultText="Star"
+        applyLabel="apply"
+        onApply={onApply}
+      />,
     );
 
     expect(screen.getByLabelText("sandbox.aria.labelInput"), "调用方给了样例文案就不该再出现称号那一句")

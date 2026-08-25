@@ -1,4 +1,3 @@
-import { Box, Stack } from "@mantine/core";
 import { Children, type ReactNode } from "react";
 
 interface StaggerListProps {
@@ -9,17 +8,17 @@ interface StaggerListProps {
 
 export function StaggerList({ children, className, staggerMs = 60 }: StaggerListProps) {
   return (
-    <Stack gap={0} className={className}>
+    <div className={className} style={{ display: "flex", flexDirection: "column" }}>
       {Children.map(children, (child, i) => (
-        <Box
+        <div
           style={{
             animation: "fadeInUp 0.4s ease-out both",
             animationDelay: `${i * staggerMs}ms`,
           }}
         >
           {child}
-        </Box>
+        </div>
       ))}
-    </Stack>
+    </div>
   );
 }

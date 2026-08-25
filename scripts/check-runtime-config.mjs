@@ -12,13 +12,34 @@ const repositoryRoot = resolve(runtimeConfigScriptDirectory, "..");
  */
 export const RATE_LIMIT_EXPECTATIONS = {
   AUTH_RATE_LIMITER: LIMITS.rateLimit.auth,
+  AUTH_IP_RATE_LIMITER: LIMITS.rateLimit.authIp,
   READ_RATE_LIMITER: LIMITS.rateLimit.reads,
   EXPENSIVE_READ_RATE_LIMITER: LIMITS.rateLimit.expensiveReads,
   MUTATION_RATE_LIMITER: LIMITS.rateLimit.mutations,
   UPLOAD_RATE_LIMITER: LIMITS.rateLimit.uploads,
   WEBSOCKET_RATE_LIMITER: LIMITS.websocket.handshakes,
 };
-const SECRET_KEYS = ["IG_INVITE_TOKEN_SECRET", "IG_AUDIT_DOWNLOAD_SECRET"];
+const REQUIRED_SECRET_KEYS = ["IG_INVITE_TOKEN_SECRET", "IG_AUDIT_DOWNLOAD_SECRET"];
+const SENSITIVE_ENV_KEYS = [
+  "IG_INVITE_TOKEN_SECRET",
+  "IG_AUDIT_DOWNLOAD_SECRET",
+  "IG_OAUTH_GOOGLE_CLIENT_ID",
+  "IG_OAUTH_GOOGLE_CLIENT_SECRET",
+  "IG_OAUTH_DISCORD_CLIENT_ID",
+  "IG_OAUTH_DISCORD_CLIENT_SECRET",
+  "IG_OAUTH_KOOK_CLIENT_ID",
+  "IG_OAUTH_KOOK_CLIENT_SECRET",
+  "IG_OAUTH_WECHAT_APP_ID",
+  "IG_OAUTH_WECHAT_APP_SECRET",
+  "IG_CLOUDFLARE_EMAIL_API_TOKEN",
+];
+const OPTIONAL_CREDENTIAL_PAIRS = [
+  ["IG_OAUTH_GOOGLE_CLIENT_ID", "IG_OAUTH_GOOGLE_CLIENT_SECRET"],
+  ["IG_OAUTH_DISCORD_CLIENT_ID", "IG_OAUTH_DISCORD_CLIENT_SECRET"],
+  ["IG_OAUTH_KOOK_CLIENT_ID", "IG_OAUTH_KOOK_CLIENT_SECRET"],
+  ["IG_OAUTH_WECHAT_APP_ID", "IG_OAUTH_WECHAT_APP_SECRET"],
+  ["IG_EMAIL_FROM", "IG_CLOUDFLARE_EMAIL_ACCOUNT_ID", "IG_CLOUDFLARE_EMAIL_API_TOKEN"],
+];
 const SHARED_MIGRATIONS_DIRECTORY = "../../packages/persistence-sqlite/src/migrations/generated";
 
 export function parseJsonc(source) {
@@ -238,10 +259,16 @@ export function validateCloudflareConfig(config, options = {}) {
   if (publicUrl && !validOrigin(publicUrl, true)) {
     errors.push("cloudflare.vars.IG_PUBLIC_URL must be a root HTTPS origin, except for loopback local development.");
   }
-  for (const key of SECRET_KEYS) {
+  for (const key of SENSITIVE_ENV_KEYS) {
     if (Object.hasOwn(vars, key)) errors.push(`cloudflare.vars.${key} must use Wrangler secret storage, not vars.`);
   }
   validateIterations(vars.IG_PBKDF2_ITERATIONS, "cloudflare.vars", errors);
+  const emailBindings = Array.isArray(config.send_email) ? config.send_email : [];
+  const hasEmailBinding = emailBindings.some((entry) => isObject(entry) && entry.name === "EMAIL");
+  const hasEmailFrom = Boolean(optionalString(vars, "IG_EMAIL_FROM", settings));
+  if (hasEmailBinding !== hasEmailFrom) {
+    errors.push("cloudflare EMAIL send_email binding and vars.IG_EMAIL_FROM must be configured together.");
+  }
   if (config.workers_dev !== true && !Array.isArray(config.routes)) {
     errors.push("Cloudflare config needs workers_dev: true or a routes list.");
   }
@@ -257,7 +284,7 @@ export function validateVpsConfig(config, options = {}) {
   if (publicUrl && !validOrigin(publicUrl, true)) {
     errors.push("vps.IG_PUBLIC_URL must be a root HTTPS origin, except for loopback local development.");
   }
-  for (const key of SECRET_KEYS) {
+  for (const key of REQUIRED_SECRET_KEYS) {
     const value = requiredString(config, key, "vps", errors, settings);
     if (value && !settings.allowPlaceholders && new TextEncoder().encode(value).byteLength < 32) {
       errors.push(`vps.${key} must contain at least 32 UTF-8 bytes.`);
@@ -267,11 +294,27 @@ export function validateVpsConfig(config, options = {}) {
     requiredString(config, key, "vps", errors, settings);
   }
   validateIterations(config.IG_PBKDF2_ITERATIONS, "vps", errors);
+  validateCredentialPairs(config, "vps", errors, settings);
   if (config.IG_PORT !== undefined) {
     const port = Number(config.IG_PORT);
     if (!Number.isInteger(port) || port < 1 || port > 65_535) errors.push("vps.IG_PORT must be an integer from 1 to 65535.");
   }
   return errors;
+}
+
+function validateCredentialPairs(config, label, errors, settings) {
+  for (const keys of OPTIONAL_CREDENTIAL_PAIRS) {
+    const configured = keys.map((key) => Boolean(optionalString(config, key, settings)));
+    if (configured.some(Boolean) && !configured.every(Boolean)) {
+      errors.push(`${label}.${keys.join(", ")} must be configured together.`);
+    }
+  }
+}
+
+function optionalString(config, key, settings) {
+  const value = config[key];
+  if (typeof value !== "string" || !value.trim()) return undefined;
+  return settings.allowPlaceholders && value.includes("replace-with-") ? undefined : value.trim();
 }
 
 function parseArguments(argv) {
@@ -314,7 +357,17 @@ export async function runPreflight(argv = process.argv.slice(2)) {
   if (errors.length > 0) {
     throw new Error(`[config] ${runtime} configuration is not ready:\n${errors.map((error) => `  - ${error}`).join("\n")}`);
   }
-  return { runtime, configPath };
+  const publicUrl = runtime === "cloudflare" ? config.vars?.IG_PUBLIC_URL : config.IG_PUBLIC_URL;
+  return { runtime, configPath, oauthCallbacks: oauthCallbackUrls(publicUrl) };
+}
+
+export function oauthCallbackUrls(publicUrl) {
+  const origin = new URL(publicUrl).origin;
+  return Object.freeze({
+    google: new URL("/api/auth/oauth/google/callback", origin).toString(),
+    discord: new URL("/api/auth/oauth/discord/callback", origin).toString(),
+    kook: new URL("/api/auth/oauth/kook/callback", origin).toString(),
+  });
 }
 
 const isMainModule = process.argv[1]
@@ -324,6 +377,9 @@ if (isMainModule) {
   try {
     const result = await runPreflight();
     console.log(`[config] ${result.runtime} configuration is ready.`);
+    for (const [provider, callback] of Object.entries(result.oauthCallbacks)) {
+      console.log(`[config] ${provider} OAuth callback: ${callback}`);
+    }
   } catch (error) {
     console.error(error instanceof Error ? error.message : String(error));
     process.exitCode = 1;

@@ -5,7 +5,7 @@ import type { UsersListResponse } from "../../services/UserService";
 export type DragMemberItem = {
   itemId: string;
   userId: string;
-  username: string;
+  display_name: string;
   power: number;
   class: string;
   subtitle: string;
@@ -20,7 +20,7 @@ export type DragMemberColumn = {
 };
 
 export type ActiveGuildWarMemberDetail = {
-  username: string;
+  display_name: string;
   power: number;
   classes: string[];
   titleHtml: string | null;
@@ -76,7 +76,7 @@ export function useGuildWarDragData({ activeData, usersData, poolLabel, draft }:
     >();
     for (const item of usersData ?? []) {
       map.set(item.user.id, {
-        username: item.user.username,
+        display_name: item.user.display_name,
         power: item.profile.power,
         class: item.profile.classes[0] ?? "Unknown",
         classes: item.profile.classes,
@@ -170,7 +170,7 @@ export function useGuildWarDragData({ activeData, usersData, poolLabel, draft }:
     const resolveDetail = (userId: string): ActiveGuildWarMemberDetail => {
       const userData = userDataMap.get(userId);
       return {
-        username: userData?.username ?? userId,
+        display_name: userData?.display_name ?? userId,
         power: userData?.power ?? 0,
         classes: userData?.classes ?? (userData?.class ? [userData.class] : []),
         titleHtml: userData?.titleHtml ?? null,
@@ -206,7 +206,7 @@ export function useGuildWarDragData({ activeData, usersData, poolLabel, draft }:
         return {
           itemId: `member:${member.user_id}`,
           userId: member.user_id,
-          username: userData?.username ?? member.user_id,
+          display_name: userData?.display_name ?? member.user_id,
           power: userData?.power ?? 0,
           class: userData?.class ?? "Unknown",
           subtitle: `${userData?.class ?? "Unknown"} ${userData?.power ?? 0}`,
@@ -224,7 +224,7 @@ export function useGuildWarDragData({ activeData, usersData, poolLabel, draft }:
         return {
           itemId: `member:${member.userId}`,
           userId: member.userId,
-          username: userData?.username ?? member.userId,
+          display_name: userData?.display_name ?? member.userId,
           power: userData?.power ?? 0,
           class: userData?.class ?? "Unknown",
           subtitle: "Pool",

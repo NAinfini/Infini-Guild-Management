@@ -33,7 +33,7 @@ const DAY_MS = 24 * 60 * 60_000;
 
 type HistoryRow = { id: string; war_name: string; result: string | null };
 type HistoryDetail = HistoryRow & {
-  member_stats: Array<{ user_id: string; username?: string; stats: Record<string, number> | null }>;
+  member_stats: Array<{ user_id: string; display_name?: string; stats: Record<string, number> | null }>;
 };
 
 let stamp: number;
@@ -41,7 +41,7 @@ let title: string;
 let enemyName: string;
 let eventId: string;
 let historyId: string;
-let member: { id: string; username: string };
+let member: { id: string; display_name: string };
 
 test.beforeEach(async ({ api }) => {
   stamp = Date.now();
@@ -51,8 +51,8 @@ test.beforeEach(async ({ api }) => {
   const users = await readJson(
     await api.get("/api/users?page=1&limit=500&include_total=false"),
     "回读成员名单",
-  ) as { data: Array<{ user: { id: string; username: string } }> };
-  const found = users.data.find((entry) => entry.user.username === "member_01");
+  ) as { data: Array<{ user: { id: string; display_name: string } }> };
+  const found = users.data.find((entry) => entry.user.display_name === "member_01");
   expect(found, "种子数据里必须有 member_01，否则这条用例验的不是真人").toBeTruthy();
   member = found!.user;
 
@@ -238,15 +238,15 @@ test("明细面板：比分、队伍快照与表格/图表切换", async ({ page
   await expect(scoreboard, "对手名要显示出来，否则这条记录看不出打的是谁").toContainText(enemyName);
 
   await expect(detail.locator(".whd-team__name")).toContainText("Alpha");
-  await expect(detail.locator(".whd-chip")).toContainText(member.username);
+  await expect(detail.locator(".whd-chip")).toContainText(member.display_name);
 
   const table = detail.locator(".war-history-detail-table-wrap");
-  await expect(table).toContainText(member.username);
+  await expect(table).toContainText(member.display_name);
   await expect(table.locator("input"), "没点编辑之前整张表都不该是输入框").toHaveCount(0);
 
-  // 表格 / 图表切换是纯前端的。Mantine 的 SegmentedControl 把 radio 藏了，只能点 label。
+  // 表格 / 图表切换是纯前端的，按语义按钮操作并读取 pressed 状态。
   await flow.clickWithoutApi(
-    detail.locator("label.mantine-SegmentedControl-label", { hasText: "Chart" }),
+    detail.getByRole("button", { name: "Chart", exact: true }),
   );
   await expect(detail.locator(".whd-chart-wrap canvas")).toBeVisible();
   await expect(table).toHaveCount(0);
@@ -256,7 +256,7 @@ test("明细面板：比分、队伍快照与表格/图表切换", async ({ page
   await selectOption(detail, "Chart metric", "Healing");
 
   await flow.clickWithoutApi(
-    detail.locator("label.mantine-SegmentedControl-label", { hasText: "Table" }),
+    detail.getByRole("button", { name: "Table", exact: true }),
   );
   await expect(detail.locator(".war-history-detail-table-wrap")).toBeVisible();
 });
@@ -265,7 +265,7 @@ test("编辑成员数据：取消回退不落库，保存才写回服务端", as
   await openThisWar(page, flow);
 
   const detail = detailPanel(page);
-  const killsLabel = `${member.username} — Kills`;
+  const killsLabel = `${member.display_name} — Kills`;
 
   await flow.clickWithoutApi(detail.getByRole("button", { name: "Edit Data", exact: true }));
   await expect(field(detail, killsLabel), "进入编辑态后这一格才是输入框").toHaveValue("3");

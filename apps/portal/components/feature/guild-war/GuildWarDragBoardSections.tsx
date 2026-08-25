@@ -1,15 +1,16 @@
 import type { ClassCatalogItem } from "@guild/shared";
 import { useDraggable, useDroppable } from "@dnd-kit/core";
 import {
-  ActionIcon,
-  Badge,
-  Group,
-  Menu,
-  Paper,
-  Stack,
-  Text,
-  Tooltip,
-} from "@mantine/core";
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@portal/components/ui/dropdown-menu";
+import { Badge } from "@portal/components/ui/badge";
+import { Button } from "@portal/components/ui/button";
+import { Card } from "@portal/components/ui/card";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@portal/components/ui/tooltip";
 import {
   BoltIcon,
   ChevronDownIcon,
@@ -46,7 +47,7 @@ export type { DragMemberColumn, DragMemberItem };
 
 export type ActiveDragItem = {
   userId: string;
-  username: string;
+  display_name: string;
   power: number;
   class: string;
   subtitle: string;
@@ -56,7 +57,7 @@ export type ActiveDragItem = {
 const DRAG_HOLD_MS = 150;
 
 type MemberRowCellsProps = {
-  username: string;
+  display_name: string;
   power: number;
   classItem: ClassCatalogItem;
   avatarMediaId: string | null;
@@ -72,7 +73,7 @@ type MemberRowCellsProps = {
  * 悬浮卡也关掉（它内部是 UnstyledButton，套进本行这个 button 里就是按钮套按钮）。
  */
 function MemberRowCells({
-  username,
+  display_name,
   power,
   classItem,
   avatarMediaId,
@@ -93,16 +94,16 @@ function MemberRowCells({
         {isDraggable ? <IconGripVertical size={14} /> : null}
       </span>
       <MemberRoleAvatar
-        user={{ username }}
+        user={{ display_name }}
         profile={{ classes: [classItem.id], power, avatar_media_id: avatarMediaId }}
         size={22}
         withTooltip={false}
         withClassCircles={false}
       />
       <span className="guild-war-member-card__name">
-        <span className="guild-war-member-card__username">{username}</span>
+        <span className="guild-war-member-card__username">{display_name}</span>
         {isAbsent ? (
-          <Badge color="orange" size="xs" variant="light" className="guild-war-member-card__absent">
+          <Badge variant="secondary" className="guild-war-member-card__absent">
             {t("active.absent")}
           </Badge>
         ) : null}
@@ -116,7 +117,7 @@ function MemberRowCells({
 type DraggableMemberCardProps = {
   itemId: string;
   domId: string;
-  username: string;
+  display_name: string;
   power: number;
   classItem: ClassCatalogItem;
   avatarMediaId: string | null;
@@ -130,7 +131,7 @@ type DraggableMemberCardProps = {
 const DraggableMemberCard = memo(function DraggableMemberCard({
   itemId,
   domId,
-  username,
+  display_name,
   power,
   classItem,
   avatarMediaId,
@@ -207,7 +208,7 @@ const DraggableMemberCard = memo(function DraggableMemberCard({
       onClick={onOpenMember ? handleOpen : undefined}
       aria-label={t(
         onOpenMember ? "active.aria.openMember" : "active.aria.dragMember",
-        { username },
+        { display_name },
       )}
       disabled={interactionDisabled}
       {...(dragDisabled ? {} : attributes)}
@@ -219,7 +220,7 @@ const DraggableMemberCard = memo(function DraggableMemberCard({
     >
       <div className="guild-war-member-card__progress" />
       <MemberRowCells
-        username={username}
+        display_name={display_name}
         power={power}
         classItem={classItem}
         avatarMediaId={avatarMediaId}
@@ -230,7 +231,7 @@ const DraggableMemberCard = memo(function DraggableMemberCard({
   );
 });
 
-type MemberSortField = "username" | "class" | "power";
+type MemberSortField = "display_name" | "class" | "power";
 
 type SortHeadProps = {
   field: MemberSortField;
@@ -331,7 +332,7 @@ export function DroppableMemberColumn({
     }
     return [...column.members].sort((a, b) => {
       let cmp = 0;
-      if (sortBy === "username") cmp = a.username.localeCompare(b.username);
+      if (sortBy === "display_name") cmp = a.display_name.localeCompare(b.display_name);
       else if (sortBy === "class") {
         cmp = resolveClassCatalogItem(a.class, classCatalog).label.localeCompare(
           resolveClassCatalogItem(b.class, classCatalog).label,
@@ -361,32 +362,24 @@ export function DroppableMemberColumn({
   );
 
   return (
-    <Paper
-      withBorder
-      radius="md"
+    <Card
       className={`guild-war-column-card${isOver ? " guild-war-column-card--over" : ""}${isDragActive && !isOver ? " guild-war-column-card--drag-active" : ""}`}
-      style={{ overflow: "visible" }}
     >
       <div ref={setNodeRef} className="guild-war-column-card__body">
-        <Stack gap={8} mb="sm" className="guild-war-column-header">
-          <Group gap={8} justify="space-between" wrap="wrap">
-            <Group gap={8} wrap="nowrap" style={{ minWidth: 0 }}>
-              <Text size="sm" fw={600} truncate>
+        <div className="guild-war-column-header">
+          <div className="guild-war-column-header__row">
+            <div className="guild-war-column-header__identity">
+              <strong className="guild-war-column-header__title" title={column.title}>
                 {column.title}
-              </Text>
-              <Badge size="sm" variant="default" className="guild-war-column-count">
+              </strong>
+              <Badge variant="outline" className="guild-war-column-count">
                 {column.members.length}
               </Badge>
               {column.locked ? (
-                <Badge color="red" size="sm">{t("active.locked")}</Badge>
+                <Badge variant="destructive">{t("active.locked")}</Badge>
               ) : null}
-            </Group>
-            <Group
-              gap={4}
-              justify="flex-end"
-              wrap="nowrap"
-              className="guild-war-column-actions"
-            >
+            </div>
+            <div className="guild-war-column-actions">
               {/* 总战力挂在列头，不另起一行汇总：一整行只为了一个数，等于把空白搬进卡片里。 */}
               {column.members.length > 0 ? (
                 <div className="guild-war-column-total">
@@ -404,119 +397,140 @@ export function DroppableMemberColumn({
               {/* 队名和备注都在这道门后面。以前备注常驻在列头下面，一整行输入框写满全场，
                   而队名要点中标题才知道能改——两条改法两个入口，还占着名册的高度。 */}
               {isTeamColumn && onEditTeam ? (
-                <Tooltip label={t("active.teamSetup.edit")}>
-                  <ActionIcon
-                    size={44}
-                    variant="subtle"
+                <Tooltip>
+                  <TooltipTrigger render={<Button
+                    type="button"
+                    size="icon"
+                    variant="ghost"
+                    className="guild-war-column-action"
                     onClick={() => onEditTeam(column.containerId)}
                     aria-label={t("active.teamSetup.edit")}
-                  >
+                  />}>
                     <PencilIcon size={16} />
-                  </ActionIcon>
+                  </TooltipTrigger>
+                  <TooltipContent>{t("active.teamSetup.edit")}</TooltipContent>
                 </Tooltip>
               ) : null}
               {isTeamColumn && onToggleLock ? (
-                <Tooltip label={isLocked ? t("hovercard.unlock.title") : t("hovercard.lock.title")}>
-                  <ActionIcon
-                    size={44}
-                    variant={isLocked ? "light" : "subtle"}
-                    color={isLocked ? "red" : undefined}
+                <Tooltip>
+                  <TooltipTrigger render={<Button
+                    type="button"
+                    size="icon"
+                    variant={isLocked ? "destructive" : "ghost"}
+                    className="guild-war-column-action"
                     onClick={() => onToggleLock(column.containerId)}
                     aria-label={isLocked ? t("active.teamSetup.locked") : t("active.teamSetup.open")}
-                  >
+                  />}>
                     {isLocked ? <LockIcon size={16} /> : <UnlockIcon size={16} />}
-                  </ActionIcon>
+                  </TooltipTrigger>
+                  <TooltipContent>{isLocked ? t("hovercard.unlock.title") : t("hovercard.lock.title")}</TooltipContent>
                 </Tooltip>
               ) : null}
               {isTeamColumn && onCopyTeamMentions ? (
-                <Tooltip label={t("hovercard.copyTeam.title")}>
-                  <ActionIcon
-                    size={44}
-                    variant="subtle"
+                <Tooltip>
+                  <TooltipTrigger render={<Button
+                    type="button"
+                    size="icon"
+                    variant="ghost"
+                    className="guild-war-column-action"
                     onClick={() => onCopyTeamMentions(column.containerId)}
                     aria-label={t("active.teamCopied")}
-                  >
+                  />}>
                     <CopyIcon size={16} />
-                  </ActionIcon>
+                  </TooltipTrigger>
+                  <TooltipContent>{t("hovercard.copyTeam.title")}</TooltipContent>
                 </Tooltip>
               ) : null}
               {isPoolColumn && onAddToPool ? (
-                <Tooltip label={t("hovercard.addToPool.title")}>
-                  <ActionIcon size={44} variant="subtle" onClick={onAddToPool} aria-label={t("active.addToPool")}>
+                <Tooltip>
+                  <TooltipTrigger render={<Button
+                    type="button"
+                    size="icon"
+                    variant="ghost"
+                    className="guild-war-column-action"
+                    onClick={onAddToPool}
+                    aria-label={t("active.addToPool")}
+                  />}>
                     <UserPlusIcon size={16} />
-                  </ActionIcon>
+                  </TooltipTrigger>
+                  <TooltipContent>{t("hovercard.addToPool.title")}</TooltipContent>
                 </Tooltip>
               ) : null}
-              <Menu position="bottom-end" withinPortal>
-                <Menu.Target>
-                  <Tooltip label={t("active.aria.columnActions")}>
-                    <ActionIcon
-                      size={44}
-                      variant="subtle"
-                      aria-label={t("active.aria.columnActions")}
-                    >
-                      <DotsIcon size={16} />
-                    </ActionIcon>
-                  </Tooltip>
-                </Menu.Target>
-                <Menu.Dropdown>
-                  <Menu.Item
-                    leftSection={<UserIcon size={14} />}
-                    rightSection={sortBy === "username" ? (sortDir === "asc" ? <ChevronUpIcon size={12} /> : <ChevronDownIcon size={12} />) : null}
-                    onClick={() => toggleSort("username")}
-                  >
-                    {t("active.sort.username")}
-                  </Menu.Item>
-                  <Menu.Item
-                    leftSection={<ShieldIcon size={14} />}
-                    rightSection={sortBy === "class" ? (sortDir === "asc" ? <ChevronUpIcon size={12} /> : <ChevronDownIcon size={12} />) : null}
-                    onClick={() => toggleSort("class")}
-                  >
-                    {t("active.sort.class")}
-                  </Menu.Item>
-                  <Menu.Item
-                    leftSection={<BoltIcon size={14} />}
-                    rightSection={sortBy === "power" ? (sortDir === "asc" ? <ChevronUpIcon size={12} /> : <ChevronDownIcon size={12} />) : null}
-                    onClick={() => toggleSort("power")}
-                  >
-                    {t("active.sort.power")}
-                  </Menu.Item>
+              <DropdownMenu>
+                <DropdownMenuTrigger render={<Button
+                  type="button"
+                  size="icon"
+                  variant="ghost"
+                  className="guild-war-column-action"
+                  aria-label={t("active.aria.columnActions")}
+                  title={t("active.aria.columnActions")}
+                />}>
+                  <DotsIcon size={16} />
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end">
+                  <DropdownMenuItem onClick={() => toggleSort("display_name")}>
+                    <UserIcon size={14} />
+                    <span>{t("active.sort.display_name")}</span>
+                    {sortBy === "display_name" ? (
+                      <span className="guild-war-column-menu__indicator">
+                        {sortDir === "asc" ? <ChevronUpIcon size={12} /> : <ChevronDownIcon size={12} />}
+                      </span>
+                    ) : null}
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => toggleSort("class")}>
+                    <ShieldIcon size={14} />
+                    <span>{t("active.sort.class")}</span>
+                    {sortBy === "class" ? (
+                      <span className="guild-war-column-menu__indicator">
+                        {sortDir === "asc" ? <ChevronUpIcon size={12} /> : <ChevronDownIcon size={12} />}
+                      </span>
+                    ) : null}
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => toggleSort("power")}>
+                    <BoltIcon size={14} />
+                    <span>{t("active.sort.power")}</span>
+                    {sortBy === "power" ? (
+                      <span className="guild-war-column-menu__indicator">
+                        {sortDir === "asc" ? <ChevronUpIcon size={12} /> : <ChevronDownIcon size={12} />}
+                      </span>
+                    ) : null}
+                  </DropdownMenuItem>
                   {isTeamColumn && onMoveTeam ? (
                     <>
-                      <Menu.Divider />
-                      <Menu.Item
-                        leftSection={<ChevronUpIcon size={14} />}
+                      <DropdownMenuSeparator />
+                      <DropdownMenuItem
                         onClick={() => onMoveTeam(column.containerId, "up")}
                         disabled={teamIndex === 0}
                       >
+                        <ChevronUpIcon size={14} />
                         {t("active.teamSetup.moveUp")}
-                      </Menu.Item>
-                      <Menu.Item
-                        leftSection={<ChevronDownIcon size={14} />}
+                      </DropdownMenuItem>
+                      <DropdownMenuItem
                         onClick={() => onMoveTeam(column.containerId, "down")}
                         disabled={teamIndex === (teamCount ?? 1) - 1}
                       >
+                        <ChevronDownIcon size={14} />
                         {t("active.teamSetup.moveDown")}
-                      </Menu.Item>
+                      </DropdownMenuItem>
                     </>
                   ) : null}
                   {isTeamColumn && onDeleteTeam ? (
                     <>
-                      <Menu.Divider />
-                      <Menu.Item
-                        color="red"
-                        leftSection={<TrashIcon size={14} />}
+                      <DropdownMenuSeparator />
+                      <DropdownMenuItem
+                        variant="destructive"
                         onClick={() => onDeleteTeam(column.containerId)}
                       >
+                        <TrashIcon size={14} />
                         {t("menu.team.delete")}
-                      </Menu.Item>
+                      </DropdownMenuItem>
                     </>
                   ) : null}
-                </Menu.Dropdown>
-              </Menu>
-            </Group>
-          </Group>
-        </Stack>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            </div>
+          </div>
+        </div>
         {/* 列头与成员行共用 --guild-war-row-columns 那套栅格（见 GuildWarPage.css），
             所以标签永远压在它标注的那一格上；前三格是职业色条、把手和头像，无标签。 */}
         {column.members.length > 0 ? (
@@ -525,7 +539,7 @@ export function DroppableMemberColumn({
             <span aria-hidden="true" />
             <span aria-hidden="true" />
             <SortHead
-              field="username"
+              field="display_name"
               label={t("active.column.member")}
               sortBy={sortBy}
               sortDir={sortDir}
@@ -554,7 +568,7 @@ export function DroppableMemberColumn({
               key={member.itemId}
               itemId={member.itemId}
               domId={toMemberDomId(member.itemId)}
-              username={member.username}
+              display_name={member.display_name}
               power={member.power}
               classItem={resolveClassCatalogItem(member.class, classCatalog)}
               avatarMediaId={member.avatarMediaId}
@@ -563,7 +577,7 @@ export function DroppableMemberColumn({
               isAbsent={absentUserIds?.has(member.userId) ?? false}
               isMatched={
                 activeSearch.trim().length > 0
-                && `${member.username} ${member.class} ${resolveClassCatalogItem(member.class, classCatalog).label} ${member.power}`
+                && `${member.display_name} ${member.class} ${resolveClassCatalogItem(member.class, classCatalog).label} ${member.power}`
                   .toLowerCase()
                   .includes(activeSearch.toLowerCase())
               }
@@ -572,7 +586,7 @@ export function DroppableMemberColumn({
           ))}
         </div>
       </div>
-    </Paper>
+    </Card>
   );
 }
 
@@ -592,7 +606,7 @@ export function TrashDropZone({ visible }: TrashDropZoneProps) {
       className={`guild-war-trash-zone ${visible ? "guild-war-trash-zone--visible" : ""} ${isOver ? "guild-war-trash-zone--over" : ""}`}
     >
       <TrashIcon size={18} />
-      <Text size="sm" fw={500}>{t("active.trashZone")}</Text>
+      <span>{t("active.trashZone")}</span>
     </div>
   );
 }
@@ -604,13 +618,11 @@ type GuildWarDragOverlayCardProps = {
 export function GuildWarDragOverlayCard({ activeDragItem }: GuildWarDragOverlayCardProps) {
   const classCatalog = useClassCatalog();
   const classItem = resolveClassCatalogItem(activeDragItem.class, classCatalog);
-  /* 影子不套 Mantine Card：Card 根节点自带 flex 列向布局，和行的 grid 打架，
-     压过去要靠选择器权重。行的外观本来就在 .guild-war-member-card 里，
-     --overlay 只补上抬起时的底和投影。 */
+  /* 影子复用成员行本身的栅格；--overlay 只补上抬起时的底和投影。 */
   return (
     <div className="guild-war-member-card guild-war-member-card--overlay">
       <MemberRowCells
-        username={activeDragItem.username}
+        display_name={activeDragItem.display_name}
         power={activeDragItem.power}
         classItem={classItem}
         avatarMediaId={activeDragItem.avatarMediaId}

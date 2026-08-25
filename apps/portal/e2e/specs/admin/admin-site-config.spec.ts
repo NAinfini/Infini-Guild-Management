@@ -80,13 +80,10 @@ function saveButton(page: Page): Locator {
   return saveBar(page).getByRole("button", { name: "Save Site Config", exact: true });
 }
 /*
- * 功能开关要点在 track 上，不能点 input。
- * Mantine 的 Switch 把 input 和 track 一起塞进同一个 <label>（Switch.mjs 的 bodyElement），
- * track 覆盖在 input 上方并吃掉指针事件——直接点 input 会被判定成「被别的元素挡住」，
- * 一路重试到超时。track 才是用户真正点的那块，点它走的也是同一条 label→input 的路径。
+ * 功能开关采用 Base UI 的 switch 角色和明确的可访问名称。
  */
 function featureSwitch(page: Page, label: string): Locator {
-  return featuresCard(page).locator(`label:has(> input[aria-label="${label}"]) .mantine-Switch-track`);
+  return featuresCard(page).getByRole("switch", { name: label, exact: true });
 }
 function navItem(page: Page, label: string): Locator {
   return page.locator(".app-sider").getByRole("button", { name: label, exact: true });
@@ -122,7 +119,7 @@ async function setNumber(input: Locator, value: string): Promise<void> {
 
 async function expectNotified(page: Page, text: string): Promise<void> {
   await expect(
-    page.locator(".mantine-Notification-description").filter({ hasText: text }),
+    page.locator('[data-slot="toast-description"]').filter({ hasText: text }),
     `没有弹出通知「${text}」`,
   ).toBeVisible();
 }

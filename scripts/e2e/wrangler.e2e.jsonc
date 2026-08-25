@@ -55,6 +55,11 @@
       "simple": { "limit": 5, "period": 60 }
     },
     {
+      "name": "AUTH_IP_RATE_LIMITER",
+      "namespace_id": "9007",
+      "simple": { "limit": 30, "period": 60 }
+    },
+    {
       "name": "READ_RATE_LIMITER",
       "namespace_id": "9002",
       "simple": { "limit": 120, "period": 60 }
@@ -84,7 +89,7 @@
   "vars": {
     "IG_PUBLIC_URL": "https://127.0.0.1:8787",
     "IG_ALLOWED_ORIGINS": "https://127.0.0.1:8787",
-    "IG_SESSION_COOKIE_NAME": "ig_e2e_session",
+    "IG_SESSION_COOKIE_NAME": "__Host-ig_session",
     "IG_PBKDF2_ITERATIONS": "10000"
   }
 }

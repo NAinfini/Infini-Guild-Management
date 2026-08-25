@@ -146,6 +146,32 @@ function service(
 }
 
 describe("EventsService notification invalidation", () => {
+  it("publishes the creation hint and inbox invalidation after a successful create", async () => {
+    const publish = vi.fn().mockResolvedValue(undefined);
+    const events = service(
+      fakeStore({ create: vi.fn().mockResolvedValue(aggregate("other", null)) }),
+      () => 0,
+      { destroyEvent: vi.fn().mockResolvedValue("deleted") },
+      publish,
+    );
+
+    await events.create(context(["events.create"]), {
+      type: "other",
+      title: "Created",
+      start_at: "2026-08-10T12:00:00.000Z",
+    });
+
+    expect(publish.mock.calls.map(([message]) => message)).toEqual([
+      expect.objectContaining({
+        type: "entity_changed",
+        entity_type: "event",
+        entity_id: "generated-1",
+        hint: "event_created",
+      }),
+      { type: "inbox_changed" },
+    ]);
+  });
+
   it("publishes successful update, archive, and delete mutations", async () => {
     const existing = aggregate("other", null);
     const updated = {

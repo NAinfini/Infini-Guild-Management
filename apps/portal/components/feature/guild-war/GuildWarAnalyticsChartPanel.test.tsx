@@ -1,4 +1,3 @@
-import { MantineProvider } from "@mantine/core";
 import { fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { GuildWarAnalyticsChartPanel } from "./GuildWarAnalyticsChartPanel";
@@ -9,7 +8,6 @@ describe("GuildWarAnalyticsChartPanel", () => {
     const Chart = vi.fn(() => <div data-testid="analytics-chart" />);
 
     render(
-      <MantineProvider>
         <GuildWarAnalyticsChartPanel
           ReactEChartsCore={Chart as never}
           echarts={{}}
@@ -29,8 +27,7 @@ describe("GuildWarAnalyticsChartPanel", () => {
             actionLabel: "Select first member",
             onAction,
           }}
-        />
-      </MantineProvider>,
+        />,
     );
 
     expect(screen.getByText("Choose data to chart")).toBeInTheDocument();
@@ -45,7 +42,6 @@ describe("GuildWarAnalyticsChartPanel", () => {
     const Chart = vi.fn(() => <div data-testid="analytics-chart" />);
 
     render(
-      <MantineProvider>
         <GuildWarAnalyticsChartPanel
           ReactEChartsCore={Chart as never}
           echarts={{}}
@@ -64,8 +60,7 @@ describe("GuildWarAnalyticsChartPanel", () => {
             note: "Values normalised to a 30-minute baseline",
           }}
           t={(key) => key}
-        />
-      </MantineProvider>,
+        />,
     );
 
     expect(screen.getByText("4 members · Damage · 10 wars")).toBeInTheDocument();
@@ -82,7 +77,6 @@ describe("GuildWarAnalyticsChartPanel", () => {
     ));
 
     render(
-      <MantineProvider>
         <GuildWarAnalyticsChartPanel
           ReactEChartsCore={Chart as never}
           echarts={{}}
@@ -96,8 +90,7 @@ describe("GuildWarAnalyticsChartPanel", () => {
           onToggleExpanded={vi.fn()}
           heading={{ kicker: "Teams", title: "2 teams · Damage · 5 wars" }}
           t={(key) => key}
-        />
-      </MantineProvider>,
+        />,
     );
 
     // Merging kept the previous mode's series alive: the war mode's 敌方/差额

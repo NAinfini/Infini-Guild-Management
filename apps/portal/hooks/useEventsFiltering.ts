@@ -5,11 +5,10 @@ import { useNavigate, useSearch } from "@tanstack/react-router";
 import { useTranslation } from "react-i18next";
 import { localDateKey } from "../utils/datetime";
 import { useEventsData } from "./data/useEventsData";
-import { fetchEventDetail, fetchEventDetailBatch } from "../services/EventService";
+import { fetchEventDetailBatch } from "../services/EventService";
 import { queryKeys } from "../api/query-keys";
 import { buildAvailabilityHeatData } from "../utils/availability";
 import {
-  clearEventWorkbenchFocus,
   sanitizeEventsRouteSearch,
   type EventStatusFilter,
   type EventsRouteSearch,
@@ -33,7 +32,7 @@ export function useEventsFiltering({ currentUserId }: UseEventsFilteringParams) 
   const archivedOnly = eventStatus === "archived";
   const pinnedOnly = routeSearch.pinned ?? false;
   const lockedOnly = routeSearch.locked ?? false;
-  const focusEventId = routeSearch.eventId ?? null;
+  const selectedDateKey = routeSearch.date;
   const [lastSeenAt, setLastSeenAt] = useState<string | null>(null);
   const lastSeenStorageKey = userScopedStorageKey(EVENTS_LAST_SEEN_KEY, currentUserId);
 
@@ -61,10 +60,7 @@ export function useEventsFiltering({ currentUserId }: UseEventsFilteringParams) 
   }, [updateSearch]);
 
   const setSearchQuery = useCallback((value: string) => {
-    updateSearch((prev) => ({
-      search: value,
-      eventId: prev.search?.trim() === value.trim() ? prev.eventId : undefined,
-    }));
+    updateSearch({ search: value });
   }, [updateSearch]);
 
   const setArchivedOnly = useCallback((value: boolean) => {
@@ -83,6 +79,10 @@ export function useEventsFiltering({ currentUserId }: UseEventsFilteringParams) 
     updateSearch({ locked: value || undefined });
   }, [updateSearch]);
 
+  const setSelectedDate = useCallback((value: string | undefined) => {
+    updateSearch({ date: value });
+  }, [updateSearch]);
+
   const { eventsQuery, eventsQueryData, eventsHasMore, eventsLoadingMore, onLoadMoreEvents, usersQuery } = useEventsData({
     eventType,
     status: eventStatus,
@@ -96,20 +96,12 @@ export function useEventsFiltering({ currentUserId }: UseEventsFilteringParams) 
 
   const sortedEvents = useMemo(() => {
     return [...events].sort((left, right) => {
-      if (focusEventId && left.id !== right.id) {
-        if (left.id === focusEventId) {
-          return -1;
-        }
-        if (right.id === focusEventId) {
-          return 1;
-        }
-      }
       if (left.pinned !== right.pinned) {
         return left.pinned ? -1 : 1;
       }
       return left.start_at.localeCompare(right.start_at);
     });
-  }, [events, focusEventId]);
+  }, [events]);
 
   const eventFlags = useMemo(() => {
     if (!lastSeenAt) {
@@ -147,22 +139,9 @@ export function useEventsFiltering({ currentUserId }: UseEventsFilteringParams) 
     staleTime: 30_000,
   });
 
-  const focusedEventQuery = useQuery({
-    queryKey: queryKeys.events.detail(focusEventId ?? ""),
-    enabled: Boolean(focusEventId),
-    queryFn: () => fetchEventDetail(focusEventId as string),
-    staleTime: 30_000,
-  });
-
   const eventDetails = useMemo(() => {
-    const byId = new Map(
-      (eventPreviewDetailsQuery.data ?? []).map((detail) => [detail.id, detail]),
-    );
-    if (focusedEventQuery.data) {
-      byId.set(focusedEventQuery.data.id, focusedEventQuery.data);
-    }
-    return [...byId.values()];
-  }, [eventPreviewDetailsQuery.data, focusedEventQuery.data]);
+    return eventPreviewDetailsQuery.data ?? [];
+  }, [eventPreviewDetailsQuery.data]);
 
   const eventMembersMap = useMemo(() => {
     const membersByEventId = new Map<string, MemberEntry[]>();
@@ -203,24 +182,6 @@ export function useEventsFiltering({ currentUserId }: UseEventsFilteringParams) 
   }, [currentUserId, eventDetails]);
 
   const eventById = useMemo(() => new Map(sortedEvents.map((event) => [event.id, event])), [sortedEvents]);
-  const focusedEvent = useMemo(
-    () => (
-      focusEventId
-        ? focusedEventQuery.data ?? eventById.get(focusEventId) ?? null
-        : null
-    ),
-    [eventById, focusEventId, focusedEventQuery.data],
-  );
-  const clearFocusedEvent = useCallback(() => {
-    void navigate({
-      to: "/events",
-      search: (prev) => clearEventWorkbenchFocus(prev as EventsRouteSearch),
-      replace: true,
-      resetScroll: false,
-      viewTransition: false,
-    });
-  }, [navigate]);
-
   const eventsByDay = useMemo(() => {
     const byDay = new Map<string, Event[]>();
     for (const event of sortedEvents) {
@@ -251,7 +212,7 @@ export function useEventsFiltering({ currentUserId }: UseEventsFilteringParams) 
       status: undefined,
       pinned: undefined,
       locked: undefined,
-      eventId: undefined,
+      date: undefined,
     });
   };
 
@@ -287,16 +248,14 @@ export function useEventsFiltering({ currentUserId }: UseEventsFilteringParams) 
     setPinnedOnly,
     lockedOnly,
     setLockedOnly,
+    selectedDateKey,
+    setSelectedDate,
     eventsQuery,
     usersQuery,
     previewDetailsQuery: eventPreviewDetailsQuery,
-    focusedEventQuery,
     sortedEvents,
     eventFlags,
     eventById,
-    focusEventId,
-    focusedEvent,
-    clearFocusedEvent,
     eventMembersMap,
     joinedEventRanges,
     eventsByDay,

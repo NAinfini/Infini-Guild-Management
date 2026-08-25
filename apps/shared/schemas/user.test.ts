@@ -113,6 +113,11 @@ describe("memberAvailabilitySchema", () => {
 });
 
 describe("updateProfileSchema", () => {
+  it("accepts a public display name through the profile-save contract", () => {
+    expect(updateProfileSchema.parse({ display_name: "Member_2" })).toEqual({ display_name: "Member_2" });
+    expect(updateProfileSchema.safeParse({ display_name: "not allowed" }).success).toBe(false);
+  });
+
   it("accepts catalog and persisted class IDs while rejecting duplicates", () => {
     expect(updateProfileSchema.safeParse({
       classes: ["new-catalog-id", "历史职业"],
@@ -188,7 +193,7 @@ describe("userSchema role metadata", () => {
   it("requires the D1 role name, color, and level", () => {
     const base = {
       id: "user-1",
-      username: "Member",
+      display_name: "Member",
       role: "raider",
       permissions: Object.fromEntries(PERMISSIONS.map((permission) => [permission, false])),
       is_active: true,

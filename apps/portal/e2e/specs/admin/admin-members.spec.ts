@@ -1,7 +1,7 @@
 import type { APIRequestContext, Locator, Page } from "@playwright/test";
 import { createThrowawayMember, uniqueTag } from "../../support/members";
 import { expect, readJson, test } from "../../support/test";
-import { field, readInteger, topDialog } from "../../support/ui";
+import { ensureFiltersOpen, field, readInteger, topDialog } from "../../support/ui";
 import { canAccessAdmin } from "../../../utils/permissions";
 
 /*
@@ -25,18 +25,15 @@ function searchBox(page: Page): Locator {
 function memberRows(page: Page): Locator {
   return page.getByRole("row", { name: /member row$/ });
 }
-function memberRow(page: Page, username: string): Locator {
-  return page.getByRole("row", { name: `${username} member row`, exact: true });
+function memberRow(page: Page, display_name: string): Locator {
+  return page.getByRole("row", { name: `${display_name} member row`, exact: true });
 }
-/*
- * Mantine 的 SegmentedControl 把真正的 radio 藏起来（视觉上不可见），可点的是它的
- * label。按 role 取到的是那个隐藏 input，点它会一直等「元素可见」直到超时，
- * 报出来像是控件坏了。所以点 label、断言 radio。
- */
-function statusFilter(page: Page, label: string): Locator {
-  return page.locator("label.mantine-SegmentedControl-label").filter({ hasText: new RegExp(`^${label}$`) });
+function memberFilterToolbar(page: Page): Locator {
+  return page.locator(".admin-users .content-filter-toolbar");
 }
-function statusFilterInput(page: Page, label: string): Locator {
+
+/** 状态筛选由可访问的单选项表达当前选择。 */
+function statusFilterOption(page: Page, label: string): Locator {
   return page.getByRole("radio", { name: label, exact: true });
 }
 /*
@@ -105,10 +102,10 @@ test("搜索框：缩到唯一一行，四个统计块跟着搜索结果重算�
   expect(before.total, "统计块的总数必须等于服务端的成员总数").toBe(total);
 
   await expectNoApiCalls(page, async () => {
-    await searchBox(page).fill(member.username);
+    await searchBox(page).fill(member.display_name);
     await expect(memberRows(page), "用户名是唯一的，只该剩这一行").toHaveCount(1);
   });
-  await expect(memberRow(page, member.username)).toBeVisible();
+  await expect(memberRow(page, member.display_name)).toBeVisible();
 
   const managementAccess = canAccessAdmin([member.role], member.role.id) ? 1 : 0;
   expect(await readStats(page)).toEqual({ total: 1, active: 1, inactive: 0, managementAccess });
@@ -136,20 +133,21 @@ test("状态筛选：三段各自过滤可见行，而统计块按搜索结果�
   expect(await readStats(page)).toEqual(stats);
 
   await expectNoApiCalls(page, async () => {
-    await statusFilter(page, "Enabled").click();
+    await ensureFiltersOpen(memberFilterToolbar(page));
+    await statusFilterOption(page, "Enabled").click();
     await expect(memberRows(page)).toHaveCount(1);
   });
-  await expect(statusFilterInput(page, "Enabled")).toBeChecked();
-  await expect(memberRow(page, running.username)).toBeVisible();
+  await expect(statusFilterOption(page, "Enabled")).toBeChecked();
+  await expect(memberRow(page, running.display_name)).toBeVisible();
   expect(await readStats(page), "统计块的口径是搜索结果，状态筛选只是视图").toEqual(stats);
 
-  await statusFilter(page, "Disabled").click();
-  await expect(statusFilterInput(page, "Disabled")).toBeChecked();
+  await statusFilterOption(page, "Disabled").click();
+  await expect(statusFilterOption(page, "Disabled")).toBeChecked();
   await expect(memberRows(page)).toHaveCount(1);
-  await expect(memberRow(page, paused.username)).toBeVisible();
+  await expect(memberRow(page, paused.display_name)).toBeVisible();
 
-  await statusFilter(page, "All").click();
-  await expect(statusFilterInput(page, "All")).toBeChecked();
+  await statusFilterOption(page, "All").click();
+  await expect(statusFilterOption(page, "All")).toBeChecked();
   await expect(memberRows(page)).toHaveCount(2);
 });
 
@@ -200,20 +198,20 @@ test("选择：单击换选，Ctrl 点选累加，再单击一行把选中收回
   await expect(memberRows(page)).toHaveCount(2);
 
   await expect(page.getByText(/Click or press Space to select/)).toBeVisible();
-  await expect(memberRow(page, first.username)).toHaveAttribute("aria-selected", "false");
+  await expect(memberRow(page, first.display_name)).toHaveAttribute("aria-selected", "false");
 
-  await flow.clickWithoutApi(memberRow(page, first.username));
-  await expect(memberRow(page, first.username)).toHaveAttribute("aria-selected", "true");
-  await expect(memberRow(page, second.username)).toHaveAttribute("aria-selected", "false");
+  await flow.clickWithoutApi(memberRow(page, first.display_name));
+  await expect(memberRow(page, first.display_name)).toHaveAttribute("aria-selected", "true");
+  await expect(memberRow(page, second.display_name)).toHaveAttribute("aria-selected", "false");
 
-  await memberRow(page, second.username).click({ modifiers: ["ControlOrMeta"] });
-  await expect(memberRow(page, first.username)).toHaveAttribute("aria-selected", "true");
-  await expect(memberRow(page, second.username)).toHaveAttribute("aria-selected", "true");
+  await memberRow(page, second.display_name).click({ modifiers: ["ControlOrMeta"] });
+  await expect(memberRow(page, first.display_name)).toHaveAttribute("aria-selected", "true");
+  await expect(memberRow(page, second.display_name)).toHaveAttribute("aria-selected", "true");
 
-  await flow.clickWithoutApi(memberRow(page, second.username));
-  await expect(memberRow(page, first.username), "不带修饰键的单击应当只留下这一行")
+  await flow.clickWithoutApi(memberRow(page, second.display_name));
+  await expect(memberRow(page, first.display_name), "不带修饰键的单击应当只留下这一行")
     .toHaveAttribute("aria-selected", "false");
-  await expect(memberRow(page, second.username)).toHaveAttribute("aria-selected", "true");
+  await expect(memberRow(page, second.display_name)).toHaveAttribute("aria-selected", "true");
 });
 
 test("键盘：提示文案承诺的三件事都要真的能做到——空格选中、回车看详情、Shift+F10 出菜单", async ({ page, api }) => {
@@ -224,7 +222,7 @@ test("键盘：提示文案承诺的三件事都要真的能做到——空格�
   await searchBox(page).fill(tag);
   await expect(memberRows(page)).toHaveCount(1);
 
-  const row = memberRow(page, member.username);
+  const row = memberRow(page, member.display_name);
   await row.focus();
   await page.keyboard.press(" ");
   await expect(row, "空格应当选中当前行").toHaveAttribute("aria-selected", "true");
@@ -232,7 +230,7 @@ test("键盘：提示文案承诺的三件事都要真的能做到——空格�
   await page.keyboard.press("Enter");
   await expect(topDialog(page), "回车应当打开这一行的成员详情").toBeVisible();
   await expect(
-    topDialog(page).getByRole("heading", { name: `Member Detail · ${member.username}`, exact: true }),
+    topDialog(page).getByRole("heading", { name: `Member Detail · ${member.display_name}`, exact: true }),
     "打开的必须是这一行的成员，不能是别人",
   ).toBeVisible();
   await page.keyboard.press("Escape");

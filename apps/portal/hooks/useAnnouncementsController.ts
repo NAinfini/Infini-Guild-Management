@@ -1,4 +1,9 @@
-import { type Announcement, type PaginatedResponse } from "@guild/shared";
+import {
+  type Announcement,
+  type AnnouncementAttachment,
+  type AnnouncementSummary,
+  type PaginatedResponse,
+} from "@guild/shared";
 import { useConfirmDialog } from "@portal/hooks/useConfirmDialog";
 import { TIPTAP_DEFAULT_JSON } from "@portal/components/shared/tiptap-meta";
 import {
@@ -11,7 +16,6 @@ import {
 import { useNavigate, useSearch } from "@tanstack/react-router";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { flushSync } from "react-dom";
-import { useDisclosure } from "@mantine/hooks";
 import { useDebouncedSearch } from "./useDebouncedSearch";
 import { useTranslation } from "react-i18next";
 import { useAppError } from "./useAppError";
@@ -22,6 +26,7 @@ import {
   archiveAnnouncement,
   createAnnouncement,
   deleteAnnouncement,
+  uploadAnnouncementAttachment,
   uploadPendingAnnouncementImages,
   type UpdateAnnouncementPayload,
   updateAnnouncement,
@@ -32,8 +37,9 @@ import {
 import { queryKeys } from "../api/query-keys";
 import { useEffectivePermissions } from "./useEffectivePermissions";
 import { fromDateTimeLocalValue, toDateTimeLocalValue } from "../utils/datetime";
-import { notifySuccess } from "../utils/notifications";
+import { notifyError, notifySuccess } from "../utils/notifications";
 import { useAuthStore } from "../stores/auth";
+import { requireSiteMediaPolicy, useSiteConfigStore } from "../stores/site-config";
 import { userScopedStorageKey } from "../session-storage";
 import { resolveMediaUrl } from "../utils/media";
 
@@ -61,7 +67,7 @@ type AnnouncementRouteSearch = {
   selection?: "none";
 };
 
-type AnnouncementListCache = InfiniteData<PaginatedResponse<Announcement>>;
+type AnnouncementListCache = InfiniteData<PaginatedResponse<AnnouncementSummary>>;
 
 function selectionFromRoute(search: AnnouncementRouteSearch): AnnouncementSelection {
   if (search.announcementId) return { kind: "selected", id: search.announcementId };
@@ -76,7 +82,7 @@ function sameSelection(left: AnnouncementSelection, right: AnnouncementSelection
 
 function updateAnnouncementPages(
   current: AnnouncementListCache | undefined,
-  update: (items: Announcement[]) => Announcement[],
+  update: (items: AnnouncementSummary[]) => AnnouncementSummary[],
 ): AnnouncementListCache | undefined {
   if (!current) return current;
   return {
@@ -88,14 +94,35 @@ function updateAnnouncementPages(
   };
 }
 
-function flattenUniqueAnnouncements(data: AnnouncementListCache | undefined): Announcement[] {
-  const byId = new Map<string, Announcement>();
+function flattenUniqueAnnouncements(data: AnnouncementListCache | undefined): AnnouncementSummary[] {
+  const byId = new Map<string, AnnouncementSummary>();
   for (const page of data?.pages ?? []) {
     for (const announcement of page.data) {
       if (!byId.has(announcement.id)) byId.set(announcement.id, announcement);
     }
   }
   return [...byId.values()];
+}
+
+function sameAttachmentOrder(
+  left: readonly AnnouncementAttachment[],
+  right: readonly AnnouncementAttachment[],
+): boolean {
+  return left.length === right.length
+    && left.every((attachment, index) => attachment.media_id === right[index]?.media_id);
+}
+
+function optimisticAnnouncementPatch(
+  payload: UpdateAnnouncementPayload,
+  updatedAt: string,
+) {
+  return {
+    ...(payload.title !== undefined ? { title: payload.title } : {}),
+    ...(payload.pinned !== undefined ? { pinned: payload.pinned } : {}),
+    ...(payload.status !== undefined ? { status: payload.status } : {}),
+    ...(payload.publish_at !== undefined ? { publish_at: payload.publish_at } : {}),
+    updated_at: updatedAt,
+  } satisfies Partial<AnnouncementSummary>;
 }
 
 function readAnnouncementsLastSeenAt(storageKey: string): string | null {
@@ -120,6 +147,9 @@ export function useAnnouncementsController() {
   const routeSearch = useSearch({ strict: false }) as AnnouncementRouteSearch;
   const isExternalView = useExternalView();
   const { showError } = useAppError();
+  const mediaPolicy = useSiteConfigStore(requireSiteMediaPolicy);
+  const attachmentMaxBytes = mediaPolicy.max_file_size_bytes.announcement_attachment;
+  const attachmentQuota = mediaPolicy.quotas.announcement_attachments;
   const currentUserId = useAuthStore((state) => state.user?.id);
   const announcementsLastSeenStorageKey = userScopedStorageKey(
     ANNOUNCEMENTS_LAST_SEEN_STORAGE_KEY,
@@ -139,7 +169,9 @@ export function useAnnouncementsController() {
   const debouncedSearch = debouncedSearchRaw.trim();
   const [selection, setSelection] = useState<AnnouncementSelection>(() => selectionFromRoute(routeSearch));
   const selectedId = selection.kind === "selected" ? selection.id : null;
-  const [isCreating, isCreatingHandlers] = useDisclosure(false);
+  const [isCreating, setIsCreating] = useState(false);
+  const openCreating = useCallback(() => setIsCreating(true), []);
+  const closeCreating = useCallback(() => setIsCreating(false), []);
   const [title, setTitle] = useState("");
   const [bodyJson, setBodyJson] = useState(TIPTAP_DEFAULT_JSON);
   const [pinned, setPinned] = useState(false);
@@ -147,12 +179,15 @@ export function useAnnouncementsController() {
   const [draftEnabled, setDraftEnabled] = useState(false);
   const [publishAt, setPublishAt] = useState("");
   const [scheduleEnabled, setScheduleEnabled] = useState(false);
+  const [attachments, setAttachments] = useState<AnnouncementAttachment[]>([]);
+  const [attachmentUploading, setAttachmentUploading] = useState(false);
   const [announcementsLastSeenAt, setAnnouncementsLastSeenAt] = useState<string | null>(null);
   const savePendingRef = useRef(false);
+  const attachmentUploadPendingRef = useRef(false);
   const isCreatingRef = useRef(isCreating);
-  const closeCreatingRef = useRef(isCreatingHandlers.close);
+  const closeCreatingRef = useRef(closeCreating);
   isCreatingRef.current = isCreating;
-  closeCreatingRef.current = isCreatingHandlers.close;
+  closeCreatingRef.current = closeCreating;
 
   const setAnnouncementSelection = useCallback((
     next: AnnouncementSelection,
@@ -178,11 +213,12 @@ export function useAnnouncementsController() {
    */
   const discardCreateDraft = useCallback(() => {
     flushSync(() => {
-      isCreatingHandlers.close();
+      closeCreating();
       setTitle("");
       setBodyJson(TIPTAP_DEFAULT_JSON);
+      setAttachments([]);
     });
-  }, [isCreatingHandlers]);
+  }, [closeCreating]);
 
   const listQuery = useInfiniteQuery({
     queryKey: queryKeys.announcements.list(pinnedFilter ? "pinned" : "all", statusFilter ?? "all", debouncedSearch, sortOrder),
@@ -241,8 +277,13 @@ export function useAnnouncementsController() {
   });
 
   const updateMutation = useMutation({
-    mutationFn: ({ id, payload, ifMatch }: { id: string; payload: UpdateAnnouncementPayload; ifMatch?: string }) => updateAnnouncement(id, payload, ifMatch),
-    onMutate: async ({ id, payload }) => {
+    mutationFn: ({ id, payload, ifMatch }: {
+      id: string;
+      payload: UpdateAnnouncementPayload;
+      ifMatch?: string;
+      attachments: AnnouncementAttachment[];
+    }) => updateAnnouncement(id, payload, ifMatch),
+    onMutate: async ({ id, payload, attachments: nextAttachments }) => {
       await queryClient.cancelQueries({ queryKey: queryKeys.announcements.all });
 
       const previousLists = queryClient
@@ -250,6 +291,7 @@ export function useAnnouncementsController() {
         .filter(([key]) => Array.isArray(key) && key[1] === "list");
       const previousDetail = queryClient.getQueryData<Announcement>(queryKeys.announcements.detail(id));
       const nowIso = new Date().toISOString();
+      const optimisticPatch = optimisticAnnouncementPatch(payload, nowIso);
 
       for (const [key] of previousLists) {
         queryClient.setQueryData<AnnouncementListCache>(key, (current) => {
@@ -262,8 +304,7 @@ export function useAnnouncementsController() {
                   item.id === id
                     ? {
                         ...item,
-                        ...(payload as Partial<Announcement>),
-                        updated_at: nowIso,
+                        ...optimisticPatch,
                       }
                     : item,
                 ),
@@ -277,8 +318,9 @@ export function useAnnouncementsController() {
         }
         return {
           ...current,
-          ...(payload as Partial<Announcement>),
-          updated_at: nowIso,
+          ...optimisticPatch,
+          ...(payload.body_json !== undefined ? { body_json: payload.body_json } : {}),
+          ...(payload.attachment_media_ids !== undefined ? { attachments: nextAttachments } : {}),
         };
       });
 
@@ -411,6 +453,7 @@ export function useAnnouncementsController() {
       setDraftEnabled(false);
       setPublishAt("");
       setScheduleEnabled(false);
+      setAttachments([]);
     } else if (selected) {
       setTitle(selected.title);
       setBodyJson(selected.body_json);
@@ -419,13 +462,18 @@ export function useAnnouncementsController() {
       setDraftEnabled(selected.status === "draft");
       setPublishAt(toDateTimeLocalValue(selected.publish_at));
       setScheduleEnabled(selected.status === "scheduled");
+      setAttachments(selected.attachments);
     }
   }, [isCreating, selected]);
 
   const isDirty = useMemo(() => {
     if (!canEdit) return false;
     if (isCreating) {
-      return title.trim().length > 0 || bodyJson !== TIPTAP_DEFAULT_JSON;
+      return title.trim().length > 0
+        || bodyJson !== TIPTAP_DEFAULT_JSON
+        || pinned
+        || publishAt.length > 0
+        || attachments.length > 0;
     }
     if (selected) {
       return (
@@ -435,11 +483,12 @@ export function useAnnouncementsController() {
         publishAt !== toDateTimeLocalValue(selected.publish_at) ||
         scheduleEnabled !== (selected.status === "scheduled") ||
         draftEnabled !== (selected.status === "draft") ||
-        archived !== (selected.status === "archived")
+        archived !== (selected.status === "archived") ||
+        !sameAttachmentOrder(attachments, selected.attachments)
       );
     }
     return false;
-  }, [archived, bodyJson, canEdit, draftEnabled, isCreating, pinned, publishAt, scheduleEnabled, selected, title]);
+  }, [archived, attachments, bodyJson, canEdit, draftEnabled, isCreating, pinned, publishAt, scheduleEnabled, selected, title]);
   const isPublishReady = useMemo(
     () => title.trim().length > 0 && extractTipTapText(bodyJson).trim().length > 0,
     [bodyJson, title],
@@ -449,9 +498,9 @@ export function useAnnouncementsController() {
 
   const handleCreateByStatus = useCallback(() => {
     if (!canCreate) return;
-    isCreatingHandlers.open();
+    openCreating();
     setAnnouncementSelection({ kind: "none" });
-  }, [canCreate, isCreatingHandlers, setAnnouncementSelection]);
+  }, [canCreate, openCreating, setAnnouncementSelection]);
 
   const handleSelectId = useCallback(async (id: string | null) => {
     if (isDirty) {
@@ -467,13 +516,13 @@ export function useAnnouncementsController() {
       }
     }
     if (id !== null) {
-      isCreatingHandlers.close();
+      closeCreating();
     }
     setAnnouncementSelection(
       id === null ? { kind: "none" } : { kind: "selected", id },
     );
     return true;
-  }, [confirm, isDirty, isCreatingHandlers, setAnnouncementSelection, t]);
+  }, [closeCreating, confirm, isDirty, setAnnouncementSelection, t]);
 
   const resetFilters = useCallback(() => {
     setSearch("");
@@ -498,6 +547,7 @@ export function useAnnouncementsController() {
         pinned,
         status,
         publish_at: status === "published" ? new Date().toISOString() : fromDateTimeLocalValue(publishAt),
+        attachment_media_ids: attachments.map((attachment) => attachment.media_id),
       });
       return;
     }
@@ -524,8 +574,12 @@ export function useAnnouncementsController() {
         publish_at: status === "published"
           ? new Date().toISOString()
           : fromDateTimeLocalValue(publishAt) ?? null,
+        ...(!sameAttachmentOrder(attachments, selected.attachments)
+          ? { attachment_media_ids: attachments.map((attachment) => attachment.media_id) }
+          : {}),
       },
       ifMatch: `"announcement-${selected.id}-${selected.updated_at}"`,
+      attachments,
     });
   };
 
@@ -548,6 +602,7 @@ export function useAnnouncementsController() {
     setDraftEnabled(selected.status === "draft");
     setPublishAt(toDateTimeLocalValue(selected.publish_at));
     setScheduleEnabled(selected.status === "scheduled");
+    setAttachments(selected.attachments);
   };
 
   const handleDelete = () => {
@@ -571,6 +626,37 @@ export function useAnnouncementsController() {
       throw new Error("Image upload returned no media id");
     }
     return resolveMediaUrl(mediaId);
+  };
+
+  const handleUploadAnnouncementAttachment = async (file: File) => {
+    if (attachments.length >= attachmentQuota) {
+      notifyError(t("validation.attachmentQuota", { count: attachmentQuota }));
+      return;
+    }
+    if (file.size > attachmentMaxBytes) {
+      notifyError(t("validation.attachmentSize", {
+        size: Math.floor(attachmentMaxBytes / 1024 / 1024),
+      }));
+      return;
+    }
+    if (attachmentUploadPendingRef.current) return;
+    attachmentUploadPendingRef.current = true;
+    setAttachmentUploading(true);
+    try {
+      const uploaded = await uploadAnnouncementAttachment(file);
+      setAttachments((current) => current.some(
+        (attachment) => attachment.media_id === uploaded.attachment.media_id,
+      ) ? current : [...current, uploaded.attachment]);
+    } catch (error) {
+      showError(error, t("message.attachmentUploadFailed"));
+    } finally {
+      attachmentUploadPendingRef.current = false;
+      setAttachmentUploading(false);
+    }
+  };
+
+  const handleRemoveAnnouncementAttachment = (mediaId: string) => {
+    setAttachments((current) => current.filter((attachment) => attachment.media_id !== mediaId));
   };
 
   return {
@@ -601,6 +687,10 @@ export function useAnnouncementsController() {
     setPublishAt,
     scheduleEnabled,
     setScheduleEnabled,
+    attachments,
+    attachmentUploading,
+    attachmentMaxBytes,
+    attachmentQuota,
     announcementsLastSeenAt,
     listQuery,
     detailQuery,
@@ -620,5 +710,7 @@ export function useAnnouncementsController() {
     handleCloseEditor,
     handleDelete,
     handleUploadAnnouncementImages,
+    handleUploadAnnouncementAttachment,
+    handleRemoveAnnouncementAttachment,
   };
 }

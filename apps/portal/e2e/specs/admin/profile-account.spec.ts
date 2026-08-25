@@ -1,7 +1,7 @@
 import { request, type APIRequestContext, type BrowserContext, type Locator, type Page } from "@playwright/test";
 import { MUTATION_HEADERS } from "../../support/api";
 import { PORTAL_ORIGIN } from "../../support/config";
-import { readAssignableRole } from "../../support/members";
+import { createThrowawayMember, uniqueTag, type ThrowawayMember } from "../../support/members";
 import {
   createFlow,
   expect,
@@ -14,40 +14,33 @@ import {
 import { field } from "../../support/ui";
 
 /*
- * 个人资料页「账号」屏：改密码卡、改用户名卡、登出条。
+ * 个人资料页「账号」屏：改密码、登录用户名和登出；公开显示名归「个人资料」屏保存。
  *
  * 这一屏和别处不同，三个控件都会把当前会话作废：
  *   - 改密码成功：服务端删掉该用户全部会话并清 cookie（UserService.ts:737），
  *     前端跳 /login?reason=expired；
- *   - 改用户名成功：前端清会话后跳 /login；
+ *   - 改登录名成功：前端清会话后跳 /login；
+ *   - 改公开显示名成功：经 PATCH /api/users/:id/profile 保存，当前会话保持有效；
  *   - 登出：POST /api/auth/logout 后跳 /login。
  * 所以整屏不能用共享的 admin 会话跑——跑完这条用例，后面所有用例的登录态就没了。
  * 每条用例改成：管理员建一个一次性账号（POST /api/admin/users，已登记进清理注册表，
  * 收尾时连同它的审计行一起硬删）→ 用它单开一个浏览器上下文 → 在那里点控件。
  *
  * 这也是 systemTestTrackingMiddleware 放行「本次运行创建的账号」的原因：
- * 改密码 / 改用户名只允许操作自己，用管理员的会话根本走不到，而这两个接口
+ * 改密码 / 改登录名 / 改公开显示名只允许操作自己，用管理员的会话根本走不到，而这些接口
  * 都会写审计行；不认这类会话，审计行就挂在没登记的用户身上，清理阶段直接抛错。
  */
 
-const CHANGE_PASSWORD = { method: "POST", path: /^\/api\/users\/[^/]+\/change-password$/ } as const;
-const CHANGE_USERNAME = { method: "POST", path: /^\/api\/users\/[^/]+\/change-username$/ } as const;
+const CHANGE_PASSWORD = { method: "PATCH", path: /^\/api\/auth\/security\/password$/ } as const;
+const CHANGE_LOGIN_NAME = { method: "PATCH", path: /^\/api\/auth\/security\/login-name$/ } as const;
+const UPDATE_PROFILE = { method: "PATCH", path: /^\/api\/users\/[^/]+\/profile$/ } as const;
 const LOGOUT = { method: "POST", path: /^\/api\/auth\/logout$/ } as const;
 
-type Throwaway = { id: string; username: string; password: string };
-
-let account: Throwaway;
+let account: ThrowawayMember;
 let context: BrowserContext;
 let page: Page;
 let flow: Flow;
 let assertPageClean: () => void;
-
-/* 一次性账号的用户名。不能以 systemtest 开头（那是保留前缀，见 AdminService.createMember）。 */
-let accountCounter = 0;
-function throwawayUsername(): string {
-  accountCounter += 1;
-  return `e2e_acct_${Date.now().toString(36)}_${accountCounter}`;
-}
 
 /*
  * 每条用例自己开的旁路通道都必须挂运行头。
@@ -58,25 +51,25 @@ function throwawayUsername(): string {
 let sideChannelHeaders: Record<string, string>;
 
 /** 单开一条登录通道换 storageState；不复用用例的 api（那是管理员的会话）。 */
-async function signIn(username: string, password: string): Promise<APIRequestContext> {
+async function signIn(loginName: string, password: string): Promise<APIRequestContext> {
   const session = await request.newContext({
     baseURL: PORTAL_ORIGIN,
     extraHTTPHeaders: sideChannelHeaders,
   });
   const response = await session.post("/api/auth/login", {
-    data: { username, password, stay_logged_in: true },
+    data: { login_name: loginName, password, stay_logged_in: true },
   });
-  expect(response.status(), `${username} 登录返回 ${response.status()}: ${await response.text()}`).toBe(200);
+  expect(response.status(), `${loginName} 登录返回 ${response.status()}: ${await response.text()}`).toBe(200);
   return session;
 }
 
 /** 只验一次登录能不能过，验完就把通道丢掉。 */
-async function loginStatus(username: string, password: string): Promise<number> {
+async function loginStatus(loginName: string, password: string): Promise<number> {
   const probe = await request.newContext({
     baseURL: PORTAL_ORIGIN,
     extraHTTPHeaders: sideChannelHeaders,
   });
-  const response = await probe.post("/api/auth/login", { data: { username, password } });
+  const response = await probe.post("/api/auth/login", { data: { login_name: loginName, password } });
   const status = response.status();
   await probe.dispose();
   return status;
@@ -84,15 +77,19 @@ async function loginStatus(username: string, password: string): Promise<number> 
 
 test.beforeEach(async ({ api, browser, clientAddress, trackArtifacts }) => {
   sideChannelHeaders = { ...MUTATION_HEADERS, ...identityHeaders(clientAddress, trackArtifacts) };
-  const username = throwawayUsername();
-  const role = await readAssignableRole(api);
-  const created = await readJson(
-    await api.post("/api/admin/users", { data: { username, role_id: role.id } }),
-    "创建一次性账号",
-  ) as { user_id: string; username: string; temporary_password: string };
-  account = { id: created.user_id, username: created.username, password: created.temporary_password };
-
-  const session = await signIn(account.username, account.password);
+  const created = await createThrowawayMember(api, uniqueTag("acct"));
+  const permanentLoginName = `${created.login_name}_p`;
+  const permanentPassword = "e2e-profile-password-1";
+  const session = await signIn(created.login_name, created.password);
+  const completion = await session.post("/api/auth/complete-password-reset", {
+    data: {
+      login_name: permanentLoginName,
+      new_password: permanentPassword,
+      confirm_new_password: permanentPassword,
+    },
+  });
+  expect(completion.status(), `完成一次性凭据设置返回 ${completion.status()}: ${await completion.text()}`).toBe(200);
+  account = { ...created, login_name: permanentLoginName, password: permanentPassword };
   const storageState = await session.storageState();
   await session.dispose();
 
@@ -106,7 +103,8 @@ test.beforeEach(async ({ api, browser, clientAddress, trackArtifacts }) => {
   flow = createFlow(page);
 
   await page.goto("/profile?tab=account");
-  await expect(passwordCard().getByRole("heading", { name: "Change password", exact: true })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Security confirmation", exact: true })).toBeVisible();
+  await expect(passwordSecurityCard().getByRole("heading", { name: "Password and security", exact: true })).toBeVisible();
 });
 
 test.afterEach(async () => {
@@ -120,8 +118,9 @@ function cardTitled(title: string): Locator {
     has: page.getByRole("heading", { name: title, exact: true }),
   });
 }
-function passwordCard(): Locator { return cardTitled("Change password"); }
-function usernameCard(): Locator { return cardTitled("Change username"); }
+function loginCard(): Locator { return cardTitled("Login username"); }
+function passwordSecurityCard(): Locator { return cardTitled("Password and security"); }
+function currentPasswordField(): Locator { return field(page, "Current password"); }
 function submitButton(card: Locator, name: string): Locator {
   return card.getByRole("button", { name, exact: true });
 }
@@ -143,33 +142,29 @@ async function expectNoApiCalls(action: () => Promise<void>): Promise<void> {
   expect(calls, "客户端校验阶段本不该发请求").toEqual([]);
 }
 
-test("改密码卡：当前密码填错时服务端 401，会话被当成过期直接踢出，密码没变", async () => {
-  const card = passwordCard();
-  await field(card, "Current password").fill("definitely-not-the-password");
+test("改密码卡：当前密码填错时保留会话并显示表单错误，密码没变", async () => {
+  const card = passwordSecurityCard();
+  await currentPasswordField().fill("definitely-not-the-password");
   await field(card, "New password").fill("e2e-new-password-1");
   await field(card, "Confirm new password").fill("e2e-new-password-1");
 
   await flow.click(submitButton(card, "Change password"), { ...CHANGE_PASSWORD, status: 401 });
 
-  /*
-   * 现状如实记录，这是一处缺陷：
-   * 服务端回的是「Current password is incorrect」，但 401 会先被全局处理器
-   * （client.ts:109 派发 guild-api-unauthorized）当成会话过期，用户看到的是
-   * 「会话已过期」并被直接踢回登录页——填错一次密码就得重新登录，
-   * 而且提示词把真正的原因盖掉了。
-   */
-  await expect(page).toHaveURL(/\/login\?.*reason=expired/);
+  await expect(page).toHaveURL(/\/profile\?tab=account/);
+  await expect(page.locator('[data-slot="toast-description"]').filter({
+    hasText: "Current password is incorrect",
+  })).toBeVisible();
 
   expect(
-    await loginStatus(account.username, account.password),
+    await loginStatus(account.login_name, account.password),
     "改密码失败后原密码必须照常可用",
   ).toBe(200);
 });
 
 test("改密码卡：填对当前密码后旧密码立即失效、新密码可登录", async () => {
   const newPassword = "e2e-new-password-1";
-  const card = passwordCard();
-  await field(card, "Current password").fill(account.password);
+  const card = passwordSecurityCard();
+  await currentPasswordField().fill(account.password);
   await field(card, "New password").fill(newPassword);
   await field(card, "Confirm new password").fill(newPassword);
 
@@ -177,43 +172,73 @@ test("改密码卡：填对当前密码后旧密码立即失效、新密码可�
   await expect(page).toHaveURL(/\/login\?.*reason=expired/);
 
   expect(
-    await loginStatus(account.username, newPassword),
+    await loginStatus(account.login_name, newPassword),
     "新密码必须能登录",
   ).toBe(200);
   expect(
-    await loginStatus(account.username, account.password),
+    await loginStatus(account.login_name, account.password),
     "旧密码必须立即失效",
   ).toBe(401);
 });
 
-test("改用户名卡：非法用户名当场报错且按钮禁用，合法改名后新名字可登录", async ({ api }) => {
-  const card = usernameCard();
-  const submit = submitButton(card, "Change username");
+test("改登录名：非法值不发请求，合法改名后仅新登录名可用", async ({ api }) => {
+  const card = loginCard();
+  const submit = submitButton(card, "Save login name");
   await expect(submit, "什么都没填时不该能提交").toBeDisabled();
 
   await expectNoApiCalls(async () => {
-    await field(card, "Current password").fill(account.password);
-    await field(card, "New username").fill("bad name!");
-    await expect(
-      card.getByText("Username may only contain letters, numbers, and underscores."),
-      "非法字符必须当场提示",
-    ).toBeVisible();
+    await currentPasswordField().fill(account.password);
+    await field(card, "Login username").fill("bad name!");
     await expect(submit, "有校验错误时不该能提交").toBeDisabled();
   });
 
-  const renamed = `${account.username}_r`;
-  await field(card, "New username").fill(renamed);
+  const renamed = `${account.login_name}_r`;
+  await field(card, "Login username").fill(renamed);
   await expect(submit).toBeEnabled();
-  await flow.click(submit, CHANGE_USERNAME);
+  await flow.click(submit, CHANGE_LOGIN_NAME);
   await expect(page).toHaveURL(/\/login(\?|$)/);
 
   const detail = await readJson(await api.get(`/api/users/${account.id}`), "回读账号") as {
-    user: { username: string };
+    user: { display_name: string };
   };
-  expect(detail.user.username, "服务端的用户名必须真的改了").toBe(renamed);
+  expect(detail.user.display_name, "修改登录用户名不得改变公开显示名").toBe(account.display_name);
+  const renamedSession = await signIn(renamed, account.password);
+  try {
+    const oldLoginStatus = await loginStatus(account.login_name, account.password);
+
+    // 把测试账号改回原登录名，事务会精确清掉上一步为旧登录名留下的失败计数。
+    const restored = await renamedSession.patch("/api/auth/security/login-name", {
+      data: { currentPassword: account.password, login_name: account.login_name },
+    });
+    expect(
+      restored.status(),
+      `恢复测试账号登录名返回 ${restored.status()}: ${await restored.text()}`,
+    ).toBe(200);
+
+    const restoredLoginStatus = await loginStatus(account.login_name, account.password);
+    expect(oldLoginStatus, "旧登录用户名必须立即失效").toBe(401);
+    expect(restoredLoginStatus, "恢复后的测试账号必须仍可登录").toBe(200);
+  } finally {
+    await renamedSession.dispose();
+  }
+});
+
+test("改公开显示名：资料更新，但登录用户名与当前会话保持有效", async ({ api }) => {
+  const renamed = `${account.display_name}_r`;
+  await page.getByRole("button", { name: "Profile", exact: true }).click();
+  await expect(page).toHaveURL(/\/profile(?:\?|$)/);
+  await field(page, "Public display name").fill(renamed);
+
+  await flow.click(page.getByRole("button", { name: "Save Profile", exact: true }), UPDATE_PROFILE);
+  await expect(page).toHaveURL(/\/profile(?:\?|$)/);
+
+  const detail = await readJson(await api.get(`/api/users/${account.id}`), "回读账号") as {
+    user: { display_name: string };
+  };
+  expect(detail.user.display_name, "公开显示名必须真正更新").toBe(renamed);
   expect(
-    await loginStatus(renamed, account.password),
-    "改名后用新名字必须能登录",
+    await loginStatus(account.login_name, account.password),
+    "修改公开显示名不能改变登录凭据",
   ).toBe(200);
 });
 

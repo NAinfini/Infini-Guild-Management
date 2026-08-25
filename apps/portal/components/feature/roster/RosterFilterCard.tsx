@@ -1,17 +1,22 @@
-import {
-  ActionIcon,
-  Group,
-  MultiSelect,
-  Paper,
-  Select,
-  Slider,
-  Text,
-  TextInput,
-} from "@mantine/core";
-import { useClickOutside, useDisclosure } from "@mantine/hooks";
 import { SearchIcon } from "@portal/components/icons";
-import { ContentFilterToolbar } from "@portal/components/shared/ContentFilterToolbar";
+import { Button } from "@portal/components/ui/button";
+import { Checkbox } from "@portal/components/ui/checkbox";
+import {
+  InputGroup,
+  InputGroupAddon,
+  InputGroupInput,
+} from "@portal/components/ui/input-group";
+import {
+  Popover,
+  PopoverContent,
+  PopoverHeader,
+  PopoverTitle,
+  PopoverTrigger,
+} from "@portal/components/ui/popover";
+import { RadioGroup, RadioGroupItem } from "@portal/components/ui/radio-group";
+import { ContentFilterGroup, ContentFilterToolbar } from "@portal/components/shared/ContentFilterToolbar";
 import { useTranslation } from "react-i18next";
+import { useId, useState } from "react";
 import { VolumeOutlined, VolumeMutedOutlined } from "../../../utils/icons";
 import { isAudioPlaying, stopAudio } from "../../../utils/audio-player";
 import type { RosterSortMode } from "../../../hooks/useRosterPageController";
@@ -33,7 +38,7 @@ type Props = {
   totalCount: number;
 };
 
-const SORT_MODES = ["power", "username", "class"] as const;
+const SORT_MODES = ["power", "display_name", "class"] as const;
 
 export function RosterFilterCard({
   search,
@@ -51,78 +56,91 @@ export function RosterFilterCard({
 }: Props) {
   const { t } = useTranslation("roster");
   const classCatalog = useClassCatalog();
-  const [audioOpen, { close: closeAudio, toggle: toggleAudio }] = useDisclosure(false);
-  const audioPreferencesRef = useClickOutside(closeAudio);
+  const [audioOpen, setAudioOpen] = useState(false);
+  const volumeId = useId();
+
+  const setClassChecked = (className: string, checked: boolean) => {
+    if (checked) {
+      if (!classFilter.includes(className)) {
+        onClassFilterChange([...classFilter, className]);
+      }
+      return;
+    }
+    onClassFilterChange(classFilter.filter((value) => value !== className));
+  };
 
   const audioControl = (
-    <Group gap={8} align="center" wrap="nowrap" className="roster-audio-popover">
-      <ActionIcon
-        aria-pressed={audioMuted}
-        variant={audioMuted ? "light" : "default"}
-        color={audioMuted ? "red" : "gray"}
-        onClick={() => {
-          const nextPressed = !audioMuted;
-          if (nextPressed && isAudioPlaying()) {
-            stopAudio();
-          }
-          onAudioMutedChange(nextPressed);
-        }}
-        size="sm"
-        aria-label={audioMuted ? t("audio.aria.unmute") : t("audio.aria.mute")}
-      >
-        {audioMuted ? <VolumeMutedOutlined size={18} /> : <VolumeOutlined size={18} />}
-      </ActionIcon>
+    <div className="roster-audio-settings">
+      <div className="roster-audio-setting-row">
+        <Button
+          aria-pressed={audioMuted}
+          variant={audioMuted ? "destructive" : "outline"}
+          size="icon"
+          onClick={() => {
+            const nextMuted = !audioMuted;
+            if (nextMuted && isAudioPlaying()) {
+              stopAudio();
+            }
+            onAudioMutedChange(nextMuted);
+          }}
+          aria-label={audioMuted ? t("audio.aria.unmute") : t("audio.aria.mute")}
+        >
+          {audioMuted ? <VolumeMutedOutlined size={18} /> : <VolumeOutlined size={18} />}
+        </Button>
+        <span className="roster-audio-setting-copy">
+          {audioMuted ? t("audio.aria.unmute") : t("audio.aria.mute")}
+        </span>
+      </div>
       <div className="roster-volume-control">
-        <Text size="xs" c="dimmed" className="roster-volume-label">{t("audio.volume")}</Text>
-        <Slider
+        <div className="roster-volume-heading">
+          <label htmlFor={volumeId} className="roster-volume-label">{t("audio.volume")}</label>
+          <output className="roster-volume-value" htmlFor={volumeId}>{audioVolume}%</output>
+        </div>
+        <input
+          id={volumeId}
+          className="roster-volume-range"
+          type="range"
           min={0}
           max={100}
+          step={1}
           value={audioVolume}
-          onChange={onAudioVolumeChange}
-          thumbLabel={t("audio.aria.volumeSlider")}
+          onChange={(event) => onAudioVolumeChange(event.currentTarget.valueAsNumber)}
+          aria-label={t("audio.aria.volumeSlider")}
+          aria-valuetext={`${audioVolume}%`}
         />
-        <Text size="xs" c="dimmed" style={{ whiteSpace: "nowrap" }}>{t("audio.hint")}</Text>
       </div>
-    </Group>
+    </div>
   );
   const audioPreferences = (
-    <div className="roster-audio-menu" ref={audioPreferencesRef}>
-      <ActionIcon
-        variant="default"
-        size="lg"
-        className="roster-audio-trigger"
-        aria-label={t("audio.hint")}
-        aria-expanded={audioOpen}
-        aria-controls="roster-audio-preferences"
-        onClick={toggleAudio}
+    <Popover open={audioOpen} onOpenChange={setAudioOpen}>
+      <PopoverTrigger
+        render={(
+          <Button
+            variant="outline"
+            size="icon-lg"
+            className="roster-audio-trigger"
+            aria-label={t("audio.hint")}
+          />
+        )}
       >
         {audioMuted ? <VolumeMutedOutlined size={18} /> : <VolumeOutlined size={18} />}
-      </ActionIcon>
-      {audioOpen ? (
-        <Paper
-          id="roster-audio-preferences"
-          role="dialog"
-          aria-label={t("audio.hint")}
-          withBorder
-          className="roster-audio-menu__panel"
-          onKeyDown={(event) => {
-            if (event.key === "Escape") closeAudio();
-          }}
-        >
-          {audioControl}
-        </Paper>
-      ) : null}
-    </div>
+      </PopoverTrigger>
+      <PopoverContent className="roster-audio-menu__panel" align="end" side="bottom" sideOffset={8}>
+        <PopoverHeader className="roster-audio-menu__heading">
+          <PopoverTitle>{t("audio.hint")}</PopoverTitle>
+        </PopoverHeader>
+        {audioControl}
+      </PopoverContent>
+    </Popover>
   );
 
   const classData = buildClassOptions(classCatalog);
   const sortData = [
     { value: "power", label: t("sort.powerDesc") },
-    { value: "username", label: t("sort.usernameAsc") },
+    { value: "display_name", label: t("sort.displayNameAsc") },
     { value: "class", label: t("sort.class") },
   ];
   const activeFilterCount = [
-    search.trim().length > 0,
     classFilter.length > 0,
     sortMode !== "power",
   ].filter(Boolean).length;
@@ -130,47 +148,79 @@ export function RosterFilterCard({
     <ContentFilterToolbar
       className="roster-filter-card"
       search={(
-        <TextInput
-          className="roster-search-input"
-          value={search}
-          placeholder={t("search.placeholder.usernameOnly")}
-          aria-label={t("search.aria.usernameOnly")}
-          onChange={(event) => onSearchChange(event.currentTarget.value)}
-          leftSection={<SearchIcon size={14} />}
-        />
+        <InputGroup className="roster-search-input">
+          <InputGroupAddon>
+            <SearchIcon size={15} aria-hidden="true" />
+          </InputGroupAddon>
+          <InputGroupInput
+            value={search}
+            placeholder={t("search.placeholder.displayNameOnly")}
+            aria-label={t("search.aria.displayNameOnly")}
+            onChange={(event) => onSearchChange(event.currentTarget.value)}
+          />
+        </InputGroup>
       )}
-      controls={(
-        <Group wrap="wrap" gap="sm" className="roster-filter-controls">
-            <MultiSelect
-              className="roster-class-select"
-              value={classFilter}
-              onChange={onClassFilterChange}
-              data={classData}
-              placeholder={t("filter.class.placeholder")}
-              aria-label={t("filter.class.aria")}
-              clearable
-              searchable
-            />
-            <Select
-              className="roster-sort-select"
+      filterControls={(
+        <div className="roster-filter-controls">
+          <ContentFilterGroup label={t("filter.class.aria")}>
+            <div className="roster-filter-options" role="group" aria-label={t("filter.class.aria")}>
+              {classData.map((item) => (
+                <div
+                  key={item.value}
+                  className="roster-filter-option"
+                  onClick={(event) => {
+                    if ((event.target as Element).closest('[data-slot="checkbox"]')) return;
+                    setClassChecked(item.value, !classFilter.includes(item.value));
+                  }}
+                >
+                  <Checkbox
+                    checked={classFilter.includes(item.value)}
+                    onCheckedChange={(checked) => setClassChecked(item.value, checked)}
+                    aria-label={item.label}
+                  />
+                  <span>{item.label}</span>
+                </div>
+              ))}
+            </div>
+          </ContentFilterGroup>
+          <ContentFilterGroup label={t("sort.aria")}>
+            <RadioGroup
               value={sortMode}
               aria-label={t("sort.aria")}
-              onChange={(value) => { if (value && (SORT_MODES as readonly string[]).includes(value)) onSortModeChange(value as RosterSortMode); }}
-              data={sortData}
-            />
-        </Group>
+              onValueChange={(value) => {
+                if ((SORT_MODES as readonly string[]).includes(value)) onSortModeChange(value as RosterSortMode);
+              }}
+            >
+              {sortData.map((item) => (
+                <div
+                  key={item.value}
+                  className="roster-filter-option"
+                  onClick={(event) => {
+                    if ((event.target as Element).closest('[data-slot="radio-group-item"]')) return;
+                    onSortModeChange(item.value as RosterSortMode);
+                  }}
+                >
+                  <RadioGroupItem value={item.value} aria-label={item.label} />
+                  <span>{item.label}</span>
+                </div>
+              ))}
+            </RadioGroup>
+          </ContentFilterGroup>
+        </div>
       )}
-      primary={(
-        <>
-          {audioPreferences}
-          <Text size="sm" c="dimmed" className="roster-count-text">
-            {t("count.showing", { visible: renderedCount, total: totalCount })}
-          </Text>
-        </>
+      actions={audioPreferences}
+      summary={(
+        <span className="roster-count-text">
+          {t("count.showing", { visible: renderedCount, total: totalCount })}
+        </span>
       )}
-      toggleLabel={t("common:filter.toggle")}
+      filterLabel={t("common:filter.toggle")}
       activeFilterCount={activeFilterCount}
-      collapseBelow={920}
+      resetLabel={t("common:filter.reset")}
+      onReset={() => {
+        onClassFilterChange([]);
+        onSortModeChange("power");
+      }}
     />
   );
 }

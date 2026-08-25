@@ -18,7 +18,7 @@ function database(): DatabaseSync {
   const db = new DatabaseSync(":memory:");
   db.exec(`
     CREATE TABLE users (
-      id TEXT PRIMARY KEY, username TEXT NOT NULL
+      id TEXT PRIMARY KEY, display_name TEXT NOT NULL
     );
     CREATE TABLE events (
       id TEXT PRIMARY KEY, title TEXT NOT NULL, type TEXT NOT NULL,
@@ -52,6 +52,20 @@ function database(): DatabaseSync {
     );
     CREATE INDEX idx_sessions_expires ON sessions(expires_at, token_digest);
     CREATE INDEX idx_sessions_created ON sessions(created_at, token_digest);
+    CREATE TABLE notification_inbox (
+      id TEXT PRIMARY KEY, occurred_at TEXT NOT NULL
+    );
+    CREATE TABLE oauth_challenges (
+      state_digest TEXT PRIMARY KEY, expires_at TEXT NOT NULL,
+      consumed_at TEXT, created_at TEXT NOT NULL
+    );
+    CREATE TABLE email_verification_challenges (
+      token_digest TEXT PRIMARY KEY, expires_at TEXT NOT NULL,
+      consumed_at TEXT, created_at TEXT NOT NULL
+    );
+    CREATE TABLE login_failures (
+      login_name TEXT PRIMARY KEY, last_failed_at TEXT NOT NULL, locked_until TEXT
+    );
   `);
   return db;
 }
@@ -108,6 +122,8 @@ describe("SQLite scheduled job stores", () => {
         .run("2026-08-08T00:00:00.000Z", "2026-08-08T00:00:00.000Z");
       db.prepare(`INSERT INTO media_links (media_id, entity_type, entity_id, slot, audience)
         VALUES ('media-1', 'announcement', 'announcement-1', 'body', 'private')`).run();
+      db.prepare(`INSERT INTO media_links (media_id, entity_type, entity_id, slot, audience)
+        VALUES ('attachment-1', 'announcement', 'announcement-1', 'attachment', 'private')`).run();
       const executor = new SqliteTestExecutor(db);
       const stores = [
         new SqliteAnnouncementPublishStore(executor),
@@ -123,6 +139,8 @@ describe("SQLite scheduled job stores", () => {
       expect((db.prepare("SELECT status FROM announcements WHERE id = 'announcement-1'").get() as { status: string }).status)
         .toBe("published");
       expect((db.prepare("SELECT audience FROM media_links WHERE media_id = 'media-1'").get() as { audience: string }).audience)
+        .toBe("public");
+      expect((db.prepare("SELECT audience FROM media_links WHERE media_id = 'attachment-1'").get() as { audience: string }).audience)
         .toBe("public");
       expect((db.prepare("SELECT count(*) AS count FROM audit_log WHERE action = 'publish'").get() as { count: number }).count)
         .toBe(1);
@@ -252,6 +270,76 @@ describe("SQLite scheduled job stores", () => {
         limit: 500,
       })).toEqual({ processed: 1, hasMore: false });
       expect((db.prepare("SELECT count(*) AS count FROM sessions").get() as { count: number }).count).toBe(1);
+    } finally {
+      db.close();
+    }
+  });
+
+  it("cleans notifications older than three days while retaining the cutoff boundary and active locks", async () => {
+    const db = database();
+    try {
+      db.prepare("INSERT INTO notification_inbox (id, occurred_at) VALUES (?, ?)")
+        .run("notification-old", "2026-08-05T00:00:00.000Z");
+      db.prepare("INSERT INTO notification_inbox (id, occurred_at) VALUES (?, ?)")
+        .run("notification-at-cutoff", "2026-08-06T00:00:00.000Z");
+      db.prepare("INSERT INTO oauth_challenges (state_digest, expires_at, consumed_at, created_at) VALUES (?, ?, ?, ?)")
+        .run("oauth-old", "2026-07-01T00:00:00.000Z", null, "2026-07-01T00:00:00.000Z");
+      db.prepare("INSERT INTO email_verification_challenges (token_digest, expires_at, consumed_at, created_at) VALUES (?, ?, ?, ?)")
+        .run("email-old", "2026-07-01T00:00:00.000Z", null, "2026-07-01T00:00:00.000Z");
+      db.prepare("INSERT INTO login_failures (login_name, last_failed_at, locked_until) VALUES (?, ?, ?)")
+        .run("stale-login", "2026-07-01T00:00:00.000Z", null);
+      db.prepare("INSERT INTO login_failures (login_name, last_failed_at, locked_until) VALUES (?, ?, ?)")
+        .run("active-lock", "2026-07-01T00:00:00.000Z", "2026-09-01T00:00:00.000Z");
+
+      const job = new SqliteSessionCleanupJob(new SqliteTestExecutor(db));
+      await expect(job.run({
+        expiresBefore: NOW,
+        createdBefore: "2026-05-11T00:00:00.000Z",
+        limit: 500,
+      })).resolves.toEqual({ processed: 4, hasMore: false });
+
+      expect(db.prepare("SELECT id FROM notification_inbox").all()).toEqual([{ id: "notification-at-cutoff" }]);
+      expect(db.prepare("SELECT state_digest FROM oauth_challenges").all()).toEqual([]);
+      expect(db.prepare("SELECT token_digest FROM email_verification_challenges").all()).toEqual([]);
+      expect(db.prepare("SELECT login_name FROM login_failures").all()).toEqual([{ login_name: "active-lock" }]);
+    } finally {
+      db.close();
+    }
+  });
+
+  it("honors small total limits across all maintenance record types", async () => {
+    const db = database();
+    try {
+      db.prepare("INSERT INTO sessions (token_digest, expires_at, created_at) VALUES (?, ?, ?)")
+        .run("session-old", "2026-01-05T00:00:00.000Z", "2026-01-05T00:00:00.000Z");
+      db.prepare("INSERT INTO notification_inbox (id, occurred_at) VALUES (?, ?)")
+        .run("notification-old", "2026-01-01T00:00:00.000Z");
+      db.prepare("INSERT INTO oauth_challenges (state_digest, expires_at, consumed_at, created_at) VALUES (?, ?, ?, ?)")
+        .run("oauth-old", "2026-01-02T00:00:00.000Z", null, "2026-01-02T00:00:00.000Z");
+      db.prepare("INSERT INTO email_verification_challenges (token_digest, expires_at, consumed_at, created_at) VALUES (?, ?, ?, ?)")
+        .run("email-old", "2026-01-03T00:00:00.000Z", null, "2026-01-03T00:00:00.000Z");
+      db.prepare("INSERT INTO login_failures (login_name, last_failed_at, locked_until) VALUES (?, ?, ?)")
+        .run("stale-login", "2026-01-04T00:00:00.000Z", null);
+
+      const job = new SqliteSessionCleanupJob(new SqliteTestExecutor(db));
+      await expect(job.run({
+        expiresBefore: NOW,
+        createdBefore: "2026-05-11T00:00:00.000Z",
+        limit: 2,
+      })).resolves.toEqual({ processed: 2, hasMore: true });
+      expect(db.prepare("SELECT id FROM notification_inbox").all()).toEqual([]);
+      expect(db.prepare("SELECT state_digest FROM oauth_challenges").all()).toEqual([]);
+
+      await expect(job.run({
+        expiresBefore: NOW,
+        createdBefore: "2026-05-11T00:00:00.000Z",
+        limit: 2,
+      })).resolves.toEqual({ processed: 2, hasMore: true });
+      await expect(job.run({
+        expiresBefore: NOW,
+        createdBefore: "2026-05-11T00:00:00.000Z",
+        limit: 2,
+      })).resolves.toEqual({ processed: 1, hasMore: false });
     } finally {
       db.close();
     }

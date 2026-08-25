@@ -1,4 +1,3 @@
-import { MantineProvider } from "@mantine/core";
 import type { Event } from "@guild/shared";
 import type { ClassQuotaSummary } from "@guild/shared/utils/class-quota";
 import { render, screen } from "@testing-library/react";
@@ -19,13 +18,11 @@ function renderQuotaBar(
   { capacity = null, participantCount = 0 }: { capacity?: number | null; participantCount?: number } = {},
 ) {
   render(
-    <MantineProvider>
-      <EventQuotaBar
-        summary={summary}
-        event={{ class_quotas: labels, capacity } as Pick<Event, "class_quotas" | "capacity">}
-        participantCount={participantCount}
-      />
-    </MantineProvider>,
+    <EventQuotaBar
+      summary={summary}
+      event={{ class_quotas: labels, capacity } as Pick<Event, "class_quotas" | "capacity">}
+      participantCount={participantCount}
+    />,
   );
 }
 
@@ -47,7 +44,6 @@ describe("EventQuotaBar", () => {
     expect(css).not.toContain("var(--status-warning)");
     expect(css).not.toContain(".quota-bar__overall");
     expect(css).not.toContain(".quota-bar__slot-status");
-    expect(source).not.toContain('import { Tooltip } from "@mantine/core"');
     expect(source).not.toContain("<Tooltip");
   });
 
@@ -380,15 +376,14 @@ describe("EventQuotaBar", () => {
     expect(screen.getByText("quota.capacityConflict")).toBeInTheDocument();
   });
 
-  it("shows one neutral signup bar without repeating the header capacity count", () => {
+  it("shows the current signup count beside the generic progress label", () => {
     renderQuotaBar(null, [], { capacity: 12, participantCount: 8 });
 
     const progress = screen.getByRole("progressbar", { name: "quota.generic.label" });
     expect(progress).toHaveAttribute("aria-valuemax", "12");
     expect(progress).toHaveAttribute("aria-valuenow", "8");
     expect(screen.getByText("quota.generic.label")).toBeInTheDocument();
-    expect(screen.queryByText("quota.generic.count")).not.toBeInTheDocument();
-    expect(document.querySelector(".quota-bar__role-count")).toBeNull();
+    expect(screen.getByText("8 / 12")).toHaveClass("quota-bar__role-count");
   });
 
   it("describes unlimited capacity as text without any fake track or progressbar", () => {

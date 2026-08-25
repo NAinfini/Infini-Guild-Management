@@ -13,6 +13,7 @@ const serviceMocks = vi.hoisted(() => ({
   updateMyProfile: vi.fn(),
 }));
 const setProfileMock = vi.hoisted(() => vi.fn());
+const setSessionMock = vi.hoisted(() => vi.fn());
 const notifySuccessMock = vi.hoisted(() => vi.fn());
 
 vi.mock("../services/UserService", () => serviceMocks);
@@ -20,9 +21,13 @@ vi.mock("../services/AuthService", () => ({ logout: vi.fn() }));
 vi.mock("../stores/auth", () => ({
   useAuthStore: (selector: (state: {
     user: { id: string };
+    sessionScope: "normal";
+    setSession: typeof setSessionMock;
     setProfile: typeof setProfileMock;
   }) => unknown) => selector({
     user: { id: "user-1" },
+    sessionScope: "normal",
+    setSession: setSessionMock,
     setProfile: setProfileMock,
   }),
 }));
@@ -48,6 +53,7 @@ describe("useProfileMutations", () => {
   beforeEach(() => {
     for (const mock of Object.values(serviceMocks)) mock.mockReset();
     setProfileMock.mockReset();
+    setSessionMock.mockReset();
     notifySuccessMock.mockReset();
   });
 
@@ -65,6 +71,7 @@ describe("useProfileMutations", () => {
     const invalidateSpy = vi.spyOn(queryClient, "invalidateQueries").mockReturnValue(slowRefresh);
     const acceptServerProfile = vi.fn();
     const form = {
+      displayName: "Saved Member",
       bio: "Saved bio",
       titleHtml: "",
       power: 100,
@@ -105,6 +112,10 @@ describe("useProfileMutations", () => {
         queryKey: queryKeys.users.all,
       });
       expect(notifySuccessMock).toHaveBeenCalledWith("message.profileSaved");
+      expect(serviceMocks.updateMyProfile).toHaveBeenCalledWith("user-1", expect.objectContaining({
+        display_name: "Saved Member",
+      }));
+      expect(acceptServerProfile).toHaveBeenCalledWith(updatedProfile, "Saved Member", expect.any(Object));
     } finally {
       finishRefresh();
     }

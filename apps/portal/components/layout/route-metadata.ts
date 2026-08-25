@@ -2,6 +2,7 @@ import type { FeatureFlags } from "@guild/shared";
 import type { IconProps } from "@tabler/icons-react";
 import type { ComponentType } from "react";
 import type { NotificationFeature } from "../../stores/notifications";
+import type { VisualPageSceneId } from "../../visual/themes";
 import {
   BookOutlined,
   CalendarOutlined,
@@ -57,12 +58,7 @@ export type PortalRouteMetadata = {
   domain?: PortalDomain;
   icon: ComponentType<IconProps>;
   contentWidth: PortalContentWidth;
-  /*
-   * 定高页：整页高度锁在一屏，纵向滚动由页面内部的列表自己承担。
-   * 只有把滚动区做成 min-block-size:0 填充链的页面才配得上它——
-   * 普通页面按内容自然增高，锁死高度会把卡片压扁。
-   */
-  fillsViewport?: boolean;
+  visualScene?: VisualPageSceneId;
   mobilePrimary?: number;
   requiresSession?: boolean;
   requiresModerator?: boolean;
@@ -80,11 +76,12 @@ export const PORTAL_NAV_GROUPS = [
 
 export const PORTAL_ROUTES: readonly PortalRouteMetadata[] = [
   {
-    to: "/",
+    to: "/dashboard",
     labelKey: "nav.dashboard",
     group: "overview",
     icon: DashboardOutlined,
     contentWidth: "wide",
+    visualScene: "dashboard",
     mobilePrimary: 1,
   },
   {
@@ -94,7 +91,7 @@ export const PORTAL_ROUTES: readonly PortalRouteMetadata[] = [
     domain: "announce",
     icon: NotificationOutlined,
     contentWidth: "wide",
-    fillsViewport: true,
+    visualScene: "announcements",
     feature: "announcements",
     featureFlag: "announcements",
   },
@@ -105,6 +102,7 @@ export const PORTAL_ROUTES: readonly PortalRouteMetadata[] = [
     domain: "event",
     icon: CalendarOutlined,
     contentWidth: "standard",
+    visualScene: "events",
     mobilePrimary: 2,
     featureFlag: "events",
   },
@@ -115,7 +113,7 @@ export const PORTAL_ROUTES: readonly PortalRouteMetadata[] = [
     domain: "roster",
     icon: TeamOutlined,
     contentWidth: "wide",
-    fillsViewport: true,
+    visualScene: "roster",
     mobilePrimary: 4,
     feature: "members",
   },
@@ -126,6 +124,7 @@ export const PORTAL_ROUTES: readonly PortalRouteMetadata[] = [
     domain: "gallery",
     icon: PictureOutlined,
     contentWidth: "wide",
+    visualScene: "gallery",
     featureFlag: "gallery",
   },
   {
@@ -135,7 +134,7 @@ export const PORTAL_ROUTES: readonly PortalRouteMetadata[] = [
     domain: "wiki",
     icon: BookOutlined,
     contentWidth: "wide",
-    fillsViewport: true,
+    visualScene: "wiki",
     featureFlag: "wiki",
   },
   {
@@ -145,7 +144,7 @@ export const PORTAL_ROUTES: readonly PortalRouteMetadata[] = [
     domain: "war",
     icon: ThunderboltOutlined,
     contentWidth: "workbench",
-    fillsViewport: true,
+    visualScene: "guild-war",
     mobilePrimary: 3,
     featureFlag: "guildWar",
   },
@@ -156,6 +155,7 @@ export const PORTAL_ROUTES: readonly PortalRouteMetadata[] = [
     domain: "ops",
     icon: WarehouseOutlined,
     contentWidth: "workbench",
+    visualScene: "storage",
     requiresSession: true,
     featureFlag: "storage",
   },
@@ -166,6 +166,7 @@ export const PORTAL_ROUTES: readonly PortalRouteMetadata[] = [
     domain: "ops",
     icon: ToolOutlined,
     contentWidth: "standard",
+    visualScene: "tools",
     featureFlag: "tools",
   },
   {
@@ -175,7 +176,7 @@ export const PORTAL_ROUTES: readonly PortalRouteMetadata[] = [
     domain: "personal",
     icon: UserOutlined,
     contentWidth: "standard",
-    fillsViewport: true,
+    visualScene: "profile",
     requiresSession: true,
   },
   {
@@ -185,6 +186,7 @@ export const PORTAL_ROUTES: readonly PortalRouteMetadata[] = [
     domain: "personal",
     icon: SettingOutlined,
     contentWidth: "standard",
+    visualScene: "settings",
   },
   {
     to: "/admin",
@@ -194,7 +196,7 @@ export const PORTAL_ROUTES: readonly PortalRouteMetadata[] = [
     /* 和「设置」共用齿轮时，折叠成图标轨道后两项完全分不出来。 */
     icon: ShieldOutlined,
     contentWidth: "workbench",
-    fillsViewport: true,
+    visualScene: "admin",
     requiresSession: true,
     requiresModerator: true,
   },

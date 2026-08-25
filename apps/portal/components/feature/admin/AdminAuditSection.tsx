@@ -1,8 +1,16 @@
-import { AUDIT_ENTITY_TYPES, type AdminRole, type AuditEvent, type AuditEntityType } from "@guild/shared";
-import { Button, Group, Menu, SegmentedControl, Stack, Text, TextInput } from "@mantine/core";
+import { AUDIT_ENTITY_TYPES, type AdminRole, type AuditEntityType, type AuditEvent } from "@guild/shared";
 import { ArrowDownIcon, SearchIcon, XIcon } from "@portal/components/icons";
-import { ContentFilterToolbar } from "@portal/components/shared/ContentFilterToolbar";
+import { ContentFilterGroup, ContentFilterToolbar } from "@portal/components/shared/ContentFilterToolbar";
 import { NativeDateTimeInput } from "@portal/components/shared/NativeDateTimeInput";
+import { Button } from "@portal/components/ui/button";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@portal/components/ui/dropdown-menu";
+import { InputGroup, InputGroupAddon, InputGroupInput } from "@portal/components/ui/input-group";
+import { RadioGroup, RadioGroupItem } from "@portal/components/ui/radio-group";
 import { matchAuditDatePreset, type AuditDatePreset } from "@portal/hooks/useAdminAuditFilter";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
@@ -85,12 +93,6 @@ export function AdminAuditSection({
   };
 
   const hasEntityTimeline = Boolean(auditEntityType && auditEntityId);
-  const hasSearch = auditSearch.trim().length > 0;
-  const hasDismissibleFilters = hasSearch || hasEntityTimeline;
-  const activeFilterCount = [
-    hasSearch,
-    hasEntityTimeline,
-  ].filter(Boolean).length;
   const isKnownEntityType = (value: string): value is AuditEntityType => (
     AUDIT_ENTITY_TYPES.includes(value as AuditEntityType)
   );
@@ -103,35 +105,47 @@ export function AdminAuditSection({
   const timelineLabel = timelineEvent?.subject.label && timelineEvent.subject.label !== auditEntityId
     ? timelineEvent.subject.label
     : timelineEntityType;
+  const activeFilterCount = (range === "7d" ? 0 : 1) + (hasEntityTimeline ? 1 : 0);
   return (
-    <Stack gap={12} className="admin-fill audit-log-fill">
+    <div className="admin-fill audit-log-fill admin-audit-section">
       <ContentFilterToolbar
         className="admin-audit-toolbar"
         search={(
-          <TextInput
-            size="sm"
-            leftSection={<SearchIcon size={14} />}
-            placeholder={t("audit.search")}
-            aria-label={t("audit.aria.search")}
-            value={auditSearch}
-            onChange={(event) => onAuditSearchChange(event.currentTarget.value)}
-          />
-        )}
-        controls={(
-          <>
-            <SegmentedControl
-              size="xs"
-              value={range}
-              onChange={applyPreset}
-              data={[
-                { value: "1d", label: t("audit.lastDay") },
-                { value: "7d", label: t("audit.last7Days") },
-                { value: "1m", label: t("audit.lastMonth") },
-                { value: "custom", label: t("audit.range.custom") },
-              ]}
+          <InputGroup className="admin-audit-toolbar__search">
+            <InputGroupAddon>
+              <SearchIcon size={14} aria-hidden="true" />
+            </InputGroupAddon>
+            <InputGroupInput
+              placeholder={t("audit.search")}
+              aria-label={t("audit.aria.search")}
+              value={auditSearch}
+              onChange={(event) => onAuditSearchChange(event.currentTarget.value)}
             />
+          </InputGroup>
+        )}
+        filterControls={(
+          <>
+            <ContentFilterGroup label={t("audit.filter.dateRange")}>
+              <RadioGroup
+                value={range}
+                onValueChange={applyPreset}
+                aria-label={t("audit.filter.dateRange")}
+                className="admin-audit-range"
+              >
+                {([
+                  { value: "1d", label: t("audit.lastDay") },
+                  { value: "7d", label: t("audit.last7Days") },
+                  { value: "1m", label: t("audit.lastMonth") },
+                  { value: "custom", label: t("audit.range.custom") },
+                ]).map((option) => (
+                  <label className="admin-audit-range__option" key={option.value}>
+                    <RadioGroupItem className="admin-audit-range__radio" value={option.value} />
+                    <span>{option.label}</span>
+                  </label>
+                ))}
+              </RadioGroup>
             {range === "custom" ? (
-              <Group gap={6} wrap="nowrap" className="admin-audit-toolbar__dates">
+              <div className="admin-audit-toolbar__dates">
                 <NativeDateTimeInput
                   size="sm"
                   value={auditDateFrom}
@@ -144,55 +158,43 @@ export function AdminAuditSection({
                   onChange={(event) => onAuditDateToChange(event.currentTarget.value)}
                   aria-label={t("audit.aria.dateTo")}
                 />
-              </Group>
+              </div>
             ) : null}
+            </ContentFilterGroup>
           </>
         )}
-        primary={(
-          <Menu withinPortal position="bottom-end" shadow="md" width={180}>
-            <Menu.Target>
+        actions={(
+          <DropdownMenu>
+            <DropdownMenuTrigger render={(
               <Button
                 size="sm"
-                variant="default"
+                variant="outline"
                 loading={exportAuditLogPending}
-                leftSection={<ArrowDownIcon size={14} />}
-              >
-                {t("audit.export")}
-              </Button>
-            </Menu.Target>
-            <Menu.Dropdown>
-              <Menu.Item onClick={onDownloadFilteredCsv}>{t("audit.downloadFilteredCsv")}</Menu.Item>
-              <Menu.Item onClick={onDownloadFilteredJson}>{t("audit.downloadFilteredJson")}</Menu.Item>
-            </Menu.Dropdown>
-          </Menu>
+              />
+            )}>
+              <ArrowDownIcon size={14} data-icon="inline-start" />
+              {t("audit.export")}
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="admin-audit-export-menu">
+              <DropdownMenuItem onClick={onDownloadFilteredCsv}>{t("audit.downloadFilteredCsv")}</DropdownMenuItem>
+              <DropdownMenuItem onClick={onDownloadFilteredJson}>{t("audit.downloadFilteredJson")}</DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
         )}
-        toggleLabel={t("common:filter.toggle")}
+        filterLabel={t("common:filter.toggle")}
         activeFilterCount={activeFilterCount}
-        collapseBelow={1120}
+        resetLabel={t("common:filter.reset")}
+        onReset={() => {
+          applyPreset("7d");
+          onClearAuditEntity();
+        }}
+        summary={hasEntityTimeline ? (
+          <button type="button" className="admin-filter-chip" onClick={onClearAuditEntity}>
+            <span>{t("audit.filter.entityTimeline", { entity: timelineLabel })}</span>
+            <XIcon size={12} />
+          </button>
+        ) : undefined}
       />
-
-      {hasDismissibleFilters ? (
-        <div className="admin-filter-summary">
-          <Text size="xs" c="dimmed">{t("audit.filter.active")}</Text>
-          {hasSearch ? (
-            <button
-              type="button"
-              className="admin-filter-chip"
-              onClick={() => onAuditSearchChange("")}
-            >
-              {t("audit.filter.searchChip", { value: auditSearch })}
-              <XIcon size={12} />
-            </button>
-          ) : null}
-          {hasEntityTimeline ? (
-            <button type="button" className="admin-filter-chip" onClick={onClearAuditEntity}>
-              <span>{t("audit.filter.entityTimeline", { entity: timelineLabel })}</span>
-              <XIcon size={12} />
-            </button>
-          ) : null}
-          <Text size="xs" c="dimmed">{t("audit.filter.loaded", { count: auditRows.length })}</Text>
-        </div>
-      ) : null}
 
       <AuditLogViewer
         auditLoading={auditLoading}
@@ -213,6 +215,6 @@ export function AdminAuditSection({
         monthsError={archiveMonthsError}
         onRetryMonths={onRetryArchiveMonths}
       />
-    </Stack>
+    </div>
   );
 }

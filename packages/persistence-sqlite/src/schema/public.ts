@@ -7,6 +7,7 @@ export * from "./error-log.js";
 export * from "./gallery.js";
 export * from "./guild-war.js";
 export * from "./media.js";
+export * from "./notifications.js";
 export * from "./members.js";
 export * from "./scheduled-jobs.js";
 export * from "./schema-metadata.js";

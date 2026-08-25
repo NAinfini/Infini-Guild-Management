@@ -1,10 +1,8 @@
-import { Drawer, MantineProvider } from "@mantine/core";
 import {
   fireEvent,
   render,
   screen,
   waitFor,
-  waitForElementToBeRemoved,
   within,
 } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
@@ -12,6 +10,13 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { useState } from "react";
 import { beforeAll, describe, expect, it, vi } from "vitest";
+import {
+  Drawer,
+  DrawerContent,
+  DrawerHeader,
+  DrawerTitle,
+} from "@portal/components/ui/drawer";
+import { TooltipProvider } from "@portal/components/ui/tooltip";
 import { sanitizeTipTapHtml, TipTapEditor } from "./TipTapEditor";
 import { buildTipTapEditorLabels } from "./tiptap-meta";
 
@@ -68,7 +73,7 @@ const editorLabels = {
 
 function renderHtmlEditor(onChange = vi.fn()) {
   render(
-    <MantineProvider>
+    <TooltipProvider>
       <TipTapEditor
         value="<p>Alpha</p>"
         onChange={onChange}
@@ -76,7 +81,7 @@ function renderHtmlEditor(onChange = vi.fn()) {
         editable
         labels={editorLabels}
       />
-    </MantineProvider>,
+    </TooltipProvider>,
   );
 
   return { onChange };
@@ -84,7 +89,7 @@ function renderHtmlEditor(onChange = vi.fn()) {
 
 function renderReadOnlyImageEditor() {
   render(
-    <MantineProvider>
+    <TooltipProvider>
       <TipTapEditor
         value={'<img src="https://example.com/raid-map.jpg" alt="Raid map"><img src="https://example.com/no-alt.jpg">'}
         onChange={vi.fn()}
@@ -92,7 +97,7 @@ function renderReadOnlyImageEditor() {
         readOnly
         labels={editorLabels}
       />
-    </MantineProvider>,
+    </TooltipProvider>,
   );
 }
 
@@ -100,26 +105,32 @@ function NestedDrawerEditor() {
   const [opened, setOpened] = useState(true);
 
   return (
-    <MantineProvider>
+    <TooltipProvider>
       <button type="button" onClick={() => setOpened(true)}>
         Edit article
       </button>
       <Drawer
-        opened={opened}
-        onClose={() => setOpened(false)}
-        title="Wiki editor"
-        transitionProps={{ duration: 0 }}
+        open={opened}
+        onOpenChange={setOpened}
+        swipeDirection="down"
       >
-        <TipTapEditor
-          value="<p>Alpha</p>"
-          onChange={vi.fn()}
-          mode="html"
-          editable
-          ariaLabel="Article body"
-          labels={editorLabels}
-        />
+        <DrawerContent>
+          <DrawerHeader>
+            <DrawerTitle>Wiki editor</DrawerTitle>
+          </DrawerHeader>
+          <div className="p-4">
+            <TipTapEditor
+              value="<p>Alpha</p>"
+              onChange={vi.fn()}
+              mode="html"
+              editable
+              ariaLabel="Article body"
+              labels={editorLabels}
+            />
+          </div>
+        </DrawerContent>
       </Drawer>
-    </MantineProvider>
+    </TooltipProvider>
   );
 }
 
@@ -156,6 +167,25 @@ describe("TipTapEditor shared contracts", () => {
     expect(labels.lightboxZoomLevel).toBe("label:lightbox.zoomLevel");
   });
 
+  it("uses only the source-owned Base UI layer across the editor cluster", () => {
+    const editorFiles = [
+      "TipTapEditor.tsx",
+      "TipTapEditorToolbar.tsx",
+      "TipTapEditorContextMenu.tsx",
+      "TipTapEditorFindReplace.tsx",
+      "TipTapEditorLinkDialog.tsx",
+      "tiptap-editor.css",
+    ];
+
+    for (const file of editorFiles) {
+      const source = readFileSync(
+        resolve(process.cwd(), "apps/portal/components/shared", file),
+        "utf8",
+      );
+      expect(source.toLowerCase()).not.toContain(["man", "tine"].join(""));
+    }
+  });
+
   it("preserves safe TipTap style attributes for colored html output", () => {
     const html = sanitizeTipTapHtml(
       '<p style="text-align: center"><span style="color: #1f6feb"><mark style="background-color: #fde047">Title</mark></span></p>',
@@ -179,7 +209,7 @@ describe("TipTapEditor shared contracts", () => {
 
   it("exposes the editable surface as a named multiline textbox", async () => {
     render(
-      <MantineProvider>
+      <TooltipProvider>
         <TipTapEditor
           value="<p>Alpha</p>"
           onChange={vi.fn()}
@@ -188,7 +218,7 @@ describe("TipTapEditor shared contracts", () => {
           ariaLabel="Article body"
           labels={editorLabels}
         />
-      </MantineProvider>,
+      </TooltipProvider>,
     );
 
     expect(
@@ -323,7 +353,9 @@ describe("TipTapEditor shared contracts", () => {
     expect(zoomIn).toBeDisabled();
 
     fireEvent.click(within(dialog).getByRole("button", { name: editorLabels.close }));
-    await waitForElementToBeRemoved(dialog);
+    await waitFor(() => {
+      expect(screen.queryByRole("dialog", { name: editorLabels.lightboxTitle })).not.toBeInTheDocument();
+    });
 
     const imageWithoutAlt = screen.getByRole("button", { name: editorLabels.lightboxPreview });
     imageWithoutAlt.focus();
@@ -344,7 +376,7 @@ describe("TipTapEditor shared contracts", () => {
 
   it("does not keyboardize content images while the editor is editable", async () => {
     const { container } = render(
-      <MantineProvider>
+      <TooltipProvider>
         <TipTapEditor
           value={'<img src="https://example.com/editable.jpg" alt="Editable image">'}
           onChange={vi.fn()}
@@ -352,7 +384,7 @@ describe("TipTapEditor shared contracts", () => {
           editable
           labels={editorLabels}
         />
-      </MantineProvider>,
+      </TooltipProvider>,
     );
 
     await waitFor(() => {
@@ -370,7 +402,7 @@ describe("TipTapEditor shared contracts", () => {
     const css = readFileSync(resolve(process.cwd(), "apps/portal/components/shared/tiptap-editor.css"), "utf8");
     const controlsRule = css.match(/\.infini-tiptap-lightbox-controls\s*\{([^}]*)\}/)?.[1] ?? "";
     const controlButtonRule = css.match(
-      /\.infini-tiptap-lightbox-controls \.mantine-Button-root\s*\{([^}]*)\}/,
+      /\.infini-tiptap-lightbox-controls \[data-slot="button"\]\s*\{([^}]*)\}/,
     )?.[1] ?? "";
     const viewportRule = css.match(/\.infini-tiptap-lightbox-viewport\s*\{([^}]*)\}/)?.[1] ?? "";
 

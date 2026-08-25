@@ -31,7 +31,7 @@ export function presentDashboardEvents(value: DashboardEventsViewerRead) {
     participant_count: item.participantCount,
     participant_preview: item.participantPreview.map((participant) => ({
       user_id: participant.userId,
-      username: participant.username,
+      display_name: participant.display_name,
       role: participant.roleId,
       classes: [...participant.classes],
       power: participant.power,

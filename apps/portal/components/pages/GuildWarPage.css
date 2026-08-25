@@ -7,21 +7,22 @@
  */
 
 .guild-war-page,
-.guild-war-page__tabs,
-.guild-war-page__tabs .mantine-Tabs-panel {
+.guild-war-page__workspace,
+.guild-war-page__panel {
   min-width: 0;
   width: 100%;
 }
 
-/* Only fill-marked panels consume remaining tab height; other panels stay content-sized. */
-.guild-war-page__tabs {
+/* PageSubnav stays visible; only the current work region consumes the remaining height. */
+.guild-war-page__workspace {
   display: flex;
   flex-direction: column;
   flex: 1 1 auto;
+  gap: var(--page-rhythm);
   min-block-size: 0;
 }
 
-.guild-war-page__tabs .guild-war-page__panel--fill {
+.guild-war-page__workspace .guild-war-page__panel--fill {
   display: flex;
   flex-direction: column;
   flex: 1 1 auto;
@@ -29,6 +30,10 @@
 }
 
 /* Active war command bar */
+
+.guild-war-active-top-card {
+  padding: var(--card-padding);
+}
 
 .guild-war-active-top-card__filters {
   display: grid;
@@ -51,16 +56,24 @@
 }
 
 .guild-war-active-top-card__matches {
+  display: flex;
+  align-items: center;
+  gap: 4px;
   min-height: var(--control-height-compact);
 }
 
 .guild-war-active-top-card__match-label {
+  color: var(--text-muted);
+  font-size: var(--text-sm);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
 .guild-war-active-top-card__actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
   justify-content: flex-end;
   min-width: max-content;
 }
@@ -109,6 +122,41 @@
   flex: 1 1 auto;
   min-width: 0;
   min-block-size: 0;
+}
+
+.guild-war-active-shell {
+  gap: var(--space-sm);
+}
+
+.guild-war-team-conflict__actions,
+.guild-war-active-skeleton__row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+}
+
+.guild-war-team-conflict [data-slot="alert-description"] {
+  display: grid;
+  gap: var(--space-sm);
+}
+
+.guild-war-active-skeleton {
+  display: grid;
+  gap: var(--space-sm);
+  padding: var(--space-md);
+}
+
+.guild-war-active-board-skeleton {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: var(--space-md);
+  padding: var(--space-md);
+}
+
+.guild-war-active-board-skeleton__column {
+  display: grid;
+  gap: var(--space-sm);
+  min-width: 0;
 }
 
 .guild-war-dnd-split {
@@ -175,8 +223,12 @@
  */
 .guild-war-column-head,
 .guild-war-member-card {
-  --guild-war-row-columns: 3px 14px 24px minmax(0, 1fr) minmax(0, 96px) 64px;
+  --guild-war-row-columns: 3px 14px 24px minmax(0, 1fr) minmax(0, 56px) 48px;
   --guild-war-row-height: 44px;
+}
+
+.guild-war-desktop-flow {
+  gap: var(--space-sm);
 }
 
 .guild-war-column-card {
@@ -185,8 +237,9 @@
   min-block-size: 0;
   height: 100%;
   padding: var(--space-md);
-  border-color: var(--border-subtle);
+  border: 1px solid var(--border-subtle);
   border-radius: var(--radius-control);
+  background: var(--plate-fill);
   box-shadow: none;
   overflow: visible;
   transition:
@@ -206,12 +259,53 @@
 }
 
 .guild-war-column-header {
+  display: grid;
+  gap: var(--space-sm);
   width: 100%;
   min-width: 0;
+  margin-block-end: var(--space-sm);
+}
+
+.guild-war-column-header__row,
+.guild-war-column-header__identity,
+.guild-war-column-actions {
+  display: flex;
+  align-items: center;
+}
+
+.guild-war-column-header__row {
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: var(--space-sm);
+}
+
+.guild-war-column-header__identity {
+  gap: var(--space-sm);
+  min-width: 0;
+}
+
+.guild-war-column-header__title {
+  overflow: hidden;
+  font-size: var(--text-sm);
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .guild-war-column-actions {
   flex: 0 0 auto;
+  justify-content: flex-end;
+  gap: 4px;
+}
+
+.guild-war-column-action {
+  width: 44px;
+  height: 44px;
+}
+
+.guild-war-column-menu__indicator {
+  display: inline-flex;
+  margin-inline-start: auto;
 }
 
 /* 队伍总战力贴着列头的动作按钮排，不另起一行：一整行只为了一个数，等于把空白搬进
@@ -565,35 +659,6 @@
   min-block-size: 0;
 }
 
-.war-history-filters {
-  padding: var(--space-md);
-  border: 1px solid var(--border-subtle);
-  border-radius: var(--radius-surface);
-  background: var(--plate-fill);
-}
-
-.war-history-filters__group {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) var(--control-height-regular);
-  gap: var(--space-sm);
-  align-items: end;
-  width: 100%;
-}
-
-.war-history-filter--search {
-  grid-column: 1 / -1;
-}
-
-.war-history-filter {
-  min-width: 0;
-  width: 100%;
-}
-
-.war-history-filter__clear {
-  min-width: var(--control-height-regular);
-  min-height: var(--control-height-regular);
-}
-
 .war-history-list-card,
 .war-history-list-card__body {
   display: flex;
@@ -602,6 +667,27 @@
   min-width: 0;
   min-block-size: 0;
   width: 100%;
+}
+
+.war-history-list-card {
+  padding: var(--card-padding);
+}
+
+.war-history-list-card__body {
+  gap: var(--space-md);
+}
+
+.war-history-list-card__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-sm);
+}
+
+.war-history-list-card__header h3 {
+  margin: 0;
+  font-size: var(--text-body);
+  font-weight: 700;
 }
 
 .war-history-list-empty {
@@ -663,6 +749,11 @@
   gap: var(--space-sm);
   min-width: 0;
   padding: var(--space-sm) var(--space-md);
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
   text-align: start;
 }
 
@@ -716,7 +807,54 @@
 }
 
 .war-history-pagination {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-sm);
   min-width: 0;
+}
+
+.war-history-pagination__per-page,
+.war-history-pagination__pages {
+  display: flex;
+  align-items: center;
+  gap: var(--space-xs);
+}
+
+.war-history-pagination__per-page,
+.war-history-pagination__total,
+.war-history-pagination__ellipsis {
+  color: var(--text-muted);
+  font-size: var(--text-meta);
+}
+
+.war-history-pagination__select {
+  width: 4.5rem;
+}
+
+.war-history-pagination__input {
+  width: 3.75rem;
+  height: 2rem;
+  padding-inline: var(--space-xs);
+  text-align: center;
+}
+
+.war-history-result-badge[data-result="win"] {
+  border-color: color-mix(in srgb, var(--status-success) 55%, transparent);
+  background: color-mix(in srgb, var(--status-success) 12%, transparent);
+  color: var(--status-success);
+}
+
+.war-history-result-badge[data-result="loss"] {
+  border-color: color-mix(in srgb, var(--status-danger) 55%, transparent);
+  background: color-mix(in srgb, var(--status-danger) 12%, transparent);
+  color: var(--status-danger);
+}
+
+.war-history-result-badge[data-result="draw"] {
+  border-color: color-mix(in srgb, var(--status-warning) 55%, transparent);
+  background: color-mix(in srgb, var(--status-warning) 12%, transparent);
+  color: var(--status-warning);
 }
 
 .war-history-detail-panel {
@@ -752,6 +890,11 @@
 .war-history-detail-panel__loading,
 .whd-placeholder {
   padding: var(--space-lg);
+}
+
+.war-history-detail-panel__loading {
+  display: grid;
+  gap: var(--space-sm);
 }
 
 .whd-placeholder {
@@ -885,6 +1028,9 @@
 }
 
 .whd-identity__exports {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-sm);
   max-width: 100%;
   justify-content: flex-end;
 }
@@ -1089,6 +1235,26 @@
   min-width: 0;
 }
 
+.whd-team-list {
+  display: grid;
+  gap: var(--space-md);
+}
+
+.whd-team__name {
+  display: grid;
+  gap: 2px;
+}
+
+.whd-team__name strong {
+  font-size: var(--text-sm);
+}
+
+.whd-team__name span,
+.whd-team__empty {
+  color: var(--text-muted);
+  font-size: var(--text-micro);
+}
+
 .whd-team__chips {
   display: flex;
   flex-wrap: wrap;
@@ -1108,6 +1274,8 @@
 
 .whd-chip__avatar {
   flex: 0 0 auto;
+  width: 20px;
+  height: 20px;
   background: color-mix(in srgb, var(--domain-war) 12%, var(--surface-raised));
   color: var(--domain-war);
 }
@@ -1140,6 +1308,27 @@
   width: min(220px, 100%);
 }
 
+.whd-data__controls,
+.whd-view-switch {
+  display: flex;
+  align-items: center;
+  gap: var(--space-xs);
+}
+
+.whd-view-switch {
+  padding: 2px;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-control);
+  background: var(--surface-base);
+}
+
+.whd-keyboard-hint,
+.whd-actions__status {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: var(--text-micro);
+}
+
 .whd-chart-wrap {
   min-width: 0;
 }
@@ -1154,6 +1343,29 @@
 
 .war-history-detail-table-wrap table {
   min-width: 1160px;
+}
+
+.war-history-status--complete {
+  border-color: color-mix(in srgb, var(--status-success) 52%, var(--border-subtle));
+  color: var(--status-success);
+}
+
+.war-history-status--missing {
+  border-color: color-mix(in srgb, var(--status-warning) 52%, var(--border-subtle));
+  color: var(--status-warning);
+}
+
+.war-history-status__tooltip {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: start;
+  width: min(280px, calc(100vw - 2rem));
+  white-space: normal;
+}
+
+.war-history-status__tooltip > span {
+  display: grid;
+  gap: 2px;
 }
 
 .war-history-detail-table-wrap thead th {
@@ -1216,7 +1428,7 @@
   max-width: 100%;
 }
 
-.whd-member-card__value .mantine-NumberInput-root {
+.whd-member-card__value [data-slot="input"] {
   width: min(112px, 100%);
 }
 
@@ -1232,6 +1444,13 @@
   background: var(--plate-fill);
 }
 
+.whd-actions__controls {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--space-sm);
+}
+
 .war-history-save-button--ready {
   border-color: var(--brand-border);
 }
@@ -1239,6 +1458,8 @@
 /* Analytics evidence desk */
 
 .gwa-layout {
+  display: grid;
+  gap: var(--space-md);
   min-width: 0;
   width: 100%;
 }
@@ -1278,14 +1499,65 @@
   min-width: max-content;
 }
 
+.gwa-choice-group {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding: 2px;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-control);
+  background: var(--surface-base);
+}
+
+.gwa-choice-group__option {
+  min-width: max-content;
+}
+
+.gwa-loading {
+  display: grid;
+  gap: var(--space-sm);
+}
+
+.gwa-loading__chart {
+  min-height: 180px;
+}
+
+.gwa-loading__line {
+  height: 18px;
+}
+
 .gwa-war-summary {
   display: flex;
   flex-wrap: wrap;
+  align-items: center;
   gap: var(--space-md);
   padding: var(--space-sm) var(--space-md);
   border: 1px solid var(--border-subtle);
   border-radius: var(--radius-surface);
   background: var(--plate-fill);
+}
+
+.gwa-war-summary__result,
+.gwa-war-summary__rate {
+  font-size: var(--text-sm);
+}
+
+.gwa-war-summary__result {
+  display: inline-flex;
+  gap: var(--space-xs);
+}
+
+.gwa-war-summary__result[data-result="win"] strong {
+  color: var(--status-success);
+}
+
+.gwa-war-summary__result[data-result="loss"] strong {
+  color: var(--status-danger);
+}
+
+.gwa-war-summary__result[data-result="draw"] strong,
+.gwa-war-summary__rate {
+  color: var(--domain-war);
 }
 
 .gwa-content {
@@ -1353,10 +1625,14 @@
 .gwa-field__head {
   display: flex;
   align-items: center;
+  justify-content: flex-start;
   gap: var(--space-sm);
   width: 100%;
   min-width: 0;
+  height: auto;
   padding: var(--space-xs) 0;
+  color: inherit;
+  text-align: start;
 }
 
 .gwa-field__head:focus-visible {
@@ -1390,6 +1666,19 @@
   padding-top: var(--space-sm);
 }
 
+.gwa-field__hint,
+.gwa-norm-panel__copy,
+.gwa-norm-panel__equation {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: var(--text-meta);
+  line-height: 1.5;
+}
+
+.gwa-norm-panel__equation {
+  font-family: var(--font-mono);
+}
+
 .gwa-sidebar__section {
   display: flex;
   flex-direction: column;
@@ -1402,8 +1691,36 @@
   border-top: 1px solid var(--border-subtle);
 }
 
-.gwa-sidebar__section--row {
-  flex-direction: row;
+.gwa-select {
+  width: 100%;
+}
+
+.gwa-number-fields {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-sm);
+}
+
+.gwa-number-field {
+  display: grid;
+  align-items: start;
+  gap: var(--space-xs);
+  min-width: 0;
+  color: var(--text-secondary);
+  font-size: var(--text-meta);
+}
+
+.gwa-switch-field {
+  justify-content: flex-start;
+  min-width: 0;
+  color: var(--text-secondary);
+  font-size: var(--text-sm);
+  line-height: 1.4;
+}
+
+.gwa-switch-field--compact {
+  flex: 0 1 auto;
+  font-size: var(--text-micro);
 }
 
 .gwa-main {
@@ -1422,6 +1739,7 @@
 }
 
 .gwa-listbox__search {
+  position: relative;
   padding: var(--space-xs);
   border-bottom: 1px solid var(--border-subtle);
 }
@@ -1429,6 +1747,16 @@
 .gwa-listbox__search input {
   border: 0;
   background: transparent;
+  padding-inline-start: 1.75rem;
+}
+
+.gwa-listbox__search-icon {
+  position: absolute;
+  z-index: 1;
+  inset-inline-start: calc(var(--space-xs) + 0.6rem);
+  inset-block-start: 50%;
+  color: var(--text-muted);
+  transform: translateY(-50%);
 }
 
 .gwa-listbox__items {
@@ -1494,7 +1822,26 @@
 }
 
 .gwa-chart__heading {
+  display: grid;
+  gap: 2px;
   min-width: 0;
+}
+
+.gwa-listbox__item-layout,
+.gwa-listbox__item-main {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+  min-width: 0;
+}
+
+.gwa-listbox__item-layout {
+  justify-content: space-between;
+  width: 100%;
+}
+
+.gwa-chart__note {
+  color: var(--status-warning);
 }
 
 .gwa-chart__expand {
@@ -1511,7 +1858,7 @@
    the reader can never be looking at adjusted values without knowing it. */
 .gwa-sidebar__section.gwa-norm--active {
   padding: var(--space-sm);
-  border-inline-start: 3px solid var(--status-warning);
+  border: 1px solid color-mix(in srgb, var(--status-warning) 52%, var(--border-subtle));
   border-radius: var(--radius-control);
   background: color-mix(in srgb, var(--status-warning) 9%, transparent);
 }
@@ -1530,6 +1877,7 @@
   display: flex;
   flex: 1;
   align-items: center;
+  justify-content: flex-start;
   gap: var(--space-sm);
   min-width: 0;
 }
@@ -1555,6 +1903,37 @@
   gap: var(--space-sm);
 }
 
+.gwa-norm-weight {
+  display: grid;
+  grid-template-columns: 64px minmax(60px, 1fr) 38px;
+  align-items: center;
+  gap: var(--space-sm);
+  min-width: 0;
+}
+
+.gwa-norm-weight__label,
+.gwa-norm-weight__value {
+  font-size: var(--text-meta);
+}
+
+.gwa-norm-weight__label {
+  overflow: hidden;
+  color: var(--text-secondary);
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.gwa-norm-weight__spacer {
+  min-height: 1rem;
+}
+
+.gwa-norm-weight__value {
+  color: var(--text-muted);
+  font-weight: 600;
+  text-align: end;
+}
+
 .gwa-table-section {
   min-width: 0;
   padding: var(--space-md);
@@ -1576,21 +1955,83 @@
 
 .gwa-table-toggle__expand {
   flex: 1;
+  justify-content: flex-start;
   min-width: 0;
 }
 
-.gwa-table-action {
+.gwa-table-toggle__actions {
   display: flex;
+  flex: 0 0 auto;
   align-items: center;
-  gap: var(--space-xs);
-  padding: var(--space-xs) var(--space-sm);
-  border: 1px solid var(--border-subtle);
-  border-radius: var(--radius-control);
+  gap: var(--space-sm);
+}
+
+.gwa-table-action {
+  flex: 0 0 auto;
 }
 
 .gwa-table-wrap {
   max-height: 400px;
   overflow: auto;
+}
+
+.gwa-table {
+  width: 100%;
+  min-width: 560px;
+  border-collapse: collapse;
+  font-size: var(--text-sm);
+}
+
+.gwa-table th,
+.gwa-table td {
+  padding: var(--space-sm);
+  border-bottom: 1px solid var(--border-subtle);
+  text-align: start;
+}
+
+.gwa-table th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: var(--surface-base);
+  color: var(--text-secondary);
+  font-size: var(--text-meta);
+  font-weight: 600;
+}
+
+.gwa-table--striped tbody tr:nth-child(even) {
+  background: color-mix(in srgb, var(--surface-base) 72%, transparent);
+}
+
+.gwa-table tbody tr:hover {
+  background: color-mix(in srgb, var(--brand-fill) 6%, var(--surface-raised));
+}
+
+.gwa-table-action__tooltip {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: start;
+  width: min(280px, calc(100vw - 2rem));
+  white-space: normal;
+}
+
+.gwa-table-action__tooltip-icon {
+  margin-top: 2px;
+}
+
+.gwa-table-action__tooltip > span {
+  display: grid;
+  gap: 2px;
+}
+
+.gwa-table-action__tooltip strong {
+  font-size: var(--text-sm);
+}
+
+.gwa-table-action__tooltip span span {
+  color: var(--text-muted);
+  font-size: var(--text-meta);
+  line-height: 1.45;
 }
 
 /* Scoped Guild War task modals */
@@ -1602,7 +2043,16 @@
   background: var(--surface-overlay);
 }
 
+.guild-war-task-modal {
+  width: min(640px, calc(100vw - 2rem));
+  max-width: min(640px, calc(100vw - 2rem));
+  max-height: calc(100dvh - 2rem);
+  overflow: hidden;
+}
+
 .conclude-war-modal {
+  width: min(960px, calc(100vw - 2rem));
+  max-width: min(960px, calc(100vw - 2rem));
   max-height: calc(100dvh - 2rem);
   overflow: hidden;
 }
@@ -1613,21 +2063,47 @@
   padding-top: var(--space-sm);
 }
 
+.guild-war-task-modal__body {
+  display: grid;
+  gap: var(--space-md);
+  min-height: 0;
+}
+
 .conclude-war-modal__body,
 .conclude-war-modal__layout {
+  display: flex;
+  flex-direction: column;
   min-height: 0;
   overflow: hidden;
 }
 
 .guild-war-task-modal__intro {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-sm);
   padding-bottom: var(--space-md);
   border-bottom: 1px solid var(--border-subtle);
+}
+
+.guild-war-task-modal__pick-list .pick-list__body {
+  max-block-size: 280px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
 }
 
 .guild-war-task-modal__footer,
 .conclude-war-modal__footer {
   padding-top: var(--space-md);
   border-top: 1px solid var(--border-subtle);
+}
+
+.guild-war-task-modal__selection {
+  align-self: center;
+  margin-inline-end: auto;
+  color: var(--text-muted);
+  font-size: var(--text-micro);
 }
 
 .guild-war-member-detail__identity {
@@ -1689,7 +2165,15 @@
 }
 
 .conclude-war-modal__content {
+  display: grid;
+  gap: var(--space-md);
   padding: 0 var(--space-xs) var(--space-sm) 0;
+}
+
+.conclude-war-modal__content-scroll {
+  min-height: 0;
+  max-height: calc(100dvh - 11rem);
+  overflow: auto;
 }
 
 .conclude-war-modal__section {
@@ -1753,7 +2237,7 @@
   font-weight: var(--fw-medium);
 }
 
-.conclude-war-modal__objective-input input {
+.conclude-war-modal__objective-input {
   height: 30px;
   min-height: 30px;
   padding: 2px var(--space-xs);
@@ -1766,13 +2250,37 @@
 }
 
 .conclude-war-modal__table-scroll {
+  overflow: auto;
   border: 1px solid var(--border-subtle);
   border-radius: var(--radius-control);
 }
 
 .conclude-war-modal__table {
+  width: 100%;
   min-width: 760px;
+  border-collapse: collapse;
   font-size: var(--text-sm);
+}
+
+.conclude-war-modal__table th,
+.conclude-war-modal__table td {
+  border-inline-end: 1px solid var(--border-subtle);
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.conclude-war-modal__table thead th {
+  background: var(--surface-base);
+  color: var(--text-secondary);
+  font-size: var(--text-meta);
+  font-weight: var(--fw-medium);
+}
+
+.conclude-war-modal__table tbody tr:nth-child(even) {
+  background: color-mix(in srgb, var(--surface-base) 72%, transparent);
+}
+
+.conclude-war-modal__table tbody tr:hover {
+  background: color-mix(in srgb, var(--brand-fill) 6%, var(--surface-raised));
 }
 
 .conclude-war-modal__sticky-col {
@@ -1784,7 +2292,23 @@
 }
 
 .conclude-war-modal__sticky-col--cell {
+  display: grid;
+  gap: 2px;
+  padding: var(--space-xs) var(--space-sm);
   white-space: nowrap;
+}
+
+.conclude-war-modal__member-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-size: var(--text-micro);
+  font-weight: var(--fw-medium);
+}
+
+.conclude-war-modal__team-name {
+  color: var(--text-muted);
+  font-size: var(--text-micro);
+  font-weight: 400;
 }
 
 .conclude-war-modal__metric-heading {
@@ -1796,12 +2320,15 @@
   padding: var(--space-xs);
 }
 
-.conclude-war-modal__metric-input input {
+.conclude-war-modal__metric-input {
   padding: var(--space-xs);
   text-align: center;
 }
 
 .conclude-war-modal__footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--space-sm);
   flex: 0 0 auto;
   margin-top: var(--space-sm);
   background: var(--surface-overlay);
@@ -1813,6 +2340,41 @@
   .gwa-content {
     grid-template-columns: minmax(220px, 248px) minmax(0, 1fr);
   }
+
+  /* Once the teams stack into one column, a short candidate pool no longer needs
+     to imitate the full teams scroller height. Keep it visible and content-sized. */
+  .guild-war-dnd-pool {
+    align-self: start;
+  }
+
+  .guild-war-dnd-pool .guild-war-column-card,
+  .guild-war-dnd-pool .guild-war-column-stack {
+    flex: 0 1 auto;
+  }
+
+  .guild-war-dnd-pool .guild-war-column-card {
+    height: auto;
+  }
+
+  .guild-war-dnd-pool .guild-war-column-stack {
+    overflow-y: visible;
+    scrollbar-gutter: auto;
+  }
+
+  .guild-war-dnd-teams {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+.conclude-war-modal__field {
+  display: grid;
+  gap: var(--space-xs);
+  min-width: 0;
+}
+
+.guild-war-member-detail__class {
+  border-color: color-mix(in srgb, var(--badge-color) 52%, var(--border-subtle));
+  background: color-mix(in srgb, var(--badge-color) 16%, transparent);
 }
 
 @media (max-width: 1199px) {
@@ -1848,7 +2410,7 @@
   /* Single column: reveal exactly one pane, and only here does the detail
      need a way back to the list. */
   /* 单栏之后回到整页滚：把窄视口再切成一个内滚区，反而把可读高度切没了。 */
-  .guild-war-page__tabs .guild-war-page__panel--fill,
+  .guild-war-page__workspace .guild-war-page__panel--fill,
   .war-history-shell,
   .war-history-workspace {
     flex: 0 1 auto;
@@ -1871,6 +2433,12 @@
   .war-history-list-card__body {
     flex: 0 1 auto;
     min-block-size: auto;
+  }
+
+  .war-history-detail-panel__body,
+  .gwa-console {
+    overflow-y: visible;
+    scrollbar-gutter: auto;
   }
 
   .war-history-rail {
@@ -1900,13 +2468,6 @@
 
   .war-history-detail-panel__mobile-nav {
     display: block;
-  }
-
-  .war-history-filters__group {
-    grid-template-columns:
-      minmax(0, 1fr)
-      minmax(0, 1fr)
-      var(--control-height-regular);
   }
 
   .whd-board {
@@ -1986,7 +2547,50 @@
   }
 }
 
+/* Tablet single-column workbenches return their height to the shared page scroll. */
+@media (min-width: 768px) and (max-width: 991px) {
+  .page-layout.guild-war-page[data-workspace-mode="contained"] .page-layout__workspace {
+    display: block;
+    overflow-x: clip;
+    overflow-y: auto;
+    scrollbar-gutter: stable;
+  }
+}
+
 @media (max-width: 767px) {
+  .whd-board {
+    grid-template-columns: minmax(5rem, 1fr) auto minmax(5rem, 1fr);
+    gap: var(--space-sm);
+    padding: var(--space-md) var(--space-sm);
+  }
+
+  .whd-board__name {
+    display: -webkit-box;
+    overflow: hidden;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+    line-height: var(--lh-tight);
+    white-space: normal;
+  }
+
+  .whd-board__score {
+    gap: var(--space-xs);
+  }
+
+  .whd-board__value {
+    font-size: var(--text-h2);
+  }
+
+  .whd-board__dash {
+    font-size: var(--text-h3);
+  }
+
+  .whd-board__caption {
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: var(--space-xs);
+  }
+
   .whd-identity {
     grid-template-columns: minmax(0, 1fr);
   }
@@ -1995,7 +2599,7 @@
     justify-content: flex-start;
   }
 
-  .whd-identity__exports .mantine-Button-root {
+  .whd-identity__exports [data-slot="button"] {
     flex: 1 1 136px;
   }
 
@@ -2082,19 +2686,8 @@
     border-inline-start: 0;
   }
 
-  .guild-war-active-top-card__danger .mantine-Button-root {
+  .guild-war-active-top-card__danger > [data-slot="tooltip"] > [data-slot="tooltip-trigger"] > [data-slot="button"] {
     width: 100%;
-  }
-
-  .war-history-filters__group {
-    grid-template-columns:
-      minmax(0, 1fr)
-      minmax(0, 1fr)
-      var(--control-height-regular);
-  }
-
-  .war-history-filter--search {
-    grid-column: 1 / -1;
   }
 
   .war-history-list-card__header {
@@ -2133,18 +2726,38 @@
     grid-template-columns: minmax(0, 1fr);
   }
 
-  .whd-actions > div,
-  .whd-actions > .mantine-Group-root {
+  .whd-actions > div {
     width: 100%;
   }
 
-  .whd-actions .mantine-Button-root {
+  .whd-actions [data-slot="button"] {
     flex: 1;
   }
 
   .gwa-toolbar {
     display: grid;
     grid-template-columns: minmax(0, 1fr);
+  }
+
+  .gwa-toolbar__control-scroll {
+    overflow: visible;
+  }
+
+  .gwa-toolbar__control-scroll > * {
+    width: 100%;
+    min-width: 0;
+  }
+
+  .gwa-choice-group {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    width: 100%;
+  }
+
+  .gwa-choice-group__option {
+    width: 100%;
+    min-width: 0;
+    white-space: normal;
   }
 
   .gwa-console {
@@ -2166,6 +2779,15 @@
   .gwa-table-toggle {
     align-items: flex-start;
     flex-wrap: wrap;
+  }
+
+  .gwa-table-toggle__actions {
+    width: 100%;
+    justify-content: space-between;
+  }
+
+  .gwa-number-fields {
+    grid-template-columns: minmax(0, 1fr);
   }
 
   .guild-war-task-modal__intro,
@@ -2196,7 +2818,7 @@
     align-items: stretch;
   }
 
-  .conclude-war-modal__footer .mantine-Button-root {
+  .conclude-war-modal__footer [data-slot="button"] {
     flex: 1;
   }
 }

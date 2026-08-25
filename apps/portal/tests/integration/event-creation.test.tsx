@@ -1,13 +1,12 @@
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
-import { MantineProvider } from "@mantine/core";
 import type { QueryClient } from "@tanstack/react-query";
 import { screen, waitFor } from "@testing-library/react";
 import { renderWithQueryClient as render } from "@portal/tests/query-harness";
 import userEvent from "@testing-library/user-event";
 import { useState } from "react";
 import { describe, expect, it, vi } from "vitest";
-import { EventFormModal } from "../../components/feature/events/EventFormModal";
+import { EventFormContent } from "../../components/feature/events/EventFormContent";
 import { AttachmentService } from "../../services/AttachmentService";
 import { EventService } from "../../services/EventService";
 
@@ -15,8 +14,8 @@ vi.mock("react-i18next", () => ({
   useTranslation: () => ({
     t: (key: string, params?: Record<string, unknown>) => {
       const labels: Record<string, string> = {
-        "modal.createTitle": "Create Event",
-        "modal.editTitle": "Edit Event",
+        "editor.createTitle": "Create Event",
+        "editor.editTitle": "Edit Event",
         "field.title": "Title",
         "filter.type": "Type",
         "field.start": "Start",
@@ -83,9 +82,7 @@ function EventCreationHarness({
   const [attachmentItems, setAttachmentItems] = useState<Array<{ id: string; src?: string; alt?: string; file?: File }>>([]);
 
   return (
-    <MantineProvider>
-      <EventFormModal
-        open
+      <EventFormContent
         mode="create"
         canManage
         title={title}
@@ -136,21 +133,21 @@ function EventCreationHarness({
           });
         }}
       />
-    </MantineProvider>
   );
 }
 
 describe("event creation flow", () => {
   it("uses one datetime column on mobile and two from the sm breakpoint", () => {
     const source = readFileSync(
-      resolve(process.cwd(), "apps/portal/components/feature/events/EventFormModal.tsx"),
+      resolve(process.cwd(), "apps/portal/components/feature/events/EventFormContent.css"),
       "utf8",
     );
 
-    expect(source).toContain('<SimpleGrid cols={{ base: 1, sm: 2 }} spacing="sm">');
+    expect(source).toMatch(/\.event-form__schedule-grid\s*\{[^}]*grid-template-columns:\s*repeat\(2,/s);
+    expect(source).toMatch(/@media \(max-width:\s*39\.99em\)[\s\S]*\.event-form__schedule-grid\s*\{[^}]*grid-template-columns:\s*minmax\(0,\s*1fr\)/);
   });
 
-  it("creates an event with attachment files through the modal workflow", async () => {
+  it("creates an event with attachment files through the editor workflow", async () => {
     vi.spyOn(URL, "createObjectURL").mockReturnValue("blob:poster");
     const createEvent = vi.fn().mockResolvedValue({ id: "evt-1" });
     const user = userEvent.setup();

@@ -1,13 +1,13 @@
-import { notifications } from "@mantine/notifications";
+import { portalToast } from "../overlays";
 
 export function notifySuccess(message: string) {
-  notifications.show({ color: "green", message });
+  portalToast({ title: message, status: "success" });
 }
 
 export function notifyError(message: string) {
-  notifications.show({ color: "red", message });
+  portalToast({ title: message, status: "error" });
 }
 
 export function notifyWarning(message: string) {
-  notifications.show({ color: "yellow", message });
+  portalToast({ title: message, status: "warning" });
 }

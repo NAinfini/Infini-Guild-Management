@@ -12,10 +12,28 @@
 
 /* 标签一栏：字段名在上，下面是去样式编辑器的入口。 */
 .admin-badge-label {
+  display: grid;
+  gap: var(--space-sm);
+}
+
+.admin-badges__fields,
+.admin-badges__membership {
+  display: grid;
+  gap: var(--space-md);
+}
+
+.admin-badge-label__controls,
+.admin-badges__membership-head {
   display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: 6px;
+  gap: var(--space-sm);
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.admin-badges__membership-title {
+  color: var(--text-secondary);
+  font-size: var(--text-sm);
+  font-weight: var(--fw-medium);
 }
 
 /* 名片上那枚是密排附注，这里是管理员正在打量的东西，放大一档看清楚。

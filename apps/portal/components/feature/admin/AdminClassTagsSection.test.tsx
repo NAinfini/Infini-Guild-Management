@@ -1,7 +1,6 @@
-import { MantineProvider } from "@mantine/core";
 import { createSeededQueryClient } from "@portal/tests/query-harness";
 import { QueryClientProvider, type QueryClient } from "@tanstack/react-query";
-import { render, screen, within } from "@testing-library/react";
+import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { useAdminClassTagsController } from "@portal/hooks/useAdminClassTagsController";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -49,14 +48,13 @@ function renderSection(overrides: Record<string, unknown> = {}) {
   vi.mocked(useAdminClassTagsController).mockReturnValue({
     query: { data: [HEALER_TAG, RAID_TAG], isLoading: false, isError: false, refetch: vi.fn() },
     opened: true,
-    editing: true,
     draft: { id: "healer", label: "Healer", classIds: ["white-mage"] },
     setDraft: vi.fn(),
+    isDirty: false,
     toggleClass,
     openCreate: vi.fn(),
     selectTag: vi.fn(),
-    startEdit: vi.fn(),
-    cancelEdit: vi.fn(),
+    discardChanges: vi.fn(),
     reorder: vi.fn(),
     save: vi.fn(),
     remove,
@@ -71,9 +69,7 @@ function renderSection(overrides: Record<string, unknown> = {}) {
     remove,
     ...render(
       <QueryClientProvider client={queryClient}>
-        <MantineProvider>
-          <AdminClassTagsSection />
-        </MantineProvider>
+        <AdminClassTagsSection />
       </QueryClientProvider>,
     ),
   };
@@ -138,7 +134,10 @@ describe("AdminClassTagsSection", () => {
   });
 
   it("flags edits that are still only in the draft", () => {
-    renderSection({ draft: { id: "healer", label: "Healer", classIds: ["white-mage", "droid"] } });
+    renderSection({
+      draft: { id: "healer", label: "Healer", classIds: ["white-mage", "droid"] },
+      isDirty: true,
+    });
 
     expect(screen.getByText("classTags.dirty")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "classTags.action.save" })).toBeEnabled();
@@ -152,26 +151,12 @@ describe("AdminClassTagsSection", () => {
     expect(handle.closest(".admin-md__item")).toBeNull();
   });
 
-  it("opens a tag read-only and only edits after the edit button", async () => {
-    const user = userEvent.setup();
-    const startEdit = vi.fn();
-    renderSection({ editing: false, startEdit });
-
-    expect(screen.queryByRole("checkbox")).toBeNull();
-    expect(screen.queryByLabelText("classTags.members.searchPlaceholder")).toBeNull();
-    expect(screen.queryByRole("button", { name: "classTags.action.save" })).toBeNull();
-    const list = document.querySelector(".pick-list__body") as HTMLElement;
-    expect(within(list).getByText("White Mage")).toBeInTheDocument();
-    expect(within(list).queryByText("Droid")).toBeNull();
-
-    await user.click(screen.getByRole("button", { name: "classTags.editTitle" }));
-    expect(startEdit).toHaveBeenCalledTimes(1);
-  });
-
-  it("hides the edit button once the editor is already open", () => {
+  it("shows the fields and class picker immediately without an edit gate", () => {
     renderSection();
 
     expect(screen.queryByRole("button", { name: "classTags.editTitle" })).toBeNull();
+    expect(screen.getByDisplayValue("Healer")).toBeInTheDocument();
+    expect(screen.getByRole("checkbox", { name: "White Mage" })).toBeChecked();
     expect(screen.getByRole("button", { name: "classTags.action.save" })).toBeInTheDocument();
   });
 

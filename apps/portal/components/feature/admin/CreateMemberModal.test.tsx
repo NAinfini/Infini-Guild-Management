@@ -1,5 +1,4 @@
 import type { AdminRole } from "@guild/shared";
-import { MantineProvider } from "@mantine/core";
 import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
@@ -25,24 +24,24 @@ describe("CreateMemberModal", () => {
     const user = userEvent.setup();
     const onCreateMember = vi.fn().mockResolvedValue({
       user_id: "user-1",
-      username: "new_member",
+      display_name: "new_member",
+      temporary_login_name: "new-login",
       temporary_password: "temporary-password",
     });
 
     render(
-      <MantineProvider>
-        <CreateMemberModal
-          opened
-          onClose={vi.fn()}
-          onCreateMember={onCreateMember}
-          creating={false}
-          roles={roles}
-        />
-      </MantineProvider>,
+      <CreateMemberModal
+        opened
+        onClose={vi.fn()}
+        onCreateMember={onCreateMember}
+        creating={false}
+        roles={roles}
+      />,
     );
 
     const dialog = screen.getByRole("dialog");
-    await user.type(within(dialog).getByRole("textbox", { name: /member\.create\.usernameLabel/ }), "new_member");
+    await user.type(within(dialog).getByRole("textbox", { name: /member\.create\.loginNameLabel/ }), "new_login");
+    await user.type(within(dialog).getByRole("textbox", { name: /member\.create\.displayNameLabel/ }), "new_member");
     expect(within(dialog).getByRole("button", { name: "member.create.submit" })).toBeDisabled();
 
     await user.click(within(dialog).getByRole("combobox", { name: /member\.create\.roleLabel/ }));
@@ -50,7 +49,8 @@ describe("CreateMemberModal", () => {
     await user.click(within(dialog).getByRole("button", { name: "member.create.submit" }));
 
     await waitFor(() => expect(onCreateMember).toHaveBeenCalledWith({
-      username: "new_member",
+      login_name: "new_login",
+      display_name: "new_member",
       notes: "",
       roleId: "raid-lead",
     }));

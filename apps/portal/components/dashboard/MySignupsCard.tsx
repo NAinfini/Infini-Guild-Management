@@ -1,12 +1,15 @@
 import type { Event } from "@guild/shared";
-import { Badge, Button, Group, HoverCard, Paper, Text, ThemeIcon } from "@mantine/core";
 import { CalendarEventIcon } from "@portal/components/icons";
-import { memo, useMemo } from "react";
+import { Badge } from "@portal/components/ui/badge";
+import { Button } from "@portal/components/ui/button";
+import { Card } from "@portal/components/ui/card";
+import { PreviewCard, PreviewCardContent, PreviewCardTrigger } from "@portal/components/ui/preview-card";
+import { memo, useMemo, type CSSProperties } from "react";
 import { useTranslation } from "react-i18next";
 import { UserCheckOutlined } from "../../utils/icons";
 import { EmptyState } from "../shared/EmptyState";
 import { cardHeading, eventTypeTagColor, type DashboardMySignupEvent } from "./shared";
-import { formatClock, formatDateTime, formatLocaleParts } from "@portal/utils/datetime";
+import { formatEventTime, formatLocaleDate, formatLocaleParts } from "@portal/utils/datetime";
 import { getEventTypeLabel } from "@portal/utils/game-rules";
 
 type MySignupsCardProps = {
@@ -51,7 +54,7 @@ export const MySignupsCard = memo(function MySignupsCard({
   const isToday = (date: Date) => isSameDay(date, now);
 
   return (
-    <Paper withBorder radius="md" className="dashboard-card">
+    <Card className="dashboard-card gap-0 py-0">
       <div>
         {cardHeading(t("card.mySignups.title"), <UserCheckOutlined size={18} />)}
       {/* With no signups the strip was eight identical boxes of "—" taking a full
@@ -93,41 +96,55 @@ export const MySignupsCard = memo(function MySignupsCard({
                     const color = eventTypeTagColor(item.event.type);
 
                     return (
-                      <HoverCard key={item.event.id} width={280} shadow="lg" withArrow arrowSize={10} openDelay={350} closeDelay={80} position="top">
-                        <HoverCard.Target>
-                          <button
-                            type="button"
-                            className="signup-box-event"
-                            onClick={() => onOpenEvent(item.event)}
-                          >
+                      <PreviewCard key={item.event.id}>
+                        <PreviewCardTrigger
+                          delay={350}
+                          closeDelay={80}
+                          render={(
+                            <button
+                              type="button"
+                              className="signup-box-event"
+                              onClick={() => onOpenEvent(item.event)}
+                            />
+                          )}
+                        >
                             <span
                               className="signup-box-event-dot"
-                              style={{ "--signup-dot-color": color } as React.CSSProperties}
+                              style={{ "--signup-dot-color": color } as CSSProperties}
                             />
                             <span className="signup-box-event-title">{item.event.title}</span>
-                            <span className="signup-box-event-time">{formatClock(item.event.start_at)}</span>
-                          </button>
-                        </HoverCard.Target>
-                        <HoverCard.Dropdown p="sm" style={{ borderRadius: 10 }}>
-                          <Group gap={10} wrap="nowrap" align="flex-start">
-                            <ThemeIcon variant="light" color={eventTypeTagColor(item.event.type)} size="lg" radius="md" style={{ flexShrink: 0, marginTop: 2 }}>
+                            <span className="signup-box-event-time">{formatEventTime(item.event.start_at, i18n.language)}</span>
+                        </PreviewCardTrigger>
+                        <PreviewCardContent side="top" className="signup-event-preview">
+                          <div className="signup-event-preview__layout">
+                            <span
+                              className="signup-event-preview__icon"
+                              style={{ "--badge-color": color } as CSSProperties}
+                            >
                               <CalendarEventIcon size={18} />
-                            </ThemeIcon>
-                            <div style={{ minWidth: 0 }}>
-                              <Text size="sm" fw={700} lh={1.3}>{item.event.title}</Text>
-                              <Group gap={4} mt={4}>
-                                <Badge size="xs" color={eventTypeTagColor(item.event.type)} variant="light">
+                            </span>
+                            <div className="signup-event-preview__body">
+                              <strong className="signup-event-preview__title">{item.event.title}</strong>
+                              <div className="signup-event-preview__meta">
+                                <Badge
+                                  variant="outline"
+                                  className="dashboard-event-type-badge"
+                                  style={{ "--badge-color": color } as CSSProperties}
+                                >
                                   {getEventTypeLabel(item.event.type, i18n.language)}
                                 </Badge>
-                                <Text size="xs" c="dimmed">{formatDateTime(item.event.start_at)}</Text>
-                              </Group>
+                                <span>
+                                  {formatLocaleDate(item.event.start_at, i18n.language)}{" "}
+                                  {formatEventTime(item.event.start_at, i18n.language)}
+                                </span>
+                              </div>
                               {item.event.description ? (
-                                <Text size="xs" c="dimmed" lh={1.5} mt={4} lineClamp={2}>{item.event.description}</Text>
+                                <p className="signup-event-preview__description">{item.event.description}</p>
                               ) : null}
                             </div>
-                          </Group>
-                        </HoverCard.Dropdown>
-                      </HoverCard>
+                          </div>
+                        </PreviewCardContent>
+                      </PreviewCard>
                     );
                   })
                 )}
@@ -138,6 +155,6 @@ export const MySignupsCard = memo(function MySignupsCard({
       </div>
         )}
       </div>
-    </Paper>
+    </Card>
   );
 });

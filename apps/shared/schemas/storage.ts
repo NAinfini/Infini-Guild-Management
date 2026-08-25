@@ -57,10 +57,10 @@ export const storageTransactionSchema = z.object({
     message: "quantity_delta must be non-zero",
   }),
   recipient_user_id: z.string().nullable(),
-  recipient_username: z.string().nullable(),
+  recipient_display_name: z.string().nullable(),
   note: z.string().max(L.storageNote.max).nullable(),
   actor_id: z.string(),
-  actor_username: z.string().nullable(),
+  actor_display_name: z.string().nullable(),
   created_at: z.string(),
 });
 

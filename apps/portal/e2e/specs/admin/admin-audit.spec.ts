@@ -3,7 +3,7 @@ import type { APIRequestContext, Locator, Page } from "@playwright/test";
 import type { AuditEvent, CursorResponse } from "@guild/shared";
 import { readAssignableRole } from "../../support/members";
 import { expect, readJson, test } from "../../support/test";
-import { ensureFiltersOpen, field, selectSegmentedControlOption } from "../../support/ui";
+import { ensureFiltersOpen, field, selectRadioOption } from "../../support/ui";
 
 /* Filters are server-owned; each interaction checks the outgoing query before asserting the UI. */
 
@@ -17,7 +17,7 @@ const PAGE_SIZE = 50;
 type AuditPage = CursorResponse<AuditEvent>;
 
 /**
- * 默认时间范围：昨天 00:00 到今天 23:59（useAdminAuditFilter.ts:38）。
+ * 默认时间范围：七天前 00:00 到今天 23:59（useAdminAuditFilter.ts）。
  * 浏览器时区被固定成 UTC，所以这里也一律按 UTC 取日期，两边才对得上。
  */
 function utcDay(offsetDays = 0): string {
@@ -38,12 +38,6 @@ function searchBox(page: Page): Locator {
 }
 function auditRows(page: Page): Locator {
   return page.locator(".audit-log-row");
-}
-function filterSummary(page: Page): Locator {
-  return page.locator(".admin-filter-summary");
-}
-function filterChip(page: Page, text: string): Locator {
-  return page.locator(".admin-filter-chip").filter({ hasText: text });
 }
 /**
  * 触发一次导出并等服务端把文件吐出来。
@@ -88,7 +82,7 @@ async function expectAuditRequest(
 async function openAudit(page: Page): Promise<AuditPage> {
   const first = await expectAuditRequest(page, () => page.goto("/admin?tab=audit").then(() => undefined), {
     limit: String(PAGE_SIZE),
-    start_at: startOf(utcDay(-1)),
+    start_at: startOf(utcDay(-7)),
     end_at: endOf(utcDay()),
   });
   await expect(page.getByRole("tab", { name: /Audit Log/ })).toHaveAttribute("aria-selected", "true");
@@ -116,7 +110,7 @@ async function serverAudit(
 
 async function expectNotified(page: Page, text: string): Promise<void> {
   await expect(
-    page.locator(".mantine-Notification-description").filter({ hasText: text }),
+    page.locator('[data-slot="toast-description"]').filter({ hasText: text }),
     `没有弹出通知「${text}」`,
   ).toBeVisible();
 }
@@ -138,17 +132,13 @@ async function expectNoApiCalls(page: Page, action: () => Promise<void>): Promis
   expect(calls, "这段操作本不该发请求").toEqual([]);
 }
 
-test("进页签：默认按「昨天到今天」取首批事件，筛选摘要报的已加载条数和服务端一致", async ({ page }) => {
+test("进页签：默认按最近七天取首批事件，不再重复渲染筛选摘要", async ({ page }) => {
   const first = await openAudit(page);
 
   await expect(auditRows(page), "界面上的行数必须等于这一页真的取回来多少行")
     .toHaveCount(Math.min(PAGE_SIZE, first.data.length));
-  await expect(filterSummary(page)).toBeVisible();
-  await expect(
-    filterChip(page, `${utcDay(-1)} to ${utcDay()}`),
-    "默认就带着时间筛选，摘要必须如实说出来，否则看到的是被筛过的数据却以为是全量",
-  ).toBeVisible();
-  await expect(filterSummary(page)).toContainText(`${first.data.length} loaded`);
+  await expect(page.locator(".admin-filter-summary")).toHaveCount(0);
+  await expect(toolbar(page).getByRole("button", { name: "Filter & sort", exact: true })).toBeVisible();
 });
 
 test("搜索：词送到服务端，命中的就是刚才那次操作，展开能看到当时的入参", async ({ page, api }) => {
@@ -182,37 +172,37 @@ test("搜索：词送到服务端，命中的就是刚才那次操作，展开�
   await detail.locator(".audit-technical-disclosure summary").click();
   await expect(detail.getByText(invite.id, { exact: true })).toBeVisible();
 
-  /* 摘要上的搜索标签是撤销这次筛选的唯一入口。 */
-  await expect(filterChip(page, `Search: ${invite.id}`)).toBeVisible();
-  await filterChip(page, `Search: ${invite.id}`).click();
+  await expectAuditRequest(
+    page,
+    () => searchBox(page).fill(""),
+    { search: null, cursor: null },
+  );
   await expect(searchBox(page)).toHaveValue("");
-  await expect(filterChip(page, "Search:")).toHaveCount(0);
   await expect(auditRows(page)).toHaveCount(Math.min(PAGE_SIZE, before.data.length));
 });
 
-test("时间范围：三个预设各自改的是起始日，切回「自定义」露出两个日期框且不重新取数", async ({ page }) => {
+test("时间范围：预设只改变一个有效范围，自定义时才露出两个日期框", async ({ page }) => {
   await openAudit(page);
   await ensureFiltersOpen(toolbar(page));
 
-  const week = await expectAuditRequest(page, () => selectSegmentedControlOption(page, "7D"), {
-    start_at: startOf(utcDay(-7)),
+  const day = await expectAuditRequest(page, () => selectRadioOption(page, "1D"), {
+    start_at: startOf(utcDay(-1)),
     end_at: endOf(utcDay()),
   });
-  await expect(filterChip(page, `${utcDay(-7)} to ${utcDay()}`)).toBeVisible();
   await expect(
     field(page, "Audit date from"),
     "选了预设之后自定义日期框就该收起来，不然屏幕上同时有两套互相矛盾的时间控件",
   ).toHaveCount(0);
 
   await ensureFiltersOpen(toolbar(page));
-  const month = await expectAuditRequest(page, () => selectSegmentedControlOption(page, "1M"), {
+  const month = await expectAuditRequest(page, () => selectRadioOption(page, "1M"), {
     start_at: startOf(utcDay(-30)),
   });
-  expect(month.data.length).toBeGreaterThanOrEqual(week.data.length);
+  expect(month.data.length).toBeGreaterThanOrEqual(day.data.length);
 
   /* 切回「自定义」只是把两个日期框放出来，筛选条件一个字没变，不该重新取数。 */
   await ensureFiltersOpen(toolbar(page));
-  await expectNoApiCalls(page, () => selectSegmentedControlOption(page, "Custom"));
+  await expectNoApiCalls(page, () => selectRadioOption(page, "Custom"));
   await expect(field(page, "Audit date from")).toHaveValue(utcDay(-30));
   await expect(field(page, "Audit date to")).toHaveValue(utcDay());
 
@@ -221,20 +211,11 @@ test("时间范围：三个预设各自改的是起始日，切回「自定义�
     () => field(page, "Audit date from").fill(utcDay(-3)),
     { start_at: startOf(utcDay(-3)), end_at: endOf(utcDay()) },
   );
-  await expect(filterChip(page, `${utcDay(-3)} to ${utcDay()}`)).toBeVisible();
-
-  /* 时间标签上的叉要把两个日期一起清掉，请求里这两个参数就该整个消失。 */
-  const cleared = await expectAuditRequest(
-    page,
-    () => filterChip(page, `${utcDay(-3)} to ${utcDay()}`).click(),
-    { start_at: null, end_at: null },
-  );
-  expect(cleared.data.length).toBeGreaterThanOrEqual(month.data.length);
-  await expect(filterSummary(page), "筛选全清之后摘要整条消失").toHaveCount(0);
+  await expect(toolbar(page).getByRole("button", { name: "Filter & sort (1)" })).toBeVisible();
 });
 
 test("加载更多：使用游标追加事件，随后搜索会开启新的首批结果", async ({ page, api }) => {
-  const range = { start_at: startOf(utcDay(-1)), end_at: endOf(utcDay()) };
+  const range = { start_at: startOf(utcDay(-7)), end_at: endOf(utcDay()) };
   let firstServerPage = await serverAudit(api, range);
   while (!firstServerPage.next_cursor) {
     await makeAuditedEvent(api);
@@ -272,7 +253,7 @@ test("导出：CSV 和 JSON 都真的落盘、内容就是当前筛选的结果�
   await expectAuditRequest(page, () => searchBox(page).fill(invite.id), { search: invite.id });
   await expect(auditRows(page)).toHaveCount(1);
 
-  const filenameBase = `guild-audit-${utcDay(-1)}-to-${utcDay()}`;
+  const filenameBase = `guild-audit-${utcDay(-7)}-to-${utcDay()}`;
 
   await page.getByRole("button", { name: "Export", exact: true }).click();
   const csvDownload = page.waitForEvent("download");
@@ -304,7 +285,7 @@ test("导出：CSV 和 JSON 都真的落盘、内容就是当前筛选的结果�
   };
   /* 导出留痕不会命中仍按邀请码 id 过滤的下一次导出。 */
   expect(json.total, "第二次导出仍然只包含当前筛选命中的那条记录").toBe(1);
-  expect(json.start_at, "导出的时间范围要和界面上筛的一致").toBe(startOf(utcDay(-1)));
+  expect(json.start_at, "导出的时间范围要和界面上筛的一致").toBe(startOf(utcDay(-7)));
   expect(json.end_at).toBe(endOf(utcDay()));
   const exported = json.data.map((row) => row.subject.id);
   expect(exported, "导出的就是屏幕上按邀请码 id 命中的那一条").toEqual([invite.id]);
@@ -320,7 +301,7 @@ test("导出：CSV 和 JSON 都真的落盘、内容就是当前筛选的结果�
 test("归档下载面板：默认收起，展开后如实说明本地没有归档，不谎报有东西可下", async ({ page }) => {
   await openAudit(page);
 
-  const panel = page.locator(".mantine-Paper-root").filter({ hasText: "Archive Downloads" }).last();
+  const panel = page.locator('[data-slot="card"]').filter({ hasText: "Archive Downloads" }).last();
   await expect(panel).toBeVisible();
   await expect(
     panel.getByText("No archived audit months available yet."),

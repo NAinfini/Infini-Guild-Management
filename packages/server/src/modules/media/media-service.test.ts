@@ -23,6 +23,8 @@ const facts: MediaReadFacts = {
   contentType: "image/webp",
   sha256: metadata.sha256,
   ownerUserId: null,
+  mediaType: "image",
+  originalName: null,
   entityTypes: [],
   audience: "public",
 };
@@ -136,6 +138,36 @@ describe("MediaService reads", () => {
 });
 
 describe("MediaService uploads", () => {
+  it("stages a validated PDF announcement attachment as one full file variant", async () => {
+    const reserveUploads = vi.fn().mockResolvedValue(undefined);
+    const markStaged = vi.fn().mockResolvedValue(undefined);
+    const putIfAbsent = vi.fn(async (key: string, input: Parameters<BlobStore["putIfAbsent"]>[1]) => ({
+      key,
+      size: input.size,
+      contentType: input.contentType,
+      sha256: input.sha256,
+      etag: input.sha256,
+      lastModified: NOW,
+    }));
+    const service = new MediaService(
+      { reserveUploads, markStaged } as unknown as MediaStore,
+      { putIfAbsent } as unknown as BlobStore,
+    );
+    const bytes = new TextEncoder().encode("%PDF-1.7");
+
+    const attachment = await service.uploadAnnouncementAttachment(authenticatedContext(), {
+      bytes,
+      originalName: "Guild guide.pdf",
+      contentType: "application/pdf",
+    }, 1_024);
+
+    expect(attachment).toMatchObject({ name: "Guild guide.pdf", content_type: "application/pdf", byte_size: bytes.byteLength });
+    const reservation = reserveUploads.mock.calls[0]?.[0][0];
+    expect(reservation).toMatchObject({ purpose: "announcement_attachment", mediaType: "file", originalName: "Guild guide.pdf" });
+    expect(reservation.variants).toEqual([expect.objectContaining({ variant: "full", contentType: "application/pdf", width: null, height: null })]);
+    expect(putIfAbsent).toHaveBeenCalledWith(expect.stringMatching(/\/full\.pdf$/), expect.objectContaining({ contentType: "application/pdf" }));
+  });
+
   it("reserves and stages one batch while writing immutable objects sequentially", async () => {
     const reserveUploads = vi.fn().mockResolvedValue(undefined);
     const markStaged = vi.fn().mockResolvedValue(undefined);

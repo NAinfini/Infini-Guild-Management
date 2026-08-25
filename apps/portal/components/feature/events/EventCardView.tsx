@@ -1,5 +1,7 @@
 import type { Event, MemberProfile, User } from "@guild/shared";
-import { Badge, Group, HoverCard, Paper, Stack, Text, ThemeIcon, UnstyledButton } from "@mantine/core";
+import { Badge } from "@portal/components/ui/badge";
+import { Card } from "@portal/components/ui/card";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@portal/components/ui/tooltip";
 import {
   ArchiveIcon,
   CalendarEventIcon,
@@ -20,7 +22,7 @@ import { summariseEventClassQuotas } from "./class-quota-view";
 import { eventHasBehavior, getEventTypeLabel } from "@portal/utils/game-rules";
 import { EventTypeIcon } from "@portal/components/shared/EventTypeIcon";
 import { eventTypeColor } from "@portal/utils/event-colors";
-import { formatLocaleParts } from "@portal/utils/datetime";
+import { formatEventTimeRange, formatLocaleParts } from "@portal/utils/datetime";
 
 // The card's meta row is one line wide. "2026年7月25日周六" plus "下午5:15 - 下午7:15"
 // overflowed it on every card, so the year is only spelled out when the event is
@@ -36,13 +38,6 @@ function formatLocalDate(startAt: string, locale: string, now: Date): string {
   });
 }
 
-function formatLocalTime(startAt: string, endAt: string | null, locale: string): string {
-  const timeOpts: Intl.DateTimeFormatOptions = { hour: "numeric", minute: "2-digit" };
-  const startTime = formatLocaleParts(startAt, locale, timeOpts);
-  if (!endAt) return startTime;
-  return `${startTime}–${formatLocaleParts(endAt, locale, timeOpts)}`;
-}
-
 type MemberEntry = { user: User; profile: MemberProfile };
 
 type EventStatusIndicatorProps = {
@@ -55,30 +50,24 @@ type EventStatusIndicatorProps = {
 
 function EventStatusIndicator({ children, color, icon, title, description }: EventStatusIndicatorProps) {
   return (
-    <HoverCard width={280} shadow="lg" withArrow arrowSize={10} openDelay={350} closeDelay={80} position="top">
-      <HoverCard.Target>
-        <span
+    <Tooltip>
+      <TooltipTrigger
+        delay={350}
+        render={<span
           className="event-card__status-icon"
           data-animate-icon-trigger
           role="img"
           aria-label={title}
           tabIndex={0}
-        >
-          {children}
-        </span>
-      </HoverCard.Target>
-      <HoverCard.Dropdown p="sm" style={{ borderRadius: 10 }}>
-        <Group gap={10} wrap="nowrap" align="flex-start">
-          <ThemeIcon variant="light" color={color} size="lg" radius="md" style={{ flexShrink: 0, marginTop: 2 }}>
-            {icon}
-          </ThemeIcon>
-          <div style={{ minWidth: 0 }}>
-            <Text size="sm" fw={700} lh={1.3} mb={4}>{title}</Text>
-            <Text size="xs" c="dimmed" lh={1.5}>{description}</Text>
-          </div>
-        </Group>
-      </HoverCard.Dropdown>
-    </HoverCard>
+        />}
+      >
+        {children}
+      </TooltipTrigger>
+      <TooltipContent className="event-card__status-tooltip" side="top">
+        <span className="event-card__status-tooltip-icon" style={{ color }}>{icon}</span>
+        <span><strong>{title}</strong><span>{description}</span></span>
+      </TooltipContent>
+    </Tooltip>
   );
 }
 
@@ -98,7 +87,6 @@ type EventCardViewProps = {
   /** 卡上要露脸的人。投票活动传投票者，其余传报名者；模板预览传空数组。 */
   members: readonly MemberEntry[];
   flag?: "NEW" | "UPDATED";
-  isFocused?: boolean;
   /** 整卡点击的鼠标快捷方式。模板预览不传，卡片就不可点。 */
   onOpenDetail?: () => void;
   /** 色带右端、kebab 左侧的按钮（复制 @提及）。 */
@@ -114,7 +102,6 @@ export function EventCardView({
   now,
   members,
   flag,
-  isFocused = false,
   onOpenDetail,
   headerActions,
   menu,
@@ -196,9 +183,8 @@ export function EventCardView({
   // The card contains interactive descendants, so only its title receives the
   // keyboard link affordance; the card-level click remains a pointer shortcut.
   return (
-    <Paper
-      withBorder
-      className={`event-card${isFocused ? " event-card--focused" : ""}`}
+    <Card
+      className="event-card p-0"
       onClick={onOpenDetail}
       style={{
         "--event-card-accent": typeColor,
@@ -219,12 +205,11 @@ export function EventCardView({
       <div className="event-card__header">
         <div className="event-card__header-left">
           <Badge
-            size="sm"
-            variant="light"
-            color={typeColor}
+            variant="outline"
             className="event-card__type-badge"
-            leftSection={<EventTypeIcon eventType={event.type} size={12} />}
+            style={{ "--event-card-badge-color": typeColor } as React.CSSProperties}
           >
+            <EventTypeIcon eventType={event.type} size={12} />
             {getEventTypeLabel(event.type, i18n.language)}
           </Badge>
         </div>
@@ -250,32 +235,35 @@ export function EventCardView({
 
       {/* ── 正文：这场活动是什么 ── */}
       <div className="event-card__body">
-        <Stack gap={8}>
-          <UnstyledButton
+        <div className="event-card__body-stack">
+          {onOpenDetail ? (
+          <button
+            type="button"
             className="event-card__title-btn"
-            onClick={onOpenDetail}
-            component={onOpenDetail ? "button" : "div"}
+            onClick={(clickEvent) => {
+              clickEvent.stopPropagation();
+              onOpenDetail();
+            }}
           >
-            <Text component="h2" fw={700} size="md" className="event-card__title">
-              {event.title}
-            </Text>
-          </UnstyledButton>
+            <h2 className="event-card__title">{event.title}</h2>
+          </button>
+          ) : <h2 className="event-card__title">{event.title}</h2>}
 
-          <Group gap={6} align="center" wrap="nowrap">
+          <div className="event-card__datetime">
             <CalendarEventIcon size={14} className="event-card__icon-muted" />
-            <Text size="xs" className="event-card__date-text">
+            <span className="event-card__date-text">
               {formatLocalDate(event.start_at, i18n.language, now)}
-            </Text>
-            <Text size="xs" c="dimmed">·</Text>
+            </span>
+            <span className="event-card__datetime-divider">·</span>
             <ClockIcon size={14} className="event-card__icon-muted" />
-            <Text size="xs" className="event-card__time-text">
-              {formatLocalTime(event.start_at, event.end_at, i18n.language)}
-            </Text>
-          </Group>
+            <span className="event-card__time-text">
+              {formatEventTimeRange(event.start_at, event.end_at, i18n.language)}
+            </span>
+          </div>
 
-          <Text size="xs" c="dimmed" lineClamp={1} className="event-card__description">
+          <p className="event-card__description">
             {event.description || t("card.noDescription")}
-          </Text>
+          </p>
 
           {/* 没配额也画：那时它是一条报名进度，「这场还收不收人」跟「缺哪个职业」在
               卡片上占同一个位置，不会因为活动类型不同而少一块。 */}
@@ -296,8 +284,8 @@ export function EventCardView({
               <div className="event-card__participant-action">{participantAction}</div>
             ) : null}
           </div>
-        </Stack>
+        </div>
       </div>
-    </Paper>
+    </Card>
   );
 }

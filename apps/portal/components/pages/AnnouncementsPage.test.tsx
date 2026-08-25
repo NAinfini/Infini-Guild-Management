@@ -1,4 +1,3 @@
-import { MantineProvider } from "@mantine/core";
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { readFileSync } from "node:fs";
@@ -21,19 +20,21 @@ const controller = vi.hoisted(() => ({
   selectedId: "announcement-1" as string | null,
   isCreating: false,
   isPublishReady: true,
+  attachments: [],
+  attachmentUploading: false,
+  attachmentMaxBytes: 10 * 1024 * 1024,
+  attachmentQuota: 5,
+  handleUploadAnnouncementAttachment: vi.fn(),
+  handleRemoveAnnouncementAttachment: vi.fn(),
   rows: [],
   listQuery: { isError: false, isLoading: false },
   detailQuery: { isError: false, isLoading: false },
 }));
 const responsive = vi.hoisted(() => ({ mobile: false }));
 
-vi.mock("@mantine/hooks", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("@mantine/hooks")>();
-  return {
-    ...actual,
-    useMediaQuery: () => responsive.mobile,
-  };
-});
+vi.mock("../../hooks/useMediaQuery", () => ({
+  useMediaQuery: () => responsive.mobile,
+}));
 
 vi.mock("../../hooks/useAnnouncementsController", () => ({
   useAnnouncementsController: () => controller,
@@ -88,7 +89,20 @@ vi.mock("../feature/announcements/AnnouncementDetailCard", () => ({
 }));
 
 vi.mock("../layout/PageLayout", () => ({
-  PageLayout: ({ children }: { children: ReactNode }) => children,
+  PageLayout: ({
+    children,
+    toolbar,
+    workspaceMode,
+  }: {
+    children: ReactNode;
+    toolbar?: ReactNode;
+    workspaceMode?: "scroll" | "contained";
+  }) => (
+    <div data-testid="page-layout" data-workspace-mode={workspaceMode}>
+      <div data-testid="page-toolbar">{toolbar}</div>
+      <div data-testid="page-workspace">{children}</div>
+    </div>
+  ),
 }));
 
 vi.mock("react-i18next", () => ({
@@ -98,11 +112,7 @@ vi.mock("react-i18next", () => ({
 }));
 
 function renderPage() {
-  return render(
-    <MantineProvider>
-      <AnnouncementsPage />
-    </MantineProvider>,
-  );
+  return render(<AnnouncementsPage />);
 }
 
 describe("AnnouncementsPage empty state", () => {
@@ -198,11 +208,7 @@ describe("AnnouncementsPage empty state", () => {
     expect(controller.setSelectedId).not.toHaveBeenCalled();
 
     controller.detailQuery.isLoading = false;
-    page.rerender(
-      <MantineProvider>
-        <AnnouncementsPage />
-      </MantineProvider>,
-    );
+    page.rerender(<AnnouncementsPage />);
     expect(screen.getByTestId("announcement-detail")).toBeInTheDocument();
     expect(screen.queryByTestId("announcement-list")).not.toBeInTheDocument();
   });
@@ -230,19 +236,34 @@ describe("AnnouncementsPage empty state", () => {
     expect(controller.resetFilters).toHaveBeenCalledOnce();
   });
 
-  it("marks the desktop detail column and stretches short details to the workspace height", () => {
-    renderPage();
+  it("uses the shared toolbar and contained desktop workspace", () => {
+    const desktop = renderPage();
+
+    expect(screen.getByTestId("page-layout")).toHaveAttribute("data-workspace-mode", "contained");
+    expect(screen.getByTestId("page-toolbar")).toContainElement(screen.getByTestId("announcement-filters"));
+    expect(screen.getByTestId("page-workspace")).not.toContainElement(screen.getByTestId("announcement-filters"));
 
     const detailColumn = document.querySelector(".announcements-page-column--detail");
     expect(detailColumn).not.toBeNull();
     expect(detailColumn).toContainElement(screen.getByTestId("announcement-detail"));
 
+    desktop.unmount();
+    responsive.mobile = true;
+    renderPage();
+    expect(screen.getByTestId("page-layout")).toHaveAttribute("data-workspace-mode", "scroll");
+    expect(screen.getByTestId("page-toolbar")).toContainElement(screen.getByTestId("announcement-filters"));
+  });
+
+  it("lets the desktop master-detail grid fill the shared workspace", () => {
     const css = readFileSync(
       resolve(process.cwd(), "apps/portal/components/pages/AnnouncementsPage.css"),
       "utf8",
     );
+    expect(css).not.toContain("--page-layout-max-width");
+    expect(css).not.toContain("100dvh");
+    expect(css).toMatch(/\.announcements-page-grid\s*\{[\s\S]*?grid-template-rows:\s*minmax\(0,\s*1fr\)[\s\S]*?flex:\s*1 1 auto/);
     expect(css).toMatch(
-      /\.announcements-detail-card\s*\{[\s\S]*?flex:\s*1 1 auto[\s\S]*?max-block-size:\s*100%/,
+      /\.announcements-detail-card\s*\{[\s\S]*?flex:\s*1 1 auto[\s\S]*?block-size:\s*100%/,
     );
   });
 });

@@ -99,28 +99,12 @@ function handleFetchError(err: unknown): never {
   });
 }
 
-async function handleErrorResponse(response: Response, requestPath: string): Promise<never> {
+async function handleErrorResponse(response: Response): Promise<never> {
   let errorPayload: StandardErrorResponse | null = null;
   try {
     errorPayload = (await response.json()) as StandardErrorResponse;
   } catch {
     errorPayload = null;
-  }
-
-  const isAuthLoginRequest =
-    requestPath.includes("/api/auth/login") || requestPath.includes("/api/auth/register");
-
-  if (response.status === 401 && typeof window !== "undefined" && !isAuthLoginRequest) {
-    window.dispatchEvent(
-      new CustomEvent("guild-api-unauthorized", {
-        detail: {
-          message: resolveErrorMessage(errorPayload?.message, 401),
-          requestId: errorPayload?.request_id,
-          errorCode: errorPayload?.error_code,
-          returnTo: `${window.location.pathname}${window.location.search}${window.location.hash}`,
-        },
-      }),
-    );
   }
 
   if (response.status === 403 && typeof window !== "undefined") {
@@ -169,7 +153,7 @@ export async function apiRequest<TResponse>(
     headers.set("If-None-Match", cachedResponse.etag);
   }
 
-  if (method === "POST" || method === "PATCH" || method === "DELETE") {
+  if (method === "POST" || method === "PUT" || method === "PATCH" || method === "DELETE") {
     headers.set("X-Requested-With", "XMLHttpRequest");
     headers.set("X-Request-Id", nanoid());
   }
@@ -205,7 +189,7 @@ export async function apiRequest<TResponse>(
   }
 
   if (!response.ok) {
-    await handleErrorResponse(response, url);
+    await handleErrorResponse(response);
   }
 
   if (method !== "GET") {
@@ -249,7 +233,7 @@ export async function apiDownload(
   headers.set("X-Request-Id", nanoid());
 
   const method = (init.method ?? "GET").toUpperCase();
-  if (method === "POST" || method === "PATCH" || method === "DELETE") {
+  if (method === "POST" || method === "PUT" || method === "PATCH" || method === "DELETE") {
     headers.set("X-Requested-With", "XMLHttpRequest");
   }
 
@@ -266,7 +250,7 @@ export async function apiDownload(
   }
 
   if (!response.ok) {
-    await handleErrorResponse(response, url);
+    await handleErrorResponse(response);
   }
 
   const blob = await response.blob();

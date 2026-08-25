@@ -34,7 +34,7 @@ import { epKey } from "./AdminApiTestCategory";
 const TEARDOWN_TIMEOUT_MS = 120_000;
 const TEARDOWN_RETRY_MS = 250;
 
-type AdminApiTestActor = Pick<User, "id" | "username" | "role_level" | "permissions">;
+type AdminApiTestActor = Pick<User, "id" | "display_name" | "role_level" | "permissions">;
 
 export function useAdminApiTestRunner(
   visibleApiCategories: CategoryDef[],
@@ -324,7 +324,7 @@ export function useAdminApiTestRunner(
       ...createInitialTestRunContext(),
       ...serverRun,
       meId: actor?.id ?? null,
-      meUsername: actor?.username ?? null,
+      meDisplayName: actor?.display_name ?? null,
       meRoleLevel: actor?.role_level ?? null,
       mePermissions: actor?.permissions ?? null,
     };
@@ -359,7 +359,7 @@ export function useAdminApiTestRunner(
       ...createInitialTestRunContext(),
       ...serverRun,
       meId: actor?.id ?? null,
-      meUsername: actor?.username ?? null,
+      meDisplayName: actor?.display_name ?? null,
       meRoleLevel: actor?.role_level ?? null,
       mePermissions: actor?.permissions ?? null,
     };

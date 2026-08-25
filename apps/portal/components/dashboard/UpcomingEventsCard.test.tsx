@@ -1,5 +1,4 @@
 import { fireEvent, render, screen } from "@testing-library/react";
-import { MantineProvider } from "@mantine/core";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, expect, it, vi } from "vitest";
@@ -62,30 +61,28 @@ describe("UpcomingEventsCard", () => {
     expect(css).toMatch(/\.upcoming-event-row\s*\{[^}]*container-type:\s*inline-size/s);
     expect(css).toMatch(/@container\s*\(max-width:\s*64rem\)/);
     expect(css).toMatch(
-      /\.upcoming-event-row\s+\.mantine-Badge-root\s*\{[^}]*color:\s*color-mix\(in srgb,\s*var\(--badge-color\) 60%,\s*var\(--text-primary\)\);/s,
+      /\.dashboard-event-type-badge\s*\{[^}]*color:\s*color-mix\(in srgb,\s*var\(--badge-color\) 60%,\s*var\(--text-primary\)\);/s,
     );
   });
 
   it("shows both server groups without a second truncation and links to all results", () => {
     const onViewAll = vi.fn();
     render(
-      <MantineProvider>
-        <UpcomingEventsCard
-          upcomingEventsCount={8}
-          featuredRows={[
-            eventRow("featured-1", true),
-            eventRow("featured-2", true),
-            eventRow("featured-3", true),
-          ]}
-          rows={[
-            eventRow("regular-1", false),
-            eventRow("regular-2", false),
-            eventRow("regular-3", false),
-          ]}
-          onOpenEvent={vi.fn()}
-          onViewAll={onViewAll}
-        />
-      </MantineProvider>,
+      <UpcomingEventsCard
+        upcomingEventsCount={8}
+        featuredRows={[
+          eventRow("featured-1", true),
+          eventRow("featured-2", true),
+          eventRow("featured-3", true),
+        ]}
+        rows={[
+          eventRow("regular-1", false),
+          eventRow("regular-2", false),
+          eventRow("regular-3", false),
+        ]}
+        onOpenEvent={vi.fn()}
+        onViewAll={onViewAll}
+      />,
     );
 
     expect(screen.getAllByText(/^Event /)).toHaveLength(6);
@@ -95,21 +92,19 @@ describe("UpcomingEventsCard", () => {
 
   it("orders featured and ordinary rows as one chronological list", () => {
     render(
-      <MantineProvider>
-        <UpcomingEventsCard
-          upcomingEventsCount={4}
-          featuredRows={[
-            eventRow("featured-late", true, "2026-08-03T20:00:00.000Z"),
-            eventRow("featured-latest", true, "2026-08-04T20:00:00.000Z"),
-          ]}
-          rows={[
-            eventRow("regular-first", false, "2026-07-31T20:00:00.000Z"),
-            eventRow("regular-second", false, "2026-08-01T20:00:00.000Z"),
-          ]}
-          onOpenEvent={vi.fn()}
-          onViewAll={vi.fn()}
-        />
-      </MantineProvider>,
+      <UpcomingEventsCard
+        upcomingEventsCount={4}
+        featuredRows={[
+          eventRow("featured-late", true, "2026-08-03T20:00:00.000Z"),
+          eventRow("featured-latest", true, "2026-08-04T20:00:00.000Z"),
+        ]}
+        rows={[
+          eventRow("regular-first", false, "2026-07-31T20:00:00.000Z"),
+          eventRow("regular-second", false, "2026-08-01T20:00:00.000Z"),
+        ]}
+        onOpenEvent={vi.fn()}
+        onViewAll={vi.fn()}
+      />,
     );
 
     expect(screen.getAllByText(/^Event /).map((node) => node.textContent)).toEqual([

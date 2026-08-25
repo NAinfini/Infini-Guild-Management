@@ -1,7 +1,7 @@
 import type { APIRequestContext, Locator, Page } from "@playwright/test";
 import { SYSTEM_TEST_CONTENT_MARKER } from "@guild/shared/config/system-test";
 import { expect, readJson, test } from "../../support/test";
-import { clearButton, expectNoDialog, field, selectOption } from "../../support/ui";
+import { expectNoDialog, field, selectOption } from "../../support/ui";
 
 /*
  * 「结束战争」弹窗：把一场进行中的公会战封档成战史。
@@ -41,23 +41,23 @@ type HistoryDetail = HistoryRow & {
 let stamp: number;
 let title: string;
 let eventId: string;
-let viewer: { id: string; username: string };
-let member: { id: string; username: string };
+let viewer: { id: string; display_name: string };
+let member: { id: string; display_name: string };
 
 test.beforeEach(async ({ api }) => {
   stamp = Date.now();
   title = `${SYSTEM_TEST_CONTENT_MARKER} War ${stamp}`;
 
   const session = await readJson(await api.get("/api/auth/me"), "回读当前会话") as {
-    user: { id: string; username: string };
+    user: { id: string; display_name: string };
   };
   viewer = session.user;
 
   const users = await readJson(
     await api.get("/api/users?page=1&limit=500&include_total=false"),
     "回读成员名单",
-  ) as { data: Array<{ user: { id: string; username: string } }> };
-  const found = users.data.find((entry) => entry.user.username === "member_01");
+  ) as { data: Array<{ user: { id: string; display_name: string } }> };
+  const found = users.data.find((entry) => entry.user.display_name === "member_01");
   expect(found, "种子数据里必须有 member_01，否则这条用例验的不是真人").toBeTruthy();
   member = found!.user;
 
@@ -212,8 +212,8 @@ test("结束战争：填完的每一项都落进战史，活动同时退出可�
   await field(modal, "Duration (minutes)").fill("42");
   await field(modal, "Our Kills").fill("7");
   await field(modal, "Enemy Kills").fill("3");
-  await field(modal, `${member.username} — Kills`).fill("5");
-  await field(modal, `${member.username} — Deaths`).fill("1");
+  await field(modal, `${member.display_name} — Kills`).fill("5");
+  await field(modal, `${member.display_name} — Deaths`).fill("1");
 
   await flow.click(submit, CONCLUDE);
   await expectNoDialog(page);
@@ -279,9 +279,7 @@ test("取消结束：不发请求也不落库；清掉结果后提交按钮重�
 
   await selectOption(modal, "Result", "Loss");
   await expect(submit()).toBeEnabled();
-  /* 清除按钮是 aria-hidden 的装饰控件，只能按类名取；这里用 page 作用域，
-     因为把 field(modal, …) 塞进 filter({ has }) 在非 page 作用域下取不到。 */
-  await clearButton(page, "Result").click();
+  await selectOption(modal, "Result", "Result");
   await expect(
     submit(),
     "结果被清掉之后必须重新禁用，否则会提交一条 result 为空的记录",

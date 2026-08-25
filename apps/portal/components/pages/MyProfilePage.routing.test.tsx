@@ -1,5 +1,4 @@
 import { DEFAULT_SITE_MEDIA_POLICY } from "@guild/shared";
-import { MantineProvider } from "@mantine/core";
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -23,14 +22,18 @@ vi.mock("react-i18next", () => ({
 }));
 
 vi.mock("../../stores/auth", () => ({
-  useAuthStore: (selector: (state: { user: { id: string; username: string } }) => unknown) =>
-    selector({ user: { id: "user-1", username: "Member" } }),
+  useAuthStore: (selector: (state: { user: { id: string; display_name: string } }) => unknown) =>
+    selector({ user: { id: "user-1", display_name: "Member" } }),
 }));
 
 vi.mock("../../hooks/data/useProfileData", () => ({
   useProfileData: () => ({
     profileQuery: {
-      data: { profile: { avatar_media_id: null, audio_media_id: null, audio_name: null } },
+      data: {
+        user: { id: "user-1", display_name: "Member" },
+        profile: { avatar_media_id: null, audio_media_id: null, audio_name: null },
+        badges: [],
+      },
       isLoading: false,
       isError: false,
       isFetching: false,
@@ -64,16 +67,6 @@ vi.mock("../../hooks/useProfileFormState", () => ({
     availabilityData: null,
     setAvailabilityData: vi.fn(),
     dirtySections: { home: true, availability: false },
-    currentPassword: "",
-    setCurrentPassword: vi.fn(),
-    newPassword: "",
-    setNewPassword: vi.fn(),
-    confirmNewPassword: "",
-    setConfirmNewPassword: vi.fn(),
-    currentPasswordForUsername: "",
-    setCurrentPasswordForUsername: vi.fn(),
-    newUsername: "",
-    setNewUsername: vi.fn(),
     isDirty: false,
   }),
 }));
@@ -86,11 +79,7 @@ vi.mock("../../hooks/useProfileMutations", () => ({
     uploadImages: vi.fn(),
     uploadAudio: vi.fn(),
     removeAudio: vi.fn(),
-    changePassword: vi.fn(),
-    changeUsername: vi.fn(),
     logout: vi.fn(),
-    changePasswordMutation: { isPending: false },
-    changeUsernameMutation: { isPending: false },
   }),
 }));
 
@@ -118,7 +107,12 @@ vi.mock("../../hooks/useAppError", () => ({
 }));
 
 vi.mock("../layout/PageLayout", () => ({
-  PageLayout: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
+  PageLayout: ({ children, toolbar }: { children: React.ReactNode; toolbar?: React.ReactNode }) => (
+    <div>
+      {toolbar}
+      {children}
+    </div>
+  ),
 }));
 
 vi.mock("../shared/UnsavedChangesAffix", () => ({
@@ -162,48 +156,45 @@ describe("MyProfilePage tab routing", () => {
 
   it("restores the deep link and keeps tab content aligned with the URL", async () => {
     const user = userEvent.setup();
-    render(
-      <MantineProvider>
-        <MyProfilePage />
-      </MantineProvider>,
-    );
+    const view = render(<MyProfilePage />);
 
     expect(screen.getByText("availability-panel")).toBeVisible();
 
-    await user.click(screen.getByRole("tab", { name: /tab\.account/ }));
-    expect(screen.getByText("account-panel")).toBeVisible();
+    await user.click(screen.getByRole("button", { name: /tab\.account/ }));
     expect(routeMocks.navigate).toHaveBeenLastCalledWith({
       to: "/profile",
       search: { tab: "account" },
       replace: true,
       viewTransition: false,
     });
+    routeMocks.search.tab = "account";
+    view.rerender(<MyProfilePage />);
+    expect(screen.getByText("account-panel")).toBeVisible();
 
-    await user.click(screen.getByRole("tab", { name: /tab\.home/ }));
-    expect(screen.getByText("profile-panel")).toBeVisible();
-    expect(screen.getByText("media-panel")).toBeVisible();
+    await user.click(screen.getByRole("button", { name: /tab\.home/ }));
     expect(routeMocks.navigate).toHaveBeenLastCalledWith({
       to: "/profile",
       search: { tab: undefined },
       replace: true,
       viewTransition: false,
     });
+    routeMocks.search.tab = undefined;
+    view.rerender(<MyProfilePage />);
+    expect(screen.getByText("profile-panel")).toBeVisible();
+    expect(screen.getByText("media-panel")).toBeVisible();
   });
 
   it("marks the tab that owns unsaved changes", () => {
-    render(
-      <MantineProvider>
-        <MyProfilePage />
-      </MantineProvider>,
-    );
+    render(<MyProfilePage />);
 
     // dirtySections says home, not availability: the dot has to follow the
     // fields, otherwise switching tabs hides where the unsaved work is.
-    const homeTab = screen.getByRole("tab", { name: /tab\.home/ });
+    const homeTab = screen.getByRole("button", { name: /tab\.home/ });
     expect(homeTab.querySelector(".my-profile-tab-label__dot")).not.toBeNull();
     expect(
-      screen.getByRole("tab", { name: /tab\.availability/ })
+      screen.getByRole("button", { name: /tab\.availability/ })
         .querySelector(".my-profile-tab-label__dot"),
     ).toBeNull();
   });
+
 });

@@ -4,7 +4,7 @@ import { ApiRequestError } from "./api/client";
 import { resolveRouteSession, type RouteSession } from "./router-session";
 
 const session = {
-  user: { id: "user-1", username: "member" },
+  user: { id: "user-1", display_name: "member" },
   profile: { user_id: "user-1" },
 } as RouteSession;
 

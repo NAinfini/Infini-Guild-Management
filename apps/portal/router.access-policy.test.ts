@@ -36,6 +36,11 @@ describe("portal route access policy", () => {
       "dashboardRoute",
       "eventsRoute",
       "eventDetailRoute",
+      "eventCreateRoute",
+      "eventEditRoute",
+      "recurringTemplatesRoute",
+      "recurringTemplateCreateRoute",
+      "recurringTemplateEditRoute",
       "rosterRoute",
       "announcementsRoute",
       "guildWarRoute",
@@ -56,6 +61,32 @@ describe("portal route access policy", () => {
     expect(source).toContain("publicToolsRoute,");
     expect(source).toContain("loginRoute,");
     expect(source).toContain("registerRoute,");
+    expect(source).toContain("forbiddenRoute,");
+    expect(source).toContain("maintenanceRoute,");
+  });
+
+  it("guards mutable event routes by current-session permissions while keeping details public", () => {
+    const source = routerSource();
+    const detailRoute = source.slice(source.indexOf("const eventDetailRoute"), source.indexOf("const rosterRoute"));
+    const mutationGuard = source.slice(
+      source.indexOf("async function requireEventMutationPermission"),
+      source.indexOf("const LazyAdminPage"),
+    );
+
+    expect(detailRoute).not.toContain("throw redirect({\n      to: \"/events\"");
+    expect(detailRoute).not.toContain("fetchEventDetail(params.id)");
+    expect(source).toContain('path: "/events/new"');
+    expect(source).toContain('path: "/events/$id/edit"');
+    expect(source).toContain('path: "/events/recurring/new"');
+    expect(source).toContain('path: "/events/recurring/$templateId/edit"');
+    expect(source).toContain('"events.create"');
+    expect(source).toContain('"events.edit"');
+    expect(source).toContain('"events.templates"');
+    expect(mutationGuard).toContain("requireAuthenticatedSession(location)");
+    expect(mutationGuard.indexOf("requireAuthenticatedSession(location)")).toBeLessThan(
+      mutationGuard.indexOf("isExternalViewSearch"),
+    );
+    expect(source.match(/requireEventMutationPermission\("events\.(?:create|edit|templates)", location\)/g)).toHaveLength(5);
   });
 
   it("guards storage structure management with the structure permission", () => {

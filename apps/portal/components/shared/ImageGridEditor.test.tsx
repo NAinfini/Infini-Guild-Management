@@ -1,4 +1,3 @@
-import { MantineProvider } from "@mantine/core";
 import { fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { ImageGridEditor } from "./ImageGridEditor";
@@ -14,15 +13,13 @@ vi.mock("react-i18next", () => ({
 
 function renderEditor(items: Array<{ id: string; src?: string }>) {
   render(
-    <MantineProvider>
-      <ImageGridEditor
-        items={items}
-        maxImages={2}
-        onReorder={vi.fn()}
-        onFilesSelected={vi.fn()}
-        aria-label="Attachments"
-      />
-    </MantineProvider>,
+    <ImageGridEditor
+      items={items}
+      maxImages={2}
+      onReorder={vi.fn()}
+      onFilesSelected={vi.fn()}
+      aria-label="Attachments"
+    />,
   );
 }
 
@@ -45,26 +42,23 @@ describe("ImageGridEditor", () => {
 
   it("uses localized accessible names for upload and delete actions", () => {
     render(
-      <MantineProvider>
-        <ImageGridEditor
-          items={[{ id: "attachment-1", alt: "Raid portrait" }]}
-          maxImages={2}
-          onReorder={vi.fn()}
-          onDelete={vi.fn()}
-          onFilesSelected={vi.fn()}
-          aria-label="Attachments"
-        />
-      </MantineProvider>,
+      <ImageGridEditor
+        items={[{ id: "attachment-1", alt: "Raid portrait" }]}
+        maxImages={2}
+        onReorder={vi.fn()}
+        onDelete={vi.fn()}
+        onFilesSelected={vi.fn()}
+        aria-label="Attachments"
+      />,
     );
 
     expect(screen.getByRole("button", { name: "Localized add images" })).toBeInTheDocument();
     const deleteButton = screen.getByRole("button", {
       name: "Localized delete Raid portrait",
     });
-    expect(deleteButton.getAttribute("style")).toContain(
-      "--ai-size: calc(2.75rem * var(--mantine-scale))",
-    );
     expect(deleteButton).toHaveStyle({
+      width: "44px",
+      height: "44px",
       top: "-6px",
       right: "-6px",
     });
@@ -80,19 +74,17 @@ describe("ImageGridEditor", () => {
 
   it("only disables the delete action for the image being removed", () => {
     render(
-      <MantineProvider>
-        <ImageGridEditor
-          items={[
-            { id: "attachment-1", alt: "First image" },
-            { id: "attachment-2", alt: "Second image" },
-          ]}
-          maxImages={2}
-          onReorder={vi.fn()}
-          onDelete={vi.fn()}
-          deletingIds={new Set(["attachment-1"])}
-          aria-label="Attachments"
-        />
-      </MantineProvider>,
+      <ImageGridEditor
+        items={[
+          { id: "attachment-1", alt: "First image" },
+          { id: "attachment-2", alt: "Second image" },
+        ]}
+        maxImages={2}
+        onReorder={vi.fn()}
+        onDelete={vi.fn()}
+        deletingIds={new Set(["attachment-1"])}
+        aria-label="Attachments"
+      />,
     );
 
     expect(screen.getByRole("button", {
@@ -109,17 +101,15 @@ describe("ImageGridEditor", () => {
       throw consumerError;
     });
     const { container } = render(
-      <MantineProvider>
-        <ImageGridEditor
-          items={[]}
-          maxImages={2}
-          allowedTypes={["image/webp"]}
-          onError={onError}
-          onReorder={vi.fn()}
-          onFilesSelected={vi.fn()}
-          aria-label="Attachments"
-        />
-      </MantineProvider>,
+      <ImageGridEditor
+        items={[]}
+        maxImages={2}
+        allowedTypes={["image/webp"]}
+        onError={onError}
+        onReorder={vi.fn()}
+        onFilesSelected={vi.fn()}
+        aria-label="Attachments"
+      />,
     );
     const input = container.querySelector<HTMLInputElement>('input[type="file"]');
     expect(input).not.toBeNull();

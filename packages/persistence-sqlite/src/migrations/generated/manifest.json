@@ -4,5 +4,47 @@
     "ordinal": 0,
     "file": "0000_core.sql",
     "checksum": "41628b837f51067411bc253a896abded22bcfb89ec0b46612733790ce4de3f52"
+  },
+  {
+    "id": "0001_notifications",
+    "ordinal": 1,
+    "file": "0001_notifications.sql",
+    "checksum": "eeac006b5ac111e6b94d42572f316591773a51ed922d86d4fd17d84daedf767b"
+  },
+  {
+    "id": "0002_auth_hardening",
+    "ordinal": 2,
+    "file": "0002_auth_hardening.sql",
+    "checksum": "116fd617c7db31ba6e9ddb54ba46e0c182dc73941c60e6f8e870d8ec34c367af"
+  },
+  {
+    "id": "0003_identity_split",
+    "ordinal": 3,
+    "file": "0003_identity_split.sql",
+    "checksum": "20ebcd903479ace252a455dd1101ccb991160a902b69563e31ebd60558ed7dff"
+  },
+  {
+    "id": "0004_oauth",
+    "ordinal": 4,
+    "file": "0004_oauth.sql",
+    "checksum": "b03462eda1ea967474c45a95e0d1a41c57a53c4e9e47cfb77ec152d27aa9a0d2"
+  },
+  {
+    "id": "0005_verified_email",
+    "ordinal": 5,
+    "file": "0005_verified_email.sql",
+    "checksum": "f8661004d5a116fadd43d9949eda50b854960a03d4e3ccd02d96a5a1219ee27d"
+  },
+  {
+    "id": "0006_auth_lifecycle_hardening",
+    "ordinal": 6,
+    "file": "0006_auth_lifecycle_hardening.sql",
+    "checksum": "92df36c19a96807bbb1e581347a74f2b0dd819ecf296b1426de1849852dcd187"
+  },
+  {
+    "id": "0007_announcement_attachments",
+    "ordinal": 7,
+    "file": "0007_announcement_attachments.sql",
+    "checksum": "3550da438d0fc008d7a943f221d86eae95ba9e87f7a494b8dccc4f958faa6eca"
   }
 ]

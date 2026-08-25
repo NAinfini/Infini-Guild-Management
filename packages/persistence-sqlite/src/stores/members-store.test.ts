@@ -16,7 +16,7 @@ const BASE_SCHEMA = `
     revision_token TEXT NOT NULL DEFAULT '', created_at TEXT NOT NULL, updated_at TEXT NOT NULL
   );
   CREATE TABLE users (
-    id TEXT PRIMARY KEY, username TEXT NOT NULL UNIQUE, role_id TEXT NOT NULL REFERENCES roles(id),
+    id TEXT PRIMARY KEY, display_name TEXT NOT NULL UNIQUE, role_id TEXT NOT NULL REFERENCES roles(id),
     is_active INTEGER NOT NULL CHECK(is_active IN (0, 1)), deleted_at TEXT,
     revision_token TEXT NOT NULL DEFAULT '', created_at TEXT NOT NULL, updated_at TEXT NOT NULL,
     last_login_at TEXT
@@ -123,10 +123,10 @@ function harness() {
   return { database, executor, store: new SqliteMembersStore(createAppDatabase(executor), executor) };
 }
 
-function insertUser(database: DatabaseSync, id: string, username: string, roleId: string, active: boolean, deletedAt: string | null): void {
+function insertUser(database: DatabaseSync, id: string, displayName: string, roleId: string, active: boolean, deletedAt: string | null): void {
   database.prepare(`INSERT INTO users (
-    id, username, role_id, is_active, deleted_at, revision_token, created_at, updated_at
-  ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`).run(id, username, roleId, active ? 1 : 0, deletedAt, `${id}-v1`, NOW, NOW);
+    id, display_name, role_id, is_active, deleted_at, revision_token, created_at, updated_at
+  ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`).run(id, displayName, roleId, active ? 1 : 0, deletedAt, `${id}-v1`, NOW, NOW);
   database.prepare("INSERT INTO member_profiles (user_id, power, revision_token, created_at, updated_at) VALUES (?, 0, ?, ?, ?)")
     .run(id, `${id}-profile-v1`, NOW, NOW);
 }
@@ -226,14 +226,46 @@ describe("SqliteMembersStore atomic profile writes", () => {
     const value = harness();
     const target = await value.store.getMemberTarget("target-1");
     const updated = await value.store.updateProfile("target-1", {
-      bio: "next", classes: [], videoUrls: ["https://example.com/video"], images: ["media-b"], updatedAt: NOW,
+      displayName: "Renamed", bio: "next", classes: [], videoUrls: ["https://example.com/video"], images: ["media-b"], updatedAt: NOW,
     }, target!, ["media-a", "media-b"], audit("member_profile", "target-1", "update"));
 
-    expect(updated?.bio).toBe("next");
+    expect(updated).not.toBeNull();
+    expect(updated).not.toBe("display_name_taken");
+    if (updated === null || updated === "display_name_taken") {
+      throw new Error("Expected profile update to return the saved profile");
+    }
+    expect(updated.bio).toBe("next");
+    expect(text(value.database, "SELECT display_name FROM users WHERE id = 'target-1'")).toBe("Renamed");
     expect(text(value.database, "SELECT media_id FROM media_links WHERE entity_id = 'target-1'")).toBe("media-b");
     expect(scalar(value.database, "SELECT count(*) FROM member_profile_videos WHERE user_id = 'target-1'")).toBe(1);
     expect(scalar(value.database, "SELECT count(*) FROM audit_log")).toBe(1);
     expect(value.executor.batches).toHaveLength(1);
+  });
+
+  it("leaves the profile unchanged when the requested display name already exists", async () => {
+    const value = harness();
+    const target = await value.store.getMemberTarget("target-1");
+    const updated = await value.store.updateProfile("target-1", {
+      displayName: "Admin", bio: "blocked", updatedAt: NOW,
+    }, target!, ["media-a", "media-b"], audit("member_profile", "target-1", "update"));
+
+    expect(updated).toBe("display_name_taken");
+    expect(text(value.database, "SELECT display_name FROM users WHERE id = 'target-1'")).toBe("Target");
+    expect(text(value.database, "SELECT bio FROM member_profiles WHERE user_id = 'target-1'")).toBeNull();
+    expect(scalar(value.database, "SELECT count(*) FROM audit_log")).toBe(0);
+  });
+
+  it("does not update a display name when the profile media snapshot is stale", async () => {
+    const value = harness();
+    const target = await value.store.getMemberTarget("target-1");
+    const updated = await value.store.updateProfile("target-1", {
+      displayName: "Renamed", bio: "blocked", updatedAt: NOW,
+    }, target!, ["media-a"], audit("member_profile", "target-1", "update"));
+
+    expect(updated).toBeNull();
+    expect(text(value.database, "SELECT display_name FROM users WHERE id = 'target-1'")).toBe("Target");
+    expect(text(value.database, "SELECT bio FROM member_profiles WHERE user_id = 'target-1'")).toBeNull();
+    expect(scalar(value.database, "SELECT count(*) FROM audit_log")).toBe(0);
   });
 
   it("returns conflict with no profile, media, or audit change after a target-role race", async () => {
@@ -545,14 +577,14 @@ describe("SqliteMembersStore visibility and hard limits", () => {
     ]);
   });
 
-  it("pages badge assignments by a stable username and user-id cursor", async () => {
+  it("pages badge assignments by a stable display-name and user-id cursor", async () => {
     const value = harness();
     value.database.prepare("INSERT INTO member_badges (id, name, label_html, color, description, sort_order, created_at, updated_at) VALUES ('badge', 'Badge', '<b>B</b>', '#fff', NULL, 0, ?, ?)").run(NOW, NOW);
     const assign = value.database.prepare(
       "INSERT INTO member_badge_assignments (badge_id, user_id, assigned_by, assigned_at) VALUES ('badge', ?, 'admin-1', ?)",
     );
-    for (const [id, username] of [["alpha", "Alpha"], ["bravo", "Bravo"], ["charlie", "Charlie"]] as const) {
-      insertUser(value.database, id, username, "member", true, null);
+    for (const [id, displayName] of [["alpha", "Alpha"], ["bravo", "Bravo"], ["charlie", "Charlie"]] as const) {
+      insertUser(value.database, id, displayName, "member", true, null);
       assign.run(id, NOW);
     }
 
@@ -565,7 +597,7 @@ describe("SqliteMembersStore visibility and hard limits", () => {
     const last = first.records.at(-1)!;
     const second = await value.store.listBadgeAssignments("badge", {
       limit: 2,
-      cursor: { username: last.username, userId: last.userId },
+      cursor: { display_name: last.display_name, userId: last.userId },
     });
     expect(second.records.map(({ userId }) => userId)).toEqual(["charlie"]);
     expect(second.hasMore).toBe(false);

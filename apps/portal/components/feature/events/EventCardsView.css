@@ -14,6 +14,51 @@
     transform var(--motion-state);
 }
 
+/* 宽屏固定四列，并在空间不足时依次降到三列、两列和单列。工作区本身不画额外
+   容器，每张卡仍是唯一的可操作单元。 */
+.event-cards-view {
+  width: 100%;
+  margin-inline: auto;
+  container: event-cards-grid / inline-size;
+}
+
+.event-cards-view__load-more {
+  display: flex;
+  justify-content: center;
+  margin-top: var(--space-sm);
+}
+
+.event-cards-view__grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  justify-content: start;
+  align-content: start;
+  gap: var(--space-md);
+  min-width: 0;
+}
+
+.event-cards-view__grid > .event-card {
+  width: 100%;
+}
+
+@container event-cards-grid (max-width: 1103px) {
+  .event-cards-view__grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+@container event-cards-grid (max-width: 735px) {
+  .event-cards-view__grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@container event-cards-grid (max-width: 511px) {
+  .event-cards-view__grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
 /* 悬停改吃活动类型色而不是品牌色：一屏卡片各是各的类型，用同一个品牌绿回应
    等于告诉用户「悬停跟你指的是哪张卡无关」。抬起两像素并加深投影，是整站
    「可点的东西会回应」这条约定在卡片上的落点。 */
@@ -96,6 +141,12 @@
   max-width: 100%;
 }
 
+.event-card__type-badge {
+  border-color: color-mix(in srgb, var(--event-card-badge-color) 42%, var(--border-subtle));
+  color: var(--event-card-badge-color);
+  background: color-mix(in srgb, var(--event-card-badge-color) 10%, transparent);
+}
+
 /* 人数住在色带右端，复制按钮左边。 */
 .event-card__capacity {
   display: flex;
@@ -139,6 +190,23 @@
   padding: var(--space-sm) var(--space-md);
 }
 
+.event-card__body-stack {
+  display: grid;
+  gap: var(--space-sm);
+}
+
+.event-card__datetime {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  font-size: var(--text-meta);
+}
+
+.event-card__datetime-divider {
+  color: var(--text-muted);
+}
+
 /* 标题承担键盘入口，并像普通文本一样允许收缩。 */
 .event-card__title-btn {
   display: block;
@@ -180,24 +248,30 @@
 
 /* Status icons set their own color instead of inheriting the neutral rail color. */
 .event-card__status-icon--pinned {
-  color: var(--mantine-color-portal-brand-6);
+  color: var(--brand-text);
 }
 
 .event-card__status-icon--locked {
-  color: var(--mantine-color-red-6);
+  color: var(--status-danger);
 }
 
 .event-card__status-icon--new {
-  color: var(--mantine-color-green-6);
+  color: var(--status-success);
 }
 
 .event-card__status-icon--updated {
-  color: var(--mantine-color-orange-6);
+  color: var(--status-warning);
 }
 
 .event-card__description {
   min-height: 0;
+  margin: 0;
   line-height: 1.5;
+  color: var(--text-muted);
+  font-size: var(--text-meta);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .event-card__date-text {
@@ -240,9 +314,8 @@
   flex-shrink: 0;
   padding: 2px 8px 2px 5px;
   border-radius: 10px;
-  background: var(--mantine-color-pink-5);
-  /* Fixed pink winner badges use Mantine's fixed white foreground. */
-  color: var(--mantine-color-white);
+  background: var(--status-danger);
+  color: var(--brand-on-fill);
   font-size: 11px;
   font-weight: 600;
   line-height: 1;
@@ -264,42 +337,26 @@
   color: color-mix(in srgb, var(--text-primary) 65%, transparent);
 }
 
-.event-members-modal__header {
+.event-card__status-tooltip {
   display: grid;
-  grid-template-columns: 1fr 100px 80px;
-  gap: 8px;
-  padding: 8px 12px;
-  border-bottom: 1px solid color-mix(in srgb, var(--text-primary) 10%, transparent);
+  grid-template-columns: auto minmax(0, 1fr);
+  width: min(17.5rem, calc(100vw - 2rem));
+  gap: var(--space-sm);
+  align-items: start;
 }
 
-.event-members-modal__row {
+.event-card__status-tooltip-icon {
+  display: inline-flex;
+  padding-top: 2px;
+}
+
+.event-card__status-tooltip > span:last-child {
   display: grid;
-  grid-template-columns: 1fr 100px 80px;
-  gap: 8px;
-  align-items: center;
-  padding: 8px 12px;
-  border-bottom: 1px solid color-mix(in srgb, var(--text-primary) 5%, transparent);
-  transition: background 100ms ease;
+  gap: 2px;
 }
 
-.event-members-modal__row:hover {
-  background: color-mix(in srgb, var(--text-primary) 3%, transparent);
-}
-
-.event-members-modal__player {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  min-width: 0;
-}
-
-.event-members-modal__col {
-  min-width: 0;
-}
-
-.event-members-modal__col--power {
-  text-align: right;
-  min-width: 0;
+.event-card__status-tooltip strong {
+  color: var(--background);
 }
 
 @media (max-width: 30rem) {

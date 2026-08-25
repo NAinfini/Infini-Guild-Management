@@ -16,7 +16,6 @@ import {
   useSortable,
   verticalListSortingStrategy,
 } from "@dnd-kit/sortable";
-import { ActionIcon, Button, Group, Paper, Stack, Text, TextInput } from "@mantine/core";
 import {
   ChevronLeftIcon,
   ChevronRightIcon,
@@ -25,11 +24,15 @@ import {
   TrashIcon,
   XIcon,
 } from "@portal/components/icons";
-import { IconGripVertical } from "@tabler/icons-react";
+import { Button } from "@portal/components/ui/button";
+import { Card } from "@portal/components/ui/card";
+import { Input } from "@portal/components/ui/input";
+import { Label } from "@portal/components/ui/label";
 import type { WikiCategoryDraft } from "@portal/types/wiki";
 import { verticalDragTransform } from "@portal/utils/sortable-transform";
+import { IconGripVertical } from "@tabler/icons-react";
 import type { CSSProperties } from "react";
-import { useMemo, useState } from "react";
+import { useId, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import {
   CATEGORY_INDENT_WIDTH,
@@ -39,12 +42,6 @@ import {
   projectCategoryMove,
   type CategoryMove,
 } from "@portal/utils/wiki-category-tree";
-
-/*
- * The editable list is the category tree: vertical movement reorders siblings
- * and horizontal movement changes depth. Tree projection clamps invalid depth;
- * keyboard users reorder through dnd-kit and change depth with arrow actions.
- */
 
 type WikiCategoryEditorCardProps = {
   canEdit: boolean;
@@ -83,11 +80,11 @@ function SortableCategoryRow({
   onDeleteCategory: (categoryId: string) => void;
 }) {
   const { t } = useTranslation("wiki");
+  const categoryNameId = useId();
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: draft.id,
     disabled: !canEdit,
   });
-
   const style = {
     transform: verticalDragTransform(transform),
     transition,
@@ -100,61 +97,63 @@ function SortableCategoryRow({
       style={style}
       className={`wiki-category-editor-row${isDragging ? " wiki-category-editor-row--dragging" : ""}`}
     >
-      <Group gap={8} wrap="nowrap" align="center">
-        <ActionIcon
-          variant="default"
-          size="lg"
+      <div className="wiki-category-editor-row__content">
+        <Button
+          type="button"
+          variant="outline"
+          size="icon-lg"
+          className="wiki-category-editor-row__drag-handle"
           aria-label={t("categoryEditor.dragHandle")}
           disabled={!canEdit}
           {...attributes}
           {...listeners}
         >
-          <IconGripVertical size={20} />
-        </ActionIcon>
-        <div
-          className={`wiki-floating-field${draft.name.trim().length > 0 ? " wiki-floating-field--filled" : ""}`}
-          style={{ flex: 1, minWidth: 220 }}
-        >
-          <TextInput
-            classNames={{
-              root: "wiki-floating-root",
-              input: "wiki-floating-input",
-              label: "wiki-floating-label",
-            }}
-            label={t("categoryEditor.name")}
+          <IconGripVertical size={20} aria-hidden="true" />
+        </Button>
+        <div className="wiki-category-editor-row__field">
+          <Label htmlFor={categoryNameId}>{t("categoryEditor.name")}</Label>
+          <Input
+            id={categoryNameId}
             value={draft.name}
             disabled={!canEdit}
             onChange={(event) => onCategoryDraftNameChange(draft.id, event.currentTarget.value)}
+            aria-label={t("aria.categoryName")}
           />
         </div>
-        <ActionIcon
-          variant="default"
-          aria-label={t("categoryEditor.outdent")}
-          disabled={!canEdit || !outdentMove}
-          onClick={() => outdentMove && onCategoryMove(draft.id, outdentMove)}
-        >
-          <ChevronLeftIcon size={14} />
-        </ActionIcon>
-        <ActionIcon
-          variant="default"
-          aria-label={t("categoryEditor.indent")}
-          disabled={!canEdit || !indentMove}
-          onClick={() => indentMove && onCategoryMove(draft.id, indentMove)}
-        >
-          <ChevronRightIcon size={14} />
-        </ActionIcon>
-        <Button
-          size="sm"
-          variant="light"
-          color="red"
-          leftSection={<TrashIcon size={16} />}
-          onClick={() => onDeleteCategory(draft.id)}
-          loading={deletingCategoryId === draft.id}
-          disabled={Boolean(deletingCategoryId && deletingCategoryId !== draft.id)}
-        >
-          {t("categoryEditor.delete")}
-        </Button>
-      </Group>
+        <div className="wiki-category-editor-row__actions">
+          <Button
+            type="button"
+            variant="outline"
+            size="icon-sm"
+            aria-label={t("categoryEditor.outdent")}
+            disabled={!canEdit || !outdentMove}
+            onClick={() => outdentMove && onCategoryMove(draft.id, outdentMove)}
+          >
+            <ChevronLeftIcon size={14} aria-hidden="true" />
+          </Button>
+          <Button
+            type="button"
+            variant="outline"
+            size="icon-sm"
+            aria-label={t("categoryEditor.indent")}
+            disabled={!canEdit || !indentMove}
+            onClick={() => indentMove && onCategoryMove(draft.id, indentMove)}
+          >
+            <ChevronRightIcon size={14} aria-hidden="true" />
+          </Button>
+          <Button
+            type="button"
+            variant="destructive"
+            size="sm"
+            onClick={() => onDeleteCategory(draft.id)}
+            loading={deletingCategoryId === draft.id}
+            disabled={Boolean(deletingCategoryId && deletingCategoryId !== draft.id)}
+          >
+            <TrashIcon size={16} aria-hidden="true" />
+            {t("categoryEditor.delete")}
+          </Button>
+        </div>
+      </div>
     </div>
   );
 }
@@ -177,20 +176,15 @@ export function WikiCategoryEditorCard({
   const [activeId, setActiveId] = useState<string | null>(null);
   const [overId, setOverId] = useState<string | null>(null);
   const [offsetX, setOffsetX] = useState(0);
-
   const sensors = useSensors(
     useSensor(PointerSensor),
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
   );
-
   const flat = useMemo(() => flattenCategoryDrafts(categoryDrafts), [categoryDrafts]);
-
-  /* 拖顶层时把它的子级从列表里收起来：它们跟着爹一起走，不该自己占一个落点。 */
   const visibleItems = useMemo(
     () => (activeId ? flat.filter((entry) => entry.parentId !== activeId) : flat),
     [activeId, flat],
   );
-
   const projected = useMemo(
     () =>
       activeId && overId
@@ -204,7 +198,6 @@ export function WikiCategoryEditorCard({
         : null,
     [activeId, offsetX, overId, visibleItems],
   );
-
   const levelMoves = useMemo(
     () =>
       new Map(
@@ -216,9 +209,7 @@ export function WikiCategoryEditorCard({
     [categoryDrafts],
   );
 
-  if (!canEdit) {
-    return null;
-  }
+  if (!canEdit) return null;
 
   const resetDrag = () => {
     setActiveId(null);
@@ -227,105 +218,98 @@ export function WikiCategoryEditorCard({
   };
 
   return (
-    <Paper withBorder radius="md" p="var(--card-padding)" className="wiki-category-editor-card">
-      {/* 新建、保存和放弃钉在卡头，只有分类树本身内滚——分类多起来时这些控件
-          不能跟着滚走。 */}
+    <Card className="wiki-category-editor-card">
       <div className="wiki-card-body">
-          <Group justify="space-between" align="center" wrap="wrap">
-            <Text fw={700}>{t("categoryEditor.title")}</Text>
-            <Group gap={8}>
-              <Button
-                variant="default"
-                size="sm"
-                leftSection={<PlusIcon size={14} />}
-                onClick={onCreateCategory}
-                loading={isCreating}
-                disabled={isSavingDrafts}
-              >
-                {t("categoryEditor.create")}
-              </Button>
-              <Button
-                size="sm"
-                leftSection={<SaveIcon size={14} />}
-                onClick={onSaveDrafts}
-                disabled={!canSaveDrafts || isSavingDrafts || isCreating}
-              >
-                {t("articleEditor.save")}
-              </Button>
-              <Button
-                variant="default"
-                size="sm"
-                leftSection={<XIcon size={14} />}
-                onClick={onCloseEditor}
-                disabled={isSavingDrafts || isCreating}
-              >
-                {t("editor.closeNoSave")}
-              </Button>
-            </Group>
-          </Group>
+        <header className="wiki-card-header wiki-category-editor-header">
+          <h2 className="wiki-card-title">{t("categoryEditor.title")}</h2>
+          <div className="wiki-category-editor-header__actions">
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={onCreateCategory}
+              loading={isCreating}
+              disabled={isSavingDrafts}
+            >
+              <PlusIcon size={14} aria-hidden="true" />
+              {t("categoryEditor.create")}
+            </Button>
+            <Button
+              type="button"
+              size="sm"
+              onClick={onSaveDrafts}
+              loading={isSavingDrafts}
+              disabled={!canSaveDrafts || isCreating}
+            >
+              <SaveIcon size={14} aria-hidden="true" />
+              {t("articleEditor.save")}
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={onCloseEditor}
+              disabled={isSavingDrafts || isCreating}
+            >
+              <XIcon size={14} aria-hidden="true" />
+              {t("editor.closeNoSave")}
+            </Button>
+          </div>
+        </header>
 
-          <Stack gap={8} className="wiki-card-scroll">
-            <Group justify="space-between" align="center" wrap="wrap">
-              <Text fw={600} size="sm">
-                {t("categoryEditor.listTitle")}
-              </Text>
-              <Text size="xs" c="dimmed">
-                {t("categoryEditor.reorderHint")}
-              </Text>
-            </Group>
-            {categoryDrafts.length === 0 ? (
-              <Text c="dimmed" size="sm">
-                {t("categoryEditor.empty")}
-              </Text>
-            ) : (
-              <DndContext
-                sensors={sensors}
-                collisionDetection={closestCenter}
-                onDragStart={(event: DragStartEvent) => {
-                  setActiveId(String(event.active.id));
-                  setOverId(String(event.active.id));
-                  setOffsetX(0);
-                }}
-                onDragMove={(event: DragMoveEvent) => setOffsetX(event.delta.x)}
-                onDragOver={(event: DragOverEvent) => setOverId(event.over ? String(event.over.id) : null)}
-                onDragEnd={(event: DragEndEvent) => {
-                  if (projected) {
-                    onCategoryMove(String(event.active.id), projected);
-                  }
-                  resetDrag();
-                }}
-                onDragCancel={resetDrag}
+        <div className="wiki-card-scroll wiki-category-editor-scroll">
+          <div className="wiki-category-editor-list-heading">
+            <span>{t("categoryEditor.listTitle")}</span>
+            <span>{t("categoryEditor.reorderHint")}</span>
+          </div>
+          {categoryDrafts.length === 0 ? (
+            <p className="wiki-muted-copy">{t("categoryEditor.empty")}</p>
+          ) : (
+            <DndContext
+              sensors={sensors}
+              collisionDetection={closestCenter}
+              onDragStart={(event: DragStartEvent) => {
+                setActiveId(String(event.active.id));
+                setOverId(String(event.active.id));
+                setOffsetX(0);
+              }}
+              onDragMove={(event: DragMoveEvent) => setOffsetX(event.delta.x)}
+              onDragOver={(event: DragOverEvent) => setOverId(event.over ? String(event.over.id) : null)}
+              onDragEnd={(event: DragEndEvent) => {
+                if (projected) onCategoryMove(String(event.active.id), projected);
+                resetDrag();
+              }}
+              onDragCancel={resetDrag}
+            >
+              <SortableContext
+                items={visibleItems.map((entry) => entry.draft.id)}
+                strategy={verticalListSortingStrategy}
               >
-                <SortableContext
-                  items={visibleItems.map((entry) => entry.draft.id)}
-                  strategy={verticalListSortingStrategy}
-                >
-                  <div className="wiki-category-editor-tree">
-                    {visibleItems.map((entry) => (
-                      <SortableCategoryRow
-                        key={entry.draft.id}
-                        draft={entry.draft}
-                        /* 正在拖的那一行按投影出来的层级缩进，手上就能看出会落到第几层。 */
-                        depth={
-                          entry.draft.id === activeId && projected
-                            ? (projected.parentId ? 1 : 0)
-                            : entry.depth
-                        }
-                        canEdit={canEdit}
-                        deletingCategoryId={deletingCategoryId}
-                        indentMove={levelMoves.get(entry.draft.id)?.indent ?? null}
-                        outdentMove={levelMoves.get(entry.draft.id)?.outdent ?? null}
-                        onCategoryDraftNameChange={onCategoryDraftNameChange}
-                        onCategoryMove={onCategoryMove}
-                        onDeleteCategory={onDeleteCategory}
-                      />
-                    ))}
-                  </div>
-                </SortableContext>
-              </DndContext>
-            )}
-          </Stack>
+                <div className="wiki-category-editor-tree">
+                  {visibleItems.map((entry) => (
+                    <SortableCategoryRow
+                      key={entry.draft.id}
+                      draft={entry.draft}
+                      depth={
+                        entry.draft.id === activeId && projected
+                          ? (projected.parentId ? 1 : 0)
+                          : entry.depth
+                      }
+                      canEdit={canEdit}
+                      deletingCategoryId={deletingCategoryId}
+                      indentMove={levelMoves.get(entry.draft.id)?.indent ?? null}
+                      outdentMove={levelMoves.get(entry.draft.id)?.outdent ?? null}
+                      onCategoryDraftNameChange={onCategoryDraftNameChange}
+                      onCategoryMove={onCategoryMove}
+                      onDeleteCategory={onDeleteCategory}
+                    />
+                  ))}
+                </div>
+              </SortableContext>
+            </DndContext>
+          )}
+        </div>
       </div>
-    </Paper>
+    </Card>
   );
 }

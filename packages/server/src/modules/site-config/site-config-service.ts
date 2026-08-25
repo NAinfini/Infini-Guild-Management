@@ -3,6 +3,8 @@ import {
   siteConfigSchema,
   type AuditChange,
   type AdminSiteConfigResponse,
+  type OAuthProviderStatus,
+  type OAuthProviderStatuses,
   type PublicSiteConfig,
   type SiteAnalyticsSettings,
   type SiteConfig,
@@ -15,6 +17,17 @@ import { createAuditEvent, type AuditEventWrite } from "../audit/public.js";
 import type { ImageUpload, MediaService } from "../media/public.js";
 
 export type SiteConfigRecord = SiteConfig & Readonly<{ revisionToken: string }>;
+
+type OAuthProvider = keyof SiteConfig["oauth"];
+
+export type OAuthProviderAvailability = Readonly<Record<OAuthProvider, boolean>>;
+
+const NO_OAUTH_PROVIDER_IS_AVAILABLE: OAuthProviderAvailability = Object.freeze({
+  google: false,
+  discord: false,
+  kook: false,
+  wechat: false,
+});
 
 export interface SiteConfigStore {
   get(): Promise<SiteConfigRecord>;
@@ -38,10 +51,16 @@ export class SiteConfigService {
     private readonly media: MediaService,
     private readonly notifications: NotificationPublisher,
     private readonly deferred: DeferredTasks,
+    private readonly oauthProviderAvailability: OAuthProviderAvailability = NO_OAUTH_PROVIDER_IS_AVAILABLE,
   ) {}
 
   async getPublic(): Promise<PublicSiteConfig> {
-    return publicProjection(await this.store.get());
+    return publicProjection(await this.store.get(), this.oauthProviderAvailability);
+  }
+
+  async oauthEnabled(provider: keyof SiteConfig["oauth"]): Promise<boolean> {
+    const current = await this.store.get();
+    return current.oauth[provider] && this.oauthProviderAvailability[provider];
   }
 
   async getRuntimePolicy(): Promise<Pick<SiteConfig, "media_policy" | "storage_policy" | "absence_policy">> {
@@ -55,7 +74,7 @@ export class SiteConfigService {
 
   async getAdmin(context: RequestContext): Promise<AdminSiteConfigResponse> {
     context.authorization.require(PERMISSION_ID.ADMIN_SITE_CONFIG_MANAGE);
-    return adminProjection(await this.store.get());
+    return adminProjection(await this.store.get(), this.oauthStatuses());
   }
 
   async getAnalyticsSettings(context: RequestContext): Promise<SiteAnalyticsSettings> {
@@ -106,6 +125,7 @@ export class SiteConfigService {
       ...existing,
       ...patch,
       features: { ...existing.features, ...patch.features },
+      oauth: { ...existing.oauth, ...patch.oauth },
       media_policy: {
         max_file_size_bytes: {
           ...existing.media_policy.max_file_size_bytes,
@@ -118,8 +138,18 @@ export class SiteConfigService {
       created_at: existing.created_at,
       updated_at: monotonicTimestamp(context.now, existing.updated_at),
     });
+    const statuses = this.oauthStatuses();
+    const unavailable = (Object.keys(patch.oauth ?? {}) as OAuthProvider[])
+      .filter((provider) => patch.oauth?.[provider] && !existing.oauth[provider] && statuses[provider] !== "available");
+    if (unavailable.length > 0) {
+      throw new AppError({
+        code: "VALIDATION_ERROR",
+        status: 400,
+        message: `OAuth provider configuration is unavailable: ${unavailable.join(", ")}`,
+      });
+    }
     const record: SiteConfigRecord = { ...merged, revisionToken: crypto.randomUUID() };
-    if (sameConfig(existing, record)) return adminProjection(existing);
+    if (sameConfig(existing, record)) return adminProjection(existing, statuses);
     const sections = changedSections(existing, record).filter((section) => section !== "branding");
     const audit = createAuditEvent(context, {
       subjectType: "site_config",
@@ -139,7 +169,7 @@ export class SiteConfigService {
       throw conflict();
     }
     this.publish(record.updated_at);
-    return adminProjection(record);
+    return adminProjection(record, statuses);
   }
 
   async uploadLogo(
@@ -179,7 +209,7 @@ export class SiteConfigService {
       audit,
     })) throw conflict();
     this.publish(record.updated_at);
-    return adminProjection(record);
+    return adminProjection(record, this.oauthStatuses());
   }
 
   private publish(updatedAt: string): void {
@@ -191,24 +221,52 @@ export class SiteConfigService {
       hint: "site_config_updated",
     }));
   }
+
+  private oauthStatuses(): OAuthProviderStatuses {
+    return {
+      google: oauthStatus("google", this.oauthProviderAvailability),
+      discord: oauthStatus("discord", this.oauthProviderAvailability),
+      kook: oauthStatus("kook", this.oauthProviderAvailability),
+      // A runtime credential cannot make WeChat available until an adapter is
+      // implemented and verified. Keep this explicit rather than treating it
+      // as a missing secret.
+      wechat: "unsupported",
+    };
+  }
 }
 
-function publicProjection(record: SiteConfigRecord): PublicSiteConfig {
+function publicProjection(record: SiteConfigRecord, availability: OAuthProviderAvailability): PublicSiteConfig {
   return {
     site_name: record.site_name,
     site_description: record.site_description,
     site_logo_media_id: record.site_logo_media_id,
     default_site_logo_url: record.default_site_logo_url,
     features: record.features,
+    oauth: {
+      google: record.oauth.google && availability.google,
+      discord: record.oauth.discord && availability.discord,
+      kook: record.oauth.kook && availability.kook,
+      wechat: false,
+    },
     media_policy: record.media_policy,
     storage_policy: record.storage_policy,
     absence_policy: record.absence_policy,
   };
 }
 
-function adminProjection(record: SiteConfigRecord): AdminSiteConfigResponse {
+function adminProjection(
+  record: SiteConfigRecord,
+  oauthProviderStatus: OAuthProviderStatuses,
+): AdminSiteConfigResponse {
   const { revisionToken: _revisionToken, analytics_settings: _analytics, ...site } = record;
-  return { site };
+  return { site, oauth_provider_status: oauthProviderStatus };
+}
+
+function oauthStatus(
+  provider: Exclude<OAuthProvider, "wechat">,
+  availability: OAuthProviderAvailability,
+): OAuthProviderStatus {
+  return availability[provider] ? "available" : "missing_credentials";
 }
 
 function sameConfig(before: SiteConfigRecord, after: SiteConfigRecord): boolean {
@@ -219,7 +277,7 @@ function sameConfig(before: SiteConfigRecord, after: SiteConfigRecord): boolean 
 function changedSections(before: SiteConfigRecord, after: SiteConfigRecord): string[] {
   const sections: string[] = [];
   if (before.site_name !== after.site_name || before.site_description !== after.site_description) sections.push("branding");
-  for (const key of ["features", "media_policy", "storage_policy", "absence_policy"] as const) {
+  for (const key of ["features", "oauth", "media_policy", "storage_policy", "absence_policy"] as const) {
     if (JSON.stringify(before[key]) !== JSON.stringify(after[key])) sections.push(key);
   }
   return sections;

@@ -2,7 +2,6 @@ import type { RequestContext } from "@guild/kernel";
 import type { AnnouncementService } from "@guild/server/modules/announcements";
 import {
   createAnnouncementSchema,
-  type Announcement,
   updateAnnouncementSchema,
 } from "@guild/shared";
 import { ANNOUNCEMENT_STATUSES } from "@guild/shared/constants/announcements";
@@ -11,12 +10,20 @@ import { z } from "zod";
 import { jsonWithEtag } from "../../core/etag.js";
 import type { HttpEnv } from "../../core/http-env.js";
 import { requestContext } from "../../core/http-env.js";
-import { parseFormData, parseIfMatch, parseImageUploads, parseJsonBody, parseQuery } from "../../core/parsing.js";
+import {
+  parseAnnouncementAttachment,
+  parseFormData,
+  parseIfMatch,
+  parseImageUploads,
+  parseJsonBody,
+  parseQuery,
+} from "../../core/parsing.js";
 import {
   presentAnnouncement,
   presentAnnouncementMediaIds,
   presentAnnouncementOk,
   presentAnnouncementPage,
+  presentAnnouncementPendingAttachment,
   presentAnnouncementPendingImages,
 } from "../../presenters/announcements/announcements-presenter.js";
 
@@ -32,13 +39,18 @@ const listQuerySchema = z.object({
 });
 
 type AnnouncementHttpService = Pick<AnnouncementService,
-  "list" | "get" | "create" | "update" | "archive" | "delete" | "uploadPendingImages" | "uploadImages">;
+  "list" | "get" | "create" | "update" | "archive" | "delete" | "uploadPendingImages" | "uploadPendingAttachment" | "uploadImages">;
 
-export type AnnouncementImagePolicy = Readonly<{ maxBytes: number; quota: number }>;
+export type AnnouncementMediaPolicy = Readonly<{
+  imageMaxBytes: number;
+  imageQuota: number;
+  attachmentMaxBytes: number;
+  attachmentQuota: number;
+}>;
 export type AnnouncementRouteDependencies = Readonly<{
   service: AnnouncementHttpService;
   publicOrigin: string;
-  getImagePolicy(context: RequestContext): AnnouncementImagePolicy | Promise<AnnouncementImagePolicy>;
+  getMediaPolicy(context: RequestContext): AnnouncementMediaPolicy | Promise<AnnouncementMediaPolicy>;
 }>;
 
 export function createAnnouncementRoutes(dependencies: AnnouncementRouteDependencies): Hono<HttpEnv> {
@@ -64,10 +76,26 @@ export function createAnnouncementRoutes(dependencies: AnnouncementRouteDependen
     const request = requestContext(context);
     const [uploads, policy] = await Promise.all([
       parseFormData(context.req.raw).then(parseImageUploads),
-      dependencies.getImagePolicy(request),
+      dependencies.getMediaPolicy(request),
     ]);
     return context.json(presentAnnouncementPendingImages(
-      await dependencies.service.uploadPendingImages(request, uploads, policy.maxBytes, policy.quota),
+      await dependencies.service.uploadPendingImages(request, uploads, policy.imageMaxBytes, policy.imageQuota),
+    ), 201);
+  });
+
+  routes.post("/attachments", async (context) => {
+    const request = requestContext(context);
+    const [upload, policy] = await Promise.all([
+      parseFormData(context.req.raw).then(parseAnnouncementAttachment),
+      dependencies.getMediaPolicy(request),
+    ]);
+    return context.json(presentAnnouncementPendingAttachment(
+      await dependencies.service.uploadPendingAttachment(
+        request,
+        upload,
+        policy.attachmentMaxBytes,
+        policy.attachmentQuota,
+      ),
     ), 201);
   });
 
@@ -75,10 +103,10 @@ export function createAnnouncementRoutes(dependencies: AnnouncementRouteDependen
     const request = requestContext(context);
     const [input, policy] = await Promise.all([
       parseJsonBody(context.req.raw, createAnnouncementSchema, "Invalid announcement payload"),
-      dependencies.getImagePolicy(request),
+      dependencies.getMediaPolicy(request),
     ]);
     return context.json(presentAnnouncement(
-      await dependencies.service.create(request, input, publicOrigin, policy.quota),
+      await dependencies.service.create(request, input, publicOrigin, policy.imageQuota, policy.attachmentQuota),
     ), 201);
   });
 
@@ -86,21 +114,22 @@ export function createAnnouncementRoutes(dependencies: AnnouncementRouteDependen
     const announcement = presentAnnouncement(
       await dependencies.service.get(requestContext(context), context.req.param("id")),
     );
-    return jsonWithEtag(context.req.raw, announcement, announcementEtag(announcement));
+    return jsonWithEtag(context.req.raw, announcement);
   });
 
   routes.patch("/:id", async (context) => {
     const request = requestContext(context);
     const [input, policy] = await Promise.all([
       parseJsonBody(context.req.raw, updateAnnouncementSchema, "Invalid announcement payload"),
-      dependencies.getImagePolicy(request),
+      dependencies.getMediaPolicy(request),
     ]);
     return context.json(presentAnnouncement(await dependencies.service.update(
       request,
       context.req.param("id"),
       input,
       publicOrigin,
-      policy.quota,
+      policy.imageQuota,
+      policy.attachmentQuota,
       parseIfMatch(context.req.header("If-Match")),
     )));
   });
@@ -117,14 +146,14 @@ export function createAnnouncementRoutes(dependencies: AnnouncementRouteDependen
     const request = requestContext(context);
     const [uploads, policy] = await Promise.all([
       parseFormData(context.req.raw).then(parseImageUploads),
-      dependencies.getImagePolicy(request),
+      dependencies.getMediaPolicy(request),
     ]);
     return context.json(presentAnnouncementMediaIds(await dependencies.service.uploadImages(
       request,
       context.req.param("id"),
       uploads,
-      policy.maxBytes,
-      policy.quota,
+      policy.imageMaxBytes,
+      policy.imageQuota,
     )));
   });
 
@@ -133,10 +162,6 @@ export function createAnnouncementRoutes(dependencies: AnnouncementRouteDependen
 
 function defined<K extends string, V>(key: K, value: V | undefined): { [P in K]?: V } {
   return value === undefined ? {} : { [key]: value } as { [P in K]?: V };
-}
-
-function announcementEtag(value: Pick<Announcement, "id" | "updated_at">): string {
-  return `"announcement-${value.id}-${value.updated_at}"`;
 }
 
 function resolvePublicOrigin(value: string): string {

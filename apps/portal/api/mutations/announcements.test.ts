@@ -16,6 +16,7 @@ vi.mock("../../utils/upload-media", () => ({
 }));
 
 import {
+  uploadAnnouncementAttachment,
   uploadAnnouncementImages,
   uploadPendingAnnouncementImages,
 } from "./announcements";
@@ -66,6 +67,29 @@ describe("announcement image mutations", () => {
 
     expect(mocks.apiRequest).toHaveBeenCalledWith(
       "/api/announcements/announcement-1/images",
+      expect.objectContaining({ method: "POST", body: expect.any(FormData) }),
+    );
+  });
+
+  it("uploads one announcement attachment through the staged media endpoint", async () => {
+    const file = new File(["%PDF-1.7"], "guild-guide.pdf", { type: "application/pdf" });
+    const response = {
+      expires_at: "2026-07-29T00:00:00.000Z",
+      attachment: {
+        media_id: mediaId,
+        name: file.name,
+        content_type: "application/pdf",
+        byte_size: file.size,
+      },
+    };
+    mocks.apiRequest.mockResolvedValue(response);
+
+    await expect(uploadAnnouncementAttachment(file)).resolves.toEqual(response);
+
+    const formData = mocks.apiRequest.mock.calls[0]?.[1]?.body as FormData;
+    expect(formData.getAll("file")).toEqual([file]);
+    expect(mocks.apiRequest).toHaveBeenCalledWith(
+      "/api/announcements/attachments",
       expect.objectContaining({ method: "POST", body: expect.any(FormData) }),
     );
   });

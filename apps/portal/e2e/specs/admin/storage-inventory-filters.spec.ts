@@ -5,14 +5,14 @@ import { createTestStorage } from "../../support/storage";
 import { ensureFiltersOpen, field, selectFilterOption } from "../../support/ui";
 
 /*
- * 库存面板上的四个筛选控件：分类导轨、移动端分类下拉、搜索框、库存下拉。
+ * 库存面板上的两个筛选控件：搜索框和共享筛选面板里的库存条件。
  * 它们全都走服务端（useStorageItems 把条件带进查询），所以每条用例都要求两件事：
  * 请求真的发出去了，而且回来的结果**确实符合那个条件**。
  * 只断言「点了以后列表变了」没有意义——变错了也叫变了。
  *
  * 断言不能建立在种子数据的分布上（「碰巧有一件 0 库存的」）：那种用例在数据一变
  * 就会空转成假绿。这里每条用例先造两件属性互补的一次性物品——
- * A：允许存入、不允许取出、挂在第一个分类；B：允许取出、不允许存入、挂在第二个分类；
+ * A：允许存入、不允许取出；B：允许取出、不允许存入；
  * 两件都是 0 库存。于是每个筛选都能同时验证正反两面：
  * 该出现的必须出现，该被滤掉的必须消失。
  */
@@ -20,7 +20,7 @@ import { ensureFiltersOpen, field, selectFilterOption } from "../../support/ui";
 const ITEMS_REQUEST = { method: "GET", path: /^\/api\/storage\/items$/ } as const;
 const CARD = ".storage-item-card";
 
-type Sample = { id: string; name: string; categoryName: string };
+type Sample = { id: string; name: string };
 
 let storageId: string;
 let depositSample: Sample;
@@ -78,7 +78,7 @@ async function createSample(
   api: import("@playwright/test").APIRequestContext,
   input: {
     storageId: string;
-    category: { id: string; name: string };
+    category: { id: string };
     name: string;
     allow_member_deposit: boolean;
     allow_member_withdraw: boolean;
@@ -99,7 +99,7 @@ async function createSample(
   ) as { id: string; quantity: number };
   // 「有库存 / 无库存」两条断言都建立在这个 0 上，先钉死它。
   expect(created.quantity, "新建物品必须从 0 库存起步").toBe(0);
-  return { id: created.id, name: input.name, categoryName: input.category.name };
+  return { id: created.id, name: input.name };
 }
 
 function card(page: Page, sample: Sample) {
@@ -194,64 +194,31 @@ async function expectEveryCardBadged(page: Page, badge: string) {
   }
 }
 
-test("分类导轨：选中分类只留该分类，切到别的分类样本消失，回到全部又出现", async ({ page, flow }) => {
-  const rail = page.locator(".storage-category-rail__nav button");
-  const target = rail.filter({ hasText: depositSample.categoryName }).first();
-
-  await flow.act(() => target.click(), ITEMS_REQUEST);
-  await expect(target).toHaveAttribute("aria-current", "page");
-  await expect(card(page, depositSample), "样本挂在这个分类下，必须出现").toHaveCount(1);
-  await expect(card(page, withdrawSample), "别的分类的样本必须被滤掉").toHaveCount(0);
-  const cards = page.locator(CARD);
-  const total = await cards.count();
-  for (let index = 0; index < total; index += 1) {
-    await expect(cards.nth(index)).toContainText(depositSample.categoryName);
-  }
-
-  await flow.act(
-    () => rail.filter({ hasText: withdrawSample.categoryName }).first().click(),
-    ITEMS_REQUEST,
-  );
-  await expect(card(page, depositSample), "切到别的分类后样本必须消失").toHaveCount(0);
-  await expect(card(page, withdrawSample), "切到的正是它所在的分类，必须出现").toHaveCount(1);
-
-  /* 回到「全部分类」同样是命中缓存（staleTime 5 分钟），不会再发请求，
-     所以这里只验证控件状态和渲染结果。 */
-  await rail.first().click();
-  await expect(rail.first()).toHaveAttribute("aria-current", "page");
-  await expect(card(page, depositSample), "回到「All Categories」样本必须回来").toHaveCount(1);
-  await expect(card(page, withdrawSample), "回到「All Categories」样本必须回来").toHaveCount(1);
-});
-
-test("移动端分类下拉与导轨等效：窄屏下导轨隐藏，下拉照样过滤", async ({ page, flow }) => {
-  await page.setViewportSize({ width: 430, height: 900 });
-  await expect(page.locator(".storage-category-rail"), "窄屏下导轨应当收起").toBeHidden();
-
-  await ensureFiltersOpen(page.locator(".storage-command"));
-  const mobileSelect = field(page, "Filter by category");
-  await expect(mobileSelect).toBeVisible();
-
-  await flow.act(
-    () => selectFilterOption(
-      page,
-      page.locator(".storage-command"),
-      "Filter by category",
-      withdrawSample.categoryName,
-    ),
-    ITEMS_REQUEST,
-  );
-  await expect(card(page, depositSample), "选到别的分类后样本必须消失").toHaveCount(0);
+test("共享筛选面板重置当前库存条件后恢复全部物品", async ({ page, flow }) => {
+  const toolbar = page.locator(".storage-command");
+  await flow.act(() => pickStock(page, "Member withdraw"), ITEMS_REQUEST);
+  await expect(card(page, depositSample), "不允许取出的样本必须先被滤掉").toHaveCount(0);
   await expect(card(page, withdrawSample)).toHaveCount(1);
 
+  await ensureFiltersOpen(toolbar);
+  await page.getByRole("button", { name: "Reset filters", exact: true }).click();
+  await expect(page.getByRole("radio", { name: "All", exact: true })).toBeChecked();
+  await expect(card(page, depositSample), "重置后允许存入的样本必须回来").toHaveCount(1);
+  await expect(card(page, withdrawSample), "重置后允许取出的样本必须回来").toHaveCount(1);
+});
+
+test("移动端共享筛选抽屉照样按库存能力过滤", async ({ page, flow }) => {
+  await page.setViewportSize({ width: 430, height: 900 });
+  const toolbar = page.locator(".storage-command");
+  await ensureFiltersOpen(toolbar);
+  const drawer = page.getByRole("dialog", { name: "Filter & sort", exact: true });
+  await expect(drawer).toBeVisible();
+  await expect(drawer.getByRole("radiogroup", { name: "Stock", exact: true })).toBeVisible();
+
   await flow.act(
-    () => selectFilterOption(
-      page,
-      page.locator(".storage-command"),
-      "Filter by category",
-      depositSample.categoryName,
-    ),
+    () => selectFilterOption(page, toolbar, "Stock", "Member withdraw"),
     ITEMS_REQUEST,
   );
-  await expect(card(page, depositSample), "选回样本所在分类，样本必须回来").toHaveCount(1);
-  await expect(card(page, withdrawSample)).toHaveCount(0);
+  await expect(card(page, depositSample), "不允许取出的样本必须消失").toHaveCount(0);
+  await expect(card(page, withdrawSample), "允许取出的样本必须留下").toHaveCount(1);
 });

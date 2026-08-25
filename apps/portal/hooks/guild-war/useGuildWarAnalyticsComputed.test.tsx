@@ -1,6 +1,8 @@
 import { renderHook } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import type { AnalyticsMetricKey } from "../../types/guild-war";
+import { localDateKey } from "../../utils/datetime";
+import { getGuildWarResultLabel } from "../../utils/game-rules";
 import { useGuildWarAnalyticsComputed } from "./useGuildWarAnalyticsComputed";
 
 vi.mock("react-i18next", () => ({
@@ -29,10 +31,10 @@ const WAR_DETAILS = [
     created_at: "2026-07-01T00:00:00.000Z",
     result: "win",
     member_stats: [
-      { user_id: "u1", username: "Ann", stats: { damage: 900 } },
-      { user_id: "u2", username: "Ben", stats: { damage: 100 } },
-      { user_id: "u3", username: "Cai", stats: { damage: 5 } },
-      { user_id: "u4", username: "Dee", stats: { damage: 5 } },
+      { user_id: "u1", display_name: "Ann", stats: { damage: 900 } },
+      { user_id: "u2", display_name: "Ben", stats: { damage: 100 } },
+      { user_id: "u3", display_name: "Cai", stats: { damage: 5 } },
+      { user_id: "u4", display_name: "Dee", stats: { damage: 5 } },
     ],
     teams: [
       { team_name: "Alpha", members: [member("u1", 900), member("u2", 100)] },
@@ -101,5 +103,43 @@ describe("contribution mode", () => {
 
     expect(series.map((s) => s.stack)).toEqual(["Bravo", "Bravo"]);
     expect(series.reduce((sum, s) => sum + (s.data[0] ?? 0), 0)).toBe(100);
+  });
+});
+
+describe("player table presentation", () => {
+  it("formats war dates and result labels at the presentation boundary", () => {
+    const { result } = renderHook(() =>
+      useGuildWarAnalyticsComputed({
+        analyticsMode: "player",
+        analyticsSelectedMetrics: ["damage"] as AnalyticsMetricKey[],
+        analyticsAggregation: "total",
+        analyticsMinParticipation: 0,
+        analyticsTopN: 10,
+        analyticsSelectedTeams: [],
+        analyticsTeamAggregation: "total",
+        analyticsSelectedUsers: ["u1"],
+        analyticsOnlyParticipated: false,
+        analyticsNormEnabled: false,
+        analyticsShowDeviation: false,
+        analyticsShowContribution: false,
+        analyticsWarDetails: WAR_DETAILS,
+        analyticsWars: [],
+        analyticsWarStat: "score",
+        analyticsRows: [{ user_id: "u1" }],
+        analyticsAbsences: [],
+        warNormContext: new Map(),
+        referenceDuration: 30,
+        chartPalette: ["#111111", "#222222", "#333333", "#444444"],
+        getMetricLabelKey: (metric) => `metric.${metric}`,
+        metricValueFromWarMember: (row, metric) => row.stats?.[metric] ?? 0,
+        metricValueOrNullFromWarMember: (row, metric) => row.stats?.[metric] ?? null,
+        normalizeMetricValue: (rawValue) => rawValue,
+      }),
+    );
+
+    expect(result.current.analyticsTableRows[0]).toMatchObject({
+      created_at: localDateKey(WAR_DETAILS[0]!.created_at),
+      result: getGuildWarResultLabel("win"),
+    });
   });
 });

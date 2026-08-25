@@ -8,13 +8,16 @@ import {
   createInviteLinkSchema,
   createRoleSchema,
   resetAdminPasswordSchema,
+  resetAdminPasswordResponseSchema,
   roleAssignmentSchema,
   updateRoleSchema,
 } from "@guild/shared";
 import { LIMITS } from "@guild/shared/config/limits";
 import { Hono } from "hono";
+import type { RateLimiter } from "@guild/kernel";
 import { z } from "zod";
-import { requestContext, type HttpEnv } from "../../core/http-env.js";
+import { clientIdentifier, requestContext, type HttpEnv } from "../../core/http-env.js";
+import { consumeCredentialRateLimit } from "../../core/credential-rate-limit.js";
 import { parseJsonBody, parseQuery } from "../../core/parsing.js";
 import {
   presentInvite,
@@ -38,7 +41,7 @@ type AdminHttpService = Pick<IdentityAdminService,
   | "listRoles" | "createRole" | "updateRole" | "deleteRole"
 >;
 
-export type AdminRoutesDependencies = Readonly<{ service: AdminHttpService }>;
+export type AdminRoutesDependencies = Readonly<{ service: AdminHttpService; rateLimiter: RateLimiter }>;
 
 export function createAdminRoutes(dependencies: AdminRoutesDependencies): Hono<HttpEnv> {
   const routes = new Hono<HttpEnv>();
@@ -72,13 +75,15 @@ export function createAdminRoutes(dependencies: AdminRoutesDependencies): Hono<H
   routes.post("/users", async (context) => {
     const input = await parseJsonBody(context.req.raw, createAdminMemberSchema, "Invalid member payload");
     const result = await dependencies.service.createMember(requestContext(context), {
-      username: input.username,
+      loginName: input.login_name,
+      displayName: input.display_name,
       roleId: input.role_id,
     });
     return context.json(createAdminMemberResponseSchema.parse({
       ok: result.ok,
       user_id: result.userId,
-      username: result.username,
+      display_name: result.displayName,
+      temporary_login_name: result.temporaryLoginName,
       temporary_password: result.temporaryPassword,
     }), 201);
   });
@@ -127,11 +132,18 @@ export function createAdminRoutes(dependencies: AdminRoutesDependencies): Hono<H
   });
 
   routes.post("/users/:id/reset-password", async (context) => {
+    const request = requestContext(context);
+    const actor = request.authorization.requireAuthenticated();
+    await consumeCredentialRateLimit(dependencies.rateLimiter, actor.userId, clientIdentifier(context));
     const input = await parseJsonBody(context.req.raw, resetAdminPasswordSchema, "Invalid password reset payload");
     const result = await dependencies.service.resetPassword(
-      requestContext(context), context.req.param("id"), input.temporary_password,
+      request, context.req.param("id"), input.current_password,
     );
-    return context.json({ ok: true as const, temporary_password: result.temporaryPassword });
+    return context.json(resetAdminPasswordResponseSchema.parse({
+      ok: true,
+      temporary_login_name: result.temporaryLoginName,
+      temporary_password: result.temporaryPassword,
+    }));
   });
 
   routes.get("/users/:id/login-lock", async (context) => context.json(presentLoginLock(

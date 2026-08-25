@@ -1,4 +1,4 @@
-import { Skeleton, Text } from "@mantine/core";
+import { Skeleton } from "@portal/components/ui/skeleton";
 import { ClockIcon, CloudIcon, DatabaseIcon, WifiIcon } from "@portal/components/icons";
 import { useTranslation } from "react-i18next";
 import "./AdminSystemSection.css";
@@ -56,7 +56,7 @@ export function AdminSystemSection({
   if (statusLoading) {
     return (
       <div className="system-health-ledger system-health-ledger--loading">
-        {SERVICES.map((service) => <Skeleton key={service.key} height={46} radius={0} />)}
+        {SERVICES.map((service) => <Skeleton key={service.key} className="h-[46px] w-full rounded-none" />)}
       </div>
     );
   }
@@ -81,9 +81,9 @@ export function AdminSystemSection({
     <section className="system-health-ledger" aria-label={t("status.section.health")}>
       <div className="system-health-ledger__summary">
         <span className={`system-health-ledger__dot system-health-ledger__dot--${overallState}`} />
-        <Text size="sm" fw={700}>{overallLabel}</Text>
+        <strong className="system-health-ledger__overall">{overallLabel}</strong>
         <span className="system-health-ledger__summary-spacer" />
-        <Text size="xs" c="dimmed">{t("status.latency")}</Text>
+        <span className="system-health-ledger__latency-label">{t("status.latency")}</span>
         <span className="system-health-ledger__latency">
           {statusLatencyMs == null ? "—" : `${statusLatencyMs} ms`}
         </span>

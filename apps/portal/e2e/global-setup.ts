@@ -2,7 +2,7 @@ import { mkdir, rm, writeFile } from "node:fs/promises";
 import { assertPortalBundleFresh } from "./support/build-freshness";
 import {
   ADMIN_PASSWORD,
-  ADMIN_USERNAME,
+  ADMIN_LOGIN_NAME,
   E2E_SLOTS,
   originForSlot,
   RUN_STATE_FILE,
@@ -34,7 +34,7 @@ async function prepareSlot(slot: number): Promise<E2eRunState> {
 
   const adminApi = await newApiContext(undefined, origin);
   try {
-    await login(adminApi, ADMIN_USERNAME, ADMIN_PASSWORD);
+    await login(adminApi, ADMIN_LOGIN_NAME, ADMIN_PASSWORD);
     await adminApi.storageState({ path: stateFileFor("admin", slot) });
     /* 登录产生的会话属于稳定夹具；run 在基线之后创建，finalize 会把它完整删除。 */
     const baseline = await readSlotFingerprint(slot);

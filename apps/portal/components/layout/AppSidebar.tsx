@@ -1,25 +1,16 @@
 import type { AdminRole } from "@guild/shared";
-import {
-  ActionIcon,
-  AppShell as MantineAppShell,
-  Box,
-  Divider,
-  Group,
-  Indicator,
-  NavLink,
-  ScrollArea,
-  Stack,
-  Text,
-  Title,
-  Tooltip,
-} from "@mantine/core";
+import type { IconProps } from "@tabler/icons-react";
+import type { ComponentType, ReactNode } from "react";
 import { useTranslation } from "react-i18next";
+import { ScrollArea } from "@portal/components/ui/scroll-area";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@portal/components/ui/tooltip";
 import { useSiteConfigStore } from "../../stores/site-config";
 import { LeftOutlined, RightOutlined } from "../../utils/icons";
-import {
-  groupPortalRoutes,
-  type PortalRouteMetadata,
-} from "./route-metadata";
+import { VisualThemeScene } from "../shared/VisualThemeArtwork";
 import { ViewingAsSelector } from "./ViewingAsSelector";
 
 export const SIDEBAR_WIDTH = 236;
@@ -28,14 +19,28 @@ export const MOBILE_BREAKPOINT_PX = 767;
 export const COMPACT_NAV_BREAKPOINT_PX = 1023;
 export const HEADER_COMPACT_BREAKPOINT_PX = COMPACT_NAV_BREAKPOINT_PX;
 
+export type SidebarNavigationItem = {
+  id: string;
+  labelKey: string;
+  icon: ComponentType<IconProps>;
+  isNew?: boolean;
+  rightSection?: ReactNode;
+};
+
+export type SidebarNavigationGroup = {
+  id: string;
+  labelKey: string;
+  routes: readonly SidebarNavigationItem[];
+};
+
 type AppSidebarProps = {
   isSidebarCollapsed: boolean;
   onCollapse: () => void;
   onExpand: () => void;
-  visibleNavItems: readonly PortalRouteMetadata[];
+  navGroups: readonly SidebarNavigationGroup[];
   selectedNavKey: string;
-  navHasNew: (item: PortalRouteMetadata) => boolean;
-  onNavigate: (to: string) => void;
+  onNavigate: (item: SidebarNavigationItem) => void;
+  onReturnToPortal?: () => void;
   canSwitchView: boolean;
   viewingAs: string;
   roles: AdminRole[];
@@ -46,20 +51,18 @@ export function AppSidebar({
   isSidebarCollapsed,
   onCollapse,
   onExpand,
-  visibleNavItems,
+  navGroups,
   selectedNavKey,
-  navHasNew,
   onNavigate,
+  onReturnToPortal,
   canSwitchView,
   viewingAs,
   roles,
   onViewingAsChange,
 }: AppSidebarProps) {
-  const { t } = useTranslation("common");
+  const { t } = useTranslation();
   const siteName = useSiteConfigStore((state) => state.siteName);
   const siteLogoUrl = useSiteConfigStore((state) => state.siteLogoUrl);
-  const groups = groupPortalRoutes(visibleNavItems);
-
   const brandMark = siteLogoUrl ? (
     <img src={siteLogoUrl} alt="" className="app-brand-logo" />
   ) : (
@@ -67,91 +70,110 @@ export function AppSidebar({
   );
 
   return (
-    <MantineAppShell.Navbar
+    <aside
       className={`app-sider ${isSidebarCollapsed ? "app-sider--collapsed" : ""}`}
+      aria-label={siteName}
     >
-      <Group className="app-brand" justify="space-between" wrap="nowrap">
+      <VisualThemeScene
+        variant="navigation"
+        className="app-sider__scene"
+      />
+
+      <div className="app-brand">
         {isSidebarCollapsed ? (
-          <Tooltip label={t("nav.expandSidebar")} position="right" withArrow>
-            <ActionIcon
-              variant="subtle"
-              size={40}
-              className="app-brand-mark app-brand-mark--button"
-              aria-label={t("nav.expandSidebar")}
-              onClick={onExpand}
-            >
-              {siteLogoUrl ? brandMark : <RightOutlined />}
-            </ActionIcon>
-          </Tooltip>
+          <button
+            type="button"
+            className="app-brand-mark app-brand-mark--button"
+            aria-label={t("nav.expandSidebar")}
+            onClick={onExpand}
+          >
+            <span className="app-brand-mark__identity">{brandMark}</span>
+            <span className="app-brand-mark__expand-icon" aria-hidden="true">
+              <RightOutlined size={18} />
+            </span>
+          </button>
         ) : (
           <>
-            <Group gap="sm" wrap="nowrap" className="app-brand-main">
-              <Box className="app-brand-mark">{brandMark}</Box>
-              <Tooltip label={siteName} position="right" withArrow openDelay={400}>
-                <Title order={2} component="div" className="app-brand-title">
+            <div className="app-brand-main">
+              <div className="app-brand-mark">{brandMark}</div>
+              <Tooltip>
+                <TooltipTrigger render={<span className="app-brand-title" />}>
                   {siteName}
-                </Title>
+                </TooltipTrigger>
+                <TooltipContent side="right">{siteName}</TooltipContent>
               </Tooltip>
-            </Group>
-            <ActionIcon
-              variant="subtle"
+            </div>
+            <button
+              type="button"
               className="app-sider-control-btn"
               aria-label={t("nav.collapseSidebar")}
               onClick={onCollapse}
             >
-              <LeftOutlined />
-            </ActionIcon>
+              <LeftOutlined size={18} />
+            </button>
           </>
         )}
-      </Group>
+      </div>
 
-      <ScrollArea className="app-sider-menu" type="scroll" scrollbarSize={6}>
-        <Stack gap="lg" className="app-nav-groups">
-          {groups.map((group, groupIndex) => (
-            <Box key={group.id} className="app-nav-group">
+      <ScrollArea className="app-sider-menu">
+        <nav className="app-nav-groups">
+          {onReturnToPortal ? (
+            <button
+              type="button"
+              className="app-context-return"
+              aria-label={t("nav.returnToPortal")}
+              onClick={onReturnToPortal}
+            >
+              <LeftOutlined size={18} />
+              {!isSidebarCollapsed ? <span>{t("nav.returnToPortal")}</span> : null}
+            </button>
+          ) : null}
+
+          {navGroups.map((group, groupIndex) => (
+            <section key={group.id} className="app-nav-group">
               {groupIndex > 0 && isSidebarCollapsed ? (
-                <Divider className="app-nav-group-divider" />
+                <div className="app-nav-group-divider" aria-hidden="true" />
               ) : null}
               {!isSidebarCollapsed ? (
-                <Text className="app-nav-section-label">
-                  {t(group.labelKey)}
-                </Text>
+                <h2 className="app-nav-section-label">{t(group.labelKey)}</h2>
               ) : null}
-              <Stack gap={4}>
+              <div className="app-nav-items">
                 {group.routes.map((item) => {
                   const Icon = item.icon;
                   const label = t(item.labelKey);
+                  const active = item.id === selectedNavKey;
+
                   return (
-                    <Tooltip
-                      key={item.to}
-                      label={label}
-                      disabled={!isSidebarCollapsed}
-                      position="right"
-                      withArrow
-                    >
-                      <NavLink
-                        component="button"
-                        type="button"
-                        active={item.to === selectedNavKey}
-                        className="app-nav-item"
-                        label={isSidebarCollapsed ? undefined : label}
-                        aria-label={label}
-                        leftSection={
-                          <Indicator disabled={!navHasNew(item)} offset={2} size={7} inline>
-                            <span className="app-nav-icon">
-                              <Icon />
-                            </span>
-                          </Indicator>
+                    <Tooltip key={item.id} disabled={!isSidebarCollapsed}>
+                      <TooltipTrigger
+                        render={
+                          <button
+                            type="button"
+                            className="app-nav-item"
+                            data-active={active || undefined}
+                            aria-label={label}
+                            aria-current={active ? "page" : undefined}
+                            onClick={() => onNavigate(item)}
+                          />
                         }
-                        onClick={() => onNavigate(item.to)}
-                      />
+                      >
+                        <span className="app-nav-icon-wrap">
+                          <span className="app-nav-icon"><Icon size={18} /></span>
+                          {item.isNew ? <span className="app-nav-new-dot" aria-hidden="true" /> : null}
+                        </span>
+                        {!isSidebarCollapsed ? <span className="app-nav-item__label">{label}</span> : null}
+                        {!isSidebarCollapsed && item.rightSection ? (
+                          <span className="app-nav-item__meta">{item.rightSection}</span>
+                        ) : null}
+                      </TooltipTrigger>
+                      <TooltipContent side="right">{label}</TooltipContent>
                     </Tooltip>
                   );
                 })}
-              </Stack>
-            </Box>
+              </div>
+            </section>
           ))}
-        </Stack>
+        </nav>
       </ScrollArea>
 
       {canSwitchView ? (
@@ -162,6 +184,6 @@ export function AppSidebar({
           onChange={onViewingAsChange}
         />
       ) : null}
-    </MantineAppShell.Navbar>
+    </aside>
   );
 }

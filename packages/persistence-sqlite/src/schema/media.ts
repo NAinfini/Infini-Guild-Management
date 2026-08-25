@@ -33,11 +33,14 @@ export const mediaAssets = sqliteTable(
     check("media_assets_state_valid", sql`${table.state} IN ('uploading', 'staged', 'attached', 'deleting')`),
     check(
       "media_assets_purpose_type_consistent",
-      sql`(${table.purpose} = 'member_audio' AND ${table.mediaType} = 'audio') OR (${table.purpose} <> 'member_audio' AND ${table.mediaType} = 'image')`,
+      sql`(${table.purpose} = 'member_audio' AND ${table.mediaType} = 'audio')
+        OR (${table.purpose} = 'announcement_attachment' AND ${table.mediaType} = 'file')
+        OR (${table.purpose} NOT IN ('member_audio', 'announcement_attachment') AND ${table.mediaType} = 'image')`,
     ),
     check(
       "media_assets_name_consistent",
-      sql`(${table.mediaType} = 'audio' AND length(trim(${table.originalName})) BETWEEN 1 AND 255) OR (${table.mediaType} = 'image' AND ${table.originalName} IS NULL)`,
+      sql`(${table.mediaType} IN ('audio', 'file') AND length(trim(${table.originalName})) BETWEEN 1 AND 255)
+        OR (${table.mediaType} = 'image' AND ${table.originalName} IS NULL)`,
     ),
     check(
       "media_assets_expiry_consistent",
@@ -70,7 +73,12 @@ export const mediaVariants = sqliteTable(
     check("media_variants_sha256_valid", sql`length(${table.sha256}) = 64 AND ${table.sha256} NOT GLOB '*[^0-9a-f]*'`),
     check(
       "media_variants_dimensions_consistent",
-      sql`(${table.contentType} = 'image/webp' AND ${table.width} > 0 AND ${table.height} > 0) OR (${table.contentType} = 'audio/ogg' AND ${table.width} IS NULL AND ${table.height} IS NULL)`,
+      sql`(${table.contentType} = 'image/webp' AND ${table.width} > 0 AND ${table.height} > 0)
+        OR (${table.contentType} IN (
+          'audio/ogg',
+          'application/pdf',
+          'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+        ) AND ${table.width} IS NULL AND ${table.height} IS NULL)`,
     ),
   ],
 );

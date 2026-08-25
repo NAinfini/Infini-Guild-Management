@@ -13,7 +13,7 @@ The React portal and Hono API share TypeScript contracts. Deploy them to Cloudfl
 
 [English](./README.md) | [中文](./README.zh.md)
 
-[Setup guide](./SETUP.md) · [Product boundaries](./PRODUCT.md) · [Contributing](./CONTRIBUTING.md) · [Security policy](./SECURITY.md)
+[Setup guide](./SETUP.md) · [Product boundaries](./PRODUCT.md) · [Authentication roadmap](./AUTHENTICATION.md) · [Contributing](./CONTRIBUTING.md) · [Security policy](./SECURITY.md)
 
 </div>
 
@@ -28,7 +28,7 @@ Infini Guild Management brings day-to-day guild work into one bilingual, respons
 | Area | Current capability |
 | --- | --- |
 | Dashboard and roster | Public dashboard summaries and searchable member cards with classes, badges, stats, availability, profiles, images, video links, avatars, and optional profile audio |
-| Accounts and profiles | Invite-based registration, cookie sessions, username and password changes, profile editing, absences, media management, and profile-title styling |
+| Accounts and profiles | Invite-based registration with private login names and public display names, cookie sessions, credential management, optional verified email, optional linked Google/Discord/KOOK sign-in when configured by the site owner, profile editing, absences, media management, and profile-title styling |
 | Events | Six fixed event types, recurring templates, attachments, capacity and class quotas, signups, participant management, polls, raffles, and automatic archiving |
 | Announcements | Rich-text drafts with pending inline media, scheduled publishing, pinning, archiving, and permanent deletion |
 | Guild war | Active-war teams and pool, member moves, role tags, conclusion, history, batch editing, export, and analytics |
@@ -44,7 +44,7 @@ Guests can read `/`, `/events`, `/roster`, `/announcements`, `/guild-war`, `/gal
 
 ## Configuration boundaries
 
-Admin → Site Config and its API contract manage the site name and logo, feature flags, media policy, storage policy, and absence policy. These are the complete set of module switches:
+Admin → Site Config and its API contract manage the site name and logo, feature flags, non-secret per-provider OAuth gates, media policy, storage policy, and absence policy. Runtime OAuth credentials and email sender credentials remain deployment secrets; WeChat is reserved but unavailable until its official protocol rules are verified. These are the complete set of module switches:
 
 ```text
 announcements, events, guildWar, gallery, wiki, tools, storage
@@ -68,7 +68,7 @@ apps/
 ├── cloudflare/  Workers entrypoint and D1/R2/Durable Object adapters
 ├── vps/         Single-process Node.js runtime with SQLite and filesystem blobs
 ├── shared/      Zod schemas, shared types, limits, and source-owned contracts
-└── portal/      React SPA with TanStack Router, TanStack Query, Mantine, and Zustand
+└── portal/      React SPA with TanStack Router/Query, shadcn/ui, Base UI, and Zustand
 packages/
 ├── application/         Runtime-neutral composition
 ├── kernel/              Context, errors, authorization, and ports
@@ -79,7 +79,7 @@ packages/
 
 | Layer | Current stack |
 | --- | --- |
-| Frontend | React 19.2, Vite 8.2, Mantine 9.5, TanStack Router/Query, Zustand 5, and plain CSS with custom properties; no Tailwind |
+| Frontend | React 19.2, Vite 8.2, shadcn/ui compositions on Base UI 1.7, Tailwind CSS 4.3, TanStack Router/Query, Zustand 5, and domain CSS with custom properties |
 | Language and validation | TypeScript 6 and Zod 4, shared by the portal and both backends |
 | Content and charts | TipTap 3 and ECharts 6 |
 | Cloudflare backend | Hono, D1, one `BLOBS` R2 bucket, Cron Triggers, and a notification Durable Object |
@@ -98,9 +98,9 @@ All HTTP APIs are under `/api/`; authentication uses HTTP-only session cookies.
 | Prefix | Capability |
 | --- | --- |
 | `/api/health`, `/api/site-config` | Health and public site metadata/logo |
-| `/api/auth` | Login, logout, invite verification/registration, session, and username checks |
+| `/api/auth` | Login, logout, invite verification/registration, session, password-reset completion, configured OAuth, and verified-email flows |
 | `/api/dashboard`, `/api/search` | Dashboard summaries and portal search |
-| `/api/users` | Roster, profiles, stats, absences, credentials, and profile media |
+| `/api/users` | Roster, profiles, stats, absences, and profile media |
 | `/api/events` | Events, recurring templates, attachments, signups, polls, raffles, and participants |
 | `/api/announcements` | Announcement content, images, publishing, archive, and deletion |
 | `/api/guild-war` | Active war state, teams, history, member stats, export, and analytics |
@@ -126,7 +126,7 @@ Cloudflare uses Cron Triggers. The VPS runtime schedules the same jobs in its si
 
 [SETUP.md](./SETUP.md) is the authoritative guide to choosing Cloudflare or VPS, local development, the shared schema, first-admin bootstrap, production secrets, backup and restore, updates, and troubleshooting. For Chinese, use [SETUP.zh.md](./SETUP.zh.md).
 
-`0000_core.sql` is the released, frozen baseline; the manifest currently contains only that migration. Never edit or regenerate it. Every later change must add the next ordinal migration and update the manifest. Runtime validation applies the same ordered chain to Cloudflare D1 and VPS SQLite. The setup guide contains the full policy, including running on the Workers free plan and settings to raise after upgrading.
+`0000_core.sql` is the released, frozen baseline. The manifest contains the contiguous migration chain through `0006_auth_lifecycle_hardening`; never edit or regenerate the baseline. Every later change must add the next ordinal migration and update the manifest checksum. Runtime validation applies the same ordered chain to Cloudflare D1 and VPS SQLite. The setup guide contains the full policy, including running on the Workers free plan and settings to raise after upgrading.
 
 ## Security
 

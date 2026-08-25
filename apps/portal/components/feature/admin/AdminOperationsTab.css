@@ -58,6 +58,18 @@
   background: var(--border-subtle);
 }
 
+.operations-skeleton__head { height: 36px; border-radius: 0; }
+.operations-skeleton__row { height: 44px; border-radius: 0; }
+.operations-skeleton__line { height: 20px; }
+.operations-skeleton__stats { height: 64px; }
+.operations-skeleton__table { height: 84px; }
+
+.operations-panel__disclosure {
+  margin: 2px 0 0;
+  color: var(--text-muted);
+  font-size: var(--text-micro);
+}
+
 .operations-jobs-table,
 .operations-usage-table,
 .operations-health-log__table {
@@ -156,6 +168,19 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  color: var(--status-danger);
+  font-size: var(--text-micro);
+  font-weight: var(--fw-medium);
+}
+
+.operations-job-name__label {
+  font-size: var(--text-micro);
+  font-weight: var(--fw-strong);
+}
+
+.operations-tooltip {
+  max-width: 20rem;
+  white-space: normal;
 }
 
 .operations-job-run,
@@ -286,6 +311,29 @@
 .operations-health-log__latency--good { color: var(--status-success); }
 .operations-health-log__latency--warn { color: var(--status-warning); }
 .operations-health-log__latency--bad { color: var(--status-danger); }
+
+/* At tablet widths the four panels stack into document flow; the shared page
+   workspace is the only primary scroller, so panel bodies must grow naturally. */
+@media (min-width: 768px) and (max-width: 79.99em) {
+  .page-layout.admin-page[data-workspace-mode="contained"] .page-layout__workspace {
+    display: block;
+    overflow-x: clip;
+    overflow-y: auto;
+    scrollbar-gutter: stable;
+  }
+
+  .admin-operations,
+  .operations-workspace,
+  .operations-panel,
+  .admin-operations .admin-panel__body {
+    min-block-size: auto;
+  }
+
+  .admin-operations .admin-panel__body--scroll {
+    overflow-y: visible;
+    scrollbar-gutter: auto;
+  }
+}
 
 @media (max-width: 79.99em) {
   .admin-operations,

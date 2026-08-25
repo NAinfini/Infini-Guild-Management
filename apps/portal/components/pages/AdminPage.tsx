@@ -1,56 +1,19 @@
-import {
-  Alert,
-  Button,
-  Group,
-  Skeleton,
-  Stack,
-  Tabs,
-  Text,
-} from "@mantine/core";
-import { useNavigate, useSearch } from "@tanstack/react-router";
-import { useMediaQuery } from "@mantine/hooks";
-import { Fragment, Suspense, lazy } from "react";
-import type { ComponentType, ReactNode } from "react";
+import { Alert, AlertDescription, AlertTitle } from "@portal/components/ui/alert";
+import { Button } from "@portal/components/ui/button";
+import { Skeleton } from "@portal/components/ui/skeleton";
+import { useNavigate } from "@tanstack/react-router";
+import { Suspense, lazy, useEffect } from "react";
 import { useTranslation } from "react-i18next";
 import { useAdminPageController } from "../../hooks/useAdminPageController";
+import { ADMIN_CONTEXT_ROUTES } from "../layout/admin-context-nav";
+import {
+  initialAdminContextNavigationStatus,
+  useAdminContextNavigation,
+} from "../layout/AdminContextNavigation";
 import { PageLayout } from "../layout/PageLayout";
 import { serviceState } from "../feature/admin/AdminSystemSection";
 import { ErrorBoundary } from "@portal/components/effects";
-import {
-  FileSearchIcon,
-  HeartbeatIcon,
-  LinkIcon,
-  SettingsIcon,
-  ShieldIcon,
-  SwordIcon,
-  TrophyIcon,
-  UsersIcon,
-  WrenchIcon,
-} from "@portal/components/icons";
 import "./AdminPage.css";
-
-type TabValue =
-  | "member" | "invite" | "roles" | "classes" | "badges"
-  | "siteConfig" | "operations" | "diagnostics" | "audit";
-
-const TAB_ICONS: Record<TabValue, ComponentType<{ size?: number }>> = {
-  member: UsersIcon,
-  invite: LinkIcon,
-  audit: FileSearchIcon,
-  roles: ShieldIcon,
-  siteConfig: SettingsIcon,
-  classes: SwordIcon,
-  badges: TrophyIcon,
-  operations: HeartbeatIcon,
-  diagnostics: WrenchIcon,
-};
-
-const NAV_GROUPS: Array<{ id: "people" | "config" | "ops" | "governance"; values: TabValue[] }> = [
-  { id: "people", values: ["member", "invite"] },
-  { id: "config", values: ["roles", "classes", "badges", "siteConfig"] },
-  { id: "ops", values: ["operations", "diagnostics"] },
-  { id: "governance", values: ["audit"] },
-];
 
 const LazyAdminOperationsTab = lazy(() =>
   import("../feature/admin/AdminOperationsTab").then((mod) => ({ default: mod.AdminOperationsTab })),
@@ -79,8 +42,11 @@ const LazyAdminClassesPanel = lazy(() =>
 const LazyAdminSiteConfigSection = lazy(() =>
   import("../feature/admin/AdminSiteConfigSection").then((mod) => ({ default: mod.AdminSiteConfigSection })),
 );
-const LazyAdminMemberDetailModal = lazy(() =>
-  import("../feature/admin/AdminMemberDetailModal").then((mod) => ({ default: mod.AdminMemberDetailModal })),
+const LazyAdminImportantNoticesSection = lazy(() =>
+  import("../feature/admin/AdminImportantNoticesSection").then((mod) => ({ default: mod.AdminImportantNoticesSection })),
+);
+const LazyAdminMemberDetailInspector = lazy(() =>
+  import("../feature/admin/AdminMemberDetailInspector").then((mod) => ({ default: mod.AdminMemberDetailInspector })),
 );
 const LazyAdminMemberMediaTab = lazy(() =>
   import("../feature/admin/AdminMemberMediaTab").then((mod) => ({ default: mod.AdminMemberMediaTab })),
@@ -91,10 +57,10 @@ const LazyCreateMemberModal = lazy(() =>
 
 export function AdminPage() {
   const { t } = useTranslation("admin");
-  const isCompactNavigation = useMediaQuery("(max-width: 79.99em)");
   const navigate = useNavigate();
-  const search = useSearch({ strict: false }) as { tab?: string };
+  const { setStatus: setAdminNavigationStatus } = useAdminContextNavigation();
   const {
+    activeTab,
     auditFilter,
     auditLogQuery,
     auditMonthsQuery,
@@ -182,56 +148,18 @@ export function AdminPage() {
   const suspenseFallback = (
     <div className="admin-panel">
       <div className="admin-panel__body">
-        <Stack gap="sm">
-          <Group gap="sm"><Skeleton height={28} width="30%" /><Skeleton height={28} width="20%" /></Group>
-          {Array.from({ length: 5 }).map((_, i) => <Skeleton key={i} height={18} />)}
-        </Stack>
+        <div className="admin-suspense-skeleton">
+          <div className="admin-suspense-skeleton__head">
+            <Skeleton />
+            <Skeleton />
+          </div>
+          {Array.from({ length: 5 }).map((_, i) => <Skeleton className="admin-suspense-skeleton__row" key={i} />)}
+        </div>
       </div>
     </div>
   );
 
-  if (!canAccessAdmin) {
-    return <Alert color="red" title={t("forbidden")} />;
-  }
-
-  const tabs = ([
-    { value: "member", label: t("tab.member"), visible: tabAccess.member },
-    { value: "invite", label: t("tab.invite"), visible: tabAccess.invite },
-    { value: "roles", label: t("tab.roles"), visible: tabAccess.roles },
-    { value: "classes", label: t("tab.classes"), visible: tabAccess.classes },
-    { value: "badges", label: t("tab.badges"), visible: tabAccess.badges },
-    { value: "siteConfig", label: t("tab.siteConfig"), visible: tabAccess.siteConfig },
-    { value: "operations", label: t("tab.operations"), visible: tabAccess.operations },
-    { value: "diagnostics", label: t("tab.diagnostics"), visible: tabAccess.diagnostics },
-    { value: "audit", label: t("tab.audit"), visible: tabAccess.audit },
-  ] as Array<{ value: TabValue; label: string; visible: boolean }>).filter((tab) => tab.visible);
-
-  if (tabs.length === 0) {
-    return (
-      <PageLayout className="admin-page">
-        <Alert color="orange" title={t("noAccessibleTabs.title")}>
-          <Stack gap="sm" align="flex-start">
-            <Text size="sm">{t("noAccessibleTabs.description")}</Text>
-            <Button variant="default" onClick={() => void navigate({ to: "/" })}>
-              {t("noAccessibleTabs.back")}
-            </Button>
-          </Stack>
-        </Alert>
-      </PageLayout>
-    );
-  }
-
-  const activeTab = tabs.some((tab) => tab.value === search.tab) ? search.tab! : (tabs[0]?.value ?? "member");
-  const setActiveTab = (nextTab: string | null) => {
-    if (!nextTab) return;
-    const tab = nextTab as TabValue;
-    void navigate({
-      to: "/admin",
-      search: (previous) => ({ ...previous, tab: tab === "member" ? undefined : tab }),
-      replace: true,
-      viewTransition: false,
-    });
-  };
+  const accessibleTabs = ADMIN_CONTEXT_ROUTES.filter((route) => tabAccess[route.tab]);
 
   /* usersQuery 走的是 fetchAllUsersListWithOptions，会把所有分页取全，所以这里的
      长度就是成员总数，不是当前页的行数。 */
@@ -251,71 +179,50 @@ export function AdminPage() {
         })()
       : "checking";
 
-  const navCounts: Partial<Record<TabValue, ReactNode>> = {
-    member: memberCount === null ? null : (
-      <span className="admin-count admin-page__nav-count">{memberCount}</span>
-    ),
-    /* 过期的邀请码是唯一需要管理员动手清理的，用它决定计数要不要转黄。 */
-    invite: inviteStats === null ? null : (
-      <span className={`admin-count${inviteStats.expired > 0 ? " admin-count--warn" : ""} admin-page__nav-count`}>
-        {inviteStats.active}
-      </span>
-    ),
-    roles: roleCount === null ? null : (
-      <span className="admin-count admin-page__nav-count">{roleCount}</span>
-    ),
-    /* 页签上这颗点是健康状态的唯一载体，必须带可读标签，不能 aria-hidden。 */
-    operations: healthState === null ? null : (
-      <span
-        className={`admin-page__nav-dot admin-page__nav-dot--${healthState}`}
-        role="img"
-        aria-label={t(`header.health.${healthState}`)}
-      />
-    ),
-  };
+  useEffect(() => {
+    if (!canAccessAdmin || accessibleTabs.length === 0) {
+      setAdminNavigationStatus(initialAdminContextNavigationStatus);
+      return;
+    }
+    setAdminNavigationStatus({
+      memberCount,
+      inviteActiveCount: inviteStats?.active ?? null,
+      inviteHasExpired: (inviteStats?.expired ?? 0) > 0,
+      roleCount,
+      healthState,
+    });
+  }, [accessibleTabs.length, canAccessAdmin, healthState, inviteStats, memberCount, roleCount, setAdminNavigationStatus]);
+
+  useEffect(() => () => {
+    setAdminNavigationStatus(initialAdminContextNavigationStatus);
+  }, [setAdminNavigationStatus]);
+
+  if (!canAccessAdmin) {
+    return (
+      <Alert variant="destructive">
+        <AlertTitle>{t("forbidden")}</AlertTitle>
+      </Alert>
+    );
+  }
+
+  if (accessibleTabs.length === 0) {
+    return (
+      <PageLayout className="admin-page">
+        <Alert className="admin-no-access-alert">
+          <AlertTitle>{t("noAccessibleTabs.title")}</AlertTitle>
+          <AlertDescription>{t("noAccessibleTabs.description")}</AlertDescription>
+          <Button variant="outline" onClick={() => void navigate({ to: "/dashboard" })}>
+            {t("noAccessibleTabs.back")}
+          </Button>
+        </Alert>
+      </PageLayout>
+    );
+  }
 
   return (
-    <PageLayout className="admin-page">
-        <Tabs
-          value={activeTab}
-          keepMounted={false}
-          orientation={isCompactNavigation ? "horizontal" : "vertical"}
-          className={`admin-page__workspace${isCompactNavigation ? " admin-page__workspace--compact" : ""}`}
-          onChange={setActiveTab}
-        >
-            <Tabs.List
-              className="admin-page__domain-nav"
-              aria-label={t("navigation.section")}
-            >
-              {NAV_GROUPS.map((group) => {
-                const groupTabs = tabs.filter((tab) => group.values.includes(tab.value));
-                if (groupTabs.length === 0) return null;
-                return (
-                  <Fragment key={group.id}>
-                    {/* 分组标题不是可聚焦项，对读屏隐藏，避免混进 tablist 的遍历序列。 */}
-                    <span className="admin-page__nav-group" aria-hidden="true">
-                      {t(`nav.group.${group.id}`)}
-                    </span>
-                    {groupTabs.map((tab) => {
-                      const Icon = TAB_ICONS[tab.value];
-                      return (
-                        <Tabs.Tab
-                          key={tab.value}
-                          value={tab.value}
-                          leftSection={<Icon size={16} />}
-                          rightSection={navCounts[tab.value] ?? undefined}
-                        >
-                          {tab.label}
-                        </Tabs.Tab>
-                      );
-                    })}
-                  </Fragment>
-                );
-              })}
-            </Tabs.List>
-
-        {tabAccess.member ? (
-        <Tabs.Panel value="member" className="admin-page__panel">
+    <PageLayout className="admin-page" workspaceMode="contained">
+        {activeTab === "member" && tabAccess.member ? (
+        <section className="admin-page__panel">
           <ErrorBoundary>
           <Suspense fallback={suspenseFallback}>
             <LazyAdminUsersSection
@@ -353,11 +260,11 @@ export function AdminPage() {
             />
           </Suspense>
           </ErrorBoundary>
-        </Tabs.Panel>
+        </section>
         ) : null}
 
-        {tabAccess.invite ? (
-        <Tabs.Panel value="invite" className="admin-page__panel">
+        {activeTab === "invite" && tabAccess.invite ? (
+        <section className="admin-page__panel">
           <ErrorBoundary>
           <Suspense fallback={suspenseFallback}>
             <LazyAdminInviteSection
@@ -389,11 +296,11 @@ export function AdminPage() {
             />
           </Suspense>
           </ErrorBoundary>
-        </Tabs.Panel>
+        </section>
         ) : null}
 
-        {tabAccess.audit ? (
-        <Tabs.Panel value="audit" className="admin-page__panel">
+        {activeTab === "audit" && tabAccess.audit ? (
+        <section className="admin-page__panel">
           <ErrorBoundary>
           <Suspense fallback={suspenseFallback}>
             <LazyAdminAuditSection
@@ -427,11 +334,11 @@ export function AdminPage() {
             />
           </Suspense>
           </ErrorBoundary>
-        </Tabs.Panel>
+        </section>
         ) : null}
 
-        {tabAccess.roles ? (
-        <Tabs.Panel value="roles" className="admin-page__panel">
+        {activeTab === "roles" && tabAccess.roles ? (
+        <section className="admin-page__panel">
           <ErrorBoundary>
           <Suspense fallback={suspenseFallback}>
             <LazyAdminRolesSection
@@ -448,11 +355,11 @@ export function AdminPage() {
             />
           </Suspense>
           </ErrorBoundary>
-        </Tabs.Panel>
+        </section>
         ) : null}
 
-        {tabAccess.siteConfig ? (
-          <Tabs.Panel value="siteConfig" className="admin-page__panel">
+        {activeTab === "siteConfig" && tabAccess.siteConfig ? (
+          <section className="admin-page__panel">
             <ErrorBoundary>
             <Suspense fallback={suspenseFallback}>
               <LazyAdminSiteConfigSection
@@ -465,21 +372,31 @@ export function AdminPage() {
               />
             </Suspense>
             </ErrorBoundary>
-          </Tabs.Panel>
+          </section>
         ) : null}
 
-        {tabAccess.classes ? (
-          <Tabs.Panel value="classes" className="admin-page__panel">
+        {activeTab === "importantNotices" && tabAccess.importantNotices ? (
+          <section className="admin-page__panel">
+            <ErrorBoundary>
+              <Suspense fallback={suspenseFallback}>
+                <LazyAdminImportantNoticesSection />
+              </Suspense>
+            </ErrorBoundary>
+          </section>
+        ) : null}
+
+        {activeTab === "classes" && tabAccess.classes ? (
+          <section className="admin-page__panel">
             <ErrorBoundary>
               <Suspense fallback={suspenseFallback}>
                 <LazyAdminClassesPanel />
               </Suspense>
             </ErrorBoundary>
-          </Tabs.Panel>
+          </section>
         ) : null}
 
-        {tabAccess.badges ? (
-          <Tabs.Panel value="badges" className="admin-page__panel">
+        {activeTab === "badges" && tabAccess.badges ? (
+          <section className="admin-page__panel">
             <ErrorBoundary>
             <Suspense fallback={suspenseFallback}>
               <LazyAdminBadgesSection
@@ -488,11 +405,11 @@ export function AdminPage() {
               />
             </Suspense>
             </ErrorBoundary>
-          </Tabs.Panel>
+          </section>
         ) : null}
 
-        {tabAccess.operations ? (
-        <Tabs.Panel value="operations" className="admin-page__panel">
+        {activeTab === "operations" && tabAccess.operations ? (
+        <section className="admin-page__panel">
           <ErrorBoundary>
           <Suspense fallback={suspenseFallback}>
             <LazyAdminOperationsTab
@@ -509,21 +426,20 @@ export function AdminPage() {
             />
           </Suspense>
           </ErrorBoundary>
-        </Tabs.Panel>
+        </section>
         ) : null}
 
-        {tabAccess.diagnostics ? (
-        <Tabs.Panel value="diagnostics" className="admin-page__panel">
+        {activeTab === "diagnostics" && tabAccess.diagnostics ? (
+        <section className="admin-page__panel">
           <ErrorBoundary>
           <Suspense fallback={suspenseFallback}>
             <LazyAdminDiagnosticsTab />
           </Suspense>
           </ErrorBoundary>
-        </Tabs.Panel>
+        </section>
         ) : null}
-      </Tabs>
       <Suspense fallback={null}>
-        <LazyAdminMemberDetailModal
+        <LazyAdminMemberDetailInspector
           open={Boolean(selectedMemberDetail)}
           member={selectedMemberDetail}
           form={memberDetailForm}

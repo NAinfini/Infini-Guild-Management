@@ -333,6 +333,7 @@ describe("portal data hooks", () => {
       canViewStatus: true,
       canManageBadges: true,
       canManageSiteConfig: true,
+      canManageImportantNotices: false,
       canManageClasses: false,
     });
   });
@@ -430,6 +431,7 @@ describe("portal data hooks", () => {
       canViewStatus: true,
       canManageBadges: false,
       canManageSiteConfig: false,
+      canManageImportantNotices: false,
       canManageClasses: false,
     });
   });
@@ -483,6 +485,7 @@ describe("portal data hooks", () => {
       canViewStatus: false,
       canManageBadges: false,
       canManageSiteConfig: false,
+      canManageImportantNotices: false,
       canManageClasses: false,
     });
   });
@@ -517,6 +520,7 @@ describe("portal data hooks", () => {
             canManageBadges: false,
             canManageClasses: false,
             canManageSiteConfig: true,
+            canManageImportantNotices: false,
           },
         }),
       { wrapper: createWrapper() },
@@ -551,6 +555,7 @@ describe("portal data hooks", () => {
       canViewStatus: false,
       canManageBadges: false,
       canManageSiteConfig: false,
+      canManageImportantNotices: false,
       canManageClasses: false,
     };
 

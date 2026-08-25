@@ -1,7 +1,15 @@
 import type { MemberProfile, User } from "@guild/shared";
-import { ActionIcon, Group, Modal, Stack, Text, Tooltip } from "@mantine/core";
-import { PencilIcon } from "@portal/components/icons";
-import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
+import { PencilIcon, XIcon } from "@portal/components/icons";
+import { Button } from "@portal/components/ui/button";
+import {
+  Dialog,
+  DialogClose,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "@portal/components/ui/dialog";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@portal/components/ui/tooltip";
+import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { MediaGallery, buildMediaGalleryLabels } from "@portal/components/shared/MediaGallery";
 import { formatLocaleDateTime } from "../../utils/datetime";
@@ -38,7 +46,6 @@ export function ProfileModal({
   const mediaLabels = useMemo(() => buildMediaGalleryLabels(t), [t]);
   const [avatarLoaded, setAvatarLoaded] = useState(false);
   const [avatarError, setAvatarError] = useState(false);
-  const bodyRef = useRef<HTMLDivElement | null>(null);
   const safeTitleHtml = useMemo(
     () => sanitizeTitleHtml(profile?.title_html ?? ""),
     [profile?.title_html],
@@ -57,105 +64,54 @@ export function ProfileModal({
     setAvatarError(false);
   }, [open, profile?.user_id]);
 
-  useEffect(() => {
-    if (!open) {
-      return;
-    }
-    const timeoutId = window.setTimeout(() => {
-      const container = bodyRef.current;
-      if (!container) return;
-      const firstFocusable = container.querySelector<HTMLElement>(
-        "button, [href], input, select, textarea, [tabindex]:not([tabindex='-1'])",
-      );
-      firstFocusable?.focus();
-    }, 0);
-    return () => window.clearTimeout(timeoutId);
-  }, [open]);
-
-  const handleTrapFocus = (event: KeyboardEvent<HTMLDivElement>) => {
-    if (event.key !== "Tab") {
-      return;
-    }
-
-    const container = bodyRef.current;
-    if (!container) {
-      return;
-    }
-    const focusable = Array.from(
-      container.querySelectorAll<HTMLElement>(
-        "button, [href], input, select, textarea, [tabindex]:not([tabindex='-1'])",
-      ),
-    ).filter((element) => !element.hasAttribute("disabled") && element.getAttribute("aria-hidden") !== "true");
-
-    if (focusable.length === 0) {
-      event.preventDefault();
-      return;
-    }
-
-    const first = focusable[0]!;
-    const last = focusable[focusable.length - 1]!;
-    const active = document.activeElement as HTMLElement | null;
-
-    if (event.shiftKey) {
-      if (!active || active === first || !container.contains(active)) {
-        event.preventDefault();
-        last.focus();
-      }
-      return;
-    }
-
-    if (!active || active === last || !container.contains(active)) {
-      event.preventDefault();
-      first.focus();
-    }
-  };
-
   return (
-    <Modal
-      opened={open}
-      title={
-        user ? (
-          <Group gap={12} wrap="nowrap" justify="space-between" style={{ flex: 1 }}>
-            <Text component="span" fw={700} size="lg" className={styles.modalHeading}>
-              {t("profile.modalTitle", { name: user.username })}
-            </Text>
-            {canEdit && onEdit ? (
-              /*
-               * 只留图标：这颗按钮和关闭叉共处一条标题栏，带文案时会把标题挤到
-               * 换行。size="md" 就是 Mantine 给关闭叉的尺寸（--cb-size-md），
-               * 写死像素只会在缩放设置变化时和旁边那颗对不齐。
-               */
-              <Tooltip label={editTitle} withArrow>
-                <ActionIcon
-                  onClick={onEdit}
-                  variant="default"
-                  size="md"
-                  aria-label={editTitle}
+    <Dialog
+      open={open}
+      onOpenChange={(nextOpen, details) => {
+        if (nextOpen) return;
+        if (details.reason === "outside-press") {
+          details.cancel();
+          return;
+        }
+        onClose();
+      }}
+    >
+      <DialogContent showCloseButton={false} className={styles.modalContent}>
+        <DialogHeader className={styles.modalTitle}>
+          <DialogTitle className={styles.modalHeading}>
+            {t("profile.modalTitle", { name: user?.display_name ?? "" })}
+          </DialogTitle>
+          <div className={styles.modalActions}>
+            {user && canEdit && onEdit ? (
+              <Tooltip>
+                <TooltipTrigger
+                  render={(
+                    <Button type="button" variant="outline" size="icon-sm" aria-label={editTitle} onClick={onEdit} />
+                  )}
                 >
                   <PencilIcon size={14} />
-                </ActionIcon>
+                </TooltipTrigger>
+                <TooltipContent>{editTitle}</TooltipContent>
               </Tooltip>
             ) : null}
-          </Group>
-        ) : undefined
-      }
-      onClose={onClose}
-      classNames={{ content: styles.modalContent, title: styles.modalTitle, body: styles.modalBody }}
-      size="min(1180px, 96vw)"
-      centered
-      returnFocus
-      closeOnClickOutside={false}
-      keepMounted={false}
-    >
-      {!user || !profile ? null : (
-        <div ref={bodyRef} onKeyDown={handleTrapFocus} tabIndex={-1}>
-          <Stack gap="var(--space-xl)" w="100%">
+            <DialogClose
+              render={(
+                <Button type="button" variant="ghost" size="icon-sm" aria-label={t("action.close")} />
+              )}
+            >
+              <XIcon aria-hidden />
+            </DialogClose>
+          </div>
+        </DialogHeader>
+        <div className={styles.modalBody}>
+          {!user || !profile ? null : (
+            <div className={styles.modalStack}>
             <div className={styles.header}>
               <div className={styles.avatarWrap}>
                 {avatarUrl && !avatarError ? (
                   <img
                     src={avatarUrl}
-                    alt={t("a11y.avatar", { name: user.username })}
+                    alt={t("a11y.avatar", { name: user.display_name })}
                     loading="lazy"
                     decoding="async"
                     className={`${styles.avatar}${avatarLoaded ? ` ${styles.avatarLoaded}` : ""}`}
@@ -164,22 +120,22 @@ export function ProfileModal({
                   />
                 ) : (
                   <div className={styles.avatarFallback} aria-hidden="true">
-                    {user.username.slice(0, 1).toUpperCase()}
+                    {user.display_name.slice(0, 1).toUpperCase()}
                   </div>
                 )}
               </div>
               <div className={styles.infoGrid}>
                 <div className={styles.field}>
                   <span className={styles.fieldLabel}>{t("profile.field.name")}</span>
-                  <Text fw={700} className={styles.fieldValue}>{user.username}</Text>
+                  <strong className={styles.fieldValue}>{user.display_name}</strong>
                 </div>
                 <div className={styles.field}>
                   <span className={styles.fieldLabel}>{t("profile.field.accountUpdated")}</span>
-                  <Text className={styles.fieldValue}>{accountUpdated}</Text>
+                  <span className={styles.fieldValue}>{accountUpdated}</span>
                 </div>
                 <div className={styles.field}>
                   <span className={styles.fieldLabel}>{t("profile.field.power")}</span>
-                  <Text className={styles.fieldValue}>{profile.power}</Text>
+                  <span className={styles.fieldValue}>{profile.power}</span>
                 </div>
                 <div className={styles.field}>
                   <span className={styles.fieldLabel}>{t("profile.field.title")}</span>
@@ -188,19 +144,19 @@ export function ProfileModal({
                 <div className={styles.field}>
                   <span className={styles.fieldLabel}>{t("profile.field.class")}</span>
                   {classItems.length > 0 ? (
-                    <Group gap={8} wrap="wrap" className={styles.fieldValue}>
+                    <div className={`${styles.fieldValue} ${styles.classList}`}>
                       {classItems.map((item) => (
-                        <Group key={item.id} gap={4} wrap="nowrap">
+                        <span key={item.id} className={styles.classItem}>
                           <ClassIcon item={item} size={20} />
-                          <Text size="sm">{item.label}</Text>
-                        </Group>
+                          <span>{item.label}</span>
+                        </span>
                       ))}
-                    </Group>
-                  ) : <Text className={styles.fieldValue}>-</Text>}
+                    </div>
+                  ) : <span className={styles.fieldValue}>-</span>}
                 </div>
                 <div className={styles.field}>
                   <span className={styles.fieldLabel}>{t("profile.field.bio")}</span>
-                  <Text className={styles.fieldValue}>{profile.bio ?? "-"}</Text>
+                  <span className={styles.fieldValue}>{profile.bio ?? "-"}</span>
                 </div>
               </div>
             </div>
@@ -211,9 +167,10 @@ export function ProfileModal({
               resolveMediaUrl={resolveMediaUrl}
               labels={mediaLabels}
             />
-          </Stack>
+            </div>
+          )}
         </div>
-      )}
-    </Modal>
+      </DialogContent>
+    </Dialog>
   );
 }

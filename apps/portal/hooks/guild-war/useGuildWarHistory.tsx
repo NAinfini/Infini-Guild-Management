@@ -1,5 +1,4 @@
 import { useMemo } from "react";
-import { formatDateTime } from "../../utils/datetime";
 import { DEFAULT_GAME_RULES } from "@guild/shared";
 import { getGuildWarMemberStatLabel } from "@portal/utils/game-rules";
 
@@ -10,13 +9,13 @@ type UseGuildWarHistoryParams = {
       team_name: string;
       members: Array<{
         user_id: string;
-        username?: string;
+        display_name?: string;
         role_tag?: string | null;
       }>;
     }>;
     member_stats: Array<{
       user_id: string;
-      username?: string;
+      display_name?: string;
       stats: Record<string, number | null> | null;
     }>;
   } | null;
@@ -49,7 +48,7 @@ export function useGuildWarHistory({
         return {
           key: definition.key,
           label: getGuildWarMemberStatLabel(definition.key),
-          value: top ? `${top.member.username ?? top.member.user_id} (${top.value})` : "-",
+          value: top ? `${top.member.display_name ?? top.member.user_id} (${top.value})` : "-",
         };
       });
   }, [gameRules, historyDetailData]);
@@ -80,6 +79,5 @@ export function useGuildWarHistory({
   return {
     historyMvp,
     historyMissingSlotsByUserId,
-    formatDateTime,
   };
 }

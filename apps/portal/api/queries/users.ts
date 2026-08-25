@@ -39,7 +39,12 @@ export function fetchUsersListWithOptions(options?: UsersListOptions): Promise<U
 }
 
 export async function fetchAllUsersListWithOptions(options?: Omit<UsersListOptions, "page" | "limit" | "includeTotal">): Promise<UsersListResponse> {
-  const limit = LIMITS.pagination.users;
+  // Public projections are intentionally capped by the API. Keep the client
+  // pagination aligned with that contract instead of issuing a request that
+  // the server must reject before the roster can render.
+  const limit = options?.externalView
+    ? LIMITS.pagination.publicUsers
+    : LIMITS.pagination.users;
   const pages: UsersListResponse[] = [];
   let page = 1;
 

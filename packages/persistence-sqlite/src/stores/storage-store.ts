@@ -575,9 +575,9 @@ export class SqliteStorageStore implements StorageStore {
           item.created_at AS item_created_at,
           item.updated_at AS item_updated_at,
           actor.id AS actor_id,
-          actor.username AS actor_username,
+          actor.display_name AS actor_display_name,
           recipient.id AS recipient_id,
-          recipient.username AS recipient_username
+          recipient.display_name AS recipient_display_name
         FROM requested
         LEFT JOIN storage_items AS item ON item.id = requested.item_id
         LEFT JOIN storage_balances AS balance ON balance.item_id = item.id
@@ -610,9 +610,9 @@ export class SqliteStorageStore implements StorageStore {
           ledger.item_id AS item_id,
           item.name AS item_name,
           ledger.quantity_delta AS quantity_delta,
-          recipient.username AS recipient_username,
+          recipient.display_name AS recipient_display_name,
           ledger.actor_id AS actor_id,
-          actor.username AS actor_username,
+          actor.display_name AS actor_display_name,
           ledger.created_at AS created_at
         FROM storage_batches AS batch
         JOIN storage_ledger_entries AS ledger ON ledger.batch_id = batch.id
@@ -748,10 +748,10 @@ function ledgerStatement(query: StorageLedgerQuery, count: boolean): SqlBatchSta
        ledger.type AS transaction_type,
        ledger.quantity_delta AS quantity_delta,
        ledger.recipient_user_id AS recipient_user_id,
-       recipient.username AS recipient_username,
+       recipient.display_name AS recipient_display_name,
        ledger.note AS note,
        ledger.actor_id AS actor_id,
-       actor.username AS actor_username,
+       actor.display_name AS actor_display_name,
        ledger.created_at AS created_at`;
   const columns = count
     ? ["total"]
@@ -762,10 +762,10 @@ function ledgerStatement(query: StorageLedgerQuery, count: boolean): SqlBatchSta
         "transaction_type",
         "quantity_delta",
         "recipient_user_id",
-        "recipient_username",
+        "recipient_display_name",
         "note",
         "actor_id",
-        "actor_username",
+        "actor_display_name",
         "created_at",
       ];
   if (query.canViewAll) {
@@ -890,10 +890,10 @@ function transactionFromReplayRow(row: SqlRow): StorageTransaction {
     type: stockType(row[1]),
     quantity_delta: numberValue(row[8]),
     recipient_user_id: nullableString(row[2]),
-    recipient_username: nullableString(row[9]),
+    recipient_display_name: nullableString(row[9]),
     note: nullableString(row[3]),
     actor_id: stringValue(row[10]),
-    actor_username: nullableString(row[11]),
+    actor_display_name: nullableString(row[11]),
     created_at: stringValue(row[12]),
   };
 }
@@ -906,10 +906,10 @@ function transactionFromLedgerRow(row: SqlRow): StorageTransaction {
     type: stockType(row[3]),
     quantity_delta: numberValue(row[4]),
     recipient_user_id: nullableString(row[5]),
-    recipient_username: nullableString(row[6]),
+    recipient_display_name: nullableString(row[6]),
     note: nullableString(row[7]),
     actor_id: stringValue(row[8]),
-    actor_username: nullableString(row[9]),
+    actor_display_name: nullableString(row[9]),
     created_at: stringValue(row[10]),
   };
 }

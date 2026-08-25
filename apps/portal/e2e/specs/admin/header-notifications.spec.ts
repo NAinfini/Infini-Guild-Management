@@ -3,10 +3,9 @@ import { expect, test } from "../../support/test";
 /*
  * 页头通知浮层的键盘可达性。
  *
- * 为什么单独立一条 e2e：升到 Mantine 9 之后，同一段流程在 jsdom 里是坏的。
- * 但在真浏览器里量过，焦点是正常进浮层的——Mantine 的 useFocusTrap 在浮层内没有
- * 可聚焦子元素时（通知为空只有一句占位文案），会退回聚焦浮层自身，靠的是
- * Popover.Dropdown 上那个 tabIndex=-1。所以坏的是 jsdom 的时序，不是线上。
+ * 为什么单独立一条 e2e：这段交互依赖浏览器真实的焦点管理。
+ * 通知为空时浮层没有可聚焦子元素，焦点会落到浮层自身；有通知时则会落到内部控件。
+ * 这两种状态都只能在真实浏览器中可靠覆盖，不能用 jsdom 代替。
  *
  * 这条用例就是那个判定，别把它降级成单测——单测环境正是不可信的那一环。
  */
@@ -16,7 +15,7 @@ test("通知浮层能用键盘打开，Escape 关掉并把焦点还回按钮", a
   await page.waitForLoadState("networkidle");
 
   // 未读与否会换 aria-label，两种都接受。
-  const trigger = page.getByRole("button", { name: /^Notifications( \(unread\))?$/ });
+  const trigger = page.getByRole("button", { name: /^Notifications(?: \(\d+ unread\))?$/ });
   await expect(trigger).toBeVisible();
 
   await trigger.focus();

@@ -24,7 +24,7 @@ export const ACTION_FAMILY = {
   batch_role_update: "change",
   batch_update: "change",
   change_password: "security",
-  change_username: "change",
+  change_username: "security",
   conclude: "change",
   create: "create",
   create_video: "media",
@@ -65,6 +65,7 @@ export const ACTION_FAMILY = {
   upload_icon: "media",
   upload_images: "media",
   vote: "change",
+  withdraw: "state",
 } satisfies Record<AuditAction, ActionFamily>;
 
 export const ACTION_COLOR = {

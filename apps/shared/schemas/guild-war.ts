@@ -79,7 +79,7 @@ export const warTeamMemberSchema = z.object({
 });
 
 const guildWarMemberReadSchema = warTeamMemberSchema.extend({
-  username: z.string().optional(),
+  display_name: z.string().optional(),
   avatar_media_id: mediaIdSchema.nullable(),
 });
 
@@ -229,7 +229,7 @@ export const guildWarHistoryDetailResponseSchema = warHistorySchema.extend({
     id: z.string(),
     warHistoryId: z.string(),
     userId: z.string(),
-    username: z.string().optional(),
+    display_name: z.string().optional(),
   })),
   member_stats: z.array(guildWarMemberReadSchema),
 });

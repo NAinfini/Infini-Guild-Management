@@ -4,6 +4,7 @@ import { isApiRequestError } from "./api/client";
 export type RouteSession = {
   user: User;
   profile: MemberProfile;
+  session_scope: "normal" | "password_change";
 };
 
 type RouteSessionDependencies = {

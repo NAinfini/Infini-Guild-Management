@@ -1,6 +1,5 @@
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
-import { MantineProvider } from "@mantine/core";
 import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -10,11 +9,15 @@ const mocks = vi.hoisted(() => ({
   isExternalView: false,
 }));
 
-vi.mock("react-i18next", () => ({
-  useTranslation: () => ({
-    t: (key: string) => key,
-  }),
-}));
+vi.mock("react-i18next", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("react-i18next")>();
+  return {
+    ...actual,
+    useTranslation: () => ({
+      t: (key: string) => key,
+    }),
+  };
+});
 
 vi.mock("../../hooks/useExternalView", () => ({
   useExternalView: () => mocks.isExternalView,
@@ -25,11 +28,7 @@ vi.mock("../../utils/notifications", () => ({
 }));
 
 function renderToolsPage() {
-  render(
-    <MantineProvider>
-      <ToolsPage />
-    </MantineProvider>,
-  );
+  return render(<ToolsPage />);
 }
 
 describe("ToolsPage", () => {
@@ -37,22 +36,39 @@ describe("ToolsPage", () => {
     mocks.isExternalView = false;
   });
 
-  it("presents the dice roller as a focused, width-limited launch panel", () => {
-    renderToolsPage();
-
-    expect(screen.getByText("page.description")).toBeInTheDocument();
+  it("presents one compact semantic dice launch panel without decorative artwork", () => {
+    const { container } = renderToolsPage();
 
     const launchButton = screen.getByRole("button", { name: /dice\.title/i });
+    expect(screen.getAllByRole("button", { name: /dice\.title/i })).toHaveLength(1);
     expect(launchButton.closest(".tools-page__utility")).not.toBeNull();
+    expect(launchButton.querySelector(".tool-launch-panel__artwork")).toBeNull();
+    expect(launchButton.querySelector(".visual-theme-object")).toBeNull();
+    expect(launchButton.querySelector(".tool-launch-panel__semantic-icon")).not.toBeNull();
     expect(within(launchButton).getByText("dice.open")).toBeInTheDocument();
+
+    expect(container.querySelector(".page-spotlight")).toBeNull();
 
     const styles = readFileSync(
       resolve(process.cwd(), "apps/portal/components/pages/ToolsPage.css"),
       "utf8",
     );
     expect(styles).toMatch(
-      /\.tools-page__utility\s*\{[^}]*width:\s*100%[^}]*max-width:\s*46rem[^}]*margin-inline:\s*auto/s,
+      /\.tools-page__utility\s*\{[^}]*width:\s*100%[^}]*align-content:\s*start/s,
     );
+    expect(styles).toMatch(
+      /\.tool-launch-panel\s*\{[^}]*max-width:\s*42rem/s,
+    );
+    expect(styles).toMatch(
+      /\.tool-launch-panel__button\s*\{[^}]*grid-template-columns:\s*auto\s+minmax\(0,\s*1fr\)\s+auto/s,
+    );
+
+    const source = readFileSync(
+      resolve(process.cwd(), "apps/portal/components/pages/ToolsPage.tsx"),
+      "utf8",
+    );
+    expect(source).not.toContain("VisualThemeObject");
+    expect(source).not.toContain("variant=\"toolkit\"");
   });
 
   it("disables transform-based dice animations when reduced motion is requested", () => {

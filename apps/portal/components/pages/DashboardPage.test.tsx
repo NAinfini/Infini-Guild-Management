@@ -4,10 +4,11 @@ import { resolve } from "node:path";
 import { describe, expect, it, vi } from "vitest";
 import {
   DASHBOARD_EVENTS_REFETCH_INTERVAL_MS,
-  DASHBOARD_MOBILE_MEDIA_QUERY,
+  isDashboardEventStartingSoon,
   orderDashboardUpcomingRows,
   participantToDashboardMember,
   roundDashboardNow,
+  summarizeDashboardAttention,
 } from "./DashboardPage";
 import {
   dashboardQueryKeys,
@@ -23,28 +24,87 @@ vi.mock("../../api/client", () => ({
 const { apiRequest } = await import("../../api/client");
 
 describe("DashboardPage upcoming event query", () => {
-  it("uses the shared mobile breakpoint for the action-first composition", () => {
-    expect(DASHBOARD_MOBILE_MEDIA_QUERY).toBe("(max-width: 47.99em)");
-  });
-
-  it("renders mobile actions before member stats and the last war", () => {
+  it("puts my signups directly above upcoming events in the left dashboard column", () => {
     const source = readFileSync(
       resolve(process.cwd(), "apps/portal/components/pages/DashboardPage.tsx"),
       "utf8",
     );
-    const mobileBranchStart = source.indexOf("{isMobileDashboard ? (");
-    const mobileBranch = source.slice(
-      mobileBranchStart,
-      source.indexOf(") : (", mobileBranchStart),
+    const styles = readFileSync(
+      resolve(process.cwd(), "apps/portal/components/pages/DashboardPage.css"),
+      "utf8",
     );
     const sectionPositions = [
-      mobileBranch.indexOf("{actionsColumn ?"),
-      mobileBranch.indexOf("{activeMembersCard}"),
-      mobileBranch.indexOf("{lastWarCard ?"),
+      source.indexOf("dashboard-workspace__main"),
+      source.indexOf("dashboard-workspace__signups"),
+      source.indexOf("dashboard-workspace__upcoming"),
+      source.indexOf("dashboard-workspace__aside"),
+      source.indexOf("dashboard-workspace__announcement"),
+      source.indexOf("dashboard-workspace__attention"),
+      source.indexOf("dashboard-workspace__war"),
     ];
 
     expect(sectionPositions.every((position) => position >= 0)).toBe(true);
     expect(sectionPositions).toEqual([...sectionPositions].sort((left, right) => left - right));
+    expect(source).not.toContain("dashboard-workspace__lower");
+    expect(styles).toMatch(/\.dashboard-workspace\s*\{[^}]*grid-template-columns:/s);
+    expect(styles).toMatch(/\.dashboard-workspace__aside\s*\{[^}]*display:\s*grid/s);
+    expect(styles).toMatch(/@media \(max-width: 64rem\)[\s\S]*\.dashboard-workspace\s*\{[^}]*grid-template-columns:\s*minmax\(0, 1fr\)/);
+    expect(styles).toMatch(/@media \(max-width: 64rem\)[\s\S]*\.dashboard-workspace__main,[\s\S]*display:\s*contents/);
+    expect(styles).toMatch(/\.dashboard-workspace__attention\s*\{[^}]*order:\s*2/);
+    expect(styles).toMatch(/\.dashboard-workspace__upcoming\s*\{[^}]*order:\s*3/);
+  });
+
+  it("uses one personalized command briefing without duplicating the primary navigation", () => {
+    const source = readFileSync(
+      resolve(process.cwd(), "apps/portal/components/pages/DashboardPage.tsx"),
+      "utf8",
+    );
+    const styles = readFileSync(
+      resolve(process.cwd(), "apps/portal/components/pages/DashboardPage.css"),
+      "utf8",
+    );
+
+    expect(source).toContain('className="dashboard-briefing"');
+    expect(source).toContain('t("welcome"');
+    expect(source).toContain('t("briefing.description"');
+    expect(source).toContain('className="dashboard-briefing__metrics"');
+    expect(source).not.toContain('t("command.action.roster"');
+    expect(source).not.toContain('t("command.action.guildWar"');
+    expect(source).not.toContain("fetchDashboardMemberStats");
+    expect(source).toContain('className="dashboard-bulletin-card gap-0 py-0"');
+    expect(source).toContain("<DashboardGuildPulse items={pulseItems} />");
+    expect(source).toContain('aria-pressed={paused}');
+    expect(source).toContain("fetchInboxNotifications");
+    expect(source).toContain("<DashboardActivityCard");
+    expect(styles).not.toContain("--page-layout-max-width");
+    expect(styles).not.toContain("--shadow-card");
+    expect(styles).toMatch(/\.dashboard-briefing\s*\{/);
+    expect(styles).toMatch(/\.dashboard-briefing__metrics\s*\{[^}]*grid-template-columns:/s);
+    expect(styles).toMatch(/\.dashboard-bulletin-card\s*\{/);
+    expect(styles).toMatch(/\.dashboard-pulse\[data-paused\][\s\S]*animation-play-state:\s*paused/);
+    expect(styles).toMatch(/@media \(prefers-reduced-motion: reduce\)[\s\S]*\.dashboard-pulse__track\s*\{[\s\S]*animation:\s*none !important/);
+  });
+
+  it("summarizes only real event schedule and lineup conditions", () => {
+    expect(summarizeDashboardAttention([
+      {
+        startsSoon: true,
+        hasConflict: false,
+        isFull: true,
+        quotaSummary: { matchedTotal: 1, requiredTotal: 2 },
+      },
+      {
+        startsSoon: false,
+        hasConflict: true,
+        isFull: false,
+        quotaSummary: { matchedTotal: 2, requiredTotal: 2 },
+      },
+    ] as never)).toEqual({
+      startsSoon: 1,
+      conflicts: 1,
+      full: 1,
+      quotaShortfalls: 1,
+    });
   });
 
   it("rounds the dashboard clock without retaining mutable module state", () => {
@@ -80,7 +140,7 @@ describe("DashboardPage upcoming event query", () => {
     expect(
       participantToDashboardMember({
         user_id: "user-1",
-        username: "Aster",
+        display_name: "Aster",
         role: "member",
         classes: ["tank"],
         power: 4200,
@@ -89,7 +149,7 @@ describe("DashboardPage upcoming event query", () => {
     ).toEqual({
       user: {
         id: "user-1",
-        username: "Aster",
+        display_name: "Aster",
       },
       profile: {
         classes: ["tank"],
@@ -127,5 +187,14 @@ describe("DashboardPage upcoming event query", () => {
 
     expect(apiRequest).toHaveBeenCalledWith("/api/dashboard/events?external_view=true");
     expect(apiRequest).toHaveBeenCalledWith("/api/dashboard/wars?external_view=true");
+  });
+
+  it("treats only future starts within the exact six-hour window as urgent", () => {
+    const now = new Date("2026-05-06T12:00:00.000Z");
+
+    expect(isDashboardEventStartingSoon(new Date("2026-05-06T11:59:59.999Z"), now)).toBe(false);
+    expect(isDashboardEventStartingSoon(new Date("2026-05-06T12:00:00.000Z"), now)).toBe(true);
+    expect(isDashboardEventStartingSoon(new Date("2026-05-06T18:00:00.000Z"), now)).toBe(true);
+    expect(isDashboardEventStartingSoon(new Date("2026-05-06T18:00:00.001Z"), now)).toBe(false);
   });
 });

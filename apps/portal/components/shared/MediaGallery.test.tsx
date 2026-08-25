@@ -1,25 +1,15 @@
-import { MantineProvider } from "@mantine/core";
 import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
-import type { ReactNode } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { buildMediaGalleryLabels, MediaGallery } from "./MediaGallery";
 
-vi.mock("@mantine/carousel", () => ({
-  Carousel: Object.assign(
-    ({ children, emblaOptions }: { children: ReactNode; emblaOptions?: { duration?: number } }) => (
-      <div data-testid="media-carousel" data-duration={emblaOptions?.duration}>{children}</div>
-    ),
-    {
-      Slide: ({ children }: { children: ReactNode }) => <div>{children}</div>,
-    },
-  ),
-}));
-
-vi.mock("@mantine/hooks", () => ({
-  useMediaQuery: () => false,
+vi.mock("react-i18next", () => ({
+  useTranslation: () => ({
+    t: (key: string, options?: { index?: number }) =>
+      key === "media.aria.openItem" ? `Open item ${options?.index}` : key,
+  }),
 }));
 
 const MEDIA_ID_ONE = "abcdefghijklmnopqrstu";
@@ -31,14 +21,11 @@ afterEach(() => {
 });
 
 describe("MediaGallery", () => {
-  it("uses the measured snappy animation duration", () => {
-    render(
-      <MantineProvider>
-        <MediaGallery images={[MEDIA_ID_ONE, MEDIA_ID_TWO]} />
-      </MantineProvider>,
-    );
+  it("uses the source-owned gallery instead of a framework carousel", () => {
+    const { container } = render(<MediaGallery images={[MEDIA_ID_ONE, MEDIA_ID_TWO]} />);
 
-    expect(screen.getByTestId("media-carousel")).toHaveAttribute("data-duration", "18");
+    expect(container.querySelectorAll(".infini-media-gallery-frame")).toHaveLength(2);
+    expect(container.querySelector(".infini-media-gallery-frame[data-active]")).toBeInTheDocument();
   });
 
   it("localizes image and video alt text while interpolating each item index once", async () => {
@@ -51,13 +38,11 @@ describe("MediaGallery", () => {
     });
 
     render(
-      <MantineProvider>
-        <MediaGallery
-          images={[MEDIA_ID_ONE, MEDIA_ID_TWO]}
-          videos={["https://www.youtube.com/watch?v=dQw4w9WgXcQ"]}
-          labels={labels}
-        />
-      </MantineProvider>,
+      <MediaGallery
+        images={[MEDIA_ID_ONE, MEDIA_ID_TWO]}
+        videos={["https://www.youtube.com/watch?v=dQw4w9WgXcQ"]}
+        labels={labels}
+      />,
     );
 
     expect(screen.getByRole("button", { name: "Open media item 1" })).toBeInTheDocument();
@@ -82,9 +67,7 @@ describe("MediaGallery", () => {
     const pause = vi.spyOn(window.HTMLMediaElement.prototype, "pause").mockImplementation(() => {});
 
     const { container } = render(
-      <MantineProvider>
-        <MediaGallery images={[MEDIA_ID_ONE]} videos={[embeddedVideo, directVideo]} />
-      </MantineProvider>,
+      <MediaGallery images={[MEDIA_ID_ONE]} videos={[embeddedVideo, directVideo]} />,
     );
 
     expect(container.querySelector("iframe, video")).not.toBeInTheDocument();
@@ -108,9 +91,7 @@ describe("MediaGallery", () => {
     );
 
     render(
-      <MantineProvider>
-        <MediaGallery images={[MEDIA_ID_ONE, MEDIA_ID_TWO, MEDIA_ID_THREE]} labels={labels} />
-      </MantineProvider>,
+      <MediaGallery images={[MEDIA_ID_ONE, MEDIA_ID_TWO, MEDIA_ID_THREE]} labels={labels} />,
     );
 
     /* 幻灯片全都在 DOM 里但被挪出了视口，懒加载因此永远不会替它们开工——每次
@@ -144,16 +125,14 @@ describe("MediaGallery", () => {
   it("opens the enlarged view on the image the viewer clicked", async () => {
     const labels = buildMediaGalleryLabels((key, options?: { index?: number }) => {
       if (key === "media.aria.enlargeImage") return `Enlarge ${options?.index}`;
+      if (key === "media.aria.openItem") return `Open item ${options?.index}`;
       if (key === "media.aria.imageAlt") return `Slide ${options?.index}`;
       return key;
     });
 
-    render(
-      <MantineProvider>
-        <MediaGallery images={[MEDIA_ID_ONE, MEDIA_ID_TWO]} labels={labels} />
-      </MantineProvider>,
-    );
+    render(<MediaGallery images={[MEDIA_ID_ONE, MEDIA_ID_TWO]} labels={labels} />);
 
+    await userEvent.click(screen.getByRole("button", { name: "Open item 2" }));
     await userEvent.click(screen.getByRole("button", { name: "Enlarge 2" }));
 
     const enlarged = within(await screen.findByRole("dialog")).getByAltText("Slide 2");

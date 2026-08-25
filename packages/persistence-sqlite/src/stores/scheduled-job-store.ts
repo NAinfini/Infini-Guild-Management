@@ -6,6 +6,7 @@ import type {
 } from "@guild/server/modules/jobs";
 import type { EventsPollRaffleStore } from "@guild/server/modules/events";
 import type { SqlExecutor, SqlResult, SqlValue } from "@guild/kernel";
+import { NOTIFICATION_INBOX_RETENTION_DAYS } from "@guild/shared";
 import { LIMITS } from "@guild/shared/config/limits";
 import { auditInsertSelectStatement } from "./audit-statement.js";
 import {
@@ -31,12 +32,12 @@ const dueRaffleWhere = `type = 'raffle'
   AND EXISTS (SELECT 1 FROM event_participants participant WHERE participant.event_id = events.id)
   AND NOT EXISTS (SELECT 1 FROM event_raffle_draws draw WHERE draw.event_id = events.id)`;
 
-export const SESSION_CLEANUP_EXPIRES_CANDIDATES_SQL = `SELECT token_digest FROM sessions
+export const SESSION_CLEANUP_EXPIRES_CANDIDATES_SQL = `SELECT token_digest AS candidate_key, expires_at AS pending_at FROM sessions
   WHERE expires_at <= ?
   ORDER BY expires_at, token_digest
   LIMIT ?`;
 
-export const SESSION_CLEANUP_CREATED_CANDIDATES_SQL = `SELECT token_digest FROM sessions
+export const SESSION_CLEANUP_CREATED_CANDIDATES_SQL = `SELECT token_digest AS candidate_key, created_at AS pending_at FROM sessions
   WHERE created_at <= ?
   ORDER BY created_at, token_digest
   LIMIT ?`;
@@ -110,7 +111,7 @@ export class SqliteEventAutoArchiveStore implements BoundedEventAutoArchiveStore
           CAST(json_extract(payload.value, '$.actorKind') AS TEXT),
           CAST(json_extract(payload.value, '$.actorId') AS TEXT),
           CASE WHEN json_extract(payload.value, '$.actorKind') = 'user'
-            THEN (SELECT username FROM users WHERE id = CAST(json_extract(payload.value, '$.actorId') AS TEXT))
+            THEN (SELECT display_name FROM users WHERE id = CAST(json_extract(payload.value, '$.actorId') AS TEXT))
             ELSE json_extract(payload.value, '$.actorLabel') END,
           CAST(json_extract(payload.value, '$.subjectType') AS TEXT),
           CAST(json_extract(payload.value, '$.subjectId') AS TEXT),
@@ -220,7 +221,7 @@ export class SqliteAnnouncementPublishStore implements BoundedAnnouncementPublis
       {
         method: "run",
         sql: `UPDATE media_links SET audience = 'public'
-          WHERE entity_type = 'announcement' AND slot = 'body'
+          WHERE entity_type = 'announcement' AND slot IN ('body', 'attachment')
             AND EXISTS (
               SELECT 1 FROM json_each(?) AS payload
               JOIN announcements ON announcements.id = CAST(json_extract(payload.value, '$.announcementId') AS TEXT)
@@ -236,7 +237,7 @@ export class SqliteAnnouncementPublishStore implements BoundedAnnouncementPublis
           CAST(json_extract(payload.value, '$.audit.actorKind') AS TEXT),
           CAST(json_extract(payload.value, '$.audit.actorId') AS TEXT),
           CASE WHEN json_extract(payload.value, '$.audit.actorKind') = 'user'
-            THEN (SELECT username FROM users WHERE id = CAST(json_extract(payload.value, '$.audit.actorId') AS TEXT))
+            THEN (SELECT display_name FROM users WHERE id = CAST(json_extract(payload.value, '$.audit.actorId') AS TEXT))
             ELSE json_extract(payload.value, '$.audit.actorLabel') END,
           CAST(json_extract(payload.value, '$.audit.subjectType') AS TEXT),
           CAST(json_extract(payload.value, '$.audit.subjectId') AS TEXT),
@@ -381,41 +382,127 @@ export class SqliteSessionCleanupJob implements SessionCleanupJob {
 
   async run(input: Parameters<SessionCleanupJob["run"]>[0]) {
     assertLimit(input.limit, 500, "Session cleanup");
+    const cutoffs = maintenanceCutoffs(input.expiresBefore);
     const selected = await this.sql.batch([
       {
         method: "all",
-        columns: ["token_digest"],
+        columns: ["candidate_key", "pending_at"],
         sql: SESSION_CLEANUP_EXPIRES_CANDIDATES_SQL,
         params: [input.expiresBefore, input.limit],
       },
       {
         method: "all",
-        columns: ["token_digest"],
+        columns: ["candidate_key", "pending_at"],
         sql: SESSION_CLEANUP_CREATED_CANDIDATES_SQL,
         params: [input.createdBefore, input.limit],
       },
+      {
+        method: "all",
+        columns: ["candidate_key", "pending_at"],
+        sql: `SELECT id AS candidate_key, occurred_at AS pending_at FROM notification_inbox
+          WHERE occurred_at < ? ORDER BY occurred_at, id LIMIT ?`,
+        params: [cutoffs.notificationInbox, input.limit],
+      },
+      {
+        method: "all",
+        columns: ["candidate_key", "pending_at"],
+        sql: `SELECT state_digest AS candidate_key, created_at AS pending_at FROM oauth_challenges
+          WHERE expires_at <= ? OR consumed_at <= ?
+          ORDER BY created_at, state_digest LIMIT ?`,
+        params: [cutoffs.transientAuth, cutoffs.transientAuth, input.limit],
+      },
+      {
+        method: "all",
+        columns: ["candidate_key", "pending_at"],
+        sql: `SELECT token_digest AS candidate_key, created_at AS pending_at FROM email_verification_challenges
+          WHERE expires_at <= ? OR consumed_at <= ?
+          ORDER BY created_at, token_digest LIMIT ?`,
+        params: [cutoffs.transientAuth, cutoffs.transientAuth, input.limit],
+      },
+      {
+        method: "all",
+        columns: ["candidate_key", "pending_at"],
+        sql: `SELECT login_name AS candidate_key, last_failed_at AS pending_at FROM login_failures
+          WHERE last_failed_at < ? AND (locked_until IS NULL OR locked_until < ?)
+          ORDER BY last_failed_at, login_name LIMIT ?`,
+        params: [cutoffs.transientAuth, input.expiresBefore, input.limit],
+      },
     ]);
-    const candidates = [...new Set(selected.flatMap((result) => rows(result).map((row) => {
-      const tokenDigest = row[0];
-      if (typeof tokenDigest !== "string") throw new TypeError("SQLite returned an invalid session cleanup row");
-      return tokenDigest;
-    })))].slice(0, input.limit);
+    const kinds = ["session", "session", "notification", "oauth", "email", "login_failure"] as const;
+    type Candidate = Readonly<{ kind: (typeof kinds)[number]; key: string; pendingAt: string }>;
+    const candidatesByIdentity = new Map<string, Candidate>();
+    selected.forEach((result, index) => {
+      const kind = kinds[index];
+      if (kind === undefined) throw new TypeError("SQLite returned an unknown cleanup result set");
+      for (const row of rows(result)) {
+        const [key, pendingAt] = row;
+        if (typeof key !== "string" || typeof pendingAt !== "string") {
+          throw new TypeError("SQLite returned an invalid maintenance cleanup row");
+        }
+        const identity = `${kind}\u0000${key}`;
+        const existing = candidatesByIdentity.get(identity);
+        if (existing === undefined || pendingAt < existing.pendingAt) {
+          candidatesByIdentity.set(identity, { kind, key, pendingAt });
+        }
+      }
+    });
+    const candidates = [...candidatesByIdentity.values()]
+      .sort((left, right) => left.pendingAt.localeCompare(right.pendingAt)
+        || left.kind.localeCompare(right.kind)
+        || left.key.localeCompare(right.key))
+      .slice(0, input.limit);
+    const candidateKeys = (kind: Candidate["kind"]): string => JSON.stringify(
+      candidates.filter((candidate) => candidate.kind === kind).map((candidate) => candidate.key),
+    );
 
-    let processed = 0;
-    if (candidates.length > 0) {
-      const mutation = await this.sql.batch([
-        {
-          method: "all",
-          columns: ["token_digest"],
-          sql: `DELETE FROM sessions
-            WHERE token_digest IN (SELECT CAST(value AS TEXT) FROM json_each(?))
-              AND (expires_at <= ? OR created_at <= ?)
-            RETURNING token_digest`,
-          params: [JSON.stringify(candidates), input.expiresBefore, input.createdBefore],
-        },
-      ]);
-      processed = returnedRows(mutation[0]).length;
-    }
+    const mutation = await this.sql.batch([
+      {
+        method: "all",
+        columns: ["token_digest"],
+        sql: `DELETE FROM sessions
+          WHERE token_digest IN (SELECT CAST(value AS TEXT) FROM json_each(?))
+            AND (expires_at <= ? OR created_at <= ?)
+          RETURNING token_digest`,
+        params: [candidateKeys("session"), input.expiresBefore, input.createdBefore],
+      },
+      {
+        method: "all",
+        columns: ["id"],
+        sql: `DELETE FROM notification_inbox
+          WHERE id IN (SELECT CAST(value AS TEXT) FROM json_each(?))
+            AND occurred_at < ?
+          RETURNING id`,
+        params: [candidateKeys("notification"), cutoffs.notificationInbox],
+      },
+      {
+        method: "all",
+        columns: ["state_digest"],
+        sql: `DELETE FROM oauth_challenges
+          WHERE state_digest IN (SELECT CAST(value AS TEXT) FROM json_each(?))
+            AND (expires_at <= ? OR consumed_at <= ?)
+          RETURNING state_digest`,
+        params: [candidateKeys("oauth"), cutoffs.transientAuth, cutoffs.transientAuth],
+      },
+      {
+        method: "all",
+        columns: ["token_digest"],
+        sql: `DELETE FROM email_verification_challenges
+          WHERE token_digest IN (SELECT CAST(value AS TEXT) FROM json_each(?))
+            AND (expires_at <= ? OR consumed_at <= ?)
+          RETURNING token_digest`,
+        params: [candidateKeys("email"), cutoffs.transientAuth, cutoffs.transientAuth],
+      },
+      {
+        method: "all",
+        columns: ["login_name"],
+        sql: `DELETE FROM login_failures
+          WHERE login_name IN (SELECT CAST(value AS TEXT) FROM json_each(?))
+            AND last_failed_at < ? AND (locked_until IS NULL OR locked_until < ?)
+          RETURNING login_name`,
+        params: [candidateKeys("login_failure"), cutoffs.transientAuth, input.expiresBefore],
+      },
+    ]);
+    const processed = mutation.reduce((total, result) => total + returnedRows(result).length, 0);
 
     const remaining = await this.sql.batch([
       {
@@ -430,26 +517,80 @@ export class SqliteSessionCleanupJob implements SessionCleanupJob {
         sql: "SELECT 1 AS present FROM sessions WHERE created_at <= ? ORDER BY created_at, token_digest LIMIT 1",
         params: [input.createdBefore],
       },
+      {
+        method: "get",
+        columns: ["present"],
+        sql: "SELECT 1 AS present FROM notification_inbox WHERE occurred_at < ? ORDER BY occurred_at, id LIMIT 1",
+        params: [cutoffs.notificationInbox],
+      },
+      {
+        method: "get",
+        columns: ["present"],
+        sql: "SELECT 1 AS present FROM oauth_challenges WHERE expires_at <= ? OR consumed_at <= ? LIMIT 1",
+        params: [cutoffs.transientAuth, cutoffs.transientAuth],
+      },
+      {
+        method: "get",
+        columns: ["present"],
+        sql: "SELECT 1 AS present FROM email_verification_challenges WHERE expires_at <= ? OR consumed_at <= ? LIMIT 1",
+        params: [cutoffs.transientAuth, cutoffs.transientAuth],
+      },
+      {
+        method: "get",
+        columns: ["present"],
+        sql: "SELECT 1 AS present FROM login_failures WHERE last_failed_at < ? AND (locked_until IS NULL OR locked_until < ?) LIMIT 1",
+        params: [cutoffs.transientAuth, input.expiresBefore],
+      },
     ]);
     const hasMore = remaining.some((result) => firstCell(result) === 1);
     return { processed, hasMore };
   }
 
   async inspectBacklog(input: Parameters<SessionCleanupJob["inspectBacklog"]>[0]) {
+    const cutoffs = maintenanceCutoffs(input.expiresBefore);
     const observed = await this.sql.batch([
       {
         method: "all",
         columns: ["token_digest", "pending_at"],
-        sql: `SELECT token_digest, expires_at AS pending_at FROM sessions
+        sql: `SELECT 'session:' || token_digest AS token_digest, expires_at AS pending_at FROM sessions
           WHERE expires_at <= ? ORDER BY expires_at, token_digest LIMIT ?`,
         params: [input.expiresBefore, SCHEDULED_BACKLOG_READ_LIMIT],
       },
       {
         method: "all",
         columns: ["token_digest", "pending_at"],
-        sql: `SELECT token_digest, created_at AS pending_at FROM sessions
+        sql: `SELECT 'session:' || token_digest AS token_digest, created_at AS pending_at FROM sessions
           WHERE created_at <= ? ORDER BY created_at, token_digest LIMIT ?`,
         params: [input.createdBefore, SCHEDULED_BACKLOG_READ_LIMIT],
+      },
+      {
+        method: "all",
+        columns: ["token_digest", "pending_at"],
+        sql: `SELECT 'notification:' || id AS token_digest, occurred_at AS pending_at FROM notification_inbox
+          WHERE occurred_at < ? ORDER BY occurred_at, id LIMIT ?`,
+        params: [cutoffs.notificationInbox, SCHEDULED_BACKLOG_READ_LIMIT],
+      },
+      {
+        method: "all",
+        columns: ["token_digest", "pending_at"],
+        sql: `SELECT 'oauth:' || state_digest AS token_digest, created_at AS pending_at FROM oauth_challenges
+          WHERE expires_at <= ? OR consumed_at <= ? ORDER BY created_at, state_digest LIMIT ?`,
+        params: [cutoffs.transientAuth, cutoffs.transientAuth, SCHEDULED_BACKLOG_READ_LIMIT],
+      },
+      {
+        method: "all",
+        columns: ["token_digest", "pending_at"],
+        sql: `SELECT 'email:' || token_digest AS token_digest, created_at AS pending_at FROM email_verification_challenges
+          WHERE expires_at <= ? OR consumed_at <= ? ORDER BY created_at, token_digest LIMIT ?`,
+        params: [cutoffs.transientAuth, cutoffs.transientAuth, SCHEDULED_BACKLOG_READ_LIMIT],
+      },
+      {
+        method: "all",
+        columns: ["token_digest", "pending_at"],
+        sql: `SELECT 'login-failure:' || login_name AS token_digest, last_failed_at AS pending_at FROM login_failures
+          WHERE last_failed_at < ? AND (locked_until IS NULL OR locked_until < ?)
+          ORDER BY last_failed_at, login_name LIMIT ?`,
+        params: [cutoffs.transientAuth, input.expiresBefore, SCHEDULED_BACKLOG_READ_LIMIT],
       },
     ]);
     const pendingBySession = new Map<string, string>();
@@ -471,4 +612,13 @@ export class SqliteSessionCleanupJob implements SessionCleanupJob {
         || observed.some((result) => rows(result).length === SCHEDULED_BACKLOG_READ_LIMIT),
     );
   }
+}
+
+function maintenanceCutoffs(now: string): Readonly<{ notificationInbox: string; transientAuth: string }> {
+  const nowMs = Date.parse(now);
+  if (!Number.isFinite(nowMs)) throw new TypeError("Session cleanup clock is invalid");
+  return {
+    notificationInbox: new Date(nowMs - NOTIFICATION_INBOX_RETENTION_DAYS * 24 * 60 * 60 * 1_000).toISOString(),
+    transientAuth: new Date(nowMs - 24 * 60 * 60 * 1_000).toISOString(),
+  };
 }

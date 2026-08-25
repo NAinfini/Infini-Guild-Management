@@ -176,9 +176,9 @@ export const MemberCard = memo(function MemberCard({
         style={{ "--class-color": primaryClassItem.color } as React.CSSProperties}
         onClick={onClick}
         onDoubleClick={onDoubleClick}
-        aria-label={t("a11y.select", { name: user.username })}
+        aria-label={t("a11y.select", { name: user.display_name })}
       >
-        <span className="member-card__compact-username">{user.username}</span>
+        <span className="member-card__compact-display_name">{user.display_name}</span>
         <span
           className="member-card__compact-class"
           style={{ "--class-color": primaryClassItem.color } as React.CSSProperties}
@@ -204,14 +204,21 @@ export const MemberCard = memo(function MemberCard({
         className={`member-card member-card--full${selected ? " member-card--selected" : ""}`}
         onClick={onClick}
         onDoubleClick={onDoubleClick}
-        aria-label={t("a11y.openProfile", { name: user.username })}
+        aria-label={t("a11y.openProfile", { name: user.display_name })}
         style={{ rotateX, rotateY, scale }}
       >
+        <span className="member-card__effects" aria-hidden="true">
+          <motion.span
+            className="member-card__spec"
+            aria-hidden="true"
+            style={{ x: specularX, y: specularY }}
+          />
+        </span>
         <div className="member-card__avatar-wrap">
           {avatarSrc && !avatarBroken ? (
             <img
               src={avatarSrc}
-              alt={t("a11y.avatar", { name: user.username })}
+              alt={t("a11y.avatar", { name: user.display_name })}
               loading="lazy"
               decoding="async"
               className="member-card__avatar"
@@ -219,7 +226,7 @@ export const MemberCard = memo(function MemberCard({
             />
           ) : (
             <div className="member-card__avatar-fallback" aria-hidden="true">
-              {user.username.slice(0, 1).toUpperCase()}
+              {user.display_name.slice(0, 1).toUpperCase()}
             </div>
           )}
           <span
@@ -230,7 +237,7 @@ export const MemberCard = memo(function MemberCard({
 
         <div className="member-card__content">
           <div className="member-card__identity">
-            <span className="member-card__username">{user.username}</span>
+            <span className="member-card__username">{user.display_name}</span>
           </div>
           {titleHtml ? (
             <div className="member-card__title" dangerouslySetInnerHTML={{ __html: titleHtml }} />
@@ -276,13 +283,6 @@ export const MemberCard = memo(function MemberCard({
           ) : null}
         </div>
 
-        {/* 放在最后：定位元素本来就画在常规流之上，写在末尾只是让「这层盖在
-            卡面上」在阅读顺序上也成立。透明度很低，不影响下面文字的可读性。 */}
-        <motion.span
-          className="member-card__spec"
-          aria-hidden="true"
-          style={{ x: specularX, y: specularY }}
-        />
       </motion.button>
     </div>
   );

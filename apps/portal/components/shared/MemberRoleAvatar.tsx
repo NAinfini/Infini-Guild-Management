@@ -1,5 +1,6 @@
-import { Avatar, Group, HoverCard, Stack, Text, UnstyledButton } from "@mantine/core";
 import { BoltIcon } from "@portal/components/icons";
+import { Avatar, AvatarFallback, AvatarImage } from "@portal/components/ui/avatar";
+import { PreviewCard, PreviewCardContent, PreviewCardTrigger } from "@portal/components/ui/preview-card";
 import { resolveMediaUrl } from "../../utils/media";
 import { useClassCatalog } from "../../hooks/data/useClassData";
 import { resolveClassCatalogItem } from "../../utils/class-catalog";
@@ -12,7 +13,7 @@ function getUniqueClassIds(classes: readonly string[]): string[] {
 
 type MemberRoleAvatarProps = {
   user: {
-    username: string;
+    display_name: string;
   };
   profile: {
     classes: readonly string[];
@@ -47,8 +48,9 @@ export function MemberRoleAvatar({
 
   const avatar = (
     <div className="member-role-avatar">
-      <Avatar size={size} radius="xl" color="portal-brand" src={avatarSrc}>
-        {user.username.slice(0, 1).toUpperCase()}
+      <Avatar style={{ width: size, height: size }}>
+        {avatarSrc ? <AvatarImage src={avatarSrc} alt="" /> : null}
+        <AvatarFallback>{user.display_name.slice(0, 1).toUpperCase()}</AvatarFallback>
       </Avatar>
       {withClassCircles && visibleClassItems.length > 0 ? (
         <div className="member-role-avatar__roles" aria-hidden="true">
@@ -76,42 +78,45 @@ export function MemberRoleAvatar({
   if (!withTooltip) return avatar;
 
   return (
-    <HoverCard width={236} shadow="md" position="top" withArrow openDelay={200} closeDelay={100}>
-      <HoverCard.Target>
-        <UnstyledButton aria-label={user.username}>
-          {avatar}
-        </UnstyledButton>
-      </HoverCard.Target>
-      <HoverCard.Dropdown className="member-role-avatar__popover">
-        <Group gap={10} wrap="nowrap" align="flex-start">
-          <Avatar size={40} radius="xl" color="portal-brand" src={avatarSrc}>
-            {user.username.slice(0, 1).toUpperCase()}
+    <PreviewCard>
+      <PreviewCardTrigger
+        delay={200}
+        closeDelay={100}
+        render={<button type="button" className="member-role-avatar__trigger" aria-label={user.display_name} />}
+      >
+        {avatar}
+      </PreviewCardTrigger>
+      <PreviewCardContent side="top" className="member-role-avatar__popover">
+        <div className="member-role-avatar__summary">
+          <Avatar size="lg">
+            {avatarSrc ? <AvatarImage src={avatarSrc} alt="" /> : null}
+            <AvatarFallback>{user.display_name.slice(0, 1).toUpperCase()}</AvatarFallback>
           </Avatar>
-          <Stack gap={2} style={{ flex: 1, minWidth: 0 }}>
-            <Text size="sm" fw={700} truncate>{user.username}</Text>
+          <div className="member-role-avatar__identity">
+            <strong className="member-role-avatar__name">{user.display_name}</strong>
             {classItems.length > 0 ? (
-              <Text size="xs" c="dimmed" truncate>
+              <span className="member-role-avatar__classes">
                 {classItems.map((item) => item.label).join(" · ")}
-              </Text>
+              </span>
             ) : null}
-          </Stack>
-        </Group>
-        <Group gap={8} mt={10} wrap="wrap">
+          </div>
+        </div>
+        <div className="member-role-avatar__details">
           {classItems.map((item) => (
-            <Group key={item.id} gap={5} wrap="nowrap">
+            <span key={item.id} className="member-role-avatar__class-detail">
               <ClassIcon item={item} size={20} />
-              <Text size="xs" fw={600}>{item.label}</Text>
-            </Group>
+              <span>{item.label}</span>
+            </span>
           ))}
           {profile.power > 0 ? (
-            <Text component="span" size="xs" c="dimmed">
+            <span className="member-role-avatar__power">
               <BoltIcon size={13} className="member-role-avatar__power-icon" />{" "}
               {profile.power.toLocaleString()}
-            </Text>
+            </span>
           ) : null}
-        </Group>
-      </HoverCard.Dropdown>
-    </HoverCard>
+        </div>
+      </PreviewCardContent>
+    </PreviewCard>
   );
 }
 

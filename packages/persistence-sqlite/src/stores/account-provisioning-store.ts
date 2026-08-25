@@ -47,19 +47,23 @@ export class SqliteAccountProvisioningStore implements AccountProvisioningStore 
           [input.inviteId, input.tokenDigest, input.now],
         ),
         run(
-          `INSERT INTO users (id, username, role_id, is_active, deleted_at, revision_token, created_at, updated_at)
+          `INSERT INTO users (id, display_name, role_id, is_active, deleted_at, revision_token, created_at, updated_at)
            SELECT ?, ?, role_id, 1, NULL, ?, ?, ? FROM invite_links
            WHERE id = ? AND changes() = 1`,
-          [input.userId, input.username, audit.eventId, input.now, input.now, input.inviteId],
+          [input.userId, input.displayName, audit.eventId, input.now, input.now, input.inviteId],
         ),
-        run("INSERT INTO user_credentials (user_id, password_hash, updated_at) VALUES (?, ?, ?)", [input.userId, input.passwordHash, input.now]),
+        run("INSERT INTO user_credentials (user_id, login_name, password_hash, updated_at) VALUES (?, ?, ?, ?)", [input.userId, input.loginName, input.passwordHash, input.now]),
         run("INSERT INTO member_profiles (user_id, power, revision_token, created_at, updated_at) VALUES (?, 0, ?, ?, ?)", [input.userId, audit.eventId, input.now, input.now]),
         auditInsertStatement(audit),
+        run("DELETE FROM login_failures WHERE login_name = lower(?)", [input.loginName]),
       ]);
       return "created";
     } catch (error) {
-      if (isUniqueViolation(error) && await this.usernameExists(input.username.toLowerCase())) {
-        return "username_taken";
+      if (isUniqueViolation(error) && await this.displayNameExists(input.displayName.toLowerCase())) {
+        return "display_name_taken";
+      }
+      if (isUniqueViolation(error) && await this.loginNameExists(input.loginName.toLowerCase())) {
+        return "login_name_taken";
       }
       if (isForeignKeyViolation(error) || isUniqueViolation(error)) return "invite_unavailable";
       throw error;
@@ -73,7 +77,7 @@ export class SqliteAccountProvisioningStore implements AccountProvisioningStore 
     try {
       const results = await this.executor.batch([
         returning(
-          `INSERT INTO users (id, username, role_id, is_active, deleted_at, revision_token, created_at, updated_at)
+          `INSERT INTO users (id, display_name, role_id, is_active, deleted_at, revision_token, created_at, updated_at)
            SELECT ?, ?, destination.id, 1, NULL, ?, ?, ? FROM roles AS destination
            WHERE destination.id = ? AND destination.revision_token = ? AND destination.level = ?
              AND COALESCE((
@@ -82,31 +86,53 @@ export class SqliteAccountProvisioningStore implements AccountProvisioningStore 
                )
              ), '') = ?`,
           [
-            input.id, input.username, audit.eventId, input.now, input.now,
+            input.id, input.displayName, audit.eventId, input.now, input.now,
             input.destinationRole.id, input.destinationRole.revisionToken, input.destinationRole.level,
             permissionSnapshot(input.destinationRole.permissions),
           ],
         ),
         auditInsertStatement(audit, { sql: "SELECT 1 WHERE changes() = 1" }),
         run(
-          "INSERT INTO user_credentials (user_id, password_hash, updated_at) SELECT ?, ?, ? WHERE EXISTS (SELECT 1 FROM users WHERE id = ? AND revision_token = ?)",
-          [input.id, input.passwordHash, input.now, input.id, audit.eventId],
+          `INSERT INTO user_credentials
+             (user_id, login_name, password_hash, temporary_password_expires_at, temporary_password_used_at, updated_at)
+           SELECT ?, ?, ?, ?, NULL, ?
+           WHERE EXISTS (SELECT 1 FROM users WHERE id = ? AND revision_token = ?)`,
+          [
+            input.id, input.loginName, input.passwordHash, input.temporaryPasswordExpiresAt, input.now,
+            input.id, audit.eventId,
+          ],
         ),
         run(
           "INSERT INTO member_profiles (user_id, power, revision_token, created_at, updated_at) SELECT ?, 0, ?, ?, ? WHERE EXISTS (SELECT 1 FROM users WHERE id = ? AND revision_token = ?)",
           [input.id, audit.eventId, input.now, input.now, input.id, audit.eventId],
         ),
+        run(`DELETE FROM login_failures WHERE login_name = lower(?)
+          AND EXISTS (SELECT 1 FROM users WHERE id = ? AND revision_token = ?)`, [
+          input.loginName,
+          input.id,
+          audit.eventId,
+        ]),
       ]);
       return returnedRowCount(results[0]) === 1 ? "created" : "conflict";
     } catch (error) {
-      if (isUniqueViolation(error)) return "username_taken";
+      if (isUniqueViolation(error) && await this.displayNameExists(input.displayName.toLowerCase())) return "display_name_taken";
+      if (isUniqueViolation(error) && await this.loginNameExists(input.loginName.toLowerCase())) return "login_name_taken";
       throw error;
     }
   }
 
-  private async usernameExists(normalizedUsername: string): Promise<boolean> {
+  private async displayNameExists(normalizedDisplayName: string): Promise<boolean> {
     const row = await this.db.select({ id: users.id }).from(users)
-      .where(drizzleSql`${users.username} COLLATE NOCASE = ${normalizedUsername}`).limit(1);
+      .where(drizzleSql`${users.display_name} COLLATE NOCASE = ${normalizedDisplayName}`).limit(1);
     return row.length > 0;
+  }
+
+  private async loginNameExists(normalizedLoginName: string): Promise<boolean> {
+    const row = await this.executor.execute({
+      method: "get",
+      sql: "SELECT 1 FROM user_credentials WHERE login_name COLLATE NOCASE = ? LIMIT 1",
+      params: [normalizedLoginName],
+    });
+    return row.rows !== undefined;
   }
 }

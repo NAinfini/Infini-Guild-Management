@@ -1,18 +1,20 @@
-/* 外层 Stack 只为把 .page-layout__content 的剩余高度往下传一层：
-   公告页在筛选卡和网格之间多包了一个 Stack，链在这里断掉，网格就只有内容高。 */
-.announcements-page__stack {
+.announcements-page__workspace {
+  display: flex;
   flex: 1 1 auto;
+  flex-direction: column;
+  gap: var(--page-rhythm);
+  min-width: 0;
   min-block-size: 0;
 }
 
-/* List and detail panes share the remaining page height and scroll independently. */
 .announcements-page-grid {
   display: grid;
-  grid-template-columns: clamp(18rem, 28%, 26rem) minmax(0, 1fr);
+  grid-template-columns: clamp(22rem, 32%, 30rem) minmax(0, 1fr);
   grid-template-rows: minmax(0, 1fr);
   align-items: stretch;
-  gap: var(--space-md);
+  gap: var(--space-lg);
   width: 100%;
+  height: 100%;
   flex: 1 1 auto;
   min-block-size: 0;
 }
@@ -22,73 +24,123 @@
   flex-direction: column;
   min-width: 0;
   min-block-size: 0;
-}
-
-.announcements-list-card {
-  width: 100%;
-  display: flex;
-  flex-direction: column;
-  flex: 1 1 auto;
-  min-block-size: 0;
+  block-size: 100%;
 }
 
 .announcements-page-column--detail {
-  justify-content: flex-start;
   overflow: hidden;
 }
 
+.announcements-list-card,
 .announcements-detail-card {
   width: 100%;
-  display: flex;
-  flex-direction: column;
   flex: 1 1 auto;
+  gap: 0;
+  block-size: 100%;
   min-block-size: 0;
-  max-block-size: 100%;
+  padding-block: 0;
   overflow: hidden;
 }
 
-/*
- * 卡内两段式：卡头钉在上边，剩下的内滚。
- *
- * 清单卡钉住卡头是有代价才做的选择：「新建公告」是随时要够得着的，跟着列表滚走等于
- * 没有。正文卡是例外——标题、徽标和正文是一篇东西，整块一起滚才对，所以它直接把
- * announcements-card-scroll 挂在最外层（和 wiki-article-reader-card 同一处理）。
- */
-.announcements-card-body {
+.announcements-list-card__header,
+.announcements-detail-card__header {
   display: flex;
-  flex-direction: column;
+  align-items: center;
+  justify-content: space-between;
   gap: var(--space-md);
-  block-size: 100%;
+  min-width: 0;
+  padding: var(--card-padding);
+}
+
+.announcements-list-card__header {
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.announcements-list-card__title,
+.announcements-detail-card__title {
+  min-width: 0;
+  margin: 0;
+  color: var(--text-primary);
+  font-size: var(--text-card);
+  font-weight: var(--fw-strong);
+  line-height: var(--lh-tight);
+  overflow-wrap: anywhere;
+}
+
+.announcements-list-card__content,
+.announcements-detail-card__content {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  gap: var(--space-lg);
+  min-width: 0;
   min-block-size: 0;
+  padding: var(--card-padding);
 }
 
 .announcements-card-scroll {
-  flex: 1 1 auto;
-  min-block-size: 0;
-  /* 只竖着滚。CSS 规定一个轴不是 visible 时另一轴的 visible 会被静默提升成 auto，
-     只写 overflow-y 会在内容宽出一两像素时多出一条系统原生横向滚动条。 */
   overflow-x: clip;
   overflow-y: auto;
-  /* 常留竖滚动条的槽：内容增减时正文不会左右跳。 */
   scrollbar-gutter: stable;
 }
 
+.announcements-list,
+.announcements-list-skeletons {
+  display: grid;
+  gap: var(--space-sm);
+  min-width: 0;
+}
+
+.announcements-list-skeleton {
+  display: grid;
+  gap: var(--space-sm);
+  min-height: var(--control-hit-area);
+  padding: var(--space-md);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-control);
+}
+
+.announcements-list-skeleton__title {
+  width: 70%;
+  height: var(--space-md);
+}
+
+.announcements-list-skeleton__meta {
+  width: 40%;
+  height: var(--space-sm);
+}
+
 .announcements-list-row {
-  width: 100%;
-  display: flex;
-  align-items: flex-start;
-  gap: 8px;
+  position: relative;
+  min-width: 0;
+}
+
+.announcement-list-unread {
+  position: absolute;
+  z-index: 1;
+  top: var(--space-sm);
+  left: var(--space-sm);
+  width: var(--space-sm);
+  height: var(--space-sm);
+  border: 2px solid var(--surface-raised);
+  border-radius: var(--shape-pill);
+  background: var(--brand-fill);
+  pointer-events: none;
 }
 
 .announcement-item {
+  display: grid;
+  gap: var(--space-sm);
   width: 100%;
-  cursor: pointer;
-  text-align: left;
-  background: transparent;
-  border-radius: var(--radius-control);
+  min-height: var(--control-hit-area);
+  padding: var(--space-md);
   border: 1px solid transparent;
-  padding-inline: 10px;
-  padding-block: 8px;
+  border-radius: var(--radius-control);
+  background: transparent;
+  color: var(--text-primary);
+  font: inherit;
+  text-align: start;
+  cursor: pointer;
   transition:
     background-color var(--transition-normal),
     border-color var(--transition-normal),
@@ -96,34 +148,62 @@
 }
 
 .announcement-item:hover {
-  border-color: color-mix(in srgb, var(--text-primary) 65%, transparent);
+  border-color: color-mix(in srgb, var(--brand-fill) 42%, var(--border-subtle));
   background: color-mix(in srgb, var(--brand-fill) 6%, transparent);
 }
 
-/* 整行是一块可按的表面，按下用缩放，与活动卡同一套手感（见 scale.css
-   --motion-press / --motion-sink 的分工）。 */
+.announcement-item:focus-visible {
+  border-color: var(--brand-fill);
+  outline: 3px solid color-mix(in srgb, var(--brand-fill) 38%, transparent);
+  outline-offset: 2px;
+}
+
 .announcement-item:active {
   transform: scale(var(--motion-press));
 }
 
-/* 选中底走 --brand-tint 而不是自己再调一次 16%：那一档已经是「品牌色压在
-   raised 上」的唯一配方，两处各写一个比例只会让色渍面的对比度各算各的。 */
 .announcement-item--active {
+  border-color: color-mix(in srgb, var(--brand-fill) 56%, var(--border-subtle));
   background: var(--brand-tint);
-  border-color: color-mix(in srgb, var(--brand-fill) 48%, transparent);
-  box-shadow: inset 3px 0 var(--brand-fill);
+}
+
+.announcement-item-title,
+.announcement-item-headline,
+.announcement-item-author-row,
+.announcement-reader-title-row,
+.announcement-reader-author-row,
+.announcement-reader-meta-row,
+.announcement-attachments-heading,
+.announcement-editor-icon-actions,
+.announcement-editor-header-actions,
+.announcement-publish-actions,
+.announcement-editor-attachments__header {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+  min-width: 0;
 }
 
 .announcement-item-title {
-  display: flex;
-  align-items: center;
-  gap: 8px;
+  align-items: flex-start;
+  justify-content: space-between;
+}
+
+.announcement-item-headline {
+  flex: 1 1 auto;
+}
+
+.announcement-item-title-text,
+.announcement-item-author,
+.announcement-item-time,
+.announcement-reader-author-copy,
+.announcement-attachment-copy {
   min-width: 0;
 }
 
 .announcement-item-title-text {
   flex: 1 1 auto;
-  min-width: 0;
+  font-weight: var(--fw-strong);
   overflow-wrap: anywhere;
 }
 
@@ -131,99 +211,413 @@
   display: inline-flex;
   flex: 0 0 auto;
   align-items: center;
+}
+
+.announcement-item-status-trigger {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: var(--control-icon-size-compact);
+  min-height: var(--control-icon-size-compact);
+}
+
+.announcement-status-tooltip {
+  display: grid;
   gap: var(--space-xs);
+  max-width: 17.5rem;
+  white-space: normal;
 }
 
-.announcement-item-pin {
-  color: var(--status-warning);
+.announcement-important-badge {
+  flex: 0 0 auto;
+  border-color: color-mix(in srgb, var(--status-danger) 55%, var(--border-subtle));
+  background: color-mix(in srgb, var(--status-danger) 8%, var(--surface-base));
+  color: var(--text-primary);
 }
 
-/* Per-status list-row icon colors. */
 .announcement-item-status-icon--draft {
-  color: var(--mantine-color-dimmed);
+  color: var(--text-muted);
 }
 
 .announcement-item-status-icon--scheduled {
-  color: var(--mantine-color-blue-filled);
+  color: var(--status-info);
 }
 
 .announcement-item-status-icon--published {
-  color: var(--mantine-color-green-filled);
+  color: var(--status-success);
 }
 
 .announcement-item-status-icon--archived {
-  color: var(--mantine-color-red-filled);
+  color: var(--status-warning);
 }
 
-/* 时间戳的颜色只由这里决定：原先组件上还挂着 Mantine 的 c="dimmed"，那条赢了
-   优先级，这条规则从来没生效过——一个颜色两个出处，改哪边都不动。
-   选中行是色渍面（--brand-tint），比 raised 亮/暗一档，muted 压上去连 4.5 都
-   不到；跟着面走升一档到 secondary，这是环境光预算那节写的同一条规则。 */
+.announcement-item-author-row {
+  gap: var(--space-sm);
+}
+
+.announcement-item-author {
+  flex: 0 1 auto;
+  font-size: var(--text-sm);
+  font-weight: var(--fw-medium);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.announcement-meta-separator {
+  flex: 0 0 auto;
+  width: 3px;
+  height: 3px;
+  border-radius: var(--shape-pill);
+  background: var(--text-muted);
+}
+
 .announcement-item-time {
-  font-size: var(--text-meta);
+  flex: 1 1 auto;
   color: var(--text-muted);
+  font-size: var(--text-meta);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .announcement-item--active .announcement-item-time {
   color: var(--text-secondary);
 }
 
-.announcement-reader-title {
-  line-height: 1.3;
+.announcements-list__load-more {
+  justify-self: center;
+  color: var(--brand-text);
 }
 
-/* ── Editor Layout: Title+Editor on left, Settings sidebar on right ── */
+.announcement-filter-search {
+  min-width: 0;
+}
+
+.announcement-filter-options,
+.announcement-filter-sort {
+  display: grid;
+  gap: var(--space-xs);
+}
+
+.announcement-filter-sort {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.announcement-filter-radio,
+.announcement-filter-switch {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+  min-width: 0;
+  min-height: var(--control-hit-area);
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+
+.announcement-filter-radio {
+  padding-inline: var(--space-sm);
+  border-radius: var(--radius-control);
+}
+
+.announcement-filter-radio:hover {
+  background: var(--brand-tint);
+  color: var(--text-primary);
+}
+
+.announcement-filter-sort .announcement-filter-radio {
+  justify-content: center;
+  min-height: var(--control-height-regular);
+  border: 1px solid var(--border-subtle);
+}
+
+.announcement-filter-switch {
+  justify-content: space-between;
+}
+
+.announcement-reader-header {
+  align-items: flex-start;
+}
+
+.announcement-reader-heading {
+  display: grid;
+  flex: 1 1 auto;
+  gap: var(--space-lg);
+  min-width: 0;
+}
+
+.announcement-reader-title-row {
+  align-items: flex-start;
+  flex-wrap: wrap;
+}
+
+.announcement-reader-title {
+  flex: 1 1 18rem;
+  min-width: 0;
+  margin: 0;
+  color: var(--text-primary);
+  font-size: var(--text-h2);
+  font-weight: var(--fw-strong);
+  line-height: 1.3;
+  overflow-wrap: anywhere;
+}
+
+.announcement-reader-author-row {
+  align-items: flex-start;
+}
+
+.announcement-reader-author-copy {
+  display: grid;
+  gap: var(--space-xs);
+}
+
+.announcement-reader-author-copy strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.announcement-reader-meta-row {
+  flex-wrap: wrap;
+}
+
+.announcement-reader-publish-time,
+.announcement-reader-updated,
+.announcement-attachment-meta,
+.announcement-attachment-help,
+.announcement-attachments-empty,
+.announcement-editor-updated,
+.announcement-editor-field-label {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: var(--text-sm);
+  line-height: var(--lh-normal);
+}
+
+.announcement-status-badge--scheduled {
+  border-color: color-mix(in srgb, var(--status-info) 52%, var(--border-subtle));
+  color: var(--status-info);
+}
+
+.announcement-reader-content {
+  display: grid;
+  gap: var(--space-xl);
+  width: min(100%, 75ch);
+}
+
+.announcement-attachments-section,
+.announcement-editor-attachments {
+  display: grid;
+  gap: var(--space-md);
+}
+
+.announcement-attachments-heading {
+  flex-wrap: wrap;
+}
+
+.announcement-attachments-title {
+  margin: 0;
+  color: var(--text-primary);
+  font-size: var(--text-body);
+  font-weight: var(--fw-strong);
+  line-height: 1.4;
+}
+
+.announcement-attachments-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 18rem), 1fr));
+  gap: var(--space-sm);
+}
+
+.announcement-attachment-item {
+  display: flex;
+  align-items: center;
+  gap: var(--space-md);
+  min-width: 0;
+  min-height: var(--control-hit-area);
+  padding: var(--space-md);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-control);
+  background: color-mix(in srgb, var(--surface-base) 96%, var(--text-primary) 4%);
+  transition:
+    background-color var(--transition-normal),
+    border-color var(--transition-normal);
+}
+
+.announcement-attachment-item:hover {
+  border-color: color-mix(in srgb, var(--brand-fill) 55%, var(--border-subtle));
+  background: color-mix(in srgb, var(--brand-fill) 7%, var(--surface-base));
+}
+
+.announcement-attachment-icon {
+  flex: 0 0 auto;
+  color: var(--brand-fill);
+}
+
+.announcement-attachment-copy {
+  display: grid;
+  flex: 1 1 auto;
+  gap: var(--space-xs);
+}
+
+.announcement-attachment-name {
+  overflow: hidden;
+  color: var(--text-primary);
+  font-size: var(--text-sm);
+  font-weight: var(--fw-medium);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.announcement-editor-skeleton {
+  display: grid;
+  gap: var(--space-md);
+  min-height: 12.5rem;
+  padding: var(--space-lg);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-control);
+}
+
+.announcement-editor-skeleton__line {
+  width: 100%;
+  height: var(--space-md);
+}
+
+.announcement-editor-skeleton__line--heading {
+  width: 56%;
+  height: var(--space-lg);
+}
+
+.announcement-editor-skeleton__line--short {
+  width: 72%;
+}
 
 .announcement-editor-layout {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 220px;
-  gap: 16px;
+  grid-template-columns: minmax(0, 1fr) minmax(13.75rem, 15rem);
   align-items: start;
+  gap: var(--space-lg);
 }
 
 .announcement-editor-main {
+  display: grid;
+  gap: var(--space-lg);
   min-width: 0;
+}
+
+.announcement-editor-title-input {
+  height: var(--control-height-large);
+  font-size: var(--text-h3);
+  font-weight: var(--fw-strong);
 }
 
 .announcement-editor-sidebar {
-  padding: 12px;
-  border-radius: var(--radius-control);
-  border: 1px solid color-mix(in srgb, var(--text-primary) 10%, transparent);
-  background: color-mix(in srgb, var(--surface-base) 96%, var(--text-primary) 4%);
-}
-
-/* ── Create Modal Layout ── */
-
-.create-announcement-layout {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 220px;
-  gap: 16px;
-  align-items: start;
+  gap: var(--space-lg);
+  min-width: 0;
+  padding-inline-start: var(--space-lg);
+  border-inline-start: 1px solid var(--border-subtle);
 }
 
-.create-announcement-main {
+.announcement-editor-icon-actions {
+  flex-wrap: wrap;
+}
+
+.announcement-editor-schedule {
+  display: grid;
+  gap: var(--space-sm);
+}
+
+.announcement-editor-header-actions {
+  justify-content: flex-end;
+  flex-wrap: wrap;
+}
+
+.announcement-publish-actions {
+  gap: 1px;
+}
+
+.announcement-publish-actions > [data-slot="button"]:first-child {
+  border-top-right-radius: 0;
+  border-bottom-right-radius: 0;
+}
+
+.announcement-publish-actions > [data-slot="dropdown-menu-trigger"] > [data-slot="button"] {
+  border-top-left-radius: 0;
+  border-bottom-left-radius: 0;
+}
+
+.announcement-save-state--idle {
+  border-color: var(--border-strong);
+  color: var(--text-muted);
+}
+
+.announcement-save-state--dirty {
+  border-color: color-mix(in srgb, var(--status-warning) 52%, var(--border-subtle));
+  color: var(--status-warning);
+}
+
+.announcement-save-state--saved {
+  border-color: color-mix(in srgb, var(--status-success) 52%, var(--border-subtle));
+  color: var(--status-success);
+}
+
+.announcements-back-button {
+  align-self: flex-start;
+}
+
+.announcements-mobile-flow {
+  display: grid;
+  gap: var(--space-md);
   min-width: 0;
 }
 
-.create-announcement-sidebar {
-  padding: 12px;
-  border-radius: var(--radius-control);
-  border: 1px solid color-mix(in srgb, var(--text-primary) 10%, transparent);
-  background: color-mix(in srgb, var(--surface-base) 96%, var(--text-primary) 4%);
+.announcements-page__loading {
+  position: fixed;
+  z-index: var(--z-sticky);
+  right: var(--space-xl);
+  bottom: var(--space-xl);
+  display: grid;
+  place-items: center;
+  width: var(--control-hit-area);
+  height: var(--control-hit-area);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--shape-pill);
+  background: var(--surface-overlay);
+  box-shadow: var(--shadow-overlay);
 }
 
-/* ── Responsive ── */
+.announcements-page__loading > span {
+  width: var(--space-lg);
+  height: var(--space-lg);
+  border: 2px solid color-mix(in srgb, var(--brand-fill) 28%, transparent);
+  border-top-color: var(--brand-fill);
+  border-radius: var(--shape-pill);
+  animation: announcements-page-spin 700ms linear infinite;
+}
 
-/* 单栏堆叠之后回到整页滚：把窄屏视口再切成两个小滚动区只会更难用。 */
-@media (max-width: 991px) {
-  .announcements-page-grid {
-    grid-template-columns: minmax(0, 1fr);
-    grid-template-rows: auto;
-    flex: 0 1 auto;
+@keyframes announcements-page-spin {
+  to {
+    transform: rotate(1turn);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .announcements-page__loading > span {
+    animation: none;
+  }
+}
+
+@media (max-width: 61.99em) {
+  .announcements-page__workspace {
+    display: block;
     min-block-size: auto;
   }
 
-  .announcements-page__stack {
+  .announcements-page-grid {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: auto;
+    height: auto;
     flex: 0 1 auto;
     min-block-size: auto;
   }
@@ -232,40 +626,57 @@
   .announcements-list-card,
   .announcements-detail-card {
     flex: 0 1 auto;
+    block-size: auto;
     min-block-size: auto;
   }
 
   .announcements-page-column--detail,
+  .announcements-list-card,
   .announcements-detail-card {
-    max-block-size: none;
     overflow: visible;
   }
 
-  .announcements-card-body {
-    block-size: auto;
-  }
-
-  /* 两轴一起复位：只写 overflow-y: visible 的话，宽屏那条 overflow-x: clip 又会
-     把它提升回 auto——正是上面刚拆掉的那条隐式规则。 */
+  .announcements-list-card__content,
+  .announcements-detail-card__content,
   .announcements-card-scroll {
     overflow: visible;
     scrollbar-gutter: auto;
   }
 }
 
-@media (max-width: 767px) {
-  .announcements-mobile-flow {
-    min-width: 0;
+@media (max-width: 47.99em) {
+  .announcements-list-card__header,
+  .announcements-detail-card__header {
+    align-items: flex-start;
+    flex-wrap: wrap;
   }
 
-
-  .announcement-editor-layout,
-  .create-announcement-layout {
-    grid-template-columns: 1fr;
+  .announcement-reader-heading {
+    flex-basis: 100%;
   }
 
-  .announcement-editor-sidebar,
-  .create-announcement-sidebar {
-    order: -1;
+  .announcement-editor-header-actions {
+    width: 100%;
+    justify-content: flex-start;
+  }
+
+  .announcement-editor-layout {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .announcement-editor-sidebar {
+    padding-top: var(--space-lg);
+    padding-inline-start: 0;
+    border-top: 1px solid var(--border-subtle);
+    border-inline-start: 0;
+  }
+
+  .announcement-filter-sort {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .announcements-page__loading {
+    right: var(--space-lg);
+    bottom: calc(var(--bottom-nav-height) + var(--space-lg));
   }
 }

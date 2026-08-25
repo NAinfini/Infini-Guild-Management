@@ -173,7 +173,7 @@ test("保存：标题清空时挡在前端，不写服务端", async ({ page, ap
 
   await clickWithoutWrite(page, async () => {
     await saveButton(page).click();
-    await expect(page.locator(".mantine-Notification-description").filter({ hasText: "Article title is required." }))
+    await expect(page.locator('[data-slot="toast-description"]').filter({ hasText: "Article title is required." }))
       .toBeVisible();
   });
 

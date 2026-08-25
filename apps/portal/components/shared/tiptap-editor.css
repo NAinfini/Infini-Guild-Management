@@ -1,3 +1,11 @@
+.infini-tiptap-editor {
+  display: flex;
+  width: 100%;
+  min-width: 0;
+  flex-direction: column;
+  gap: var(--space-sm);
+}
+
 .infini-tiptap-toolbar {
   display: flex;
   gap: var(--control-icon-size-compact);
@@ -22,7 +30,7 @@
   border-right: 1px solid color-mix(in srgb, var(--text-primary) 10%, transparent);
 }
 
-.infini-tiptap-toolbar .mantine-ActionIcon-root {
+.infini-tiptap-toolbar__button {
   width: var(--control-hit-area);
   min-width: var(--control-hit-area);
   height: var(--control-hit-area);
@@ -33,27 +41,14 @@
   border-right: 0;
 }
 
-/*
- * 44px 见方是给触屏定的靶面（19788bf）。鼠标不需要：三十来个 44px 方块再配 22px 间距，
- * 光工具条就压掉两行，比它底下的正文编辑区还抢眼。
- *
- * 精确指针下按 compact 档收到 32px、间距收到 12px。靶面一点没丢——ThemeProvider 给
- * ActionIcon 的 ::before 仍是 max(--control-hit-area, 100%)，32 + 12 = 44 刚好让相邻两个
- * 靶面贴边而不重叠，点空档不会误触旁边那个。粗指针（平板、触屏）走上面那套，不动。
- *
- * 条件从 pointer: fine 换成 any-pointer: fine：前者问的是**主**指针，Windows 触屏
- * 笔记本插着鼠标也把触摸报成主指针，于是这一整块在桌面上根本不生效——二十八个
- * 44px 按钮配 22px 间距要 1875px 才排得下，末尾六个就折到了第二行。any-pointer
- * 问的是「有没有精确指针可用」，鼠标在就命中，纯触屏设备照旧走上面那套。
- * 同一处判据在 scale.css 的 --control-height-regular 上，理由写在那边。
- */
+/* Precision pointers may use the compact visual size; coarse pointers keep the full hit area. */
 @media (any-pointer: fine) {
   .infini-tiptap-toolbar,
   .infini-tiptap-toolbar__group {
     gap: var(--space-md);
   }
 
-  .infini-tiptap-toolbar .mantine-ActionIcon-root {
+  .infini-tiptap-toolbar__button {
     width: var(--control-height-compact);
     min-width: var(--control-height-compact);
     height: var(--control-height-compact);
@@ -264,7 +259,50 @@ html:not([data-input-modality="pointer"]) .infini-tiptap-surface:focus-visible {
 }
 
 .infini-tiptap-slash-menu {
-  border-style: dashed;
+  border: 1px dashed color-mix(in srgb, var(--text-primary) 20%, transparent);
+  border-radius: var(--radius-surface);
+  padding: var(--space-sm);
+  background: var(--surface-raised);
+}
+
+.infini-tiptap-slash-menu__title {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: var(--text-sm);
+}
+
+.infini-tiptap-slash-menu__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-sm);
+  margin-top: var(--space-sm);
+}
+
+.infini-tiptap-upload-status [data-slot="progress"] {
+  margin-top: var(--space-sm);
+}
+
+.infini-tiptap-dialog-close {
+  position: absolute;
+  top: var(--space-sm);
+  right: var(--space-sm);
+}
+
+.infini-tiptap-video-dialog {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-md);
+}
+
+.infini-tiptap-video-dialog__hint {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: var(--text-sm);
+}
+
+.infini-tiptap-video-dialog__actions {
+  display: flex;
+  justify-content: flex-end;
 }
 
 /* mode-independent literal: 这是浮层对话框背后的全屏遮罩。这不是纯黑，是
@@ -312,7 +350,7 @@ html:not([data-input-modality="pointer"]) .infini-tiptap-link-dialog__input:focu
   flex-wrap: wrap;
 }
 
-.infini-tiptap-lightbox-controls .mantine-Button-root {
+.infini-tiptap-lightbox-controls [data-slot="button"] {
   min-width: 44px;
   min-height: 44px;
 }
@@ -385,6 +423,16 @@ html:not([data-input-modality="pointer"]) .infini-tiptap-link-dialog__input:focu
   display: flex;
   align-items: center;
   gap: 6px;
+}
+
+.infini-tiptap-find-replace__actions {
+  display: inline-flex;
+  flex-shrink: 0;
+  gap: 2px;
+}
+
+.infini-tiptap-find-replace__button {
+  flex-shrink: 0;
 }
 
 .infini-tiptap-find-replace__input {

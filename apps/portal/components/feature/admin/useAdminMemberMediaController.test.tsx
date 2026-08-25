@@ -45,8 +45,8 @@ vi.mock("react-i18next", () => ({
   }),
 }));
 
-vi.mock("@mantine/notifications", () => ({
-  notifications: notificationMocks,
+vi.mock("../../../utils/notifications", () => ({
+  notifySuccess: notificationMocks.show,
 }));
 
 vi.mock("../../../services/UserService", () => ({
@@ -73,7 +73,7 @@ function createMember() {
   return {
     user: {
       id: "user-1",
-      username: "nainf",
+      display_name: "nainf",
       role: "moderator",
       is_active: true,
       deleted_at: null,

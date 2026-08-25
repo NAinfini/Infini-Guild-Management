@@ -1,14 +1,17 @@
 import {
   announcementImageUploadResponseSchema,
+  announcementAttachmentUploadResponseSchema,
   announcementSchema,
+  announcementSummarySchema,
   mediaIdsResponseSchema,
   type Announcement,
+  type AnnouncementSummary,
   type PaginatedResponse,
 } from "@guild/shared";
 import { z } from "zod";
 
 const announcementPageSchema = z.object({
-  data: z.array(announcementSchema),
+  data: z.array(announcementSummarySchema),
   total: z.number().int().nonnegative(),
   page: z.number().int().positive(),
   limit: z.number().int().positive(),
@@ -20,12 +23,16 @@ export function presentAnnouncement(value: unknown): Announcement {
   return announcementSchema.parse(value);
 }
 
-export function presentAnnouncementPage(value: unknown): PaginatedResponse<Announcement> {
+export function presentAnnouncementPage(value: unknown): PaginatedResponse<AnnouncementSummary> {
   return announcementPageSchema.parse(value);
 }
 
 export function presentAnnouncementPendingImages(value: unknown) {
   return announcementImageUploadResponseSchema.parse(value);
+}
+
+export function presentAnnouncementPendingAttachment(value: unknown) {
+  return announcementAttachmentUploadResponseSchema.parse(value);
 }
 
 export function presentAnnouncementMediaIds(value: unknown): { media_ids: string[] } {

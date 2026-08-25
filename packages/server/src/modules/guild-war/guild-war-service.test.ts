@@ -47,7 +47,7 @@ function aggregate(status: "active" | "concluded", version = 1): GuildWarAggrega
     teams: [{
       id: "team-1", warId: "war-1", teamName: "Alpha", sortOrder: 0, notes: null, isLocked: false,
       members: [{
-        id: "member-1", warId: "war-1", teamId: "team-1", userId: "user-1", username: "One",
+        id: "member-1", warId: "war-1", teamId: "team-1", userId: "user-1", display_name: "One",
         avatarMediaId: null, roleTag: null, sortOrder: 0,
         stats: status === "concluded" ? { kills: 2, deaths: 1, assists: 3 } : null, note: null,
       }],

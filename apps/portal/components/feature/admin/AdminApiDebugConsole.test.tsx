@@ -1,4 +1,3 @@
-import { MantineProvider } from "@mantine/core";
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { readFileSync } from "node:fs";
@@ -27,11 +26,7 @@ const successLog: DebugLogEntry = {
 };
 
 function renderConsole(logs: DebugLogEntry[]) {
-  render(
-    <MantineProvider>
-      <AdminApiDebugConsole logs={logs} onClear={vi.fn()} />
-    </MantineProvider>,
-  );
+  render(<AdminApiDebugConsole logs={logs} onClear={vi.fn()} />);
 }
 
 describe("AdminApiDebugConsole", () => {
@@ -43,11 +38,16 @@ describe("AdminApiDebugConsole", () => {
       ),
       "utf8",
     ).replace(/\/\*[\s\S]*?\*\//g, "");
-    const filterRule = css.match(/\.api-filter \.mantine-SegmentedControl-label\s*\{([^}]+)\}/)?.[1];
+    const filterRule = css.match(/\.api-filter__option\s*\{([^}]+)\}/)?.[1];
     const rowRule = css.match(/\.api-debug__row-main\s*\{([^}]+)\}/)?.[1];
 
     expect(filterRule).toMatch(/min-height:\s*28px/);
     expect(rowRule).toMatch(/min-height:\s*44px/);
+    expect(css).not.toMatch(/font-size:\s*(?:9|9\.5|10)px/);
+    expect(css).not.toMatch(/border-radius:\s*(?:3|4)px/);
+    expect(css).toMatch(
+      /\.api-ep__method\s*\{[^}]*font-size:\s*var\(--text-meta\)[^}]*border-radius:\s*var\(--radius-control\)/,
+    );
 
     /* 表头三个按钮是文字控件，高度归 --control-height-regular 管：细指针 36px、
        粗指针 44px，一处切换。在这里钉死 44px 就是把它们比同屏按钮抬高一档，
@@ -70,7 +70,7 @@ describe("AdminApiDebugConsole", () => {
 
     expect(header).toContainElement(filter);
     expect(document.querySelector(".api-debug__toolbar")).toBeNull();
-    expect(document.querySelector(".mantine-SegmentedControl-separator")).toBeNull();
+    expect(filter.querySelectorAll('input[type="radio"]')).toHaveLength(3);
   });
 
   it("exposes log details through a keyboard-operable disclosure", async () => {

@@ -8,6 +8,7 @@ import {
   updateProfileSchema,
   userSchema,
 } from "@guild/shared";
+import { isReservedSystemTestIdentityName } from "@guild/shared/config/system-test";
 import { PERMISSION_ID } from "@guild/shared/constants/roles";
 import { LIMITS } from "@guild/shared/config/limits";
 import { AppError, type RequestContext } from "@guild/kernel";
@@ -43,7 +44,7 @@ export function resolveMemberProjection(context: RequestContext, externalView: b
 export function buildUserWire(record: MemberRecord["user"]): User {
   return userSchema.parse({
     id: record.id,
-    username: record.username,
+    display_name: record.display_name,
     role: record.roleId,
     role_name: record.roleName,
     role_color: record.roleColor,
@@ -185,6 +186,12 @@ export class MemberService {
       });
     }
     const input = parsed.data;
+    const displayName = input.display_name !== undefined && input.display_name !== target.display_name
+      ? input.display_name
+      : undefined;
+    if (displayName !== undefined && isReservedSystemTestIdentityName(displayName)) {
+      throw new AppError({ code: "VALIDATION_ERROR", status: 400, message: "Display name is reserved" });
+    }
     const notes: string | null | undefined = "notes" in input
       ? (input as { notes?: string | null }).notes
       : undefined;
@@ -215,6 +222,7 @@ export class MemberService {
     }
 
     const profile = await this.options.store.updateProfile(userId, {
+        ...(displayName === undefined ? {} : { displayName }),
         ...(input.power === undefined ? {} : { power: input.power }),
         ...(input.classes === undefined ? {} : { classes: input.classes }),
         ...(input.title_html === undefined
@@ -229,15 +237,20 @@ export class MemberService {
       }, target, currentMedia.images, createAuditEvent(context, {
         subjectType: "member_profile",
         subjectId: userId,
-        subjectLabel: target.username,
+        subjectLabel: displayName ?? target.display_name,
         action: "update",
+        changes: displayName === undefined ? [] : [{
+          field: "display_name",
+          before: { type: "text", value: target.display_name },
+          after: { type: "text", value: displayName },
+        }],
         context: [
           {
             field: "changed_sections",
             value: {
               type: "list",
               value: Object.keys(input)
-                .filter((field) => field !== "images")
+                .filter((field) => field !== "images" && (field !== "display_name" || displayName !== undefined))
                 .map((value) => ({ type: "code" as const, value })),
             },
           },
@@ -247,6 +260,9 @@ export class MemberService {
           }]),
         ],
       }));
+    if (profile === "display_name_taken") {
+      throw new AppError({ code: "CONFLICT", status: 409, message: "Display name already taken" });
+    }
     if (!profile) {
       throw new AppError({
         code: "CONFLICT",
@@ -310,10 +326,10 @@ export class MemberService {
     }, createAuditEvent(context, {
       subjectType: "member_absence",
       subjectId: id,
-      subjectLabel: target.target.username,
+      subjectLabel: target.target.display_name,
       action: "create",
       context: [
-        { field: "subject_id", value: { type: "reference", value: { id: userId, label: target.target.username } } },
+        { field: "subject_id", value: { type: "reference", value: { id: userId, label: target.target.display_name } } },
         { field: "start_at", value: { type: "date", value: input.startDate } },
         { field: "end_at", value: { type: "date", value: input.endDate } },
       ],
@@ -336,12 +352,12 @@ export class MemberService {
     const removed = await this.options.store.deleteAbsence(userId, absenceId, createAuditEvent(context, {
       subjectType: "member_absence",
       subjectId: absenceId,
-      subjectLabel: target.target.username,
+      subjectLabel: target.target.display_name,
       action: "delete",
       context: [
         {
           field: "subject_id",
-          value: { type: "reference", value: { id: userId, label: target.target.username } },
+          value: { type: "reference", value: { id: userId, label: target.target.display_name } },
         },
         { field: "start_at", value: { type: "date", value: absence.start_date } },
         { field: "end_at", value: { type: "date", value: absence.end_date } },
@@ -360,7 +376,7 @@ export class MemberService {
       createAuditEvent(context, {
         subjectType: "member_profile",
         subjectId: userId,
-        subjectLabel: target.target.username,
+        subjectLabel: target.target.display_name,
         action: "upload_images",
         context: [{ field: "upload_count", value: { type: "number", value: uploads.length } }],
       }),
@@ -372,7 +388,7 @@ export class MemberService {
     const deleted = await this.options.media.deleteProfileImages(context, userId, mediaIds, createAuditEvent(context, {
       subjectType: "member_profile",
       subjectId: userId,
-      subjectLabel: target.target.username,
+      subjectLabel: target.target.display_name,
       action: "delete_images",
       // The store appends the images it actually removed; a requested count here would contradict it.
     }));
@@ -384,7 +400,7 @@ export class MemberService {
     const mediaId = await this.options.media.uploadAvatar(context, userId, upload, createAuditEvent(context, {
       subjectType: "member_profile",
       subjectId: userId,
-      subjectLabel: target.target.username,
+      subjectLabel: target.target.display_name,
       action: "upload_avatar",
       context: [],
     }));
@@ -396,7 +412,7 @@ export class MemberService {
     await this.options.media.deleteAvatar(context, userId, createAuditEvent(context, {
       subjectType: "member_profile",
       subjectId: userId,
-      subjectLabel: target.target.username,
+      subjectLabel: target.target.display_name,
       action: "delete_avatar",
       context: [],
     }));
@@ -408,7 +424,7 @@ export class MemberService {
     const mediaId = await this.options.media.uploadAudio(context, userId, upload, createAuditEvent(context, {
       subjectType: "member_profile",
       subjectId: userId,
-      subjectLabel: target.target.username,
+      subjectLabel: target.target.display_name,
       action: "upload_audio",
       context: [],
     }));
@@ -420,7 +436,7 @@ export class MemberService {
     await this.options.media.deleteAudio(context, userId, createAuditEvent(context, {
       subjectType: "member_profile",
       subjectId: userId,
-      subjectLabel: target.target.username,
+      subjectLabel: target.target.display_name,
       action: "delete_audio",
       context: [],
     }));

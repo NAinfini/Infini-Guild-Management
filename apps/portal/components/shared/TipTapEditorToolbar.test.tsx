@@ -1,9 +1,9 @@
-import { MantineProvider } from "@mantine/core";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import type { Editor } from "@tiptap/react";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, expect, it, vi } from "vitest";
+import { TooltipProvider } from "@portal/components/ui/tooltip";
 import type { TipTapEditorLabels } from "./tiptap-meta";
 import { TipTapEditorToolbar } from "./TipTapEditorToolbar";
 
@@ -121,7 +121,7 @@ function createEditorStub(): Editor {
 
 function renderToolbar() {
   render(
-    <MantineProvider>
+    <TooltipProvider>
       <TipTapEditorToolbar
         editor={createEditorStub()}
         labels={labels}
@@ -130,7 +130,7 @@ function renderToolbar() {
         onInsertVideo={() => {}}
         onToggleFindReplace={() => {}}
       />
-    </MantineProvider>,
+    </TooltipProvider>,
   );
 }
 
@@ -171,9 +171,9 @@ describe("TipTapEditorToolbar", () => {
   it("applies a custom text color from the color picker", async () => {
     const editor = createEditorStub();
     render(
-      <MantineProvider>
+      <TooltipProvider>
         <TipTapEditorToolbar editor={editor} labels={labels} onInsertImage={() => {}} onInsertLink={() => {}} onInsertVideo={() => {}} onToggleFindReplace={() => {}} />
-      </MantineProvider>,
+      </TooltipProvider>,
     );
 
     fireEvent.click(screen.getByRole("button", { name: labels.textColor }));
@@ -185,9 +185,9 @@ describe("TipTapEditorToolbar", () => {
   it("applies a custom background color from the color picker", async () => {
     const editor = createEditorStub();
     render(
-      <MantineProvider>
+      <TooltipProvider>
         <TipTapEditorToolbar editor={editor} labels={labels} onInsertImage={() => {}} onInsertLink={() => {}} onInsertVideo={() => {}} onToggleFindReplace={() => {}} />
-      </MantineProvider>,
+      </TooltipProvider>,
     );
 
     fireEvent.click(screen.getByRole("button", { name: labels.highlight }));
@@ -207,7 +207,7 @@ describe("TipTapEditorToolbar", () => {
   it("keeps toolbar actions touch-sized while allowing groups to wrap without overflow", () => {
     const css = readFileSync(resolve(process.cwd(), "apps/portal/components/shared/tiptap-editor.css"), "utf8");
     const actionRule = css.match(
-      /\.infini-tiptap-toolbar \.mantine-ActionIcon-root\s*\{([^}]*)\}/,
+      /\.infini-tiptap-toolbar__button\s*\{([^}]*)\}/,
     )?.[1] ?? "";
     const groupRule = css.match(/\.infini-tiptap-toolbar__group\s*\{([^}]*)\}/)?.[1] ?? "";
     const toolbarRule = css.match(/\.infini-tiptap-toolbar\s*\{([^}]*)\}/)?.[1] ?? "";

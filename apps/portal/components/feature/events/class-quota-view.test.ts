@@ -5,7 +5,7 @@ import { groupMembersByClassQuota, summariseEventClassQuotas } from "./class-quo
 
 function member(id: string, classes: string[]): { user: User; profile: MemberProfile } {
   return {
-    user: { id, username: id } as unknown as User,
+    user: { id, display_name: id } as unknown as User,
     profile: { classes } as unknown as MemberProfile,
   };
 }

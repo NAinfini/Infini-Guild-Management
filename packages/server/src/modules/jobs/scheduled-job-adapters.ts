@@ -119,6 +119,9 @@ export class ScheduledRecurrenceMaterializationJob implements RecurrenceMaterial
         hint: "event_created",
       });
     }
+    if (eventIds.length > 0) {
+      await this.notifications.publish({ type: "inbox_changed" });
+    }
     return {
       processed: eventIds.length,
       hasMore: batch.hasMore
@@ -178,11 +181,15 @@ export class ScheduledAnnouncementPublishJob implements AnnouncementPublishJob {
     const batch = await this.store.publishDue(input);
     for (const announcement of batch.announcements) {
       await this.notifications.publish({
-        type: "announcement_published",
-        announcement_id: announcement.id,
-        title: announcement.title,
-        published_at: announcement.publishedAt,
+        type: "entity_changed",
+        entity_type: "announcement",
+        entity_id: announcement.id,
+        updated_at: announcement.publishedAt,
+        hint: "announcement_published",
       });
+    }
+    if (batch.announcements.length > 0) {
+      await this.notifications.publish({ type: "inbox_changed" });
     }
     return { processed: batch.announcements.length, hasMore: batch.hasMore };
   }

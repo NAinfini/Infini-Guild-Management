@@ -1,6 +1,4 @@
 import {
-  changePasswordSchema,
-  changeUsernameSchema,
   createMemberAbsenceSchema,
   deleteProfileImagesSchema,
   updateProfileSchema,
@@ -17,8 +15,6 @@ import {
 } from "../../utils/upload-media";
 
 export type UpdateMyProfilePayload = z.input<typeof updateProfileSchema>;
-export type ChangeMyPasswordPayload = z.input<typeof changePasswordSchema>;
-export type ChangeMyUsernamePayload = z.input<typeof changeUsernameSchema>;
 
 export function updateMyProfile(userId: string, payload: UpdateMyProfilePayload): Promise<MemberProfile> {
   const bodyJson = updateProfileSchema.parse(payload);
@@ -96,27 +92,5 @@ export function createMemberAbsence(userId: string, payload: CreateMemberAbsence
 export function deleteMemberAbsence(userId: string, absenceId: string): Promise<{ ok: true }> {
   return apiRequest<{ ok: true }>(`/api/users/${userId}/absences/${absenceId}`, {
     method: "DELETE",
-  });
-}
-
-export function changeMyPassword(
-  userId: string,
-  payload: ChangeMyPasswordPayload,
-): Promise<{ ok: true }> {
-  const bodyJson = changePasswordSchema.parse(payload);
-  return apiRequest<{ ok: true }>(`/api/users/${userId}/change-password`, {
-    method: "POST",
-    bodyJson,
-  });
-}
-
-export function changeMyUsername(
-  userId: string,
-  payload: ChangeMyUsernamePayload,
-): Promise<{ ok: true }> {
-  const bodyJson = changeUsernameSchema.parse(payload);
-  return apiRequest<{ ok: true }>(`/api/users/${userId}/change-username`, {
-    method: "POST",
-    bodyJson,
   });
 }

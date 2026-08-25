@@ -1,4 +1,3 @@
-import { MantineProvider } from "@mantine/core";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
@@ -6,6 +5,7 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import type { ReactNode } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { userScopedStorageKey } from "../../session-storage";
 import { CmdKSearch } from "./CmdKSearch";
 import styles from "./CmdKSearch.module.css";
 
@@ -50,7 +50,7 @@ function createWrapper(queryClient: QueryClient) {
   return function Wrapper({ children }: { children: ReactNode }) {
     return (
       <QueryClientProvider client={queryClient}>
-        <MantineProvider>{children}</MantineProvider>
+        {children}
       </QueryClientProvider>
     );
   };
@@ -59,6 +59,7 @@ function createWrapper(queryClient: QueryClient) {
 describe("CmdKSearch", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    localStorage.clear();
     searchMock.mockResolvedValue({
       data: [
         {
@@ -94,7 +95,7 @@ describe("CmdKSearch", () => {
     expect(trigger).toHaveAccessibleName("Search");
 
     await user.click(trigger!);
-    expect(await screen.findByText("Global Search")).toHaveClass(styles.modalTitle!);
+    expect(await screen.findByRole("heading", { name: "Global Search" })).toHaveClass(styles.modalTitle!);
   });
 
   it("marks the compact trigger as a header touch target", () => {
@@ -159,6 +160,23 @@ describe("CmdKSearch", () => {
     expect(screen.queryByText("raid-lead")).not.toBeInTheDocument();
   });
 
+  it("loads a user-scoped recent search and applies it from the command list", async () => {
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const user = userEvent.setup();
+    localStorage.setItem(
+      userScopedStorageKey("cmdk.recent.searches", undefined),
+      JSON.stringify(["blackwater"]),
+    );
+
+    render(<CmdKSearch />, { wrapper: createWrapper(queryClient) });
+
+    await user.click(screen.getByRole("button", { name: "Search" }));
+    const recent = await screen.findByRole("option", { name: "blackwater" });
+    await user.click(recent);
+
+    expect(await screen.findByRole("combobox", { name: "Search input" })).toHaveValue("blackwater");
+  });
+
   it("opens with the keyboard shortcut and supports keyboard result selection", async () => {
     const queryClient = new QueryClient({
       defaultOptions: {
@@ -208,5 +226,24 @@ describe("CmdKSearch", () => {
 
     await user.tab();
     expect(input).not.toHaveAttribute("data-silent-autofocus");
+  });
+
+  it("returns focus to the trigger when the palette closes", async () => {
+    const queryClient = new QueryClient({
+      defaultOptions: {
+        queries: { retry: false },
+        mutations: { retry: false },
+      },
+    });
+    const user = userEvent.setup();
+
+    render(<CmdKSearch />, { wrapper: createWrapper(queryClient) });
+
+    const trigger = screen.getByRole("button", { name: "Search" });
+    await user.click(trigger);
+    expect(await screen.findByRole("combobox", { name: "Search input" })).toHaveFocus();
+
+    await user.keyboard("{Escape}");
+    await waitFor(() => expect(trigger).toHaveFocus());
   });
 });

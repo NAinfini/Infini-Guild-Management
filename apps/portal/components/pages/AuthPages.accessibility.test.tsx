@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
-import { MantineProvider } from "@mantine/core";
+import { DEFAULT_SITE_OAUTH_SETTINGS } from "@guild/shared";
 import { createEvent, fireEvent, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -10,7 +10,7 @@ import { RegisterPage } from "./RegisterPage";
 const mocks = vi.hoisted(() => ({
   navigate: vi.fn(),
   params: { inviteCode: "INVITE-CODE" } as { inviteCode?: string },
-  search: {} as { reason?: string; returnTo?: string },
+  search: {} as { reason?: string; returnTo?: string; oauth?: "failed" },
   inviteValid: true,
   mutation: { mutate: vi.fn(), isPending: false },
   queryClient: { clear: vi.fn() },
@@ -63,8 +63,46 @@ vi.mock("../../stores/auth", () => ({
 
 vi.mock("../../stores/site-config", () => ({
   useSiteConfigStore: (
-    selector: (state: { siteName: string; siteLogoUrl: null }) => unknown,
-  ) => selector({ siteName: "Infini", siteLogoUrl: null }),
+    selector: (state: {
+      siteName: string;
+      siteDescription: string;
+      siteLogoUrl: null;
+      oauth: typeof DEFAULT_SITE_OAUTH_SETTINGS;
+      features: {
+        announcements: boolean;
+        events: boolean;
+        guildWar: boolean;
+        gallery: boolean;
+        wiki: boolean;
+      };
+    }) => unknown,
+  ) => selector({
+    siteName: "Infini",
+    siteDescription: "A guild home.",
+    siteLogoUrl: null,
+    oauth: DEFAULT_SITE_OAUTH_SETTINGS,
+    features: {
+      announcements: true,
+      events: true,
+      guildWar: true,
+      gallery: true,
+      wiki: true,
+    },
+  }),
+}));
+
+vi.mock("../layout/PublicSiteHeader", () => ({
+  PublicSiteHeader: ({
+    actions,
+    showNavigation,
+  }: {
+    actions?: React.ReactNode;
+    showNavigation?: boolean;
+  }) => (
+    <header data-testid="public-site-header" data-show-navigation={String(showNavigation)}>
+      {actions}
+    </header>
+  ),
 }));
 
 vi.mock("../../services/AuthService", () => ({
@@ -75,24 +113,23 @@ vi.mock("../../services/AuthService", () => ({
   verifyInvite: vi.fn(),
 }));
 
-vi.mock("./AuthLightfall", () => ({
-  AuthLightfall: () => <div data-testid="auth-lightfall" aria-hidden="true" />,
+vi.mock("../shared/VisualThemeArtwork", () => ({
+  VisualThemeScene: ({ className, variant }: { className?: string; variant?: string }) => (
+    <div
+      data-testid="visual-theme-scene"
+      data-variant={variant}
+      className={className}
+      aria-hidden="true"
+    />
+  ),
 }));
 
 function renderLogin() {
-  render(
-    <MantineProvider>
-      <LoginPage />
-    </MantineProvider>,
-  );
+  render(<LoginPage />);
 }
 
 function renderRegister() {
-  render(
-    <MantineProvider>
-      <RegisterPage />
-    </MantineProvider>,
-  );
+  render(<RegisterPage />);
 }
 
 describe("Auth page semantics", () => {
@@ -128,17 +165,21 @@ describe("Auth page semantics", () => {
     );
   });
 
-  it("shares one decorative Lightfall background across login and registration", () => {
-    const { unmount } = render(
-      <MantineProvider>
-        <LoginPage />
-      </MantineProvider>,
-    );
-    expect(screen.getByTestId("auth-lightfall")).toHaveAttribute("aria-hidden", "true");
+  it("uses one full-screen decorative scene and compact header across login and registration", () => {
+    const { unmount } = render(<LoginPage />);
+    expect(screen.getByTestId("visual-theme-scene")).toHaveClass("login-page__scene");
+    expect(screen.getByTestId("visual-theme-scene")).toHaveAttribute("data-variant", "access");
+    expect(screen.getByTestId("visual-theme-scene")).toHaveAttribute("aria-hidden", "true");
+    expect(screen.getByTestId("public-site-header")).toHaveAttribute("data-show-navigation", "false");
+    expect(screen.getByRole("link", { name: "button.visitorAccess" })).toHaveAttribute("href", "/dashboard");
     unmount();
 
     renderRegister();
-    expect(screen.getByTestId("auth-lightfall")).toHaveAttribute("aria-hidden", "true");
+    expect(screen.getByTestId("visual-theme-scene")).toHaveClass("login-page__scene");
+    expect(screen.getByTestId("visual-theme-scene")).toHaveAttribute("data-variant", "access");
+    expect(screen.getByTestId("visual-theme-scene")).toHaveAttribute("aria-hidden", "true");
+    expect(screen.getByTestId("public-site-header")).toHaveAttribute("data-show-navigation", "false");
+    expect(screen.getByRole("link", { name: "button.visitorAccess" })).toHaveAttribute("href", "/dashboard");
   });
 
   it("shows and announces a localized Caps Lock warning without sharing the eye control", () => {
@@ -218,12 +259,16 @@ describe("Auth page semantics", () => {
       resolve(process.cwd(), "apps/portal/components/pages/AuthPages.css"),
       "utf8",
     );
-    const lightfallSource = readFileSync(
-      resolve(process.cwd(), "apps/portal/components/pages/AuthLightfall.tsx"),
+    const frameSource = readFileSync(
+      resolve(process.cwd(), "apps/portal/components/pages/AuthPageFrame.tsx"),
       "utf8",
     );
-    const semanticTokens = readFileSync(
-      resolve(process.cwd(), "apps/portal/styles/semantic.css"),
+    const resetSource = readFileSync(
+      resolve(process.cwd(), "apps/portal/components/pages/CompletePasswordResetPage.tsx"),
+      "utf8",
+    );
+    const verifySource = readFileSync(
+      resolve(process.cwd(), "apps/portal/components/pages/VerifyEmailPage.tsx"),
       "utf8",
     );
     const designContract = readFileSync(resolve(process.cwd(), "DESIGN.md"), "utf8");
@@ -244,18 +289,36 @@ describe("Auth page semantics", () => {
     expect(styles).toMatch(
       /\.login-page__eye-btn:hover::before\s*\{[^}]*background:\s*var\(--surface-sunken\)/s,
     );
-    expect(lightfallSource).toContain("const MAX_DEVICE_PIXEL_RATIO = 1.25");
-    expect(lightfallSource).toContain("for (int streak = 0; streak < 3; streak++)");
-    expect(lightfallSource).toContain("prefers-reduced-motion: reduce");
-    expect(lightfallSource).toContain("animationFrame !== null || reducedMotion");
-    expect(lightfallSource).toContain('document.addEventListener("visibilitychange"');
-    expect(lightfallSource).toContain('import("ogl")');
-    expect(semanticTokens).toContain("--auth-lightfall-opacity: 0.34");
-    expect(semanticTokens).toContain("--auth-lightfall-opacity: 0.64");
-    expect(designContract).toContain("auth Lightfall remains auth-only");
+    expect(frameSource).toContain("showNavigation={false}");
+    expect(frameSource).toContain('className="login-page__scene"');
+    expect(frameSource.match(/<VisualThemeScene/g) ?? []).toHaveLength(1);
+    expect(frameSource).not.toContain("formEyebrow");
+    expect(frameSource).not.toContain("story-eyebrow");
+    expect(frameSource).not.toContain("siteDescription");
+    expect(frameSource).not.toContain("showCharacter");
+    expect(frameSource).not.toContain("siteLogoUrl");
+    expect(frameSource).toContain("ACTIVE_VISUAL_THEME.mark.src");
+    expect(designContract).toContain("Looping background motion exists in exactly two places");
     expect(styles).toMatch(
-      /\.login-page__lightfall\s*\{[^}]*pointer-events:\s*none/s,
+      /\.login-page__scene\s*\{[^}]*pointer-events:\s*none/s,
     );
-    expect(styles).not.toContain("auth-lightfall-reveal");
+    expect(styles).not.toContain("login-page__story-art");
+    expect(styles).not.toContain("login-page__story-list");
+    expect(styles).not.toContain("lightfall");
+    expect(styles).toMatch(
+      /\.login-page__stage\s*\{[^}]*min-height:\s*100dvh[^}]*14vw[^}]*place-items:\s*center end/s,
+    );
+    expect(styles).toMatch(
+      /\.login-page__card-brand\s*\{[^}]*display:\s*flex[^}]*justify-content:\s*center[^}]*align-items:\s*center/s,
+    );
+    expect(styles).toMatch(
+      /\.login-page__card-brand\s*\{[^}]*margin-bottom:\s*var\(--space-sm\)/s,
+    );
+    expect(styles).not.toMatch(/\.login-page__card-brand\s*\{[^}]*flex-direction:\s*column/s);
+    const deprecatedUiName = ["man", "tine"].join("");
+    for (const source of [loginSource, registerSource, resetSource, verifySource, frameSource, styles]) {
+      expect(source.toLowerCase()).not.toContain(deprecatedUiName);
+      expect(source).not.toContain("useDisclosure");
+    }
   });
 });

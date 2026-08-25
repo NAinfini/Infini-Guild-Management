@@ -86,4 +86,12 @@ describe("resolveGuildWarAbsenceWindow", () => {
     // 那一行会被抻成整块高度：职业色条从头拉到尾，名字浮在正中间。
     expect(rules.get(".guild-war-column-stack")).toContain("align-content: start");
   });
+
+  it("hands the tablet single-column flow back to the shared page workspace", () => {
+    const styles = guildWarStylesheet();
+
+    expect(styles).toMatch(
+      /@media \(min-width: 768px\) and \(max-width: 991px\)[\s\S]*?\.page-layout\.guild-war-page\[data-workspace-mode="contained"\] \.page-layout__workspace\s*\{[\s\S]*?display:\s*block[\s\S]*?overflow-y:\s*auto/,
+    );
+  });
 });

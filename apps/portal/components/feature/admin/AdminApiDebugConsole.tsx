@@ -1,6 +1,7 @@
-import { ActionIcon, Group, HoverCard, SegmentedControl, Text, ThemeIcon } from "@mantine/core";
-import { useClipboard } from "@mantine/hooks";
 import { ChevronRightIcon, ClipboardIcon, TrashIcon } from "@portal/components/icons";
+import { Button } from "@portal/components/ui/button";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@portal/components/ui/tooltip";
+import { copyPlainText } from "@portal/utils/copy";
 import { useCallback, useEffect, useId, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { formatClock } from "@portal/utils/datetime";
@@ -107,13 +108,13 @@ export function AdminApiDebugConsole({
   onClear: () => void;
 }) {
   const { t } = useTranslation("admin");
-  const clipboard = useClipboard();
   const bodyRef = useRef<HTMLDivElement>(null);
+  const filterName = useId();
   const [filter, setFilter] = useState<DebugFilter>("all");
 
   const copyAll = useCallback(() => {
     const text = logs.map(formatLogEntry).join("\n\n" + "─".repeat(80) + "\n\n");
-    clipboard.copy(text);
+    void copyPlainText(text);
   }, [logs]);
 
   useEffect(() => {
@@ -137,86 +138,80 @@ export function AdminApiDebugConsole({
       <div className="admin-panel__head">
         <div className="api-debug__header-main">
           <div className="admin-panel__title">
-            <Text>{t("status.api.debugTitle")}</Text>
+            <span>{t("status.api.debugTitle")}</span>
             <span className="admin-count">{logs.length}</span>
           </div>
 
           {logs.length > 0 ? (
             <div className="api-filter" role="group" aria-label={t("status.api.filter.results")}>
-              <SegmentedControl
-                size="xs"
-                radius="sm"
-                withItemsBorders={false}
-                value={filter}
-                onChange={(value) => setFilter(value as DebugFilter)}
-                data={[
-                  { label: t("status.api.filter.all"), value: "all" },
-                  {
-                    label: `${t("status.api.filter.errors")}${errorCount > 0 ? ` (${errorCount})` : ""}`,
-                    value: "errors",
-                  },
-                  {
-                    label: `${t("status.api.filter.slow")}${slowCount > 0 ? ` (${slowCount})` : ""}`,
-                    value: "slow",
-                  },
-                ]}
-              />
+              {([
+                { label: t("status.api.filter.all"), value: "all" },
+                {
+                  label: `${t("status.api.filter.errors")}${errorCount > 0 ? ` (${errorCount})` : ""}`,
+                  value: "errors",
+                },
+                {
+                  label: `${t("status.api.filter.slow")}${slowCount > 0 ? ` (${slowCount})` : ""}`,
+                  value: "slow",
+                },
+              ] satisfies Array<{ label: string; value: DebugFilter }>).map((option) => (
+                <label
+                  className="api-filter__option"
+                  data-active={filter === option.value || undefined}
+                  key={option.value}
+                >
+                  <input
+                    className="api-filter__input"
+                    type="radio"
+                    name={filterName}
+                    value={option.value}
+                    checked={filter === option.value}
+                    onChange={() => setFilter(option.value)}
+                  />
+                  <span>{option.label}</span>
+                </label>
+              ))}
             </div>
           ) : null}
         </div>
 
         <div className="api-debug__header-right">
-          <HoverCard width={220} shadow="lg" withArrow arrowSize={10} openDelay={350} closeDelay={80} position="top">
-            <HoverCard.Target>
-              <ActionIcon
+          <Tooltip>
+            <TooltipTrigger render={(
+              <Button
                 className="api-debug__action"
-                size={32}
-                variant="subtle"
+                size="icon"
+                variant="ghost"
                 onClick={copyAll}
                 disabled={logs.length === 0}
                 aria-label={t("status.api.copyAll")}
-              >
-                <ClipboardIcon size={14} />
-              </ActionIcon>
-            </HoverCard.Target>
-            <HoverCard.Dropdown p="sm" style={{ borderRadius: 10 }}>
-              <Group gap={10} wrap="nowrap" align="flex-start">
-                <ThemeIcon variant="light" color="gray" size="lg" radius="md" style={{ flexShrink: 0, marginTop: 2 }}>
-                  <ClipboardIcon size={16} />
-                </ThemeIcon>
-                <div style={{ minWidth: 0 }}>
-                  <Text size="sm" fw={700} lh={1.3} mb={4}>{t("status.api.copyAll")}</Text>
-                  <Text size="xs" c="dimmed" lh={1.5}>{t("status.api.tooltip.copyAll")}</Text>
-                </div>
-              </Group>
-            </HoverCard.Dropdown>
-          </HoverCard>
-          <HoverCard width={220} shadow="lg" withArrow arrowSize={10} openDelay={350} closeDelay={80} position="top">
-            <HoverCard.Target>
-              <ActionIcon
+              />
+            )}>
+              <ClipboardIcon size={14} />
+            </TooltipTrigger>
+            <TooltipContent className="api-debug__tooltip">
+              <strong>{t("status.api.copyAll")}</strong>
+              <span>{t("status.api.tooltip.copyAll")}</span>
+            </TooltipContent>
+          </Tooltip>
+          <Tooltip>
+            <TooltipTrigger render={(
+              <Button
                 className="api-debug__action"
-                size={32}
-                variant="subtle"
-                color="red"
+                size="icon"
+                variant="destructive"
                 onClick={onClear}
                 disabled={logs.length === 0}
                 aria-label={t("status.api.clearDebug")}
-              >
-                <TrashIcon size={14} />
-              </ActionIcon>
-            </HoverCard.Target>
-            <HoverCard.Dropdown p="sm" style={{ borderRadius: 10 }}>
-              <Group gap={10} wrap="nowrap" align="flex-start">
-                <ThemeIcon variant="light" color="red" size="lg" radius="md" style={{ flexShrink: 0, marginTop: 2 }}>
-                  <TrashIcon size={16} />
-                </ThemeIcon>
-                <div style={{ minWidth: 0 }}>
-                  <Text size="sm" fw={700} lh={1.3} mb={4}>{t("status.api.clearDebug")}</Text>
-                  <Text size="xs" c="dimmed" lh={1.5}>{t("status.api.tooltip.clearDebug")}</Text>
-                </div>
-              </Group>
-            </HoverCard.Dropdown>
-          </HoverCard>
+              />
+            )}>
+              <TrashIcon size={14} />
+            </TooltipTrigger>
+            <TooltipContent className="api-debug__tooltip">
+              <strong>{t("status.api.clearDebug")}</strong>
+              <span>{t("status.api.tooltip.clearDebug")}</span>
+            </TooltipContent>
+          </Tooltip>
         </div>
       </div>
 

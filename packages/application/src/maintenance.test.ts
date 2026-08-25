@@ -10,7 +10,7 @@ describe("maintenance boundary", () => {
     expect(isMaintenanceModeEnabled("true")).toBe(true);
   });
 
-  it("serves a self-contained bilingual starfall page with maintenance headers", async () => {
+  it("serves a self-contained bilingual scene page with maintenance headers", async () => {
     const response = maintenanceResponse(new Request("https://guild.example/login"));
 
     expect(response.status).toBe(503);
@@ -24,7 +24,9 @@ describe("maintenance boundary", () => {
     expect(body).toContain("系统维护中");
     expect(body).toContain('<h2 lang="en">Maintenance in progress</h2>');
     expect(body).toContain('<p lang="en">We are safely updating data and media services.');
-    expect(body).toContain("class=\"lightfall\"");
+    expect(body).toContain("class=\"maintenance-scene\"");
+    expect(body).toContain("<svg viewBox=\"0 0 1600 900\"");
+    expect(body).not.toContain("@keyframes");
     expect(body).not.toMatch(/<(?:script|link|img)\b/i);
   });
 

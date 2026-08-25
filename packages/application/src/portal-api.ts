@@ -27,7 +27,10 @@ import {
   createGuildWarRoutes,
   createHealthRoutes,
   createHttpErrorHandler,
+  createAdminImportantNoticeRoutes,
+  createImportantNoticeRoutes,
   createMediaRoutes,
+  createNotificationInboxRoutes,
   createMutationSecurityMiddleware,
   createPublicSiteConfigRoutes,
   createRequestBodyLimitMiddleware,
@@ -39,6 +42,7 @@ import {
   createUsersRoutes,
   createWikiRoutes,
   DEFAULT_SESSION_COOKIE_NAME,
+  HOST_SESSION_COOKIE_NAME,
   parseImageUploads,
   type HttpEnv,
 } from "@guild/transport-http";
@@ -69,7 +73,7 @@ export function createPortalApiApp(
   config: PortalApiConfig,
 ): Hono<HttpEnv> {
   const publicOrigin = resolvePublicOrigin(config.publicUrl);
-  const cookieName = resolveSessionCookieName(config.sessionCookieName);
+  const cookieName = resolveSessionCookieName(config.sessionCookieName, publicOrigin);
   const downloadTokens = new AuditArchiveDownloadTokens(config.auditDownloadSecret);
   const app = new Hono<HttpEnv>();
 
@@ -161,6 +165,16 @@ export function createPortalApiApp(
     }));
     return next();
   });
+  // A one-time administrator reset password only establishes enough authority
+  // to finish choosing a permanent password. This runs after session resolution
+  // so every API route fails closed for the restricted scope.
+  app.use("/api/*", async (context, next) => {
+    const actor = context.get("requestContext").authorization.actor;
+    if (actor?.sessionScope === "password_change" && !PASSWORD_CHANGE_SESSION_PATHS.has(context.req.path)) {
+      throw new AppError({ code: "FORBIDDEN", status: 403, message: "Complete your password reset first" });
+    }
+    return next();
+  });
   app.use("/api/*", createSystemTestRequestMiddleware(services.systemTest));
   app.use("/api/*", async (context, next) => {
     await next();
@@ -173,10 +187,12 @@ export function createPortalApiApp(
   app.route("/api/health", createHealthRoutes({ service: services.health }));
   app.route("/api/auth", createAuthRoutes({
     service: services.auth,
+    oauth: services.oauth,
+    emailVerification: services.emailVerification,
     rateLimiter: runtime.authRateLimiter,
     cookie: { publicUrl: publicOrigin, name: cookieName },
   }));
-  app.route("/api/users", createUsersRoutes({ service: services.members, authService: services.auth }));
+  app.route("/api/users", createUsersRoutes({ service: services.members }));
   app.route("/api/classes", createClassRoutes({ service: services.memberCatalog }));
   app.route("/api/class-tags", createClassTagRoutes({ service: services.memberCatalog }));
   app.route("/api/badges", createBadgeRoutes({ service: services.memberCatalog }));
@@ -209,8 +225,18 @@ export function createPortalApiApp(
   app.route("/api/announcements", createAnnouncementRoutes({
     service: services.announcements,
     publicOrigin,
-    getImagePolicy: imagePolicy("announcement"),
+    getMediaPolicy: async () => {
+      const current = await services.siteConfig.getRuntimePolicy();
+      return {
+        imageMaxBytes: current.media_policy.max_file_size_bytes.announcement_image,
+        imageQuota: current.media_policy.quotas.announcement,
+        attachmentMaxBytes: current.media_policy.max_file_size_bytes.announcement_attachment,
+        attachmentQuota: current.media_policy.quotas.announcement_attachments,
+      };
+    },
   }));
+  app.route("/api/notifications", createNotificationInboxRoutes({ service: services.notificationInbox }));
+  app.route("/api/important-notices", createImportantNoticeRoutes({ service: services.importantNotices }));
   app.route("/api/gallery", createGalleryRoutes({
     service: services.gallery,
     getImagePolicy: imagePolicy("gallery"),
@@ -228,7 +254,11 @@ export function createPortalApiApp(
   app.route("/api/admin/operations", createAdminOperationsRoutes({ service: services.adminOperations }));
   app.route("/api/admin/analytics-settings", createAdminAnalyticsSettingsRoutes({ service: services.siteConfig }));
   app.route("/api/admin/site-config", createAdminSiteConfigRoutes({ service: services.siteConfig }));
-  app.route("/api/admin", createAdminRoutes({ service: services.identityAdmin }));
+  app.route("/api/admin/important-notices", createAdminImportantNoticeRoutes({ service: services.importantNotices }));
+  app.route("/api/admin", createAdminRoutes({
+    service: services.identityAdmin,
+    rateLimiter: runtime.authRateLimiter,
+  }));
   app.route("/api/admin", createErrorLogRoutes({ service: services.errorLog }));
   app.route("/api/admin", createSystemTestRoutes(services.systemTest));
   app.route("/api/admin", createAuditRoutes({ service: services.audit }));
@@ -258,9 +288,15 @@ function resolvePublicOrigin(value: string): string {
   return url.origin;
 }
 
-export function resolveSessionCookieName(value: string | undefined): string {
+export function resolveSessionCookieName(value: string | undefined, publicUrl?: string): string {
   const name = value?.trim() || DEFAULT_SESSION_COOKIE_NAME;
   if (!/^[!#$%&'*+.^_`|~0-9A-Za-z-]+$/.test(name)) throw new TypeError("Invalid session cookie name");
+  if (publicUrl && new URL(publicUrl).protocol === "https:") {
+    if (name !== DEFAULT_SESSION_COOKIE_NAME && name !== HOST_SESSION_COOKIE_NAME) {
+      throw new TypeError("HTTPS session cookies must use the __Host-ig_session name");
+    }
+    return HOST_SESSION_COOKIE_NAME;
+  }
   return name;
 }
 
@@ -278,8 +314,13 @@ export function readSessionCookie(request: Request, name: string): string | null
   }
 }
 
-const MUTATION_METHODS = new Set(["POST", "PATCH", "DELETE"]);
+const MUTATION_METHODS = new Set(["POST", "PATCH", "PUT", "DELETE"]);
 const SUPPORTED_API_METHODS = new Set(["GET", "HEAD", ...MUTATION_METHODS]);
+const PASSWORD_CHANGE_SESSION_PATHS = new Set([
+  "/api/auth/me",
+  "/api/auth/logout",
+  "/api/auth/complete-password-reset",
+]);
 const EXPENSIVE_READ_PATHS = new Set([
   "/api/guild-war/analytics",
   "/api/search",

@@ -1,80 +1,135 @@
-.month-calendar {
-  padding: 16px;
+.event-month-view {
+  overflow: hidden;
 }
 
-.month-calendar__header {
-  display: grid;
-  grid-template-columns: repeat(7, minmax(0, 1fr));
+.event-month-view__heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-md);
+  min-height: 4.25rem;
+  padding: var(--space-md) var(--space-lg);
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.event-month-view__controls {
+  display: flex;
+  align-items: center;
   gap: 6px;
-  margin-bottom: 8px;
 }
 
-.month-calendar__weekday {
-  font-size: 12px;
-  font-weight: 600;
+.event-month-view__eyebrow {
+  color: var(--brand-text);
+  font-size: var(--text-micro);
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  line-height: var(--lh-normal);
   text-transform: uppercase;
-  letter-spacing: 0.06em;
-  color: var(--text-muted);
-  text-align: center;
-  padding: 6px 0;
 }
 
+.event-month-view__title {
+  margin: 0;
+  color: var(--text-primary);
+  font-size: var(--text-h3);
+  font-weight: 700;
+  line-height: var(--lh-tight);
+}
+
+.month-calendar {
+  padding: var(--space-md);
+}
+
+.month-calendar__header,
 .month-calendar__grid {
   display: grid;
   grid-template-columns: repeat(7, minmax(0, 1fr));
-  gap: 6px;
+  gap: var(--space-xs);
+}
+
+.month-calendar__header {
+  margin-bottom: var(--space-xs);
+}
+
+.month-calendar__weekday {
+  padding: var(--space-xs) 0;
+  color: var(--text-muted);
+  font-size: var(--text-micro);
+  font-weight: 700;
+  line-height: var(--lh-normal);
+  text-align: center;
+}
+
+:lang(en) .month-calendar__weekday {
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
 }
 
 .month-calendar__cell {
-  min-height: 90px;
-  border-radius: 10px;
-  padding: 8px;
-  text-align: left;
-  border: 1px solid color-mix(in srgb, var(--text-primary) 10%, transparent);
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: clamp(6.5rem, 10.5vh, 9.25rem);
+  padding: var(--space-xs);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-surface);
   background: color-mix(in srgb, var(--surface-base) 96%, transparent);
-  transition:
-    background 140ms ease,
-    border-color 140ms ease;
+  transition: background 140ms ease, border-color 140ms ease, box-shadow 140ms ease;
 }
 
+.month-calendar__cell:hover,
 .month-calendar__cell:focus-within {
-  border-color: color-mix(in srgb, var(--brand-fill) 40%, transparent);
-  background: color-mix(in srgb, var(--brand-fill) 4%, var(--surface-base));
+  border-color: color-mix(in srgb, var(--brand-fill) 45%, var(--border-subtle));
+  background: color-mix(in srgb, var(--brand-fill) 5%, var(--surface-base));
 }
 
-/*
- * Dimming the whole cell also dimmed the event chips inside it, dragging their
- * labels to 2.9–3.7:1. The "not this month" signal only needs to be on the date
- * number and the cell fill.
- */
+.month-calendar__cell--weekend:not(.month-calendar__cell--adjacent) {
+  background: color-mix(in srgb, var(--surface-raised) 92%, var(--brand-tint));
+}
+
 .month-calendar__cell--adjacent {
-  background: color-mix(in srgb, var(--text-primary) 4%, transparent);
+  background: color-mix(in srgb, var(--surface-base) 82%, var(--text-primary));
 }
 
-.month-calendar__cell--adjacent .month-calendar__date {
-  opacity: 0.65;
+.month-calendar__cell--adjacent .month-calendar__date,
+.month-calendar__cell--adjacent .month-calendar__event-stack {
+  opacity: 0.58;
 }
 
 .month-calendar__cell--today {
   border-color: var(--brand-fill);
-  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--brand-fill) 30%, transparent);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--brand-fill) 25%, transparent);
+}
+
+.month-calendar__cell--selected {
+  border-color: var(--brand-fill);
+  box-shadow: inset 0 0 0 2px color-mix(in srgb, var(--brand-fill) 32%, transparent);
 }
 
 .month-calendar__date-button {
-  display: flex;
+  display: inline-flex;
   align-items: center;
-  width: 100%;
+  align-self: flex-start;
   min-height: var(--control-height-compact);
-  margin-bottom: var(--space-xs);
+  padding: 0 var(--space-xs);
   border-radius: var(--radius-control);
   color: var(--text-primary);
   cursor: pointer;
 }
 
+.month-calendar__date-button:hover,
+.month-calendar__date-button:focus-visible {
+  background: var(--brand-tint);
+}
+
+.month-calendar__cell--selected .month-calendar__date-button,
+.month-calendar__compact-date[aria-pressed="true"] {
+  background: var(--brand-tint);
+  color: var(--brand-text);
+}
+
 .month-calendar__date {
-  font-size: 13px;
-  font-weight: 500;
-  color: var(--text-primary);
+  font-size: var(--text-sm);
+  font-weight: 700;
   line-height: 1;
 }
 
@@ -82,79 +137,215 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 24px;
-  height: 24px;
+  width: 1.6rem;
+  height: 1.6rem;
   border-radius: 50%;
   background: var(--brand-fill);
-  /* --accent-on-fill is pinned to the 900 ink stop in both modes (semantic.css),
-   * so it stays a dark, readable ink on the 500-stop fill regardless of theme or
-   * which of the 3 accents is active — the same three-way branch as the
-   * replacement table's "on a primary fill" row. */
   color: var(--brand-on-fill);
-  font-weight: 700;
 }
 
 .month-calendar__cell-body {
   display: flex;
-  flex-direction: column;
-  gap: 3px;
+  flex: 1;
+  min-height: 0;
+  padding-top: 2px;
 }
 
 .month-calendar__create-btn {
-  width: 100%;
-  min-height: 22px;
-  border: none;
-  border-radius: 6px;
-  background: transparent;
-  padding: 0;
-  text-align: left;
-  cursor: pointer;
-  font-size: 11px;
+  display: inline-flex;
+  align-items: center;
+  align-self: flex-start;
+  gap: var(--space-xs);
+  min-height: var(--control-height-compact);
+  padding: 0 var(--space-xs);
+  border-radius: var(--radius-control);
   color: var(--text-muted);
-  opacity: 0.72;
-  transition: opacity 140ms ease;
+  font-size: var(--text-micro);
+  font-weight: 600;
+  opacity: 0;
+  cursor: pointer;
+  transition: opacity 140ms ease, background 140ms ease, color 140ms ease;
 }
 
-.month-calendar__create-btn:hover,
+.month-calendar__cell:hover .month-calendar__create-btn,
 .month-calendar__create-btn:focus-visible {
   opacity: 1;
 }
 
+.month-calendar__create-btn:hover,
+.month-calendar__create-btn:focus-visible {
+  background: var(--brand-tint);
+  color: var(--brand-text);
+}
+
+.month-calendar__event-stack {
+  width: 100%;
+  min-width: 0;
+}
+
 .month-calendar__event-button {
-  display: block;
-  max-width: 100%;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: var(--space-xs);
+  width: 100%;
+  min-width: 0;
+  padding: 2px;
   border-radius: var(--radius-control);
   cursor: pointer;
+  text-align: left;
 }
 
-.month-calendar__event-button .mantine-Badge-root {
+.month-calendar__event-button:hover,
+.month-calendar__event-button:focus-visible {
+  background: var(--surface-raised);
+}
+
+.month-calendar__event-button [data-slot="badge"] {
+  display: block;
   max-width: 100%;
+  overflow: hidden;
+  text-align: left;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  border-color: color-mix(in srgb, var(--month-event-color) 42%, var(--border-subtle));
+  color: var(--month-event-color);
+  background: color-mix(in srgb, var(--month-event-color) 9%, transparent);
 }
 
-.month-calendar__overlay {
-  border-radius: 6px;
-  padding: 2px;
+.month-calendar__event-time {
+  color: var(--text-muted);
+  font-size: var(--text-micro);
+  line-height: 1;
+  white-space: nowrap;
 }
 
-/* The badge is already switched to the gray ramp for muted events, so the
- * de-emphasis does not need an opacity that drops the title to 2.9:1. */
 .month-calendar__event-badge--muted {
   opacity: 0.85;
   filter: grayscale(0.45);
 }
 
-@media (max-width: 767px) {
-  .month-calendar {
-    padding: 8px;
+.month-calendar__more-button {
+  justify-content: flex-start;
+  width: fit-content;
+  color: var(--brand-text);
+}
+
+.month-calendar__more-popover {
+  max-width: min(20rem, calc(100vw - var(--space-xl)));
+}
+
+.month-calendar__more-event {
+  justify-content: flex-start;
+  max-width: 100%;
+}
+
+.month-calendar--compact {
+  display: none;
+  padding: var(--space-sm);
+}
+
+.month-calendar__event-tooltip {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  width: min(16.25rem, calc(100vw - 2rem));
+  gap: var(--space-sm);
+}
+
+.month-calendar__event-tooltip-icon {
+  color: var(--month-event-color);
+}
+
+.month-calendar__event-tooltip > span:last-child {
+  display: grid;
+  gap: 3px;
+}
+
+.month-calendar__event-tooltip > span:last-child > span {
+  color: color-mix(in srgb, var(--background) 76%, transparent);
+}
+
+.month-calendar__compact-list {
+  display: grid;
+  gap: var(--space-sm);
+}
+
+.month-calendar__compact-day {
+  display: grid;
+  grid-template-columns: 4.5rem minmax(0, 1fr);
+  gap: var(--space-sm);
+  padding: var(--space-sm);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-surface);
+  background: var(--surface-base);
+}
+
+.month-calendar__compact-date {
+  display: grid;
+  align-content: center;
+  gap: 1px;
+  min-height: 4.25rem;
+  padding: var(--space-sm);
+  border-radius: var(--radius-control);
+  background: var(--surface-raised);
+  color: var(--text-primary);
+  text-align: left;
+}
+
+.month-calendar__compact-date:hover,
+.month-calendar__compact-date:focus-visible {
+  background: var(--brand-tint);
+}
+
+.month-calendar__compact-weekday,
+.month-calendar__compact-date-label {
+  color: var(--text-muted);
+  font-size: var(--text-micro);
+  font-weight: 600;
+}
+
+.month-calendar__compact-date-number {
+  color: var(--text-primary);
+  font-size: var(--text-h2);
+  font-weight: 700;
+  line-height: 1;
+}
+
+.month-calendar__compact-events {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+}
+
+.month-calendar__compact-empty {
+  display: block;
+  padding: var(--space-xl) var(--space-md);
+  color: var(--text-muted);
+  text-align: center;
+}
+
+@media (max-width: 47.99em) {
+  .event-month-view__heading {
+    min-height: 4rem;
+    padding: var(--space-sm) var(--space-md);
   }
 
-  .month-calendar__cell {
-    min-height: 60px;
-    padding: 4px;
-    border-radius: 6px;
+  .event-month-view__title {
+    font-size: var(--text-body);
   }
 
-  .month-calendar__weekday {
-    font-size: 10px;
+  .month-calendar--grid {
+    display: none;
+  }
+
+  .month-calendar--compact {
+    display: block;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .month-calendar__cell,
+  .month-calendar__create-btn {
+    transition: none;
   }
 }

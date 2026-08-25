@@ -1,0 +1,24 @@
+.experience-controls {
+  display: flex;
+  align-items: center;
+  gap: var(--space-xs);
+}
+
+.experience-controls__button {
+  width: var(--control-hit-area);
+  min-width: var(--control-hit-area);
+  height: var(--control-hit-area);
+  min-height: var(--control-hit-area);
+  color: var(--text-secondary);
+}
+
+.experience-controls__button:hover {
+  background: var(--brand-tint);
+  color: var(--brand-on-tint);
+}
+
+.experience-controls [data-slot="dropdown-menu-radio-item"][data-checked] {
+  background: var(--brand-tint);
+  color: var(--brand-on-tint);
+  font-weight: var(--fw-medium);
+}

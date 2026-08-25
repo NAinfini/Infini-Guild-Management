@@ -1,7 +1,7 @@
 import type { MemberBadge } from "@guild/shared";
 import { arrayMove } from "@dnd-kit/sortable";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState, type Dispatch, type SetStateAction } from "react";
 import { useTranslation } from "react-i18next";
 import {
   assignBadge,
@@ -36,6 +36,53 @@ export const EMPTY_BADGE_FORM: BadgeForm = {
   description: "",
 };
 
+type BadgeDraft = {
+  id: string | null;
+  form: BadgeForm;
+  memberIds: string[];
+};
+
+const EMPTY_BADGE_DRAFT: BadgeDraft = {
+  id: null,
+  form: EMPTY_BADGE_FORM,
+  memberIds: [],
+};
+
+function toBadgeForm(badge: MemberBadge): BadgeForm {
+  return {
+    name: badge.name,
+    label_html: badge.label_html,
+    color: badge.color,
+    description: badge.description ?? "",
+  };
+}
+
+function normalizeMemberIds(memberIds: Iterable<string>) {
+  return [...new Set(memberIds)].sort();
+}
+
+function toBadgeDraft(badge: MemberBadge, memberIds: Iterable<string> = []): BadgeDraft {
+  return {
+    id: badge.id,
+    form: toBadgeForm(badge),
+    memberIds: normalizeMemberIds(memberIds),
+  };
+}
+
+function sameBadgeForm(left: BadgeForm, right: BadgeForm) {
+  return left.name === right.name
+    && left.label_html === right.label_html
+    && left.color === right.color
+    && left.description === right.description;
+}
+
+function sameBadgeDraft(left: BadgeDraft, right: BadgeDraft) {
+  return left.id === right.id
+    && sameBadgeForm(left.form, right.form)
+    && left.memberIds.length === right.memberIds.length
+    && left.memberIds.every((id, index) => id === right.memberIds[index]);
+}
+
 function toCreateBadgePayload(form: BadgeForm): CreateBadgePayload {
   return {
     name: form.name,
@@ -59,17 +106,10 @@ export function useAdminBadgesController(enabled: boolean) {
   const queryClient = useQueryClient();
   const { showError } = useAppError();
   const [explicitBadgeId, setExplicitBadgeId] = useState<string | null>(null);
-  const [editingBadgeId, setEditingBadgeId] = useState<string | null>(null);
   const [isCreating, setIsCreating] = useState(false);
-  const [form, setForm] = useState<BadgeForm>(EMPTY_BADGE_FORM);
-  /*
-   * 成员编辑从「只挑还没有徽章的人加进来」改成「一份全员名单，勾选即拥有」：
-   * 面板里的勾选状态就是保存后的最终成员集合，加和删是同一个动作的两个方向。
-   * draftMemberIds 因此是最终集合而不是待加名单，命名不能再叫 pendingAssign。
-   */
-  const [membershipOpen, setMembershipOpen] = useState(false);
+  const [draft, setDraft] = useState<BadgeDraft>(EMPTY_BADGE_DRAFT);
+  const [baseline, setBaseline] = useState<BadgeDraft>(EMPTY_BADGE_DRAFT);
   const [memberSearch, setMemberSearch] = useState("");
-  const [draftMemberIds, setDraftMemberIds] = useState<ReadonlySet<string>>(new Set());
   const { isActionPending, runPendingAction, runPendingActions } = useAdminPendingActions();
 
   const badgesQuery = useQuery({
@@ -92,6 +132,16 @@ export function useAdminBadgesController(enabled: boolean) {
   const assignments = assignmentsQuery.data ?? [];
   const selectedBadge = badges.find((badge) => badge.id === selectedBadgeId) ?? null;
   const assignedUserIds = useMemo(() => new Set(assignments.map((assignment) => assignment.user_id)), [assignments]);
+  const form = draft.form;
+  const draftMemberIds = useMemo(() => new Set(draft.memberIds), [draft.memberIds]);
+  const baselineMemberIds = useMemo(() => new Set(baseline.memberIds), [baseline.memberIds]);
+  const formDirty = useMemo(() => !sameBadgeForm(draft.form, baseline.form), [baseline.form, draft.form]);
+  const membershipDirty = useMemo(
+    () => draft.memberIds.length !== baseline.memberIds.length
+      || draft.memberIds.some((id, index) => id !== baseline.memberIds[index]),
+    [baseline.memberIds, draft.memberIds],
+  );
+  const isDirty = useMemo(() => !sameBadgeDraft(draft, baseline), [baseline, draft]);
 
   /*
    * 不变量：选中的永远是列表里真实存在的一枚。进页面、删掉一枚、别人删掉了我选的
@@ -105,8 +155,40 @@ export function useAdminBadgesController(enabled: boolean) {
   useEffect(() => {
     if (isCreating) return;
     if (explicitBadgeId && badges.some((badge) => badge.id === explicitBadgeId)) return;
-    setExplicitBadgeId(badges[0]?.id ?? null);
+    const nextBadge = badges[0] ?? null;
+    setExplicitBadgeId(nextBadge?.id ?? null);
+    if (nextBadge) {
+      const nextDraft = toBadgeDraft(nextBadge);
+      setDraft(nextDraft);
+      setBaseline(nextDraft);
+    }
   }, [badges, explicitBadgeId, isCreating]);
+
+  /* A selected badge is editable immediately. Its membership baseline arrives from a
+     separate request, so only that part of the draft is synchronized when it resolves;
+     an admin's in-progress field edits stay intact. */
+  useEffect(() => {
+    if (isCreating || !selectedBadge || !assignmentsQuery.isSuccess) return;
+    const memberIds = normalizeMemberIds(assignments.map((assignment) => assignment.user_id));
+
+    setBaseline((current) => current.id === selectedBadge.id && membershipDirty
+      ? current
+      : current.id === selectedBadge.id
+        ? { ...current, memberIds }
+        : toBadgeDraft(selectedBadge, memberIds));
+    setDraft((current) => current.id === selectedBadge.id && membershipDirty
+      ? current
+      : current.id === selectedBadge.id
+        ? { ...current, memberIds }
+        : toBadgeDraft(selectedBadge, memberIds));
+  }, [assignments, assignmentsQuery.isSuccess, isCreating, membershipDirty, selectedBadge]);
+
+  const setForm: Dispatch<SetStateAction<BadgeForm>> = (next) => {
+    setDraft((current) => ({
+      ...current,
+      form: typeof next === "function" ? next(current.form) : next,
+    }));
+  };
 
   /* 徽章的样子和顺序都随成员一起发出去（名片上挂前两枚），改完徽章这两份缓存
      也就过期了。 */
@@ -124,21 +206,26 @@ export function useAdminBadgesController(enabled: boolean) {
     mutationFn: createBadge,
     onSuccess: async (data) => {
       notifySuccess(t("badges.message.created"));
-      setForm(EMPTY_BADGE_FORM);
-      await invalidateBadges();
-      /* 先等目录刷新再一起落地：新徽章还没进列表就退出新建态的话，
-         选中会先掉回第一枚，右栏闪一下别人的详情。 */
+      const nextDraft = toBadgeDraft(data);
+      setDraft(nextDraft);
+      setBaseline(nextDraft);
       setExplicitBadgeId(data.id);
       setIsCreating(false);
+      await invalidateBadges();
     },
     onError: (error) => showError(error, t("badges.message.failed")),
   });
 
   const updateMutation = useMutation({
     mutationFn: (vars: { id: string; payload: BadgeForm }) => updateBadge(vars.id, toUpdateBadgePayload(vars.payload)),
-    onSuccess: async () => {
+    onSuccess: async (updated) => {
       notifySuccess(t("badges.message.updated"));
-      setEditingBadgeId(null);
+      setBaseline((current) => current.id === updated.id
+        ? { ...current, form: toBadgeForm(updated) }
+        : current);
+      setDraft((current) => current.id === updated.id
+        ? { ...current, form: toBadgeForm(updated) }
+        : current);
       await invalidateBadges();
     },
     onError: (error) => showError(error, t("badges.message.failed")),
@@ -149,6 +236,8 @@ export function useAdminBadgesController(enabled: boolean) {
     onSuccess: async () => {
       notifySuccess(t("badges.message.deleted"));
       setExplicitBadgeId(null);
+      setDraft(EMPTY_BADGE_DRAFT);
+      setBaseline(EMPTY_BADGE_DRAFT);
       await invalidateBadges();
     },
     onError: (error) => showError(error, t("badges.message.failed")),
@@ -169,15 +258,16 @@ export function useAdminBadgesController(enabled: boolean) {
   };
 
   const membershipMutation = useMutation({
-    mutationFn: async (vars: { badgeId: string; add: string[]; remove: string[] }) => {
+    mutationFn: async (vars: { badgeId: string; add: string[]; remove: string[]; memberIds: string[] }) => {
       const assigned = await runBatched(vars.add, async (chunk) => (await assignBadge(vars.badgeId, chunk)).assigned);
       const removed = await runBatched(vars.remove, async (chunk) => (await unassignBadge(vars.badgeId, chunk)).removed);
       return { assigned, removed };
     },
-    onSuccess: (data) => {
+    onSuccess: (data, variables) => {
       notifySuccess(t("badges.message.membershipSaved", { added: data.assigned, removed: data.removed }));
-      setMembershipOpen(false);
-      setDraftMemberIds(new Set());
+      setBaseline((current) => current.id === variables.badgeId
+        ? { ...current, memberIds: variables.memberIds }
+        : current);
     },
     onError: (error) => showError(error, t("badges.message.failed")),
     /* 加成功、减失败也要刷新：否则右边名单还停在改动之前，看起来像什么都没发生。 */
@@ -237,77 +327,51 @@ export function useAdminBadgesController(enabled: boolean) {
     reorderMutation.mutate(arrayMove([...badges], from, to).map((badge) => badge.id));
   };
 
-  /*
-   * 草稿只对「打开面板时选中的那一枚徽章」有意义：带着 A 的草稿切到 B，保存出去
-   * 就是拿 A 的勾选去改 B 的成员。凡是会换掉详情内容的动作，一律先把面板收掉。
-   */
-  const resetMembership = () => {
-    setMembershipOpen(false);
-    setDraftMemberIds(new Set());
-    setMemberSearch("");
-  };
-
   const startCreate = () => {
     setIsCreating(true);
-    setEditingBadgeId(null);
-    setForm(EMPTY_BADGE_FORM);
+    setDraft(EMPTY_BADGE_DRAFT);
+    setBaseline(EMPTY_BADGE_DRAFT);
     setExplicitBadgeId(null);
-    resetMembership();
-  };
-
-  const startEdit = (badge: MemberBadge) => {
-    setEditingBadgeId(badge.id);
-    setIsCreating(false);
-    resetMembership();
-    setForm({
-      name: badge.name,
-      label_html: badge.label_html,
-      color: badge.color,
-      description: badge.description ?? "",
-    });
+    setMemberSearch("");
   };
 
   const selectBadge = (badgeId: string) => {
+    const nextBadge = badges.find((badge) => badge.id === badgeId);
     setExplicitBadgeId(badgeId);
     setIsCreating(false);
-    setEditingBadgeId(null);
-    resetMembership();
-  };
-
-  const cancelEdit = () => {
-    setEditingBadgeId(null);
-    setIsCreating(false);
-    setForm(EMPTY_BADGE_FORM);
-  };
-
-  /*
-   * 草稿以「当前已分配的人」为起点。分配还在加载时打开面板会拿到一份空集合，
-   * 等数据到了就变成「移除所有人」的差异——所以调用方（按钮）在加载/出错时禁用，
-   * 这里不兜底猜测。
-   */
-  const openMembership = () => {
-    setDraftMemberIds(new Set(assignedUserIds));
     setMemberSearch("");
-    setMembershipOpen(true);
+    if (nextBadge) {
+      const nextDraft = toBadgeDraft(nextBadge);
+      setDraft(nextDraft);
+      setBaseline(nextDraft);
+    }
   };
 
-  const closeMembership = resetMembership;
+  const discardChanges = () => {
+    if (isCreating) {
+      setIsCreating(false);
+      setDraft(EMPTY_BADGE_DRAFT);
+      setBaseline(EMPTY_BADGE_DRAFT);
+      return;
+    }
+    setDraft(baseline);
+  };
 
   const toggleDraftMember = (userId: string) => {
-    setDraftMemberIds((prev) => {
-      const next = new Set(prev);
+    setDraft((current) => {
+      const next = new Set(current.memberIds);
       if (!next.delete(userId)) next.add(userId);
-      return next;
+      return { ...current, memberIds: normalizeMemberIds(next) };
     });
   };
 
   const draftAdded = useMemo(
-    () => [...draftMemberIds].filter((id) => !assignedUserIds.has(id)),
-    [draftMemberIds, assignedUserIds],
+    () => draft.memberIds.filter((id) => !baselineMemberIds.has(id)),
+    [baselineMemberIds, draft.memberIds],
   );
   const draftRemoved = useMemo(
-    () => [...assignedUserIds].filter((id) => !draftMemberIds.has(id)),
-    [draftMemberIds, assignedUserIds],
+    () => baseline.memberIds.filter((id) => !draftMemberIds.has(id)),
+    [baseline.memberIds, draftMemberIds],
   );
 
   const formValid = form.name.trim().length > 0 && form.label_html.trim().length > 0;
@@ -344,16 +408,17 @@ export function useAdminBadgesController(enabled: boolean) {
 
   return {
     selectedBadgeId,
-    editingBadgeId,
     isCreating,
     form,
     setForm,
-    membershipOpen,
     memberSearch,
     setMemberSearch,
     draftMemberIds,
     draftAdded,
     draftRemoved,
+    formDirty,
+    membershipDirty,
+    isDirty,
     badges,
     assignments,
     selectedBadge,
@@ -378,18 +443,15 @@ export function useAdminBadgesController(enabled: boolean) {
     isBadgeDeletePending,
     isBadgeUnassignPending,
     startCreate,
-    startEdit,
     selectBadge,
-    cancelEdit,
-    openMembership,
-    closeMembership,
+    discardChanges,
     toggleDraftMember,
     formValid,
     createBadge: () => createMutation.mutate(toCreateBadgePayload(form)),
     updateBadge: (id: string) => updateMutation.mutate({ id, payload: form }),
     deleteBadge: deleteBadgeWithPending,
     saveMembership: (badgeId: string) =>
-      membershipMutation.mutate({ badgeId, add: draftAdded, remove: draftRemoved }),
+      membershipMutation.mutate({ badgeId, add: draftAdded, remove: draftRemoved, memberIds: draft.memberIds }),
     unassignBadge: unassignBadgeWithPending,
   };
 }

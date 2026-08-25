@@ -1,4 +1,3 @@
-import { Text } from "@mantine/core";
 import { useEffect, useRef, useState } from "react";
 
 export interface NumberTickerProps {
@@ -37,13 +36,9 @@ export function NumberTicker({ value, className, duration = 800, decimals = 0, s
   }, [value, duration]);
 
   return (
-    <Text
-      component="span"
-      inherit
-      className={["portal-kpi-value", className].filter(Boolean).join(" ")}
-    >
+    <span className={["portal-kpi-value", className].filter(Boolean).join(" ")}>
       {decimals > 0 ? display.toFixed(decimals) : display.toLocaleString()}
       {suffix}
-    </Text>
+    </span>
   );
 }

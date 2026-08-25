@@ -18,14 +18,14 @@ const BATCH_DELETE = { method: "PATCH", path: /^\/api\/admin\/users\/batch\/dele
 const CONFIRM_TITLE = "Confirm batch action";
 
 type ServerMember = {
-  user: { id: string; username: string; role: string; is_active: boolean };
+  user: { id: string; display_name: string; role: string; is_active: boolean };
 };
 
 function searchBox(page: Page): Locator {
   return page.getByRole("textbox", { name: "Search members", exact: true });
 }
-function memberRow(page: Page, username: string): Locator {
-  return page.getByRole("row", { name: `${username} member row`, exact: true });
+function memberRow(page: Page, display_name: string): Locator {
+  return page.getByRole("row", { name: `${display_name} member row`, exact: true });
 }
 function actionMenu(page: Page): Locator {
   return page.locator("[data-admin-user-action-menu]");
@@ -56,8 +56,8 @@ async function setUpPair(page: Page, api: APIRequestContext): Promise<[Throwaway
   await searchBox(page).fill(tag);
   await expect(page.getByRole("row", { name: /member row$/ })).toHaveCount(2);
 
-  await memberRow(page, first.username).click();
-  await memberRow(page, second.username).click({ modifiers: ["ControlOrMeta"] });
+  await memberRow(page, first.display_name).click();
+  await memberRow(page, second.display_name).click({ modifiers: ["ControlOrMeta"] });
   await expectSelectedCount(page, 2);
   return [first, second];
 }
@@ -127,7 +127,7 @@ test("批量改角色：取消什么都不改；确认之后选中的每一个�
   const dialog = await expectConfirm(
     page,
     `Update 2 selected members to the ${targetRole.name} role?`,
-    [first.username, second.username],
+    [first.display_name, second.display_name],
   );
 
   await expectNoApiCalls(page, async () => {
@@ -142,8 +142,8 @@ test("批量改角色：取消什么都不改；确认之后选中的每一个�
   await flow.click(again.getByRole("button", { name: "Save", exact: true }), BATCH_ROLE);
 
   for (const member of [first, second]) {
-    await expect(memberRow(page, member.username).locator(".admin-cell-role")).toHaveText(targetRole.name);
-    expect((await serverMember(api, member.id)).user.role, `${member.username} 的角色`).toBe(targetRole.id);
+    await expect(memberRow(page, member.display_name).locator(".admin-cell-role")).toHaveText(targetRole.name);
+    expect((await serverMember(api, member.id)).user.role, `${member.display_name} 的角色`).toBe(targetRole.id);
   }
 });
 
@@ -154,14 +154,14 @@ test("批量停用再批量启用：两个人的状态列和服务端一起翻�
   const stopDialog = await expectConfirm(
     page,
     "Deactivate 2 selected members?",
-    [first.username, second.username],
+    [first.display_name, second.display_name],
   );
   await flow.click(stopDialog.getByRole("button", { name: "Save", exact: true }), BATCH_DEACTIVATE);
 
   for (const member of [first, second]) {
-    await expect(memberRow(page, member.username).locator(".admin-cell-status"))
+    await expect(memberRow(page, member.display_name).locator(".admin-cell-status"))
       .toHaveClass(/admin-cell-status--inactive/);
-    expect((await serverMember(api, member.id)).user.is_active, `${member.username} 应当已停用`).toBe(false);
+    expect((await serverMember(api, member.id)).user.is_active, `${member.display_name} 应当已停用`).toBe(false);
   }
 
   /* 批量停用不会清空选中项，所以可以直接接着批量启用。 */
@@ -170,14 +170,14 @@ test("批量停用再批量启用：两个人的状态列和服务端一起翻�
   const startDialog = await expectConfirm(
     page,
     "Reactivate 2 selected members?",
-    [first.username, second.username],
+    [first.display_name, second.display_name],
   );
   await flow.click(startDialog.getByRole("button", { name: "Save", exact: true }), BATCH_REACTIVATE);
 
   for (const member of [first, second]) {
-    await expect(memberRow(page, member.username).locator(".admin-cell-status"))
+    await expect(memberRow(page, member.display_name).locator(".admin-cell-status"))
       .toHaveClass(/admin-cell-status--active/);
-    expect((await serverMember(api, member.id)).user.is_active, `${member.username} 应当已启用`).toBe(true);
+    expect((await serverMember(api, member.id)).user.is_active, `${member.display_name} 应当已启用`).toBe(true);
   }
 });
 
@@ -188,7 +188,7 @@ test("移除所选成员：确认后两行从成员列表消失，服务端列�
   const dialog = await expectConfirm(
     page,
     "Remove 2 selected members from the guild? Their accounts will be hidden from the member list and their data will be retained.",
-    [first.username, second.username],
+    [first.display_name, second.display_name],
   );
   await flow.click(dialog.getByRole("button", { name: "Save", exact: true }), BATCH_DELETE);
 
@@ -198,7 +198,7 @@ test("移除所选成员：确认后两行从成员列表消失，服务端列�
   for (const member of [first, second]) {
     expect(
       remaining.some((row) => row.user.id === member.id),
-      `${member.username} 移除后不该再出现在成员列表里`,
+      `${member.display_name} 移除后不该再出现在成员列表里`,
     ).toBe(false);
   }
 });
@@ -207,7 +207,7 @@ test("多选时的行右键菜单：标题报出选中人数，只对单人有�
   const [first] = await setUpPair(page, api);
   const assignableRoles = await readAssignableRoles(api);
 
-  await memberRow(page, first.username).getByRole("button", { name: "Actions", exact: true }).click();
+  await memberRow(page, first.display_name).getByRole("button", { name: "Actions", exact: true }).click();
   const menu = page.locator("[data-admin-user-action-menu]");
   await expect(menu).toBeVisible();
   await expect(menu, "菜单标题要报出这一次操作打在几个人身上").toContainText("2 members selected");

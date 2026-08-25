@@ -1,4 +1,3 @@
-import { MantineProvider } from "@mantine/core";
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it } from "vitest";
@@ -6,7 +5,7 @@ import { MetricGridInput } from "./MetricGridInput";
 
 function renderGrid() {
   render(
-    <MantineProvider>
+    <>
       {[0, 1].flatMap((rowIndex) =>
         [0, 1].map((columnIndex) => (
           <MetricGridInput
@@ -21,7 +20,7 @@ function renderGrid() {
           />
         )),
       )}
-    </MantineProvider>,
+    </>,
   );
 }
 
@@ -62,6 +61,6 @@ describe("MetricGridInput", () => {
 
     await user.keyboard("{ArrowUp}");
     expect(first).toHaveFocus();
-    expect(first).toHaveValue("0");
+    expect(first).toHaveValue(0);
   });
 });

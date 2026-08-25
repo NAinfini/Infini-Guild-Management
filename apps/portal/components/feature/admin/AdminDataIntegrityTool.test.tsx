@@ -1,4 +1,3 @@
-import { MantineProvider } from "@mantine/core";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
@@ -18,11 +17,7 @@ vi.mock("react-i18next", () => ({
 
 function Wrapper({ children }: { children: ReactNode }) {
   const queryClient = new QueryClient({ defaultOptions: { mutations: { retry: false } } });
-  return (
-    <QueryClientProvider client={queryClient}>
-      <MantineProvider>{children}</MantineProvider>
-    </QueryClientProvider>
-  );
+  return <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>;
 }
 
 describe("AdminDataIntegrityTool", () => {

@@ -103,7 +103,7 @@ describe("shared local development seed", () => {
     try {
       database.exec(`
         INSERT INTO users (
-          id, username, role_id, is_active, deleted_at, revision_token, created_at, updated_at
+          id, display_name, role_id, is_active, deleted_at, revision_token, created_at, updated_at
         ) VALUES (
           'existing-owner', 'existing_owner', 'admin', 1, NULL,
           'existing-owner-revision', '2026-01-01T00:00:00.000Z', '2026-01-01T00:00:00.000Z'

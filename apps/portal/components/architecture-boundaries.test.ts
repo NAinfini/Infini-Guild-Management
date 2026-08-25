@@ -150,6 +150,63 @@ const timeConversionExemptPaths = new Set([
 ]);
 
 describe("portal architecture boundaries", () => {
+  it("keeps navigation, entity selection, and collection queries in their approved semantic components", () => {
+    const adminPage = readProjectFile("apps/portal/components/pages/AdminPage.tsx");
+    const appShell = readProjectFile("apps/portal/components/layout/AppShell.tsx");
+    const adminNavigation = readProjectFile(
+      "apps/portal/components/layout/AdminContextNavigation.tsx",
+    );
+    const profilePage = readProjectFile("apps/portal/components/pages/MyProfilePage.tsx");
+    const guildWarPage = readProjectFile("apps/portal/components/pages/GuildWarPage.tsx");
+    const eventsPage = readProjectFile("apps/portal/components/pages/EventsPage.tsx");
+    const eventsSubnav = readProjectFile("apps/portal/components/feature/events/EventsWorkspaceSubnav.tsx");
+    const storagePage = readProjectFile("apps/portal/components/pages/StoragePage.tsx");
+
+    expect(adminPage).not.toContain("<Tabs");
+    expect(appShell).toContain("useAdminContextNavigationModel");
+    expect(adminNavigation).toContain("ADMIN_CONTEXT_ROUTES");
+    expect(appShell.match(/<AppSidebar\b/g)).toHaveLength(1);
+    for (const source of [profilePage, guildWarPage]) {
+      expect(source).toContain("<PageSubnav");
+      expect(source).not.toContain("<Tabs");
+    }
+    expect(eventsPage).toContain("<EventsWorkspaceSubnav");
+    expect(eventsPage).not.toContain("<Tabs");
+    expect(eventsSubnav).toContain("<PageSubnav");
+    expect(eventsSubnav).not.toContain("<Tabs");
+    expect(storagePage).toContain("<EntityNavigator");
+    expect(storagePage).not.toContain("<Tabs");
+
+    const collectionQueryOwners = [
+      "apps/portal/components/feature/admin/AdminAuditSection.tsx",
+      "apps/portal/components/feature/admin/AdminInviteSection.tsx",
+      "apps/portal/components/feature/admin/AdminUsersSection.tsx",
+      "apps/portal/components/feature/announcements/AnnouncementFiltersCard.tsx",
+      "apps/portal/components/feature/events/EventsFiltersCard.tsx",
+      "apps/portal/components/feature/events/RecurringTemplatesTab.tsx",
+      "apps/portal/components/feature/gallery/GalleryFiltersCard.tsx",
+      "apps/portal/components/feature/guild-war/WarHistoryTable.tsx",
+      "apps/portal/components/feature/roster/RosterFilterCard.tsx",
+      "apps/portal/components/feature/storage/StorageInventoryPanel.tsx",
+      "apps/portal/components/pages/WikiPage.tsx",
+    ];
+    expect(collectionQueryOwners.filter((path) => !readProjectFile(path).includes("<ContentFilterToolbar")))
+      .toEqual([]);
+
+    const pageRoot = resolve(repoRoot, "apps/portal/components/pages");
+    const pageTabs = listSourceFiles(pageRoot)
+      .filter((path) => readFileSync(path, "utf8").includes("<Tabs"))
+      .map((path) => relative(repoRoot, path).replace(/\\/g, "/"));
+    expect(pageTabs).toEqual(["apps/portal/components/pages/GalleryPage.tsx"]);
+
+    const noticeStyles = readProjectFile(
+      "apps/portal/components/feature/admin/AdminImportantNoticesSection.css",
+    );
+    expect(noticeStyles).toMatch(
+      /\.important-notices-admin--empty\s*\{[^}]*grid-template-columns:\s*minmax\(0,\s*1fr\)/s,
+    );
+  });
+
   it("detects forbidden raw API query and mutation imports in component source", () => {
     expect(hasForbiddenRawApiImport('import { apiRequest } from "../../api/client";')).toBe(true);
     expect(hasForbiddenRawApiImport('import { listEvents } from "../../api/queries/events";')).toBe(true);
@@ -176,22 +233,31 @@ describe("portal architecture boundaries", () => {
     expect(eslintConfig).toContain("**/api/mutations/*");
   });
 
-  it("keeps foundational Mantine styling in the theme instead of the global stylesheet", () => {
-    const globalStyles = readProjectFile("apps/portal/styles.css");
-
-    expect(globalStyles).not.toMatch(/\.mantine-[A-Za-z0-9_-]+/);
-    expect(globalStyles).not.toContain("infini-menu");
-    expect(readProjectFile("apps/portal/providers/ThemeProvider.tsx"))
-      .toContain("ThemeProvider.module.css");
-  });
-
-  it("has one Mantine confirm adapter", () => {
+  it("keeps the UI foundation on the shared Base UI primitives", () => {
     const portalRoot = resolve(repoRoot, "apps/portal");
-    const offenders = listSourceFiles(portalRoot)
-      .filter((filePath) => readFileSync(filePath, "utf8").includes("modals.openConfirmModal"))
+    const deprecatedUiName = ["man", "tine"].join("");
+    const deprecatedUiPackage = `@${deprecatedUiName}`;
+    const sourceOffenders = listSourceFiles(portalRoot)
+      .filter((filePath) => readFileSync(filePath, "utf8").includes(deprecatedUiPackage))
+      .map((filePath) => relative(repoRoot, filePath).replace(/\\/g, "/"));
+    const styleOffenders = listStyleFiles(portalRoot)
+      .filter((filePath) => readFileSync(filePath, "utf8").toLowerCase().includes(deprecatedUiName))
       .map((filePath) => relative(repoRoot, filePath).replace(/\\/g, "/"));
 
-    expect(offenders).toEqual(["apps/portal/hooks/useConfirmDialog.ts"]);
+    expect(sourceOffenders).toEqual([]);
+    expect(styleOffenders).toEqual([]);
+    expect(readProjectFile("apps/portal/components/ui/button.tsx"))
+      .toContain('data-slot="button"');
+  });
+
+  it("keeps confirmations on the shared Base UI queue", () => {
+    const confirmHook = readProjectFile("apps/portal/hooks/useConfirmDialog.ts");
+    const confirmHost = readProjectFile("apps/portal/components/shared/ConfirmDialogHost.tsx");
+    const deprecatedModalPackage = `@${["man", "tine"].join("")}/modals`;
+
+    expect(confirmHook).not.toContain(deprecatedModalPackage);
+    expect(confirmHost).toContain('@portal/components/ui/alert-dialog');
+    expect(confirmHost).toContain("useSyncExternalStore");
   });
 
   it("keeps glow, blur-filter and 3D effects inside the protected MemberCard", () => {
@@ -330,25 +396,22 @@ describe("portal architecture boundaries", () => {
   });
 
   it("routes page-level block spacing through the single --page-rhythm token", () => {
-    /*
-     * 页面块间距曾经是每页自己填的数：wiki 24、公告 16、活动/花名册/仓库 12。
-     * 同一条「筛选栏到工作区」的缝因此各页宽窄不一，这条断言把它钉回一个来源。
-     * 下面四个页面在 PageLayout 里再包一层 Stack 只为把剩余高度传下去，
-     * 它们没有资格重新定义节奏。
-     */
-    const rhythmConsumers = [
-      "apps/portal/components/layout/PageLayout.tsx",
-      "apps/portal/components/pages/AnnouncementsPage.tsx",
-      "apps/portal/components/pages/EventsPage.tsx",
-      "apps/portal/components/pages/RosterPage.tsx",
-      "apps/portal/components/pages/StoragePage.tsx",
-    ];
-    const offenders = rhythmConsumers
-      .filter((path) => !readProjectFile(path).includes('gap="var(--page-rhythm)"'));
+    const layout = readProjectFile("apps/portal/components/layout/PageLayout.tsx");
+    const layoutStyles = stripCssComments(
+      readProjectFile("apps/portal/components/layout/PageLayout.css"),
+    );
+    const pageStyles = [
+      "apps/portal/components/pages/AnnouncementsPage.css",
+      "apps/portal/components/pages/EventsPage.css",
+      "apps/portal/components/pages/WikiPage.css",
+      "apps/portal/components/pages/RosterPage.css",
+    ].map((path) => stripCssComments(readProjectFile(path)));
 
-    expect(stripCssComments(readProjectFile("apps/portal/components/layout/PageLayout.css")))
-      .toMatch(/--page-rhythm:\s*var\(--space-md\)/);
-    expect(offenders).toEqual([]);
+    expect(layoutStyles).toMatch(/\.page-layout__content\s*\{[^}]*gap:\s*var\(--page-rhythm\)/s);
+    expect(layout).toContain('className="page-layout__toolbar"');
+    expect(layout).toContain('className="page-layout__workspace"');
+    expect(layoutStyles).toMatch(/--page-rhythm:\s*var\(--space-md\)/);
+    expect(pageStyles.every((styles) => !styles.includes("--page-rhythm:"))).toBe(true);
   });
 
   it("routes press displacement through the motion tokens so reduced motion degrades once", () => {
@@ -392,6 +455,12 @@ describe("portal architecture boundaries", () => {
 
   it("allows backdrop blur only on the protected card and the full-screen Gallery overlay", () => {
     const cssRoot = resolve(repoRoot, "apps/portal");
+    const overlayPrimitivePaths = [
+      "apps/portal/components/ui/dialog.tsx",
+      "apps/portal/components/ui/sheet.tsx",
+      "apps/portal/components/ui/drawer.tsx",
+      "apps/portal/components/ui/alert-dialog.tsx",
+    ];
     const allowed = new Set([
       "apps/portal/components/shared/MemberCard.css",
       "apps/portal/components/pages/GalleryPage.css",
@@ -403,8 +472,21 @@ describe("portal architecture boundaries", () => {
     const galleryStyles = stripCssComments(
       readProjectFile("apps/portal/components/pages/GalleryPage.css"),
     );
+    const overlayMaterial = readProjectFile(
+      "apps/portal/components/ui/overlay-material.ts",
+    );
 
     expect(offenders).toEqual([]);
+    expect(overlayMaterial).toContain('OVERLAY_BACKDROP_CLASS_NAME = "bg-black/60"');
+    expect(overlayMaterial).toContain(
+      '"border border-border bg-popover text-popover-foreground shadow-lg"',
+    );
+    for (const filePath of overlayPrimitivePaths) {
+      const source = readProjectFile(filePath);
+      expect(source).toContain("OVERLAY_BACKDROP_CLASS_NAME");
+      expect(source).toContain("OVERLAY_SURFACE_CLASS_NAME");
+      expect(source).not.toMatch(/backdrop-(?:blur|filter)/);
+    }
     expect(galleryStyles.match(/backdrop-filter\s*:\s*blur\(12px\)/g)).toHaveLength(1);
     expect(galleryStyles).toMatch(/\.gallery-lb-overlay\s*\{[^}]*backdrop-filter/s);
   });

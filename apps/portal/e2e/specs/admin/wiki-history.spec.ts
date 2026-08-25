@@ -131,8 +131,7 @@ function restoreButton(page: Page): Locator {
 }
 
 function compareSegment(page: Page, label: string): Locator {
-  return modal(page).locator("label.mantine-SegmentedControl-label")
-    .filter({ hasText: new RegExp(`^${label}$`) });
+  return modal(page).getByRole("tab", { name: label, exact: true });
 }
 
 async function openHistory(page: Page, flow: { click: (control: Locator, expected: typeof REVISIONS) => Promise<unknown> }): Promise<void> {
@@ -176,7 +175,7 @@ test("比较档：最老的一版没有上一版可比，中间版本切档后�
   await expect(
     compareSegment(page, "Compare to previous"),
     "r1 前面没有版本了，这一档必须禁用而不是给个空白差异",
-  ).toHaveAttribute("data-disabled", "true");
+  ).toBeDisabled();
 
   await flow.click(revisionRow(page, 2), REVISION_DETAIL);
   /*

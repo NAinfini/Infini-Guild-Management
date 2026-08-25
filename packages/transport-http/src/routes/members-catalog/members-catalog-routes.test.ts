@@ -49,7 +49,7 @@ function buildApp() {
     deleteBadge: vi.fn().mockResolvedValue({ ok: true as const }),
     listBadgeAssignments: vi.fn().mockResolvedValue({
       data: [{
-        badgeId: "badge-1", userId: "user-1", username: "Member", assignedBy: "admin-1",
+        badgeId: "badge-1", userId: "user-1", display_name: "Member", assignedBy: "admin-1",
         assignedByUsername: "Admin", assignedAt: NOW,
       }],
       next_cursor: "next",
@@ -116,8 +116,8 @@ describe("member catalog Portal HTTP contract", () => {
     const response = await app.request("/api/badges/badge-1/assignments");
     expect(await response.json()).toEqual({
       data: [{
-        badge_id: "badge-1", user_id: "user-1", username: "Member", assigned_by: "admin-1",
-        assigned_by_username: "Admin", assigned_at: NOW,
+        badge_id: "badge-1", user_id: "user-1", display_name: "Member", assigned_by: "admin-1",
+        assigned_by_display_name: "Admin", assigned_at: NOW,
       }],
       next_cursor: "next",
     });

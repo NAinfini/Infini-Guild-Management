@@ -52,13 +52,13 @@ export function EventQuotaBar({ summary, event, participantCount, className }: E
     const capacity = event.capacity;
     if (capacity === null) {
       return (
-        <section className={rootClassName} aria-label={t("quota.generic.label")}>
+        <div className={rootClassName} role="group" aria-label={t("quota.generic.label")}>
           <div className="quota-bar__unlimited-state">
             <span className="quota-bar__unlimited-label">
               {t("quota.generic.unlimited")}
             </span>
           </div>
-        </section>
+        </div>
       );
     }
 
@@ -69,12 +69,15 @@ export function EventQuotaBar({ summary, event, participantCount, className }: E
     const overCapacity = participantCount > capacity;
 
     return (
-      <section className={rootClassName} aria-label={t("quota.generic.label")}>
+      <div className={rootClassName} role="group" aria-label={t("quota.generic.label")}>
         <div
           className="quota-bar__generic"
           data-quota-state={overCapacity ? "over" : "filling"}
         >
-          <span className="quota-bar__generic-label">{t("quota.generic.label")}</span>
+          <div className="quota-bar__slot-header">
+            <span className="quota-bar__generic-label">{t("quota.generic.label")}</span>
+            <span className="quota-bar__role-count">{participantCount} / {capacity}</span>
+          </div>
           <div
             className="quota-bar__progress"
             role="progressbar"
@@ -90,7 +93,7 @@ export function EventQuotaBar({ summary, event, participantCount, className }: E
             />
           </div>
         </div>
-      </section>
+      </div>
     );
   }
 
@@ -120,8 +123,9 @@ export function EventQuotaBar({ summary, event, participantCount, className }: E
   } as CSSProperties;
 
   return (
-    <section
+    <div
       className={rootClassName}
+      role="group"
       aria-label={t("quota.roles.label")}
     >
       <div className="quota-bar__slots" role="list" style={slotGridStyle}>
@@ -211,6 +215,6 @@ export function EventQuotaBar({ summary, event, participantCount, className }: E
       {capacityConflictText ? (
         <p className="quota-bar__conflict">{capacityConflictText}</p>
       ) : null}
-    </section>
+    </div>
   );
 }

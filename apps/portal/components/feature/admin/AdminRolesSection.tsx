@@ -1,25 +1,22 @@
 import { PERMISSIONS, type AdminRole, type Permission } from "@guild/shared";
+import { Alert, AlertTitle } from "@portal/components/ui/alert";
+import { Badge } from "@portal/components/ui/badge";
+import { Button } from "@portal/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@portal/components/ui/dialog";
+import { Input } from "@portal/components/ui/input";
+import { Label } from "@portal/components/ui/label";
+import { ScrollArea } from "@portal/components/ui/scroll-area";
+import { Skeleton } from "@portal/components/ui/skeleton";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@portal/components/ui/tooltip";
 import { useConfirmDialog } from "@portal/hooks/useConfirmDialog";
 import { SectionHeader } from "@portal/components/shared/SectionHeader";
-import {
-  ActionIcon,
-  Alert,
-  Badge,
-  Button,
-  ColorInput,
-  ColorSwatch,
-  Group,
-  HoverCard,
-  Modal,
-  NumberInput,
-  Skeleton,
-  ScrollArea,
-  Stack,
-  Text,
-  TextInput,
-  ThemeIcon,
-  UnstyledButton,
-} from "@mantine/core";
 import {
   AlertTriangleIcon,
   ArchiveIcon,
@@ -29,6 +26,7 @@ import {
   ClipboardIcon,
   EyeIcon,
   GalleryThumbnailsIcon,
+  InfoCircleIcon,
   LockIcon,
   PaletteIcon,
   PencilIcon,
@@ -43,7 +41,7 @@ import {
   WarehouseIcon,
   XIcon,
 } from "@portal/components/icons";
-import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { useEffect, useId, useMemo, useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { useAuthStore } from "../../../stores/auth";
 import { userCanManageRoles } from "../../../utils/permissions";
@@ -116,6 +114,7 @@ const PERMISSION_CATEGORIES: PermissionCategory[] = [
       "admin.roles.view",
       "admin.roles.manage",
       "admin.siteConfig.manage",
+      "admin.importantNotices.manage",
       "admin.classes.manage",
       "admin.badges.manage",
     ],
@@ -173,6 +172,7 @@ const PERM_META: Record<Permission, PermMeta> = {
   "admin.roles.view":      { icon: <EyeIcon size={PERM_ICON_SIZE} />,              color: "gray" },
   "admin.roles.manage":    { icon: <ShieldIcon size={PERM_ICON_SIZE} />,             color: "red", danger: true },
   "admin.siteConfig.manage": { icon: <SettingsIcon size={PERM_ICON_SIZE} />,         color: "teal" },
+  "admin.importantNotices.manage": { icon: <InfoCircleIcon size={PERM_ICON_SIZE} />, color: "violet" },
   "admin.classes.manage":    { icon: <PaletteIcon size={PERM_ICON_SIZE} />,          color: "teal" },
   "admin.badges.manage":     { icon: <ShieldIcon size={PERM_ICON_SIZE} />,           color: "teal" },
   "admin.analytics.view":  { icon: <EyeIcon size={PERM_ICON_SIZE} />,              color: "gray" },
@@ -207,10 +207,12 @@ function buildEmptyPermissions(): Record<Permission, boolean> {
   return Object.fromEntries(PERMISSIONS.map((permission) => [permission, false])) as Record<Permission, boolean>;
 }
 
+const DEFAULT_ROLE_COLOR = "#64748b";
+
 const CSS_COLOR_TO_HEX: Record<string, string> = {
   red: "#ef4444",
   blue: "#D4A843",
-  gray: "#64748b",
+  gray: DEFAULT_ROLE_COLOR,
   green: "#22c55e",
   orange: "#f97316",
   yellow: "#eab308",
@@ -224,6 +226,10 @@ function normalizeColor(color: string | null): string {
   if (!color) return "";
   const lower = color.trim().toLowerCase();
   return CSS_COLOR_TO_HEX[lower] ?? color;
+}
+
+function colorPickerValue(color: string): string {
+  return /^#[0-9a-f]{6}$/i.test(color) ? color : DEFAULT_ROLE_COLOR;
 }
 
 function roleToDraft(role: AdminRole): RoleDraft {
@@ -274,6 +280,7 @@ export function AdminRolesSection({
   onDeleteRole,
 }: AdminRolesSectionProps) {
   const { t } = useTranslation("admin");
+  const { t: common } = useTranslation("common");
   const confirm = useConfirmDialog();
   const user = useAuthStore((state) => state.user);
   const isAdmin = userCanManageRoles(user);
@@ -281,6 +288,11 @@ export function AdminRolesSection({
   const [drafts, setDrafts] = useState<Record<string, RoleDraft>>({});
   const [createModalOpened, setCreateModalOpened] = useState(false);
   const [createRoleName, setCreateRoleName] = useState("");
+  const roleNameInputId = useId();
+  const roleLevelInputId = useId();
+  const roleColorInputId = useId();
+  const roleColorPickerId = useId();
+  const createRoleNameInputId = useId();
 
   const emptyPermissions = useMemo(() => buildEmptyPermissions(), []);
   const normalizedCreateRoleName = createRoleName.trim();
@@ -314,9 +326,11 @@ export function AdminRolesSection({
 
   if (!isAdmin) {
     return (
-      <Stack gap={12}>
-        <Alert color="red" title={t("adminOnly")} />
-      </Stack>
+      <div className="admin-roles__status">
+        <Alert variant="destructive">
+          <AlertTitle>{t("adminOnly")}</AlertTitle>
+        </Alert>
+      </div>
     );
   }
 
@@ -426,34 +440,42 @@ export function AdminRolesSection({
   };
 
   return (
-    /* admin-fill：把 .admin-page__panel 给的高度原样传给下面的主从台。 */
-    <Stack gap={12} className="admin-fill">
-      {rolesLoading ? <Stack gap={8}>{Array.from({ length: 4 }).map((_, i) => <Skeleton key={i} height={18} />)}</Stack> : null}
+    <div className="admin-fill admin-roles">
+      {rolesLoading ? (
+        <div className="admin-roles__loading">
+          {Array.from({ length: 4 }).map((_, index) => <Skeleton className="admin-md__skeleton" key={index} />)}
+        </div>
+      ) : null}
       {rolesError ? <AdminLoadError onRetry={onRetryRoles} /> : null}
 
       {!rolesLoading && !rolesError ? (
         <div className="admin-panel admin-md">
-          {/* ── Left panel: role list ── */}
           <div className="admin-md__master">
             <div className="admin-md__master-head">
-              <Group gap={8} justify="space-between" wrap="nowrap">
-                <Text fw={700} size="sm">{t("roles.listTitle")}</Text>
-                <ActionIcon
-                  size="sm"
-                  variant="filled"
-                  color="portal-brand"
-                  onClick={openCreateRoleModal}
-                  loading={createRolePending}
-                  disabled={!canCreateRoles}
-                  aria-label={t("roles.create")}
-                >
-                  <PlusIcon size={14} />
-                </ActionIcon>
-              </Group>
+              <div className="admin-md__master-head-row">
+                <span className="admin-md__master-title">{t("roles.listTitle")}</span>
+                <Tooltip>
+                  <TooltipTrigger
+                    render={(
+                      <Button
+                        type="button"
+                        size="icon-sm"
+                        onClick={openCreateRoleModal}
+                        loading={createRolePending}
+                        disabled={!canCreateRoles}
+                        aria-label={t("roles.create")}
+                      />
+                    )}
+                  >
+                    <PlusIcon size={14} />
+                  </TooltipTrigger>
+                  <TooltipContent>{t("roles.create")}</TooltipContent>
+                </Tooltip>
+              </div>
             </div>
 
-            <ScrollArea className="admin-md__list" type="auto" scrollbarSize={6}>
-              <Stack gap={2} p={6}>
+            <ScrollArea className="admin-md__list">
+              <div className="admin-md__list-stack">
                 {roles.map((role) => {
                   const isSelected = role.id === selectedRoleId;
                   const roleDraft = drafts[role.id];
@@ -464,260 +486,250 @@ export function AdminRolesSection({
                       key={role.id}
                       className={`admin-md__row ${isSelected ? "admin-md__row--active" : ""}`}
                     >
-                      <UnstyledButton
+                      <button
+                        type="button"
                         className={`admin-md__item ${isSelected ? "admin-md__item--active" : ""}`}
+                        aria-pressed={isSelected}
                         onClick={() => setSelectedRoleId(role.id)}
                       >
                         <span className="admin-md__item-main">
-                          {role.color ? (
-                            <ColorSwatch color={normalizeColor(role.color)} size={14} />
-                          ) : (
-                            <ColorSwatch color="transparent" size={14} />
-                          )}
-                          <Text size="sm" fw={isSelected ? 700 : 500} truncate>
-                            {role.name}
-                          </Text>
+                          <span
+                            aria-hidden="true"
+                            className="admin-roles__swatch"
+                            style={role.color ? { backgroundColor: normalizeColor(role.color) } : undefined}
+                          />
+                          <span className="admin-md__item-label">{role.name}</span>
                         </span>
-                        {dirty ? (
-                          <Badge size="xs" variant="light" color="orange">*</Badge>
-                        ) : null}
-                      </UnstyledButton>
-                      <ActionIcon
-                        className="admin-md__row-action"
-                        size="xs"
-                        variant="subtle"
-                        color="red"
+                        {dirty ? <Badge className="admin-md__dirty" variant="outline">*</Badge> : null}
+                      </button>
+                      <Button
+                        type="button"
+                        className="admin-md__row-action admin-roles__row-delete"
+                        variant="destructive"
+                        size="icon-xs"
                         onClick={() => { void handleDeleteRole(role); }}
                         loading={isRoleDeletePending(role.id)}
                         disabled={isRoleDeletePending(role.id) || !isRoleDeletable(role)}
                         aria-label={t("roles.delete")}
                       >
                         <XIcon size={12} />
-                      </ActionIcon>
+                      </Button>
                     </div>
                   );
                 })}
-              </Stack>
+              </div>
             </ScrollArea>
           </div>
 
-          {/* ── Right panel: permissions ── */}
           <div className="admin-md__detail">
             {selectedRole && selectedDraft ? (
               <>
-                {/* Role header */}
                 <div className="admin-md__detail-head">
-                  <Group justify="space-between" align="flex-end" wrap="wrap">
-                    <Group gap={10} align="flex-end" wrap="wrap" justify="space-between" style={{ minWidth: 0, flex: 1 }}>
-                      <TextInput
-                        size="sm"
-                        label={t("roles.field.name")}
-                        value={selectedDraft.name}
-                        onChange={(event) => updateDraftField(selectedRole.id, "name", event.currentTarget.value)}
-                        disabled={!canEditSelectedRole}
-                        style={{ flex: 1, minWidth: 100, maxWidth: 200 }}
-                      />
-                      <NumberInput
-                        size="sm"
-                        label={t("roles.field.level")}
-                        value={selectedDraft.level}
-                        onChange={(value) => updateDraftField(selectedRole.id, "level", typeof value === "number" ? value : selectedDraft.level)}
-                        min={1}
-                        max={editableRoleLevelMax}
-                        disabled={!canEditSelectedRole}
-                        hideControls
-                        style={{ width: 80 }}
-                      />
-                      <ColorInput
-                        size="sm"
-                        format="hex"
-                        label={t("roles.field.color")}
-                        eyeDropperButtonProps={{ "aria-label": t("roles.field.colorPicker") }}
-                        value={selectedDraft.color}
-                        onChange={(value) => updateDraftField(selectedRole.id, "color", value)}
-                        disabled={!canEditSelectedRole}
-                        style={{ flex: 1, minWidth: 120, maxWidth: 160 }}
-                        swatches={[
-                          "#ef4444", "#f97316", "#eab308", "#22c55e", "#14b8a6",
-                          "#D4A843", "#6366f1", "#a855f7", "#ec4899", "#64748b",
-                        ]}
-                      />
-                      <Badge variant="light" color="teal" size="sm">
+                  <div className="admin-roles__detail-head">
+                    <div className="admin-roles__fields">
+                      <div className="admin-md__field">
+                        <Label htmlFor={roleNameInputId}>{t("roles.field.name")}</Label>
+                        <Input
+                          id={roleNameInputId}
+                          value={selectedDraft.name}
+                          onChange={(event) => updateDraftField(selectedRole.id, "name", event.currentTarget.value)}
+                          disabled={!canEditSelectedRole}
+                        />
+                      </div>
+                      <div className="admin-md__field">
+                        <Label htmlFor={roleLevelInputId}>{t("roles.field.level")}</Label>
+                        <Input
+                          id={roleLevelInputId}
+                          type="number"
+                          value={selectedDraft.level}
+                          min={1}
+                          max={editableRoleLevelMax}
+                          onChange={(event) => {
+                            const value = event.currentTarget.valueAsNumber;
+                            if (!Number.isNaN(value)) {
+                              updateDraftField(selectedRole.id, "level", Math.min(editableRoleLevelMax, Math.max(1, value)));
+                            }
+                          }}
+                          disabled={!canEditSelectedRole}
+                        />
+                      </div>
+                      <div className="admin-md__field">
+                        <Label htmlFor={roleColorInputId}>{t("roles.field.color")}</Label>
+                        <div className="admin-roles__color-control">
+                          <Input
+                            id={roleColorPickerId}
+                            className="admin-roles__color-picker"
+                            type="color"
+                            aria-label={t("roles.field.colorPicker")}
+                            value={colorPickerValue(selectedDraft.color)}
+                            onChange={(event) => updateDraftField(selectedRole.id, "color", event.currentTarget.value)}
+                            disabled={!canEditSelectedRole}
+                          />
+                          <Input
+                            id={roleColorInputId}
+                            value={selectedDraft.color}
+                            onChange={(event) => updateDraftField(selectedRole.id, "color", event.currentTarget.value)}
+                            disabled={!canEditSelectedRole}
+                          />
+                        </div>
+                      </div>
+                      <Badge className="admin-roles__assigned-count" variant="secondary">
                         {t("roles.assignedCount", { count: selectedRole.assigned_user_count })}
                       </Badge>
-                    </Group>
-                    <Group gap={8}>
-                      <ActionIcon
-                        color="red"
-                        variant="default"
-                        size="lg"
-                        onClick={() => { void handleDeleteRole(selectedRole); }}
-                        loading={isRoleDeletePending(selectedRole.id)}
-                        disabled={isRoleDeletePending(selectedRole.id) || !canDeleteSelectedRole}
-                        aria-label={t("roles.delete")}
-                      >
-                        <TrashIcon size={16} />
-                      </ActionIcon>
-                      <ActionIcon
-                        color="portal-brand"
-                        variant="filled"
-                        size="lg"
-                        onClick={() => { void handleSaveRole(selectedRole, selectedDraft); }}
-                        loading={updateRolePending}
-                        disabled={!isDirty || !canEditSelectedRole}
-                        aria-label={t("roles.save")}
-                      >
-                        <SaveIcon size={16} />
-                      </ActionIcon>
-                    </Group>
-                  </Group>
+                    </div>
+                    <div className="admin-md__detail-actions">
+                      <Tooltip>
+                        <TooltipTrigger
+                          render={(
+                            <Button
+                              type="button"
+                              className="admin-md__delete-action"
+                              variant="destructive"
+                              size="icon-lg"
+                              onClick={() => { void handleDeleteRole(selectedRole); }}
+                              loading={isRoleDeletePending(selectedRole.id)}
+                              disabled={isRoleDeletePending(selectedRole.id) || !canDeleteSelectedRole}
+                              aria-label={t("roles.delete")}
+                            />
+                          )}
+                        >
+                          <TrashIcon size={16} />
+                        </TooltipTrigger>
+                        <TooltipContent>{t("roles.delete")}</TooltipContent>
+                      </Tooltip>
+                      <Tooltip>
+                        <TooltipTrigger
+                          render={(
+                            <Button
+                              type="button"
+                              size="icon-lg"
+                              onClick={() => { void handleSaveRole(selectedRole, selectedDraft); }}
+                              loading={updateRolePending}
+                              disabled={!isDirty || !canEditSelectedRole}
+                              aria-label={t("roles.save")}
+                            />
+                          )}
+                        >
+                          <SaveIcon size={16} />
+                        </TooltipTrigger>
+                        <TooltipContent>{t("roles.save")}</TooltipContent>
+                      </Tooltip>
+                    </div>
+                  </div>
                 </div>
 
-                {/* Permission categories */}
-                <ScrollArea className="admin-md__detail-body" type="auto" scrollbarSize={6}>
-                  <Stack gap={20} className="admin-md__detail-pad">
+                <ScrollArea className="admin-md__detail-body">
+                  <div className="admin-md__detail-pad admin-roles__permissions">
                     {PERMISSION_CATEGORIES.map((category) => (
-                      <div key={category.labelKey}>
-                        <SectionHeader title={t(category.labelKey)} />
+                      <section className="admin-roles__category" key={category.labelKey}>
+                        <SectionHeader className="section-header--flush" title={t(category.labelKey)} />
                         <div className="admin-roles-perm-grid">
                           {category.permissions.map((permission) => {
                             const isGranted = Boolean(selectedDraft.permissions[permission]);
                             const cannotGrantPermission = !isGranted && user?.permissions[permission] !== true;
                             const meta = PERM_META[permission] ?? DEFAULT_META;
+                            const label = t(`roles.permission.${permission}`, { defaultValue: permission });
                             const tooltipText = t(`roles.tooltip.${permission}`, { defaultValue: "" });
-
                             const toggle = (
                               <Button
                                 key={`${selectedRole.id}-${permission}`}
+                                type="button"
+                                className={`admin-roles-perm ${isGranted ? "admin-roles-perm--granted" : ""}`}
                                 aria-pressed={isGranted}
-                                variant={isGranted ? "light" : "default"}
-                                color={isGranted ? "portal-brand" : "gray"}
+                                variant={isGranted ? "secondary" : "outline"}
                                 onClick={() => togglePermission(selectedRole.id, permission)}
                                 disabled={!canEditSelectedRole || cannotGrantPermission}
                                 size="sm"
-                                leftSection={
-                                  isGranted ? (
-                                    <CheckIcon size={14} className="admin-roles-perm-icon--granted" />
-                                  ) : (
-                                    <XIcon size={14} className="admin-roles-perm-icon--denied" />
-                                  )
-                                }
                               >
-                                {t(`roles.permission.${permission}`, { defaultValue: permission })}
+                                {isGranted ? (
+                                  <CheckIcon data-icon="inline-start" size={14} className="admin-roles-perm-icon--granted" />
+                                ) : (
+                                  <XIcon data-icon="inline-start" size={14} className="admin-roles-perm-icon--denied" />
+                                )}
+                                {label}
                               </Button>
                             );
 
                             if (!tooltipText) return toggle;
 
                             return (
-                              <HoverCard
-                                key={`${selectedRole.id}-${permission}`}
-                                width={320}
-                                shadow="lg"
-                                withArrow
-                                arrowSize={10}
-                                openDelay={350}
-                                closeDelay={80}
-                                position="top"
-                              >
-                                <HoverCard.Target>{toggle}</HoverCard.Target>
-                                <HoverCard.Dropdown p="sm" style={{ borderRadius: 10 }}>
-                                  <Group gap={10} wrap="nowrap" align="flex-start">
-                                    <ThemeIcon
-                                      variant="light"
-                                      color={meta.color}
-                                      size="lg"
-                                      radius="md"
-                                      style={{ flexShrink: 0, marginTop: 2 }}
-                                    >
-                                      {meta.icon}
-                                    </ThemeIcon>
-                                    <div style={{ minWidth: 0 }}>
-                                      <Group gap={6} mb={4}>
-                                        <Text size="sm" fw={700} lh={1.3}>
-                                          {t(`roles.permission.${permission}`, { defaultValue: permission })}
-                                        </Text>
-                                        {meta.danger ? (
-                                          <Badge
-                                            size="xs"
-                                            color="red"
-                                            variant="light"
-                                            leftSection={<AlertTriangleIcon size={10} />}
-                                          >
-                                            {t("roles.tooltip.dangerBadge", { defaultValue: "Caution" })}
-                                          </Badge>
-                                        ) : null}
-                                      </Group>
-                                      <Text size="xs" c="dimmed" lh={1.5}>
-                                        {tooltipText}
-                                      </Text>
-                                    </div>
-                                  </Group>
-                                </HoverCard.Dropdown>
-                              </HoverCard>
+                              <Tooltip key={`${selectedRole.id}-${permission}`}>
+                                <TooltipTrigger render={toggle} />
+                                <TooltipContent className="admin-roles__permission-tooltip">
+                                  <span className="admin-roles__permission-tooltip-icon" data-tone={meta.color}>
+                                    {meta.icon}
+                                  </span>
+                                  <span className="admin-roles__permission-tooltip-copy">
+                                    <span className="admin-roles__permission-tooltip-title">
+                                      {label}
+                                      {meta.danger ? (
+                                        <Badge variant="destructive">
+                                          <AlertTriangleIcon data-icon="inline-start" size={10} />
+                                          {t("roles.tooltip.dangerBadge", { defaultValue: "Caution" })}
+                                        </Badge>
+                                      ) : null}
+                                    </span>
+                                    <span>{tooltipText}</span>
+                                  </span>
+                                </TooltipContent>
+                              </Tooltip>
                             );
                           })}
                         </div>
-                      </div>
+                      </section>
                     ))}
-                  </Stack>
+                  </div>
                 </ScrollArea>
               </>
             ) : (
               <div className="admin-md__empty">
-                <Text c="dimmed">{t("roles.selectHint")}</Text>
+                <span className="admin-md__muted">{t("roles.selectHint")}</span>
               </div>
             )}
           </div>
         </div>
       ) : null}
 
-      <Modal
-        opened={createModalOpened}
-        onClose={() => setCreateModalOpened(false)}
-        title={t("roles.createTitle")}
-        centered
-        returnFocus
-      >
-        <form
-          onSubmit={(event) => {
-            event.preventDefault();
-            void handleCreateRole();
-          }}
-        >
-          <Stack gap="md">
-            <Text size="sm" c="dimmed">{t("roles.createDescription")}</Text>
-            <TextInput
-              required
-              data-autofocus
-              label={t("roles.field.name")}
-              description={t("roles.validation.nameRequired")}
-              value={createRoleName}
-              onChange={(event) => setCreateRoleName(event.currentTarget.value)}
-              maxLength={80}
-              error={createRoleName.length > 0 && !createRoleNameValid
-                ? t("roles.validation.nameRequired")
-                : undefined}
-            />
-            <Group justify="flex-end">
-              <Button
-                type="button"
-                variant="default"
-                onClick={() => setCreateModalOpened(false)}
-              >
+      <Dialog open={createModalOpened} onOpenChange={setCreateModalOpened}>
+        <DialogContent className="admin-roles__dialog" closeLabel={common("action.close")}>
+          <DialogHeader>
+            <DialogTitle>{t("roles.createTitle")}</DialogTitle>
+            <DialogDescription>{t("roles.createDescription")}</DialogDescription>
+          </DialogHeader>
+          <form
+            className="admin-roles__create-form"
+            onSubmit={(event) => {
+              event.preventDefault();
+              void handleCreateRole();
+            }}
+          >
+            <div className="admin-md__field">
+              <Label htmlFor={createRoleNameInputId}>{t("roles.field.name")}</Label>
+              <Input
+                id={createRoleNameInputId}
+                required
+                autoFocus
+                value={createRoleName}
+                onChange={(event) => setCreateRoleName(event.currentTarget.value)}
+                maxLength={80}
+                aria-invalid={createRoleName.length > 0 && !createRoleNameValid}
+                aria-describedby={`${createRoleNameInputId}-hint`}
+              />
+              <p className="admin-md__field-description" id={`${createRoleNameInputId}-hint`}>
+                {t("roles.validation.nameRequired")}
+              </p>
+            </div>
+            <DialogFooter>
+              <Button type="button" variant="outline" onClick={() => setCreateModalOpened(false)}>
                 {t("roles.cancel")}
               </Button>
-              <Button
-                type="submit"
-                loading={createRolePending}
-                disabled={!createRoleNameValid}
-              >
+              <Button type="submit" loading={createRolePending} disabled={!createRoleNameValid}>
                 {t("roles.create")}
               </Button>
-            </Group>
-          </Stack>
-        </form>
-      </Modal>
-    </Stack>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
+    </div>
   );
 }

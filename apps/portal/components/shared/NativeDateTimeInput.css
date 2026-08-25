@@ -1,3 +1,24 @@
+.native-date-time-field {
+  display: grid;
+  min-width: 0;
+  gap: var(--space-xs);
+}
+
+.native-date-time-field__description,
+.native-date-time-field__error {
+  margin: 0;
+  font-size: var(--text-meta);
+  line-height: var(--lh-normal);
+}
+
+.native-date-time-field__description {
+  color: var(--text-secondary);
+}
+
+.native-date-time-field__error {
+  color: var(--status-danger);
+}
+
 .native-date-input {
   --native-date-input-height: var(--control-height-regular);
 
@@ -20,14 +41,14 @@
   min-width: 0;
 }
 
-.native-date-input__field input[type="date"] {
+.native-date-input__field[type="date"] {
   color: transparent;
   caret-color: transparent;
   -webkit-text-fill-color: transparent;
 }
 
-.native-date-input__field input[type="date"]::-webkit-datetime-edit,
-.native-date-input__field input[type="date"]::-webkit-calendar-picker-indicator {
+.native-date-input__field[type="date"]::-webkit-datetime-edit,
+.native-date-input__field[type="date"]::-webkit-calendar-picker-indicator {
   opacity: 0;
 }
 

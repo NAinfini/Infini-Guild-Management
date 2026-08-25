@@ -21,7 +21,6 @@ export function buildApiCategories(t: (key: string) => string): CategoryDef[] {
       key: "auth",
       label: t("status.api.cat.auth"),
       endpoints: [
-        { label: t("status.api.ep.checkUsername"), method: "GET", path: "/api/auth/check-username?username=test" },
         { label: t("status.api.ep.currentUser"), method: "GET", path: "/api/auth/me" },
         { label: t("status.api.ep.listRoles"), method: "GET", path: "/api/admin/roles" },
         { label: t("status.api.ep.registerInvitePrep"), method: "GET", path: "/api/admin/invite-links" },
@@ -44,8 +43,6 @@ export function buildApiCategories(t: (key: string) => string): CategoryDef[] {
         { label: t("status.api.ep.createAbsence"), method: "POST", path: "/api/users/:id/absences" },
         { label: t("status.api.ep.deleteAbsence"), method: "DELETE", path: "/api/users/:id/absences/:absenceId" },
         { label: t("status.api.ep.updateProfile"), method: "PATCH", path: "/api/users/:id/profile" },
-        { label: t("status.api.ep.changePassword"), method: "POST", path: "/api/users/:id/change-password" },
-        { label: t("status.api.ep.changeUsername"), method: "POST", path: "/api/users/:id/change-username" },
         { label: t("status.api.ep.uploadImage"), method: "POST", path: "/api/users/:id/media/images" },
         {
           label: t("status.api.ep.getUserImage"),

@@ -67,15 +67,6 @@
   --ambient-mix-companion: 10%;
   --ambient-mix-accent: 9%;
 
-  /* 认证页的 Lightfall 只读取这组语义色；浅色模式把画布压到 34%，
-   * 避免细光束吃掉品牌标题和输入框外的文字对比度。 */
-  --auth-lightfall-background: var(--palette-neutral-50);
-  --auth-lightfall-streak-primary: var(--palette-teal-700);
-  --auth-lightfall-streak-secondary: var(--palette-indigo-700);
-  --auth-lightfall-streak-tertiary: var(--palette-violet-700);
-  --auth-lightfall-opacity: 0.34;
-  --auth-lightfall-veil: color-mix(in srgb, var(--surface-sunken) 52%, transparent);
-
   /* ── 分类色序（--series-*）──
    *
    * 「一组并排的同类项，彼此需要区分开」时按位次取色，不表达任何状态。
@@ -172,14 +163,6 @@
   --ambient-mix-companion: 16%;
   --ambient-mix-accent: 14%;
 
-  /* 深色底允许光雨更清楚，但 64% 仍是硬上限；表单板保持不透明。 */
-  --auth-lightfall-background: var(--palette-neutral-950);
-  --auth-lightfall-streak-primary: var(--palette-teal-500);
-  --auth-lightfall-streak-secondary: var(--palette-indigo-500);
-  --auth-lightfall-streak-tertiary: var(--palette-violet-500);
-  --auth-lightfall-opacity: 0.64;
-  --auth-lightfall-veil: color-mix(in srgb, var(--surface-sunken) 28%, transparent);
-
   --series-accent: var(--accent-on-surface);
   --series-1: var(--palette-teal-500);
   --series-2: var(--palette-violet-500);
@@ -270,7 +253,7 @@
    * 填充取 --accent-on-surface 而不是 --accent-fill：轨道是比卡片低一档的
    * --surface-sunken，浅色模式下它接近白，恒 500 的 --accent-fill 压上去只有
    * 2.2–2.5:1，条填到几分之几根本分不出来。跟着表面走档位，两个模式才都成立。
-   * 消费者：ThemeProvider.module.css（.progressRoot）、DashboardPage.css（比例计）。 */
+   * 消费者：共享 Progress 控件与 DashboardPage.css（比例计）。 */
   --meter-fill: var(--accent-on-surface);
   --meter-track: var(--surface-sunken);
 

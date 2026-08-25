@@ -1,4 +1,4 @@
-import type { MemberProfile, PushMessage, User } from "@guild/shared";
+import type { MemberProfile, User } from "@guild/shared";
 import { QueryClient } from "@tanstack/react-query";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
@@ -13,17 +13,11 @@ import { usePreferencesStore } from "./stores/preferences";
 
 function session(id: string) {
   return {
-    user: { id, username: id, permissions: {} } as User,
+    user: { id, display_name: id, permissions: {} } as User,
     profile: { user_id: id } as MemberProfile,
+    session_scope: "normal" as const,
   };
 }
-
-const push = {
-  type: "announcement_published",
-  announcement_id: "announcement-a",
-  title: "Only A should see this",
-  published_at: "2026-08-01T00:00:00.000Z",
-} as PushMessage;
 
 describe("session transitions", () => {
   beforeEach(() => {
@@ -35,18 +29,18 @@ describe("session transitions", () => {
     usePreferencesStore.getState().setThemeMode("dark");
   });
 
-  it("does not carry A's query, notification, or guild-war state into B", () => {
+  it("does not carry A's query, feature freshness, or guild-war state into B", () => {
     const queryClient = new QueryClient();
     transitionSession(queryClient, session("user-a"), { broadcast: false });
     queryClient.setQueryData(["private"], { owner: "user-a" });
-    useNotificationStore.getState().appendPushMessage(push);
+    useNotificationStore.getState().setFeatureLatest("announcements", "2026-08-01T00:00:00.000Z");
     useGuildWarStore.getState().setSelectedEventId("event-a");
 
     transitionSession(queryClient, null, { broadcast: false });
     transitionSession(queryClient, session("user-b"), { broadcast: false });
 
     expect(queryClient.getQueryData(["private"])).toBeUndefined();
-    expect(useNotificationStore.getState().pushHistory).toEqual([]);
+    expect(useNotificationStore.getState().features.announcements.latestUpdatedAt).toBeNull();
     expect(useGuildWarStore.getState().selectedEventId).toBeUndefined();
     expect(usePreferencesStore.getState().themeMode).toBe("dark");
   });

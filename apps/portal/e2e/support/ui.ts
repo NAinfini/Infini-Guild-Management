@@ -1,42 +1,39 @@
 import { expect, type Locator, type Page } from "@playwright/test";
 
 /**
- * 按标题取输入框。
- * Mantine 的必填星号渲染成 <span aria-hidden> *</span>（InputLabel.mjs），
- * 无障碍名里没有它，但 getByLabel 比对的是标签的文本内容，星号会被算进去——
- * 于是 exact: "Member" 在必填字段上永远匹配不到，报的却是「元素不存在」。
- * 这里把星号并进匹配规则，让一个字段是否必填不再改变用例的取元素方式。
+ * 按字段标签取得可交互表单控件。
+ * 必填标记属于标签文案的一部分，但不应改变用例的定位方式；所以允许标签末尾带星号。
+ * Base UI 的 Select 触发器是带 listbox 语义的按钮，也纳入同一入口。
  */
 export function field(scope: Locator | Page, label: string): Locator {
   const escaped = label.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  /*
-   * 只认真正的表单控件。
-   * Mantine 的 Select 如果是用 aria-label 而不是可见 label 标注的，会把同一个
-   * aria-label 同时挂在 input 和下拉的 role="listbox" 上；Combobox 的下拉默认
-   * keepMounted，即使收起来也在 DOM 里，于是 getByLabel 一次命中两个元素，
-   * 报的是 strict mode violation，看上去像选择器写错了，其实是控件自带的重名。
-   */
   return scope
     .getByLabel(new RegExp(`^${escaped}\\s*\\*?$`))
-    .and(scope.locator("input, textarea, select, [contenteditable='true']"));
+    .and(scope.locator("input, textarea, select, [contenteditable='true'], [role='combobox'], button[aria-haspopup='listbox']"));
 }
 
 /**
- * 选中一个 Mantine Select 的选项。
- * Mantine 的下拉是 portal 到 body 的独立节点，直接在字段作用域里找选项是找不到的。
+ * 选中一个原生或 Base UI Select 的选项。
+ * Base UI 的选项浮层会移植到页面根部，因此选项从页面作用域定位，而非字段局部。
  */
 export async function selectOption(scope: Locator | Page, label: string, optionText: string): Promise<void> {
-  const input = field(scope, label);
-  await input.click();
-  const page = "page" in input ? input.page() : (scope as Page);
+  const control = field(scope, label);
+  const isNativeSelect = await control.evaluate((node) => node instanceof HTMLSelectElement);
+  if (isNativeSelect) {
+    await control.selectOption({ label: optionText });
+    await expect(control.locator("option:checked")).toHaveText(optionText);
+    return;
+  }
+
+  await control.click();
+  const page = control.page();
   await page.getByRole("option", { name: optionText, exact: true }).click();
-  await expect(input).toHaveValue(optionText);
+  await expect(control).toContainText(optionText);
 }
 
 /**
- * 窄工具栏会把次要筛选收进 Popover / Drawer。宽屏时按钮根本不渲染，窄屏时则先按
- * 无障碍名找到它并确认已经展开；计数徽章会把名字变成 `Filter & sort (2)`，所以名称
- * 只允许多出末尾的数字计数，不靠布局类名猜当前是哪一种呈现。
+ * 共享工具栏始终把次要筛选收进 Popover / Drawer。按无障碍名找到入口并确认已经展开；
+ * 计数徽章会把名字变成 `Filter & sort (2)`，所以名称只允许多出末尾的数字计数。
  */
 export async function ensureFiltersOpen(scope: Locator | Page): Promise<void> {
   const toggle = scope
@@ -70,7 +67,7 @@ export async function ensureFiltersOpen(scope: Locator | Page): Promise<void> {
   }
   await expect(toggle).toHaveAttribute("aria-expanded", "true");
 
-  // FocusTrap 会自动聚焦第一个可搜索下拉，并把它展开到筛选面板之上。
+  // 弹层打开时可能自动聚焦第一个可搜索选择器，并把内层 listbox 展开到筛选面板之上。
   // 先收起内层 listbox；若 Escape 连外层一起收掉，只重开一次并转移到面板内的按钮。
   await dismissAutofocusedCombobox();
   if ((await toggle.getAttribute("aria-expanded")) !== "true") {
@@ -84,7 +81,7 @@ export async function ensureFiltersOpen(scope: Locator | Page): Promise<void> {
 }
 
 /**
- * 选中响应式筛选栏里的 Mantine Select 选项。
+ * 选中响应式筛选栏里的 Select 选项。
  * 紧凑布局的选项 portal 在面板外，点击后可能让 Popover 关闭并卸载输入框；
  * 必须按筛选栏作用域重开面板，再重新定位输入框确认值，不能把元素消失当成选中成功。
  */
@@ -95,56 +92,52 @@ export async function selectFilterOption(
   optionText: string,
 ): Promise<void> {
   await ensureFiltersOpen(toolbarScope);
-  await field(page, label).click();
-  await page.getByRole("option", { name: optionText, exact: true }).click();
+  const radio = page.getByRole("radio", { name: optionText, exact: true });
+  if (await radio.count()) {
+    await radio.click();
+    await expect(radio).toBeChecked();
+    return;
+  }
+
+  await selectOption(page, label, optionText);
   await ensureFiltersOpen(toolbarScope);
-  await expect(field(page, label)).toHaveValue(optionText);
 }
 
-/** 按 radio 语义和可访问名称取得 SegmentedControl 的选项，不依赖 Mantine 内部类名。 */
-export function segmentedControlOption(scope: Locator | Page, label: string): Locator {
+/** 按 radio 语义和可访问名称取得分组单选项。 */
+export function radioOption(scope: Locator | Page, label: string): Locator {
   return scope.getByRole("radio", { name: label, exact: true });
 }
 
-/** 选择并确认一个 SegmentedControl 选项。 */
-export async function selectSegmentedControlOption(
+/** 选择并确认一个单选项。 */
+export async function selectRadioOption(
   scope: Locator | Page,
   label: string,
 ): Promise<void> {
-  const option = segmentedControlOption(scope, label);
+  const option = radioOption(scope, label);
   await option.focus();
   await option.press("Space");
   await expect(option).toBeChecked();
 }
 
 /**
- * 按标题取开关或复选框。
- * Mantine 的 Switch 把 input、标题和描述一起包在同一个 <label>（Switch-body）里，
- * 所以带 description 的开关，label 的 textContent 是「标题+描述」拼起来的一整串。
- * getByLabel 比的正是 textContent，exact 匹配于是永远命中不了，
- * 报的却是「元素不存在」——看上去像标题写错了，其实是控件把描述算进了名字。
- * 这里按标题前缀匹配再与真正的 input 求交；万一前缀撞名，strict mode 会直接报出来。
+ * 按可访问名称取得 Base UI 开关。
+ * 有些开关的可见标签还带说明文字，所以按标题前缀匹配；同页重名会由 strict mode 直接暴露。
  */
-export function toggleInput(scope: Locator | Page, label: string): Locator {
+export function toggle(scope: Locator | Page, label: string): Locator {
   const escaped = label.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  return scope
-    .getByLabel(new RegExp(`^${escaped}`))
-    .and(scope.locator("input[type='checkbox'], input[type='radio']"));
+  return scope.getByRole("switch", { name: new RegExp(`^${escaped}`) });
 }
 
 /**
- * 点掉一个 Mantine 输入控件右侧的清除按钮。
- * 这个按钮渲染成 <button tabindex="-1" aria-hidden="true" class="mantine-InputClearButton-root">，
- * 因为 aria-hidden，getByRole("button") 按无障碍规则会直接跳过它——
- * 用角色去取永远超时，报的却是「元素不存在」，看着像选择器写错。
- * 它是纯鼠标可达的装饰性控件，只能按类名取，并且必须限定在目标字段的 wrapper 里，
- * 否则一页上多个可清除字段会撞成 strict mode violation。
+ * 将一个开关设到明确状态，避免依赖实现细节或重复点击带来的反转。
  */
-export function clearButton(scope: Locator | Page, label: string): Locator {
-  return scope
-    .locator(".mantine-Input-wrapper")
-    .filter({ has: field(scope, label) })
-    .locator("button.mantine-InputClearButton-root");
+export async function setToggle(scope: Locator | Page, label: string, checked: boolean): Promise<void> {
+  const control = toggle(scope, label);
+  const current = await control.getAttribute("aria-checked");
+  if ((current === "true") !== checked) {
+    await control.click();
+  }
+  await expect(control).toHaveAttribute("aria-checked", String(checked));
 }
 
 /** 读一个整数文本节点，读不出数字就直接失败——静默当成 0 会把断言变成摆设。 */
@@ -155,15 +148,14 @@ export async function readInteger(locator: Locator, label: string): Promise<numb
   return value;
 }
 
-/** 当前打开的 Mantine Modal / Drawer。只在页面上确定只有一个弹窗时用。 */
+/** 当前最上层的对话框或抽屉。只在页面上确定只有一个弹层时用。 */
 export function topDialog(page: Page): Locator {
   return page.getByRole("dialog").last();
 }
 
 /**
  * 按标题定位弹窗。
- * 抽屉上再叠一个确认框时，DOM 顺序并不等于叠放顺序——Mantine 的 confirm modal
- * 可能挂在抽屉节点之前，此时 .last() 拿到的是底下那层，点击就点到了错误的按钮上。
+ * 抽屉上再叠一个确认框时，DOM 顺序并不等于叠放顺序，.last() 可能拿到底下那层。
  * 凡是有多层弹窗的场景，一律按标题取。
  */
 export function dialogTitled(page: Page, title: string): Locator {
@@ -174,13 +166,11 @@ export function dialogTitled(page: Page, title: string): Locator {
 
 /**
  * 等所有弹窗彻底退场。
- * Mantine 卸载 role="dialog" 的时机比卸载遮罩早：只等 dialog 归零就往下点，
- * 会撞上还在做退场动画的 .mantine-Overlay-root，点击被它吞掉，
- * 表现成「按钮没反应」的偶发失败。两个都要等。
+ * Base UI 的对话框和遮罩会分别做退场动画；两个都消失后才能继续点击页面。
  */
 export async function expectNoDialog(page: Page): Promise<void> {
   await expect(page.getByRole("dialog")).toHaveCount(0);
-  await expect(page.locator(".mantine-Overlay-root")).toHaveCount(0);
+  await expect(page.locator("[data-slot$='overlay']")).toHaveCount(0);
 }
 
 /** 确认框：先确认它真的弹出来了，再返回给调用方点按钮。 */

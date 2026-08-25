@@ -1,12 +1,27 @@
-import type { Announcement } from "@guild/shared";
-import { PushpinOutlined } from "@portal/utils/icons";
-import { Alert, Badge, Button, Group, Indicator, Paper, Skeleton, Stack, Text, ThemeIcon, Tooltip, VisuallyHidden } from "@mantine/core";
-import { ArchiveIcon, CalendarTimeIcon, CircleCheckIcon, FileTextIcon, PlusIcon } from "@portal/components/icons";
-import { formatDateTime } from "@portal/utils/datetime";
+import type { AnnouncementSummary } from "@guild/shared";
+import type { AnnouncementStatus } from "@guild/shared/constants/announcements";
+import {
+  ArchiveIcon,
+  CalendarTimeIcon,
+  CircleCheckIcon,
+  FileTextIcon,
+  PlusIcon,
+} from "@portal/components/icons";
+import { Alert, AlertTitle } from "@portal/components/ui/alert";
+import { Avatar, AvatarFallback, AvatarImage } from "@portal/components/ui/avatar";
+import { Badge } from "@portal/components/ui/badge";
+import { Button } from "@portal/components/ui/button";
+import { Card } from "@portal/components/ui/card";
+import { Skeleton } from "@portal/components/ui/skeleton";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@portal/components/ui/tooltip";
+import { formatDateTimeWithTimeZone } from "@portal/utils/datetime";
+import { resolveMediaUrl } from "@portal/utils/media";
 import type { ReactNode } from "react";
 import { useTranslation } from "react-i18next";
-
-import type { AnnouncementStatus } from "@guild/shared/constants/announcements";
 
 const STATUS_ICON = {
   draft: <FileTextIcon size={14} className="announcement-item-status-icon--draft" />,
@@ -15,16 +30,9 @@ const STATUS_ICON = {
   archived: <ArchiveIcon size={14} className="announcement-item-status-icon--archived" />,
 } satisfies Record<AnnouncementStatus, ReactNode>;
 
-const STATUS_THEME = {
-  draft: { color: "gray", icon: <FileTextIcon size={18} /> },
-  scheduled: { color: "blue", icon: <CalendarTimeIcon size={18} /> },
-  published: { color: "green", icon: <CircleCheckIcon size={18} /> },
-  archived: { color: "yellow", icon: <ArchiveIcon size={18} /> },
-} satisfies Record<AnnouncementStatus, { color: string; icon: ReactNode }>;
-
 type AnnouncementListCardProps = {
   title: ReactNode;
-  rows: Announcement[];
+  rows: AnnouncementSummary[];
   selectedId: string | null;
   canEdit: boolean;
   canCreate: boolean;
@@ -39,6 +47,11 @@ type AnnouncementListCardProps = {
   isLoadingMore?: boolean;
   onLoadMore?: () => void;
 };
+
+function isUnread(updatedAt: string, lastSeenAt: string | null): boolean {
+  if (!lastSeenAt) return false;
+  return Date.parse(updatedAt) > Date.parse(lastSeenAt);
+}
 
 export function AnnouncementListCard({
   title,
@@ -58,123 +71,129 @@ export function AnnouncementListCard({
   onLoadMore,
 }: AnnouncementListCardProps) {
   const { t } = useTranslation("announcements");
+
   return (
-    <Paper withBorder radius="md" p="var(--card-padding)" className="announcements-list-card">
-      {/* 卡头钉住、清单内滚：「新建公告」是随时要够得着的，跟着列表滚走等于没有。 */}
-      <div className="announcements-card-body">
-        <Group justify="space-between" align="center">
-          <Text fw={600}>{title}</Text>
-          {canCreate && onCreate ? (
-            <Button
-              onClick={() => onCreate()}
-              size="sm"
-              leftSection={<PlusIcon size={16} />}
-            >
-              {t("action.newAnnouncement")}
-            </Button>
-          ) : null}
-        </Group>
-        <Stack gap={8} className="announcements-card-scroll">
-          {isLoading ? (
-            <Stack gap={8}>
-              {Array.from({ length: 4 }).map((_, i) => (
-                <Stack key={i} gap={4} style={{ padding: "8px 0" }}>
-                  <Skeleton height={14} width="70%" />
-                  <Skeleton height={10} width="40%" />
-                </Stack>
-              ))}
-            </Stack>
-          ) : null}
-          {isError ? <Alert color="red" title={warningMessage} /> : null}
-          {!isLoading && !isError ? (
-            rows.length > 0 ? (
-              <Stack gap={8}>
-                {rows.map((item) => (
-                  <div key={item.id} className="announcements-list-row">
-                    <Indicator
-                      disabled={
-                        !(Boolean(announcementsLastSeenAt) && Date.parse(item.updated_at) > Date.parse(announcementsLastSeenAt as string))
-                      }
-                      processing
-                      size={8}
-                      position="top-start"
-                      offset={4}
-                      style={{ flex: 1 }}
-                    >
+    <Card className="announcements-list-card">
+      <header className="announcements-list-card__header">
+        <h2 className="announcements-list-card__title">{title}</h2>
+        {canCreate && onCreate ? (
+          <Button type="button" size="sm" onClick={onCreate}>
+            <PlusIcon size={16} aria-hidden="true" />
+            {t("action.newAnnouncement")}
+          </Button>
+        ) : null}
+      </header>
+
+      <div className="announcements-list-card__content announcements-card-scroll">
+        {isLoading ? (
+          <div className="announcements-list-skeletons" aria-busy="true">
+            {Array.from({ length: 4 }).map((_, index) => (
+              <div key={index} className="announcements-list-skeleton">
+                <Skeleton className="announcements-list-skeleton__title" />
+                <Skeleton className="announcements-list-skeleton__meta" />
+              </div>
+            ))}
+          </div>
+        ) : null}
+
+        {isError ? (
+          <Alert variant="destructive">
+            <AlertTitle>{warningMessage}</AlertTitle>
+          </Alert>
+        ) : null}
+
+        {!isLoading && !isError ? (
+          rows.length > 0 ? (
+            <div className="announcements-list" role="list">
+              {rows.map((item) => {
+                const authorName = item.author.display_name;
+                const publishedAt = item.publish_at ?? item.created_at;
+                const timestampKey = item.status === "scheduled"
+                  ? "meta.scheduled"
+                  : item.status === "draft"
+                    ? "meta.created"
+                    : "meta.published";
+                const showStatus = canEdit || item.status === "archived";
+
+                return (
+                  <div key={item.id} className="announcements-list-row" role="listitem">
+                    {isUnread(item.updated_at, announcementsLastSeenAt) ? (
+                      <span className="announcement-list-unread" aria-hidden="true" />
+                    ) : null}
                     <button
                       type="button"
                       onClick={() => onSelect(item.id)}
                       aria-pressed={item.id === selectedId}
                       className={`announcement-item ${item.id === selectedId ? "announcement-item--active" : ""}`.trim()}
                     >
-                      <Stack gap={2}>
-                        <div className="announcement-item-title">
-                          <Text fw={600} className="announcement-item-title-text">{item.title}</Text>
-                          <span className="announcement-item-meta">
-                          {item.pinned ? <PushpinOutlined className="announcement-item-pin" /> : null}
-                          {canEdit || item.status === "archived" ? (() => {
-                            const { color, icon } = STATUS_THEME[item.status];
-                            return (
-                              <Tooltip
-                                multiline
-                                w={280}
-                                withArrow
-                                arrowSize={10}
-                                openDelay={350}
-                                closeDelay={80}
-                                position="top"
-                                label={
-                                  <Group gap={10} wrap="nowrap" align="flex-start">
-                                    <ThemeIcon variant="light" color={color} size="lg" radius="md" style={{ flexShrink: 0, marginTop: 2 }}>
-                                      {icon}
-                                    </ThemeIcon>
-                                    <div style={{ minWidth: 0 }}>
-                                      <Text size="sm" fw={700} lh={1.3}>{t(`status.${item.status}`)}</Text>
-                                      <Text size="xs" c="dimmed" lh={1.5}>{t(`tooltip.status.${item.status}.desc`)}</Text>
-                                    </div>
-                                  </Group>
-                                }
-                              >
-                                <span style={{ display: "inline-flex", lineHeight: 0 }} data-animate-icon-trigger>
-                                  {STATUS_ICON[item.status]}
-                                  <VisuallyHidden>{t(`status.${item.status}`)}</VisuallyHidden>
-                                </span>
-                              </Tooltip>
-                            );
-                          })() : null}
-                          </span>
-                        </div>
-                        <Group gap={8}>
-                          {canEdit && item.status === "scheduled" && item.publish_at ? (
-                            <Badge color="blue">{t("meta.scheduled", { datetime: formatDateTime(item.publish_at) })}</Badge>
+                      <span className="announcement-item-title">
+                        <span className="announcement-item-headline">
+                          {item.pinned ? (
+                            <Badge variant="outline" className="announcement-important-badge">
+                              {t("status.important")}
+                            </Badge>
                           ) : null}
-                        </Group>
-                        <Text size="sm" className="announcement-item-time">
-                          {formatDateTime(item.updated_at)}
-                        </Text>
-                      </Stack>
+                          <span className="announcement-item-title-text">{item.title}</span>
+                        </span>
+                        {showStatus ? (
+                          <span className="announcement-item-meta">
+                            <Tooltip>
+                              <TooltipTrigger
+                                delay={350}
+                                render={<span className="announcement-item-status-trigger" data-animate-icon-trigger />}
+                              >
+                                {STATUS_ICON[item.status]}
+                                <span className="sr-only">{t(`status.${item.status}`)}</span>
+                              </TooltipTrigger>
+                              <TooltipContent className="announcement-status-tooltip" side="top">
+                                <strong>{t(`status.${item.status}`)}</strong>
+                                <span>{t(`tooltip.status.${item.status}.desc`)}</span>
+                              </TooltipContent>
+                            </Tooltip>
+                          </span>
+                        ) : null}
+                      </span>
+
+                      <span className="announcement-item-author-row">
+                        <Avatar size="sm">
+                          {item.author.avatar_media_id ? (
+                            <AvatarImage
+                              src={resolveMediaUrl(item.author.avatar_media_id)}
+                              alt=""
+                            />
+                          ) : null}
+                          <AvatarFallback>{authorName.trim().charAt(0).toUpperCase()}</AvatarFallback>
+                        </Avatar>
+                        <span className="announcement-item-author">{authorName}</span>
+                        <span className="announcement-meta-separator" aria-hidden="true" />
+                        <span className="announcement-item-time">
+                          {t(timestampKey, { datetime: formatDateTimeWithTimeZone(publishedAt) })}
+                        </span>
+                      </span>
                     </button>
-                    </Indicator>
                   </div>
-                ))}
-                {hasMore && onLoadMore ? (
-                  <Button
-                    variant="subtle"
-                    size="xs"
-                    loading={isLoadingMore}
-                    onClick={onLoadMore}
-                    style={{ alignSelf: "center" }}
-                  >
-                    {t("action.loadMore")}
-                  </Button>
-                ) : null}
-              </Stack>
-            ) : (
-              <>{emptyText}</>
-            )
-          ) : null}
-        </Stack>
+                );
+              })}
+
+              {hasMore && onLoadMore ? (
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  disabled={isLoadingMore}
+                  aria-busy={isLoadingMore || undefined}
+                  className="announcements-list__load-more"
+                  onClick={onLoadMore}
+                >
+                  {t("action.loadMore")}
+                </Button>
+              ) : null}
+            </div>
+          ) : (
+            emptyText
+          )
+        ) : null}
       </div>
-    </Paper>
+    </Card>
   );
 }

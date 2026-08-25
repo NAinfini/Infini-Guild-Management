@@ -42,9 +42,9 @@ export const PORTAL_ORIGIN = originForSlot(SLOT_INDEX);
 /*
  * scripts/e2e/fixture-seed.sql 中固定的本地 E2E admin 与共享成员。
  */
-export const ADMIN_USERNAME = "admin";
+export const ADMIN_LOGIN_NAME = "admin";
 export const ADMIN_PASSWORD = "admin123";
-export const MEMBER_USERNAME = "member_01";
+export const MEMBER_DISPLAY_NAME = "member_01";
 
 /*
  * 限流是按客户端地址计的（读 120 次/分钟、写 80 次/分钟，见 apps/shared/config/limits.ts:79）。

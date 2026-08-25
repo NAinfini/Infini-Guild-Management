@@ -1,12 +1,18 @@
 import type { RecurringTemplate } from "@guild/shared";
-import { MantineProvider } from "@mantine/core";
-import { fireEvent, screen, waitFor } from "@testing-library/react";
+import { screen, within } from "@testing-library/react";
 import { renderWithQueryClient as render } from "@portal/tests/query-harness";
 import userEvent from "@testing-library/user-event";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { RecurringTemplatesTab } from "./RecurringTemplatesTab";
 
 const confirmMock = vi.hoisted(() => vi.fn());
+
+if (typeof Element !== "undefined" && !Element.prototype.getAnimations) {
+  Object.defineProperty(Element.prototype, "getAnimations", {
+    configurable: true,
+    value: () => [],
+  });
+}
 
 vi.mock("react-i18next", () => ({
   useTranslation: () => ({
@@ -19,18 +25,6 @@ vi.mock("react-i18next", () => ({
 vi.mock("@portal/hooks/useConfirmDialog", () => ({
   useConfirmDialog: () => confirmMock,
 }));
-
-class WideResizeObserver {
-  constructor(private readonly callback: ResizeObserverCallback) {}
-  disconnect() {}
-  unobserve() {}
-  observe() {
-    this.callback(
-      [{ contentRect: { width: 1200 } } as ResizeObserverEntry],
-      this as unknown as ResizeObserver,
-    );
-  }
-}
 
 function buildTemplate(overrides: Partial<RecurringTemplate>): RecurringTemplate {
   return {
@@ -62,85 +56,59 @@ function buildTemplate(overrides: Partial<RecurringTemplate>): RecurringTemplate
 
 describe("RecurringTemplatesTab", () => {
   beforeEach(() => {
-    window.ResizeObserver = WideResizeObserver as unknown as typeof ResizeObserver;
+    vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockReturnValue(
+      new DOMRect(0, 0, 1200, 48),
+    );
     confirmMock.mockResolvedValue(true);
   });
 
-  /*
-   * 模板档不渲染 EventsFiltersCard，视图切换器改挂在这条工具栏上——这两条守的是
-   * 那次并栏本身：切换器必须跟模板筛选项同处一个工具栏，而且在一个模板都没有时也得在，
-   * 否则用户进得来出不去。
-   */
-  it("keeps the view switcher in the same toolbar as the template filters", () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it("keeps search, filters, and creation in one template toolbar", () => {
     render(
-      <MantineProvider>
+      <>
         <RecurringTemplatesTab
           canManage
-          onViewModeChange={vi.fn()}
           templates={[buildTemplate({})]}
           loading={false}
-          formSaving={false}
-          onCreateTemplate={vi.fn().mockResolvedValue(undefined)}
-          onUpdateTemplate={vi.fn().mockResolvedValue(undefined)}
-          onPauseTemplate={vi.fn().mockResolvedValue(undefined)}
-          onResumeTemplate={vi.fn().mockResolvedValue(undefined)}
-          onDeleteTemplate={vi.fn().mockResolvedValue(undefined)}
+          onCreateTemplate={vi.fn()}
+          onEditTemplate={vi.fn()}
         />
-      </MantineProvider>,
+      </>,
     );
 
-    const switcher = screen.getByRole("radio", { name: "view.recurring" });
     const search = screen.getByRole("textbox", { name: "recurring.filter.search" });
-    // 同一个 Paper 里 = 同一套工具栏；拆成两个卡片就是回到重复控制区。
-    expect(switcher.closest(".mantine-Paper-root")).toBe(search.closest(".mantine-Paper-root"));
+    const filterToggle = screen.getByRole("button", { name: "common:filter.toggle" });
+    const create = screen.getByRole("button", { name: "recurring.create" });
+    expect(filterToggle.closest(".content-filter-toolbar")).toBe(search.closest(".content-filter-toolbar"));
+    expect(create.closest(".content-filter-toolbar")).toBe(search.closest(".content-filter-toolbar"));
+    expect(screen.queryByRole("radio", { name: "view.recurring" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("radio", { name: "view.events" })).not.toBeInTheDocument();
   });
 
-  it("keeps the view switcher when there is not a single template yet", () => {
-    render(
-      <MantineProvider>
-        <RecurringTemplatesTab
-          canManage
-          onViewModeChange={vi.fn()}
-          templates={[]}
-          loading={false}
-          formSaving={false}
-          onCreateTemplate={vi.fn().mockResolvedValue(undefined)}
-          onUpdateTemplate={vi.fn().mockResolvedValue(undefined)}
-          onPauseTemplate={vi.fn().mockResolvedValue(undefined)}
-          onResumeTemplate={vi.fn().mockResolvedValue(undefined)}
-          onDeleteTemplate={vi.fn().mockResolvedValue(undefined)}
-        />
-      </MantineProvider>,
-    );
-
-    expect(screen.getByRole("radio", { name: "view.cards" })).toBeInTheDocument();
-    // 空列表没什么可筛的，筛选项该一起收起来。
-    expect(screen.queryByRole("textbox", { name: "recurring.filter.search" })).not.toBeInTheDocument();
-  });
-
-  it("opens its create form directly from the empty state", async () => {
+  it("keeps the template toolbar available when there is not a single template yet", async () => {
     const user = userEvent.setup();
+    const onCreateTemplate = vi.fn();
 
     render(
-      <MantineProvider>
+      <>
         <RecurringTemplatesTab
           canManage
-          onViewModeChange={vi.fn()}
           templates={[]}
           loading={false}
-          formSaving={false}
-          onCreateTemplate={vi.fn().mockResolvedValue(undefined)}
-          onUpdateTemplate={vi.fn().mockResolvedValue(undefined)}
-          onPauseTemplate={vi.fn().mockResolvedValue(undefined)}
-          onResumeTemplate={vi.fn().mockResolvedValue(undefined)}
-          onDeleteTemplate={vi.fn().mockResolvedValue(undefined)}
+          onCreateTemplate={onCreateTemplate}
+          onEditTemplate={vi.fn()}
         />
-      </MantineProvider>,
+      </>,
     );
 
+    expect(screen.getByRole("textbox", { name: "recurring.filter.search" })).toBeVisible();
+    expect(screen.getByRole("button", { name: "common:filter.toggle" })).toBeVisible();
+    expect(screen.getByRole("button", { name: "recurring.create" })).toBeVisible();
     await user.click(screen.getByRole("button", { name: "recurring.create" }));
-
-    expect(await screen.findByRole("dialog", { name: "recurring.create" })).toBeInTheDocument();
+    expect(onCreateTemplate).toHaveBeenCalledOnce();
   });
 
   it("searches templates and filters them by status and event type", async () => {
@@ -155,20 +123,15 @@ describe("RecurringTemplatesTab", () => {
     });
 
     render(
-      <MantineProvider>
+      <>
         <RecurringTemplatesTab
           canManage
-          onViewModeChange={vi.fn()}
           templates={[activeTemplate, pausedTemplate]}
           loading={false}
-          formSaving={false}
-          onCreateTemplate={vi.fn().mockResolvedValue(undefined)}
-          onUpdateTemplate={vi.fn().mockResolvedValue(undefined)}
-          onPauseTemplate={vi.fn().mockResolvedValue(undefined)}
-          onResumeTemplate={vi.fn().mockResolvedValue(undefined)}
-          onDeleteTemplate={vi.fn().mockResolvedValue(undefined)}
+          onCreateTemplate={vi.fn()}
+          onEditTemplate={vi.fn()}
         />
-      </MantineProvider>,
+      </>,
     );
 
     const searchInput = screen.getByRole("textbox", { name: "recurring.filter.search" });
@@ -176,92 +139,47 @@ describe("RecurringTemplatesTab", () => {
     expect(screen.getByText("Alpha Run")).toBeInTheDocument();
     expect(screen.queryByText("Beta Social")).not.toBeInTheDocument();
 
-    await user.clear(searchInput);
-    await user.click(screen.getByRole("radio", { name: "recurring.status.paused" }));
+    await user.click(screen.getByRole("button", { name: "common:action.clear" }));
+    expect(searchInput).toHaveValue("");
+    await user.click(screen.getByRole("button", { name: "common:filter.toggle" }));
+    const filterDialog = await screen.findByRole("dialog", { name: "common:filter.toggle" });
+    await user.click(within(filterDialog).getByRole("button", { name: "recurring.status.paused" }));
     expect(screen.queryByText("Alpha Run")).not.toBeInTheDocument();
     expect(screen.getByText("Beta Social")).toBeInTheDocument();
 
-    await user.click(screen.getByRole("radio", { name: "recurring.filter.all" }));
-    await user.click(screen.getByRole("combobox", { name: "recurring.filter.type" }));
-    fireEvent.click(screen.getByRole("option", { name: "Social", hidden: true }));
+    const typeGroup = within(filterDialog).getByRole("radiogroup", { name: "recurring.filter.type" });
+    await user.click(within(typeGroup).getByRole("radio", { name: "recurring.filter.all" }));
+    await user.click(within(typeGroup).getByRole("radio", { name: "Social" }));
     expect(screen.queryByText("Alpha Run")).not.toBeInTheDocument();
     expect(screen.getByText("Beta Social")).toBeInTheDocument();
   });
 
-  it("opens editable template cards with Enter or Space without child controls bubbling", async () => {
+  it("navigates editable template cards with Enter or Space without opening a nested modal", async () => {
     const user = userEvent.setup();
+    const onEditTemplate = vi.fn();
 
     render(
-      <MantineProvider>
+      <>
         <RecurringTemplatesTab
           canManage
-          onViewModeChange={vi.fn()}
           templates={[buildTemplate({})]}
           loading={false}
-          formSaving={false}
-          onCreateTemplate={vi.fn().mockResolvedValue(undefined)}
-          onUpdateTemplate={vi.fn().mockResolvedValue(undefined)}
-          onPauseTemplate={vi.fn().mockResolvedValue(undefined)}
-          onResumeTemplate={vi.fn().mockResolvedValue(undefined)}
-          onDeleteTemplate={vi.fn().mockResolvedValue(undefined)}
+          onCreateTemplate={vi.fn()}
+          onEditTemplate={onEditTemplate}
         />
-      </MantineProvider>,
+      </>,
     );
 
     const templateCard = screen.getByRole("button", { name: "Edit Weekly Mission" });
     templateCard.focus();
     await user.keyboard("{Enter}");
-    expect(await screen.findByRole("dialog", { name: /recurring\.edit/ })).toBeInTheDocument();
-
-    await user.keyboard("{Escape}");
-    await waitFor(() =>
-      expect(screen.queryByRole("dialog", { name: /recurring\.edit/ })).not.toBeInTheDocument(),
-    );
+    expect(onEditTemplate).toHaveBeenCalledWith(expect.objectContaining({ id: "template-1" }));
 
     templateCard.focus();
     await user.keyboard(" ");
-    expect(await screen.findByRole("dialog", { name: /recurring\.edit/ })).toBeInTheDocument();
-
-    await user.keyboard("{Escape}");
-    await waitFor(() =>
-      expect(screen.queryByRole("dialog", { name: /recurring\.edit/ })).not.toBeInTheDocument(),
-    );
-    const statusControl = screen.getByRole("button", {
-      name: "recurring.status.active",
-    });
+    expect(onEditTemplate).toHaveBeenCalledTimes(2);
+    const statusControl = screen.getByRole("button", { name: "tooltip.templateActive.title" });
     await user.click(statusControl);
-    expect(screen.queryByRole("dialog", { name: /recurring\.edit/ })).not.toBeInTheDocument();
-  });
-
-  it("closes the edit form only after a confirmed deletion succeeds", async () => {
-    const user = userEvent.setup();
-    let resolveDeletion: (() => void) | undefined;
-    const onDeleteTemplate = vi.fn(() => new Promise<void>((resolve) => { resolveDeletion = resolve; }));
-
-    render(
-      <MantineProvider>
-        <RecurringTemplatesTab
-          canManage
-          onViewModeChange={vi.fn()}
-          templates={[buildTemplate({})]}
-          loading={false}
-          formSaving={false}
-          onCreateTemplate={vi.fn().mockResolvedValue(undefined)}
-          onUpdateTemplate={vi.fn().mockResolvedValue(undefined)}
-          onPauseTemplate={vi.fn().mockResolvedValue(undefined)}
-          onResumeTemplate={vi.fn().mockResolvedValue(undefined)}
-          onDeleteTemplate={onDeleteTemplate}
-        />
-      </MantineProvider>,
-    );
-
-    await user.click(screen.getByRole("button", { name: "Edit Weekly Mission" }));
-    expect(await screen.findByRole("dialog", { name: /recurring\.edit/ })).toBeInTheDocument();
-    await user.click(screen.getByRole("button", { name: "recurring.delete" }));
-
-    await waitFor(() => expect(onDeleteTemplate).toHaveBeenCalledWith("template-1"));
-    expect(screen.getByRole("dialog", { name: /recurring\.edit/ })).toBeInTheDocument();
-    resolveDeletion?.();
-    await waitFor(() => expect(screen.queryByRole("dialog", { name: /recurring\.edit/ })).not.toBeInTheDocument());
+    expect(onEditTemplate).toHaveBeenCalledTimes(2);
   });
 });

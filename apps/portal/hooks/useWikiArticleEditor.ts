@@ -3,7 +3,6 @@ import { TIPTAP_DEFAULT_JSON } from "@portal/components/shared/tiptap-meta";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { flushSync } from "react-dom";
-import { useDisclosure } from "@mantine/hooks";
 import { useTranslation } from "react-i18next";
 import { useAppError } from "./useAppError";
 import { notifySuccess } from "../utils/notifications";
@@ -54,11 +53,11 @@ export function useWikiArticleEditor({
   const [articleCategoryId, setArticleCategoryId] = useState("");
   const [pinnedIntent, setPinnedIntent] = useState<"none" | "pin" | "unpin">("none");
   const [archiveIntent, setArchiveIntent] = useState<"none" | "archive" | "unarchive">("none");
-  const [isCreatingArticle, isCreatingArticleHandlers] = useDisclosure(false);
+  const [isCreatingArticle, setIsCreatingArticle] = useState(false);
 
   useEffect(() => {
     if (!canEdit) {
-      isCreatingArticleHandlers.close();
+      setIsCreatingArticle(false);
     }
   }, [canEdit]);
 
@@ -67,7 +66,7 @@ export function useWikiArticleEditor({
       return;
     }
 
-    isCreatingArticleHandlers.close();
+    setIsCreatingArticle(false);
     setPinnedIntent("none");
     setArchiveIntent("none");
     setArticleTitle(selectedArticle.title);
@@ -82,7 +81,7 @@ export function useWikiArticleEditor({
     setArticleBody(base?.body_json ?? TIPTAP_DEFAULT_JSON);
     setArticleSortOrder(base?.sort_order ?? 0);
     setArticleCategoryId(base?.category_id ?? "");
-    isCreatingArticleHandlers.close();
+    setIsCreatingArticle(false);
     setPinnedIntent("none");
     setArchiveIntent("none");
   };
@@ -176,7 +175,7 @@ export function useWikiArticleEditor({
   ]);
 
   const startCreateArticle = () => {
-    isCreatingArticleHandlers.open();
+    setIsCreatingArticle(true);
     setPinnedIntent("none");
     setArchiveIntent("none");
     setArticleTitle("");

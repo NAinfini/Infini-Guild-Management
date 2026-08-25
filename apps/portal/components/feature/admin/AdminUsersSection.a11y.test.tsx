@@ -1,5 +1,4 @@
 import type { AdminRole } from "@guild/shared";
-import { MantineProvider } from "@mantine/core";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
@@ -14,8 +13,8 @@ import {
 
 vi.mock("react-i18next", () => ({
   useTranslation: () => ({
-    t: (key: string, options?: { username?: string; count?: number; seconds?: number }) => {
-      if (options?.username) return `${key} ${options.username}`;
+    t: (key: string, options?: { display_name?: string; count?: number; seconds?: number }) => {
+      if (options?.display_name) return `${key} ${options.display_name}`;
       if (typeof options?.count === "number") return `${key} ${options.count}`;
       if (typeof options?.seconds === "number") return `${key} ${options.seconds}`;
       return key;
@@ -50,7 +49,7 @@ vi.mock("../../../stores/auth", () => ({
 const row = {
   user: {
     id: "user-1",
-    username: "Alice",
+    display_name: "Alice",
     role: "member",
     role_name: "Member",
     role_color: null,
@@ -83,9 +82,9 @@ const row = {
 } as unknown as AdminUserRow;
 
 const columns: ColumnDef<AdminUserRow, unknown>[] = [{
-  id: "username",
+  id: "display_name",
   header: "Username",
-  cell: ({ row: tableRow }) => tableRow.original.user.username,
+  cell: ({ row: tableRow }) => tableRow.original.user.display_name,
 }];
 
 const roles = [{
@@ -104,13 +103,22 @@ const secondRow = {
   user: {
     ...row.user,
     id: "user-2",
-    username: "Bob",
+    display_name: "Bob",
   },
   profile: {
     ...row.profile,
     user_id: "user-2",
   },
 } as AdminUserRow;
+
+function expectMenuItemState(item: HTMLElement, disabled: boolean) {
+  if (disabled) {
+    expect(item).toHaveAttribute("aria-disabled", "true");
+    return;
+  }
+
+  expect(item).not.toHaveAttribute("aria-disabled", "true");
+}
 
 function renderUsers(
   overrides: Partial<React.ComponentProps<typeof AdminUsersSection>> = {},
@@ -154,9 +162,7 @@ function renderUsers(
     <QueryClientProvider client={new QueryClient({
       defaultOptions: { queries: { retry: false } },
     })}>
-      <MantineProvider>
-        <AdminUsersSection {...props} />
-      </MantineProvider>
+      <AdminUsersSection {...props} />
     </QueryClientProvider>,
   );
 
@@ -174,12 +180,19 @@ beforeEach(() => {
 });
 
 describe("AdminUsersSection accessibility", () => {
-  it("explains that account status is separate from roster availability", () => {
+  it("keeps search and creation visible while account status uses the shared filter menu", async () => {
+    const user = userEvent.setup();
     renderUsers();
 
+    expect(screen.queryByText(/admin-fill/)).not.toBeInTheDocument();
     expect(screen.getByText("member.accountStatusDescription")).toBeInTheDocument();
-    expect(screen.getByRole("radio", { name: "member.status.active" })).toBeInTheDocument();
-    expect(screen.getByRole("radio", { name: "member.status.inactive" })).toBeInTheDocument();
+    expect(screen.getByRole("textbox", { name: "member.search.aria" })).toBeVisible();
+    expect(screen.getByRole("button", { name: "member.create.button" })).toBeVisible();
+    expect(screen.getByRole("columnheader", { name: "member.action.menu" })).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "common:filter.toggle" }));
+    const filters = within(await screen.findByRole("dialog"));
+    expect(filters.getByRole("radio", { name: "member.status.active" })).toBeInTheDocument();
+    expect(filters.getByRole("radio", { name: "member.status.inactive" })).toBeInTheDocument();
   });
 
   it("uses Enabled and Disabled terminology in both admin locales", () => {
@@ -213,13 +226,11 @@ describe("AdminUsersSection accessibility", () => {
 
     await user.keyboard("{Shift>}{F10}{/Shift}");
     /*
-     * hidden: true 的理由同 AvailabilityEditor.test.tsx：jsdom 里元素没有布局，
-     * floating-ui 的 hide 中间件会给已经打开的 Menu.Dropdown 盖上 display: none，
-     * 而定位计算是异步的——查得早就能看见、查得晚就看不见，纯计时抖动。
+     * jsdom 没有布局，Base UI 的浮层定位在异步帧完成前后都会变更可见性；
+     * 这里检查菜单语义和焦点，不把该无布局环境中的显示状态当成行为契约。
      */
     const detailItem = await screen.findByRole("menuitem", { name: "member.action.detail", hidden: true });
-    await user.keyboard("{ArrowDown}");
-    expect(detailItem).toHaveFocus();
+    await waitFor(() => expect(detailItem).toHaveAttribute("data-highlighted"));
 
     expect(
       screen.getByRole("button", { name: "member.action.openDetailAria Alice" }),
@@ -250,13 +261,13 @@ describe("AdminUsersSection accessibility", () => {
       expect(menu).not.toBeNull();
     });
     const aliceMenu = menu as unknown as HTMLElement;
-    expect(within(aliceMenu).getByRole("menuitem", { name: "member.context.changeRole", hidden: true })).toBeDisabled();
-    expect(within(aliceMenu).getByRole("menuitem", { name: "member.deactivate", hidden: true })).toBeDisabled();
-    expect(within(aliceMenu).getByRole("menuitem", { name: "member.context.delete", hidden: true })).toBeEnabled();
+    expectMenuItemState(within(aliceMenu).getByRole("menuitem", { name: "member.context.changeRole", hidden: true }), true);
+    expectMenuItemState(within(aliceMenu).getByRole("menuitem", { name: "member.deactivate", hidden: true }), true);
+    expectMenuItemState(within(aliceMenu).getByRole("menuitem", { name: "member.context.delete", hidden: true }), false);
     expect(within(aliceMenu).getAllByRole("menuitem", { name: "member.deactivate", hidden: true })).toHaveLength(1);
     const resetPassword = within(aliceMenu).getByRole("menuitem", { name: "member.resetPassword", hidden: true });
-    expect(resetPassword).toBeDisabled();
-    expect(within(aliceMenu).getByRole("menuitem", { name: "member.resetLoginLock", hidden: true })).toBeDisabled();
+    expectMenuItemState(resetPassword, true);
+    expectMenuItemState(within(aliceMenu).getByRole("menuitem", { name: "member.resetLoginLock", hidden: true }), true);
 
     await user.click(resetPassword);
     await user.click(resetPassword);
@@ -277,12 +288,12 @@ describe("AdminUsersSection accessibility", () => {
       menu = openMenu;
     });
     const bobMenu = menu as unknown as HTMLElement;
-    expect(within(bobMenu).getByRole("menuitem", { name: "member.context.changeRole", hidden: true })).toBeEnabled();
-    expect(within(bobMenu).getByRole("menuitem", { name: "member.deactivate", hidden: true })).toBeEnabled();
-    expect(within(bobMenu).getByRole("menuitem", { name: "member.context.delete", hidden: true })).toBeEnabled();
+    expectMenuItemState(within(bobMenu).getByRole("menuitem", { name: "member.context.changeRole", hidden: true }), false);
+    expectMenuItemState(within(bobMenu).getByRole("menuitem", { name: "member.deactivate", hidden: true }), false);
+    expectMenuItemState(within(bobMenu).getByRole("menuitem", { name: "member.context.delete", hidden: true }), false);
     expect(within(bobMenu).getAllByRole("menuitem", { name: "member.deactivate", hidden: true })).toHaveLength(1);
-    expect(within(bobMenu).getByRole("menuitem", { name: "member.resetPassword", hidden: true })).toBeEnabled();
-    expect(within(bobMenu).getByRole("menuitem", { name: "member.resetLoginLock", hidden: true })).toBeEnabled();
+    expectMenuItemState(within(bobMenu).getByRole("menuitem", { name: "member.resetPassword", hidden: true }), false);
+    expectMenuItemState(within(bobMenu).getByRole("menuitem", { name: "member.resetLoginLock", hidden: true }), false);
   });
 
   it("shows the current login lock and passes it into the reset confirmation flow", async () => {
@@ -330,10 +341,10 @@ describe("AdminUsersSection accessibility", () => {
     });
     const actions = within(menu as unknown as HTMLElement);
 
-    expect(actions.getByRole("menuitem", { name: "member.context.changeRole", hidden: true })).toBeDisabled();
-    expect(actions.getByRole("menuitem", { name: "member.deactivate", hidden: true })).toBeEnabled();
-    expect(actions.getByRole("menuitem", { name: "member.context.delete", hidden: true })).toBeDisabled();
-    expect(actions.getByRole("menuitem", { name: "member.resetPassword", hidden: true })).toBeDisabled();
+    expectMenuItemState(actions.getByRole("menuitem", { name: "member.context.changeRole", hidden: true }), true);
+    expectMenuItemState(actions.getByRole("menuitem", { name: "member.deactivate", hidden: true }), false);
+    expectMenuItemState(actions.getByRole("menuitem", { name: "member.context.delete", hidden: true }), true);
+    expectMenuItemState(actions.getByRole("menuitem", { name: "member.resetPassword", hidden: true }), true);
     expect(actions.queryByRole("menuitem", { name: "member.context.createMember", hidden: true })).toBeNull();
   });
 
@@ -347,7 +358,7 @@ describe("AdminUsersSection accessibility", () => {
         user: {
           ...row.user,
           id: `user-${number}`,
-          username: `User ${number}`,
+          display_name: `User ${number}`,
           is_active: number !== 3,
         },
         profile: {
@@ -363,7 +374,10 @@ describe("AdminUsersSection accessibility", () => {
       onBatchDelete,
     });
 
-    await user.click(screen.getByRole("radio", { name: "member.status.active" }));
+    await user.click(screen.getByRole("button", { name: "common:filter.toggle" }));
+    await user.click(within(await screen.findByRole("dialog")).getByRole("radio", {
+      name: "member.status.active",
+    }));
     await waitFor(() => {
       expect(screen.queryByRole("row", { name: "member.aria.row User 3" })).not.toBeInTheDocument();
       expect(screen.queryByRole("row", { name: "member.aria.row User 22" })).not.toBeInTheDocument();

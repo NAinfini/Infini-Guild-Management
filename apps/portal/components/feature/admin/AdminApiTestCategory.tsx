@@ -1,4 +1,3 @@
-import { ActionIcon } from "@mantine/core";
 import {
   AlertTriangleIcon,
   BoltIcon,
@@ -17,6 +16,7 @@ import {
   TrophyIcon,
   UsersIcon,
 } from "@portal/components/icons";
+import { Button } from "@portal/components/ui/button";
 import { type ComponentType, useEffect, useId, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { type CategoryDef, type EndpointResult, type EndpointDef } from "./AdminApiTestEngine";
@@ -219,19 +219,17 @@ export function ApiTestCategory({
 
         <div className="api-cat__actions">
           {catRunning ? <span className="api-ep__running" /> : null}
-          {/* size="md" 是 regular 档的可见图标控件（28px）。44px 是触控靶面，不是可见尺寸：
-              靶面由 ThemeProvider 里 .actionIconRoot::before 那层透明扩展块提供。 */}
-          <ActionIcon
+          <Button
             className="api-cat__run-button"
             aria-label={category.label}
             onClick={() => { void onRunCategory(category); }}
             disabled={catRunning}
             loading={catRunning}
-            variant="light"
-            size="md"
+            variant="secondary"
+            size="icon-sm"
           >
             <PlayIcon size={14} />
-          </ActionIcon>
+          </Button>
         </div>
       </div>
 

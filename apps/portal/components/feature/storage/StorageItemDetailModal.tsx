@@ -1,24 +1,29 @@
 import type { StorageItem, StorageTransaction } from "@guild/shared";
 import {
-  ActionIcon,
-  Alert,
-  Badge,
-  Button,
-  Drawer,
-  Group,
-  Image,
-  Loader,
-  Pagination,
-  Stack,
-  Text,
-} from "@mantine/core";
-import { useMediaQuery } from "@mantine/hooks";
-import {
   ChevronLeftIcon,
   ChevronRightIcon,
   PencilIcon,
   PhotoOffIcon,
+  XIcon,
 } from "@portal/components/icons";
+import { Alert, AlertDescription, AlertTitle } from "@portal/components/ui/alert";
+import { Badge } from "@portal/components/ui/badge";
+import { Button } from "@portal/components/ui/button";
+import {
+  Drawer,
+  DrawerClose,
+  DrawerContent,
+  DrawerHeader,
+  DrawerTitle,
+} from "@portal/components/ui/drawer";
+import {
+  Sheet,
+  SheetClose,
+  SheetContent,
+  SheetHeader,
+  SheetTitle,
+} from "@portal/components/ui/sheet";
+import { useMediaQuery } from "@portal/hooks/useMediaQuery";
 import { useStorageTransactions } from "@portal/hooks/useStorage";
 import { formatLocaleDateTime } from "@portal/utils/datetime";
 import { resolveMediaUrl } from "@portal/utils/media";
@@ -87,192 +92,204 @@ export function StorageItemDetailModal({
   }, [item?.id]);
 
   useEffect(() => {
-    setImageIndex((current) =>
-      Math.min(current, Math.max(0, (item?.images.length ?? 0) - 1)),
-    );
+    setImageIndex((current) => Math.min(current, Math.max(0, (item?.images.length ?? 0) - 1)));
   }, [item?.images.length]);
 
-  return (
-    <Drawer
-      opened={opened}
-      onClose={onClose}
-      title={item?.name ?? ""}
-      position="right"
-      size={isMobile ? "100%" : 520}
-      classNames={{
-        content: "storage-detail-drawer",
-        header: "storage-modal-header",
-        body: "storage-modal-body",
-      }}
-    >
-      {item ? (
-        <Stack gap="lg" className="storage-detail" style={{ minWidth: 0, maxWidth: "100%" }}>
-          <aside className="storage-detail-media" style={{ minWidth: 0 }}>
-            {activeImage && !imageIsBroken ? (
-              <Image
-                src={resolveMediaUrl(activeImage.media_id)}
-                alt={item.name}
-                fit="contain"
-                className="storage-detail-media__image"
-                onError={() =>
-                  setBrokenImages((current) => new Set(current).add(activeImage.media_id))
-                }
-              />
-            ) : imageIsBroken ? (
-              <div className="storage-detail-media__empty storage-detail-media__empty--broken">
-                <PhotoOffIcon size={48} />
-              </div>
-            ) : (
-              <div className="storage-detail-media__empty">
-                <PhotoOffIcon size={44} />
-              </div>
-            )}
-            {item.images.length > 1 ? (
-              <Group justify="center" mt={8} wrap="nowrap">
-                <ActionIcon
-                  variant="default"
-                  size={44}
-                  aria-label={t("detail.previousImage")}
-                  disabled={!canShowPreviousImage}
-                  onClick={() => setImageIndex((value) => Math.max(0, value - 1))}
-                >
-                  <ChevronLeftIcon size={16} />
-                </ActionIcon>
-                <Text size="xs">{imageIndex + 1} / {item.images.length}</Text>
-                <ActionIcon
-                  variant="default"
-                  size={44}
-                  aria-label={t("detail.nextImage")}
-                  disabled={!canShowNextImage}
-                  onClick={() =>
-                    setImageIndex((value) => Math.min(item.images.length - 1, value + 1))
-                  }
-                >
-                  <ChevronRightIcon size={16} />
-                </ActionIcon>
-              </Group>
+  const detailBody = item ? (
+    <div className="storage-detail">
+      <div className="storage-detail-media">
+        {activeImage && !imageIsBroken ? (
+          <img
+            src={resolveMediaUrl(activeImage.media_id)}
+            alt={item.name}
+            className="storage-detail-media__image"
+            onError={() => setBrokenImages((current) => new Set(current).add(activeImage.media_id))}
+          />
+        ) : imageIsBroken ? (
+          <div className="storage-detail-media__empty storage-detail-media__empty--broken">
+            <PhotoOffIcon size={48} />
+          </div>
+        ) : (
+          <div className="storage-detail-media__empty"><PhotoOffIcon size={44} /></div>
+        )}
+        {item.images.length > 1 ? (
+          <div className="storage-detail-media__controls">
+            <Button
+              variant="outline"
+              size="icon-lg"
+              aria-label={t("detail.previousImage")}
+              disabled={!canShowPreviousImage}
+              onClick={() => setImageIndex((value) => Math.max(0, value - 1))}
+            >
+              <ChevronLeftIcon size={16} />
+            </Button>
+            <span>{imageIndex + 1} / {item.images.length}</span>
+            <Button
+              variant="outline"
+              size="icon-lg"
+              aria-label={t("detail.nextImage")}
+              disabled={!canShowNextImage}
+              onClick={() => setImageIndex((value) => Math.min(item.images.length - 1, value + 1))}
+            >
+              <ChevronRightIcon size={16} />
+            </Button>
+          </div>
+        ) : null}
+      </div>
+
+      <section className="storage-detail__summary">
+        <div className="storage-detail__summary-header">
+          <div>
+            <span className="storage-meta-label">{t("field.stock")}</span>
+            <strong className="storage-detail__stock">{item.quantity}</strong>
+          </div>
+          <div className="storage-detail__badges">
+            {item.allow_member_deposit ? <Badge variant="secondary">{t("badge.depositEnabled")}</Badge> : null}
+            {item.allow_member_withdraw ? <Badge variant="secondary">{t("badge.withdrawEnabled")}</Badge> : null}
+            {!item.allow_member_deposit && !item.allow_member_withdraw ? (
+              <Badge variant="outline">{t("badge.closed")}</Badge>
             ) : null}
-          </aside>
+          </div>
+        </div>
+        <p className={item.description ? undefined : "storage-detail__description--muted"}>
+          {item.description || t("empty.noDescription")}
+        </p>
+      </section>
 
-          <section className="storage-detail__summary">
-            <Group justify="space-between" align="flex-end" gap="md" wrap="nowrap">
-              <div>
-                <Text size="xs" c="dimmed">{t("field.stock")}</Text>
-                <Text className="storage-detail__stock">{item.quantity}</Text>
-              </div>
-              <Group gap={6}>
-                {item.allow_member_deposit ? (
-                  <Badge variant="light">{t("badge.depositEnabled")}</Badge>
-                ) : null}
-                {item.allow_member_withdraw ? (
-                  <Badge variant="light">{t("badge.withdrawEnabled")}</Badge>
-                ) : null}
-                {!item.allow_member_deposit && !item.allow_member_withdraw ? (
-                  <Badge variant="light" color="gray">{t("badge.closed")}</Badge>
-                ) : null}
-              </Group>
-            </Group>
-            <Text size="sm" mt="md" c={item.description ? undefined : "dimmed"}>
-              {item.description || t("empty.noDescription")}
-            </Text>
-          </section>
+      <div className="storage-detail__actions">
+        {canManageStock || item.allow_member_deposit ? (
+          <Button variant="outline" onClick={() => onDeposit(item)}>
+            <span className="storage-direction-glyph" aria-hidden="true">↓</span>
+            {t("action.deposit")}
+          </Button>
+        ) : null}
+        {canManageStock || item.allow_member_withdraw ? (
+          <Button onClick={() => onWithdraw(item)} disabled={item.quantity <= 0}>
+            <span className="storage-direction-glyph" aria-hidden="true">↑</span>
+            {t("action.withdraw")}
+          </Button>
+        ) : null}
+        {canEditItem ? (
+          <Button variant="outline" onClick={() => onEdit(item)}>
+            <PencilIcon size={16} />
+            {t("action.edit")}
+          </Button>
+        ) : null}
+      </div>
 
-          <Group grow className="storage-detail__actions">
-            {canManageStock || item.allow_member_deposit ? (
-              <Button
-                variant="default"
-                leftSection={<span className="storage-direction-glyph" aria-hidden>↓</span>}
-                onClick={() => onDeposit(item)}
-              >
-                {t("action.deposit")}
+      <section className="storage-detail__ledger" aria-labelledby="storage-ledger-title">
+        <div className="storage-detail__ledger-heading">
+          <div>
+            <strong id="storage-ledger-title">{t("ledger.title")}</strong>
+            <span>{t("ledger.subtitle")}</span>
+          </div>
+          {transactionsQuery.isFetching ? <span className="storage-ledger__loading" aria-live="polite" /> : null}
+        </div>
+
+        {transactionsQuery.isError ? (
+          <Alert variant="destructive">
+            <AlertTitle>{t("ledger.error")}</AlertTitle>
+            <AlertDescription>
+              <Button size="sm" variant="outline" onClick={() => void transactionsQuery.refetch()}>
+                {tCommon("action.retry")}
               </Button>
-            ) : null}
-            {canManageStock || item.allow_member_withdraw ? (
-              <Button
-                leftSection={<span className="storage-direction-glyph" aria-hidden>↑</span>}
-                onClick={() => onWithdraw(item)}
-                disabled={item.quantity <= 0}
-              >
-                {t("action.withdraw")}
-              </Button>
-            ) : null}
-            {canEditItem ? (
-              <Button
-                variant="default"
-                leftSection={<PencilIcon size={16} />}
-                onClick={() => onEdit(item)}
-              >
-                {t("action.edit")}
-              </Button>
-            ) : null}
-          </Group>
-
-          <section className="storage-detail__ledger">
-            <Group justify="space-between" gap={8} mb="sm">
-              <div>
-                <Text fw={800}>{t("ledger.title")}</Text>
-                <Text size="xs" c="dimmed">{t("ledger.subtitle")}</Text>
-              </div>
-              {transactionsQuery.isFetching ? <Loader size="xs" /> : null}
-            </Group>
-
-            {transactionsQuery.isError ? (
-              <Alert color="red" title={t("ledger.error")}>
-                <Button
-                  mt="sm"
-                  size="compact-sm"
-                  variant="default"
-                  onClick={() => void transactionsQuery.refetch()}
-                >
-                  {tCommon("action.retry")}
-                </Button>
-              </Alert>
-            ) : transactions.length > 0 ? (
-              <div className="storage-ledger">
-                {transactions.map((tx) => (
-                  <div key={tx.id} className={`storage-ledger-row ${txClassName(tx.type)}`}>
-                    <Group justify="space-between" gap="sm" align="flex-start" wrap="nowrap">
-                      <div className="storage-ledger-row__main">
-                        <Group gap={8}>
-                          <Text size="sm" fw={700}>{txLabels[tx.type]}</Text>
-                          <Text fw={900} className="storage-ledger-row__delta">
-                            {tx.quantity_delta > 0 ? "+" : ""}{tx.quantity_delta}
-                          </Text>
-                        </Group>
-                        <Text size="xs" c="dimmed" mt={4}>
-                          {tx.recipient_username ?? tx.actor_username ?? tx.actor_id}
-                        </Text>
-                        {tx.note ? <Text size="sm" mt={4}>{tx.note}</Text> : null}
-                      </div>
-                      <Text size="xs" c="dimmed" className="storage-ledger-row__date">
-                        {formatLocaleDateTime(tx.created_at, undefined, "numeric")}
-                      </Text>
-                    </Group>
+            </AlertDescription>
+          </Alert>
+        ) : transactions.length > 0 ? (
+          <div className="storage-ledger">
+            {transactions.map((tx) => (
+              <div key={tx.id} className={`storage-ledger-row ${txClassName(tx.type)}`}>
+                <div className="storage-ledger-row__main">
+                  <div className="storage-ledger-row__type">
+                    <strong>{txLabels[tx.type]}</strong>
+                    <strong className="storage-ledger-row__delta">
+                      {tx.quantity_delta > 0 ? "+" : ""}{tx.quantity_delta}
+                    </strong>
                   </div>
-                ))}
+                  <span className="storage-ledger-row__actor">
+                    {tx.recipient_display_name ?? tx.actor_display_name ?? tx.actor_id}
+                  </span>
+                  {tx.note ? <p>{tx.note}</p> : null}
+                </div>
+                <span className="storage-ledger-row__date">
+                  {formatLocaleDateTime(tx.created_at, undefined, "numeric")}
+                </span>
               </div>
-            ) : (
-              <Text size="sm" c="dimmed">{t("ledger.empty")}</Text>
-            )}
+            ))}
+          </div>
+        ) : (
+          <p className="storage-ledger__empty">{t("ledger.empty")}</p>
+        )}
 
-            {totalPages > 1 ? (
-              <Pagination
-                className="storage-ledger-pagination"
-                value={ledgerPage}
-                total={totalPages}
-                onChange={setLedgerPage}
-                withEdges
+        {totalPages > 1 ? (
+          <nav className="storage-ledger-pagination" aria-label={t("ledger.title")}>
+            <Button
+              size="sm"
+              variant="outline"
+              aria-label={tCommon("pagination.prev")}
+              disabled={ledgerPage <= 1}
+              onClick={() => setLedgerPage((page) => Math.max(1, page - 1))}
+            >
+              <ChevronLeftIcon size={14} />
+            </Button>
+            {Array.from({ length: totalPages }, (_, index) => index + 1).map((page) => (
+              <Button
+                key={page}
                 size="sm"
-                getControlProps={(control) => ({
-                  "aria-label": tCommon(
-                    control === "previous" ? "pagination.prev" : `pagination.${control}`,
-                  ),
-                })}
-              />
-            ) : null}
-          </section>
-        </Stack>
-      ) : null}
-    </Drawer>
+                variant={page === ledgerPage ? "default" : "outline"}
+                aria-label={String(page)}
+                aria-current={page === ledgerPage ? "page" : undefined}
+                onClick={() => setLedgerPage(page)}
+              >
+                {page}
+              </Button>
+            ))}
+            <Button
+              size="sm"
+              variant="outline"
+              aria-label={tCommon("pagination.next")}
+              disabled={ledgerPage >= totalPages}
+              onClick={() => setLedgerPage((page) => Math.min(totalPages, page + 1))}
+            >
+              <ChevronRightIcon size={14} />
+            </Button>
+          </nav>
+        ) : null}
+      </section>
+    </div>
+  ) : null;
+
+  if (isMobile) {
+    return (
+      <Drawer open={opened} onOpenChange={(nextOpen) => !nextOpen && onClose()} swipeDirection="down" showSwipeHandle>
+        <DrawerContent className="storage-detail-drawer">
+          <DrawerHeader className="storage-modal-header">
+            <div className="storage-overlay-heading">
+              <DrawerTitle>{item?.name ?? ""}</DrawerTitle>
+              <DrawerClose aria-label={tCommon("action.close")} render={<Button size="icon-sm" variant="ghost" />}>
+                <XIcon size={16} />
+              </DrawerClose>
+            </div>
+          </DrawerHeader>
+          <div className="storage-modal-body">{detailBody}</div>
+        </DrawerContent>
+      </Drawer>
+    );
+  }
+
+  return (
+    <Sheet open={opened} onOpenChange={(nextOpen) => !nextOpen && onClose()}>
+      <SheetContent side="right" className="storage-detail-drawer" showCloseButton={false}>
+        <SheetHeader className="storage-modal-header">
+          <div className="storage-overlay-heading">
+            <SheetTitle>{item?.name ?? ""}</SheetTitle>
+            <SheetClose aria-label={tCommon("action.close")} render={<Button size="icon-sm" variant="ghost" />}>
+              <XIcon size={16} />
+            </SheetClose>
+          </div>
+        </SheetHeader>
+        <div className="storage-modal-body">{detailBody}</div>
+      </SheetContent>
+    </Sheet>
   );
 }

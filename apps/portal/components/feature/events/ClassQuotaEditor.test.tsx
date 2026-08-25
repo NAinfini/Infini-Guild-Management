@@ -1,6 +1,5 @@
 import type { ClassCatalogItem, ClassTag, EventClassQuotaInput } from "@guild/shared";
 import { LIMITS } from "@guild/shared/config/limits";
-import { MantineProvider } from "@mantine/core";
 import { createSeededQueryClient } from "@portal/tests/query-harness";
 import { QueryClientProvider, type QueryClient } from "@tanstack/react-query";
 import { render, screen } from "@testing-library/react";
@@ -65,9 +64,9 @@ let queryClient: QueryClient;
 function renderEditor(value: EventClassQuotaInput[], onChange = vi.fn()) {
   render(
     <QueryClientProvider client={queryClient}>
-      <MantineProvider>
+      <>
         <ClassQuotaEditor value={value} onChange={onChange} />
-      </MantineProvider>
+      </>
     </QueryClientProvider>,
   );
   return onChange;
@@ -101,7 +100,7 @@ describe("ClassQuotaEditor", () => {
     ]);
 
     await user.click(screen.getByRole("button", { name: "quota.editor.pickClasses" }));
-    // 下拉在 Mantine 的过渡里，jsdom 下过渡停在 display: none，按角色取必须放开 hidden。
+    // 下拉内容在测试环境里仍挂在不可见层，按角色取需要显式包含 hidden 节点。
     await user.click(await screen.findByRole("checkbox", { name: /Loner/, hidden: true }));
 
     expect(onChange).toHaveBeenCalledWith([
@@ -145,7 +144,7 @@ describe("ClassQuotaEditor", () => {
       name: `Class ${MAX_CLASSES + 1}`,
       hidden: true,
     });
-    expect(extraClass).toBeDisabled();
+    expect(extraClass).toHaveAttribute("aria-disabled", "true");
     await user.click(extraClass);
     expect(onChange).not.toHaveBeenCalled();
 

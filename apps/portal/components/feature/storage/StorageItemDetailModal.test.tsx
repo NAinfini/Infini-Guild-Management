@@ -1,7 +1,8 @@
 import type { StorageItem, StorageTransaction } from "@guild/shared";
-import { MantineProvider } from "@mantine/core";
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { StorageItemDetailModal } from "./StorageItemDetailModal";
 
@@ -41,27 +42,25 @@ const transaction = (id: string): StorageTransaction => ({
   type: "intake",
   quantity_delta: 1,
   recipient_user_id: "user-1",
-  recipient_username: "Member One",
+  recipient_display_name: "Member One",
   note: null,
   actor_id: "user-1",
-  actor_username: "Member One",
+  actor_display_name: "Member One",
   created_at: "2026-07-28T00:00:00.000Z",
 });
 
 function renderModal(currentItem: StorageItem) {
   return render(
-    <MantineProvider>
-      <StorageItemDetailModal
-        opened
-        item={currentItem}
-        canEditItem={false}
-        canManageStock={false}
-        onClose={vi.fn()}
-        onDeposit={vi.fn()}
-        onWithdraw={vi.fn()}
-        onEdit={vi.fn()}
-      />
-    </MantineProvider>,
+    <StorageItemDetailModal
+      opened
+      item={currentItem}
+      canEditItem={false}
+      canManageStock={false}
+      onClose={vi.fn()}
+      onDeposit={vi.fn()}
+      onWithdraw={vi.fn()}
+      onEdit={vi.fn()}
+    />,
   );
 }
 
@@ -100,18 +99,16 @@ describe("StorageItemDetailModal ledger pagination", () => {
     await user.click(screen.getByRole("button", { name: "2" }));
 
     view.rerender(
-      <MantineProvider>
-        <StorageItemDetailModal
-          opened
-          item={item("item-2")}
-          canEditItem={false}
-          canManageStock={false}
-          onClose={vi.fn()}
-          onDeposit={vi.fn()}
-          onWithdraw={vi.fn()}
-          onEdit={vi.fn()}
-        />
-      </MantineProvider>,
+      <StorageItemDetailModal
+        opened
+        item={item("item-2")}
+        canEditItem={false}
+        canManageStock={false}
+        onClose={vi.fn()}
+        onDeposit={vi.fn()}
+        onWithdraw={vi.fn()}
+        onEdit={vi.fn()}
+      />,
     );
 
     await waitFor(() => {
@@ -165,9 +162,16 @@ describe("StorageItemDetailModal ledger pagination", () => {
     const { container } = renderModal(item("item-1"));
     const modal = container.ownerDocument.querySelector(".storage-detail-drawer");
     const preview = container.ownerDocument.querySelector(".storage-detail-media");
+    const storageCss = readFileSync(
+      resolve(process.cwd(), "apps/portal/components/pages/StoragePage.css"),
+      "utf8",
+    );
 
     expect(modal).toBeInTheDocument();
-    expect(preview).toHaveStyle({ minWidth: "0" });
+    expect(preview).toHaveClass("storage-detail-media");
+    expect(storageCss).toMatch(
+      /\.storage-detail-media\s*\{[\s\S]*?min-width:\s*0/,
+    );
   });
 
   it("offers direct deposit and withdraw actions from item detail", async () => {
@@ -177,18 +181,16 @@ describe("StorageItemDetailModal ledger pagination", () => {
     const currentItem = item("item-1");
 
     render(
-      <MantineProvider>
-        <StorageItemDetailModal
-          opened
-          item={currentItem}
-          canEditItem={false}
-          canManageStock={false}
-          onClose={vi.fn()}
-          onDeposit={onDeposit}
-          onWithdraw={onWithdraw}
-          onEdit={vi.fn()}
-        />
-      </MantineProvider>,
+      <StorageItemDetailModal
+        opened
+        item={currentItem}
+        canEditItem={false}
+        canManageStock={false}
+        onClose={vi.fn()}
+        onDeposit={onDeposit}
+        onWithdraw={onWithdraw}
+        onEdit={vi.fn()}
+      />,
     );
 
     await user.click(screen.getByRole("button", { name: "action.deposit" }));
@@ -200,22 +202,20 @@ describe("StorageItemDetailModal ledger pagination", () => {
 
   it("offers direct stock actions to managers when member self-service is closed", () => {
     render(
-      <MantineProvider>
-        <StorageItemDetailModal
-          opened
-          item={{
-            ...item("item-1"),
-            allow_member_deposit: false,
-            allow_member_withdraw: false,
-          }}
-          canEditItem
-          canManageStock
-          onClose={vi.fn()}
-          onDeposit={vi.fn()}
-          onWithdraw={vi.fn()}
-          onEdit={vi.fn()}
-        />
-      </MantineProvider>,
+      <StorageItemDetailModal
+        opened
+        item={{
+          ...item("item-1"),
+          allow_member_deposit: false,
+          allow_member_withdraw: false,
+        }}
+        canEditItem
+        canManageStock
+        onClose={vi.fn()}
+        onDeposit={vi.fn()}
+        onWithdraw={vi.fn()}
+        onEdit={vi.fn()}
+      />,
     );
 
     expect(screen.getByRole("button", { name: "action.deposit" })).toBeInTheDocument();

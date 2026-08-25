@@ -9,7 +9,7 @@ const mocks = vi.hoisted(() => ({
   fetchRoles: vi.fn(),
   user: {
     id: "admin-1",
-    username: "admin",
+    display_name: "admin",
     role: "admin",
     role_name: "Guild Admin",
     role_color: "#ef4444",

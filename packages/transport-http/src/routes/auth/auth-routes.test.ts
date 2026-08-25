@@ -10,7 +10,7 @@ import { createAuthRoutes } from "./auth-routes.js";
 const NOW = "2026-08-09T12:00:00.000Z";
 const user: AuthUserRecord = {
   id: "user-1",
-  username: "Member",
+  displayName: "Member",
   roleId: "member",
   roleName: "Member",
   roleColor: null,
@@ -49,14 +49,19 @@ const session: AuthSessionResult = {
     tokenDigest: "digest",
     expiresAt: "2026-09-08T12:00:00.000Z",
     stayLoggedIn: true,
+    scope: "normal",
   },
 };
 
-function buildApp(input: Readonly<{ secure?: boolean; allowed?: boolean }> = {}) {
+function buildApp(input: Readonly<{
+  secure?: boolean;
+  allowed?: boolean;
+  cookieName?: string;
+  authenticated?: boolean;
+}> = {}) {
   const service = {
     login: vi.fn().mockResolvedValue(session),
     logout: vi.fn().mockResolvedValue({ ok: true as const }),
-    checkUsername: vi.fn().mockResolvedValue({ available: true }),
     verifyInvite: vi.fn().mockResolvedValue({
       valid: true as const,
       roleId: "member",
@@ -65,7 +70,27 @@ function buildApp(input: Readonly<{ secure?: boolean; allowed?: boolean }> = {})
       roleLevel: 100,
     }),
     register: vi.fn().mockResolvedValue({ ...session, session: { ...session.session, stayLoggedIn: false } }),
-    getMe: vi.fn().mockResolvedValue({ user, profile }),
+    getMe: vi.fn().mockResolvedValue({ user, profile, sessionScope: "normal" as const }),
+    getSecurity: vi.fn().mockResolvedValue({ loginName: "member-login", displayName: "Member" }),
+    changePassword: vi.fn().mockResolvedValue({ ok: true as const }),
+    changeLoginName: vi.fn().mockResolvedValue({ ok: true as const }),
+    completePasswordReset: vi.fn().mockResolvedValue(session),
+    createSessionForUserId: vi.fn().mockResolvedValue(session),
+  };
+  const oauth = {
+    startLogin: vi.fn(),
+    startLink: vi.fn(),
+    finish: vi.fn(),
+    unlink: vi.fn().mockResolvedValue({ ok: true as const }),
+    listLinkedProviders: vi.fn().mockResolvedValue([]),
+  };
+  const emailVerification = {
+    available: false,
+    getVerifiedEmail: vi.fn().mockResolvedValue(null),
+    request: vi.fn().mockResolvedValue({ ok: true as const }),
+    resend: vi.fn().mockResolvedValue({ ok: true as const }),
+    verify: vi.fn(),
+    remove: vi.fn().mockResolvedValue({ ok: true as const }),
   };
   const consume = vi.fn().mockResolvedValue({ allowed: input.allowed ?? true, retryAfterSeconds: 12 });
   const app = new Hono<HttpEnv>();
@@ -75,25 +100,97 @@ function buildApp(input: Readonly<{ secure?: boolean; allowed?: boolean }> = {})
     context.set("requestContext", createRequestContext({
       requestId: "request-1",
       now: NOW,
-      authorization: createAuthorizationContext(null),
+      authorization: createAuthorizationContext(input.authenticated ? {
+        userId: user.id,
+        sessionId: "session-1",
+        roleId: user.roleId,
+        roleLevel: user.roleLevel,
+        permissions: [],
+      } : null),
     }));
     await next();
   });
   app.route("/api/auth", createAuthRoutes({
     service,
+    oauth: oauth as never,
+    emailVerification: emailVerification as never,
     rateLimiter: { consume },
-    cookie: { publicUrl: input.secure === false ? "http://guild.test" : "https://guild.test" },
+    cookie: {
+      publicUrl: input.secure === false ? "http://guild.test" : "https://guild.test",
+      name: input.cookieName,
+    },
   }));
-  return { app, service, consume };
+  return { app, service, oauth, emailVerification, consume };
 }
 
 describe("auth Portal HTTP contract", () => {
+  it("binds OAuth state to a short-lived HttpOnly browser transaction cookie", async () => {
+    const value = buildApp();
+    value.oauth.startLogin.mockResolvedValue({
+      authorizationUrl: "https://provider.example/authorize?state=state",
+      browserBindingToken: "browser-binding-token",
+    });
+
+    const start = await value.app.request("/api/auth/oauth/google/start", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: "{}",
+    });
+    await expect(start.json()).resolves.toEqual({
+      authorization_url: "https://provider.example/authorize?state=state",
+    });
+    const transactionCookie = start.headers.get("Set-Cookie") ?? "";
+    expect(transactionCookie).toContain("__Host-ig_session_oauth_transaction=browser-binding-token");
+    expect(transactionCookie).toContain("HttpOnly");
+    expect(transactionCookie).toContain("SameSite=Lax");
+    expect(transactionCookie).toContain("Path=/");
+    expect(transactionCookie).toContain("Secure");
+    expect(transactionCookie).not.toContain("Domain=");
+
+    const missingCookie = await value.app.request(
+      "/api/auth/oauth/google/callback?state=state&code=code",
+    );
+    expect(missingCookie.status).toBe(302);
+    expect(missingCookie.headers.get("Location")).toBe("https://guild.test/login?oauth=failed");
+    expect(value.oauth.finish).not.toHaveBeenCalled();
+
+    value.oauth.finish.mockResolvedValue({ kind: "login", userId: "user-1", authRevision: 1 });
+    const callback = await value.app.request(
+      "/api/auth/oauth/google/callback?state=state&code=code",
+      { headers: { Cookie: "__Host-ig_session_oauth_transaction=browser-binding-token" } },
+    );
+    expect(callback.status).toBe(302);
+    expect(value.oauth.finish).toHaveBeenCalledWith(expect.anything(), {
+      provider: "google",
+      state: "state",
+      browserBindingToken: "browser-binding-token",
+      code: "code",
+      now: NOW,
+    });
+    expect(value.service.createSessionForUserId).toHaveBeenCalledWith("user-1", NOW, 1);
+    expect(callback.headers.get("Location")).toBe("https://guild.test/");
+    expect(callback.headers.get("Set-Cookie")).toContain("__Host-ig_session_oauth_transaction=");
+  });
+
+  it("redirects an OAuth account-link callback to the account security tab", async () => {
+    const value = buildApp();
+    value.oauth.finish.mockResolvedValue({ kind: "link" });
+
+    const response = await value.app.request(
+      "/api/auth/oauth/google/callback?state=state&code=code",
+      { headers: { Cookie: "__Host-ig_session_oauth_transaction=browser-binding-token" } },
+    );
+
+    expect(response.status).toBe(302);
+    expect(response.headers.get("Location")).toBe("https://guild.test/profile?tab=account&oauth=linked");
+  });
+
   it("puts only the random session token in a hardened HTTPS cookie", async () => {
     const { app } = buildApp();
     const response = await app.request("/api/auth/login", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ username: "Member", password: "password", stay_logged_in: true }),
+      body: JSON.stringify({ login_name: "Member", password: "password", stay_logged_in: true }),
     });
 
     expect(response.status).toBe(200);
@@ -102,11 +199,12 @@ describe("auth Portal HTTP contract", () => {
     expect(JSON.stringify(body)).not.toContain("only-in-cookie");
     expect(JSON.stringify(body)).not.toContain("digest");
     const cookie = response.headers.get("Set-Cookie") ?? "";
-    expect(cookie).toContain("ig_session=only-in-cookie");
+    expect(cookie).toContain("__Host-ig_session=only-in-cookie");
     expect(cookie).toContain("HttpOnly");
     expect(cookie).toContain("SameSite=Lax");
     expect(cookie).toContain("Path=/");
     expect(cookie).toContain("Secure");
+    expect(cookie).not.toContain("Domain=");
     expect(cookie).toContain("Max-Age=2592000");
   });
 
@@ -115,8 +213,10 @@ describe("auth Portal HTTP contract", () => {
     const login = await app.request("/api/auth/login", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ username: "Member", password: "password" }),
+      body: JSON.stringify({ login_name: "Member", password: "password" }),
     });
+    expect(login.headers.get("Set-Cookie")).toContain("ig_session=only-in-cookie");
+    expect(login.headers.get("Set-Cookie")).not.toContain("__Host-");
     expect(login.headers.get("Set-Cookie")).not.toContain("Secure");
 
     const logout = await app.request("/api/auth/logout", {
@@ -128,29 +228,88 @@ describe("auth Portal HTTP contract", () => {
     expect(logout.headers.get("Set-Cookie")).toContain("ig_session=");
   });
 
+  it("does not permit a custom HTTPS cookie name to bypass the Host cookie contract", () => {
+    expect(() => buildApp({ cookieName: "custom-session" })).toThrow(
+      "HTTPS session cookies must use the __Host-ig_session name",
+    );
+  });
+
   it("passes the trusted client identifier to the service and keeps other auth operations rate-limited", async () => {
     const { app, service, consume } = buildApp();
     const response = await app.request("/api/auth/login", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ username: "Member", password: "password" }),
+      body: JSON.stringify({ login_name: "Member", password: "password" }),
     });
     expect(response.status).toBe(200);
     expect(service.login).toHaveBeenCalledWith(expect.objectContaining({ clientIdentifier: "client-1" }));
     expect(consume).not.toHaveBeenCalled();
 
     const allowed = buildApp();
-    await allowed.app.request("/api/auth/check-username?username=NewMember");
     await allowed.app.request("/api/auth/verify-invite/A1b2C3d4E5");
     await allowed.app.request("/api/auth/register/A1b2C3d4E5", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ username: "NewMember", password: "password", confirmPassword: "password" }),
+      body: JSON.stringify({
+        login_name: "new_member",
+        display_name: "New_Member",
+        password: "password123456789",
+        confirmPassword: "password123456789",
+      }),
     });
     expect(allowed.consume.mock.calls.map(([key]) => key)).toEqual([
-      "auth:username:client-1",
       "auth:invite-verify:client-1",
       "auth:register:client-1",
+    ]);
+  });
+
+  it("rate-limits current-password verification by both account and trusted source", async () => {
+    const value = buildApp({ authenticated: true });
+    value.oauth.startLink.mockResolvedValue({
+      authorizationUrl: "https://provider.example/authorize",
+      browserBindingToken: "binding-token",
+    });
+    const operations = [
+      ["PATCH", "/api/auth/security/password", {
+        currentPassword: "password",
+        newPassword: "new-password",
+        confirmNewPassword: "new-password",
+      }],
+      ["PATCH", "/api/auth/security/login-name", {
+        currentPassword: "password",
+        login_name: "member_login_2",
+      }],
+      ["DELETE", "/api/auth/security/oauth/google", { current_password: "password" }],
+      ["POST", "/api/auth/security/email", { current_password: "password", email: "member@example.com" }],
+      ["POST", "/api/auth/security/email/resend", { current_password: "password" }],
+      ["DELETE", "/api/auth/security/email", { current_password: "password" }],
+    ] as const;
+
+    for (const [method, path, body] of operations) {
+      value.consume.mockClear();
+      const response = await value.app.request(path, {
+        method,
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      expect(response.status, `${method} ${path}: ${await response.clone().text()}`).toBe(200);
+      expect(value.consume.mock.calls.map(([key]) => key)).toEqual([
+        "auth:credential:user:user-1",
+        "auth:credential:source:client-1",
+      ]);
+    }
+
+    value.consume.mockClear();
+    const oauthStart = await value.app.request("/api/auth/oauth/google/start", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ current_password: "password" }),
+    });
+    expect(oauthStart.status).toBe(200);
+    expect(value.consume.mock.calls.map(([key]) => key)).toEqual([
+      "auth:oauth-start:client-1",
+      "auth:credential:user:user-1",
+      "auth:credential:source:client-1",
     ]);
   });
 
@@ -168,7 +327,7 @@ describe("auth Portal HTTP contract", () => {
     const response = await app.request("/api/auth/login", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ username: "Member", password: "wrong" }),
+      body: JSON.stringify({ login_name: "Member", password: "wrong" }),
     });
     expect(response.status).toBe(429);
     expect(await response.json()).toEqual({

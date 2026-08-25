@@ -63,6 +63,71 @@ export function formatClock(value: Instant, options?: { seconds?: boolean }): st
   return format(date, options?.seconds ? "HH:mm:ss" : "HH:mm");
 }
 
+export type EventTimeFormatOptions = {
+  /** 省略时按阅读者浏览器时区显示；测试或固定场景可显式指定。 */
+  timeZone?: string;
+  hour12?: boolean;
+};
+
+function eventTimeFormatOptions(options: EventTimeFormatOptions): Intl.DateTimeFormatOptions {
+  return {
+    hour: "numeric",
+    minute: "2-digit",
+    ...(options.hour12 === undefined ? {} : { hour12: options.hour12 }),
+    ...(options.timeZone ? { timeZone: options.timeZone } : {}),
+  };
+}
+
+/** 指定瞬时点的短时区名；页面不得各自重新拼装 Intl 选项。 */
+export function formatTimeZoneAbbreviation(value: Instant, timeZone?: string): string {
+  const date = toDate(value);
+  if (!date) return timeZone ?? "";
+
+  const parts = new Intl.DateTimeFormat("en-US", {
+    hour: "numeric",
+    timeZoneName: "short",
+    ...(timeZone ? { timeZone } : {}),
+  }).formatToParts(date);
+  return parts.find((part) => part.type === "timeZoneName")?.value ?? timeZone ?? "";
+}
+
+/** 绝对日期时间紧跟阅读者当前时区，供公告、记录等不属于活动日程的时间点使用。 */
+export function formatDateTimeWithTimeZone(value: Instant): string {
+  const date = toDate(value);
+  if (!date) return EMPTY_TIME_TEXT;
+
+  const timeZone = formatTimeZoneAbbreviation(date);
+  const dateTime = formatDateTime(date);
+  return timeZone ? `${dateTime} ${timeZone}` : dateTime;
+}
+
+/** 活动时刻始终把实际时区缩写紧跟在时间后，避免把服务器 UTC 误称为成员时区。 */
+export function formatEventTime(
+  value: Instant,
+  locale: string | undefined,
+  options: EventTimeFormatOptions = {},
+): string {
+  const date = toDate(value);
+  if (!date) return EMPTY_TIME_TEXT;
+
+  const time = date.toLocaleTimeString(locale, eventTimeFormatOptions(options));
+  const timeZone = formatTimeZoneAbbreviation(date, options.timeZone);
+  return timeZone ? `${time} ${timeZone}` : time;
+}
+
+/** 活动起止区间中的每个可见时刻都带自己的时区缩写，夏令时切换也不会被掩盖。 */
+export function formatEventTimeRange(
+  start: Instant,
+  end: Instant,
+  locale: string | undefined,
+  options: EventTimeFormatOptions = {},
+): string {
+  if (!toDate(start)) return EMPTY_TIME_TEXT;
+  const startTime = formatEventTime(start, locale, options);
+  if (!toDate(end)) return startTime;
+  return `${startTime}–${formatEventTime(end, locale, options)}`;
+}
+
 /**
  * numeric 不是 Intl 的 dateStyle，是 `toLocaleDateString()` 不带参数时的那种纯数字
  * 日期（8/13/2026）。站里好几处本来就长这样，给它一个名字，省得为了保形又各写一遍选项。

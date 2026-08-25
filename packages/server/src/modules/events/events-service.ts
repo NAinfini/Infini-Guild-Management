@@ -1029,12 +1029,17 @@ export class EventsService {
   }
 
   private publish(entityId: string, hint: PushHint, updatedAt: string): void {
-    this.dependencies.deferred.defer(() => this.dependencies.notifications.publish({
-      type: "entity_changed",
-      entity_type: "event",
-      entity_id: entityId,
-      updated_at: updatedAt,
-      hint,
-    }));
+    this.dependencies.deferred.defer(async () => {
+      await this.dependencies.notifications.publish({
+        type: "entity_changed",
+        entity_type: "event",
+        entity_id: entityId,
+        updated_at: updatedAt,
+        hint,
+      });
+      if (hint === "event_created") {
+        await this.dependencies.notifications.publish({ type: "inbox_changed" });
+      }
+    });
   }
 }

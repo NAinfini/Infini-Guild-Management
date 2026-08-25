@@ -1,5 +1,6 @@
 import type { Event, EventClassQuotaInput } from "@guild/shared";
 import type { QueryClient } from "@tanstack/react-query";
+import { isApiRequestError } from "../api/client";
 import {
   addEventParticipant,
   addEventParticipants,
@@ -49,6 +50,7 @@ export {
   fetchEventsList,
   fetchTemplatesList,
   joinEvent,
+  isApiRequestError,
   leaveEvent,
   pauseTemplate,
   queryKeys,

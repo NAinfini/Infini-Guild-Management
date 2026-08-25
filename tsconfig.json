@@ -34,7 +34,6 @@
       "@tabler/icons-react": ["./node_modules/@tabler/icons-react"],
       "@tanstack/react-table": ["./node_modules/@tanstack/react-table"],
       "@tiptap/*": ["./node_modules/@tiptap/*"],
-      "@mantine/carousel": ["./node_modules/@mantine/carousel"],
       "@dnd-kit/*": ["./node_modules/@dnd-kit/*"],
       "react-hook-form": ["./node_modules/react-hook-form"],
       "@hookform/resolvers/*": ["./node_modules/@hookform/resolvers/*"],

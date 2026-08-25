@@ -1,4 +1,5 @@
-import { Avatar, Group, TextInput, UnstyledButton } from "@mantine/core";
+import { Avatar, AvatarFallback } from "@portal/components/ui/avatar";
+import { Input } from "@portal/components/ui/input";
 import { CheckIcon, SearchIcon } from "@portal/components/icons";
 import { useMemo, useState, type ComponentType, type ReactNode } from "react";
 
@@ -48,15 +49,15 @@ export function GuildWarAnalyticsListBox({
   return (
     <div className="gwa-listbox">
       {searchable ? (
-        <TextInput
-          size="xs"
-          placeholder={searchPlaceholder}
-          aria-label={searchPlaceholder}
-          value={search}
-          onChange={(event) => setSearch(event.currentTarget.value)}
-          leftSection={<SearchIcon size={12} />}
-          className="gwa-listbox__search"
-        />
+        <div className="gwa-listbox__search">
+          <SearchIcon className="gwa-listbox__search-icon" size={12} aria-hidden="true" />
+          <Input
+            placeholder={searchPlaceholder}
+            aria-label={searchPlaceholder}
+            value={search}
+            onChange={(event) => setSearch(event.currentTarget.value)}
+          />
+        </div>
       ) : null}
       <div
         className="gwa-listbox__items"
@@ -68,7 +69,8 @@ export function GuildWarAnalyticsListBox({
           const checked = selected.includes(item.value);
           const disabled = Boolean(maxSelect && selected.length >= maxSelect && !checked);
           return (
-            <UnstyledButton
+            <button
+              type="button"
               key={item.value}
               onClick={() => toggle(item.value)}
               className={`gwa-listbox__item ${checked ? "gwa-listbox__item--selected" : ""}`}
@@ -77,7 +79,7 @@ export function GuildWarAnalyticsListBox({
               disabled={disabled}
             >
               {renderItem ? renderItem(item, checked) : <DefaultListBoxItem item={item} checked={checked} />}
-            </UnstyledButton>
+            </button>
           );
         })}
       </div>
@@ -92,13 +94,13 @@ type DefaultListBoxItemProps = {
 
 function DefaultListBoxItem({ item, checked }: DefaultListBoxItemProps) {
   return (
-    <Group gap={8} style={{ justifyContent: "space-between", width: "100%" }}>
-      <Group gap={8}>
+    <span className="gwa-listbox__item-layout">
+      <span className="gwa-listbox__item-main">
         {item.Icon ? <item.Icon size={14} /> : null}
         <span className="gwa-listbox__item-label">{item.label}</span>
-      </Group>
+      </span>
       {checked ? <CheckIcon size={12} /> : null}
-    </Group>
+    </span>
   );
 }
 
@@ -109,14 +111,16 @@ type UserListBoxItemProps = {
 
 export function UserListBoxItem({ item, checked }: UserListBoxItemProps) {
   return (
-    <Group gap={8} style={{ justifyContent: "space-between", width: "100%" }}>
-      <Group gap={8}>
-        <Avatar size={20} radius="xl">
+    <span className="gwa-listbox__item-layout">
+      <span className="gwa-listbox__item-main">
+        <Avatar className="size-5">
+          <AvatarFallback>
           {item.label.slice(0, 2).toUpperCase()}
+          </AvatarFallback>
         </Avatar>
         <span className="gwa-listbox__item-label">{item.label}</span>
-      </Group>
+      </span>
       {checked ? <CheckIcon size={12} /> : null}
-    </Group>
+    </span>
   );
 }

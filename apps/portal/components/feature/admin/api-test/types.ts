@@ -32,7 +32,7 @@ export type TestRunContext = {
   /** Independent public fixture label; never grants access to the cleanup run. */
   fixtureId: string | null;
   meId: string | null;
-  meUsername: string | null;
+  meDisplayName: string | null;
   meRoleLevel: number | null;
   mePermissions: Record<string, boolean> | null;
   registerInviteCode: string | null;
@@ -56,7 +56,7 @@ export type TestRunContext = {
   wikiArticleCategoryId: string | null;
   inviteLinkId: string | null;
   adminCreatedUserId: string | null;
-  adminCreatedUsername: string | null;
+  adminCreatedLoginName: string | null;
   adminCreatedUserPassword: string | null;
   adminRoleId: string | null;
   auditArchiveMonth: string | null;
@@ -70,7 +70,7 @@ export type TestRunContext = {
   /** Media ID created by the test and safe to delete during cleanup. */
   uploadedImageMediaId: string | null;
   registeredUserId: string | null;
-  registeredUsername: string | null;
+  registeredLoginName: string | null;
   registeredUserPassword: string | null;
   createdInviteLinkId: string | null;
   createdAnnouncementId: string | null;
@@ -138,7 +138,7 @@ export function createInitialTestRunContext(): TestRunContext {
     runId: null,
     fixtureId: null,
     meId: null,
-    meUsername: null,
+    meDisplayName: null,
     meRoleLevel: null,
     mePermissions: null,
     registerInviteCode: null,
@@ -162,7 +162,7 @@ export function createInitialTestRunContext(): TestRunContext {
     wikiArticleCategoryId: null,
     inviteLinkId: null,
     adminCreatedUserId: null,
-    adminCreatedUsername: null,
+    adminCreatedLoginName: null,
     adminCreatedUserPassword: null,
     adminRoleId: null,
     auditArchiveMonth: null,
@@ -175,7 +175,7 @@ export function createInitialTestRunContext(): TestRunContext {
     siteLogoMediaId: null,
     uploadedImageMediaId: null,
     registeredUserId: null,
-    registeredUsername: null,
+    registeredLoginName: null,
     registeredUserPassword: null,
     createdInviteLinkId: null,
     createdAnnouncementId: null,

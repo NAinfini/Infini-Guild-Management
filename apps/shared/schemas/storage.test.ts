@@ -113,10 +113,10 @@ describe("storage transaction contracts", () => {
       item_name: "Potion",
       type: "intake" as const,
       recipient_user_id: "user-1",
-      recipient_username: "member",
+      recipient_display_name: "member",
       note: null,
       actor_id: "user-1",
-      actor_username: "member",
+      actor_display_name: "member",
       created_at: "2026-08-09T00:00:00.000Z",
     };
     expect(storageTransactionSchema.safeParse({ ...base, quantity_delta: 0.5 }).success).toBe(true);

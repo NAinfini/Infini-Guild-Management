@@ -1,11 +1,17 @@
-import type { Announcement, AuditChange, PaginatedResponse } from "@guild/shared";
+import type { Announcement, AnnouncementAttachment, AnnouncementSummary, AuditChange, PaginatedResponse } from "@guild/shared";
 import type { AnnouncementStatus } from "@guild/shared/constants/announcements";
 import { PERMISSION_ID } from "@guild/shared/constants/roles";
 import type { DeferredTasks, NotificationPublisher, RequestContext } from "@guild/kernel";
 import { AppError } from "@guild/kernel";
 import { nanoid } from "nanoid";
 import { createAuditEvent, type AuditEventWrite } from "../audit/public.js";
-import { canonicalizeRichTextMedia, extractRichTextMediaIds, type ImageUpload, type MediaService } from "../media/public.js";
+import {
+  canonicalizeRichTextMedia,
+  extractRichTextMediaIds,
+  type FileUpload,
+  type ImageUpload,
+  type MediaService,
+} from "../media/public.js";
 import { assertPortableLikeSearch } from "../../portable-search.js";
 
 const MANAGE_PERMISSIONS = [
@@ -15,7 +21,8 @@ const MANAGE_PERMISSIONS = [
   PERMISSION_ID.ANNOUNCEMENTS_DELETE,
 ] as const;
 
-export type AnnouncementRecord = Announcement & Readonly<{ revisionToken: string }>;
+export type AnnouncementRecord = Omit<Announcement, "author" | "attachments"> & Readonly<{ revisionToken: string }>;
+export type AnnouncementDetailRecord = Announcement & Readonly<{ revisionToken: string }>;
 
 export type AnnouncementListQuery = Readonly<{
   page: number;
@@ -30,19 +37,23 @@ export type AnnouncementListQuery = Readonly<{
 }>;
 
 export interface AnnouncementStore {
-  list(query: AnnouncementListQuery): Promise<PaginatedResponse<Announcement>>;
-  get(id: string, canReadAll: boolean, now: string): Promise<AnnouncementRecord | null>;
+  list(query: AnnouncementListQuery): Promise<PaginatedResponse<AnnouncementSummary>>;
+  get(id: string, canReadAll: boolean, now: string): Promise<AnnouncementDetailRecord | null>;
   create(input: Readonly<{
     record: AnnouncementRecord;
     mediaIds: readonly string[];
+    attachmentMediaIds: readonly string[];
     maxItems: number;
+    maxAttachmentItems: number;
     audit: AuditEventWrite;
   }>): Promise<void>;
   update(input: Readonly<{
     record: AnnouncementRecord;
     expectedRevisionToken: string;
     mediaIds: readonly string[] | null;
+    attachmentMediaIds: readonly string[] | null;
     maxItems: number;
+    maxAttachmentItems: number;
     audit: AuditEventWrite;
   }>): Promise<boolean>;
   archive(input: Readonly<{
@@ -74,6 +85,7 @@ export type CreateAnnouncementInput = Readonly<{
   pinned: boolean;
   status: AnnouncementStatus;
   publish_at?: string | null;
+  attachment_media_ids?: readonly string[];
 }>;
 
 export type UpdateAnnouncementInput = Partial<CreateAnnouncementInput>;
@@ -86,7 +98,7 @@ export class AnnouncementService {
     private readonly deferred: DeferredTasks,
   ) {}
 
-  list(context: RequestContext, query: Omit<AnnouncementListQuery, "canReadAll" | "now">): Promise<PaginatedResponse<Announcement>> {
+  list(context: RequestContext, query: Omit<AnnouncementListQuery, "canReadAll" | "now">): Promise<PaginatedResponse<AnnouncementSummary>> {
     if (!Number.isInteger(query.page) || query.page < 1 || !Number.isInteger(query.limit) || query.limit < 1 || query.limit > 100) {
       throw validation("Invalid announcement pagination");
     }
@@ -105,6 +117,7 @@ export class AnnouncementService {
     input: CreateAnnouncementInput,
     requestOrigin: string,
     imageQuota: number,
+    attachmentQuota: number,
   ): Promise<Announcement> {
     const actor = context.authorization.require(PERMISSION_ID.ANNOUNCEMENTS_CREATE);
     const bodyJson = canonicalizeRichTextMedia(input.body_json, requestOrigin);
@@ -136,12 +149,22 @@ export class AnnouncementService {
         { field: "publish_at", value: record.publish_at === null
           ? { type: "null", value: null }
           : { type: "datetime", value: record.publish_at } },
+        ...(input.attachment_media_ids && input.attachment_media_ids.length > 0
+          ? [{ field: "media_count" as const, value: { type: "number" as const, value: input.attachment_media_ids.length } }]
+          : []),
       ],
     });
-    await this.store.create({ record, mediaIds, maxItems: imageQuota, audit });
+    await this.store.create({
+      record,
+      mediaIds,
+      attachmentMediaIds: input.attachment_media_ids ?? [],
+      maxItems: imageQuota,
+      maxAttachmentItems: attachmentQuota,
+      audit,
+    });
     this.publishChange(record, "announcement_created");
     if (record.status === "published") this.publishAnnouncement(record);
-    return withoutRevision(record);
+    return this.readDetail(record.id, context.now);
   }
 
   async update(
@@ -150,6 +173,7 @@ export class AnnouncementService {
     input: UpdateAnnouncementInput,
     requestOrigin: string,
     imageQuota: number,
+    attachmentQuota: number,
     ifMatch?: string,
   ): Promise<Announcement> {
     const actor = context.authorization.require(PERMISSION_ID.ANNOUNCEMENTS_EDIT);
@@ -168,7 +192,7 @@ export class AnnouncementService {
     );
     const updatedAt = monotonicTimestamp(context.now, existing.updated_at);
     const record: AnnouncementRecord = {
-      ...existing,
+      ...toRecord(existing),
       title: input.title?.trim() ?? existing.title,
       body_json: bodyJson,
       pinned: input.pinned ?? existing.pinned,
@@ -179,27 +203,49 @@ export class AnnouncementService {
       updated_at: updatedAt,
       revisionToken: crypto.randomUUID(),
     };
+    const attachmentsChanged = input.attachment_media_ids !== undefined
+      && !sameAttachmentIds(existing.attachments, input.attachment_media_ids);
+    const changedSections = [
+      ...(existing.body_json === record.body_json ? [] : ["body_json"]),
+      ...(attachmentsChanged ? ["attachments"] : []),
+    ] as const;
     const audit = createAuditEvent(context, {
       subjectType: "announcement",
       subjectId: id,
       subjectLabel: record.title,
       action: "update",
-      changes: announcementChanges(existing, record),
-      context: existing.body_json === record.body_json ? [] : [{
-        field: "changed_sections", value: { type: "list", value: [{ type: "code", value: "body_json" }] },
-      }],
+      changes: [
+        ...announcementChanges(existing, record),
+        ...(attachmentsChanged ? [{
+          field: "media_count" as const,
+          before: { type: "number" as const, value: existing.attachments.length },
+          after: { type: "number" as const, value: input.attachment_media_ids!.length },
+        }] : []),
+      ],
+      context: [
+        ...(changedSections.length > 0 ? [{
+          field: "changed_sections" as const,
+          value: { type: "list" as const, value: changedSections.map((value) => ({ type: "code" as const, value })) },
+        }] : []),
+        ...(attachmentsChanged ? [{
+          field: "media_count" as const,
+          value: { type: "number" as const, value: input.attachment_media_ids!.length },
+        }] : []),
+      ],
     });
     const changed = await this.store.update({
       record,
       expectedRevisionToken: existing.revisionToken,
       mediaIds: input.body_json === undefined ? null : extractRichTextMediaIds(bodyJson),
+      attachmentMediaIds: input.attachment_media_ids ?? null,
       maxItems: imageQuota,
+      maxAttachmentItems: attachmentQuota,
       audit,
     });
     if (!changed) throw conflict();
     this.publishChange(record, "announcement_updated");
     if (existing.status !== "published" && record.status === "published") this.publishAnnouncement(record);
-    return withoutRevision(record);
+    return this.readDetail(record.id, context.now);
   }
 
   async archive(context: RequestContext, id: string): Promise<Readonly<{ ok: true }>> {
@@ -274,6 +320,29 @@ export class AnnouncementService {
     };
   }
 
+  async uploadPendingAttachment(
+    context: RequestContext,
+    upload: FileUpload,
+    maxBytes: number,
+    quota: number,
+  ): Promise<Readonly<{ expires_at: string; attachment: AnnouncementAttachment }>> {
+    context.authorization.requireAuthenticated();
+    if (
+      !context.authorization.has(PERMISSION_ID.ANNOUNCEMENTS_CREATE)
+      && !context.authorization.has(PERMISSION_ID.ANNOUNCEMENTS_EDIT)
+    ) {
+      throw new AppError({ code: "FORBIDDEN", status: 403, message: "Permission denied" });
+    }
+    if (!Number.isInteger(quota) || quota < 1) {
+      throw new AppError({ code: "VALIDATION_ERROR", status: 400, message: "Announcement attachment quota is unavailable" });
+    }
+    const attachment = await this.media.uploadAnnouncementAttachment(context, upload, maxBytes);
+    return {
+      expires_at: new Date(Date.parse(context.now) + 24 * 60 * 60 * 1_000).toISOString(),
+      attachment,
+    };
+  }
+
   async uploadImages(
     context: RequestContext,
     id: string,
@@ -323,13 +392,15 @@ export class AnnouncementService {
     }));
   }
 
-  private publishAnnouncement(record: Announcement): void {
-    this.deferred.defer(() => this.notifications.publish({
-      type: "announcement_published",
-      announcement_id: record.id,
-      title: record.title,
-      published_at: record.publish_at ?? record.updated_at,
-    }));
+  private publishAnnouncement(record: Pick<Announcement, "id" | "updated_at">): void {
+    this.publishChange(record, "announcement_published");
+    this.deferred.defer(() => this.notifications.publish({ type: "inbox_changed" }));
+  }
+
+  private async readDetail(id: string, now: string): Promise<Announcement> {
+    const record = await this.store.get(id, true, now);
+    if (!record) throw new AppError({ code: "SERVER_ERROR", status: 500, message: "Announcement was not readable after mutation" });
+    return withoutRevision(record);
   }
 }
 
@@ -365,7 +436,7 @@ function announcementAudience(record: Announcement, now: string): "public" | "pr
     : "private";
 }
 
-function announcementChanges(before: Announcement, after: Announcement): AuditChange[] {
+function announcementChanges(before: Announcement, after: AnnouncementRecord): AuditChange[] {
   const changes: AuditChange[] = [];
   if (before.title !== after.title) changes.push({
     field: "title", before: { type: "text", value: before.title }, after: { type: "text", value: after.title },
@@ -384,13 +455,25 @@ function announcementChanges(before: Announcement, after: Announcement): AuditCh
   return changes;
 }
 
-function announcementEtag(record: Announcement): string {
+function announcementEtag(record: Pick<Announcement, "id" | "updated_at">): string {
   return `"announcement-${record.id}-${record.updated_at}"`;
 }
 
-function withoutRevision(record: AnnouncementRecord): Announcement {
+function withoutRevision(record: AnnouncementDetailRecord): Announcement {
   const { revisionToken: _revisionToken, ...announcement } = record;
   return announcement;
+}
+
+function toRecord(record: AnnouncementDetailRecord): AnnouncementRecord {
+  const { author: _author, attachments: _attachments, ...announcement } = record;
+  return announcement;
+}
+
+function sameAttachmentIds(
+  existing: readonly AnnouncementAttachment[],
+  next: readonly string[],
+): boolean {
+  return existing.length === next.length && existing.every((attachment, index) => attachment.media_id === next[index]);
 }
 
 function monotonicTimestamp(now: string, previous: string): string {

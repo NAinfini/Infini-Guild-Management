@@ -1,4 +1,3 @@
-import { MantineProvider } from "@mantine/core";
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { useAdminClassesController } from "@portal/hooks/useAdminClassesController";
@@ -66,9 +65,9 @@ function renderSection(
   return {
     openEdit,
     ...render(
-      <MantineProvider forceColorScheme={colorScheme}>
+      <div data-theme={colorScheme}>
         <AdminClassesSection />
-      </MantineProvider>,
+      </div>,
     ),
   };
 }
@@ -92,6 +91,40 @@ describe("AdminClassesSection icon source", () => {
     expect(screen.getByText("classes.field.fallbackIcon")).toBeInTheDocument();
     expect(screen.getByRole("group", { name: "classes.iconLibrary" })).toBeInTheDocument();
     expect(screen.queryByText("classes.upload.title")).not.toBeInTheDocument();
+  });
+
+  it("shows the current custom image thumbnail and media information before a replacement is chosen", () => {
+    const customImage = {
+      id: "warden",
+      label: "Warden",
+      color: "#61B8AA",
+      sort_order: 0,
+      created_at: "2026-08-01T00:00:00.000Z",
+      updated_at: "2026-08-01T00:00:00.000Z",
+      icon_type: "image" as const,
+      vector_icon: null,
+      icon_media_id: "class-artwork-1",
+    };
+    renderSection("image", "light", {
+      query: {
+        data: [customImage],
+        isLoading: false,
+        isError: false,
+        refetch: vi.fn(),
+      } as unknown as ReturnType<typeof useAdminClassesController>["query"],
+      draft: {
+        id: customImage.id,
+        label: customImage.label,
+        color: customImage.color,
+        vectorIcon: "shield",
+        iconMode: "image",
+        imageFile: null,
+      },
+    });
+
+    expect(screen.getByText("classes.upload.currentImage")).toBeInTheDocument();
+    expect(screen.getByText("classes.upload.assetId:class-artwork-1")).toBeInTheDocument();
+    expect(document.querySelector(".admin-classes__asset-summary [role='img']")).toBeInTheDocument();
   });
 });
 

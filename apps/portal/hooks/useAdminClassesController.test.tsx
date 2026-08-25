@@ -143,6 +143,26 @@ describe("useAdminClassesController", () => {
     expect(apiMocks.fetch).toHaveBeenCalledTimes(2);
   });
 
+  it("clears the dirty state when an editor draft returns exactly to its baseline", async () => {
+    apiMocks.fetch.mockResolvedValue(catalog);
+    const { result } = renderHook(() => useAdminClassesController(), {
+      wrapper: createWrapper(),
+    });
+
+    await waitFor(() => expect(result.current.draft.id).toBe("warden"));
+    expect(result.current.isDirty).toBe(false);
+
+    act(() => {
+      result.current.setDraft((current) => ({ ...current, label: "Warden Prime" }));
+    });
+    expect(result.current.isDirty).toBe(true);
+
+    act(() => {
+      result.current.setDraft((current) => ({ ...current, label: "Warden" }));
+    });
+    expect(result.current.isDirty).toBe(false);
+  });
+
   it("submits the whole catalog order and shows it before the server answers", async () => {
     apiMocks.fetch.mockResolvedValue(catalog);
     let resolveReorder: ((items: typeof catalog) => void) | undefined;

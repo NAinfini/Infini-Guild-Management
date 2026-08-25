@@ -353,7 +353,7 @@ function profileImageDeletionAuditStatement(
          AND media_id IN (${placeholders(mediaIds)})
      )
      SELECT ?, ?, ?, ?,
-       CASE WHEN ? = 'user' THEN (SELECT username FROM users WHERE id = ?) ELSE ? END,
+       CASE WHEN ? = 'user' THEN (SELECT display_name FROM users WHERE id = ?) ELSE ? END,
        ?, ?, ?, ?,
        json_set(
          json(?), '$.context[#]',

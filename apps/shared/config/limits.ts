@@ -14,6 +14,7 @@ export const LIMITS = {
     quotas: {
       profile: 10,
       announcement: 10,
+      announcementAttachments: 5,
       gallery: 20,
       wiki: 10,
     },
@@ -24,6 +25,7 @@ export const LIMITS = {
       profileImage: 5 * 1024 * 1024,
       profileAudio: 20 * 1024 * 1024,
       announcementImage: 5 * 1024 * 1024,
+      announcementAttachment: 10 * 1024 * 1024,
       wikiImage: 5 * 1024 * 1024,
       eventImage: 5 * 1024 * 1024,
       galleryImage: 10 * 1024 * 1024,
@@ -31,7 +33,9 @@ export const LIMITS = {
     },
   },
   content: {
-    username: { min: 1, max: 50 },
+    identityName: { min: 1, max: 50 },
+    // New and reset passwords must have meaningful length. Existing hashes stay
+    // valid so installations can migrate without locking members out.
     password: { min: 8, max: 128 },
     eventTitle: { min: 1, max: 200 },
     eventDescription: { max: 5000 },
@@ -106,11 +110,12 @@ export const LIMITS = {
     wiki: 50,
   },
   rateLimit: {
+    // Keep the two login keys separate: an IP bucket absorbs broad credential
+    // spraying while the IP/login-name bucket protects an individual account.
+    authIp: { maxRequests: 30, windowMs: 60_000 },
     auth: { maxRequests: 5, windowMs: 60_000 },
-    usernameCheck: { maxRequests: 15, windowMs: 60_000 },
     mutations: { maxRequests: 80, windowMs: 60_000 },
     uploads: { maxRequests: 20, windowMs: 60_000 },
-    credentials: { maxRequests: 5, windowMs: 60_000 },
     reads: { maxRequests: 120, windowMs: 60_000 },
     expensiveReads: { maxRequests: 30, windowMs: 60_000 },
   },
@@ -138,3 +143,4 @@ const MAX_CONFIGURABLE_MEDIA_PAYLOAD_BYTES =
 export const MAX_CONFIGURABLE_IMAGE_VARIANT_BYTES =
   Math.floor(MAX_CONFIGURABLE_MEDIA_PAYLOAD_BYTES / 2);
 export const MAX_CONFIGURABLE_AUDIO_BYTES = MAX_CONFIGURABLE_MEDIA_PAYLOAD_BYTES;
+export const MAX_CONFIGURABLE_ATTACHMENT_BYTES = MAX_CONFIGURABLE_MEDIA_PAYLOAD_BYTES;

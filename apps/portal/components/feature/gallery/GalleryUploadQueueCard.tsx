@@ -1,6 +1,9 @@
-import { Button, Group, Paper, Progress, Stack, Text, TextInput } from "@mantine/core";
-import { useTranslation } from "react-i18next";
 import { RefreshCwIcon, XIcon } from "@portal/components/icons";
+import { Button } from "@portal/components/ui/button";
+import { Card } from "@portal/components/ui/card";
+import { Input } from "@portal/components/ui/input";
+import { Progress } from "@portal/components/ui/progress";
+import { useTranslation } from "react-i18next";
 import type { UploadStatus, UploadTask } from "@portal/types/media";
 
 const PROGRESS_BY_STATUS = {
@@ -48,76 +51,60 @@ export function GalleryUploadQueueCard({
   }
 
   return (
-    <Paper withBorder radius="md" p="var(--card-padding)">
-      <div>
-        <Stack gap={8}>
-          <Text fw={600}>{uploadQueueTitle}</Text>
-          <Text c="dimmed" size="sm">
-            {t("upload.webpHint")}
-          </Text>
-          {uploadQueue.map((task) => (
-            <div key={task.id} aria-live="polite">
-              <Group justify="space-between" gap={8} wrap="nowrap">
-                <Text>{task.file.name}</Text>
-                <Text c="dimmed" size="sm">
-                  {fileSizeText(task.file.size)}
-                </Text>
-              </Group>
-              <Progress
-                value={PROGRESS_BY_STATUS[task.status]}
-                color={
-                  // 失败与完成是状态，用状态色；上传中不是状态，交回主题的主色。
-                  task.status === "error" ? "red" : task.status === "done" ? "green" : undefined
-                }
-                size="sm"
-                animated={task.status === "uploading"}
-                mt={6}
-              />
-              <TextInput
-                value={task.caption}
-                maxLength={200}
-                placeholder={captionPlaceholder}
-                aria-label={t("upload.captionAria", { fileName: task.file.name })}
-                disabled={uploadingCount > 0 || task.status === "uploading" || task.status === "done"}
-                onChange={(event) => onCaptionChange(task.id, event.currentTarget.value)}
-                mt={6}
-              />
-              {task.error ? (
-                <Text c="red" size="sm" mt={4}>
-                  {task.error}
-                </Text>
-              ) : null}
-              {task.status === "queued" || task.status === "error" ? (
-                <Group justify="flex-end" gap={6} mt={6}>
-                  {canRetryUpload(task) ? (
-                    <Button
-                      size="xs"
-                      variant="light"
-                      leftSection={<RefreshCwIcon size={14} />}
-                      disabled={uploadingCount > 0}
-                      onClick={() => onRetry(task.id)}
-                    >
-                      {retryLabel}
-                    </Button>
-                  ) : null}
+    <Card className="gallery-upload-queue">
+      <div className="gallery-upload-queue__header">
+        <h3>{uploadQueueTitle}</h3>
+        <p>{t("upload.webpHint")}</p>
+      </div>
+      <div className="gallery-upload-queue__items">
+        {uploadQueue.map((task) => (
+          <article key={task.id} className="gallery-upload-task" aria-live="polite">
+            <div className="gallery-upload-task__heading">
+              <span className="gallery-upload-task__name" title={task.file.name}>{task.file.name}</span>
+              <span className="gallery-upload-task__size">{fileSizeText(task.file.size)}</span>
+            </div>
+            <Progress
+              value={PROGRESS_BY_STATUS[task.status]}
+              aria-label={task.file.name}
+              className={`gallery-upload-task__progress gallery-upload-task__progress--${task.status}`}
+            />
+            <Input
+              value={task.caption}
+              maxLength={200}
+              placeholder={captionPlaceholder}
+              aria-label={t("upload.captionAria", { fileName: task.file.name })}
+              disabled={uploadingCount > 0 || task.status === "uploading" || task.status === "done"}
+              onChange={(event) => onCaptionChange(task.id, event.currentTarget.value)}
+              className="gallery-upload-task__caption"
+            />
+            {task.error ? <p className="gallery-upload-task__error" role="alert">{task.error}</p> : null}
+            {task.status === "queued" || task.status === "error" ? (
+              <div className="gallery-upload-task__actions">
+                {canRetryUpload(task) ? (
                   <Button
                     size="xs"
-                    variant="subtle"
-                    color="red"
-                    leftSection={<XIcon size={14} />}
+                    variant="outline"
                     disabled={uploadingCount > 0}
-                    onClick={() => onRemove(task.id)}
+                    onClick={() => onRetry(task.id)}
                   >
-                    {removeLabel}
+                    <RefreshCwIcon size={14} aria-hidden="true" />
+                    {retryLabel}
                   </Button>
-                </Group>
-              ) : null}
-            </div>
-          ))}
-        </Stack>
+                ) : null}
+                <Button
+                  size="xs"
+                  variant="destructive"
+                  disabled={uploadingCount > 0}
+                  onClick={() => onRemove(task.id)}
+                >
+                  <XIcon size={14} aria-hidden="true" />
+                  {removeLabel}
+                </Button>
+              </div>
+            ) : null}
+          </article>
+        ))}
       </div>
-    </Paper>
+    </Card>
   );
 }
-
-

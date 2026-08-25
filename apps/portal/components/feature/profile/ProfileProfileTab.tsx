@@ -1,8 +1,13 @@
 import type { DragEndEvent } from "@dnd-kit/core";
 import type { UserBadge } from "@guild/shared";
 import { SectionHeader } from "../../shared/SectionHeader";
-import { Badge, NumberInput, Paper, Text, Textarea } from "@mantine/core";
+import { Badge } from "@portal/components/ui/badge";
+import { Card } from "@portal/components/ui/card";
+import { Input } from "@portal/components/ui/input";
+import { Label } from "@portal/components/ui/label";
+import { Textarea } from "@portal/components/ui/textarea";
 import { useTranslation } from "react-i18next";
+import type { CSSProperties } from "react";
 import { MemberBadgeChip } from "../../shared/MemberCard";
 import { TitleField } from "../../shared/TitleField";
 import { ProfileClassEditor } from "./ProfileClassEditor";
@@ -11,12 +16,14 @@ type ProfileProfileTabProps = {
   roleName: string | null;
   roleColor: string | null;
   badges: readonly UserBadge[];
+  displayName: string;
   power: number;
   classDraft: string;
   classOptions: Array<{ value: string; label: string }>;
   classList: string[];
   titleHtml: string;
   onTitleHtmlChange: (value: string) => void;
+  onDisplayNameChange: (value: string) => void;
   bio: string;
   onPowerChange: (value: number) => void;
   onClassDraftChange: (value: string) => void;
@@ -31,12 +38,14 @@ export function ProfileProfileTab({
   roleName,
   roleColor,
   badges,
+  displayName,
   power,
   classDraft,
   classOptions,
   classList,
   titleHtml,
   onTitleHtmlChange,
+  onDisplayNameChange,
   bio,
   onPowerChange,
   onClassDraftChange,
@@ -48,17 +57,35 @@ export function ProfileProfileTab({
   const { t } = useTranslation("profile");
 
   return (
-    <Paper withBorder radius="md" p="var(--card-padding)">
+    <Card className="profile-identity-card gap-0 py-0">
       <SectionHeader title={t("section.identity")} />
 
       <div className="profile-identity">
-        <NumberInput
-          label={t("field.power")}
-          value={power}
-          decimalScale={2}
-          hideControls
-          onChange={(value) => { if (typeof value === "number") onPowerChange(value); }}
-        />
+        <div className="profile-field profile-identity__wide">
+          <Label htmlFor="profile-display-name">{t("field.displayName")}</Label>
+          <Input
+            id="profile-display-name"
+            value={displayName}
+            onChange={(event) => onDisplayNameChange(event.currentTarget.value)}
+            autoComplete="nickname"
+          />
+        </div>
+
+        <div className="profile-field">
+          <Label htmlFor="profile-power">{t("field.power")}</Label>
+          <Input
+            id="profile-power"
+            type="number"
+            min={0}
+            step="0.01"
+            inputMode="decimal"
+            value={power}
+            onChange={(event) => {
+              const next = event.currentTarget.valueAsNumber;
+              if (Number.isFinite(next)) onPowerChange(next);
+            }}
+          />
+        </div>
 
         <TitleField value={titleHtml} onChange={onTitleHtmlChange} />
 
@@ -74,21 +101,21 @@ export function ProfileProfileTab({
           />
         </div>
 
-        <Textarea
-          className="profile-identity__wide"
-          label={t("field.bio")}
-          value={bio}
-          onChange={(event) => onBioChange(event.currentTarget.value)}
-          minRows={3}
-          autosize
-          maxRows={10}
-          placeholder={t("field.bioPlaceholder")}
-        />
+        <div className="profile-field profile-identity__wide">
+          <Label htmlFor="profile-bio">{t("field.bio")}</Label>
+          <Textarea
+            id="profile-bio"
+            value={bio}
+            onChange={(event) => onBioChange(event.currentTarget.value)}
+            rows={4}
+            placeholder={t("field.bioPlaceholder")}
+          />
+        </div>
 
-        <section className="profile-access profile-identity__wide" aria-label={t("section.access")}>
+        <div className="profile-access profile-identity__wide" role="region" aria-label={t("section.access")}>
           <div className="profile-access__header">
             <h3 className="profile-access__title">{t("section.access")}</h3>
-            <Text size="xs" c="dimmed">{t("access.readOnly")}</Text>
+            <span className="profile-access__hint">{t("access.readOnly")}</span>
           </div>
 
           <div className="profile-access__group">
@@ -98,14 +125,13 @@ export function ProfileProfileTab({
             {roleName ? (
               <Badge
                 className="profile-access__role"
-                color={roleColor ?? "gray"}
-                size="lg"
-                variant="light"
+                variant="outline"
+                style={{ "--badge-color": roleColor ?? "var(--text-muted)" } as CSSProperties}
               >
                 {roleName}
               </Badge>
             ) : (
-              <Text size="sm" c="dimmed">{t("access.emptyRole")}</Text>
+              <span className="profile-access__empty">{t("access.emptyRole")}</span>
             )}
           </div>
 
@@ -120,12 +146,12 @@ export function ProfileProfileTab({
                 ))}
               </ul>
             ) : (
-              <Text size="sm" c="dimmed">{t("access.emptyBadges")}</Text>
+              <span className="profile-access__empty">{t("access.emptyBadges")}</span>
             )}
           </div>
 
-        </section>
+        </div>
       </div>
-    </Paper>
+    </Card>
   );
 }

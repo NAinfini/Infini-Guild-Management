@@ -1,4 +1,3 @@
-import { MantineProvider } from "@mantine/core";
 import { render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { AnnouncementDetailCard } from "./AnnouncementDetailCard";
@@ -16,8 +15,7 @@ vi.mock("@portal/components/shared/TipTapEditor", () => ({
 
 function renderCreateEditor() {
   render(
-    <MantineProvider>
-      <AnnouncementDetailCard
+    <AnnouncementDetailCard
         title="Create"
         canEdit
         selectedId="new"
@@ -45,11 +43,16 @@ function renderCreateEditor() {
         archived={false}
         onArchivedChange={() => {}}
         onImageUpload={async () => ""}
+        attachments={[]}
+        attachmentUploading={false}
+        attachmentMaxBytes={10 * 1024 * 1024}
+        attachmentQuota={5}
+        onAttachmentUpload={async () => {}}
+        onAttachmentRemove={() => {}}
         isDirty={false}
         isPublishReady={false}
         emptyTitle="No announcement"
-      />
-    </MantineProvider>,
+    />,
   );
 }
 
@@ -58,7 +61,7 @@ function renderReader() {
     id: "announcement-1",
     title: "Guild Update",
     body_json: "{}",
-    pinned: false,
+    pinned: true,
     status: "published" as const,
     publish_at: null,
     expires_at: null,
@@ -67,10 +70,20 @@ function renderReader() {
     updated_by: null,
     created_at: "2026-01-01T00:00:00.000Z",
     updated_at: "2026-01-02T00:00:00.000Z",
+    author: {
+      id: "user-1",
+      display_name: "Guild Keeper",
+      avatar_media_id: null,
+    },
+    attachments: [{
+      media_id: "media1234567890abcdef",
+      name: "guild-guide.pdf",
+      content_type: "application/pdf" as const,
+      byte_size: 2_400_000,
+    }],
   };
   render(
-    <MantineProvider>
-      <AnnouncementDetailCard
+    <AnnouncementDetailCard
         title="Announcement Detail"
         canEdit
         selectedId={selected.id}
@@ -98,11 +111,16 @@ function renderReader() {
         archived={false}
         onArchivedChange={() => {}}
         onImageUpload={async () => ""}
+        attachments={selected.attachments}
+        attachmentUploading={false}
+        attachmentMaxBytes={10 * 1024 * 1024}
+        attachmentQuota={5}
+        onAttachmentUpload={async () => {}}
+        onAttachmentRemove={() => {}}
         isDirty={false}
         isPublishReady
         emptyTitle="No announcement"
-      />
-    </MantineProvider>,
+    />,
   );
 }
 
@@ -137,5 +155,12 @@ describe("AnnouncementDetailCard", () => {
     const header = heading.closest(".announcement-reader-header");
     expect(header).not.toBeNull();
     expect(header).toContainElement(screen.getByRole("button", { name: "action.edit" }));
+    expect(header).toHaveTextContent("status.important");
+    expect(header).toHaveTextContent("Guild Keeper");
+    expect(screen.getByText("guild-guide.pdf")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "action.downloadAttachment" })).toHaveAttribute(
+      "href",
+      expect.stringContaining("/api/media/media1234567890abcdef/full"),
+    );
   });
 });

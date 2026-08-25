@@ -7,12 +7,13 @@ import {
 } from "@guild/shared/constants/roles";
 import type { AccountProvisioningStore, AuthStore, InviteRecord, ManagedUserTarget, RoleRecord } from "./auth-types";
 import { IdentityAdminService } from "./identity-admin-service";
-import { createInviteTokenCodec, digestToken } from "./crypto";
+import { createInviteTokenCodec, createPasswordHash, digestToken } from "./crypto";
 import type { AuditEventWrite } from "../audit/public.js";
 
 const NOW = "2026-08-09T12:00:00.000Z";
 const target: ManagedUserTarget = {
-  id: "target", username: "Target", roleId: "member", roleLevel: 100,
+  id: "target", displayName: "Target", loginName: "target-login", roleId: "member", roleLevel: 100,
+  authRevision: 1,
   rolePermissions: new Set(), isActive: true, deletedAt: null,
   revisionToken: "user-v1", roleRevisionToken: "member-v1",
 };
@@ -36,7 +37,8 @@ const adminRole: RoleRecord = {
 const managerTarget: ManagedUserTarget = {
   ...target,
   id: "manager-2",
-  username: "Manager Two",
+  displayName: "Manager Two",
+  loginName: "manager-two",
   roleId: "manager",
   roleLevel: 500,
   rolePermissions: new Set([PERMISSION_ID.ADMIN_ROLES_MANAGE]),
@@ -94,10 +96,59 @@ describe("account provisioning boundary", () => {
     );
     const result = await value.createMember(
       context({ permissions: [PERMISSION_ID.ADMIN_USERS_EDIT] }),
-      { username: "New Member", roleId: destination.id },
+      { loginName: "new-member", displayName: "New Member", roleId: destination.id },
     );
-    expect(result).toMatchObject({ ok: true, username: "New Member" });
+    expect(result).toMatchObject({ ok: true, displayName: "New Member", temporaryLoginName: "new-member" });
     expect(createManagedUser).toHaveBeenCalledOnce();
+  });
+});
+
+describe("administrator credential reset", () => {
+  it("rejects an incorrect administrator password before reading or mutating the target", async () => {
+    const findManagedUsers = vi.fn();
+    const setTemporaryPassword = vi.fn();
+    const value = service({
+      findCredentialRecord: vi.fn(async () => ({
+        loginName: "admin-login",
+        passwordHash: await createPasswordHash("correct administrator password"),
+        authRevision: 1,
+      })),
+      findManagedUsers,
+      setTemporaryPassword,
+    });
+
+    await expect(value.resetPassword(
+      context({ permissions: [PERMISSION_ID.ADMIN_USERS_PASSWORD] }),
+      "target",
+      "wrong administrator password",
+    )).rejects.toMatchObject({ code: "UNAUTHORIZED", status: 401 });
+    expect(findManagedUsers).not.toHaveBeenCalled();
+    expect(setTemporaryPassword).not.toHaveBeenCalled();
+  });
+
+  it("binds the reset to the same administrator credential revision that confirmed the password", async () => {
+    const setTemporaryPassword = vi.fn().mockResolvedValue("updated");
+    const value = service({
+      findCredentialRecord: vi.fn(async () => ({
+        loginName: "admin-login",
+        passwordHash: await createPasswordHash("correct administrator password"),
+        authRevision: 7,
+      })),
+      findManagedUsers: vi.fn(async () => [target]),
+      setTemporaryPassword,
+    });
+
+    await expect(value.resetPassword(
+      context({ permissions: [PERMISSION_ID.ADMIN_USERS_PASSWORD] }),
+      target.id,
+      "correct administrator password",
+    )).resolves.toMatchObject({ ok: true });
+
+    expect(setTemporaryPassword).toHaveBeenCalledWith(expect.objectContaining({
+      target,
+      actorUserId: "admin",
+      expectedActorAuthRevision: 7,
+    }));
   });
 });
 

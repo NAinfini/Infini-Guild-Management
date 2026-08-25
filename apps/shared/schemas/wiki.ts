@@ -67,7 +67,7 @@ export const wikiArticleSchema = z.object({
   archived_at: z.string().nullable(),
   created_by: z.string(),
   updated_by: z.string().nullable(),
-  updated_by_username: z.string().nullable().optional(),
+  updated_by_display_name: z.string().nullable().optional(),
   created_at: z.string(),
   updated_at: z.string(),
 });
@@ -93,7 +93,7 @@ export const wikiRevisionListItemSchema = z.object({
   revision: z.number().int(),
   title: z.string(),
   edited_by: z.string(),
-  edited_by_username: z.string().nullable(),
+  edited_by_display_name: z.string().nullable(),
   restored_from: z.number().int().nullable(),
   created_at: z.string(),
 });

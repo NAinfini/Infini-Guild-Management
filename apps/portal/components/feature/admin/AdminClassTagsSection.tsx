@@ -15,31 +15,25 @@ import {
   verticalListSortingStrategy,
 } from "@dnd-kit/sortable";
 import { LIMITS, type ClassTag } from "@guild/shared";
-import {
-  ActionIcon,
-  Badge,
-  Button,
-  Group,
-  ScrollArea,
-  Skeleton,
-  Stack,
-  Text,
-  TextInput,
-  Tooltip,
-  UnstyledButton,
-} from "@mantine/core";
-import { PencilIcon, PlusIcon, SaveIcon, TrashIcon } from "@portal/components/icons";
+import { Badge } from "@portal/components/ui/badge";
+import { Button } from "@portal/components/ui/button";
+import { Input } from "@portal/components/ui/input";
+import { Label } from "@portal/components/ui/label";
+import { ScrollArea } from "@portal/components/ui/scroll-area";
+import { Skeleton } from "@portal/components/ui/skeleton";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@portal/components/ui/tooltip";
+import { PlusIcon, SaveIcon, TrashIcon } from "@portal/components/icons";
 import { useAdminClassTagsController } from "@portal/hooks/useAdminClassTagsController";
 import { useConfirmDialog } from "@portal/hooks/useConfirmDialog";
 import { useClassCatalog } from "@portal/hooks/data/useClassData";
 import { IconGripVertical } from "@tabler/icons-react";
 import { verticalDragTransform } from "@portal/utils/sortable-transform";
-import type { CSSProperties } from "react";
+import type { CSSProperties, ReactNode } from "react";
 import { useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { ClassIcon } from "../../shared/ClassIcon";
-import { PickList, PickListFrame, PickListStaticRow } from "../../shared/PickList";
 import { EmptyState } from "../../shared/EmptyState";
+import { PickList } from "../../shared/PickList";
 import "./AdminClassTagsSection.css";
 
 const MAX_MEMBERS = LIMITS.content.classesPerTag.max;
@@ -80,19 +74,18 @@ function SortableTagRow({
       style={style}
       className={`admin-md__row ${active ? "admin-md__row--active" : ""}`}
     >
-      <UnstyledButton
+      <button
+        type="button"
         className={`admin-md__item ${active ? "admin-md__item--active" : ""}`}
         onClick={onOpen}
       >
         <span className="admin-md__item-main">
-          <Text size="sm" fw={500} truncate>{tag.label}</Text>
+          <span className="admin-md__item-label">{tag.label}</span>
         </span>
         <span className="admin-md__item-meta">
-          <Badge size="xs" variant="light" color="gray">
-            {tag.class_ids.length}
-          </Badge>
+          <Badge variant="outline">{tag.class_ids.length}</Badge>
         </span>
-      </UnstyledButton>
+      </button>
       <button
         type="button"
         ref={setActivatorNodeRef}
@@ -110,7 +103,7 @@ function SortableTagRow({
 
 /* 单一 PickList 按职业目录排序，勾选表示成员关系，行尾标签标示重叠归属。 */
 
-export function AdminClassTagsSection() {
+export function AdminClassTagsSection({ masterNavigation }: { masterNavigation?: ReactNode }) {
   const { t } = useTranslation("admin");
   const { t: tc } = useTranslation("common");
   const confirm = useConfirmDialog();
@@ -120,9 +113,7 @@ export function AdminClassTagsSection() {
   /* 保留服务端或乐观更新提供的顺序，避免未确认的 sort_order 覆盖拖拽结果。 */
   const tags = controller.query.data;
   const existing = draft.id ? tags?.find((tag) => tag.id === draft.id) ?? null : null;
-
   const [query, setQuery] = useState("");
-
   const picked = useMemo(() => new Set(draft.classIds), [draft.classIds]);
 
   const visible = useMemo(() => {
@@ -148,9 +139,6 @@ export function AdminClassTagsSection() {
     return map;
   }, [tags, draft.id]);
 
-  /* 查看态列的是「装进来的那几个」，按目录顺序，不按点选先后。 */
-  const pickedItems = useMemo(() => catalog.filter((item) => picked.has(item.id)), [catalog, picked]);
-
   const memberOptions = useMemo(() => visible.map((item) => {
     const otherTags = otherTagsByClass.get(item.id) ?? [];
     return {
@@ -158,25 +146,12 @@ export function AdminClassTagsSection() {
       label: item.label,
       icon: <ClassIcon item={item} size={20} label={item.label} />,
       meta: otherTags.length > 0
-        ? otherTags.map((label) => (
-          <Badge key={label} size="xs" variant="light" color="gray">{label}</Badge>
-        ))
+        ? otherTags.map((label) => <Badge key={label} variant="outline">{label}</Badge>)
         : undefined,
     };
   }), [visible, otherTagsByClass]);
 
-  /*
-   * 勾选只改本地草稿，得点保存才落库——而左栏拖拽是即时落库的。同一页两种提交语义，
-   * 不标出来的话，改完几个勾直接切到下一个标签就白改了。
-   */
-  const dirty = useMemo(() => {
-    if (!existing) return draft.label.trim().length > 0 || draft.classIds.length > 0;
-    if (existing.label !== draft.label) return true;
-    if (existing.class_ids.length !== draft.classIds.length) return true;
-    return existing.class_ids.some((id) => !picked.has(id));
-  }, [existing, draft.label, draft.classIds.length, picked]);
-
-  const canSave = draft.label.trim().length > 0 && draft.classIds.length <= MAX_MEMBERS && dirty;
+  const canSave = draft.label.trim().length > 0 && draft.classIds.length <= MAX_MEMBERS && controller.isDirty;
 
   /* 键盘也要能排：只有指针传感器的话，手柄能聚焦却按不动，那是个假的可访问控件。 */
   const sensors = useSensors(
@@ -209,33 +184,34 @@ export function AdminClassTagsSection() {
     <div className="admin-panel admin-md">
       <div className="admin-md__master">
         <div className="admin-md__master-head">
-          <Group gap={8} justify="space-between" wrap="nowrap">
-            <div style={{ minWidth: 0 }}>
-              <Text fw={700} size="sm">{t("classTags.title")}</Text>
-              <Text size="xs" c="dimmed">{t("classTags.count", { count: tags?.length ?? 0 })}</Text>
+          <div className="admin-md__master-head-row">
+            <div className="admin-md__master-copy">
+              {masterNavigation ?? <span className="admin-md__master-title">{t("classTags.title")}</span>}
+              <span className="admin-md__count">{t("classTags.count", { count: tags?.length ?? 0 })}</span>
             </div>
-            <ActionIcon
-              size="sm"
-              variant="filled"
-              color="portal-brand"
-              onClick={controller.openCreate}
+            <Button
+              type="button"
+              size="icon-sm"
               aria-label={t("classTags.action.create")}
+              onClick={controller.openCreate}
             >
               <PlusIcon size={14} />
-            </ActionIcon>
-          </Group>
+            </Button>
+          </div>
         </div>
 
-        <ScrollArea className="admin-md__list" type="auto" scrollbarSize={6}>
-          <Stack gap={2} p={6}>
+        <ScrollArea className="admin-md__list">
+          <div className="admin-md__list-stack">
             {controller.query.isLoading ? (
-              Array.from({ length: 5 }).map((_, index) => <Skeleton key={index} height={40} radius="md" />)
+              Array.from({ length: 5 }).map((_, index) => (
+                <Skeleton key={index} className="admin-md__skeleton" />
+              ))
             ) : controller.query.isError ? (
               <EmptyState
                 status="error"
                 title={tc("loadError")}
                 actions={(
-                  <Button variant="default" size="sm" onClick={() => void controller.query.refetch()}>
+                  <Button variant="outline" size="sm" onClick={() => void controller.query.refetch()}>
                     {tc("action.retry")}
                   </Button>
                 )}
@@ -273,7 +249,7 @@ export function AdminClassTagsSection() {
                 </SortableContext>
               </DndContext>
             )}
-          </Stack>
+          </div>
         </ScrollArea>
       </div>
 
@@ -281,46 +257,35 @@ export function AdminClassTagsSection() {
         {controller.opened ? (
           <>
             <div className="admin-md__detail-head">
-              <Group justify="space-between" align="center" wrap="nowrap">
-                <Group gap={8} align="center" wrap="nowrap" style={{ minWidth: 0 }}>
-                  <Text fw={700} size="sm" truncate>
-                    {controller.editing
-                      ? (draft.id ? t("classTags.editTitle") : t("classTags.createTitle"))
-                      : draft.label}
-                  </Text>
-                  {controller.editing && dirty ? (
-                    <Badge size="xs" variant="light" color="yellow">{t("classTags.dirty")}</Badge>
-                  ) : null}
-                </Group>
-                <Group gap={6} wrap="nowrap">
-                  {existing && !controller.editing ? (
-                    <Tooltip label={t("classTags.editTitle")} withArrow>
-                      <ActionIcon
-                        size={44}
-                        variant="subtle"
-                        onClick={controller.startEdit}
-                        aria-label={t("classTags.editTitle")}
-                      >
-                        <PencilIcon size={16} />
-                      </ActionIcon>
-                    </Tooltip>
-                  ) : null}
-                  {existing ? (
-                    <Tooltip label={t("classTags.action.delete")} withArrow>
-                      <ActionIcon
-                        size={44}
-                        variant="subtle"
-                        color="red"
-                        onClick={() => void handleDelete(existing)}
-                        loading={controller.deletePending}
-                        aria-label={t("classTags.action.delete")}
-                      >
-                        <TrashIcon size={16} />
-                      </ActionIcon>
-                    </Tooltip>
-                  ) : null}
-                </Group>
-              </Group>
+              <div className="admin-md__detail-head-row">
+                <div className="admin-md__detail-heading">
+                  <span className="admin-md__detail-title">
+                    {draft.id ? t("classTags.editTitle") : t("classTags.createTitle")}
+                  </span>
+                  {controller.isDirty ? <Badge variant="outline" className="admin-md__dirty">{t("classTags.dirty")}</Badge> : null}
+                </div>
+                {existing ? (
+                  <Tooltip>
+                    <TooltipTrigger
+                      render={(
+                        <Button
+                          type="button"
+                          variant="destructive"
+                          size="icon-lg"
+                          className="admin-md__delete-action"
+                          onClick={() => void handleDelete(existing)}
+                          loading={controller.deletePending}
+                          disabled={controller.deletePending}
+                          aria-label={t("classTags.action.delete")}
+                        />
+                      )}
+                    >
+                      <TrashIcon size={16} />
+                    </TooltipTrigger>
+                    <TooltipContent>{t("classTags.action.delete")}</TooltipContent>
+                  </Tooltip>
+                ) : null}
+              </div>
             </div>
 
             {/* 这里没有外层滚动区。表单只有一个输入框和一个穿梭框，而穿梭框两栏
@@ -328,53 +293,32 @@ export function AdminClassTagsSection() {
                 条上取决于指针停在哪，是个套娃陷阱。去掉之后穿梭框还能把整块剩余
                 高度吃下来，不用再猜一个固定的 16rem。 */}
             <div className="admin-md__detail-body admin-class-tags__body">
-              {controller.editing ? (
-              <TextInput
-                className="admin-class-tags__name-field"
-                label={t("classTags.field.label")}
-                value={draft.label}
-                maxLength={LIMITS.content.classTagLabel.max}
-                onChange={(event) => {
-                  /* 先当场取值：setDraft 的 updater 是 React 之后才调用的，
-                     那时 event.currentTarget 已经是 null。 */
-                  const { value } = event.currentTarget;
-                  controller.setDraft((current) => ({ ...current, label: value }));
-                }}
-                required
-              />
-              ) : null}
+              <div className="admin-md__field admin-class-tags__name-field">
+                <Label htmlFor="class-tag-label">{t("classTags.field.label")}</Label>
+                <Input
+                  id="class-tag-label"
+                  value={draft.label}
+                  maxLength={LIMITS.content.classTagLabel.max}
+                  onChange={(event) => {
+                    /* 先当场取值：setDraft 的 updater 是 React 之后才调用的，
+                       那时 event.currentTarget 已经是 null。 */
+                    const { value } = event.currentTarget;
+                    controller.setDraft((current) => ({ ...current, label: value }));
+                  }}
+                  required
+                />
+              </div>
 
               <div className="admin-class-tags__members">
                 <div className="admin-class-tags__members-intro">
-                  <Text size="sm" fw={600}>{t("classTags.field.members")}</Text>
-                  {controller.editing ? (
-                    <Text size="xs" c="dimmed">
-                      {t("classTags.field.membersDescription", { max: MAX_MEMBERS })}
-                    </Text>
-                  ) : null}
+                  <span className="admin-class-tags__members-title">{t("classTags.field.members")}</span>
+                  <span className="admin-md__muted">
+                    {t("classTags.field.membersDescription", { max: MAX_MEMBERS })}
+                  </span>
                 </div>
 
-                {!controller.editing ? (
-                  pickedItems.length === 0 ? (
-                    <Text size="xs" c="dimmed">{t("classTags.members.none")}</Text>
-                  ) : (
-                    <div className="admin-class-tags__picker">
-                      <PickListFrame>
-                        {pickedItems.map((item) => (
-                          <PickListStaticRow
-                            key={item.id}
-                            icon={<ClassIcon item={item} size={20} label={item.label} />}
-                            label={<Text size="sm">{item.label}</Text>}
-                            meta={(otherTagsByClass.get(item.id) ?? []).map((label) => (
-                              <Badge key={label} size="xs" variant="light" color="gray">{label}</Badge>
-                            ))}
-                          />
-                        ))}
-                      </PickListFrame>
-                    </div>
-                  )
-                ) : catalog.length === 0 ? (
-                  <Text size="xs" c="dimmed">{t("classTags.noClasses")}</Text>
+                {catalog.length === 0 ? (
+                  <span className="admin-md__muted">{t("classTags.noClasses")}</span>
                 ) : (
                   <PickList
                     className="admin-class-tags__picker"
@@ -395,30 +339,27 @@ export function AdminClassTagsSection() {
               </div>
 
               {existing ? (
-                <Text className="admin-class-tags__usage" size="xs" c="dimmed">
+                <span className="admin-class-tags__usage admin-md__muted">
                   {t("classTags.usage", { count: existing.usage_count })}
-                </Text>
+                </span>
               ) : null}
             </div>
 
-            {/* Keep edit actions reachable while the member list scrolls. */}
-            {controller.editing ? (
-              <div className="admin-md__detail-foot">
-                <Group justify="flex-end" gap={8} ml="auto">
-                  <Button variant="default" onClick={controller.cancelEdit}>
-                    {tc("action.cancel")}
-                  </Button>
-                  <Button
-                    leftSection={<SaveIcon size={16} />}
-                    onClick={controller.save}
-                    loading={controller.savePending}
-                    disabled={!canSave}
-                  >
-                    {t("classTags.action.save")}
-                  </Button>
-                </Group>
+            <div className="admin-md__detail-foot">
+              <div className="admin-md__detail-actions">
+                <Button variant="outline" onClick={controller.discardChanges} disabled={!controller.isDirty}>
+                  {tc("action.cancel")}
+                </Button>
+                <Button
+                  onClick={controller.save}
+                  loading={controller.savePending}
+                  disabled={!canSave}
+                >
+                  <SaveIcon size={16} />
+                  {t("classTags.action.save")}
+                </Button>
               </div>
-            ) : null}
+            </div>
           </>
         ) : (
           <div className="admin-md__empty">

@@ -1,4 +1,5 @@
 import { createAuthorizationContext, createRequestContext } from "@guild/kernel";
+import { DEFAULT_SITE_OAUTH_SETTINGS } from "@guild/shared";
 import { Hono } from "hono";
 import { describe, expect, it, vi } from "vitest";
 import { createRequestBodyLimitMiddleware } from "../../core/body-limit.js";
@@ -25,6 +26,7 @@ const site = {
     tools: true,
     storage: true,
   },
+  oauth: DEFAULT_SITE_OAUTH_SETTINGS,
   media_policy: {
     max_file_size_bytes: {
       site_logo: 1_000_000,
@@ -32,12 +34,13 @@ const site = {
       profile_image: 1_000_000,
       profile_audio: 1_000_000,
       announcement_image: 1_000_000,
+      announcement_attachment: 1_000_000,
       wiki_image: 1_000_000,
       event_image: 1_000_000,
       gallery_image: 1_000_000,
       storage_image: 1_000_000,
     },
-    quotas: { profile: 5, announcement: 5, gallery: 5, wiki: 5 },
+    quotas: { profile: 5, announcement: 5, announcement_attachments: 5, gallery: 5, wiki: 5 },
   },
   storage_policy: { images_per_item: 5 },
   absence_policy: { max_span_days: 30, max_entries_per_user: 10 },
@@ -46,6 +49,16 @@ const site = {
 } as const;
 
 const { created_at: _createdAt, updated_at: _updatedAt, ...publicSite } = site;
+
+const adminSiteConfig = {
+  site,
+  oauth_provider_status: {
+    google: "missing_credentials",
+    discord: "available",
+    kook: "missing_credentials",
+    wechat: "unsupported",
+  },
+} as const;
 
 function appWithContext(permissions: readonly string[]) {
   const app = new Hono<HttpEnv>();
@@ -91,8 +104,22 @@ describe("site config HTTP routes", () => {
     expect(response.status).toBe(500);
   });
 
+  it("returns non-secret OAuth status only from the admin configuration route", async () => {
+    const getAdmin = vi.fn().mockResolvedValue(adminSiteConfig);
+    const app = appWithContext(["admin.siteConfig.manage"]);
+    app.route("/api/admin/site-config", createAdminSiteConfigRoutes({
+      service: { getAdmin, update: vi.fn(), uploadLogo: vi.fn() },
+    }));
+
+    const response = await app.request("/api/admin/site-config");
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual(adminSiteConfig);
+    expect(getAdmin).toHaveBeenCalledWith(expect.objectContaining({ requestId: "request-1" }));
+  });
+
   it("validates admin updates before calling the service", async () => {
-    const update = vi.fn().mockResolvedValue({ site });
+    const update = vi.fn().mockResolvedValue(adminSiteConfig);
     const app = appWithContext(["admin.siteConfig.manage"]);
     app.route("/api/admin/site-config", createAdminSiteConfigRoutes({
       service: { getAdmin: vi.fn(), update, uploadLogo: vi.fn() },
@@ -104,6 +131,14 @@ describe("site config HTTP routes", () => {
       body: JSON.stringify({ unknown: true }),
     });
     expect(invalid.status).toBe(400);
+    expect(update).not.toHaveBeenCalled();
+
+    const secretInPayload = await app.request("/api/admin/site-config", {
+      method: "PATCH",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ oauth: { google: true, client_secret: "must-not-cross-the-api" } }),
+    });
+    expect(secretInPayload.status).toBe(400);
     expect(update).not.toHaveBeenCalled();
 
     const valid = await app.request("/api/admin/site-config", {

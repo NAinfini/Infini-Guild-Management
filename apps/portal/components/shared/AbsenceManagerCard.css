@@ -1,0 +1,99 @@
+.absence-manager-card__content,
+.absence-manager-card__list {
+  display: grid;
+  gap: var(--space-sm);
+}
+
+.absence-manager-card__skeleton {
+  height: 1.75rem;
+}
+
+.absence-manager-card__empty {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: var(--text-sm);
+}
+
+.absence-manager-card__row,
+.absence-manager-card__summary,
+.absence-manager-card__form {
+  display: flex;
+  align-items: center;
+}
+
+.absence-manager-card__row {
+  min-width: 0;
+  justify-content: space-between;
+  gap: var(--space-sm);
+  padding-block: var(--space-xs);
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.absence-manager-card__summary {
+  min-width: 0;
+  gap: var(--space-sm);
+}
+
+.absence-manager-card__summary [data-status="past"] {
+  color: var(--text-muted);
+}
+
+.absence-manager-card__summary [data-status="upcoming"] {
+  color: var(--status-info);
+}
+
+.absence-manager-card__summary [data-status="active"] {
+  color: var(--status-warning);
+}
+
+.absence-manager-card__dates {
+  flex-shrink: 0;
+  font-size: var(--text-sm);
+}
+
+.absence-manager-card__note {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--text-muted);
+  font-size: var(--text-sm);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.absence-manager-card__delete {
+  flex-shrink: 0;
+  color: var(--status-danger);
+}
+
+.absence-manager-card__form {
+  flex-wrap: wrap;
+  align-items: end;
+  gap: var(--space-sm);
+  margin-top: var(--space-sm);
+}
+
+.absence-manager-card__note-field {
+  display: grid;
+  flex: 1 1 12rem;
+  gap: var(--space-xs);
+  min-width: 10rem;
+}
+
+.absence-manager-card__submit {
+  flex-shrink: 0;
+}
+
+@media (max-width: 40rem) {
+  .absence-manager-card__summary {
+    flex-wrap: wrap;
+  }
+
+  .absence-manager-card__note {
+    flex-basis: 100%;
+  }
+
+  .absence-manager-card__form > *,
+  .absence-manager-card__submit {
+    width: 100%;
+  }
+}

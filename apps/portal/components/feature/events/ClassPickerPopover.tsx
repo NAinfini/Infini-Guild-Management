@@ -1,6 +1,6 @@
 import type { ClassCatalogItem, ClassTag } from "@guild/shared";
 import { LIMITS } from "@guild/shared/config/limits";
-import { Popover, UnstyledButton } from "@mantine/core";
+import { Popover, PopoverContent, PopoverTrigger } from "@portal/components/ui/popover";
 import { ChevronDownIcon } from "@portal/components/icons";
 import { ClassIcon } from "@portal/components/shared/ClassIcon";
 import { PickList } from "@portal/components/shared/PickList";
@@ -56,18 +56,19 @@ export function ClassPickerPopover({
   };
 
   return (
-    <Popover position="bottom-start" shadow="md" width={320} disabled={disabled} trapFocus>
-      <Popover.Target>
-        <UnstyledButton
+    <Popover>
+      <PopoverTrigger
+        render={<button
+          type="button"
           className="quota-editor__cell quota-editor__cell--picker"
           disabled={disabled}
           aria-label={t("quota.editor.pickClasses")}
-        >
+        />}
+      >
           <ClassIconStrip classIds={classIds} catalog={catalog} emptyLabel={t("quota.editor.noneChosen")} />
           <ChevronDownIcon size={14} className="quota-editor__caret" />
-        </UnstyledButton>
-      </Popover.Target>
-      <Popover.Dropdown className="quota-editor__picker">
+      </PopoverTrigger>
+      <PopoverContent className="quota-editor__picker" side="bottom" align="start">
         <PickList
           size="xs"
           aria-label={t("quota.editor.pickClasses")}
@@ -90,7 +91,7 @@ export function ClassPickerPopover({
             placeholder: t("quota.editor.searchClasses"),
           }}
         />
-      </Popover.Dropdown>
+      </PopoverContent>
     </Popover>
   );
 }

@@ -8,6 +8,8 @@ export * from "./constants/event-types";
 export * from "./constants/guild-war";
 export * from "./constants/media";
 export * from "./constants/push-hints";
+export * from "./constants/notifications";
+export * from "./constants/important-notices";
 export * from "./constants/errors";
 export * from "./constants/audit";
 
@@ -16,6 +18,7 @@ export * from "./schemas/role";
 export * from "./schemas/json";
 export * from "./schemas/media";
 export * from "./schemas/notifications";
+export * from "./schemas/important-notices";
 export * from "./schemas/user";
 export * from "./schemas/class-catalog";
 export * from "./schemas/class-tag";

@@ -4,6 +4,8 @@ import type { ReactNode } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { useAnnouncementsController } from "./useAnnouncementsController";
 import { userScopedStorageKey } from "../session-storage";
+import { DEFAULT_SITE_MEDIA_POLICY } from "@guild/shared";
+import { useSiteConfigStore } from "../stores/site-config";
 
 const serviceMocks = vi.hoisted(() => ({
   archiveAnnouncement: vi.fn(),
@@ -11,6 +13,7 @@ const serviceMocks = vi.hoisted(() => ({
   deleteAnnouncement: vi.fn(),
   fetchAnnouncement: vi.fn(),
   fetchAnnouncements: vi.fn(),
+  uploadAnnouncementAttachment: vi.fn(),
   uploadPendingAnnouncementImages: vi.fn(),
   updateAnnouncement: vi.fn(),
   uploadAnnouncementImages: vi.fn(),
@@ -37,6 +40,7 @@ vi.mock("../services/AnnouncementService", () => ({
   deleteAnnouncement: serviceMocks.deleteAnnouncement,
   fetchAnnouncement: serviceMocks.fetchAnnouncement,
   fetchAnnouncements: serviceMocks.fetchAnnouncements,
+  uploadAnnouncementAttachment: serviceMocks.uploadAnnouncementAttachment,
   uploadPendingAnnouncementImages: serviceMocks.uploadPendingAnnouncementImages,
   updateAnnouncement: serviceMocks.updateAnnouncement,
   uploadAnnouncementImages: serviceMocks.uploadAnnouncementImages,
@@ -86,9 +90,19 @@ describe("useAnnouncementsController", () => {
     expires_at: "2026-07-29T00:00:00.000Z",
     media_ids: ["media1234567890abcdef"],
   };
+  const attachmentUploadResponse = {
+    expires_at: "2026-07-29T00:00:00.000Z",
+    attachment: {
+      media_id: "attachment1234567890ab",
+      name: "guild-guide.pdf",
+      content_type: "application/pdf",
+      byte_size: 2_400_000,
+    },
+  };
 
   beforeEach(() => {
     localStorage.clear();
+    useSiteConfigStore.setState({ mediaPolicy: DEFAULT_SITE_MEDIA_POLICY });
     authState.user = { id: "user-1" };
     navigateMock.mockReset();
     routeSearchMock.announcementId = undefined;
@@ -106,6 +120,7 @@ describe("useAnnouncementsController", () => {
     serviceMocks.fetchAnnouncement.mockResolvedValue(null);
     serviceMocks.createAnnouncement.mockResolvedValue({ id: "announcement-1" });
     serviceMocks.uploadPendingAnnouncementImages.mockResolvedValue(pendingUploadResponse);
+    serviceMocks.uploadAnnouncementAttachment.mockResolvedValue(attachmentUploadResponse);
     serviceMocks.uploadAnnouncementImages.mockResolvedValue({
       media_ids: ["image1234567890abcdef"],
     });
@@ -197,6 +212,8 @@ describe("useAnnouncementsController", () => {
       updated_by: null,
       created_at: "2026-01-01T00:00:00.000Z",
       updated_at: "2026-01-01T00:00:00.000Z",
+      author: { id: "user-1", display_name: "Guild Keeper", avatar_media_id: null },
+      attachments: [],
     };
     serviceMocks.fetchAnnouncement.mockResolvedValue(selected);
     const { result, rerender } = renderHook(() => useAnnouncementsController(), { wrapper: createWrapper() });
@@ -228,6 +245,8 @@ describe("useAnnouncementsController", () => {
       updated_by: null,
       created_at: "2026-08-01T00:00:00.000Z",
       updated_at: "2026-08-01T00:00:00.000Z",
+      author: { id: "user-1", display_name: "Guild Keeper", avatar_media_id: null },
+      attachments: [],
     };
     routeSearchMock.announcementId = selected.id;
     serviceMocks.fetchAnnouncement.mockResolvedValue(selected);
@@ -299,6 +318,56 @@ describe("useAnnouncementsController", () => {
     expect(payload).not.toHaveProperty("media_ids");
   });
 
+  it("keeps staged attachments in the draft and binds their ordered media IDs on create", async () => {
+    const { result } = renderHook(() => useAnnouncementsController(), { wrapper: createWrapper() });
+    const file = new File(["%PDF-1.7"], "guild-guide.pdf", { type: "application/pdf" });
+
+    act(() => {
+      result.current.handleCreateByStatus();
+    });
+    await act(async () => {
+      await result.current.handleUploadAnnouncementAttachment(file);
+    });
+
+    expect(serviceMocks.uploadAnnouncementAttachment).toHaveBeenCalledWith(file);
+    expect(result.current.attachments).toEqual([attachmentUploadResponse.attachment]);
+
+    act(() => {
+      result.current.setTitle("Maintenance");
+      result.current.setBodyJson('{"type":"doc","content":[{"type":"paragraph","content":[{"type":"text","text":"Planned work"}]}]}');
+    });
+    await waitFor(() => expect(result.current.isPublishReady).toBe(true));
+    act(() => {
+      result.current.handleFinish("draft");
+    });
+
+    await waitFor(() => expect(serviceMocks.createAnnouncement).toHaveBeenCalled());
+    expect(serviceMocks.createAnnouncement.mock.calls[0]?.[0]).toEqual(expect.objectContaining({
+      attachment_media_ids: [attachmentUploadResponse.attachment.media_id],
+    }));
+  });
+
+  it("rejects an attachment above the current Site Config limit before uploading", async () => {
+    useSiteConfigStore.setState({
+      mediaPolicy: {
+        ...DEFAULT_SITE_MEDIA_POLICY,
+        max_file_size_bytes: {
+          ...DEFAULT_SITE_MEDIA_POLICY.max_file_size_bytes,
+          announcement_attachment: 5,
+        },
+      },
+    });
+    const { result } = renderHook(() => useAnnouncementsController(), { wrapper: createWrapper() });
+
+    await act(async () => {
+      await result.current.handleUploadAnnouncementAttachment(
+        new File(["%PDF-1.7"], "guild-guide.pdf", { type: "application/pdf" }),
+      );
+    });
+
+    expect(serviceMocks.uploadAnnouncementAttachment).not.toHaveBeenCalled();
+  });
+
   it("abandons pending images without creating or archiving a record", async () => {
     const { result } = renderHook(() => useAnnouncementsController(), { wrapper: createWrapper() });
     const file = new File(["image"], "image.webp", { type: "image/webp" });
@@ -354,6 +423,8 @@ describe("useAnnouncementsController", () => {
         updated_by: null,
         created_at: "2026-01-01T00:00:00.000Z",
         updated_at: "2026-01-01T00:00:00.000Z",
+        author: { id: "user-1", display_name: "Guild Keeper", avatar_media_id: null },
+        attachments: [],
       },
       {
         id: "announcement-2",
@@ -368,6 +439,8 @@ describe("useAnnouncementsController", () => {
         updated_by: null,
         created_at: "2026-01-02T00:00:00.000Z",
         updated_at: "2026-01-02T00:00:00.000Z",
+        author: { id: "user-1", display_name: "Guild Keeper", avatar_media_id: null },
+        attachments: [],
       },
     ];
     serviceMocks.fetchAnnouncements.mockResolvedValue({
@@ -435,6 +508,8 @@ describe("useAnnouncementsController", () => {
       updated_by: null,
       created_at: "2026-01-01T00:00:00.000Z",
       updated_at: "2026-01-01T00:00:00.000Z",
+      author: { id: "user-1", display_name: "Guild Keeper", avatar_media_id: null },
+      attachments: [],
     });
 
     const { result } = renderHook(() => useAnnouncementsController(), { wrapper: createWrapper() });
@@ -459,6 +534,7 @@ describe("useAnnouncementsController", () => {
       updated_by: null,
       created_at: "2026-01-01T00:00:00.000Z",
       updated_at: `2026-01-0${id.endsWith("2") ? "2" : "1"}T00:00:00.000Z`,
+      author: { id: "user-1", display_name: "Guild Keeper", avatar_media_id: null },
     });
     const first = announcement("announcement-1", false);
     const second = announcement("announcement-2", false);

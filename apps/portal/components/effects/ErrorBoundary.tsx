@@ -1,6 +1,6 @@
-import { Button, Center, Stack, Text, Title } from "@mantine/core";
 import i18n from "i18next";
 import { Component, type ErrorInfo, type ReactNode } from "react";
+import { Button } from "@portal/components/ui/button";
 
 const INTERNAL_ERROR_PATTERN = /D1_ERROR|SQLITE|no such table|no such column|ECONNREFUSED|chunk|module|import|Cannot read prop/i;
 
@@ -51,19 +51,17 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
     if (this.state.hasError) {
       if (this.props.fallback) return this.props.fallback;
       return (
-        <Center role="alert" p="xl" mih={240}>
-          <Stack align="center" gap="xs">
-            <Title order={2} size="h3" c="red" ta="center">
+        <div role="alert" className="flex min-h-60 items-center justify-center p-[var(--space-xl)]">
+          <div className="flex max-w-lg flex-col items-center gap-[var(--space-xs)] text-center">
+            <h2 className="m-0 text-xl font-semibold text-[var(--status-danger)]">
               {i18n.t("common:errors.somethingWentWrong", { defaultValue: "Something went wrong" })}
-            </Title>
-            <Text size="sm" c="dimmed" ta="center">
-            {this.getSafeMessage()}
-            </Text>
-            <Button type="button" onClick={this.handleReload} mt="sm">
+            </h2>
+            <p className="m-0 text-sm text-[var(--text-secondary)]">{this.getSafeMessage()}</p>
+            <Button type="button" onClick={this.handleReload} className="mt-[var(--space-sm)]">
               {i18n.t("common:action.reloadPage", { defaultValue: "Reload page" })}
             </Button>
-          </Stack>
-        </Center>
+          </div>
+        </div>
       );
     }
     return this.props.children;

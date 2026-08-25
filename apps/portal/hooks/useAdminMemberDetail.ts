@@ -1,6 +1,5 @@
 import { useQueryClient } from "@tanstack/react-query";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useDisclosure } from "@mantine/hooks";
 import { queryKeys } from "../api/query-keys";
 import { useAdminMemberMediaController } from "../components/feature/admin/useAdminMemberMediaController";
 import type { AdminUserRow, MemberDetailFormState } from "../types/admin";
@@ -49,7 +48,11 @@ export function useAdminMemberDetail({
   const confirm = useConfirmDialog();
   const queryClient = useQueryClient();
   const [memberDetailId, setMemberDetailIdState] = useState<string | null>(null);
-  const [createMemberModalOpen, createMemberModalHandlers] = useDisclosure(false);
+  const [createMemberModalOpen, setCreateMemberModalOpen] = useState(false);
+  const createMemberModalHandlers = useMemo(() => ({
+    open: () => setCreateMemberModalOpen(true),
+    close: () => setCreateMemberModalOpen(false),
+  }), []);
   const [memberDetailForm, setMemberDetailForm] = useState<MemberDetailFormState>(DEFAULT_FORM);
   const [savedForm, setSavedForm] = useState<MemberDetailFormState>(DEFAULT_FORM);
   const baselineByMemberRef = useRef(new Map<string, MemberDetailFormState>());
@@ -121,7 +124,7 @@ export function useAdminMemberDetail({
     }
     if (!usersData) return;
     const target = usersData.find(
-      (row) => row.user.username.toLowerCase() === normalizedParam,
+      (row) => row.user.display_name.toLowerCase() === normalizedParam,
     );
     if (target) {
       appliedMemberSearchParamRef.current = normalizedParam;

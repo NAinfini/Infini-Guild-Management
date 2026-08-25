@@ -4,6 +4,7 @@ import { describe, expect, it } from "vitest";
 import {
   parseEnv,
   parseJsonc,
+  oauthCallbackUrls,
   RATE_LIMIT_EXPECTATIONS,
   validateCloudflareConfig,
   validateVpsConfig,
@@ -130,6 +131,33 @@ describe("dual-runtime config preflight", () => {
       expect.stringContaining("READ_RATE_LIMITER"),
       expect.stringContaining("IG_INVITE_TOKEN_SECRET"),
     ]));
+  });
+
+  it("keeps Cloudflare OAuth credentials in secret storage and pairs email sender configuration", () => {
+    const oauth = cloudflareConfig();
+    (oauth.vars as Record<string, string>).IG_OAUTH_GOOGLE_CLIENT_ID = "google-client";
+    expect(validateCloudflareConfig(oauth)).toContainEqual(expect.stringContaining("IG_OAUTH_GOOGLE_CLIENT_ID"));
+
+    const emailFromOnly = cloudflareConfig();
+    (emailFromOnly.vars as Record<string, string>).IG_EMAIL_FROM = "no-reply@example.com";
+    expect(validateCloudflareConfig(emailFromOnly)).toContainEqual(expect.stringContaining("configured together"));
+
+    const emailBindingOnly = cloudflareConfig();
+    emailBindingOnly.send_email = [{ name: "EMAIL", allowed_sender_addresses: ["no-reply@example.com"] }];
+    expect(validateCloudflareConfig(emailBindingOnly)).toContainEqual(expect.stringContaining("configured together"));
+
+    const completeEmail = cloudflareConfig();
+    completeEmail.send_email = [{ name: "EMAIL", allowed_sender_addresses: ["no-reply@example.com"] }];
+    (completeEmail.vars as Record<string, string>).IG_EMAIL_FROM = "no-reply@example.com";
+    expect(validateCloudflareConfig(completeEmail)).toEqual([]);
+  });
+
+  it("derives the exact implemented-provider callback URLs from the public origin", () => {
+    expect(oauthCallbackUrls("https://guild.example")).toEqual({
+      google: "https://guild.example/api/auth/oauth/google/callback",
+      discord: "https://guild.example/api/auth/oauth/discord/callback",
+      kook: "https://guild.example/api/auth/oauth/kook/callback",
+    });
   });
 
   it("requires the nodejs_als compatibility flag the worker needs to load", () => {

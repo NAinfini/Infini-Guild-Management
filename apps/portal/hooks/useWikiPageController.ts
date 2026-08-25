@@ -1,6 +1,6 @@
 import { type PaginatedResponse, type WikiArticle } from "@guild/shared";
 import { useConfirmDialog } from "@portal/hooks/useConfirmDialog";
-import { useDisclosure, useMediaQuery } from "@mantine/hooks";
+import { useMediaQuery } from "@portal/hooks/useMediaQuery";
 import { useDebouncedSearch } from "./useDebouncedSearch";
 import {
   useInfiniteQuery,
@@ -69,7 +69,7 @@ export function useWikiPageController() {
   const params = useParams({ strict: false });
   const routeSlug = (params as { slug?: string }).slug ?? null;
   const routeSearch = useSearch({ strict: false }) as WikiRouteSearch;
-  const isDesktop = useMediaQuery("(min-width: 1200px)", true);
+  const isDesktop = useMediaQuery("(min-width: 1200px)");
   const isMobile = !isDesktop;
   const isExternalView = useExternalView();
   const { canManage: canManagePermission } = useEffectivePermissions();
@@ -90,20 +90,20 @@ export function useWikiPageController() {
   const selectedSlug = selection.kind === "selected" ? selection.slug : null;
   const [editorTab, setEditorTab] = useState<"article" | "categories">("article");
   const [mobilePane, setMobilePane] = useState<"list" | "article">("list");
-  const [showEditorPane, editorPaneHandlers] = useDisclosure(false);
-  const [showHistory, historyHandlers] = useDisclosure(false);
+  const [showEditorPane, setShowEditorPane] = useState(false);
+  const [showHistory, setShowHistory] = useState(false);
   const isEditorPaneVisible = canEdit && showEditorPane;
   const isHistoryOpen = canEdit && showHistory;
   const selectionRef = useRef(selection);
   const articleEditorRef = useRef<ReturnType<typeof useWikiArticleEditor> | null>(null);
   const isMobileRef = useRef(isMobile);
   const editorPaneVisibleRef = useRef(isEditorPaneVisible);
-  const closeEditorPaneRef = useRef(editorPaneHandlers.close);
+  const closeEditorPaneRef = useRef(() => setShowEditorPane(false));
   const routeSelectionProcessedRef = useRef(false);
   selectionRef.current = selection;
   isMobileRef.current = isMobile;
   editorPaneVisibleRef.current = isEditorPaneVisible;
-  closeEditorPaneRef.current = editorPaneHandlers.close;
+  closeEditorPaneRef.current = () => setShowEditorPane(false);
 
   const categoriesQuery = useQuery({
     queryKey: queryKeys.wiki.categories(),
@@ -237,9 +237,9 @@ export function useWikiPageController() {
 
   useEffect(() => {
     if (!canEdit) {
-      editorPaneHandlers.close();
+      setShowEditorPane(false);
     }
-  }, [canEdit, editorPaneHandlers]);
+  }, [canEdit]);
 
   const categoryOptions = categories.map((category) => ({
     value: category.id,
@@ -259,30 +259,30 @@ export function useWikiPageController() {
   const handleStartCreateArticle = useCallback(() => {
     if (!canCreateArticle) return;
     setEditorTab("article");
-    editorPaneHandlers.open();
+    setShowEditorPane(true);
     articleEditor.startCreateArticle();
     setWikiSelection({ kind: "none" });
     if (isMobile) {
       setMobilePane("article");
     }
-  }, [articleEditor, canCreateArticle, editorPaneHandlers, isMobile, setWikiSelection]);
+  }, [articleEditor, canCreateArticle, isMobile, setWikiSelection]);
 
   const handleOpenArticleEditor = useCallback(() => {
     setEditorTab("article");
-    editorPaneHandlers.open();
+    setShowEditorPane(true);
     if (isMobile) {
       setMobilePane("article");
     }
-  }, [editorPaneHandlers, isMobile]);
+  }, [isMobile]);
 
   const handleOpenCategoryEditor = useCallback(() => {
     if (!canManageCategories) return;
     setEditorTab("categories");
-    editorPaneHandlers.open();
+    setShowEditorPane(true);
     if (isMobile) {
       setMobilePane("article");
     }
-  }, [canManageCategories, editorPaneHandlers, isMobile]);
+  }, [canManageCategories, isMobile]);
 
   const handleExitArticleEditor = useCallback(async () => {
     if (articleEditor.isDirty) {
@@ -298,9 +298,9 @@ export function useWikiPageController() {
       }
     }
     articleEditor.exitEditor();
-    editorPaneHandlers.close();
+    setShowEditorPane(false);
     return true;
-  }, [articleEditor, confirm, editorPaneHandlers, t]);
+  }, [articleEditor, confirm, t]);
 
   const handleCategoryFilterChange = useCallback((values: string[]) => {
     setSelectedCategoryIds(values);
@@ -319,9 +319,9 @@ export function useWikiPageController() {
       if (!confirmed) return false;
     }
     categoryEditor.resetCategoryDrafts();
-    editorPaneHandlers.close();
+    setShowEditorPane(false);
     return true;
-  }, [categoryEditor, confirm, editorPaneHandlers, t]);
+  }, [categoryEditor, confirm, t]);
 
   const handleDeleteCategory = useCallback(async (categoryId: string) => {
     const category = categoriesById.get(categoryId);
@@ -378,8 +378,8 @@ export function useWikiPageController() {
 
     // revision history
     isHistoryOpen,
-    openHistory: historyHandlers.open,
-    closeHistory: historyHandlers.close,
+    openHistory: () => setShowHistory(true),
+    closeHistory: () => setShowHistory(false),
 
     // sub-editors
     articleEditor,

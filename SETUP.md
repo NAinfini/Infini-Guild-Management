@@ -75,7 +75,7 @@ The released baseline is frozen at:
 
 ```text
 packages/persistence-sqlite/src/migrations/generated/0000_core.sql
-packages/persistence-sqlite/src/migrations/generated/manifest.json  # exactly one 0000 entry
+packages/persistence-sqlite/src/migrations/generated/manifest.json  # frozen 0000 baseline plus contiguous later entries
 ```
 
 Cloudflare D1 and VPS SQLite consume the same ordered migration files, starting with the frozen `0000_core.sql`. `app_migrations` is the application-owned ordinal/checksum ledger and the source of truth for startup validation. Cloudflare also keeps `d1_migrations`, which Wrangler uses to track applied files. The ledgers have different owners and must both exist. The application rejects an empty, unknown, or mismatched schema instead of silently repairing it.
@@ -90,7 +90,7 @@ Initialize or verify VPS SQLite:
 pnpm db:migrate:vps --database /srv/infini/data/infini-guild.sqlite
 ```
 
-This command applies the baseline only to an empty database. For an unknown nonempty database, it stops instead of guessing. It then verifies the exact `app_migrations` ledger, every canonical schema object, SQLite integrity, and all foreign keys.
+This command applies the ordered migration chain to an empty database. For an unknown nonempty database, it stops instead of guessing. It then verifies the exact `app_migrations` ledger, every canonical schema object, SQLite integrity, and all foreign keys.
 
 Use the following read-only command to verify a stopped VPS deployment, a restored snapshot, or a prepared transfer. It changes neither data store:
 
@@ -110,12 +110,14 @@ The repository setup, CI, tests, and release checks never run this remote comman
 
 ## Configuration and secrets
 
-`IG_PBKDF2_ITERATIONS` defaults to `10000` on both runtimes and accepts integers through `10000000`. Stored hashes include their cost. If you raise the configured value, an older valid hash is upgraded after the user's next successful login. Benchmark the selected value on the real runtime before production, and never lower it below 10000.
+`IG_PBKDF2_ITERATIONS` defaults to `10000` on both runtimes and accepts integers through `10000000`. Stored hashes include their cost. If you raise the configured value, an older valid hash is upgraded after the user's next successful login. Benchmark the selected value on the real runtime before production, and never lower it below 10000. The default is a Cloudflare CPU-budget compatibility value and provides weaker offline-guessing resistance than a modern high-cost setting; paid Workers and VPS installations should raise it only after measuring their real request budget.
+
+HTTPS deployments use the fixed `__Host-ig_session` cookie and a separate `__Host-ig_session_oauth_transaction` cookie. Both are `Secure`, host-only, and rooted at `/`. Upgrading from an older unprefixed HTTPS cookie intentionally signs existing users out once; do not add a legacy-cookie fallback. Plain HTTP local development continues to use `ig_session`.
 
 ### Cloudflare production
 
 1. Copy `apps/cloudflare/wrangler.example.jsonc` to ignored `apps/cloudflare/wrangler.jsonc`.
-2. Fill in `DB`, `BLOBS`, `ASSETS`, `NOTIFICATIONS`, and all six rate-limiter bindings: `AUTH_RATE_LIMITER`, `READ_RATE_LIMITER`, `EXPENSIVE_READ_RATE_LIMITER`, `MUTATION_RATE_LIMITER`, `UPLOAD_RATE_LIMITER`, and `WEBSOCKET_RATE_LIMITER`.
+2. Fill in `DB`, `BLOBS`, `ASSETS`, `NOTIFICATIONS`, and all seven rate-limiter bindings: `AUTH_RATE_LIMITER`, `AUTH_IP_RATE_LIMITER`, `READ_RATE_LIMITER`, `EXPENSIVE_READ_RATE_LIMITER`, `MUTATION_RATE_LIMITER`, `UPLOAD_RATE_LIMITER`, and `WEBSOCKET_RATE_LIMITER`. `AUTH_RATE_LIMITER` also protects current-password checks by internal user ID and trusted client source; no extra binding is required for that protection.
 3. Keep `nodejs_als` in `compatibility_flags`. The Worker resolves every request's ExecutionContext through AsyncLocalStorage and will not load without this flag. A deployment config created before the flag was introduced must add it before its next deployment. `pnpm config:check` rejects configurations that omit it.
 4. Set the public HTTPS origin, allowed origins, routes, and cron configuration.
 5. Store both secrets in Cloudflare secret storage; never put them in `vars`:
@@ -130,6 +132,29 @@ pnpm exec wrangler secret put IG_AUDIT_DOWNLOAD_SECRET --config apps/cloudflare/
 ```bash
 pnpm config:check --runtime cloudflare --config apps/cloudflare/wrangler.jsonc
 ```
+
+#### Optional OAuth and verified email on Cloudflare
+
+Local login-name-and-password sign-in needs no external account and remains available when every option below is absent. To enable Google, Discord, or KOOK, create an application in that provider's console and register exactly the callback printed by `config:check`:
+
+```text
+https://YOUR_IG_PUBLIC_URL/api/auth/oauth/google/callback
+https://YOUR_IG_PUBLIC_URL/api/auth/oauth/discord/callback
+https://YOUR_IG_PUBLIC_URL/api/auth/oauth/kook/callback
+```
+
+Store each configured pair through Wrangler; this repository keeps both the client ID and secret out of the checked-in `vars` block:
+
+```bash
+pnpm exec wrangler secret put IG_OAUTH_GOOGLE_CLIENT_ID --config apps/cloudflare/wrangler.jsonc
+pnpm exec wrangler secret put IG_OAUTH_GOOGLE_CLIENT_SECRET --config apps/cloudflare/wrangler.jsonc
+# Repeat with IG_OAUTH_DISCORD_CLIENT_ID / IG_OAUTH_DISCORD_CLIENT_SECRET
+# or IG_OAUTH_KOOK_CLIENT_ID / IG_OAUTH_KOOK_CLIENT_SECRET.
+```
+
+After both values exist, enable only that provider in Admin → Site Config. Partial pairs are rejected at runtime. If credentials are later removed while the database flag remains on, that provider becomes unavailable and its button disappears; local login and the rest of the site continue. WeChat remains unavailable even if its reserved variables are supplied because no officially verified adapter ships in this release.
+
+For optional profile-email verification, onboard a sender domain in the site owner's own Cloudflare Email Sending account, uncomment the `EMAIL` `send_email` binding, restrict it to the sender, and set `vars.IG_EMAIL_FROM` to the same address. The binding and sender must be present together. No application API token is used by the Worker. Arbitrary-recipient Email Sending currently requires Workers Paid; verify the current [Cloudflare pricing](https://developers.cloudflare.com/email-service/platform/pricing/) before enabling it. Email stays optional and is never a login or sole recovery method.
 
 Real account IDs, database IDs, bucket names, domains, and secrets belong only in ignored deployment config or Cloudflare secret storage. Never commit them.
 
@@ -157,6 +182,10 @@ pnpm config:check --runtime vps --config apps/vps/.env
 
 Set `IG_PUBLIC_URL` to the external HTTPS origin. Set `IG_DATABASE_PATH`, `IG_BLOB_PATH`, and `IG_STATIC_PATH` to persistent absolute paths. Set both secrets to independent random values of at least 32 bytes. Bind `IG_HOST` to a private or loopback address behind a TLS reverse proxy. Set `IG_TRUSTED_PROXY_IPS` only to exact proxy IP addresses that you operate.
 
+For optional Google, Discord, or KOOK OAuth, create the provider application, register the same exact callback paths shown above under the VPS `IG_PUBLIC_URL`, and set the matching ID/secret pair in the protected `.env` (`IG_OAUTH_GOOGLE_CLIENT_ID` plus `IG_OAUTH_GOOGLE_CLIENT_SECRET`, and equivalently for Discord or KOOK). A partial pair makes configuration invalid. Then enable that provider in Admin → Site Config. Removing a pair disables only that provider; local login continues. WeChat remains unavailable in this release.
+
+For optional profile-email verification on VPS, configure all three values together: `IG_EMAIL_FROM`, `IG_CLOUDFLARE_EMAIL_ACCOUNT_ID`, and a scoped `IG_CLOUDFLARE_EMAIL_API_TOKEN`. The VPS sends over HTTPS through the site owner's Cloudflare Email Sending REST API; it does not host SMTP, and this project does not pay or operate a shared mail gateway. Leaving all three unset disables only email management. Phone/SMS is not implemented.
+
 Use an operating-system account dedicated to the service to protect `.env`, the SQLite file, blob root, backups, and `private-migrations/`. Do not run multiple VPS application processes, replicas, Node cluster workers, or network-shared SQLite writers. The first VPS release supports exactly one process on one host.
 
 ## Establish the first administrator
@@ -168,7 +197,7 @@ Create the ignored working directory once with `mkdir private-migrations`.
 For a new administrator, set `IG_BOOTSTRAP_PASSWORD` in the current shell without allowing the value into command history. You may also set `IG_PBKDF2_ITERATIONS`, then generate private SQL:
 
 ```bash
-pnpm prepare:first-admin --mode create --user-id admin-1 --username Admin_1 --output private-migrations/0001_first_admin.sql
+pnpm prepare:first-admin --mode create --user-id admin-1 --login-name admin_login --display-name Admin_1 --output private-migrations/0001_first_admin.sql
 ```
 
 To promote an existing active user instead, leave `IG_BOOTSTRAP_PASSWORD` unset:

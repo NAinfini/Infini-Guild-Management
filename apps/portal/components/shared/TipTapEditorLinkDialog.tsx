@@ -1,4 +1,13 @@
-import { Button, Group, Modal } from "@mantine/core";
+import { XIcon } from "@portal/components/icons";
+import { Button } from "@portal/components/ui/button";
+import { Input } from "@portal/components/ui/input";
+import {
+  Dialog,
+  DialogClose,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "@portal/components/ui/dialog";
 import type { TipTapEditorLabels } from "./tiptap-meta";
 
 type TipTapEditorLinkDialogProps = {
@@ -26,50 +35,58 @@ export function TipTapEditorLinkDialog({
   };
 
   return (
-    <Modal
-      opened
-      onClose={onClose}
-      title={labels.linkPrompt}
-      size="sm"
-      keepMounted={false}
-      closeOnEscape={false}
-      returnFocus={false}
-      overlayProps={{ className: "infini-tiptap-link-dialog-backdrop" }}
-      closeButtonProps={{
-        "aria-label": labels.close,
-        mod: { "data-mantine-stop-propagation": true },
+    <Dialog
+      open
+      onOpenChange={(open) => {
+        if (!open) onClose();
       }}
-      onKeyDown={handleKeyDown}
     >
-      <form
-        className="infini-tiptap-link-dialog"
-        onSubmit={(event) => {
-          event.preventDefault();
-          onSubmit();
-        }}
+      <DialogContent
+        showCloseButton={false}
+        finalFocus={false}
+        overlayClassName="infini-tiptap-link-dialog-backdrop"
+        className="sm:max-w-sm"
+        onKeyDown={handleKeyDown}
+        onPointerDown={(event) => event.stopPropagation()}
       >
-        <input
-          autoFocus
-          className="infini-tiptap-link-dialog__input"
-          value={url}
-          aria-label={labels.linkPrompt}
-          data-mantine-stop-propagation="true"
-          onChange={(event) => onUrlChange(event.currentTarget.value)}
-        />
-        <Group justify="flex-end" gap={8}>
-          <Button
-            variant="default"
-            type="button"
-            data-mantine-stop-propagation="true"
-            onClick={onUnset}
+        <DialogHeader>
+          <DialogTitle>{labels.linkPrompt}</DialogTitle>
+          <DialogClose
+            render={(
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon-sm"
+                className="absolute right-2 top-2"
+                aria-label={labels.close}
+              />
+            )}
           >
-            {labels.unlink}
-          </Button>
-          <Button type="submit" data-mantine-stop-propagation="true">
-            {labels.link}
-          </Button>
-        </Group>
-      </form>
-    </Modal>
+            <XIcon aria-hidden />
+          </DialogClose>
+        </DialogHeader>
+        <form
+          className="infini-tiptap-link-dialog"
+          onSubmit={(event) => {
+            event.preventDefault();
+            onSubmit();
+          }}
+        >
+          <Input
+            autoFocus
+            className="infini-tiptap-link-dialog__input"
+            value={url}
+            aria-label={labels.linkPrompt}
+            onChange={(event) => onUrlChange(event.currentTarget.value)}
+          />
+          <div className="flex justify-end gap-[var(--space-sm)]">
+            <Button variant="outline" type="button" onClick={onUnset}>
+              {labels.unlink}
+            </Button>
+            <Button type="submit">{labels.link}</Button>
+          </div>
+        </form>
+      </DialogContent>
+    </Dialog>
   );
 }

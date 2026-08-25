@@ -17,7 +17,7 @@ import {
 export type BadgeAssignmentRecord = Readonly<{
   badgeId: string;
   userId: string;
-  username: string | null;
+  display_name: string | null;
   assignedBy: string;
   assignedByUsername: string | null;
   assignedAt: string;
@@ -27,9 +27,9 @@ export function presentBadgeAssignment(assignment: BadgeAssignmentRecord) {
   return badgeAssignmentSchema.parse({
     badge_id: assignment.badgeId,
     user_id: assignment.userId,
-    username: assignment.username,
+    display_name: assignment.display_name,
     assigned_by: assignment.assignedBy,
-    assigned_by_username: assignment.assignedByUsername,
+    assigned_by_display_name: assignment.assignedByUsername,
     assigned_at: assignment.assignedAt,
   });
 }

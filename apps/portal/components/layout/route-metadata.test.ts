@@ -8,6 +8,12 @@ import {
   PORTAL_NAV_GROUPS,
   PORTAL_ROUTES,
 } from "./route-metadata";
+import {
+  ADMIN_CONTEXT_NAV_GROUPS,
+  ADMIN_CONTEXT_ROUTES,
+  groupAdminContextRoutes,
+  resolveAdminContextTab,
+} from "./admin-context-nav";
 
 describe("portal route metadata", () => {
   it("keeps every destination unique and assigned to one layout contract", () => {
@@ -24,7 +30,7 @@ describe("portal route metadata", () => {
         .filter((route) => route.mobilePrimary)
         .sort((left, right) => (left.mobilePrimary ?? 0) - (right.mobilePrimary ?? 0))
         .map((route) => route.to),
-    ).toEqual(["/", "/events", "/guild-war", "/roster"]);
+    ).toEqual(["/dashboard", "/events", "/guild-war", "/roster"]);
   });
 
   it("matches nested routes to their parent metadata", () => {
@@ -49,14 +55,16 @@ describe("portal route metadata", () => {
     expect(settingsRoute?.requiresSession).not.toBe(true);
   });
 
-  /*
-   * 控制台、Wiki、公告、公会战、成员名册与个人资料都把纵向滚动收在自己内部，
-   * 前提是外壳给出确定高度。这个开关一旦丢了，内容会按整页铺开，滚动条重新落回外壳。
-   */
-  it("locks the inner-scrolling workspaces to one viewport and leaves every other route free to grow", () => {
+  it("uses one fixed-height shell contract instead of per-route viewport flags", () => {
+    expect(PORTAL_ROUTES.every((route) => !("fillsViewport" in route))).toBe(true);
+  });
+
+  it("assigns one decorative workspace scene to every portal destination", () => {
     expect(
-      PORTAL_ROUTES.filter((route) => route.fillsViewport).map((route) => route.to).sort(),
-    ).toEqual(["/admin", "/announcements", "/guild-war", "/profile", "/roster", "/wiki"]);
+      PORTAL_ROUTES
+        .filter((route) => route.visualScene)
+        .map((route) => [route.to, route.visualScene]),
+    ).toEqual(PORTAL_ROUTES.map((route) => [route.to, route.to.slice(1)]));
   });
 
   /*
@@ -87,7 +95,7 @@ describe("portal route metadata", () => {
   it("gives every destination but the dashboard its own domain", () => {
     expect(
       PORTAL_ROUTES.filter((route) => route.domain === undefined).map((route) => route.to),
-    ).toEqual(["/"]);
+    ).toEqual(["/dashboard"]);
   });
 
   it("preserves the approved navigation hierarchy without empty groups", () => {
@@ -101,5 +109,26 @@ describe("portal route metadata", () => {
       "administration",
     ]);
     expect(groups.every((group) => group.routes.length > 0)).toBe(true);
+  });
+
+  it("keeps the admin context navigation grouped in one shared registry", () => {
+    const groups = groupAdminContextRoutes(ADMIN_CONTEXT_ROUTES);
+
+    expect(ADMIN_CONTEXT_NAV_GROUPS.map((group) => group.id)).toEqual([
+      "people",
+      "config",
+      "ops",
+      "governance",
+    ]);
+    expect(groups.map((group) => group.id)).toEqual([
+      "people",
+      "config",
+      "ops",
+      "governance",
+    ]);
+    expect(groups.flatMap((group) => group.routes.map((route) => route.tab))).toEqual(
+      ADMIN_CONTEXT_ROUTES.map((route) => route.tab),
+    );
+    expect(resolveAdminContextTab("not-a-tab")).toBe("member");
   });
 });

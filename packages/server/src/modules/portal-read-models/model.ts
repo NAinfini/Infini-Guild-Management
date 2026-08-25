@@ -5,7 +5,7 @@ import type { SearchResult } from "@guild/shared/schemas/portal-read-models";
 
 export type DashboardParticipantRead = Readonly<{
   userId: string;
-  username: string;
+  display_name: string;
   roleId: string;
   classes: readonly string[];
   power: number;

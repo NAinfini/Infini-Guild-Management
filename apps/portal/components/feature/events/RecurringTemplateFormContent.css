@@ -1,0 +1,411 @@
+/* ── Recurring Template Form Content ── */
+
+.rtf-columns {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 20px;
+  align-items: start;
+}
+
+.rtf-col {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  min-width: 0;
+}
+
+/* The route page owns scrolling for both balanced form columns. */
+
+.rtf-actions--sticky {
+  position: sticky;
+  bottom: 0;
+  z-index: 1;
+  margin-inline: calc(var(--space-md) * -1);
+  padding: var(--space-md);
+  border-top: 1px solid color-mix(in srgb, var(--border-subtle) 82%, transparent);
+  background: color-mix(in srgb, var(--surface-raised) 94%, transparent);
+  box-shadow: 0 -10px 20px color-mix(in srgb, var(--surface-base) 72%, transparent);
+}
+
+.rtf-form,
+.rtf-field-stack,
+.rtf-field,
+.rtf-actions,
+.rtf-actions__lifecycle,
+.rtf-actions__primary {
+  display: grid;
+  gap: var(--space-md);
+}
+
+.rtf-form {
+  gap: 20px;
+}
+
+.rtf-field > label,
+.rtf-field-stack > strong {
+  color: var(--text-primary);
+  font-size: var(--text-body);
+  font-weight: 600;
+}
+
+.rtf-field--narrow {
+  max-width: 10rem;
+}
+
+.rtf-field--end-mode {
+  max-width: 13.75rem;
+}
+
+.rtf-select {
+  width: 100%;
+  min-height: var(--control-height-regular);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-control);
+  padding-inline: var(--space-sm);
+  color: var(--text-primary);
+  background: var(--surface-base);
+}
+
+.rtf-select:focus-visible {
+  outline: 2px solid var(--brand-fill);
+  outline-offset: 1px;
+}
+
+.rtf-duration-row,
+.rtf-offset-row,
+.rtf-end-count-row {
+  display: flex;
+  align-items: flex-end;
+  gap: var(--space-sm);
+}
+
+.rtf-duration-row > :first-child,
+.rtf-offset-row > [data-slot="input"] {
+  flex: 1;
+}
+
+.rtf-duration-row > :last-child {
+  flex: 0 0 6.25rem;
+}
+
+.rtf-input--short {
+  width: 4.5rem;
+}
+
+.rtf-select--frequency {
+  width: 7.5rem;
+}
+
+.rtf-input--date {
+  width: 10.625rem;
+}
+
+.rtf-switch-field {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-sm);
+}
+
+.rtf-switch-field > span {
+  display: grid;
+  gap: 2px;
+}
+
+.rtf-switch-field small {
+  color: var(--text-muted);
+  font-size: var(--text-meta);
+}
+
+.rtf-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: var(--space-sm);
+}
+
+.rtf-actions[data-edit] {
+  justify-content: space-between;
+}
+
+.rtf-actions__lifecycle,
+.rtf-actions__primary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-sm);
+}
+
+@media (max-width: 47.99em) {
+  .rtf-columns {
+    grid-template-columns: 1fr;
+  }
+
+  .rtf-actions--sticky {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .rtf-duration-row,
+  .rtf-offset-row {
+    flex-wrap: wrap;
+  }
+
+  .rtf-actions,
+  .rtf-actions__lifecycle,
+  .rtf-actions__primary {
+    width: 100%;
+  }
+}
+
+.rtf-section {
+  padding: 14px 16px;
+  border-radius: var(--radius-control);
+  background: var(--surface-raised);
+  border: 1px solid color-mix(in srgb, var(--border-subtle) 70%, transparent);
+  transition: border-color var(--transition-normal);
+}
+
+.rtf-section:hover {
+  border-color: color-mix(in srgb, var(--brand-fill) 25%, transparent);
+}
+
+/* ── Section dividers with gold gradient accent ── */
+
+.rtf-divider {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+.rtf-divider::before {
+  content: "";
+  flex: 0 0 3px;
+  height: 16px;
+  border-radius: var(--radius-control);
+  background: var(--brand-fill);
+  opacity: 0.7;
+}
+
+.rtf-divider::after {
+  content: "";
+  flex: 1;
+  height: 1px;
+  background: var(--border-subtle);
+}
+
+.rtf-divider__label {
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  color: color-mix(in srgb, var(--text-primary) 78%, transparent);
+  white-space: nowrap;
+  user-select: none;
+}
+
+/* .dark 覆盖只把透明度从 78% 微调到 72%，整块删除，理由同上。 */
+
+/* ── Weekday picker ── */
+
+.rtf-weekday-grid {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.rtf-weekday-btn {
+  all: unset;
+  box-sizing: border-box;
+  width: var(--control-icon-size-large);
+  height: var(--control-icon-size-large);
+  border-radius: 50%;
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 400;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1.5px solid color-mix(in srgb, var(--border-subtle) 80%, transparent);
+  background: transparent;
+  color: var(--text-primary);
+  transition:
+    background var(--transition-fast),
+    border-color var(--transition-fast),
+    color var(--transition-fast);
+}
+
+.rtf-weekday-btn:hover {
+  border-color: color-mix(in srgb, var(--brand-fill) 50%, transparent);
+  background: color-mix(in srgb, var(--brand-fill) 8%, transparent);
+}
+
+/* Selected text uses the foreground calibrated for the brand fill. */
+.rtf-weekday-btn--selected {
+  border-color: var(--brand-fill);
+  background: var(--brand-fill);
+  color: var(--brand-on-fill);
+  font-weight: 600;
+}
+
+/* The darker hover fill requires its separately calibrated on-fill text token. */
+.rtf-weekday-btn--selected:hover {
+  background: var(--brand-fill-hover);
+  border-color: var(--brand-fill-hover);
+  color: var(--brand-on-fill-hover);
+}
+
+/* ── Recurrence dashed divider ── */
+
+.rtf-recurrence-divider {
+  height: 0;
+  border-top: 1px dashed var(--border-subtle);
+}
+
+/* ── Offset hint ── */
+
+.rtf-offset-hint {
+  font-size: 12px;
+  margin-top: 4px;
+  padding: 4px 8px;
+  border-radius: var(--radius-control);
+  background: color-mix(in srgb, var(--brand-fill) 6%, transparent);
+  color: color-mix(in srgb, var(--text-primary) 70%, transparent);
+  display: inline-block;
+}
+
+.rtf-offset-hint--default {
+  background: transparent;
+}
+
+/* .dark 覆盖只差不透明度（10%/65% vs 6%/70%），整块删除，理由同上。 */
+
+/* ── Actions divider ── */
+
+.rtf-actions-divider {
+  height: 1px;
+  background: var(--border-subtle);
+}
+
+/* ── Interval row alignment ── */
+
+.rtf-interval-row {
+  display: flex;
+  align-items: flex-end;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.rtf-interval-label {
+  font-size: 14px;
+  font-weight: 500;
+  padding-bottom: 7px;
+  color: var(--text-primary);
+  white-space: nowrap;
+}
+
+/* .dark 覆盖是纯粹的兜底 hex 替换（#1A1815 → #F0EDE8），token 化后深浅两模式
+   共用同一个 --text-primary，整块删除。 */
+
+/* ── Lifecycle preview ── */
+
+.rtf-lifecycle {
+  padding: 14px 16px;
+  border-radius: var(--radius-control);
+  border: 1px solid color-mix(in srgb, var(--brand-fill) 20%, transparent);
+  background: color-mix(in srgb, var(--brand-fill) 4%, transparent);
+}
+
+/* .dark 覆盖只差不透明度（16%/6% vs 20%/4%），整块删除，理由同上。 */
+
+.rtf-lifecycle__title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  color: color-mix(in srgb, var(--text-primary) 78%, transparent);
+  margin-bottom: 12px;
+}
+
+/* .dark 覆盖只差不透明度（72% vs 78%），整块删除，理由同上。 */
+
+.rtf-lifecycle__title-icon {
+  color: var(--brand-text);
+  opacity: 0.8;
+  flex-shrink: 0;
+}
+
+.rtf-lifecycle__steps {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  padding-left: 4px;
+}
+
+.rtf-lifecycle__step {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  position: relative;
+  padding-left: 20px;
+  min-height: 32px;
+}
+
+.rtf-lifecycle__step::before {
+  content: "";
+  position: absolute;
+  left: 4px;
+  top: 50%;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  transform: translateY(-50%);
+  background: var(--brand-fill);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--brand-fill) 15%, transparent);
+}
+
+.rtf-lifecycle__step:not(:last-child)::after {
+  content: "";
+  position: absolute;
+  left: 7px;
+  top: calc(50% + 7px);
+  width: 2px;
+  height: calc(100% - 2px);
+  background: color-mix(in srgb, var(--brand-fill) 25%, transparent);
+}
+
+.rtf-lifecycle__step-label {
+  font-size: 12px;
+  font-weight: 600;
+  color: color-mix(in srgb, var(--text-primary) 65%, transparent);
+  min-width: 36px;
+  flex-shrink: 0;
+}
+
+/* .dark 覆盖是纯粹的兜底 hex 替换，不透明度同为 65%，整块删除，理由同上。 */
+
+.rtf-lifecycle__step-value {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-primary);
+  font-variant-numeric: tabular-nums;
+}
+
+/* .dark 覆盖是纯粹的兜底 hex 替换，整块删除，理由同上。 */
+
+.rtf-lifecycle--empty {
+  border-color: color-mix(in srgb, var(--border-subtle) 50%, transparent);
+  background: transparent;
+}
+
+/* .dark 覆盖是纯粹的兜底 hex 替换，不透明度同为 50%，整块删除，理由同上。 */
+
+.rtf-lifecycle__empty-text {
+  font-size: 12px;
+  font-style: italic;
+  color: color-mix(in srgb, var(--text-primary) 65%, transparent);
+}
+
+/* .dark 覆盖是纯粹的兜底 hex 替换，不透明度同为 65%，整块删除，理由同上。 */

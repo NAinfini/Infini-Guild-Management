@@ -6,7 +6,8 @@ import type {
   RateLimiter,
   SqlExecutor,
 } from "@guild/kernel";
-import type { AdminOperationsRuntimePort, RuntimeHealthPort } from "@guild/server";
+import type { AdminOperationsRuntimePort, RuntimeHealthPort, TransactionalEmailSender } from "@guild/server";
+import type { OAuthRuntimeConfig } from "./oauth-providers.js";
 import { createPortalApiApp, type PortalApiConfig } from "./portal-api.js";
 import { createApplicationServices } from "./services.js";
 
@@ -19,6 +20,8 @@ export type ApplicationDependencies = Readonly<{
   health: RuntimeHealthPort;
   adminOperationsRuntime: AdminOperationsRuntimePort;
   authRateLimiter: RateLimiter;
+  authIpRateLimiter: RateLimiter;
+  emailSender?: TransactionalEmailSender | null;
   readRateLimiter: RateLimiter;
   expensiveReadRateLimiter: RateLimiter;
   mutationRateLimiter: RateLimiter;
@@ -30,15 +33,21 @@ export type ApplicationDependencies = Readonly<{
 export type ApplicationConfig = PortalApiConfig & Readonly<{
   inviteTokenSecret: string;
   passwordIterations: number;
+  oauth: OAuthRuntimeConfig;
+  emailFrom: string | null;
 }>;
 
 export function createApplication(dependencies: ApplicationDependencies, config: ApplicationConfig) {
   const services = createApplicationServices({
     ...dependencies,
     authRateLimiter: dependencies.authRateLimiter,
+    authIpRateLimiter: dependencies.authIpRateLimiter,
   }, {
     inviteTokenSecret: config.inviteTokenSecret,
     passwordIterations: config.passwordIterations,
+    oauth: config.oauth,
+    publicUrl: config.publicUrl,
+    emailFrom: config.emailFrom,
   });
   const api = createPortalApiApp(services, {
     authRateLimiter: dependencies.authRateLimiter,

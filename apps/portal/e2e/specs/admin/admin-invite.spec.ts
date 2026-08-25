@@ -2,7 +2,7 @@ import type { AdminRole } from "@guild/shared";
 import type { APIRequestContext, Locator, Page } from "@playwright/test";
 import { readAssignableRole } from "../../support/members";
 import { expect, readJson, test } from "../../support/test";
-import { confirmDialog, dialogTitled, expectNoDialog, field, readInteger } from "../../support/ui";
+import { confirmDialog, dialogTitled, ensureFiltersOpen, expectNoDialog, field, readInteger } from "../../support/ui";
 
 /*
  * 后台「邀请码」页签的全部控件：新建弹窗、可见性分段、搜索框、行上的复制／撤销／删除、
@@ -81,7 +81,7 @@ async function createInvite(
 }
 
 function toolbar(page: Page): Locator {
-  return page.locator(".admin-toolbar");
+  return page.locator(".content-filter-toolbar");
 }
 function searchBox(page: Page): Locator {
   return page.getByPlaceholder("Search code / date");
@@ -94,11 +94,10 @@ function inviteRow(page: Page, code: string): Locator {
   return page.locator(".admin-table tbody tr").filter({ hasText: code });
 }
 /*
- * Mantine 的 SegmentedControl 把真正的 radio 藏了起来（视觉上不可见），可点的是 label。
- * 按 role 取到的是那个隐藏 input，点它会一直等「元素可见」直到超时，报出来像控件坏了。
+ * 状态筛选由可见的 radio 直接承载，按语义角色定位并点击。
  */
 function segment(page: Page, label: string): Locator {
-  return page.locator("label.mantine-SegmentedControl-label").filter({ hasText: new RegExp(`^${label}$`) });
+  return page.getByRole("radio", { name: label, exact: true });
 }
 function segmentInput(page: Page, label: string): Locator {
   return page.getByRole("radio", { name: label, exact: true });
@@ -164,6 +163,7 @@ async function switchVisibility(
   visibility: Visibility,
   search = "",
 ): Promise<void> {
+  await ensureFiltersOpen(toolbar(page));
   await expectListRequest(page, () => segment(page, label).click(), {
     visibility,
     search: search.trim(),
@@ -190,11 +190,11 @@ function menuItem(page: Page, name: string): Locator {
 
 /**
  * 断言弹出了这句通知。
- * notifications.show({ message }) 渲染进的是 Notification 的 description 槽，不是 title。
+ * 通知正文渲染在共享 Toast 的 description 槽中，而不是标题槽。
  */
 async function expectNotified(page: Page, text: string): Promise<void> {
   await expect(
-    page.locator(".mantine-Notification-description").filter({ hasText: text }),
+    page.locator('[data-slot="toast-description"]').filter({ hasText: text }),
     `没有弹出通知「${text}」`,
   ).toBeVisible();
 }
@@ -269,6 +269,7 @@ test("可见性三段：有效／过期／撤销各自只装自己那一批，�
   ).toBe(200);
 
   await openInvites(page);
+  await ensureFiltersOpen(toolbar(page));
   await expect(segmentInput(page, "Valid"), "默认停在「有效」这一段").toBeChecked();
   await expect(inviteRow(page, active.code)).toHaveCount(1);
   await expect(inviteRow(page, expired.code), "过期的码不该出现在有效段").toHaveCount(0);

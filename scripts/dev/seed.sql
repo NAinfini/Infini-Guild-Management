@@ -7,7 +7,7 @@
 -- 多行 VALUES 不走这条限制，同样的数据换个写法就没有上限问题。
 
 INSERT OR IGNORE INTO users (
-  id, username, role_id, is_active, deleted_at, revision_token, created_at, updated_at
+  id, display_name, role_id, is_active, deleted_at, revision_token, created_at, updated_at
 )
 SELECT
   'dev-owner', 'admin', 'admin', 1, NULL, 'dev-owner-user-revision',
@@ -16,9 +16,9 @@ SELECT
 WHERE NOT EXISTS (SELECT 1 FROM users);
 --> statement-breakpoint
 
-INSERT OR IGNORE INTO user_credentials (user_id, password_hash, updated_at)
+INSERT OR IGNORE INTO user_credentials (user_id, login_name, password_hash, updated_at)
 SELECT
-  'dev-owner',
+  'dev-owner', 'admin',
   'pbkdf2-sha256$10000$aW5maW5pLWUyZS1vd25lcg$-VYi6RNWPNIdHw3hXNV9jsMaTTUvgCy-AqKVhQy7kVw',
   strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
 WHERE EXISTS (SELECT 1 FROM users WHERE id = 'dev-owner');
@@ -30,7 +30,7 @@ WHERE EXISTS (SELECT 1 FROM users WHERE id = 'dev-owner');
 --
 -- 账号尾号在全站唯一（会长 00、成员 01-28、管理 29-31），不按角色各自从 01 起编：
 -- 下面所有分布都拿这个尾号当席位号，尾号撞车会让两个人的战力、职业、战绩完全一样。
-WITH seed(id, username, role_id, is_active, joined_days_ago) AS (
+WITH seed(id, display_name, role_id, is_active, joined_days_ago) AS (
   VALUES
     ('dev-moderator-29', 'moderator_29', 'moderator', 1, 815),
     ('dev-moderator-30', 'moderator_30', 'moderator', 1, 702),
@@ -65,19 +65,19 @@ WITH seed(id, username, role_id, is_active, joined_days_ago) AS (
     ('dev-member-28', 'member_28', 'member', 1, 11)
 )
 INSERT OR IGNORE INTO users (
-  id, username, role_id, is_active, deleted_at, revision_token, created_at, updated_at
+  id, display_name, role_id, is_active, deleted_at, revision_token, created_at, updated_at
 )
 SELECT
-  seed.id, seed.username, seed.role_id, seed.is_active, NULL, seed.id || '-revision',
+  seed.id, seed.display_name, seed.role_id, seed.is_active, NULL, seed.id || '-revision',
   strftime('%Y-%m-%dT%H:%M:%fZ', 'now', '-' || seed.joined_days_ago || ' days'),
   strftime('%Y-%m-%dT%H:%M:%fZ', 'now', '-' || seed.joined_days_ago || ' days')
 FROM seed
 WHERE EXISTS (SELECT 1 FROM users WHERE id = 'dev-owner');
 --> statement-breakpoint
 
-INSERT OR IGNORE INTO user_credentials (user_id, password_hash, updated_at)
+INSERT OR IGNORE INTO user_credentials (user_id, login_name, password_hash, updated_at)
 SELECT
-  id,
+  id, display_name,
   'pbkdf2-sha256$10000$aW5maW5pLWUyZS1vd25lcg$-VYi6RNWPNIdHw3hXNV9jsMaTTUvgCy-AqKVhQy7kVw',
   strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
 FROM users
@@ -150,13 +150,13 @@ ON CONFLICT(id) DO UPDATE SET
   revoked_at = excluded.revoked_at;
 --> statement-breakpoint
 
-INSERT INTO login_failures (username, fail_count, locked_until, last_failed_at)
+INSERT INTO login_failures (login_name, fail_count, locked_until, last_failed_at)
 SELECT
   'member_08', 6,
   strftime('%Y-%m-%dT%H:%M:%fZ', 'now', '+10 minutes'),
   strftime('%Y-%m-%dT%H:%M:%fZ', 'now', '-1 minute')
 WHERE EXISTS (SELECT 1 FROM users WHERE id = 'dev-member-08')
-ON CONFLICT(username) DO UPDATE SET
+ON CONFLICT(login_name) DO UPDATE SET
   fail_count = excluded.fail_count,
   locked_until = excluded.locked_until,
   last_failed_at = excluded.last_failed_at;
@@ -1297,7 +1297,7 @@ INSERT OR IGNORE INTO audit_log (
   subject_label, action, payload_json, occurred_at
 )
 SELECT id, request_id, 'user', actor_id,
-  (SELECT username FROM users WHERE users.id = seed_audit.actor_id),
+  (SELECT display_name FROM users WHERE users.id = seed_audit.actor_id),
   subject_type, subject_id, subject_label, action, payload_json,
   strftime('%Y-%m-%dT%H:%M:%fZ', 'now', occurred_modifier)
 FROM (

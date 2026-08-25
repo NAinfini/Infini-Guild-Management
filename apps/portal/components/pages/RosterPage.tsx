@@ -1,7 +1,10 @@
-import { Suspense, lazy, useEffect, useState, type FocusEvent } from "react";
+import { Suspense, lazy, type FocusEvent } from "react";
 import { useTranslation } from "react-i18next";
 import { useNavigate } from "@tanstack/react-router";
-import { Button, Paper, Skeleton, Stack } from "@mantine/core";
+import { UsersIcon } from "@portal/components/icons";
+import { Button } from "@portal/components/ui/button";
+import { Card, CardContent } from "@portal/components/ui/card";
+import { Skeleton } from "@portal/components/ui/skeleton";
 import { useLoadWarningToast } from "../../hooks/useLoadWarningToast";
 import { useRosterPageController } from "../../hooks/useRosterPageController";
 import { resolveMediaUrl } from "../../utils/media";
@@ -16,38 +19,17 @@ const LazyProfileModal = lazy(() =>
   import("../shared/ProfileModal").then((mod) => ({ default: mod.ProfileModal })),
 );
 
-/*
- * Restored per user request alongside the big-icon-card MemberCard geometry:
- * fewer, wider columns so the full-width square avatar has room to breathe.
- */
-function resolveColumnCount(width: number): number {
-  if (width >= 1600) return 8;
-  if (width >= 1200) return 6;
-  if (width >= 992) return 4;
-  if (width >= 768) return 3;
-  if (width >= 576) return 2;
-  return 1;
-}
-
 export function RosterPage() {
   const { t } = useTranslation("roster");
   const navigate = useNavigate();
   const controller = useRosterPageController();
-
-  const [windowWidth, setWindowWidth] = useState(() => typeof window === "undefined" ? 1920 : window.innerWidth);
-
-  useEffect(() => {
-    const onResize = () => setWindowWidth(window.innerWidth);
-    window.addEventListener("resize", onResize);
-    return () => window.removeEventListener("resize", onResize);
-  }, []);
 
   useLoadWarningToast(controller.usersQuery.isError, t("common:loadErrorRetry"));
 
   const { sortedRows, visibleCount, setVisibleCount, debouncedSearch, classFilter, sortMode } = controller;
   const shouldVirtualize = sortedRows.length > 50;
   const renderedRows = shouldVirtualize ? sortedRows : sortedRows.slice(0, visibleCount);
-  const columnCount = resolveColumnCount(windowWidth);
+  const rosterUnavailable = controller.usersQuery.isError && sortedRows.length === 0;
 
   const handleCardFocus = (entry: RosterEntry) => {
     controller.playHoverAudio(entry);
@@ -59,64 +41,93 @@ export function RosterPage() {
   };
 
   return (
-    <PageLayout className="roster-page">
-      <Stack gap="var(--page-rhythm)" className="roster-page__body">
-      <RosterFilterCard
-        search={controller.search}
-        onSearchChange={controller.setSearch}
-        classFilter={classFilter}
-        onClassFilterChange={controller.setClassFilter}
-        sortMode={sortMode}
-        onSortModeChange={controller.setSortMode}
-        audioMuted={controller.audioMuted}
-        onAudioMutedChange={controller.setAudioMutedState}
-        audioVolume={controller.audioVolume}
-        onAudioVolumeChange={controller.setAudioVolumeState}
-        renderedCount={renderedRows.length}
-        totalCount={sortedRows.length}
-      />
-
-      {controller.usersQuery.isLoading ? (
-        <Skeleton height={200} radius={8} />
-      ) : sortedRows.length === 0 ? (
-        <Paper className="roster-empty-card" withBorder p="lg">
-          <EmptyState
-            title={debouncedSearch || classFilter.length > 0 ? t("empty.filtered") : t("empty.default")}
-            actions={
-              <Button
-                variant="default"
-                onClick={() => { controller.setSearch(""); controller.setClassFilter([]); }}
-                disabled={!debouncedSearch && classFilter.length === 0}
-              >
-                {t("action.resetFilters")}
-              </Button>
-            }
+    <>
+      <PageLayout
+        className="roster-page"
+        workspaceMode="contained"
+        toolbar={(
+          <RosterFilterCard
+            search={controller.search}
+            onSearchChange={controller.setSearch}
+            classFilter={classFilter}
+            onClassFilterChange={controller.setClassFilter}
+            sortMode={sortMode}
+            onSortModeChange={controller.setSortMode}
+            audioMuted={controller.audioMuted}
+            onAudioMutedChange={controller.setAudioMutedState}
+            audioVolume={controller.audioVolume}
+            onAudioVolumeChange={controller.setAudioVolumeState}
+            renderedCount={renderedRows.length}
+            totalCount={sortedRows.length}
           />
-        </Paper>
-      ) : null}
+        )}
+      >
+        <div className="roster-page__body">
+          {rosterUnavailable ? (
+            <Card className="roster-empty-card">
+              <CardContent className="roster-empty-card__content">
+                <EmptyState
+                  status="error"
+                  title={t("common:loadError")}
+                  description={t("error.loadDescription")}
+                  actions={(
+                    <Button onClick={() => { void controller.usersQuery.refetch(); }}>
+                      {t("common:action.retry")}
+                    </Button>
+                  )}
+                />
+              </CardContent>
+            </Card>
+          ) : controller.usersQuery.isLoading ? (
+            <div className="roster-loading-grid" aria-busy="true">
+              {Array.from({ length: 8 }).map((_, index) => (
+                <Skeleton key={index} className="roster-loading-card" />
+              ))}
+            </div>
+          ) : sortedRows.length === 0 ? (
+            <Card className="roster-empty-card">
+              <CardContent className="roster-empty-card__content">
+                <EmptyState
+                  title={debouncedSearch || classFilter.length > 0 ? t("empty.filtered") : t("empty.default")}
+                  description={debouncedSearch || classFilter.length > 0 ? t("empty.filteredDescription") : t("empty.description")}
+                  icon={<UsersIcon size={28} aria-hidden="true" />}
+                  actions={(
+                    <Button
+                      variant="outline"
+                      onClick={() => {
+                        controller.setSearch("");
+                        controller.setClassFilter([]);
+                      }}
+                      disabled={!debouncedSearch && classFilter.length === 0}
+                    >
+                      {t("action.resetFilters")}
+                    </Button>
+                  )}
+                />
+              </CardContent>
+            </Card>
+          ) : null}
 
-      {sortedRows.length > 0 ? (
-        <RosterGrid
-          rows={renderedRows}
-          shouldVirtualize={shouldVirtualize}
-          columnCount={columnCount}
-          staggerKey={`${debouncedSearch}|${classFilter.join(",")}|${sortMode}`}
-          ariaLabel={t("grid.aria")}
-          onCardClick={controller.openMemberProfile}
-          onCardMouseEnter={controller.playHoverAudio}
-          onCardMouseLeave={controller.stopHoverAudio}
-          onCardFocus={handleCardFocus}
-          onCardBlur={handleCardBlur}
-        />
-      ) : null}
+          {sortedRows.length > 0 ? (
+            <RosterGrid
+              rows={renderedRows}
+              shouldVirtualize={shouldVirtualize}
+              ariaLabel={t("grid.aria")}
+              onCardClick={controller.openMemberProfile}
+              onCardMouseEnter={controller.playHoverAudio}
+              onCardMouseLeave={controller.stopHoverAudio}
+              onCardFocus={handleCardFocus}
+              onCardBlur={handleCardBlur}
+            />
+          ) : null}
 
-      {!shouldVirtualize && sortedRows.length > renderedRows.length ? (
-        <div className="roster-load-more">
-          <Button variant="default" onClick={() => setVisibleCount((count) => count + 20)}>{t("action.loadMore")}</Button>
+          {!shouldVirtualize && sortedRows.length > renderedRows.length ? (
+            <div className="roster-load-more">
+              <Button variant="default" onClick={() => setVisibleCount((count) => count + 20)}>{t("action.loadMore")}</Button>
+            </div>
+          ) : null}
         </div>
-      ) : null}
-      </Stack>
-
+      </PageLayout>
       <Suspense fallback={null}>
         <LazyProfileModal
           open={controller.selected !== null}
@@ -140,11 +151,11 @@ export function RosterPage() {
             if (controller.selected.user.id === controller.sessionUser.id) {
               void navigate({ to: "/profile" });
             } else {
-              void navigate({ to: "/admin", search: { member: controller.selected.user.username } });
+              void navigate({ to: "/admin", search: { member: controller.selected.user.display_name } });
             }
           }}
         />
       </Suspense>
-    </PageLayout>
+    </>
   );
 }

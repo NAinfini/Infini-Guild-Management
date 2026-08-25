@@ -3,7 +3,7 @@ import type { AuditEventWrite } from "../audit/public.js";
 
 export type AuthUserRecord = Readonly<{
   id: string;
-  username: string;
+  displayName: string;
   roleId: string;
   roleName: string;
   roleColor: string | null;
@@ -18,12 +18,25 @@ export type AuthUserRecord = Readonly<{
   lastLoginAt: string | null;
 }>;
 
-export type LoginAccountRecord = AuthUserRecord & Readonly<{ passwordHash: string }>;
+export type LoginAccountRecord = AuthUserRecord & Readonly<{
+  loginName: string;
+  passwordHash: string;
+  authRevision: number;
+  temporaryPasswordExpiresAt: string | null;
+  temporaryPasswordUsedAt: string | null;
+}>;
+
+export type CredentialRecord = Readonly<{
+  loginName: string;
+  passwordHash: string;
+  authRevision: number;
+}>;
 
 export type SessionAuthorizationRecord = AuthUserRecord & Readonly<{
   tokenDigest: string;
   expiresAt: string;
   sessionCreatedAt: string;
+  sessionScope: "normal" | "password_change";
 }>;
 
 export type RoleRecord = Readonly<{
@@ -54,7 +67,9 @@ export type InviteRecord = Readonly<{
 
 export type ManagedUserTarget = Readonly<{
   id: string;
-  username: string;
+  displayName: string;
+  loginName: string;
+  authRevision: number;
   roleId: string;
   roleLevel: number;
   rolePermissions: ReadonlySet<Permission>;
@@ -98,7 +113,13 @@ export type GuardedAuthMutationResult = "updated" | "conflict" | "last_role_mana
 export type AuthSessionResult = Readonly<{
   user: AuthUserRecord;
   profile: MemberProfile;
-  session: Readonly<{ rawToken: string; tokenDigest: string; expiresAt: string; stayLoggedIn: boolean }>;
+  session: Readonly<{
+    rawToken: string;
+    tokenDigest: string;
+    expiresAt: string;
+    stayLoggedIn: boolean;
+    scope: "normal" | "password_change";
+  }>;
 }>;
 
 export type ResolvedSession = Readonly<{
@@ -115,50 +136,106 @@ export interface AccountProvisioningStore {
     inviteId: string;
     tokenDigest: string;
     userId: string;
-    username: string;
+    loginName: string;
+    displayName: string;
     passwordHash: string;
     now: string;
-  }>, audit: AuditEventWrite): Promise<"created" | "invite_unavailable" | "username_taken">;
+  }>, audit: AuditEventWrite): Promise<"created" | "invite_unavailable" | "login_name_taken" | "display_name_taken">;
   createManagedUser(input: Readonly<{
     id: string;
-    username: string;
+    loginName: string;
+    displayName: string;
     roleId: string;
     passwordHash: string;
+    temporaryPasswordExpiresAt: string;
     destinationRole: RoleRecord;
     now: string;
-  }>, audit: AuditEventWrite): Promise<"created" | "username_taken" | "conflict">;
+  }>, audit: AuditEventWrite): Promise<"created" | "login_name_taken" | "display_name_taken" | "conflict">;
 }
 
 export interface AuthStore {
-  findLoginAccount(normalizedUsername: string): Promise<LoginAccountRecord | null>;
-  findCredential(userId: string): Promise<string | null>;
-  usernameExists(normalizedUsername: string): Promise<boolean>;
+  findLoginAccount(normalizedLoginName: string): Promise<LoginAccountRecord | null>;
+  findCredentialRecord(userId: string): Promise<CredentialRecord | null>;
+  findLoginName(userId: string): Promise<string | null>;
   findUser(userId: string): Promise<AuthUserRecord | null>;
   findSessionAuthorization(tokenDigest: string): Promise<SessionAuthorizationRecord | null>;
-  readLoginFailure(normalizedUsername: string): Promise<LoginFailureRecord | null>;
+  readLoginFailure(normalizedLoginName: string): Promise<LoginFailureRecord | null>;
   recordLoginFailure(input: Readonly<{
-    normalizedUsername: string;
+    normalizedLoginName: string;
     now: string;
     freeAttempts: number;
     lockSeconds: readonly number[];
   }>): Promise<LoginFailureRecord>;
-  clearLoginFailures(normalizedUsername: string): Promise<void>;
+  clearLoginFailures(normalizedLoginName: string): Promise<void>;
   pruneLoginFailures(before: string, now: string, limit: number): Promise<void>;
-  rehashPassword(userId: string, passwordHash: string, now: string): Promise<void>;
+  rehashPassword(input: Readonly<{
+    userId: string;
+    expectedPasswordHash: string;
+    expectedAuthRevision: number;
+    passwordHash: string;
+    now: string;
+  }>): Promise<boolean>;
   openUserSession(input: Readonly<{
     userId: string;
     tokenDigest: string;
     expiresAt: string;
     createdAt: string;
     maximumSessions: number;
-  }>): Promise<void>;
+    scope?: "normal" | "password_change";
+    expectedAuthRevision: number;
+  }>): Promise<boolean>;
   renewSession(tokenDigest: string, expiresAt: string): Promise<void>;
   recordLastLogin(userId: string, at: string): Promise<void>;
   deleteSession(tokenDigest: string): Promise<void>;
   deleteSessionsForUsers(userIds: readonly string[]): Promise<void>;
   findActiveInvite(tokenDigest: string, now: string): Promise<InviteRecord | null>;
-  changeOwnPassword(userId: string, passwordHash: string, now: string, audit: AuditEventWrite): Promise<void>;
-  changeOwnUsername(userId: string, username: string, now: string, audit: AuditEventWrite): Promise<"updated" | "username_taken">;
+  changeOwnPassword(input: Readonly<{
+    userId: string;
+    expectedAuthRevision: number;
+    passwordHash: string;
+    now: string;
+    audit: AuditEventWrite;
+  }>): Promise<boolean>;
+  changeOwnLoginName(input: Readonly<{
+    userId: string;
+    expectedAuthRevision: number;
+    previousLoginName: string;
+    loginName: string;
+    now: string;
+    audit: AuditEventWrite;
+  }>): Promise<"updated" | "login_name_taken" | "invalid">;
+  setTemporaryPassword(input: Readonly<{
+    target: ManagedUserTarget;
+    actorUserId: string;
+    expectedActorAuthRevision: number;
+    temporaryLoginName: string;
+    passwordHash: string;
+    expiresAt: string;
+    now: string;
+    audit: AuditEventWrite;
+  }>): Promise<"updated" | "login_name_taken" | "conflict">;
+  consumeTemporaryPasswordAndOpenSession(input: Readonly<{
+    userId: string;
+    passwordHash: string;
+    now: string;
+    tokenDigest: string;
+    expiresAt: string;
+    maximumSessions: number;
+    authRevision: number;
+  }>): Promise<boolean>;
+  completeTemporaryPasswordAndOpenSession(input: Readonly<{
+    userId: string;
+    restrictedSessionTokenDigest: string;
+    previousLoginName: string;
+    loginName: string;
+    passwordHash: string;
+    authRevision: number;
+    now: string;
+    tokenDigest: string;
+    expiresAt: string;
+    maximumSessions: number;
+    audit: AuditEventWrite;
+  }>): Promise<"completed" | "invalid" | "login_name_taken">;
 
   listInvites(input: Readonly<{
     visibility: InviteVisibility;
@@ -199,12 +276,6 @@ export interface AuthStore {
     targets: readonly ManagedUserTarget[];
     now: string;
   }>, audit: AuditEventWrite): Promise<GuardedAuthMutationResult>;
-  resetUserPassword(
-    target: ManagedUserTarget,
-    passwordHash: string,
-    now: string,
-    audit: AuditEventWrite,
-  ): Promise<"updated" | "conflict">;
   resetUserLoginLock(target: ManagedUserTarget, audit: AuditEventWrite): Promise<
     | Readonly<{ outcome: "updated"; previous: LoginFailureRecord | null }>
     | Readonly<{ outcome: "conflict" }>

@@ -13,7 +13,7 @@ type WarDetail = {
   result?: string | null;
   member_stats: Array<{
     user_id: string;
-    username?: string | null;
+    display_name?: string | null;
     stats: Record<string, number | null> | null;
   }>;
   teams: Array<{
@@ -25,7 +25,7 @@ type WarDetail = {
   }>;
   pool?: Array<{
     userId: string;
-    username?: string | null;
+    display_name?: string | null;
   }>;
 };
 
@@ -126,13 +126,13 @@ export function useGuildWarAnalyticsComputed({
     const map = new Map<string, string>();
     for (const war of analyticsWarDetails) {
       for (const member of war.member_stats) {
-        if (member.username && !map.has(member.user_id)) {
-          map.set(member.user_id, member.username);
+        if (member.display_name && !map.has(member.user_id)) {
+          map.set(member.user_id, member.display_name);
         }
       }
       for (const poolMember of war.pool ?? []) {
-        if (poolMember.username && !map.has(poolMember.userId)) {
-          map.set(poolMember.userId, poolMember.username);
+        if (poolMember.display_name && !map.has(poolMember.userId)) {
+          map.set(poolMember.userId, poolMember.display_name);
         }
       }
     }
@@ -373,8 +373,8 @@ export function useGuildWarAnalyticsComputed({
       const row: Record<string, unknown> = {
         key: war.id,
         war_name: war.war_name,
-        created_at: war.created_at,
-        result: war.result ?? "-",
+        created_at: localDateKey(war.created_at),
+        result: war.result ? getGuildWarResultLabel(war.result) : "—",
       };
       analyticsSelectedUsers.forEach((userId, userIndex) => {
         const member = war.member_stats.find((item) => item.user_id === userId);
@@ -384,7 +384,7 @@ export function useGuildWarAnalyticsComputed({
       });
       return row;
     });
-  }, [analyticsSelectedUsers, analyticsSelectedMetrics, playerTimeline, getNormalizedMetricValueOrNull]);
+  }, [analyticsSelectedUsers, analyticsSelectedMetrics, playerTimeline, getNormalizedMetricValueOrNull, t]);
 
   const analyticsChartOption = useMemo(() => {
     if (analyticsMode === "wars") {

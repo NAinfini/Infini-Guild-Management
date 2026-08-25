@@ -1,4 +1,3 @@
-import { Text } from "@mantine/core";
 import { useMemo } from "react";
 import { useTranslation } from "react-i18next";
 import { parseAvailabilityRanges } from "../../../utils/availability";
@@ -72,19 +71,19 @@ export function ProfileWeekSummary({ availabilityData }: ProfileWeekSummaryProps
 
   return (
     <section className="profile-week">
-      <Text size="xs" fw={600} c="dimmed" className="profile-rail__label">
+      <span className="profile-rail__label">
         {t("week.railLabel")}
-      </Text>
+      </span>
 
       <div className="profile-week__total">
-        <Text fw={700} size="xl" lh={1.1}>
+        <strong className="profile-week__hours">
           {t("week.hours", { hours: totalHours, count: totalHours })}
-        </Text>
-        <Text size="xs" c="dimmed">
+        </strong>
+        <span className="profile-week__peak">
           {summary.peak.minutes > 0
             ? t("week.peakDay", { day: t(DAY_LABEL_KEYS[summary.peak.dayIndex]!) })
             : t("week.emptyWarning")}
-        </Text>
+        </span>
       </div>
 
       <div className="profile-week__map">

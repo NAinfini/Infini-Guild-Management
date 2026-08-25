@@ -65,26 +65,28 @@ describe("AdminService mutations", () => {
     expect(init.method).toBe("PATCH");
   });
 
-  it("resetAdminUserPassword sends POST and returns temporary password", async () => {
-    mockFetch.mockResolvedValueOnce(mockJsonResponse({ ok: true, temporary_password: "abc123" }));
-    const result = await resetAdminUserPassword("user-1");
+  it("resetAdminUserPassword sends current password and returns temporary credentials", async () => {
+    mockFetch.mockResolvedValueOnce(mockJsonResponse({ ok: true, temporary_login_name: "recovery", temporary_password: "abc123" }));
+    const result = await resetAdminUserPassword("user-1", "current-password");
     const [url, init] = mockFetch.mock.calls[0]!;
     expect(url).toContain("/api/admin/users/user-1/reset-password");
     expect(init.method).toBe("POST");
+    expect(JSON.parse(init.body)).toEqual({ current_password: "current-password" });
+    expect(result.temporary_login_name).toBe("recovery");
     expect(result.temporary_password).toBe("abc123");
   });
 
   it("createAdminMember validates and sends POST", async () => {
-    mockFetch.mockResolvedValueOnce(mockJsonResponse({ ok: true, user_id: "u-new", username: "newuser", temporary_password: "pass" }));
-    const result = await createAdminMember({ username: "newuser", role_id: "member" });
+    mockFetch.mockResolvedValueOnce(mockJsonResponse({ ok: true, user_id: "u-new", display_name: "newuser", temporary_login_name: "new_login", temporary_password: "pass" }));
+    const result = await createAdminMember({ login_name: "new_login", display_name: "newuser", role_id: "member" });
     const [url, init] = mockFetch.mock.calls[0]!;
     expect(url).toContain("/api/admin/users");
     expect(init.method).toBe("POST");
-    expect(result.username).toBe("newuser");
+    expect(result.display_name).toBe("newuser");
   });
 
-  it("createAdminMember rejects empty username", () => {
-    expect(() => createAdminMember({ username: "", role_id: "member" })).toThrow();
+  it("createAdminMember rejects empty display_name", () => {
+    expect(() => createAdminMember({ login_name: "new_login", display_name: "", role_id: "member" })).toThrow();
   });
 
   it("batchUpdateAdminUserRole sends batch role PATCH", async () => {

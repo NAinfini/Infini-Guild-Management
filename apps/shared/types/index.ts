@@ -4,12 +4,24 @@ import type {
   entityChangedPushMessageSchema,
   heartbeatAckMessageSchema,
   heartbeatMessageSchema,
+  inboxChangedPushMessageSchema,
+  inboxNotificationListResponseSchema,
+  inboxNotificationSchema,
   memberOnlinePushMessageSchema,
   pushMessageSchema,
 } from "../schemas/notifications";
+import type {
+  importantNoticeAcknowledgementSchema,
+  importantNoticeActiveSchema,
+  importantNoticeSchema,
+} from "../schemas/important-notices";
 import type { userSchema, memberProfileSchema } from "../schemas/user";
 import type { eventSchema, eventClassQuotaSchema, eventClassQuotaInputSchema, eventParticipantSchema, eventPollSchema, eventRaffleWinnerSchema, recurringTemplateSchema } from "../schemas/event";
-import type { announcementSchema } from "../schemas/announcement";
+import type {
+  announcementAttachmentSchema,
+  announcementSchema,
+  announcementSummarySchema,
+} from "../schemas/announcement";
 import type {
   guildWarActiveResponseSchema,
   guildWarHistoryDetailResponseSchema,
@@ -52,6 +64,8 @@ export type EventPoll = z.infer<typeof eventPollSchema>;
 export type EventRaffleWinner = z.infer<typeof eventRaffleWinnerSchema>;
 export type RecurringTemplate = z.infer<typeof recurringTemplateSchema>;
 export type Announcement = z.infer<typeof announcementSchema>;
+export type AnnouncementSummary = z.infer<typeof announcementSummarySchema>;
+export type AnnouncementAttachment = z.infer<typeof announcementAttachmentSchema>;
 export type WarHistory = z.infer<typeof warHistorySchema>;
 export type WarTeam = z.infer<typeof warTeamSchema>;
 export type WarTeamMember = z.infer<typeof warTeamMemberSchema>;
@@ -98,4 +112,10 @@ export type MemberOnlinePushMessage = z.infer<typeof memberOnlinePushMessageSche
 export type AnnouncementPublishedPushMessage = z.infer<typeof announcementPublishedPushMessageSchema>;
 export type HeartbeatMessage = z.infer<typeof heartbeatMessageSchema>;
 export type HeartbeatAckMessage = z.infer<typeof heartbeatAckMessageSchema>;
+export type InboxChangedPushMessage = z.infer<typeof inboxChangedPushMessageSchema>;
+export type InboxNotification = z.infer<typeof inboxNotificationSchema>;
+export type InboxNotificationListResponse = z.infer<typeof inboxNotificationListResponseSchema>;
 export type PushMessage = z.infer<typeof pushMessageSchema>;
+export type ImportantNotice = z.infer<typeof importantNoticeSchema>;
+export type ImportantNoticeActive = z.infer<typeof importantNoticeActiveSchema>;
+export type ImportantNoticeAcknowledgement = z.infer<typeof importantNoticeAcknowledgementSchema>;

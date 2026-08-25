@@ -17,24 +17,26 @@ describe("register", () => {
 
   it("uses the registration response as the authenticated session without a second request", async () => {
     const response = {
-      user: { id: "user-1", username: "new-member" },
+      user: { id: "user-1", display_name: "new_member" },
       profile: { user_id: "user-1" },
     };
     apiRequestMock.mockResolvedValueOnce(response as never);
 
     await expect(register("INVITE-1", {
-      username: "new-member",
-      password: "password123",
-      confirmPassword: "password123",
+      login_name: "new_login",
+      display_name: "new_member",
+      password: "password123456789",
+      confirmPassword: "password123456789",
     })).resolves.toBe(response);
 
     expect(apiRequestMock).toHaveBeenCalledOnce();
     expect(apiRequestMock).toHaveBeenCalledWith("/api/auth/register/INVITE-1", {
       method: "POST",
       bodyJson: {
-        username: "new-member",
-        password: "password123",
-        confirmPassword: "password123",
+        login_name: "new_login",
+        display_name: "new_member",
+        password: "password123456789",
+        confirmPassword: "password123456789",
       },
     });
   });

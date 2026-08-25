@@ -1,6 +1,5 @@
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { MantineProvider } from "@mantine/core";
 import { describe, expect, it, vi } from "vitest";
 import { MySignupsCard } from "./MySignupsCard";
 
@@ -15,14 +14,12 @@ describe("MySignupsCard", () => {
   it("turns the empty signup state into a direct path to events", async () => {
     const onBrowseEvents = vi.fn();
     render(
-      <MantineProvider>
-        <MySignupsCard
-          mySignupEvents={[]}
-          now={new Date("2026-08-01T12:00:00.000Z")}
-          onOpenEvent={vi.fn()}
-          onBrowseEvents={onBrowseEvents}
-        />
-      </MantineProvider>,
+      <MySignupsCard
+        mySignupEvents={[]}
+        now={new Date("2026-08-01T12:00:00.000Z")}
+        onOpenEvent={vi.fn()}
+        onBrowseEvents={onBrowseEvents}
+      />,
     );
 
     const emptyState = screen.getByText("card.mySignups.empty").closest(".empty-state");

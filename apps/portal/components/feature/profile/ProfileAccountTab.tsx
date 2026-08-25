@@ -1,224 +1,403 @@
-import { SectionHeader } from "../../shared/SectionHeader";
-import { Button, Paper, PasswordInput, Stack, Text, TextInput } from "@mantine/core";
-import { SaveIcon, LogOutIcon } from "@portal/components/icons";
-import type { CSSProperties } from "react";
+import { identityNameSchema } from "@guild/shared";
+import { LIMITS } from "@guild/shared/config/limits";
+import { useMutation } from "@tanstack/react-query";
+import { LogOutIcon, SaveIcon } from "@portal/components/icons";
+import { Button } from "@portal/components/ui/button";
+import { Card } from "@portal/components/ui/card";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@portal/components/ui/dialog";
+import { Input } from "@portal/components/ui/input";
+import { Label } from "@portal/components/ui/label";
+import { PasswordInput } from "@portal/components/ui/password-input";
+import { Skeleton } from "@portal/components/ui/skeleton";
+import { useProfileAccountSecurity } from "@portal/hooks/useProfileAccountSecurity";
+import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { formatLocaleDate } from "../../../utils/datetime";
-import { notifyError } from "../../../utils/notifications";
+import {
+  changeLoginName,
+  changePassword,
+  removeEmail,
+  requestEmailVerification,
+  resendEmailVerification,
+  startOAuth,
+  unlinkOAuth,
+  type OAuthProvider,
+} from "../../../services/AuthService";
+import { useSiteConfigStore } from "../../../stores/site-config";
+import { notifyError, notifySuccess } from "../../../utils/notifications";
+import { SectionHeader } from "../../shared/SectionHeader";
 
-const USERNAME_PATTERN = /^[a-zA-Z0-9_一-鿿]+$/;
-const LOGOUT_BUTTON_VARS = {
-  "--button-bg": "var(--status-danger)",
-  "--button-hover": "color-mix(in srgb, var(--status-danger) 88%, var(--surface-base))",
-  "--button-color": "var(--status-on-fill)",
-} as CSSProperties;
+const OAUTH_PROVIDERS: readonly OAuthProvider[] = ["google", "discord", "kook", "wechat"];
 
 type ProfileAccountTabProps = {
-  /* 四项都可能还没到（会话数据是异步的）。没到就不渲染那一行，而不是填一个
-     占位符——「加入于 Invalid Date」比少一行更糟。 */
-  username: string | null;
-  role: string | null;
-  joinedAt: string | null;
-  profileUpdatedAt: string | null;
-  currentPassword: string;
-  newPassword: string;
-  confirmNewPassword: string;
-  currentPasswordForUsername: string;
-  newUsername: string;
-  onCurrentPasswordChange: (value: string) => void;
-  onNewPasswordChange: (value: string) => void;
-  onConfirmNewPasswordChange: (value: string) => void;
-  onCurrentPasswordForUsernameChange: (value: string) => void;
-  onNewUsernameChange: (value: string) => void;
-  onChangePassword: () => void;
-  onChangeUsername: () => void;
-  onLogout: () => void;
-  changePasswordPending: boolean;
-  changeUsernamePending: boolean;
+  onLogout: (reason?: "expired") => void;
 };
 
-export function ProfileAccountTab({
-  username,
-  role,
-  joinedAt,
-  profileUpdatedAt,
-  currentPassword,
-  newPassword,
-  confirmNewPassword,
-  currentPasswordForUsername,
-  newUsername,
-  onCurrentPasswordChange,
-  onNewPasswordChange,
-  onConfirmNewPasswordChange,
-  onCurrentPasswordForUsernameChange,
-  onNewUsernameChange,
-  onChangePassword,
-  onChangeUsername,
-  onLogout,
-  changePasswordPending,
-  changeUsernamePending,
-}: ProfileAccountTabProps) {
-  const { t, i18n } = useTranslation("profile");
-  const changePasswordLabel = t("button.changePassword");
-  const changeUsernameLabel = t("button.changeUsername");
-  const isPasswordInvalid =
-    !currentPassword.trim()
-    || newPassword.length < 8
-    || newPassword !== confirmNewPassword;
+type SensitiveAction =
+  | { kind: "login-name" }
+  | { kind: "password" }
+  | { kind: "link-oauth"; provider: OAuthProvider }
+  | { kind: "unlink-oauth"; provider: OAuthProvider }
+  | { kind: "request-email" }
+  | { kind: "resend-email" }
+  | { kind: "remove-email" };
 
-  const handleChangePassword = () => {
-    if (!currentPassword.trim()) {
-      notifyError(t("account.validation.currentPasswordRequired"));
-      return;
-    }
-    if (newPassword.length < 8) {
-      notifyError(t("account.validation.passwordMinLength"));
-      return;
-    }
-    if (newPassword !== confirmNewPassword) {
-      notifyError(t("account.validation.passwordMismatch"));
-      return;
-    }
-    onChangePassword();
+function errorMessage(error: unknown, fallback: string): string {
+  return error instanceof Error && error.message ? error.message : fallback;
+}
+
+function validIdentityName(value: string): boolean {
+  return identityNameSchema.safeParse(value).success;
+}
+
+export function ProfileAccountTab({ onLogout }: ProfileAccountTabProps) {
+  const { t } = useTranslation(["profile", "common"]);
+  const oauthEnabled = useSiteConfigStore((state) => state.oauth);
+  const { securityQuery, invalidateSecurity } = useProfileAccountSecurity();
+  const [currentPassword, setCurrentPassword] = useState("");
+  const [loginName, setLoginName] = useState("");
+  const [newPassword, setNewPassword] = useState("");
+  const [confirmNewPassword, setConfirmNewPassword] = useState("");
+  const [email, setEmail] = useState("");
+  const [pendingAction, setPendingAction] = useState<SensitiveAction | null>(null);
+
+  useEffect(() => {
+    if (!securityQuery.data) return;
+    setLoginName(securityQuery.data.login_name);
+  }, [securityQuery.data]);
+
+  const credentialChanged = (reason?: "expired") => {
+    setCurrentPassword("");
+    setPendingAction(null);
+    onLogout(reason);
+  };
+  const finishSensitiveAction = () => {
+    setCurrentPassword("");
+    setPendingAction(null);
+  };
+  const changePasswordMutation = useMutation({
+    mutationFn: () => changePassword({ currentPassword, newPassword, confirmNewPassword }),
+    onSuccess: () => {
+      notifySuccess(t("message.passwordChanged"));
+      credentialChanged("expired");
+    },
+    onError: (error) => notifyError(errorMessage(error, t("message.passwordChangeFailed"))),
+  });
+  const changeLoginNameMutation = useMutation({
+    mutationFn: () => changeLoginName({ currentPassword, login_name: loginName.trim() }),
+    onSuccess: () => {
+      notifySuccess(t("account.message.loginNameChanged"));
+      credentialChanged();
+    },
+    onError: (error) => notifyError(errorMessage(error, t("account.message.loginNameChangeFailed"))),
+  });
+  const linkOAuthMutation = useMutation({
+    mutationFn: (provider: OAuthProvider) => startOAuth(provider, currentPassword),
+    onSuccess: ({ authorization_url }) => window.location.assign(authorization_url),
+    onError: (error) => notifyError(errorMessage(error, t("account.message.oauthFailed"))),
+  });
+  const unlinkOAuthMutation = useMutation({
+    mutationFn: (provider: OAuthProvider) => unlinkOAuth(provider, currentPassword),
+    onSuccess: () => {
+      finishSensitiveAction();
+      void invalidateSecurity();
+      notifySuccess(t("account.message.oauthUnlinked"));
+    },
+    onError: (error) => notifyError(errorMessage(error, t("account.message.oauthFailed"))),
+  });
+  const requestEmailMutation = useMutation({
+    mutationFn: () => requestEmailVerification({ current_password: currentPassword, email }),
+    onSuccess: () => {
+      finishSensitiveAction();
+      notifySuccess(t("account.message.emailSent"));
+    },
+    onError: (error) => notifyError(errorMessage(error, t("account.message.emailFailed"))),
+  });
+  const resendEmailMutation = useMutation({
+    mutationFn: () => resendEmailVerification({ current_password: currentPassword }),
+    onSuccess: () => {
+      finishSensitiveAction();
+      notifySuccess(t("account.message.emailSent"));
+    },
+    onError: (error) => notifyError(errorMessage(error, t("account.message.emailFailed"))),
+  });
+  const removeEmailMutation = useMutation({
+    mutationFn: () => removeEmail(currentPassword),
+    onSuccess: () => {
+      finishSensitiveAction();
+      void invalidateSecurity();
+      notifySuccess(t("account.message.emailRemoved"));
+    },
+    onError: (error) => notifyError(errorMessage(error, t("account.message.emailFailed"))),
+  });
+
+  const canChangePassword = newPassword.length >= LIMITS.content.password.min
+    && newPassword === confirmNewPassword;
+  const linkedProviders = new Set(securityQuery.data?.oauth_providers ?? []);
+  const loginNameChanged = loginName.trim() !== (securityQuery.data?.login_name ?? "");
+  const confirmationPending = changePasswordMutation.isPending
+    || changeLoginNameMutation.isPending
+    || linkOAuthMutation.isPending
+    || unlinkOAuthMutation.isPending
+    || requestEmailMutation.isPending
+    || resendEmailMutation.isPending
+    || removeEmailMutation.isPending;
+
+  const requestConfirmation = (action: SensitiveAction) => {
+    setCurrentPassword("");
+    setPendingAction(action);
   };
 
-  const usernameError = (() => {
-    const trimmed = newUsername.trim();
-    if (!trimmed) return undefined;
-    if (trimmed.length < 1) return t("account.validation.usernameMinLength");
-    if (trimmed.length > 50) return t("account.validation.usernameMaxLength");
-    if (!USERNAME_PATTERN.test(trimmed)) return t("account.validation.usernamePattern");
-    return undefined;
-  })();
-  const isUsernameInvalid = !newUsername.trim() || Boolean(usernameError);
-
-  const handleChangeUsername = () => {
-    if (isUsernameInvalid) return;
-    onChangeUsername();
+  const confirmSensitiveAction = () => {
+    if (!pendingAction || currentPassword.trim().length === 0) return;
+    switch (pendingAction.kind) {
+      case "login-name": changeLoginNameMutation.mutate(); break;
+      case "password": changePasswordMutation.mutate(); break;
+      case "link-oauth": linkOAuthMutation.mutate(pendingAction.provider); break;
+      case "unlink-oauth": unlinkOAuthMutation.mutate(pendingAction.provider); break;
+      case "request-email": requestEmailMutation.mutate(); break;
+      case "resend-email": resendEmailMutation.mutate(); break;
+      case "remove-email": removeEmailMutation.mutate(); break;
+    }
   };
 
-  /* 只到日；这四行是「我这个号是什么」，不是审计时间线，精确到分秒没人要读。 */
-  const formatDay = (value: string | null) =>
-    value ? formatLocaleDate(value, i18n.language, "numeric") : null;
-  const facts = [
-    { key: "username", label: t("account.field.username"), value: username },
-    { key: "role", label: t("overview.role"), value: role },
-    { key: "joined", label: t("overview.joined"), value: formatDay(joinedAt) },
-    { key: "updated", label: t("overview.updated"), value: formatDay(profileUpdatedAt) },
-  ].filter((fact): fact is { key: string; label: string; value: string } => Boolean(fact.value));
+  if (securityQuery.isLoading) {
+    return (
+      <div className="profile-account__loading" aria-label={t("common:message.loading")} aria-busy="true">
+        <Skeleton className="profile-account__loading-card profile-account__loading-card--large" />
+        <Skeleton className="profile-account__loading-card" />
+      </div>
+    );
+  }
+  if (securityQuery.isError || !securityQuery.data) {
+    return (
+      <Card className="profile-account__error gap-0 py-0">
+        <div>
+          <strong>{t("common:loadError")}</strong>
+          <Button loading={securityQuery.isFetching} onClick={() => void securityQuery.refetch()}>
+            {t("common:action.retry")}
+          </Button>
+        </div>
+      </Card>
+    );
+  }
 
   return (
     <div className="profile-account">
-      <div className="profile-account__cards">
-          {/* Immutable account facts stay separate from editable forms. */}
-          {facts.length > 0 ? (
-            <Paper withBorder radius="md" p="var(--card-padding)">
-              <SectionHeader title={t("account.section.facts")} headingLevel={2} />
-              <dl className="profile-account__facts">
-                {facts.map((fact) => (
-                  <div className="profile-account__fact" key={fact.key}>
-                    <dt className="profile-account__fact-label">{fact.label}</dt>
-                    <dd className="profile-account__fact-value">{fact.value}</dd>
-                  </div>
-                ))}
-              </dl>
-            </Paper>
-          ) : null}
+      <div className="profile-account__layout">
+        <div className="profile-account__stack">
+          <Card className="profile-account__card gap-0 py-0">
+            <SectionHeader title={t("account.section.login")} headingLevel={2} />
+            <div className="profile-account__card-body">
+              <div className="profile-field">
+                <Label htmlFor="profile-login-name">{t("account.field.loginName")}</Label>
+                <Input
+                id="profile-login-name"
+                value={loginName}
+                onChange={(event) => setLoginName(event.currentTarget.value)}
+                autoComplete="username"
+                />
+              </div>
+              <p className="profile-account__hint">{t("account.hint.loginName")}</p>
+              <p className="profile-account__hint">{t("account.hint.profileDisplayName")}</p>
+              <div className="profile-account__action-row">
+                <Button
+                  variant="secondary"
+                  loading={changeLoginNameMutation.isPending}
+                  disabled={!loginNameChanged || !validIdentityName(loginName.trim())}
+                  onClick={() => requestConfirmation({ kind: "login-name" })}
+                >
+                  {t("account.action.changeLoginName")}
+                </Button>
+              </div>
+            </div>
+          </Card>
 
-          <Paper withBorder radius="md" p="var(--card-padding)" className="profile-account__card">
-            <form onSubmit={(event) => { event.preventDefault(); handleChangePassword(); }}>
-            <SectionHeader title={changePasswordLabel} headingLevel={2} />
-            {/* Persistent labels are required because password values obscure field context. */}
-            <Stack gap="var(--space-md)">
+          <Card className="profile-account__card gap-0 py-0">
+            <SectionHeader title={t("account.section.passwordSecurity")} headingLevel={2} />
+            <div className="profile-account__card-body">
+              <div className="profile-account__password-fields">
+                <div className="profile-field">
+                  <Label htmlFor="profile-new-password">{t("account.field.newPassword")}</Label>
+                  <PasswordInput
+                    id="profile-new-password"
+                    value={newPassword}
+                    onChange={(event) => setNewPassword(event.currentTarget.value)}
+                    autoComplete="new-password"
+                    showPasswordLabel={t("auth:aria.showPassword")}
+                    hidePasswordLabel={t("auth:aria.hidePassword")}
+                  />
+                </div>
+                <div className="profile-field">
+                  <Label htmlFor="profile-confirm-password">{t("account.field.confirmNewPassword")}</Label>
+                  <PasswordInput
+                    id="profile-confirm-password"
+                    value={confirmNewPassword}
+                    onChange={(event) => setConfirmNewPassword(event.currentTarget.value)}
+                    autoComplete="new-password"
+                    showPasswordLabel={t("auth:aria.showPassword")}
+                    hidePasswordLabel={t("auth:aria.hidePassword")}
+                  />
+                </div>
+              </div>
+              <div className="profile-account__action-row">
+                <Button
+                  loading={changePasswordMutation.isPending}
+                  disabled={!canChangePassword}
+                  onClick={() => requestConfirmation({ kind: "password" })}
+                >
+                  <SaveIcon size={14} />
+                  {t("button.changePassword")}
+                </Button>
+              </div>
+
+              {securityQuery.data.email_available ? (
+                <div className="profile-account__email">
+                  <strong>{t("account.section.email")}</strong>
+                  {securityQuery.data.email ? <span>{securityQuery.data.email}</span> : null}
+                  <div className="profile-field">
+                    <Label htmlFor="profile-account-email">{t("account.field.email")}</Label>
+                    <Input
+                      id="profile-account-email"
+                      value={email}
+                      onChange={(event) => setEmail(event.currentTarget.value)}
+                      type="email"
+                      autoComplete="email"
+                    />
+                  </div>
+                  <div className="profile-account__action-row">
+                    <Button
+                      loading={requestEmailMutation.isPending}
+                      disabled={!email.trim()}
+                      onClick={() => requestConfirmation({ kind: "request-email" })}
+                    >
+                      {t("account.action.sendEmail")}
+                    </Button>
+                    <Button
+                      variant="outline"
+                      loading={resendEmailMutation.isPending}
+                      onClick={() => requestConfirmation({ kind: "resend-email" })}
+                    >
+                      {t("account.action.resendEmail")}
+                    </Button>
+                    {securityQuery.data.email ? (
+                      <Button
+                        variant="destructive"
+                        loading={removeEmailMutation.isPending}
+                        onClick={() => requestConfirmation({ kind: "remove-email" })}
+                      >
+                        {t("account.action.removeEmail")}
+                      </Button>
+                    ) : null}
+                  </div>
+                </div>
+              ) : null}
+            </div>
+          </Card>
+        </div>
+
+        <div className="profile-account__stack">
+          <Card className="profile-account__card gap-0 py-0">
+            <SectionHeader title={t("account.section.oauth")} headingLevel={2} />
+            <div className="profile-account__provider-list">
+              {OAUTH_PROVIDERS.map((provider) => {
+                const linked = linkedProviders.has(provider);
+                const enabled = oauthEnabled[provider];
+                const status = linked ? "linked" : enabled ? "available" : "disabled";
+                const pending = (linkOAuthMutation.isPending && linkOAuthMutation.variables === provider)
+                  || (unlinkOAuthMutation.isPending && unlinkOAuthMutation.variables === provider);
+                return (
+                  <div className="profile-account__provider" data-status={status} key={provider}>
+                    <div>
+                      <strong className="profile-account__provider-name">{t(`account.oauth.${provider}`)}</strong>
+                      <span className="profile-account__provider-status">{t(`account.oauth.status.${status}`)}</span>
+                    </div>
+                    <Button
+                      size="xs"
+                      variant={linked ? "outline" : "secondary"}
+                      loading={pending}
+                      disabled={!linked && !enabled}
+                      onClick={() => requestConfirmation({
+                        kind: linked ? "unlink-oauth" : "link-oauth",
+                        provider,
+                      })}
+                    >
+                      {linked
+                        ? t("account.action.unlinkOAuth", { provider: t(`account.oauth.${provider}`) })
+                        : enabled
+                          ? t("account.action.linkOAuth", { provider: t(`account.oauth.${provider}`) })
+                          : t("account.action.notEnabled")}
+                    </Button>
+                  </div>
+                );
+              })}
+            </div>
+          </Card>
+
+          <div className="profile-account__exit">
+            <div>
+              <strong>{t("account.exit.title")}</strong>
+              <span className="profile-account__exit-description">{t("account.exit.description")}</span>
+            </div>
+            <Button size="sm" variant="destructive" onClick={() => onLogout()}>
+              <LogOutIcon size={14} />
+              {t("action.logout")}
+            </Button>
+          </div>
+        </div>
+      </div>
+
+      <Dialog
+        open={pendingAction !== null}
+        onOpenChange={(open) => {
+          if (!open && !confirmationPending) finishSensitiveAction();
+        }}
+      >
+        <DialogContent
+          showCloseButton={!confirmationPending}
+          closeLabel={t("common:action.close")}
+        >
+          <DialogHeader>
+            <DialogTitle>{t("account.confirm.title")}</DialogTitle>
+            <DialogDescription>{t("account.confirm.description")}</DialogDescription>
+          </DialogHeader>
+          <form
+            className="profile-account__confirm-form"
+            onSubmit={(event) => {
+              event.preventDefault();
+              confirmSensitiveAction();
+            }}
+          >
+            <div className="profile-field">
+              <Label htmlFor="profile-current-password">{t("account.field.currentPassword")}</Label>
               <PasswordInput
                 id="profile-current-password"
-                name="profile-current-password"
-                size="sm"
-                label={t("account.field.currentPassword")}
                 value={currentPassword}
-                onChange={(event) => onCurrentPasswordChange(event.currentTarget.value)}
+                onChange={(event) => setCurrentPassword(event.currentTarget.value)}
                 autoComplete="current-password"
+                autoFocus
+                required
+                showPasswordLabel={t("auth:aria.showPassword")}
+                hidePasswordLabel={t("auth:aria.hidePassword")}
               />
-              <PasswordInput
-                id="profile-new-password"
-                name="profile-new-password"
-                size="sm"
-                label={t("account.field.newPassword")}
-                value={newPassword}
-                onChange={(event) => onNewPasswordChange(event.currentTarget.value)}
-                autoComplete="new-password"
-              />
-              <PasswordInput
-                id="profile-confirm-new-password"
-                name="profile-confirm-new-password"
-                size="sm"
-                label={t("account.field.confirmNewPassword")}
-                value={confirmNewPassword}
-                onChange={(event) => onConfirmNewPasswordChange(event.currentTarget.value)}
-                autoComplete="new-password"
-              />
-              <Button
-                type="submit"
-                size="sm"
-                loading={changePasswordPending}
-                disabled={isPasswordInvalid}
-                leftSection={<SaveIcon size={14} />}
-              >
-                {changePasswordLabel}
+            </div>
+            <DialogFooter className="profile-account__confirm-actions">
+              <Button type="button" variant="outline" disabled={confirmationPending} onClick={finishSensitiveAction}>
+                {t("common:action.cancel")}
               </Button>
-            </Stack>
-            </form>
-          </Paper>
-
-          <Paper withBorder radius="md" p="var(--card-padding)" className="profile-account__card">
-              <SectionHeader title={changeUsernameLabel} headingLevel={2} />
-              <Stack gap="var(--space-md)">
-              <PasswordInput
-                id="profile-username-current-password"
-                name="profile-username-current-password"
-                size="sm"
-                label={t("account.field.currentPassword")}
-                value={currentPasswordForUsername}
-                onChange={(event) => onCurrentPasswordForUsernameChange(event.currentTarget.value)}
-                autoComplete="current-password"
-              />
-              <TextInput
-                id="profile-new-username"
-                name="profile-new-username"
-                size="sm"
-                label={t("account.field.newUsername")}
-                value={newUsername}
-                onChange={(event) => onNewUsernameChange(event.currentTarget.value)}
-                error={usernameError}
-              />
-                <Button
-                  size="sm"
-                  onClick={handleChangeUsername}
-                  loading={changeUsernamePending}
-                  disabled={isUsernameInvalid}
-                  leftSection={<SaveIcon size={14} />}
-                >
-                  {changeUsernameLabel}
-                </Button>
-              </Stack>
-          </Paper>
-      </div>
-
-      <div className="profile-account__exit">
-        <div>
-          <Text size="sm" fw={600}>{t("account.exit.title")}</Text>
-          <Text size="xs" c="dimmed">{t("account.exit.description")}</Text>
-        </div>
-        <Button
-          size="sm"
-          variant="default"
-          style={LOGOUT_BUTTON_VARS}
-          onClick={onLogout}
-          leftSection={<LogOutIcon size={14} />}
-        >
-          {t("action.logout")}
-        </Button>
-      </div>
+              <Button type="submit" loading={confirmationPending} disabled={!currentPassword.trim()}>
+                {t("account.confirm.submit")}
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

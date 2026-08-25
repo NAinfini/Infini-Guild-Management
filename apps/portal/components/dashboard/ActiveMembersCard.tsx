@@ -1,4 +1,5 @@
-import { Paper, Skeleton } from "@mantine/core";
+import { Card } from "@portal/components/ui/card";
+import { Skeleton } from "@portal/components/ui/skeleton";
 import { memo } from "react";
 import { useTranslation } from "react-i18next";
 import { TeamOutlined } from "../../utils/icons";
@@ -30,11 +31,13 @@ export const ActiveMembersCard = memo(function ActiveMembersCard({
   const safeWinRate = Number.isFinite(allWarWinRate) ? Math.max(0, Math.min(100, allWarWinRate)) : 0;
 
   return (
-    <Paper withBorder radius="md" className="dashboard-card">
+    <Card className="dashboard-card gap-0 py-0">
       <div>
         {cardHeading(t("card.activeMembers.title"), <TeamOutlined size={18} />)}
         <div className="dashboard-kpi-grid">
-          <Skeleton visible={memberStatsLoading} radius="md">
+          {memberStatsLoading ? (
+            <Skeleton className="dashboard-kpi-skeleton" />
+          ) : (
             <dl className="dashboard-kpi">
               <dt className="dashboard-kpi__label">{t("card.activeMembers.activeRatio")}</dt>
               <dd className="dashboard-kpi__value portal-kpi-value">
@@ -45,17 +48,21 @@ export const ActiveMembersCard = memo(function ActiveMembersCard({
                 <KpiMeter ratio={safeTotalMembersCount > 0 ? safeActiveMemberCount / safeTotalMembersCount : 0} />
               </dd>
             </dl>
-          </Skeleton>
+          )}
 
           {/* 活动数不是比例，没有分母可画——这一格刻意留空，缺席本身就是信息。 */}
-          <Skeleton visible={eventsLoading} radius="md">
+          {eventsLoading ? (
+            <Skeleton className="dashboard-kpi-skeleton" />
+          ) : (
             <dl className="dashboard-kpi">
               <dt className="dashboard-kpi__label">{t("card.activeMembers.upcomingEvents")}</dt>
               <dd className="dashboard-kpi__value portal-kpi-value">{safeActiveEventsCount}</dd>
             </dl>
-          </Skeleton>
+          )}
 
-          <Skeleton visible={warsLoading} radius="md">
+          {warsLoading ? (
+            <Skeleton className="dashboard-kpi-skeleton" />
+          ) : (
             <dl className="dashboard-kpi">
               <dt className="dashboard-kpi__label">{t("card.activeMembers.winRate")}</dt>
               <dd className="dashboard-kpi__value portal-kpi-value">
@@ -63,9 +70,9 @@ export const ActiveMembersCard = memo(function ActiveMembersCard({
                 <KpiMeter ratio={safeWinRate / 100} />
               </dd>
             </dl>
-          </Skeleton>
+          )}
         </div>
       </div>
-    </Paper>
+    </Card>
   );
 });

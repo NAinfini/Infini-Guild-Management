@@ -3,6 +3,7 @@ import { check, integer, real, sqliteTable, text } from "drizzle-orm/sqlite-core
 import {
   LIMITS,
   MAX_CONFIGURABLE_AUDIO_BYTES,
+  MAX_CONFIGURABLE_ATTACHMENT_BYTES,
   MAX_CONFIGURABLE_IMAGE_VARIANT_BYTES,
 } from "@guild/shared/config/limits";
 import { DEFAULT_SITE_DESCRIPTION, SITE_DESCRIPTION_MAX_LENGTH } from "@guild/shared/schemas/site-config";
@@ -10,6 +11,7 @@ import { DEFAULT_SITE_DESCRIPTION, SITE_DESCRIPTION_MAX_LENGTH } from "@guild/sh
 const nowUtc = sql`(strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))`;
 const maxImageBytes = sql.raw(String(MAX_CONFIGURABLE_IMAGE_VARIANT_BYTES));
 const maxAudioBytes = sql.raw(String(MAX_CONFIGURABLE_AUDIO_BYTES));
+const maxAttachmentBytes = sql.raw(String(MAX_CONFIGURABLE_ATTACHMENT_BYTES));
 const maxQuota = sql.raw(String(LIMITS.media.configurableQuotaMax));
 const maxStorageImages = sql.raw(String(LIMITS.content.storageImagesPerItem.max));
 const maxAbsenceSpan = sql.raw(String(LIMITS.content.absenceSpanDays.max));
@@ -57,6 +59,17 @@ export const siteConfig = sqliteTable(
     createdAt: text("created_at").notNull().default(nowUtc),
     updatedAt: text("updated_at").notNull().default(nowUtc),
     siteDescription: text("site_description").notNull().default(DEFAULT_SITE_DESCRIPTION),
+    oauthGoogleEnabled: integer("oauth_google_enabled", { mode: "boolean" }).notNull().default(sql`0`),
+    oauthDiscordEnabled: integer("oauth_discord_enabled", { mode: "boolean" }).notNull().default(sql`0`),
+    oauthKookEnabled: integer("oauth_kook_enabled", { mode: "boolean" }).notNull().default(sql`0`),
+    oauthWechatEnabled: integer("oauth_wechat_enabled", { mode: "boolean" }).notNull().default(sql`0`),
+    // Appended columns keep the physical table order compatible with the migration chain.
+    maxAnnouncementAttachmentBytes: integer("max_announcement_attachment_bytes")
+      .notNull()
+      .default(LIMITS.media.maxFileSize.announcementAttachment),
+    quotaAnnouncementAttachments: integer("quota_announcement_attachments")
+      .notNull()
+      .default(LIMITS.media.quotas.announcementAttachments),
   },
   (table) => [
     check("site_config_singleton", sql`${table.singleton} = 1`),
@@ -68,6 +81,18 @@ export const siteConfig = sqliteTable(
       AND ${table.featureGuildWar} IN (0, 1) AND ${table.featureGallery} IN (0, 1)
       AND ${table.featureWiki} IN (0, 1) AND ${table.featureTools} IN (0, 1)
       AND ${table.featureStorage} IN (0, 1)`),
+    check("site_config_oauth_google_boolean", sql`${table.oauthGoogleEnabled} IN (0, 1)`),
+    check("site_config_oauth_discord_boolean", sql`${table.oauthDiscordEnabled} IN (0, 1)`),
+    check("site_config_oauth_kook_boolean", sql`${table.oauthKookEnabled} IN (0, 1)`),
+    check("site_config_oauth_wechat_boolean", sql`${table.oauthWechatEnabled} IN (0, 1)`),
+    check(
+      "site_config_announcement_attachment_bytes_bounded",
+      sql`${table.maxAnnouncementAttachmentBytes} BETWEEN 1 AND ${maxAttachmentBytes}`,
+    ),
+    check(
+      "site_config_announcement_attachments_quota_bounded",
+      sql`${table.quotaAnnouncementAttachments} BETWEEN 1 AND ${maxQuota}`,
+    ),
     check("site_config_limits_positive", sql`
       ${table.maxSiteLogoBytes} > 0 AND ${table.maxClassIconBytes} > 0
       AND ${table.maxProfileImageBytes} > 0 AND ${table.maxProfileAudioBytes} > 0

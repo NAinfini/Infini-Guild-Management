@@ -13,9 +13,9 @@ import { expect, test } from "../../support/test";
  * 而 storageState 是从纯 API 通道存的，本身不含任何 origin 数据。
  */
 
-/** 偏好卡片：Mantine 的 UnstyledButton 渲染成 button，无障碍名是标题+描述。 */
-function optionCard(page: Page, label: string): Locator {
-  return page.getByRole("button", { name: new RegExp(`^${label}`) });
+/** 偏好卡片由 RadioGroupItem 承担选择语义，无障碍名含标题和说明。 */
+function optionRadio(page: Page, label: string): Locator {
+  return page.getByRole("radio", { name: new RegExp(`^${label}`) });
 }
 
 async function readStorage(page: Page, key: string): Promise<string | null> {
@@ -52,19 +52,19 @@ test.beforeEach(async ({ page }) => {
 
 test("主题：切到深色后属性、落盘、刷新三处一致，切回浅色同样成立", async ({ page, flow }) => {
   expect(await readRootAttribute(page, "data-theme"), "默认是浅色").toBe("light");
-  await expect(optionCard(page, "Light")).toHaveAttribute("aria-pressed", "true");
+  await expect(optionRadio(page, "Light")).toHaveAttribute("aria-checked", "true");
 
-  await flow.clickWithoutApi(optionCard(page, "Dark"));
+  await flow.clickWithoutApi(optionRadio(page, "Dark"));
   expect(await readRootAttribute(page, "data-theme")).toBe("dark");
   expect(await readStorage(page, "themeMode"), "偏好必须落盘，否则刷新就丢").toBe("dark");
-  await expect(optionCard(page, "Dark")).toHaveAttribute("aria-pressed", "true");
-  await expect(optionCard(page, "Light")).toHaveAttribute("aria-pressed", "false");
+  await expect(optionRadio(page, "Dark")).toHaveAttribute("aria-checked", "true");
+  await expect(optionRadio(page, "Light")).toHaveAttribute("aria-checked", "false");
 
   await page.reload();
   await expectRootAttribute(page, "data-theme", "dark", "刷新后必须还是深色");
 
   await settle(page);
-  await flow.clickWithoutApi(optionCard(page, "Light"));
+  await flow.clickWithoutApi(optionRadio(page, "Light"));
   expect(await readRootAttribute(page, "data-theme")).toBe("light");
   expect(await readStorage(page, "themeMode")).toBe("light");
 });
@@ -74,24 +74,24 @@ test("主色：四块色卡各自生效并落盘，刷新后保持", async ({ pa
 
   /* 卡片标签和存进去的值并不一一对应：Amber 存的是 orange。按标签点、按值断言。 */
   for (const [label, value] of [["Indigo", "indigo"], ["Violet", "violet"], ["Amber", "orange"]] as const) {
-    await flow.clickWithoutApi(optionCard(page, label));
+    await flow.clickWithoutApi(optionRadio(page, label));
     expect(await readRootAttribute(page, "data-accent"), `${label} 应该写入 ${value}`).toBe(value);
     expect(await readStorage(page, "accent")).toBe(value);
-    await expect(optionCard(page, label)).toHaveAttribute("aria-pressed", "true");
+    await expect(optionRadio(page, label)).toHaveAttribute("aria-checked", "true");
   }
 
   await page.reload();
   await expectRootAttribute(page, "data-accent", "orange", "刷新后必须还是最后选的那个");
 
   await settle(page);
-  await flow.clickWithoutApi(optionCard(page, "Teal"));
+  await flow.clickWithoutApi(optionRadio(page, "Teal"));
   expect(await readRootAttribute(page, "data-accent")).toBe("teal");
 });
 
 test("语言：切到中文后整页文案跟着换，落盘且刷新后保持", async ({ page, flow }) => {
   expect(await readStorage(page, "locale"), "进来时还没有人写过这个键").toBeNull();
 
-  await flow.clickWithoutApi(page.getByRole("button", { name: /^中文/ }));
+  await flow.clickWithoutApi(optionRadio(page, "中文"));
   await expect(page.getByText("外观", { exact: true }), "分组标题必须换成中文").toBeVisible();
   await expect(page.getByText("主题", { exact: true })).toBeVisible();
   expect(await readStorage(page, "locale")).toBe("zh");
@@ -101,7 +101,7 @@ test("语言：切到中文后整页文案跟着换，落盘且刷新后保持",
   await expect(page.getByText("外观", { exact: true }), "刷新后必须还是中文").toBeVisible();
 
   await settle(page);
-  await flow.clickWithoutApi(page.getByRole("button", { name: /^English/ }));
+  await flow.clickWithoutApi(optionRadio(page, "English"));
   await expect(page.getByText("Appearance", { exact: true })).toBeVisible();
   expect(await readStorage(page, "locale")).toBe("en");
 });

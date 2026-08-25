@@ -1,10 +1,10 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { MantineProvider } from "@mantine/core";
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import type { ReactNode } from "react";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { WikiPage } from "./WikiPage";
 
 const navigateMock = vi.hoisted(() => vi.fn());
@@ -32,33 +32,16 @@ const serviceMocks = vi.hoisted(() => ({
   fetchWikiCategories: vi.fn(),
 }));
 
-class WideResizeObserver {
-  constructor(private readonly callback: ResizeObserverCallback) {}
-  disconnect() {}
-  unobserve() {}
-  observe() {
-    this.callback(
-      [{ contentRect: { width: 1200 } } as ResizeObserverEntry],
-      this as unknown as ResizeObserver,
-    );
-  }
-}
-
 vi.mock("@tanstack/react-router", () => ({
   useNavigate: () => navigateMock,
   useParams: () => paramsMock,
   useSearch: () => routeSearchMock,
 }));
 
-vi.mock("@mantine/hooks", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("@mantine/hooks")>();
-  return {
-    ...actual,
-    useMediaQuery: (query: string) => query.includes("min-width: 1200px")
-      ? mediaState.isDesktop
-      : false,
-  };
-});
+vi.mock("@portal/hooks/useMediaQuery", () => ({
+  useMediaQuery: (query: string) =>
+    query.includes("min-width: 1200px") ? mediaState.isDesktop : false,
+}));
 
 vi.mock("@portal/hooks/useConfirmDialog", () => ({
   useConfirmDialog: () => confirmMock,
@@ -138,11 +121,7 @@ function createWrapper(): ({ children }: { children: ReactNode }) => ReactNode {
   });
 
   return function Wrapper({ children }: { children: ReactNode }) {
-    return (
-      <MantineProvider>
-        <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
-      </MantineProvider>
-    );
+    return <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>;
   };
 }
 
@@ -152,7 +131,13 @@ function renderWikiPage() {
 
 describe("WikiPage", () => {
   beforeEach(() => {
-    window.ResizeObserver = WideResizeObserver as unknown as typeof ResizeObserver;
+    Object.defineProperty(HTMLElement.prototype, "getAnimations", {
+      configurable: true,
+      value: () => [],
+    });
+    vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockReturnValue(
+      new DOMRect(0, 0, 1200, 48),
+    );
     navigateMock.mockReset();
     confirmMock.mockReset();
     confirmMock.mockResolvedValue(true);
@@ -185,7 +170,7 @@ describe("WikiPage", () => {
           archived_at: null,
           created_by: "user-1",
           updated_by: null,
-          updated_by_username: null,
+          updated_by_display_name: null,
           created_at: "2026-01-01T00:00:00.000Z",
           updated_at: "2026-01-01T00:00:00.000Z",
         },
@@ -206,7 +191,7 @@ describe("WikiPage", () => {
       archived_at: null,
       created_by: "user-1",
       updated_by: null,
-      updated_by_username: null,
+      updated_by_display_name: null,
       created_at: "2026-01-01T00:00:00.000Z",
       updated_at: "2026-01-01T00:00:00.000Z",
     });
@@ -260,6 +245,10 @@ describe("WikiPage", () => {
       uploadWikiArticleImage: vi.fn(),
       deleteArticle: vi.fn(),
     });
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
   });
 
   it("requests curated server order by default", async () => {
@@ -352,7 +341,7 @@ describe("WikiPage", () => {
       archived_at: null,
       created_by: "user-1",
       updated_by: null,
-      updated_by_username: null,
+      updated_by_display_name: null,
       created_at: "2026-01-01T00:00:00.000Z",
       updated_at: "2026-01-01T00:00:00.000Z",
     });
@@ -385,29 +374,28 @@ describe("WikiPage", () => {
     fireEvent.click(screen.getByRole("button", { name: "action.loadMore" }));
     await screen.findByText("Page Two");
 
-    fireEvent.click(screen.getByRole("button", { name: "filter.showPinned" }));
+    fireEvent.click(screen.getByRole("button", { name: "common:filter.toggle" }));
+    const filterDialog = await screen.findByRole("dialog", { name: "common:filter.toggle" });
+    fireEvent.click(within(filterDialog).getByRole("switch", { name: "filter.showPinned" }));
 
     await screen.findByText("Pinned Article");
     expect(screen.queryByText("Page One")).not.toBeInTheDocument();
     expect(screen.queryByText("Page Two")).not.toBeInTheDocument();
   });
 
-  it("keeps the category combobox in the page toolbar instead of the article list card", async () => {
+  it("keeps category filters in the page toolbar instead of the article list card", async () => {
     renderWikiPage();
 
-    const categoryFilter = await screen.findByLabelText("filter.categories", {
-      selector: "input",
-    });
-    const toolbar = document.querySelector(".wiki-page-toolbar");
+    const filterToggle = await screen.findByRole("button", { name: "common:filter.toggle" });
+    fireEvent.click(filterToggle);
+    const filterDialog = await screen.findByRole("dialog", { name: "common:filter.toggle" });
+    const categoryFilter = within(filterDialog).getByRole("group", { name: "filter.categories" });
     const articleListCard = document.querySelector(".wiki-article-list-card");
 
-    expect(toolbar).not.toBeNull();
     expect(articleListCard).not.toBeNull();
-    expect(within(toolbar as HTMLElement).getByLabelText("filter.categories", {
-      selector: "input",
-    })).toBe(categoryFilter);
-    expect(within(articleListCard as HTMLElement).queryByLabelText("filter.categories", {
-      selector: "input",
+    expect(categoryFilter).toBeInTheDocument();
+    expect(within(articleListCard as HTMLElement).queryByRole("group", {
+      name: "filter.categories",
     })).not.toBeInTheDocument();
   });
 
@@ -478,6 +466,7 @@ describe("WikiPage", () => {
   });
 
   it("offers filter reset instead of article creation when filters hide all results", async () => {
+    const user = userEvent.setup();
     paramsMock.slug = undefined;
     serviceMocks.fetchWikiArticleBySlug.mockResolvedValue(null);
     serviceMocks.fetchWikiArticles.mockResolvedValue({
@@ -490,17 +479,23 @@ describe("WikiPage", () => {
 
     renderWikiPage();
 
-    fireEvent.click(await screen.findByRole("button", { name: "filter.showPinned" }));
+    await user.click(await screen.findByRole("button", { name: "common:filter.toggle" }));
+    const filterDialog = await screen.findByRole("dialog", { name: /common:filter\.toggle/ });
+    await user.click(within(filterDialog).getByRole("switch", { name: "filter.showPinned" }));
     const emptyState = (await screen.findByText("empty")).closest(".empty-state");
     expect(emptyState).not.toBeNull();
     expect(within(emptyState as HTMLElement).queryByRole("button", {
       name: "articleEditor.create",
     })).not.toBeInTheDocument();
-    fireEvent.click(within(emptyState as HTMLElement).getByRole("button", {
+    await user.click(within(emptyState as HTMLElement).getByRole("button", {
       name: "action.resetFilters",
     }));
 
-    expect(await screen.findByRole("button", { name: "filter.showPinned" })).toBeInTheDocument();
+    const toggle = await screen.findByRole("button", { name: "common:filter.toggle" });
+    await user.click(toggle);
+    expect(within(await screen.findByRole("dialog", {
+      name: /common:filter\.toggle/,
+    })).getByRole("switch", { name: "filter.showPinned" })).toBeInTheDocument();
   });
 
   it("does not expose article creation when the user only has edit permission", async () => {
@@ -535,12 +530,12 @@ describe("WikiPage", () => {
     });
 
     for (const button of [createButton, categoriesButton]) {
-      expect(button.getAttribute("style")).toContain(
-        "--ai-size: calc(2.75rem * var(--mantine-scale))",
-      );
+      expect(button).toHaveClass("wiki-header-action");
       expect(button.querySelector("svg")).toHaveAttribute("width", "16");
       expect(button.querySelector("svg")).toHaveAttribute("height", "16");
     }
+    const css = readFileSync(resolve(process.cwd(), "apps/portal/components/pages/WikiPage.css"), "utf8");
+    expect(css).toMatch(/\.wiki-header-action\s*\{[\s\S]*?inline-size:\s*2\.75rem[\s\S]*?block-size:\s*2\.75rem/);
   });
 
   it("keeps the shell title as the only h1 and exposes the article title as h2", async () => {
@@ -571,7 +566,7 @@ describe("WikiPage", () => {
     expect(screen.getAllByRole("heading", { level: 1 })).toHaveLength(1);
 
     const titleField = screen.getByRole("textbox", { name: "aria.articleTitle" });
-    expect(titleField.closest(".mantine-Group-root")).toHaveStyle("--group-wrap: wrap");
+    expect(titleField.closest(".wiki-editor-fields")).not.toBeNull();
   });
 
   it("locks the article delete action while deletion is pending", async () => {
@@ -604,11 +599,14 @@ describe("WikiPage", () => {
   it("wires wiki sort through the toolbar without a shared clear action", async () => {
     renderWikiPage();
 
-    const sort = await screen.findByRole("combobox", { name: "filter.sort" });
-    expect(sort).toHaveValue("filter.sort.curated");
-    expect(sort.closest(".content-filter-toolbar")).toHaveClass("wiki-page-toolbar");
+    const filterToggle = await screen.findByRole("button", { name: "common:filter.toggle" });
+    fireEvent.click(filterToggle);
+    const filterDialog = await screen.findByRole("dialog", { name: "common:filter.toggle" });
+    const sort = within(filterDialog).getByRole("radiogroup", { name: "filter.sort" });
+    expect(within(sort).getByRole("radio", { name: "filter.sort.curated" })).toHaveAttribute("aria-checked", "true");
+    expect(filterToggle.closest(".content-filter-toolbar")).toHaveClass("wiki-page-toolbar");
 
-    fireEvent.click(await screen.findByRole("option", { name: "filter.sort.updated_asc", hidden: true }));
+    fireEvent.click(within(sort).getByRole("radio", { name: "filter.sort.updated_asc" }));
 
     await waitFor(() =>
       expect(serviceMocks.fetchWikiArticles).toHaveBeenCalledWith(
@@ -617,8 +615,22 @@ describe("WikiPage", () => {
     );
     expect(screen.queryByText("filter.summary.sort")).not.toBeInTheDocument();
 
-    expect(sort).toHaveValue("filter.sort.updated_asc");
+    expect(within(sort).getByRole("radio", { name: "filter.sort.updated_asc" })).toHaveAttribute("aria-checked", "true");
     expect(screen.queryByRole("button", { name: "common:filter.clearAll" })).not.toBeInTheDocument();
+  });
+
+  it("uses the shared toolbar with a contained desktop workspace", async () => {
+    renderWikiPage();
+
+    await screen.findByRole("button", { name: "common:filter.toggle" });
+    const pageLayout = document.querySelector<HTMLElement>(".page-layout");
+    const toolbar = document.querySelector<HTMLElement>(".page-layout__toolbar");
+    const workspace = document.querySelector<HTMLElement>(".page-layout__workspace");
+    const filters = document.querySelector<HTMLElement>(".wiki-page-toolbar");
+
+    expect(pageLayout).toHaveAttribute("data-workspace-mode", "contained");
+    expect(toolbar).toContainElement(filters);
+    expect(workspace).not.toContainElement(filters);
   });
 
   it("uses a semantic breadcrumb and page-scoped reading layout", async () => {
@@ -631,14 +643,31 @@ describe("WikiPage", () => {
     const css = readFileSync(resolve(process.cwd(), "apps/portal/components/pages/WikiPage.css"), "utf8");
     const editorCss = readFileSync(resolve(process.cwd(), "apps/portal/components/shared/tiptap-editor.css"), "utf8");
     expect(css).toMatch(
-      /\.wiki-article-reader-content\s*\{[\s\S]*?width:\s*100%[\s\S]*?max-width:\s*none[\s\S]*?margin-inline:\s*0/,
+      /\.wiki-article-reader-content\s*\{[\s\S]*?width:\s*min\(100%,\s*72ch\)[\s\S]*?max-width:\s*100%[\s\S]*?margin-inline:\s*auto/,
     );
-    /* 正文卡和清单卡分到一样的高度：短文章也把右栏铺满，不会在正文下面留一段空底色。 */
+    /* 阅读卡按正文高度收起；只有列表和编辑面板占满工作区、各自承接长内容滚动。 */
+    const readerCardRule = css.match(/\.wiki-article-reader-card\s*\{([^}]*)\}/)?.[1] ?? "";
+    const readerScrollRule = css.match(/\.wiki-article-reader-scroll\s*\{([^}]*)\}/)?.[1] ?? "";
+    const mobileStyles = css.slice(css.lastIndexOf("@media (max-width: 767px)"));
+
+    expect(readerCardRule).toContain("flex: 0 0 auto");
+    expect(readerCardRule).toContain("block-size: auto");
+    expect(readerCardRule).toContain("max-inline-size: 60rem");
+    expect(readerScrollRule).toContain("flex: 0 0 auto");
+    expect(readerScrollRule).toContain("overflow: visible");
     expect(css).toMatch(
-      /\.wiki-article-list-card,[\s\S]*?\.wiki-article-reader-card\s*\{[\s\S]*?flex:\s*1 1 auto[\s\S]*?min-block-size:\s*0/,
+      /\.wiki-article-list-card,\s*\.wiki-article-editor-card,\s*\.wiki-category-editor-card\s*\{[\s\S]*?flex:\s*1 1 auto[\s\S]*?block-size:\s*100%/,
     );
-    /* 卡片负责在圆角处裁掉滚出去的正文，内层的 wiki-card-scroll 才是滚动的那一层。 */
-    expect(css).toMatch(/\.wiki-article-reader-card\s*\{\s*overflow:\s*hidden/);
+    expect(mobileStyles).toMatch(
+      /\.wiki-article-list-card,\s*\.wiki-article-editor-card\s*\{[^}]*min-block-size:\s*12\.5rem/,
+    );
+    expect(mobileStyles).not.toMatch(
+      /\.wiki-article-reader-card\s*\{[^}]*min-block-size:\s*12\.5rem/,
+    );
+    expect(css).toMatch(/\.wiki-page-grid\s*\{[\s\S]*?grid-template-rows:\s*minmax\(0,\s*1fr\)[\s\S]*?flex:\s*1 1 auto/);
+    expect(css).not.toContain("100dvh");
+    /* 宽屏读卡仍裁切圆角，正文本身不再变成第二个滚动容器。 */
+    expect(css).toMatch(/\.wiki-article-reader-card\s*\{[\s\S]*?overflow:\s*hidden/);
     expect(css).not.toMatch(/\.wiki-article-reader-card \.infini-tiptap-toc/);
     expect(editorCss).toMatch(
       /\.infini-tiptap-toc\s*\{[\s\S]*?position:\s*sticky[\s\S]*?width:\s*200px/,
@@ -651,12 +680,12 @@ describe("WikiPage", () => {
     );
   });
 
-  it("uses Wiki and category context instead of repeating the article title in the mobile drawer", async () => {
+  it("uses Wiki and category context instead of repeating the article title in the mobile sheet", async () => {
     mediaState.isDesktop = false;
     renderWikiPage();
 
     await screen.findByText("Deleted Article", { selector: ".wiki-article-reader-title" });
-    const drawerTitle = document.querySelector(".mantine-Drawer-title");
+    const drawerTitle = document.querySelector("[data-slot=sheet-title]");
     expect(drawerTitle).not.toBeNull();
     expect(drawerTitle).toHaveTextContent("Wiki / Guides");
     expect(drawerTitle).not.toHaveTextContent("Deleted Article");
@@ -671,7 +700,7 @@ describe("WikiPage", () => {
     fireEvent.click(await screen.findByRole("button", { name: "editor.editWiki" }));
     await screen.findByText("articleEditor.title", { selector: ".wiki-article-editor-title" });
     const back = screen.getByRole("button", { name: "backToList" });
-    expect(back).toHaveAttribute("data-variant", "subtle");
+    expect(back).toHaveClass("wiki-back-button");
     expect(back.querySelector("svg")).not.toBeNull();
 
     fireEvent.click(back);
@@ -686,7 +715,7 @@ describe("WikiPage", () => {
     );
   });
 
-  it("keeps a dirty category editor open when the Drawer X is cancelled and closes after confirmation", async () => {
+  it("keeps a dirty category editor open when the sheet close action is cancelled and closes after confirmation", async () => {
     mediaState.isDesktop = false;
     paramsMock.slug = undefined;
     routeSearchMock.selection = "none";
@@ -696,11 +725,11 @@ describe("WikiPage", () => {
 
     fireEvent.click(await screen.findByRole("button", { name: "editor.editCategories" }));
     expect(await screen.findByRole("button", { name: "editor.closeNoSave" })).toBeInTheDocument();
-    expect(document.querySelector(".mantine-Drawer-title")).toHaveTextContent(
+    expect(document.querySelector("[data-slot=sheet-title]")).toHaveTextContent(
       "categoryEditor.title",
     );
 
-    const close = document.querySelector(".mantine-Drawer-close") as HTMLButtonElement | null;
+    const close = document.querySelector("[data-slot=sheet-close]") as HTMLButtonElement | null;
     expect(close).not.toBeNull();
     fireEvent.click(close as HTMLButtonElement);
 

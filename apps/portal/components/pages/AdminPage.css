@@ -1,170 +1,7 @@
-/* ── 控制台外壳 ──────────────────────────────────────────────
-   分组页签栏。九个页签共用这一套框架，改这里会影响全部页签。
-   刻意不做页头：控制台的竖向空间全部留给内容，计数挂在页签右侧。
-
-   断点只有四档，管理台全部样式文件（含 feature/admin/*.css）都只用这四个值：
-
-     39.99em  640px   手机竖屏：表格换卡片、多列压成一列
-     47.99em  768px   小平板：主从台上下排、四格统计条折两列
-     63.99em  1024px  平板：面板头竖排、邀请卡三列
-     79.99em  1280px  窄桌面：页签栏转横排（同 AdminPage.tsx 的 useMediaQuery）
-
-   一律用 em 且一律 max-width，只有邀请卡的三列区间用了 min-width。
-   新增断点前先确认这四档真的容不下——原本十一个断点就是这么攒出来的。 */
-
-.admin-page__nav-dot {
-  flex: 0 0 auto;
-  inline-size: 7px;
-  block-size: 7px;
-  border-radius: var(--shape-pill);
-  background: currentcolor;
-}
-
-.admin-page__nav-dot--ok {
-  color: var(--status-success);
-}
-
-.admin-page__nav-dot--configured {
-  color: var(--status-warning);
-}
-
-.admin-page__nav-dot--degraded {
-  color: var(--status-danger);
-}
-
-.admin-page__nav-dot--checking {
-  color: var(--text-muted);
-}
-
-/* Complete the shell's flex-height chain while keeping the sticky navigation top-aligned. */
-.admin-page__workspace {
-  width: 100%;
-  display: grid;
-  grid-template-columns: minmax(13rem, 15rem) minmax(0, 1fr);
-  grid-template-rows: minmax(0, 1fr);
-  align-items: start;
-  gap: var(--space-xl);
-  flex: 1 1 auto;
+.admin-page .page-layout__content {
   min-block-size: 0;
 }
 
-.admin-page__domain-nav {
-  position: sticky;
-  top: var(--space-md);
-  gap: 2px;
-  /* Mantine 的纵向 tab 列表默认会裁掉溢出，右侧计数徽章会被切掉一半。 */
-  overflow: visible;
-}
-
-/*
- * 撤掉 Mantine default 变体挂在 tab 列表上的那条 ::before 分隔线。
- *
- * 竖排时它钉在右缘、拉满全高，把导航和工作区切成两块看板；选中项自己已经有底色
- * 和竖条，这条线是第二套边界，不承担任何信息。横排那一档还会和下面显式声明的
- * border-block-end 叠成双线。
- *
- * 只能取消 content：这条线画在伪元素里，border 是写死的 1px，元素自身的
- * border-* 覆盖不到它。
- */
-.admin-page__domain-nav::before {
-  content: none;
-}
-
-/* 中文没有大小写，字距只会把「人员」拆成「人 员」。大写与字距按 SectionHeader
-   同一条规则处理：只给拉丁字母。 */
-/* 组标题后面接一条细线补满剩余宽度。九个页签分四组，光靠字号和间距分组，扫
-   视时读到的是一列长短不一的文字；一条线把「这里换组了」说清楚，不占高度。 */
-.admin-page__nav-group {
-  display: flex;
-  align-items: center;
-  gap: var(--space-sm);
-  padding: var(--space-lg) var(--space-sm) var(--space-sm);
-  color: var(--text-muted);
-  font-size: var(--text-micro);
-  font-weight: var(--fw-medium);
-}
-
-.admin-page__nav-group::after {
-  content: "";
-  flex: 1 1 auto;
-  block-size: 1px;
-  background: var(--border-subtle);
-}
-
-.admin-page__nav-group:lang(en) {
-  font-weight: var(--fw-strong);
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-}
-
-.admin-page__nav-group:first-child {
-  padding-block-start: 0;
-}
-
-.admin-page__domain-nav .mantine-Tabs-tab {
-  justify-content: flex-start;
-  gap: var(--space-sm);
-  inline-size: 100%;
-  min-inline-size: 0;
-  min-block-size: var(--control-height-regular);
-  padding: var(--space-sm) var(--space-md);
-  border: 0;
-  border-radius: var(--radius-surface);
-  color: var(--text-secondary);
-  font-size: var(--text-body);
-  font-weight: var(--fw-medium);
-  transition: background var(--transition-fast), color var(--transition-fast);
-}
-
-/* 单行省略号要 overflow:hidden，行盒就必须真的装得下字形：Mantine 给 tabLabel 的
-   行高等于字号，而中文字形比 em 盒高，上下各被切掉 1px。行高按正文档给。 */
-.admin-page__domain-nav .mantine-Tabs-tabLabel {
-  flex: 1 1 auto;
-  min-inline-size: 0;
-  overflow: hidden;
-  line-height: var(--lh-tight);
-  text-align: start;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.admin-page__domain-nav .mantine-Tabs-tabSection {
-  flex: 0 0 auto;
-}
-
-/* 悬停用中性提亮，与下面的选中态刻意不同源：两者都用 raised 时，鼠标扫过一列
-   页签会让每一项轮流长得跟「当前所在」一样，反而看不出自己在哪。 */
-.admin-page__domain-nav .mantine-Tabs-tab:hover:not([data-active]) {
-  background: color-mix(in srgb, var(--text-primary) 6%, transparent);
-  color: var(--text-primary);
-}
-
-/*
- * 选中态：品牌色底 + 一条同色竖条 + 加重的字。
- *
- * 原本是中性 raised 台面，理由是「控制台导航是 chrome，颜色留给数据」。但
- * raised 在深色模式下只比工作区高 8 个亮度点，实机上这块台面几乎看不见，
- * 唯一有效的线索是那条 3px 竖条——一个只靠 3 像素表达的状态太弱了。改用
- * --brand-tint：它是专为「压在表面上的品牌色底」调的档，饱和度不足以喧宾夺主，
- * 但一眼能认。用内阴影而不是 ::before 画竖条，避开 Mantine 自己的伪元素。
- */
-.admin-page__domain-nav .mantine-Tabs-tab[data-active] {
-  background: var(--brand-tint);
-  color: var(--brand-on-tint);
-  font-weight: var(--fw-strong);
-  box-shadow: inset 3px 0 0 var(--brand-fill);
-}
-
-/* 图标是选中项里唯一着色的东西，负责把「选中」和「悬停」区分开。 */
-.admin-page__domain-nav .mantine-Tabs-tab[data-active] .mantine-Tabs-tabSection {
-  color: var(--brand-on-tint);
-}
-
-/*
- * 计数是数据，不是标签：裸数字 + 显示字体 + 表格数字对齐，不套药丸。药丸的边框和
- * 底色会在导航右缘排出一列与内容无关的方块，在面板头上则是第二种徽章画法。
- * 导航轨和面板头共用这一份，管理台内不再有第二种计数写法。
- */
 .admin-count {
   display: inline-block;
   color: var(--text-muted);
@@ -181,63 +18,40 @@
   color: var(--status-warning);
 }
 
-.admin-page__domain-nav .mantine-Tabs-tab[data-active] .admin-count {
+/* 职业 / 标签属于同一目录工作台：切换器嵌在清单标题栏，文字本身就是标题。 */
+.admin-classes-panel__switcher {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-xs);
+  max-inline-size: 100%;
+  padding: 0;
+  background: transparent;
+}
+
+.admin-classes-panel__switcher [data-slot="button"] {
+  position: relative;
+  min-block-size: var(--control-height-compact);
+  padding-inline: var(--space-xs);
   color: var(--text-secondary);
+  font-weight: var(--fw-medium);
+  border-radius: 0;
 }
 
-/* Compact layout preserves tablist semantics in a horizontally scrollable rail. */
-.admin-page__workspace--compact {
-  grid-template-columns: minmax(0, 1fr);
-  gap: var(--space-md);
+.admin-classes-panel__switcher [data-slot="button"]:hover {
+  color: var(--text-primary);
+  background: transparent;
 }
 
-.admin-page__workspace--compact .admin-page__domain-nav {
-  position: static;
-  flex-wrap: nowrap;
-  gap: var(--space-sm);
-  overflow-x: auto;
-  padding-block-end: var(--space-sm);
-  border-block-end: 1px solid var(--border-subtle);
-  scrollbar-width: thin;
+.admin-classes-panel__switcher [data-slot="button"][aria-pressed="true"] {
+  color: var(--brand-text);
+  font-weight: var(--fw-strong);
+  background: transparent;
+  box-shadow: inset 0 -2px 0 var(--brand-fill);
 }
 
-.admin-page__workspace--compact .admin-page__nav-group {
-  display: none;
-}
-
-.admin-page__workspace--compact .admin-page__domain-nav .mantine-Tabs-tab {
-  flex: 0 0 auto;
-  /* 竖排那套是「占满整列」，横排必须收回按内容撑开。
-     继承 100% 之后每个胶囊都占满整行宽，一屏只看得见一个，其余全靠横滚。 */
-  inline-size: auto;
-  padding: var(--space-xs) var(--space-md);
-  border: 1px solid var(--border-subtle);
-  border-radius: var(--shape-pill);
-  background: var(--surface-base);
-  box-shadow: none;
-}
-
-/* 横排胶囊按内容宽度排布，标签不再伸展、也不需要省略号。 */
-.admin-page__workspace--compact .admin-page__domain-nav .mantine-Tabs-tabLabel {
-  flex: 0 0 auto;
-}
-
-/* 横排放不下竖条，青瓷改由描边承担；底色与文字沿用竖排那一档，两种排布对
-   「你在这里」说的是同一句话。 */
-.admin-page__workspace--compact .admin-page__domain-nav .mantine-Tabs-tab[data-active] {
-  border-color: var(--brand-fill);
-  background: var(--brand-tint);
-  color: var(--brand-on-tint);
-  box-shadow: none;
-}
-
-/*
- * 面板本身是一条填满高度的列。八个页签的根节点都成了它的 flex 子项：
- * 想撑满的（主从台、表格台）自己写 flex:1，内容天然就短的（站点配置那类表单）
- * 保持默认的 flex:0 1 auto 贴顶——把一张短表单拉成整屏只是把空白搬进了卡片里。
- */
 .admin-page__panel {
   display: flex;
+  flex: 1 1 auto;
   flex-direction: column;
   align-self: stretch;
   min-width: 0;
@@ -256,7 +70,7 @@
   overflow-y: visible;
 }
 
-/* 页签根节点想把高度传给里面的工作台时挂这个。有几个页签在 .admin-md 外面还包了
+/* 管理面板想把高度传给里面的工作台时挂这个。有几个内容区在 .admin-md 外面还包了
    一层 Stack（加载骨架、错误提示、职业页的两块切换开关），不传的话主从台的 flex:1
    抵着一个内容高的父级，等于没写。 */
 .admin-fill {
@@ -266,13 +80,41 @@
   min-block-size: 0;
 }
 
+.admin-suspense-skeleton {
+  display: grid;
+  gap: var(--space-sm);
+}
+
+.admin-suspense-skeleton__head {
+  display: grid;
+  grid-template-columns: minmax(0, 3fr) minmax(0, 2fr);
+  gap: var(--space-sm);
+}
+
+.admin-suspense-skeleton__head [data-slot="skeleton"] {
+  height: 28px;
+}
+
+.admin-suspense-skeleton__row {
+  height: 18px;
+}
+
+.admin-no-access-alert {
+  max-width: 42rem;
+}
+
+.admin-no-access-alert [data-slot="button"] {
+  width: fit-content;
+  margin-top: var(--space-sm);
+}
+
 /* ── 面板 ────────────────────────────────────────────────────
  *
  * 管理台唯一的受管面板配方，就是 DESIGN.md 的 M2 Plate：台面色 + 一道发丝描边 +
- * 顶棱。九个页签里所有带边框的内容块都从这里取材质。
+ * 顶棱。管理内容区里所有带边框的内容块都从这里取材质。
  *
  * 边界很硬：admin 目录下的其它样式文件不得再自行声明 border / border-radius /
- * background 来造第二种面板——那正是这次要消掉的东西（原本六套并存）。各页签的
+ * background 来造第二种面板——那正是这次要消掉的东西（原本六套并存）。各内容区的
  * 样式只描述自己怎么排版（grid、flex、尺寸），材质一律来自这里。
  */
 .admin-panel {
@@ -309,9 +151,8 @@
   line-height: var(--lh-tight);
 }
 
-/* Mantine 的 Text 自带字号和字重，不显式收回来就会在每个调用点各写一份
-   size/fw，面板标题也就有了第二、第三种写法。 */
-.admin-panel__title > .mantine-Text-root {
+/* 标题内容统一继承面板标题的字号、字重和行高。 */
+.admin-panel__title > * {
   min-inline-size: 0;
   font-size: inherit;
   font-weight: inherit;
@@ -376,34 +217,76 @@
   margin-block-start: var(--space-md);
 }
 
-/* ── 版式 A：列表台 ──────────────────────────────────────────
-   成员 / 邀请 / 审计 三个页签共用。工具条语序固定，三个页签一致：
-   搜索（伸展）→ 筛选 → ——— → 主操作。 */
-
-.admin-toolbar {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: var(--space-sm);
-}
-
-.admin-toolbar__spacer {
-  flex: 1 1 auto;
-}
-
-.admin-toolbar__search {
-  flex: 1 1 15rem;
-  max-inline-size: 21rem;
-}
-
 .admin-audit-toolbar__dates {
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
   width: min(19rem, 100%);
 }
 
-.content-filter-toolbar__panel .admin-audit-toolbar__dates {
+.content-filter-toolbar__panel-controls .admin-audit-toolbar__dates {
   width: 100%;
+}
+
+.admin-audit-section {
+  gap: 12px;
+}
+
+.admin-audit-toolbar__search {
+  min-width: min(18rem, 100%);
+}
+
+.admin-audit-range {
+  display: inline-flex;
+  width: auto;
+  max-width: 100%;
+  gap: 3px;
+  padding: 3px;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-control);
+  background: var(--surface-sunken);
+}
+
+.admin-audit-range__option {
+  position: relative;
+  display: inline-flex;
+  min-height: 28px;
+  align-items: center;
+  justify-content: center;
+  padding: 5px 10px;
+  border-radius: calc(var(--radius-control) - 3px);
+  color: var(--text-secondary);
+  cursor: pointer;
+  font-size: var(--text-micro);
+  font-weight: var(--fw-strong);
+  line-height: 1;
+}
+
+.admin-audit-range__option:has([data-checked]) {
+  color: var(--brand-text);
+  background: var(--surface-raised);
+  box-shadow: inset 0 0 0 1px var(--border-strong), var(--edge-top);
+}
+
+.admin-audit-range__option:not(:has([data-checked])):hover {
+  color: var(--text-primary);
+  background: color-mix(in srgb, var(--text-primary) 4%, transparent);
+}
+
+.admin-audit-range__radio {
+  position: absolute;
+  inline-size: 1px;
+  block-size: 1px;
+  border: 0;
+  opacity: 0;
+}
+
+.admin-audit-range__option:has(.admin-audit-range__radio:focus-visible) {
+  outline: 2px solid var(--brand-fill);
+  outline-offset: 2px;
+}
+
+.admin-audit-export-menu {
+  width: 12rem;
 }
 
 /* 统计条是一块面板（材质来自 .admin-panel），内部只负责分栏。
@@ -412,7 +295,7 @@
 .admin-stats {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
-  /* 统计条是页签列里的固定高度部件。默认可收缩，父列高度一紧就被压掉几像素，
+  /* 统计条是内容区里的固定高度部件。默认可收缩，父列高度一紧就被压掉几像素，
      而 .admin-panel 自带 overflow:hidden，压掉的正好是底部那行标签。
      高度不足要由下面能滚的表格吸收，不是由这条读数吸收。 */
   flex: 0 0 auto;
@@ -486,55 +369,12 @@
     border-block-start: 1px solid var(--border-subtle);
   }
 
-  .admin-filter-chip {
-    min-block-size: var(--control-hit-area);
-  }
-}
-
-/* 生效筛选回执。每个条件单独可点掉。 */
-.admin-filter-summary {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: var(--space-sm);
-}
-
-.admin-filter-chip {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--space-xs);
-  padding: 2px var(--space-sm);
-  border: 1px solid var(--border-subtle);
-  border-radius: var(--shape-pill);
-  background: var(--surface-raised);
-  color: var(--text-secondary);
-  font: inherit;
-  font-size: var(--text-micro);
-  cursor: pointer;
-  transition: border-color var(--transition-fast), color var(--transition-fast);
-}
-
-.admin-filter-chip:hover {
-  border-color: var(--border-strong);
-  color: var(--text-primary);
 }
 
 /* Ensure table cells don't clip — let the scroll wrapper handle overflow */
-.admin-page .mantine-Table-td,
-.admin-page .mantine-Table-th {
+.admin-page .data-table-adapter td,
+.admin-page .data-table-adapter th {
   vertical-align: top;
-}
-
-.admin-page .admin-member-row-selected > td {
-  background: color-mix(in srgb, var(--brand-fill) 14%, transparent);
-}
-
-.admin-page .admin-member-table-wrap .mantine-Table-tbody,
-.admin-page .admin-member-table-wrap .mantine-Table-tbody td,
-.admin-page .admin-member-table-wrap tbody,
-.admin-page .admin-member-table-wrap tbody td {
-  user-select: none;
-  -webkit-user-select: none;
 }
 
 /* Invite management */
@@ -591,12 +431,12 @@
 
 /* 表头不再铺一层下沉底色：面板已经是一块台面，表头换个底色就是在同一块面板里
    再嵌一层表面。改用一条更重的分隔线承担「这里是表头」。 */
-.admin-table .mantine-Table-thead {
+.admin-table .data-table-adapter thead {
   background: transparent;
 }
 
 /* 大写和字距对中文列名（「战力」「加入时间」）只会拆字，按字符集分支。 */
-.admin-table .mantine-Table-th {
+.admin-table .data-table-adapter th {
   padding: var(--space-sm) var(--space-md);
   border-block-end: 1px solid var(--border-strong);
   color: var(--text-muted);
@@ -608,7 +448,7 @@
 /* 虚拟化的成员表把表头粘在滚动区顶部，而 sticky 的格子必须不透明，否则滚过去的
    行会从表头底下透出来。底色取台面本身，看上去仍是「表头不另铺一层」；分隔线在
    border-collapse 下不随格子定位，改用 inset 投影画。 */
-.admin-table [data-sticky-header] .mantine-Table-th {
+.admin-table .data-table-adapter [data-sticky-header] th {
   position: sticky;
   top: 0;
   z-index: 1;
@@ -617,14 +457,14 @@
   box-shadow: inset 0 -1px 0 var(--border-strong);
 }
 
-.admin-table .mantine-Table-th:lang(en) {
+.admin-table .data-table-adapter th:lang(en) {
   font-size: var(--text-micro);
   font-weight: var(--fw-strong);
   letter-spacing: 0.04em;
   text-transform: uppercase;
 }
 
-.admin-table .mantine-Table-td {
+.admin-table .data-table-adapter td {
   padding: var(--space-sm) var(--space-md);
   border-block-end: 1px solid color-mix(in srgb, var(--border-subtle) 55%, transparent);
   color: var(--text-secondary);
@@ -633,34 +473,36 @@
   white-space: nowrap;
 }
 
-.admin-table .mantine-Table-tbody tr:last-child .mantine-Table-td {
+.admin-table .data-table-adapter tbody tr:last-child td {
   border-block-end: none;
 }
 
 /* 第一列是这一行的身份，给它主文本色，其余列退到次级。 */
-.admin-table .mantine-Table-td:first-child {
+.admin-table .data-table-adapter td:first-child {
   color: var(--text-primary);
   font-weight: var(--fw-medium);
 }
 
-.admin-table .mantine-Table-th[data-column-id="power"],
-.admin-table .mantine-Table-td[data-column-id="power"] {
+.admin-table .data-table-adapter th[data-column-id="power"],
+.admin-table .data-table-adapter td[data-column-id="power"] {
   font-variant-numeric: tabular-nums;
   text-align: end;
 }
 
-.admin-table .mantine-Table-td[data-column-id="notes"] {
+.admin-table .data-table-adapter td[data-column-id="notes"] {
   max-inline-size: 18rem;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 
-.admin-table .mantine-Table-td[data-column-id="actions"] {
+.admin-table .data-table-adapter td[data-column-id="actions"] {
   text-align: end;
 }
 
 /* 身份胶囊：背景保留角色色，文字用语义色兜底，避免深色 hex 直接当文字色。 */
 .admin-table .admin-cell-role {
+  border-color: color-mix(in srgb, var(--role-color) 50%, var(--border-subtle));
+  background: color-mix(in srgb, var(--role-color) 16%, transparent);
   color: var(--text-primary);
 }
 
@@ -810,46 +652,6 @@
   row-gap: 12px;
 }
 
-/* ── Responsive member table / cards ── */
-
-.admin-member-cards-mobile {
-  display: none;
-}
-
-@media (max-width: 39.99em) {
-  .admin-member-table-desktop {
-    display: none;
-  }
-
-  .admin-member-cards-mobile {
-    display: flex;
-    flex-direction: column;
-    gap: var(--space-sm);
-  }
-
-  .admin-member-card {
-    cursor: pointer;
-  }
-
-  .admin-member-card--selected {
-    outline: 2px solid var(--brand-fill);
-    outline-offset: -2px;
-  }
-}
-
-@media (max-width: 79.99em) {
-  /* 页签栏改成横排、压在内容上方。用 flex 列而不是 block：block 布局没法把面板
-     拉到剩余高度，页签内容一短，下面照样空一块——那正是这次要修的东西。 */
-  .admin-page__workspace {
-    display: flex;
-    flex-direction: column;
-  }
-
-  .admin-page__panel {
-    flex: 1 1 auto;
-  }
-}
-
 @media (min-width: 40em) and (max-width: 63.99em) {
   .admin-invite-card__details,
   .admin-invite-card__actions {
@@ -858,12 +660,6 @@
 
   .admin-invite-card__actions > span:first-child {
     grid-column: auto;
-  }
-}
-
-@media (max-width: 39.99em) {
-  .admin-invite-search {
-    width: 100%;
   }
 }
 
@@ -897,10 +693,92 @@
   border-block-end: 1px solid var(--border-subtle);
 }
 
+.admin-md__master-head-row,
+.admin-md__detail-head-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-sm);
+  min-inline-size: 0;
+}
+
+.admin-md__master-copy,
+.admin-md__detail-heading {
+  display: flex;
+  flex: 1 1 auto;
+  align-items: center;
+  gap: var(--space-sm);
+  min-inline-size: 0;
+}
+
+.admin-md__master-copy {
+  display: grid;
+  gap: var(--space-xs);
+}
+
+.admin-md__master-title,
+.admin-md__detail-title,
+.admin-md__item-label {
+  overflow: hidden;
+  font-size: var(--text-sm);
+  font-weight: var(--fw-strong);
+  line-height: var(--lh-tight);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.admin-md__detail-title,
+.admin-md__item-label {
+  font-weight: var(--fw-medium);
+}
+
+.admin-md__count,
+.admin-md__muted,
+.admin-md__field-description,
+.admin-md__confirmation-copy {
+  color: var(--text-muted);
+  font-size: var(--text-meta);
+  line-height: var(--lh-normal);
+}
+
+.admin-md__dirty {
+  border-color: color-mix(in srgb, var(--status-warning) 40%, var(--border-subtle));
+  color: var(--status-warning);
+  background: color-mix(in srgb, var(--status-warning) 10%, transparent);
+}
+
+.admin-md__field {
+  display: grid;
+  gap: var(--space-xs);
+  min-inline-size: 0;
+}
+
+.admin-md__field-label {
+  color: var(--text-secondary);
+  font-size: var(--text-sm);
+  font-weight: var(--fw-medium);
+  line-height: var(--lh-tight);
+}
+
+.admin-md__field-description,
+.admin-md__confirmation-copy {
+  margin: 0;
+}
+
 /* 清单本体。ScrollArea 自己带 min-height:0，这里只负责占满剩下的高度。 */
 .admin-md__list {
   flex: 1 1 0;
   min-block-size: 0;
+}
+
+.admin-md__list-stack {
+  display: grid;
+  gap: var(--space-xs);
+  padding: var(--space-sm);
+}
+
+.admin-md__skeleton {
+  min-block-size: 40px;
 }
 
 /* 整行负责选中/悬停底色；编辑、拖拽和删除仍是并列按钮，避免嵌套交互元素。 */
@@ -1041,6 +919,11 @@
   padding: var(--space-md) var(--space-lg);
 }
 
+.admin-md__detail-stack {
+  display: grid;
+  gap: var(--space-md);
+}
+
 /* 提交按钮常驻底边，不跟着表单滚。表单一长（职业页的图标库有四十多个格子），
    排在末尾的保存按钮就落到视口外面去了，改一个字段也要先滚到底。 */
 .admin-md__detail-foot {
@@ -1051,6 +934,20 @@
   padding: var(--space-sm) var(--space-lg);
   border-block-start: 1px solid var(--border-subtle);
   background: var(--plate-fill);
+}
+
+.admin-md__detail-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-sm);
+  align-items: center;
+  justify-content: flex-end;
+  margin-inline-start: auto;
+}
+
+.admin-md__delete-action {
+  min-inline-size: 44px;
+  min-block-size: 44px;
 }
 
 .admin-md__empty {
@@ -1086,12 +983,89 @@
   }
 }
 
-/* ── 角色页签 ── */
+/* ── 角色与权限工作台 ── */
+
+.admin-roles__status,
+.admin-roles__loading,
+.admin-roles__permissions,
+.admin-roles__create-form {
+  display: grid;
+  gap: var(--space-md);
+}
+
+.admin-roles__detail-head {
+  display: flex;
+  align-items: end;
+  gap: var(--space-md);
+  min-inline-size: 0;
+}
+
+.admin-roles__fields {
+  display: grid;
+  grid-template-columns: minmax(10rem, 1fr) minmax(6rem, 0.45fr) minmax(12rem, 0.8fr) auto;
+  flex: 1 1 auto;
+  align-items: end;
+  gap: var(--space-sm);
+  min-inline-size: 0;
+}
+
+.admin-roles__fields [data-slot="input"] {
+  min-block-size: var(--control-height-regular);
+}
+
+.admin-roles__assigned-count {
+  align-self: end;
+}
+
+.admin-roles__color-control {
+  display: flex;
+  align-items: center;
+  gap: var(--space-xs);
+  min-inline-size: 0;
+}
+
+.admin-roles__color-picker {
+  flex: 0 0 var(--control-height-regular);
+  inline-size: var(--control-height-regular);
+  block-size: var(--control-height-regular);
+  padding: 0;
+  cursor: pointer;
+}
+
+.admin-roles__color-control [data-slot="input"]:last-child {
+  min-inline-size: 0;
+}
+
+.admin-roles__swatch {
+  flex: 0 0 auto;
+  inline-size: 0.75rem;
+  block-size: 0.75rem;
+  border-radius: 50%;
+  background: var(--border-strong);
+}
 
 .admin-roles-perm-grid {
-  display: flex;
-  flex-wrap: wrap;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 13rem), 1fr));
   gap: var(--space-sm);
+}
+
+.admin-roles-perm {
+  justify-content: flex-start;
+  min-block-size: var(--control-height-regular);
+  block-size: auto;
+  max-inline-size: 100%;
+  text-align: start;
+  white-space: normal;
+}
+
+.admin-roles-perm--granted {
+  background: var(--brand-tint);
+  color: var(--brand-on-tint);
+}
+
+.admin-roles-perm--granted:hover {
+  background: color-mix(in srgb, var(--brand-fill) 18%, var(--brand-tint));
 }
 
 /* Permission state colors are semantic status values, not user-selectable role colors. */
@@ -1103,28 +1077,117 @@
   color: var(--status-danger);
 }
 
+.admin-roles__permission-tooltip {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: start;
+  inline-size: min(20rem, calc(100vw - var(--space-xl)));
+  max-inline-size: none;
+  gap: var(--space-sm);
+  white-space: normal;
+}
+
+.admin-roles__permission-tooltip-icon {
+  display: grid;
+  place-items: center;
+  inline-size: var(--control-height-regular);
+  block-size: var(--control-height-regular);
+  color: var(--text-muted);
+}
+
+.admin-roles__permission-tooltip-icon[data-tone="teal"] {
+  color: var(--brand-fill);
+}
+
+.admin-roles__permission-tooltip-icon:where([data-tone="violet"], [data-tone="grape"]) {
+  color: var(--domain-war);
+}
+
+.admin-roles__permission-tooltip-icon[data-tone="orange"] {
+  color: var(--status-warning);
+}
+
+.admin-roles__permission-tooltip-icon[data-tone="red"] {
+  color: var(--status-danger);
+}
+
+.admin-roles__permission-tooltip-copy,
+.admin-roles__permission-tooltip-title {
+  display: grid;
+  gap: var(--space-xs);
+  min-inline-size: 0;
+}
+
+.admin-roles__permission-tooltip-title {
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  color: inherit;
+  font-weight: var(--fw-strong);
+}
+
+.admin-roles__row-delete {
+  border-radius: var(--radius-control);
+  background: color-mix(in srgb, var(--status-danger) 12%, transparent);
+}
+
+.admin-roles__row-delete:hover {
+  background: color-mix(in srgb, var(--status-danger) 20%, transparent);
+}
+
 @media (max-width: 47.99em) {
+  .admin-roles__detail-head {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .admin-roles__fields {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .admin-roles__assigned-count {
+    justify-self: start;
+  }
+
+  .admin-roles__detail-head .admin-md__detail-actions {
+    justify-content: flex-start;
+    margin-inline-start: 0;
+  }
+
   .admin-roles-perm-grid {
+    grid-template-columns: minmax(0, 1fr);
     gap: var(--space-xs);
   }
 }
 
-/* ── 站点配置：单列表单使用阅读宽度并靠左，与管理页签和内容列首对齐。 ── */
+/* ── 站点配置：全宽 12 列分区画布 ─────────────────────────────── */
 .site-config {
   display: grid;
-  gap: var(--space-md);
+  grid-template-columns: repeat(12, minmax(0, 1fr));
+  align-items: start;
+  gap: var(--page-rhythm);
   width: 100%;
-  max-inline-size: var(--content-width-reading);
   min-width: 0;
 }
 
-/* 材质来自 .admin-panel；这里只留锚点跳转时的让位距离。 */
+.site-config-loading {
+  color: var(--text-muted);
+  font-size: var(--text-sm);
+}
+
+/* 材质来自 .admin-panel；这里只定义画布位置和跳转让位。 */
 .site-config-card {
+  grid-column: 1 / -1;
   scroll-margin-top: var(--space-lg);
+}
+
+#site-config-features,
+#site-config-oauth {
+  grid-column: span 6;
 }
 
 /* 保存条。粘在视口底部，滚到哪里都够得着；只有 hasPendingChanges 时才渲染。 */
 .site-config-savebar {
+  grid-column: 1 / -1;
   position: sticky;
   bottom: var(--space-md);
   z-index: 2;
@@ -1143,7 +1206,7 @@
 .site-config-title-row,
 .site-config-feature-label {
   display: inline-flex;
-  gap: 7px;
+  gap: var(--space-sm);
   align-items: center;
   min-width: 0;
 }
@@ -1175,6 +1238,34 @@
   background: color-mix(in srgb, var(--brand-fill) 10%, transparent);
 }
 
+.site-config-info-card {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: start;
+  inline-size: min(20rem, calc(100vw - var(--space-xl)));
+  max-inline-size: none;
+  gap: var(--space-sm);
+  white-space: normal;
+}
+
+.site-config-info-card__icon {
+  display: grid;
+  place-items: center;
+  inline-size: var(--control-height-regular);
+  block-size: var(--control-height-regular);
+  color: var(--brand-fill);
+}
+
+.site-config-info-card__copy {
+  display: grid;
+  gap: var(--space-xs);
+  min-inline-size: 0;
+}
+
+.site-config-info-card__copy > strong {
+  font-weight: var(--fw-strong);
+}
+
 /* 与导航轨的计数同一条规矩：数字裸着放，不套药丸也不占用品牌色。 */
 .site-config-count {
   flex: 0 0 auto;
@@ -1184,16 +1275,19 @@
 
 .site-config-brand-block {
   display: grid;
-  grid-template-columns: 10rem minmax(0, 36rem);
+  grid-template-columns: minmax(9rem, 11rem) minmax(0, 1fr);
   gap: var(--space-lg);
   align-items: start;
-  justify-content: start;
 }
 
 .site-config-logo-field {
   display: grid;
   gap: var(--space-sm);
   min-width: 0;
+}
+
+.site-config-logo-upload {
+  inline-size: 100%;
 }
 
 .site-config-logo-preview {
@@ -1219,12 +1313,57 @@
   display: grid;
   gap: var(--space-md);
   min-width: 0;
+  max-inline-size: 52rem;
+}
+
+.site-config-text-field,
+.site-config-number-field {
+  display: grid;
+  gap: var(--space-xs);
+  min-inline-size: 0;
+}
+
+.site-config-number-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 10rem), 1fr));
+  gap: var(--space-sm);
+  min-inline-size: 0;
+}
+
+.site-config-number-control {
+  position: relative;
+}
+
+.site-config-number-control:has(.site-config-number-suffix) [data-slot="input"] {
+  padding-inline-end: calc(var(--space-xl) + var(--space-sm));
+}
+
+.site-config-number-input {
+  min-block-size: var(--control-height-regular);
+  appearance: textfield;
+}
+
+.site-config-number-input::-webkit-inner-spin-button,
+.site-config-number-input::-webkit-outer-spin-button {
+  margin: 0;
+  appearance: none;
+}
+
+.site-config-number-suffix {
+  position: absolute;
+  inset-inline-end: var(--space-sm);
+  inset-block: 0;
+  display: flex;
+  align-items: center;
+  color: var(--text-muted);
+  font-size: var(--text-sm);
+  pointer-events: none;
 }
 
 /* Auto-fit keeps each feature label and switch within one readable visual group. */
 .site-config-feature-list {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(15rem, 1fr));
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: var(--space-sm);
   min-width: 0;
 }
@@ -1249,6 +1388,75 @@
   background: var(--surface-base);
 }
 
+/* OAuth 是四个各自独立的运行时依赖。卡片只展示可用状态，绝不展示凭据本身。 */
+.site-config-provider-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-sm);
+  min-width: 0;
+}
+
+.site-config-provider-card {
+  display: grid;
+  align-content: start;
+  min-width: 0;
+  overflow: hidden;
+  border-radius: var(--radius-control);
+  background: var(--surface-sunken);
+}
+
+.site-config-provider-main {
+  display: flex;
+  gap: var(--space-sm);
+  align-items: center;
+  justify-content: space-between;
+  min-block-size: var(--control-hit-area);
+  padding: var(--space-sm) var(--space-md);
+}
+
+.site-config-provider-copy {
+  display: grid;
+  min-width: 0;
+  gap: var(--space-xs);
+}
+
+.site-config-provider-status {
+  font-weight: var(--fw-medium);
+}
+
+.site-config-provider-status--available {
+  color: var(--status-success);
+}
+
+.site-config-provider-status--missing_credentials {
+  color: var(--status-danger);
+}
+
+.site-config-provider-status--unsupported {
+  color: var(--status-warning);
+}
+
+.site-config-provider-error {
+  display: flex;
+  gap: var(--space-xs);
+  align-items: flex-start;
+  padding: var(--space-sm) var(--space-md);
+  border-block-start: 1px solid color-mix(in srgb, var(--status-danger) 24%, transparent);
+  color: var(--status-danger);
+  background: color-mix(in srgb, var(--status-danger) 9%, var(--surface-sunken));
+}
+
+.site-config-provider-card--unsupported .site-config-provider-error {
+  border-block-start-color: color-mix(in srgb, var(--status-warning) 24%, transparent);
+  color: var(--status-warning);
+  background: color-mix(in srgb, var(--status-warning) 9%, var(--surface-sunken));
+}
+
+.site-config-provider-error > svg {
+  flex: 0 0 auto;
+  margin-block-start: 1px;
+}
+
 .site-config-limits-sections {
   display: grid;
   gap: var(--space-lg);
@@ -1261,7 +1469,15 @@
  * 页 → 卡 → 方框三层边框在同一屏里比粗细。
  */
 .site-config-subpanel {
+  display: grid;
+  gap: var(--space-md);
   min-width: 0;
+}
+
+.site-config-subpanel-title {
+  display: inline-flex;
+  gap: var(--space-sm);
+  align-items: center;
 }
 
 .site-config-subpanel + .site-config-subpanel {
@@ -1270,6 +1486,11 @@
 }
 
 @media (max-width: 63.99em) {
+  #site-config-features,
+  #site-config-oauth {
+    grid-column: 1 / -1;
+  }
+
   .site-config-card > .admin-panel__head {
     align-items: flex-start;
     flex-direction: column;
@@ -1286,5 +1507,18 @@
 
   .site-config-logo-field {
     width: 10rem;
+  }
+
+  .site-config-feature-list,
+  .site-config-provider-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .site-config-savebar {
+    align-items: stretch;
+  }
+
+  .site-config-savebar [data-slot="button"] {
+    width: 100%;
   }
 }

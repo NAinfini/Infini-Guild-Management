@@ -17,22 +17,8 @@ vi.mock("@tanstack/react-virtual", () => ({
   }),
 }));
 
-vi.mock("@portal/components/effects", () => ({
-  StaggerList: ({ children, staggerMs: _staggerMs, ...props }: React.HTMLAttributes<HTMLDivElement> & { staggerMs?: number }) => (
-    <div {...props}>{children}</div>
-  ),
-}));
-
-vi.mock("motion/react", () => ({
-  motion: {
-    div: ({ children, variants: _variants, ...props }: React.HTMLAttributes<HTMLDivElement> & { variants?: unknown }) => (
-      <div {...props}>{children}</div>
-    ),
-  },
-}));
-
 vi.mock("../../shared/MemberCard", () => ({
-  MemberCard: ({ user }: { user: User }) => <button type="button">{user.username}</button>,
+  MemberCard: ({ user }: { user: User }) => <button type="button">{user.display_name}</button>,
 }));
 
 vi.mock("../../../utils/media", () => ({
@@ -45,7 +31,7 @@ const noPermissions = Object.fromEntries(
 ) as Record<Permission, boolean>;
 const user: User = {
   id: "user-1",
-  username: "Aster",
+  display_name: "Aster",
   role: "member",
   role_name: "Member",
   role_color: null,
@@ -88,8 +74,6 @@ describe("RosterGrid audio input boundaries", () => {
       <RosterGrid
         rows={[{ user, profile }]}
         shouldVirtualize={false}
-        columnCount={1}
-        staggerKey="all"
         ariaLabel="Roster"
         onCardClick={vi.fn()}
         onCardMouseEnter={onCardMouseEnter}
@@ -120,8 +104,6 @@ describe("RosterGrid card sizing", () => {
       <RosterGrid
         rows={[{ user, profile }]}
         shouldVirtualize={false}
-        columnCount={1}
-        staggerKey="all"
         ariaLabel="Roster"
         onCardClick={vi.fn()}
         onCardMouseEnter={vi.fn()}
@@ -137,12 +119,18 @@ describe("RosterGrid card sizing", () => {
       resolve(process.cwd(), "apps/portal/components/pages/RosterPage.css"),
       "utf8",
     ).replace(/\/\*[\s\S]*?\*\//g, "");
+    const page = readFileSync(
+      resolve(process.cwd(), "apps/portal/components/pages/RosterPage.tsx"),
+      "utf8",
+    );
 
     expect(css).toMatch(/\.roster-page\s*\{[^}]*min-width:\s*0[^}]*max-width:\s*100%/);
     expect(css).toMatch(
-      /\.roster-page__body\s*\{[^}]*flex:\s*1[^}]*min-height:\s*0[^}]*min-width:\s*0[^}]*width:\s*100%[^}]*max-width:\s*100%/,
+      /\.roster-page__body\s*\{[^}]*height:\s*100%[^}]*flex:\s*1[^}]*min-height:\s*0[^}]*min-width:\s*0[^}]*width:\s*100%[^}]*max-width:\s*100%/,
     );
-    expect(css).toMatch(/\.roster-filter-card\s*\{[^}]*position:\s*sticky[^}]*top:\s*0[^}]*z-index:/);
+    expect(page).toMatch(
+      /<PageLayout\s+className="roster-page"\s+workspaceMode="contained"\s+toolbar=\{/,
+    );
     expect(css).toMatch(
       /\.roster-grid-region\s*\{[^}]*flex:\s*1[^}]*min-height:\s*0[^}]*min-width:\s*0[^}]*width:\s*100%[^}]*max-width:\s*100%[^}]*box-sizing:\s*border-box[^}]*overflow-x:\s*clip[^}]*overflow-y:\s*auto/,
     );
@@ -150,15 +138,13 @@ describe("RosterGrid card sizing", () => {
 
   it("keeps the full-height interaction wrapper in every virtual grid cell", () => {
     virtualizerHarness.items = [{ key: "row-0", index: 0, start: 0 }];
-    const secondUser = { ...user, id: "user-2", username: "Beryl" };
+    const secondUser = { ...user, id: "user-2", display_name: "Beryl" };
     const secondProfile = { ...profile, user_id: secondUser.id };
 
     const { container } = render(
       <RosterGrid
         rows={[{ user, profile }, { user: secondUser, profile: secondProfile }]}
         shouldVirtualize
-        columnCount={2}
-        staggerKey="all"
         ariaLabel="Roster"
         onCardClick={vi.fn()}
         onCardMouseEnter={vi.fn()}
@@ -181,14 +167,15 @@ describe("RosterGrid card sizing", () => {
     expect(css).toMatch(/\.roster-card-interaction\s*\{[^}]*height:\s*100%/);
   });
 
-  it("switches the non-virtual roster to one readable column below 576px", () => {
+  it("keeps two browseable cards at 390px without changing the MemberCard interaction wrappers", () => {
     const css = readFileSync(
       resolve(process.cwd(), "apps/portal/components/pages/RosterPage.css"),
       "utf8",
     ).replace(/\/\*[\s\S]*?\*\//g, "");
 
     expect(css).toMatch(
-      /@media \(max-width: 575px\)\s*\{\s*\.roster-card-grid\s*\{[^}]*grid-template-columns:\s*minmax\(0,\s*1fr\)/,
+      /@media \(min-width: 390px\) and \(max-width: 767px\)\s*\{\s*\.roster-card-grid\s*\{[^}]*grid-template-columns:\s*repeat\(2,\s*minmax\(150px,\s*1fr\)\)/,
     );
+    expect(css).not.toMatch(/@media \(max-width: 575px\)\s*\{\s*\.roster-card-grid/);
   });
 });

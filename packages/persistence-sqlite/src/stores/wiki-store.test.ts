@@ -36,7 +36,7 @@ function harness() {
   database.exec(SCHEMA);
   database.exec(WIKI_TRIGGERS);
   database.exec(MEDIA_TRIGGERS);
-  database.prepare("INSERT INTO users (id, username) VALUES ('user-1', 'owner')").run();
+  database.prepare("INSERT INTO users (id, display_name) VALUES ('user-1', 'owner')").run();
   database.prepare("INSERT INTO wiki_category_state (singleton, revision_token, updated_at) VALUES (1, 'state-1', ?)").run(NOW);
   database.prepare("INSERT INTO wiki_categories (id, name, slug, revision_token) VALUES ('category-1', 'Root', 'root', 'category-revision-1')").run();
   const executor = new SqliteTestExecutor(database);
@@ -56,7 +56,7 @@ function article(overrides: Partial<WikiArticleRecord> = {}): WikiArticleRecord 
     deletedAt: null,
     created_by: "user-1",
     updated_by: null,
-    updated_by_username: null,
+    updated_by_display_name: null,
     created_at: NOW,
     updated_at: NOW,
     revisionToken: "article-revision-1",
@@ -81,7 +81,7 @@ function revision(record: WikiArticleRecord, id = `revision-${record.currentRevi
     deleted_at: record.deletedAt,
     media_ids: [...record.mediaIds],
     edited_by: "user-1",
-    edited_by_username: null,
+    edited_by_display_name: null,
     restored_from: null,
     created_at: record.updated_at,
   };
@@ -438,7 +438,7 @@ function queryPlan(database: DatabaseSync, statement: SqlStatement): string {
 const SCHEMA = `
   PRAGMA foreign_keys = ON;
   PRAGMA recursive_triggers = ON;
-  CREATE TABLE users (id TEXT PRIMARY KEY, username TEXT NOT NULL);
+  CREATE TABLE users (id TEXT PRIMARY KEY, display_name TEXT NOT NULL);
   CREATE TABLE media_assets (
     id TEXT PRIMARY KEY, owner_user_id TEXT, purpose TEXT NOT NULL, media_type TEXT NOT NULL,
     state TEXT NOT NULL, expires_at TEXT, delete_claim_token TEXT, delete_claim_until TEXT,

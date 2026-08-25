@@ -130,9 +130,10 @@ export function useAdminMutations({
   });
 
   const resetPasswordMutation = useMutation({
-    mutationFn: (userId: string) => resetAdminUserPassword(userId),
+    mutationFn: ({ userId, currentPassword }: { userId: string; currentPassword: string }) =>
+      resetAdminUserPassword(userId, currentPassword),
     onSuccess: async (payload) => {
-      await copyPlainText(payload.temporary_password);
+      await copyPlainText(`${payload.temporary_login_name}\n${payload.temporary_password}`);
       notifySuccess(t("message.passwordResetCopied"));
     },
     onError: (error) => showError(error, t("message.passwordResetFailed")),
@@ -149,11 +150,16 @@ export function useAdminMutations({
 
   const createMemberMutation = useMutation({
     mutationFn: async (data: {
-      username: string;
+      login_name: string;
+      display_name: string;
       notes: string;
       roleId: string;
     }) => {
-      const result = await createAdminMember({ username: data.username, role_id: data.roleId });
+      const result = await createAdminMember({
+        login_name: data.login_name,
+        display_name: data.display_name,
+        role_id: data.roleId,
+      });
       if (data.notes) {
         await adminUpdateProfile(result.user_id, {
           ...(data.notes ? { notes: data.notes } : {}),
@@ -163,10 +169,10 @@ export function useAdminMutations({
     },
     onSuccess: async (payload) => {
       try {
-        await copyPlainText(payload.temporary_password);
-        notifySuccess(t("message.memberCreatedPasswordCopied", { username: payload.username }));
+        await copyPlainText(`${payload.temporary_login_name}\n${payload.temporary_password}`);
+        notifySuccess(t("message.memberCreatedPasswordCopied", { display_name: payload.display_name }));
       } catch {
-        notifyError(t("message.memberCreatedPasswordNotCopied", { username: payload.username }));
+        notifyError(t("message.memberCreatedPasswordNotCopied", { display_name: payload.display_name }));
       }
       await Promise.all([
         invalidateAdminUsers(),
@@ -381,7 +387,7 @@ export function useAdminMutations({
     const nameList = names.length > 0
       ? createElement("div", { style: { marginTop: 8 } },
           createElement("span", { style: { fontSize: "0.875rem", fontWeight: 600, display: "block", marginBottom: 4 } }, t("confirm.affectedMembers")),
-          createElement("span", { style: { fontSize: "0.875rem", color: "var(--mantine-color-dimmed)", wordBreak: "break-word" as const } }, names.join("、")),
+          createElement("span", { style: { fontSize: "0.875rem", color: "var(--text-muted)", wordBreak: "break-word" as const } }, names.join("、")),
         )
       : null;
     return confirm({
@@ -490,12 +496,12 @@ export function useAdminMutations({
     if (pending) void pending.catch(() => undefined);
   };
 
-  const resetUserPassword = (userId: string) => {
+  const resetUserPassword = (userId: string, currentPassword: string) => {
     const pending = runPendingAction(
       { resource: "user", resourceId: userId, action: "reset-password" },
-      () => resetPasswordMutation.mutateAsync(userId),
+      () => resetPasswordMutation.mutateAsync({ userId, currentPassword }),
     );
-    if (pending) void pending.catch(() => undefined);
+    return (pending ?? Promise.resolve()).then(() => undefined);
   };
 
   const resetUserLoginLock = async (userId: string, lockState: AdminLoginLockState) => {
@@ -505,7 +511,7 @@ export function useAdminMutations({
     const confirmed = await confirm({
       title: t("confirm.loginLockTitle"),
       description: t("confirm.loginLockDescription", {
-        username: resolveUsername(userId) ?? userId,
+        display_name: resolveUsername(userId) ?? userId,
         seconds: lockState.retry_after_seconds,
       }),
       confirmLabel: t("member.resetLoginLock"),

@@ -1,6 +1,11 @@
 import { AppError } from "@guild/kernel";
-import type { ImageUpload } from "@guild/server/modules/media";
-import { LIMITS, MAX_CONFIGURABLE_AUDIO_BYTES, MAX_CONFIGURABLE_IMAGE_VARIANT_BYTES } from "@guild/shared";
+import type { FileUpload, ImageUpload } from "@guild/server/modules/media";
+import {
+  LIMITS,
+  MAX_CONFIGURABLE_ATTACHMENT_BYTES,
+  MAX_CONFIGURABLE_AUDIO_BYTES,
+  MAX_CONFIGURABLE_IMAGE_VARIANT_BYTES,
+} from "@guild/shared";
 import { z } from "zod";
 import { assertRequestBodyLength, HttpPayloadTooLargeError, readBodyBytes } from "./body-limit.js";
 
@@ -107,6 +112,23 @@ export async function parseImageUploads(form: ParsedMultipartForm | FormData): P
     });
   }
   return uploads;
+}
+
+export async function parseAnnouncementAttachment(form: ParsedMultipartForm | FormData): Promise<FileUpload> {
+  const files = form.getAll("file");
+  if (files.length !== 1) throw validation("Announcement attachment uploads require exactly one file");
+  const file = files[0];
+  if (!file || (!isMultipartFilePart(file) && !(file instanceof File))) {
+    throw validation("Invalid announcement attachment upload");
+  }
+  if (file.size > MAX_CONFIGURABLE_ATTACHMENT_BYTES) {
+    throw new HttpPayloadTooLargeError(MAX_CONFIGURABLE_ATTACHMENT_BYTES);
+  }
+  return {
+    bytes: await fileBytes(file),
+    originalName: isMultipartFilePart(file) ? file.filename : file.name,
+    contentType: file.type,
+  };
 }
 
 export function isMultipartFilePart(value: unknown): value is MultipartFilePart {

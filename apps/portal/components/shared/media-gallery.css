@@ -1,17 +1,64 @@
+.infini-media-gallery-stack {
+  display: grid;
+  width: 100%;
+  gap: var(--space-md);
+}
+
 .infini-media-gallery-grid {
   display: grid;
   gap: 10px;
 }
 
+.infini-media-gallery-carousel,
+.infini-media-gallery-slides {
+  position: relative;
+  min-width: 0;
+}
+
+.infini-media-gallery-slides {
+  height: min(62vh, 520px);
+  overflow: hidden;
+  border-radius: var(--radius-surface);
+}
+
+.infini-media-gallery-frame {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity var(--transition-normal);
+}
+
+.infini-media-gallery-frame[data-active] {
+  opacity: 1;
+  pointer-events: auto;
+}
+
 .infini-media-gallery-slide {
   width: 100%;
-  height: min(62vh, 520px);
+  height: 100%;
   border-radius: 12px;
   overflow: hidden;
   display: flex;
   align-items: center;
   justify-content: center;
   background: color-mix(in srgb, var(--surface-base) 88%, var(--text-primary) 6%);
+}
+
+.infini-media-gallery-control {
+  position: absolute;
+  z-index: 2;
+  top: 50%;
+  transform: translateY(-50%);
+  box-shadow: var(--shadow-overlay);
+}
+
+.infini-media-gallery-control--previous {
+  left: var(--space-sm);
+}
+
+.infini-media-gallery-control--next {
+  right: var(--space-sm);
 }
 
 /*
@@ -70,11 +117,40 @@
 }
 
 .infini-media-gallery-video-controls {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-sm);
   width: 100%;
+}
+
+.infini-media-gallery-video-actions,
+.infini-media-gallery-embed-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-xs);
+}
+
+.infini-media-gallery-embed-actions {
+  justify-content: center;
+}
+
+.infini-media-gallery-external {
+  display: grid;
+  justify-items: center;
+  gap: var(--space-sm);
+  margin: auto;
+}
+
+.infini-media-gallery-muted {
+  color: var(--text-muted);
+  font-size: var(--text-sm);
 }
 
 .infini-media-gallery-video-progress {
   width: 100%;
+  accent-color: var(--brand-fill);
 }
 
 .infini-media-gallery-thumbnails-header {
@@ -155,7 +231,7 @@
   bottom: 3px;
   right: 3px;
   /* Media thumbnails have unknown luminance, so the play glyph uses fixed white with a dark halo. */
-  color: var(--mantine-color-white);
+  color: var(--status-on-fill);
   filter: drop-shadow(0 1px 2px rgba(0,0,0,0.5));
   pointer-events: none;
 }
@@ -168,6 +244,12 @@
 .infini-media-gallery-zoom-content {
   display: flex;
   flex-direction: column;
+  width: calc(100vw - 2rem);
+  max-width: none;
+  height: calc(100dvh - 2rem);
+  max-height: none;
+  padding: var(--space-md);
+  background: var(--surface-overlay);
 }
 
 .infini-media-gallery-zoom-body {
@@ -184,8 +266,15 @@
   cursor: zoom-out;
 }
 
+.infini-media-gallery-zoom-close {
+  position: absolute;
+  z-index: 2;
+  top: var(--space-md);
+  right: var(--space-md);
+}
+
 @media (max-width: 767px) {
-  .infini-media-gallery-slide {
+  .infini-media-gallery-slides {
     height: min(50vh, 360px);
   }
 
@@ -203,6 +292,14 @@
     justify-content: flex-start;
   }
 
+  .infini-media-gallery-control--previous {
+    left: var(--space-xs);
+  }
+
+  .infini-media-gallery-control--next {
+    right: var(--space-xs);
+  }
+
   .infini-media-gallery-thumbnails-header {
     flex-wrap: wrap;
   }
@@ -210,5 +307,11 @@
   .infini-media-gallery-thumb {
     width: 56px;
     height: 56px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .infini-media-gallery-frame {
+    transition: none;
   }
 }

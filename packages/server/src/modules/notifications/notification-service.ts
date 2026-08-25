@@ -39,6 +39,9 @@ export function parseHeartbeat(input: unknown): HeartbeatMessage {
 export function canReceiveNotification(authorization: AuthorizationContext, messageInput: unknown): boolean {
   if (!authorization.actor) return false;
   const message: PushMessage = pushMessageSchema.parse(messageInput);
+  if (message.type === "inbox_changed" && message.user_id !== undefined) {
+    return message.user_id === authorization.actor.userId;
+  }
   if (message.type !== "entity_changed" || MEMBER_BROADCAST_HINTS.has(message.hint)) return true;
   if (message.hint === "badge_assigned" || message.hint === "badge_unassigned") {
     return authorization.has(PERMISSION_ID.ADMIN_BADGES_MANAGE);

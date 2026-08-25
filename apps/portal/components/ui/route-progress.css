@@ -1,0 +1,36 @@
+.route-progress {
+  position: fixed;
+  inset: 0 0 auto;
+  z-index: 2000;
+  height: 3px;
+  overflow: hidden;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.route-progress[data-active] {
+  opacity: 1;
+}
+
+.route-progress__bar {
+  width: 42%;
+  height: 100%;
+  background: var(--brand-fill);
+  transform: translateX(-110%);
+}
+
+.route-progress[data-active] .route-progress__bar {
+  animation: route-progress-scan var(--motion-route-progress) infinite;
+}
+
+@keyframes route-progress-scan {
+  to { transform: translateX(340%); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .route-progress[data-active] .route-progress__bar {
+    width: 100%;
+    animation: none;
+    transform: none;
+  }
+}

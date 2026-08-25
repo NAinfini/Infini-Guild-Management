@@ -7,3 +7,24 @@
   background: var(--status-danger);
   color: var(--status-on-fill);
 }
+
+.image-grid-editor__delete {
+  border-radius: 999px;
+}
+
+.image-grid-editor__add {
+  flex-direction: column;
+  gap: var(--space-xs);
+  border-style: dashed;
+  border-color: var(--border-subtle);
+  background: var(--surface-sunken);
+  color: var(--text-muted);
+  line-height: 1.2;
+  white-space: normal;
+}
+
+.image-grid-editor__add:hover {
+  border-color: var(--border-strong);
+  background: var(--surface-raised);
+  color: var(--text-primary);
+}

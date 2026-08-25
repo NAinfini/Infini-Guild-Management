@@ -1,15 +1,14 @@
-import { MantineProvider } from "@mantine/core";
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import type { ReactNode } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import {
+  AdminContextNavigationProvider,
+  useAdminContextNavigation,
+} from "../layout/AdminContextNavigation";
 import { AdminPage } from "./AdminPage";
 
-const responsive = vi.hoisted(() => ({
-  width: 1440,
-  queries: [] as string[],
-}));
 const router = vi.hoisted(() => ({
   navigate: vi.fn(),
   search: {} as { tab?: string },
@@ -22,12 +21,12 @@ const controller = vi.hoisted(() => ({
     audit: false,
     roles: false,
     siteConfig: false,
+    importantNotices: false,
     classes: false,
     badges: false,
     operations: true,
     diagnostics: true,
   },
-  refreshStatus: vi.fn(),
   statusLatencyMs: null,
   statusQuery: {
     data: null as null | { db: string; r2: string; ws: string; crons: string },
@@ -44,12 +43,9 @@ const controller = vi.hoisted(() => ({
   saveSelectedMemberProfile: vi.fn(),
   updateMemberProfileMutation: { isPending: false },
   rolesQuery: { data: [] },
-  /* 页签徽章上的计数直接读这几个 query，数据没到就如实不显示。 */
   usersQuery: { data: null },
   userRowsRaw: [],
   inviteStatsQuery: { data: null },
-  isAdmin: true,
-  isModerator: true,
   memberMediaController: {},
   createMemberModalOpen: false,
   createMemberModalHandlers: { close: vi.fn() },
@@ -57,29 +53,29 @@ const controller = vi.hoisted(() => ({
   createMemberMutation: { isPending: false },
 }));
 
-vi.mock("@mantine/hooks", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("@mantine/hooks")>();
-  return {
-    ...actual,
-    useMediaQuery: (query: string) => {
-      responsive.queries.push(query);
-      return responsive.width < 1280;
-    },
-  };
-});
-
 vi.mock("@tanstack/react-router", () => ({
   useNavigate: () => router.navigate,
   useSearch: () => router.search,
 }));
 
 vi.mock("../../hooks/useAdminPageController", () => ({
-  useAdminPageController: () => controller,
+  useAdminPageController: () => ({
+    ...controller,
+    activeTab: router.search.tab === "diagnostics" ? "diagnostics" : "operations",
+  }),
 }));
 
 vi.mock("../layout/PageLayout", () => ({
-  PageLayout: ({ children, className }: { children: ReactNode; className?: string }) => (
-    <main className={className}>{children}</main>
+  PageLayout: ({
+    children,
+    className,
+    workspaceMode = "scroll",
+  }: {
+    children: ReactNode;
+    className?: string;
+    workspaceMode?: "scroll" | "contained";
+  }) => (
+    <main className={className} data-workspace-mode={workspaceMode}>{children}</main>
   ),
 }));
 
@@ -95,8 +91,8 @@ vi.mock("../feature/admin/AdminClassesPanel", () => ({
   AdminClassesPanel: () => <div>classes-and-categories-panel</div>,
 }));
 
-vi.mock("../feature/admin/AdminMemberDetailModal", () => ({
-  AdminMemberDetailModal: () => null,
+vi.mock("../feature/admin/AdminMemberDetailInspector", () => ({
+  AdminMemberDetailInspector: () => null,
 }));
 
 vi.mock("../feature/admin/CreateMemberModal", () => ({
@@ -109,18 +105,22 @@ vi.mock("react-i18next", () => ({
   }),
 }));
 
+function NavigationStatusProbe() {
+  const { status } = useAdminContextNavigation();
+  return <output>{JSON.stringify(status)}</output>;
+}
+
 function renderPage() {
   return render(
-    <MantineProvider>
+    <AdminContextNavigationProvider>
       <AdminPage />
-    </MantineProvider>,
+      <NavigationStatusProbe />
+    </AdminContextNavigationProvider>,
   );
 }
 
-describe("AdminPage responsive and permission states", () => {
+describe("AdminPage context navigation", () => {
   beforeEach(() => {
-    responsive.width = 1440;
-    responsive.queries.length = 0;
     router.navigate.mockReset();
     router.search = {};
     controller.statusQuery.data = null;
@@ -131,6 +131,7 @@ describe("AdminPage responsive and permission states", () => {
       audit: false,
       roles: false,
       siteConfig: false,
+      importantNotices: false,
       classes: false,
       badges: false,
       operations: true,
@@ -138,20 +139,31 @@ describe("AdminPage responsive and permission states", () => {
     });
   });
 
-  it.each([768, 1024])(
-    "keeps one horizontal tablist at %ipx",
-    (width) => {
-      responsive.width = width;
-      renderPage();
+  it("renders only the panel named by the URL without an internal tablist", async () => {
+    router.search = { tab: "diagnostics" };
+    renderPage();
 
-      expect(screen.getByRole("tablist")).toHaveAttribute("aria-orientation", "horizontal");
-      expect(screen.getByRole("tab", { name: /tab\.operations/ })).toBeInTheDocument();
-      expect(screen.queryByRole("combobox", { name: "navigation.section" })).not.toBeInTheDocument();
-      expect(responsive.queries).toContain("(max-width: 79.99em)");
-    },
-  );
+    expect(await screen.findByText("diagnostics-panel")).toBeInTheDocument();
+    expect(screen.queryByText("operations-panel")).not.toBeInTheDocument();
+    expect(screen.queryByRole("tablist")).not.toBeInTheDocument();
+  });
 
-  it("keeps the tab panel from becoming a second vertical scroll container", () => {
+  it("uses the shared contained workbench for its active console panel", async () => {
+    renderPage();
+
+    expect(await screen.findByText("operations-panel")).toBeInTheDocument();
+    expect(screen.getByRole("main")).toHaveAttribute("data-workspace-mode", "contained");
+  });
+
+  it("falls back to the first permitted panel when the URL names an unavailable one", async () => {
+    router.search = { tab: "audit" };
+    renderPage();
+
+    expect(await screen.findByText("operations-panel")).toBeInTheDocument();
+    expect(screen.queryByText("diagnostics-panel")).not.toBeInTheDocument();
+  });
+
+  it("keeps the panel from becoming a second vertical scroll container", () => {
     const css = readFileSync(resolve(process.cwd(), "apps/portal/components/pages/AdminPage.css"), "utf8")
       .replace(/\/\*[\s\S]*?\*\//g, "");
     const panelRule = css.match(/\.admin-page__panel\s*\{([^}]*)\}/)?.[1] ?? "";
@@ -161,61 +173,38 @@ describe("AdminPage responsive and permission states", () => {
     expect(panelRule).not.toMatch(/overflow-y:\s*(auto|scroll|hidden)/);
   });
 
-  it("leaves the navigation rail without a divider on its trailing edge", () => {
-    const css = readFileSync(resolve(process.cwd(), "apps/portal/components/pages/AdminPage.css"), "utf8")
-      .replace(/\/\*[\s\S]*?\*\//g, "");
-
-    // 分隔线画在 Mantine 的 ::before 里，border 是写死的 1px；元素自身的 border-*
-    // 覆盖不到伪元素，能撤掉它的只有 content。
-    expect(css).toMatch(/\.admin-page__domain-nav::before\s*\{[^}]*content:\s*none/);
-    expect(css.match(/\.admin-page__domain-nav\s*\{([^}]*)\}/)?.[1]).not.toMatch(/border/);
-
-    // 横排那一档的下划线是这里显式声明的，不能被上面那条一起撤掉。
-    const compactRule = css.match(
-      /\.admin-page__workspace--compact\s+\.admin-page__domain-nav\s*\{([^}]*)\}/,
-    )?.[1];
-    expect(compactRule).toMatch(/border-block-end:\s*1px solid var\(--border-subtle\)/);
-  });
-
-  it("shows the shared classes and categories workspace when its permission gate allows it", async () => {
-    Object.assign(controller.tabAccess, { operations: false, diagnostics: false, classes: true });
-    router.search = { tab: "classes" };
-
-    renderPage();
-
-    expect(screen.getByRole("tab", { name: /tab\.classes/ })).toBeInTheDocument();
-    expect(await screen.findByText("classes-and-categories-panel")).toBeInTheDocument();
-  });
-
-  it("keeps the efficient vertical tab navigation at 1440px", () => {
-    renderPage();
-
-    expect(screen.getByRole("tablist")).toHaveAttribute("aria-orientation", "vertical");
-    expect(screen.getByRole("tab", { name: /tab\.operations/ })).toBeInTheDocument();
-    expect(screen.queryByRole("combobox", { name: "navigation.section" })).not.toBeInTheDocument();
-  });
-
-  it("treats descriptive healthy runtime signals as healthy instead of failed", () => {
+  it("moves health state into the shared sidebar context instead of a page tab", async () => {
     controller.statusQuery.data = {
       db: "ok",
       r2: "ok",
       ws: "ok (Durable Object)",
       crons: "configured (Cron Triggers)",
     };
-
     renderPage();
 
-    expect(screen.getByRole("img", { name: "header.health.configured" }))
-      .toHaveClass("admin-page__nav-dot--configured");
+    await waitFor(() => {
+      expect(screen.getByRole("status")).toHaveTextContent('"healthState":"configured"');
+    });
   });
 
-  it("shows a permission explanation and dashboard path when no tab is available", () => {
+  it("removes the obsolete admin tab rail and its horizontal-scroll fallback", () => {
+    const source = readFileSync(resolve(process.cwd(), "apps/portal/components/pages/AdminPage.tsx"), "utf8");
+    const css = readFileSync(resolve(process.cwd(), "apps/portal/components/pages/AdminPage.css"), "utf8");
+
+    expect(source).not.toContain("<Tabs");
+    expect(source).not.toContain("Tabs.Panel");
+    expect(css).not.toContain("admin-page__workspace");
+    expect(css).not.toContain("admin-page__domain-nav");
+  });
+
+  it("shows a permission explanation and dashboard path when no admin area is available", () => {
     Object.assign(controller.tabAccess, {
       member: false,
       invite: false,
       audit: false,
       roles: false,
       siteConfig: false,
+      importantNotices: false,
       classes: false,
       badges: false,
       operations: false,
@@ -227,6 +216,6 @@ describe("AdminPage responsive and permission states", () => {
     expect(screen.getByText("noAccessibleTabs.description")).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: "noAccessibleTabs.back" }));
-    expect(router.navigate).toHaveBeenCalledWith({ to: "/" });
+    expect(router.navigate).toHaveBeenCalledWith({ to: "/dashboard" });
   });
 });

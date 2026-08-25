@@ -1,5 +1,4 @@
-import { MantineProvider } from "@mantine/core";
-import { render, screen } from "@testing-library/react";
+import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type { Event } from "@guild/shared";
 import { addDays, format } from "date-fns";
@@ -14,6 +13,7 @@ vi.mock("react-i18next", () => ({
       if (key === "month.openEventAria") return `Open ${options?.title}`;
       return key;
     },
+    i18n: { language: "en" },
   }),
 }));
 
@@ -51,10 +51,10 @@ function createEvent(overrides: Partial<Event>): Event {
 function renderMonthView(
   events: Event[],
   options: {
-    canManage?: boolean;
+    canCreate?: boolean;
+    selectedDateKey?: string;
     onSelectDate?: (dateKey: string) => void;
     onCreateEvent?: (dateKey: string) => void;
-    onEditEvent?: (event: Event) => void;
     onViewEvent?: (event: Event) => void;
   } = {},
 ) {
@@ -65,18 +65,18 @@ function renderMonthView(
   }
 
   render(
-    <MantineProvider>
+    <>
       <EventMonthView
-        canManage={options.canManage ?? false}
+        canCreate={options.canCreate ?? false}
         eventsByDay={eventsByDay}
         availabilityDayPeakByDay={new Map()}
         availabilityMaxCount={0}
+        selectedDateKey={options.selectedDateKey}
         onSelectDate={options.onSelectDate ?? (() => {})}
         onCreateEvent={options.onCreateEvent ?? (() => {})}
-        onEditEvent={options.onEditEvent ?? (() => {})}
-        onViewEvent={options.onViewEvent}
+        onViewEvent={options.onViewEvent ?? (() => {})}
       />
-    </MantineProvider>,
+    </>,
   );
 }
 
@@ -95,7 +95,7 @@ describe("EventMonthView", () => {
       }),
     ]);
 
-    expect(screen.getByText("Poll: Closed Example").closest(".mantine-Badge-root")).toHaveClass(
+    expect(document.querySelector('.month-calendar--grid [data-slot="badge"]')).toHaveClass(
       "month-calendar__event-badge--muted",
     );
 
@@ -117,7 +117,7 @@ describe("EventMonthView", () => {
     });
 
     renderMonthView([event], {
-      canManage: true,
+      canCreate: true,
       onSelectDate,
       onCreateEvent,
       onViewEvent,
@@ -126,7 +126,8 @@ describe("EventMonthView", () => {
     expect(document.querySelector(".month-calendar__cell[role='button']")).not.toBeInTheDocument();
     expect(document.querySelector("button button")).not.toBeInTheDocument();
 
-    const dateButton = screen.getByRole("button", { name: `Select ${todayKey}` });
+    const desktopCalendar = within(document.querySelector(".month-calendar--grid") as HTMLElement);
+    const dateButton = desktopCalendar.getByRole("button", { name: `Select ${todayKey}` });
     dateButton.focus();
     await user.keyboard("{Enter}");
     expect(onSelectDate).toHaveBeenCalledWith(todayKey);
@@ -136,9 +137,19 @@ describe("EventMonthView", () => {
     await user.keyboard(" ");
     expect(onCreateEvent).toHaveBeenCalledWith(tomorrowKey);
 
-    const eventButton = screen.getByRole("button", { name: "Open Keyboard Run" });
+    const eventButton = desktopCalendar.getByRole("button", { name: "Open Keyboard Run" });
     eventButton.focus();
     await user.keyboard("{Enter}");
     expect(onViewEvent).toHaveBeenCalledWith(event);
+  });
+
+  it("reflects the URL-backed selected date in its state and visible month", () => {
+    const selectedDateKey = "2026-06-17";
+    renderMonthView([], { selectedDateKey });
+
+    const dateButton = within(document.querySelector(".month-calendar--grid") as HTMLElement)
+      .getByRole("button", { name: `Select ${selectedDateKey}` });
+    expect(dateButton).toHaveAttribute("aria-pressed", "true");
+    expect(dateButton.closest(".month-calendar__cell")).toHaveClass("month-calendar__cell--selected");
   });
 });

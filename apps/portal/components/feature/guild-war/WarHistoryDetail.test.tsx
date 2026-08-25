@@ -1,11 +1,12 @@
-import { Badge, HoverCard, MantineProvider } from "@mantine/core";
+import { Button } from "@portal/components/ui/button";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@portal/components/ui/tooltip";
 import { getCoreRowModel, useReactTable, type ColumnDef } from "@tanstack/react-table";
 import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { useMemo } from "react";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { HistoryDetailData, HistoryMemberStat } from "@portal/types/guild-war";
 import { WarHistoryDetail } from "./WarHistoryDetail";
 
@@ -52,7 +53,7 @@ function HistoryDetailHarness({
   const memberRows = useMemo<HistoryMemberStat[]>(() => [{
     id: "member-stat-1",
     user_id: "user-1",
-    username: "Lyra",
+    display_name: "Lyra",
     role_tag: "core",
     stats: { damage: 4120 },
   }], []);
@@ -60,7 +61,7 @@ function HistoryDetailHarness({
     {
       accessorKey: "user_id",
       header: "Member",
-      cell: ({ row }) => row.original.username ?? row.original.user_id,
+      cell: ({ row }) => row.original.display_name ?? row.original.user_id,
     },
     {
       id: "damage",
@@ -69,7 +70,7 @@ function HistoryDetailHarness({
       cell: ({ row }) => (
         <input
           type="number"
-          aria-label={`Damage for ${row.original.username ?? row.original.user_id}`}
+          aria-label={`Damage for ${row.original.display_name ?? row.original.user_id}`}
           defaultValue={row.original.stats?.damage ?? 0}
         />
       ),
@@ -78,12 +79,12 @@ function HistoryDetailHarness({
       id: "missing",
       header: "Status",
       cell: () => (
-        <HoverCard width={200}>
-          <HoverCard.Target>
-            <Badge component="button" type="button">Complete</Badge>
-          </HoverCard.Target>
-          <HoverCard.Dropdown>Status detail</HoverCard.Dropdown>
-        </HoverCard>
+        <Tooltip>
+          <TooltipTrigger render={<Button type="button" size="xs" variant="outline" />}>
+            Complete
+          </TooltipTrigger>
+          <TooltipContent>Status detail</TooltipContent>
+        </Tooltip>
       ),
     },
   ], []);
@@ -107,7 +108,7 @@ function HistoryDetailHarness({
       notes: null,
       members: [{
         user_id: "user-1",
-        username: "Lyra",
+        display_name: "Lyra",
         avatar_media_id: AVATAR_MEDIA_ID,
         role_tag: "core",
       }],
@@ -155,16 +156,16 @@ function HistoryDetailHarness({
 describe("WarHistoryDetail", () => {
   beforeEach(() => {
     setMobileViewport(false);
+    vi.spyOn(HTMLImageElement.prototype, "complete", "get").mockReturnValue(true);
+    vi.spyOn(HTMLImageElement.prototype, "naturalWidth", "get").mockReturnValue(20);
   });
+
+  afterEach(() => vi.restoreAllMocks());
 
   it("renders history detail inline instead of in a dialog and provides a list return action", async () => {
     const onBackToList = vi.fn();
 
-    render(
-      <MantineProvider>
-        <HistoryDetailHarness onBackToList={onBackToList} />
-      </MantineProvider>,
-    );
+    render(<HistoryDetailHarness onBackToList={onBackToList} />);
 
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
     expect(screen.getByTestId("war-history-inline-detail").tagName).toBe("SECTION");
@@ -179,11 +180,7 @@ describe("WarHistoryDetail", () => {
   });
 
   it("shows the kills scoreboard for both sides with the metric label kept visible", () => {
-    render(
-      <MantineProvider>
-        <HistoryDetailHarness onBackToList={vi.fn()} />
-      </MantineProvider>,
-    );
+    render(<HistoryDetailHarness onBackToList={vi.fn()} />);
 
     const board = screen.getByTestId("war-history-scoreboard");
     expect(board).toHaveClass("whd-board--win");
@@ -194,11 +191,7 @@ describe("WarHistoryDetail", () => {
   });
 
   it("uses semantic icons to make the history summary easier to scan", () => {
-    const { container } = render(
-      <MantineProvider>
-        <HistoryDetailHarness onBackToList={vi.fn()} />
-      </MantineProvider>,
-    );
+    const { container } = render(<HistoryDetailHarness onBackToList={vi.fn()} />);
 
     expect(container.querySelectorAll(".whd-strip__cell[data-metric]")).toHaveLength(5);
     expect(container.querySelectorAll(".whd-strip__icon")).toHaveLength(5);
@@ -209,11 +202,7 @@ describe("WarHistoryDetail", () => {
   });
 
   it("shows each member avatar in the team snapshot", () => {
-    render(
-      <MantineProvider>
-        <HistoryDetailHarness onBackToList={vi.fn()} />
-      </MantineProvider>,
-    );
+    render(<HistoryDetailHarness onBackToList={vi.fn()} />);
 
     const memberChip = document.querySelector(".whd-chip");
     expect(memberChip).not.toBeNull();
@@ -226,11 +215,7 @@ describe("WarHistoryDetail", () => {
   it("renders the TanStack row model as scan-friendly member cards on mobile", async () => {
     setMobileViewport(true);
 
-    render(
-      <MantineProvider>
-        <HistoryDetailHarness onBackToList={vi.fn()} />
-      </MantineProvider>,
-    );
+    render(<HistoryDetailHarness onBackToList={vi.fn()} />);
 
     const card = await screen.findByTestId("war-history-member-card-user-1");
     expect(screen.queryByRole("table")).not.toBeInTheDocument();
@@ -244,21 +229,14 @@ describe("WarHistoryDetail", () => {
     expect(card.querySelector("div[aria-expanded]")).not.toBeInTheDocument();
   });
 
-  it("keeps both history status hover-card triggers as real buttons", () => {
+  it("keeps the history status tooltip trigger as a real button", () => {
     const controllerSource = readFileSync(
       resolve(process.cwd(), "apps/portal/hooks/guild-war/useWarHistoryTabController.tsx"),
       "utf8",
     );
-    const statusTargets = [...controllerSource.matchAll(
-      /<HoverCard\.Target>([\s\S]*?)<\/HoverCard\.Target>/g,
-    )]
-      .map((match) => match[1] ?? "")
-      .filter((target) => target.includes("history.table.complete") || target.includes("history.table.missing"));
-
-    expect(statusTargets).toHaveLength(2);
-    for (const target of statusTargets) {
-      expect(target).toMatch(/<Badge[^>]*component="button"[^>]*type="button"/);
-    }
+    expect(controllerSource).toContain("<TooltipTrigger render={<Button");
+    expect(controllerSource).toContain('type="button"');
+    expect(controllerSource).not.toContain("HoverCard");
   });
 
   it("uses a compact two-column field grid for mobile member cards", () => {
@@ -279,12 +257,25 @@ describe("WarHistoryDetail", () => {
     );
   });
 
+  it("keeps the mobile history scoreboard compact while allowing both guild names two lines", () => {
+    const styles = readFileSync(
+      resolve(process.cwd(), "apps/portal/components/pages/GuildWarPage.css"),
+      "utf8",
+    );
+    const mobileStyles = styles.slice(styles.lastIndexOf("@media (max-width: 767px)"));
+
+    expect(mobileStyles).toMatch(
+      /\.whd-board\s*\{[^}]*grid-template-columns:\s*minmax\(5rem,\s*1fr\) auto minmax\(5rem,\s*1fr\)[^}]*gap:\s*var\(--space-sm\)/,
+    );
+    expect(mobileStyles).toMatch(
+      /\.whd-board__name\s*\{[^}]*-webkit-line-clamp:\s*2[^}]*white-space:\s*normal/,
+    );
+  });
+
   it("keeps exports beside the current record identity with record-specific accessible names", async () => {
     const onExport = vi.fn();
     const { container } = render(
-      <MantineProvider>
-        <HistoryDetailHarness onBackToList={vi.fn()} onExport={onExport} canManage />
-      </MantineProvider>,
+      <HistoryDetailHarness onBackToList={vi.fn()} onExport={onExport} canManage />,
     );
 
     const identityExports = container.querySelector(".whd-identity__exports");

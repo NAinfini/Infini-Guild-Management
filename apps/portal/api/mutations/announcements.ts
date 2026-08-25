@@ -1,6 +1,8 @@
 import {
   type Announcement,
+  type AnnouncementAttachmentUploadResponse,
   type AnnouncementImageUploadResponse,
+  announcementAttachmentUploadResponseSchema,
   announcementImageUploadResponseSchema,
   createAnnouncementSchema,
   updateAnnouncementSchema,
@@ -71,4 +73,19 @@ export async function uploadAnnouncementImages(
     method: "POST",
     body: formData,
   });
+}
+
+export async function uploadAnnouncementAttachment(
+  file: File,
+): Promise<AnnouncementAttachmentUploadResponse> {
+  const formData = new FormData();
+  formData.append("file", file);
+  const response = await apiRequest<AnnouncementAttachmentUploadResponse>(
+    "/api/announcements/attachments",
+    {
+      method: "POST",
+      body: formData,
+    },
+  );
+  return announcementAttachmentUploadResponseSchema.parse(response);
 }

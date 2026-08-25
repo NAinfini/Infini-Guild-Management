@@ -1,4 +1,5 @@
-import { Alert, Button, Text } from "@mantine/core";
+import { Alert, AlertTitle } from "@portal/components/ui/alert";
+import { Button } from "@portal/components/ui/button";
 import { PlayIcon } from "@portal/components/icons";
 import { useMemo } from "react";
 import { useTranslation } from "react-i18next";
@@ -35,7 +36,11 @@ export function AdminDiagnosticsTab() {
   } = useAdminApiTestRunner(visibleApiCategories, user);
 
   if (!userCanViewStatus(user)) {
-    return <Alert color="red" title={t("adminOnly")} />;
+    return (
+      <Alert variant="destructive">
+        <AlertTitle>{t("adminOnly")}</AlertTitle>
+      </Alert>
+    );
   }
 
   const totalEndpoints = visibleApiCategories.reduce((sum, category) => sum + category.endpoints.length, 0);
@@ -60,7 +65,7 @@ export function AdminDiagnosticsTab() {
           <div className={`admin-panel__head api-console__header${hasProgress ? " api-console__header--with-progress" : ""}`}>
             <div className="api-console__header-left">
               <div className="admin-panel__title">
-                <Text>{t("status.section.apiTests")}</Text>
+                <span>{t("status.section.apiTests")}</span>
                 <span className="admin-count">
                   {t("status.api.endpointCount", { count: progressTotal })}
                 </span>
@@ -83,34 +88,34 @@ export function AdminDiagnosticsTab() {
                 </div>
               ) : null}
 
-              <Text className="api-console__hint" c="dimmed" size="xs">
+              <p className="api-console__hint">
                 {t("status.api.criticalHint")}
-              </Text>
+              </p>
             </div>
 
             <div className="api-console__header-actions">
               {isRunning ? (
-                <Button className="api-console__stop" color="red" variant="light" onClick={stop}>
+                <Button className="api-console__stop" variant="destructive" onClick={stop}>
                   {t("status.api.stop")}
                 </Button>
               ) : null}
               <Button
                 className="api-console__run-critical"
-                variant="default"
+                variant="outline"
                 onClick={() => { void runCriticalCategories(); }}
-                leftSection={<PlayIcon size={14} />}
                 loading={runningCritical}
                 disabled={isRunning}
               >
+                <PlayIcon size={14} data-icon="inline-start" />
                 {t("status.quickCheck")}
               </Button>
               <Button
                 className="api-console__run-all"
                 onClick={() => { void runAllCategories(); }}
-                leftSection={<PlayIcon size={14} />}
                 loading={runningAll}
                 disabled={isRunning}
               >
+                <PlayIcon size={14} data-icon="inline-start" />
                 {t("status.api.runAll")}
               </Button>
             </div>

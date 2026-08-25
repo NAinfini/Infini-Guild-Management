@@ -5,7 +5,7 @@ import {
   type DragStartEvent,
   type Modifier,
 } from "@dnd-kit/core";
-import { Button, Stack } from "@mantine/core";
+import { Button } from "@portal/components/ui/button";
 import type { ComponentProps } from "react";
 import { useTranslation } from "react-i18next";
 import { EmptyState } from "../../shared/EmptyState";
@@ -105,7 +105,7 @@ export function GuildWarDragBoard({
       onDragCancel={onDragCancel}
       onDragEnd={onDragEnd}
     >
-      <Stack gap="sm" className="guild-war-desktop-flow">
+      <div className="guild-war-desktop-flow">
         <GuildWarDragBoardLayout
           poolColumn={poolColumn}
           teamColumns={teamColumns}
@@ -126,7 +126,7 @@ export function GuildWarDragBoard({
           onEditTeam={onEditTeam}
           absentUserIds={absentUserIds}
         />
-      </Stack>
+      </div>
 
       <DragOverlay modifiers={[snapCenterToCursor]} dropAnimation={null}>
         {activeDragItem ? <GuildWarDragOverlayCard activeDragItem={activeDragItem} /> : null}

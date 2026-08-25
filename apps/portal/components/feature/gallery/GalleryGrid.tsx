@@ -1,6 +1,10 @@
 import { getVideoThumbnailUrl } from "@guild/shared/utils/video";
-import { ActionIcon, Button, Checkbox, Group, Paper, Skeleton, Stack, Text, Tooltip } from "@mantine/core";
 import { TrashIcon, PlayIcon } from "@portal/components/icons";
+import { Button } from "@portal/components/ui/button";
+import { Card } from "@portal/components/ui/card";
+import { Checkbox } from "@portal/components/ui/checkbox";
+import { Skeleton } from "@portal/components/ui/skeleton";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@portal/components/ui/tooltip";
 import { useKeyedPending } from "@portal/hooks/useKeyedPending";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
@@ -115,15 +119,15 @@ export function GalleryGrid({
       <div className="gallery-grid" role="list" aria-label={t("aria.galleryLoading")}>
         {Array.from({ length: 8 }).map((_, i) => (
           <div key={i} role="listitem" className="gallery-grid__item">
-            <Paper withBorder radius="md" className="gallery-card">
+            <Card className="gallery-card">
               <div className="gallery-card__inner">
-                <Skeleton className="gallery-card__skeleton-media" radius={0} />
-                <Stack gap={4} mt={8}>
-                  <Skeleton height={12} width="70%" />
-                  <Skeleton height={10} width="40%" />
-                </Stack>
+                <Skeleton className="gallery-card__skeleton-media" />
+                <div className="gallery-card__skeleton-copy">
+                  <Skeleton className="gallery-card__skeleton-title" />
+                  <Skeleton className="gallery-card__skeleton-meta" />
+                </div>
               </div>
-            </Paper>
+            </Card>
           </div>
         ))}
       </div>
@@ -132,7 +136,7 @@ export function GalleryGrid({
 
   if (isError && rows.length === 0) {
     return (
-      <Paper withBorder radius="md" p="var(--card-padding)">
+      <Card className="gallery-grid__state">
         <EmptyState
             status="error"
             title={errorTitle}
@@ -143,13 +147,13 @@ export function GalleryGrid({
               </Button>
             }
         />
-      </Paper>
+      </Card>
     );
   }
 
   if (rows.length === 0) {
     return (
-      <Paper withBorder radius="md" p="var(--card-padding)">
+      <Card className="gallery-grid__state">
         <EmptyState
             title={emptyTitle}
             description={emptyDescription}
@@ -163,7 +167,7 @@ export function GalleryGrid({
               ) : undefined
             }
         />
-      </Paper>
+      </Card>
     );
   }
 
@@ -180,7 +184,7 @@ export function GalleryGrid({
           role="listitem"
           data-gallery-id={item.id}
         >
-          <Paper withBorder radius="md" className="gallery-card">
+          <Card className="gallery-card">
             <div className="gallery-card__inner">
               <button
                 type="button"
@@ -214,43 +218,48 @@ export function GalleryGrid({
               </button>
               <div className="gallery-card__footer">
                 <div className="gallery-card__meta">
-                  <Text size="sm" fw={600} lineClamp={1}>
+                  <p className="gallery-card__caption" title={item.caption ?? "-"}>
                     {item.caption ?? "-"}
-                  </Text>
-                  <Text size="xs" c="dimmed">
+                  </p>
+                  <time className="gallery-card__date" dateTime={item.created_at}>
                     {formatDateTime(item.created_at)}
-                  </Text>
+                  </time>
                 </div>
                 {canModerate ? (
-                  <Group gap={6} wrap="nowrap" className="gallery-card__actions">
+                  <div className="gallery-card__actions">
                     <label className="gallery-card__select-target">
                       <Checkbox
-                        size="xs"
                         checked={selectedIds.includes(item.id)}
-                        onChange={() => onToggleSelect(item.id)}
+                        onCheckedChange={() => onToggleSelect(item.id)}
                         aria-label={t("aria.selectItem", { id: item.id })}
                       />
                     </label>
-                    <Tooltip label={actionDeleteLabel} withArrow>
-                      <ActionIcon
-                        color="red"
-                        variant="light"
-                        size="lg"
-                        aria-label={actionDeleteLabel}
-                        onClick={(e: React.MouseEvent) => {
-                          e.stopPropagation();
+                    <Tooltip>
+                      <TooltipTrigger
+                        render={(
+                          <Button
+                            type="button"
+                            variant="destructive"
+                            size="icon-lg"
+                            className="gallery-card__delete"
+                            aria-label={actionDeleteLabel}
+                            loading={pendingKeys.has(`delete:gallery:${item.id}`)}
+                          />
+                        )}
+                        onClick={(event) => {
+                          event.stopPropagation();
                           void runPending(`delete:gallery:${item.id}`, () => onDelete(item.id));
                         }}
-                        loading={pendingKeys.has(`delete:gallery:${item.id}`)}
                       >
                         <TrashIcon size={14} />
-                      </ActionIcon>
+                      </TooltipTrigger>
+                      <TooltipContent>{actionDeleteLabel}</TooltipContent>
                     </Tooltip>
-                  </Group>
+                  </div>
                 ) : null}
               </div>
             </div>
-          </Paper>
+          </Card>
         </div>
       ))}
     </div>

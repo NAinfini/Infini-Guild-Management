@@ -39,9 +39,9 @@ let original: Profile;
 
 test.beforeEach(async ({ page, api }) => {
   const listed = await readJson(await api.get("/api/users?page=1&limit=500"), "读取名单") as {
-    data: Array<{ user: { id: string; username: string } }>;
+    data: Array<{ user: { id: string; display_name: string } }>;
   };
-  const admin = listed.data.find((entry) => entry.user.username === "admin");
+  const admin = listed.data.find((entry) => entry.user.display_name === "admin");
   expect(admin, "种子里必须有 admin，这一页编辑的就是当前会话本人").toBeTruthy();
   userId = admin!.user.id;
   original = await readProfile(api);
@@ -109,7 +109,7 @@ function weekHours(page: Page): Locator {
 }
 
 function absenceCard(page: Page): Locator {
-  return page.locator(".mantine-Card-root").filter({ hasText: "Absence Reports" });
+  return page.locator(".absence-manager-card");
 }
 
 function isoDate(daysFromNow: number): string {
@@ -213,10 +213,8 @@ test("请假登记：日期不成立就不让提交，提交与删除都即时�
   const before = await readAbsences(api);
   const card = absenceCard(page);
   const submit = card.getByRole("button", { name: "Report Absence", exact: true });
-  /* 起止日期都没有 aria-label（AbsenceManagerCard 用的是上方一行 Text），
-     只能按出现顺序取——这一点已记进问题清单。 */
-  const startInput = card.locator("input[type='date']").first();
-  const endInput = card.locator("input[type='date']").nth(1);
+  const startInput = field(card, "Start date");
+  const endInput = field(card, "End date");
 
   await expect(submit, "两个日期都空着，提交按钮就该是灰的").toBeDisabled();
 
@@ -232,7 +230,7 @@ test("请假登记：日期不成立就不让提交，提交与删除都即时�
   await expect(submit).toBeEnabled();
 
   await flow.click(submit, { method: "POST", path: ABSENCES_API });
-  const row = card.locator(".mantine-Group-root").filter({ hasText: `${start} ~ ${end}` }).first();
+  const row = card.locator(".absence-manager-card__row").filter({ hasText: `${start} – ${end}` }).first();
   await expect(row, "提交成功后列表里要出现这一条").toBeVisible();
   await expect(row.getByText("Upcoming", { exact: true }), "还没到日期，状态是「即将」").toBeVisible();
   await expect(startInput, "提交完表单要清空，免得连点两次登记两条").toHaveValue("");

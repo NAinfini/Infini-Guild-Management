@@ -1,36 +1,14 @@
 import { renderHook, act } from "@testing-library/react";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { useEventsEditorController } from "./useEventsEditorController";
 
 const beforeUnloadPromptMock = vi.hoisted(() => vi.fn());
-const confirmMock = vi.hoisted(() => vi.fn());
-
-vi.mock("react-i18next", () => ({
-  useTranslation: () => ({
-    t: (key: string) => key,
-  }),
-}));
-
-vi.mock("@mantine/modals", () => ({
-  modals: {
-    openConfirmModal: vi.fn(),
-  },
-}));
-
-vi.mock("@portal/hooks/useConfirmDialog", () => ({
-  useConfirmDialog: () => confirmMock,
-}));
 
 vi.mock("../../../hooks/useBeforeUnloadPrompt", () => ({
   useBeforeUnloadPrompt: beforeUnloadPromptMock,
 }));
 
 describe("useEventsEditorController", () => {
-  beforeEach(() => {
-    vi.clearAllMocks();
-    confirmMock.mockResolvedValue(false);
-  });
-
   it("does not arm beforeunload until the editor is actually edited", () => {
     const { result } = renderHook(() =>
       useEventsEditorController({
@@ -59,7 +37,7 @@ describe("useEventsEditorController", () => {
   it.each([
     ["setEditorPinned", true],
     ["setEditorSignupLocked", true],
-  ] as const)("marks %s changes as touched so closing requires confirmation", async (setter, value) => {
+  ] as const)("marks %s changes as touched so route navigation is blocked", (setter, value) => {
     const { result } = renderHook(() => useEventsEditorController({ attachmentSnapshot: "[]" }));
 
     act(() => {
@@ -68,9 +46,6 @@ describe("useEventsEditorController", () => {
     });
 
     expect(result.current.isEditorDirty).toBe(true);
-    await expect(result.current.closeEditor()).resolves.toBe(false);
-    expect(confirmMock).toHaveBeenCalledWith(expect.objectContaining({
-      confirmLabel: "common:action.discard",
-    }));
+    expect(beforeUnloadPromptMock).toHaveBeenLastCalledWith(true);
   });
 });

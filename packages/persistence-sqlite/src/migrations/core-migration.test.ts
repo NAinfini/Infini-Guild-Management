@@ -10,6 +10,7 @@ import {
   DEFAULT_SITE_ANALYTICS_SETTINGS,
   DEFAULT_SITE_DESCRIPTION,
   DEFAULT_SITE_MEDIA_POLICY,
+  DEFAULT_SITE_OAUTH_SETTINGS,
   DEFAULT_SITE_STORAGE_POLICY,
 } from "@guild/shared/schemas/site-config";
 import { SqliteTestExecutor } from "../testing/sqlite-test-executor.js";
@@ -36,6 +37,7 @@ const invariantNames = [
   "guild-war.invariants.sql",
   "media-triggers.sql",
   "media-target-invariants.sql",
+  "notifications.invariants.sql",
   "storage-invariants.sql",
   "system-test.invariants.sql",
   "wiki-triggers.sql",
@@ -47,16 +49,97 @@ afterEach(() => {
 });
 
 describe("core modular backend migration", () => {
+  it("upgrades an attached media graph without disabling foreign-key integrity", () => {
+    const database = new DatabaseSync(":memory:");
+    databases.push(database);
+    database.exec("PRAGMA foreign_keys = ON");
+    database.exec(migrations.slice(0, 7).join("\n"));
+    const now = "2026-08-09T12:00:00.000Z";
+    const owner = "media-upgrade-owner";
+    const announcement = "media-upgrade-announcement";
+    const mediaId = "mmmmmmmmmmmmmmmmmmmmm";
+    database.prepare("INSERT INTO users (id, display_name, role_id, revision_token) VALUES (?, ?, 'member', ?)")
+      .run(owner, "Media owner", "media-upgrade-owner-revision");
+    database.prepare(`INSERT INTO announcements (
+      id, title, body_json, pinned, status, publish_at, created_by, revision_token, created_at, updated_at
+    ) VALUES (?, 'Notice', '{"type":"doc","content":[]}', 0, 'published', ?, ?, ?, ?, ?)`)
+      .run(announcement, now, owner, "media-upgrade-announcement-revision", now, now);
+    database.prepare(`INSERT INTO media_assets (
+      id, owner_user_id, purpose, media_type, state, expires_at, created_at, updated_at
+    ) VALUES (?, ?, 'announcement_image', 'image', 'staged', ?, ?, ?)`)
+      .run(mediaId, owner, "2026-08-10T12:00:00.000Z", now, now);
+    database.prepare(`INSERT INTO media_variants (
+      media_id, variant, object_key, content_type, byte_size, sha256, width, height
+    ) VALUES (?, 'full', 'media/upgrade/full.webp', 'image/webp', 10, ?, 1, 1)`)
+      .run(mediaId, "a".repeat(64));
+    database.prepare(`INSERT INTO media_links (media_id, entity_type, entity_id, slot, audience, sort_order)
+      VALUES (?, 'announcement', ?, 'body', 'public', 0)`).run(mediaId, announcement);
+
+    database.exec(migrations[7]!);
+
+    expect(database.prepare("SELECT state FROM media_assets WHERE id = ?").get(mediaId))
+      .toEqual({ state: "attached" });
+    expect(database.prepare("SELECT count(*) AS count FROM media_links WHERE media_id = ?").get(mediaId))
+      .toEqual({ count: 1 });
+    expect(database.prepare(`SELECT max_announcement_attachment_bytes, quota_announcement_attachments
+      FROM site_config WHERE singleton = 1`).get()).toEqual({
+      max_announcement_attachment_bytes: 10 * 1024 * 1024,
+      quota_announcement_attachments: 5,
+    });
+    expect(database.prepare("PRAGMA foreign_key_check").all()).toEqual([]);
+  });
+
+  it("upgrades an existing account without changing its public name, login name, password, or lock", () => {
+    const database = new DatabaseSync(":memory:");
+    databases.push(database);
+    database.exec("PRAGMA foreign_keys = ON; PRAGMA journal_mode = WAL;");
+    database.exec(migrations.slice(0, 3).join("\n"));
+    database.prepare(`INSERT INTO users (id, username, role_id, revision_token, created_at, updated_at)
+      VALUES ('legacy-user', ?, 'member', 'legacy-user-revision-0001', ?, ?)`)
+      .run("Legacy.User", "2026-08-01T00:00:00.000Z", "2026-08-01T00:00:00.000Z");
+    database.prepare(`INSERT INTO user_credentials (
+      user_id, password_hash, temporary_password_expires_at, temporary_password_used_at, updated_at
+    ) VALUES ('legacy-user', ?, ?, ?, ?)`)
+      .run("legacy-password-hash", "2026-08-22T12:15:00.000Z", null, "2026-08-01T00:00:00.000Z");
+    database.prepare(`INSERT INTO login_failures (username, fail_count, locked_until, last_failed_at)
+      VALUES ('legacy.user', 4, '2026-08-22T12:05:00.000Z', '2026-08-22T12:00:00.000Z')`).run();
+
+    database.exec(migrations.slice(3).join("\n"));
+
+    expect(database.prepare("SELECT display_name FROM users WHERE id = 'legacy-user'").get())
+      .toEqual({ display_name: "Legacy.User" });
+    expect(database.prepare(`SELECT login_name, password_hash, temporary_password_expires_at,
+      temporary_password_used_at, auth_revision FROM user_credentials WHERE user_id = 'legacy-user'`).get()).toEqual({
+      login_name: "Legacy.User",
+      password_hash: "legacy-password-hash",
+      temporary_password_expires_at: "2026-08-22T12:15:00.000Z",
+      temporary_password_used_at: null,
+      auth_revision: 1,
+    });
+    expect(database.prepare("SELECT * FROM login_failures WHERE login_name = 'legacy.user'").get())
+      .toMatchObject({ fail_count: 4, locked_until: "2026-08-22T12:05:00.000Z" });
+    expect(values(database, "SELECT name FROM pragma_table_info('users') WHERE name = 'username'")).toEqual([]);
+    expect(scalarText(database, "SELECT count(*) FROM external_identities")).toBe("0");
+    expect(scalarText(database, "SELECT count(*) FROM user_emails")).toBe("0");
+    expect(database.prepare(`SELECT oauth_google_enabled, oauth_discord_enabled,
+      oauth_kook_enabled, oauth_wechat_enabled FROM site_config WHERE singleton = 1`).get()).toEqual({
+      oauth_google_enabled: 0,
+      oauth_discord_enabled: 0,
+      oauth_kook_enabled: 0,
+      oauth_wechat_enabled: 0,
+    });
+  });
+
   it("applies once with every domain table, invariant trigger, and no foreign-key violations", () => {
     const database = migratedDatabase();
     const tables = values(database, "SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%' ORDER BY name");
-    expect(tables).toHaveLength(59);
+    expect(tables).toHaveLength(66);
     expect(tables).toEqual(expect.arrayContaining([
       "roles", "users", "events", "guild_wars", "storage_ledger_entries", "announcements",
       "wiki_articles", "gallery_items", "media_assets", "site_config", "audit_archives",
       "scheduled_job_leases", "scheduled_job_statuses", "app_migrations", "error_log", "system_test_runs",
       "system_test_requests", "system_test_artifacts", "system_test_before_images",
-      "wiki_revision_media",
+      "wiki_revision_media", "notification_inbox", "important_notices", "important_notice_acknowledgements",
     ]));
     expect(tables).not.toEqual(expect.arrayContaining(["game_definitions", "media_references", "media_leases"]));
 
@@ -71,7 +154,7 @@ describe("core modular backend migration", () => {
 
   it("registers system-test artifacts from the migrated audit event columns", () => {
     const database = migratedDatabase();
-    database.prepare("INSERT INTO users (id, username, role_id, revision_token) VALUES (?, ?, 'member', ?)")
+    database.prepare("INSERT INTO users (id, display_name, role_id, revision_token) VALUES (?, ?, 'member', ?)")
       .run("audit-trigger-user", "AuditTriggerUser", "audit-trigger-user-revision-0001");
     database.prepare(`INSERT INTO system_test_runs
       (id, actor_user_id, expires_at, created_at, updated_at)
@@ -103,6 +186,28 @@ describe("core modular backend migration", () => {
       { artifact_type: "audit_log", artifact_key: "audit-trigger-event" },
       { artifact_type: "event", artifact_key: "audit-trigger-subject" },
     ]);
+  });
+
+  it("preserves Important Notice author history while allowing an editor account to be removed", () => {
+    const database = migratedDatabase();
+    database.prepare(`INSERT INTO users (id, display_name, role_id, revision_token) VALUES
+      ('important-notice-creator', 'Notice Creator', 'member', 'important-notice-creator-revision-0001'),
+      ('important-notice-editor', 'Notice Editor', 'member', 'important-notice-editor-revision-0001')`).run();
+    database.prepare(`INSERT INTO important_notices (
+      id, title, body_json, status, publication_revision, revision_token, created_by, updated_by, created_at, updated_at
+    ) VALUES (?, 'Notice', '{}', 'draft', 0, 'important-notice-revision-0001', ?, ?, ?, ?)`).run(
+      "important-notice-fk",
+      "important-notice-creator",
+      "important-notice-editor",
+      "2026-08-14T00:00:00.000Z",
+      "2026-08-14T00:00:00.000Z",
+    );
+
+    database.prepare("DELETE FROM users WHERE id = 'important-notice-editor'").run();
+    expect(database.prepare("SELECT updated_by FROM important_notices WHERE id = 'important-notice-fk'").get())
+      .toEqual({ updated_by: null });
+    expect(() => database.prepare("DELETE FROM users WHERE id = 'important-notice-creator'").run())
+      .toThrow(/constraint/i);
   });
 
   it("seeds the append-only application migration ledger", () => {
@@ -151,7 +256,7 @@ describe("core modular backend migration", () => {
 
   it("enforces the recurring template catalog limit in the real schema", () => {
     const database = migratedDatabase();
-    database.prepare("INSERT INTO users (id, username, role_id, revision_token) VALUES (?, ?, 'member', ?)")
+    database.prepare("INSERT INTO users (id, display_name, role_id, revision_token) VALUES (?, ?, 'member', ?)")
       .run("template-creator", "Template Creator", "template-creator-revision-0001");
     const insertTemplate = database.prepare(`INSERT INTO recurring_templates (
       id, type, title, start_time, recurrence_frequency, recurrence_interval, created_by
@@ -186,6 +291,7 @@ describe("core modular backend migration", () => {
       storage_policy: DEFAULT_SITE_STORAGE_POLICY,
       absence_policy: DEFAULT_SITE_ABSENCE_POLICY,
       analytics_settings: DEFAULT_SITE_ANALYTICS_SETTINGS,
+      oauth: DEFAULT_SITE_OAUTH_SETTINGS,
     });
     expect(() => database.prepare("UPDATE site_config SET quota_gallery = 101 WHERE singleton = 1").run())
       .toThrow(/constraint/i);
@@ -213,8 +319,7 @@ describe("core modular backend migration", () => {
         .toBe(entry.checksum);
     }
     expect(migration).not.toMatch(/\baudit_log_v1\b/i);
-    expect(migration).not.toMatch(/ALTER TABLE\s+[`\"]?audit_log[`\"]?\s+RENAME/i);
-    expect(migration).not.toMatch(/INSERT INTO\s+[`\"]?audit_log[`\"]?\s+SELECT/i);
+    expect(migration).toMatch(/ALTER TABLE\s+audit_log\s+RENAME\s+TO\s+audit_log_legacy/i);
 
     const database = migratedDatabase();
     const auditColumns = database.prepare("PRAGMA table_info(audit_log)").all()
@@ -263,7 +368,7 @@ describe("core modular backend migration", () => {
         'idx_wiki_revisions_article_latest'
       ) ORDER BY name`)).toEqual([]);
 
-    database.prepare("INSERT INTO users (id, username, role_id, revision_token) VALUES (?, ?, 'member', ?)")
+    database.prepare("INSERT INTO users (id, display_name, role_id, revision_token) VALUES (?, ?, 'member', ?)")
       .run("index-user", "IndexUser", "index-user-revision-0001");
     database.prepare(`INSERT INTO events (id, type, title, start_at, end_at, created_by)
       VALUES ('event-index', 'poll', 'Index Poll', '2026-08-10T12:00:00.000Z',
@@ -328,11 +433,11 @@ describe("core modular backend migration", () => {
 
   it("installs revision and dynamic role-manager defenses in the real schema", () => {
     const database = migratedDatabase();
-    expect(() => database.prepare("INSERT INTO users (id, username, role_id, revision_token) VALUES (?, ?, ?, ?)")
+    expect(() => database.prepare("INSERT INTO users (id, display_name, role_id, revision_token) VALUES (?, ?, ?, ?)")
       .run("bad-user", "Bad", "member", "short"))
       .toThrow(/constraint/i);
 
-    database.prepare("INSERT INTO users (id, username, role_id, revision_token) VALUES (?, ?, ?, ?)")
+    database.prepare("INSERT INTO users (id, display_name, role_id, revision_token) VALUES (?, ?, ?, ?)")
       .run("admin-1", "Admin One", "admin", "admin-user-revision-0001");
     expect(() => database.prepare("UPDATE role_permissions SET role_id = 'member' WHERE role_id = ? AND permission = ?")
       .run("admin", "admin.roles.manage"))
@@ -346,24 +451,26 @@ describe("core modular backend migration", () => {
     database.prepare(`INSERT INTO roles
       (id, name, level, revision_token) VALUES ('peer-manager', 'Peer Manager', 1000, 'peer-manager-revision-0001')`).run();
     database.prepare("INSERT INTO role_permissions (role_id, permission) VALUES ('peer-manager', 'admin.roles.manage')").run();
-    database.prepare("INSERT INTO users (id, username, role_id, revision_token) VALUES (?, ?, ?, ?)")
+    database.prepare("INSERT INTO users (id, display_name, role_id, revision_token) VALUES (?, ?, ?, ?)")
       .run("manager-2", "Manager Two", "peer-manager", "manager-user-revision-0001");
     database.prepare("DELETE FROM role_permissions WHERE role_id = 'admin' AND permission = 'admin.roles.manage'").run();
     expect(values(database, "SELECT permission FROM role_permissions WHERE role_id = 'admin' AND permission = 'admin.roles.manage'"))
       .toEqual([]);
 
-    database.prepare("INSERT INTO users (id, username, role_id, revision_token) VALUES (?, ?, ?, ?)")
+    database.prepare("INSERT INTO users (id, display_name, role_id, revision_token) VALUES (?, ?, ?, ?)")
       .run("temporary-member", "TemporaryMember", "member", "temporary-user-revision-0001");
-    database.prepare(`INSERT INTO login_failures (username, fail_count, locked_until)
+    database.prepare(`INSERT INTO user_credentials (user_id, login_name, password_hash)
+      VALUES ('temporary-member', 'temporarymember', 'test-password-hash')`).run();
+    database.prepare(`INSERT INTO login_failures (login_name, fail_count, locked_until)
       VALUES ('temporarymember', 4, '2099-01-01T00:00:00.000Z')`).run();
     database.prepare("DELETE FROM users WHERE id = 'temporary-member'").run();
-    expect(database.prepare("SELECT 1 FROM login_failures WHERE username = 'temporarymember'").get())
+    expect(database.prepare("SELECT 1 FROM login_failures WHERE login_name = 'temporarymember'").get())
       .toBeUndefined();
   });
 
   it("enforces NEW scope on event children and scoped class tags", () => {
     const database = migratedDatabase();
-    database.prepare("INSERT INTO users (id, username, role_id, revision_token) VALUES (?, ?, 'member', ?)")
+    database.prepare("INSERT INTO users (id, display_name, role_id, revision_token) VALUES (?, ?, 'member', ?)")
       .run("creator-1", "Creator", "creator-revision-0001");
     const insertEvent = database.prepare(`INSERT INTO events (
       id, type, title, start_at, end_at, created_by
@@ -410,7 +517,7 @@ describe("core modular backend migration", () => {
   it("keeps active guild-war roster identities inside their original aggregate", () => {
     const database = migratedDatabase();
     const insertUser = database.prepare(
-      "INSERT INTO users (id, username, role_id, revision_token) VALUES (?, ?, 'member', ?)",
+      "INSERT INTO users (id, display_name, role_id, revision_token) VALUES (?, ?, 'member', ?)",
     );
     insertUser.run("creator-1", "Creator", "creator-revision-0001");
     insertUser.run("member-1", "Member", "member-revision-0001");
@@ -450,7 +557,7 @@ describe("core modular backend migration", () => {
     database.exec(`WITH RECURSIVE sequence(value) AS (
         SELECT 0 UNION ALL SELECT value + 1 FROM sequence WHERE value < ${max + 1}
       )
-      INSERT INTO users (id, username, role_id, revision_token)
+      INSERT INTO users (id, display_name, role_id, revision_token)
       SELECT printf('bounded-user-%04d', value), printf('bounded_user_%04d', value), 'member',
         printf('bounded-revision-%04d', value)
       FROM sequence;`);
@@ -481,7 +588,7 @@ describe("core modular backend migration", () => {
   it("keeps shared media attached until its final target is removed and freezes link identity", () => {
     const database = migratedDatabase();
     const insertUser = database.prepare(
-      "INSERT INTO users (id, username, role_id, revision_token) VALUES (?, ?, 'member', ?)",
+      "INSERT INTO users (id, display_name, role_id, revision_token) VALUES (?, ?, 'member', ?)",
     );
     insertUser.run("member-1", "MemberOne", "member-one-revision-0001");
     insertUser.run("member-2", "MemberTwo", "member-two-revision-0001");

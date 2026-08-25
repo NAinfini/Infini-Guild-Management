@@ -1,4 +1,3 @@
-import { MantineProvider } from "@mantine/core";
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
@@ -15,13 +14,11 @@ describe("GuildWarActiveEmptyState", () => {
     const onCreateWarEvent = vi.fn();
 
     const { container } = render(
-      <MantineProvider>
-        <GuildWarActiveEmptyState
+      <GuildWarActiveEmptyState
           canCreateWarEvent
           onCreateWarEvent={onCreateWarEvent}
           onViewHistory={vi.fn()}
-        />
-      </MantineProvider>,
+      />,
     );
 
     expect(container.querySelector(".guild-war-active-empty__state svg")).toBeInTheDocument();
@@ -34,13 +31,11 @@ describe("GuildWarActiveEmptyState", () => {
     const onViewHistory = vi.fn();
 
     render(
-      <MantineProvider>
-        <GuildWarActiveEmptyState
+      <GuildWarActiveEmptyState
           canCreateWarEvent={false}
           onCreateWarEvent={vi.fn()}
           onViewHistory={onViewHistory}
-        />
-      </MantineProvider>,
+      />,
     );
 
     expect(screen.getByText("active.empty.viewerDescription")).toBeInTheDocument();
@@ -55,13 +50,11 @@ describe("GuildWarTeamConflictAlert", () => {
     const onRetryLocal = vi.fn();
 
     render(
-      <MantineProvider>
-        <GuildWarTeamConflictAlert
+      <GuildWarTeamConflictAlert
           pending={false}
           onAcceptRemote={onAcceptRemote}
           onRetryLocal={onRetryLocal}
-        />
-      </MantineProvider>,
+      />,
     );
 
     expect(screen.getByText("active.teamConflict.description")).toBeInTheDocument();
@@ -73,13 +66,11 @@ describe("GuildWarTeamConflictAlert", () => {
 
   it("disables conflict recovery while a team save is pending", () => {
     render(
-      <MantineProvider>
-        <GuildWarTeamConflictAlert
+      <GuildWarTeamConflictAlert
           pending
           onAcceptRemote={vi.fn()}
           onRetryLocal={vi.fn()}
-        />
-      </MantineProvider>,
+      />,
     );
 
     expect(screen.getByRole("button", { name: "active.teamConflict.useRemote" })).toBeDisabled();

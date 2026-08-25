@@ -1,4 +1,4 @@
-import { SegmentedControl, Stack } from "@mantine/core";
+import { Button } from "@portal/components/ui/button";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { AdminClassesSection } from "./AdminClassesSection";
@@ -17,22 +17,30 @@ export function AdminClassesPanel() {
   const { t } = useTranslation("admin");
   const [view, setView] = useState<ClassesPanelView>("classes");
 
-  return (
-    /* admin-fill：把 .admin-page__panel 给的高度原样传给下面的主从台。 */
-    <Stack gap={12} className="admin-fill">
-      <SegmentedControl
-        value={view}
-        onChange={(value) => setView(value as ClassesPanelView)}
-        data={[
-          { value: "classes", label: t("classes.title") },
-          { value: "tags", label: t("classTags.title") },
-        ]}
-        aria-label={t("classes.panelSwitch")}
-        /* Stack 会把子项拉伸到整行宽，于是这个两选项的开关横跨整屏，成了这一页
-           视觉上最重的一条——比它下面真正的内容还抢眼。收回内容宽度。 */
-        w="fit-content"
-      />
-      {view === "classes" ? <AdminClassesSection /> : <AdminClassTagsSection />}
-    </Stack>
+  const navigation = (
+    <div className="admin-classes-panel__switcher" role="group" aria-label={t("classes.panelSwitch")}>
+      <Button
+        type="button"
+        variant="ghost"
+        size="sm"
+        aria-pressed={view === "classes"}
+        onClick={() => setView("classes")}
+      >
+        {t("classes.title")}
+      </Button>
+      <Button
+        type="button"
+        variant="ghost"
+        size="sm"
+        aria-pressed={view === "tags"}
+        onClick={() => setView("tags")}
+      >
+        {t("classTags.title")}
+      </Button>
+    </div>
   );
+
+  return view === "classes"
+    ? <AdminClassesSection masterNavigation={navigation} />
+    : <AdminClassTagsSection masterNavigation={navigation} />;
 }

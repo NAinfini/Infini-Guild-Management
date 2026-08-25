@@ -29,7 +29,7 @@ describe("SqliteMediaStore shared asset links", () => {
     database.exec("PRAGMA foreign_keys = ON");
     applyAppMigrations(database);
     database.exec(WIKI_REVISION_MEDIA_TABLE);
-    database.prepare(`INSERT INTO users (id, username, role_id, revision_token)
+    database.prepare(`INSERT INTO users (id, display_name, role_id, revision_token)
       VALUES ('owner-1', 'Owner', 'member', 'owner-revision-0001')`).run();
     database.prepare(`INSERT INTO recurring_templates (
       id, type, title, start_time, recurrence_frequency, recurrence_interval, created_by
@@ -116,7 +116,7 @@ describe("SqliteMediaStore shared asset links", () => {
     databases.push(database);
     database.exec("PRAGMA foreign_keys = ON");
     applyAppMigrations(database);
-    database.prepare(`INSERT INTO users (id, username, role_id, revision_token)
+    database.prepare(`INSERT INTO users (id, display_name, role_id, revision_token)
       VALUES ('owner-1', 'Owner', 'member', 'owner-revision-0001')`).run();
     const executor = new SqliteTestExecutor(database);
     const store = new SqliteMediaStore(executor);
@@ -273,7 +273,7 @@ function mediaFixture() {
   databases.push(database);
   database.exec("PRAGMA foreign_keys = ON");
   applyAppMigrations(database);
-  database.prepare(`INSERT INTO users (id, username, role_id, revision_token)
+  database.prepare(`INSERT INTO users (id, display_name, role_id, revision_token)
     VALUES ('owner-1', 'Owner', 'member', 'owner-revision-0001')`).run();
   const executor = new SqliteTestExecutor(database);
   return { database, executor, store: new SqliteMediaStore(executor) };

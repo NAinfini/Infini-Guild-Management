@@ -38,7 +38,7 @@ export type WarMemberRecord = Readonly<{
   warId: string;
   teamId: string | null;
   userId: string;
-  username: string;
+  display_name: string;
   avatarMediaId: string | null;
   roleTag: string | null;
   sortOrder: number;

@@ -2,7 +2,7 @@ import { LIMITS } from "../config/limits";
 
 type MediaContractDefinition = readonly {
   purpose: string;
-  mediaType: "image" | "audio";
+  mediaType: "image" | "audio" | "file";
   targets: readonly {
     entityType: string;
     slot: string;
@@ -29,6 +29,9 @@ export const MEDIA_CONTRACT = [
   ] },
   { purpose: "announcement_image", mediaType: "image", targets: [
     { entityType: "announcement", slot: "body", singular: false },
+  ] },
+  { purpose: "announcement_attachment", mediaType: "file", targets: [
+    { entityType: "announcement", slot: "attachment", singular: false },
   ] },
   { purpose: "wiki_image", mediaType: "image", targets: [
     { entityType: "wiki_article", slot: "body", singular: false },
@@ -78,8 +81,8 @@ export const ALLOWED_IMAGE_TYPES = LIMITS.media.allowedImageTypes;
  *
  * 三个刻意排除的类型：
  * - SVG：服务端不收（能内嵌 <script>，是 XSS 面）。放进来只会让人选完才被拒。
- * - HEIC/HEIF：createImageBitmap 解不了，转码那一步会直接抛。Mantine 的
- *   IMAGE_MIME_TYPE 里带着这两个，所以图库和存储那两个 Dropzone 不能直接用它。
+ * - HEIC/HEIF：createImageBitmap 解不了，转码那一步会直接抛，因此文件选择器不能
+ *   直接沿用浏览器或第三方组件的宽泛图片类型集合。
  * - GIF：统一图片必须有 full/view；动画媒体应以视频上传，不能在缩略图转换时丢帧。
  */
 export const SELECTABLE_IMAGE_TYPES = [
@@ -102,6 +105,17 @@ export const CLASS_ICON_FILE_ACCEPT = CLASS_ICON_SELECTABLE_TYPES.join(",");
  * audio/aac 之类的同一批文件挡在选择器外面，而它们本来转得动。
  */
 export const AUDIO_FILE_ACCEPT = "audio/*";
+
+export const ANNOUNCEMENT_ATTACHMENT_CONTENT_TYPES = [
+  "application/pdf",
+  "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+] as const;
+
+export const ANNOUNCEMENT_ATTACHMENT_FILE_ACCEPT = [
+  ...ANNOUNCEMENT_ATTACHMENT_CONTENT_TYPES,
+  ".pdf",
+  ".xlsx",
+].join(",");
 
 export type MediaImageDimensions = { width: number; height: number };
 

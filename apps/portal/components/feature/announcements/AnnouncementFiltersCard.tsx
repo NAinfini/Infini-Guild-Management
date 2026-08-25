@@ -1,6 +1,16 @@
-import { ActionIcon, Select, TextInput, Tooltip } from "@mantine/core";
-import { PinIcon, SearchIcon } from "@portal/components/icons";
-import { ContentFilterToolbar } from "@portal/components/shared/ContentFilterToolbar";
+import { SearchIcon, XIcon } from "@portal/components/icons";
+import {
+  InputGroup,
+  InputGroupAddon,
+  InputGroupButton,
+  InputGroupInput,
+} from "@portal/components/ui/input-group";
+import { RadioGroup, RadioGroupItem } from "@portal/components/ui/radio-group";
+import { Switch } from "@portal/components/ui/switch";
+import {
+  ContentFilterGroup,
+  ContentFilterToolbar,
+} from "@portal/components/shared/ContentFilterToolbar";
 import { useTranslation } from "react-i18next";
 
 type AnnouncementSort = "updated_desc" | "updated_asc";
@@ -17,6 +27,20 @@ type AnnouncementFiltersCardProps = {
   onSearchChange: (value: string) => void;
 };
 
+type FilterOption = {
+  value: string;
+  label: string;
+};
+
+function FilterRadioOption({ option }: { option: FilterOption }) {
+  return (
+    <label className="announcement-filter-radio">
+      <RadioGroupItem value={option.value} />
+      <span>{option.label}</span>
+    </label>
+  );
+}
+
 export function AnnouncementFiltersCard({
   pinnedFilter,
   statusFilter,
@@ -29,9 +53,8 @@ export function AnnouncementFiltersCard({
   onSearchChange,
 }: AnnouncementFiltersCardProps) {
   const { t } = useTranslation("announcements");
-
   const statusValue = statusFilter ?? (canEdit ? "all" : "published");
-  const statusOptions = canEdit
+  const statusOptions: FilterOption[] = canEdit
     ? [
         { value: "all", label: t("filter.status.all") },
         { value: "published", label: t("filter.published") },
@@ -43,30 +66,11 @@ export function AnnouncementFiltersCard({
         { value: "published", label: t("filter.published") },
         { value: "archived", label: t("filter.archived") },
       ];
-  const sortOptions = [
+  const sortOptions: FilterOption[] = [
     { value: "updated_desc", label: t("filter.sort.updated_desc") },
     { value: "updated_asc", label: t("filter.sort.updated_asc") },
   ];
-  const activeSummary = [
-    search.trim()
-      ? t("filter.summary.search", { value: search.trim() })
-      : null,
-    statusFilter
-      ? t("filter.summary.status", {
-          value: statusOptions.find((option) => option.value === statusFilter)?.label
-            ?? statusFilter,
-        })
-      : null,
-    pinnedFilter ? t("filter.summary.pinned") : null,
-    sortOrder !== "updated_desc"
-      ? t("filter.summary.sort", {
-          value: sortOptions.find((option) => option.value === sortOrder)?.label
-            ?? sortOrder,
-        })
-      : null,
-  ].filter(Boolean).join(" · ");
   const activeFilterCount = [
-    search.trim().length > 0,
     Boolean(statusFilter),
     pinnedFilter,
     sortOrder !== "updated_desc",
@@ -75,51 +79,71 @@ export function AnnouncementFiltersCard({
   return (
     <ContentFilterToolbar
       className="announcements-filter-toolbar"
-      toggleLabel={t("common:filter.toggle")}
-      activeSummary={activeSummary}
+      filterLabel={t("common:filter.toggle")}
       activeFilterCount={activeFilterCount}
-      collapseBelow={900}
+      resetLabel={t("common:filter.reset")}
+      onReset={() => {
+        onStatusFilterChange(undefined);
+        onSortOrderChange("updated_desc");
+        onPinnedFilterChange(false);
+      }}
       search={(
-        <TextInput
-          placeholder={t("filter.search")}
-          aria-label={t("aria.searchAnnouncements")}
-          value={search}
-          onChange={(event) => onSearchChange(event.currentTarget.value)}
-          leftSection={<SearchIcon size={16} />}
-        />
+        <InputGroup className="announcement-filter-search">
+          <InputGroupAddon>
+            <SearchIcon size={16} aria-hidden="true" />
+          </InputGroupAddon>
+          <InputGroupInput
+            placeholder={t("filter.search")}
+            aria-label={t("aria.searchAnnouncements")}
+            value={search}
+            onChange={(event) => onSearchChange(event.currentTarget.value)}
+          />
+          {search ? (
+            <InputGroupAddon align="inline-end">
+              <InputGroupButton
+                aria-label={t("common:action.clear")}
+                onClick={() => onSearchChange("")}
+                size="icon-xs"
+              >
+                <XIcon size={14} aria-hidden="true" />
+              </InputGroupButton>
+            </InputGroupAddon>
+          ) : null}
+        </InputGroup>
       )}
-      controls={(
+      filterControls={(
         <>
-          <Select
-            value={statusValue}
-            onChange={(value) =>
-              onStatusFilterChange(value === "all" ? undefined : value ?? undefined)
-            }
-            data={statusOptions}
-            aria-label={t("filter.status")}
-            allowDeselect={false}
-          />
-          <Select
-            value={sortOrder}
-            onChange={(value) => {
-              if (value) onSortOrderChange(value as AnnouncementSort);
-            }}
-            data={sortOptions}
-            aria-label={t("filter.sort")}
-            allowDeselect={false}
-          />
-          <Tooltip label={t("filter.pinned")}>
-            <ActionIcon
-              aria-pressed={pinnedFilter}
-              onClick={() => onPinnedFilterChange(!pinnedFilter)}
-              color="portal-brand"
-              variant={pinnedFilter ? "light" : "default"}
-              size="lg"
-              aria-label={t("filter.pinned")}
+          <ContentFilterGroup label={t("filter.status")}>
+            <RadioGroup
+              value={statusValue}
+              onValueChange={(value) => onStatusFilterChange(value === "all" ? undefined : value)}
+              aria-label={t("filter.status")}
+              className="announcement-filter-options"
             >
-              <PinIcon size={16} />
-            </ActionIcon>
-          </Tooltip>
+              {statusOptions.map((option) => <FilterRadioOption key={option.value} option={option} />)}
+            </RadioGroup>
+          </ContentFilterGroup>
+
+          <ContentFilterGroup label={t("filter.sort")}>
+            <RadioGroup
+              value={sortOrder}
+              onValueChange={(value) => onSortOrderChange(value as AnnouncementSort)}
+              aria-label={t("filter.sort")}
+              className="announcement-filter-sort"
+            >
+              {sortOptions.map((option) => <FilterRadioOption key={option.value} option={option} />)}
+            </RadioGroup>
+          </ContentFilterGroup>
+
+          <ContentFilterGroup label={t("filter.pinned")}>
+            <label className="announcement-filter-switch">
+              <Switch
+                checked={pinnedFilter}
+                onCheckedChange={(checked) => onPinnedFilterChange(checked)}
+              />
+              <span>{t("filter.pinned")}</span>
+            </label>
+          </ContentFilterGroup>
         </>
       )}
     />

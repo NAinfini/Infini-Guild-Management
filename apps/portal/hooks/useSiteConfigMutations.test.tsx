@@ -1,6 +1,7 @@
 import {
   DEFAULT_FEATURE_FLAGS,
   DEFAULT_SITE_MEDIA_POLICY,
+  DEFAULT_SITE_OAUTH_SETTINGS,
   DEFAULT_SITE_STORAGE_POLICY,
   type AdminSiteConfigResponse,
 } from "@guild/shared";
@@ -38,11 +39,18 @@ function response(siteName: string, logoId: string | null): AdminSiteConfigRespo
       site_logo_media_id: logoId,
       default_site_logo_url: "/guild-logo.svg",
       features: DEFAULT_FEATURE_FLAGS,
+      oauth: DEFAULT_SITE_OAUTH_SETTINGS,
       media_policy: DEFAULT_SITE_MEDIA_POLICY,
       storage_policy: DEFAULT_SITE_STORAGE_POLICY,
       absence_policy: { max_span_days: 366, max_entries_per_user: 20 },
       created_at: "2026-08-01T00:00:00.000Z",
       updated_at: "2026-08-12T00:00:00.000Z",
+    },
+    oauth_provider_status: {
+      google: "missing_credentials",
+      discord: "available",
+      kook: "missing_credentials",
+      wechat: "unsupported",
     },
   };
 }

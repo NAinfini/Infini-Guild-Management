@@ -1,0 +1,11 @@
+.metric-grid-input[data-slot="input"] {
+  min-width: 4rem;
+  padding: var(--space-xs);
+  border-color: transparent;
+  background: transparent;
+  text-align: center;
+}
+
+.metric-grid-input[data-slot="input"]:focus-visible {
+  border-color: var(--brand-fill);
+}

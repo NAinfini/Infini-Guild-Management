@@ -1,5 +1,4 @@
 import type { StorageItem } from "@guild/shared";
-import { MantineProvider } from "@mantine/core";
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type { ComponentProps } from "react";
@@ -67,11 +66,7 @@ function renderPanel(overrides: Partial<ComponentProps<typeof StorageBatchPanel>
     onSubmit: vi.fn(),
     ...overrides,
   };
-  render(
-    <MantineProvider>
-      <StorageBatchPanel {...props} />
-    </MantineProvider>,
-  );
+  render(<StorageBatchPanel {...props} />);
   return props;
 }
 
@@ -95,22 +90,20 @@ describe("StorageBatchPanel", () => {
     const user = userEvent.setup();
     const submit = vi.fn();
     const { rerender } = render(
-      <MantineProvider>
-        <StorageBatchPanel
-          draft={draft}
-          users={[]}
-          currentUsername="Member"
-          canManageStock={false}
-          isSaving={false}
-          onTypeChange={vi.fn()}
-          onRecipientChange={vi.fn()}
-          onNoteChange={vi.fn()}
-          onQuantityChange={vi.fn()}
-          onClear={vi.fn()}
-          onClose={vi.fn()}
-          onSubmit={submit}
-        />
-      </MantineProvider>,
+      <StorageBatchPanel
+        draft={draft}
+        users={[]}
+        currentUsername="Member"
+        canManageStock={false}
+        isSaving={false}
+        onTypeChange={vi.fn()}
+        onRecipientChange={vi.fn()}
+        onNoteChange={vi.fn()}
+        onQuantityChange={vi.fn()}
+        onClear={vi.fn()}
+        onClose={vi.fn()}
+        onSubmit={submit}
+      />,
     );
 
     await user.click(screen.getByRole("button", { name: "action.reviewBatch" }));
@@ -118,22 +111,20 @@ describe("StorageBatchPanel", () => {
     expect(submit).toHaveBeenCalledTimes(1);
 
     rerender(
-      <MantineProvider>
-        <StorageBatchPanel
-          draft={{ ...draft, quantities: {}, itemSnapshots: {} }}
-          users={[]}
-          currentUsername="Member"
-          canManageStock={false}
-          isSaving={false}
-          onTypeChange={vi.fn()}
-          onRecipientChange={vi.fn()}
-          onNoteChange={vi.fn()}
-          onQuantityChange={vi.fn()}
-          onClear={vi.fn()}
-          onClose={vi.fn()}
-          onSubmit={submit}
-        />
-      </MantineProvider>,
+      <StorageBatchPanel
+        draft={{ ...draft, quantities: {}, itemSnapshots: {} }}
+        users={[]}
+        currentUsername="Member"
+        canManageStock={false}
+        isSaving={false}
+        onTypeChange={vi.fn()}
+        onRecipientChange={vi.fn()}
+        onNoteChange={vi.fn()}
+        onQuantityChange={vi.fn()}
+        onClear={vi.fn()}
+        onClose={vi.fn()}
+        onSubmit={submit}
+      />,
     );
 
     expect(screen.getByRole("button", { name: "action.reviewBatch" })).toBeDisabled();

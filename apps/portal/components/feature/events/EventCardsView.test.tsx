@@ -1,4 +1,3 @@
-import { MantineProvider } from "@mantine/core";
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { PERMISSIONS, type Event, type MemberProfile, type Permission, type User } from "@guild/shared";
@@ -16,7 +15,7 @@ vi.mock("react-i18next", () => ({
 }));
 
 vi.mock("../../shared/MemberRoleAvatar", () => ({
-  MemberRoleAvatar: ({ user }: { user: User }) => <div data-testid="member-avatar">{user.username}</div>,
+  MemberRoleAvatar: ({ user }: { user: User }) => <div data-testid="member-avatar">{user.display_name}</div>,
 }));
 
 const now = "2026-05-07T16:11:00.000Z";
@@ -56,7 +55,7 @@ function createMember(index: number): { user: User; profile: MemberProfile } {
   return {
     user: {
       id: userId,
-      username: `member-${index}`,
+      display_name: `member-${index}`,
       role: "member",
       role_name: "Member",
       role_color: null,
@@ -95,26 +94,32 @@ function renderCardsView(
     eventOverrides?: Partial<Event>;
     canInteract?: boolean;
     currentUserId?: string | null;
+    canCreate?: boolean;
+    canEdit?: boolean;
+    canArchive?: boolean;
+    canDelete?: boolean;
     onLeaveEvent?: (eventId: string) => void;
-    onVotePoll?: (eventId: string, optionIds: string[]) => void;
+    onOpenEvent?: (event: Event) => void;
   } = {},
 ) {
   const event = createEvent(options.eventOverrides);
   const members = Array.from({ length: memberCount }, (_, index) => createMember(index + 1));
 
   return render(
-    <MantineProvider>
+    <>
       <EventCardsView
         events={[event]}
         cardsEmptyDescription="No events"
-        canManage={false}
+        canCreate={options.canCreate ?? false}
+        canEdit={options.canEdit ?? false}
+        canArchive={options.canArchive ?? false}
+        canDelete={options.canDelete ?? false}
         canInteract={options.canInteract ?? false}
         currentUserId={options.currentUserId ?? null}
         eventType={undefined}
         archivedOnly={false}
         pinnedOnly={false}
         lockedOnly={false}
-        focusedEventId={null}
         eventFlags={new Map()}
         eventMembersMap={new Map([[event.id, members]])}
         allUsers={members}
@@ -131,11 +136,9 @@ function renderCardsView(
         onArchiveEvent={() => {}}
         onUnarchiveEvent={() => {}}
         onDeleteEvent={() => {}}
-        onAddParticipant={() => {}}
-        onRemoveParticipant={() => {}}
-        onVotePoll={options.onVotePoll}
+        onOpenEvent={options.onOpenEvent ?? (() => {})}
       />
-    </MantineProvider>,
+    </>,
   );
 }
 
@@ -161,6 +164,59 @@ describe("EventCardsView", () => {
     ).toBeInTheDocument();
   });
 
+  it.each([
+    {
+      name: "create",
+      options: { canCreate: true },
+      visible: ["menu.duplicate"],
+      hidden: ["menu.edit", "menu.archive", "menu.delete"],
+    },
+    {
+      name: "archive",
+      options: { canArchive: true },
+      visible: ["menu.archive"],
+      hidden: ["menu.edit", "menu.unarchive", "menu.delete"],
+    },
+    {
+      name: "edit",
+      options: {
+        canEdit: true,
+        eventOverrides: { archived_at: "2026-05-08T16:11:00.000Z" },
+      },
+      visible: ["menu.edit", "menu.unarchive"],
+      hidden: ["menu.archive", "menu.delete"],
+    },
+    {
+      name: "delete",
+      options: { canDelete: true },
+      visible: ["menu.delete"],
+      hidden: ["menu.edit", "menu.archive", "menu.duplicate"],
+    },
+  ])("shows only $name event actions when granted independently", async ({ options, visible, hidden }) => {
+    renderCardsView(0, options);
+    await userEvent.click(screen.getByRole("button", { name: "menu.actions" }));
+    for (const label of visible) expect(await screen.findByText(label)).toBeInTheDocument();
+    for (const label of hidden) expect(screen.queryByText(label)).not.toBeInTheDocument();
+  });
+
+  it("uses a bounded responsive event-card grid", () => {
+    renderCardsView();
+
+    expect(document.querySelector(".event-cards-view")).not.toBeNull();
+    expect(document.querySelector(".event-cards-view__grid .event-card")).not.toBeNull();
+
+    const css = readFileSync(
+      resolve(process.cwd(), "apps/portal/components/feature/events/EventCardsView.css"),
+      "utf8",
+    );
+    expect(css).toContain("margin-inline: auto");
+    expect(css).toContain("container: event-cards-grid / inline-size");
+    expect(css).toContain("grid-template-columns: repeat(4, minmax(0, 1fr))");
+    expect(css).toMatch(/@container event-cards-grid \(max-width: 1103px\)[\s\S]*?repeat\(3, minmax\(0, 1fr\)\)/);
+    expect(css).toMatch(/@container event-cards-grid \(max-width: 735px\)[\s\S]*?repeat\(2, minmax\(0, 1fr\)\)/);
+    expect(css).toMatch(/@container event-cards-grid \(max-width: 511px\)[\s\S]*?grid-template-columns:\s*minmax\(0, 1fr\)/);
+  });
+
   it("shows signup progress on a card without class quotas", () => {
     renderCardsView(3, {
       eventOverrides: { capacity: 10, class_quotas: [] },
@@ -170,7 +226,7 @@ describe("EventCardsView", () => {
     const progress = screen.getByRole("progressbar", { name: "quota.generic.label" });
     expect(progress).toHaveAttribute("aria-valuenow", "3");
     expect(progress).toHaveAttribute("aria-valuemax", "10");
-    expect(document.querySelector(".quota-bar__role-count")).toBeNull();
+    expect(screen.getByText("3 / 10")).toHaveClass("quota-bar__role-count");
     expect(screen.getAllByText("3/10")).toHaveLength(1);
     expectParticipationLayout();
   });
@@ -190,13 +246,13 @@ describe("EventCardsView", () => {
       canInteract: true,
     });
 
-    expect(screen.getByRole("region", { name: "quota.roles.label" })).toBeInTheDocument();
+    expect(screen.getByRole("group", { name: "quota.roles.label" })).toBeInTheDocument();
     expectParticipationLayout();
   });
 
   it.each(["light", "dark"] as const)(
     "only disables the signup action for the event with a pending participant mutation in the %s theme",
-    (colorScheme) => {
+    (_colorScheme) => {
       const firstEvent = createEvent({
         id: "event-1",
         title: "Weekly Mission Alpha",
@@ -209,18 +265,20 @@ describe("EventCardsView", () => {
       });
 
       render(
-        <MantineProvider forceColorScheme={colorScheme}>
+        <>
           <EventCardsView
             events={[firstEvent, secondEvent]}
             cardsEmptyDescription="No events"
-            canManage={false}
+            canCreate={false}
+            canEdit={false}
+            canArchive={false}
+            canDelete={false}
             canInteract
             currentUserId="user-99"
             eventType={undefined}
             archivedOnly={false}
             pinnedOnly={false}
             lockedOnly={false}
-            focusedEventId={null}
             eventFlags={new Map()}
             eventMembersMap={new Map()}
             allUsers={[]}
@@ -237,10 +295,9 @@ describe("EventCardsView", () => {
             onArchiveEvent={() => {}}
             onUnarchiveEvent={() => {}}
             onDeleteEvent={() => {}}
-            onAddParticipant={() => {}}
-            onRemoveParticipant={() => {}}
+            onOpenEvent={() => {}}
           />
-        </MantineProvider>,
+        </>,
       );
 
       const signupButtons = screen.getAllByRole("button", { name: /button\.join/i });
@@ -255,12 +312,15 @@ describe("EventCardsView", () => {
     const baseEmptyProps = {
       events: [],
       cardsEmptyDescription: "No matching events",
+      canCreate: false,
+      canEdit: false,
+      canArchive: false,
+      canDelete: false,
       canInteract: false,
       currentUserId: null,
       archivedOnly: false,
       pinnedOnly: false,
       lockedOnly: false,
-      focusedEventId: null,
       eventFlags: new Map<string, "NEW" | "UPDATED">(),
       eventMembersMap: new Map(),
       allUsers: [],
@@ -277,18 +337,17 @@ describe("EventCardsView", () => {
       onArchiveEvent: vi.fn(),
       onUnarchiveEvent: vi.fn(),
       onDeleteEvent: vi.fn(),
-      onAddParticipant: vi.fn(),
-      onRemoveParticipant: vi.fn(),
+      onOpenEvent: vi.fn(),
     };
     const { rerender } = render(
-      <MantineProvider>
+      <>
         <EventCardsView
           {...baseEmptyProps}
-          canManage
+          canCreate
           eventType="social"
           hasAnyFilter
         />
-      </MantineProvider>,
+      </>,
     );
 
     expect(screen.getAllByRole("button")).toHaveLength(1);
@@ -296,14 +355,14 @@ describe("EventCardsView", () => {
     expect(onResetFilters).toHaveBeenCalledOnce();
 
     rerender(
-      <MantineProvider>
+      <>
         <EventCardsView
           {...baseEmptyProps}
-          canManage
+          canCreate
           eventType={undefined}
           hasAnyFilter={false}
         />
-      </MantineProvider>,
+      </>,
     );
 
     expect(screen.getAllByRole("button")).toHaveLength(1);
@@ -562,8 +621,8 @@ describe("EventCardsView", () => {
     expect(screen.getByRole("button", { name: /button\.leave/i })).toBeDisabled();
   });
 
-  it("routes a poll card through one clear voting action", () => {
-    const onVotePoll = vi.fn();
+  it("routes a poll card through one clear detail action", async () => {
+    const onOpenEvent = vi.fn();
     renderCardsView(0, {
       eventOverrides: {
         type: "poll",
@@ -582,7 +641,7 @@ describe("EventCardsView", () => {
       } as Partial<Event>,
       canInteract: true,
       currentUserId: "user-1",
-      onVotePoll,
+      onOpenEvent,
     });
 
     expect(screen.queryByRole("checkbox", { name: /Raid/i })).not.toBeInTheDocument();
@@ -590,6 +649,7 @@ describe("EventCardsView", () => {
     expect(screen.getByRole("button", { name: /poll\.vote/i })).toBeEnabled();
     /* 卡片只负责把人带到详情里投票，不在紧凑卡片中复制选项，也不显示不存在的报名入口。 */
     expect(screen.queryByRole("button", { name: /button\.join/i })).not.toBeInTheDocument();
-    expect(onVotePoll).not.toHaveBeenCalled();
+    await userEvent.click(screen.getByRole("button", { name: /poll\.vote/i }));
+    expect(onOpenEvent).toHaveBeenCalledWith(expect.objectContaining({ id: "event-1" }));
   });
 });

@@ -1,8 +1,5 @@
 import type { Event, EventClassQuotaInput, EventType } from "@guild/shared";
-import { useConfirmDialog } from "@portal/hooks/useConfirmDialog";
 import { useCallback, useState } from "react";
-import { useDisclosure } from "@mantine/hooks";
-import { useTranslation } from "react-i18next";
 import { useBeforeUnloadPrompt } from "../../../hooks/useBeforeUnloadPrompt";
 import { fromDateTimeLocalValue, toDateTimeLocalValue } from "../../../utils/datetime";
 import { toClassQuotaInputs } from "./class-quota-view";
@@ -41,9 +38,7 @@ type UseEventsEditorControllerParams = {
 };
 
 export function useEventsEditorController({ attachmentSnapshot }: UseEventsEditorControllerParams) {
-  const { t } = useTranslation("events");
-  const confirm = useConfirmDialog();
-  const [editorOpen, editorHandlers] = useDisclosure(false);
+  const [editorOpen, setEditorOpen] = useState(false);
   const [editorTouched, setEditorTouched] = useState(false);
   const [editorMode, setEditorMode] = useState<"create" | "edit">("create");
   const [editingEventId, setEditingEventId] = useState<string | null>(null);
@@ -209,7 +204,7 @@ export function useEventsEditorController({ attachmentSnapshot }: UseEventsEdito
         attachmentSnapshot: "[]",
       }),
     );
-    editorHandlers.open();
+    setEditorOpen(true);
   }, []);
 
   const openEditEditor = useCallback((event: Event, initialAttachmentSnapshot?: string) => {
@@ -258,29 +253,11 @@ export function useEventsEditorController({ attachmentSnapshot }: UseEventsEdito
         attachmentSnapshot: initialAttachmentSnapshot ?? "[]",
       }),
     );
-    editorHandlers.open();
+    setEditorOpen(true);
   }, []);
 
-  const closeEditor = useCallback(async () => {
-    if (isEditorDirty) {
-      const confirmed = await confirm({
-        title: t("confirm.discardUnsaved.title"),
-        description: t("confirm.discardUnsaved.description"),
-        confirmLabel: t("common:action.discard"),
-        cancelLabel: t("common:action.cancel"),
-        intent: "warning",
-      });
-      if (!confirmed) {
-        return false;
-      }
-    }
-    editorHandlers.close();
-    setEditorTouched(false);
-    setEditorBaseline(null);
-    return true;
-  }, [confirm, isEditorDirty, t]);
   const closeEditorAfterSave = useCallback(() => {
-    editorHandlers.close();
+    setEditorOpen(false);
     setEditorTouched(false);
     setEditorBaseline(null);
   }, []);
@@ -323,7 +300,6 @@ export function useEventsEditorController({ attachmentSnapshot }: UseEventsEdito
     setEditorClassQuotas: handleEditorClassQuotasChange,
     openCreateEditor,
     openEditEditor,
-    closeEditor,
     closeEditorAfterSave,
   };
 }

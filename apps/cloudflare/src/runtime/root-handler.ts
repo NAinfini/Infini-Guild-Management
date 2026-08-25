@@ -12,6 +12,7 @@ import {
 } from "@guild/application";
 import { LIMITS } from "@guild/shared/config/limits";
 import { CloudflareDeferredTasks } from "../adapters/deferred-tasks.js";
+import { CloudflareEmailSender, type CloudflareEmailBinding } from "../adapters/cloudflare-email-sender.js";
 import { CloudflareAdminOperationsRuntime } from "../adapters/admin-operations-realtime.js";
 import { D1SqlExecutor } from "../adapters/d1-sql-executor.js";
 import { CloudflareNotificationPublisher } from "../adapters/notification-publisher.js";
@@ -31,17 +32,28 @@ export interface CloudflareEnvironment {
   ASSETS: Fetcher;
   NOTIFICATIONS: DurableObjectNamespace;
   AUTH_RATE_LIMITER: RateLimit;
+  AUTH_IP_RATE_LIMITER: RateLimit;
   READ_RATE_LIMITER: RateLimit;
   MUTATION_RATE_LIMITER: RateLimit;
   UPLOAD_RATE_LIMITER: RateLimit;
   WEBSOCKET_RATE_LIMITER: RateLimit;
   EXPENSIVE_READ_RATE_LIMITER: RateLimit;
+  EMAIL?: CloudflareEmailBinding;
   IG_PUBLIC_URL: string;
   IG_ALLOWED_ORIGINS?: string;
   IG_SESSION_COOKIE_NAME?: string;
   IG_INVITE_TOKEN_SECRET: string;
   IG_AUDIT_DOWNLOAD_SECRET: string;
   IG_PBKDF2_ITERATIONS?: string;
+  IG_OAUTH_GOOGLE_CLIENT_ID?: string;
+  IG_OAUTH_GOOGLE_CLIENT_SECRET?: string;
+  IG_OAUTH_DISCORD_CLIENT_ID?: string;
+  IG_OAUTH_DISCORD_CLIENT_SECRET?: string;
+  IG_OAUTH_KOOK_CLIENT_ID?: string;
+  IG_OAUTH_KOOK_CLIENT_SECRET?: string;
+  IG_OAUTH_WECHAT_APP_ID?: string;
+  IG_OAUTH_WECHAT_APP_SECRET?: string;
+  IG_EMAIL_FROM?: string;
   IG_MAINTENANCE_MODE?: string;
 }
 
@@ -94,8 +106,20 @@ export function createCloudflareComposition(
     IG_INVITE_TOKEN_SECRET: environment.IG_INVITE_TOKEN_SECRET,
     IG_AUDIT_DOWNLOAD_SECRET: environment.IG_AUDIT_DOWNLOAD_SECRET,
     IG_PBKDF2_ITERATIONS: environment.IG_PBKDF2_ITERATIONS,
+    IG_OAUTH_GOOGLE_CLIENT_ID: environment.IG_OAUTH_GOOGLE_CLIENT_ID,
+    IG_OAUTH_GOOGLE_CLIENT_SECRET: environment.IG_OAUTH_GOOGLE_CLIENT_SECRET,
+    IG_OAUTH_DISCORD_CLIENT_ID: environment.IG_OAUTH_DISCORD_CLIENT_ID,
+    IG_OAUTH_DISCORD_CLIENT_SECRET: environment.IG_OAUTH_DISCORD_CLIENT_SECRET,
+    IG_OAUTH_KOOK_CLIENT_ID: environment.IG_OAUTH_KOOK_CLIENT_ID,
+    IG_OAUTH_KOOK_CLIENT_SECRET: environment.IG_OAUTH_KOOK_CLIENT_SECRET,
+    IG_OAUTH_WECHAT_APP_ID: environment.IG_OAUTH_WECHAT_APP_ID,
+    IG_OAUTH_WECHAT_APP_SECRET: environment.IG_OAUTH_WECHAT_APP_SECRET,
+    IG_EMAIL_FROM: environment.IG_EMAIL_FROM,
   });
   const config = runtimeConfig.application;
+  if (Boolean(config.emailFrom) !== Boolean(environment.EMAIL)) {
+    throw new TypeError("IG_EMAIL_FROM and the EMAIL send_email binding must be configured together");
+  }
   const clientIdentifier = (request: Request) => cloudflareClientIdentifier(request, runtimeConfig.localDevelopment);
   const sql = new D1SqlExecutor(environment.DB);
   const blobs = new R2BlobStore(environment.BLOBS);
@@ -117,6 +141,11 @@ export function createCloudflareComposition(
       environment.AUTH_RATE_LIMITER,
       seconds(LIMITS.rateLimit.auth.windowMs),
     ),
+    authIpRateLimiter: new CloudflareRateLimiter(
+      environment.AUTH_IP_RATE_LIMITER,
+      seconds(LIMITS.rateLimit.authIp.windowMs),
+    ),
+    emailSender: environment.EMAIL ? new CloudflareEmailSender(environment.EMAIL) : null,
     readRateLimiter: new CloudflareRateLimiter(
       environment.READ_RATE_LIMITER,
       seconds(LIMITS.rateLimit.reads.windowMs),
@@ -212,7 +241,9 @@ export function createCloudflareHandler(
         try {
           const runtime = composition(environment);
           const pathname = requestUrl.pathname;
-          if (pathname !== "/api/health") await assertSchema(environment.DB, runtime.sql);
+          if (pathname !== "/api/health") {
+            await assertSchema(environment.DB, runtime.sql);
+          }
           if (pathname === "/ws") return handleWebSocket(request, environment, runtime);
           if (isApiPath(pathname)) {
             return withTransportSecurity(

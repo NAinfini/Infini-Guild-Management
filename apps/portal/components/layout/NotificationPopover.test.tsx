@@ -1,93 +1,231 @@
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
-import { MantineProvider } from "@mantine/core";
-import { render, screen } from "@testing-library/react";
-import { describe, expect, it, vi } from "vitest";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { NotificationPopover } from "./NotificationPopover";
+
+const mocks = vi.hoisted(() => ({
+  fetchInboxNotifications: vi.fn(),
+  markInboxNotificationsRead: vi.fn(),
+  isPhone: false,
+}));
+
+vi.mock("../../hooks/useMediaQuery", () => ({
+  useMediaQuery: () => mocks.isPhone,
+}));
 
 vi.mock("react-i18next", () => ({
   useTranslation: () => ({
-    t: (key: string) => key,
+    t: (key: string, options?: Record<string, unknown>) => {
+      if (key === "label.notificationsUnread") return `Notifications (${options?.count ?? 0} unread)`;
+      if (key === "label.notifications") return "Notifications";
+      if (key === "action.markAllRead") return "Mark all read";
+      if (key === "notification.title.announcement_published") return "Announcement published";
+      if (key === "notification.aria.open") return `Open ${options?.title ?? ""} notification`;
+      return key;
+    },
     i18n: { language: "en" },
   }),
 }));
 
-const entry = {
-  id: "notification-1",
-  title: "A deliberately long notification title",
-  message: "A notification body that must remain readable in the narrow overlay.",
-  type: "event_created",
-  readAt: null,
-  occurredAt: "2026-07-29T12:00:00.000Z",
+vi.mock("@tanstack/react-router", () => ({
+  useNavigate: () => vi.fn(),
+}));
+
+vi.mock("../../services/NotificationService", () => ({
+  fetchInboxNotifications: mocks.fetchInboxNotifications,
+  markInboxNotificationsRead: mocks.markInboxNotificationsRead,
+}));
+
+const firstPage = {
+  data: [{
+    id: "notification-1",
+    kind: "announcement_published" as const,
+    entity_type: "announcement" as const,
+    entity_id: "announcement-1",
+    payload: { title: "First announcement" },
+    occurred_at: "2026-08-22T12:00:00.000Z",
+    read_at: null,
+  }],
+  next_cursor: null,
+  unread_count: 1,
 };
 
-function renderPopover(onClose = vi.fn()) {
-  render(
-    <MantineProvider>
-      <NotificationPopover
-        user={{ id: "user-1" }}
-        pushHasUnread
-        notificationAnnouncementsHasNew={false}
-        displayPushEntries={[entry]}
-        onClose={onClose}
-        onClearHistory={vi.fn()}
-        onEntryClick={vi.fn()}
-      />
-    </MantineProvider>,
-  );
+const secondPage = {
+  data: [{
+    id: "notification-2",
+    kind: "announcement_published" as const,
+    entity_type: "announcement" as const,
+    entity_id: "announcement-2",
+    payload: { title: "Second announcement" },
+    occurred_at: "2026-08-21T12:00:00.000Z",
+    read_at: null,
+  }],
+  next_cursor: null,
+  unread_count: 2,
+};
 
-  return onClose;
+const firstRowLabel = "Open Announcement published: First announcement notification";
+
+function renderPopover(user: { id: string } | null = { id: "user-1" }) {
+  const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  render(
+    <QueryClientProvider client={queryClient}>
+      <NotificationPopover user={user as never} />
+    </QueryClientProvider>,
+  );
 }
 
 describe("NotificationPopover", () => {
-  it("uses a viewport-safe width and bounded scrolling contract", () => {
-    const source = readFileSync(
-      resolve(process.cwd(), "apps/portal/components/layout/NotificationPopover.tsx"),
-      "utf8",
+  beforeEach(() => {
+    mocks.isPhone = false;
+    mocks.fetchInboxNotifications.mockReset().mockResolvedValue(firstPage);
+    mocks.markInboxNotificationsRead.mockReset().mockResolvedValue({ ok: true, unread_count: 0 });
+    vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockReturnValue(
+      new DOMRect(0, 0, 360, 48),
     );
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it("uses a viewport-safe width and bounded scrolling contract", () => {
     const styles = readFileSync(
       resolve(process.cwd(), "apps/portal/components/layout/NotificationPopover.module.css"),
       "utf8",
     );
 
-    expect(source).not.toContain("width={420}");
-    expect(styles).toMatch(/width:\s*min\(26\.25rem,\s*calc\(100vw - var\(--space-xl\)\)\)/);
+    expect(styles).toMatch(/width:\s*min\(27\.5rem,\s*calc\(100vw - var\(--space-xl\)\)\)/);
     expect(styles).toMatch(/max-height:\s*min\(/);
     expect(styles).toContain("overflow-y: auto");
   });
 
-  /*
-   * 「回车打开、Escape 关掉、焦点还回按钮」这条不在这里测，改由 e2e
-   * apps/portal/e2e/specs/admin/header-notifications.spec.ts 覆盖，跑在真浏览器里。
-   *
-   * 原因不是嫌单测麻烦，是这条在 jsdom 里不可能成立：Mantine 9 给 Popover 的
-   * middleware 加了 floating-ui 的 hide()，浮层在 referenceHidden 时会被打上行内
-   * display:none（PopoverDropdown.mjs）。jsdom 没有布局引擎，所有元素都是 0×0，
-   * hide() 于是恒判定 reference 不可见——实测 jsdom 里浮层的行内样式就是
-   * display:none，而同一段流程在真浏览器里量出来是空字符串。
-   * useFocusTrap 的 visible() 会顺着父链查行内 display:none，焦点因此进不去，
-   * Escape 到不了 Popover.Dropdown 的 onKeyDownCapture。
-   *
-   * 换句话说这条单测量的是布局计算，而 jsdom 恰恰没有布局。留在这里只会是一条
-   * 永远红、或者被 mock 灌绿的假测试。
-   */
-  it("keeps the popover markup keyboard-dismissible: trapFocus + returnFocus stay on", () => {
+  it("does not request the protected inbox for a guest, even if the isolated trigger is clicked", async () => {
+    const user = userEvent.setup();
+    renderPopover(null);
+
+    await user.click(screen.getByRole("button", { name: "Notifications" }));
+
+    expect(mocks.fetchInboxNotifications).not.toHaveBeenCalled();
+  });
+
+  it("automatically loads every recent notification page without exposing filter, read-toggle, or load-more controls", async () => {
+    mocks.fetchInboxNotifications.mockImplementation(({ cursor }: { cursor?: string | null }) =>
+      Promise.resolve(cursor === "next-page" ? secondPage : { ...firstPage, next_cursor: "next-page", unread_count: 2 }));
+    const user = userEvent.setup();
+    renderPopover();
+
+    await user.click(await screen.findByRole("button", { name: "Notifications (2 unread)" }));
+
+    expect(await screen.findByText("Second announcement")).toBeInTheDocument();
+    expect(mocks.fetchInboxNotifications).toHaveBeenCalledWith({ limit: 50, cursor: "next-page" });
+    expect(screen.queryByRole("button", { name: /load more/i })).not.toBeInTheDocument();
+  });
+
+  it("marks an unread notification once on fine-pointer hover even if it subsequently receives focus", async () => {
+    let resolveRead!: (value: { ok: true; unread_count: number }) => void;
+    mocks.markInboxNotificationsRead.mockReturnValue(new Promise<{ ok: true; unread_count: number }>((resolve) => {
+      resolveRead = resolve;
+    }));
+    const user = userEvent.setup();
+    renderPopover();
+    await user.click(await screen.findByRole("button", { name: "Notifications (1 unread)" }));
+    const row = await screen.findByRole("button", { name: firstRowLabel });
+
+    fireEvent.pointerEnter(row, { pointerType: "mouse" });
+    fireEvent.focus(row);
+    fireEvent.pointerEnter(row, { pointerType: "mouse" });
+
+    await waitFor(() => expect(mocks.markInboxNotificationsRead).toHaveBeenCalledTimes(1));
+    expect(mocks.markInboxNotificationsRead).toHaveBeenCalledWith({ ids: ["notification-1"] });
+    resolveRead({ ok: true, unread_count: 0 });
+  });
+
+  it("marks an unread notification on keyboard focus", async () => {
+    const user = userEvent.setup();
+    renderPopover();
+    await user.click(await screen.findByRole("button", { name: "Notifications (1 unread)" }));
+    const row = await screen.findByRole("button", { name: firstRowLabel });
+
+    fireEvent.focus(row);
+
+    await waitFor(() => expect(mocks.markInboxNotificationsRead).toHaveBeenCalledWith({ ids: ["notification-1"] }));
+  });
+
+  it("does not mark an already-read row on hover or focus", async () => {
+    mocks.fetchInboxNotifications.mockResolvedValue({
+      ...firstPage,
+      data: [{ ...firstPage.data[0]!, read_at: "2026-08-22T13:00:00.000Z" }],
+      unread_count: 0,
+    });
+    const user = userEvent.setup();
+    renderPopover();
+    await user.click(await screen.findByRole("button", { name: "Notifications" }));
+    const row = await screen.findByRole("button", { name: firstRowLabel });
+
+    fireEvent.pointerEnter(row, { pointerType: "mouse" });
+    fireEvent.focus(row);
+
+    expect(mocks.markInboxNotificationsRead).not.toHaveBeenCalled();
+  });
+
+  it("keeps the explicit mark-all-read action", async () => {
+    const user = userEvent.setup();
+    renderPopover();
+    await user.click(await screen.findByRole("button", { name: "Notifications (1 unread)" }));
+
+    await user.click(screen.getByRole("button", { name: "Mark all read" }));
+
+    await waitFor(() => expect(mocks.markInboxNotificationsRead).toHaveBeenCalledWith({ all: true }));
+  });
+
+  it("uses a bottom drawer on phone viewports", async () => {
+    mocks.isPhone = true;
+    const user = userEvent.setup();
+    renderPopover();
+
+    await user.click(await screen.findByRole("button", { name: "Notifications (1 unread)" }));
+
+    expect(await screen.findByRole("dialog", { name: /^Notifications/ })).toBeInTheDocument();
+    expect(screen.getByText("First announcement")).toBeInTheDocument();
+  });
+
+  it("keeps loading, error, and retry feedback inside the inbox panel", async () => {
+    mocks.fetchInboxNotifications.mockRejectedValue(new Error("network failed"));
+    const user = userEvent.setup();
+    renderPopover();
+
+    await user.click(await screen.findByRole("button", { name: "Notifications" }));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("loadError");
+    const callsBeforeRetry = mocks.fetchInboxNotifications.mock.calls.length;
+    await user.click(screen.getByRole("button", { name: "action.retry" }));
+    await waitFor(() => expect(mocks.fetchInboxNotifications.mock.calls.length).toBeGreaterThan(callsBeforeRetry));
+  });
+
+  it("uses the shared Base UI popover and drawer primitives", () => {
     const source = readFileSync(
       resolve(process.cwd(), "apps/portal/components/layout/NotificationPopover.tsx"),
       "utf8",
     );
 
-    // 这两个属性掉了，e2e 那条会红；这里先在源码层面拦一道，失败信息更直接。
-    expect(source).toContain("trapFocus");
-    expect(source).toContain("returnFocus");
+    expect(source).toContain('"@portal/components/ui/popover"');
+    expect(source).toContain('"@portal/components/ui/drawer"');
+    expect(source.toLowerCase()).not.toContain(["man", "tine"].join(""));
   });
 
-  it("labels the trigger by unread state so the e2e can find it by role", () => {
-    /*
-     * 触发器的可访问名是 e2e 唯一的定位方式（已读/未读两种文案）。这条守的是
-     * ActionIcon 上的 aria-label 还在，别名改了要连着 e2e 的正则一起改。
-     */
-    renderPopover();
-    expect(screen.getByRole("button", { name: "label.notificationsUnread" })).toBeInTheDocument();
+  it("does not retain the removed unread mutation, segmented tabs, eyes, or manual pagination in the source", () => {
+    const source = readFileSync(
+      resolve(process.cwd(), "apps/portal/components/layout/NotificationPopover.tsx"),
+      "utf8",
+    );
+
+    expect(source).not.toContain("markInboxNotificationUnread");
+    expect(source).not.toContain("SegmentedControl");
+    expect(source).not.toContain("EyeIcon");
+    expect(source).not.toContain("notification.action.loadMore");
   });
 });

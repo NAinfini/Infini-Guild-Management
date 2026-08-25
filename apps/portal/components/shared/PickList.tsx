@@ -1,6 +1,13 @@
-import { Checkbox, Text, TextInput } from "@mantine/core";
-import { SearchIcon } from "@portal/components/icons";
+import { SearchIcon, XIcon } from "@portal/components/icons";
+import { Checkbox } from "@portal/components/ui/checkbox";
+import {
+  InputGroup,
+  InputGroupAddon,
+  InputGroupButton,
+  InputGroupInput,
+} from "@portal/components/ui/input-group";
 import type { ReactNode } from "react";
+import { useTranslation } from "react-i18next";
 import "./PickList.css";
 
 /*
@@ -59,21 +66,26 @@ function PickRow({
   onToggle: (id: string) => void;
 }) {
   return (
-    <Checkbox
+    <div
       className="pick-list__row pick-list__row--pick"
-      size={size}
-      checked={selected}
-      disabled={disabled}
-      onChange={() => onToggle(option.id)}
-      aria-label={option.label}
-      label={(
-        <span className="pick-list__row-main">
-          {option.icon ? <span className="pick-list__row-icon">{option.icon}</span> : null}
-          <Text component="span" size={size} className="pick-list__row-label">{option.label}</Text>
-          {option.meta ? <span className="pick-list__row-meta">{option.meta}</span> : null}
-        </span>
-      )}
-    />
+      data-size={size}
+      onClick={(event) => {
+        if (disabled || (event.target as Element).closest('[data-slot="checkbox"]')) return;
+        onToggle(option.id);
+      }}
+    >
+      <Checkbox
+        checked={selected}
+        disabled={disabled}
+        onCheckedChange={() => onToggle(option.id)}
+        aria-label={option.label}
+      />
+      <span className="pick-list__row-main">
+        {option.icon ? <span className="pick-list__row-icon">{option.icon}</span> : null}
+        <span className="pick-list__row-label">{option.label}</span>
+        {option.meta ? <span className="pick-list__row-meta">{option.meta}</span> : null}
+      </span>
+    </div>
   );
 }
 
@@ -90,6 +102,7 @@ export function PickList({
   className,
   "aria-label": ariaLabel,
 }: PickListProps) {
+  const { t } = useTranslation("common");
   const atMax = max !== undefined && selected.size >= max;
   const isEmpty = sections ? sections.length === 0 : (options?.length ?? 0) === 0;
   const rowOf = (option: PickListOption) => (
@@ -108,19 +121,29 @@ export function PickList({
       {search || actions ? (
         <div className="pick-list__toolbar">
           {search ? (
-            <TextInput
-              className="pick-list__search"
-              size={size}
-              value={search.value}
-              placeholder={search.placeholder}
-              aria-label={search.placeholder}
-              leftSection={<SearchIcon size={14} />}
-              onChange={(event) => {
-                /* 先当场取值：event 在 setState 的 updater 跑到时已经回收了。 */
-                const { value } = event.currentTarget;
-                search.onChange(value);
-              }}
-            />
+            <InputGroup className="pick-list__search">
+              <InputGroupAddon>
+                <SearchIcon size={14} aria-hidden="true" />
+              </InputGroupAddon>
+              <InputGroupInput
+                data-size={size}
+                value={search.value}
+                placeholder={search.placeholder}
+                aria-label={search.placeholder}
+                onChange={(event) => search.onChange(event.currentTarget.value)}
+              />
+              {search.value ? (
+                <InputGroupAddon align="inline-end">
+                  <InputGroupButton
+                    aria-label={t("action.clear")}
+                    onClick={() => search.onChange("")}
+                    size="icon-xs"
+                  >
+                    <XIcon size={12} aria-hidden="true" />
+                  </InputGroupButton>
+                </InputGroupAddon>
+              ) : null}
+            </InputGroup>
           ) : null}
           {actions}
         </div>
@@ -130,12 +153,12 @@ export function PickList({
           className 下写 .pick-list__body 的 max-block-size——那是版式，不是控件。 */}
       <div className="pick-list__body" role="group" aria-label={ariaLabel}>
         {isEmpty ? (
-          <Text size="xs" c="dimmed" className="pick-list__empty">{emptyLabel}</Text>
+          <span className="pick-list__empty">{emptyLabel}</span>
         ) : sections ? (
           sections.map((section) => (
             <div key={section.key} className="pick-list__section">
               <div className="pick-list__section-head">
-                <Text size="xs" fw={800} c="dimmed" truncate>{section.label}</Text>
+                <span className="pick-list__section-label">{section.label}</span>
               </div>
               {section.options.map(rowOf)}
             </div>

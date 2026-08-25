@@ -1,4 +1,3 @@
-import { MantineProvider } from "@mantine/core";
 import { fireEvent, screen } from "@testing-library/react";
 import { renderWithQueryClient as render } from "@portal/tests/query-harness";
 import userEvent from "@testing-library/user-event";
@@ -23,8 +22,8 @@ vi.mock("@dnd-kit/core", () => ({
 
 vi.mock("react-i18next", () => ({
   useTranslation: () => ({
-    t: (key: string, options?: { username?: string; teamName?: string }) => {
-      if (options?.username) return `${key} ${options.username}`;
+    t: (key: string, options?: { display_name?: string; teamName?: string }) => {
+      if (options?.display_name) return `${key} ${options.display_name}`;
       if (options?.teamName) return `${key} ${options.teamName}`;
       return key;
     },
@@ -34,8 +33,7 @@ vi.mock("react-i18next", () => ({
 describe("GuildWarDragBoardSections", () => {
   it("keeps primary 44px actions visible and moves low-frequency controls into one menu", async () => {
     const { container } = render(
-      <MantineProvider>
-        <DroppableMemberColumn
+      <DroppableMemberColumn
           column={{
             containerId: "team-1",
             title: "Team One",
@@ -43,7 +41,7 @@ describe("GuildWarDragBoardSections", () => {
             members: [{
               itemId: "member-1",
               userId: "user-1",
-              username: "Alice",
+              display_name: "Alice",
               power: 1234,
               class: "Mage",
               subtitle: "",
@@ -59,8 +57,7 @@ describe("GuildWarDragBoardSections", () => {
           onDeleteTeam={vi.fn()}
           teamIndex={1}
           teamCount={3}
-        />
-      </MantineProvider>,
+      />,
     );
 
     const actions = [
@@ -70,9 +67,7 @@ describe("GuildWarDragBoardSections", () => {
     ].map((name) => screen.getByRole("button", { name }));
 
     actions.forEach((action) => {
-      expect(action.getAttribute("style")).toContain(
-        "--ai-size: calc(2.75rem * var(--mantine-scale))",
-      );
+      expect(action).toHaveClass("guild-war-column-action");
     });
 
     fireEvent.click(screen.getByRole("button", { name: "active.aria.columnActions" }));
@@ -80,7 +75,7 @@ describe("GuildWarDragBoardSections", () => {
        floating-ui 的 hide 中间件会异步给已打开的浮层盖上 display: none。 */
     const menuItems = await screen.findAllByRole("menuitem", { hidden: true });
     expect(menuItems.map((item) => item.textContent)).toEqual(expect.arrayContaining([
-      "active.sort.username",
+      "active.sort.display_name",
       "active.teamSetup.moveUp",
       "menu.team.delete",
     ]));
@@ -90,18 +85,16 @@ describe("GuildWarDragBoardSections", () => {
 
   it("keeps the same dynamic class identity in the drag overlay", () => {
     const { container } = render(
-      <MantineProvider>
-        <GuildWarDragOverlayCard
+      <GuildWarDragOverlayCard
           activeDragItem={{
             userId: "user-1",
-            username: "Alice",
+            display_name: "Alice",
             power: 1234,
             class: "鸣金虹",
             subtitle: "",
             avatarMediaId: null,
           }}
-        />
-      </MantineProvider>,
+      />,
     );
 
     expect(screen.getByText("鸣金虹")).toBeInTheDocument();
@@ -116,8 +109,7 @@ describe("GuildWarDragBoardSections", () => {
     const onOpenMember = vi.fn();
 
     render(
-      <MantineProvider>
-        <DroppableMemberColumn
+      <DroppableMemberColumn
           column={{
             containerId: "team-1",
             title: "Team One",
@@ -125,7 +117,7 @@ describe("GuildWarDragBoardSections", () => {
             members: [{
               itemId: "member-1",
               userId: "user-1",
-              username: "Alice",
+              display_name: "Alice",
               power: 1234,
               class: "Mage",
               subtitle: "",
@@ -136,8 +128,7 @@ describe("GuildWarDragBoardSections", () => {
           activeSearch=""
           toMemberDomId={(id) => id}
           onOpenMember={onOpenMember}
-        />
-      </MantineProvider>,
+      />,
     );
 
     const member = screen.getByRole("button", {
@@ -154,8 +145,7 @@ describe("GuildWarDragBoardSections", () => {
     const user = userEvent.setup();
     const onOpenMember = vi.fn();
     const { container } = render(
-      <MantineProvider>
-        <DroppableMemberColumn
+      <DroppableMemberColumn
           column={{
             containerId: "pool",
             title: "Pool",
@@ -163,7 +153,7 @@ describe("GuildWarDragBoardSections", () => {
             members: [{
               itemId: "member-1",
               userId: "user-1",
-              username: "Alice",
+              display_name: "Alice",
               power: 1234,
               class: "Mage",
               subtitle: "",
@@ -174,8 +164,7 @@ describe("GuildWarDragBoardSections", () => {
           activeSearch=""
           toMemberDomId={(id) => id}
           onOpenMember={onOpenMember}
-        />
-      </MantineProvider>,
+      />,
     );
 
     await user.click(screen.getByRole("button", {
@@ -191,8 +180,7 @@ describe("GuildWarDragBoardSections", () => {
     const onEditTeam = vi.fn();
 
     render(
-      <MantineProvider>
-        <DroppableMemberColumn
+      <DroppableMemberColumn
           column={{
             containerId: "team-1",
             title: "Team One",
@@ -203,8 +191,7 @@ describe("GuildWarDragBoardSections", () => {
           activeSearch=""
           toMemberDomId={(id) => id}
           onEditTeam={onEditTeam}
-        />
-      </MantineProvider>,
+      />,
     );
 
     await user.click(screen.getByRole("button", { name: "active.teamSetup.edit" }));

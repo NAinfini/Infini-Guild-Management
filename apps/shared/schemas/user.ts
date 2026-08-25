@@ -6,6 +6,7 @@ import { classIdSchema } from "./class-catalog";
 import { roleMetadataSchema } from "./role";
 import { mediaIdSchema } from "./media";
 import { userBadgeSchema } from "./badge";
+import { identityNameSchema } from "./identity";
 
 const L = LIMITS.content;
 const permissionKeySchema = z.enum(PERMISSIONS);
@@ -172,7 +173,7 @@ const writableVideoUrlSchema = z
 
 export const userSchema = z.object({
   id: z.string(),
-  username: z.string(),
+  display_name: z.string(),
   role: z.string().min(1),
   permissions: z.record(permissionKeySchema, z.boolean()),
   is_active: z.boolean(),
@@ -223,6 +224,7 @@ export const updateProfileSchema = memberProfileSchema
   })
   .partial()
   .extend({
+    display_name: identityNameSchema.optional(),
     video_urls: z.array(writableVideoUrlSchema).max(L.profileVideoUrls.max).optional(),
   });
 

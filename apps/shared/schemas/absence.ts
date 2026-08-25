@@ -26,7 +26,7 @@ export const absenceWindowQuerySchema = z.object({
 export const memberAbsenceSchema = z.object({
   id: z.string(),
   user_id: z.string(),
-  username: z.string().nullable(),
+  display_name: z.string().nullable(),
   role_id: roleIdSchema,
   start_date: isoDateSchema,
   end_date: isoDateSchema,

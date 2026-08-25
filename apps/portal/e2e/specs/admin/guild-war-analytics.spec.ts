@@ -2,7 +2,7 @@ import type { APIRequestContext, Locator, Page } from "@playwright/test";
 import { SYSTEM_TEST_CONTENT_MARKER } from "@guild/shared/config/system-test";
 import { createThrowawayMember, uniqueTag } from "../../support/members";
 import { expect, readJson, test, type Flow } from "../../support/test";
-import { field, selectOption, toggleInput } from "../../support/ui";
+import { field, selectOption, setToggle, toggle } from "../../support/ui";
 
 /*
  * 公会战「Analytics」标签：模式切换、战集与日期预设、成员/队伍/指标选择、
@@ -38,7 +38,7 @@ const END_OFFSET_MS = START_OFFSET_MS + 2 * 60 * 60_000;
 const OWN_STATS = { kills: 10, towers: 4 } as const;
 const ENEMY_STATS = { kills: 10, towers: 4 } as const;
 
-type Member = { id: string; username: string };
+type Member = { id: string; display_name: string };
 
 let stamp: number;
 let warATitle: string;
@@ -68,7 +68,7 @@ test.beforeEach(async ({ api }) => {
     await api.get("/api/users?page=1&limit=500&include_total=false"),
     "回读成员名单",
   ) as { data: Array<{ user: Member }> };
-  const shared = users.data.find((entry) => entry.user.username === "member_01");
+  const shared = users.data.find((entry) => entry.user.display_name === "member_01");
   expect(shared, "fresh E2E fixture 必须提供共享成员 member_01").toBeTruthy();
   m1 = shared!.user;
   m2 = await createThrowawayMember(api, uniqueTag("gwa2"));
@@ -227,20 +227,18 @@ function fieldSummary(page: Page, label: string): Locator {
   return consoleField(page, label).locator(".gwa-field__summary");
 }
 
-/** Mantine 的 SegmentedControl 把 radio 藏起来了，只有 label 可点。 */
-function segment(scope: Locator | Page, label: string): Locator {
-  return scope.locator("label.mantine-SegmentedControl-label").filter({
-    hasText: new RegExp(`^${label}$`),
-  });
+/** 分段选择组使用带 pressed 状态的语义按钮。 */
+function choice(scope: Locator | Page, label: string): Locator {
+  return scope.getByRole("button", { name: label, exact: true });
 }
 
 function toolbar(page: Page): Locator {
   return page.locator(".gwa-toolbar");
 }
 
-/** 当前选中的分段值：读被选中的那个隐藏 radio。 */
-function checkedSegmentValue(page: Page, value: string): Locator {
-  return toolbar(page).locator(`input[type='radio'][value='${value}']`);
+/** 当前选中的工具栏选项。 */
+function pressedToolbarChoice(page: Page, label: string): Locator {
+  return choice(toolbar(page), label);
 }
 
 function listboxOption(page: Page, listboxLabel: string, text: string): Locator {
@@ -288,14 +286,15 @@ async function openAnalyticsTab(page: Page, flow: Flow): Promise<void> {
 }
 
 /** 选中一个成员（列表项是按钮，再点一次就是取消选中）。 */
-async function toggleMember(page: Page, username: string): Promise<void> {
-  await listboxOption(page, "Select player analytics members", username).click();
+async function toggleMember(page: Page, display_name: string): Promise<void> {
+  await listboxOption(page, "Select player analytics members", display_name).click();
 }
 
 test("战集与日期预设：换一组战就重新向服务端取数，显式选战会把预设顶成 All", async ({ page, flow }) => {
   await openAnalyticsTab(page, flow);
 
-  await expect(checkedSegmentValue(page, "10"), "默认预设是最近 10 场").toBeChecked();
+  await expect(pressedToolbarChoice(page, "Last 10"), "默认预设是最近 10 场")
+    .toHaveAttribute("aria-pressed", "true");
   await expect(chartHeading(page), "默认把筛出来的两场都算进去").toContainText("2 wars");
   await expect(fieldSummary(page, "War Set")).toHaveText("2 wars");
 
@@ -323,14 +322,14 @@ test("战集与日期预设：换一组战就重新向服务端取数，显式�
   await expect(fieldSummary(page, "War Set")).toHaveText("1 wars");
   await expect(chartHeading(page)).toContainText("1 wars");
   await expect(
-    checkedSegmentValue(page, "all"),
+    pressedToolbarChoice(page, "All"),
     "手动挑战之后日期预设必须自己变成 All——否则界面在说「最近 10 场」，算的却是 1 场",
-  ).toBeChecked();
+  ).toHaveAttribute("aria-pressed", "true");
 
   /* 回到预设：显式选择被清空，战集回到两场。这一步命中的是已经取过的查询键
      （staleTime: Infinity），不会再发请求，所以只断言界面。 */
-  await segment(toolbar(page), "Last 5").click();
-  await expect(checkedSegmentValue(page, "5")).toBeChecked();
+  await choice(toolbar(page), "Last 5").click();
+  await expect(pressedToolbarChoice(page, "Last 5")).toHaveAttribute("aria-pressed", "true");
   await expect(fieldSummary(page, "War Set")).toHaveText("2 wars");
   await expect(
     warSet.getByRole("option").filter({ hasText: warATitle }),
@@ -352,22 +351,22 @@ test("玩家模式：空状态引导选人，选中谁表格就出谁的列", as
     "War",
     "Date",
     "Result",
-    `${firstSelectable.username} - Damage`,
+    `${firstSelectable.display_name} - Damage`,
   ]);
 
   const members = await openConsoleField(page, "Members");
   await expect(members.getByRole("option"), "可选成员就是这两场战里出现过的三个人").toHaveCount(3);
   await expect(
-    members.getByRole("option").filter({ hasText: firstSelectable.username }),
+    members.getByRole("option").filter({ hasText: firstSelectable.display_name }),
     "引导按钮选的那个人要在列表里显示成已选",
   ).toHaveAttribute("aria-selected", "true");
 
   // 再点一次取消：选择清空后又退回空状态，说明这个列表项是真正的双向开关。
-  await toggleMember(page, firstSelectable.username);
+  await toggleMember(page, firstSelectable.display_name);
   await expect(emptyState(page)).toContainText("Choose data to chart");
 
-  await toggleMember(page, m1.username);
-  await expect(tableColumns(page)).toHaveText(["War", "Date", "Result", `${m1.username} - Damage`]);
+  await toggleMember(page, m1.display_name);
+  await expect(tableColumns(page)).toHaveText(["War", "Date", "Result", `${m1.display_name} - Damage`]);
   await expect(tableRows(page), "两场战各一行").toHaveCount(2);
   await expect(page.getByText("Data Table (2 rows)", { exact: true })).toBeVisible();
 
@@ -388,7 +387,7 @@ test("玩家模式：「只看参战过的活动」真的把没上场的那一�
   await openAnalyticsTab(page, flow);
   await openConsoleField(page, "Members");
   // m3 只打了 B 那一场。
-  await toggleMember(page, m3.username);
+  await toggleMember(page, m3.display_name);
 
   await expect(
     tableRows(page),
@@ -397,19 +396,19 @@ test("玩家模式：「只看参战过的活动」真的把没上场的那一�
   await expect(rowCells(page, 0).nth(0)).toHaveText(warBTitle);
   await expect(rowCells(page, 0).nth(3)).toHaveText("400");
 
-  await toggleInput(page, "Only include wars the selected player participated in").uncheck();
+  await setToggle(page, "Only include wars the selected player participated in", false);
   await expect(tableRows(page), "关掉之后没上场的那一场也要列出来").toHaveCount(2);
   await expect(rowCells(page, 0).nth(0)).toHaveText(warATitle);
   await expect(rowCells(page, 0).nth(3), "没上场的格子给的是占位符，不是 0").toHaveText("-");
 
-  await toggleInput(page, "Only include wars the selected player participated in").check();
+  await setToggle(page, "Only include wars the selected player participated in", true);
   await expect(tableRows(page)).toHaveCount(1);
 });
 
 test("指标最多选五个：选满之后第六个点不动，退掉一个又能选", async ({ page, flow }) => {
   await openAnalyticsTab(page, flow);
   await openConsoleField(page, "Members");
-  await toggleMember(page, m1.username);
+  await toggleMember(page, m1.display_name);
 
   const metrics = await openConsoleField(page, "Metrics");
   const metricOption = (name: string): Locator =>
@@ -434,7 +433,7 @@ test("指标最多选五个：选满之后第六个点不动，退掉一个又�
 
 test("排行榜模式：聚合方式、Top N 与最少场次各自改变榜单", async ({ page, flow }) => {
   await openAnalyticsTab(page, flow);
-  await segment(toolbar(page), "Rankings").click();
+  await choice(toolbar(page), "Rankings").click();
 
   await expect(tableColumns(page)).toHaveText([
     "#",
@@ -450,12 +449,12 @@ test("排行榜模式：聚合方式、Top N 与最少场次各自改变榜单",
   /* 归一化后的伤害：A 场 m1 500 / m2 300，B 场 m1 1000 / m2 200 / m3 400。
      合计口径下 m1 1500 > m2 500 > m3 400。 */
   await expect(tableRows(page)).toHaveCount(3);
-  await expect(rowCells(page, 0).nth(1)).toHaveText(m1.username);
+  await expect(rowCells(page, 0).nth(1)).toHaveText(m1.display_name);
   await expect(rowCells(page, 0).nth(2), "m1 两场都在").toHaveText("2");
   await expect(rowCells(page, 0).nth(6)).toHaveText("1500");
-  await expect(rowCells(page, 1).nth(1)).toHaveText(m2.username);
+  await expect(rowCells(page, 1).nth(1)).toHaveText(m2.display_name);
   await expect(rowCells(page, 1).nth(6)).toHaveText("500");
-  await expect(rowCells(page, 2).nth(1)).toHaveText(m3.username);
+  await expect(rowCells(page, 2).nth(1)).toHaveText(m3.display_name);
   await expect(rowCells(page, 2).nth(6)).toHaveText("400");
 
   await openConsoleField(page, "Rankings setup");
@@ -463,7 +462,7 @@ test("排行榜模式：聚合方式、Top N 与最少场次各自改变榜单",
   await selectOption(page, "Select rankings aggregation", "Average");
   await expect(rowCells(page, 0).nth(6)).toHaveText("750");
   await expect(rowCells(page, 1).nth(1), "平均口径下只打了一场的 m3 应当反超 m2").toHaveText(
-    m3.username,
+    m3.display_name,
   );
   await expect(rowCells(page, 1).nth(6)).toHaveText("400");
   await expect(rowCells(page, 2).nth(6)).toHaveText("250");
@@ -488,7 +487,7 @@ test("排行榜模式：聚合方式、Top N 与最少场次各自改变榜单",
 
 test("队伍模式：队伍筛选与合计/平均两种口径", async ({ page, flow }) => {
   await openAnalyticsTab(page, flow);
-  await segment(toolbar(page), "Teams").click();
+  await choice(toolbar(page), "Teams").click();
 
   await expect(tableColumns(page)).toHaveText(["Team", "Wars", "Total", "Average"]);
   await expect(tableRows(page)).toHaveCount(2);
@@ -503,12 +502,12 @@ test("队伍模式：队伍筛选与合计/平均两种口径", async ({ page, f
   await expect(rowCells(page, 1).nth(2)).toHaveText("400");
 
   // 队内口径换成平均：Alpha 每场变成人均（400 / 600），合计跟着变成 1000。
-  await segment(page.locator(".gwa-console"), "Average").click();
+  await choice(page.locator(".gwa-console"), "Average").click();
   await expect(rowCells(page, 0).nth(2)).toHaveText("1000");
   await expect(rowCells(page, 0).nth(3)).toHaveText("500");
   await expect(rowCells(page, 1).nth(2), "Bravo 只有一个人，两种口径一样").toHaveText("400");
 
-  await segment(page.locator(".gwa-console"), "Total").click();
+  await choice(page.locator(".gwa-console"), "Total").click();
   await expect(rowCells(page, 0).nth(2)).toHaveText("2000");
 
   const teams = await openConsoleField(page, "Teams");
@@ -520,7 +519,7 @@ test("队伍模式：队伍筛选与合计/平均两种口径", async ({ page, f
 
 test("战争模式：胜负汇总、目标切换与双方比分", async ({ page, flow }) => {
   await openAnalyticsTab(page, flow);
-  await segment(toolbar(page), "Wars").click();
+  await choice(toolbar(page), "Wars").click();
 
   const summary = page.locator(".gwa-war-summary");
   await expect(summary).toContainText("Win 1");
@@ -564,7 +563,7 @@ test("战争模式：胜负汇总、目标切换与双方比分", async ({ page,
 test("归一化：开关一按整表数值改写，权重滑块目前只是展示", async ({ page, flow }) => {
   await openAnalyticsTab(page, flow);
   await openConsoleField(page, "Members");
-  await toggleMember(page, m1.username);
+  await toggleMember(page, m1.display_name);
 
   const note = page.locator(".gwa-chart__note");
   await expect(note, "归一化开着就必须在图表头上说明白").toHaveText(
@@ -572,19 +571,16 @@ test("归一化：开关一按整表数值改写，权重滑块目前只是展�
   );
   await expect(rowCells(page, 0).nth(3)).toHaveText("500");
 
-  /* 关掉：战斗时长是参考时长的两倍，所以原值正好是现在的两倍。
-     点的是轨道而不是 input——Mantine 把 aria-hidden 的轨道盖在 input 上，
-     直接点 input 会被判定成「被别的元素挡住」，重试到超时。轨道在 <label> 里，
-     点它就是用户真实的点法。 */
-  const normSwitch = toggleInput(page, "Enable normalization");
-  await flow.clickWithoutApi(page.locator(".gwa-norm .mantine-Switch-track"));
-  await expect(normSwitch).not.toBeChecked();
+  /* 关掉：战斗时长是参考时长的两倍，所以原值正好是现在的两倍。 */
+  const normSwitch = toggle(page, "Enable normalization");
+  await flow.clickWithoutApi(normSwitch);
+  await expect(normSwitch).toHaveAttribute("aria-checked", "false");
   await expect(note, "关掉之后那行提示必须消失").toHaveCount(0);
   await expect(rowCells(page, 0).nth(3)).toHaveText("1000");
   await expect(rowCells(page, 1).nth(3)).toHaveText("2000");
 
-  await page.locator(".gwa-norm .mantine-Switch-track").click();
-  await expect(normSwitch).toBeChecked();
+  await normSwitch.click();
+  await expect(normSwitch).toHaveAttribute("aria-checked", "true");
   await expect(rowCells(page, 0).nth(3)).toHaveText("500");
 
   // 展开权重面板（只有开着归一化时才展得开）。
@@ -616,14 +612,14 @@ test("数据表与图表的展示控件：热力图、复制 CSV、展开图表�
   await page.context().grantPermissions(["clipboard-read", "clipboard-write"]);
   await openAnalyticsTab(page, flow);
   await openConsoleField(page, "Members");
-  await toggleMember(page, m1.username);
+  await toggleMember(page, m1.display_name);
 
   // 热力图：只给数值列上底色，文字列不动。
   const shaded = page.locator(".gwa-table-wrap td[style*='background']");
   await expect(shaded, "没开热力图之前不该有底色").toHaveCount(0);
-  await toggleInput(page, "Heatmap").check();
+  await setToggle(page, "Heatmap", true);
   await expect(shaded, "两行数值格各上一层底色").toHaveCount(2);
-  await toggleInput(page, "Heatmap").uncheck();
+  await setToggle(page, "Heatmap", false);
   await expect(shaded).toHaveCount(0);
 
   await page.getByRole("button", { name: "Copy CSV", exact: true }).click();

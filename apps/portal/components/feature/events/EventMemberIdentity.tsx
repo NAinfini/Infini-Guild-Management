@@ -1,5 +1,4 @@
 import type { MemberProfile, User } from "@guild/shared";
-import { Group, Text } from "@mantine/core";
 import { ClassIcon } from "@portal/components/shared/ClassIcon";
 import { MemberRoleAvatar } from "@portal/components/shared/MemberRoleAvatar";
 import { useClassCatalog } from "@portal/hooks/data/useClassData";
@@ -26,19 +25,19 @@ export function EventMemberIdentity({ entry }: { entry: MemberEntry }) {
         withTooltip={false}
         withClassCircles={false}
       />
-      <div className="event-detail-modal__member-info">
-        <Text size="sm" fw={700}>{entry.user.username}</Text>
-        <Group gap={6}>
-          {classItems.length === 0 ? <Text size="xs" c="dimmed">-</Text> : null}
+      <div className="event-detail-content__member-info">
+        <strong>{entry.user.display_name}</strong>
+        <div className="event-detail-content__member-meta">
+          {classItems.length === 0 ? <span>-</span> : null}
           {classItems.map((item) => (
-            <Group key={item.id} gap={4} wrap="nowrap">
+            <span key={item.id} className="event-detail-content__member-class">
               <ClassIcon item={item} size={14} framed={false} />
-              <Text size="xs" c="dimmed">{item.label}</Text>
-            </Group>
+              <span>{item.label}</span>
+            </span>
           ))}
-          <Text size="xs" c="dimmed">-</Text>
-          <Text size="xs" c="dimmed">{t("detail.power", { value: entry.profile.power ?? "-" })}</Text>
-        </Group>
+          <span>-</span>
+          <span>{t("detail.power", { value: entry.profile.power ?? "-" })}</span>
+        </div>
       </div>
     </>
   );

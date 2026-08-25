@@ -1,5 +1,4 @@
 import type { StorageItem } from "@guild/shared";
-import { MantineProvider } from "@mantine/core";
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { readFileSync } from "node:fs";
@@ -41,18 +40,16 @@ function renderCard(
   batch?: ComponentProps<typeof StorageItemCard>["batch"],
 ) {
   render(
-    <MantineProvider>
-      <StorageItemCard
-        item={item}
-        canEditItems={permissions.canEditItems}
-        canManageStock={permissions.canAdjustStock}
-        batch={batch}
-        onOpen={vi.fn()}
-        onDeposit={vi.fn()}
-        onWithdraw={vi.fn()}
-        onEdit={vi.fn()}
-      />
-    </MantineProvider>,
+    <StorageItemCard
+      item={item}
+      canEditItems={permissions.canEditItems}
+      canManageStock={permissions.canAdjustStock}
+      batch={batch}
+      onOpen={vi.fn()}
+      onDeposit={vi.fn()}
+      onWithdraw={vi.fn()}
+      onEdit={vi.fn()}
+    />,
   );
 }
 
@@ -68,10 +65,10 @@ describe("StorageItemCard permissions", () => {
 
     expect(mobileStart).toBeGreaterThanOrEqual(0);
     expect(mobileCss).toMatch(
-      /\.storage-item-card__actions \.mantine-Button-root\s*\{[^}]*min-block-size:\s*var\(--control-hit-area\)/s,
+      /\.storage-item-card__actions \[data-slot="button"\]\s*\{[^}]*min-block-size:\s*var\(--control-hit-area\)/s,
     );
     expect(mobileCss).toMatch(
-      /\.storage-item-card__actions \.mantine-ActionIcon-root\s*\{[^}]*min-inline-size:\s*var\(--control-hit-area\)[^}]*min-block-size:\s*var\(--control-hit-area\)/s,
+      /\.storage-item-card__actions \[data-slot="button"\]\s*\{[^}]*min-block-size:\s*var\(--control-hit-area\)/s,
     );
   });
 
@@ -80,17 +77,15 @@ describe("StorageItemCard permissions", () => {
     const onOpen = vi.fn();
 
     render(
-      <MantineProvider>
-        <StorageItemCard
-          item={item}
-          canEditItems={false}
-          canManageStock={false}
-          onOpen={onOpen}
-          onDeposit={vi.fn()}
-          onWithdraw={vi.fn()}
-          onEdit={vi.fn()}
-        />
-      </MantineProvider>,
+      <StorageItemCard
+        item={item}
+        canEditItems={false}
+        canManageStock={false}
+        onOpen={onOpen}
+        onDeposit={vi.fn()}
+        onWithdraw={vi.fn()}
+        onEdit={vi.fn()}
+      />,
     );
 
     const trigger = screen.getByRole("button", { name: "Crystal" });
@@ -120,21 +115,19 @@ describe("StorageItemCard permissions", () => {
 
   it("keeps direct stock actions available to managers for a managed-only item", () => {
     render(
-      <MantineProvider>
-        <StorageItemCard
-          item={{
-            ...item,
-            allow_member_deposit: false,
-            allow_member_withdraw: false,
-          }}
-          canEditItems
-          canManageStock
-          onOpen={vi.fn()}
-          onDeposit={vi.fn()}
-          onWithdraw={vi.fn()}
-          onEdit={vi.fn()}
-        />
-      </MantineProvider>,
+      <StorageItemCard
+        item={{
+          ...item,
+          allow_member_deposit: false,
+          allow_member_withdraw: false,
+        }}
+        canEditItems
+        canManageStock
+        onOpen={vi.fn()}
+        onDeposit={vi.fn()}
+        onWithdraw={vi.fn()}
+        onEdit={vi.fn()}
+      />,
     );
 
     expect(screen.getByRole("button", { name: "Deposit" })).toBeInTheDocument();

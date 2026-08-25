@@ -159,7 +159,7 @@ export function useGuildWarDragController({
   }, [teamById, teamDraftNames, t]);
 
   const resolveUsername = useCallback((userId: string) => {
-    return userDataMap.get(userId)?.username ?? userId;
+    return userDataMap.get(userId)?.display_name ?? userId;
   }, [userDataMap]);
 
   const applyMove = useCallback((payloads: MovePayload[]) => {
@@ -234,7 +234,7 @@ export function useGuildWarDragController({
   const handleCopyTeamMentions = (containerId: string) => {
     const column = dragColumns.find((c) => c.containerId === containerId);
     if (!column) return;
-    void copyPlainText(column.members.map((m) => `@${m.username}`).join(" "));
+    void copyPlainText(column.members.map((m) => `@${m.display_name}`).join(" "));
     notifySuccess(t("active.teamCopied"));
   };
 
@@ -432,7 +432,7 @@ export function useGuildWarDragController({
         const confirmed = await confirm({
           title: t("active.removeConfirm.title"),
           description: t("active.removeConfirm.descSingle", {
-            username: resolveUsername(userId),
+            display_name: resolveUsername(userId),
           }),
           confirmLabel: t("active.removeConfirm.confirm"),
           cancelLabel: t("common:action.cancel"),

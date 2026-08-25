@@ -29,7 +29,7 @@ describe("useNotificationSync", () => {
     vi.useFakeTimers();
     FakeWebSocket.instances = [];
     vi.stubGlobal("WebSocket", FakeWebSocket);
-    apiRequest.mockResolvedValue({ data: [] });
+    apiRequest.mockReset().mockResolvedValue({ data: [] });
   });
 
   afterEach(() => {
@@ -58,6 +58,15 @@ describe("useNotificationSync", () => {
     await act(async () => vi.advanceTimersByTimeAsync(120_000));
     expect(FakeWebSocket.instances).toHaveLength(1);
     expect(apiRequest).toHaveBeenCalledTimes(callsAfterClose);
+    unmount();
+  });
+
+  it("creates no realtime or polling side effects when disabled", async () => {
+    const { unmount } = renderHook(() => useNotificationSync({ enabled: false }));
+
+    await act(async () => vi.advanceTimersByTimeAsync(120_000));
+    expect(FakeWebSocket.instances).toHaveLength(0);
+    expect(apiRequest).not.toHaveBeenCalled();
     unmount();
   });
 });

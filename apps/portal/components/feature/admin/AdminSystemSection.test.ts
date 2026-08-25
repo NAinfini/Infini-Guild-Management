@@ -1,4 +1,3 @@
-import { MantineProvider } from "@mantine/core";
 import { render, screen } from "@testing-library/react";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
@@ -11,10 +10,7 @@ vi.mock("react-i18next", () => ({
 }));
 
 function renderSection() {
-  render(createElement(
-    MantineProvider,
-    null,
-    createElement(AdminSystemSection, {
+  render(createElement(AdminSystemSection, {
       statusLoading: false,
       statusError: false,
       onRetryStatus: () => {},
@@ -25,8 +21,7 @@ function renderSection() {
         crons: "configured (Cron Triggers)",
       },
       statusLatencyMs: 12,
-    }),
-  ));
+    }));
 }
 
 describe("AdminSystemSection", () => {

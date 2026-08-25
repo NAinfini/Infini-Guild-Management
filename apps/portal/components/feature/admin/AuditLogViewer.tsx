@@ -5,17 +5,6 @@ import type {
   AuditValue,
 } from "@guild/shared";
 import {
-  ActionIcon,
-  Button,
-  CopyButton,
-  Group,
-  Skeleton,
-  Stack,
-  Text,
-  ThemeIcon,
-  Tooltip,
-} from "@mantine/core";
-import {
   ArchiveIcon,
   ArrowDownIcon,
   ArrowRightIcon,
@@ -30,14 +19,16 @@ import {
   UploadIcon,
   UserPlusIcon,
 } from "@portal/components/icons";
+import { Button } from "@portal/components/ui/button";
+import { Skeleton } from "@portal/components/ui/skeleton";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@portal/components/ui/tooltip";
 import { formatLocaleDateTime } from "@portal/utils/datetime";
 import type { TFunction } from "i18next";
-import { useId, useMemo, useState } from "react";
+import { useEffect, useId, useMemo, useRef, useState } from "react";
 import { Trans, useTranslation } from "react-i18next";
 import "./AuditLogViewer.css";
 import { AdminLoadError } from "./AdminLoadError";
 import {
-  ACTION_COLOR,
   ACTION_FAMILY,
   type ActionFamily,
   contextLabel,
@@ -154,24 +145,43 @@ function AuditValueText({ value, className, t }: { value: string; className?: st
 }
 
 function TechnicalRow({ label, value, copyValue, t }: { label: string; value: string; copyValue: string; t: TFunction<"admin"> }) {
+  const [copied, setCopied] = useState(false);
+  const clearCopiedTimer = useRef<number | undefined>(undefined);
+  const copyLabel = t(copied ? "audit.technical.copied" : "audit.technical.copy", { field: label });
+
+  useEffect(() => () => {
+    if (clearCopiedTimer.current !== undefined) window.clearTimeout(clearCopiedTimer.current);
+  }, []);
+
+  const copy = () => {
+    void navigator.clipboard.writeText(copyValue).then(() => {
+      setCopied(true);
+      if (clearCopiedTimer.current !== undefined) window.clearTimeout(clearCopiedTimer.current);
+      clearCopiedTimer.current = window.setTimeout(() => {
+        setCopied(false);
+        clearCopiedTimer.current = undefined;
+      }, 1_500);
+    });
+  };
+
   return (
     <div className="audit-technical-row">
       <dt>{label}</dt>
       <dd><AuditValueText value={value} className="audit-technical-row__value" t={t} /></dd>
-      <CopyButton value={copyValue} timeout={1_500}>
-        {({ copied, copy }) => (
-          <Tooltip label={t(copied ? "audit.technical.copied" : "audit.technical.copy", { field: label })} withArrow>
-            <ActionIcon
-              variant="subtle"
-              size="sm"
-              aria-label={t(copied ? "audit.technical.copied" : "audit.technical.copy", { field: label })}
-              onClick={copy}
-            >
-              {copied ? <CheckIcon size={14} aria-hidden /> : <CopyIcon size={14} aria-hidden />}
-            </ActionIcon>
-          </Tooltip>
-        )}
-      </CopyButton>
+      <Tooltip>
+        <TooltipTrigger render={(
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon-sm"
+            aria-label={copyLabel}
+            onClick={copy}
+          />
+        )}>
+          {copied ? <CheckIcon size={14} aria-hidden /> : <CopyIcon size={14} aria-hidden />}
+        </TooltipTrigger>
+        <TooltipContent>{copyLabel}</TooltipContent>
+      </Tooltip>
     </div>
   );
 }
@@ -299,11 +309,11 @@ export function AuditLogViewer({
   }), [auditRows, i18n.language, rolesById, t, userMap]);
 
   return (
-    <Stack gap={12} className="admin-fill audit-log-fill">
+    <div className="admin-fill audit-log-viewer">
       {auditLoading ? (
-        <Stack gap={8}>
-          {Array.from({ length: 6 }).map((_, index) => <Skeleton key={index} height={64} radius="md" />)}
-        </Stack>
+        <div className="audit-log-skeletons" aria-busy="true">
+          {Array.from({ length: 6 }).map((_, index) => <Skeleton key={index} className="audit-log-skeleton" />)}
+        </div>
       ) : null}
 
       {auditError ? <AdminLoadError onRetry={onRetryAudit} /> : null}
@@ -311,7 +321,7 @@ export function AuditLogViewer({
       {!auditLoading && !auditError ? (
         <>
           {rows.length === 0 ? (
-            <Text size="sm" c="dimmed" ta="center" py={32}>{t("audit.noResults")}</Text>
+            <p className="audit-log-empty">{t("audit.noResults")}</p>
           ) : (
             <div className="admin-panel audit-log-list">
               <div className="admin-panel__body admin-panel__body--flush admin-panel__body--scroll">
@@ -328,15 +338,9 @@ export function AuditLogViewer({
                         aria-expanded={isExpanded}
                         aria-controls={detailsId}
                       >
-                        <ThemeIcon
-                          size={28}
-                          radius="sm"
-                          variant="light"
-                          color={ACTION_COLOR[row.family]}
-                          className="audit-log-row__icon"
-                        >
+                        <span className="audit-log-row__icon" data-family={row.family} aria-hidden="true">
                           <ActionGlyph family={row.family} />
-                        </ThemeIcon>
+                        </span>
 
                         <span className="audit-log-row__content">
                           <span className="audit-log-row__description">
@@ -354,15 +358,19 @@ export function AuditLogViewer({
                           </span>
                         </span>
 
-                        <Tooltip label={row.formattedTime} position="left" withArrow>
-                          <Text component="time" dateTime={event.occurred_at} size="xs" c="dimmed" className="audit-log-row__time">
+                        <Tooltip>
+                          <TooltipTrigger render={(
+                            <time dateTime={event.occurred_at} className="audit-log-row__time" />
+                          )}>
                             {row.relativeTime || row.formattedTime}
-                          </Text>
+                          </TooltipTrigger>
+                          <TooltipContent side="left">{row.formattedTime}</TooltipContent>
                         </Tooltip>
                         <ChevronDownIcon
                           size={14}
                           aria-hidden
-                          className={`audit-log-row__chevron ${isExpanded ? "audit-log-row__chevron--open" : ""}`.trim()}
+                          className="audit-log-row__chevron"
+                          data-expanded={isExpanded || undefined}
                         />
                       </button>
 
@@ -370,7 +378,7 @@ export function AuditLogViewer({
                         <div id={detailsId} className="audit-log-row__details" role="region" aria-label={t("audit.detail.region", { event: row.entityLabel })}>
                           {row.changes.length > 0 ? (
                             <section className="audit-detail-section">
-                              <Text component="h3" className="audit-detail-section__title">{t("audit.detail.changes")}</Text>
+                              <h3 className="audit-detail-section__title">{t("audit.detail.changes")}</h3>
                               <div className="audit-change-list">
                                 {row.changes.map((entry) => (
                                   <div key={entry.field} className="audit-change-row">
@@ -392,7 +400,7 @@ export function AuditLogViewer({
 
                           {row.context.length > 0 ? (
                             <section className="audit-detail-section audit-context-section">
-                              <Text component="h3" className="audit-detail-section__title">{t("audit.detail.context")}</Text>
+                              <h3 className="audit-detail-section__title">{t("audit.detail.context")}</h3>
                               <dl className="audit-context-list">
                                 {row.context.map((entry) => (
                                   <div key={entry.field} className="audit-context-row">
@@ -412,7 +420,7 @@ export function AuditLogViewer({
                               <ChevronDownIcon size={14} aria-hidden className="audit-detail-disclosure__chevron" />
                             </summary>
                             <div className="audit-detail-disclosure__content">
-                              <Text size="xs" c="dimmed" className="audit-technical-disclosure__hint">{t("audit.technical.description")}</Text>
+                              <p className="audit-technical-disclosure__hint">{t("audit.technical.description")}</p>
                               <dl className="audit-technical-list">
                                 {row.technical.map(({ key, ...entry }) => <TechnicalRow key={key} {...entry} t={t} />)}
                               </dl>
@@ -421,8 +429,8 @@ export function AuditLogViewer({
 
                           <div className="audit-detail-actions">
                             <Button
-                              size="compact-sm"
-                              variant="subtle"
+                              size="sm"
+                              variant="ghost"
                               onClick={() => onSelectEntityTimeline(event.subject.type, event.subject.id)}
                             >
                               {t("audit.timeline.view", { entity: row.timelineLabel })}
@@ -438,12 +446,12 @@ export function AuditLogViewer({
           )}
 
           {auditHasMore ? (
-            <Group justify="center">
+            <div className="audit-log-load-more">
               <Button variant="default" loading={auditLoadingMore} onClick={onAuditLoadMore}>{t("audit.loadMore")}</Button>
-            </Group>
+            </div>
           ) : null}
         </>
       ) : null}
-    </Stack>
+    </div>
   );
 }

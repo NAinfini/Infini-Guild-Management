@@ -27,7 +27,7 @@ export function useGuildWarSearch({
     return dragColumns.flatMap((column) =>
       column.members
         .filter((member) =>
-          `${member.username} ${member.subtitle}`.toLowerCase().includes(normalizedActiveSearch),
+          `${member.display_name} ${member.subtitle}`.toLowerCase().includes(normalizedActiveSearch),
         )
         .map((member) => member.itemId),
     );

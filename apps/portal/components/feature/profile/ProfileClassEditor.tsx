@@ -14,7 +14,16 @@ import {
   useSortable,
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { ActionIcon, Popover, Select, Text, Tooltip } from "@mantine/core";
+import { Button } from "@portal/components/ui/button";
+import {
+  Command,
+  CommandEmpty,
+  CommandInput,
+  CommandItem,
+  CommandList,
+} from "@portal/components/ui/command";
+import { Popover, PopoverContent, PopoverTrigger } from "@portal/components/ui/popover";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@portal/components/ui/tooltip";
 import { PlusIcon, TrashIcon } from "@portal/components/icons";
 import { ClassIcon } from "@portal/components/shared/ClassIcon";
 import { useClassCatalog } from "@portal/hooks/data/useClassData";
@@ -70,36 +79,49 @@ function SortableClassRow({
         isDragging ? "profile-class__pill--dragging" : "",
       ].filter(Boolean).join(" ")}
     >
-      <Tooltip label={t("classRow.aria.drag", { value: item.label })} withArrow>
-        <ActionIcon
-          ref={setActivatorNodeRef}
-          {...attributes}
-          {...listeners}
-          size="xs"
-          variant="subtle"
-          color="gray"
-          aria-label={t("classRow.aria.drag", { value: item.label })}
-          style={{ cursor: isDragging ? "grabbing" : "grab" }}
-        >
+      <Tooltip>
+        <TooltipTrigger render={(
+          <Button
+            type="button"
+            ref={setActivatorNodeRef}
+            {...attributes}
+            {...listeners}
+            size="icon-xs"
+            variant="ghost"
+            aria-label={t("classRow.aria.drag", { value: item.label })}
+            style={{ cursor: isDragging ? "grabbing" : "grab" }}
+          />
+        )}>
           <IconGripVertical size={14} />
-        </ActionIcon>
+        </TooltipTrigger>
+        <TooltipContent>{t("classRow.aria.drag", { value: item.label })}</TooltipContent>
       </Tooltip>
       <ClassIcon item={item} size={16} />
-      <Tooltip label={t("classRow.primaryHint")} withArrow disabled={!isPrimary}>
-        <Text component="span" size="sm" fw={isPrimary ? 700 : 600} className="profile-class__pill-label">
+      {isPrimary ? (
+        <Tooltip>
+          <TooltipTrigger render={<span className="profile-class__pill-label profile-class__pill-label--primary" />}>
+            {item.label}
+          </TooltipTrigger>
+          <TooltipContent>{t("classRow.primaryHint")}</TooltipContent>
+        </Tooltip>
+      ) : (
+        <span className="profile-class__pill-label">
           {item.label}
-        </Text>
-      </Tooltip>
-      <Tooltip label={t("classRow.remove")} withArrow>
-        <ActionIcon
-          size="xs"
-          color="red"
-          variant="subtle"
-          aria-label={t("classRow.remove")}
-          onClick={onRemove}
-        >
+        </span>
+      )}
+      <Tooltip>
+        <TooltipTrigger render={(
+          <Button
+            type="button"
+            size="icon-xs"
+            variant="destructive"
+            aria-label={t("classRow.remove")}
+            onClick={onRemove}
+          />
+        )}>
           <TrashIcon size={14} />
-        </ActionIcon>
+        </TooltipTrigger>
+        <TooltipContent>{t("classRow.remove")}</TooltipContent>
       </Tooltip>
     </span>
   );
@@ -123,9 +145,9 @@ export function ProfileClassEditor({
 
   return (
     <div className="profile-class">
-      <Text component="span" size="sm" fw={600} className="profile-class__label">
+      <span className="profile-class__label">
         {t("section.classes")}
-      </Text>
+      </span>
       {/*
        * 选择器收进「+ 添加」里。它常驻时是一个和简介同宽的下拉框加一个按钮，占掉
        * 一整行，而添加职业是一次性动作——已有的职业才是这一栏平时要看的东西。
@@ -144,41 +166,39 @@ export function ProfileClassEditor({
             ))}
 
             <Popover
-              opened={pickerOpen}
-              onChange={setPickerOpen}
-              position="bottom-start"
-              withArrow
-              trapFocus
+              open={pickerOpen}
+              onOpenChange={setPickerOpen}
             >
-              <Popover.Target>
-                <button
-                  type="button"
-                  className="profile-class__add"
-                  onClick={() => setPickerOpen((open) => !open)}
-                >
+              <PopoverTrigger render={<button type="button" className="profile-class__add" />}>
                   <PlusIcon size={13} />
                   {t("action.add")}
-                </button>
-              </Popover.Target>
-              <Popover.Dropdown>
-                <Select
-                  searchable
-                  data={classOptions}
-                  value={classDraft || null}
-                  w={220}
-                  placeholder={t("field.selectClass")}
-                  aria-label={t("aria.selectClass")}
-                  onSearchChange={onClassDraftChange}
-                  onChange={(value) => {
-                    if (!value) return;
-                    // 选中即添加：留一个「添加」按钮的话，选完还要再点一次，而这个
-                    // 下拉框本身就是为这一次添加才打开的。
-                    onAddClass(value);
-                    onClassDraftChange("");
-                    setPickerOpen(false);
-                  }}
-                />
-              </Popover.Dropdown>
+              </PopoverTrigger>
+              <PopoverContent align="start" className="profile-class__picker">
+                <Command>
+                  <CommandInput
+                    value={classDraft}
+                    placeholder={t("field.selectClass")}
+                    aria-label={t("aria.selectClass")}
+                    onValueChange={onClassDraftChange}
+                  />
+                  <CommandList>
+                    <CommandEmpty>{t("classRow.noResults")}</CommandEmpty>
+                    {classOptions.map((option) => (
+                      <CommandItem
+                        key={option.value}
+                        value={`${option.label} ${option.value}`}
+                        onSelect={() => {
+                          onAddClass(option.value);
+                          onClassDraftChange("");
+                          setPickerOpen(false);
+                        }}
+                      >
+                        {option.label}
+                      </CommandItem>
+                    ))}
+                  </CommandList>
+                </Command>
+              </PopoverContent>
             </Popover>
           </div>
         </SortableContext>

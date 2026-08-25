@@ -13,7 +13,7 @@ React 门户与 Hono API 共用 TypeScript 契约，可部署到 Cloudflare Work
 
 [English](./README.md) | [中文](./README.zh.md)
 
-[安装指南](./SETUP.zh.md) · [产品边界](./PRODUCT.md) · [贡献指南](./CONTRIBUTING.md) · [安全政策](./SECURITY.md)
+[安装指南](./SETUP.zh.md) · [产品边界](./PRODUCT.md) · [认证路线图](./AUTHENTICATION.zh.md) · [贡献指南](./CONTRIBUTING.md) · [安全政策](./SECURITY.md)
 
 </div>
 
@@ -28,7 +28,7 @@ Infini Guild Management 将公会日常工作集中到一个双语、响应式�
 | 模块 | 当前能力 |
 | --- | --- |
 | 仪表盘与花名册 | 公开仪表盘摘要和可搜索的成员卡片，包含职业、徽章、属性、可用时间、资料、图片、视频链接、头像和可选资料音频 |
-| 账号与个人资料 | 基于邀请码的注册、Cookie 会话、用户名和密码修改、资料编辑、缺席记录、媒体管理和资料称号样式 |
+| 账号与个人资料 | 基于邀请码的注册（私密登录名与公开显示名）、Cookie 会话、凭据管理、可选已验证邮箱、站主配置后可选的 Google/Discord/KOOK 连接登录、资料编辑、缺席记录、媒体管理和资料称号样式 |
 | 活动 | 六种固定活动类型、周期模板、附件、人数与职业配额、报名、参与者管理、投票、抽奖和自动归档 |
 | 公告 | 带待关联行内媒体的富文本草稿、定时发布、置顶、归档和永久删除 |
 | 公会战 | 进行中的分队与候选池、成员移动、角色标签、结算、战史、批量编辑、导出和分析 |
@@ -44,7 +44,7 @@ Infini Guild Management 将公会日常工作集中到一个双语、响应式�
 
 ## 配置边界
 
-“管理后台 → 站点配置”及其 API 契约管理站点名称与 Logo、功能开关、媒体策略、仓储策略和缺席策略。当前模块开关只有：
+“管理后台 → 站点配置”及其 API 契约管理站点名称与 Logo、功能开关、逐供应商的非秘密 OAuth 开关、媒体策略、仓储策略和缺席策略。OAuth 运行时凭据和邮件发件凭据仍是部署秘密；微信仅作预留，在官方协议规则得到验证前不可用。当前模块开关只有：
 
 ```text
 announcements, events, guildWar, gallery, wiki, tools, storage
@@ -68,7 +68,7 @@ apps/
 ├── cloudflare/  Workers 入口及 D1/R2/Durable Object 适配器
 ├── vps/         SQLite 与文件系统 Blob 的单进程 Node.js 运行时
 ├── shared/      Zod schema、共享类型、限制与源码契约
-└── portal/      使用 TanStack Router、TanStack Query、Mantine、Zustand 的 React SPA
+└── portal/      使用 TanStack Router/Query、shadcn/ui、Base UI、Zustand 的 React SPA
 packages/
 ├── application/         运行时中立的组合层
 ├── kernel/              上下文、错误、授权与端口
@@ -79,7 +79,7 @@ packages/
 
 | 层 | 当前技术 |
 | --- | --- |
-| 前端 | React 19.2、Vite 8.2、Mantine 9.5、TanStack Router/Query、Zustand 5、原生 CSS + 自定义属性；不使用 Tailwind |
+| 前端 | React 19.2、Vite 8.2、基于 Base UI 1.7 的 shadcn/ui 组合、Tailwind CSS 4.3、TanStack Router/Query、Zustand 5，以及使用自定义属性的领域 CSS |
 | 语言与校验 | 门户和两种后端共用 TypeScript 6 与 Zod 4 |
 | 内容与图表 | TipTap 3、ECharts 6 |
 | Cloudflare 后端 | Hono、D1、一个 `BLOBS` R2 桶、Cron Triggers 与通知 Durable Object |
@@ -98,9 +98,9 @@ packages/
 | 前缀 | 能力 |
 | --- | --- |
 | `/api/health`、`/api/site-config` | 健康检查与公开站点元数据/Logo |
-| `/api/auth` | 登录、退出、邀请校验/注册、会话和用户名检查 |
+| `/api/auth` | 登录、退出、邀请校验/注册、会话、改密完成、已配置 OAuth 与已验证邮箱流程 |
 | `/api/dashboard`、`/api/search` | 仪表盘摘要与门户搜索 |
-| `/api/users` | 花名册、资料、属性、缺席、凭据和资料媒体 |
+| `/api/users` | 花名册、资料、属性、缺席和资料媒体 |
 | `/api/events` | 活动、周期模板、附件、报名、投票、抽奖和参与者 |
 | `/api/announcements` | 公告内容、图片、发布、归档和删除 |
 | `/api/guild-war` | 当前战况、分队、战史、成员数据、导出和分析 |
@@ -126,7 +126,7 @@ Cloudflare 使用 Cron Triggers。VPS 则在单个 Node.js 进程中调度相同
 
 [SETUP.zh.md](./SETUP.zh.md) 是选择 Cloudflare/VPS、本地开发、共享 schema、首位管理员引导、生产密钥、备份与恢复、更新和故障排查的权威指南。英文指南见 [SETUP.md](./SETUP.md)。
 
-`0000_core.sql` 是已发布且冻结的基线，当前 manifest 只包含这一项迁移，不得编辑或重新生成。后续每项变更都必须新增下一个连续序号的迁移，并同步更新 manifest。Cloudflare D1 与 VPS SQLite 会以相同方式校验并应用这条有序迁移链。完整政策见安装指南，包括如何在 Workers 免费版上运行，以及升级后应调高哪些配置。
+`0000_core.sql` 是已发布且冻结的基线；manifest 现包含直到 `0006_auth_lifecycle_hardening` 的连续迁移链，不得编辑或重新生成该基线。后续每项变更都必须新增下一个连续序号的迁移，并同步更新 manifest 校验和。Cloudflare D1 与 VPS SQLite 会以相同方式校验并应用这条有序迁移链。完整政策见安装指南，包括如何在 Workers 免费版上运行，以及升级后应调高哪些配置。
 
 ## 安全
 

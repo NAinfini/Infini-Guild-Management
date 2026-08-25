@@ -87,10 +87,10 @@ export async function waitForPortal(
 
 export async function login(
   api: APIRequestContext,
-  username: string,
+  loginName: string,
   password: string,
 ): Promise<void> {
-  await expectOk(api, "post", "/api/auth/login", { username, password, stay_logged_in: true });
+  await expectOk(api, "post", "/api/auth/login", { login_name: loginName, password, stay_logged_in: true });
 }
 
 export async function createSystemTestRun(adminApi: APIRequestContext): Promise<string> {

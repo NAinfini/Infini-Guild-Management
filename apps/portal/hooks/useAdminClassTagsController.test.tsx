@@ -77,4 +77,21 @@ describe("useAdminClassTagsController", () => {
     });
     expect(apiMocks.fetch).toHaveBeenCalledTimes(2);
   });
+
+  it("opens a selected tag as an editable draft and clears dirty after an exact reversion", async () => {
+    apiMocks.fetch.mockResolvedValue([tag]);
+    const { result } = renderHook(() => useAdminClassTagsController(), {
+      wrapper: createWrapper(),
+    });
+
+    await waitFor(() => expect(result.current.draft.id).toBe(tag.id));
+    expect(result.current.opened).toBe(true);
+    expect(result.current.isDirty).toBe(false);
+
+    act(() => result.current.toggleClass("mage"));
+    expect(result.current.isDirty).toBe(true);
+
+    act(() => result.current.toggleClass("mage"));
+    expect(result.current.isDirty).toBe(false);
+  });
 });

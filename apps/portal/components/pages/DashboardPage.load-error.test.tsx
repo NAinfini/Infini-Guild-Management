@@ -1,12 +1,15 @@
 import type { ReactNode } from "react";
 import { fireEvent, render, screen } from "@testing-library/react";
-import { MantineProvider } from "@mantine/core";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
   useQuery: vi.fn(),
   navigate: vi.fn(),
   warningToast: vi.fn(),
+  siteConfig: {
+    siteName: "Test Guild",
+    features: { announcements: true, events: true, guildWar: true },
+  },
 }));
 
 vi.mock("@tanstack/react-query", () => ({
@@ -35,8 +38,8 @@ vi.mock("../../stores/auth", () => ({
 
 vi.mock("../../stores/site-config", () => ({
   useSiteConfigStore: (
-    selector: (state: { features: { events: boolean; guildWar: boolean } }) => unknown,
-  ) => selector({ features: { events: true, guildWar: true } }),
+    selector: (state: typeof mocks.siteConfig) => unknown,
+  ) => selector(mocks.siteConfig),
 }));
 
 vi.mock("../layout/PageLayout", () => ({
@@ -52,9 +55,6 @@ vi.mock("../shared/EmptyState", () => ({
   ),
 }));
 
-vi.mock("../dashboard/ActiveMembersCard", () => ({
-  ActiveMembersCard: () => <div>active-members-card</div>,
-}));
 vi.mock("../dashboard/LastWarCard", () => ({
   LastWarCard: () => <div>last-war-card</div>,
 }));
@@ -82,46 +82,89 @@ describe("DashboardPage initial load errors", () => {
   beforeEach(() => {
     mocks.useQuery.mockReset();
     mocks.warningToast.mockReset();
+    mocks.siteConfig.features = { announcements: true, events: true, guildWar: true };
   });
 
   it("shows a retryable error instead of zero-valued cards when an initial query fails", () => {
-    const retryMembers = vi.fn();
-    const memberQuery = {
+    const retryEvents = vi.fn();
+    const eventsQuery = {
         data: undefined,
         dataUpdatedAt: 0,
         isError: true,
         isFetching: false,
         isLoading: false,
-        refetch: retryMembers,
+        refetch: retryEvents,
     };
-    const eventsQuery = successfulQuery({
-      active_events_count: 0,
-      featured_events: [],
-      my_signup_event_ids: [],
-      upcoming_events: [],
-    });
     const warsQuery = successfulQuery({
       all_war_win_rate: 0,
       recent_war_mvps: [],
       recent_wars: [],
     });
     mocks.useQuery.mockImplementation(({ queryKey }: { queryKey: readonly unknown[] }) => {
-      if (queryKey[1] === "members") return memberQuery;
       if (queryKey[1] === "events") return eventsQuery;
       if (queryKey[1] === "wars") return warsQuery;
+      if (queryKey[1] === "list") return successfulQuery({ data: [] });
       throw new Error(`Unexpected dashboard query: ${String(queryKey[1])}`);
     });
 
     render(
-      <MantineProvider>
-        <DashboardPage />
-      </MantineProvider>,
+      <DashboardPage />,
     );
 
     expect(screen.getByText("common:loadError")).toBeInTheDocument();
-    expect(screen.queryByText("active-members-card")).not.toBeInTheDocument();
+    expect(screen.queryByText("my-signups-card")).not.toBeInTheDocument();
+    expect(screen.queryByText("upcoming-events-card")).not.toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: "common:action.retry" }));
-    expect(retryMembers).toHaveBeenCalledOnce();
+    expect(retryEvents).toHaveBeenCalledOnce();
+  });
+
+  it("does not advertise disabled event, guild-war, or announcement features", () => {
+    mocks.siteConfig.features = { announcements: false, events: false, guildWar: false };
+    mocks.useQuery.mockImplementation(({ queryKey }: { queryKey: readonly unknown[] }) => {
+      if (queryKey[1] === "events") {
+        return successfulQuery({ active_events_count: 0, featured_events: [], my_signup_event_ids: [], upcoming_events: [] });
+      }
+      if (queryKey[1] === "wars") {
+        return successfulQuery({ all_war_win_rate: 0, recent_war_mvps: [], recent_wars: [] });
+      }
+      if (queryKey[1] === "list") return successfulQuery({ data: [] });
+      throw new Error(`Unexpected dashboard query: ${String(queryKey[1])}`);
+    });
+
+    render(
+      <DashboardPage />,
+    );
+
+    expect(screen.queryByText("my-signups-card")).not.toBeInTheDocument();
+    expect(screen.queryByText("upcoming-events-card")).not.toBeInTheDocument();
+    expect(screen.queryByText("last-war-card")).not.toBeInTheDocument();
+    expect(screen.queryByText("command.bulletin.label")).not.toBeInTheDocument();
+  });
+
+  it("does not announce an all-clear attention state while events are loading", () => {
+    mocks.siteConfig.features = { announcements: false, events: true, guildWar: false };
+    const loadingEventsQuery = {
+      data: undefined,
+      dataUpdatedAt: 0,
+      isError: false,
+      isFetching: true,
+      isLoading: true,
+      refetch: vi.fn(),
+    };
+    mocks.useQuery.mockImplementation(({ queryKey }: { queryKey: readonly unknown[] }) => {
+      if (queryKey[1] === "events") return loadingEventsQuery;
+      if (queryKey[1] === "wars") {
+        return successfulQuery({ all_war_win_rate: 0, recent_war_mvps: [], recent_wars: [] });
+      }
+      if (queryKey[1] === "list") return successfulQuery({ data: [] });
+      throw new Error(`Unexpected dashboard query: ${String(queryKey[1])}`);
+    });
+
+    render(
+      <DashboardPage />,
+    );
+
+    expect(screen.queryByText("attention.ready.title")).not.toBeInTheDocument();
   });
 });

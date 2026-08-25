@@ -10,10 +10,11 @@
   --page-layout-max-width: 100%;
   --page-rhythm: var(--space-md);
   width: 100%;
+  height: 100%;
   max-width: var(--page-layout-max-width);
   margin-inline: auto;
   padding-inline: var(--shell-page-padding);
-  padding-bottom: var(--space-xl);
+  padding-bottom: var(--shell-content-gap);
   flex: 1;
   min-height: 0;
   display: flex;
@@ -25,27 +26,31 @@
   --page-layout-max-width: var(--content-width-reading);
 }
 
-.app-route-container[data-content-width="standard"] .page-layout {
-  --page-layout-max-width: var(--content-width-standard);
-}
-
-.app-route-container[data-content-width="wide"] .page-layout {
-  --page-layout-max-width: var(--content-width-wide);
-}
-
+.app-route-container[data-content-width="standard"] .page-layout,
+.app-route-container[data-content-width="wide"] .page-layout,
 .app-route-container[data-content-width="workbench"] .page-layout {
   --page-layout-max-width: 100%;
 }
 
 .page-layout__content {
+  height: 100%;
   flex: 1;
   min-height: 0;
   min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--page-rhythm);
+  overflow: hidden;
 }
 
 .page-layout__action-row {
   min-width: 0;
   min-height: var(--control-height-regular);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: var(--space-md);
 }
 
 .page-layout__breadcrumbs {
@@ -63,10 +68,58 @@
   flex: 0 0 auto;
 }
 
+.page-layout__toolbar {
+  min-width: 0;
+  flex: 0 0 auto;
+}
+
+.page-layout__workspace {
+  min-width: 0;
+  min-height: 0;
+  flex: 1;
+  overscroll-behavior: contain;
+}
+
+.page-layout[data-workspace-mode="scroll"] .page-layout__workspace {
+  overflow-x: clip;
+  overflow-y: auto;
+  scrollbar-gutter: stable;
+  scrollbar-width: thin;
+  scrollbar-color: var(--border-strong) transparent;
+}
+
+.page-layout[data-workspace-mode="contained"] .page-layout__workspace {
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.page-layout__workspace::-webkit-scrollbar {
+  width: var(--scrollbar-size);
+}
+
+.page-layout__workspace::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.page-layout__workspace::-webkit-scrollbar-thumb {
+  border: 2px solid transparent;
+  border-radius: var(--radius-control);
+  background: var(--border-strong);
+  background-clip: padding-box;
+}
+
 @media (max-width: 767px) {
   .page-layout__primary-action {
     width: 100%;
     justify-content: flex-start;
+  }
+
+  .page-layout[data-workspace-mode="contained"] .page-layout__workspace {
+    overflow-x: clip;
+    overflow-y: auto;
+    display: block;
+    scrollbar-gutter: stable;
   }
 }
 

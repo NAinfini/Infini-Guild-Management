@@ -72,11 +72,14 @@ export async function admitWebSocketHandshake(
 
   const token = readSessionCookie(
     input.request,
-    resolveSessionCookieName(input.config.sessionCookieName),
+    resolveSessionCookieName(input.config.sessionCookieName, input.config.publicUrl),
   );
   const { authorization } = await input.auth.resolveAuthorization(token, input.nowIso);
   if (!authorization.isAuthenticated()) {
     return { accepted: false, status: 401, reason: "Authentication required" };
+  }
+  if (authorization.actor.sessionScope !== "normal") {
+    return { accepted: false, status: 403, reason: "Password reset must be completed first" };
   }
   return { accepted: true, authorization };
 }

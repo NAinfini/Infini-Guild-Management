@@ -1,6 +1,6 @@
 import type { User } from "@guild/shared";
-import { MantineProvider } from "@mantine/core";
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 import { UserProfileDropdown } from "./UserProfileDropdown";
 
@@ -25,7 +25,7 @@ vi.mock("../../stores/auth", () => ({
 
 const user: User = {
   id: "user-1",
-  username: "Nielsen",
+  display_name: "Nielsen",
   role: "admin",
   role_name: "Guild Administrator",
   role_color: "#ef4444",
@@ -39,11 +39,9 @@ const user: User = {
 };
 
 describe("UserProfileDropdown", () => {
-  it("includes the visible username in the trigger accessible name", () => {
+  it("includes the visible display_name in the trigger accessible name", () => {
     render(
-      <MantineProvider>
-        <UserProfileDropdown user={user} onLogout={vi.fn()} compact />
-      </MantineProvider>,
+      <UserProfileDropdown user={user} onLogout={vi.fn()} compact />,
     );
 
     expect(
@@ -53,12 +51,28 @@ describe("UserProfileDropdown", () => {
 
   it("shows the embedded D1 role name in the expanded trigger", () => {
     render(
-      <MantineProvider>
-        <UserProfileDropdown user={user} onLogout={vi.fn()} />
-      </MantineProvider>,
+      <UserProfileDropdown user={user} onLogout={vi.fn()} />,
     );
 
     expect(screen.getByText("Guild Administrator")).toBeInTheDocument();
     expect(screen.queryByText("admin")).not.toBeInTheDocument();
+  });
+
+  it("opens the profile actions and calls logout", async () => {
+    const onLogout = vi.fn();
+    const userEventInstance = userEvent.setup();
+
+    render(<UserProfileDropdown user={user} onLogout={onLogout} />);
+
+    fireEvent.mouseDown(
+      screen.getByRole("button", { name: "Nielsen: Open profile menu" }),
+    );
+
+    expect(await screen.findByRole("menuitem", { name: "profile.menu.profile" })).toBeInTheDocument();
+    expect(screen.getByRole("menuitem", { name: "profile.menu.settings" })).toBeInTheDocument();
+
+    await userEventInstance.click(screen.getByRole("menuitem", { name: "action.logout" }));
+
+    expect(onLogout).toHaveBeenCalledOnce();
   });
 });
